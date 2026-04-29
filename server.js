@@ -916,10 +916,29 @@ initDB().then(() => {
     app.use(authModule.protectDocumentationRoutes);
 
     // CRA build → sync в корень public/ (npm run build:datagon-spa). UI: /moysklad, /dashboard, …
-    const reactIndex = path.join(__dirname, 'public', 'index.html');
+    // Резерв: старый деплой клал только public/architectui-react-pro/ — без index в корне SPA-fallback молчал → 404 «Cannot GET /moysklad».
+    const resolveSpaIndexHtml = () => {
+        const candidates = [
+            path.join(__dirname, 'public', 'index.html'),
+            path.join(__dirname, 'public', 'architectui-react-pro', 'index.html'),
+        ];
+        for (const p of candidates) {
+            if (fsSync.existsSync(p)) return p;
+        }
+        return null;
+    };
+    const reactIndex = resolveSpaIndexHtml();
+    if (reactIndex && reactIndex.includes('architectui-react-pro')) {
+        console.warn(
+            '[SPA] Открыт index.html из public/architectui-react-pro/. Для путей ./static при URL /moysklad нужны файлы в public/static/. Выкладывайте целиком `public/` из build:datagon-spa в корень сайта, не только подпапку.'
+        );
+    }
+    if (!reactIndex) {
+        console.warn('[SPA] Нет public/index.html — маршруты /dashboard, /moysklad и т.д. дадут 404. Выполните npm run build:datagon-spa и задеплойте public/.');
+    }
     app.get('/', (req, res, next) => {
         if (req.method !== 'GET' && req.method !== 'HEAD') return next();
-        if (!fsSync.existsSync(reactIndex)) return next();
+        if (!reactIndex) return next();
         return res.redirect(302, '/dashboard');
     });
 
@@ -939,7 +958,7 @@ initDB().then(() => {
         if (req.method !== 'GET' && req.method !== 'HEAD') return next();
         if (req.path.startsWith('/api')) return next();
         if (/\.[a-zA-Z0-9]+$/.test(req.path)) return next();
-        if (!fsSync.existsSync(reactIndex)) return next();
+        if (!reactIndex) return next();
         return res.sendFile(reactIndex);
     });
 
