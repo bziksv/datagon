@@ -914,10 +914,18 @@ initDB().then(() => {
     app.use('/api/parse', pagesRouter);
 
     app.use(authModule.protectDocumentationRoutes);
+
+    // Легаси public/index.html убран — без этого GET / давал "Cannot GET /"
+    const reactIndex = path.join(__dirname, 'public', 'architectui-react-pro', 'index.html');
+    app.get('/', (req, res, next) => {
+        if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+        if (!fsSync.existsSync(reactIndex)) return next();
+        return res.redirect(302, '/architectui-react-pro/dashboard');
+    });
+
     app.use(express.static(path.join(__dirname, 'public')));
 
     // SPA React (после sync: public/architectui-react-pro/ из architectui-react-pro/build)
-    const reactIndex = path.join(__dirname, 'public', 'architectui-react-pro', 'index.html');
     app.get(/^\/architectui-react-pro(\/.*)?$/, (req, res, next) => {
         if (req.method !== 'GET' && req.method !== 'HEAD') return next();
         if (!fsSync.existsSync(reactIndex)) return next();
