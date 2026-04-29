@@ -2,7 +2,10 @@
 /**
  * Сборка CRA и копирование артефакта в public/architectui-react-pro/
  *
- * Исходники остаются в architectui-react-pro/; в public попадает только production build.
+ * ВНИМАНИЕ: npm run build внутри CRA на слабом прод-сервере даёт пик CPU/RAM и может
+ * раздувать диск (кэши). На VPS предпочтительно: собрать на машине разработчика,
+ * залить только public/architectui-react-pro/ или положить готовый build и:
+ *   SKIP_REACT_BUILD=1 node scripts/build/sync-react-build-to-public.mjs
  *
  *   node scripts/build/sync-react-build-to-public.mjs
  *

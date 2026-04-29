@@ -1,6 +1,4 @@
-# Datagon (финальный контур миграции)
-
-Репозиторий **`p.datagon.3003-final`**: backend (Node/Express + MySQL) и **основной UI на React** (шаблон ArchitectUI в `architectui-react-pro/`). Статические legacy-страницы Datagon из `public/*.html` в этом репо **удалены**; в `public/docs/**` остаётся только документация при необходимости.
+# p.datagon.ru — парсер цен и сопоставление товаров
 
 Веб-приложение для сбора цен конкурентов, синхронизации собственного каталога из внешних БД (Bitrix/Webasyst), автоматического сопоставления товаров и подготовки выгрузки для МойСклад.
 
@@ -30,26 +28,26 @@
 - MySQL (`mysql2/promise`)
 - Axios + Cheerio (HTTP и парсинг HTML)
 - bcryptjs (аутентификация)
-- React (CRA + `react-app-rewired`) — UI Datagon в `architectui-react-pro/`, базовый путь `/architectui-react-pro/`
+- Статический фронтенд в `public/` (HTML/CSS/JS)
 
 ## Структура проекта
 
 - `server.js` — запуск приложения, инициализация БД, подключение роутов.
 - `routes/` — серверные API-модули.
-- `architectui-react-pro/` — **основной пользовательский интерфейс** Datagon (dev `3003`, прокси `/api` на backend).
-- `public/` — без legacy HTML UI; при необходимости только `public/docs/**` и прочие статические файлы для деплоя.
+- `public/` — пользовательский интерфейс (legacy HTML/JS и собранный React в `public/architectui-react-pro/`).
+- `architectui-react-pro/` — исходники SPA (CRA), сборка в `public/architectui-react-pro/` через `npm run build:datagon-spa`.
 - `worker.js`, `sync-worker.js` — фоновые скрипты пакетной обработки.
 - `config.js` — порт, доступ к БД, токен МойСклад.
-- `DEPLOY.md` — краткая инструкция деплоя.
-- `API.md` — карта всех REST-эндпоинтов.
-- `ARCHITECTUI_MIGRATION_PLAN.md` — статус миграции, матрица паритета, smoke-сборка.
+- `scripts/` — утилиты сборки, скриншотов документации, smoke e2e (см. `scripts/README.md`).
+- `docs-docusaurus/` — исходники пользовательской документации (Docusaurus).
+- `docs/repo/` — документация для разработчиков: API, деплой, план миграции UI.
 
 ## Быстрый старт (локально)
 
 ### 1) Установка
 
 ```bash
-cd /path/to/p.datagon.3003-final
+cd /Users/stanislav/Documents/projects/p.datagon.ru
 npm install
 ```
 
@@ -70,63 +68,9 @@ npm install
 npm start
 ```
 
-#### Продакшен: один Node отдаёт API + статику React
+После запуска откройте:
 
-Исходники SPA остаются в **`architectui-react-pro/`**. В **`public/`** кладётся только **готовый build** (папка `public/architectui-react-pro/`), чтобы Express раздавал UI с того же хоста/порта, что и `/api`:
-
-```bash
-cd architectui-react-pro && npm install --legacy-peer-deps && cd ..
-npm run build:datagon-spa
-npm start
-```
-
-Повторно только копирование уже собранного `build/` (без пересборки):
-
-```bash
-SKIP_REACT_BUILD=1 npm run build:datagon-spa
-```
-
-Папка `public/architectui-react-pro/` в git **не коммитится** (см. `.gitignore`); на сервере её создаёт команда выше.
-
-После этого открывайте тот же порт, что и у backend, например `http://localhost:3000/architectui-react-pro/dashboard` (если в `config.js` порт 3000 и UI лежит в подпапке после `build:datagon-spa`).
-
----
-
-После запуска backend (API) **в режиме разработки** можно поднять отдельный dev-сервер React:
-
-```bash
-cd architectui-react-pro
-npm install --legacy-peer-deps
-npm start
-```
-
-Откройте:
-
-- `http://localhost:3003/dashboard` и, например, `http://localhost:3003/my-products`
-
-Быстрая проверка отдачи SPA (ожидается **HTTP 200** для HTML shell при поднятом `npm start` в `architectui-react-pro`):
-
-- `/dashboard`, `/my-sites`, `/my-products`, `/moysklad`, `/matches`, `/matching`, `/queue`, `/results`, `/projects`, `/processes`, `/settings`
-
-### Smoke e2e (Playwright)
-
-Один раз установите браузер для Playwright:
-
-```bash
-npm run docs:install-browsers
-```
-
-С поднятыми **backend (3000)** и **React (3003)** из корня репозитория:
-
-```bash
-npm run test:datagon-smoke-e2e
-```
-
-С авторизацией (данные таблиц и блоки фильтров стабильнее):
-
-```bash
-DATAGON_SMOKE_USER=admin DATAGON_SMOKE_PASSWORD='ваш_пароль' npm run test:datagon-smoke-e2e
-```
+- `http://localhost:3000/index.html`
 
 ## Первый вход
 
@@ -144,7 +88,7 @@ DATAGON_SMOKE_USER=admin DATAGON_SMOKE_PASSWORD='ваш_пароль' npm run te
 
 ## Разделы API
 
-Подробное описание всех методов и параметров находится в `API.md`.
+Подробное описание всех методов и параметров — в [`docs/repo/API.md`](docs/repo/API.md).
 
 Коротко по группам:
 
@@ -171,9 +115,8 @@ DATAGON_SMOKE_USER=admin DATAGON_SMOKE_PASSWORD='ваш_пароль' npm run te
 
 Проверьте:
 
-- правильный URL: `http://localhost:3003/dashboard` или `http://localhost:3003/my-products`;
-- что backend запущен (`npm start` в корне проекта);
-- что frontend запущен (`npm start` в `architectui-react-pro`);
+- правильный URL: `http://localhost:3000/index.html`;
+- что сервер запущен (`npm start`);
 - корректность логина и пароля.
 
 Быстрая проверка API входа:
@@ -284,5 +227,5 @@ curl -i -X POST "http://localhost:3000/api/auth/login" \
 
 ## Деплой
 
-См. `DEPLOY.md`.
+См. [`docs/repo/DEPLOY.md`](docs/repo/DEPLOY.md).
 

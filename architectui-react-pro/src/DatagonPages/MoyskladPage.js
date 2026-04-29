@@ -714,11 +714,10 @@ const MoyskladPage = () => {
               overflowX: "auto",
               overflowY: "visible",
               position: "relative",
-              scrollbarGutter: "stable both-edges",
               WebkitOverflowScrolling: "touch",
             }}
           >
-          <table id="moysklad-main-table" className="table table-hover table-striped mb-0 datagon-my-products-table" style={{ width: "max-content", minWidth: 2200, maxWidth: "none", tableLayout: "fixed", borderCollapse: "separate", borderSpacing: 0 }}>
+          <table className="table table-hover table-striped mb-0 datagon-my-products-table" style={{ width: "max-content", minWidth: 2200, maxWidth: "none", tableLayout: "fixed", borderCollapse: "separate", borderSpacing: 0 }}>
             <thead>
               <tr>
                 {TABLE_COLUMNS.map(([key, label]) => (
@@ -730,7 +729,6 @@ const MoyskladPage = () => {
                       top: 64,
                       zIndex: 30,
                       background: "#f8f9fa",
-                      boxShadow: "0 1px 0 rgba(0,0,0,0.04)",
                       borderRight: "1px solid #e6e9ee",
                     }}
                     onClick={() => onSort(key)}

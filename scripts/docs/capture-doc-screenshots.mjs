@@ -32,6 +32,7 @@ const password = process.env.DOCS_PASSWORD || '';
 const viewportW = Math.max(900, parseInt(process.env.DOCS_VIEWPORT || '1400', 10) || 1400);
 
 const targets = [
+    { file: 'manual.png', path: '/docs/manual.html', auth: false },
     { file: 'dashboard.png', path: '/dashboard', auth: true },
     { file: 'queue.png', path: '/queue', auth: true },
     { file: 'mysites.png', path: '/my-sites', auth: true },

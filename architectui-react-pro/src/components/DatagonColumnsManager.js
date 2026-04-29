@@ -6,7 +6,6 @@ const TOOLBOX_CLASS = "datagon-columns-toolbox";
 const PANEL_CLASS = "datagon-columns-panel";
 
 const observedTables = new WeakMap();
-const resizeObservers = new WeakMap();
 
 const normalizeLabel = (text, index) => {
   const t = String(text || "").replace(/\s+/g, " ").trim();
@@ -241,16 +240,6 @@ const setupTableToolbox = (table, tableKey) => {
   observer.observe(table, { childList: true, subtree: true });
   observedTables.set(table, observer);
 
-  if ("ResizeObserver" in window) {
-    const ro = new ResizeObserver(() => {
-      syncToolboxWidth();
-    });
-    ro.observe(table);
-    resizeObservers.set(table, ro);
-  }
-  const onWindowResize = () => syncToolboxWidth();
-  window.addEventListener("resize", onWindowResize);
-
   table.parentNode.insertBefore(box, table);
   table.dataset.columnsManaged = "1";
   renderChecks();
@@ -311,12 +300,6 @@ const DatagonColumnsManager = () => {
           observer.disconnect();
           observedTables.delete(table);
         }
-        const ro = resizeObservers.get(table);
-        if (ro) {
-          ro.disconnect();
-          resizeObservers.delete(table);
-        }
-        window.removeEventListener("resize", onWindowResize);
       });
     };
   }, [location.pathname]);
