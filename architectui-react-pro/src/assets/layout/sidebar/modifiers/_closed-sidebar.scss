@@ -1,0 +1,300 @@
+// Closed Sidebar
+
+// Sidebar Menu Hover
+
+.closed-sidebar {
+  .app-sidebar {
+    transition: all .3s ease;
+    width: $app-sidebar-width-collapsed;
+    min-width: $app-sidebar-width-collapsed;
+    flex: 0 0 $app-sidebar-width-collapsed;
+    z-index: 13;
+
+    .app-sidebar__inner {
+      margin-left: 0;
+
+      .app-sidebar__heading {
+        text-indent: -999em;
+
+        &::before {
+          content: '';
+          position: absolute;
+          top: 50%;
+          left: 0;
+          width: 400%;
+          height: 1px;
+          background: $dropdown-link-hover-bg;
+          text-indent: 1px;
+        }
+      }
+
+      .metismenu-link {
+        text-indent: -99rem;
+        padding: 0;
+        margin: 0.0625rem 0.25rem;  // Match the base navigation vertical margin
+        width: calc(100% - 0.5rem);  // Ensure full width minus margins
+        background: transparent !important;  // Remove any background colors
+        border: none !important;  // Remove any borders
+        outline: none !important;  // Remove focus outlines
+        
+        &:hover, &:focus, &:active, &.active {
+          background: transparent !important;  // Remove hover/focus/active backgrounds
+          border: none !important;  // Remove hover/focus/active borders
+          outline: none !important;  // Remove hover/focus/active outlines
+          
+          .metismenu-icon {
+            opacity: 0.6 !important;  // Brighten icon on hover in collapsed state
+          }
+        }
+      }
+
+      .metismenu-icon {
+        text-indent: 0 !important;  // Override any text-indent to make icons visible
+        left: 50%;  // Center horizontally
+        margin-left: -7px;  // Further adjustment from -9px to move icons 2px more to the right
+        transform: translateX(0);  // Ensure no transforms are hiding the icon
+        transition: left .25s ease;  // Slightly faster transition to reduce jumping
+        visibility: visible !important;  // Force visibility
+        opacity: 0.3 !important;  // Match the base navigation opacity for consistency
+        display: block !important;  // Force display
+        z-index: 10 !important;  // Ensure icons are above other elements
+      }
+
+      .metismenu-state-icon {
+        visibility: hidden;
+      }
+
+      .metismenu-container {
+        &.visible {
+          padding: 0;
+
+          // Hide the submenu vertical line completely
+          &:before {
+            display: none !important;  // Hide the blue/purple vertical line
+            opacity: 0 !important;
+            width: 0 !important;
+            background: transparent !important;
+          }
+
+          & > .metismenu-item > .metismenu-link {
+            height: 0;
+            background: transparent !important;  // Ensure submenu links have no background
+            color: transparent !important;  // Hide submenu link colors
+          }
+        }
+      }
+    }
+
+    &:hover {
+      flex: 0 0 $app-sidebar-width !important;
+      width: $app-sidebar-width !important;
+
+      .app-sidebar__inner {
+        .app-sidebar__heading {
+          text-indent: initial;
+          &::before {
+            display: none;
+          }
+        }
+
+        .metismenu-link {
+          text-indent: initial;
+          padding: 0 ($layout-spacer-x + 0.3125rem) 0 3.4375rem;  // Restore expanded padding
+          margin: 0.0625rem 0.5rem;  // Match the updated base navigation margins
+          width: auto;  // Reset width
+          background: initial !important;  // Restore background
+          border: initial !important;  // Restore borders
+          box-shadow: initial !important;  // Restore box shadows
+          outline: initial !important;  // Restore outlines
+          color: $gray-800 !important;  // Use proper theme color instead of initial
+          
+          &:hover, &:focus, &:active, &.active {
+            background: $dropdown-link-hover-bg !important;  // Restore hover backgrounds
+            border: initial !important;  // Restore hover borders
+            box-shadow: initial !important;  // Restore hover shadows
+            outline: initial !important;  // Restore hover outlines
+            color: $primary !important;  // Restore hover text color for active states
+          }
+        }
+
+        .metismenu-icon {
+          text-indent: initial;
+          left: 0.625rem;  // Normal expanded position
+          margin-left: 0;
+          transform: none;  // Reset transform
+          visibility: visible;  // Reset visibility
+          opacity: 0.3;  // Keep consistent opacity with base navigation
+        }
+
+        .metismenu-state-icon {
+          visibility: visible;
+          right: 0.5rem;  // Updated for new layout
+        }
+
+        .metismenu-container {
+          &.visible {
+            padding: .5em 0 0 2rem;
+            
+            // Restore the submenu vertical line in hover state
+            &:before {
+              display: block !important;  // Restore the vertical line
+              opacity: 1 !important;
+              width: 3px !important;
+              background: $dropdown-link-hover-bg !important;
+              content: '';
+              height: 100%;
+              position: absolute;
+              left: 1.5625rem;
+              top: 0;
+              border-radius: 15px;
+            }
+
+            & > .metismenu-item > .metismenu-link {
+              height: 2.3em;
+              background: initial !important;  // Restore submenu link backgrounds
+              color: $gray-600 !important;  // Use proper theme color for submenus instead of initial
+              
+              &:hover, &:focus, &:active, &.active {
+                background: $dropdown-link-hover-bg !important;
+                color: $primary !important;
+              }
+            }
+          }
+
+          .metismenu-container {
+            .metismenu-link {
+              padding-left: 1em;
+            }
+          }
+
+        }
+      }
+    }
+  }
+
+  &:not(.sidebar-mobile-open) {
+
+    .app-sidebar {
+      // Keep scrollbar functionality in collapsed state
+      .custom-scrollbar {
+        position: relative;
+        height: calc(100vh - #{$app-header-height});  // Full height minus header
+        overflow: auto !important;  // Enable scrolling
+      }
+
+      &:hover {
+        .custom-scrollbar {
+          position: absolute;
+          height: 100%;
+          overflow: auto !important;  // Keep scrolling on hover too
+        }
+      }
+    }
+  }
+
+  &:not(.closed-sidebar-mobile) {
+    .app-header {
+      .app-header__logo {
+        width: $app-sidebar-width-collapsed;
+
+        .logo-src {
+          display: none;
+        }
+
+        .header__pane {
+          margin-right: auto;
+        }
+      }
+    }
+
+  }
+
+  &.fixed-sidebar {
+    .app-main__outer {
+      padding-left: $app-sidebar-width-collapsed;
+    }
+  }
+
+  &.fixed-header:not(.fixed-sidebar) {
+    .app-sidebar {
+      .app-header__logo {
+        visibility: hidden;
+      }
+    }
+  }
+
+  &.closed-sidebar-mobile {
+    .app-sidebar,
+    .app-header {
+      .app-header__logo {
+        width: auto;
+        display: flex;
+
+        .header__pane {
+          display: none;
+        }
+      }
+    }
+
+    .app-sidebar {
+      .app-header__logo {
+        display: flex;
+        width: $app-sidebar-width-collapsed;
+        padding: 0 $layout-spacer-x !important;
+
+        .logo-src {
+          display: block !important;
+          margin: 0 auto;
+          width: $logo-width - 76;
+        }
+
+        .header__pane {
+          display: none;
+        }
+      }
+
+      &:hover {
+        .app-header__logo {
+          width: $app-sidebar-width;
+
+          .logo-src {
+            width: $logo-width;
+            margin: 0;
+
+          }
+        }
+      }
+    }
+
+    .app-header {
+      margin-left: 0 !important;
+    }
+
+    // Ensure scrollbar works in mobile collapsed state too
+    .app-sidebar {
+      .custom-scrollbar {
+        position: relative;
+        height: calc(100vh - #{$app-header-height});
+        overflow: auto !important;
+      }
+
+      &:hover {
+        .custom-scrollbar {
+          position: absolute;
+          height: 100%;
+          overflow: auto !important;
+        }
+      }
+    }
+  }
+
+  &.fixed-footer {
+    .app-footer__inner {
+      margin-left: 0 !important;
+    }
+  }
+}
+
+.closed-sidebar .app-sidebar .app-sidebar__inner .app-sidebar__heading::before {
+  width: 400%;
+}

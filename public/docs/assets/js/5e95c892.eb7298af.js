@@ -1,0 +1,1 @@
+"use strict";(self.webpackChunkdatagon_docs=self.webpackChunkdatagon_docs||[]).push([[647],{7121(e,s,a){a.r(s),a.d(s,{default:()=>o});a(6540);var r=a(4164),c=a(6578),d=a(6413),n=a(2831),t=a(8001),u=a(4848);function o(e){return(0,u.jsx)(d.e3,{className:(0,r.A)(c.G.wrapper.docsPages),children:(0,u.jsx)(t.A,{children:(0,n.v)(e.route.routes)})})}}}]);

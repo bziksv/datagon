@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Документация Datagon</title>
+  </head>
+  <body>
+    <p>Переход в документацию…</p>
+    <script>
+      (async function () {
+        function buildHeaders() {
+          var headers = {};
+          var token = localStorage.getItem("authToken");
+          if (token) headers["x-auth-token"] = token;
+          var user = localStorage.getItem("currentUser");
+          if (user) headers["x-auth-username"] = user;
+          return headers;
+        }
+
+        if (localStorage.getItem("isLoggedIn") === "true") {
+          try {
+            await fetch("/api/auth/sync-session-cookie", {
+              method: "POST",
+              credentials: "include",
+              headers: buildHeaders(),
+            });
+          } catch (_) {}
+        }
+
+        var params = new URLSearchParams(window.location.search);
+        var thenFile = params.get("then") || "manual.html";
+        params.delete("then");
+
+        var slug = String(thenFile).replace(/\.html$/i, "");
+        if (!slug || slug.toLowerCase() === "session-bridge") {
+          slug = "manual";
+        }
+
+        var base = "/docs/" + encodeURIComponent(slug) + "/";
+        var rest = params.toString();
+        window.location.replace(rest ? base + "?" + rest : base);
+      })();
+    </script>
+  </body>
+</html>
