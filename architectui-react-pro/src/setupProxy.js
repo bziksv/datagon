@@ -8,7 +8,9 @@ module.exports = function setupProxy(app) {
     createProxyMiddleware({
       target,
       changeOrigin: true,
-      ws: true,
+      // Не поднимать WS-прокси на весь контекст /api — иначе dev-server на :3003
+      // может ловить «Invalid frame header» на /ws (HMR клиент webpack).
+      ws: false,
       logLevel: "warn",
     })
   );

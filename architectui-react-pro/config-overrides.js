@@ -110,6 +110,13 @@ module.exports.devServer = function(configFunction) {
             delete config.https;
         }
         
+        // HMR WebSocket: на нестандартном PORT (например 3003) без этого клиент иногда
+        // стучится не туда и в консоли «Invalid frame header».
+        config.client = config.client || {};
+        if (config.client.webSocketURL == null) {
+            config.client.webSocketURL = 'auto://0.0.0.0:0/ws';
+        }
+
         console.log('✅ webpack-dev-server v5 compatibility applied successfully');
         return config;
     };
