@@ -138,9 +138,12 @@ const getColStyle = (key) => {
   return merged;
 };
 
-/** data-атрибут + CSS с !important (см. base.scss) — надёжнее inline и .text-center при конфликте темы */
+/** Класс на ячейке + SCSS (запасной вариант). Основное выравнивание — `numericInner`: внутренний div с Bootstrap `.text-center !important`. */
 const numericCellProps = (key) =>
-  COLUMN_CENTER_KEYS.has(key) ? { "data-dg-align": "numeric" } : {};
+  COLUMN_CENTER_KEYS.has(key) ? { className: "dg-ms-numeric" } : {};
+
+const numericInner = (key, children) =>
+  COLUMN_CENTER_KEYS.has(key) ? <div className="text-center">{children}</div> : children;
 const getHeaderColStyle = (key, isSortable) => ({
   ...getColStyle(key),
   ...HEADER_COL_STYLE,
@@ -485,7 +488,7 @@ const MoyskladPage = () => {
             <div>
               МойСклад
               <div className="page-title-subheading">
-                React-перенос управления выгрузкой и синхронизацией МойСклад.
+                Раздел предназначен для выгрузки и синхронизации с сервисом «МойСклад».
               </div>
             </div>
           </div>
@@ -741,7 +744,7 @@ const MoyskladPage = () => {
               WebkitOverflowScrolling: "touch",
             }}
           >
-          <table className="table table-hover table-striped mb-0 datagon-my-products-table" style={{ width: "max-content", minWidth: 2200, maxWidth: "none", tableLayout: "fixed", borderCollapse: "separate", borderSpacing: 0 }}>
+          <table className="table table-hover table-striped mb-0 datagon-my-products-table dg-ms-table" style={{ width: "max-content", minWidth: 2200, maxWidth: "none", tableLayout: "fixed", borderCollapse: "separate", borderSpacing: 0 }}>
             <thead>
               <tr>
                 {TABLE_COLUMNS.map(([key, label]) => (
@@ -758,7 +761,11 @@ const MoyskladPage = () => {
                     }}
                     onClick={() => onSort(key)}
                   >
-                    {label} {sortBy === key ? (sortDir === "asc" ? "↑" : "↓") : ""}
+                    {numericInner(key, (
+                      <>
+                        {label} {sortBy === key ? (sortDir === "asc" ? "↑" : "↓") : ""}
+                      </>
+                    ))}
                     <span
                       role="separator"
                       aria-orientation="vertical"
@@ -791,7 +798,7 @@ const MoyskladPage = () => {
               ) : (
                 filteredRows.map((r) => (
                   <tr key={`${r.code}-${r.uuid || ""}`} className={Number(r.is_archived) === 1 ? "table-danger" : ""}>
-                    <td {...numericCellProps("code")} style={{ ...getSizedColStyle("code"), borderRight: "1px solid #f3f5f8" }}>{r.code}</td>
+                    <td {...numericCellProps("code")} style={{ ...getSizedColStyle("code"), borderRight: "1px solid #f3f5f8" }}>{numericInner("code", r.code)}</td>
                     <td style={{ ...getSizedColStyle("name"), borderRight: "1px solid #f3f5f8" }}>
                       {Number(r.is_archived) === 1 && <span className="badge bg-danger me-1">Архив</span>}
                       {buildMoyskladCardUrl(r) ? (
@@ -818,29 +825,40 @@ const MoyskladPage = () => {
                     <td style={{ ...getSizedColStyle("content_manager"), borderRight: "1px solid #f3f5f8" }}>{r.content_manager || "-"}</td>
                     <td style={{ ...getSizedColStyle("type"), borderRight: "1px solid #f3f5f8" }}>{r.type}</td>
                     <td {...numericCellProps("stock_position")} style={{ ...getSizedColStyle("stock_position"), borderRight: "1px solid #f3f5f8" }}>
-                      {String(r.stock_position || "").toLowerCase() === "да" ? (
-                        <span className="badge bg-success">Да</span>
-                      ) : (
-                        <span className="badge bg-secondary">{r.stock_position || "-"}</span>
+                      {numericInner(
+                        "stock_position",
+                        String(r.stock_position || "").toLowerCase() === "да" ? (
+                          <span className="badge bg-success">Да</span>
+                        ) : (
+                          <span className="badge bg-secondary">{r.stock_position || "-"}</span>
+                        ),
                       )}
                     </td>
-                    <td {...numericCellProps("no_longer_cooperation")} style={{ ...getSizedColStyle("no_longer_cooperation"), borderRight: "1px solid #f3f5f8" }}>{r.no_longer_cooperation || "-"}</td>
-                    <td {...numericCellProps("stock")} style={{ ...getSizedColStyle("stock"), borderRight: "1px solid #f3f5f8" }}>{formatNumber(r.stock)}</td>
-                    <td {...numericCellProps("stock_days")} style={{ ...getSizedColStyle("stock_days"), borderRight: "1px solid #f3f5f8" }}>{r.stock_days}</td>
+                    <td {...numericCellProps("no_longer_cooperation")} style={{ ...getSizedColStyle("no_longer_cooperation"), borderRight: "1px solid #f3f5f8" }}>
+                      {numericInner("no_longer_cooperation", r.no_longer_cooperation || "-")}
+                    </td>
+                    <td {...numericCellProps("stock")} style={{ ...getSizedColStyle("stock"), borderRight: "1px solid #f3f5f8" }}>{numericInner("stock", formatNumber(r.stock))}</td>
+                    <td {...numericCellProps("stock_days")} style={{ ...getSizedColStyle("stock_days"), borderRight: "1px solid #f3f5f8" }}>{numericInner("stock_days", r.stock_days)}</td>
                     <td style={{ ...getSizedColStyle("price_comment"), borderRight: "1px solid #f3f5f8" }}>
                       <span style={CLAMP_2_STYLE} title={r.price_comment || ""}>
                         {r.price_comment || "-"}
                       </span>
                     </td>
-                    <td {...numericCellProps("vat")} style={{ ...getSizedColStyle("vat"), borderRight: "1px solid #f3f5f8" }}>{r.vat || "-"}</td>
-                    <td {...numericCellProps("vat_on_product")} style={{ ...getSizedColStyle("vat_on_product"), borderRight: "1px solid #f3f5f8" }}>{r.vat_on_product || "-"}</td>
-                    <td {...numericCellProps("buy_price")} style={{ ...getSizedColStyle("buy_price"), borderRight: "1px solid #f3f5f8" }}>{formatMoneyText(r.buy_price)}</td>
+                    <td {...numericCellProps("vat")} style={{ ...getSizedColStyle("vat"), borderRight: "1px solid #f3f5f8" }}>{numericInner("vat", r.vat || "-")}</td>
+                    <td {...numericCellProps("vat_on_product")} style={{ ...getSizedColStyle("vat_on_product"), borderRight: "1px solid #f3f5f8" }}>
+                      {numericInner("vat_on_product", r.vat_on_product || "-")}
+                    </td>
+                    <td {...numericCellProps("buy_price")} style={{ ...getSizedColStyle("buy_price"), borderRight: "1px solid #f3f5f8" }}>{numericInner("buy_price", formatMoneyText(r.buy_price))}</td>
                     <td style={{ ...getSizedColStyle("supplier"), borderRight: "1px solid #f3f5f8" }}>{r.supplier || "-"}</td>
                     <td style={{ ...getSizedColStyle("supplier2"), borderRight: "1px solid #f3f5f8" }}>{r.supplier2 || "-"}</td>
-                    <td {...numericCellProps("automation_price")} style={{ ...getSizedColStyle("automation_price"), borderRight: "1px solid #f3f5f8" }}>{r.automation_price || "-"}</td>
+                    <td {...numericCellProps("automation_price")} style={{ ...getSizedColStyle("automation_price"), borderRight: "1px solid #f3f5f8" }}>
+                      {numericInner("automation_price", r.automation_price || "-")}
+                    </td>
                     <td style={{ ...getSizedColStyle("packing_standard"), borderRight: "1px solid #f3f5f8" }}>{r.packing_standard || "-"}</td>
                     <td style={{ ...getSizedColStyle("packing_own_box"), borderRight: "1px solid #f3f5f8" }}>{r.packing_own_box || "-"}</td>
-                    <td {...numericCellProps("packing_weight")} style={{ ...getSizedColStyle("packing_weight"), borderRight: "1px solid #f3f5f8" }}>{r.packing_weight || "-"}</td>
+                    <td {...numericCellProps("packing_weight")} style={{ ...getSizedColStyle("packing_weight"), borderRight: "1px solid #f3f5f8" }}>
+                      {numericInner("packing_weight", r.packing_weight || "-")}
+                    </td>
                     <td style={{ ...getSizedColStyle("updated_label"), borderRight: "1px solid #f3f5f8" }}>{r.updated_label}</td>
                   </tr>
                 ))
