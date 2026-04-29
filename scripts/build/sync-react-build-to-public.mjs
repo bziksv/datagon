@@ -1,15 +1,13 @@
 #!/usr/bin/env node
 /**
- * Сборка CRA и копирование артефакта в public/architectui-react-pro/
+ * Сборка CRA и копирование артефакта в корень public/ (UI по адресам /moysklad, /dashboard, …).
+ *
+ * Раньше цель была public/architectui-react-pro/ — см. редирект в server.js для старых URL.
  *
  * ВНИМАНИЕ: npm run build внутри CRA на слабом прод-сервере даёт пик CPU/RAM и может
- * раздувать диск (кэши). На VPS предпочтительно: собрать на машине разработчика,
- * залить только public/architectui-react-pro/ или положить готовый build и:
- *   SKIP_REACT_BUILD=1 node scripts/build/sync-react-build-to-public.mjs
+ * раздувать диск (кэши). На VPS предпочтительно: собрать на машине разработчика и залить public/.
  *
  *   node scripts/build/sync-react-build-to-public.mjs
- *
- * Только копирование (если build уже есть):
  *   SKIP_REACT_BUILD=1 node scripts/build/sync-react-build-to-public.mjs
  */
 
@@ -22,7 +20,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '../..');
 const spaDir = path.join(root, 'architectui-react-pro');
 const buildDir = path.join(spaDir, 'build');
-const targetDir = path.join(root, 'public', 'architectui-react-pro');
+const publicDir = path.join(root, 'public');
+const legacySpaDir = path.join(publicDir, 'architectui-react-pro');
 
 if (process.env.SKIP_REACT_BUILD !== '1') {
     const r = spawnSync('npm', ['run', 'build'], {
@@ -40,7 +39,24 @@ if (!fs.existsSync(buildDir)) {
     process.exit(1);
 }
 
-fs.rmSync(targetDir, { recursive: true, force: true });
-fs.mkdirSync(path.dirname(targetDir), { recursive: true });
-fs.cpSync(buildDir, targetDir, { recursive: true });
-console.log('OK: React build скопирован в', targetDir);
+/** Убрать предыдущий вывод CRA из корня public/, не трогая чужие файлы по маске нельзя — чистим типичные артефакты + legacy-папку */
+function cleanPreviousSpaArtifacts() {
+    if (fs.existsSync(legacySpaDir)) {
+        fs.rmSync(legacySpaDir, { recursive: true, force: true });
+        console.log('OK: удалена legacy-папка', legacySpaDir);
+    }
+    const rootArtifacts = ['index.html', 'asset-manifest.json', 'manifest.json', 'favicon.ico', 'favicon.svg', 'robots.txt', 'logo192.png', 'logo512.png'];
+    for (const name of rootArtifacts) {
+        const p = path.join(publicDir, name);
+        if (fs.existsSync(p)) fs.rmSync(p, { recursive: true, force: true });
+    }
+    const staticDir = path.join(publicDir, 'static');
+    if (fs.existsSync(staticDir)) {
+        fs.rmSync(staticDir, { recursive: true, force: true });
+    }
+}
+
+fs.mkdirSync(publicDir, { recursive: true });
+cleanPreviousSpaArtifacts();
+fs.cpSync(buildDir, publicDir, { recursive: true });
+console.log('OK: React build скопирован в', publicDir);

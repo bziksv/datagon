@@ -94,6 +94,20 @@ const CLAMP_2_STYLE = {
   lineHeight: 1.25,
   maxHeight: "2.5em",
 };
+/** Колонки с числами / кодами / деньгами — выравнивание по центру (ячеек и заголовков согласованно). */
+const COLUMN_CENTER_KEYS = new Set([
+  "code",
+  "stock_position",
+  "no_longer_cooperation",
+  "stock",
+  "stock_days",
+  "vat",
+  "vat_on_product",
+  "buy_price",
+  "automation_price",
+  "packing_weight",
+]);
+
 const COLUMN_STYLES = {
   code: { minWidth: 75, width: 75, maxWidth: 75 },
   name: { minWidth: 320, whiteSpace: "normal", wordBreak: "break-word" },
@@ -116,7 +130,17 @@ const COLUMN_STYLES = {
   packing_weight: { minWidth: 110, whiteSpace: "normal", wordBreak: "break-word" },
   updated_label: { minWidth: 220, whiteSpace: "normal", wordBreak: "break-word" },
 };
-const getColStyle = (key) => ({ ...DEFAULT_COL_STYLE, ...(COLUMN_STYLES[key] || {}) });
+const getColStyle = (key) => {
+  const merged = { ...DEFAULT_COL_STYLE, ...(COLUMN_STYLES[key] || {}) };
+  if (COLUMN_CENTER_KEYS.has(key)) {
+    return { ...merged, textAlign: "center", verticalAlign: "middle" };
+  }
+  return merged;
+};
+
+/** data-атрибут + CSS с !important (см. base.scss) — надёжнее inline и .text-center при конфликте темы */
+const numericCellProps = (key) =>
+  COLUMN_CENTER_KEYS.has(key) ? { "data-dg-align": "numeric" } : {};
 const getHeaderColStyle = (key, isSortable) => ({
   ...getColStyle(key),
   ...HEADER_COL_STYLE,
@@ -723,6 +747,7 @@ const MoyskladPage = () => {
                 {TABLE_COLUMNS.map(([key, label]) => (
                   <th
                     key={key}
+                    {...numericCellProps(key)}
                     style={{
                       ...getSizedColStyle(key, true, SORTABLE_FIELDS.includes(key)),
                       position: "sticky",
@@ -766,7 +791,7 @@ const MoyskladPage = () => {
               ) : (
                 filteredRows.map((r) => (
                   <tr key={`${r.code}-${r.uuid || ""}`} className={Number(r.is_archived) === 1 ? "table-danger" : ""}>
-                    <td style={{ ...getSizedColStyle("code"), borderRight: "1px solid #f3f5f8" }}>{r.code}</td>
+                    <td {...numericCellProps("code")} style={{ ...getSizedColStyle("code"), borderRight: "1px solid #f3f5f8" }}>{r.code}</td>
                     <td style={{ ...getSizedColStyle("name"), borderRight: "1px solid #f3f5f8" }}>
                       {Number(r.is_archived) === 1 && <span className="badge bg-danger me-1">Архив</span>}
                       {buildMoyskladCardUrl(r) ? (
@@ -792,30 +817,30 @@ const MoyskladPage = () => {
                     <td style={{ ...getSizedColStyle("manager"), borderRight: "1px solid #f3f5f8" }}>{r.manager || "-"}</td>
                     <td style={{ ...getSizedColStyle("content_manager"), borderRight: "1px solid #f3f5f8" }}>{r.content_manager || "-"}</td>
                     <td style={{ ...getSizedColStyle("type"), borderRight: "1px solid #f3f5f8" }}>{r.type}</td>
-                    <td style={{ ...getSizedColStyle("stock_position"), borderRight: "1px solid #f3f5f8" }}>
+                    <td {...numericCellProps("stock_position")} style={{ ...getSizedColStyle("stock_position"), borderRight: "1px solid #f3f5f8" }}>
                       {String(r.stock_position || "").toLowerCase() === "да" ? (
                         <span className="badge bg-success">Да</span>
                       ) : (
                         <span className="badge bg-secondary">{r.stock_position || "-"}</span>
                       )}
                     </td>
-                    <td style={{ ...getSizedColStyle("no_longer_cooperation"), borderRight: "1px solid #f3f5f8" }}>{r.no_longer_cooperation || "-"}</td>
-                    <td style={{ ...getSizedColStyle("stock"), borderRight: "1px solid #f3f5f8" }}>{formatNumber(r.stock)}</td>
-                    <td style={{ ...getSizedColStyle("stock_days"), borderRight: "1px solid #f3f5f8" }}>{r.stock_days}</td>
+                    <td {...numericCellProps("no_longer_cooperation")} style={{ ...getSizedColStyle("no_longer_cooperation"), borderRight: "1px solid #f3f5f8" }}>{r.no_longer_cooperation || "-"}</td>
+                    <td {...numericCellProps("stock")} style={{ ...getSizedColStyle("stock"), borderRight: "1px solid #f3f5f8" }}>{formatNumber(r.stock)}</td>
+                    <td {...numericCellProps("stock_days")} style={{ ...getSizedColStyle("stock_days"), borderRight: "1px solid #f3f5f8" }}>{r.stock_days}</td>
                     <td style={{ ...getSizedColStyle("price_comment"), borderRight: "1px solid #f3f5f8" }}>
                       <span style={CLAMP_2_STYLE} title={r.price_comment || ""}>
                         {r.price_comment || "-"}
                       </span>
                     </td>
-                    <td style={{ ...getSizedColStyle("vat"), borderRight: "1px solid #f3f5f8" }}>{r.vat || "-"}</td>
-                    <td style={{ ...getSizedColStyle("vat_on_product"), borderRight: "1px solid #f3f5f8" }}>{r.vat_on_product || "-"}</td>
-                    <td style={{ ...getSizedColStyle("buy_price"), borderRight: "1px solid #f3f5f8" }}>{formatMoneyText(r.buy_price)}</td>
+                    <td {...numericCellProps("vat")} style={{ ...getSizedColStyle("vat"), borderRight: "1px solid #f3f5f8" }}>{r.vat || "-"}</td>
+                    <td {...numericCellProps("vat_on_product")} style={{ ...getSizedColStyle("vat_on_product"), borderRight: "1px solid #f3f5f8" }}>{r.vat_on_product || "-"}</td>
+                    <td {...numericCellProps("buy_price")} style={{ ...getSizedColStyle("buy_price"), borderRight: "1px solid #f3f5f8" }}>{formatMoneyText(r.buy_price)}</td>
                     <td style={{ ...getSizedColStyle("supplier"), borderRight: "1px solid #f3f5f8" }}>{r.supplier || "-"}</td>
                     <td style={{ ...getSizedColStyle("supplier2"), borderRight: "1px solid #f3f5f8" }}>{r.supplier2 || "-"}</td>
-                    <td style={{ ...getSizedColStyle("automation_price"), borderRight: "1px solid #f3f5f8" }}>{r.automation_price || "-"}</td>
+                    <td {...numericCellProps("automation_price")} style={{ ...getSizedColStyle("automation_price"), borderRight: "1px solid #f3f5f8" }}>{r.automation_price || "-"}</td>
                     <td style={{ ...getSizedColStyle("packing_standard"), borderRight: "1px solid #f3f5f8" }}>{r.packing_standard || "-"}</td>
                     <td style={{ ...getSizedColStyle("packing_own_box"), borderRight: "1px solid #f3f5f8" }}>{r.packing_own_box || "-"}</td>
-                    <td style={{ ...getSizedColStyle("packing_weight"), borderRight: "1px solid #f3f5f8" }}>{r.packing_weight || "-"}</td>
+                    <td {...numericCellProps("packing_weight")} style={{ ...getSizedColStyle("packing_weight"), borderRight: "1px solid #f3f5f8" }}>{r.packing_weight || "-"}</td>
                     <td style={{ ...getSizedColStyle("updated_label"), borderRight: "1px solid #f3f5f8" }}>{r.updated_label}</td>
                   </tr>
                 ))

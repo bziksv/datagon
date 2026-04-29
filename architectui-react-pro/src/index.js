@@ -57,16 +57,12 @@ if (typeof window !== "undefined" && typeof document !== "undefined") {
   observer.observe(document.body, { childList: true, subtree: true });
 }
 
-// В dev CRA всегда открываем с корня порта (например /my-products). PUBLIC_URL из кэша
-// иногда остаётся старым (/architectui-react-pro) — тогда Router уводит URL в префикс.
-// В production сборка кладётся в public/architectui-react-pro/ — basename должен совпадать.
+// Dev: корень порта (/moysklad). Prod: SPA отдаётся с корня сайта (public/index.html + basename "").
+// Если когда‑то соберёте под подпапку — выставьте homepage/PUBLIC_URL и basename совпадёт с деплоем.
 const routerBasename = (() => {
-  if (process.env.NODE_ENV === "development") {
-    return "";
-  }
   const raw = String(process.env.PUBLIC_URL || "").trim().replace(/\/$/, "");
   if (!raw || raw === ".") {
-    return "/architectui-react-pro";
+    return "";
   }
   return raw;
 })();

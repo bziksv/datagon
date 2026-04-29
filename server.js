@@ -915,19 +915,30 @@ initDB().then(() => {
 
     app.use(authModule.protectDocumentationRoutes);
 
-    // Легаси public/index.html убран — без этого GET / давал "Cannot GET /"
-    const reactIndex = path.join(__dirname, 'public', 'architectui-react-pro', 'index.html');
+    // CRA build → sync в корень public/ (npm run build:datagon-spa). UI: /moysklad, /dashboard, …
+    const reactIndex = path.join(__dirname, 'public', 'index.html');
     app.get('/', (req, res, next) => {
         if (req.method !== 'GET' && req.method !== 'HEAD') return next();
         if (!fsSync.existsSync(reactIndex)) return next();
-        return res.redirect(302, '/architectui-react-pro/dashboard');
+        return res.redirect(302, '/dashboard');
+    });
+
+    // Старые закладки с префиксом /architectui-react-pro/…
+    app.get(/^\/architectui-react-pro(?=$|\/)/, (req, res, next) => {
+        if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+        const rest = req.path.slice('/architectui-react-pro'.length) || '/';
+        const pathname = rest === '/' ? '/dashboard' : rest;
+        const qs = req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : '';
+        return res.redirect(301, pathname + qs);
     });
 
     app.use(express.static(path.join(__dirname, 'public')));
 
-    // SPA React (после sync: public/architectui-react-pro/ из architectui-react-pro/build)
-    app.get(/^\/architectui-react-pro(\/.*)?$/, (req, res, next) => {
+    // SPA fallback (Express 5 / path-to-regexp v8: не использовать '*' — см. /{*path})
+    app.get('/{*path}', (req, res, next) => {
         if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+        if (req.path.startsWith('/api')) return next();
+        if (/\.[a-zA-Z0-9]+$/.test(req.path)) return next();
         if (!fsSync.existsSync(reactIndex)) return next();
         return res.sendFile(reactIndex);
     });

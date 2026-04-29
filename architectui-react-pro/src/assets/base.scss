@@ -383,8 +383,13 @@
   }
 }
 
+// Широкие таблицы (МойСклад / Мои товары): горизонтальный скролл на всех ширинах.
+// Раньше при >1400px стояло overflow: visible — оно перебивало inline overflow-x: auto
+// и на полноэкранном проде скролла не было, а в узком окне 3003 (или с DevTools) — был.
 .datagon-my-products-table-wrap {
-  overflow: visible !important;
+  min-width: 0;
+  overflow-x: auto !important;
+  overflow-y: visible !important;
 }
 
 .datagon-my-products-table thead th {
@@ -395,11 +400,13 @@
   box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.08), 0 1px 0 rgba(0, 0, 0, 0.03);
 }
 
-@media (max-width: 1400px) {
-  .datagon-my-products-table-wrap {
-    overflow-x: auto !important;
-    overflow-y: visible !important;
-  }
+// Числовые колонки МойСклад (MoyskladPage: data-dg-align="numeric") — перебиваем наследование text-align от оболочки
+.datagon-shell .datagon-my-products-table > thead > tr > th[data-dg-align="numeric"],
+.datagon-shell .datagon-my-products-table > tbody > tr > td[data-dg-align="numeric"],
+.datagon-my-products-table > thead > tr > th[data-dg-align="numeric"],
+.datagon-my-products-table > tbody > tr > td[data-dg-align="numeric"] {
+  text-align: center !important;
+  vertical-align: middle !important;
 }
 
 // Allow selecting/copying button text (especially in "Действия" columns).
