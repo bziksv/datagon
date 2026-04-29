@@ -143,7 +143,16 @@ const numericCellProps = (key) =>
   COLUMN_CENTER_KEYS.has(key) ? { className: "dg-ms-numeric" } : {};
 
 const numericInner = (key, children) =>
-  COLUMN_CENTER_KEYS.has(key) ? <div className="text-center">{children}</div> : children;
+  COLUMN_CENTER_KEYS.has(key) ? (
+    <div
+      className="text-center w-100 dg-ms-numeric-inner d-block"
+      style={{ fontVariantNumeric: "tabular-nums", boxSizing: "border-box" }}
+    >
+      {children}
+    </div>
+  ) : (
+    children
+  );
 const getHeaderColStyle = (key, isSortable) => ({
   ...getColStyle(key),
   ...HEADER_COL_STYLE,
@@ -487,6 +496,11 @@ const MoyskladPage = () => {
             </div>
             <div>
               МойСклад
+              {process.env.NODE_ENV === "development" ? (
+                <span className="badge bg-secondary ms-2 align-middle" style={{ fontSize: "0.65rem", fontWeight: 600 }}>
+                  webpack-dev
+                </span>
+              ) : null}
               <div className="page-title-subheading">
                 Раздел предназначен для выгрузки и синхронизации с сервисом «МойСклад».
               </div>
@@ -708,23 +722,23 @@ const MoyskladPage = () => {
 
       <div className="row">
         <div className="col-md-4">
-          <div className="card mb-3 card-body">
+          <div className="card mb-3 card-body text-center">
             <div className="text-muted"><i className="pe-7s-menu me-1" />Всего в выборке</div>
-            <h3 className="mb-0">{formatNumber(stats?.total)}</h3>
+            <h3 className="mb-0" style={{ fontVariantNumeric: "tabular-nums" }}>{formatNumber(stats?.total)}</h3>
           </div>
         </div>
         <div className="col-md-4">
-          <div className="card mb-3 card-body">
+          <div className="card mb-3 card-body text-center">
             <div className="text-muted"><i className="pe-7s-box1 me-1" />Товары / Комплекты</div>
-            <h3 className="mb-0">
+            <h3 className="mb-0" style={{ fontVariantNumeric: "tabular-nums" }}>
               {formatNumber(stats?.products)} / {formatNumber(stats?.bundles)}
             </h3>
           </div>
         </div>
         <div className="col-md-4">
-          <div className="card mb-3 card-body">
+          <div className="card mb-3 card-body text-center">
             <div className="text-muted"><i className="pe-7s-cash me-1" />Сумма остатков</div>
-            <h3 className="mb-0">{formatMoneyText(stats?.inventory_value)}</h3>
+            <h3 className="mb-0" style={{ fontVariantNumeric: "tabular-nums" }}>{formatMoneyText(stats?.inventory_value)}</h3>
           </div>
         </div>
       </div>
