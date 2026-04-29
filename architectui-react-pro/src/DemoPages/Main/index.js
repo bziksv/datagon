@@ -1,47 +1,41 @@
-import React, { Fragment, useState, useEffect, useRef } from "react";
+import React, { Fragment, useState, useLayoutEffect } from "react";
 import { connect } from "react-redux";
 import cx from "classnames";
 
 import AppMain from "../../Layout/AppMain";
 
-// Custom resize detector hook using ResizeObserver
-const useResizeDetector = () => {
-  const [width, setWidth] = useState(window.innerWidth);
-  const ref = useRef(null);
+// ResizeObserver + window.resize; ref через state, чтобы не было гонки useEffect([]) + ref.current === null
+// (Strict Mode / первый кадр) и чтобы cleanup всегда снимал те же listener'ы.
+const ResizeDetectorWrapper = ({ children }) => {
+  const [width, setWidth] = useState(() =>
+    typeof window !== "undefined" ? window.innerWidth : 0
+  );
+  const [container, setContainer] = useState(null);
 
-  useEffect(() => {
-    const element = ref.current;
-    if (!element) return;
+  useLayoutEffect(() => {
+    if (!container) return undefined;
 
-    const resizeObserver = new ResizeObserver(entries => {
+    const handleResize = () => setWidth(window.innerWidth);
+
+    const resizeObserver = new ResizeObserver((entries) => {
       if (entries[0]) {
         setWidth(entries[0].contentRect.width);
       }
     });
-
-    resizeObserver.observe(element);
-
-    // Also listen to window resize as fallback
-    const handleResize = () => setWidth(window.innerWidth);
-    window.addEventListener('resize', handleResize);
+    resizeObserver.observe(container);
+    window.addEventListener("resize", handleResize);
 
     return () => {
-      resizeObserver.disconnect();
-      window.removeEventListener('resize', handleResize);
+      try {
+        resizeObserver.disconnect();
+      } catch (_) {}
+      try {
+        window.removeEventListener("resize", handleResize);
+      } catch (_) {}
     };
-  }, []);
+  }, [container]);
 
-  return { width, ref };
-};
-
-// Create a functional component wrapper for resize detection
-const ResizeDetectorWrapper = ({ children }) => {
-  const { width, ref } = useResizeDetector();
-  return (
-    <div ref={ref}>
-      {children(width)}
-    </div>
-  );
+  return <div ref={setContainer}>{children(width)}</div>;
 };
 
 class Main extends React.Component {
