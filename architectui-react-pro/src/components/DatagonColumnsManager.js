@@ -5,7 +5,8 @@ const STYLE_ID = "datagon-columns-toolbox-style-v1";
 const TOOLBOX_CLASS = "datagon-columns-toolbox";
 const PANEL_CLASS = "datagon-columns-panel";
 
-const observedTables = new WeakMap();
+/** Map (не WeakMap): при cleanup нужно отключить все observer'ы, даже если getTables() уже пуст из‑за React. */
+const observedTables = new Map();
 
 const normalizeLabel = (text, index) => {
   const t = String(text || "").replace(/\s+/g, " ").trim();
@@ -233,9 +234,19 @@ const setupTableToolbox = (table, tableKey) => {
     });
   });
 
+  const prevObs = observedTables.get(table);
+  if (prevObs) {
+    try {
+      prevObs.disconnect();
+    } catch (_) {}
+    observedTables.delete(table);
+  }
+
   const observer = new MutationObserver(() => {
-    applyVisibility(table, columns, state);
-    syncToolboxWidth();
+    try {
+      applyVisibility(table, columns, state);
+      syncToolboxWidth();
+    } catch (_) {}
   });
   observer.observe(table, { childList: true, subtree: true });
   observedTables.set(table, observer);
@@ -290,17 +301,23 @@ const DatagonColumnsManager = () => {
     }
 
     return () => {
-      window.cancelAnimationFrame(rafId);
-      window.clearTimeout(timerId);
-      if (rootObserver) rootObserver.disconnect();
-      const currentTables = getTables();
-      currentTables.forEach((table) => {
-        const observer = observedTables.get(table);
-        if (observer) {
+      try {
+        window.cancelAnimationFrame(rafId);
+      } catch (_) {}
+      try {
+        window.clearTimeout(timerId);
+      } catch (_) {}
+      if (rootObserver) {
+        try {
+          rootObserver.disconnect();
+        } catch (_) {}
+      }
+      observedTables.forEach((observer) => {
+        try {
           observer.disconnect();
-          observedTables.delete(table);
-        }
+        } catch (_) {}
       });
+      observedTables.clear();
     };
   }, [location.pathname]);
 
