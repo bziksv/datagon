@@ -22,6 +22,15 @@ module.exports = function(config, env) {
         'rc-tabs$': path.resolve(__dirname, 'src/rc-tabs-shims/rc-tabs-wrapper.js'),
     };
 
+    // react-router 7.x package.json "exports" point at dist/development, so production CRA
+    // bundles ENABLE_DEV_WARNINGS=true and spams console (e.g. "No routes matched location …").
+    // Force the production builds for NODE_ENV=production (same as RR's own prod entrypoints).
+    if (env === 'production') {
+        const rrProd = path.resolve(__dirname, 'node_modules/react-router/dist/production');
+        config.resolve.alias['react-router$'] = path.join(rrProd, 'index.js');
+        config.resolve.alias['react-router/dom'] = path.join(rrProd, 'dom-export.js');
+    }
+
     // Comprehensive warning suppression for cleaner development experience
     config.ignoreWarnings = [
         // Suppress all source map loader warnings
