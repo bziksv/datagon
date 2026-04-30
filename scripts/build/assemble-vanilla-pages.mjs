@@ -7,9 +7,11 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { injectArchitectuiMainCssLink, resolveArchitectuiMainCssHref } from './architectui-main-css-inject.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '../..');
+const publicDir = path.join(root, 'public');
 const vanillaDir = path.join(root, 'static-html', 'vanilla');
 const tmplPath = path.join(vanillaDir, '_template.html');
 
@@ -101,6 +103,78 @@ function assemble() {
             PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/settings.scripts.html')),
         },
         {
+            out: 'ref/index.html',
+            PAGE_TITLE: 'Справка (статика) — Датагон',
+            BODY_ATTRS: 'class="datagon-vanilla-body"',
+            EXTRA_HEAD: read(path.join(vanillaDir, 'inners/ref.head.html')),
+            MAIN_INNER: read(path.join(vanillaDir, 'inners/ref-index.inner.html')),
+            PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/ref.scripts.html')),
+        },
+        {
+            out: 'ref/main.html',
+            PAGE_TITLE: 'Справка Main — Датагон',
+            BODY_ATTRS: 'class="datagon-vanilla-body"',
+            EXTRA_HEAD: read(path.join(vanillaDir, 'inners/ref.head.html')),
+            MAIN_INNER: read(path.join(vanillaDir, 'inners/ref-main.inner.html')),
+            PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/ref.scripts.html')),
+        },
+        {
+            out: 'ref/elements.html',
+            PAGE_TITLE: 'Справка Elements — Датагон',
+            BODY_ATTRS: 'class="datagon-vanilla-body"',
+            EXTRA_HEAD: read(path.join(vanillaDir, 'inners/ref.head.html')),
+            MAIN_INNER: read(path.join(vanillaDir, 'inners/ref-elements.inner.html')),
+            PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/ref.scripts.html')),
+        },
+        {
+            out: 'ref/components.html',
+            PAGE_TITLE: 'Справка Components — Датагон',
+            BODY_ATTRS: 'class="datagon-vanilla-body"',
+            EXTRA_HEAD: read(path.join(vanillaDir, 'inners/ref.head.html')),
+            MAIN_INNER: read(path.join(vanillaDir, 'inners/ref-components.inner.html')),
+            PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/ref.scripts.html')),
+        },
+        {
+            out: 'ref/tables.html',
+            PAGE_TITLE: 'Справка Tables — Датагон',
+            BODY_ATTRS: 'class="datagon-vanilla-body"',
+            EXTRA_HEAD: read(path.join(vanillaDir, 'inners/ref.head.html')),
+            MAIN_INNER: read(path.join(vanillaDir, 'inners/ref-tables.inner.html')),
+            PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/ref.scripts.html')),
+        },
+        {
+            out: 'ref/widgets.html',
+            PAGE_TITLE: 'Справка Widgets — Датагон',
+            BODY_ATTRS: 'class="datagon-vanilla-body"',
+            EXTRA_HEAD: read(path.join(vanillaDir, 'inners/ref.head.html')),
+            MAIN_INNER: read(path.join(vanillaDir, 'inners/ref-widgets.inner.html')),
+            PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/ref.scripts.html')),
+        },
+        {
+            out: 'ref/forms.html',
+            PAGE_TITLE: 'Справка Forms — Датагон',
+            BODY_ATTRS: 'class="datagon-vanilla-body"',
+            EXTRA_HEAD: read(path.join(vanillaDir, 'inners/ref.head.html')),
+            MAIN_INNER: read(path.join(vanillaDir, 'inners/ref-forms.inner.html')),
+            PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/ref.scripts.html')),
+        },
+        {
+            out: 'ref/charts.html',
+            PAGE_TITLE: 'Справка Charts — Датагон',
+            BODY_ATTRS: 'class="datagon-vanilla-body"',
+            EXTRA_HEAD: read(path.join(vanillaDir, 'inners/ref.head.html')),
+            MAIN_INNER: read(path.join(vanillaDir, 'inners/ref-charts.inner.html')),
+            PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/ref.scripts.html')),
+        },
+        {
+            out: 'ref/react-demo-index.html',
+            PAGE_TITLE: 'Полное меню ArchitectUI — Датагон',
+            BODY_ATTRS: 'class="datagon-vanilla-body" data-dg-active-nav="architectui-demo"',
+            EXTRA_HEAD: read(path.join(vanillaDir, 'inners/ref.head.html')),
+            MAIN_INNER: read(path.join(vanillaDir, 'inners/ref-react-demo-index.inner.html')),
+            PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/ref.scripts.html')),
+        },
+        {
             out: 'sections.html',
             PAGE_TITLE: 'Статические экраны — Датагон',
             BODY_ATTRS: 'class="datagon-vanilla-body"',
@@ -115,6 +189,13 @@ function assemble() {
         fs.unlinkSync(legacyIndex);
     }
 
+    const mainCssHref = resolveArchitectuiMainCssHref(publicDir);
+    if (!mainCssHref) {
+        console.warn(
+            'assemble-vanilla: в public/static/css/ нет main.*.css — в HTML останется <!-- ARCHITECTUI_MAIN_CSS -->; соберите тему или npm run sync:vanilla-public после сборки CSS.',
+        );
+    }
+
     for (const p of pages) {
         const { out, ...vars } = p;
         let html = template;
@@ -125,7 +206,9 @@ function assemble() {
             }
             html = html.split(token).join(val);
         }
+        html = injectArchitectuiMainCssLink(html, mainCssHref);
         const outPath = path.join(vanillaDir, out);
+        fs.mkdirSync(path.dirname(outPath), { recursive: true });
         fs.writeFileSync(outPath, html, 'utf8');
         console.log('OK: assemble', outPath);
     }

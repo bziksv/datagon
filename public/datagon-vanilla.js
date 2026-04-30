@@ -79,37 +79,6 @@
     });
   }
 
-  var HTML_SOURCE_STORAGE_KEY = "datagon_html_source_expanded_v3";
-  var sourceToggle = document.querySelector(".datagon-html-source-toggle");
-  var sourcePanel = document.querySelector(".datagon-html-source-panel");
-  var sourceIcon = sourceToggle ? sourceToggle.querySelector("i") : null;
-
-  function setHtmlSourceExpanded(expanded) {
-    if (!sourceToggle || !sourcePanel) return;
-    sourceToggle.setAttribute("aria-expanded", expanded ? "true" : "false");
-    sourcePanel.hidden = !expanded;
-    if (sourceIcon) {
-      sourceIcon.classList.remove(expanded ? "pe-7s-angle-down" : "pe-7s-angle-up");
-      sourceIcon.classList.add(expanded ? "pe-7s-angle-up" : "pe-7s-angle-down");
-    }
-    try {
-      window.localStorage.setItem(HTML_SOURCE_STORAGE_KEY, expanded ? "1" : "0");
-    } catch (e) {}
-  }
-
-  if (sourceToggle && sourcePanel) {
-    var initialExpanded = false;
-    try {
-      initialExpanded = window.localStorage.getItem(HTML_SOURCE_STORAGE_KEY) === "1";
-    } catch (e) {}
-    setHtmlSourceExpanded(initialExpanded);
-    sourceToggle.addEventListener("click", function (e) {
-      e.preventDefault();
-      var isOpen = sourceToggle.getAttribute("aria-expanded") === "true";
-      setHtmlSourceExpanded(!isOpen);
-    });
-  }
-
   // Global button tooltips parity with React DatagonGlobalTooltips.
   var DG_TOOLTIP_DELAY_MS = 80;
   var dgTooltip = null;
@@ -243,19 +212,36 @@
 
   function setUserUi(displayName, isAdmin) {
     var role = isAdmin ? "Админ" : "Пользователь";
-    var ids = [
-      "dg-vanilla-user-display-name",
-      "dg-vanilla-user-display-inline",
-    ];
+    var ids = ["dg-vanilla-user-display-inline"];
     ids.forEach(function (id) {
       var el = document.getElementById(id);
       if (el) el.textContent = displayName;
     });
-    var roleIds = ["dg-vanilla-user-role", "dg-vanilla-user-role-inline"];
+    var roleIds = ["dg-vanilla-user-role-inline"];
     roleIds.forEach(function (id) {
       var el = document.getElementById(id);
       if (el) el.textContent = role;
     });
+  }
+
+  function performVanillaLogout() {
+    fetch("/api/auth/logout", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: Object.assign({ "Content-Type": "application/json" }, getAuthHeaders()),
+      body: "{}",
+    })
+      .catch(function () {})
+      .then(function () {
+        try {
+          window.localStorage.removeItem("authToken");
+          window.localStorage.removeItem("currentUser");
+          window.localStorage.removeItem("currentUserDisplayName");
+          window.localStorage.removeItem("isAdmin");
+          window.localStorage.removeItem("isLoggedIn");
+        } catch (e) {}
+        window.location.replace("/sections.html");
+      });
   }
 
   function loadCurrentUserProfile() {
@@ -1052,4 +1038,14 @@
   initGlobalTableBaseline();
   loadCurrentUserProfile();
   loadOnlineUsers();
+
+  var logoutBtn = document.querySelector(".dg-vanilla-logout");
+  if (logoutBtn) {
+    logoutBtn.addEventListener("click", function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      closeAllDropdowns();
+      performVanillaLogout();
+    });
+  }
 })();

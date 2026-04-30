@@ -939,32 +939,61 @@ initDB().then(() => {
     app.get('/processes', redirectToDatagonHtml('processes.html'));
     app.get('/settings', redirectToDatagonHtml('settings.html'));
 
-    const mapSpaPathToDatagonHtml = (pathname) => {
-        const p = pathname.split('?')[0].replace(/\/$/, '') || '/';
-        const table = {
-            '/': '/dashboard.html',
-            '/dashboard': '/dashboard.html',
-            '/my-sites': '/my-sites.html',
-            '/my-products': '/my-products.html',
-            '/moysklad': '/moysklad.html',
-            '/matches': '/matches.html',
-            '/matching': '/matches.html',
-            '/queue': '/queue.html',
-            '/results': '/results.html',
-            '/projects': '/projects.html',
-            '/processes': '/processes.html',
-            '/settings': '/settings.html',
-        };
-        return table[p] || '/dashboard.html';
-    };
-    // Старые закладки с префиксом /architectui-react-pro/…
-    app.get(/^\/architectui-react-pro(?=$|\/)/, (req, res, next) => {
-        if (req.method !== 'GET' && req.method !== 'HEAD') return next();
-        const rest = req.path.slice('/architectui-react-pro'.length) || '/';
-        const qs = req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : '';
-        const target = mapSpaPathToDatagonHtml(rest === '/' ? '/dashboard' : rest);
-        return res.redirect(301, target + qs);
-    });
+    // Полное React-демо ArchitectUI (CRA build → public/architectui-react-pro/). SPA fallback для client routes.
+    const architectuiDemoDir = path.join(__dirname, 'public', 'architectui-react-pro');
+    const architectuiDemoIndex = path.join(architectuiDemoDir, 'index.html');
+    if (fsSync.existsSync(architectuiDemoIndex)) {
+        // Ссылки из каталога показывают путь внутри SPA (/dashboards/...); редирект на реальный URL с basename CRA.
+        const architectuiCraPathPrefixes = [
+            '/dashboards',
+            '/elements',
+            '/components',
+            '/forms',
+            '/charts',
+            '/tables',
+            '/widgets',
+            '/apps',
+            '/pages',
+        ];
+        const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        for (const prefix of architectuiCraPathPrefixes) {
+            app.get(new RegExp(`^${escapeRegex(prefix)}(/.*)?$`), (req, res, next) => {
+                if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+                const qs = qsFromReq(req);
+                return res.redirect(302, '/architectui-react-pro' + req.path + qs);
+            });
+        }
+        // Router: сначала статика, затем index.html для любых оставшихся GET (надёжнее, чем отдельный app.get после static).
+        const architectuiRouter = express.Router();
+        architectuiRouter.use(express.static(architectuiDemoDir));
+        architectuiRouter.get(/.*/, (req, res, next) => {
+            if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+            return res.sendFile(path.resolve(architectuiDemoIndex));
+        });
+        app.use('/architectui-react-pro', architectuiRouter);
+    } else {
+        // Только корень префикса — на страницу с инструкциями. Вложенные пути не редиректить на неё же
+        // (иначе со страницы каталога ссылки «в SPA» дают 302 на тот же URL и кажется, что клик мёртвый).
+        app.get(/^\/architectui-react-pro\/?$/, (req, res, next) => {
+            if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+            const qs = qsFromReq(req);
+            return res.redirect(302, '/ref/react-demo-index.html' + qs);
+        });
+        app.get(/^\/architectui-react-pro\/(.+)/, (req, res, next) => {
+            if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+            res.status(503);
+            res.type('html');
+            return res.send(
+                '<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8"><title>Демо не собрано</title></head><body style="font-family:system-ui,sans-serif;padding:24px;max-width:560px">' +
+                    '<h1 style="font-size:1.25rem">React-демо ArchitectUI не установлено</h1>' +
+                    '<p>В корне репозитория выполните:</p>' +
+                    '<pre style="background:#f4f4f5;padding:12px;border-radius:8px;overflow:auto">npm run build:architectui-demo</pre>' +
+                    '<p>Нужен каталог <code>vendor/architectui-react-pro</code> с исходниками шаблона.</p>' +
+                    '<p><a href="/ref/react-demo-index.html">Страница каталога ссылок</a> · <a href="/dashboard.html">Дашборд</a></p>' +
+                    '</body></html>',
+            );
+        });
+    }
 
     // Старые закладки /vanilla/*.html
     app.get(/^\/vanilla\/([^/]+\.html)$/i, (req, res, next) => {

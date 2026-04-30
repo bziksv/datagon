@@ -11,6 +11,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { spawnSync } from 'child_process';
+import { injectArchitectuiMainCssLink, resolveArchitectuiMainCssHref } from './architectui-main-css-inject.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '../..');
@@ -24,16 +25,11 @@ function runAssembleVanillaPages() {
 }
 
 function injectArchitectuiMainCssIntoDatagonHtml() {
-  const cssDir = path.join(publicDir, 'static', 'css');
-  if (!fs.existsSync(cssDir)) return;
-  const cssFiles = fs.readdirSync(cssDir).filter((f) => /^main\.[a-z0-9]+\.css$/i.test(f));
-  if (!cssFiles.length) {
+  const href = resolveArchitectuiMainCssHref(publicDir);
+  if (!href) {
     console.warn('datagon HTML CSS: в public/static/css/ нет main.*.css — пропуск инъекции');
     return;
   }
-  cssFiles.sort();
-  const href = '/static/css/' + cssFiles[cssFiles.length - 1];
-  const linkTag = '<link rel="stylesheet" href="' + href + '" />';
   const publishHtml = [
     'dashboard.html',
     'my-sites.html',
@@ -46,15 +42,24 @@ function injectArchitectuiMainCssIntoDatagonHtml() {
     'processes.html',
     'settings.html',
     'sections.html',
+    'ref/index.html',
+    'ref/main.html',
+    'ref/elements.html',
+    'ref/components.html',
+    'ref/tables.html',
+    'ref/widgets.html',
+    'ref/forms.html',
+    'ref/charts.html',
+    'ref/react-demo-index.html',
   ];
   let n = 0;
   for (const name of publishHtml) {
     const p = path.join(publicDir, name);
     if (!fs.existsSync(p)) continue;
     let content = fs.readFileSync(p, 'utf8');
-    if (!content.includes('<!-- ARCHITECTUI_MAIN_CSS -->')) continue;
-    content = content.split('<!-- ARCHITECTUI_MAIN_CSS -->').join(linkTag);
-    fs.writeFileSync(p, content, 'utf8');
+    const next = injectArchitectuiMainCssLink(content, href);
+    if (next === content) continue;
+    fs.writeFileSync(p, next, 'utf8');
     n += 1;
   }
   if (n) console.log('OK: ARCHITECTUI_MAIN_CSS →', href, '(' + n + ' файлов в public/)');
@@ -80,6 +85,15 @@ const publishNames = [
   'processes.html',
   'settings.html',
   'sections.html',
+  'ref/index.html',
+  'ref/main.html',
+  'ref/elements.html',
+  'ref/components.html',
+  'ref/tables.html',
+  'ref/widgets.html',
+  'ref/forms.html',
+  'ref/charts.html',
+  'ref/react-demo-index.html',
   'datagon-vanilla.js',
 ];
 
@@ -87,6 +101,7 @@ for (const name of publishNames) {
   const from = path.join(vanillaSrc, name);
   const to = path.join(publicDir, name);
   if (fs.existsSync(from)) {
+    fs.mkdirSync(path.dirname(to), { recursive: true });
     fs.copyFileSync(from, to);
   }
 }

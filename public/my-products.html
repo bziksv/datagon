@@ -92,6 +92,40 @@
     }
   </style>
 
+  <style>
+    /* Один список сайдбара: «ArchitectUI меню» у нижнего края области навигации, без второго блока/ul */
+    .dg-sidebar-nav-scroll {
+      display: flex;
+      flex-direction: column;
+    }
+    .dg-sidebar-nav-measure {
+      flex: 1 1 auto;
+      min-height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+    .dg-sidebar-nav-measure .datagon-nav-shell,
+    .dg-sidebar-nav-measure .vertical-nav-menu {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .dg-sidebar-nav-measure .metismenu-container {
+      display: flex;
+      flex-direction: column;
+      flex: 1 1 auto;
+      min-height: 100%;
+      margin-bottom: 0;
+    }
+    .dg-sidebar-architect-item {
+      margin-top: auto;
+    }
+    .dg-sidebar-architect-item .metismenu-link {
+      border-top: 1px solid rgba(0, 0, 0, 0.07);
+      padding-top: 0.65rem;
+    }
+  </style>
 </head>
 <body class="datagon-vanilla-body" data-dg-active-nav="my-products">
   <div class="app-container app-theme-white datagon-shell datagon-vanilla-shell fixed-header fixed-sidebar fixed-footer">
@@ -408,74 +442,13 @@
           <div class="header-btn-lg pe-0">
             <div class="widget-content p-0">
               <div class="widget-content-wrapper">
-                <div class="widget-content-left">
-                  <div class="dropdown">
-                    <button type="button" class="btn btn-link p-0 d-flex align-items-center dg-vanilla-dropdown-toggle" aria-expanded="false" aria-haspopup="true">
-                      <img width="42" class="rounded-circle" src="./assets/avatar-header.jpg" alt="" />
-                      <svg data-prefix="fas" data-icon="angle-down" class="svg-inline--fa fa-angle-down ms-2 opacity-8" role="img" viewBox="0 0 384 512" aria-hidden="true" style="display:inline-block;height:1em;width:0.75em;vertical-align:-0.125em;overflow:visible">
-                        <path fill="currentColor" d="M169.4 374.6c12.5 12.5 32.8 12.5 45.3 0l160-160c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L192 306.7 54.6 169.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3l160 160z"></path>
-                      </svg>
-                    </button>
-                    <div class="dropdown-menu dropdown-menu-end rm-pointers dropdown-menu-lg">
-                      <div class="dropdown-menu-header">
-                        <div class="dropdown-menu-header-inner bg-info">
-                          <div class="menu-header-image opacity-2" style="background-image:url('/assets/utils/images/dropdown-header/city3.jpg')"></div>
-                          <div class="menu-header-content text-start">
-                            <div class="widget-content p-0">
-                              <div class="widget-content-wrapper">
-                                <div class="widget-content-left me-3">
-                                  <img width="42" class="rounded-circle" src="./assets/avatar-header.jpg" alt="" />
-                                </div>
-                                <div class="widget-content-left">
-                                  <div class="widget-heading" id="dg-vanilla-user-display-name">Пользователь</div>
-                                  <div class="widget-subheading opacity-8" id="dg-vanilla-user-role">Сессия как в панели</div>
-                                </div>
-                                <div class="widget-content-right me-2">
-                                  <button type="button" class="btn btn-pill btn-shadow btn-shine btn-focus btn-sm">Logout</button>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      <div class="scroll-area-xs" style="height:150px">
-                        <div class="p-2">
-                          <div class="nav flex-column">
-                            <div class="nav-item-header small text-uppercase text-muted mb-2 px-2">Activity</div>
-                            <a class="nav-link py-1 px-2" href="#">Chat <span class="badge rounded-pill bg-info float-end">8</span></a>
-                            <a class="nav-link py-1 px-2" href="#">Recover Password</a>
-                            <div class="nav-item-header small text-uppercase text-muted mt-2 mb-2 px-2">My Account</div>
-                            <a class="nav-link py-1 px-2" href="#">Settings <span class="badge bg-success float-end">New</span></a>
-                            <a class="nav-link py-1 px-2" href="#">Messages <span class="badge bg-warning float-end">512</span></a>
-                            <a class="nav-link py-1 px-2" href="#">Logs</a>
-                          </div>
-                        </div>
-                      </div>
-                      <div class="nav-item-divider mb-0"></div>
-                      <div class="grid-menu grid-menu-2col">
-                        <div class="row g-0">
-                          <div class="col-sm-6">
-                            <button type="button" class="btn btn-icon-vertical btn-transition btn-transition-alt pt-2 pb-2 w-100 btn-outline-warning">
-                              <i class="pe-7s-chat icon-gradient bg-amy-crisp btn-icon-wrapper mb-2"> </i>
-                              Message Inbox
-                            </button>
-                          </div>
-                          <div class="col-sm-6">
-                            <button type="button" class="btn btn-icon-vertical btn-transition btn-transition-alt pt-2 pb-2 w-100 btn-outline-danger">
-                              <i class="pe-7s-ticket icon-gradient bg-love-kiss btn-icon-wrapper mb-2"> </i>
-                              <b>Support Tickets</b>
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                      <div class="nav-item-divider"></div>
-                      <div class="nav-item-btn text-center p-2">
-                        <button type="button" class="btn btn-sm btn-wide btn-primary">Open Messages</button>
-                      </div>
-                    </div>
-                  </div>
+                <div class="widget-content-left d-flex align-items-center gap-1 pe-2">
+                  <img width="42" height="42" class="rounded-circle" src="/assets/avatar-header.jpg" alt="" />
+                  <button type="button" class="btn btn-link p-0 dg-vanilla-logout d-inline-flex align-items-center justify-content-center text-danger" title="Выйти" aria-label="Выйти из профиля" style="min-width:34px;min-height:34px;line-height:1;border-radius:50%">
+                    <i class="lnr-exit" style="font-size:1.2rem"></i>
+                  </button>
                 </div>
-                <div class="widget-content-left ms-3 header-user-info">
+                <div class="widget-content-left ms-2 header-user-info">
                   <div class="widget-heading" id="dg-vanilla-user-display-inline">Пользователь</div>
                   <div class="widget-subheading" id="dg-vanilla-user-role-inline">Пользователь</div>
                 </div>
@@ -494,7 +467,7 @@
     <div class="app-main">
       <div class="sidebar-mobile-overlay"></div>
       <div class="app-sidebar sidebar-shadow">
-        <div>
+        <div class="d-flex flex-column h-100 min-h-0">
           <div class="app-header__logo">
             <button type="button" class="logo-src datagon-brand" onclick="location.href='/dashboard.html'" title="Открыть дашборд" style="border:0;background:transparent;padding:0;cursor:pointer">Датагон</button>
             <div class="header__pane ms-auto">
@@ -521,32 +494,24 @@
               </button>
             </span>
           </div>
-          <div class="custom-scrollbar" style="height:calc(100vh - 80px);max-height:calc(100vh - 80px);overflow-y:auto;overflow-x:hidden;flex:1">
-            <div class="app-sidebar__inner">
-              <div class="datagon-nav-shell">
-                <div class="vertical-nav-menu" style="pointer-events:auto;z-index:999;position:relative">
-                  <ul class="metismenu-container">
-                    <li class="metismenu-item"><a class="metismenu-link" data-nav="dashboard" href="/dashboard.html"><i class="metismenu-icon pe-7s-rocket"></i>Дашборд</a></li>
-                    <li class="metismenu-item"><a class="metismenu-link" data-nav="my-sites" href="/my-sites.html"><i class="metismenu-icon pe-7s-global"></i>Мои сайты</a></li>
-                    <li class="metismenu-item"><a class="metismenu-link" data-nav="my-products" href="/my-products.html"><i class="metismenu-icon pe-7s-box2"></i>Мои товары</a></li>
-                    <li class="metismenu-item"><a class="metismenu-link" data-nav="moysklad" href="/moysklad.html"><i class="metismenu-icon pe-7s-shopbag"></i>МойСклад</a></li>
-                    <li class="metismenu-item"><a class="metismenu-link" data-nav="projects" href="/projects.html"><i class="metismenu-icon pe-7s-portfolio"></i>Конкуренты</a></li>
-                    <li class="metismenu-item"><a class="metismenu-link" data-nav="queue" href="/queue.html"><i class="metismenu-icon pe-7s-network"></i>Очередь</a></li>
-                    <li class="metismenu-item"><a class="metismenu-link" data-nav="results" href="/results.html"><i class="metismenu-icon pe-7s-note2"></i>Результаты</a></li>
-                    <li class="metismenu-item"><a class="metismenu-link" data-nav="matches" href="/matches.html"><i class="metismenu-icon pe-7s-link"></i>Сопоставление</a></li>
-                    <li class="metismenu-item"><a class="metismenu-link" data-nav="processes" href="/processes.html"><i class="metismenu-icon pe-7s-timer"></i>Логи</a></li>
-                    <li class="metismenu-item"><a class="metismenu-link" data-nav="settings" href="/settings.html"><i class="metismenu-icon pe-7s-config"></i>Настройки</a></li>
-                  </ul>
-                </div>
-                <div class="datagon-html-source-dock">
-                  <button type="button" class="app-sidebar__heading datagon-html-source-toggle d-flex align-items-center justify-content-between" aria-expanded="false" title="Справочно: структура сайдбара по шаблону ArchitectUI">
-                    <span>Исходник HTML</span>
-                    <i class="pe-7s-angle-down"></i>
-                  </button>
-                  <div class="datagon-html-source-panel" hidden>
-                    <p class="text-muted small px-2 py-2 mb-0">
-                      Демо-страницы шаблона ArchitectUI (CRA) из репозитория убраны. Рабочий UI — разделы <a href="/sections.html">список разделов</a> (*.html в корне сайта).
-                    </p>
+          <div class="custom-scrollbar dg-sidebar-nav-wrap d-flex flex-column min-h-0" style="flex:1 1 0%;min-height:0;max-height:calc(100vh - 80px);overflow-x:hidden">
+            <div class="app-sidebar__inner dg-sidebar-nav-scroll flex-grow-1 min-h-0" style="overflow-y:auto;overflow-x:hidden">
+              <div class="dg-sidebar-nav-measure">
+                <div class="datagon-nav-shell">
+                  <div class="vertical-nav-menu" style="pointer-events:auto;z-index:999;position:relative">
+                    <ul class="metismenu-container">
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="dashboard" href="/dashboard.html"><i class="metismenu-icon pe-7s-rocket"></i>Дашборд</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="my-sites" href="/my-sites.html"><i class="metismenu-icon pe-7s-global"></i>Мои сайты</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="my-products" href="/my-products.html"><i class="metismenu-icon pe-7s-box2"></i>Мои товары</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="moysklad" href="/moysklad.html"><i class="metismenu-icon pe-7s-shopbag"></i>МойСклад</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="projects" href="/projects.html"><i class="metismenu-icon pe-7s-portfolio"></i>Конкуренты</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="queue" href="/queue.html"><i class="metismenu-icon pe-7s-network"></i>Очередь</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="results" href="/results.html"><i class="metismenu-icon pe-7s-note2"></i>Результаты</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="matches" href="/matches.html"><i class="metismenu-icon pe-7s-link"></i>Сопоставление</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="processes" href="/processes.html"><i class="metismenu-icon pe-7s-timer"></i>Логи</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="settings" href="/settings.html"><i class="metismenu-icon pe-7s-config"></i>Настройки</a></li>
+                      <li class="metismenu-item dg-sidebar-architect-item"><a class="metismenu-link" data-nav="architectui-demo" href="/ref/react-demo-index.html" title="Каталог разделов React-шаблона ArchitectUI"><i class="metismenu-icon pe-7s-plugin"></i>ArchitectUI меню</a></li>
+                    </ul>
                   </div>
                 </div>
               </div>
@@ -1008,7 +973,7 @@
     </div>
   </div>
 
-  <script src="./datagon-vanilla.js"></script>
+  <script src="/datagon-vanilla.js"></script>
     <script>
     (function () {
       var MP_FILTERS_KEY = "datagon_my_products_filters_collapsed_v1";
