@@ -13,6 +13,24 @@
       var lastFxUpdatedAt = null;
       var siteNameById = {};
       var siteById = {};
+      var DEFAULT_VISIBLE_COLS = [
+        "id",
+        "site",
+        "sku",
+        "name",
+        "price",
+        "dealmed_price",
+        "medkompleks_price",
+        "currency",
+        "stock",
+        "status",
+        "updated",
+        "competitor",
+        "actions",
+      ];
+      var visibleCols = DEFAULT_VISIBLE_COLS.slice();
+      var columnWidths = {};
+      var resizeState = null;
 
       function userSortKey() {
         try {
@@ -97,6 +115,8 @@
           gap_max_pct: document.getElementById("mp-f-gap_max_pct").value.trim(),
           usd_to_rub: document.getElementById("mp-f-usd_to_rub").value.trim(),
           eur_to_rub: document.getElementById("mp-f-eur_to_rub").value.trim(),
+          comp_sync_rand_min: document.getElementById("mp-f-comp_min").value.trim(),
+          comp_sync_rand_max: document.getElementById("mp-f-comp_max").value.trim(),
           stock_min: document.getElementById("mp-f-stock_min").value.trim(),
           stock_max: document.getElementById("mp-f-stock_max").value.trim(),
           limit: lim,
@@ -243,7 +263,9 @@
       function buildMoyskladSearchLink(code) {
         var value = String(code || "").trim();
         if (!value) return "";
-        return "/moysklad?search=" + encodeURIComponent("code:" + value) + "&page=1";
+        return (
+          "/moysklad.html?search=" + encodeURIComponent("code:" + value) + "&page=1"
+        );
       }
 
       function getUsdEurForRow() {
@@ -266,9 +288,183 @@
             th.setAttribute("data-mp-label", base);
             base = th.getAttribute("data-mp-label");
           }
-          var arrow = " ↕";
+          var arrow = "";
           if (sortBy === col) arrow = sortDir === "asc" ? " ↑" : " ↓";
-          th.textContent = base + arrow;
+          var labelEl = th.querySelector(".mp-sort-label");
+          if (!labelEl) {
+            labelEl = document.createElement("span");
+            labelEl.className = "mp-sort-label";
+            th.insertBefore(labelEl, th.firstChild || null);
+          }
+          labelEl.textContent = base + arrow;
+          Array.prototype.slice.call(th.childNodes).forEach(function (node) {
+            if (node === labelEl) return;
+            if (node.classList && node.classList.contains("mp-resize-handle")) return;
+            if (node.nodeType === Node.TEXT_NODE) th.removeChild(node);
+          });
+        });
+        initColumnResizeHandles();
+        applyStoredColumnWidths();
+      }
+
+      function getHeaderCells() {
+        return Array.prototype.slice.call(document.querySelectorAll("#mp-thead-row th"));
+      }
+
+      function applyColumnWidthByIndex(index, widthPx) {
+        var w = Math.max(80, Math.min(900, Math.round(Number(widthPx) || 0)));
+        if (!Number.isFinite(w) || w <= 0) return;
+        columnWidths[index] = w;
+        var headers = getHeaderCells();
+        if (headers[index]) {
+          headers[index].style.width = w + "px";
+          headers[index].style.minWidth = w + "px";
+          headers[index].style.maxWidth = w + "px";
+        }
+        document.querySelectorAll("#dg-tbody tr").forEach(function (tr) {
+          if (!tr.cells || !tr.cells[index]) return;
+          tr.cells[index].style.width = w + "px";
+          tr.cells[index].style.minWidth = w + "px";
+          tr.cells[index].style.maxWidth = w + "px";
+        });
+      }
+
+      function applyStoredColumnWidths() {
+        Object.keys(columnWidths || {}).forEach(function (k) {
+          var idx = Number(k);
+          if (!Number.isFinite(idx)) return;
+          applyColumnWidthByIndex(idx, columnWidths[k]);
+        });
+      }
+
+      function onResizeMove(e) {
+        if (!resizeState) return;
+        var delta = e.clientX - resizeState.startX;
+        applyColumnWidthByIndex(resizeState.index, resizeState.startWidth + delta);
+      }
+
+      function onResizeUp() {
+        if (!resizeState) return;
+        resizeState = null;
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+        try {
+          localStorage.setItem(userColWidthKey(), JSON.stringify(columnWidths || {}));
+        } catch (e) {}
+      }
+
+      function initColumnResizeHandles() {
+        getHeaderCells().forEach(function (th, index) {
+          if (th.getAttribute("data-mp-resize-ready") === "1") return;
+          th.setAttribute("data-mp-resize-ready", "1");
+          th.style.position = "relative";
+          var handle = document.createElement("span");
+          handle.className = "mp-resize-handle";
+          handle.setAttribute("role", "separator");
+          handle.setAttribute("aria-orientation", "vertical");
+          handle.title = "Потяните, чтобы изменить ширину";
+          handle.style.cssText =
+            "position:absolute;top:0;right:0;width:6px;height:100%;cursor:col-resize;z-index:4;" +
+            "background:linear-gradient(to right,transparent 47%,#d9dee5 47%,#d9dee5 53%,transparent 53%);opacity:0.55";
+          handle.addEventListener("mousedown", function (ev) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            var rect = th.getBoundingClientRect();
+            var w = Number(columnWidths[index] || (rect && rect.width ? rect.width : 0));
+            resizeState = { index: index, startX: ev.clientX, startWidth: w > 0 ? w : 120 };
+            document.body.style.cursor = "col-resize";
+            document.body.style.userSelect = "none";
+          });
+          handle.addEventListener("click", function (ev) {
+            ev.stopPropagation();
+          });
+          th.appendChild(handle);
+        });
+      }
+
+      function userVisibleColsKeyVanilla() {
+        try {
+          var u = String(localStorage.getItem("currentUser") || "guest").trim() || "guest";
+          return "datagon_my_products_visible_cols_v1:" + u;
+        } catch (e) {
+          return "datagon_my_products_visible_cols_v1:guest";
+        }
+      }
+
+      function userColWidthKey() {
+        try {
+          var u = String(localStorage.getItem("currentUser") || "guest").trim() || "guest";
+          return "datagon_my_products_col_widths_v1:" + u;
+        } catch (e) {
+          return "datagon_my_products_col_widths_v1:guest";
+        }
+      }
+
+      function getVisibleColumns() {
+        return visibleCols.slice();
+      }
+
+      function applyVisibleColumns() {
+        var cols = getVisibleColumns();
+        var all = Array.prototype.slice.call(
+          document.querySelectorAll("#mp-thead-row th, #dg-tbody tr td")
+        );
+        var headCells = Array.prototype.slice.call(
+          document.querySelectorAll("#mp-thead-row th")
+        );
+        all.forEach(function (cell) {
+          cell.style.display = "";
+        });
+        headCells.forEach(function (th, index) {
+          var key = th.getAttribute("data-mp-sort");
+          if (!key) key = index === headCells.length - 2 ? "competitor" : "actions";
+          var show = cols.indexOf(key) >= 0;
+          th.style.display = show ? "" : "none";
+          document.querySelectorAll("#dg-tbody tr").forEach(function (tr) {
+            if (tr.cells && tr.cells[index]) tr.cells[index].style.display = show ? "" : "none";
+          });
+        });
+      }
+
+      function renderColumnsPanel() {
+        var list = document.getElementById("dg-mp-columns-list");
+        if (!list) return;
+        list.replaceChildren();
+        var headers = Array.prototype.slice.call(document.querySelectorAll("#mp-thead-row th"));
+        headers.forEach(function (th, index) {
+          var key = th.getAttribute("data-mp-sort");
+          if (!key) key = index === headers.length - 2 ? "competitor" : "actions";
+          var label = String(th.getAttribute("data-mp-label") || th.textContent || "")
+            .replace(/\s*[↑↓↕]\s*$/, "")
+            .trim();
+          var row = document.createElement("label");
+          var cb = document.createElement("input");
+          cb.type = "checkbox";
+          cb.checked = visibleCols.indexOf(key) >= 0;
+          cb.addEventListener("change", function () {
+            var next = visibleCols.slice();
+            if (cb.checked) {
+              if (next.indexOf(key) < 0) next.push(key);
+            } else {
+              next = next.filter(function (k) {
+                return k !== key;
+              });
+            }
+            if (!next.length) {
+              cb.checked = true;
+              return;
+            }
+            visibleCols = DEFAULT_VISIBLE_COLS.filter(function (k) {
+              return next.indexOf(k) >= 0;
+            });
+            try {
+              localStorage.setItem(userVisibleColsKeyVanilla(), JSON.stringify(visibleCols));
+            } catch (e) {}
+            applyVisibleColumns();
+          });
+          row.appendChild(cb);
+          row.appendChild(document.createTextNode(label || key));
+          list.appendChild(row);
         });
       }
 
@@ -304,6 +500,7 @@
           tdL.textContent = "Загрузка...";
           trL.appendChild(tdL);
           tbody.appendChild(trL);
+          applyVisibleColumns();
           return;
         }
         if (!rows || !rows.length) {
@@ -314,6 +511,7 @@
           td.textContent = "Нет данных";
           tr.appendChild(td);
           tbody.appendChild(tr);
+          applyVisibleColumns();
           return;
         }
         rows.forEach(function (r, idx) {
@@ -515,6 +713,8 @@
           tr.appendChild(actTd);
           tbody.appendChild(tr);
         });
+        applyVisibleColumns();
+        applyStoredColumnWidths();
       }
 
       function tdText(t) {
@@ -628,6 +828,8 @@
           "gap_max_pct",
           "usd_to_rub",
           "eur_to_rub",
+          "comp_sync_rand_min",
+          "comp_sync_rand_max",
           "stock_min",
           "stock_max",
         ];
@@ -641,7 +843,10 @@
           if (k === "ms_linked") document.getElementById("f-ms").value = v;
           if (k === "sort_by") document.getElementById("mp-f-sort-by").value = v;
           if (k === "sort_dir") document.getElementById("mp-f-sort-dir").value = v;
-          if (k === "search") apiSearch = v;
+          if (k === "search") {
+            apiSearch = v;
+            document.getElementById("mp-f-smart").value = v;
+          }
           if (k === "match_audit")
             document.getElementById("mp-f-match_audit").value = v;
           if (k === "gap_competitor")
@@ -652,6 +857,8 @@
             document.getElementById("mp-f-gap_max_pct").value = v;
           if (k === "usd_to_rub") document.getElementById("mp-f-usd_to_rub").value = v;
           if (k === "eur_to_rub") document.getElementById("mp-f-eur_to_rub").value = v;
+          if (k === "comp_sync_rand_min") document.getElementById("mp-f-comp_min").value = v;
+          if (k === "comp_sync_rand_max") document.getElementById("mp-f-comp_max").value = v;
           if (k === "stock_min") document.getElementById("mp-f-stock_min").value = v;
           if (k === "stock_max") document.getElementById("mp-f-stock_max").value = v;
         });
@@ -880,6 +1087,8 @@
           setSort(th.getAttribute("data-mp-sort"));
         });
       });
+      window.addEventListener("mousemove", onResizeMove);
+      window.addEventListener("mouseup", onResizeUp);
 
       [
         "mp-tf-source_id",
@@ -936,6 +1145,58 @@
       document.getElementById("mp-btn-copy").addEventListener("click", function () {
         navigator.clipboard.writeText(window.location.href).catch(function () {});
       });
+      (function initColumnsPanel() {
+        try {
+          var rawVisible = JSON.parse(localStorage.getItem(userVisibleColsKeyVanilla()) || "[]");
+          if (Array.isArray(rawVisible) && rawVisible.length) {
+            visibleCols = DEFAULT_VISIBLE_COLS.filter(function (k) {
+              return rawVisible.indexOf(k) >= 0;
+            });
+          }
+        } catch (e) {}
+        var toggle = document.getElementById("dg-mp-columns-toggle");
+        var panel = document.getElementById("dg-mp-columns-panel");
+        var btnAll = document.getElementById("dg-mp-columns-all");
+        var btnNone = document.getElementById("dg-mp-columns-none");
+        var btnDef = document.getElementById("dg-mp-columns-default");
+        if (toggle && panel) {
+          toggle.addEventListener("click", function () {
+            panel.classList.toggle("open");
+            renderColumnsPanel();
+          });
+        }
+        if (btnAll) {
+          btnAll.addEventListener("click", function () {
+            visibleCols = DEFAULT_VISIBLE_COLS.slice();
+            try {
+              localStorage.setItem(userVisibleColsKeyVanilla(), JSON.stringify(visibleCols));
+            } catch (e) {}
+            renderColumnsPanel();
+            applyVisibleColumns();
+          });
+        }
+        if (btnNone) {
+          btnNone.addEventListener("click", function () {
+            visibleCols = ["name"];
+            try {
+              localStorage.setItem(userVisibleColsKeyVanilla(), JSON.stringify(visibleCols));
+            } catch (e) {}
+            renderColumnsPanel();
+            applyVisibleColumns();
+          });
+        }
+        if (btnDef) {
+          btnDef.addEventListener("click", function () {
+            visibleCols = DEFAULT_VISIBLE_COLS.slice();
+            try {
+              localStorage.setItem(userVisibleColsKeyVanilla(), JSON.stringify(visibleCols));
+            } catch (e) {}
+            renderColumnsPanel();
+            applyVisibleColumns();
+          });
+        }
+        renderColumnsPanel();
+      })();
 
       (function collapse() {
         var body = document.getElementById("dg-mp-filters-body");
@@ -966,6 +1227,12 @@
       })();
 
       (async function init() {
+        try {
+          columnWidths = JSON.parse(localStorage.getItem(userColWidthKey()) || "{}") || {};
+        } catch (e) {
+          columnWidths = {};
+        }
+        initColumnResizeHandles();
         await loadSites();
         parseUrlToForm();
         updateSubtitle();

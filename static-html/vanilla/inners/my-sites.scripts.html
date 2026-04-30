@@ -29,6 +29,56 @@
       var previewSite = null;
       var previewRows = [];
       var syncRunning = false;
+      var sortBy = "id";
+      var sortDir = "asc";
+      var SORT_STORAGE_VERSION = "v1";
+      var columnWidths = {};
+      var resizeState = null;
+
+      function userSortKey() {
+        try {
+          var u = String(localStorage.getItem("currentUser") || "guest").trim() || "guest";
+          return "datagon_my_sites_sort_" + SORT_STORAGE_VERSION + ":" + u;
+        } catch (e) {
+          return "datagon_my_sites_sort_" + SORT_STORAGE_VERSION + ":guest";
+        }
+      }
+
+      function userColWidthKey() {
+        try {
+          var u = String(localStorage.getItem("currentUser") || "guest").trim() || "guest";
+          return "datagon_my_sites_col_widths_v1:" + u;
+        } catch (e) {
+          return "datagon_my_sites_col_widths_v1:guest";
+        }
+      }
+
+      function syncSortUrl() {
+        var params = new URLSearchParams(window.location.search);
+        params.set("sort_by", sortBy);
+        params.set("sort_dir", sortDir);
+        var next = params.toString()
+          ? window.location.pathname + "?" + params.toString()
+          : window.location.pathname;
+        try {
+          window.history.replaceState(null, "", next);
+        } catch (e) {}
+      }
+
+      function loadSortState() {
+        var params = new URLSearchParams(window.location.search);
+        var sb = params.get("sort_by");
+        var sd = params.get("sort_dir");
+        var allowed = { id: true, name: true, domain: true, total: true };
+        if (sb && allowed[sb]) sortBy = sb;
+        if (sd === "asc" || sd === "desc") sortDir = sd;
+        if (sb && sd) return;
+        try {
+          var saved = JSON.parse(localStorage.getItem(userSortKey()) || "{}");
+          if (saved && allowed[saved.sort_by]) sortBy = saved.sort_by;
+          if (saved && (saved.sort_dir === "asc" || saved.sort_dir === "desc")) sortDir = saved.sort_dir;
+        } catch (e) {}
+      }
 
       function setErr(msg) {
         var el = document.getElementById("dg-ms-err");
@@ -180,8 +230,153 @@
         });
       }
 
+      function compareSiteValues(a, b) {
+        function s(v) {
+          return String(v == null ? "" : v).toLowerCase();
+        }
+        function n(v) {
+          var x = Number(v);
+          return Number.isFinite(x) ? x : 0;
+        }
+        if (sortBy === "id") return n(a.id) - n(b.id);
+        if (sortBy === "name") return s(a.name).localeCompare(s(b.name), "ru");
+        if (sortBy === "domain") return s(a.domain).localeCompare(s(b.domain), "ru");
+        if (sortBy === "total") {
+          var ast = getSiteStats(a);
+          var bst = getSiteStats(b);
+          var at = n(ast.total);
+          var bt = n(bst.total);
+          return at - bt;
+        }
+        return 0;
+      }
+
+      function getSortedSites(rows) {
+        var out = (rows || []).slice();
+        out.sort(function (a, b) {
+          var diff = compareSiteValues(a, b);
+          return sortDir === "asc" ? diff : -diff;
+        });
+        return out;
+      }
+
+      function updateSortHeaders() {
+        document.querySelectorAll("th[data-ms-sort]").forEach(function (th) {
+          var col = th.getAttribute("data-ms-sort");
+          var label = th.getAttribute("data-ms-label");
+          if (!label) {
+            label = String(th.textContent || "").replace(/\s*[↑↓↕]\s*$/, "").trim();
+            th.setAttribute("data-ms-label", label);
+          }
+          var arrow = "";
+          if (col === sortBy) arrow = sortDir === "asc" ? " ↑" : " ↓";
+          var labelEl = th.querySelector(".ms-sort-label");
+          if (!labelEl) {
+            labelEl = document.createElement("span");
+            labelEl.className = "ms-sort-label";
+            th.insertBefore(labelEl, th.firstChild || null);
+          }
+          labelEl.textContent = label + arrow;
+          Array.prototype.slice.call(th.childNodes).forEach(function (node) {
+            if (node === labelEl) return;
+            if (node.nodeType === Node.TEXT_NODE) th.removeChild(node);
+          });
+        });
+        initColumnResizeHandles();
+        applyStoredColumnWidths();
+      }
+
+      function getHeaderCells() {
+        return Array.prototype.slice.call(document.querySelectorAll("#ms-main-table thead th"));
+      }
+
+      function applyColumnWidthByIndex(index, widthPx) {
+        var w = Math.max(80, Math.min(900, Math.round(Number(widthPx) || 0)));
+        if (!Number.isFinite(w) || w <= 0) return;
+        columnWidths[index] = w;
+        getHeaderCells().forEach(function (th, idx) {
+          if (idx !== index) return;
+          th.style.width = w + "px";
+          th.style.minWidth = w + "px";
+          th.style.maxWidth = w + "px";
+        });
+        document.querySelectorAll("#ms-tbody tr").forEach(function (tr) {
+          if (!tr.cells || !tr.cells[index]) return;
+          tr.cells[index].style.width = w + "px";
+          tr.cells[index].style.minWidth = w + "px";
+          tr.cells[index].style.maxWidth = w + "px";
+        });
+      }
+
+      function applyStoredColumnWidths() {
+        Object.keys(columnWidths || {}).forEach(function (k) {
+          var idx = Number(k);
+          if (!Number.isFinite(idx)) return;
+          applyColumnWidthByIndex(idx, columnWidths[k]);
+        });
+      }
+
+      function onResizeMove(e) {
+        if (!resizeState) return;
+        var delta = e.clientX - resizeState.startX;
+        applyColumnWidthByIndex(resizeState.index, resizeState.startWidth + delta);
+      }
+
+      function onResizeUp() {
+        if (!resizeState) return;
+        resizeState = null;
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+        try {
+          localStorage.setItem(userColWidthKey(), JSON.stringify(columnWidths || {}));
+        } catch (e) {}
+      }
+
+      function initColumnResizeHandles() {
+        getHeaderCells().forEach(function (th, index) {
+          if (th.getAttribute("data-ms-resize-ready") === "1") return;
+          th.setAttribute("data-ms-resize-ready", "1");
+          th.style.position = "relative";
+          var handle = document.createElement("span");
+          handle.className = "ms-resize-handle";
+          handle.setAttribute("role", "separator");
+          handle.setAttribute("aria-orientation", "vertical");
+          handle.title = "Потяните, чтобы изменить ширину";
+          handle.style.cssText =
+            "position:absolute;top:0;right:0;width:6px;height:100%;cursor:col-resize;z-index:4;" +
+            "background:linear-gradient(to right,transparent 47%,#d9dee5 47%,#d9dee5 53%,transparent 53%);opacity:0.55";
+          handle.addEventListener("mousedown", function (ev) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            var rect = th.getBoundingClientRect();
+            var w = Number(columnWidths[index] || (rect && rect.width ? rect.width : 0));
+            resizeState = { index: index, startX: ev.clientX, startWidth: w > 0 ? w : 120 };
+            document.body.style.cursor = "col-resize";
+            document.body.style.userSelect = "none";
+          });
+          handle.addEventListener("click", function (ev) {
+            ev.stopPropagation();
+          });
+          th.appendChild(handle);
+        });
+      }
+
+      function toggleSort(nextSortBy) {
+        if (sortBy === nextSortBy) sortDir = sortDir === "asc" ? "desc" : "asc";
+        else {
+          sortBy = nextSortBy;
+          sortDir = "asc";
+        }
+        try {
+          localStorage.setItem(userSortKey(), JSON.stringify({ sort_by: sortBy, sort_dir: sortDir }));
+        } catch (e) {}
+        syncSortUrl();
+        updateSortHeaders();
+        renderTable();
+      }
+
       function renderStatsCell(site) {
-        var st = statsMap[site.id];
+        var st = getSiteStats(site);
         var wrap = document.createElement("div");
         wrap.className = "d-flex flex-wrap gap-1";
         if (!st) {
@@ -224,9 +419,42 @@
         return wrap;
       }
 
+      function getSiteStats(site) {
+        if (!site) return null;
+        var idRaw = site.id;
+        var keys = [idRaw, String(idRaw || "").trim()];
+        var asNum = Number(idRaw);
+        if (Number.isFinite(asNum)) keys.push(String(asNum));
+        var st = null;
+        for (var i = 0; i < keys.length; i++) {
+          var k = keys[i];
+          if (k === undefined || k === null || k === "") continue;
+          if (statsMap[k]) {
+            st = statsMap[k];
+            break;
+          }
+        }
+        if (!st) return null;
+        var active = Number(st.active || 0);
+        var disabled = Number(st.disabled || 0);
+        var disappeared = Number(st.disappeared || 0);
+        var total = Number(st.total || 0);
+        if (!Number.isFinite(total) || total <= 0) {
+          var fallback = active + disabled + disappeared;
+          if (fallback > 0) total = fallback;
+        }
+        return {
+          total: Number.isFinite(total) ? total : 0,
+          active: Number.isFinite(active) ? active : 0,
+          disabled: Number.isFinite(disabled) ? disabled : 0,
+          disappeared: Number.isFinite(disappeared) ? disappeared : 0,
+          linked: Number(st.linked || 0) || 0,
+        };
+      }
+
       function renderTable() {
         var tbody = document.getElementById("ms-tbody");
-        var filtered = getFilteredSites();
+        var filtered = getSortedSites(getFilteredSites());
         tbody.replaceChildren();
         if (!filtered.length) {
           var tr = document.createElement("tr");
@@ -327,6 +555,7 @@
           tr.appendChild(tdAct);
           tbody.appendChild(tr);
         });
+        applyStoredColumnWidths();
       }
 
       function onVerify(site) {
@@ -545,7 +774,11 @@
             if (!Array.isArray(json)) return;
             statsMap = {};
             json.forEach(function (s) {
-              statsMap[s.site_id] = s;
+              var keyRaw = s && s.site_id != null ? s.site_id : "";
+              var key = String(keyRaw).trim();
+              if (key) statsMap[key] = s;
+              var asNum = Number(keyRaw);
+              if (Number.isFinite(asNum)) statsMap[String(asNum)] = s;
             });
             renderTable();
           })
@@ -611,6 +844,14 @@
         if (el) el.addEventListener("change", renderTable);
       });
 
+      document.querySelectorAll("th[data-ms-sort]").forEach(function (th) {
+        th.addEventListener("click", function () {
+          toggleSort(th.getAttribute("data-ms-sort"));
+        });
+      });
+      window.addEventListener("mousemove", onResizeMove);
+      window.addEventListener("mouseup", onResizeUp);
+
       document.getElementById("ms-preview-refresh").addEventListener("click", function () {
         if (previewSite) fetchPreview(previewSite);
       });
@@ -630,7 +871,16 @@
         } catch (e) {}
       })();
 
+      loadSortState();
+      try {
+        columnWidths = JSON.parse(localStorage.getItem(userColWidthKey()) || "{}") || {};
+      } catch (e) {
+        columnWidths = {};
+      }
       clearFormNew();
+      initColumnResizeHandles();
+      updateSortHeaders();
+      syncSortUrl();
       loadMySites();
       loadSiteStats();
     })();

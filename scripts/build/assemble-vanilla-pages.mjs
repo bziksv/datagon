@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Собирает static-html/vanilla/*.html из _template.html и фрагментов inners/.
- * Вызывать перед копированием vanilla в public (из sync-react-build-to-public.mjs).
+ * Вызывать перед копированием vanilla в public (см. npm run sync:vanilla-public).
  */
 
 import fs from 'fs';
@@ -101,7 +101,7 @@ function assemble() {
             PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/settings.scripts.html')),
         },
         {
-            out: 'index.html',
+            out: 'sections.html',
             PAGE_TITLE: 'Статические экраны — Датагон',
             BODY_ATTRS: 'class="datagon-vanilla-body"',
             EXTRA_HEAD: read(path.join(vanillaDir, 'inners/index.head.html')),
@@ -109,6 +109,11 @@ function assemble() {
             PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/index.scripts.html')),
         },
     ];
+
+    const legacyIndex = path.join(vanillaDir, 'index.html');
+    if (fs.existsSync(legacyIndex)) {
+        fs.unlinkSync(legacyIndex);
+    }
 
     for (const p of pages) {
         const { out, ...vars } = p;

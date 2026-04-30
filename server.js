@@ -915,86 +915,77 @@ initDB().then(() => {
 
     app.use(authModule.protectDocumentationRoutes);
 
-    // CRA build → sync в корень public/ (npm run build:datagon-spa). UI: /moysklad, /dashboard, …
-    // Резерв: старый деплой клал только public/architectui-react-pro/ — без index в корне SPA-fallback молчал → 404 «Cannot GET /moysklad».
-    const resolveSpaIndexHtml = () => {
-        const candidates = [
-            path.join(__dirname, 'public', 'index.html'),
-            path.join(__dirname, 'public', 'architectui-react-pro', 'index.html'),
-        ];
-        for (const p of candidates) {
-            if (fsSync.existsSync(p)) return p;
-        }
-        return null;
+    const qsFromReq = (req) =>
+        req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : '';
+    const redirectToDatagonHtml = (htmlName) => (req, res) => {
+        if (req.method !== 'GET' && req.method !== 'HEAD') return res.status(405).end();
+        return res.redirect(301, `/${htmlName}${qsFromReq(req)}`);
     };
-    const reactIndex = resolveSpaIndexHtml();
-    if (reactIndex && reactIndex.includes('architectui-react-pro')) {
-        console.warn(
-            '[SPA] Открыт index.html из public/architectui-react-pro/. Для путей ./static при URL /moysklad нужны файлы в public/static/. Выкладывайте целиком `public/` из build:datagon-spa в корень сайта, не только подпапку.'
-        );
-    }
-    if (!reactIndex) {
-        console.warn('[SPA] Нет public/index.html — маршруты /dashboard, /moysklad и т.д. дадут 404. Выполните npm run build:datagon-spa и задеплойте public/.');
-    }
+
     app.get('/', (req, res, next) => {
         if (req.method !== 'GET' && req.method !== 'HEAD') return next();
-        if (!reactIndex) return next();
-        return res.redirect(302, '/dashboard');
+        return res.redirect(302, '/dashboard.html');
     });
 
+    app.get('/dashboard', redirectToDatagonHtml('dashboard.html'));
+    app.get('/my-sites', redirectToDatagonHtml('my-sites.html'));
+    app.get('/my-products', redirectToDatagonHtml('my-products.html'));
+    app.get('/moysklad', redirectToDatagonHtml('moysklad.html'));
+    app.get('/matches', redirectToDatagonHtml('matches.html'));
+    app.get('/matching', redirectToDatagonHtml('matches.html'));
+    app.get('/queue', redirectToDatagonHtml('queue.html'));
+    app.get('/results', redirectToDatagonHtml('results.html'));
+    app.get('/projects', redirectToDatagonHtml('projects.html'));
+    app.get('/processes', redirectToDatagonHtml('processes.html'));
+    app.get('/settings', redirectToDatagonHtml('settings.html'));
+
+    const mapSpaPathToDatagonHtml = (pathname) => {
+        const p = pathname.split('?')[0].replace(/\/$/, '') || '/';
+        const table = {
+            '/': '/dashboard.html',
+            '/dashboard': '/dashboard.html',
+            '/my-sites': '/my-sites.html',
+            '/my-products': '/my-products.html',
+            '/moysklad': '/moysklad.html',
+            '/matches': '/matches.html',
+            '/matching': '/matches.html',
+            '/queue': '/queue.html',
+            '/results': '/results.html',
+            '/projects': '/projects.html',
+            '/processes': '/processes.html',
+            '/settings': '/settings.html',
+        };
+        return table[p] || '/dashboard.html';
+    };
     // Старые закладки с префиксом /architectui-react-pro/…
     app.get(/^\/architectui-react-pro(?=$|\/)/, (req, res, next) => {
         if (req.method !== 'GET' && req.method !== 'HEAD') return next();
         const rest = req.path.slice('/architectui-react-pro'.length) || '/';
-        const pathname = rest === '/' ? '/dashboard' : rest;
         const qs = req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : '';
-        return res.redirect(301, pathname + qs);
+        const target = mapSpaPathToDatagonHtml(rest === '/' ? '/dashboard' : rest);
+        return res.redirect(301, target + qs);
     });
 
-    // Старые ссылки вида /mysites.html — в SPA маршрут /my-sites (путь с .html иначе не попадает в SPA fallback)
+    // Старые закладки /vanilla/*.html
+    app.get(/^\/vanilla\/([^/]+\.html)$/i, (req, res, next) => {
+        if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+        let name = String(req.path || '').replace(/^\/vanilla\//i, '');
+        if (name.toLowerCase() === 'index.html') name = 'sections.html';
+        const qs = req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : '';
+        return res.redirect(301, '/' + name + qs);
+    });
+
     app.get('/mysites.html', (req, res) => {
         const qs = req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : '';
-        return res.redirect(301, '/my-sites' + qs);
+        return res.redirect(301, '/my-sites.html' + qs);
     });
 
-    // Частая опечатка: /my-product → React Router знает только /my-products
     app.get(/^\/my-product\/?$/, (req, res) => {
         const qs = req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : '';
-        return res.redirect(301, '/my-products' + qs);
+        return res.redirect(301, '/my-products.html' + qs);
     });
 
     app.use(express.static(path.join(__dirname, 'public')));
-
-    const sendReactSpa = (req, res, next) => {
-        if (!reactIndex) return next();
-        return res.sendFile(reactIndex);
-    };
-    // Явные корневые пути SPA (надёжнее, чем только /{*path}, если path-to-regexp режет часть путей)
-    app.get(
-        [
-            '/dashboard',
-            '/my-sites',
-            '/my-products',
-            '/moysklad',
-            '/matches',
-            '/matching',
-            '/queue',
-            '/results',
-            '/projects',
-            '/processes',
-            '/settings',
-        ],
-        sendReactSpa
-    );
-
-    // SPA fallback (Express 5 / path-to-regexp v8: не использовать '*' — см. /{*path})
-    app.get('/{*path}', (req, res, next) => {
-        if (req.method !== 'GET' && req.method !== 'HEAD') return next();
-        if (req.path.startsWith('/api')) return next();
-        if (/\.[a-zA-Z0-9]+$/.test(req.path)) return next();
-        if (!reactIndex) return next();
-        return res.sendFile(reactIndex);
-    });
 
     app.listen(PORT, () => {
         console.log(`[Server] Running on port ${PORT}`);

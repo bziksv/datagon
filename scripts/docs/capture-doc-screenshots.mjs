@@ -12,7 +12,7 @@
  *   DOCS_USER=admin DOCS_PASSWORD='ваш_пароль' npm run docs:capture-screenshots
  *
  * Переменные окружения:
- *   DOCS_BASE_URL  — по умолчанию http://127.0.0.1:3003
+ *   DOCS_BASE_URL  — по умолчанию http://127.0.0.1:3000
  *   DOCS_USER      — логин (обязателен для страниц приложения под auth)
  *   DOCS_PASSWORD  — пароль
  *   DOCS_VIEWPORT  — ширина окна, по умолчанию 1400
@@ -26,23 +26,23 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '../..');
 const outDir = path.join(root, 'public', 'docs', 'screenshots');
 
-const baseUrl = (process.env.DOCS_BASE_URL || 'http://127.0.0.1:3003').replace(/\/$/, '');
+const baseUrl = (process.env.DOCS_BASE_URL || 'http://127.0.0.1:3000').replace(/\/$/, '');
 const user = process.env.DOCS_USER || '';
 const password = process.env.DOCS_PASSWORD || '';
 const viewportW = Math.max(900, parseInt(process.env.DOCS_VIEWPORT || '1400', 10) || 1400);
 
 const targets = [
     { file: 'manual.png', path: '/docs/manual.html', auth: false },
-    { file: 'dashboard.png', path: '/dashboard', auth: true },
-    { file: 'queue.png', path: '/queue', auth: true },
-    { file: 'mysites.png', path: '/my-sites', auth: true },
-    { file: 'myproducts.png', path: '/my-products', auth: true },
-    { file: 'moysklad.png', path: '/moysklad', auth: true },
-    { file: 'projects.png', path: '/projects', auth: true },
-    { file: 'results.png', path: '/results', auth: true },
-    { file: 'matches.png', path: '/matches', auth: true },
-    { file: 'processes.png', path: '/processes', auth: true },
-    { file: 'settings.png', path: '/settings', auth: true }
+    { file: 'dashboard.png', path: '/dashboard.html', auth: true },
+    { file: 'queue.png', path: '/queue.html', auth: true },
+    { file: 'mysites.png', path: '/my-sites.html', auth: true },
+    { file: 'myproducts.png', path: '/my-products.html', auth: true },
+    { file: 'moysklad.png', path: '/moysklad.html', auth: true },
+    { file: 'projects.png', path: '/projects.html', auth: true },
+    { file: 'results.png', path: '/results.html', auth: true },
+    { file: 'matches.png', path: '/matches.html', auth: true },
+    { file: 'processes.png', path: '/processes.html', auth: true },
+    { file: 'settings.png', path: '/settings.html', auth: true }
 ];
 
 async function ensurePlaywright() {

@@ -33,7 +33,7 @@
                 </div>
               </div>
               <div class="mt-2">
-                <button type="button" class="btn btn-primary" id="queue-upload-urls"><i class="pe-7s-upload me-1"></i>Загрузить URL</button>
+                <button type="button" class="btn btn-primary" id="queue-upload-urls" data-dg-tooltip="Добавляет URL в очередь выбранного проекта. Нужны: проект и список URL по одному в строке."><i class="pe-7s-upload me-1"></i>Загрузить URL</button>
               </div>
             </div>
           </div>
@@ -44,7 +44,7 @@
                 <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
                 <span>Фильтры и действия</span>
               </div>
-              <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-q-filters-toggle">Свернуть</button>
+              <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-q-filters-toggle" data-dg-tooltip="Сворачивает или разворачивает блок фильтров и действий.">Свернуть</button>
             </div>
             <div class="card-body">
               <div id="dg-q-filters-collapsible">
@@ -129,16 +129,16 @@
                 </div>
               </div>
               <div class="mt-3 d-flex flex-wrap gap-2">
-                <button type="button" class="btn btn-sm btn-primary" id="queue-apply"><i class="pe-7s-search me-1"></i>Применить</button>
-                <button type="button" class="btn btn-sm btn-outline-secondary" id="queue-reset"><i class="pe-7s-broom me-1"></i>Сбросить фильтры</button>
-                <button type="button" class="btn btn-sm btn-outline-primary" id="queue-discovery-start"><i class="pe-7s-compass me-1"></i>Запустить автообход</button>
-                <button type="button" class="btn btn-sm btn-outline-warning" id="queue-discovery-stop"><i class="pe-7s-close-circle me-1"></i>Остановить автообход</button>
-                <button type="button" class="btn btn-sm btn-outline-info" id="queue-status-refresh"><i class="pe-7s-signal me-1"></i>Обновить статус</button>
-                <button type="button" class="btn btn-sm btn-outline-info" id="queue-reset-filtered"><i class="pe-7s-back-2 me-1"></i>Вернуть в очередь (фильтр)</button>
-                <button type="button" class="btn btn-sm btn-outline-success" id="queue-parse-visible"><i class="pe-7s-play me-1"></i>Парсинг видимых</button>
-                <button type="button" class="btn btn-sm btn-outline-warning" id="queue-clear-filtered"><i class="pe-7s-trash me-1"></i>Удалить по фильтрам</button>
-                <button type="button" class="btn btn-sm btn-outline-danger" id="queue-clear-all"><i class="pe-7s-close me-1"></i>Полностью очистить очередь</button>
-                <button type="button" class="btn btn-sm btn-outline-dark" id="queue-copy-link"><i class="pe-7s-link me-1"></i>Скопировать ссылку</button>
+                <button type="button" class="btn btn-sm btn-primary" id="queue-apply" data-dg-tooltip="Применяет текущие фильтры и обновляет таблицу очереди."><i class="pe-7s-search me-1"></i>Применить</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="queue-reset" data-dg-tooltip="Сбрасывает фильтры к значениям по умолчанию и перезагружает очередь."><i class="pe-7s-broom me-1"></i>Сбросить фильтры</button>
+                <button type="button" class="btn btn-sm btn-outline-primary" id="queue-discovery-start" data-dg-tooltip="Запускает автообход URL. Нужен конкретный проект (не «Все проекты»)."><i class="pe-7s-compass me-1"></i>Запустить автообход</button>
+                <button type="button" class="btn btn-sm btn-outline-warning" id="queue-discovery-stop" data-dg-tooltip="Останавливает активный автообход URL для выбранного проекта."><i class="pe-7s-close-circle me-1"></i>Остановить автообход</button>
+                <button type="button" class="btn btn-sm btn-outline-info" id="queue-status-refresh" data-dg-tooltip="Обновляет статус автообхода и счетчики по выбранному проекту."><i class="pe-7s-signal me-1"></i>Обновить статус</button>
+                <button type="button" class="btn btn-sm btn-outline-info" id="queue-reset-filtered" data-dg-tooltip="Возвращает в pending страницы, попавшие под текущие фильтры."><i class="pe-7s-back-2 me-1"></i>Вернуть в очередь (фильтр)</button>
+                <button type="button" class="btn btn-sm btn-outline-success" id="queue-parse-visible" data-dg-tooltip="Ставит в парсинг страницы, видимые по текущим фильтрам."><i class="pe-7s-play me-1"></i>Парсинг видимых</button>
+                <button type="button" class="btn btn-sm btn-outline-warning" id="queue-clear-filtered" data-dg-tooltip="Удаляет из очереди страницы, попавшие под текущие фильтры."><i class="pe-7s-trash me-1"></i>Удалить по фильтрам</button>
+                <button type="button" class="btn btn-sm btn-outline-danger" id="queue-clear-all" data-dg-tooltip="Полностью очищает очередь проекта/системы. Действие необратимо."><i class="pe-7s-close me-1"></i>Полностью очистить очередь</button>
+                <button type="button" class="btn btn-sm btn-outline-dark" id="queue-copy-link" data-dg-tooltip="Копирует текущий URL страницы вместе с фильтрами и сортировкой."><i class="pe-7s-link me-1"></i>Скопировать ссылку</button>
               </div>
               <p class="small text-muted mt-2 mb-0">
                 <b>Автообход URL:</b> читает <code>robots.txt</code>, затем <code>Sitemap:</code> и внутренние ссылки. Новые URL пишутся в <code>Sitemap</code>, после завершения переводятся в <code>pending</code>.
@@ -154,25 +154,41 @@
               <span>Текущая очередь</span>
             </div>
             <div class="card-body">
-              <div class="table-responsive datagon-my-products-table-wrap">
-                <table class="table table-hover table-striped mb-0 datagon-my-products-table">
-                  <thead>
-                    <tr>
-                      <th style="cursor:pointer" data-q-sort="id">ID</th>
-                      <th style="cursor:pointer" data-q-sort="project_id">Проект</th>
-                      <th style="cursor:pointer" data-q-sort="page_type">Тип</th>
-                      <th style="cursor:pointer" data-q-sort="url">URL</th>
-                      <th style="cursor:pointer" data-q-sort="added_from">Добавлено</th>
-                      <th style="cursor:pointer" data-q-sort="added_at">Дата добавления</th>
-                      <th style="cursor:pointer" data-q-sort="status">Статус</th>
-                      <th style="cursor:pointer" data-q-sort="parsed_at">Дата парсинга</th>
-                      <th>Сопоставление</th>
-                      <th>Ошибка</th>
-                      <th>Действия</th>
-                    </tr>
-                  </thead>
-                  <tbody id="dg-q-tbody"></tbody>
-                </table>
+              <div class="datagon-columns-toolbox mb-2">
+                <div class="columns-top">
+                  <button type="button" class="btn btn-sm" id="dg-q-columns-toggle" data-dg-tooltip="Открывает панель управления видимостью столбцов таблицы.">🧩 Столбцы</button>
+                  <div class="columns-title">Включение/выключение видимых столбцов:</div>
+                </div>
+                <div class="datagon-columns-panel" id="dg-q-columns-panel">
+                  <div class="columns-actions mb-2">
+                    <button type="button" class="btn btn-sm" id="dg-q-columns-all" data-dg-tooltip="Показывает все столбцы таблицы.">Выделить все</button>
+                    <button type="button" class="btn btn-sm" id="dg-q-columns-none" data-dg-tooltip="Скрывает все столбцы, кроме минимально необходимого.">Снять все</button>
+                    <button type="button" class="btn btn-sm" id="dg-q-columns-default" data-dg-tooltip="Возвращает набор столбцов по умолчанию.">По умолчанию</button>
+                  </div>
+                  <div id="dg-q-columns-list" class="columns-grid"></div>
+                </div>
+              </div>
+              <div style="width:100%;max-width:100%;overflow-x:auto;overflow-y:visible;-webkit-overflow-scrolling:touch">
+                <div class="table-responsive datagon-my-products-table-wrap" style="display:block;width:100%;max-width:100%;min-width:0;overflow:visible;position:relative">
+                  <table id="dg-q-main-table" class="table table-hover table-striped mb-0 datagon-my-products-table" style="width:max-content;min-width:1600px;max-width:none;table-layout:fixed;border-collapse:separate;border-spacing:0">
+                    <thead>
+                      <tr>
+                        <th style="cursor:pointer" data-q-sort="id">ID</th>
+                        <th style="cursor:pointer" data-q-sort="project_id">Проект</th>
+                        <th style="cursor:pointer" data-q-sort="page_type">Тип</th>
+                        <th style="cursor:pointer" data-q-sort="url">URL</th>
+                        <th style="cursor:pointer" data-q-sort="added_from">Добавлено</th>
+                        <th style="cursor:pointer" data-q-sort="added_at">Дата добавления</th>
+                        <th style="cursor:pointer" data-q-sort="status">Статус</th>
+                        <th style="cursor:pointer" data-q-sort="parsed_at">Дата парсинга</th>
+                        <th>Сопоставление</th>
+                        <th>Ошибка</th>
+                        <th>Действия</th>
+                      </tr>
+                    </thead>
+                    <tbody id="dg-q-tbody"></tbody>
+                  </table>
+                </div>
               </div>
               <div class="mt-2 d-flex justify-content-between align-items-center">
                 <div class="d-flex align-items-center gap-2">
@@ -185,8 +201,8 @@
                   </select>
                 </div>
                 <div class="btn-group" role="group">
-                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-q-prev">Назад</button>
-                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-q-next">Вперед</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-q-prev" data-dg-tooltip="Переход на предыдущую страницу очереди.">Назад</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-q-next" data-dg-tooltip="Переход на следующую страницу очереди.">Вперед</button>
                 </div>
               </div>
               <p class="text-muted mb-0 mt-2" id="dg-q-table-hint">Всего: 0</p>

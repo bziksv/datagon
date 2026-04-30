@@ -58,13 +58,8 @@ cd "$DEPLOY_ROOT"
 echo "npm install (корень)..."
 npm install --omit=dev
 
-if [[ -d architectui-react-pro ]]; then
-  echo "npm ci (architectui-react-pro)..."
-  (cd architectui-react-pro && npm ci --legacy-peer-deps)
-fi
-
-echo "Сборка React в public/architectui-react-pro/..."
-npm run build:datagon-spa
+echo "Сборка vanilla в public/vanilla..."
+npm run sync:vanilla-public
 
 echo "Перезапуск pm2 ${PM2_APP}..."
 pm2 restart "$PM2_APP"

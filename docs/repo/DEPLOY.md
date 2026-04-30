@@ -10,64 +10,30 @@ git commit -m "Your commit message"
 git push origin main
 ```
 
-## 2) Server: код + фронт
+## 2) Server: код + фронт (vanilla)
 
-**Важно:** `npm run build:datagon-spa` на сервере запускает **полную webpack-сборку** CRA — на слабом VPS это даёт **высокую нагрузку**, долгий простой и может **раздувать диск** (кэш npm/webpack, `node_modules`, временные файлы). На проде **предпочтительно собирать на своём ПК** и заливать только готовую папку.
-
-### Вариант A (рекомендуется): сборка на Mac, на сервер только статика
-
-На маке в корне репозитория:
+Фронт — статические страницы **`public/*.html`** (панель), тема Bootstrap/ArchitectUI — **`public/static/css/main.*.css`** и **`public/static/media/`** (лежат в git). После правок в `static-html/vanilla/` соберите HTML в `public/`:
 
 ```bash
-npm run build:datagon-spa
+npm run sync:vanilla-public
 ```
 
-Дальше скопировать на сервер **только** каталог `public/architectui-react-pro/` (rsync/scp/sFTP), например:
-
-```bash
-rsync -avz --delete ./public/architectui-react-pro/ user@server:/var/www/.../p.datagon.ru/public/architectui-react-pro/
-```
-
-На сервере после копирования:
+На сервере (или через `./scripts/deploy-public.sh`):
 
 ```bash
 cd /var/www/p_datagon_ru_usr/data/www/p.datagon.ru
 git pull origin main
 npm install --omit=dev
+npm run sync:vanilla-public
 pm2 restart parser-app
 ```
 
-(Если менялся только фронт и ты уже залил `public/architectui-react-pro/`, иногда достаточно `pm2 restart parser-app`; `git pull` нужен, если обновлялся бэкенд.)
+Панель в браузере: **`https://<домен>/dashboard.html`** (корень `/` редиректит сюда; старые пути `/moysklad`, `/my-products` и т.д. — 301 на `/*.html`; закладки `/vanilla/*.html` — 301 в корень).
 
-### Вариант B: всё на сервере (мощный VPS / понимаете риск)
-
-```bash
-cd /var/www/p_datagon_ru_usr/data/www/p.datagon.ru
-git pull origin main
-npm install --omit=dev
-cd architectui-react-pro && npm ci --legacy-peer-deps && cd ..
-npm run build:datagon-spa
-pm2 restart parser-app
-pm2 status
-```
-
-Если **`architectui-react-pro/build`** уже собран (например, залит архивом с макбука), можно **только копировать** в `public/` без webpack на сервере:
+Проверка статики темы:
 
 ```bash
-SKIP_REACT_BUILD=1 node scripts/build/sync-react-build-to-public.mjs
-pm2 restart parser-app
-```
-
-`build:datagon-spa` без `SKIP_REACT_BUILD` собирает CRA и копирует в `public/architectui-react-pro/`.
-
-### React UI на продакшене
-
-Сервер отдаёт SPA из **`public/architectui-react-pro/`** (статика + fallback на `index.html` для `/architectui-react-pro/...`). После выкладки UI: `https://<домен>/architectui-react-pro/`.
-
-Локально проверить наличие сборки:
-
-```bash
-test -f public/architectui-react-pro/index.html && echo OK
+test -f public/static/css/main.*.css && echo OK
 ```
 
 ## 3) Verify deployed version

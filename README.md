@@ -34,8 +34,7 @@
 
 - `server.js` — запуск приложения, инициализация БД, подключение роутов.
 - `routes/` — серверные API-модули.
-- `public/` — пользовательский интерфейс (legacy HTML/JS и собранный React в `public/architectui-react-pro/`).
-- `architectui-react-pro/` — исходники SPA (CRA), сборка в `public/architectui-react-pro/` через `npm run build:datagon-spa`.
+- `public/` — пользовательский интерфейс: тема ArchitectUI Bootstrap (`public/static/css/main.*.css` + `public/static/media/`), HTML-страницы панели в корне `public/` (`*.html`), редиректы со старых путей `/dashboard`, `/moysklad` и т.д. на те же имена `*.html` (см. `server.js`).
 - `worker.js`, `sync-worker.js` — фоновые скрипты пакетной обработки.
 - `config.js` — порт, доступ к БД, токен МойСклад.
 - `scripts/` — утилиты сборки, скриншотов документации, smoke e2e (см. `scripts/README.md`).
@@ -70,7 +69,7 @@ npm start
 
 После запуска откройте:
 
-- `http://localhost:3000/index.html`
+- `http://localhost:3000/` (редирект на `/dashboard.html`) или сразу `http://localhost:3000/dashboard.html`
 
 ## Первый вход
 
@@ -115,7 +114,7 @@ npm start
 
 Проверьте:
 
-- правильный URL: `http://localhost:3000/index.html`;
+- правильный URL: `http://localhost:3000/dashboard.html` (или корень `/`);
 - что сервер запущен (`npm start`);
 - корректность логина и пароля.
 

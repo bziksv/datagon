@@ -6,31 +6,31 @@
  *   npm install
  *   npm run docs:install-browsers
  *
- * Перед запуском поднимите backend (3000) и dev UI (3003), как в README.
+ * Перед запуском поднимите backend: npm start (порт из config.js, обычно 3000).
  *
  * Переменные окружения:
- *   DATAGON_SMOKE_BASE_URL — по умолчанию http://127.0.0.1:3003
+ *   DATAGON_SMOKE_BASE_URL — по умолчанию http://127.0.0.1:3000
  *   DATAGON_SMOKE_USER / DATAGON_SMOKE_PASSWORD — опционально, для API-входа (как в capture-doc-screenshots)
  */
 
-const baseUrl = (process.env.DATAGON_SMOKE_BASE_URL || 'http://127.0.0.1:3003').replace(/\/$/, '');
+const baseUrl = (process.env.DATAGON_SMOKE_BASE_URL || 'http://127.0.0.1:3000').replace(/\/$/, '');
 const user = process.env.DATAGON_SMOKE_USER || '';
 const password = process.env.DATAGON_SMOKE_PASSWORD || '';
 
 const cases = [
     {
         name: 'my-products',
-        path: '/my-products',
+        path: '/my-products.html',
         mustSee: ['Мои товары', 'Фильтры и действия']
     },
     {
         name: 'moysklad',
-        path: '/moysklad',
+        path: '/moysklad.html',
         mustSee: ['МойСклад', 'Фильтры и действия']
     },
     {
         name: 'matches',
-        path: '/matches',
+        path: '/matches.html',
         mustSee: ['Сопоставление', 'Умный поиск']
     }
 ];
@@ -92,7 +92,7 @@ async function main() {
     });
     const page = await context.newPage();
 
-    const boot = `${baseUrl}/dashboard`;
+    const boot = `${baseUrl}/dashboard.html`;
     await page.goto(boot, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
     if (user && password) {

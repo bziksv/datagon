@@ -6,14 +6,123 @@
   <title>Результаты — Датагон</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <!-- ARCHITECTUI_MAIN_CSS -->
-    <!-- Результаты: стили из ARCHITECTUI_MAIN_CSS -->
+    <!-- Результаты: визуал заголовка таблицы — паритет с dg-ms-table / МойСклад (moysklad.head + тема main.*.css). -->
+  <style>
+    body[data-dg-active-nav="results"] {
+      --dg-res-table-min-width: 2200px;
+    }
+    /* Как «Мои товары» (my-products.head): широкая таблица в горизонтальном скролле внутри карточки, без вылезания */
+    body.datagon-vanilla-body[data-dg-active-nav="results"] .app-main__inner {
+      min-width: 0;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="results"] .datagon-my-products-table-wrap.table-responsive {
+      overflow-x: auto !important;
+      overflow-y: visible !important;
+      max-height: none !important;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="results"] .datagon-my-products-table-wrap.table-responsive,
+    body.datagon-vanilla-body[data-dg-active-nav="results"] .datagon-my-products-table-wrap.table-responsive > table {
+      transform: none !important;
+      filter: none !important;
+      perspective: none !important;
+    }
+    .datagon-columns-toolbox { margin:0 0 10px 0; border:1px solid #e5e7eb; border-radius:8px; background:#fafbfc; padding:8px; }
+    .datagon-columns-toolbox .columns-top { display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; }
+    .datagon-columns-toolbox .columns-title { font-size:12px; color:#6b7280; display:none; }
+    .datagon-columns-toolbox .btn { border-color:#d1d5db !important; box-shadow:none !important; }
+    .datagon-columns-panel { margin-top:8px; border-top:1px dashed #d1d5db; padding-top:8px; display:none; }
+    .datagon-columns-panel.open { display:block; }
+    .datagon-columns-panel .columns-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:6px 10px; }
+    .datagon-columns-panel label { display:inline-flex; align-items:center; gap:6px; font-size:12px; color:#374151; user-select:none; }
+
+    /* fixed — как МойСклад: ресайз колонок; границы как table-bordered + явный цвет (перебиваем .dg-ms-table из main.css) */
+    body.datagon-vanilla-body[data-dg-active-nav="results"] #dg-res-main-table.dg-ms-table {
+      font-size: 0.8rem;
+      line-height: 1.25;
+      font-variant-numeric: tabular-nums;
+      width: max-content;
+      min-width: var(--dg-res-table-min-width);
+      max-width: none;
+      table-layout: fixed;
+      border-collapse: separate !important;
+      border-spacing: 0 !important;
+      border: 1px solid #6c757d !important;
+      --bs-table-border-color: #6c757d;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="results"]
+      #dg-res-main-table.table-bordered
+      > :not(caption)
+      > *
+      > * {
+      border-color: #6c757d !important;
+    }
+    /*
+      Линия под шапкой как base.scss [.datagon-my-products-table[data-dg-sticky='1'] thead th] + нижняя граница темы.
+      #dg-res-main-table перебивает top для fallback-плавающего thead (иначе 60px из темы).
+    */
+    /*
+      Вертикальные разделители между заголовками: при sticky фон соседнего th перекрывает border-right предыдущей ячейки.
+      Внутренние линии — border-left со 2-й колонки; правая граница таблицы — у последнего th (как сетка matches).
+    */
+    body.datagon-vanilla-body[data-dg-active-nav="results"] #dg-res-main-table.dg-ms-table thead th {
+      position: sticky !important;
+      top: var(--dg-table-sticky-top, 60px) !important;
+      z-index: 20 !important;
+      box-sizing: border-box;
+      background: #e9ecef !important;
+      border-right: none !important;
+      border-bottom: 2px solid #495057 !important;
+      vertical-align: middle !important;
+      overflow: visible !important;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="results"] #dg-res-main-table.dg-ms-table thead th:not(:first-child) {
+      border-left: 1px solid #6c757d !important;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="results"] #dg-res-main-table.dg-ms-table thead th:last-child {
+      border-right: 1px solid #6c757d !important;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="results"] #dg-res-main-table.dg-ms-table thead th .dg-res-th-text {
+      display: inline-block;
+      max-width: 100%;
+    }
+    /* Как у МойСклад: узкая зона, без отдельной «стилистики» и без второй линии у границы ячейки */
+    body.datagon-vanilla-body[data-dg-active-nav="results"] #dg-res-main-table thead th .dg-res-resize-handle {
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 8px;
+      height: 100%;
+      cursor: col-resize;
+      z-index: 6;
+      box-sizing: border-box;
+      background: linear-gradient(to right, transparent 47%, #d9dee5 47%, #d9dee5 53%, transparent 53%);
+      opacity: 0.55;
+      touch-action: none;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="results"] #dg-res-main-table thead th:hover .dg-res-resize-handle {
+      opacity: 0.95;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="results"] #dg-res-main-table.dg-ms-table tbody td {
+      vertical-align: middle;
+      overflow-wrap: break-word;
+      word-break: break-word;
+      border-right: 1px solid #adb5bd !important;
+      border-bottom: 1px solid #ced4da !important;
+      background: #fff !important;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="results"] #dg-res-main-table.dg-ms-table tbody.dg-res-tbody-refreshing {
+      opacity: 0.62;
+      pointer-events: none;
+      transition: opacity 0.12s ease-out;
+    }
+  </style>
 
 </head>
 <body class="datagon-vanilla-body" data-dg-active-nav="results">
   <div class="app-container app-theme-white datagon-shell datagon-vanilla-shell fixed-header fixed-sidebar fixed-footer">
     <div class="app-header header-shadow">
       <div class="app-header__logo">
-        <button type="button" class="logo-src datagon-brand" onclick="location.href='/dashboard'" title="Открыть дашборд" style="border:0;background:transparent;padding:0;cursor:pointer">Датагон</button>
+        <button type="button" class="logo-src datagon-brand" onclick="location.href='/dashboard.html'" title="Открыть дашборд" style="border:0;background:transparent;padding:0;cursor:pointer">Датагон</button>
         <div class="header__pane ms-auto">
           <div>
             <button type="button" class="hamburger hamburger--slider dg-toggle-sidebar" aria-label="Свернуть боковую панель" title="Свернуть боковую панель">
@@ -105,7 +214,7 @@
               <div class="dropdown-menu rm-pointers" style="min-width:320px">
                 <div class="dropdown-menu-header mb-0">
                   <div class="dropdown-menu-header-inner bg-secondary">
-                    <div class="menu-header-image opacity-5" style="background-image:url('/vanilla/assets/utils/images/dropdown-header/abstract2.jpg')"></div>
+                    <div class="menu-header-image opacity-5" style="background-image:url('/assets/utils/images/dropdown-header/abstract2.jpg')"></div>
                     <div class="menu-header-content text-white p-3">
                       <h5 class="menu-header-title mb-1">Overview</h5>
                       <h6 class="menu-header-subtitle mb-0 opacity-8">Dropdown menus for everyone</h6>
@@ -140,7 +249,7 @@
               <div class="dropdown-menu dropdown-menu-rounded dropdown-menu-lg rm-pointers">
                 <div class="dropdown-menu-header mb-0">
                   <div class="dropdown-menu-header-inner bg-success">
-                    <div class="menu-header-image opacity-1" style="background-image:url('/vanilla/assets/utils/images/dropdown-header/abstract3.jpg')"></div>
+                    <div class="menu-header-image opacity-1" style="background-image:url('/assets/utils/images/dropdown-header/abstract3.jpg')"></div>
                     <div class="menu-header-content text-start">
                       <h5 class="menu-header-title mb-1">Overview</h5>
                       <h6 class="menu-header-subtitle">Unlimited options</h6>
@@ -244,7 +353,7 @@
                   </div>
                 </div>
                 <div class="p-2">
-                  <a href="/settings" class="btn btn-sm btn-outline-primary w-100">Полные настройки (React)</a>
+                  <a href="/settings.html" class="btn btn-sm btn-outline-primary w-100">Настройки</a>
                 </div>
               </div>
             </div>
@@ -260,7 +369,7 @@
               <div class="dropdown-menu dropdown-menu-xl rm-pointers p-0" style="min-width: 320px">
                 <div class="dropdown-menu-header mb-0">
                   <div class="dropdown-menu-header-inner bg-plum-plate">
-                    <div class="menu-header-image opacity-1" style="background-image:url('/vanilla/assets/utils/images/dropdown-header/abstract4.jpg')"></div>
+                    <div class="menu-header-image opacity-1" style="background-image:url('/assets/utils/images/dropdown-header/abstract4.jpg')"></div>
                     <div class="menu-header-content text-white p-3">
                       <h5 class="menu-header-title mb-1">Grid Dashboard</h5>
                       <h6 class="menu-header-subtitle mb-0 opacity-8">Easy grid navigation inside dropdowns</h6>
@@ -291,7 +400,7 @@
               <div class="dropdown-menu dropdown-menu-xl rm-pointers p-0" style="min-width: 320px">
                 <div class="dropdown-menu-header">
                   <div class="dropdown-menu-header-inner bg-premium-dark">
-                    <div class="menu-header-image" style="background-image:url('/vanilla/assets/utils/images/dropdown-header/abstract4.jpg')"></div>
+                    <div class="menu-header-image" style="background-image:url('/assets/utils/images/dropdown-header/abstract4.jpg')"></div>
                     <div class="menu-header-content text-white">
                       <h5 class="menu-header-title">Пользователи онлайн</h5>
                       <h6 class="menu-header-subtitle">Актуальная активность сессий</h6>
@@ -335,7 +444,7 @@
                     <div class="dropdown-menu dropdown-menu-end rm-pointers dropdown-menu-lg">
                       <div class="dropdown-menu-header">
                         <div class="dropdown-menu-header-inner bg-info">
-                          <div class="menu-header-image opacity-2" style="background-image:url('/vanilla/assets/utils/images/dropdown-header/city3.jpg')"></div>
+                          <div class="menu-header-image opacity-2" style="background-image:url('/assets/utils/images/dropdown-header/city3.jpg')"></div>
                           <div class="menu-header-content text-start">
                             <div class="widget-content p-0">
                               <div class="widget-content-wrapper">
@@ -412,7 +521,7 @@
       <div class="app-sidebar sidebar-shadow">
         <div>
           <div class="app-header__logo">
-            <button type="button" class="logo-src datagon-brand" onclick="location.href='/dashboard'" title="Открыть дашборд" style="border:0;background:transparent;padding:0;cursor:pointer">Датагон</button>
+            <button type="button" class="logo-src datagon-brand" onclick="location.href='/dashboard.html'" title="Открыть дашборд" style="border:0;background:transparent;padding:0;cursor:pointer">Датагон</button>
             <div class="header__pane ms-auto">
               <div>
                 <button type="button" class="hamburger hamburger--slider dg-toggle-sidebar" aria-label="Свернуть боковую панель" title="Свернуть боковую панель">
@@ -442,60 +551,27 @@
               <div class="datagon-nav-shell">
                 <div class="vertical-nav-menu" style="pointer-events:auto;z-index:999;position:relative">
                   <ul class="metismenu-container">
-                    <li class="metismenu-item"><a class="metismenu-link" data-nav="dashboard" href="/vanilla/dashboard.html"><i class="metismenu-icon pe-7s-rocket"></i>Дашборд</a></li>
-                    <li class="metismenu-item"><a class="metismenu-link" data-nav="my-sites" href="/vanilla/my-sites.html"><i class="metismenu-icon pe-7s-global"></i>Мои сайты</a></li>
-                    <li class="metismenu-item"><a class="metismenu-link" data-nav="my-products" href="/vanilla/my-products.html"><i class="metismenu-icon pe-7s-box2"></i>Мои товары</a></li>
-                    <li class="metismenu-item"><a class="metismenu-link" data-nav="moysklad" href="/vanilla/moysklad.html"><i class="metismenu-icon pe-7s-shopbag"></i>МойСклад</a></li>
-                    <li class="metismenu-item"><a class="metismenu-link" data-nav="projects" href="/vanilla/projects.html"><i class="metismenu-icon pe-7s-portfolio"></i>Конкуренты</a></li>
-                    <li class="metismenu-item"><a class="metismenu-link" data-nav="queue" href="/vanilla/queue.html"><i class="metismenu-icon pe-7s-network"></i>Очередь</a></li>
-                    <li class="metismenu-item"><a class="metismenu-link" data-nav="results" href="/vanilla/results.html"><i class="metismenu-icon pe-7s-note2"></i>Результаты</a></li>
-                    <li class="metismenu-item"><a class="metismenu-link" data-nav="matches" href="/vanilla/matches.html"><i class="metismenu-icon pe-7s-link"></i>Сопоставление</a></li>
-                    <li class="metismenu-item"><a class="metismenu-link" data-nav="processes" href="/vanilla/processes.html"><i class="metismenu-icon pe-7s-timer"></i>Логи</a></li>
-                    <li class="metismenu-item"><a class="metismenu-link" data-nav="settings" href="/vanilla/settings.html"><i class="metismenu-icon pe-7s-config"></i>Настройки</a></li>
+                    <li class="metismenu-item"><a class="metismenu-link" data-nav="dashboard" href="/dashboard.html"><i class="metismenu-icon pe-7s-rocket"></i>Дашборд</a></li>
+                    <li class="metismenu-item"><a class="metismenu-link" data-nav="my-sites" href="/my-sites.html"><i class="metismenu-icon pe-7s-global"></i>Мои сайты</a></li>
+                    <li class="metismenu-item"><a class="metismenu-link" data-nav="my-products" href="/my-products.html"><i class="metismenu-icon pe-7s-box2"></i>Мои товары</a></li>
+                    <li class="metismenu-item"><a class="metismenu-link" data-nav="moysklad" href="/moysklad.html"><i class="metismenu-icon pe-7s-shopbag"></i>МойСклад</a></li>
+                    <li class="metismenu-item"><a class="metismenu-link" data-nav="projects" href="/projects.html"><i class="metismenu-icon pe-7s-portfolio"></i>Конкуренты</a></li>
+                    <li class="metismenu-item"><a class="metismenu-link" data-nav="queue" href="/queue.html"><i class="metismenu-icon pe-7s-network"></i>Очередь</a></li>
+                    <li class="metismenu-item"><a class="metismenu-link" data-nav="results" href="/results.html"><i class="metismenu-icon pe-7s-note2"></i>Результаты</a></li>
+                    <li class="metismenu-item"><a class="metismenu-link" data-nav="matches" href="/matches.html"><i class="metismenu-icon pe-7s-link"></i>Сопоставление</a></li>
+                    <li class="metismenu-item"><a class="metismenu-link" data-nav="processes" href="/processes.html"><i class="metismenu-icon pe-7s-timer"></i>Логи</a></li>
+                    <li class="metismenu-item"><a class="metismenu-link" data-nav="settings" href="/settings.html"><i class="metismenu-icon pe-7s-config"></i>Настройки</a></li>
                   </ul>
                 </div>
                 <div class="datagon-html-source-dock">
-                  <button type="button" class="app-sidebar__heading datagon-html-source-toggle d-flex align-items-center justify-content-between" aria-expanded="false" title="Раздел шаблона ArchitectUI (в React-панели)">
+                  <button type="button" class="app-sidebar__heading datagon-html-source-toggle d-flex align-items-center justify-content-between" aria-expanded="false" title="Справочно: структура сайдбара по шаблону ArchitectUI">
                     <span>Исходник HTML</span>
                     <i class="pe-7s-angle-down"></i>
                   </button>
                   <div class="datagon-html-source-panel" hidden>
-                    <div class="vertical-nav-menu">
-                      <h5 class="app-sidebar__heading">Main</h5>
-                      <ul class="metismenu-container">
-                        <li class="metismenu-item"><a class="metismenu-link" href="/dashboards/analytics" target="_blank" rel="noopener"><i class="metismenu-icon pe-7s-rocket"></i>Дашборды</a></li>
-                        <li class="metismenu-item"><a class="metismenu-link" href="/pages/login" target="_blank" rel="noopener"><i class="metismenu-icon pe-7s-browser"></i>Страницы</a></li>
-                        <li class="metismenu-item"><a class="metismenu-link" href="/apps/mailbox" target="_blank" rel="noopener"><i class="metismenu-icon pe-7s-plugin"></i>Приложения</a></li>
-                      </ul>
-
-                      <h5 class="app-sidebar__heading">Components</h5>
-                      <ul class="metismenu-container">
-                        <li class="metismenu-item"><a class="metismenu-link" href="/elements/buttons-standard" target="_blank" rel="noopener"><i class="metismenu-icon pe-7s-diamond"></i>Элементы</a></li>
-                        <li class="metismenu-item"><a class="metismenu-link" href="/components/tabs" target="_blank" rel="noopener"><i class="metismenu-icon pe-7s-car"></i>Компоненты</a></li>
-                        <li class="metismenu-item"><a class="metismenu-link" href="/tables/data-tables" target="_blank" rel="noopener"><i class="metismenu-icon pe-7s-display2"></i>Таблицы</a></li>
-                      </ul>
-
-                      <h5 class="app-sidebar__heading">Widgets</h5>
-                      <ul class="metismenu-container">
-                        <li class="metismenu-item"><a class="metismenu-link" href="/widgets/chart-boxes-1" target="_blank" rel="noopener"><i class="metismenu-icon pe-7s-graph1"></i>Графические блоки</a></li>
-                        <li class="metismenu-item"><a class="metismenu-link" href="/widgets/profile-boxes" target="_blank" rel="noopener"><i class="metismenu-icon pe-7s-display2"></i>Профильные блоки</a></li>
-                        <li class="metismenu-item"><a class="metismenu-link" href="/widgets/content-boxes" target="_blank" rel="noopener"><i class="metismenu-icon pe-7s-plugin"></i>Контентные блоки</a></li>
-                      </ul>
-
-                      <h5 class="app-sidebar__heading">Forms</h5>
-                      <ul class="metismenu-container">
-                        <li class="metismenu-item"><a class="metismenu-link" href="/forms/controls" target="_blank" rel="noopener"><i class="metismenu-icon pe-7s-light"></i>Элементы форм</a></li>
-                        <li class="metismenu-item"><a class="metismenu-link" href="/forms/date-picker" target="_blank" rel="noopener"><i class="metismenu-icon pe-7s-joy"></i>Виджеты форм</a></li>
-                      </ul>
-
-                      <h5 class="app-sidebar__heading">Charts</h5>
-                      <ul class="metismenu-container">
-                        <li class="metismenu-item"><a class="metismenu-link" href="/charts/chartjs" target="_blank" rel="noopener"><i class="metismenu-icon pe-7s-graph1"></i>ChartJS</a></li>
-                        <li class="metismenu-item"><a class="metismenu-link" href="/charts/apex-charts" target="_blank" rel="noopener"><i class="metismenu-icon pe-7s-graph1"></i>Apex</a></li>
-                        <li class="metismenu-item"><a class="metismenu-link" href="/charts/sparklines-1" target="_blank" rel="noopener"><i class="metismenu-icon pe-7s-graph1"></i>Мини-графики</a></li>
-                        <li class="metismenu-item"><a class="metismenu-link" href="/charts/gauges" target="_blank" rel="noopener"><i class="metismenu-icon pe-7s-graph1"></i>Гейджи</a></li>
-                      </ul>
-                    </div>
+                    <p class="text-muted small px-2 py-2 mb-0">
+                      Демо-страницы шаблона ArchitectUI (CRA) из репозитория убраны. Рабочий UI — разделы <a href="/sections.html">список разделов</a> (*.html в корне сайта).
+                    </p>
                   </div>
                 </div>
               </div>
@@ -637,26 +713,52 @@
               <span>Таблица результатов</span>
             </div>
             <div class="card-body">
-              <div class="table-responsive datagon-my-products-table-wrap">
-                <table class="table table-hover table-striped mb-0 datagon-my-products-table">
-                  <thead>
-                    <tr>
-                      <th style="cursor:pointer" data-res-sort="parsed_at">Дата</th>
-                      <th style="cursor:pointer" data-res-sort="project_name">Проект</th>
-                      <th style="cursor:pointer" data-res-sort="product_name">Товар</th>
-                      <th style="cursor:pointer" data-res-sort="sku">SKU</th>
-                      <th>Сопоставление</th>
-                      <th style="cursor:pointer" data-res-sort="page_status">Парсинг</th>
-                      <th style="cursor:pointer" data-res-sort="is_oos">Наличие</th>
-                      <th style="cursor:pointer" data-res-sort="price">Цена</th>
-                      <th style="cursor:pointer" data-res-sort="url">URL</th>
-                      <th>Действия</th>
-                    </tr>
-                  </thead>
-                  <tbody id="dg-res-tbody"></tbody>
-                </table>
+              <div class="datagon-columns-toolbox mb-2">
+                <div class="columns-top">
+                  <button type="button" class="btn btn-sm" id="dg-res-columns-toggle">🧩 Столбцы</button>
+                  <div class="columns-title">Включение/выключение видимых столбцов:</div>
+                </div>
+                <div class="datagon-columns-panel" id="dg-res-columns-panel">
+                  <div class="columns-actions mb-2">
+                    <button type="button" class="btn btn-sm" id="dg-res-columns-all">Выделить все</button>
+                    <button type="button" class="btn btn-sm" id="dg-res-columns-none">Снять все</button>
+                    <button type="button" class="btn btn-sm" id="dg-res-columns-default">По умолчанию</button>
+                  </div>
+                  <div id="dg-res-columns-list" class="columns-grid"></div>
+                </div>
               </div>
-              <div class="mt-2 d-flex justify-content-between align-items-center">
+              <div class="table-responsive datagon-my-products-table-wrap">
+                  <table id="dg-res-main-table" class="table table-hover table-striped table-bordered mb-0 datagon-my-products-table dg-ms-table" data-dg-sticky="1">
+                    <colgroup>
+                      <col class="dg-res-col-0" />
+                      <col class="dg-res-col-1" />
+                      <col class="dg-res-col-2" />
+                      <col class="dg-res-col-3" />
+                      <col class="dg-res-col-4" />
+                      <col class="dg-res-col-5" />
+                      <col class="dg-res-col-6" />
+                      <col class="dg-res-col-7" />
+                      <col class="dg-res-col-8" />
+                      <col class="dg-res-col-9" />
+                    </colgroup>
+                    <thead id="dg-res-thead">
+                      <tr>
+                        <th style="cursor:pointer" data-res-sort="parsed_at" data-res-col-label="Дата"><span class="dg-res-th-text">Дата</span></th>
+                        <th style="cursor:pointer" data-res-sort="project_name" data-res-col-label="Проект"><span class="dg-res-th-text">Проект</span></th>
+                        <th style="cursor:pointer" data-res-sort="product_name" data-res-col-label="Товар"><span class="dg-res-th-text">Товар</span></th>
+                        <th style="cursor:pointer" data-res-sort="sku" data-res-col-label="SKU"><span class="dg-res-th-text">SKU</span></th>
+                        <th data-res-col-label="Сопоставление"><span class="dg-res-th-text">Сопоставление</span></th>
+                        <th style="cursor:pointer" data-res-sort="page_status" data-res-col-label="Парсинг"><span class="dg-res-th-text">Парсинг</span></th>
+                        <th style="cursor:pointer" data-res-sort="is_oos" data-res-col-label="Наличие"><span class="dg-res-th-text">Наличие</span></th>
+                        <th style="cursor:pointer" data-res-sort="price" data-res-col-label="Цена"><span class="dg-res-th-text">Цена</span></th>
+                        <th style="cursor:pointer" data-res-sort="url" data-res-col-label="URL"><span class="dg-res-th-text">URL</span></th>
+                        <th data-res-col-label="Действия"><span class="dg-res-th-text">Действия</span></th>
+                      </tr>
+                    </thead>
+                    <tbody id="dg-res-tbody"></tbody>
+                  </table>
+              </div>
+              <div class="mt-3 d-flex justify-content-between align-items-center">
                 <div class="d-flex align-items-center gap-2">
                   <span class="small text-muted">Показать:</span>
                   <select class="form-select form-select-sm" id="dg-res-limit" style="width:110px">
@@ -754,7 +856,7 @@
                     <div class="dropdown-mega-menu dropdown-mega-menu-sm">
                       <div class="dropdown-menu-header mb-0">
                         <div class="dropdown-menu-header-inner bg-tempting-azure">
-                          <div class="menu-header-image opacity-1" style="background-image:url('/vanilla/assets/utils/images/dropdown-header/city5.jpg')"></div>
+                          <div class="menu-header-image opacity-1" style="background-image:url('/assets/utils/images/dropdown-header/city5.jpg')"></div>
                           <div class="menu-header-content text-dark">
                             <h5 class="menu-header-title">Overview</h5>
                             <h6 class="menu-header-subtitle">Dropdown menus for everyone</h6>
@@ -838,8 +940,36 @@
       var limit = 100;
       var sortBy = "parsed_at";
       var sortDir = "desc";
+      var SORT_STORAGE_VERSION = 1;
       var loading = false;
       var urlDebounce = null;
+      var searchReloadTimer = null;
+      var resultsFetchAbortController = null;
+      var SEARCH_RELOAD_DEBOUNCE_MS = 350;
+      var DEFAULT_VISIBLE_COLS = [true, true, true, true, true, true, true, true, true, true];
+      var visibleCols = DEFAULT_VISIBLE_COLS.slice();
+      var columnWidths = {};
+      var resizeState = null;
+      var RESULTS_CLIENT_MAX_ROWS = 12000;
+      var resultsDatasetCache = {
+        apiKey: null,
+        rawRows: null,
+        serverMode: false,
+      };
+
+      function storageScope() {
+        var userId = window.__DG_USER_ID__ || window.__USER_ID__ || "anon";
+        return String(userId);
+      }
+      function userSortKey() {
+        return "dg_results_sort_v" + SORT_STORAGE_VERSION + "_" + storageScope();
+      }
+      function userVisibleColsKey() {
+        return "dg_results_visible_cols_v3_" + storageScope();
+      }
+      function userColWidthKey() {
+        return "dg_results_col_widths_v4_" + storageScope();
+      }
 
       function fmtDate(v) {
         if (!v) return "-";
@@ -937,6 +1067,38 @@
         var sd = params.get("sort_dir");
         if (sb) sortBy = sb;
         if (sd === "asc" || sd === "desc") sortDir = sd;
+        if (!sb || !sd) {
+          try {
+            var raw = localStorage.getItem(userSortKey());
+            var ls = raw ? JSON.parse(raw) : null;
+            if (ls && ls.sortBy) sortBy = ls.sortBy;
+            if (ls && (ls.sortDir === "asc" || ls.sortDir === "desc")) sortDir = ls.sortDir;
+          } catch (e) {}
+        }
+      }
+
+      function updateSortHeaders() {
+        document.querySelectorAll("#dg-res-thead th").forEach(function (th) {
+          var field = th.getAttribute("data-res-sort");
+          var base = th.getAttribute("data-res-col-label");
+          if (!base) {
+            var sp0 = th.querySelector(".dg-res-th-text");
+            base = String((sp0 && sp0.textContent) || "")
+              .replace(/\s*[↑↓]\s*$/g, "")
+              .trim();
+            if (base) th.setAttribute("data-res-col-label", base);
+          }
+          var span = th.querySelector(".dg-res-th-text");
+          if (!span) {
+            span = document.createElement("span");
+            span.className = "dg-res-th-text";
+            var handleEx = th.querySelector(".dg-res-resize-handle");
+            if (handleEx) th.insertBefore(span, handleEx);
+            else th.appendChild(span);
+          }
+          var suffix = field && field === sortBy ? (sortDir === "asc" ? " ↑" : " ↓") : "";
+          span.textContent = (base || "") + suffix;
+        });
       }
 
       function fillProjects(list) {
@@ -956,11 +1118,13 @@
         return Math.max(1, Math.ceil(total / limit));
       }
 
-      function updateHints() {
+      function updateHints(opt) {
+        opt = opt || {};
+        var suffix = opt.refreshSuffix || "";
         var fh = document.getElementById("dg-res-filters-hint");
         var th = document.getElementById("dg-res-table-hint");
         if (fh) fh.textContent = "Всего записей: " + Number(total || 0).toLocaleString("ru-RU");
-        if (th) th.textContent = "Страница " + page + "/" + pagesCount();
+        if (th) th.textContent = "Страница " + page + "/" + pagesCount() + suffix;
         var prev = document.getElementById("dg-res-prev");
         var next = document.getElementById("dg-res-next");
         if (prev) prev.disabled = page <= 1;
@@ -989,6 +1153,84 @@
         });
       }
 
+      function apiFiltersKey() {
+        return JSON.stringify(readApiFilters());
+      }
+
+      function invalidateResultsDatasetCache() {
+        resultsDatasetCache.apiKey = null;
+        resultsDatasetCache.rawRows = null;
+        resultsDatasetCache.serverMode = false;
+      }
+
+      function buildResultsFetchUrl(off, lim, sb, sd) {
+        var f = readApiFilters();
+        var s = new URLSearchParams({
+          limit: String(lim),
+          offset: String(off),
+          sort_by: String(sb || "parsed_at"),
+          sort_dir: String(sd || "desc"),
+        });
+        Object.keys(f).forEach(function (k) {
+          var v = f[k];
+          if (v === undefined || v === null || v === "" || v === "all") return;
+          s.set(k, String(v));
+        });
+        return "/api/results?" + s.toString();
+      }
+
+      function sortResultsRows(data) {
+        var dir = sortDir === "asc" ? 1 : -1;
+        var field = sortBy;
+        return data.slice().sort(function (a, b) {
+          var cmp = 0;
+          if (field === "parsed_at" || field === "page_parsed_at") {
+            cmp = new Date(a[field] || 0).getTime() - new Date(b[field] || 0).getTime();
+          } else if (field === "price") {
+            cmp = Number(a.price || 0) - Number(b.price || 0);
+          } else if (field === "is_oos") {
+            cmp = Number(a.is_oos ? 1 : 0) - Number(b.is_oos ? 1 : 0);
+          } else {
+            var av;
+            var bv;
+            if (field === "url") {
+              av = String(a.page_url || a.url || "");
+              bv = String(b.page_url || b.url || "");
+            } else {
+              av = String(a[field] != null ? a[field] : "");
+              bv = String(b[field] != null ? b[field] : "");
+            }
+            cmp = av.localeCompare(bv, "ru", { sensitivity: "base" });
+          }
+          if (cmp !== 0) return cmp * dir;
+          return Number(b.id || 0) - Number(a.id || 0);
+        });
+      }
+
+      function applyClientDatasetView() {
+        if (resultsDatasetCache.serverMode || !resultsDatasetCache.rawRows) return false;
+        if (resultsDatasetCache.apiKey !== apiFiltersKey()) return false;
+        var filtered = filterRows(resultsDatasetCache.rawRows.slice());
+        var sorted = sortResultsRows(filtered);
+        total = sorted.length;
+        var start = (page - 1) * limit;
+        rows = sorted.slice(start, start + limit);
+        return true;
+      }
+
+      function tryRenderFromClientCache() {
+        if (resultsDatasetCache.serverMode) return false;
+        if (!resultsDatasetCache.rawRows || resultsDatasetCache.apiKey !== apiFiltersKey()) return false;
+        loading = false;
+        showErr("");
+        var tbodyRefresh = document.getElementById("dg-res-tbody");
+        if (tbodyRefresh) tbodyRefresh.classList.remove("dg-res-tbody-refreshing");
+        applyClientDatasetView();
+        renderTable();
+        syncUrl();
+        return true;
+      }
+
       function showErr(msg) {
         var el = document.getElementById("dg-res-err");
         if (!el) return;
@@ -999,6 +1241,28 @@
         }
         el.style.display = "";
         el.textContent = msg;
+      }
+
+      /* translate на <thead> даёт «пустое» место и съезд шапки; скролл — в .app-main__outer, не window. Режим: только CSS sticky на th + --dg-table-sticky-top из datagon-vanilla.js */
+      function clearResultsTheadTransform() {
+        var thead = document.getElementById("dg-res-thead");
+        if (!thead) return;
+        thead.style.transform = "";
+        thead.style.position = "";
+        thead.style.zIndex = "";
+        thead.style.willChange = "";
+        thead.removeAttribute("data-dg-floating");
+        thead.removeAttribute("data-dg-base-top");
+      }
+
+      function captureResultsFloatingHeaderBase() {
+        clearResultsTheadTransform();
+      }
+
+      function scheduleCaptureResultsFloatingHeaderBase() {
+        requestAnimationFrame(function () {
+          requestAnimationFrame(captureResultsFloatingHeaderBase);
+        });
       }
 
       function renderTable() {
@@ -1013,6 +1277,9 @@
           tdL.textContent = "Загрузка...";
           trL.appendChild(tdL);
           tbody.appendChild(trL);
+          applyStoredColumnWidths();
+          initColumnResizeHandles();
+          scheduleCaptureResultsFloatingHeaderBase();
           return;
         }
         var filtered = filterRows(rows);
@@ -1024,6 +1291,9 @@
           td.textContent = "Нет результатов";
           tr.appendChild(td);
           tbody.appendChild(tr);
+          applyStoredColumnWidths();
+          initColumnResizeHandles();
+          scheduleCaptureResultsFloatingHeaderBase();
           return;
         }
         filtered.forEach(function (r) {
@@ -1137,13 +1407,70 @@
           tr.appendChild(tdAct);
           tbody.appendChild(tr);
         });
+        applyVisibleColumns();
+        applyStoredColumnWidths();
+        initColumnResizeHandles();
       }
 
-      function loadResults() {
+      function loadResults(opts) {
+        opts = opts || {};
+        var showSkeleton = opts.showSkeleton !== false;
+        var forceRefresh = opts.forceRefresh === true;
+        if (searchReloadTimer) {
+          clearTimeout(searchReloadTimer);
+          searchReloadTimer = null;
+        }
+        if (resultsFetchAbortController) {
+          resultsFetchAbortController.abort();
+        }
+        if (forceRefresh) {
+          invalidateResultsDatasetCache();
+        }
+        if (!forceRefresh && tryRenderFromClientCache()) {
+          return;
+        }
+        var key = apiFiltersKey();
+        if (resultsDatasetCache.apiKey !== key) {
+          invalidateResultsDatasetCache();
+        }
+        var tbodyRefresh = document.getElementById("dg-res-tbody");
+        if (tbodyRefresh) tbodyRefresh.classList.remove("dg-res-tbody-refreshing");
+        var controller = new AbortController();
+        resultsFetchAbortController = controller;
         loading = true;
         showErr("");
-        renderTable();
-        fetch(buildUrl(), { credentials: "same-origin" })
+        if (showSkeleton) {
+          renderTable();
+        } else {
+          if (tbodyRefresh) tbodyRefresh.classList.add("dg-res-tbody-refreshing");
+          updateHints({ refreshSuffix: " · обновление…" });
+        }
+
+        function finishServerPage(x) {
+          if (!x.r.ok) throw new Error(x.j.error || "Ошибка загрузки результатов");
+          var data = x.j.data || x.j.rows || [];
+          rows = Array.isArray(data) ? data : [];
+          total = Number(x.j.total || 0);
+          loading = false;
+          if (tbodyRefresh) tbodyRefresh.classList.remove("dg-res-tbody-refreshing");
+          renderTable();
+          syncUrl();
+        }
+
+        function finishClientDataset(acc) {
+          resultsDatasetCache.apiKey = key;
+          resultsDatasetCache.rawRows = acc;
+          resultsDatasetCache.serverMode = false;
+          loading = false;
+          if (tbodyRefresh) tbodyRefresh.classList.remove("dg-res-tbody-refreshing");
+          applyClientDatasetView();
+          renderTable();
+          syncUrl();
+        }
+
+        /* Сначала limit=0: только total + COUNT (без N последовательных чанков по сети). Потом один запрос на весь набор ≤ RESULTS_CLIENT_MAX_ROWS. */
+        var urlProbe = buildResultsFetchUrl(0, 0, "parsed_at", "desc");
+        fetch(urlProbe, { credentials: "same-origin", signal: controller.signal })
           .then(function (r) {
             return r.json().then(function (j) {
               return { r: r, j: j };
@@ -1151,19 +1478,57 @@
           })
           .then(function (x) {
             if (!x.r.ok) throw new Error(x.j.error || "Ошибка загрузки результатов");
-            var data = x.j.data || x.j.rows || [];
-            rows = Array.isArray(data) ? data : [];
-            total = Number(x.j.total || 0);
-            loading = false;
-            renderTable();
-            syncUrl();
+            var totalN = Number(x.j.total || 0);
+
+            if (totalN > RESULTS_CLIENT_MAX_ROWS) {
+              resultsDatasetCache.apiKey = key;
+              resultsDatasetCache.serverMode = true;
+              resultsDatasetCache.rawRows = null;
+              return fetch(buildUrl(), { credentials: "same-origin", signal: controller.signal })
+                .then(function (r2) {
+                  return r2.json().then(function (j2) {
+                    return { r: r2, j: j2 };
+                  });
+                })
+                .then(finishServerPage);
+            }
+
+            if (totalN === 0) {
+              finishClientDataset([]);
+              return;
+            }
+
+            var fullLim = Math.min(totalN, RESULTS_CLIENT_MAX_ROWS);
+            return fetch(buildResultsFetchUrl(0, fullLim, "parsed_at", "desc"), {
+              credentials: "same-origin",
+              signal: controller.signal,
+            })
+              .then(function (r1) {
+                return r1.json().then(function (j1) {
+                  return { r: r1, j: j1 };
+                });
+              })
+              .then(function (xx) {
+                if (!xx.r.ok) throw new Error(xx.j.error || "Ошибка загрузки результатов");
+                var d = xx.j.data || xx.j.rows || [];
+                var full = Array.isArray(d) ? d : [];
+                finishClientDataset(full);
+              });
           })
           .catch(function (e) {
+            if (e.name === "AbortError") return;
             loading = false;
+            if (tbodyRefresh) tbodyRefresh.classList.remove("dg-res-tbody-refreshing");
+            invalidateResultsDatasetCache();
             rows = [];
             total = 0;
             renderTable();
             showErr(e.message || "Не удалось загрузить результаты");
+          })
+          .finally(function () {
+            if (resultsFetchAbortController === controller) {
+              resultsFetchAbortController = null;
+            }
           });
       }
 
@@ -1229,7 +1594,229 @@
           sortDir = "asc";
           page = 1;
         }
-        loadResults();
+        try {
+          localStorage.setItem(userSortKey(), JSON.stringify({ sortBy: sortBy, sortDir: sortDir }));
+        } catch (e) {}
+        updateSortHeaders();
+        if (tryRenderFromClientCache()) return;
+        loadResults({ showSkeleton: false });
+      }
+
+      function getHeaderCells() {
+        var table = document.getElementById("dg-res-main-table");
+        if (!table || !table.tHead || !table.tHead.rows[0]) return [];
+        return Array.prototype.slice.call(table.tHead.rows[0].cells || []);
+      }
+
+      function clearAppliedColumnWidths() {
+        var table = document.getElementById("dg-res-main-table");
+        if (!table || !table.tHead || !table.tHead.rows[0]) return;
+        var rowsList = [table.tHead.rows[0]].concat(
+          Array.prototype.slice.call((table.tBodies[0] && table.tBodies[0].rows) || [])
+        );
+        rowsList.forEach(function (row) {
+          for (var i = 0; i < row.cells.length; i++) {
+            var c = row.cells[i];
+            c.style.width = "";
+            c.style.minWidth = "";
+            c.style.maxWidth = "";
+          }
+        });
+      }
+
+      function applyColumnWidthByIndex(idx, px) {
+        var table = document.getElementById("dg-res-main-table");
+        if (!table) return;
+        var rowsList = [];
+        if (table.tHead && table.tHead.rows && table.tHead.rows[0]) rowsList.push(table.tHead.rows[0]);
+        var bodyRows = Array.prototype.slice.call((table.tBodies[0] && table.tBodies[0].rows) || []);
+        rowsList = rowsList.concat(bodyRows);
+        rowsList.forEach(function (row) {
+          var cell = row.cells[idx];
+          if (!cell || cell.colSpan > 1) return;
+          cell.style.boxSizing = "border-box";
+          cell.style.width = px + "px";
+          cell.style.maxWidth = px + "px";
+          cell.style.minWidth = "0";
+        });
+      }
+
+      function applyStoredColumnWidths() {
+        Object.keys(columnWidths || {}).forEach(function (k) {
+          var idx = Number(k);
+          var px = Number(columnWidths[k]);
+          if (!Number.isFinite(idx) || !Number.isFinite(px) || px < 48) return;
+          applyColumnWidthByIndex(idx, px);
+        });
+      }
+
+      function onResizeMoveResults(e) {
+        if (!resizeState) return;
+        var dx = e.clientX - resizeState.startX;
+        var next = Math.max(48, Math.min(700, Math.round(resizeState.startWidth + dx)));
+        columnWidths[resizeState.colIndex] = next;
+        applyColumnWidthByIndex(resizeState.colIndex, next);
+      }
+
+      function onResizeUpResults() {
+        document.removeEventListener("mousemove", onResizeMoveResults);
+        document.removeEventListener("mouseup", onResizeUpResults);
+        document.removeEventListener("pointermove", onResizeMoveResults);
+        document.removeEventListener("pointerup", onResizeUpResults);
+        document.removeEventListener("pointercancel", onResizeUpResults);
+        if (!resizeState) return;
+        resizeState = null;
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+        try {
+          localStorage.setItem(userColWidthKey(), JSON.stringify(columnWidths || {}));
+        } catch (err) {}
+        scheduleCaptureResultsFloatingHeaderBase();
+      }
+
+      function initColumnResizeHandles() {
+        var headers = getHeaderCells();
+        headers.forEach(function (th, idx) {
+          var old = th.querySelector(".dg-res-resize-handle");
+          if (old) old.remove();
+          if (th.offsetWidth < 8) return;
+          var h = document.createElement("span");
+          h.className = "dg-res-resize-handle";
+          h.setAttribute("role", "separator");
+          h.setAttribute("aria-orientation", "vertical");
+          h.title = "Потяните, чтобы изменить ширину";
+          function beginResize(ev) {
+            if (ev.button != null && ev.button !== 0) return;
+            ev.preventDefault();
+            ev.stopPropagation();
+            var rect = th.getBoundingClientRect();
+            var w = Number(columnWidths[idx] || 0);
+            if (!Number.isFinite(w) || w <= 0) w = Math.round(rect.width || 120);
+            resizeState = { colIndex: idx, startX: ev.clientX, startWidth: w };
+            document.body.style.cursor = "col-resize";
+            document.body.style.userSelect = "none";
+            if (window.PointerEvent) {
+              document.addEventListener("pointermove", onResizeMoveResults);
+              document.addEventListener("pointerup", onResizeUpResults);
+              document.addEventListener("pointercancel", onResizeUpResults);
+            } else {
+              document.addEventListener("mousemove", onResizeMoveResults);
+              document.addEventListener("mouseup", onResizeUpResults);
+            }
+          }
+          if (window.PointerEvent) {
+            h.addEventListener("pointerdown", beginResize);
+          } else {
+            h.addEventListener("mousedown", beginResize);
+          }
+          h.addEventListener("click", function (ev) {
+            ev.stopPropagation();
+          });
+          th.appendChild(h);
+        });
+      }
+
+      function applyVisibleColumns() {
+        var table = document.getElementById("dg-res-main-table");
+        if (!table) return;
+        var cg = table.querySelector("colgroup");
+        var colNodes = cg ? cg.querySelectorAll("col") : [];
+        for (var ci = 0; ci < colNodes.length; ci++) {
+          colNodes[ci].style.visibility = visibleCols[ci] === false ? "collapse" : "";
+        }
+        var rowsList = [];
+        if (table.tHead && table.tHead.rows && table.tHead.rows[0]) rowsList.push(table.tHead.rows[0]);
+        var bodyRows = Array.prototype.slice.call((table.tBodies[0] && table.tBodies[0].rows) || []);
+        rowsList = rowsList.concat(bodyRows);
+        rowsList.forEach(function (row) {
+          for (var i = 0; i < row.cells.length; i++) {
+            row.cells[i].style.display = "";
+            row.cells[i].style.visibility = visibleCols[i] === false ? "collapse" : "";
+          }
+        });
+        scheduleCaptureResultsFloatingHeaderBase();
+      }
+
+      function renderColumnsPanel() {
+        var list = document.getElementById("dg-res-columns-list");
+        if (!list) return;
+        var headers = getHeaderCells();
+        list.innerHTML = "";
+        headers.forEach(function (th, idx) {
+          var label = document.createElement("label");
+          var cb = document.createElement("input");
+          cb.type = "checkbox";
+          cb.checked = visibleCols[idx] !== false;
+          cb.addEventListener("change", function () {
+            visibleCols[idx] = cb.checked;
+            applyVisibleColumns();
+            try {
+              localStorage.setItem(userVisibleColsKey(), JSON.stringify(visibleCols));
+            } catch (e) {}
+          });
+          var txt = document.createElement("span");
+          var panelLabel = th.getAttribute("data-res-col-label");
+          if (!panelLabel) {
+            panelLabel = String(th.textContent || "")
+              .replace(/\s*[↑↓]\s*$/g, "")
+              .trim();
+          }
+          txt.textContent = panelLabel || "Колонка " + (idx + 1);
+          label.appendChild(cb);
+          label.appendChild(txt);
+          list.appendChild(label);
+        });
+      }
+
+      function initColumnsPanel() {
+        try {
+          var rawW = localStorage.getItem(userColWidthKey());
+          var parsedW = rawW ? JSON.parse(rawW) : null;
+          if (parsedW && typeof parsedW === "object") columnWidths = parsedW;
+        } catch (e2) {}
+        try {
+          var rawVisible = localStorage.getItem(userVisibleColsKey());
+          var parsedVisible = rawVisible ? JSON.parse(rawVisible) : null;
+          if (Array.isArray(parsedVisible) && parsedVisible.length) visibleCols = parsedVisible.slice();
+        } catch (e) {}
+        var panel = document.getElementById("dg-res-columns-panel");
+        var toggle = document.getElementById("dg-res-columns-toggle");
+        var allBtn = document.getElementById("dg-res-columns-all");
+        var noneBtn = document.getElementById("dg-res-columns-none");
+        var defBtn = document.getElementById("dg-res-columns-default");
+        if (toggle && panel) {
+          toggle.addEventListener("click", function () {
+            panel.classList.toggle("open");
+          });
+        }
+        if (allBtn) {
+          allBtn.addEventListener("click", function () {
+            visibleCols = getHeaderCells().map(function () { return true; });
+            applyVisibleColumns();
+            renderColumnsPanel();
+          });
+        }
+        if (noneBtn) {
+          noneBtn.addEventListener("click", function () {
+            visibleCols = getHeaderCells().map(function (_, i) { return i === 0; });
+            applyVisibleColumns();
+            renderColumnsPanel();
+          });
+        }
+        if (defBtn) {
+          defBtn.addEventListener("click", function () {
+            visibleCols = DEFAULT_VISIBLE_COLS.slice();
+            columnWidths = {};
+            try {
+              localStorage.removeItem(userColWidthKey());
+            } catch (e3) {}
+            clearAppliedColumnWidths();
+            applyVisibleColumns();
+            renderColumnsPanel();
+            initColumnResizeHandles();
+          });
+        }
+        renderColumnsPanel();
       }
 
       function clearResults() {
@@ -1249,6 +1836,7 @@
           .then(function (x) {
             if (!x.r.ok) throw new Error(x.j.error || "Не удалось очистить");
             alert("История очищена");
+            invalidateResultsDatasetCache();
             loadResults();
           })
           .catch(function (e) {
@@ -1320,7 +1908,8 @@
           .then(function (x) {
             if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Не удалось удалить");
             alert("Запись удалена");
-            loadResults();
+            invalidateResultsDatasetCache();
+            loadResults({ showSkeleton: false });
           })
           .catch(function (e) {
             alert(e.message || String(e));
@@ -1341,13 +1930,22 @@
       document.getElementById("dg-res-f-search").addEventListener("keydown", function (e) {
         if (e.key === "Enter") {
           e.preventDefault();
+          if (searchReloadTimer) {
+            clearTimeout(searchReloadTimer);
+            searchReloadTimer = null;
+          }
           parseSmart();
         }
       });
 
       document.getElementById("dg-res-f-search").addEventListener("input", function () {
         scheduleSyncUrl();
-        loadResults();
+        if (searchReloadTimer) clearTimeout(searchReloadTimer);
+        searchReloadTimer = setTimeout(function () {
+          searchReloadTimer = null;
+          page = 1;
+          loadResults();
+        }, SEARCH_RELOAD_DEBOUNCE_MS);
       });
 
       ["dg-res-f-project", "dg-res-f-matched", "dg-res-f-page_status", "dg-res-f-availability"].forEach(function (id) {
@@ -1361,27 +1959,37 @@
       document.getElementById("dg-res-limit").addEventListener("change", function () {
         limit = Number(this.value) || 100;
         page = 1;
-        loadResults();
+        if (tryRenderFromClientCache()) return;
+        loadResults({ showSkeleton: false });
       });
 
       document.getElementById("dg-res-prev").addEventListener("click", function () {
         if (page > 1) {
           page--;
-          loadResults();
+          if (tryRenderFromClientCache()) return;
+          loadResults({ showSkeleton: false });
         }
       });
       document.getElementById("dg-res-next").addEventListener("click", function () {
         if (page < pagesCount()) {
           page++;
-          loadResults();
+          if (tryRenderFromClientCache()) return;
+          loadResults({ showSkeleton: false });
         }
       });
 
-      document.querySelectorAll("th[data-res-sort]").forEach(function (th) {
-        th.addEventListener("click", function () {
+      (function bindResultsSortHeaderClicks() {
+        var theadSort = document.getElementById("dg-res-thead");
+        if (!theadSort) return;
+        theadSort.addEventListener("click", function (e) {
+          if (e.target && e.target.closest && e.target.closest(".dg-res-resize-handle")) return;
+          var th = e.target.closest ? e.target.closest("th[data-res-sort]") : null;
+          if (!th) return;
+          var label = th.querySelector(".dg-res-th-text");
+          if (label && e.target !== label && !label.contains(e.target)) return;
           onSort(th.getAttribute("data-res-sort"));
         });
-      });
+      })();
 
       [
         "dg-res-tf-product_name",
@@ -1395,9 +2003,11 @@
       ].forEach(function (id) {
         var el = document.getElementById(id);
         el.addEventListener("input", function () {
+          if (tryRenderFromClientCache()) return;
           renderTable();
         });
         el.addEventListener("change", function () {
+          if (tryRenderFromClientCache()) return;
           renderTable();
         });
       });
@@ -1427,11 +2037,18 @@
           try {
             localStorage.setItem(FILTERS_KEY, hidden ? "0" : "1");
           } catch (e) {}
+          scheduleCaptureResultsFloatingHeaderBase();
         });
       })();
 
+      window.addEventListener("resize", function () {
+        captureResultsFloatingHeaderBase();
+      });
+
       loadBaseData().then(function () {
         parseUrlToForm();
+        updateSortHeaders();
+        initColumnsPanel();
         loadResults();
       });
     })();

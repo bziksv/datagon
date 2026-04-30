@@ -21,22 +21,57 @@
       function normalizeWebasystProductUrl(rawUrl, domainRaw, cmsType) {
         var direct = buildSiteUrl(rawUrl);
         var base = buildSiteUrl(domainRaw);
-        if (String(cmsType || "").toLowerCase() !== "webasyst") return direct || base || "";
-        var target = direct || base;
-        if (!target) return "";
-        try {
-          var u = new URL(target);
-          var path = String(u.pathname || "/");
-          if (!path.startsWith("/product/")) {
-            var slug = path.replace(/^\/+/, "").replace(/\/+$/, "");
-            if (slug) u.pathname = "/product/" + slug + "/";
-          } else if (!path.endsWith("/")) {
-            u.pathname = path + "/";
+        var isWebasyst = String(cmsType || "").toLowerCase() === "webasyst";
+        function rewrite(u, allowMultiSegment) {
+          var pathRaw = String(u.pathname || "/");
+          var pathLower = pathRaw.toLowerCase();
+          if (pathLower.indexOf("/webasyst/") >= 0) return null;
+          if (pathLower.startsWith("/search")) return null;
+          if (pathLower.startsWith("/product/")) {
+            if (!pathRaw.endsWith("/")) u.pathname = pathRaw + "/";
+            return u.toString();
           }
+          var slug = pathRaw.replace(/^\/+/, "").replace(/\/+$/, "");
+          if (!slug) return u.toString();
+          if (slug.indexOf("/") >= 0) {
+            if (!allowMultiSegment) return null;
+            var parts = slug.split("/").filter(Boolean);
+            var last = parts[parts.length - 1];
+            if (!last) return u.toString();
+            u.pathname = "/product/" + last + "/";
+            return u.toString();
+          }
+          if (/^(search|cart|checkout|login|my|order|tag|brands?|contact|blog)$/i.test(slug)) return null;
+          u.pathname = "/product/" + slug + "/";
           return u.toString();
-        } catch (e) {
-          return direct || "";
         }
+        if (direct) {
+          try {
+            var u = new URL(direct);
+            var out = rewrite(u, isWebasyst);
+            return out != null ? out : direct;
+          } catch (e) {
+            return direct;
+          }
+        }
+        if (!isWebasyst || !base) return "";
+        try {
+          var u2 = new URL(base);
+          var out2 = rewrite(u2, true);
+          return out2 != null ? out2 : base;
+        } catch (e2) {
+          return base;
+        }
+      }
+      /**
+       * Fallback витрины Shop-Script: если после normalizeWebasystProductUrl URL всё ещё нет —
+       * собираем https://домен/product/{SKU}/ (SKU без символов /, ?, #).
+       */
+      function buildProductPageUrlFromSlug(domainRaw, skuRaw) {
+        var base = buildSiteUrl(domainRaw);
+        var sku = String(skuRaw || "").trim();
+        if (!base || !sku || /[/?#]/.test(sku)) return "";
+        return base.replace(/\/+$/, "") + "/product/" + encodeURIComponent(sku) + "/";
       }
       function buildProductSearchUrl(domainRaw, sku, name) {
         var base = buildSiteUrl(domainRaw);
@@ -387,6 +422,123 @@
         });
       }
 
+      var MATCHES_COL_DEFAULTS = [140, 120, 104, 328, 328, 352];
+      var matchesColWidths = {};
+      var matchesResizeState = null;
+      var matchesResizeGlobalsBound = false;
+
+      function userMatchesColWidthKey() {
+        try {
+          var u = String(localStorage.getItem("currentUser") || "guest").trim() || "guest";
+          return "datagon_matches_col_widths_v1:" + u;
+        } catch (e) {
+          return "datagon_matches_col_widths_v1:guest";
+        }
+      }
+
+      function syncMatchesTableLayoutWidth() {
+        var tbl = document.getElementById("dg-matches-list-table");
+        if (!tbl) return;
+        var sum = 0;
+        for (var i = 0; i < 6; i++) {
+          var w = matchesColWidths[i];
+          if (!Number.isFinite(w) || w <= 0) w = MATCHES_COL_DEFAULTS[i];
+          sum += w;
+        }
+        tbl.style.width = sum + "px";
+        tbl.style.minWidth = sum + "px";
+      }
+
+      function applyMatchesColumnWidth(index, widthPx) {
+        var w = Math.max(60, Math.min(900, Math.round(Number(widthPx) || 0)));
+        if (!Number.isFinite(w) || w <= 0) return;
+        matchesColWidths[index] = w;
+        var col = document.querySelector("#dg-matches-list-table col.dg-matches-col-" + index);
+        if (col) col.style.width = w + "px";
+        syncMatchesTableLayoutWidth();
+      }
+
+      function applyStoredMatchesColWidths() {
+        try {
+          var raw = localStorage.getItem(userMatchesColWidthKey());
+          if (raw) matchesColWidths = JSON.parse(raw) || {};
+        } catch (e) {
+          matchesColWidths = {};
+        }
+        for (var i = 0; i < 6; i++) {
+          if (matchesColWidths[i] != null) applyMatchesColumnWidth(i, matchesColWidths[i]);
+        }
+        syncMatchesTableLayoutWidth();
+      }
+
+      function onMatchesResizeMove(e) {
+        if (!matchesResizeState) return;
+        var delta = e.clientX - matchesResizeState.startX;
+        applyMatchesColumnWidth(matchesResizeState.index, matchesResizeState.startWidth + delta);
+      }
+
+      function onMatchesResizeUp() {
+        if (!matchesResizeState) return;
+        matchesResizeState = null;
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+        try {
+          localStorage.setItem(userMatchesColWidthKey(), JSON.stringify(matchesColWidths || {}));
+        } catch (e) {}
+      }
+
+      function ensureMatchesResizeGlobals() {
+        if (matchesResizeGlobalsBound) return;
+        matchesResizeGlobalsBound = true;
+        document.addEventListener("mousemove", onMatchesResizeMove);
+        document.addEventListener("mouseup", onMatchesResizeUp);
+      }
+
+      function initMatchesColumnResizeHandles() {
+        var row = document.querySelector("#dg-matches-list-table thead tr");
+        if (!row) return;
+        ensureMatchesResizeGlobals();
+        var ths = Array.prototype.slice.call(row.querySelectorAll("th"));
+        ths.forEach(function (th, index) {
+          if (index >= 6) return;
+          if (th.getAttribute("data-dg-matches-resize-ready") === "1") return;
+          th.setAttribute("data-dg-matches-resize-ready", "1");
+          var handle = document.createElement("span");
+          handle.className = "dg-matches-resize-handle";
+          handle.setAttribute("role", "separator");
+          handle.setAttribute("aria-orientation", "vertical");
+          handle.title = "Потяните, чтобы изменить ширину колонки";
+          handle.style.cssText =
+            "position:absolute;top:0;right:0;width:8px;height:100%;cursor:col-resize;z-index:6;" +
+            "background:linear-gradient(to right,transparent 42%,rgba(90,98,104,.45) 50%,transparent 58%);opacity:0.65";
+          handle.addEventListener("mousedown", function (ev) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            var col = document.querySelector("#dg-matches-list-table col.dg-matches-col-" + index);
+            var cur = col && col.style.width ? parseInt(col.style.width, 10) : 0;
+            if (!Number.isFinite(cur) || cur <= 0) cur = MATCHES_COL_DEFAULTS[index];
+            var rect = th.getBoundingClientRect();
+            var w0 = rect && rect.width ? Math.round(rect.width) : cur;
+            matchesResizeState = {
+              index: index,
+              startX: ev.clientX,
+              startWidth: Number(matchesColWidths[index]) > 0 ? Number(matchesColWidths[index]) : w0 || cur,
+            };
+            document.body.style.cursor = "col-resize";
+            document.body.style.userSelect = "none";
+          });
+          handle.addEventListener("click", function (ev) {
+            ev.stopPropagation();
+          });
+          th.appendChild(handle);
+        });
+      }
+
+      function setupMatchesListTableChrome() {
+        applyStoredMatchesColWidths();
+        initMatchesColumnResizeHandles();
+      }
+
       function statusUi(status) {
         if (status === "confirmed") return { icon: "pe-7s-check", badge: "success", label: "Подтверждено" };
         if (status === "rejected") return { icon: "pe-7s-close-circle", badge: "danger", label: "Отклонено" };
@@ -431,6 +583,7 @@
           var cUi = scoreUi(String(m.match_type || "").toLowerCase(), score);
           var myProductUrl =
             normalizeWebasystProductUrl(m.my_product_url || "", m.my_site_domain || "", m.my_site_cms_type || "") ||
+            buildProductPageUrlFromSlug(m.my_site_domain || "", m.my_sku || "") ||
             buildProductSearchUrl(m.my_site_domain || "", m.my_sku || "", m.my_product_name || "");
           var myEditUrl = buildWebasystEditUrl(m.my_site_domain || "", m.my_source_id || "", m.my_site_cms_type || "");
           var competitorUrl = buildSiteUrl(m.competitor_url || m.competitor_domain || "");
@@ -536,7 +689,7 @@
           tr.appendChild(tdComp);
 
           var tdAct = document.createElement("td");
-          tdAct.className = "text-nowrap";
+          tdAct.className = "dg-matches-act-cell";
           var st = String(m.status || "").toLowerCase();
           if (st === "pending") {
             var bOk = document.createElement("button");
@@ -619,7 +772,7 @@
           });
       }
 
-      function loadMatches() {
+      function loadMatches(silent) {
         var mySiteId = document.getElementById("dg-matches-my-site").value;
         if (!mySiteId) {
           state.matches = [];
@@ -627,8 +780,11 @@
           renderMatchesTable();
           return;
         }
-        state.loadingMatches = true;
-        renderMatchesTable();
+        var showLoader = !silent;
+        if (showLoader) {
+          state.loadingMatches = true;
+          renderMatchesTable();
+        }
         var offset = (state.matchesPage - 1) * state.matchesLimit;
         var q = new URLSearchParams({
           my_site_id: mySiteId,
@@ -654,7 +810,7 @@
             state.matchesTotal = 0;
           })
           .then(function () {
-            state.loadingMatches = false;
+            if (showLoader) state.loadingMatches = false;
             renderMatchesTable();
             scheduleSyncUrl();
           });
@@ -687,7 +843,7 @@
             updateJobUi();
             if (json.done && !state.jobDoneReloaded) {
               state.jobDoneReloaded = true;
-              loadMatches();
+              loadMatches(true);
             }
           })
           .catch(function () {});
@@ -834,8 +990,7 @@
           })
           .then(function (x) {
             if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Не удалось обновить статус");
-            alert("Статус обновлен");
-            loadMatches();
+            loadMatches(true);
           })
           .catch(function (e) {
             alert(e.message || "Ошибка обновления статуса");
@@ -958,10 +1113,12 @@
         });
       });
       document.querySelectorAll("th[data-match-sort]").forEach(function (th) {
-        th.addEventListener("click", function () {
+        th.addEventListener("click", function (ev) {
+          if (ev.target && ev.target.closest && ev.target.closest(".dg-matches-resize-handle")) return;
           onSortMatches(th.getAttribute("data-match-sort"));
         });
       });
+      setupMatchesListTableChrome();
 
       Promise.all([
         fetch("/api/my-sites", { credentials: "same-origin" }).then(function (r) {

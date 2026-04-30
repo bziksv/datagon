@@ -6,14 +6,95 @@
   <title>Сопоставление — Датагон</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <!-- ARCHITECTUI_MAIN_CSS -->
-    <!-- Сопоставление: стили из ARCHITECTUI_MAIN_CSS -->
+    <!-- Сопоставление: единая сетка thead/tbody, границы в шапке как в теле, «Действия» с переносом кнопок -->
+  <style>
+    body[data-dg-active-nav="matches"] .app-main__inner {
+      min-width: 0;
+    }
+    body[data-dg-active-nav="matches"] #dg-matches-list-scroll {
+      display: block;
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+      box-sizing: border-box;
+      overflow-x: auto !important;
+      overflow-y: visible !important;
+      -webkit-overflow-scrolling: touch;
+    }
+    body[data-dg-active-nav="matches"] #dg-matches-list-scroll table#dg-matches-list-table.dg-matches-list-table {
+      table-layout: fixed;
+      width: 1472px;
+      min-width: 1472px;
+      max-width: none;
+      border-collapse: separate !important;
+      border-spacing: 0 !important;
+      border: 1px solid #868e96 !important;
+      --bs-table-border-color: #868e96;
+    }
+    body[data-dg-active-nav="matches"] table#dg-matches-list-table col.dg-matches-col-0 { width: 140px; }
+    body[data-dg-active-nav="matches"] table#dg-matches-list-table col.dg-matches-col-1 { width: 120px; }
+    body[data-dg-active-nav="matches"] table#dg-matches-list-table col.dg-matches-col-2 { width: 104px; }
+    body[data-dg-active-nav="matches"] table#dg-matches-list-table col.dg-matches-col-3 { width: 328px; }
+    body[data-dg-active-nav="matches"] table#dg-matches-list-table col.dg-matches-col-4 { width: 328px; }
+    body[data-dg-active-nav="matches"] table#dg-matches-list-table col.dg-matches-col-5 { width: 352px; }
+    body[data-dg-active-nav="matches"] table#dg-matches-list-table.table-bordered > :not(caption) > * > * {
+      border-color: #868e96 !important;
+    }
+    body[data-dg-active-nav="matches"] table#dg-matches-list-table thead th,
+    body[data-dg-active-nav="matches"] table#dg-matches-list-table tbody td {
+      vertical-align: middle;
+      border-right: 1px solid #868e96 !important;
+      border-bottom: 1px solid #868e96 !important;
+      box-sizing: border-box;
+      padding: 0.45rem 0.5rem;
+    }
+    body[data-dg-active-nav="matches"] table#dg-matches-list-table thead th {
+      position: sticky !important;
+      top: var(--dg-table-sticky-top, 60px) !important;
+      background: #e9ecef !important;
+      font-weight: 600;
+      text-align: left;
+      z-index: 21;
+      border-bottom: 2px solid #6c757d !important;
+      box-shadow: none !important;
+    }
+    body[data-dg-active-nav="matches"] table#dg-matches-list-table tbody td {
+      background: #fff !important;
+    }
+    body[data-dg-active-nav="matches"] table#dg-matches-list-table.table-hover tbody tr:hover td {
+      background: #f1f3f5 !important;
+    }
+    body[data-dg-active-nav="matches"] table#dg-matches-list-table .dg-matches-resize-handle {
+      pointer-events: auto;
+    }
+    body[data-dg-active-nav="matches"] table#dg-matches-list-table thead th:nth-child(1),
+    body[data-dg-active-nav="matches"] table#dg-matches-list-table thead th:nth-child(2),
+    body[data-dg-active-nav="matches"] table#dg-matches-list-table thead th:nth-child(3),
+    body[data-dg-active-nav="matches"] table#dg-matches-list-table tbody td:nth-child(1),
+    body[data-dg-active-nav="matches"] table#dg-matches-list-table tbody td:nth-child(2),
+    body[data-dg-active-nav="matches"] table#dg-matches-list-table tbody td:nth-child(3) {
+      text-align: center;
+    }
+    body[data-dg-active-nav="matches"] table#dg-matches-list-table tbody td {
+      overflow-wrap: break-word;
+      word-break: break-word;
+    }
+    body[data-dg-active-nav="matches"] table#dg-matches-list-table tbody td.dg-matches-act-cell {
+      white-space: normal;
+      text-align: left;
+    }
+    body[data-dg-active-nav="matches"] table#dg-matches-list-table tbody td.dg-matches-act-cell .btn {
+      margin-bottom: 0.25rem;
+      margin-right: 0.35rem;
+    }
+  </style>
 
 </head>
 <body class="datagon-vanilla-body" data-dg-active-nav="matches">
   <div class="app-container app-theme-white datagon-shell datagon-vanilla-shell fixed-header fixed-sidebar fixed-footer">
     <div class="app-header header-shadow">
       <div class="app-header__logo">
-        <button type="button" class="logo-src datagon-brand" onclick="location.href='/dashboard'" title="Открыть дашборд" style="border:0;background:transparent;padding:0;cursor:pointer">Датагон</button>
+        <button type="button" class="logo-src datagon-brand" onclick="location.href='/dashboard.html'" title="Открыть дашборд" style="border:0;background:transparent;padding:0;cursor:pointer">Датагон</button>
         <div class="header__pane ms-auto">
           <div>
             <button type="button" class="hamburger hamburger--slider dg-toggle-sidebar" aria-label="Свернуть боковую панель" title="Свернуть боковую панель">
@@ -105,7 +186,7 @@
               <div class="dropdown-menu rm-pointers" style="min-width:320px">
                 <div class="dropdown-menu-header mb-0">
                   <div class="dropdown-menu-header-inner bg-secondary">
-                    <div class="menu-header-image opacity-5" style="background-image:url('/vanilla/assets/utils/images/dropdown-header/abstract2.jpg')"></div>
+                    <div class="menu-header-image opacity-5" style="background-image:url('/assets/utils/images/dropdown-header/abstract2.jpg')"></div>
                     <div class="menu-header-content text-white p-3">
                       <h5 class="menu-header-title mb-1">Overview</h5>
                       <h6 class="menu-header-subtitle mb-0 opacity-8">Dropdown menus for everyone</h6>
@@ -140,7 +221,7 @@
               <div class="dropdown-menu dropdown-menu-rounded dropdown-menu-lg rm-pointers">
                 <div class="dropdown-menu-header mb-0">
                   <div class="dropdown-menu-header-inner bg-success">
-                    <div class="menu-header-image opacity-1" style="background-image:url('/vanilla/assets/utils/images/dropdown-header/abstract3.jpg')"></div>
+                    <div class="menu-header-image opacity-1" style="background-image:url('/assets/utils/images/dropdown-header/abstract3.jpg')"></div>
                     <div class="menu-header-content text-start">
                       <h5 class="menu-header-title mb-1">Overview</h5>
                       <h6 class="menu-header-subtitle">Unlimited options</h6>
@@ -244,7 +325,7 @@
                   </div>
                 </div>
                 <div class="p-2">
-                  <a href="/settings" class="btn btn-sm btn-outline-primary w-100">Полные настройки (React)</a>
+                  <a href="/settings.html" class="btn btn-sm btn-outline-primary w-100">Настройки</a>
                 </div>
               </div>
             </div>
@@ -260,7 +341,7 @@
               <div class="dropdown-menu dropdown-menu-xl rm-pointers p-0" style="min-width: 320px">
                 <div class="dropdown-menu-header mb-0">
                   <div class="dropdown-menu-header-inner bg-plum-plate">
-                    <div class="menu-header-image opacity-1" style="background-image:url('/vanilla/assets/utils/images/dropdown-header/abstract4.jpg')"></div>
+                    <div class="menu-header-image opacity-1" style="background-image:url('/assets/utils/images/dropdown-header/abstract4.jpg')"></div>
                     <div class="menu-header-content text-white p-3">
                       <h5 class="menu-header-title mb-1">Grid Dashboard</h5>
                       <h6 class="menu-header-subtitle mb-0 opacity-8">Easy grid navigation inside dropdowns</h6>
@@ -291,7 +372,7 @@
               <div class="dropdown-menu dropdown-menu-xl rm-pointers p-0" style="min-width: 320px">
                 <div class="dropdown-menu-header">
                   <div class="dropdown-menu-header-inner bg-premium-dark">
-                    <div class="menu-header-image" style="background-image:url('/vanilla/assets/utils/images/dropdown-header/abstract4.jpg')"></div>
+                    <div class="menu-header-image" style="background-image:url('/assets/utils/images/dropdown-header/abstract4.jpg')"></div>
                     <div class="menu-header-content text-white">
                       <h5 class="menu-header-title">Пользователи онлайн</h5>
                       <h6 class="menu-header-subtitle">Актуальная активность сессий</h6>
@@ -335,7 +416,7 @@
                     <div class="dropdown-menu dropdown-menu-end rm-pointers dropdown-menu-lg">
                       <div class="dropdown-menu-header">
                         <div class="dropdown-menu-header-inner bg-info">
-                          <div class="menu-header-image opacity-2" style="background-image:url('/vanilla/assets/utils/images/dropdown-header/city3.jpg')"></div>
+                          <div class="menu-header-image opacity-2" style="background-image:url('/assets/utils/images/dropdown-header/city3.jpg')"></div>
                           <div class="menu-header-content text-start">
                             <div class="widget-content p-0">
                               <div class="widget-content-wrapper">
@@ -412,7 +493,7 @@
       <div class="app-sidebar sidebar-shadow">
         <div>
           <div class="app-header__logo">
-            <button type="button" class="logo-src datagon-brand" onclick="location.href='/dashboard'" title="Открыть дашборд" style="border:0;background:transparent;padding:0;cursor:pointer">Датагон</button>
+            <button type="button" class="logo-src datagon-brand" onclick="location.href='/dashboard.html'" title="Открыть дашборд" style="border:0;background:transparent;padding:0;cursor:pointer">Датагон</button>
             <div class="header__pane ms-auto">
               <div>
                 <button type="button" class="hamburger hamburger--slider dg-toggle-sidebar" aria-label="Свернуть боковую панель" title="Свернуть боковую панель">
@@ -442,60 +523,27 @@
               <div class="datagon-nav-shell">
                 <div class="vertical-nav-menu" style="pointer-events:auto;z-index:999;position:relative">
                   <ul class="metismenu-container">
-                    <li class="metismenu-item"><a class="metismenu-link" data-nav="dashboard" href="/vanilla/dashboard.html"><i class="metismenu-icon pe-7s-rocket"></i>Дашборд</a></li>
-                    <li class="metismenu-item"><a class="metismenu-link" data-nav="my-sites" href="/vanilla/my-sites.html"><i class="metismenu-icon pe-7s-global"></i>Мои сайты</a></li>
-                    <li class="metismenu-item"><a class="metismenu-link" data-nav="my-products" href="/vanilla/my-products.html"><i class="metismenu-icon pe-7s-box2"></i>Мои товары</a></li>
-                    <li class="metismenu-item"><a class="metismenu-link" data-nav="moysklad" href="/vanilla/moysklad.html"><i class="metismenu-icon pe-7s-shopbag"></i>МойСклад</a></li>
-                    <li class="metismenu-item"><a class="metismenu-link" data-nav="projects" href="/vanilla/projects.html"><i class="metismenu-icon pe-7s-portfolio"></i>Конкуренты</a></li>
-                    <li class="metismenu-item"><a class="metismenu-link" data-nav="queue" href="/vanilla/queue.html"><i class="metismenu-icon pe-7s-network"></i>Очередь</a></li>
-                    <li class="metismenu-item"><a class="metismenu-link" data-nav="results" href="/vanilla/results.html"><i class="metismenu-icon pe-7s-note2"></i>Результаты</a></li>
-                    <li class="metismenu-item"><a class="metismenu-link" data-nav="matches" href="/vanilla/matches.html"><i class="metismenu-icon pe-7s-link"></i>Сопоставление</a></li>
-                    <li class="metismenu-item"><a class="metismenu-link" data-nav="processes" href="/vanilla/processes.html"><i class="metismenu-icon pe-7s-timer"></i>Логи</a></li>
-                    <li class="metismenu-item"><a class="metismenu-link" data-nav="settings" href="/vanilla/settings.html"><i class="metismenu-icon pe-7s-config"></i>Настройки</a></li>
+                    <li class="metismenu-item"><a class="metismenu-link" data-nav="dashboard" href="/dashboard.html"><i class="metismenu-icon pe-7s-rocket"></i>Дашборд</a></li>
+                    <li class="metismenu-item"><a class="metismenu-link" data-nav="my-sites" href="/my-sites.html"><i class="metismenu-icon pe-7s-global"></i>Мои сайты</a></li>
+                    <li class="metismenu-item"><a class="metismenu-link" data-nav="my-products" href="/my-products.html"><i class="metismenu-icon pe-7s-box2"></i>Мои товары</a></li>
+                    <li class="metismenu-item"><a class="metismenu-link" data-nav="moysklad" href="/moysklad.html"><i class="metismenu-icon pe-7s-shopbag"></i>МойСклад</a></li>
+                    <li class="metismenu-item"><a class="metismenu-link" data-nav="projects" href="/projects.html"><i class="metismenu-icon pe-7s-portfolio"></i>Конкуренты</a></li>
+                    <li class="metismenu-item"><a class="metismenu-link" data-nav="queue" href="/queue.html"><i class="metismenu-icon pe-7s-network"></i>Очередь</a></li>
+                    <li class="metismenu-item"><a class="metismenu-link" data-nav="results" href="/results.html"><i class="metismenu-icon pe-7s-note2"></i>Результаты</a></li>
+                    <li class="metismenu-item"><a class="metismenu-link" data-nav="matches" href="/matches.html"><i class="metismenu-icon pe-7s-link"></i>Сопоставление</a></li>
+                    <li class="metismenu-item"><a class="metismenu-link" data-nav="processes" href="/processes.html"><i class="metismenu-icon pe-7s-timer"></i>Логи</a></li>
+                    <li class="metismenu-item"><a class="metismenu-link" data-nav="settings" href="/settings.html"><i class="metismenu-icon pe-7s-config"></i>Настройки</a></li>
                   </ul>
                 </div>
                 <div class="datagon-html-source-dock">
-                  <button type="button" class="app-sidebar__heading datagon-html-source-toggle d-flex align-items-center justify-content-between" aria-expanded="false" title="Раздел шаблона ArchitectUI (в React-панели)">
+                  <button type="button" class="app-sidebar__heading datagon-html-source-toggle d-flex align-items-center justify-content-between" aria-expanded="false" title="Справочно: структура сайдбара по шаблону ArchitectUI">
                     <span>Исходник HTML</span>
                     <i class="pe-7s-angle-down"></i>
                   </button>
                   <div class="datagon-html-source-panel" hidden>
-                    <div class="vertical-nav-menu">
-                      <h5 class="app-sidebar__heading">Main</h5>
-                      <ul class="metismenu-container">
-                        <li class="metismenu-item"><a class="metismenu-link" href="/dashboards/analytics" target="_blank" rel="noopener"><i class="metismenu-icon pe-7s-rocket"></i>Дашборды</a></li>
-                        <li class="metismenu-item"><a class="metismenu-link" href="/pages/login" target="_blank" rel="noopener"><i class="metismenu-icon pe-7s-browser"></i>Страницы</a></li>
-                        <li class="metismenu-item"><a class="metismenu-link" href="/apps/mailbox" target="_blank" rel="noopener"><i class="metismenu-icon pe-7s-plugin"></i>Приложения</a></li>
-                      </ul>
-
-                      <h5 class="app-sidebar__heading">Components</h5>
-                      <ul class="metismenu-container">
-                        <li class="metismenu-item"><a class="metismenu-link" href="/elements/buttons-standard" target="_blank" rel="noopener"><i class="metismenu-icon pe-7s-diamond"></i>Элементы</a></li>
-                        <li class="metismenu-item"><a class="metismenu-link" href="/components/tabs" target="_blank" rel="noopener"><i class="metismenu-icon pe-7s-car"></i>Компоненты</a></li>
-                        <li class="metismenu-item"><a class="metismenu-link" href="/tables/data-tables" target="_blank" rel="noopener"><i class="metismenu-icon pe-7s-display2"></i>Таблицы</a></li>
-                      </ul>
-
-                      <h5 class="app-sidebar__heading">Widgets</h5>
-                      <ul class="metismenu-container">
-                        <li class="metismenu-item"><a class="metismenu-link" href="/widgets/chart-boxes-1" target="_blank" rel="noopener"><i class="metismenu-icon pe-7s-graph1"></i>Графические блоки</a></li>
-                        <li class="metismenu-item"><a class="metismenu-link" href="/widgets/profile-boxes" target="_blank" rel="noopener"><i class="metismenu-icon pe-7s-display2"></i>Профильные блоки</a></li>
-                        <li class="metismenu-item"><a class="metismenu-link" href="/widgets/content-boxes" target="_blank" rel="noopener"><i class="metismenu-icon pe-7s-plugin"></i>Контентные блоки</a></li>
-                      </ul>
-
-                      <h5 class="app-sidebar__heading">Forms</h5>
-                      <ul class="metismenu-container">
-                        <li class="metismenu-item"><a class="metismenu-link" href="/forms/controls" target="_blank" rel="noopener"><i class="metismenu-icon pe-7s-light"></i>Элементы форм</a></li>
-                        <li class="metismenu-item"><a class="metismenu-link" href="/forms/date-picker" target="_blank" rel="noopener"><i class="metismenu-icon pe-7s-joy"></i>Виджеты форм</a></li>
-                      </ul>
-
-                      <h5 class="app-sidebar__heading">Charts</h5>
-                      <ul class="metismenu-container">
-                        <li class="metismenu-item"><a class="metismenu-link" href="/charts/chartjs" target="_blank" rel="noopener"><i class="metismenu-icon pe-7s-graph1"></i>ChartJS</a></li>
-                        <li class="metismenu-item"><a class="metismenu-link" href="/charts/apex-charts" target="_blank" rel="noopener"><i class="metismenu-icon pe-7s-graph1"></i>Apex</a></li>
-                        <li class="metismenu-item"><a class="metismenu-link" href="/charts/sparklines-1" target="_blank" rel="noopener"><i class="metismenu-icon pe-7s-graph1"></i>Мини-графики</a></li>
-                        <li class="metismenu-item"><a class="metismenu-link" href="/charts/gauges" target="_blank" rel="noopener"><i class="metismenu-icon pe-7s-graph1"></i>Гейджи</a></li>
-                      </ul>
-                    </div>
+                    <p class="text-muted small px-2 py-2 mb-0">
+                      Демо-страницы шаблона ArchitectUI (CRA) из репозитория убраны. Рабочий UI — разделы <a href="/sections.html">список разделов</a> (*.html в корне сайта).
+                    </p>
                   </div>
                 </div>
               </div>
@@ -591,7 +639,7 @@
             </div>
             <div class="card-body">
               <div class="table-responsive datagon-my-products-table-wrap">
-                <table class="table table-sm table-hover mb-0 datagon-my-products-table">
+                <table class="table table-sm table-hover mb-0 datagon-my-products-table" data-dg-sticky="1">
                   <thead>
                     <tr>
                       <th style="width:40px"><input type="checkbox" id="dg-matches-my-select-all" title="Выбрать все на странице" /></th>
@@ -679,8 +727,16 @@
                   <input type="number" class="form-control" id="dg-matches-tf-conf-max" min="0" max="100" />
                 </div>
               </div>
-              <div class="table-responsive datagon-my-products-table-wrap">
-                <table class="table table-hover table-sm mb-0 datagon-my-products-table">
+              <div id="dg-matches-list-scroll" class="table-responsive datagon-my-products-table-wrap w-100">
+                <table id="dg-matches-list-table" class="table table-hover table-sm table-bordered mb-0 datagon-my-products-table dg-matches-list-table" data-dg-sticky="1">
+                  <colgroup>
+                    <col class="dg-matches-col-0" />
+                    <col class="dg-matches-col-1" />
+                    <col class="dg-matches-col-2" />
+                    <col class="dg-matches-col-3" />
+                    <col class="dg-matches-col-4" />
+                    <col class="dg-matches-col-5" />
+                  </colgroup>
                   <thead>
                     <tr>
                       <th style="cursor:pointer" data-match-sort="status">Статус</th>
@@ -784,7 +840,7 @@
                     <div class="dropdown-mega-menu dropdown-mega-menu-sm">
                       <div class="dropdown-menu-header mb-0">
                         <div class="dropdown-menu-header-inner bg-tempting-azure">
-                          <div class="menu-header-image opacity-1" style="background-image:url('/vanilla/assets/utils/images/dropdown-header/city5.jpg')"></div>
+                          <div class="menu-header-image opacity-1" style="background-image:url('/assets/utils/images/dropdown-header/city5.jpg')"></div>
                           <div class="menu-header-content text-dark">
                             <h5 class="menu-header-title">Overview</h5>
                             <h6 class="menu-header-subtitle">Dropdown menus for everyone</h6>
@@ -881,22 +937,57 @@
       function normalizeWebasystProductUrl(rawUrl, domainRaw, cmsType) {
         var direct = buildSiteUrl(rawUrl);
         var base = buildSiteUrl(domainRaw);
-        if (String(cmsType || "").toLowerCase() !== "webasyst") return direct || base || "";
-        var target = direct || base;
-        if (!target) return "";
-        try {
-          var u = new URL(target);
-          var path = String(u.pathname || "/");
-          if (!path.startsWith("/product/")) {
-            var slug = path.replace(/^\/+/, "").replace(/\/+$/, "");
-            if (slug) u.pathname = "/product/" + slug + "/";
-          } else if (!path.endsWith("/")) {
-            u.pathname = path + "/";
+        var isWebasyst = String(cmsType || "").toLowerCase() === "webasyst";
+        function rewrite(u, allowMultiSegment) {
+          var pathRaw = String(u.pathname || "/");
+          var pathLower = pathRaw.toLowerCase();
+          if (pathLower.indexOf("/webasyst/") >= 0) return null;
+          if (pathLower.startsWith("/search")) return null;
+          if (pathLower.startsWith("/product/")) {
+            if (!pathRaw.endsWith("/")) u.pathname = pathRaw + "/";
+            return u.toString();
           }
+          var slug = pathRaw.replace(/^\/+/, "").replace(/\/+$/, "");
+          if (!slug) return u.toString();
+          if (slug.indexOf("/") >= 0) {
+            if (!allowMultiSegment) return null;
+            var parts = slug.split("/").filter(Boolean);
+            var last = parts[parts.length - 1];
+            if (!last) return u.toString();
+            u.pathname = "/product/" + last + "/";
+            return u.toString();
+          }
+          if (/^(search|cart|checkout|login|my|order|tag|brands?|contact|blog)$/i.test(slug)) return null;
+          u.pathname = "/product/" + slug + "/";
           return u.toString();
-        } catch (e) {
-          return direct || "";
         }
+        if (direct) {
+          try {
+            var u = new URL(direct);
+            var out = rewrite(u, isWebasyst);
+            return out != null ? out : direct;
+          } catch (e) {
+            return direct;
+          }
+        }
+        if (!isWebasyst || !base) return "";
+        try {
+          var u2 = new URL(base);
+          var out2 = rewrite(u2, true);
+          return out2 != null ? out2 : base;
+        } catch (e2) {
+          return base;
+        }
+      }
+      /**
+       * Fallback витрины Shop-Script: если после normalizeWebasystProductUrl URL всё ещё нет —
+       * собираем https://домен/product/{SKU}/ (SKU без символов /, ?, #).
+       */
+      function buildProductPageUrlFromSlug(domainRaw, skuRaw) {
+        var base = buildSiteUrl(domainRaw);
+        var sku = String(skuRaw || "").trim();
+        if (!base || !sku || /[/?#]/.test(sku)) return "";
+        return base.replace(/\/+$/, "") + "/product/" + encodeURIComponent(sku) + "/";
       }
       function buildProductSearchUrl(domainRaw, sku, name) {
         var base = buildSiteUrl(domainRaw);
@@ -1247,6 +1338,123 @@
         });
       }
 
+      var MATCHES_COL_DEFAULTS = [140, 120, 104, 328, 328, 352];
+      var matchesColWidths = {};
+      var matchesResizeState = null;
+      var matchesResizeGlobalsBound = false;
+
+      function userMatchesColWidthKey() {
+        try {
+          var u = String(localStorage.getItem("currentUser") || "guest").trim() || "guest";
+          return "datagon_matches_col_widths_v1:" + u;
+        } catch (e) {
+          return "datagon_matches_col_widths_v1:guest";
+        }
+      }
+
+      function syncMatchesTableLayoutWidth() {
+        var tbl = document.getElementById("dg-matches-list-table");
+        if (!tbl) return;
+        var sum = 0;
+        for (var i = 0; i < 6; i++) {
+          var w = matchesColWidths[i];
+          if (!Number.isFinite(w) || w <= 0) w = MATCHES_COL_DEFAULTS[i];
+          sum += w;
+        }
+        tbl.style.width = sum + "px";
+        tbl.style.minWidth = sum + "px";
+      }
+
+      function applyMatchesColumnWidth(index, widthPx) {
+        var w = Math.max(60, Math.min(900, Math.round(Number(widthPx) || 0)));
+        if (!Number.isFinite(w) || w <= 0) return;
+        matchesColWidths[index] = w;
+        var col = document.querySelector("#dg-matches-list-table col.dg-matches-col-" + index);
+        if (col) col.style.width = w + "px";
+        syncMatchesTableLayoutWidth();
+      }
+
+      function applyStoredMatchesColWidths() {
+        try {
+          var raw = localStorage.getItem(userMatchesColWidthKey());
+          if (raw) matchesColWidths = JSON.parse(raw) || {};
+        } catch (e) {
+          matchesColWidths = {};
+        }
+        for (var i = 0; i < 6; i++) {
+          if (matchesColWidths[i] != null) applyMatchesColumnWidth(i, matchesColWidths[i]);
+        }
+        syncMatchesTableLayoutWidth();
+      }
+
+      function onMatchesResizeMove(e) {
+        if (!matchesResizeState) return;
+        var delta = e.clientX - matchesResizeState.startX;
+        applyMatchesColumnWidth(matchesResizeState.index, matchesResizeState.startWidth + delta);
+      }
+
+      function onMatchesResizeUp() {
+        if (!matchesResizeState) return;
+        matchesResizeState = null;
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+        try {
+          localStorage.setItem(userMatchesColWidthKey(), JSON.stringify(matchesColWidths || {}));
+        } catch (e) {}
+      }
+
+      function ensureMatchesResizeGlobals() {
+        if (matchesResizeGlobalsBound) return;
+        matchesResizeGlobalsBound = true;
+        document.addEventListener("mousemove", onMatchesResizeMove);
+        document.addEventListener("mouseup", onMatchesResizeUp);
+      }
+
+      function initMatchesColumnResizeHandles() {
+        var row = document.querySelector("#dg-matches-list-table thead tr");
+        if (!row) return;
+        ensureMatchesResizeGlobals();
+        var ths = Array.prototype.slice.call(row.querySelectorAll("th"));
+        ths.forEach(function (th, index) {
+          if (index >= 6) return;
+          if (th.getAttribute("data-dg-matches-resize-ready") === "1") return;
+          th.setAttribute("data-dg-matches-resize-ready", "1");
+          var handle = document.createElement("span");
+          handle.className = "dg-matches-resize-handle";
+          handle.setAttribute("role", "separator");
+          handle.setAttribute("aria-orientation", "vertical");
+          handle.title = "Потяните, чтобы изменить ширину колонки";
+          handle.style.cssText =
+            "position:absolute;top:0;right:0;width:8px;height:100%;cursor:col-resize;z-index:6;" +
+            "background:linear-gradient(to right,transparent 42%,rgba(90,98,104,.45) 50%,transparent 58%);opacity:0.65";
+          handle.addEventListener("mousedown", function (ev) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            var col = document.querySelector("#dg-matches-list-table col.dg-matches-col-" + index);
+            var cur = col && col.style.width ? parseInt(col.style.width, 10) : 0;
+            if (!Number.isFinite(cur) || cur <= 0) cur = MATCHES_COL_DEFAULTS[index];
+            var rect = th.getBoundingClientRect();
+            var w0 = rect && rect.width ? Math.round(rect.width) : cur;
+            matchesResizeState = {
+              index: index,
+              startX: ev.clientX,
+              startWidth: Number(matchesColWidths[index]) > 0 ? Number(matchesColWidths[index]) : w0 || cur,
+            };
+            document.body.style.cursor = "col-resize";
+            document.body.style.userSelect = "none";
+          });
+          handle.addEventListener("click", function (ev) {
+            ev.stopPropagation();
+          });
+          th.appendChild(handle);
+        });
+      }
+
+      function setupMatchesListTableChrome() {
+        applyStoredMatchesColWidths();
+        initMatchesColumnResizeHandles();
+      }
+
       function statusUi(status) {
         if (status === "confirmed") return { icon: "pe-7s-check", badge: "success", label: "Подтверждено" };
         if (status === "rejected") return { icon: "pe-7s-close-circle", badge: "danger", label: "Отклонено" };
@@ -1291,6 +1499,7 @@
           var cUi = scoreUi(String(m.match_type || "").toLowerCase(), score);
           var myProductUrl =
             normalizeWebasystProductUrl(m.my_product_url || "", m.my_site_domain || "", m.my_site_cms_type || "") ||
+            buildProductPageUrlFromSlug(m.my_site_domain || "", m.my_sku || "") ||
             buildProductSearchUrl(m.my_site_domain || "", m.my_sku || "", m.my_product_name || "");
           var myEditUrl = buildWebasystEditUrl(m.my_site_domain || "", m.my_source_id || "", m.my_site_cms_type || "");
           var competitorUrl = buildSiteUrl(m.competitor_url || m.competitor_domain || "");
@@ -1396,7 +1605,7 @@
           tr.appendChild(tdComp);
 
           var tdAct = document.createElement("td");
-          tdAct.className = "text-nowrap";
+          tdAct.className = "dg-matches-act-cell";
           var st = String(m.status || "").toLowerCase();
           if (st === "pending") {
             var bOk = document.createElement("button");
@@ -1479,7 +1688,7 @@
           });
       }
 
-      function loadMatches() {
+      function loadMatches(silent) {
         var mySiteId = document.getElementById("dg-matches-my-site").value;
         if (!mySiteId) {
           state.matches = [];
@@ -1487,8 +1696,11 @@
           renderMatchesTable();
           return;
         }
-        state.loadingMatches = true;
-        renderMatchesTable();
+        var showLoader = !silent;
+        if (showLoader) {
+          state.loadingMatches = true;
+          renderMatchesTable();
+        }
         var offset = (state.matchesPage - 1) * state.matchesLimit;
         var q = new URLSearchParams({
           my_site_id: mySiteId,
@@ -1514,7 +1726,7 @@
             state.matchesTotal = 0;
           })
           .then(function () {
-            state.loadingMatches = false;
+            if (showLoader) state.loadingMatches = false;
             renderMatchesTable();
             scheduleSyncUrl();
           });
@@ -1547,7 +1759,7 @@
             updateJobUi();
             if (json.done && !state.jobDoneReloaded) {
               state.jobDoneReloaded = true;
-              loadMatches();
+              loadMatches(true);
             }
           })
           .catch(function () {});
@@ -1694,8 +1906,7 @@
           })
           .then(function (x) {
             if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Не удалось обновить статус");
-            alert("Статус обновлен");
-            loadMatches();
+            loadMatches(true);
           })
           .catch(function (e) {
             alert(e.message || "Ошибка обновления статуса");
@@ -1818,10 +2029,12 @@
         });
       });
       document.querySelectorAll("th[data-match-sort]").forEach(function (th) {
-        th.addEventListener("click", function () {
+        th.addEventListener("click", function (ev) {
+          if (ev.target && ev.target.closest && ev.target.closest(".dg-matches-resize-handle")) return;
           onSortMatches(th.getAttribute("data-match-sort"));
         });
       });
+      setupMatchesListTableChrome();
 
       Promise.all([
         fetch("/api/my-sites", { credentials: "same-origin" }).then(function (r) {

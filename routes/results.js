@@ -6,8 +6,15 @@ module.exports = (db, settings) => {
     router.get('/', async (req, res) => {
         try {
             const { project_id, page_status, search, matched, availability, limit, offset, sort_by, sort_dir } = req.query;
-            const l = parseInt(limit) || (settings.default_limit || 100);
-            const o = parseInt(offset) || 0;
+            let l;
+            if (limit === undefined || limit === null || String(limit).trim() === '') {
+                l = parseInt(String(settings.default_limit || '100'), 10) || 100;
+            } else {
+                const parsed = parseInt(String(limit), 10);
+                l = Number.isFinite(parsed) && parsed >= 0 ? parsed : (parseInt(String(settings.default_limit || '100'), 10) || 100);
+            }
+            l = Math.min(l, 25000);
+            const o = parseInt(offset, 10) || 0;
             const sortDir = String(sort_dir || 'desc').toLowerCase() === 'asc' ? 'ASC' : 'DESC';
             const sortFieldMap = {
                 parsed_at: 'pr.parsed_at',
@@ -120,11 +127,14 @@ module.exports = (db, settings) => {
             
             q += ` ORDER BY ${sortField} ${sortDir}, pr.id DESC LIMIT ? OFFSET ?`; 
             p.push(l, o);
-            
-            const [rows] = await db.query(q, p);
-            const [cnt] = await db.query(qc, pc);
-            
-            res.json({  rows, total: cnt[0].total });
+
+            // Run row fetch and COUNT in parallel — sequential awaits doubled latency on large tables.
+            const [[rows], [cnt]] = await Promise.all([
+                db.query(q, p),
+                db.query(qc, pc),
+            ]);
+
+            res.json({ rows, total: cnt[0].total });
         } catch (e) {
             console.error('Error fetching results:', e);
             res.status(500).json({ error: e.message });

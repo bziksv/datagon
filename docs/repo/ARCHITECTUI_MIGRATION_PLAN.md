@@ -1,10 +1,12 @@
 # Переход Datagon на ArchitectUI React PRO
 
-Цель: поэтапно перенести интерфейс Datagon на `architectui-react-pro` без остановки работы текущего приложения.
+> **Устарело (2026):** CRA `architectui-react-pro` из репозитория удалён; рабочий UI — статические `*.html` в корне `public/`. Ниже — исторический план миграции.
+
+Цель (исторически): поэтапно перенести интерфейс Datagon на React-шаблон без остановки работы текущего приложения.
 
 ## Что считаем источником
 
-- Базовый UI-source-of-truth: `architectui-react-pro/src/**`.
+- ~~Базовый UI-source-of-truth: `architectui-react-pro/src/**`.~~ → сейчас: `static-html/vanilla/**` + `public/static/css/main.*.css`.
 - Текущий Datagon backend/API остается в `server.js` + `routes/**`.
 - На первом этапе переносится только фронтенд-слой.
 

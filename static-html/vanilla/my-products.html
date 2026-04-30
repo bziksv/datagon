@@ -7,7 +7,89 @@
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <!-- ARCHITECTUI_MAIN_CSS -->
     <style>
-    .dg-mp-table { font-size: 0.82rem; font-variant-numeric: tabular-nums; }
+    /* Удержание wide-таблицы: flex min-width:auto иначе тянет layout (дублирует base.scss до пересборки CRA) */
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .app-main__inner {
+      min-width: 0;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .main-card.card > .card-body {
+      min-width: 0;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+    .dg-mp-table { font-size: 0.8rem; line-height: 1.25; font-variant-numeric: tabular-nums; }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .datagon-my-products-table-wrap.table-responsive {
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
+      overflow-x: auto !important;
+      overflow-y: visible !important;
+      max-height: none !important;
+      -webkit-overflow-scrolling: touch;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .datagon-my-products-table-wrap.table-responsive,
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .datagon-my-products-table-wrap.table-responsive > table {
+      transform: none !important;
+      filter: none !important;
+      perspective: none !important;
+    }
+    .datagon-columns-toolbox {
+      margin: 0 0 10px 0;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      background: #fafbfc;
+      padding: 8px;
+    }
+    .datagon-columns-toolbox .columns-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .datagon-columns-toolbox .columns-title {
+      font-size: 12px;
+      color: #6b7280;
+      display: none;
+    }
+    .datagon-columns-toolbox .btn {
+      border-color: #d1d5db !important;
+      box-shadow: none !important;
+    }
+    .datagon-columns-panel {
+      margin-top: 8px;
+      border-top: 1px dashed #d1d5db;
+      padding-top: 8px;
+      display: none;
+    }
+    .datagon-columns-panel.open { display: block; }
+    .datagon-columns-panel .columns-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 6px 10px;
+    }
+    .datagon-columns-panel label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: #374151;
+      user-select: none;
+    }
+    .dg-mp-table thead th {
+      position: sticky !important;
+      top: var(--dg-table-sticky-top, 60px) !important;
+      z-index: 20 !important;
+      background: #ffffff !important;
+      border-right: 1px solid #e6e9ee;
+    }
+    .dg-mp-table tbody td {
+      border-right: 1px solid #f3f5f8;
+    }
+    #mp-main-table .mp-resize-handle {
+      pointer-events: auto;
+    }
   </style>
 
 </head>
@@ -15,7 +97,7 @@
   <div class="app-container app-theme-white datagon-shell datagon-vanilla-shell fixed-header fixed-sidebar fixed-footer">
     <div class="app-header header-shadow">
       <div class="app-header__logo">
-        <button type="button" class="logo-src datagon-brand" onclick="location.href='/dashboard'" title="Открыть дашборд" style="border:0;background:transparent;padding:0;cursor:pointer">Датагон</button>
+        <button type="button" class="logo-src datagon-brand" onclick="location.href='/dashboard.html'" title="Открыть дашборд" style="border:0;background:transparent;padding:0;cursor:pointer">Датагон</button>
         <div class="header__pane ms-auto">
           <div>
             <button type="button" class="hamburger hamburger--slider dg-toggle-sidebar" aria-label="Свернуть боковую панель" title="Свернуть боковую панель">
@@ -107,7 +189,7 @@
               <div class="dropdown-menu rm-pointers" style="min-width:320px">
                 <div class="dropdown-menu-header mb-0">
                   <div class="dropdown-menu-header-inner bg-secondary">
-                    <div class="menu-header-image opacity-5" style="background-image:url('/vanilla/assets/utils/images/dropdown-header/abstract2.jpg')"></div>
+                    <div class="menu-header-image opacity-5" style="background-image:url('/assets/utils/images/dropdown-header/abstract2.jpg')"></div>
                     <div class="menu-header-content text-white p-3">
                       <h5 class="menu-header-title mb-1">Overview</h5>
                       <h6 class="menu-header-subtitle mb-0 opacity-8">Dropdown menus for everyone</h6>
@@ -142,7 +224,7 @@
               <div class="dropdown-menu dropdown-menu-rounded dropdown-menu-lg rm-pointers">
                 <div class="dropdown-menu-header mb-0">
                   <div class="dropdown-menu-header-inner bg-success">
-                    <div class="menu-header-image opacity-1" style="background-image:url('/vanilla/assets/utils/images/dropdown-header/abstract3.jpg')"></div>
+                    <div class="menu-header-image opacity-1" style="background-image:url('/assets/utils/images/dropdown-header/abstract3.jpg')"></div>
                     <div class="menu-header-content text-start">
                       <h5 class="menu-header-title mb-1">Overview</h5>
                       <h6 class="menu-header-subtitle">Unlimited options</h6>
@@ -246,7 +328,7 @@
                   </div>
                 </div>
                 <div class="p-2">
-                  <a href="/settings" class="btn btn-sm btn-outline-primary w-100">Полные настройки (React)</a>
+                  <a href="/settings.html" class="btn btn-sm btn-outline-primary w-100">Настройки</a>
                 </div>
               </div>
             </div>
@@ -262,7 +344,7 @@
               <div class="dropdown-menu dropdown-menu-xl rm-pointers p-0" style="min-width: 320px">
                 <div class="dropdown-menu-header mb-0">
                   <div class="dropdown-menu-header-inner bg-plum-plate">
-                    <div class="menu-header-image opacity-1" style="background-image:url('/vanilla/assets/utils/images/dropdown-header/abstract4.jpg')"></div>
+                    <div class="menu-header-image opacity-1" style="background-image:url('/assets/utils/images/dropdown-header/abstract4.jpg')"></div>
                     <div class="menu-header-content text-white p-3">
                       <h5 class="menu-header-title mb-1">Grid Dashboard</h5>
                       <h6 class="menu-header-subtitle mb-0 opacity-8">Easy grid navigation inside dropdowns</h6>
@@ -293,7 +375,7 @@
               <div class="dropdown-menu dropdown-menu-xl rm-pointers p-0" style="min-width: 320px">
                 <div class="dropdown-menu-header">
                   <div class="dropdown-menu-header-inner bg-premium-dark">
-                    <div class="menu-header-image" style="background-image:url('/vanilla/assets/utils/images/dropdown-header/abstract4.jpg')"></div>
+                    <div class="menu-header-image" style="background-image:url('/assets/utils/images/dropdown-header/abstract4.jpg')"></div>
                     <div class="menu-header-content text-white">
                       <h5 class="menu-header-title">Пользователи онлайн</h5>
                       <h6 class="menu-header-subtitle">Актуальная активность сессий</h6>
@@ -337,7 +419,7 @@
                     <div class="dropdown-menu dropdown-menu-end rm-pointers dropdown-menu-lg">
                       <div class="dropdown-menu-header">
                         <div class="dropdown-menu-header-inner bg-info">
-                          <div class="menu-header-image opacity-2" style="background-image:url('/vanilla/assets/utils/images/dropdown-header/city3.jpg')"></div>
+                          <div class="menu-header-image opacity-2" style="background-image:url('/assets/utils/images/dropdown-header/city3.jpg')"></div>
                           <div class="menu-header-content text-start">
                             <div class="widget-content p-0">
                               <div class="widget-content-wrapper">
@@ -414,7 +496,7 @@
       <div class="app-sidebar sidebar-shadow">
         <div>
           <div class="app-header__logo">
-            <button type="button" class="logo-src datagon-brand" onclick="location.href='/dashboard'" title="Открыть дашборд" style="border:0;background:transparent;padding:0;cursor:pointer">Датагон</button>
+            <button type="button" class="logo-src datagon-brand" onclick="location.href='/dashboard.html'" title="Открыть дашборд" style="border:0;background:transparent;padding:0;cursor:pointer">Датагон</button>
             <div class="header__pane ms-auto">
               <div>
                 <button type="button" class="hamburger hamburger--slider dg-toggle-sidebar" aria-label="Свернуть боковую панель" title="Свернуть боковую панель">
@@ -444,60 +526,27 @@
               <div class="datagon-nav-shell">
                 <div class="vertical-nav-menu" style="pointer-events:auto;z-index:999;position:relative">
                   <ul class="metismenu-container">
-                    <li class="metismenu-item"><a class="metismenu-link" data-nav="dashboard" href="/vanilla/dashboard.html"><i class="metismenu-icon pe-7s-rocket"></i>Дашборд</a></li>
-                    <li class="metismenu-item"><a class="metismenu-link" data-nav="my-sites" href="/vanilla/my-sites.html"><i class="metismenu-icon pe-7s-global"></i>Мои сайты</a></li>
-                    <li class="metismenu-item"><a class="metismenu-link" data-nav="my-products" href="/vanilla/my-products.html"><i class="metismenu-icon pe-7s-box2"></i>Мои товары</a></li>
-                    <li class="metismenu-item"><a class="metismenu-link" data-nav="moysklad" href="/vanilla/moysklad.html"><i class="metismenu-icon pe-7s-shopbag"></i>МойСклад</a></li>
-                    <li class="metismenu-item"><a class="metismenu-link" data-nav="projects" href="/vanilla/projects.html"><i class="metismenu-icon pe-7s-portfolio"></i>Конкуренты</a></li>
-                    <li class="metismenu-item"><a class="metismenu-link" data-nav="queue" href="/vanilla/queue.html"><i class="metismenu-icon pe-7s-network"></i>Очередь</a></li>
-                    <li class="metismenu-item"><a class="metismenu-link" data-nav="results" href="/vanilla/results.html"><i class="metismenu-icon pe-7s-note2"></i>Результаты</a></li>
-                    <li class="metismenu-item"><a class="metismenu-link" data-nav="matches" href="/vanilla/matches.html"><i class="metismenu-icon pe-7s-link"></i>Сопоставление</a></li>
-                    <li class="metismenu-item"><a class="metismenu-link" data-nav="processes" href="/vanilla/processes.html"><i class="metismenu-icon pe-7s-timer"></i>Логи</a></li>
-                    <li class="metismenu-item"><a class="metismenu-link" data-nav="settings" href="/vanilla/settings.html"><i class="metismenu-icon pe-7s-config"></i>Настройки</a></li>
+                    <li class="metismenu-item"><a class="metismenu-link" data-nav="dashboard" href="/dashboard.html"><i class="metismenu-icon pe-7s-rocket"></i>Дашборд</a></li>
+                    <li class="metismenu-item"><a class="metismenu-link" data-nav="my-sites" href="/my-sites.html"><i class="metismenu-icon pe-7s-global"></i>Мои сайты</a></li>
+                    <li class="metismenu-item"><a class="metismenu-link" data-nav="my-products" href="/my-products.html"><i class="metismenu-icon pe-7s-box2"></i>Мои товары</a></li>
+                    <li class="metismenu-item"><a class="metismenu-link" data-nav="moysklad" href="/moysklad.html"><i class="metismenu-icon pe-7s-shopbag"></i>МойСклад</a></li>
+                    <li class="metismenu-item"><a class="metismenu-link" data-nav="projects" href="/projects.html"><i class="metismenu-icon pe-7s-portfolio"></i>Конкуренты</a></li>
+                    <li class="metismenu-item"><a class="metismenu-link" data-nav="queue" href="/queue.html"><i class="metismenu-icon pe-7s-network"></i>Очередь</a></li>
+                    <li class="metismenu-item"><a class="metismenu-link" data-nav="results" href="/results.html"><i class="metismenu-icon pe-7s-note2"></i>Результаты</a></li>
+                    <li class="metismenu-item"><a class="metismenu-link" data-nav="matches" href="/matches.html"><i class="metismenu-icon pe-7s-link"></i>Сопоставление</a></li>
+                    <li class="metismenu-item"><a class="metismenu-link" data-nav="processes" href="/processes.html"><i class="metismenu-icon pe-7s-timer"></i>Логи</a></li>
+                    <li class="metismenu-item"><a class="metismenu-link" data-nav="settings" href="/settings.html"><i class="metismenu-icon pe-7s-config"></i>Настройки</a></li>
                   </ul>
                 </div>
                 <div class="datagon-html-source-dock">
-                  <button type="button" class="app-sidebar__heading datagon-html-source-toggle d-flex align-items-center justify-content-between" aria-expanded="false" title="Раздел шаблона ArchitectUI (в React-панели)">
+                  <button type="button" class="app-sidebar__heading datagon-html-source-toggle d-flex align-items-center justify-content-between" aria-expanded="false" title="Справочно: структура сайдбара по шаблону ArchitectUI">
                     <span>Исходник HTML</span>
                     <i class="pe-7s-angle-down"></i>
                   </button>
                   <div class="datagon-html-source-panel" hidden>
-                    <div class="vertical-nav-menu">
-                      <h5 class="app-sidebar__heading">Main</h5>
-                      <ul class="metismenu-container">
-                        <li class="metismenu-item"><a class="metismenu-link" href="/dashboards/analytics" target="_blank" rel="noopener"><i class="metismenu-icon pe-7s-rocket"></i>Дашборды</a></li>
-                        <li class="metismenu-item"><a class="metismenu-link" href="/pages/login" target="_blank" rel="noopener"><i class="metismenu-icon pe-7s-browser"></i>Страницы</a></li>
-                        <li class="metismenu-item"><a class="metismenu-link" href="/apps/mailbox" target="_blank" rel="noopener"><i class="metismenu-icon pe-7s-plugin"></i>Приложения</a></li>
-                      </ul>
-
-                      <h5 class="app-sidebar__heading">Components</h5>
-                      <ul class="metismenu-container">
-                        <li class="metismenu-item"><a class="metismenu-link" href="/elements/buttons-standard" target="_blank" rel="noopener"><i class="metismenu-icon pe-7s-diamond"></i>Элементы</a></li>
-                        <li class="metismenu-item"><a class="metismenu-link" href="/components/tabs" target="_blank" rel="noopener"><i class="metismenu-icon pe-7s-car"></i>Компоненты</a></li>
-                        <li class="metismenu-item"><a class="metismenu-link" href="/tables/data-tables" target="_blank" rel="noopener"><i class="metismenu-icon pe-7s-display2"></i>Таблицы</a></li>
-                      </ul>
-
-                      <h5 class="app-sidebar__heading">Widgets</h5>
-                      <ul class="metismenu-container">
-                        <li class="metismenu-item"><a class="metismenu-link" href="/widgets/chart-boxes-1" target="_blank" rel="noopener"><i class="metismenu-icon pe-7s-graph1"></i>Графические блоки</a></li>
-                        <li class="metismenu-item"><a class="metismenu-link" href="/widgets/profile-boxes" target="_blank" rel="noopener"><i class="metismenu-icon pe-7s-display2"></i>Профильные блоки</a></li>
-                        <li class="metismenu-item"><a class="metismenu-link" href="/widgets/content-boxes" target="_blank" rel="noopener"><i class="metismenu-icon pe-7s-plugin"></i>Контентные блоки</a></li>
-                      </ul>
-
-                      <h5 class="app-sidebar__heading">Forms</h5>
-                      <ul class="metismenu-container">
-                        <li class="metismenu-item"><a class="metismenu-link" href="/forms/controls" target="_blank" rel="noopener"><i class="metismenu-icon pe-7s-light"></i>Элементы форм</a></li>
-                        <li class="metismenu-item"><a class="metismenu-link" href="/forms/date-picker" target="_blank" rel="noopener"><i class="metismenu-icon pe-7s-joy"></i>Виджеты форм</a></li>
-                      </ul>
-
-                      <h5 class="app-sidebar__heading">Charts</h5>
-                      <ul class="metismenu-container">
-                        <li class="metismenu-item"><a class="metismenu-link" href="/charts/chartjs" target="_blank" rel="noopener"><i class="metismenu-icon pe-7s-graph1"></i>ChartJS</a></li>
-                        <li class="metismenu-item"><a class="metismenu-link" href="/charts/apex-charts" target="_blank" rel="noopener"><i class="metismenu-icon pe-7s-graph1"></i>Apex</a></li>
-                        <li class="metismenu-item"><a class="metismenu-link" href="/charts/sparklines-1" target="_blank" rel="noopener"><i class="metismenu-icon pe-7s-graph1"></i>Мини-графики</a></li>
-                        <li class="metismenu-item"><a class="metismenu-link" href="/charts/gauges" target="_blank" rel="noopener"><i class="metismenu-icon pe-7s-graph1"></i>Гейджи</a></li>
-                      </ul>
-                    </div>
+                    <p class="text-muted small px-2 py-2 mb-0">
+                      Демо-страницы шаблона ArchitectUI (CRA) из репозитория убраны. Рабочий UI — разделы <a href="/sections.html">список разделов</a> (*.html в корне сайта).
+                    </p>
                   </div>
                 </div>
               </div>
@@ -767,23 +816,37 @@
               </div>
             </div>
             <div class="card-body">
+              <div class="datagon-columns-toolbox mb-2">
+                <div class="columns-top">
+                  <button type="button" class="btn btn-sm" id="dg-mp-columns-toggle">🧩 Столбцы</button>
+                  <div class="columns-title">Включение/выключение видимых столбцов:</div>
+                </div>
+                <div class="datagon-columns-panel" id="dg-mp-columns-panel">
+                  <div class="columns-actions mb-2">
+                    <button type="button" class="btn btn-sm" id="dg-mp-columns-all">Выделить все</button>
+                    <button type="button" class="btn btn-sm" id="dg-mp-columns-none">Снять все</button>
+                    <button type="button" class="btn btn-sm" id="dg-mp-columns-default">По умолчанию</button>
+                  </div>
+                  <div id="dg-mp-columns-list" class="columns-grid"></div>
+                </div>
+              </div>
               <div class="table-responsive datagon-my-products-table-wrap">
-                <table class="table table-hover table-striped mb-0 datagon-my-products-table dg-mp-table">
+                <table id="mp-main-table" data-dg-sticky="1" class="table table-hover table-striped mb-0 datagon-my-products-table dg-mp-table" style="width:max-content;min-width:100%;table-layout:fixed;border-collapse:separate;border-spacing:0">
                   <thead>
                     <tr id="mp-thead-row">
-                      <th role="button" data-mp-sort="id" style="cursor:pointer">ID / КОД</th>
-                      <th role="button" data-mp-sort="site" style="cursor:pointer">Сайт</th>
-                      <th role="button" data-mp-sort="sku" style="cursor:pointer">Артикул (SKU)</th>
-                      <th role="button" data-mp-sort="name" style="cursor:pointer">Название</th>
-                      <th role="button" data-mp-sort="price" style="cursor:pointer" class="text-end">Цена</th>
-                      <th role="button" data-mp-sort="dealmed_price" style="cursor:pointer" class="text-end">Цена ДМ</th>
-                      <th role="button" data-mp-sort="medkompleks_price" style="cursor:pointer" class="text-end">Цена МК</th>
-                      <th role="button" data-mp-sort="currency" style="cursor:pointer">Валюта</th>
-                      <th role="button" data-mp-sort="stock" style="cursor:pointer" class="text-end">Остаток</th>
-                      <th role="button" data-mp-sort="status" style="cursor:pointer">Статус</th>
-                      <th role="button" data-mp-sort="updated" style="cursor:pointer">Обновлен</th>
-                      <th>Цена от конкурента</th>
-                      <th>Действия</th>
+                      <th role="button" data-mp-sort="id" class="text-center" style="cursor:pointer">ID / КОД</th>
+                      <th role="button" data-mp-sort="site" class="text-center" style="cursor:pointer">Сайт</th>
+                      <th role="button" data-mp-sort="sku" class="text-center" style="cursor:pointer">Артикул (SKU)</th>
+                      <th role="button" data-mp-sort="name" class="text-center" style="cursor:pointer">Название</th>
+                      <th role="button" data-mp-sort="price" class="text-center" style="cursor:pointer">Цена</th>
+                      <th role="button" data-mp-sort="dealmed_price" class="text-center" style="cursor:pointer">Цена ДМ</th>
+                      <th role="button" data-mp-sort="medkompleks_price" class="text-center" style="cursor:pointer">Цена МК</th>
+                      <th role="button" data-mp-sort="currency" class="text-center" style="cursor:pointer">Валюта</th>
+                      <th role="button" data-mp-sort="stock" class="text-center" style="cursor:pointer">Остаток</th>
+                      <th role="button" data-mp-sort="status" class="text-center" style="cursor:pointer">Статус</th>
+                      <th role="button" data-mp-sort="updated" class="text-center" style="cursor:pointer">Обновлен</th>
+                      <th class="text-center">Цена от конкурента</th>
+                      <th class="text-center">Действия</th>
                     </tr>
                   </thead>
                   <tbody id="dg-tbody"></tbody>
@@ -872,7 +935,7 @@
                     <div class="dropdown-mega-menu dropdown-mega-menu-sm">
                       <div class="dropdown-menu-header mb-0">
                         <div class="dropdown-menu-header-inner bg-tempting-azure">
-                          <div class="menu-header-image opacity-1" style="background-image:url('/vanilla/assets/utils/images/dropdown-header/city5.jpg')"></div>
+                          <div class="menu-header-image opacity-1" style="background-image:url('/assets/utils/images/dropdown-header/city5.jpg')"></div>
                           <div class="menu-header-content text-dark">
                             <h5 class="menu-header-title">Overview</h5>
                             <h6 class="menu-header-subtitle">Dropdown menus for everyone</h6>
@@ -961,6 +1024,24 @@
       var lastFxUpdatedAt = null;
       var siteNameById = {};
       var siteById = {};
+      var DEFAULT_VISIBLE_COLS = [
+        "id",
+        "site",
+        "sku",
+        "name",
+        "price",
+        "dealmed_price",
+        "medkompleks_price",
+        "currency",
+        "stock",
+        "status",
+        "updated",
+        "competitor",
+        "actions",
+      ];
+      var visibleCols = DEFAULT_VISIBLE_COLS.slice();
+      var columnWidths = {};
+      var resizeState = null;
 
       function userSortKey() {
         try {
@@ -1045,6 +1126,8 @@
           gap_max_pct: document.getElementById("mp-f-gap_max_pct").value.trim(),
           usd_to_rub: document.getElementById("mp-f-usd_to_rub").value.trim(),
           eur_to_rub: document.getElementById("mp-f-eur_to_rub").value.trim(),
+          comp_sync_rand_min: document.getElementById("mp-f-comp_min").value.trim(),
+          comp_sync_rand_max: document.getElementById("mp-f-comp_max").value.trim(),
           stock_min: document.getElementById("mp-f-stock_min").value.trim(),
           stock_max: document.getElementById("mp-f-stock_max").value.trim(),
           limit: lim,
@@ -1191,7 +1274,9 @@
       function buildMoyskladSearchLink(code) {
         var value = String(code || "").trim();
         if (!value) return "";
-        return "/moysklad?search=" + encodeURIComponent("code:" + value) + "&page=1";
+        return (
+          "/moysklad.html?search=" + encodeURIComponent("code:" + value) + "&page=1"
+        );
       }
 
       function getUsdEurForRow() {
@@ -1214,9 +1299,183 @@
             th.setAttribute("data-mp-label", base);
             base = th.getAttribute("data-mp-label");
           }
-          var arrow = " ↕";
+          var arrow = "";
           if (sortBy === col) arrow = sortDir === "asc" ? " ↑" : " ↓";
-          th.textContent = base + arrow;
+          var labelEl = th.querySelector(".mp-sort-label");
+          if (!labelEl) {
+            labelEl = document.createElement("span");
+            labelEl.className = "mp-sort-label";
+            th.insertBefore(labelEl, th.firstChild || null);
+          }
+          labelEl.textContent = base + arrow;
+          Array.prototype.slice.call(th.childNodes).forEach(function (node) {
+            if (node === labelEl) return;
+            if (node.classList && node.classList.contains("mp-resize-handle")) return;
+            if (node.nodeType === Node.TEXT_NODE) th.removeChild(node);
+          });
+        });
+        initColumnResizeHandles();
+        applyStoredColumnWidths();
+      }
+
+      function getHeaderCells() {
+        return Array.prototype.slice.call(document.querySelectorAll("#mp-thead-row th"));
+      }
+
+      function applyColumnWidthByIndex(index, widthPx) {
+        var w = Math.max(80, Math.min(900, Math.round(Number(widthPx) || 0)));
+        if (!Number.isFinite(w) || w <= 0) return;
+        columnWidths[index] = w;
+        var headers = getHeaderCells();
+        if (headers[index]) {
+          headers[index].style.width = w + "px";
+          headers[index].style.minWidth = w + "px";
+          headers[index].style.maxWidth = w + "px";
+        }
+        document.querySelectorAll("#dg-tbody tr").forEach(function (tr) {
+          if (!tr.cells || !tr.cells[index]) return;
+          tr.cells[index].style.width = w + "px";
+          tr.cells[index].style.minWidth = w + "px";
+          tr.cells[index].style.maxWidth = w + "px";
+        });
+      }
+
+      function applyStoredColumnWidths() {
+        Object.keys(columnWidths || {}).forEach(function (k) {
+          var idx = Number(k);
+          if (!Number.isFinite(idx)) return;
+          applyColumnWidthByIndex(idx, columnWidths[k]);
+        });
+      }
+
+      function onResizeMove(e) {
+        if (!resizeState) return;
+        var delta = e.clientX - resizeState.startX;
+        applyColumnWidthByIndex(resizeState.index, resizeState.startWidth + delta);
+      }
+
+      function onResizeUp() {
+        if (!resizeState) return;
+        resizeState = null;
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+        try {
+          localStorage.setItem(userColWidthKey(), JSON.stringify(columnWidths || {}));
+        } catch (e) {}
+      }
+
+      function initColumnResizeHandles() {
+        getHeaderCells().forEach(function (th, index) {
+          if (th.getAttribute("data-mp-resize-ready") === "1") return;
+          th.setAttribute("data-mp-resize-ready", "1");
+          th.style.position = "relative";
+          var handle = document.createElement("span");
+          handle.className = "mp-resize-handle";
+          handle.setAttribute("role", "separator");
+          handle.setAttribute("aria-orientation", "vertical");
+          handle.title = "Потяните, чтобы изменить ширину";
+          handle.style.cssText =
+            "position:absolute;top:0;right:0;width:6px;height:100%;cursor:col-resize;z-index:4;" +
+            "background:linear-gradient(to right,transparent 47%,#d9dee5 47%,#d9dee5 53%,transparent 53%);opacity:0.55";
+          handle.addEventListener("mousedown", function (ev) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            var rect = th.getBoundingClientRect();
+            var w = Number(columnWidths[index] || (rect && rect.width ? rect.width : 0));
+            resizeState = { index: index, startX: ev.clientX, startWidth: w > 0 ? w : 120 };
+            document.body.style.cursor = "col-resize";
+            document.body.style.userSelect = "none";
+          });
+          handle.addEventListener("click", function (ev) {
+            ev.stopPropagation();
+          });
+          th.appendChild(handle);
+        });
+      }
+
+      function userVisibleColsKeyVanilla() {
+        try {
+          var u = String(localStorage.getItem("currentUser") || "guest").trim() || "guest";
+          return "datagon_my_products_visible_cols_v1:" + u;
+        } catch (e) {
+          return "datagon_my_products_visible_cols_v1:guest";
+        }
+      }
+
+      function userColWidthKey() {
+        try {
+          var u = String(localStorage.getItem("currentUser") || "guest").trim() || "guest";
+          return "datagon_my_products_col_widths_v1:" + u;
+        } catch (e) {
+          return "datagon_my_products_col_widths_v1:guest";
+        }
+      }
+
+      function getVisibleColumns() {
+        return visibleCols.slice();
+      }
+
+      function applyVisibleColumns() {
+        var cols = getVisibleColumns();
+        var all = Array.prototype.slice.call(
+          document.querySelectorAll("#mp-thead-row th, #dg-tbody tr td")
+        );
+        var headCells = Array.prototype.slice.call(
+          document.querySelectorAll("#mp-thead-row th")
+        );
+        all.forEach(function (cell) {
+          cell.style.display = "";
+        });
+        headCells.forEach(function (th, index) {
+          var key = th.getAttribute("data-mp-sort");
+          if (!key) key = index === headCells.length - 2 ? "competitor" : "actions";
+          var show = cols.indexOf(key) >= 0;
+          th.style.display = show ? "" : "none";
+          document.querySelectorAll("#dg-tbody tr").forEach(function (tr) {
+            if (tr.cells && tr.cells[index]) tr.cells[index].style.display = show ? "" : "none";
+          });
+        });
+      }
+
+      function renderColumnsPanel() {
+        var list = document.getElementById("dg-mp-columns-list");
+        if (!list) return;
+        list.replaceChildren();
+        var headers = Array.prototype.slice.call(document.querySelectorAll("#mp-thead-row th"));
+        headers.forEach(function (th, index) {
+          var key = th.getAttribute("data-mp-sort");
+          if (!key) key = index === headers.length - 2 ? "competitor" : "actions";
+          var label = String(th.getAttribute("data-mp-label") || th.textContent || "")
+            .replace(/\s*[↑↓↕]\s*$/, "")
+            .trim();
+          var row = document.createElement("label");
+          var cb = document.createElement("input");
+          cb.type = "checkbox";
+          cb.checked = visibleCols.indexOf(key) >= 0;
+          cb.addEventListener("change", function () {
+            var next = visibleCols.slice();
+            if (cb.checked) {
+              if (next.indexOf(key) < 0) next.push(key);
+            } else {
+              next = next.filter(function (k) {
+                return k !== key;
+              });
+            }
+            if (!next.length) {
+              cb.checked = true;
+              return;
+            }
+            visibleCols = DEFAULT_VISIBLE_COLS.filter(function (k) {
+              return next.indexOf(k) >= 0;
+            });
+            try {
+              localStorage.setItem(userVisibleColsKeyVanilla(), JSON.stringify(visibleCols));
+            } catch (e) {}
+            applyVisibleColumns();
+          });
+          row.appendChild(cb);
+          row.appendChild(document.createTextNode(label || key));
+          list.appendChild(row);
         });
       }
 
@@ -1252,6 +1511,7 @@
           tdL.textContent = "Загрузка...";
           trL.appendChild(tdL);
           tbody.appendChild(trL);
+          applyVisibleColumns();
           return;
         }
         if (!rows || !rows.length) {
@@ -1262,6 +1522,7 @@
           td.textContent = "Нет данных";
           tr.appendChild(td);
           tbody.appendChild(tr);
+          applyVisibleColumns();
           return;
         }
         rows.forEach(function (r, idx) {
@@ -1463,6 +1724,8 @@
           tr.appendChild(actTd);
           tbody.appendChild(tr);
         });
+        applyVisibleColumns();
+        applyStoredColumnWidths();
       }
 
       function tdText(t) {
@@ -1576,6 +1839,8 @@
           "gap_max_pct",
           "usd_to_rub",
           "eur_to_rub",
+          "comp_sync_rand_min",
+          "comp_sync_rand_max",
           "stock_min",
           "stock_max",
         ];
@@ -1589,7 +1854,10 @@
           if (k === "ms_linked") document.getElementById("f-ms").value = v;
           if (k === "sort_by") document.getElementById("mp-f-sort-by").value = v;
           if (k === "sort_dir") document.getElementById("mp-f-sort-dir").value = v;
-          if (k === "search") apiSearch = v;
+          if (k === "search") {
+            apiSearch = v;
+            document.getElementById("mp-f-smart").value = v;
+          }
           if (k === "match_audit")
             document.getElementById("mp-f-match_audit").value = v;
           if (k === "gap_competitor")
@@ -1600,6 +1868,8 @@
             document.getElementById("mp-f-gap_max_pct").value = v;
           if (k === "usd_to_rub") document.getElementById("mp-f-usd_to_rub").value = v;
           if (k === "eur_to_rub") document.getElementById("mp-f-eur_to_rub").value = v;
+          if (k === "comp_sync_rand_min") document.getElementById("mp-f-comp_min").value = v;
+          if (k === "comp_sync_rand_max") document.getElementById("mp-f-comp_max").value = v;
           if (k === "stock_min") document.getElementById("mp-f-stock_min").value = v;
           if (k === "stock_max") document.getElementById("mp-f-stock_max").value = v;
         });
@@ -1828,6 +2098,8 @@
           setSort(th.getAttribute("data-mp-sort"));
         });
       });
+      window.addEventListener("mousemove", onResizeMove);
+      window.addEventListener("mouseup", onResizeUp);
 
       [
         "mp-tf-source_id",
@@ -1884,6 +2156,58 @@
       document.getElementById("mp-btn-copy").addEventListener("click", function () {
         navigator.clipboard.writeText(window.location.href).catch(function () {});
       });
+      (function initColumnsPanel() {
+        try {
+          var rawVisible = JSON.parse(localStorage.getItem(userVisibleColsKeyVanilla()) || "[]");
+          if (Array.isArray(rawVisible) && rawVisible.length) {
+            visibleCols = DEFAULT_VISIBLE_COLS.filter(function (k) {
+              return rawVisible.indexOf(k) >= 0;
+            });
+          }
+        } catch (e) {}
+        var toggle = document.getElementById("dg-mp-columns-toggle");
+        var panel = document.getElementById("dg-mp-columns-panel");
+        var btnAll = document.getElementById("dg-mp-columns-all");
+        var btnNone = document.getElementById("dg-mp-columns-none");
+        var btnDef = document.getElementById("dg-mp-columns-default");
+        if (toggle && panel) {
+          toggle.addEventListener("click", function () {
+            panel.classList.toggle("open");
+            renderColumnsPanel();
+          });
+        }
+        if (btnAll) {
+          btnAll.addEventListener("click", function () {
+            visibleCols = DEFAULT_VISIBLE_COLS.slice();
+            try {
+              localStorage.setItem(userVisibleColsKeyVanilla(), JSON.stringify(visibleCols));
+            } catch (e) {}
+            renderColumnsPanel();
+            applyVisibleColumns();
+          });
+        }
+        if (btnNone) {
+          btnNone.addEventListener("click", function () {
+            visibleCols = ["name"];
+            try {
+              localStorage.setItem(userVisibleColsKeyVanilla(), JSON.stringify(visibleCols));
+            } catch (e) {}
+            renderColumnsPanel();
+            applyVisibleColumns();
+          });
+        }
+        if (btnDef) {
+          btnDef.addEventListener("click", function () {
+            visibleCols = DEFAULT_VISIBLE_COLS.slice();
+            try {
+              localStorage.setItem(userVisibleColsKeyVanilla(), JSON.stringify(visibleCols));
+            } catch (e) {}
+            renderColumnsPanel();
+            applyVisibleColumns();
+          });
+        }
+        renderColumnsPanel();
+      })();
 
       (function collapse() {
         var body = document.getElementById("dg-mp-filters-body");
@@ -1914,6 +2238,12 @@
       })();
 
       (async function init() {
+        try {
+          columnWidths = JSON.parse(localStorage.getItem(userColWidthKey()) || "{}") || {};
+        } catch (e) {
+          columnWidths = {};
+        }
+        initColumnResizeHandles();
         await loadSites();
         parseUrlToForm();
         updateSubtitle();

@@ -1,1 +1,110 @@
-  <!-- Результаты: стили из ARCHITECTUI_MAIN_CSS -->
+  <!-- Результаты: визуал заголовка таблицы — паритет с dg-ms-table / МойСклад (moysklad.head + тема main.*.css). -->
+  <style>
+    body[data-dg-active-nav="results"] {
+      --dg-res-table-min-width: 2200px;
+    }
+    /* Как «Мои товары» (my-products.head): широкая таблица в горизонтальном скролле внутри карточки, без вылезания */
+    body.datagon-vanilla-body[data-dg-active-nav="results"] .app-main__inner {
+      min-width: 0;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="results"] .datagon-my-products-table-wrap.table-responsive {
+      overflow-x: auto !important;
+      overflow-y: visible !important;
+      max-height: none !important;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="results"] .datagon-my-products-table-wrap.table-responsive,
+    body.datagon-vanilla-body[data-dg-active-nav="results"] .datagon-my-products-table-wrap.table-responsive > table {
+      transform: none !important;
+      filter: none !important;
+      perspective: none !important;
+    }
+    .datagon-columns-toolbox { margin:0 0 10px 0; border:1px solid #e5e7eb; border-radius:8px; background:#fafbfc; padding:8px; }
+    .datagon-columns-toolbox .columns-top { display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; }
+    .datagon-columns-toolbox .columns-title { font-size:12px; color:#6b7280; display:none; }
+    .datagon-columns-toolbox .btn { border-color:#d1d5db !important; box-shadow:none !important; }
+    .datagon-columns-panel { margin-top:8px; border-top:1px dashed #d1d5db; padding-top:8px; display:none; }
+    .datagon-columns-panel.open { display:block; }
+    .datagon-columns-panel .columns-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:6px 10px; }
+    .datagon-columns-panel label { display:inline-flex; align-items:center; gap:6px; font-size:12px; color:#374151; user-select:none; }
+
+    /* fixed — как МойСклад: ресайз колонок; границы как table-bordered + явный цвет (перебиваем .dg-ms-table из main.css) */
+    body.datagon-vanilla-body[data-dg-active-nav="results"] #dg-res-main-table.dg-ms-table {
+      font-size: 0.8rem;
+      line-height: 1.25;
+      font-variant-numeric: tabular-nums;
+      width: max-content;
+      min-width: var(--dg-res-table-min-width);
+      max-width: none;
+      table-layout: fixed;
+      border-collapse: separate !important;
+      border-spacing: 0 !important;
+      border: 1px solid #6c757d !important;
+      --bs-table-border-color: #6c757d;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="results"]
+      #dg-res-main-table.table-bordered
+      > :not(caption)
+      > *
+      > * {
+      border-color: #6c757d !important;
+    }
+    /*
+      Линия под шапкой как base.scss [.datagon-my-products-table[data-dg-sticky='1'] thead th] + нижняя граница темы.
+      #dg-res-main-table перебивает top для fallback-плавающего thead (иначе 60px из темы).
+    */
+    /*
+      Вертикальные разделители между заголовками: при sticky фон соседнего th перекрывает border-right предыдущей ячейки.
+      Внутренние линии — border-left со 2-й колонки; правая граница таблицы — у последнего th (как сетка matches).
+    */
+    body.datagon-vanilla-body[data-dg-active-nav="results"] #dg-res-main-table.dg-ms-table thead th {
+      position: sticky !important;
+      top: var(--dg-table-sticky-top, 60px) !important;
+      z-index: 20 !important;
+      box-sizing: border-box;
+      background: #e9ecef !important;
+      border-right: none !important;
+      border-bottom: 2px solid #495057 !important;
+      vertical-align: middle !important;
+      overflow: visible !important;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="results"] #dg-res-main-table.dg-ms-table thead th:not(:first-child) {
+      border-left: 1px solid #6c757d !important;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="results"] #dg-res-main-table.dg-ms-table thead th:last-child {
+      border-right: 1px solid #6c757d !important;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="results"] #dg-res-main-table.dg-ms-table thead th .dg-res-th-text {
+      display: inline-block;
+      max-width: 100%;
+    }
+    /* Как у МойСклад: узкая зона, без отдельной «стилистики» и без второй линии у границы ячейки */
+    body.datagon-vanilla-body[data-dg-active-nav="results"] #dg-res-main-table thead th .dg-res-resize-handle {
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 8px;
+      height: 100%;
+      cursor: col-resize;
+      z-index: 6;
+      box-sizing: border-box;
+      background: linear-gradient(to right, transparent 47%, #d9dee5 47%, #d9dee5 53%, transparent 53%);
+      opacity: 0.55;
+      touch-action: none;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="results"] #dg-res-main-table thead th:hover .dg-res-resize-handle {
+      opacity: 0.95;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="results"] #dg-res-main-table.dg-ms-table tbody td {
+      vertical-align: middle;
+      overflow-wrap: break-word;
+      word-break: break-word;
+      border-right: 1px solid #adb5bd !important;
+      border-bottom: 1px solid #ced4da !important;
+      background: #fff !important;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="results"] #dg-res-main-table.dg-ms-table tbody.dg-res-tbody-refreshing {
+      opacity: 0.62;
+      pointer-events: none;
+      transition: opacity 0.12s ease-out;
+    }
+  </style>

@@ -1,3 +1,85 @@
   <style>
-    .dg-mp-table { font-size: 0.82rem; font-variant-numeric: tabular-nums; }
+    /* Удержание wide-таблицы: flex min-width:auto иначе тянет layout (дублирует base.scss до пересборки CRA) */
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .app-main__inner {
+      min-width: 0;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .main-card.card > .card-body {
+      min-width: 0;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+    .dg-mp-table { font-size: 0.8rem; line-height: 1.25; font-variant-numeric: tabular-nums; }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .datagon-my-products-table-wrap.table-responsive {
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
+      overflow-x: auto !important;
+      overflow-y: visible !important;
+      max-height: none !important;
+      -webkit-overflow-scrolling: touch;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .datagon-my-products-table-wrap.table-responsive,
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .datagon-my-products-table-wrap.table-responsive > table {
+      transform: none !important;
+      filter: none !important;
+      perspective: none !important;
+    }
+    .datagon-columns-toolbox {
+      margin: 0 0 10px 0;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      background: #fafbfc;
+      padding: 8px;
+    }
+    .datagon-columns-toolbox .columns-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .datagon-columns-toolbox .columns-title {
+      font-size: 12px;
+      color: #6b7280;
+      display: none;
+    }
+    .datagon-columns-toolbox .btn {
+      border-color: #d1d5db !important;
+      box-shadow: none !important;
+    }
+    .datagon-columns-panel {
+      margin-top: 8px;
+      border-top: 1px dashed #d1d5db;
+      padding-top: 8px;
+      display: none;
+    }
+    .datagon-columns-panel.open { display: block; }
+    .datagon-columns-panel .columns-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 6px 10px;
+    }
+    .datagon-columns-panel label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: #374151;
+      user-select: none;
+    }
+    .dg-mp-table thead th {
+      position: sticky !important;
+      top: var(--dg-table-sticky-top, 60px) !important;
+      z-index: 20 !important;
+      background: #ffffff !important;
+      border-right: 1px solid #e6e9ee;
+    }
+    .dg-mp-table tbody td {
+      border-right: 1px solid #f3f5f8;
+    }
+    #mp-main-table .mp-resize-handle {
+      pointer-events: auto;
+    }
   </style>

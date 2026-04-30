@@ -1,0 +1,2058 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, shrink-to-fit=no" />
+  <title>Результаты — Датагон</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="stylesheet" href="/static/css/main.989b22a9.css" />
+    <!-- Результаты: визуал заголовка таблицы — паритет с dg-ms-table / МойСклад (moysklad.head + тема main.*.css). -->
+  <style>
+    body[data-dg-active-nav="results"] {
+      --dg-res-table-min-width: 2200px;
+    }
+    /* Как «Мои товары» (my-products.head): широкая таблица в горизонтальном скролле внутри карточки, без вылезания */
+    body.datagon-vanilla-body[data-dg-active-nav="results"] .app-main__inner {
+      min-width: 0;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="results"] .datagon-my-products-table-wrap.table-responsive {
+      overflow-x: auto !important;
+      overflow-y: visible !important;
+      max-height: none !important;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="results"] .datagon-my-products-table-wrap.table-responsive,
+    body.datagon-vanilla-body[data-dg-active-nav="results"] .datagon-my-products-table-wrap.table-responsive > table {
+      transform: none !important;
+      filter: none !important;
+      perspective: none !important;
+    }
+    .datagon-columns-toolbox { margin:0 0 10px 0; border:1px solid #e5e7eb; border-radius:8px; background:#fafbfc; padding:8px; }
+    .datagon-columns-toolbox .columns-top { display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; }
+    .datagon-columns-toolbox .columns-title { font-size:12px; color:#6b7280; display:none; }
+    .datagon-columns-toolbox .btn { border-color:#d1d5db !important; box-shadow:none !important; }
+    .datagon-columns-panel { margin-top:8px; border-top:1px dashed #d1d5db; padding-top:8px; display:none; }
+    .datagon-columns-panel.open { display:block; }
+    .datagon-columns-panel .columns-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:6px 10px; }
+    .datagon-columns-panel label { display:inline-flex; align-items:center; gap:6px; font-size:12px; color:#374151; user-select:none; }
+
+    /* fixed — как МойСклад: ресайз колонок; границы как table-bordered + явный цвет (перебиваем .dg-ms-table из main.css) */
+    body.datagon-vanilla-body[data-dg-active-nav="results"] #dg-res-main-table.dg-ms-table {
+      font-size: 0.8rem;
+      line-height: 1.25;
+      font-variant-numeric: tabular-nums;
+      width: max-content;
+      min-width: var(--dg-res-table-min-width);
+      max-width: none;
+      table-layout: fixed;
+      border-collapse: separate !important;
+      border-spacing: 0 !important;
+      border: 1px solid #6c757d !important;
+      --bs-table-border-color: #6c757d;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="results"]
+      #dg-res-main-table.table-bordered
+      > :not(caption)
+      > *
+      > * {
+      border-color: #6c757d !important;
+    }
+    /*
+      Линия под шапкой как base.scss [.datagon-my-products-table[data-dg-sticky='1'] thead th] + нижняя граница темы.
+      #dg-res-main-table перебивает top для fallback-плавающего thead (иначе 60px из темы).
+    */
+    /*
+      Вертикальные разделители между заголовками: при sticky фон соседнего th перекрывает border-right предыдущей ячейки.
+      Внутренние линии — border-left со 2-й колонки; правая граница таблицы — у последнего th (как сетка matches).
+    */
+    body.datagon-vanilla-body[data-dg-active-nav="results"] #dg-res-main-table.dg-ms-table thead th {
+      position: sticky !important;
+      top: var(--dg-table-sticky-top, 60px) !important;
+      z-index: 20 !important;
+      box-sizing: border-box;
+      background: #e9ecef !important;
+      border-right: none !important;
+      border-bottom: 2px solid #495057 !important;
+      vertical-align: middle !important;
+      overflow: visible !important;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="results"] #dg-res-main-table.dg-ms-table thead th:not(:first-child) {
+      border-left: 1px solid #6c757d !important;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="results"] #dg-res-main-table.dg-ms-table thead th:last-child {
+      border-right: 1px solid #6c757d !important;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="results"] #dg-res-main-table.dg-ms-table thead th .dg-res-th-text {
+      display: inline-block;
+      max-width: 100%;
+    }
+    /* Как у МойСклад: узкая зона, без отдельной «стилистики» и без второй линии у границы ячейки */
+    body.datagon-vanilla-body[data-dg-active-nav="results"] #dg-res-main-table thead th .dg-res-resize-handle {
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 8px;
+      height: 100%;
+      cursor: col-resize;
+      z-index: 6;
+      box-sizing: border-box;
+      background: linear-gradient(to right, transparent 47%, #d9dee5 47%, #d9dee5 53%, transparent 53%);
+      opacity: 0.55;
+      touch-action: none;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="results"] #dg-res-main-table thead th:hover .dg-res-resize-handle {
+      opacity: 0.95;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="results"] #dg-res-main-table.dg-ms-table tbody td {
+      vertical-align: middle;
+      overflow-wrap: break-word;
+      word-break: break-word;
+      border-right: 1px solid #adb5bd !important;
+      border-bottom: 1px solid #ced4da !important;
+      background: #fff !important;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="results"] #dg-res-main-table.dg-ms-table tbody.dg-res-tbody-refreshing {
+      opacity: 0.62;
+      pointer-events: none;
+      transition: opacity 0.12s ease-out;
+    }
+  </style>
+
+</head>
+<body class="datagon-vanilla-body" data-dg-active-nav="results">
+  <div class="app-container app-theme-white datagon-shell datagon-vanilla-shell fixed-header fixed-sidebar fixed-footer">
+    <div class="app-header header-shadow">
+      <div class="app-header__logo">
+        <button type="button" class="logo-src datagon-brand" onclick="location.href='/dashboard.html'" title="Открыть дашборд" style="border:0;background:transparent;padding:0;cursor:pointer">Датагон</button>
+        <div class="header__pane ms-auto">
+          <div>
+            <button type="button" class="hamburger hamburger--slider dg-toggle-sidebar" aria-label="Свернуть боковую панель" title="Свернуть боковую панель">
+              <span class="hamburger-box"><span class="hamburger-inner"></span></span>
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="app-header__mobile-menu">
+        <div>
+          <button type="button" class="hamburger hamburger--slider dg-toggle-mobile-sidebar" aria-label="Открыть меню">
+            <span class="hamburger-box"><span class="hamburger-inner"></span></span>
+          </button>
+        </div>
+      </div>
+      <div class="app-header__menu">
+        <span>
+          <button type="button" class="btn btn-primary btn-sm btn-icon btn-icon-only dg-toggle-header-small" aria-label="Доп. меню шапки">
+            <div class="btn-icon-wrapper">
+              <i class="pe-7s-more" style="font-size:1.1rem;line-height:1"></i>
+            </div>
+          </button>
+        </span>
+      </div>
+      <div class="app-header__content">
+        <div class="app-header-left">
+          <div class="search-wrapper">
+            <div class="input-holder">
+              <input type="text" class="search-input" placeholder="Type to search" autocomplete="off" />
+              <button type="button" class="search-icon dg-vanilla-search-docs" aria-label="Открыть документацию" title="Документация">
+                <span></span>
+              </button>
+            </div>
+            <button type="button" class="btn-close dg-vanilla-search-close" aria-label="Закрыть поиск"></button>
+          </div>
+          <ul class="nav header-megamenu">
+            <li class="nav-item">
+              <a href="#" class="nav-link" id="PopoverMegaMenuVanilla">
+                <i class="nav-link-icon pe-7s-gift"> </i>
+                Заглушка 1
+                <svg data-prefix="fas" data-icon="angle-down" class="svg-inline--fa fa-angle-down ms-2 opacity-5" role="img" viewBox="0 0 384 512" aria-hidden="true" style="display:inline-block;height:1em;width:0.75em;vertical-align:-0.125em;overflow:visible">
+                  <path fill="currentColor" d="M169.4 374.6c12.5 12.5 32.8 12.5 45.3 0l160-160c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L192 306.7 54.6 169.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3l160 160z"></path>
+                </svg>
+              </a>
+              <div class="dropdown-menu rm-max-width rm-pointers p-0 dg-vanilla-megamenu">
+                <div class="dropdown-mega-menu">
+                  <div class="grid-menu grid-menu-3col">
+                    <div class="row g-0">
+                      <div class="col-xl-4 col-sm-6">
+                        <div class="nav flex-column">
+                          <div class="nav-item nav-item-header">Overview</div>
+                          <div class="nav-item"><a class="nav-link" href="#"><i class="nav-link-icon lnr-inbox"></i><span>Contacts</span></a></div>
+                          <div class="nav-item"><a class="nav-link" href="#"><i class="nav-link-icon lnr-book"></i><span>Incidents</span><div class="ms-auto badge rounded-pill bg-danger">5</div></a></div>
+                          <div class="nav-item"><a class="nav-link" href="#"><i class="nav-link-icon lnr-picture"></i><span>Companies</span></a></div>
+                          <div class="nav-item"><a class="nav-link disabled" href="#"><i class="nav-link-icon lnr-file-empty"></i><span>Dashboards</span></a></div>
+                        </div>
+                      </div>
+                      <div class="col-xl-4 col-sm-6">
+                        <div class="nav flex-column">
+                          <div class="nav-item nav-item-header">Favourites</div>
+                          <div class="nav-item"><a class="nav-link" href="#">Reports Conversions</a></div>
+                          <div class="nav-item"><a class="nav-link" href="#">Quick Start<div class="ms-auto badge bg-success">New</div></a></div>
+                          <div class="nav-item"><a class="nav-link" href="#">Users &amp; Groups</a></div>
+                          <div class="nav-item"><a class="nav-link" href="#">Proprieties</a></div>
+                        </div>
+                      </div>
+                      <div class="col-xl-4 col-sm-6">
+                        <div class="nav flex-column">
+                          <div class="nav-item nav-item-header">Sales &amp; Marketing</div>
+                          <div class="nav-item"><a class="nav-link" href="#">Queues</a></div>
+                          <div class="nav-item"><a class="nav-link" href="#">Resource Groups</a></div>
+                          <div class="nav-item"><a class="nav-link" href="#">Goal Metrics<div class="ms-auto badge bg-warning">3</div></a></div>
+                          <div class="nav-item"><a class="nav-link" href="#">Campaigns</a></div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </li>
+            <li class="nav-item dropdown">
+              <a href="#" class="nav-link dg-vanilla-dropdown-toggle" aria-expanded="false" aria-haspopup="true">
+                <span class="badge rounded-pill bg-danger ms-0 me-2">4</span>
+                Заглушка 2
+                <svg data-prefix="fas" data-icon="angle-down" class="svg-inline--fa fa-angle-down ms-2 opacity-5" role="img" viewBox="0 0 384 512" aria-hidden="true" style="display:inline-block;height:1em;width:0.75em;vertical-align:-0.125em;overflow:visible">
+                  <path fill="currentColor" d="M169.4 374.6c12.5 12.5 32.8 12.5 45.3 0l160-160c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L192 306.7 54.6 169.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3l160 160z"></path>
+                </svg>
+              </a>
+              <div class="dropdown-menu rm-pointers" style="min-width:320px">
+                <div class="dropdown-menu-header mb-0">
+                  <div class="dropdown-menu-header-inner bg-secondary">
+                    <div class="menu-header-image opacity-5" style="background-image:url('/assets/utils/images/dropdown-header/abstract2.jpg')"></div>
+                    <div class="menu-header-content text-white p-3">
+                      <h5 class="menu-header-title mb-1">Overview</h5>
+                      <h6 class="menu-header-subtitle mb-0 opacity-8">Dropdown menus for everyone</h6>
+                    </div>
+                  </div>
+                </div>
+                <div class="scroll-area-xs" style="height:150px">
+                  <div class="p-2">
+                    <div class="dropdown-item-header">Key Figures</div>
+                    <a class="dropdown-item" href="#">Service Calendar</a>
+                    <a class="dropdown-item" href="#">Knowledge Base</a>
+                    <a class="dropdown-item" href="#">Accounts</a>
+                    <div class="dropdown-divider"></div>
+                    <a class="dropdown-item" href="#">Products</a>
+                    <a class="dropdown-item" href="#">Rollup Queries</a>
+                  </div>
+                </div>
+                <div class="nav-item-divider"></div>
+                <div class="nav-item-btn p-2">
+                  <button type="button" class="btn btn-sm btn-wide btn-shadow btn-danger">Cancel</button>
+                </div>
+              </div>
+            </li>
+            <li class="nav-item dropdown">
+              <a href="#" class="nav-link dg-vanilla-dropdown-toggle" aria-expanded="false" aria-haspopup="true">
+                <i class="nav-link-icon pe-7s-settings"> </i>
+                Заглушка 3
+                <svg data-prefix="fas" data-icon="angle-down" class="svg-inline--fa fa-angle-down ms-2 opacity-5" role="img" viewBox="0 0 384 512" aria-hidden="true" style="display:inline-block;height:1em;width:0.75em;vertical-align:-0.125em;overflow:visible">
+                  <path fill="currentColor" d="M169.4 374.6c12.5 12.5 32.8 12.5 45.3 0l160-160c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L192 306.7 54.6 169.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3l160 160z"></path>
+                </svg>
+              </a>
+              <div class="dropdown-menu dropdown-menu-rounded dropdown-menu-lg rm-pointers">
+                <div class="dropdown-menu-header mb-0">
+                  <div class="dropdown-menu-header-inner bg-success">
+                    <div class="menu-header-image opacity-1" style="background-image:url('/assets/utils/images/dropdown-header/abstract3.jpg')"></div>
+                    <div class="menu-header-content text-start">
+                      <h5 class="menu-header-title mb-1">Overview</h5>
+                      <h6 class="menu-header-subtitle">Unlimited options</h6>
+                      <div class="menu-header-btn-pane">
+                        <button type="button" class="btn btn-sm btn-dark">Settings</button>
+                        <button type="button" class="btn btn-sm btn-icon btn-icon-only btn-warning">
+                          <i class="pe-7s-config btn-icon-wrapper"></i>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <a class="dropdown-item" href="#"><i class="dropdown-icon lnr-file-empty"></i>Graphic Design</a>
+                <a class="dropdown-item" href="#"><i class="dropdown-icon lnr-file-empty"></i>App Development</a>
+                <a class="dropdown-item" href="#"><i class="dropdown-icon lnr-file-empty"></i>Icon Design</a>
+                <div class="dropdown-divider"></div>
+                <a class="dropdown-item" href="#"><i class="dropdown-icon lnr-file-empty"></i>Miscellaneous</a>
+                <a class="dropdown-item" href="#"><i class="dropdown-icon lnr-file-empty"></i>Frontend Dev</a>
+              </div>
+            </li>
+          </ul>
+        </div>
+        <div class="app-header-right">
+          <div class="ui-theme-settings ui-theme-settings--header">
+            <button type="button" class="btn btn-link btn-open-options btn-open-options--header" id="TooltipDemoVanilla" aria-label="Параметры темы" title="Параметры темы (полная версия в React-панели)">
+              <i class="pe-7s-config" style="font-size:1.35rem;color:#3f6ad8;line-height:1"></i>
+            </button>
+            <div class="theme-settings__inner">
+              <div class="theme-settings__options-wrapper">
+                <h3 class="themeoptions-heading">Параметры макета</h3>
+                <div class="list-group">
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Фиксированная шапка</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-fixed-header" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Тень шапки</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-header-shadow" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Фиксированный сайдбар</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-fixed-sidebar" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Тень сайдбара</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-sidebar-shadow" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Фиксированный футер</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-fixed-footer" checked><span class="slider round"></span></label>
+                  </div>
+                </div>
+
+                <h3 class="themeoptions-heading">Параметры заголовка страницы</h3>
+                <div class="list-group">
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Иконка заголовка</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-title-icon" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Подзаголовок страницы</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-title-subheading" checked><span class="slider round"></span></label>
+                  </div>
+                </div>
+
+                <h3 class="themeoptions-heading">Цветовые схемы</h3>
+                <div class="list-group">
+                  <div class="list-group-item">
+                    <h5 class="mb-2">Цветовая схема макета</h5>
+                    <div class="theme-settings-swatches">
+                      <div class="swatch-holder-lg active dg-theme-color-scheme" data-color-scheme="white" style="background:#fff;border:1px solid #dee2e6"></div>
+                      <div class="swatch-holder-lg dg-theme-color-scheme" data-color-scheme="gray" style="background:#868e96"></div>
+                    </div>
+                  </div>
+                </div>
+
+                <h3 class="themeoptions-heading">Параметры сайдбара</h3>
+                <div class="list-group">
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Фоновое изображение сайдбара</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-sidebar-bg-image"><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item">
+                    <h5 class="mb-2">Цвета сайдбара</h5>
+                    <div class="theme-settings-swatches">
+                      <div class="swatch-holder bg-primary dg-theme-sidebar-color" data-color-class="bg-primary"></div><div class="swatch-holder bg-danger dg-theme-sidebar-color" data-color-class="bg-danger"></div><div class="swatch-holder bg-warning dg-theme-sidebar-color" data-color-class="bg-warning"></div><div class="swatch-holder bg-success dg-theme-sidebar-color" data-color-class="bg-success"></div>
+                      <div class="swatch-holder bg-info dg-theme-sidebar-color" data-color-class="bg-info"></div><div class="swatch-holder bg-secondary dg-theme-sidebar-color" data-color-class="bg-secondary"></div><div class="swatch-holder bg-dark dg-theme-sidebar-color" data-color-class="bg-dark"></div><div class="swatch-holder dg-theme-sidebar-color" data-color-class="bg-plum-plate" style="background:#667eea"></div>
+                      <div class="swatch-holder dg-theme-sidebar-color" data-color-class="bg-arielle-smile" style="background:#16d9e3"></div><div class="swatch-holder dg-theme-sidebar-color" data-color-class="bg-ripe-malin" style="background:#f093fb"></div><div class="swatch-holder dg-theme-sidebar-color" data-color-class="bg-night-fade" style="background:#a18cd1"></div><div class="swatch-holder dg-theme-sidebar-color" data-color-class="bg-malibu-beach" style="background:#4facfe"></div>
+                    </div>
+                  </div>
+                </div>
+
+                <h3 class="themeoptions-heading">Параметры шапки</h3>
+                <div class="list-group">
+                  <div class="list-group-item">
+                    <h5 class="mb-2">Цвета шапки</h5>
+                    <div class="theme-settings-swatches">
+                      <div class="swatch-holder bg-primary dg-theme-header-color" data-color-class="bg-primary"></div><div class="swatch-holder bg-danger dg-theme-header-color" data-color-class="bg-danger"></div><div class="swatch-holder bg-warning dg-theme-header-color" data-color-class="bg-warning"></div><div class="swatch-holder bg-success dg-theme-header-color" data-color-class="bg-success"></div>
+                      <div class="swatch-holder bg-info dg-theme-header-color" data-color-class="bg-info"></div><div class="swatch-holder bg-secondary dg-theme-header-color" data-color-class="bg-secondary"></div><div class="swatch-holder bg-dark dg-theme-header-color" data-color-class="bg-dark"></div><div class="swatch-holder dg-theme-header-color" data-color-class="bg-plum-plate" style="background:#667eea"></div>
+                    </div>
+                  </div>
+                </div>
+                <div class="p-2">
+                  <a href="/settings.html" class="btn btn-sm btn-outline-primary w-100">Настройки</a>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="header-dots">
+            <div class="dropdown">
+              <button type="button" class="btn btn-link p-0 me-2 dg-vanilla-dropdown-toggle" style="line-height:0" aria-expanded="false" aria-haspopup="true">
+                <div class="icon-wrapper icon-wrapper-alt rounded-circle">
+                  <div class="icon-wrapper-bg bg-primary"></div>
+                  <i class="pe-7s-menu" style="font-size:23px;color:#3f6ad8"></i>
+                </div>
+              </button>
+              <div class="dropdown-menu dropdown-menu-xl rm-pointers p-0" style="min-width: 320px">
+                <div class="dropdown-menu-header mb-0">
+                  <div class="dropdown-menu-header-inner bg-plum-plate">
+                    <div class="menu-header-image opacity-1" style="background-image:url('/assets/utils/images/dropdown-header/abstract4.jpg')"></div>
+                    <div class="menu-header-content text-white p-3">
+                      <h5 class="menu-header-title mb-1">Grid Dashboard</h5>
+                      <h6 class="menu-header-subtitle mb-0 opacity-8">Easy grid navigation inside dropdowns</h6>
+                    </div>
+                  </div>
+                </div>
+                <div class="grid-menu grid-menu-xl grid-menu-3col">
+                  <div class="row g-0">
+                    <div class="col-xl-4 col-sm-6"><button type="button" class="btn btn-icon-vertical btn-square btn-transition w-100 btn-outline-link"><i class="pe-7s-world icon-gradient bg-night-fade btn-icon-wrapper btn-icon-lg mb-3"></i>Automation</button></div>
+                    <div class="col-xl-4 col-sm-6"><button type="button" class="btn btn-icon-vertical btn-square btn-transition w-100 btn-outline-link"><i class="pe-7s-piggy icon-gradient bg-night-fade btn-icon-wrapper btn-icon-lg mb-3"></i>Reports</button></div>
+                    <div class="col-xl-4 col-sm-6"><button type="button" class="btn btn-icon-vertical btn-square btn-transition w-100 btn-outline-link"><i class="pe-7s-config icon-gradient bg-night-fade btn-icon-wrapper btn-icon-lg mb-3"></i>Settings</button></div>
+                    <div class="col-xl-4 col-sm-6"><button type="button" class="btn btn-icon-vertical btn-square btn-transition w-100 btn-outline-link"><i class="pe-7s-browser icon-gradient bg-night-fade btn-icon-wrapper btn-icon-lg mb-3"></i>Content</button></div>
+                    <div class="col-xl-4 col-sm-6"><button type="button" class="btn btn-icon-vertical btn-square btn-transition w-100 btn-outline-link"><i class="pe-7s-hourglass icon-gradient bg-night-fade btn-icon-wrapper btn-icon-lg mb-3"></i>Activity</button></div>
+                    <div class="col-xl-4 col-sm-6"><button type="button" class="btn btn-icon-vertical btn-square btn-transition w-100 btn-outline-link"><i class="pe-7s-world icon-gradient bg-night-fade btn-icon-wrapper btn-icon-lg mb-3"></i>Contacts</button></div>
+                  </div>
+                </div>
+                <div class="nav-item-divider"></div>
+                <div class="nav-item-btn text-center p-2"><button type="button" class="btn btn-sm btn-shadow btn-primary">Follow-ups</button></div>
+              </div>
+            </div>
+            <div class="dropdown">
+              <button type="button" class="btn btn-link p-0 dg-vanilla-dropdown-toggle" style="line-height:0" aria-expanded="false" aria-haspopup="true">
+                <div class="icon-wrapper icon-wrapper-alt rounded-circle">
+                  <div class="icon-wrapper-bg bg-success"></div>
+                  <i class="pe-7s-graph2" style="font-size:23px;color:#3ac47d"></i>
+                </div>
+              </button>
+              <div class="dropdown-menu dropdown-menu-xl rm-pointers p-0" style="min-width: 320px">
+                <div class="dropdown-menu-header">
+                  <div class="dropdown-menu-header-inner bg-premium-dark">
+                    <div class="menu-header-image" style="background-image:url('/assets/utils/images/dropdown-header/abstract4.jpg')"></div>
+                    <div class="menu-header-content text-white">
+                      <h5 class="menu-header-title">Пользователи онлайн</h5>
+                      <h6 class="menu-header-subtitle">Актуальная активность сессий</h6>
+                    </div>
+                  </div>
+                </div>
+                <div class="widget-chart">
+                  <div class="widget-chart-content">
+                    <div class="icon-wrapper rounded-circle">
+                      <div class="icon-wrapper-bg opacity-9 bg-focus"></div>
+                      <i class="lnr-users text-white"></i>
+                    </div>
+                    <div class="widget-numbers"><span id="dg-vanilla-online-users">—</span></div>
+                    <div class="widget-subheading pt-2">Активных сессий пользователей</div>
+                    <div class="widget-description text-success"><span class="pe-1" id="dg-vanilla-online-users-note">Обновлено сейчас</span></div>
+                  </div>
+                  <div class="widget-chart-wrapper">
+                    <div style="height:40px;opacity:.35;background:linear-gradient(90deg,#f7b924 0%,#f7b92455 100%);border-radius:2px;"></div>
+                  </div>
+                </div>
+                <div class="nav-item-divider mt-0"></div>
+                <div class="nav-item-btn text-center">
+                  <button type="button" class="btn btn-sm btn-shine btn-wide btn-pill btn-warning" id="dg-vanilla-online-users-refresh">
+                    <i class="pe-7s-refresh me-2"></i>Обновить
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="header-btn-lg pe-0">
+            <div class="widget-content p-0">
+              <div class="widget-content-wrapper">
+                <div class="widget-content-left">
+                  <div class="dropdown">
+                    <button type="button" class="btn btn-link p-0 d-flex align-items-center dg-vanilla-dropdown-toggle" aria-expanded="false" aria-haspopup="true">
+                      <img width="42" class="rounded-circle" src="./assets/avatar-header.jpg" alt="" />
+                      <svg data-prefix="fas" data-icon="angle-down" class="svg-inline--fa fa-angle-down ms-2 opacity-8" role="img" viewBox="0 0 384 512" aria-hidden="true" style="display:inline-block;height:1em;width:0.75em;vertical-align:-0.125em;overflow:visible">
+                        <path fill="currentColor" d="M169.4 374.6c12.5 12.5 32.8 12.5 45.3 0l160-160c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L192 306.7 54.6 169.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3l160 160z"></path>
+                      </svg>
+                    </button>
+                    <div class="dropdown-menu dropdown-menu-end rm-pointers dropdown-menu-lg">
+                      <div class="dropdown-menu-header">
+                        <div class="dropdown-menu-header-inner bg-info">
+                          <div class="menu-header-image opacity-2" style="background-image:url('/assets/utils/images/dropdown-header/city3.jpg')"></div>
+                          <div class="menu-header-content text-start">
+                            <div class="widget-content p-0">
+                              <div class="widget-content-wrapper">
+                                <div class="widget-content-left me-3">
+                                  <img width="42" class="rounded-circle" src="./assets/avatar-header.jpg" alt="" />
+                                </div>
+                                <div class="widget-content-left">
+                                  <div class="widget-heading" id="dg-vanilla-user-display-name">Пользователь</div>
+                                  <div class="widget-subheading opacity-8" id="dg-vanilla-user-role">Сессия как в панели</div>
+                                </div>
+                                <div class="widget-content-right me-2">
+                                  <button type="button" class="btn btn-pill btn-shadow btn-shine btn-focus btn-sm">Logout</button>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="scroll-area-xs" style="height:150px">
+                        <div class="p-2">
+                          <div class="nav flex-column">
+                            <div class="nav-item-header small text-uppercase text-muted mb-2 px-2">Activity</div>
+                            <a class="nav-link py-1 px-2" href="#">Chat <span class="badge rounded-pill bg-info float-end">8</span></a>
+                            <a class="nav-link py-1 px-2" href="#">Recover Password</a>
+                            <div class="nav-item-header small text-uppercase text-muted mt-2 mb-2 px-2">My Account</div>
+                            <a class="nav-link py-1 px-2" href="#">Settings <span class="badge bg-success float-end">New</span></a>
+                            <a class="nav-link py-1 px-2" href="#">Messages <span class="badge bg-warning float-end">512</span></a>
+                            <a class="nav-link py-1 px-2" href="#">Logs</a>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="nav-item-divider mb-0"></div>
+                      <div class="grid-menu grid-menu-2col">
+                        <div class="row g-0">
+                          <div class="col-sm-6">
+                            <button type="button" class="btn btn-icon-vertical btn-transition btn-transition-alt pt-2 pb-2 w-100 btn-outline-warning">
+                              <i class="pe-7s-chat icon-gradient bg-amy-crisp btn-icon-wrapper mb-2"> </i>
+                              Message Inbox
+                            </button>
+                          </div>
+                          <div class="col-sm-6">
+                            <button type="button" class="btn btn-icon-vertical btn-transition btn-transition-alt pt-2 pb-2 w-100 btn-outline-danger">
+                              <i class="pe-7s-ticket icon-gradient bg-love-kiss btn-icon-wrapper mb-2"> </i>
+                              <b>Support Tickets</b>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="nav-item-divider"></div>
+                      <div class="nav-item-btn text-center p-2">
+                        <button type="button" class="btn btn-sm btn-wide btn-primary">Open Messages</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="widget-content-left ms-3 header-user-info">
+                  <div class="widget-heading" id="dg-vanilla-user-display-inline">Пользователь</div>
+                  <div class="widget-subheading" id="dg-vanilla-user-role-inline">Пользователь</div>
+                </div>
+                <div class="widget-content-right header-user-info ms-3">
+                  <button type="button" class="btn btn-shadow p-1 btn-sm btn-info" id="Tooltip-1" title="Click for notifications">
+                    <i class="pe-7s-date text-white" style="font-size:20px;line-height:1"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="app-main">
+      <div class="sidebar-mobile-overlay"></div>
+      <div class="app-sidebar sidebar-shadow">
+        <div>
+          <div class="app-header__logo">
+            <button type="button" class="logo-src datagon-brand" onclick="location.href='/dashboard.html'" title="Открыть дашборд" style="border:0;background:transparent;padding:0;cursor:pointer">Датагон</button>
+            <div class="header__pane ms-auto">
+              <div>
+                <button type="button" class="hamburger hamburger--slider dg-toggle-sidebar" aria-label="Свернуть боковую панель" title="Свернуть боковую панель">
+                  <span class="hamburger-box"><span class="hamburger-inner"></span></span>
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="app-header__mobile-menu">
+            <div>
+              <button type="button" class="hamburger hamburger--slider dg-toggle-mobile-sidebar" aria-label="Открыть меню">
+                <span class="hamburger-box"><span class="hamburger-inner"></span></span>
+              </button>
+            </div>
+          </div>
+          <div class="app-header__menu">
+            <span>
+              <button type="button" class="btn btn-primary btn-sm btn-icon btn-icon-only dg-toggle-header-small" aria-label="Доп. меню шапки">
+                <div class="btn-icon-wrapper">
+                  <i class="pe-7s-more" style="font-size:1.1rem;line-height:1"></i>
+                </div>
+              </button>
+            </span>
+          </div>
+          <div class="custom-scrollbar" style="height:calc(100vh - 80px);max-height:calc(100vh - 80px);overflow-y:auto;overflow-x:hidden;flex:1">
+            <div class="app-sidebar__inner">
+              <div class="datagon-nav-shell">
+                <div class="vertical-nav-menu" style="pointer-events:auto;z-index:999;position:relative">
+                  <ul class="metismenu-container">
+                    <li class="metismenu-item"><a class="metismenu-link" data-nav="dashboard" href="/dashboard.html"><i class="metismenu-icon pe-7s-rocket"></i>Дашборд</a></li>
+                    <li class="metismenu-item"><a class="metismenu-link" data-nav="my-sites" href="/my-sites.html"><i class="metismenu-icon pe-7s-global"></i>Мои сайты</a></li>
+                    <li class="metismenu-item"><a class="metismenu-link" data-nav="my-products" href="/my-products.html"><i class="metismenu-icon pe-7s-box2"></i>Мои товары</a></li>
+                    <li class="metismenu-item"><a class="metismenu-link" data-nav="moysklad" href="/moysklad.html"><i class="metismenu-icon pe-7s-shopbag"></i>МойСклад</a></li>
+                    <li class="metismenu-item"><a class="metismenu-link" data-nav="projects" href="/projects.html"><i class="metismenu-icon pe-7s-portfolio"></i>Конкуренты</a></li>
+                    <li class="metismenu-item"><a class="metismenu-link" data-nav="queue" href="/queue.html"><i class="metismenu-icon pe-7s-network"></i>Очередь</a></li>
+                    <li class="metismenu-item"><a class="metismenu-link" data-nav="results" href="/results.html"><i class="metismenu-icon pe-7s-note2"></i>Результаты</a></li>
+                    <li class="metismenu-item"><a class="metismenu-link" data-nav="matches" href="/matches.html"><i class="metismenu-icon pe-7s-link"></i>Сопоставление</a></li>
+                    <li class="metismenu-item"><a class="metismenu-link" data-nav="processes" href="/processes.html"><i class="metismenu-icon pe-7s-timer"></i>Логи</a></li>
+                    <li class="metismenu-item"><a class="metismenu-link" data-nav="settings" href="/settings.html"><i class="metismenu-icon pe-7s-config"></i>Настройки</a></li>
+                  </ul>
+                </div>
+                <div class="datagon-html-source-dock">
+                  <button type="button" class="app-sidebar__heading datagon-html-source-toggle d-flex align-items-center justify-content-between" aria-expanded="false" title="Справочно: структура сайдбара по шаблону ArchitectUI">
+                    <span>Исходник HTML</span>
+                    <i class="pe-7s-angle-down"></i>
+                  </button>
+                  <div class="datagon-html-source-panel" hidden>
+                    <p class="text-muted small px-2 py-2 mb-0">
+                      Демо-страницы шаблона ArchitectUI (CRA) из репозитория убраны. Рабочий UI — разделы <a href="/sections.html">список разделов</a> (*.html в корне сайта).
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="app-sidebar-bg opacity-06"></div>
+        </div>
+      </div>
+
+      <div class="app-main__outer">
+        <div class="app-main__inner">
+          <p class="text-danger small mb-3" id="dg-res-err" style="display:none" role="alert"></p>
+
+          <div class="app-page-title">
+            <div class="page-title-wrapper">
+              <div class="page-title-heading">
+                <div class="page-title-icon">
+                  <i class="pe-7s-note2 icon-gradient bg-happy-fisher"> </i>
+                </div>
+                <div>
+                  Результаты
+                  <div class="page-title-subheading">История парсинга, сопоставление и повторная постановка в очередь.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2">
+              <div class="d-flex align-items-center">
+                <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
+                <span>Фильтры и действия</span>
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-res-filters-toggle">Свернуть</button>
+            </div>
+            <div class="card-body">
+              <div id="dg-res-filters-body">
+              <div class="row g-2">
+                <div class="col-md-4">
+                  <label class="form-label" for="dg-res-f-search">Умный поиск</label>
+                  <input type="text" class="form-control" id="dg-res-f-search" placeholder='code:... sku:... name:"..." project:2' autocomplete="off" />
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label" for="dg-res-f-project">Проект</label>
+                  <select class="form-select" id="dg-res-f-project">
+                    <option value="all">Все проекты</option>
+                  </select>
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label" for="dg-res-f-matched">Сопоставление</label>
+                  <select class="form-select" id="dg-res-f-matched">
+                    <option value="all">Все</option>
+                    <option value="1">Только сопоставленные</option>
+                    <option value="0">Только несопоставленные</option>
+                  </select>
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label" for="dg-res-f-page_status">Статус парсинга</label>
+                  <select class="form-select" id="dg-res-f-page_status">
+                    <option value="">Все</option>
+                    <option value="pending">Ожидает</option>
+                    <option value="processing">В обработке</option>
+                    <option value="done">Готово</option>
+                    <option value="error">Ошибка</option>
+                  </select>
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label" for="dg-res-f-availability">Наличие</label>
+                  <select class="form-select" id="dg-res-f-availability">
+                    <option value="all">Все</option>
+                    <option value="in_stock">В наличии</option>
+                    <option value="oos">Под заказ</option>
+                  </select>
+                </div>
+              </div>
+              <div class="row g-2 mt-1">
+                <div class="col-md-3">
+                  <label class="form-label" for="dg-res-tf-product_name">Товар (таблица)</label>
+                  <input type="text" class="form-control" id="dg-res-tf-product_name" autocomplete="off" />
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label" for="dg-res-tf-sku">SKU (таблица)</label>
+                  <input type="text" class="form-control" id="dg-res-tf-sku" autocomplete="off" />
+                </div>
+                <div class="col-md-3">
+                  <label class="form-label" for="dg-res-tf-project_name">Проект (таблица)</label>
+                  <input type="text" class="form-control" id="dg-res-tf-project_name" autocomplete="off" />
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label" for="dg-res-tf-page_status">Статус таблицы</label>
+                  <select class="form-select" id="dg-res-tf-page_status">
+                    <option value="all">Все</option>
+                    <option value="pending">pending</option>
+                    <option value="processing">processing</option>
+                    <option value="done">done</option>
+                    <option value="error">error</option>
+                  </select>
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label" for="dg-res-tf-availability">Наличие тбл</label>
+                  <select class="form-select" id="dg-res-tf-availability">
+                    <option value="all">Все</option>
+                    <option value="in_stock">В наличии</option>
+                    <option value="oos">Под заказ</option>
+                  </select>
+                </div>
+              </div>
+              <div class="row g-2 mt-1">
+                <div class="col-md-2">
+                  <label class="form-label" for="dg-res-tf-matched">Сопост. тбл</label>
+                  <select class="form-select" id="dg-res-tf-matched">
+                    <option value="all">Все</option>
+                    <option value="1">Да</option>
+                    <option value="0">Нет</option>
+                  </select>
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label" for="dg-res-tf-price_min">Цена от</label>
+                  <input type="number" class="form-control" id="dg-res-tf-price_min" />
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label" for="dg-res-tf-price_max">Цена до</label>
+                  <input type="number" class="form-control" id="dg-res-tf-price_max" />
+                </div>
+              </div>
+              <div class="mt-3 d-flex flex-wrap gap-2">
+                <button type="button" class="btn btn-sm btn-primary" id="results-apply" title="Применить фильтры результатов"><i class="pe-7s-search me-1"></i>Применить</button>
+                <button type="button" class="btn btn-sm btn-outline-success" id="results-reparse-all" title="Добавить отфильтрованные результаты в очередь повторного парсинга"><i class="pe-7s-refresh-2 me-1"></i>В очередь на перепарсинг</button>
+                <button type="button" class="btn btn-sm btn-outline-danger" id="results-clear-history" title="Очистить историю результатов по текущему проекту"><i class="pe-7s-trash me-1"></i>Очистить историю</button>
+              </div>
+              </div>
+              <p class="text-muted mb-0 mt-2" id="dg-res-filters-hint">Всего записей: 0</p>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center">
+              <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
+              <span>Таблица результатов</span>
+            </div>
+            <div class="card-body">
+              <div class="datagon-columns-toolbox mb-2">
+                <div class="columns-top">
+                  <button type="button" class="btn btn-sm" id="dg-res-columns-toggle">🧩 Столбцы</button>
+                  <div class="columns-title">Включение/выключение видимых столбцов:</div>
+                </div>
+                <div class="datagon-columns-panel" id="dg-res-columns-panel">
+                  <div class="columns-actions mb-2">
+                    <button type="button" class="btn btn-sm" id="dg-res-columns-all">Выделить все</button>
+                    <button type="button" class="btn btn-sm" id="dg-res-columns-none">Снять все</button>
+                    <button type="button" class="btn btn-sm" id="dg-res-columns-default">По умолчанию</button>
+                  </div>
+                  <div id="dg-res-columns-list" class="columns-grid"></div>
+                </div>
+              </div>
+              <div class="table-responsive datagon-my-products-table-wrap">
+                  <table id="dg-res-main-table" class="table table-hover table-striped table-bordered mb-0 datagon-my-products-table dg-ms-table" data-dg-sticky="1">
+                    <colgroup>
+                      <col class="dg-res-col-0" />
+                      <col class="dg-res-col-1" />
+                      <col class="dg-res-col-2" />
+                      <col class="dg-res-col-3" />
+                      <col class="dg-res-col-4" />
+                      <col class="dg-res-col-5" />
+                      <col class="dg-res-col-6" />
+                      <col class="dg-res-col-7" />
+                      <col class="dg-res-col-8" />
+                      <col class="dg-res-col-9" />
+                    </colgroup>
+                    <thead id="dg-res-thead">
+                      <tr>
+                        <th style="cursor:pointer" data-res-sort="parsed_at" data-res-col-label="Дата"><span class="dg-res-th-text">Дата</span></th>
+                        <th style="cursor:pointer" data-res-sort="project_name" data-res-col-label="Проект"><span class="dg-res-th-text">Проект</span></th>
+                        <th style="cursor:pointer" data-res-sort="product_name" data-res-col-label="Товар"><span class="dg-res-th-text">Товар</span></th>
+                        <th style="cursor:pointer" data-res-sort="sku" data-res-col-label="SKU"><span class="dg-res-th-text">SKU</span></th>
+                        <th data-res-col-label="Сопоставление"><span class="dg-res-th-text">Сопоставление</span></th>
+                        <th style="cursor:pointer" data-res-sort="page_status" data-res-col-label="Парсинг"><span class="dg-res-th-text">Парсинг</span></th>
+                        <th style="cursor:pointer" data-res-sort="is_oos" data-res-col-label="Наличие"><span class="dg-res-th-text">Наличие</span></th>
+                        <th style="cursor:pointer" data-res-sort="price" data-res-col-label="Цена"><span class="dg-res-th-text">Цена</span></th>
+                        <th style="cursor:pointer" data-res-sort="url" data-res-col-label="URL"><span class="dg-res-th-text">URL</span></th>
+                        <th data-res-col-label="Действия"><span class="dg-res-th-text">Действия</span></th>
+                      </tr>
+                    </thead>
+                    <tbody id="dg-res-tbody"></tbody>
+                  </table>
+              </div>
+              <div class="mt-3 d-flex justify-content-between align-items-center">
+                <div class="d-flex align-items-center gap-2">
+                  <span class="small text-muted">Показать:</span>
+                  <select class="form-select form-select-sm" id="dg-res-limit" style="width:110px">
+                    <option value="50">50</option>
+                    <option value="100" selected>100</option>
+                    <option value="500">500</option>
+                    <option value="1000">1000</option>
+                  </select>
+                </div>
+                <div class="btn-group" role="group">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-res-prev">Назад</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-res-next">Вперед</button>
+                </div>
+              </div>
+              <p class="text-muted mb-0 mt-2" id="dg-res-table-hint">Страница 1/1</p>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="app-footer">
+          <div class="app-footer__inner">
+            <div class="app-footer-left">
+              <div class="footer-dots">
+                <a href="#" class="dot-btn-wrapper dg-vanilla-footer-toggle" id="PopoverFooter-1" aria-expanded="false" aria-haspopup="true">
+                  <i class="dot-btn-icon lnr-bullhorn icon-gradient bg-mean-fruit"></i>
+                  <div class="badge badge-dot badge-abs badge-dot-sm bg-danger">Notifications</div>
+                </a>
+                <div class="dots-separator"></div>
+                <a href="#" class="dot-btn-wrapper dg-vanilla-footer-toggle" id="PopoverFooter-3" aria-expanded="false" aria-haspopup="true">
+                  <i class="dot-btn-icon lnr-pie-chart icon-gradient bg-love-kiss"></i>
+                  <div class="badge badge-dot badge-abs badge-dot-sm bg-warning">Notifications</div>
+                </a>
+                <div class="dropdown-menu popover-custom popover-custom-xl rm-pointers p-0 dg-vanilla-footer-popover" data-footer-popover="PopoverFooter-1" style="min-width:420px">
+                  <div class="dropdown-menu-header mb-0">
+                    <div class="dropdown-menu-header-inner bg-strong-bliss">
+                      <div class="menu-header-image opacity-1" style="background-image:url('./assets/utils/images/dropdown-header/city2.jpg')"></div>
+                      <div class="menu-header-content text-white">
+                        <h5 class="menu-header-title">Notifications</h5>
+                        <h6 class="menu-header-subtitle">You have <b class="text-warning">21</b> unread messages</h6>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="card-tabs-animated card-tabs-animated-inner">
+                    <ul class="nav nav-justified">
+                      <li class="nav-item"><a href="#" class="nav-link active">Messages</a></li>
+                      <li class="nav-item"><a href="#" class="nav-link">Events</a></li>
+                      <li class="nav-item"><a href="#" class="nav-link">Errors</a></li>
+                    </ul>
+                    <div class="p-3">
+                      <div class="text-muted small">Chat, timeline and system tabs in React version.</div>
+                    </div>
+                  </div>
+                  <div class="nav-item-btn text-center pt-3 pb-3">
+                    <button type="button" class="btn btn-shadow btn-wide btn-pill btn-dark">
+                      <span class="badge badge-dot badge-dot-lg bg-warning badge-pulse me-2"></span>
+                      View All Messages
+                    </button>
+                  </div>
+                </div>
+                <div class="dropdown-menu popover-custom popover-custom-lg rm-pointers p-0 dg-vanilla-footer-popover" data-footer-popover="PopoverFooter-3" style="min-width:380px">
+                  <div class="dropdown-menu-header">
+                    <div class="dropdown-menu-header-inner bg-malibu-beach">
+                      <div class="menu-header-image opacity-2" style="background-image:url('./assets/utils/images/dropdown-header/city2.jpg')"></div>
+                      <div class="menu-header-content text-white">
+                        <div class="avatar-icon-wrapper btn-hover-shine mb-3 avatar-icon-xl">
+                          <div class="avatar-icon rounded">
+                            <img src="./assets/utils/images/avatars/2.jpg" alt="Avatar 6" />
+                          </div>
+                        </div>
+                        <h5 class="menu-header-title">Fancy Statistics</h5>
+                        <h6 class="menu-header-subtitle">Just an example of a slider with some chart widgets inside.</h6>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="p-2">
+                    <div class="card no-shadow widget-chart widget-chart2 text-start p-2 m-1">
+                      <div class="widget-title opacity-6 text-muted text-uppercase">New accounts since 2018</div>
+                      <div class="widget-numbers text-success">78<small class="opacity-5 ps-1">%</small></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="app-footer-right">
+              <ul class="nav header-megamenu">
+                <li class="nav-item">
+                  <a href="#" class="nav-link dg-vanilla-footer-toggle" id="PopoverMegaMenuFooterVanilla" aria-expanded="false" aria-haspopup="true">
+                    Заглушка 4
+                    <svg data-prefix="fas" data-icon="angle-up" class="svg-inline--fa fa-angle-up ms-2 opacity-8" role="img" viewBox="0 0 384 512" aria-hidden="true" style="display:inline-block;height:1em;width:0.75em;vertical-align:-0.125em;overflow:visible">
+                      <path fill="currentColor" d="M214.6 137.4c-12.5-12.5-32.8-12.5-45.3 0l-160 160c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0L192 205.3l137.4 137.4c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3l-160-160z"></path>
+                    </svg>
+                  </a>
+                  <div class="dropdown-menu rm-max-width rm-pointers p-0 dg-vanilla-footer-popover" data-footer-popover="PopoverMegaMenuFooterVanilla">
+                    <div class="dropdown-mega-menu dropdown-mega-menu-sm">
+                      <div class="dropdown-menu-header mb-0">
+                        <div class="dropdown-menu-header-inner bg-tempting-azure">
+                          <div class="menu-header-image opacity-1" style="background-image:url('/assets/utils/images/dropdown-header/city5.jpg')"></div>
+                          <div class="menu-header-content text-dark">
+                            <h5 class="menu-header-title">Overview</h5>
+                            <h6 class="menu-header-subtitle">Dropdown menus for everyone</h6>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="grid-menu grid-menu-2col">
+                        <div class="row g-0">
+                          <div class="col-xl-6 col-sm-6">
+                            <div class="nav flex-column">
+                              <div class="nav-item nav-item-header">Overview</div>
+                              <div class="nav-item"><a class="nav-link" href="#"><i class="nav-link-icon lnr-inbox"></i><span>Contacts</span></a></div>
+                              <div class="nav-item"><a class="nav-link" href="#"><i class="nav-link-icon lnr-book"></i><span>Incidents</span><div class="ms-auto badge rounded-pill bg-danger">5</div></a></div>
+                              <div class="nav-item"><a class="nav-link" href="#"><i class="nav-link-icon lnr-picture"></i><span>Companies</span></a></div>
+                              <div class="nav-item"><a class="nav-link disabled" href="#"><i class="nav-link-icon lnr-file-empty"></i><span>Dashboards</span></a></div>
+                            </div>
+                          </div>
+                          <div class="col-xl-6 col-sm-6">
+                            <div class="nav flex-column">
+                              <div class="nav-item nav-item-header">Sales &amp; Marketing</div>
+                              <div class="nav-item"><a class="nav-link" href="#">Queues</a></div>
+                              <div class="nav-item"><a class="nav-link" href="#">Resource Groups</a></div>
+                              <div class="nav-item"><a class="nav-link" href="#">Goal Metrics<div class="ms-auto badge bg-warning">3</div></a></div>
+                              <div class="nav-item"><a class="nav-link" href="#">Campaigns</a></div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </li>
+                <li class="nav-item">
+                  <a href="#" class="nav-link dg-vanilla-footer-toggle" id="PopoverGridFooterVanilla" aria-expanded="false" aria-haspopup="true">
+                    Заглушка 5
+                    <span class="badge bg-dark ms-1"><small>Заглушка 6</small></span>
+                    <svg data-prefix="fas" data-icon="angle-up" class="svg-inline--fa fa-angle-up ms-2 opacity-8" role="img" viewBox="0 0 384 512" aria-hidden="true" style="display:inline-block;height:1em;width:0.75em;vertical-align:-0.125em;overflow:visible">
+                      <path fill="currentColor" d="M214.6 137.4c-12.5-12.5-32.8-12.5-45.3 0l-160 160c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0L192 205.3l137.4 137.4c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3l-160-160z"></path>
+                    </svg>
+                  </a>
+                  <div class="dropdown-menu rm-max-width popover-custom rm-pointers p-0 dg-vanilla-footer-popover" data-footer-popover="PopoverGridFooterVanilla" style="min-width:370px">
+                    <div class="dropdown-menu-header mb-0">
+                      <div class="dropdown-menu-header-inner bg-tempting-azure">
+                        <div class="menu-header-image opacity-1" style="background-image:url('./assets/utils/images/dropdown-header/city5.jpg')"></div>
+                        <div class="menu-header-content text-dark">
+                          <h5 class="menu-header-title">Two Column Grid</h5>
+                          <h6 class="menu-header-subtitle">Easy grid navigation inside popovers</h6>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="grid-menu grid-menu-2col">
+                      <div class="row g-0">
+                        <div class="col-sm-6"><button type="button" class="btn btn-icon-vertical btn-transition-text btn-transition btn-transition-alt pt-2 pb-2 w-100 btn-outline-dark"><i class="lnr-lighter text-dark opacity-7 btn-icon-wrapper mb-2"></i>Automation</button></div>
+                        <div class="col-sm-6"><button type="button" class="btn btn-icon-vertical btn-transition-text btn-transition btn-transition-alt pt-2 pb-2 w-100 btn-outline-danger"><i class="lnr-construction text-danger opacity-7 btn-icon-wrapper mb-2"></i>Reports</button></div>
+                        <div class="col-sm-6"><button type="button" class="btn btn-icon-vertical btn-transition-text btn-transition btn-transition-alt pt-2 pb-2 w-100 btn-outline-success"><i class="lnr-bus text-success opacity-7 btn-icon-wrapper mb-2"></i>Activity</button></div>
+                        <div class="col-sm-6"><button type="button" class="btn btn-icon-vertical btn-transition-text btn-transition btn-transition-alt pt-2 pb-2 w-100 btn-outline-focus"><i class="lnr-gift text-focus opacity-7 btn-icon-wrapper mb-2"></i>Settings</button></div>
+                      </div>
+                    </div>
+                    <div class="nav-item-divider"></div>
+                    <div class="nav-item-btn clearfix p-2">
+                      <button type="button" class="btn btn-sm btn-link float-start">Link Button</button>
+                      <button type="button" class="btn btn-sm btn-info btn-shadow float-end">Info Button</button>
+                    </div>
+                  </div>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="./datagon-vanilla.js"></script>
+    <script>
+    (function () {
+      var FILTERS_KEY = "datagon_results_filters_collapsed_v1";
+      var projects = [];
+      var rows = [];
+      var total = 0;
+      var page = 1;
+      var limit = 100;
+      var sortBy = "parsed_at";
+      var sortDir = "desc";
+      var SORT_STORAGE_VERSION = 1;
+      var loading = false;
+      var urlDebounce = null;
+      var searchReloadTimer = null;
+      var resultsFetchAbortController = null;
+      var SEARCH_RELOAD_DEBOUNCE_MS = 350;
+      var DEFAULT_VISIBLE_COLS = [true, true, true, true, true, true, true, true, true, true];
+      var visibleCols = DEFAULT_VISIBLE_COLS.slice();
+      var columnWidths = {};
+      var resizeState = null;
+      var RESULTS_CLIENT_MAX_ROWS = 12000;
+      var resultsDatasetCache = {
+        apiKey: null,
+        rawRows: null,
+        serverMode: false,
+      };
+
+      function storageScope() {
+        var userId = window.__DG_USER_ID__ || window.__USER_ID__ || "anon";
+        return String(userId);
+      }
+      function userSortKey() {
+        return "dg_results_sort_v" + SORT_STORAGE_VERSION + "_" + storageScope();
+      }
+      function userVisibleColsKey() {
+        return "dg_results_visible_cols_v3_" + storageScope();
+      }
+      function userColWidthKey() {
+        return "dg_results_col_widths_v4_" + storageScope();
+      }
+
+      function fmtDate(v) {
+        if (!v) return "-";
+        var d = new Date(v);
+        if (isNaN(d.getTime())) return "-";
+        return d.toLocaleString("ru-RU");
+      }
+
+      function readApiFilters() {
+        return {
+          project_id: document.getElementById("dg-res-f-project").value,
+          page_status: document.getElementById("dg-res-f-page_status").value,
+          matched: document.getElementById("dg-res-f-matched").value,
+          availability: document.getElementById("dg-res-f-availability").value,
+          search: document.getElementById("dg-res-f-search").value.trim(),
+        };
+      }
+
+      function readTableFilters() {
+        return {
+          product_name: document.getElementById("dg-res-tf-product_name").value.trim(),
+          sku: document.getElementById("dg-res-tf-sku").value.trim(),
+          project_name: document.getElementById("dg-res-tf-project_name").value.trim(),
+          page_status: document.getElementById("dg-res-tf-page_status").value,
+          availability: document.getElementById("dg-res-tf-availability").value,
+          matched: document.getElementById("dg-res-tf-matched").value,
+          price_min: document.getElementById("dg-res-tf-price_min").value,
+          price_max: document.getElementById("dg-res-tf-price_max").value,
+        };
+      }
+
+      function buildUrl() {
+        var f = readApiFilters();
+        var s = new URLSearchParams({
+          limit: String(limit),
+          offset: String((page - 1) * limit),
+          sort_by: sortBy,
+          sort_dir: sortDir,
+        });
+        Object.keys(f).forEach(function (k) {
+          var v = f[k];
+          if (v === undefined || v === null || v === "" || v === "all") return;
+          s.set(k, String(v));
+        });
+        return "/api/results?" + s.toString();
+      }
+
+      function syncUrl() {
+        var f = readApiFilters();
+        var params = new URLSearchParams();
+        Object.keys(f).forEach(function (k) {
+          var v = f[k];
+          if (v === undefined || v === null || v === "" || v === "all") return;
+          params.set(k, String(v));
+        });
+        if (page > 1) params.set("page", String(page));
+        if (limit !== 100) params.set("limit", String(limit));
+        if (sortBy !== "parsed_at") params.set("sort_by", sortBy);
+        if (sortDir !== "desc") params.set("sort_dir", sortDir);
+        var next = params.toString()
+          ? window.location.pathname + "?" + params.toString()
+          : window.location.pathname;
+        try {
+          window.history.replaceState(null, "", next);
+        } catch (e) {}
+      }
+
+      function scheduleSyncUrl() {
+        if (urlDebounce) clearTimeout(urlDebounce);
+        urlDebounce = setTimeout(function () {
+          urlDebounce = null;
+          syncUrl();
+        }, 200);
+      }
+
+      function parseUrlToForm() {
+        var params = new URLSearchParams(window.location.search);
+        ["project_id", "page_status", "matched", "availability", "search"].forEach(function (k) {
+          var v = params.get(k);
+          if (v === null || v === "") return;
+          if (k === "search") document.getElementById("dg-res-f-search").value = v;
+          if (k === "project_id") document.getElementById("dg-res-f-project").value = v;
+          if (k === "page_status") document.getElementById("dg-res-f-page_status").value = v;
+          if (k === "matched") document.getElementById("dg-res-f-matched").value = v;
+          if (k === "availability") document.getElementById("dg-res-f-availability").value = v;
+        });
+        var p = Number(params.get("page") || 1);
+        var l = Number(params.get("limit") || 100);
+        if (Number.isFinite(p) && p > 0) page = p;
+        if ([50, 100, 500, 1000].includes(l)) {
+          limit = l;
+          document.getElementById("dg-res-limit").value = String(l);
+        }
+        var sb = params.get("sort_by");
+        var sd = params.get("sort_dir");
+        if (sb) sortBy = sb;
+        if (sd === "asc" || sd === "desc") sortDir = sd;
+        if (!sb || !sd) {
+          try {
+            var raw = localStorage.getItem(userSortKey());
+            var ls = raw ? JSON.parse(raw) : null;
+            if (ls && ls.sortBy) sortBy = ls.sortBy;
+            if (ls && (ls.sortDir === "asc" || ls.sortDir === "desc")) sortDir = ls.sortDir;
+          } catch (e) {}
+        }
+      }
+
+      function updateSortHeaders() {
+        document.querySelectorAll("#dg-res-thead th").forEach(function (th) {
+          var field = th.getAttribute("data-res-sort");
+          var base = th.getAttribute("data-res-col-label");
+          if (!base) {
+            var sp0 = th.querySelector(".dg-res-th-text");
+            base = String((sp0 && sp0.textContent) || "")
+              .replace(/\s*[↑↓]\s*$/g, "")
+              .trim();
+            if (base) th.setAttribute("data-res-col-label", base);
+          }
+          var span = th.querySelector(".dg-res-th-text");
+          if (!span) {
+            span = document.createElement("span");
+            span.className = "dg-res-th-text";
+            var handleEx = th.querySelector(".dg-res-resize-handle");
+            if (handleEx) th.insertBefore(span, handleEx);
+            else th.appendChild(span);
+          }
+          var suffix = field && field === sortBy ? (sortDir === "asc" ? " ↑" : " ↓") : "";
+          span.textContent = (base || "") + suffix;
+        });
+      }
+
+      function fillProjects(list) {
+        var sel = document.getElementById("dg-res-f-project");
+        var prev = sel.value;
+        sel.innerHTML = '<option value="all">Все проекты</option>';
+        (list || []).forEach(function (p) {
+          var o = document.createElement("option");
+          o.value = String(p.id);
+          o.textContent = p.name || "#" + p.id;
+          sel.appendChild(o);
+        });
+        if ([].some.call(sel.options, function (o) { return o.value === prev; })) sel.value = prev;
+      }
+
+      function pagesCount() {
+        return Math.max(1, Math.ceil(total / limit));
+      }
+
+      function updateHints(opt) {
+        opt = opt || {};
+        var suffix = opt.refreshSuffix || "";
+        var fh = document.getElementById("dg-res-filters-hint");
+        var th = document.getElementById("dg-res-table-hint");
+        if (fh) fh.textContent = "Всего записей: " + Number(total || 0).toLocaleString("ru-RU");
+        if (th) th.textContent = "Страница " + page + "/" + pagesCount() + suffix;
+        var prev = document.getElementById("dg-res-prev");
+        var next = document.getElementById("dg-res-next");
+        if (prev) prev.disabled = page <= 1;
+        if (next) next.disabled = page >= pagesCount();
+      }
+
+      function filterRows(data) {
+        var tf = readTableFilters();
+        return (data || []).filter(function (r) {
+          if (tf.product_name && !String(r.product_name || "").toLowerCase().includes(String(tf.product_name).trim().toLowerCase()))
+            return false;
+          if (tf.sku && !String(r.sku || "").toLowerCase().includes(String(tf.sku).trim().toLowerCase())) return false;
+          if (tf.project_name && !String(r.project_name || "").toLowerCase().includes(String(tf.project_name).trim().toLowerCase()))
+            return false;
+          if (tf.page_status !== "all" && String(r.page_status || "").toLowerCase() !== String(tf.page_status).toLowerCase()) return false;
+          var availability = Number(r.is_oos || 0) === 1 ? "oos" : "in_stock";
+          if (tf.availability !== "all" && availability !== tf.availability) return false;
+          var matched = Number(r.is_matched || 0) === 1 ? "1" : "0";
+          if (tf.matched !== "all" && matched !== tf.matched) return false;
+          var price = Number(r.price || 0);
+          var min = Number(tf.price_min || "");
+          var max = Number(tf.price_max || "");
+          if (Number.isFinite(min) && String(tf.price_min).trim() !== "" && price < min) return false;
+          if (Number.isFinite(max) && String(tf.price_max).trim() !== "" && price > max) return false;
+          return true;
+        });
+      }
+
+      function apiFiltersKey() {
+        return JSON.stringify(readApiFilters());
+      }
+
+      function invalidateResultsDatasetCache() {
+        resultsDatasetCache.apiKey = null;
+        resultsDatasetCache.rawRows = null;
+        resultsDatasetCache.serverMode = false;
+      }
+
+      function buildResultsFetchUrl(off, lim, sb, sd) {
+        var f = readApiFilters();
+        var s = new URLSearchParams({
+          limit: String(lim),
+          offset: String(off),
+          sort_by: String(sb || "parsed_at"),
+          sort_dir: String(sd || "desc"),
+        });
+        Object.keys(f).forEach(function (k) {
+          var v = f[k];
+          if (v === undefined || v === null || v === "" || v === "all") return;
+          s.set(k, String(v));
+        });
+        return "/api/results?" + s.toString();
+      }
+
+      function sortResultsRows(data) {
+        var dir = sortDir === "asc" ? 1 : -1;
+        var field = sortBy;
+        return data.slice().sort(function (a, b) {
+          var cmp = 0;
+          if (field === "parsed_at" || field === "page_parsed_at") {
+            cmp = new Date(a[field] || 0).getTime() - new Date(b[field] || 0).getTime();
+          } else if (field === "price") {
+            cmp = Number(a.price || 0) - Number(b.price || 0);
+          } else if (field === "is_oos") {
+            cmp = Number(a.is_oos ? 1 : 0) - Number(b.is_oos ? 1 : 0);
+          } else {
+            var av;
+            var bv;
+            if (field === "url") {
+              av = String(a.page_url || a.url || "");
+              bv = String(b.page_url || b.url || "");
+            } else {
+              av = String(a[field] != null ? a[field] : "");
+              bv = String(b[field] != null ? b[field] : "");
+            }
+            cmp = av.localeCompare(bv, "ru", { sensitivity: "base" });
+          }
+          if (cmp !== 0) return cmp * dir;
+          return Number(b.id || 0) - Number(a.id || 0);
+        });
+      }
+
+      function applyClientDatasetView() {
+        if (resultsDatasetCache.serverMode || !resultsDatasetCache.rawRows) return false;
+        if (resultsDatasetCache.apiKey !== apiFiltersKey()) return false;
+        var filtered = filterRows(resultsDatasetCache.rawRows.slice());
+        var sorted = sortResultsRows(filtered);
+        total = sorted.length;
+        var start = (page - 1) * limit;
+        rows = sorted.slice(start, start + limit);
+        return true;
+      }
+
+      function tryRenderFromClientCache() {
+        if (resultsDatasetCache.serverMode) return false;
+        if (!resultsDatasetCache.rawRows || resultsDatasetCache.apiKey !== apiFiltersKey()) return false;
+        loading = false;
+        showErr("");
+        var tbodyRefresh = document.getElementById("dg-res-tbody");
+        if (tbodyRefresh) tbodyRefresh.classList.remove("dg-res-tbody-refreshing");
+        applyClientDatasetView();
+        renderTable();
+        syncUrl();
+        return true;
+      }
+
+      function showErr(msg) {
+        var el = document.getElementById("dg-res-err");
+        if (!el) return;
+        if (!msg) {
+          el.style.display = "none";
+          el.textContent = "";
+          return;
+        }
+        el.style.display = "";
+        el.textContent = msg;
+      }
+
+      /* translate на <thead> даёт «пустое» место и съезд шапки; скролл — в .app-main__outer, не window. Режим: только CSS sticky на th + --dg-table-sticky-top из datagon-vanilla.js */
+      function clearResultsTheadTransform() {
+        var thead = document.getElementById("dg-res-thead");
+        if (!thead) return;
+        thead.style.transform = "";
+        thead.style.position = "";
+        thead.style.zIndex = "";
+        thead.style.willChange = "";
+        thead.removeAttribute("data-dg-floating");
+        thead.removeAttribute("data-dg-base-top");
+      }
+
+      function captureResultsFloatingHeaderBase() {
+        clearResultsTheadTransform();
+      }
+
+      function scheduleCaptureResultsFloatingHeaderBase() {
+        requestAnimationFrame(function () {
+          requestAnimationFrame(captureResultsFloatingHeaderBase);
+        });
+      }
+
+      function renderTable() {
+        var tbody = document.getElementById("dg-res-tbody");
+        tbody.replaceChildren();
+        updateHints();
+        if (loading) {
+          var trL = document.createElement("tr");
+          var tdL = document.createElement("td");
+          tdL.colSpan = 10;
+          tdL.className = "text-muted";
+          tdL.textContent = "Загрузка...";
+          trL.appendChild(tdL);
+          tbody.appendChild(trL);
+          applyStoredColumnWidths();
+          initColumnResizeHandles();
+          scheduleCaptureResultsFloatingHeaderBase();
+          return;
+        }
+        var filtered = filterRows(rows);
+        if (!filtered.length) {
+          var tr = document.createElement("tr");
+          var td = document.createElement("td");
+          td.colSpan = 10;
+          td.className = "text-muted";
+          td.textContent = "Нет результатов";
+          tr.appendChild(td);
+          tbody.appendChild(tr);
+          applyStoredColumnWidths();
+          initColumnResizeHandles();
+          scheduleCaptureResultsFloatingHeaderBase();
+          return;
+        }
+        filtered.forEach(function (r) {
+          var matched = Number(r.is_matched || 0) === 1;
+          var pageStatus = String(r.page_status || "").toLowerCase();
+          var tr = document.createElement("tr");
+          if (matched) tr.className = "table-success";
+          var tdDate = document.createElement("td");
+          var d1 = document.createElement("div");
+          d1.innerHTML = "<b>Результат:</b> " + fmtDate(r.parsed_at);
+          var d2 = document.createElement("div");
+          d2.className = "small text-muted";
+          d2.innerHTML = "<b>Парсинг:</b> " + fmtDate(r.page_parsed_at);
+          tdDate.appendChild(d1);
+          tdDate.appendChild(d2);
+          var tdProj = document.createElement("td");
+          tdProj.textContent = r.project_name || "-";
+          var tdProd = document.createElement("td");
+          var b = document.createElement("b");
+          b.textContent = r.product_name || "-";
+          tdProd.appendChild(b);
+          var tdSku = document.createElement("td");
+          tdSku.textContent = r.sku || "-";
+          var tdMat = document.createElement("td");
+          if (matched) {
+            var badge = document.createElement("span");
+            badge.className = "badge bg-success";
+            badge.textContent = "Сопоставлено";
+            tdMat.appendChild(badge);
+          } else tdMat.textContent = "-";
+          var tdParse = document.createElement("td");
+          if (pageStatus === "pending") {
+            var w = document.createElement("span");
+            w.className = "badge bg-warning";
+            w.textContent = "Ожидает";
+            tdParse.appendChild(w);
+          } else if (pageStatus === "processing") {
+            var inf = document.createElement("span");
+            inf.className = "badge bg-info";
+            inf.textContent = "В обработке";
+            tdParse.appendChild(inf);
+          } else if (pageStatus === "done") {
+            var ok = document.createElement("span");
+            ok.className = "badge bg-success";
+            ok.textContent = "Готово";
+            tdParse.appendChild(ok);
+          } else if (pageStatus === "error") {
+            var er = document.createElement("span");
+            er.className = "badge bg-danger";
+            er.textContent = "Ошибка";
+            tdParse.appendChild(er);
+          } else if (!pageStatus) {
+            var nx = document.createElement("span");
+            nx.className = "text-muted";
+            nx.textContent = "нет в очереди";
+            tdParse.appendChild(nx);
+          }
+          var tdOos = document.createElement("td");
+          if (r.is_oos) {
+            var oos = document.createElement("span");
+            oos.className = "badge bg-danger";
+            oos.textContent = "Под заказ";
+            tdOos.appendChild(oos);
+          } else {
+            var st = document.createElement("span");
+            st.className = "badge bg-success";
+            st.textContent = "В наличии";
+            tdOos.appendChild(st);
+          }
+          var tdPrice = document.createElement("td");
+          if (r.is_oos) tdPrice.textContent = "-";
+          else
+            tdPrice.textContent =
+              Number(r.price || 0).toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) +
+              " " +
+              (r.currency || "RUB");
+          var tdUrl = document.createElement("td");
+          var a = document.createElement("a");
+          a.href = r.page_url || r.url || "#";
+          a.target = "_blank";
+          a.rel = "noopener noreferrer";
+          a.textContent = "Открыть";
+          tdUrl.appendChild(a);
+          var tdAct = document.createElement("td");
+          tdAct.className = "text-nowrap";
+          var btnRe = document.createElement("button");
+          btnRe.type = "button";
+          btnRe.className = "btn btn-sm btn-outline-info me-1";
+          btnRe.innerHTML = '<i class="pe-7s-refresh me-1"></i>↻';
+          btnRe.addEventListener("click", function () {
+            reparseOne(r);
+          });
+          var btnDel = document.createElement("button");
+          btnDel.type = "button";
+          btnDel.className = "btn btn-sm btn-outline-danger";
+          btnDel.innerHTML = '<i class="pe-7s-trash me-1"></i>×';
+          btnDel.addEventListener("click", function () {
+            deleteOne(r.id);
+          });
+          tdAct.appendChild(btnRe);
+          tdAct.appendChild(btnDel);
+          tr.appendChild(tdDate);
+          tr.appendChild(tdProj);
+          tr.appendChild(tdProd);
+          tr.appendChild(tdSku);
+          tr.appendChild(tdMat);
+          tr.appendChild(tdParse);
+          tr.appendChild(tdOos);
+          tr.appendChild(tdPrice);
+          tr.appendChild(tdUrl);
+          tr.appendChild(tdAct);
+          tbody.appendChild(tr);
+        });
+        applyVisibleColumns();
+        applyStoredColumnWidths();
+        initColumnResizeHandles();
+      }
+
+      function loadResults(opts) {
+        opts = opts || {};
+        var showSkeleton = opts.showSkeleton !== false;
+        var forceRefresh = opts.forceRefresh === true;
+        if (searchReloadTimer) {
+          clearTimeout(searchReloadTimer);
+          searchReloadTimer = null;
+        }
+        if (resultsFetchAbortController) {
+          resultsFetchAbortController.abort();
+        }
+        if (forceRefresh) {
+          invalidateResultsDatasetCache();
+        }
+        if (!forceRefresh && tryRenderFromClientCache()) {
+          return;
+        }
+        var key = apiFiltersKey();
+        if (resultsDatasetCache.apiKey !== key) {
+          invalidateResultsDatasetCache();
+        }
+        var tbodyRefresh = document.getElementById("dg-res-tbody");
+        if (tbodyRefresh) tbodyRefresh.classList.remove("dg-res-tbody-refreshing");
+        var controller = new AbortController();
+        resultsFetchAbortController = controller;
+        loading = true;
+        showErr("");
+        if (showSkeleton) {
+          renderTable();
+        } else {
+          if (tbodyRefresh) tbodyRefresh.classList.add("dg-res-tbody-refreshing");
+          updateHints({ refreshSuffix: " · обновление…" });
+        }
+
+        function finishServerPage(x) {
+          if (!x.r.ok) throw new Error(x.j.error || "Ошибка загрузки результатов");
+          var data = x.j.data || x.j.rows || [];
+          rows = Array.isArray(data) ? data : [];
+          total = Number(x.j.total || 0);
+          loading = false;
+          if (tbodyRefresh) tbodyRefresh.classList.remove("dg-res-tbody-refreshing");
+          renderTable();
+          syncUrl();
+        }
+
+        function finishClientDataset(acc) {
+          resultsDatasetCache.apiKey = key;
+          resultsDatasetCache.rawRows = acc;
+          resultsDatasetCache.serverMode = false;
+          loading = false;
+          if (tbodyRefresh) tbodyRefresh.classList.remove("dg-res-tbody-refreshing");
+          applyClientDatasetView();
+          renderTable();
+          syncUrl();
+        }
+
+        /* Сначала limit=0: только total + COUNT (без N последовательных чанков по сети). Потом один запрос на весь набор ≤ RESULTS_CLIENT_MAX_ROWS. */
+        var urlProbe = buildResultsFetchUrl(0, 0, "parsed_at", "desc");
+        fetch(urlProbe, { credentials: "same-origin", signal: controller.signal })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok) throw new Error(x.j.error || "Ошибка загрузки результатов");
+            var totalN = Number(x.j.total || 0);
+
+            if (totalN > RESULTS_CLIENT_MAX_ROWS) {
+              resultsDatasetCache.apiKey = key;
+              resultsDatasetCache.serverMode = true;
+              resultsDatasetCache.rawRows = null;
+              return fetch(buildUrl(), { credentials: "same-origin", signal: controller.signal })
+                .then(function (r2) {
+                  return r2.json().then(function (j2) {
+                    return { r: r2, j: j2 };
+                  });
+                })
+                .then(finishServerPage);
+            }
+
+            if (totalN === 0) {
+              finishClientDataset([]);
+              return;
+            }
+
+            var fullLim = Math.min(totalN, RESULTS_CLIENT_MAX_ROWS);
+            return fetch(buildResultsFetchUrl(0, fullLim, "parsed_at", "desc"), {
+              credentials: "same-origin",
+              signal: controller.signal,
+            })
+              .then(function (r1) {
+                return r1.json().then(function (j1) {
+                  return { r: r1, j: j1 };
+                });
+              })
+              .then(function (xx) {
+                if (!xx.r.ok) throw new Error(xx.j.error || "Ошибка загрузки результатов");
+                var d = xx.j.data || xx.j.rows || [];
+                var full = Array.isArray(d) ? d : [];
+                finishClientDataset(full);
+              });
+          })
+          .catch(function (e) {
+            if (e.name === "AbortError") return;
+            loading = false;
+            if (tbodyRefresh) tbodyRefresh.classList.remove("dg-res-tbody-refreshing");
+            invalidateResultsDatasetCache();
+            rows = [];
+            total = 0;
+            renderTable();
+            showErr(e.message || "Не удалось загрузить результаты");
+          })
+          .finally(function () {
+            if (resultsFetchAbortController === controller) {
+              resultsFetchAbortController = null;
+            }
+          });
+      }
+
+      function loadBaseData() {
+        return Promise.all([
+          fetch("/api/projects", { credentials: "same-origin" }).then(function (r) {
+            return r.json();
+          }),
+          fetch("/api/settings", { credentials: "same-origin" }).then(function (r) {
+            return r.json();
+          }),
+        ])
+          .then(function (arr) {
+            if (Array.isArray(arr[0])) {
+              projects = arr[0];
+              fillProjects(projects);
+            }
+            var dl = Number(arr[1].default_limit || 100);
+            if ([50, 100, 500, 1000].includes(dl)) {
+              limit = dl;
+              document.getElementById("dg-res-limit").value = String(dl);
+            }
+          })
+          .catch(function () {});
+      }
+
+      function parseSmart() {
+        var raw = String(document.getElementById("dg-res-f-search").value || "").trim();
+        if (!raw) return;
+        var tokens = raw.match(/"[^"]+"|\S+/g) || [];
+        var free = [];
+        var next = readApiFilters();
+        tokens.forEach(function (t) {
+          var idx = t.indexOf(":");
+          if (idx <= 0) {
+            free.push(t.replace(/^"(.*)"$/, "$1"));
+            return;
+          }
+          var key = t.slice(0, idx).toLowerCase();
+          var value = t.slice(idx + 1).replace(/^"(.*)"$/, "$1").trim();
+          if (key === "project" || key === "project_id") next.project_id = value;
+          else if (key === "status" || key === "page_status") next.page_status = value;
+          else if (key === "code" || key === "sku" || key === "name") free.push(value);
+          else free.push(value);
+        });
+        next.search = free.join(" ").trim();
+        document.getElementById("dg-res-f-search").value = next.search;
+        document.getElementById("dg-res-f-page_status").value = next.page_status || "";
+        document.getElementById("dg-res-f-matched").value = next.matched || "all";
+        document.getElementById("dg-res-f-availability").value = next.availability || "all";
+        var sel = document.getElementById("dg-res-f-project");
+        var want = String(next.project_id || "all");
+        if (want !== "all" && [].some.call(sel.options, function (o) { return o.value === want; })) sel.value = want;
+        else sel.value = "all";
+        page = 1;
+        loadResults();
+      }
+
+      function onSort(field) {
+        if (sortBy === field) sortDir = sortDir === "asc" ? "desc" : "asc";
+        else {
+          sortBy = field;
+          sortDir = "asc";
+          page = 1;
+        }
+        try {
+          localStorage.setItem(userSortKey(), JSON.stringify({ sortBy: sortBy, sortDir: sortDir }));
+        } catch (e) {}
+        updateSortHeaders();
+        if (tryRenderFromClientCache()) return;
+        loadResults({ showSkeleton: false });
+      }
+
+      function getHeaderCells() {
+        var table = document.getElementById("dg-res-main-table");
+        if (!table || !table.tHead || !table.tHead.rows[0]) return [];
+        return Array.prototype.slice.call(table.tHead.rows[0].cells || []);
+      }
+
+      function clearAppliedColumnWidths() {
+        var table = document.getElementById("dg-res-main-table");
+        if (!table || !table.tHead || !table.tHead.rows[0]) return;
+        var rowsList = [table.tHead.rows[0]].concat(
+          Array.prototype.slice.call((table.tBodies[0] && table.tBodies[0].rows) || [])
+        );
+        rowsList.forEach(function (row) {
+          for (var i = 0; i < row.cells.length; i++) {
+            var c = row.cells[i];
+            c.style.width = "";
+            c.style.minWidth = "";
+            c.style.maxWidth = "";
+          }
+        });
+      }
+
+      function applyColumnWidthByIndex(idx, px) {
+        var table = document.getElementById("dg-res-main-table");
+        if (!table) return;
+        var rowsList = [];
+        if (table.tHead && table.tHead.rows && table.tHead.rows[0]) rowsList.push(table.tHead.rows[0]);
+        var bodyRows = Array.prototype.slice.call((table.tBodies[0] && table.tBodies[0].rows) || []);
+        rowsList = rowsList.concat(bodyRows);
+        rowsList.forEach(function (row) {
+          var cell = row.cells[idx];
+          if (!cell || cell.colSpan > 1) return;
+          cell.style.boxSizing = "border-box";
+          cell.style.width = px + "px";
+          cell.style.maxWidth = px + "px";
+          cell.style.minWidth = "0";
+        });
+      }
+
+      function applyStoredColumnWidths() {
+        Object.keys(columnWidths || {}).forEach(function (k) {
+          var idx = Number(k);
+          var px = Number(columnWidths[k]);
+          if (!Number.isFinite(idx) || !Number.isFinite(px) || px < 48) return;
+          applyColumnWidthByIndex(idx, px);
+        });
+      }
+
+      function onResizeMoveResults(e) {
+        if (!resizeState) return;
+        var dx = e.clientX - resizeState.startX;
+        var next = Math.max(48, Math.min(700, Math.round(resizeState.startWidth + dx)));
+        columnWidths[resizeState.colIndex] = next;
+        applyColumnWidthByIndex(resizeState.colIndex, next);
+      }
+
+      function onResizeUpResults() {
+        document.removeEventListener("mousemove", onResizeMoveResults);
+        document.removeEventListener("mouseup", onResizeUpResults);
+        document.removeEventListener("pointermove", onResizeMoveResults);
+        document.removeEventListener("pointerup", onResizeUpResults);
+        document.removeEventListener("pointercancel", onResizeUpResults);
+        if (!resizeState) return;
+        resizeState = null;
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+        try {
+          localStorage.setItem(userColWidthKey(), JSON.stringify(columnWidths || {}));
+        } catch (err) {}
+        scheduleCaptureResultsFloatingHeaderBase();
+      }
+
+      function initColumnResizeHandles() {
+        var headers = getHeaderCells();
+        headers.forEach(function (th, idx) {
+          var old = th.querySelector(".dg-res-resize-handle");
+          if (old) old.remove();
+          if (th.offsetWidth < 8) return;
+          var h = document.createElement("span");
+          h.className = "dg-res-resize-handle";
+          h.setAttribute("role", "separator");
+          h.setAttribute("aria-orientation", "vertical");
+          h.title = "Потяните, чтобы изменить ширину";
+          function beginResize(ev) {
+            if (ev.button != null && ev.button !== 0) return;
+            ev.preventDefault();
+            ev.stopPropagation();
+            var rect = th.getBoundingClientRect();
+            var w = Number(columnWidths[idx] || 0);
+            if (!Number.isFinite(w) || w <= 0) w = Math.round(rect.width || 120);
+            resizeState = { colIndex: idx, startX: ev.clientX, startWidth: w };
+            document.body.style.cursor = "col-resize";
+            document.body.style.userSelect = "none";
+            if (window.PointerEvent) {
+              document.addEventListener("pointermove", onResizeMoveResults);
+              document.addEventListener("pointerup", onResizeUpResults);
+              document.addEventListener("pointercancel", onResizeUpResults);
+            } else {
+              document.addEventListener("mousemove", onResizeMoveResults);
+              document.addEventListener("mouseup", onResizeUpResults);
+            }
+          }
+          if (window.PointerEvent) {
+            h.addEventListener("pointerdown", beginResize);
+          } else {
+            h.addEventListener("mousedown", beginResize);
+          }
+          h.addEventListener("click", function (ev) {
+            ev.stopPropagation();
+          });
+          th.appendChild(h);
+        });
+      }
+
+      function applyVisibleColumns() {
+        var table = document.getElementById("dg-res-main-table");
+        if (!table) return;
+        var cg = table.querySelector("colgroup");
+        var colNodes = cg ? cg.querySelectorAll("col") : [];
+        for (var ci = 0; ci < colNodes.length; ci++) {
+          colNodes[ci].style.visibility = visibleCols[ci] === false ? "collapse" : "";
+        }
+        var rowsList = [];
+        if (table.tHead && table.tHead.rows && table.tHead.rows[0]) rowsList.push(table.tHead.rows[0]);
+        var bodyRows = Array.prototype.slice.call((table.tBodies[0] && table.tBodies[0].rows) || []);
+        rowsList = rowsList.concat(bodyRows);
+        rowsList.forEach(function (row) {
+          for (var i = 0; i < row.cells.length; i++) {
+            row.cells[i].style.display = "";
+            row.cells[i].style.visibility = visibleCols[i] === false ? "collapse" : "";
+          }
+        });
+        scheduleCaptureResultsFloatingHeaderBase();
+      }
+
+      function renderColumnsPanel() {
+        var list = document.getElementById("dg-res-columns-list");
+        if (!list) return;
+        var headers = getHeaderCells();
+        list.innerHTML = "";
+        headers.forEach(function (th, idx) {
+          var label = document.createElement("label");
+          var cb = document.createElement("input");
+          cb.type = "checkbox";
+          cb.checked = visibleCols[idx] !== false;
+          cb.addEventListener("change", function () {
+            visibleCols[idx] = cb.checked;
+            applyVisibleColumns();
+            try {
+              localStorage.setItem(userVisibleColsKey(), JSON.stringify(visibleCols));
+            } catch (e) {}
+          });
+          var txt = document.createElement("span");
+          var panelLabel = th.getAttribute("data-res-col-label");
+          if (!panelLabel) {
+            panelLabel = String(th.textContent || "")
+              .replace(/\s*[↑↓]\s*$/g, "")
+              .trim();
+          }
+          txt.textContent = panelLabel || "Колонка " + (idx + 1);
+          label.appendChild(cb);
+          label.appendChild(txt);
+          list.appendChild(label);
+        });
+      }
+
+      function initColumnsPanel() {
+        try {
+          var rawW = localStorage.getItem(userColWidthKey());
+          var parsedW = rawW ? JSON.parse(rawW) : null;
+          if (parsedW && typeof parsedW === "object") columnWidths = parsedW;
+        } catch (e2) {}
+        try {
+          var rawVisible = localStorage.getItem(userVisibleColsKey());
+          var parsedVisible = rawVisible ? JSON.parse(rawVisible) : null;
+          if (Array.isArray(parsedVisible) && parsedVisible.length) visibleCols = parsedVisible.slice();
+        } catch (e) {}
+        var panel = document.getElementById("dg-res-columns-panel");
+        var toggle = document.getElementById("dg-res-columns-toggle");
+        var allBtn = document.getElementById("dg-res-columns-all");
+        var noneBtn = document.getElementById("dg-res-columns-none");
+        var defBtn = document.getElementById("dg-res-columns-default");
+        if (toggle && panel) {
+          toggle.addEventListener("click", function () {
+            panel.classList.toggle("open");
+          });
+        }
+        if (allBtn) {
+          allBtn.addEventListener("click", function () {
+            visibleCols = getHeaderCells().map(function () { return true; });
+            applyVisibleColumns();
+            renderColumnsPanel();
+          });
+        }
+        if (noneBtn) {
+          noneBtn.addEventListener("click", function () {
+            visibleCols = getHeaderCells().map(function (_, i) { return i === 0; });
+            applyVisibleColumns();
+            renderColumnsPanel();
+          });
+        }
+        if (defBtn) {
+          defBtn.addEventListener("click", function () {
+            visibleCols = DEFAULT_VISIBLE_COLS.slice();
+            columnWidths = {};
+            try {
+              localStorage.removeItem(userColWidthKey());
+            } catch (e3) {}
+            clearAppliedColumnWidths();
+            applyVisibleColumns();
+            renderColumnsPanel();
+            initColumnResizeHandles();
+          });
+        }
+        renderColumnsPanel();
+      }
+
+      function clearResults() {
+        if (!window.confirm("Удалить историю результатов по текущему проекту?")) return;
+        var f = readApiFilters();
+        fetch("/api/results/clear", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ project_id: f.project_id === "all" ? null : f.project_id }),
+        })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok) throw new Error(x.j.error || "Не удалось очистить");
+            alert("История очищена");
+            invalidateResultsDatasetCache();
+            loadResults();
+          })
+          .catch(function (e) {
+            alert(e.message || String(e));
+          });
+      }
+
+      function reparseAll() {
+        if (!window.confirm("Добавить в очередь URL из результатов по текущим фильтрам?")) return;
+        var f = readApiFilters();
+        fetch("/api/parse/refresh-results", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            project_id: f.project_id === "all" ? null : f.project_id,
+            page_status: f.page_status || null,
+            search: f.search || null,
+          }),
+        })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok || !x.j.success) throw new Error(x.j.error || x.j.message || "Не удалось поставить в очередь");
+            alert(x.j.message || "URL добавлены в очередь");
+          })
+          .catch(function (e) {
+            alert(e.message || String(e));
+          });
+      }
+
+      function reparseOne(r) {
+        if (!window.confirm("Поставить страницу в очередь на повторный парсинг?")) return;
+        fetch("/api/parse/refresh-single", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            url: r.url,
+            project_id: r.project_id,
+            page_id: r.page_id || null,
+          }),
+        })
+          .then(function (res) {
+            return res.json().then(function (j) {
+              return { r: res, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok || !x.j.success) throw new Error(x.j.error || x.j.message || "Не удалось поставить в очередь");
+            alert(x.j.message || "Добавлено в очередь");
+          })
+          .catch(function (e) {
+            alert(e.message || String(e));
+          });
+      }
+
+      function deleteOne(id) {
+        if (!window.confirm("Удалить запись из истории?")) return;
+        fetch("/api/results/" + id, { method: "DELETE", credentials: "same-origin" })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Не удалось удалить");
+            alert("Запись удалена");
+            invalidateResultsDatasetCache();
+            loadResults({ showSkeleton: false });
+          })
+          .catch(function (e) {
+            alert(e.message || String(e));
+          });
+      }
+
+      document.getElementById("results-apply").addEventListener("click", function () {
+        if (String(document.getElementById("dg-res-f-search").value || "").trim()) {
+          parseSmart();
+          return;
+        }
+        page = 1;
+        loadResults();
+      });
+      document.getElementById("results-reparse-all").addEventListener("click", reparseAll);
+      document.getElementById("results-clear-history").addEventListener("click", clearResults);
+
+      document.getElementById("dg-res-f-search").addEventListener("keydown", function (e) {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          if (searchReloadTimer) {
+            clearTimeout(searchReloadTimer);
+            searchReloadTimer = null;
+          }
+          parseSmart();
+        }
+      });
+
+      document.getElementById("dg-res-f-search").addEventListener("input", function () {
+        scheduleSyncUrl();
+        if (searchReloadTimer) clearTimeout(searchReloadTimer);
+        searchReloadTimer = setTimeout(function () {
+          searchReloadTimer = null;
+          page = 1;
+          loadResults();
+        }, SEARCH_RELOAD_DEBOUNCE_MS);
+      });
+
+      ["dg-res-f-project", "dg-res-f-matched", "dg-res-f-page_status", "dg-res-f-availability"].forEach(function (id) {
+        document.getElementById(id).addEventListener("change", function () {
+          page = 1;
+          scheduleSyncUrl();
+          loadResults();
+        });
+      });
+
+      document.getElementById("dg-res-limit").addEventListener("change", function () {
+        limit = Number(this.value) || 100;
+        page = 1;
+        if (tryRenderFromClientCache()) return;
+        loadResults({ showSkeleton: false });
+      });
+
+      document.getElementById("dg-res-prev").addEventListener("click", function () {
+        if (page > 1) {
+          page--;
+          if (tryRenderFromClientCache()) return;
+          loadResults({ showSkeleton: false });
+        }
+      });
+      document.getElementById("dg-res-next").addEventListener("click", function () {
+        if (page < pagesCount()) {
+          page++;
+          if (tryRenderFromClientCache()) return;
+          loadResults({ showSkeleton: false });
+        }
+      });
+
+      (function bindResultsSortHeaderClicks() {
+        var theadSort = document.getElementById("dg-res-thead");
+        if (!theadSort) return;
+        theadSort.addEventListener("click", function (e) {
+          if (e.target && e.target.closest && e.target.closest(".dg-res-resize-handle")) return;
+          var th = e.target.closest ? e.target.closest("th[data-res-sort]") : null;
+          if (!th) return;
+          var label = th.querySelector(".dg-res-th-text");
+          if (label && e.target !== label && !label.contains(e.target)) return;
+          onSort(th.getAttribute("data-res-sort"));
+        });
+      })();
+
+      [
+        "dg-res-tf-product_name",
+        "dg-res-tf-sku",
+        "dg-res-tf-project_name",
+        "dg-res-tf-page_status",
+        "dg-res-tf-availability",
+        "dg-res-tf-matched",
+        "dg-res-tf-price_min",
+        "dg-res-tf-price_max",
+      ].forEach(function (id) {
+        var el = document.getElementById(id);
+        el.addEventListener("input", function () {
+          if (tryRenderFromClientCache()) return;
+          renderTable();
+        });
+        el.addEventListener("change", function () {
+          if (tryRenderFromClientCache()) return;
+          renderTable();
+        });
+      });
+
+      (function collapse() {
+        var body = document.getElementById("dg-res-filters-body");
+        var btn = document.getElementById("dg-res-filters-toggle");
+        function sync() {
+          try {
+            if (localStorage.getItem(FILTERS_KEY) === "1") {
+              body.style.display = "none";
+              btn.textContent = "Развернуть";
+            } else {
+              body.style.display = "";
+              btn.textContent = "Свернуть";
+            }
+          } catch (e) {}
+        }
+        try {
+          if (localStorage.getItem(FILTERS_KEY) === "1") body.style.display = "none";
+        } catch (e) {}
+        sync();
+        btn.addEventListener("click", function () {
+          var hidden = body.style.display === "none";
+          body.style.display = hidden ? "" : "none";
+          btn.textContent = hidden ? "Свернуть" : "Развернуть";
+          try {
+            localStorage.setItem(FILTERS_KEY, hidden ? "0" : "1");
+          } catch (e) {}
+          scheduleCaptureResultsFloatingHeaderBase();
+        });
+      })();
+
+      window.addEventListener("resize", function () {
+        captureResultsFloatingHeaderBase();
+      });
+
+      loadBaseData().then(function () {
+        parseUrlToForm();
+        updateSortHeaders();
+        initColumnsPanel();
+        loadResults();
+      });
+    })();
+  </script>
+
+</body>
+</html>

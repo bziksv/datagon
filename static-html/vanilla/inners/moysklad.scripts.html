@@ -57,7 +57,8 @@
         updated_label: 220,
       };
       var DEFAULT_MIN = 0;
-      var FLOATING_HEADER_OFFSET_PX = 0;
+      var FLOATING_HEADER_OFFSET_PX = 2;
+      var FLOATING_HEADER_START_EPS_PX = 3;
       var HEADER_FONT = {
         verticalAlign: "middle",
         fontSize: "12px",
@@ -136,7 +137,8 @@
       function myProductsUrl(code) {
         var c = String(code || "").trim();
         if (!c) return "";
-        return "/my-products?site_id=all&status=all&ms_linked=1&search=" + encodeURIComponent(c);
+        /* Статическая «Мои товары», ссылка на /my-products.html */
+        return "/my-products.html?site_id=all&status=all&ms_linked=1&search=" + encodeURIComponent(c);
       }
 
       function readTableFilters() {
@@ -329,7 +331,7 @@
         if (!fixed) return 0;
         if (!header || !header.getBoundingClientRect) return 60;
         var r = header.getBoundingClientRect();
-        var h = r && r.height ? Math.round(r.height) : 60;
+        var h = r && r.height ? r.height : 60;
         return h > 0 ? h : 60;
       }
 
@@ -352,7 +354,7 @@
         if (!fixed) return 0;
         if (!header || !header.getBoundingClientRect) return 60;
         var rect = header.getBoundingClientRect();
-        var h = rect && rect.height ? Math.round(rect.height) : 60;
+        var h = rect && rect.height ? rect.height : 60;
         return h > 0 ? h : 60;
       }
 
@@ -376,38 +378,51 @@
 
         // Start floating only when THEAD itself reaches header line.
         var headerLine = y + headerTop;
-        var start = baseTopAbs;
+        var start = baseTopAbs + FLOATING_HEADER_START_EPS_PX;
         var end = tableBottom - rowHeight;
         if (headerLine <= start || headerLine >= end) {
           if (thead.style.transform) {
             thead.style.transform = "";
             thead.style.position = "";
             thead.style.zIndex = "";
+            thead.style.willChange = "";
+            thead.removeAttribute("data-dg-floating");
           }
-          // Re-sync base top whenever header is in normal flow.
-          var cleanRect = thead.getBoundingClientRect();
-          var cleanAbsTop = (window.scrollY || window.pageYOffset || 0) + (cleanRect && cleanRect.top ? cleanRect.top : 0);
-          if (cleanAbsTop > 0) thead.setAttribute("data-dg-base-top", String(cleanAbsTop));
           return;
         }
 
-        var shift = Math.max(0, Math.round(headerLine - start - FLOATING_HEADER_OFFSET_PX));
-        var nextTransform = "translate3d(0," + shift + "px,0)";
+        var zoomAwareOffset = FLOATING_HEADER_OFFSET_PX;
+        var dpr = window.devicePixelRatio || 1;
+        if (Math.abs(dpr - 1) < 0.03) zoomAwareOffset = FLOATING_HEADER_OFFSET_PX - 3;
+        var shift = Math.max(0, headerLine - start - zoomAwareOffset);
+        var shiftPx = Number(shift.toFixed(3));
+        var nextTransform = "translate3d(0," + shiftPx + "px,0)";
         if (thead.style.transform !== nextTransform) {
           thead.style.transform = nextTransform;
           thead.style.position = "relative";
           thead.style.zIndex = "25";
           thead.style.willChange = "transform";
+          thead.setAttribute("data-dg-floating", "1");
         }
       }
 
       var floatingHeaderRaf = 0;
+      var floatingLastScrollTs = 0;
+      function floatingHeaderTick(ts) {
+        floatingHeaderRaf = 0;
+        updateFloatingHeaderFallback();
+        if (ts - floatingLastScrollTs < 140) {
+          floatingHeaderRaf = requestAnimationFrame(floatingHeaderTick);
+        }
+      }
       function scheduleFloatingHeaderUpdate() {
+        floatingLastScrollTs = performance.now();
         if (floatingHeaderRaf) return;
-        floatingHeaderRaf = requestAnimationFrame(function () {
-          floatingHeaderRaf = 0;
-          updateFloatingHeaderFallback();
-        });
+        floatingHeaderRaf = requestAnimationFrame(floatingHeaderTick);
+      }
+
+      function onScrollFloatingHeader() {
+        scheduleFloatingHeaderUpdate();
       }
 
       function computeStickyLeftMap() {
@@ -570,7 +585,7 @@
         if (Number(r.in_my_products || 0) === 1 && myProductsUrl(code)) {
           var mp = document.createElement("a");
           mp.href = myProductsUrl(code);
-          mp.className = "ms-2 small text-decoration-none";
+          mp.className = "ms-2 small text-muted text-decoration-none";
           mp.textContent = "[Мои товары]";
           mp.title = r.site_names
             ? "Открыть в Мои товары: " + String(r.site_names)
@@ -584,26 +599,12 @@
         }).filter(Boolean);
         if (sites.length) {
           var line = document.createElement("div");
-          line.className = "mt-1 d-flex flex-wrap align-items-center gap-2";
-          var lab = document.createElement("span");
-          lab.className = "text-muted";
-          lab.style.fontSize = "0.72rem";
-          lab.style.whiteSpace = "nowrap";
-          lab.textContent = "На сайтах";
-          line.appendChild(lab);
-          var badgeWrap = document.createElement("div");
-          badgeWrap.className = "d-flex flex-wrap gap-1 align-items-center";
-          sites.forEach(function (name) {
-            var b = document.createElement("span");
-            b.className = "badge rounded-pill bg-light text-secondary border text-truncate d-inline-block";
-            b.style.fontSize = "0.72rem";
-            b.style.fontWeight = "500";
-            b.style.maxWidth = "260px";
-            b.title = name;
-            b.textContent = name;
-            badgeWrap.appendChild(b);
-          });
-          line.appendChild(badgeWrap);
+          line.className = "mt-1 text-muted";
+          line.style.fontSize = "0.72rem";
+          line.style.lineHeight = "1.35";
+          line.style.wordBreak = "break-word";
+          line.textContent = "На сайтах: " + sites.join(", ");
+          line.title = sites.join(", ");
           wrap.appendChild(line);
         } else if (Number(r.in_my_products || 0) === 1) {
           var hint = document.createElement("div");
@@ -786,6 +787,7 @@
         thead.style.transform = "";
         thead.style.position = "";
         thead.style.zIndex = "";
+        thead.removeAttribute("data-dg-floating");
         var rect = thead.getBoundingClientRect();
         var absTop = (window.scrollY || window.pageYOffset || 0) + (rect && rect.top ? rect.top : 0);
         thead.setAttribute("data-dg-base-top", String(absTop));
@@ -1056,13 +1058,11 @@
       window.addEventListener("resize", refreshStickyColumns);
       window.addEventListener("resize", updateStickyTopVar);
       window.addEventListener("resize", buildThead);
-      window.addEventListener("scroll", refreshStickyColumns, { passive: true });
-      window.addEventListener("scroll", scheduleFloatingHeaderUpdate, { passive: true });
+      window.addEventListener("scroll", onScrollFloatingHeader, { passive: true });
       (function bindMainOuterScroll() {
         var mainOuter = document.querySelector(".app-main__outer");
         if (!mainOuter || !mainOuter.addEventListener) return;
-        mainOuter.addEventListener("scroll", refreshStickyColumns, { passive: true });
-        mainOuter.addEventListener("scroll", scheduleFloatingHeaderUpdate, { passive: true });
+        mainOuter.addEventListener("scroll", onScrollFloatingHeader, { passive: true });
       })();
 
       [
