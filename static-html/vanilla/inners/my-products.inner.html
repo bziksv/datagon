@@ -63,11 +63,11 @@
                   <label class="form-label" for="mp-tf-sku">SKU (таблица)</label>
                   <input type="text" class="form-control" id="mp-tf-sku" autocomplete="off" />
                 </div>
-                <div class="col-md-3">
+                <div class="col-md-4">
                   <label class="form-label" for="mp-tf-name">Название (таблица)</label>
                   <input type="text" class="form-control" id="mp-tf-name" autocomplete="off" />
                 </div>
-                <div class="col-md-1">
+                <div class="col-md-2">
                   <label class="form-label" for="mp-tf-currency">Валюта</label>
                   <select class="form-select" id="mp-tf-currency">
                     <option value="all">Все</option>
@@ -76,23 +76,10 @@
                     <option value="EUR">EUR</option>
                   </select>
                 </div>
-                <div class="col-md-1">
-                  <label class="form-label" for="mp-tf-stock_min">Остаток от</label>
-                  <input type="number" class="form-control" id="mp-tf-stock_min" />
-                </div>
-                <div class="col-md-1">
-                  <label class="form-label" for="mp-tf-stock_max">Остаток до</label>
-                  <input type="number" class="form-control" id="mp-tf-stock_max" />
-                </div>
-                <div class="col-md-2">
-                  <label class="form-label" for="mp-tf-active">Статус тбл</label>
-                  <select class="form-select" id="mp-tf-active">
-                    <option value="all">Все</option>
-                    <option value="1">Активен</option>
-                    <option value="0">Неактивен</option>
-                  </select>
-                </div>
               </div>
+              <p class="text-muted small mb-0 mt-1">
+                «(таблица)» — быстрый отбор по уже загруженной странице; остаток и «Статус» — в блоке ниже и «Применить».
+              </p>
               <div class="row g-2 mt-1">
                 <div class="col-md-2">
                   <label class="form-label" for="mp-f-stock_min">Остаток от</label>
@@ -270,9 +257,10 @@
                   <div id="dg-mp-columns-list" class="columns-grid"></div>
                 </div>
               </div>
-              <div class="table-responsive datagon-my-products-table-wrap">
-                <table id="mp-main-table" data-dg-sticky="1" class="table table-hover table-striped mb-0 datagon-my-products-table dg-mp-table" style="width:max-content;min-width:100%;table-layout:fixed;border-collapse:separate;border-spacing:0">
-                  <thead>
+              <div class="dg-mp-table-scroll-outer" style="width:100%;max-width:100%;overflow-x:auto;overflow-y:visible;-webkit-overflow-scrolling:touch">
+                <div class="table-responsive datagon-my-products-table-wrap" style="display:block;width:100%;max-width:100%;min-width:0;overflow:visible;position:relative">
+                <table id="mp-main-table" class="table table-hover table-striped mb-0 datagon-my-products-table dg-mp-table" style="width:max-content;min-width:100%;max-width:none;table-layout:fixed;border-collapse:collapse;border-spacing:0">
+                  <thead id="dg-mp-thead">
                     <tr id="mp-thead-row">
                       <th role="button" data-mp-sort="id" class="text-center" style="cursor:pointer">ID / КОД</th>
                       <th role="button" data-mp-sort="site" class="text-center" style="cursor:pointer">Сайт</th>
@@ -291,6 +279,7 @@
                   </thead>
                   <tbody id="dg-tbody"></tbody>
                 </table>
+                </div>
               </div>
               <p class="text-muted mb-0 mt-2" id="dg-mp-table-hint">—</p>
             </div>

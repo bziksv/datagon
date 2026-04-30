@@ -11,17 +11,32 @@
       box-sizing: border-box;
     }
     .dg-mp-table { font-size: 0.8rem; line-height: 1.25; font-variant-numeric: tabular-nums; }
-    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .datagon-my-products-table-wrap.table-responsive {
+    /* Как moysklad.inner: горизонтальный скролл на внешнем блоке, внутри — overflow visible для sticky */
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-table-scroll-outer {
       width: 100%;
       max-width: 100%;
       box-sizing: border-box;
-      overflow-x: auto !important;
-      overflow-y: visible !important;
-      max-height: none !important;
+      overflow-x: auto;
+      overflow-y: visible;
       -webkit-overflow-scrolling: touch;
     }
-    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .datagon-my-products-table-wrap.table-responsive,
-    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .datagon-my-products-table-wrap.table-responsive > table {
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"]
+      .dg-mp-table-scroll-outer
+      > .datagon-my-products-table-wrap.table-responsive {
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+      box-sizing: border-box;
+      overflow: visible !important;
+      max-height: none !important;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"]
+      .dg-mp-table-scroll-outer
+      > .datagon-my-products-table-wrap.table-responsive,
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"]
+      .dg-mp-table-scroll-outer
+      > .datagon-my-products-table-wrap.table-responsive
+      > table {
       transform: none !important;
       filter: none !important;
       perspective: none !important;
@@ -69,15 +84,19 @@
       color: #374151;
       user-select: none;
     }
+    /* Шапка как у dg-ms-table (moysklad): фон #f8f9fa, сетка #e6e9ee / #f3f5f8 */
+    /* Как moysklad (.dg-ms-table thead th): sticky top 0, плавающий сдвиг — transform на thead в JS */
     .dg-mp-table thead th {
       position: sticky !important;
-      top: var(--dg-table-sticky-top, 60px) !important;
+      top: 0 !important;
       z-index: 20 !important;
-      background: #ffffff !important;
-      border-right: 1px solid #e6e9ee;
+      background: #f8f9fa !important;
+      border-right: 1px solid #e6e9ee !important;
+      vertical-align: middle;
     }
     .dg-mp-table tbody td {
       border-right: 1px solid #f3f5f8;
+      vertical-align: middle;
     }
     #mp-main-table .mp-resize-handle {
       pointer-events: auto;

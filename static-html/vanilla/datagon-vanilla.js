@@ -833,7 +833,13 @@
     if (!table) return true;
     var id = String(table.id || "");
     // These pages manage table behavior locally (columns, widths, sorting).
-    if (id === "dg-q-main-table" || id === "dg-res-main-table" || id === "dg-matches-list-table") return true;
+    if (
+      id === "dg-q-main-table" ||
+      id === "dg-res-main-table" ||
+      id === "dg-matches-list-table" ||
+      id === "mp-main-table"
+    )
+      return true;
     return false;
   }
 

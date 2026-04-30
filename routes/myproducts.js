@@ -381,6 +381,7 @@ module.exports = (db, settings) => {
             const cacheKeyObj = {
                 site_id: site_id || 'all',
                 status: status ?? 'all',
+                source_enabled: source_enabled ?? 'all',
                 search: String(search || ''),
                 stock_min: Number.isFinite(Number(stock_min)) ? Number(stock_min) : null,
                 stock_max: Number.isFinite(Number(stock_max)) ? Number(stock_max) : null,
@@ -534,8 +535,10 @@ module.exports = (db, settings) => {
                     [rows] = await db.query(`${qBase} ORDER BY mp.id DESC`, p);
                     count = [{ total: rows.length }];
                 } else {
-                    [rows] = await db.query(qPaged, pPaged);
-                    [count] = await db.query(qc, pc);
+                    [[rows], [count]] = await Promise.all([
+                        db.query(qPaged, pPaged),
+                        db.query(qc, pc)
+                    ]);
                 }
             } catch (queryErr) {
                 const isConnectionLost = queryErr && (queryErr.code === 'PROTOCOL_CONNECTION_LOST' || queryErr.fatal);
@@ -545,8 +548,10 @@ module.exports = (db, settings) => {
                     [rows] = await db.query(`${qBase} ORDER BY mp.id DESC`, p);
                     count = [{ total: rows.length }];
                 } else {
-                    [rows] = await db.query(qPaged, pPaged);
-                    [count] = await db.query(qc, pc);
+                    [[rows], [count]] = await Promise.all([
+                        db.query(qPaged, pPaged),
+                        db.query(qc, pc)
+                    ]);
                 }
             }
             
@@ -571,8 +576,10 @@ module.exports = (db, settings) => {
                     gapRows = gapCached.rows.map((r) => ({ ...r }));
                 } else {
                     const dataRows = Array.isArray(rows) ? rows : [];
-                    await enrichWithMoyskladLinks(dataRows);
-                    await enrichWithCompetitorPrices(dataRows);
+                    await Promise.all([
+                        enrichWithMoyskladLinks(dataRows),
+                        enrichWithCompetitorPrices(dataRows)
+                    ]);
                     const normalizedMin = Math.min(gapMin, gapMax);
                     const normalizedMax = Math.max(gapMin, gapMax);
                     gapRows = dataRows.filter((row) => rowMatchesGapFilter(row, {
@@ -593,8 +600,10 @@ module.exports = (db, settings) => {
                 finalRows = gapRows.slice(o, o + l);
             } else {
                 const dataRows = Array.isArray(rows) ? rows : [];
-                await enrichWithMoyskladLinks(dataRows);
-                await enrichWithCompetitorPrices(dataRows);
+                await Promise.all([
+                    enrichWithMoyskladLinks(dataRows),
+                    enrichWithCompetitorPrices(dataRows)
+                ]);
                 if (isCustomCompetitorSort) {
                     sortProductRows(dataRows, customCompetitorSort, sortDirection);
                     finalRows = dataRows.slice(o, o + l);

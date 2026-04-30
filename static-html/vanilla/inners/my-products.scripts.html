@@ -32,6 +32,11 @@
       var columnWidths = {};
       var resizeState = null;
 
+      var FLOATING_HEADER_OFFSET_PX = 2;
+      var FLOATING_HEADER_START_EPS_PX = 3;
+      var mpFloatingHeaderRaf = 0;
+      var mpFloatingLastScrollTs = 0;
+
       function userSortKey() {
         try {
           var u = String(localStorage.getItem("currentUser") || "guest").trim() || "guest";
@@ -96,6 +101,114 @@
         } catch (e) {}
       }
 
+      function updateMpStickyTopVar() {
+        var app = document.querySelector(".app-container");
+        var header = document.querySelector(".app-header");
+        var fixed = Boolean(app && app.classList && app.classList.contains("fixed-header"));
+        var top = 0;
+        if (fixed && header && header.getBoundingClientRect) {
+          var rect = header.getBoundingClientRect();
+          top = rect && rect.height ? rect.height : 60;
+        }
+        document.documentElement.style.setProperty("--dg-table-sticky-top", top + "px");
+      }
+
+      function getMpStickyTopPx() {
+        var app = document.querySelector(".app-container");
+        var header = document.querySelector(".app-header");
+        var fixed = Boolean(app && app.classList && app.classList.contains("fixed-header"));
+        if (!fixed) return 0;
+        if (!header || !header.getBoundingClientRect) return 60;
+        var rect = header.getBoundingClientRect();
+        var h = rect && rect.height ? rect.height : 60;
+        return h > 0 ? h : 60;
+      }
+
+      function captureMpTheadBaseTop() {
+        var thead = document.getElementById("dg-mp-thead");
+        if (!thead) return;
+        thead.style.transform = "";
+        thead.style.position = "";
+        thead.style.zIndex = "";
+        thead.style.willChange = "";
+        thead.removeAttribute("data-dg-floating");
+        var rect = thead.getBoundingClientRect();
+        var absTop = (window.scrollY || window.pageYOffset || 0) + (rect && rect.top ? rect.top : 0);
+        thead.setAttribute("data-dg-base-top", String(absTop));
+      }
+
+      function updateMpFloatingHeaderFallback() {
+        var thead = document.getElementById("dg-mp-thead");
+        if (!thead) return;
+        var table = thead.closest("table");
+        if (!table || !table.getBoundingClientRect) return;
+        var row = thead.querySelector("tr");
+        if (!row) return;
+
+        var y = window.scrollY || window.pageYOffset || 0;
+        var headerTop = getMpStickyTopPx();
+
+        var baseTopAbs = Number(thead.getAttribute("data-dg-base-top") || 0);
+        if (!Number.isFinite(baseTopAbs) || baseTopAbs <= 0) return;
+        var tableRect = table.getBoundingClientRect();
+        var tableBottom = tableRect.bottom + y;
+        var rowRect = row.getBoundingClientRect();
+        var rowHeight = rowRect && rowRect.height ? rowRect.height : 0;
+
+        var headerLine = y + headerTop;
+        var start = baseTopAbs + FLOATING_HEADER_START_EPS_PX;
+        var end = tableBottom - rowHeight;
+        if (headerLine <= start || headerLine >= end) {
+          if (thead.style.transform) {
+            thead.style.transform = "";
+            thead.style.position = "";
+            thead.style.zIndex = "";
+            thead.style.willChange = "";
+            thead.removeAttribute("data-dg-floating");
+          }
+          return;
+        }
+
+        var zoomAwareOffset = FLOATING_HEADER_OFFSET_PX;
+        var dpr = window.devicePixelRatio || 1;
+        if (Math.abs(dpr - 1) < 0.03) zoomAwareOffset = FLOATING_HEADER_OFFSET_PX - 3;
+        var shift = Math.max(0, headerLine - start - zoomAwareOffset);
+        var shiftPx = Number(shift.toFixed(3));
+        var nextTransform = "translate3d(0," + shiftPx + "px,0)";
+        if (thead.style.transform !== nextTransform) {
+          thead.style.transform = nextTransform;
+          thead.style.position = "relative";
+          thead.style.zIndex = "25";
+          thead.style.willChange = "transform";
+          thead.setAttribute("data-dg-floating", "1");
+        }
+      }
+
+      function mpFloatingHeaderTick(ts) {
+        mpFloatingHeaderRaf = 0;
+        updateMpFloatingHeaderFallback();
+        if (ts - mpFloatingLastScrollTs < 140) {
+          mpFloatingHeaderRaf = requestAnimationFrame(mpFloatingHeaderTick);
+        }
+      }
+
+      function scheduleMpFloatingHeaderUpdate() {
+        mpFloatingLastScrollTs = performance.now();
+        if (mpFloatingHeaderRaf) return;
+        mpFloatingHeaderRaf = requestAnimationFrame(mpFloatingHeaderTick);
+      }
+
+      function onScrollMpFloatingHeader() {
+        scheduleMpFloatingHeaderUpdate();
+      }
+
+      function mpRefreshFloatingAfterLayout() {
+        requestAnimationFrame(function () {
+          captureMpTheadBaseTop();
+          scheduleMpFloatingHeaderUpdate();
+        });
+      }
+
       function collectApiFilters() {
         var lim = Number(document.getElementById("mp-f-limit").value);
         if (!Number.isFinite(lim) || lim < 1) lim = initialLimit;
@@ -131,9 +244,6 @@
           sku: document.getElementById("mp-tf-sku").value,
           name: document.getElementById("mp-tf-name").value,
           currency: document.getElementById("mp-tf-currency").value,
-          stock_min: document.getElementById("mp-tf-stock_min").value,
-          stock_max: document.getElementById("mp-tf-stock_max").value,
-          active: document.getElementById("mp-tf-active").value,
         };
       }
 
@@ -150,13 +260,6 @@
             return false;
           if (tf.currency !== "all" && String(r.currency || "").toUpperCase() !== String(tf.currency).toUpperCase())
             return false;
-          var stock = Number(r.stock || 0);
-          var min = Number(tf.stock_min || "");
-          var max = Number(tf.stock_max || "");
-          if (Number.isFinite(min) && String(tf.stock_min).trim() !== "" && stock < min) return false;
-          if (Number.isFinite(max) && String(tf.stock_max).trim() !== "" && stock > max) return false;
-          var isActive = Number(r.is_active) ? "1" : "0";
-          if (tf.active !== "all" && isActive !== tf.active) return false;
           return true;
         });
       }
@@ -305,6 +408,7 @@
         });
         initColumnResizeHandles();
         applyStoredColumnWidths();
+        mpRefreshFloatingAfterLayout();
       }
 
       function getHeaderCells() {
@@ -341,6 +445,7 @@
         if (!resizeState) return;
         var delta = e.clientX - resizeState.startX;
         applyColumnWidthByIndex(resizeState.index, resizeState.startWidth + delta);
+        scheduleMpFloatingHeaderUpdate();
       }
 
       function onResizeUp() {
@@ -351,6 +456,7 @@
         try {
           localStorage.setItem(userColWidthKey(), JSON.stringify(columnWidths || {}));
         } catch (e) {}
+        mpRefreshFloatingAfterLayout();
       }
 
       function initColumnResizeHandles() {
@@ -424,6 +530,7 @@
             if (tr.cells && tr.cells[index]) tr.cells[index].style.display = show ? "" : "none";
           });
         });
+        mpRefreshFloatingAfterLayout();
       }
 
       function renderColumnsPanel() {
@@ -501,6 +608,7 @@
           trL.appendChild(tdL);
           tbody.appendChild(trL);
           applyVisibleColumns();
+          mpRefreshFloatingAfterLayout();
           return;
         }
         if (!rows || !rows.length) {
@@ -512,6 +620,7 @@
           tr.appendChild(td);
           tbody.appendChild(tr);
           applyVisibleColumns();
+          mpRefreshFloatingAfterLayout();
           return;
         }
         rows.forEach(function (r, idx) {
@@ -715,6 +824,7 @@
         });
         applyVisibleColumns();
         applyStoredColumnWidths();
+        mpRefreshFloatingAfterLayout();
       }
 
       function tdText(t) {
@@ -912,13 +1022,18 @@
             return r.json();
           });
 
-          var fx = await fxP.catch(function () {
-            return {};
-          });
-          var statsRows = await statsP.catch(function () {
-            return [];
-          });
-          var json = await prodP;
+          var settled = await Promise.all([
+            fxP.catch(function () {
+              return {};
+            }),
+            statsP.catch(function () {
+              return [];
+            }),
+            prodP,
+          ]);
+          var fx = settled[0];
+          var statsRows = settled[1];
+          var json = settled[2];
 
           if (!json || json.error) throw new Error((json && json.error) || "Ошибка загрузки");
 
@@ -1090,15 +1205,28 @@
       window.addEventListener("mousemove", onResizeMove);
       window.addEventListener("mouseup", onResizeUp);
 
+      window.addEventListener("scroll", onScrollMpFloatingHeader, { passive: true });
+      window.addEventListener("resize", function () {
+        updateMpStickyTopVar();
+        mpRefreshFloatingAfterLayout();
+      });
+      (function bindMpScrollContainers() {
+        var mainOuter = document.querySelector(".app-main__outer");
+        if (mainOuter && mainOuter.addEventListener) {
+          mainOuter.addEventListener("scroll", onScrollMpFloatingHeader, { passive: true });
+        }
+        var horiz = document.querySelector(".dg-mp-table-scroll-outer");
+        if (horiz && horiz.addEventListener) {
+          horiz.addEventListener("scroll", onScrollMpFloatingHeader, { passive: true });
+        }
+      })();
+
       [
         "mp-tf-source_id",
         "mp-tf-site_name",
         "mp-tf-sku",
         "mp-tf-name",
         "mp-tf-currency",
-        "mp-tf-stock_min",
-        "mp-tf-stock_max",
-        "mp-tf-active",
       ].forEach(function (id) {
         var el = document.getElementById(id);
         if (el) {
@@ -1223,10 +1351,12 @@
           try {
             localStorage.setItem(MP_FILTERS_KEY, hidden ? "0" : "1");
           } catch (e) {}
+          mpRefreshFloatingAfterLayout();
         });
       })();
 
       (async function init() {
+        updateMpStickyTopVar();
         try {
           columnWidths = JSON.parse(localStorage.getItem(userColWidthKey()) || "{}") || {};
         } catch (e) {
@@ -1239,6 +1369,7 @@
         updateSyncSiteButton();
         updateSortHeaders();
         await load();
+        mpRefreshFloatingAfterLayout();
       })();
     })();
   </script>
