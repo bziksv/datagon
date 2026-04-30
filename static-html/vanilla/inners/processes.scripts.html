@@ -1,0 +1,322 @@
+  <script>
+    (function () {
+      var FILTERS_KEY = "datagon_processes_filters_collapsed_v1";
+      var overview = null;
+      var loading = false;
+      var pollTimer = null;
+
+      function fmtNum(v) {
+        return Number(v || 0).toLocaleString("ru-RU");
+      }
+      function fmtDateTime(v) {
+        if (!v) return "-";
+        var d = new Date(v);
+        if (isNaN(d.getTime())) return String(v);
+        return d.toLocaleDateString("ru-RU") + " " + d.toLocaleTimeString("ru-RU");
+      }
+
+      function getSelectedSiteId() {
+        return String(document.getElementById("dg-proc-site").value || "");
+      }
+
+      function showErr(msg) {
+        var el = document.getElementById("dg-proc-err");
+        if (!el) return;
+        if (!msg) {
+          el.style.display = "none";
+          el.textContent = "";
+          return;
+        }
+        el.style.display = "";
+        el.textContent = msg;
+      }
+
+      function setBootLoad(vis) {
+        var el = document.getElementById("dg-proc-boot-load");
+        if (el) el.style.display = vis ? "" : "none";
+      }
+
+      function logNeedle() {
+        return String(document.getElementById("dg-proc-smart-search").value || "")
+          .trim()
+          .toLowerCase();
+      }
+
+      function renderFromOverview() {
+        if (!overview) return;
+        var needle = logNeedle();
+        var globalSync = overview.globalSync || {};
+        document.getElementById("dg-proc-gs-status").textContent = globalSync.active ? "В процессе" : "Не активен";
+        document.getElementById("dg-proc-gs-msg").textContent = globalSync.message || "-";
+        document.getElementById("dg-proc-gs-prog").textContent =
+          fmtNum(globalSync.processed) + "/" + fmtNum(globalSync.total);
+
+        var moysklad = overview.moysklad || {};
+        var msStatus = moysklad.active ? "В процессе" : moysklad.done ? "Завершен" : "Ожидание";
+        document.getElementById("dg-proc-ms-status").textContent = msStatus;
+        document.getElementById("dg-proc-ms-msg").textContent = moysklad.message || "-";
+        document.getElementById("dg-proc-ms-prog").textContent =
+          fmtNum(moysklad.processed) + "/" + fmtNum(moysklad.total);
+        var msLogs = document.getElementById("dg-proc-ms-logs");
+        msLogs.replaceChildren();
+        (Array.isArray(moysklad.logs) ? moysklad.logs : [])
+          .filter(function (line) {
+            return !needle || String(line || "").toLowerCase().indexOf(needle) !== -1;
+          })
+          .slice(0, 20)
+          .forEach(function (line) {
+            var d = document.createElement("div");
+            d.textContent = "• " + line;
+            msLogs.appendChild(d);
+          });
+
+        var autoSync = overview.autoSync || {};
+        var cfg = autoSync.config || {};
+        document.getElementById("dg-proc-as-now").textContent =
+          (autoSync.now_moscow_date || "-") + " " + (autoSync.now_moscow_time || "-");
+        document.getElementById("dg-proc-as-my").textContent =
+          (cfg.myproducts_enabled ? "включено" : "выключено") + " (" + (cfg.myproducts_time || "-") + ")";
+        document.getElementById("dg-proc-as-msk").textContent =
+          (cfg.moysklad_enabled ? "включено" : "выключено") + " (" + (cfg.moysklad_time || "-") + ")";
+        document.getElementById("dg-proc-as-runner").textContent = autoSync.runner_active
+          ? "выполняется"
+          : "ожидание";
+        var q = Array.isArray(autoSync.queue) ? autoSync.queue : [];
+        document.getElementById("dg-proc-as-queue").textContent = q.length ? q.join(" → ") : "пусто";
+
+        var runsEl = document.getElementById("dg-proc-as-runs");
+        runsEl.replaceChildren();
+        var autoSyncRuns = Array.isArray(overview.autoSyncRuns) ? overview.autoSyncRuns : [];
+        var filteredRuns = autoSyncRuns.filter(function (r) {
+          if (!needle) return true;
+          var hay = (String(r.task_type || "") + " " + String(r.status || "") + " " + String(r.message || "")).toLowerCase();
+          return hay.indexOf(needle) !== -1;
+        });
+        if (filteredRuns.length) {
+          filteredRuns.forEach(function (r) {
+            var d = document.createElement("div");
+            d.textContent =
+              "• " +
+              (r.task_type || "-") +
+              " — " +
+              (r.status || "-") +
+              " | старт: " +
+              fmtDateTime(r.started_at) +
+              " | финиш: " +
+              fmtDateTime(r.finished_at) +
+              (r.message ? " | " + r.message : "");
+            runsEl.appendChild(d);
+          });
+        } else {
+          var empty = document.createElement("div");
+          empty.textContent = "История автозапусков пока пуста";
+          runsEl.appendChild(empty);
+        }
+
+        var discEl = document.getElementById("dg-proc-discovery");
+        discEl.replaceChildren();
+        var discovery = Array.isArray(overview.discovery) ? overview.discovery : [];
+        var filteredDisc = discovery.filter(function (r) {
+          if (!needle) return true;
+          var hay = (String(r.project_id || "") + " " + String(r.message || "")).toLowerCase();
+          return hay.indexOf(needle) !== -1;
+        });
+        if (filteredDisc.length) {
+          filteredDisc.forEach(function (r) {
+            var d = document.createElement("div");
+            d.appendChild(document.createTextNode("• "));
+            var b = document.createElement("b");
+            b.textContent = "Проект #" + r.project_id;
+            d.appendChild(b);
+            d.appendChild(
+              document.createTextNode(
+                " — " +
+                  (r.active ? "выполняется" : "завершен") +
+                  (r.cancel_requested ? " (остановка запрошена)" : "") +
+                  " | старт: " +
+                  fmtDateTime(r.started_at) +
+                  " | финиш: " +
+                  fmtDateTime(r.finished_at) +
+                  " | найдено: " +
+                  fmtNum(r.discovered) +
+                  " | новых: " +
+                  fmtNum(r.added) +
+                  " | " +
+                  (r.message || "-")
+              )
+            );
+            discEl.appendChild(d);
+          });
+        } else {
+          var d0 = document.createElement("div");
+          d0.textContent = "Запусков автообхода пока не было";
+          discEl.appendChild(d0);
+        }
+
+        var queue = overview.queue || {};
+        document.getElementById("dg-proc-q-total").textContent = fmtNum(queue.total);
+        document.getElementById("dg-proc-q-pending").textContent = fmtNum(queue.pending);
+        document.getElementById("dg-proc-q-processing").textContent = fmtNum(queue.processing);
+        document.getElementById("dg-proc-q-done").textContent = fmtNum(queue.done);
+        document.getElementById("dg-proc-q-error").textContent = fmtNum(queue.error);
+
+        var matches = overview.matches || {};
+        var mStat = matches.active ? "В процессе" : matches.status || "Ожидание";
+        document.getElementById("dg-proc-m-status").textContent = mStat;
+        document.getElementById("dg-proc-m-msg").textContent = matches.message || "-";
+        document.getElementById("dg-proc-m-prog").textContent =
+          fmtNum(matches.processed) + "/" + fmtNum(matches.total);
+        document.getElementById("dg-proc-m-found").textContent = fmtNum(matches.found);
+        document.getElementById("dg-proc-m-sku").textContent = fmtNum(matches.foundSku);
+        document.getElementById("dg-proc-m-name").textContent = fmtNum(matches.foundName);
+        var mLogs = document.getElementById("dg-proc-m-logs");
+        mLogs.replaceChildren();
+        (Array.isArray(matches.logs) ? matches.logs : [])
+          .filter(function (line) {
+            return !needle || String(line || "").toLowerCase().indexOf(needle) !== -1;
+          })
+          .slice(0, 8)
+          .forEach(function (line) {
+            var d = document.createElement("div");
+            d.textContent = "• " + line;
+            mLogs.appendChild(d);
+          });
+      }
+
+      function fillSiteSelect(matchesSites) {
+        var sel = document.getElementById("dg-proc-site");
+        var prev = sel.value;
+        sel.innerHTML = "";
+        if (!matchesSites.length) {
+          var o = document.createElement("option");
+          o.value = "";
+          o.textContent = "Нет сайтов";
+          sel.appendChild(o);
+          return;
+        }
+        matchesSites.forEach(function (s) {
+          var opt = document.createElement("option");
+          opt.value = String(s.id);
+          opt.textContent = s.name || "Сайт #" + s.id;
+          sel.appendChild(opt);
+        });
+        if (prev && [].some.call(sel.options, function (x) { return x.value === prev; })) sel.value = prev;
+      }
+
+      function applySiteFromResponse(json) {
+        var matchesSites = Array.isArray(json.matchesSites) ? json.matchesSites : [];
+        fillSiteSelect(matchesSites);
+        var sel = document.getElementById("dg-proc-site");
+        var responseSiteId = json.matches && json.matches.mySiteId ? String(json.matches.mySiteId) : "";
+        var selectedBefore = getSelectedSiteId();
+        if (responseSiteId) sel.value = responseSiteId;
+        else if (!selectedBefore && matchesSites.length) sel.value = String(matchesSites[0].id);
+      }
+
+      function loadOverview(preferredSiteId) {
+        var selected =
+          preferredSiteId !== undefined && preferredSiteId !== null
+            ? String(preferredSiteId)
+            : getSelectedSiteId();
+        loading = true;
+        if (!overview) setBootLoad(true);
+        var qs = selected ? "?my_site_id=" + encodeURIComponent(selected) : "";
+        fetch("/api/processes/overview" + qs, { credentials: "same-origin" })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok) throw new Error(x.j.error || "Не удалось загрузить сводку процессов");
+            overview = x.j;
+            applySiteFromResponse(x.j);
+            renderFromOverview();
+            showErr("");
+          })
+          .catch(function (e) {
+            showErr(e.message || "Ошибка загрузки процессов");
+          })
+          .then(function () {
+            loading = false;
+            setBootLoad(false);
+          });
+      }
+
+      function stopMsSync() {
+        fetch("/api/ms/stop", { method: "POST", credentials: "same-origin" })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Не удалось остановить синхронизацию");
+            alert("Синхронизация МойСклад остановлена");
+            loadOverview();
+          })
+          .catch(function (e) {
+            alert(e.message || "Ошибка остановки");
+          });
+      }
+
+      document.getElementById("dg-proc-refresh-head").addEventListener("click", function () {
+        loadOverview();
+      });
+      document.getElementById("dg-proc-refresh-inline").addEventListener("click", function () {
+        loadOverview();
+      });
+      document.getElementById("dg-proc-site").addEventListener("change", function () {
+        loadOverview(this.value);
+      });
+      document.getElementById("dg-proc-smart-search").addEventListener("input", function () {
+        if (overview) renderFromOverview();
+      });
+      document.getElementById("dg-proc-ms-stop").addEventListener("click", stopMsSync);
+
+      (function collapse() {
+        var body = document.getElementById("dg-proc-filters-body");
+        var btn = document.getElementById("dg-proc-filters-toggle");
+        function applyStorage() {
+          try {
+            if (localStorage.getItem(FILTERS_KEY) === "1") {
+              body.style.display = "none";
+              btn.textContent = "Развернуть";
+            } else {
+              body.style.display = "";
+              btn.textContent = "Свернуть";
+            }
+          } catch (e) {}
+        }
+        try {
+          if (localStorage.getItem(FILTERS_KEY) === "1") body.style.display = "none";
+        } catch (e) {}
+        applyStorage();
+        btn.addEventListener("click", function () {
+          var hidden = body.style.display === "none";
+          body.style.display = hidden ? "" : "none";
+          btn.textContent = hidden ? "Свернуть" : "Развернуть";
+          try {
+            localStorage.setItem(FILTERS_KEY, hidden ? "0" : "1");
+          } catch (e) {}
+        });
+      })();
+
+      function startPoll() {
+        stopPoll();
+        pollTimer = setInterval(function () {
+          loadOverview();
+        }, 3000);
+      }
+      function stopPoll() {
+        if (pollTimer) {
+          clearInterval(pollTimer);
+          pollTimer = null;
+        }
+      }
+
+      loadOverview();
+      startPoll();
+      window.addEventListener("beforeunload", stopPoll);
+    })();
+  </script>

@@ -1,0 +1,135 @@
+          <p class="text-danger small mb-3" id="dg-proc-err" style="display:none" role="alert"></p>
+
+          <div class="app-page-title">
+            <div class="page-title-wrapper">
+              <div class="page-title-heading">
+                <div class="page-title-icon">
+                  <i class="pe-7s-timer icon-gradient bg-happy-fisher"> </i>
+                </div>
+                <div>
+                  Логи и процессы
+                  <div class="page-title-subheading">Сводка фоновых задач и очередей в одном месте.</div>
+                </div>
+              </div>
+              <div class="page-title-actions">
+                <button type="button" class="btn btn-info" id="dg-proc-refresh-head">🔄 Обновить сейчас</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2">
+              <div class="d-flex align-items-center">
+                <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
+                <span>Фильтры и действия</span>
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-proc-filters-toggle">Свернуть</button>
+            </div>
+            <div class="card-body">
+              <div id="dg-proc-filters-body">
+                <div class="row g-2">
+                  <div class="col-md-5">
+                    <label class="form-label" for="dg-proc-smart-search">Умный поиск</label>
+                    <input type="text" class="form-control" id="dg-proc-smart-search" placeholder='task:error status:failed или просто текст' autocomplete="off" />
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label" for="dg-proc-site">Мой сайт (сопоставление)</label>
+                    <select class="form-select" id="dg-proc-site">
+                      <option value="">Нет сайтов</option>
+                    </select>
+                  </div>
+                  <div class="col-md-3 d-flex align-items-end">
+                    <button type="button" class="btn btn-sm btn-outline-primary w-100" id="dg-proc-refresh-inline">Обновить сейчас</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center">
+              <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
+              <span>Глобальная синхронизация товаров</span>
+            </div>
+            <div class="card-body">
+              <div><b>Статус:</b> <span id="dg-proc-gs-status">—</span></div>
+              <div><b>Сообщение:</b> <span id="dg-proc-gs-msg">—</span></div>
+              <div><b>Прогресс:</b> <span id="dg-proc-gs-prog">0/0</span></div>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2">
+              <div class="d-flex align-items-center">
+                <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
+                <span>Синхронизация МойСклад</span>
+              </div>
+              <button type="button" class="btn btn-warning btn-sm" id="dg-proc-ms-stop">⏹ Остановить</button>
+            </div>
+            <div class="card-body">
+              <div><b>Статус:</b> <span id="dg-proc-ms-status">—</span></div>
+              <div><b>Сообщение:</b> <span id="dg-proc-ms-msg">—</span></div>
+              <div><b>Прогресс:</b> <span id="dg-proc-ms-prog">0/0</span></div>
+              <div class="small text-muted mt-2" id="dg-proc-ms-logs"></div>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center">
+              <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
+              <span>Автосинхронизация по расписанию</span>
+            </div>
+            <div class="card-body">
+              <div><b>Сейчас (МСК):</b> <span id="dg-proc-as-now">— —</span></div>
+              <div><b>Продукты:</b> <span id="dg-proc-as-my">—</span></div>
+              <div><b>МойСклад:</b> <span id="dg-proc-as-msk">—</span></div>
+              <div><b>Исполнитель:</b> <span id="dg-proc-as-runner">—</span></div>
+              <div><b>Очередь задач:</b> <span id="dg-proc-as-queue">—</span></div>
+              <div class="small text-muted mt-2">
+                <div><b>Последние автозапуски:</b></div>
+                <div id="dg-proc-as-runs"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center">
+              <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
+              <span>Автообход URL (robots/sitemap)</span>
+            </div>
+            <div class="card-body">
+              <div class="small text-muted" id="dg-proc-discovery"></div>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center">
+              <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
+              <span>Очередь парсинга страниц</span>
+            </div>
+            <div class="card-body">
+              <div><b>Всего:</b> <span id="dg-proc-q-total">0</span></div>
+              <div>
+                <b>pending:</b> <span id="dg-proc-q-pending">0</span> |
+                <b>processing:</b> <span id="dg-proc-q-processing">0</span> |
+                <b>done:</b> <span id="dg-proc-q-done">0</span> |
+                <b>error:</b> <span id="dg-proc-q-error">0</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center">
+              <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
+              <span>Сопоставление товаров</span>
+            </div>
+            <div class="card-body">
+              <div><b>Статус:</b> <span id="dg-proc-m-status">—</span></div>
+              <div><b>Сообщение:</b> <span id="dg-proc-m-msg">—</span></div>
+              <div><b>Прогресс:</b> <span id="dg-proc-m-prog">0/0</span>, найдено: <span id="dg-proc-m-found">0</span></div>
+              <div><b>SKU:</b> <span id="dg-proc-m-sku">0</span> | <b>Name:</b> <span id="dg-proc-m-name">0</span></div>
+              <div class="small text-muted mt-2" id="dg-proc-m-logs"></div>
+            </div>
+          </div>
+
+          <div class="small text-muted" id="dg-proc-boot-load" style="display:none">Загрузка...</div>

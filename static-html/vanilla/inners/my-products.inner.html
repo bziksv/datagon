@@ -1,0 +1,283 @@
+          <div class="app-page-title">
+            <div class="page-title-wrapper">
+              <div class="page-title-heading">
+                <div class="page-title-icon">
+                  <i class="pe-7s-box2 icon-gradient bg-tempting-azure"> </i>
+                </div>
+                <div>
+                  Мои товары
+                  <div class="page-title-subheading" id="dg-mp-subtitle">
+                    Управление товарами, связями с МойСклад и синхронизацией цен.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2">
+              <div class="d-flex align-items-center">
+                <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
+                <span>Фильтры и действия</span>
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mp-filters-toggle">Свернуть</button>
+            </div>
+            <div class="card-body">
+              <div id="dg-mp-filters-body">
+              <div class="row g-2">
+                <div class="col-md-6">
+                  <label class="form-label" for="mp-f-smart">Умный поиск</label>
+                  <input type="text" class="form-control" id="mp-f-smart" placeholder='code:123 sku:ABC-12 name:"насос 25" или просто текст' autocomplete="off" />
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label" for="f-site">Сайт</label>
+                  <select class="form-select" id="f-site"></select>
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label" for="mp-f-status">Статус</label>
+                  <select class="form-select" id="mp-f-status">
+                    <option value="all">Все</option>
+                    <option value="1">Активные</option>
+                    <option value="0">Неактивные</option>
+                  </select>
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label" for="f-ms">Связь с МС</label>
+                  <select class="form-select" id="f-ms">
+                    <option value="all">Все</option>
+                    <option value="1">Только связанные</option>
+                    <option value="0">Только без связи</option>
+                  </select>
+                </div>
+              </div>
+              <div class="row g-2 mt-1">
+                <div class="col-md-2">
+                  <label class="form-label" for="mp-tf-source_id">ID / КОД</label>
+                  <input type="text" class="form-control" id="mp-tf-source_id" autocomplete="off" />
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label" for="mp-tf-site_name">Сайт (таблица)</label>
+                  <input type="text" class="form-control" id="mp-tf-site_name" autocomplete="off" />
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label" for="mp-tf-sku">SKU (таблица)</label>
+                  <input type="text" class="form-control" id="mp-tf-sku" autocomplete="off" />
+                </div>
+                <div class="col-md-3">
+                  <label class="form-label" for="mp-tf-name">Название (таблица)</label>
+                  <input type="text" class="form-control" id="mp-tf-name" autocomplete="off" />
+                </div>
+                <div class="col-md-1">
+                  <label class="form-label" for="mp-tf-currency">Валюта</label>
+                  <select class="form-select" id="mp-tf-currency">
+                    <option value="all">Все</option>
+                    <option value="RUB">RUB</option>
+                    <option value="USD">USD</option>
+                    <option value="EUR">EUR</option>
+                  </select>
+                </div>
+                <div class="col-md-1">
+                  <label class="form-label" for="mp-tf-stock_min">Остаток от</label>
+                  <input type="number" class="form-control" id="mp-tf-stock_min" />
+                </div>
+                <div class="col-md-1">
+                  <label class="form-label" for="mp-tf-stock_max">Остаток до</label>
+                  <input type="number" class="form-control" id="mp-tf-stock_max" />
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label" for="mp-tf-active">Статус тбл</label>
+                  <select class="form-select" id="mp-tf-active">
+                    <option value="all">Все</option>
+                    <option value="1">Активен</option>
+                    <option value="0">Неактивен</option>
+                  </select>
+                </div>
+              </div>
+              <div class="row g-2 mt-1">
+                <div class="col-md-2">
+                  <label class="form-label" for="mp-f-stock_min">Остаток от</label>
+                  <input type="number" class="form-control" id="mp-f-stock_min" placeholder="0" />
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label" for="mp-f-stock_max">Остаток до</label>
+                  <input type="number" class="form-control" id="mp-f-stock_max" placeholder="1000" />
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label" for="mp-f-source_enabled">На сайте (вкл/выкл)</label>
+                  <select class="form-select" id="mp-f-source_enabled">
+                    <option value="all">Все</option>
+                    <option value="1">Да</option>
+                    <option value="0">Нет</option>
+                  </select>
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label" for="mp-f-limit">Лимит</label>
+                  <input type="number" class="form-control" id="mp-f-limit" min="1" value="30" />
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label" for="mp-f-match_audit">Статус сопоставления</label>
+                  <select class="form-select" id="mp-f-match_audit">
+                    <option value="all">Все</option>
+                    <option value="confirmed">Только подтверждено</option>
+                    <option value="unlinked">Только разорвано</option>
+                    <option value="none">Без действий</option>
+                  </select>
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label" for="mp-f-sort-by">Сортировать по</label>
+                  <select class="form-select" id="mp-f-sort-by">
+                    <option value="id">ID / КОД</option>
+                    <option value="site">Сайт</option>
+                    <option value="sku">Артикул (SKU)</option>
+                    <option value="name">Название</option>
+                    <option value="price">Цена</option>
+                    <option value="dealmed_price">Цена ДМ</option>
+                    <option value="medkompleks_price">Цена МК</option>
+                    <option value="currency">Валюта</option>
+                    <option value="stock">Остаток</option>
+                    <option value="status">Статус</option>
+                    <option value="updated">Обновлен</option>
+                  </select>
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label" for="mp-f-sort-dir">Направление</label>
+                  <select class="form-select" id="mp-f-sort-dir">
+                    <option value="asc">По возрастанию</option>
+                    <option value="desc">По убыванию</option>
+                  </select>
+                </div>
+                <div class="col-md-2 d-flex align-items-end">
+                  <button type="button" class="btn btn-sm btn-primary w-100" id="btn-apply" style="height:38px">Применить</button>
+                </div>
+              </div>
+              <div class="row g-2 mt-1">
+                <div class="col-md-3 d-flex align-items-end">
+                  <label class="form-check mb-0">
+                    <input class="form-check-input me-1" type="checkbox" id="mp-f-gap_enabled" />
+                    Включить фильтр расхождения
+                  </label>
+                </div>
+                <div class="col-md-3 d-flex align-items-end">
+                  <label class="form-check mb-0">
+                    <input class="form-check-input me-1" type="checkbox" id="mp-f-gap_exclude_zero" checked />
+                    Не показывать Δ 0%
+                  </label>
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label" for="mp-f-gap_competitor">Конкурент (Δ)</label>
+                  <select class="form-select" id="mp-f-gap_competitor">
+                    <option value="all">Любой (ДМ/МК)</option>
+                    <option value="dealmed">Деалмед</option>
+                    <option value="medkompleks">Медкомплекс</option>
+                  </select>
+                </div>
+                <div class="col-md-1">
+                  <label class="form-label" for="mp-f-gap_min_pct">Δ % от</label>
+                  <input type="number" step="0.01" class="form-control" id="mp-f-gap_min_pct" value="-100" />
+                </div>
+                <div class="col-md-1">
+                  <label class="form-label" for="mp-f-gap_max_pct">Δ % до</label>
+                  <input type="number" step="0.01" class="form-control" id="mp-f-gap_max_pct" value="100" />
+                </div>
+                <div class="col-md-1">
+                  <label class="form-label" for="mp-f-usd_to_rub">USD-&gt;RUB</label>
+                  <input type="number" step="0.01" class="form-control" id="mp-f-usd_to_rub" />
+                </div>
+                <div class="col-md-1">
+                  <label class="form-label" for="mp-f-eur_to_rub">EUR-&gt;RUB</label>
+                  <input type="number" step="0.01" class="form-control" id="mp-f-eur_to_rub" />
+                </div>
+              </div>
+              <div class="row g-2 mt-1">
+                <div class="col-md-2">
+                  <label class="form-label" for="mp-f-comp_min">Синх. % мин</label>
+                  <input type="text" class="form-control" id="mp-f-comp_min" value="0.1" />
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label" for="mp-f-comp_max">Синх. % макс</label>
+                  <input type="text" class="form-control" id="mp-f-comp_max" value="1" />
+                </div>
+                <div class="col-md-8"></div>
+              </div>
+              <div class="mt-3 d-flex flex-wrap gap-2">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="mp-btn-fx" title="Принудительно обновить валютные курсы"><i class="pe-7s-refresh-2 me-1"></i>Обновить курс</button>
+                <button type="button" class="btn btn-sm btn-outline-primary" id="mp-btn-syncall" title="Запустить синхронизацию товаров по всем сайтам"><i class="pe-7s-repeat me-1"></i>Синхронизировать все</button>
+                <span class="d-inline-flex" id="mp-btn-sync-site-wrap" title="Сначала выберите конкретный сайт (не «Все сайты»)">
+                  <button type="button" class="btn btn-sm btn-outline-primary" id="mp-btn-sync-site" disabled><i class="pe-7s-repeat me-1"></i>Синхронизировать выбранный сайт</button>
+                </span>
+                <button type="button" class="btn btn-sm btn-outline-warning" id="mp-btn-rebuild" title="Перестроить кэш связей с МойСклад"><i class="pe-7s-refresh me-1"></i>Перестроить кэш</button>
+                <button type="button" class="btn btn-sm btn-outline-dark" id="mp-btn-copy" title="Скопировать ссылку на текущую страницу с фильтрами"><i class="pe-7s-link me-1"></i>Скопировать ссылку</button>
+              </div>
+              </div>
+              <p class="text-muted mb-0 mt-2" id="dg-fx-hint">FX: —</p>
+            </div>
+          </div>
+
+          <div class="row row-cols-1 row-cols-md-2 row-cols-xl-5">
+            <div class="col">
+              <div class="card mb-3 card-body">
+                <div class="text-muted"><i class="pe-7s-box2 me-1"></i>Всего активных</div>
+                <h3 class="mb-0" id="mp-st-active">—</h3>
+              </div>
+            </div>
+            <div class="col">
+              <div class="card mb-3 card-body">
+                <div class="text-muted"><i class="pe-7s-link me-1"></i>Связано с МойСклад</div>
+                <h3 class="mb-0" id="mp-st-linked">—</h3>
+              </div>
+            </div>
+            <div class="col">
+              <div class="card mb-3 card-body">
+                <div class="text-muted"><i class="pe-7s-unlink me-1"></i>Без связи</div>
+                <h3 class="mb-0" id="mp-st-unlinked">—</h3>
+              </div>
+            </div>
+            <div class="col">
+              <div class="card mb-3 card-body">
+                <div class="text-muted"><i class="pe-7s-close-circle me-1"></i>Выключено на источнике</div>
+                <h3 class="mb-0" id="mp-st-disabled">—</h3>
+              </div>
+            </div>
+            <div class="col">
+              <div class="card mb-3 card-body">
+                <div class="text-muted"><i class="pe-7s-attention me-1"></i>Исчезнувшие</div>
+                <h3 class="mb-0" id="mp-st-disappeared">—</h3>
+              </div>
+            </div>
+          </div>
+
+          <p class="text-danger small mb-3" id="dg-status" style="display:none" role="alert"></p>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2">
+              <div class="d-flex align-items-center">
+                <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
+                <span>Таблица товаров</span>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="table-responsive datagon-my-products-table-wrap">
+                <table class="table table-hover table-striped mb-0 datagon-my-products-table dg-mp-table">
+                  <thead>
+                    <tr id="mp-thead-row">
+                      <th role="button" data-mp-sort="id" style="cursor:pointer">ID / КОД</th>
+                      <th role="button" data-mp-sort="site" style="cursor:pointer">Сайт</th>
+                      <th role="button" data-mp-sort="sku" style="cursor:pointer">Артикул (SKU)</th>
+                      <th role="button" data-mp-sort="name" style="cursor:pointer">Название</th>
+                      <th role="button" data-mp-sort="price" style="cursor:pointer" class="text-end">Цена</th>
+                      <th role="button" data-mp-sort="dealmed_price" style="cursor:pointer" class="text-end">Цена ДМ</th>
+                      <th role="button" data-mp-sort="medkompleks_price" style="cursor:pointer" class="text-end">Цена МК</th>
+                      <th role="button" data-mp-sort="currency" style="cursor:pointer">Валюта</th>
+                      <th role="button" data-mp-sort="stock" style="cursor:pointer" class="text-end">Остаток</th>
+                      <th role="button" data-mp-sort="status" style="cursor:pointer">Статус</th>
+                      <th role="button" data-mp-sort="updated" style="cursor:pointer">Обновлен</th>
+                      <th>Цена от конкурента</th>
+                      <th>Действия</th>
+                    </tr>
+                  </thead>
+                  <tbody id="dg-tbody"></tbody>
+                </table>
+              </div>
+              <p class="text-muted mb-0 mt-2" id="dg-mp-table-hint">—</p>
+            </div>
+          </div>

@@ -1,0 +1,253 @@
+          <div class="app-page-title">
+            <div class="page-title-wrapper">
+              <div class="page-title-heading">
+                <div class="page-title-icon">
+                  <i class="pe-7s-shopbag icon-gradient bg-plum-plate"> </i>
+                </div>
+                <div>
+                  МойСклад
+                  <div class="page-title-subheading">
+                    Раздел предназначен для выгрузки и синхронизации с сервисом «МойСклад».
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2">
+              <div class="d-flex align-items-center">
+                <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
+                <span>Фильтры и действия</span>
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-ms-filters-toggle">Свернуть</button>
+            </div>
+            <div class="card-body">
+              <div id="dg-ms-filters-body">
+              <div class="row g-2 align-items-end">
+                <div class="col-md-4">
+                  <label class="form-label" for="ms-f-search">Умный поиск</label>
+                  <input type="text" class="form-control" id="ms-f-search" placeholder='sku:AB-12 "насос 25" | name:valtec' autocomplete="off" />
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label" for="ms-tf-code">ID / КОД</label>
+                  <input type="text" class="form-control" id="ms-tf-code" autocomplete="off" />
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label" for="ms-tf-name">Наименование товара</label>
+                  <input type="text" class="form-control" id="ms-tf-name" autocomplete="off" />
+                </div>
+                <div class="col-md-1">
+                  <label class="form-label" for="ms-tf-type">Тип</label>
+                  <select class="form-select" id="ms-tf-type">
+                    <option value="all">Все</option>
+                    <option value="товар">Товар</option>
+                    <option value="комплект">Комплект</option>
+                  </select>
+                </div>
+                <div class="col-md-1">
+                  <label class="form-label" for="ms-tf-archived">Архивные</label>
+                  <select class="form-select" id="ms-tf-archived">
+                    <option value="all">Все</option>
+                    <option value="0">Активные</option>
+                    <option value="1">Архив</option>
+                  </select>
+                </div>
+                <div class="col-md-1">
+                  <label class="form-label" for="ms-tf-supplier">Поставщик</label>
+                  <input type="text" class="form-control" id="ms-tf-supplier" autocomplete="off" />
+                </div>
+                <div class="col-md-1">
+                  <label class="form-label" for="ms-tf-supplier2">Поставщик 2</label>
+                  <input type="text" class="form-control" id="ms-tf-supplier2" autocomplete="off" />
+                </div>
+              </div>
+              <div class="row g-2 align-items-end mt-1">
+                <div class="col-md-2">
+                  <label class="form-label" for="ms-tf-manager">Менеджер</label>
+                  <input type="text" class="form-control" id="ms-tf-manager" autocomplete="off" />
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label" for="ms-tf-content_manager">Контент-менеджер</label>
+                  <input type="text" class="form-control" id="ms-tf-content_manager" autocomplete="off" />
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label" for="ms-tf-stock_min">Остаток от</label>
+                  <input type="number" class="form-control" id="ms-tf-stock_min" />
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label" for="ms-tf-stock_max">Остаток до</label>
+                  <input type="number" class="form-control" id="ms-tf-stock_max" />
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label" for="ms-f-supplier">Поставщик</label>
+                  <input type="text" class="form-control" id="ms-f-supplier" autocomplete="off" />
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label" for="ms-f-supplier2">Поставщик 2</label>
+                  <input type="text" class="form-control" id="ms-f-supplier2" autocomplete="off" />
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label" for="ms-f-manager">Менеджер</label>
+                  <input type="text" class="form-control" id="ms-f-manager" autocomplete="off" />
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label" for="ms-f-content_manager">Контент-менеджер</label>
+                  <input type="text" class="form-control" id="ms-f-content_manager" autocomplete="off" />
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label" for="ms-f-type">Тип</label>
+                  <select class="form-select" id="ms-f-type">
+                    <option value="all">Все</option>
+                    <option value="Товар">Товары</option>
+                    <option value="Комплект">Комплекты</option>
+                  </select>
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label" for="ms-f-stock_position">Складская позиция</label>
+                  <select class="form-select" id="ms-f-stock_position">
+                    <option value="yes">Только Да</option>
+                    <option value="no">Только Нет</option>
+                    <option value="all">Все</option>
+                  </select>
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label" for="ms-f-on_site">На сайте</label>
+                  <select class="form-select" id="ms-f-on_site">
+                    <option value="all">Все</option>
+                    <option value="1">Только есть</option>
+                    <option value="0">Только нет</option>
+                  </select>
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label" for="ms-f-archived">Статус</label>
+                  <select class="form-select" id="ms-f-archived">
+                    <option value="active">Активные</option>
+                    <option value="archived">Архивные</option>
+                    <option value="all">Все</option>
+                  </select>
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label" for="ms-f-limit">На странице</label>
+                  <select class="form-select" id="ms-f-limit">
+                    <option value="50">50</option>
+                    <option value="100" selected>100</option>
+                    <option value="200">200</option>
+                    <option value="500">500</option>
+                  </select>
+                </div>
+              </div>
+              <div class="mt-3 d-flex flex-wrap gap-3">
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" id="only_stock" />
+                  <label class="form-check-label" for="only_stock">Только с остатком &gt; 0</label>
+                </div>
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" id="no_coop" />
+                  <label class="form-check-label" for="no_coop">Перестали сотрудничать</label>
+                </div>
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" id="has_buy_price" />
+                  <label class="form-check-label" for="has_buy_price">Только с закупочной ценой</label>
+                </div>
+              </div>
+              <div class="mt-3 d-flex flex-wrap gap-2">
+                <button type="button" class="btn btn-sm btn-primary" id="moysklad-apply"><i class="pe-7s-search me-1"></i>Применить</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="moysklad-reset"><i class="pe-7s-refresh me-1"></i>Сбросить</button>
+                <button type="button" class="btn btn-sm btn-outline-success" id="moysklad-sync"><i class="pe-7s-play me-1"></i>Запустить синхронизацию</button>
+                <button type="button" class="btn btn-sm btn-outline-warning" id="moysklad-stop"><i class="pe-7s-close-circle me-1"></i>Остановить</button>
+                <button type="button" class="btn btn-sm btn-outline-info" id="moysklad-rebuild-cache"><i class="pe-7s-refresh-2 me-1"></i>Перестроить кэш связей</button>
+                <button type="button" class="btn btn-sm btn-outline-primary" id="moysklad-refresh"><i class="pe-7s-refresh me-1"></i>Обновить</button>
+                <button type="button" class="btn btn-sm btn-outline-dark" id="moysklad-copy-link"><i class="pe-7s-link me-1"></i>Скопировать ссылку</button>
+              </div>
+              </div>
+              <p class="text-muted mb-0 mt-2" id="dg-ms-status-hint">Загрузка статуса...</p>
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="col-md-4">
+              <div class="card mb-3 card-body text-center">
+                <div class="text-muted"><i class="pe-7s-menu me-1"></i>Всего в выборке</div>
+                <h3 class="mb-0" style="font-variant-numeric: tabular-nums" id="st-total">0</h3>
+              </div>
+            </div>
+            <div class="col-md-4">
+              <div class="card mb-3 card-body text-center">
+                <div class="text-muted"><i class="pe-7s-box1 me-1"></i>Товары / Комплекты</div>
+                <h3 class="mb-0" style="font-variant-numeric: tabular-nums" id="st-pb">0 / 0</h3>
+              </div>
+            </div>
+            <div class="col-md-4">
+              <div class="card mb-3 card-body text-center">
+                <div class="text-muted"><i class="pe-7s-cash me-1"></i>Сумма остатков</div>
+                <h3 class="mb-0" style="font-variant-numeric: tabular-nums" id="st-val"></h3>
+              </div>
+            </div>
+          </div>
+
+          <p class="text-muted small mb-2 text-danger" id="dg-status" style="display:none"></p>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2">
+              <div class="d-flex align-items-center">
+                <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
+                <span>Выгрузка МойСклад</span>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="datagon-columns-toolbox mb-2">
+                <div class="columns-top">
+                  <button type="button" class="btn btn-sm" id="dg-ms-columns-toggle">🧩 Столбцы</button>
+                  <div class="columns-title">Включение/выключение видимых столбцов:</div>
+                </div>
+                <div class="datagon-columns-panel" id="dg-ms-columns-panel">
+                  <div class="columns-actions mb-2">
+                    <button type="button" class="btn btn-sm" id="dg-ms-columns-all">Выделить все</button>
+                    <button type="button" class="btn btn-sm" id="dg-ms-columns-none">Снять все</button>
+                    <button type="button" class="btn btn-sm" id="dg-ms-columns-default">По умолчанию</button>
+                  </div>
+                  <div id="dg-ms-columns-list" class="columns-grid"></div>
+                </div>
+              </div>
+              <div style="width:100%;max-width:100%;overflow-x:auto;overflow-y:visible;-webkit-overflow-scrolling:touch">
+                <div class="table-responsive datagon-my-products-table-wrap" style="display:block;width:100%;max-width:100%;min-width:0;overflow:visible;position:relative">
+                  <table class="table table-hover table-striped mb-0 datagon-my-products-table dg-ms-table" style="width:max-content;min-width:2200px;max-width:none;table-layout:fixed;border-collapse:separate;border-spacing:0">
+                    <thead id="dg-ms-thead">
+                      <tr>
+                        <th>ID / КОД</th>
+                        <th>Наименование товара</th>
+                        <th>Менеджер</th>
+                        <th>Контент-менеджер</th>
+                        <th>Тип</th>
+                        <th>Склад. поз.</th>
+                        <th>Перестали сотруднич.</th>
+                        <th>Остаток</th>
+                        <th>Дней на складе</th>
+                        <th>Проработка цены / коммент</th>
+                        <th>НДС</th>
+                        <th>НДС на товаре или комплекте</th>
+                        <th>Закуп. цена</th>
+                        <th>Поставщик</th>
+                        <th>Поставщик 2</th>
+                        <th>Автоматизация цены</th>
+                        <th>Упаковка (стандарт)</th>
+                        <th>Упаковка (своя коробка)</th>
+                        <th>Вес с упаковкой</th>
+                        <th>Обновлено</th>
+                      </tr>
+                    </thead>
+                    <tbody id="dg-tbody"></tbody>
+                  </table>
+                </div>
+              </div>
+              <div class="mt-3 d-flex justify-content-between align-items-center">
+                <div class="text-muted" id="dg-ms-footer-left">Всего: 0</div>
+                <div class="btn-group" role="group" aria-label="Страницы выгрузки">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="ms-btn-prev">Назад</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="ms-btn-next">Вперед</button>
+                </div>
+              </div>
+              <p class="text-muted mb-0 mt-2" id="dg-ms-table-hint">—</p>
+            </div>
+          </div>

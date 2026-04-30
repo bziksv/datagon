@@ -1,0 +1,249 @@
+          <div class="datagon-settings-page">
+
+          <div class="app-page-title">
+            <div class="page-title-wrapper">
+              <div class="page-title-heading">
+                <div class="page-title-icon">
+                  <i class="pe-7s-config icon-gradient bg-happy-fisher"> </i>
+                </div>
+                <div>
+                  Настройки
+                  <div class="page-title-subheading">Управление параметрами парсинга, синхронизаций, безопасностью и пользователями.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2">
+              <div class="d-flex align-items-center">
+                <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
+                <span>Пользователи системы</span>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="datagon-users-panel">
+                <p class="small text-muted">Admin может выдавать отдельное право: создание новых пользователей.</p>
+                <div class="row g-2 mb-2">
+                  <div class="col-md-6">
+                    <label class="form-label" for="dg-set-users-search">Умный поиск</label>
+                    <input type="text" class="form-control" id="dg-set-users-search" placeholder='id:12 username:admin или просто текст' autocomplete="off" />
+                  </div>
+                  <div class="col-md-2">
+                    <label class="form-label" for="dg-set-users-filter-can">Право создавать</label>
+                    <select class="form-select" id="dg-set-users-filter-can">
+                      <option value="all">Все</option>
+                      <option value="1">Разрешено</option>
+                      <option value="0">Запрещено</option>
+                    </select>
+                  </div>
+                  <div class="col-md-2">
+                    <label class="form-label" for="dg-set-users-sess-min">Сессий от</label>
+                    <input type="number" class="form-control" id="dg-set-users-sess-min" min="0" />
+                  </div>
+                  <div class="col-md-2">
+                    <label class="form-label" for="dg-set-users-sess-max">Сессий до</label>
+                    <input type="number" class="form-control" id="dg-set-users-sess-max" min="0" />
+                  </div>
+                </div>
+                <div class="row g-2 align-items-end datagon-users-create-grid">
+                  <div class="col-md-4 col-lg-4">
+                    <label class="form-label" for="dg-set-new-fullname">Имя Фамилия нового пользователя</label>
+                    <input type="text" class="form-control" id="dg-set-new-fullname" autocomplete="off" />
+                  </div>
+                  <div class="col-md-3 col-lg-3">
+                    <label class="form-label" for="dg-set-new-username">Логин нового пользователя</label>
+                    <input type="text" class="form-control" id="dg-set-new-username" autocomplete="off" />
+                  </div>
+                  <div class="col-md-5 col-lg-5">
+                    <label class="form-label" for="dg-set-new-password">Пароль (15+ символов)</label>
+                    <div class="d-flex gap-2 datagon-users-password-row">
+                      <input type="password" class="form-control" id="dg-set-new-password" autocomplete="new-password" />
+                      <button type="button" class="btn btn-outline-secondary" id="dg-set-new-pw-toggle" title="Показать">👁</button>
+                      <button type="button" class="btn btn-outline-secondary" id="dg-set-new-pw-copy" title="Копировать">📋</button>
+                    </div>
+                  </div>
+                </div>
+                <div class="mt-2 d-flex gap-2 flex-wrap datagon-users-actions">
+                  <button type="button" class="btn btn-primary" id="dg-set-btn-random-new-pw">🎲 Сгенерировать пароль</button>
+                  <button type="button" class="btn btn-success" id="dg-set-btn-add-user">➕ Добавить пользователя</button>
+                  <button type="button" class="btn btn-info" id="dg-set-btn-refresh-users">🔄 Обновить список</button>
+                </div>
+                <div class="table-responsive mt-3">
+                  <table class="table table-striped table-hover mb-0 datagon-users-table">
+                    <thead>
+                      <tr>
+                        <th>ID</th>
+                        <th>Имя Фамилия</th>
+                        <th>Логин</th>
+                        <th>Создание пользователей</th>
+                        <th>Активных сессий</th>
+                        <th>Действия</th>
+                      </tr>
+                    </thead>
+                    <tbody id="dg-set-users-tbody"></tbody>
+                  </table>
+                </div>
+              </div>
+              <p class="text-muted mb-0 mt-2" id="dg-set-users-hint"></p>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card" id="dg-set-edit-card" style="display:none">
+            <div class="card-header d-flex align-items-center">
+              <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
+              <span>Редактировать пользователя</span>
+            </div>
+            <div class="card-body">
+              <div class="row g-2">
+                <div class="col-md-5">
+                  <label class="form-label" for="dg-set-edit-fullname">Имя Фамилия</label>
+                  <input type="text" class="form-control" id="dg-set-edit-fullname" />
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label" for="dg-set-edit-username">Логин</label>
+                  <input type="text" class="form-control" id="dg-set-edit-username" />
+                </div>
+                <div class="col-md-3 d-flex align-items-end gap-2">
+                  <button type="button" class="btn btn-success" id="dg-set-edit-save">Сохранить</button>
+                  <button type="button" class="btn btn-outline-secondary" id="dg-set-edit-cancel">Отмена</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center">
+              <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
+              <span>Общие настройки (Парсер конкурентов)</span>
+            </div>
+            <div class="card-body">
+              <p class="small text-muted">Параметры отображения и работы основного парсера.</p>
+              <div class="row g-2">
+                <div class="col-md-3"><label class="form-label" for="dg-set-default_limit">Результатов на странице</label><input type="number" class="form-control" id="dg-set-default_limit" /></div>
+                <div class="col-md-3"><label class="form-label" for="dg-set-parse_batch_size">Размер пакета парсинга</label><input type="number" class="form-control" id="dg-set-parse_batch_size" /></div>
+                <div class="col-md-3"><label class="form-label" for="dg-set-page_delay_ms">Задержка между страницами (мс)</label><input type="number" class="form-control" id="dg-set-page_delay_ms" /></div>
+                <div class="col-md-3"><label class="form-label" for="dg-set-results_retention_days">Хранение результатов (дней)</label><input type="number" class="form-control" id="dg-set-results_retention_days" /></div>
+                <div class="col-md-3"><label class="form-label" for="dg-set-auth_session_ttl_days">Сессия TTL (дней)</label><input type="number" class="form-control" id="dg-set-auth_session_ttl_days" /></div>
+                <div class="col-md-3"><label class="form-label" for="dg-set-auth_session_user_limit">Лимит сессий на пользователя</label><input type="number" class="form-control" id="dg-set-auth_session_user_limit" /></div>
+                <div class="col-md-3"><label class="form-label" for="dg-set-discover_max_sitemaps">Автообход: max sitemap</label><input type="number" class="form-control" id="dg-set-discover_max_sitemaps" /></div>
+                <div class="col-md-3"><label class="form-label" for="dg-set-discover_max_urls">Автообход: max URL</label><input type="number" class="form-control" id="dg-set-discover_max_urls" /></div>
+                <div class="col-md-3"><label class="form-label" for="dg-set-discover_crawl_max_pages">Fallback crawl pages</label><input type="number" class="form-control" id="dg-set-discover_crawl_max_pages" /></div>
+                <div class="col-md-3"><label class="form-label" for="dg-set-discover_request_delay_ms">Автообход delay (мс)</label><input type="number" class="form-control" id="dg-set-discover_request_delay_ms" /></div>
+              </div>
+              <div class="mt-3"><button type="button" class="btn btn-success" id="dg-set-btn-save-general">💾 Сохранить общие настройки</button></div>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center">
+              <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
+              <span>Синхронизация продуктов (Мои сайты)</span>
+            </div>
+            <div class="card-body">
+              <p class="small text-muted">Настройки обновления цен и остатков из вашей базы (Bitrix/Webasyst).</p>
+              <div class="row g-2">
+                <div class="col-md-4"><label class="form-label" for="dg-set-sync_batch_size">Размер пакета</label><input type="number" class="form-control" id="dg-set-sync_batch_size" /></div>
+                <div class="col-md-4"><label class="form-label" for="dg-set-sync_delay_ms">Пауза между пакетами (мс)</label><input type="number" class="form-control" id="dg-set-sync_delay_ms" /></div>
+                <div class="col-md-4">
+                  <label class="form-label" for="dg-set-sync_mode">Режим обновления цен</label>
+                  <select class="form-select" id="dg-set-sync_mode">
+                    <option value="always">Постоянное обновление</option>
+                    <option value="once">Разовая выгрузка</option>
+                  </select>
+                </div>
+              </div>
+              <div class="mt-3"><button type="button" class="btn btn-success" id="dg-set-btn-save-myproducts">💾 Сохранить настройки синхронизации продуктов</button></div>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center">
+              <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
+              <span>Синхронизация МойСклад</span>
+            </div>
+            <div class="card-body">
+              <p class="small text-muted">Отдельные настройки лимитов и задержек API для синка МойСклад.</p>
+              <div class="row g-2">
+                <div class="col-md-4"><label class="form-label" for="dg-set-ms_sync_page_limit">Лимит страницы API</label><input type="number" class="form-control" id="dg-set-ms_sync_page_limit" /></div>
+                <div class="col-md-4"><label class="form-label" for="dg-set-ms_sync_delay_ms">Пауза между запросами (мс)</label><input type="number" class="form-control" id="dg-set-ms_sync_delay_ms" /></div>
+              </div>
+              <div class="mt-3"><button type="button" class="btn btn-success" id="dg-set-btn-save-ms">💾 Сохранить настройки синхронизации МойСклад</button></div>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center">
+              <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
+              <span>Автосинхронизация по расписанию</span>
+            </div>
+            <div class="card-body">
+              <div class="row g-2">
+                <div class="col-md-6">
+                  <label class="form-label">Продукты: время запуска (МСК)</label>
+                  <div class="d-flex gap-2 align-items-center">
+                    <input type="checkbox" id="dg-set-auto_my_en" />
+                    <span>Включить</span>
+                    <input type="time" class="form-control" id="dg-set-auto_my_time" style="max-width:140px" />
+                  </div>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label">МойСклад: время запуска (МСК)</label>
+                  <div class="d-flex gap-2 align-items-center">
+                    <input type="checkbox" id="dg-set-auto_ms_en" />
+                    <span>Включить</span>
+                    <input type="time" class="form-control" id="dg-set-auto_ms_time" style="max-width:140px" />
+                  </div>
+                </div>
+              </div>
+              <div class="mt-3"><button type="button" class="btn btn-success" id="dg-set-btn-save-auto">💾 Сохранить расписание автосинхронизации</button></div>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center">
+              <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
+              <span>Логи сервера</span>
+            </div>
+            <div class="card-body">
+              <p class="small text-muted">Управление лог-файлами server.log и worker.log.</p>
+              <div class="row g-2">
+                <div class="col-md-4"><label class="form-label" for="dg-set-log_retention_days">Автоочистка логов (дней)</label><input type="number" class="form-control" id="dg-set-log_retention_days" /></div>
+              </div>
+              <div class="small text-muted mt-2" id="dg-set-logs-info"></div>
+              <div class="mt-3 d-flex gap-2">
+                <button type="button" class="btn btn-info" id="dg-set-btn-logs-refresh">🔄 Обновить информацию о логах</button>
+                <button type="button" class="btn btn-warning" id="dg-set-btn-logs-clear">🧹 Очистить логи сейчас</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2">
+              <div class="d-flex align-items-center">
+                <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
+                <span>Смена пароля</span>
+              </div>
+            </div>
+            <div class="card-body">
+              <p class="small text-muted">Измените пароль пользователя. Для не-admin доступна смена только своего пароля.</p>
+              <div class="row g-2">
+                <div class="col-md-3"><label class="form-label" for="dg-set-pw-username">Логин</label><input type="text" class="form-control" id="dg-set-pw-username" /></div>
+                <div class="col-md-5">
+                  <label class="form-label" for="dg-set-pw-new">Новый пароль</label>
+                  <div class="d-flex gap-2">
+                    <input type="password" class="form-control" id="dg-set-pw-new" autocomplete="new-password" />
+                    <button type="button" class="btn btn-outline-secondary" id="dg-set-pw-toggle" title="Показать">👁</button>
+                    <button type="button" class="btn btn-outline-secondary" id="dg-set-pw-copy" title="Копировать">📋</button>
+                  </div>
+                </div>
+                <div class="col-md-2"><label class="form-label" for="dg-set-pw-length">Длина</label><input type="number" class="form-control" id="dg-set-pw-length" min="15" value="15" /></div>
+                <div class="col-md-2 d-flex align-items-end gap-2 flex-wrap">
+                  <button type="button" class="btn btn-primary" id="dg-set-pw-gen">🎲 Сгенерировать пароль</button>
+                  <button type="button" class="btn btn-success" id="dg-set-pw-submit">🔐 Сменить пароль</button>
+                </div>
+              </div>
+              <p class="text-muted mb-0 mt-2 small">Минимальная длина: 15 символов</p>
+            </div>
+          </div>
+          </div>

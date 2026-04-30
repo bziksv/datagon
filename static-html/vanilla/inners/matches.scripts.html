@@ -1,0 +1,1010 @@
+  <script>
+    (function () {
+      var PRODUCTS_LIMIT = 50;
+
+      function formatNumber(value) {
+        return Number(value || 0).toLocaleString("ru-RU");
+      }
+      function formatDateTime(value) {
+        if (!value) return "-";
+        var d = new Date(value);
+        if (isNaN(d.getTime())) return "-";
+        return d.toLocaleString("ru-RU");
+      }
+      function buildSiteUrl(raw) {
+        var v = String(raw || "").trim();
+        if (!v) return "";
+        if (/^https?:\/\//i.test(v)) return v;
+        if (!/[a-z0-9-]+\.[a-z]{2,}/i.test(v)) return "";
+        return "https://" + v;
+      }
+      function normalizeWebasystProductUrl(rawUrl, domainRaw, cmsType) {
+        var direct = buildSiteUrl(rawUrl);
+        var base = buildSiteUrl(domainRaw);
+        if (String(cmsType || "").toLowerCase() !== "webasyst") return direct || base || "";
+        var target = direct || base;
+        if (!target) return "";
+        try {
+          var u = new URL(target);
+          var path = String(u.pathname || "/");
+          if (!path.startsWith("/product/")) {
+            var slug = path.replace(/^\/+/, "").replace(/\/+$/, "");
+            if (slug) u.pathname = "/product/" + slug + "/";
+          } else if (!path.endsWith("/")) {
+            u.pathname = path + "/";
+          }
+          return u.toString();
+        } catch (e) {
+          return direct || "";
+        }
+      }
+      function buildProductSearchUrl(domainRaw, sku, name) {
+        var base = buildSiteUrl(domainRaw);
+        if (!base) return "";
+        var query = String(sku || "").trim() || String(name || "").trim();
+        if (!query) return base;
+        return base.replace(/\/$/, "") + "/search/?q=" + encodeURIComponent(query);
+      }
+      function buildWebasystEditUrl(domainRaw, sourceId, cmsType) {
+        var base = buildSiteUrl(domainRaw);
+        var id = String(sourceId || "").trim();
+        if (!base || !id) return "";
+        if (String(cmsType || "").toLowerCase() !== "webasyst") return "";
+        return base.replace(/\/$/, "") + "/webasyst/shop/?action=products#/product/" + encodeURIComponent(id) + "/edit/";
+      }
+
+      function syncUrlFromState() {
+        var params = new URLSearchParams();
+        var mySiteId = document.getElementById("dg-matches-my-site").value;
+        var statusFilter = document.getElementById("dg-matches-status-filter").value;
+        var searchMode = document.getElementById("dg-matches-search-mode").value;
+        var productSearch = String(document.getElementById("dg-matches-product-search").value || "").trim();
+        var matchesPage = Number(state.matchesPage || 1);
+        var matchesLimit = Number(state.matchesLimit || 100);
+        if (mySiteId) params.set("my_site_id", String(mySiteId));
+        if (statusFilter && statusFilter !== "pending") params.set("status", statusFilter);
+        if (searchMode && searchMode !== "all") params.set("mode", searchMode);
+        if (productSearch) params.set("product_search", productSearch);
+        if (matchesPage > 1) params.set("matches_page", String(matchesPage));
+        if (matchesLimit !== 100) params.set("matches_limit", String(matchesLimit));
+        var next = params.toString()
+          ? window.location.pathname + "?" + params.toString()
+          : window.location.pathname;
+        try {
+          window.history.replaceState(null, "", next);
+        } catch (e) {}
+      }
+
+      var state = {
+        mySites: [],
+        competitors: [],
+        competitorIds: [],
+        myProducts: [],
+        myProductsPage: 1,
+        myProductsTotal: 0,
+        selectedProductIds: [],
+        loadingProducts: false,
+        matches: [],
+        matchesPage: 1,
+        matchesLimit: 100,
+        matchesTotal: 0,
+        loadingMatches: false,
+        matchesSortBy: "confidence",
+        matchesSortDir: "desc",
+        jobStatus: {
+          active: false,
+          done: false,
+          message: "Ожидание",
+          processed: 0,
+          total: 0,
+          foundSku: 0,
+          foundName: 0,
+          logs: [],
+          canRetry: false,
+        },
+        jobDoneReloaded: false,
+        statusTimer: null,
+        urlTick: null,
+      };
+
+      function showErr(msg) {
+        var el = document.getElementById("dg-matches-err");
+        if (!el) return;
+        if (!msg) {
+          el.style.display = "none";
+          el.textContent = "";
+          return;
+        }
+        el.style.display = "";
+        el.textContent = msg;
+      }
+
+      function parseUrlParams() {
+        var p = new URLSearchParams(window.location.search);
+        return {
+          my_site_id: p.get("my_site_id") || "",
+          status: p.get("status") || "",
+          mode: p.get("mode") || "",
+          product_search: p.get("product_search") || "",
+          matches_page: Number(p.get("matches_page") || 1),
+          matches_limit: Number(p.get("matches_limit") || 100),
+        };
+      }
+
+      function scheduleSyncUrl() {
+        if (state.urlTick) clearTimeout(state.urlTick);
+        state.urlTick = setTimeout(function () {
+          state.urlTick = null;
+          syncUrlFromState();
+        }, 150);
+      }
+
+      function selectedSet() {
+        var s = {};
+        state.selectedProductIds.forEach(function (id) {
+          s[id] = true;
+        });
+        return s;
+      }
+
+      function fillMySitesSelect() {
+        var sel = document.getElementById("dg-matches-my-site");
+        var v = sel.value;
+        sel.innerHTML = '<option value="">-- выберите --</option>';
+        state.mySites.forEach(function (s) {
+          var o = document.createElement("option");
+          o.value = String(s.id);
+          o.textContent = s.name || "#" + s.id;
+          sel.appendChild(o);
+        });
+        if (v && [].some.call(sel.options, function (o) { return o.value === v; })) sel.value = v;
+      }
+
+      function renderCompetitors() {
+        var box = document.getElementById("dg-matches-competitors");
+        box.replaceChildren();
+        var set = {};
+        state.competitorIds.forEach(function (id) {
+          set[String(id)] = true;
+        });
+        state.competitors.forEach(function (c) {
+          var id = String(c.id);
+          var wrap = document.createElement("div");
+          wrap.className = "form-check";
+          var inp = document.createElement("input");
+          inp.type = "checkbox";
+          inp.className = "form-check-input";
+          inp.id = "comp-" + id;
+          inp.checked = !!set[id];
+          inp.addEventListener("change", function () {
+            if (inp.checked) {
+              if (!state.competitorIds.some(function (x) { return String(x) === id; })) state.competitorIds.push(id);
+            } else {
+              state.competitorIds = state.competitorIds.filter(function (x) { return String(x) !== id; });
+            }
+            scheduleSyncUrl();
+            refreshActionButtons();
+          });
+          var lab = document.createElement("label");
+          lab.className = "form-check-label";
+          lab.htmlFor = "comp-" + id;
+          lab.textContent = c.name || "#" + c.id;
+          wrap.appendChild(inp);
+          wrap.appendChild(lab);
+          box.appendChild(wrap);
+        });
+      }
+
+      function refreshActionButtons() {
+        var mySiteId = document.getElementById("dg-matches-my-site").value;
+        var hasComp = state.competitorIds.length > 0;
+        var js = state.jobStatus;
+        document.getElementById("dg-matches-run-selected").disabled = !mySiteId || !hasComp;
+        document.getElementById("dg-matches-run-auto").disabled = !mySiteId || !hasComp;
+        document.getElementById("dg-matches-retry").disabled = !mySiteId || !js.canRetry;
+        document.getElementById("dg-matches-stop").disabled = !mySiteId || !js.active;
+      }
+
+      function updateJobUi() {
+        var js = state.jobStatus;
+        var pct = js.total > 0 ? Math.round((js.processed / js.total) * 100) : 0;
+        var hint = document.getElementById("dg-matches-job-hint");
+        if (hint)
+          hint.textContent =
+            (js.message || "Ожидание") +
+            " (" +
+            formatNumber(js.processed) +
+            "/" +
+            formatNumber(js.total) +
+            ", " +
+            pct +
+            "%)";
+        var found = document.getElementById("dg-matches-job-found");
+        if (found)
+          found.textContent =
+            "Найдено по job: SKU " + formatNumber(js.foundSku) + ", Name " + formatNumber(js.foundName);
+        var logsEl = document.getElementById("dg-matches-job-logs");
+        if (logsEl) {
+          logsEl.replaceChildren();
+          (js.logs || []).slice(0, 10).forEach(function (l, i) {
+            var d = document.createElement("div");
+            d.textContent = "• " + l;
+            logsEl.appendChild(d);
+          });
+        }
+        refreshActionButtons();
+      }
+
+      function myProductsPages() {
+        return Math.max(1, Math.ceil(state.myProductsTotal / PRODUCTS_LIMIT));
+      }
+      function matchesPages() {
+        return Math.max(1, Math.ceil(state.matchesTotal / state.matchesLimit));
+      }
+
+      function updateMyProductsHints() {
+        document.getElementById("dg-matches-my-products-page-hint").textContent =
+          "Страница " + state.myProductsPage + "/" + myProductsPages();
+        document.getElementById("dg-matches-my-prev").disabled = state.myProductsPage <= 1;
+        document.getElementById("dg-matches-my-next").disabled = state.myProductsPage >= myProductsPages();
+        document.getElementById("dg-matches-my-products-hint").textContent =
+          "Выбрано: " + state.selectedProductIds.length + "; всего: " + formatNumber(state.myProductsTotal);
+      }
+
+      function updateMatchesPageHints() {
+        document.getElementById("dg-matches-page-hint").textContent =
+          "Страница " + state.matchesPage + "/" + matchesPages();
+        document.getElementById("dg-matches-prev").disabled = state.matchesPage <= 1;
+        document.getElementById("dg-matches-next").disabled = state.matchesPage >= matchesPages();
+        document.getElementById("dg-matches-total-hint").textContent = "Всего: " + formatNumber(state.matchesTotal);
+      }
+
+      function renderMyProducts() {
+        updateMyProductsHints();
+        var tbody = document.getElementById("dg-matches-my-products-tbody");
+        tbody.replaceChildren();
+        var sel = selectedSet();
+        if (state.loadingProducts) {
+          var tr = document.createElement("tr");
+          var td = document.createElement("td");
+          td.colSpan = 5;
+          td.className = "text-muted";
+          td.textContent = "Загрузка...";
+          tr.appendChild(td);
+          tbody.appendChild(tr);
+          return;
+        }
+        if (!state.myProducts.length) {
+          var tr0 = document.createElement("tr");
+          var td0 = document.createElement("td");
+          td0.colSpan = 5;
+          td0.className = "text-muted";
+          td0.textContent = "Нет товаров";
+          tr0.appendChild(td0);
+          tbody.appendChild(tr0);
+          return;
+        }
+        state.myProducts.forEach(function (p) {
+          var tr = document.createElement("tr");
+          var td0 = document.createElement("td");
+          var cb = document.createElement("input");
+          cb.type = "checkbox";
+          cb.checked = !!sel[p.id];
+          cb.addEventListener("change", function () {
+            var set = {};
+            state.selectedProductIds.forEach(function (id) {
+              set[id] = true;
+            });
+            if (cb.checked) set[p.id] = true;
+            else delete set[p.id];
+            state.selectedProductIds = Object.keys(set).map(Number);
+            updateMyProductsHints();
+          });
+          td0.appendChild(cb);
+          tr.appendChild(td0);
+          ["id", "sku", "name"].forEach(function (k) {
+            var td = document.createElement("td");
+            td.textContent = k === "sku" || k === "name" ? p[k] || "-" : p[k];
+            tr.appendChild(td);
+          });
+          var tdP = document.createElement("td");
+          tdP.textContent = (p.price || 0) + " " + (p.currency || "RUB");
+          tr.appendChild(tdP);
+          tbody.appendChild(tr);
+        });
+        var allCb = document.getElementById("dg-matches-my-select-all");
+        allCb.checked =
+          state.myProducts.length > 0 &&
+          state.myProducts.every(function (p) {
+            return sel[p.id];
+          });
+      }
+
+      function readTableFilters() {
+        return {
+          my_sku: document.getElementById("dg-matches-tf-my-sku").value.trim(),
+          competitor_sku: document.getElementById("dg-matches-tf-comp-sku").value.trim(),
+          match_type: document.getElementById("dg-matches-tf-match-type").value,
+          status: document.getElementById("dg-matches-tf-status").value,
+          confidence_min: document.getElementById("dg-matches-tf-conf-min").value,
+          confidence_max: document.getElementById("dg-matches-tf-conf-max").value,
+        };
+      }
+
+      function filteredSortedMatches() {
+        var term = String(document.getElementById("dg-matches-smart-filter").value || "")
+          .trim()
+          .toLowerCase();
+        var matches = state.matches;
+        var filtered =
+          !term
+            ? matches
+            : matches.filter(function (m) {
+                var hay = [
+                  m.status,
+                  m.match_type,
+                  m.my_sku,
+                  m.my_product_name,
+                  m.competitor_sku,
+                  m.competitor_name,
+                  m.confirmed_by,
+                  m.unlinked_by,
+                ]
+                  .map(function (x) {
+                    return String(x || "").toLowerCase();
+                  })
+                  .join(" ");
+                return hay.indexOf(term) !== -1;
+              });
+        var tf = readTableFilters();
+        var byColumns = filtered.filter(function (m) {
+          if (tf.my_sku && String(m.my_sku || "").toLowerCase().indexOf(String(tf.my_sku).trim().toLowerCase()) === -1)
+            return false;
+          if (
+            tf.competitor_sku &&
+            String(m.competitor_sku || "").toLowerCase().indexOf(String(tf.competitor_sku).trim().toLowerCase()) === -1
+          )
+            return false;
+          if (tf.match_type !== "all" && String(m.match_type || "").toLowerCase() !== String(tf.match_type).toLowerCase())
+            return false;
+          if (tf.status !== "all" && String(m.status || "").toLowerCase() !== String(tf.status).toLowerCase()) return false;
+          var pct = Number(m.confidence_score || 0) * 100;
+          var min = Number(tf.confidence_min || "");
+          var max = Number(tf.confidence_max || "");
+          if (Number.isFinite(min) && String(tf.confidence_min).trim() !== "" && pct < min) return false;
+          if (Number.isFinite(max) && String(tf.confidence_max).trim() !== "" && pct > max) return false;
+          return true;
+        });
+        var dir = state.matchesSortDir === "asc" ? 1 : -1;
+        var sortBy = state.matchesSortBy;
+        return byColumns.slice().sort(function (a, b) {
+          if (sortBy === "confidence") {
+            return (Number(a.confidence_score || 0) - Number(b.confidence_score || 0)) * dir;
+          }
+          var av = String(a[sortBy] || "");
+          var bv = String(b[sortBy] || "");
+          return av.localeCompare(bv, "ru", { sensitivity: "base" }) * dir;
+        });
+      }
+
+      function statusUi(status) {
+        if (status === "confirmed") return { icon: "pe-7s-check", badge: "success", label: "Подтверждено" };
+        if (status === "rejected") return { icon: "pe-7s-close-circle", badge: "danger", label: "Отклонено" };
+        return { icon: "pe-7s-timer", badge: "warning", label: "Ожидает" };
+      }
+      function scoreUi(matchType, score) {
+        if (String(matchType || "").toLowerCase() === "sku") return { text: "100% (SKU)", badge: "success" };
+        var pct = Math.round(Number(score || 0) * 100);
+        if (pct >= 90) return { text: pct + "%", badge: "success" };
+        if (pct >= 70) return { text: pct + "%", badge: "warning" };
+        return { text: pct + "%", badge: "secondary" };
+      }
+
+      function renderMatchesTable() {
+        updateMatchesPageHints();
+        var tbody = document.getElementById("dg-matches-tbody");
+        tbody.replaceChildren();
+        if (state.loadingMatches) {
+          var trL = document.createElement("tr");
+          var tdL = document.createElement("td");
+          tdL.colSpan = 6;
+          tdL.className = "text-muted";
+          tdL.textContent = "Загрузка...";
+          trL.appendChild(tdL);
+          tbody.appendChild(trL);
+          return;
+        }
+        var rows = filteredSortedMatches();
+        if (!rows.length) {
+          var tr0 = document.createElement("tr");
+          var td0 = document.createElement("td");
+          td0.colSpan = 6;
+          td0.className = "text-muted";
+          td0.textContent = "Нет совпадений";
+          tr0.appendChild(td0);
+          tbody.appendChild(tr0);
+          return;
+        }
+        rows.forEach(function (m) {
+          var score = Number(m.confidence_score || 0);
+          var sUi = statusUi(String(m.status || "").toLowerCase());
+          var cUi = scoreUi(String(m.match_type || "").toLowerCase(), score);
+          var myProductUrl =
+            normalizeWebasystProductUrl(m.my_product_url || "", m.my_site_domain || "", m.my_site_cms_type || "") ||
+            buildProductSearchUrl(m.my_site_domain || "", m.my_sku || "", m.my_product_name || "");
+          var myEditUrl = buildWebasystEditUrl(m.my_site_domain || "", m.my_source_id || "", m.my_site_cms_type || "");
+          var competitorUrl = buildSiteUrl(m.competitor_url || m.competitor_domain || "");
+
+          var tr = document.createElement("tr");
+          var tdSt = document.createElement("td");
+          var badge = document.createElement("span");
+          badge.className = "badge bg-" + sUi.badge;
+          var ic = document.createElement("i");
+          ic.className = sUi.icon + " me-1";
+          badge.appendChild(ic);
+          badge.appendChild(document.createTextNode(sUi.label));
+          tdSt.appendChild(badge);
+          tr.appendChild(tdSt);
+
+          var tdType = document.createElement("td");
+          tdType.textContent = m.match_type || "";
+          tr.appendChild(tdType);
+
+          var tdConf = document.createElement("td");
+          var bConf = document.createElement("span");
+          bConf.className = "badge bg-" + cUi.badge;
+          bConf.textContent = cUi.text;
+          tdConf.appendChild(bConf);
+          tr.appendChild(tdConf);
+
+          var tdMy = document.createElement("td");
+          var d1 = document.createElement("div");
+          var b1 = document.createElement("b");
+          b1.textContent = m.my_sku || "-";
+          d1.appendChild(b1);
+          tdMy.appendChild(d1);
+          var d2 = document.createElement("div");
+          d2.textContent = m.my_product_name || "-";
+          tdMy.appendChild(d2);
+          var d3 = document.createElement("div");
+          d3.className = "text-muted small";
+          d3.textContent = (m.my_price != null ? m.my_price : "-") + " " + (m.my_currency || "");
+          tdMy.appendChild(d3);
+          var links = document.createElement("div");
+          links.className = "small mt-1 d-flex gap-2 flex-wrap";
+          if (myProductUrl) {
+            var a1 = document.createElement("a");
+            a1.href = myProductUrl;
+            a1.target = "_blank";
+            a1.rel = "noopener noreferrer";
+            a1.className = "btn btn-sm btn-link p-0";
+            a1.innerHTML = '<i class="pe-7s-home me-1"></i>Мой товар';
+            links.appendChild(a1);
+          }
+          if (myEditUrl) {
+            var a2 = document.createElement("a");
+            a2.href = myEditUrl;
+            a2.target = "_blank";
+            a2.rel = "noopener noreferrer";
+            a2.className = "btn btn-sm btn-link p-0";
+            a2.innerHTML = '<i class="pe-7s-pen me-1"></i>Редактировать';
+            links.appendChild(a2);
+          }
+          tdMy.appendChild(links);
+          tr.appendChild(tdMy);
+
+          var tdComp = document.createElement("td");
+          var c1 = document.createElement("div");
+          var bc = document.createElement("b");
+          bc.textContent = m.competitor_sku || "-";
+          c1.appendChild(bc);
+          tdComp.appendChild(c1);
+          var c2 = document.createElement("div");
+          c2.textContent = m.competitor_name || "-";
+          tdComp.appendChild(c2);
+          var c3 = document.createElement("div");
+          c3.className = "text-muted small";
+          c3.textContent = (m.competitor_price != null ? m.competitor_price : "-") + " " + (m.competitor_currency || "");
+          tdComp.appendChild(c3);
+          var c4 = document.createElement("div");
+          c4.className = "text-muted small";
+          c4.textContent = "Обновлено: " + formatDateTime(m.competitor_parsed_at);
+          tdComp.appendChild(c4);
+          var clinks = document.createElement("div");
+          clinks.className = "small mt-1 d-flex gap-2 flex-wrap";
+          if (competitorUrl) {
+            var ac = document.createElement("a");
+            ac.href = competitorUrl;
+            ac.target = "_blank";
+            ac.rel = "noopener noreferrer";
+            ac.className = "btn btn-sm btn-link p-0";
+            ac.innerHTML = '<i class="pe-7s-link me-1"></i>Конкурент';
+            clinks.appendChild(ac);
+          }
+          if (myProductUrl && competitorUrl) {
+            var both = document.createElement("button");
+            both.type = "button";
+            both.className = "btn btn-link btn-sm p-0";
+            both.innerHTML = '<i class="pe-7s-browser me-1"></i>Оба';
+            both.addEventListener("click", function () {
+              window.open(myProductUrl, "_blank", "noopener");
+              window.open(competitorUrl, "_blank", "noopener");
+            });
+            clinks.appendChild(both);
+          }
+          tdComp.appendChild(clinks);
+          tr.appendChild(tdComp);
+
+          var tdAct = document.createElement("td");
+          tdAct.className = "text-nowrap";
+          var st = String(m.status || "").toLowerCase();
+          if (st === "pending") {
+            var bOk = document.createElement("button");
+            bOk.type = "button";
+            bOk.className = "btn btn-sm btn-outline-success me-1";
+            bOk.innerHTML = '<i class="pe-7s-check me-1"></i>Подтвердить';
+            bOk.addEventListener("click", function () {
+              updateMatch(m.id, "confirmed");
+            });
+            var bNo = document.createElement("button");
+            bNo.type = "button";
+            bNo.className = "btn btn-sm btn-outline-danger";
+            bNo.innerHTML = '<i class="pe-7s-close-circle me-1"></i>Отклонить';
+            bNo.addEventListener("click", function () {
+              updateMatch(m.id, "rejected");
+            });
+            tdAct.appendChild(bOk);
+            tdAct.appendChild(bNo);
+          } else if (st === "confirmed") {
+            var meta = document.createElement("div");
+            meta.className = "small text-muted mb-1";
+            meta.textContent = "Кто: " + (m.confirmed_by || "-") + " | " + formatDateTime(m.confirmed_at);
+            tdAct.appendChild(meta);
+            var bUn = document.createElement("button");
+            bUn.type = "button";
+            bUn.className = "btn btn-sm btn-outline-warning";
+            bUn.innerHTML = '<i class="pe-7s-link me-1"></i>Разорвать';
+            bUn.addEventListener("click", function () {
+              updateMatch(m.id, "unlink");
+            });
+            tdAct.appendChild(bUn);
+          } else {
+            var sp = document.createElement("span");
+            sp.className = "text-muted";
+            sp.textContent = "Отклонено";
+            tdAct.appendChild(sp);
+          }
+          tr.appendChild(tdAct);
+          tbody.appendChild(tr);
+        });
+      }
+
+      function loadMyProducts() {
+        var mySiteId = document.getElementById("dg-matches-my-site").value;
+        if (!mySiteId) {
+          state.myProducts = [];
+          state.myProductsTotal = 0;
+          renderMyProducts();
+          return;
+        }
+        state.loadingProducts = true;
+        renderMyProducts();
+        var offset = (state.myProductsPage - 1) * PRODUCTS_LIMIT;
+        var q = new URLSearchParams({
+          my_site_id: mySiteId,
+          limit: String(PRODUCTS_LIMIT),
+          offset: String(offset),
+        });
+        var ps = String(document.getElementById("dg-matches-product-search").value || "").trim();
+        if (ps) q.set("search", ps);
+        fetch("/api/matches/my-products?" + q.toString(), { credentials: "same-origin" })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok) throw new Error(x.j.error || "Ошибка загрузки товаров");
+            state.myProducts = Array.isArray(x.j.data) ? x.j.data : [];
+            state.myProductsTotal = Number(x.j.total || 0);
+          })
+          .catch(function (e) {
+            alert(e.message || "Не удалось загрузить товары");
+            state.myProducts = [];
+            state.myProductsTotal = 0;
+          })
+          .then(function () {
+            state.loadingProducts = false;
+            renderMyProducts();
+          });
+      }
+
+      function loadMatches() {
+        var mySiteId = document.getElementById("dg-matches-my-site").value;
+        if (!mySiteId) {
+          state.matches = [];
+          state.matchesTotal = 0;
+          renderMatchesTable();
+          return;
+        }
+        state.loadingMatches = true;
+        renderMatchesTable();
+        var offset = (state.matchesPage - 1) * state.matchesLimit;
+        var q = new URLSearchParams({
+          my_site_id: mySiteId,
+          limit: String(state.matchesLimit),
+          offset: String(offset),
+        });
+        var sf = document.getElementById("dg-matches-status-filter").value;
+        if (sf !== "all") q.set("status", sf);
+        fetch("/api/matches/list?" + q.toString(), { credentials: "same-origin" })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok) throw new Error(x.j.error || "Ошибка загрузки совпадений");
+            state.matches = Array.isArray(x.j.data) ? x.j.data : [];
+            state.matchesTotal = Number(x.j.total || 0);
+          })
+          .catch(function (e) {
+            alert(e.message || "Не удалось загрузить сопоставления");
+            state.matches = [];
+            state.matchesTotal = 0;
+          })
+          .then(function () {
+            state.loadingMatches = false;
+            renderMatchesTable();
+            scheduleSyncUrl();
+          });
+      }
+
+      function loadStatus() {
+        var mySiteId = document.getElementById("dg-matches-my-site").value;
+        if (!mySiteId) return;
+        fetch("/api/matches/status?my_site_id=" + encodeURIComponent(mySiteId), { credentials: "same-origin" })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok) return;
+            var json = x.j;
+            if (json.active) state.jobDoneReloaded = false;
+            state.jobStatus = {
+              active: !!json.active,
+              done: !!json.done,
+              message: json.message || "",
+              processed: Number(json.processed || 0),
+              total: Number(json.total || 0),
+              foundSku: Number(json.foundSku || 0),
+              foundName: Number(json.foundName || 0),
+              logs: Array.isArray(json.logs) ? json.logs : [],
+              canRetry: !!json.canRetry,
+            };
+            updateJobUi();
+            if (json.done && !state.jobDoneReloaded) {
+              state.jobDoneReloaded = true;
+              loadMatches();
+            }
+          })
+          .catch(function () {});
+      }
+
+      function startStatusPoll() {
+        stopStatusPoll();
+        loadStatus();
+        state.statusTimer = setInterval(loadStatus, 1500);
+      }
+      function stopStatusPoll() {
+        if (state.statusTimer) {
+          clearInterval(state.statusTimer);
+          state.statusTimer = null;
+        }
+      }
+
+      function runMatching(payload) {
+        fetch("/api/matches/start-matching", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Не удалось запустить сопоставление");
+            alert("Сопоставление запущено");
+            return loadStatus();
+          })
+          .catch(function (e) {
+            alert(e.message || "Ошибка запуска сопоставления");
+          });
+      }
+
+      function onRunSelected() {
+        var mySiteId = document.getElementById("dg-matches-my-site").value;
+        if (!mySiteId) return alert("Выберите мой сайт");
+        if (!state.competitorIds.length) return alert("Выберите конкурентов");
+        if (!state.selectedProductIds.length) return alert("Выберите товары");
+        runMatching({
+          mySiteId: Number(mySiteId),
+          competitorIds: state.competitorIds.map(Number),
+          mode: document.getElementById("dg-matches-search-mode").value,
+          productIds: state.selectedProductIds,
+          batchSize: Number(document.getElementById("dg-matches-batch-size").value || 200),
+          microPauseMs: Number(document.getElementById("dg-matches-micro-pause").value || 20),
+          batchPauseMs: Number(document.getElementById("dg-matches-batch-pause").value || 1000),
+        });
+      }
+
+      function onRunAuto() {
+        var mySiteId = document.getElementById("dg-matches-my-site").value;
+        if (!mySiteId) return alert("Выберите мой сайт");
+        if (!state.competitorIds.length) return alert("Выберите конкурентов");
+        runMatching({
+          mySiteId: Number(mySiteId),
+          competitorIds: state.competitorIds.map(Number),
+          mode: document.getElementById("dg-matches-search-mode").value,
+          productSearch: String(document.getElementById("dg-matches-product-search").value || "").trim(),
+          batchSize: Number(document.getElementById("dg-matches-batch-size").value || 200),
+          microPauseMs: Number(document.getElementById("dg-matches-micro-pause").value || 20),
+          batchPauseMs: Number(document.getElementById("dg-matches-batch-pause").value || 1000),
+        });
+      }
+
+      function onRetryLast() {
+        var mySiteId = document.getElementById("dg-matches-my-site").value;
+        if (!mySiteId) return alert("Выберите мой сайт");
+        fetch("/api/matches/retry-last", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            mySiteId: Number(mySiteId),
+            competitorIds: state.competitorIds.map(Number),
+            mode: document.getElementById("dg-matches-search-mode").value,
+            productSearch: String(document.getElementById("dg-matches-product-search").value || "").trim(),
+            batchSize: Number(document.getElementById("dg-matches-batch-size").value || 200),
+            microPauseMs: Number(document.getElementById("dg-matches-micro-pause").value || 20),
+            batchPauseMs: Number(document.getElementById("dg-matches-batch-pause").value || 1000),
+          }),
+        })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Не удалось повторить задачу");
+            alert("Повтор запущен (из задачи #" + x.j.replayFrom + ")");
+            return loadStatus();
+          })
+          .catch(function (e) {
+            alert(e.message || "Ошибка повтора");
+          });
+      }
+
+      function onStop() {
+        var mySiteId = document.getElementById("dg-matches-my-site").value;
+        if (!mySiteId) return alert("Выберите мой сайт");
+        fetch("/api/matches/stop", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ mySiteId: Number(mySiteId) }),
+        })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Не удалось остановить задачу");
+            alert("Остановка запрошена");
+            return loadStatus();
+          })
+          .catch(function (e) {
+            alert(e.message || "Ошибка остановки");
+          });
+      }
+
+      function updateMatch(id, action) {
+        var endpoint =
+          action === "confirmed"
+            ? "/api/matches/confirm"
+            : action === "unlink"
+              ? "/api/matches/unlink"
+              : "/api/matches/reject";
+        fetch(endpoint, {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: id }),
+        })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Не удалось обновить статус");
+            alert("Статус обновлен");
+            loadMatches();
+          })
+          .catch(function (e) {
+            alert(e.message || "Ошибка обновления статуса");
+          });
+      }
+
+      function onSortMatches(field) {
+        if (state.matchesSortBy === field) state.matchesSortDir = state.matchesSortDir === "asc" ? "desc" : "asc";
+        else {
+          state.matchesSortBy = field;
+          state.matchesSortDir = field === "confidence" ? "desc" : "asc";
+        }
+        renderMatchesTable();
+      }
+
+      function onMySiteChanged(resetPages) {
+        if (resetPages) {
+          state.myProductsPage = 1;
+          state.matchesPage = 1;
+          state.selectedProductIds = [];
+          state.jobDoneReloaded = false;
+        }
+        scheduleSyncUrl();
+        loadMyProducts();
+        loadMatches();
+        stopStatusPoll();
+        if (document.getElementById("dg-matches-my-site").value) startStatusPoll();
+        renderMyProducts();
+      }
+
+      document.getElementById("dg-matches-my-site").addEventListener("change", function () {
+        onMySiteChanged(true);
+      });
+      document.getElementById("dg-matches-product-search").addEventListener("input", function () {
+        scheduleSyncUrl();
+        loadMyProducts();
+      });
+      document.getElementById("dg-matches-search-mode").addEventListener("change", scheduleSyncUrl);
+      document.getElementById("dg-matches-status-filter").addEventListener("change", function () {
+        scheduleSyncUrl();
+        loadMatches();
+      });
+      document.getElementById("dg-matches-limit").addEventListener("change", function () {
+        state.matchesLimit = Number(this.value) || 100;
+        loadMatches();
+      });
+      document.getElementById("dg-matches-my-prev").addEventListener("click", function () {
+        if (state.myProductsPage > 1) {
+          state.myProductsPage--;
+          loadMyProducts();
+        }
+      });
+      document.getElementById("dg-matches-my-next").addEventListener("click", function () {
+        if (state.myProductsPage < myProductsPages()) {
+          state.myProductsPage++;
+          loadMyProducts();
+        }
+      });
+      document.getElementById("dg-matches-prev").addEventListener("click", function () {
+        if (state.matchesPage > 1) {
+          state.matchesPage--;
+          loadMatches();
+        }
+      });
+      document.getElementById("dg-matches-next").addEventListener("click", function () {
+        if (state.matchesPage < matchesPages()) {
+          state.matchesPage++;
+          loadMatches();
+        }
+      });
+      document.getElementById("dg-matches-my-select-all").addEventListener("change", function (e) {
+        var checked = e.target.checked;
+        var set = {};
+        state.selectedProductIds.forEach(function (id) {
+          set[id] = true;
+        });
+        state.myProducts.forEach(function (p) {
+          if (checked) set[p.id] = true;
+          else delete set[p.id];
+        });
+        state.selectedProductIds = Object.keys(set).map(Number);
+        renderMyProducts();
+      });
+      document.getElementById("dg-matches-run-selected").addEventListener("click", onRunSelected);
+      document.getElementById("dg-matches-run-auto").addEventListener("click", onRunAuto);
+      document.getElementById("dg-matches-retry").addEventListener("click", onRetryLast);
+      document.getElementById("dg-matches-stop").addEventListener("click", onStop);
+      document.getElementById("dg-matches-copy-link").addEventListener("click", function () {
+        var url = window.location.href;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(url).then(
+            function () {
+              alert("Ссылка скопирована");
+            },
+            function () {
+              alert("Не удалось скопировать ссылку");
+            }
+          );
+        } else {
+          alert("Не удалось скопировать ссылку");
+        }
+      });
+      document.getElementById("dg-matches-smart-filter").addEventListener("input", function () {
+        renderMatchesTable();
+      });
+      [
+        "dg-matches-tf-my-sku",
+        "dg-matches-tf-comp-sku",
+        "dg-matches-tf-match-type",
+        "dg-matches-tf-status",
+        "dg-matches-tf-conf-min",
+        "dg-matches-tf-conf-max",
+      ].forEach(function (id) {
+        var el = document.getElementById(id);
+        el.addEventListener("input", function () {
+          renderMatchesTable();
+        });
+        el.addEventListener("change", function () {
+          renderMatchesTable();
+        });
+      });
+      document.querySelectorAll("th[data-match-sort]").forEach(function (th) {
+        th.addEventListener("click", function () {
+          onSortMatches(th.getAttribute("data-match-sort"));
+        });
+      });
+
+      Promise.all([
+        fetch("/api/my-sites", { credentials: "same-origin" }).then(function (r) {
+          return r.json().then(function (j) {
+            return { r: r, j: j };
+          });
+        }),
+        fetch("/api/projects", { credentials: "same-origin" }).then(function (r) {
+          return r.json().then(function (j) {
+            return { r: r, j: j };
+          });
+        }),
+      ])
+        .then(function (arr) {
+          if (!arr[0].r.ok) throw new Error("Не удалось загрузить мои сайты");
+          if (!arr[1].r.ok) throw new Error("Не удалось загрузить конкурентов");
+          state.mySites = Array.isArray(arr[0].j) ? arr[0].j : [];
+          state.competitors = Array.isArray(arr[1].j) ? arr[1].j : [];
+          fillMySitesSelect();
+          renderCompetitors();
+          var up = parseUrlParams();
+          var sel = document.getElementById("dg-matches-my-site");
+          if (up.my_site_id && [].some.call(sel.options, function (o) { return o.value === String(up.my_site_id); })) {
+            sel.value = String(up.my_site_id);
+          } else if (state.mySites.length) {
+            sel.value = String(state.mySites[0].id);
+          }
+          if (up.status && ["pending", "confirmed", "rejected", "all"].indexOf(up.status) !== -1)
+            document.getElementById("dg-matches-status-filter").value = up.status;
+          if (up.mode && ["all", "sku", "name"].indexOf(up.mode) !== -1)
+            document.getElementById("dg-matches-search-mode").value = up.mode;
+          if (up.product_search) document.getElementById("dg-matches-product-search").value = up.product_search;
+          if (Number.isFinite(up.matches_page) && up.matches_page > 0) state.matchesPage = up.matches_page;
+          if ([50, 100, 200].indexOf(up.matches_limit) !== -1) {
+            state.matchesLimit = up.matches_limit;
+            document.getElementById("dg-matches-limit").value = String(up.matches_limit);
+          }
+          showErr("");
+          syncUrlFromState();
+          onMySiteChanged(false);
+        })
+        .catch(function (e) {
+          showErr(e.message || "Ошибка загрузки справочников");
+        });
+    })();
+  </script>

@@ -1,0 +1,637 @@
+  <script>
+    (function () {
+      var COLLAPSE_KEY = "mysites_add_form_collapsed_v1";
+      var DEFAULT_FORM = {
+        name: "",
+        domain: "",
+        cms_type: "bitrix",
+        db_host: "localhost",
+        db_name: "",
+        db_user: "",
+        db_pass: "",
+        table_products: "b_catalog_product",
+        field_name: "NAME",
+        field_sku: "ARTICLE",
+        field_code: "XML_ID",
+        field_price: "PRICE",
+        field_currency: "CURRENCY",
+        field_stock: "QUANTITY",
+        wa_table_skus: "shop_product_skus",
+        wa_field_sku_val: "sku",
+        wa_field_price_val: "price",
+        wa_field_stock_val: "count",
+      };
+
+      var sites = [];
+      var statsMap = {};
+      var verifyMap = {};
+      var loading = false;
+      var previewSite = null;
+      var previewRows = [];
+      var syncRunning = false;
+
+      function setErr(msg) {
+        var el = document.getElementById("dg-ms-err");
+        if (!el) return;
+        if (msg) {
+          el.style.display = "";
+          el.textContent = msg;
+        } else {
+          el.style.display = "none";
+          el.textContent = "";
+        }
+      }
+
+      function toggleCmsRows() {
+        var cms = document.getElementById("ms-cms_type").value;
+        var wa = document.getElementById("ms-fields-webasyst");
+        var bx = document.getElementById("ms-fields-bitrix");
+        if (cms === "webasyst") {
+          wa.style.display = "";
+          bx.style.display = "none";
+        } else {
+          wa.style.display = "none";
+          bx.style.display = "";
+        }
+      }
+
+      function collectBody() {
+        var cms = document.getElementById("ms-cms_type").value;
+        var o = {
+          name: document.getElementById("ms-name").value.trim(),
+          domain: document.getElementById("ms-domain").value.trim(),
+          cms_type: cms,
+          db_host: document.getElementById("ms-db_host").value.trim(),
+          db_name: document.getElementById("ms-db_name").value.trim(),
+          db_user: document.getElementById("ms-db_user").value.trim(),
+          db_pass: document.getElementById("ms-db_pass").value,
+          wa_table_skus: document.getElementById("ms-wa_table_skus").value.trim() || DEFAULT_FORM.wa_table_skus,
+          wa_field_sku_val: document.getElementById("ms-wa_field_sku_val").value.trim() || DEFAULT_FORM.wa_field_sku_val,
+          wa_field_price_val: document.getElementById("ms-wa_field_price_val").value.trim() || DEFAULT_FORM.wa_field_price_val,
+          wa_field_stock_val: document.getElementById("ms-wa_field_stock_val").value.trim() || DEFAULT_FORM.wa_field_stock_val,
+        };
+        if (cms === "webasyst") {
+          o.table_products = document.getElementById("ms-table_products-wa").value.trim() || DEFAULT_FORM.table_products;
+          o.field_name = DEFAULT_FORM.field_name;
+          o.field_sku = DEFAULT_FORM.field_sku;
+          o.field_code = DEFAULT_FORM.field_code;
+          o.field_price = DEFAULT_FORM.field_price;
+          o.field_currency = document.getElementById("ms-field_currency").value.trim() || DEFAULT_FORM.field_currency;
+          o.field_stock = DEFAULT_FORM.field_stock;
+        } else {
+          o.table_products = document.getElementById("ms-table_products-bx").value.trim() || DEFAULT_FORM.table_products;
+          o.field_name = document.getElementById("ms-field_name").value.trim() || DEFAULT_FORM.field_name;
+          o.field_sku = document.getElementById("ms-field_sku").value.trim() || DEFAULT_FORM.field_sku;
+          o.field_code = document.getElementById("ms-field_code").value.trim() || DEFAULT_FORM.field_code;
+          o.field_price = document.getElementById("ms-field_price").value.trim() || DEFAULT_FORM.field_price;
+          o.field_currency = document.getElementById("ms-field_currency").value.trim() || DEFAULT_FORM.field_currency;
+          o.field_stock = document.getElementById("ms-field_stock").value.trim() || DEFAULT_FORM.field_stock;
+        }
+        return o;
+      }
+
+      function applyDefaultsToInputs() {
+        document.getElementById("ms-cms_type").value = DEFAULT_FORM.cms_type;
+        document.getElementById("ms-db_host").value = DEFAULT_FORM.db_host;
+        document.getElementById("ms-table_products-bx").value = DEFAULT_FORM.table_products;
+        document.getElementById("ms-table_products-wa").value = DEFAULT_FORM.table_products;
+        document.getElementById("ms-field_name").value = DEFAULT_FORM.field_name;
+        document.getElementById("ms-field_sku").value = DEFAULT_FORM.field_sku;
+        document.getElementById("ms-field_code").value = DEFAULT_FORM.field_code;
+        document.getElementById("ms-field_price").value = DEFAULT_FORM.field_price;
+        document.getElementById("ms-field_stock").value = DEFAULT_FORM.field_stock;
+        document.getElementById("ms-field_currency").value = DEFAULT_FORM.field_currency;
+        document.getElementById("ms-wa_table_skus").value = DEFAULT_FORM.wa_table_skus;
+        document.getElementById("ms-wa_field_sku_val").value = DEFAULT_FORM.wa_field_sku_val;
+        document.getElementById("ms-wa_field_price_val").value = DEFAULT_FORM.wa_field_price_val;
+        document.getElementById("ms-wa_field_stock_val").value = DEFAULT_FORM.wa_field_stock_val;
+      }
+
+      function fillFormFromSite(s) {
+        if (!s) return;
+        document.getElementById("ms-name").value = s.name || "";
+        document.getElementById("ms-domain").value = s.domain || "";
+        document.getElementById("ms-cms_type").value = (s.cms_type || "bitrix").toLowerCase() === "webasyst" ? "webasyst" : "bitrix";
+        document.getElementById("ms-db_host").value = s.db_host || "";
+        document.getElementById("ms-db_name").value = s.db_name || "";
+        document.getElementById("ms-db_user").value = s.db_user || "";
+        document.getElementById("ms-db_pass").value = s.db_pass || "";
+        document.getElementById("ms-table_products-bx").value = s.table_products || DEFAULT_FORM.table_products;
+        document.getElementById("ms-table_products-wa").value = s.table_products || DEFAULT_FORM.table_products;
+        document.getElementById("ms-field_name").value = s.field_name || DEFAULT_FORM.field_name;
+        document.getElementById("ms-field_sku").value = s.field_sku || DEFAULT_FORM.field_sku;
+        document.getElementById("ms-field_code").value = s.field_code || DEFAULT_FORM.field_code;
+        document.getElementById("ms-field_price").value = s.field_price || DEFAULT_FORM.field_price;
+        document.getElementById("ms-field_stock").value = s.field_stock || DEFAULT_FORM.field_stock;
+        document.getElementById("ms-field_currency").value = s.field_currency || DEFAULT_FORM.field_currency;
+        document.getElementById("ms-wa_table_skus").value = s.wa_table_skus || DEFAULT_FORM.wa_table_skus;
+        document.getElementById("ms-wa_field_sku_val").value = s.wa_field_sku_val || DEFAULT_FORM.wa_field_sku_val;
+        document.getElementById("ms-wa_field_price_val").value = s.wa_field_price_val || DEFAULT_FORM.wa_field_price_val;
+        document.getElementById("ms-wa_field_stock_val").value = s.wa_field_stock_val || DEFAULT_FORM.wa_field_stock_val;
+        toggleCmsRows();
+      }
+
+      function clearFormNew() {
+        document.getElementById("ms-editing-id").value = "";
+        document.getElementById("ms-name").value = "";
+        document.getElementById("ms-domain").value = "";
+        document.getElementById("ms-db_name").value = "";
+        document.getElementById("ms-db_user").value = "";
+        document.getElementById("ms-db_pass").value = "";
+        applyDefaultsToInputs();
+        toggleCmsRows();
+        document.getElementById("ms-form-card-title").textContent = "Добавить мой сайт";
+        document.getElementById("ms-btn-save").textContent = "Сохранить подключение";
+        document.getElementById("ms-btn-cancel-edit").style.display = "none";
+      }
+
+      function validateForm() {
+        var b = collectBody();
+        var req = ["name", "domain", "db_host", "db_name", "db_user"];
+        for (var i = 0; i < req.length; i++) {
+          if (!String(b[req[i]] || "").trim()) {
+            alert("Заполните все обязательные поля");
+            return false;
+          }
+        }
+        if (!String(document.getElementById("ms-db_pass").value || "").trim()) {
+          alert("Заполните все обязательные поля");
+          return false;
+        }
+        return true;
+      }
+
+      function getFilteredSites() {
+        var needle = document.getElementById("ms-smart").value.trim().toLowerCase();
+        var tfId = document.getElementById("ms-tf-id").value.trim();
+        var tfName = document.getElementById("ms-tf-name").value.trim().toLowerCase();
+        var tfCms = document.getElementById("ms-tf-cms").value;
+        var tfDomain = document.getElementById("ms-tf-domain").value.trim().toLowerCase();
+        return sites.filter(function (s) {
+          if (needle) {
+            var hay = String(s.id || "") + " " + (s.name || "") + " " + (s.domain || "") + " " + (s.cms_type || "");
+            if (!hay.toLowerCase().includes(needle)) return false;
+          }
+          if (tfId && !String(s.id || "").includes(tfId)) return false;
+          if (tfName && !String(s.name || "").toLowerCase().includes(tfName)) return false;
+          if (tfDomain && !String(s.domain || "").toLowerCase().includes(tfDomain)) return false;
+          if (tfCms !== "all" && String(s.cms_type || "bitrix").toLowerCase() !== String(tfCms).toLowerCase()) return false;
+          return true;
+        });
+      }
+
+      function renderStatsCell(site) {
+        var st = statsMap[site.id];
+        var wrap = document.createElement("div");
+        wrap.className = "d-flex flex-wrap gap-1";
+        if (!st) {
+          var sp = document.createElement("span");
+          sp.className = "text-muted";
+          sp.textContent = "Загрузка...";
+          wrap.appendChild(sp);
+          return wrap;
+        }
+        if (!Number(st.total || 0)) {
+          var sp2 = document.createElement("span");
+          sp2.className = "text-muted";
+          sp2.textContent = "Нет товаров";
+          wrap.appendChild(sp2);
+          return wrap;
+        }
+        function badge(text, cls) {
+          var el = document.createElement("span");
+          el.className = "badge " + cls;
+          el.textContent = text;
+          return el;
+        }
+        function linkBadge(text, cls, href) {
+          var a = document.createElement("a");
+          a.className = "badge " + cls + " text-decoration-none";
+          a.href = href;
+          a.textContent = text;
+          return a;
+        }
+        wrap.appendChild(badge("Всего: " + Number(st.total || 0), "bg-secondary"));
+        wrap.appendChild(
+          linkBadge("Активных: " + Number(st.active || 0), "bg-success", "/my-products?site_id=" + site.id + "&source_enabled=1")
+        );
+        wrap.appendChild(
+          linkBadge("Выключенных: " + Number(st.disabled || 0), "bg-danger", "/my-products?site_id=" + site.id + "&source_enabled=0")
+        );
+        wrap.appendChild(
+          linkBadge("Исчезли: " + Number(st.disappeared || 0), "bg-warning", "/my-products?site_id=" + site.id + "&status=0")
+        );
+        return wrap;
+      }
+
+      function renderTable() {
+        var tbody = document.getElementById("ms-tbody");
+        var filtered = getFilteredSites();
+        tbody.replaceChildren();
+        if (!filtered.length) {
+          var tr = document.createElement("tr");
+          var td = document.createElement("td");
+          td.colSpan = 5;
+          td.className = "text-muted";
+          td.textContent = loading ? "Загрузка..." : "Нет подключенных сайтов";
+          tr.appendChild(td);
+          tbody.appendChild(tr);
+          return;
+        }
+        filtered.forEach(function (s) {
+          var tr = document.createElement("tr");
+          var tdId = document.createElement("td");
+          tdId.textContent = String(s.id);
+          var tdName = document.createElement("td");
+          var b = document.createElement("b");
+          b.textContent = s.name || "";
+          tdName.appendChild(b);
+          var sub = document.createElement("div");
+          sub.className = "small text-muted";
+          sub.textContent = "CMS: " + (s.cms_type || "bitrix");
+          tdName.appendChild(sub);
+          var tdDom = document.createElement("td");
+          tdDom.textContent = s.domain || "";
+          var tdSt = document.createElement("td");
+          tdSt.appendChild(renderStatsCell(s));
+          var tdAct = document.createElement("td");
+          var btnRow = document.createElement("div");
+          btnRow.className = "d-flex flex-wrap gap-1";
+
+          function smallBtn(label, cls, title, onClick) {
+            var btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "btn btn-sm " + cls;
+            btn.textContent = label;
+            btn.title = title;
+            btn.addEventListener("click", onClick);
+            return btn;
+          }
+
+          btnRow.appendChild(
+            smallBtn("Товары+Синхр.", "btn-outline-secondary", "Открыть предпросмотр товаров и окно синхронизации этого сайта", function () {
+              fetchPreview(s);
+            })
+          );
+          btnRow.appendChild(
+            smallBtn("Проверить", "btn-outline-secondary", "Сверить статистику источника с данными в Датагон", function () {
+              onVerify(s);
+            })
+          );
+          btnRow.appendChild(
+            smallBtn("Изменить", "btn-outline-secondary", "Редактировать параметры подключения сайта", function () {
+              document.getElementById("ms-editing-id").value = String(s.id);
+              fillFormFromSite(s);
+              document.getElementById("ms-form-card-title").textContent = "Редактировать подключение";
+              document.getElementById("ms-btn-save").textContent = "Сохранить изменения";
+              document.getElementById("ms-btn-cancel-edit").style.display = "";
+              var panel = document.getElementById("ms-form-panel");
+              var body = document.getElementById("ms-form-collapse").closest(".card-body");
+              try {
+                localStorage.setItem(COLLAPSE_KEY, "0");
+              } catch (e) {}
+              document.getElementById("ms-form-panel").style.display = "";
+              document.getElementById("ms-form-collapse").textContent = "Свернуть";
+            })
+          );
+          btnRow.appendChild(
+            smallBtn("Удалить", "btn-outline-danger", "Удалить сайт и связанное подключение", function () {
+              if (!confirm("Удалить сайт?")) return;
+              fetch("/api/my-sites/" + s.id, { method: "DELETE", credentials: "same-origin" })
+                .then(function (r) {
+                  return r.json().then(function (j) {
+                    return { r: r, j: j };
+                  });
+                })
+                .then(function (x) {
+                  if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Не удалось удалить");
+                  loadMySites();
+                  loadSiteStats();
+                })
+                .catch(function (e) {
+                  alert(e.message || "Ошибка удаления");
+                });
+            })
+          );
+          tdAct.appendChild(btnRow);
+          if (verifyMap[s.id] && verifyMap[s.id].text) {
+            var vr = document.createElement("div");
+            vr.className = "small mt-1 " + (verifyMap[s.id].tone || "");
+            vr.textContent = verifyMap[s.id].text;
+            tdAct.appendChild(vr);
+          }
+          tr.appendChild(tdId);
+          tr.appendChild(tdName);
+          tr.appendChild(tdDom);
+          tr.appendChild(tdSt);
+          tr.appendChild(tdAct);
+          tbody.appendChild(tr);
+        });
+      }
+
+      function onVerify(site) {
+        verifyMap[site.id] = { text: "Проверка...", tone: "text-info" };
+        renderTable();
+        fetch("/api/my-sites/" + site.id + "/verify-stats", { method: "POST", credentials: "same-origin" })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Не удалось проверить статистику");
+            var source = x.j.source || {};
+            var datagon = x.j.datagon || {};
+            var diff = x.j.diff || {};
+            var status = x.j.matches ? "Совпадает" : "Расхождение";
+            verifyMap[site.id] = {
+              text:
+                status +
+                ": Источник " +
+                (source.total || 0) +
+                "/" +
+                (source.active || 0) +
+                "/" +
+                (source.disabled || 0) +
+                " | Датагон " +
+                (datagon.total || 0) +
+                "/" +
+                (datagon.active || 0) +
+                "/" +
+                (datagon.disabled || 0) +
+                " | Δ " +
+                (diff.total || 0) +
+                "/" +
+                (diff.active || 0) +
+                "/" +
+                (diff.disabled || 0),
+              tone: x.j.matches ? "text-success" : "text-warning",
+            };
+            loadSiteStats();
+            renderTable();
+          })
+          .catch(function (e) {
+            verifyMap[site.id] = { text: "Ошибка: " + e.message, tone: "text-danger" };
+            renderTable();
+          });
+      }
+
+      function setSyncHint(text, tone) {
+        var el = document.getElementById("ms-sync-hint-text");
+        if (!el) return;
+        el.textContent = text;
+        el.className =
+          tone === "muted"
+            ? "text-muted"
+            : tone === "info"
+              ? "text-info"
+              : tone === "success"
+                ? "text-success"
+                : tone === "danger"
+                  ? "text-danger"
+                  : "text-muted";
+      }
+
+      function renderPreviewTable() {
+        var tbody = document.getElementById("ms-preview-tbody");
+        tbody.replaceChildren();
+        if (!previewRows.length) {
+          var tr = document.createElement("tr");
+          var td = document.createElement("td");
+          td.colSpan = 5;
+          td.className = "text-muted";
+          td.textContent = "Нет товаров";
+          tr.appendChild(td);
+          tbody.appendChild(tr);
+          return;
+        }
+        previewRows.forEach(function (p) {
+          var tr = document.createElement("tr");
+          [p.name || "-", p.sku || "-", p.price || 0, p.currency || "RUB", p.stock || 0].forEach(function (cell) {
+            var td = document.createElement("td");
+            td.textContent = String(cell);
+            tr.appendChild(td);
+          });
+          tbody.appendChild(tr);
+        });
+      }
+
+      function fetchPreview(site) {
+        previewSite = site;
+        previewRows = [];
+        setSyncHint("Предпросмотр 100 товаров", "muted");
+        document.getElementById("ms-preview-card").style.display = "";
+        document.getElementById("ms-preview-title").textContent = "Товары+Синхронизация: " + (site.name || "");
+        document.getElementById("ms-preview-sync").disabled = false;
+        fetch("/api/my-sites/" + site.id + "/fetch", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ limit: 100 }),
+        })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Не удалось получить товары");
+            previewRows = Array.isArray(x.j.data) ? x.j.data : [];
+            renderPreviewTable();
+          })
+          .catch(function (e) {
+            alert(e.message || "Ошибка предпросмотра");
+          });
+      }
+
+      function syncPreviewSite() {
+        if (!previewSite) return;
+        if (!confirm("Начать синхронизацию сайта?")) return;
+        syncRunning = true;
+        document.getElementById("ms-preview-sync").disabled = true;
+        setSyncHint("Синхронизация: 0/?", "info");
+        var processed = 0;
+        fetch("/api/my-sites/" + previewSite.id + "/sync?init=true", { method: "POST", credentials: "same-origin" })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Ошибка инициализации");
+            var total = Number(x.j.total || 0);
+            function step(off) {
+              return fetch(
+                "/api/my-sites/" + previewSite.id + "/sync?batch=500&offset=" + off,
+                { method: "POST", credentials: "same-origin" }
+              )
+                .then(function (r) {
+                  return r.json().then(function (j) {
+                    return { r: r, j: j };
+                  });
+                })
+                .then(function (x) {
+                  if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Ошибка синхронизации");
+                  processed += Number(x.j.processed || 0);
+                  setSyncHint(
+                    total > 0
+                      ? "Синхронизация: " + Math.min(processed, total) + "/" + total
+                      : "Синхронизация: обработано " + processed,
+                    "info"
+                  );
+                  if (x.j.done || !x.j.hasMore) {
+                    setSyncHint(
+                      "Готово. Обработано: " +
+                        processed +
+                        ", скрыто: " +
+                        Number(x.j.deactivated || 0),
+                      "success"
+                    );
+                    syncRunning = false;
+                    document.getElementById("ms-preview-sync").disabled = false;
+                    loadSiteStats();
+                    fetchPreview(previewSite);
+                    return null;
+                  }
+                  return step(Number(x.j.nextOffset));
+                });
+            }
+            return step(0);
+          })
+          .catch(function (e) {
+            setSyncHint("Ошибка: " + e.message, "danger");
+            syncRunning = false;
+            document.getElementById("ms-preview-sync").disabled = false;
+          });
+      }
+
+      function loadMySites() {
+        loading = true;
+        renderTable();
+        fetch("/api/my-sites", { credentials: "same-origin" })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok) throw new Error(x.j.error || "Не удалось загрузить сайты");
+            if (!Array.isArray(x.j)) throw new Error("Не удалось загрузить сайты");
+            sites = x.j;
+            setErr("");
+            document.getElementById("ms-table-hint").textContent = sites.length + " подключений";
+            loading = false;
+            renderTable();
+          })
+          .catch(function (e) {
+            loading = false;
+            setErr(e.message || "Ошибка загрузки сайтов");
+            renderTable();
+          });
+      }
+
+      function loadSiteStats() {
+        var controller = new AbortController();
+        var timer = setTimeout(function () {
+          controller.abort();
+        }, 5000);
+        fetch("/api/my-products/stats", { credentials: "same-origin", signal: controller.signal })
+          .then(function (r) {
+            clearTimeout(timer);
+            if (!r.ok) return;
+            return r.json();
+          })
+          .then(function (json) {
+            if (!Array.isArray(json)) return;
+            statsMap = {};
+            json.forEach(function (s) {
+              statsMap[s.site_id] = s;
+            });
+            renderTable();
+          })
+          .catch(function () {});
+      }
+
+      function saveSite(body, id) {
+        var method = id ? "PUT" : "POST";
+        var url = id ? "/api/my-sites/" + id : "/api/my-sites";
+        return fetch(url, {
+          method: method,
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        }).then(function (r) {
+          return r.json().then(function (j) {
+            return { r: r, j: j };
+          });
+        });
+      }
+
+      document.getElementById("ms-cms_type").addEventListener("change", toggleCmsRows);
+
+      document.getElementById("ms-form-collapse").addEventListener("click", function () {
+        var panel = document.getElementById("ms-form-panel");
+        var hidden = panel.style.display === "none";
+        panel.style.display = hidden ? "" : "none";
+        this.textContent = hidden ? "Свернуть" : "Развернуть";
+        try {
+          localStorage.setItem(COLLAPSE_KEY, hidden ? "0" : "1");
+        } catch (e) {}
+      });
+
+      document.getElementById("ms-btn-save").addEventListener("click", function () {
+        if (!validateForm()) return;
+        var id = document.getElementById("ms-editing-id").value.trim();
+        var body = collectBody();
+        saveSite(body, id || null)
+          .then(function (x) {
+            if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Не удалось сохранить подключение");
+            clearFormNew();
+            loadMySites();
+            loadSiteStats();
+          })
+          .catch(function (e) {
+            alert(e.message || "Ошибка сохранения");
+          });
+      });
+
+      document.getElementById("ms-btn-cancel-edit").addEventListener("click", function () {
+        clearFormNew();
+      });
+
+      document.getElementById("ms-btn-copy-link").addEventListener("click", function () {
+        navigator.clipboard.writeText(window.location.href).catch(function () {
+          alert("Не удалось скопировать ссылку");
+        });
+      });
+
+      ["ms-smart", "ms-tf-id", "ms-tf-name", "ms-tf-cms", "ms-tf-domain"].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) el.addEventListener("input", renderTable);
+        if (el) el.addEventListener("change", renderTable);
+      });
+
+      document.getElementById("ms-preview-refresh").addEventListener("click", function () {
+        if (previewSite) fetchPreview(previewSite);
+      });
+      document.getElementById("ms-preview-sync").addEventListener("click", syncPreviewSite);
+      document.getElementById("ms-preview-close").addEventListener("click", function () {
+        previewSite = null;
+        previewRows = [];
+        document.getElementById("ms-preview-card").style.display = "none";
+      });
+
+      (function initCollapse() {
+        try {
+          if (localStorage.getItem(COLLAPSE_KEY) === "1") {
+            document.getElementById("ms-form-panel").style.display = "none";
+            document.getElementById("ms-form-collapse").textContent = "Развернуть";
+          }
+        } catch (e) {}
+      })();
+
+      clearFormNew();
+      loadMySites();
+      loadSiteStats();
+    })();
+  </script>

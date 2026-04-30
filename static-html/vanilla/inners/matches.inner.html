@@ -1,0 +1,197 @@
+          <p class="text-danger small mb-3" id="dg-matches-err" style="display:none" role="alert"></p>
+
+          <div class="app-page-title">
+            <div class="page-title-wrapper">
+              <div class="page-title-heading">
+                <div class="page-title-icon">
+                  <i class="pe-7s-link icon-gradient bg-warm-flame"> </i>
+                </div>
+                <div>
+                  Сопоставление
+                  <div class="page-title-subheading">
+                    Перенос управления matching jobs и ручной валидации совпадений.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2">
+              <div class="d-flex align-items-center">
+                <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
+                <span>Параметры запуска</span>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="row g-2">
+                <div class="col-md-3">
+                  <label class="form-label" for="dg-matches-product-search">Умный поиск</label>
+                  <input type="text" class="form-control" id="dg-matches-product-search" placeholder='sku:ABC-12 name:"насос 25" или просто текст' autocomplete="off" />
+                </div>
+                <div class="col-md-3">
+                  <label class="form-label" for="dg-matches-my-site">Мой сайт</label>
+                  <select class="form-select" id="dg-matches-my-site">
+                    <option value="">-- выберите --</option>
+                  </select>
+                </div>
+                <div class="col-md-3">
+                  <label class="form-label" for="dg-matches-search-mode">Режим сопоставления</label>
+                  <select class="form-select" id="dg-matches-search-mode">
+                    <option value="all">all</option>
+                    <option value="sku">sku</option>
+                    <option value="name">name</option>
+                  </select>
+                </div>
+                <div class="col-md-1">
+                  <label class="form-label" for="dg-matches-batch-size">Batch</label>
+                  <input type="number" class="form-control" id="dg-matches-batch-size" min="10" value="200" />
+                </div>
+                <div class="col-md-1">
+                  <label class="form-label" for="dg-matches-micro-pause">Micro ms</label>
+                  <input type="number" class="form-control" id="dg-matches-micro-pause" min="0" value="20" />
+                </div>
+                <div class="col-md-1">
+                  <label class="form-label" for="dg-matches-batch-pause">Pause ms</label>
+                  <input type="number" class="form-control" id="dg-matches-batch-pause" min="0" value="1000" />
+                </div>
+              </div>
+              <div class="mt-3">
+                <label class="form-label d-block mb-1">Конкуренты</label>
+                <div class="d-flex flex-wrap gap-3" id="dg-matches-competitors"></div>
+              </div>
+              <div class="mt-3 d-flex flex-wrap gap-2">
+                <button type="button" class="btn btn-primary" id="dg-matches-run-selected">Запустить по выбранным товарам</button>
+                <button type="button" class="btn btn-outline-primary" id="dg-matches-run-auto">Запустить авто по фильтру</button>
+                <button type="button" class="btn btn-outline-warning" id="dg-matches-retry">Продолжить/повторить</button>
+                <button type="button" class="btn btn-outline-danger" id="dg-matches-stop">Остановить</button>
+                <button type="button" class="btn btn-outline-dark" id="dg-matches-copy-link"><i class="pe-7s-link me-1"></i>Скопировать ссылку</button>
+              </div>
+              <div class="mt-2 text-muted small" id="dg-matches-job-found">Найдено по job: SKU 0, Name 0</div>
+              <div class="mt-2 small" id="dg-matches-job-logs" style="max-height:120px;overflow:auto"></div>
+              <p class="text-muted mb-0 mt-2" id="dg-matches-job-hint">Ожидание (0/0, 0%)</p>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2">
+              <div class="d-flex align-items-center">
+                <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
+                <span>Мои товары для ручного запуска</span>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="table-responsive datagon-my-products-table-wrap">
+                <table class="table table-sm table-hover mb-0 datagon-my-products-table">
+                  <thead>
+                    <tr>
+                      <th style="width:40px"><input type="checkbox" id="dg-matches-my-select-all" title="Выбрать все на странице" /></th>
+                      <th>ID</th>
+                      <th>SKU</th>
+                      <th>Название</th>
+                      <th>Цена</th>
+                    </tr>
+                  </thead>
+                  <tbody id="dg-matches-my-products-tbody"></tbody>
+                </table>
+              </div>
+              <div class="mt-2 d-flex justify-content-between align-items-center">
+                <div class="text-muted small" id="dg-matches-my-products-page-hint">Страница 1/1</div>
+                <div class="btn-group" role="group">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-matches-my-prev">Назад</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-matches-my-next">Вперед</button>
+                </div>
+              </div>
+              <p class="text-muted mb-0 mt-2" id="dg-matches-my-products-hint">Выбрано: 0; всего: 0</p>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2">
+              <div class="d-flex align-items-center">
+                <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
+                <span>Совпадения</span>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="row g-2 mb-2">
+                <div class="col-md-4">
+                  <label class="form-label" for="dg-matches-smart-filter">Умный фильтр по списку</label>
+                  <input type="text" class="form-control" id="dg-matches-smart-filter" placeholder="status:pending / SKU / название / кто подтвердил" autocomplete="off" />
+                </div>
+                <div class="col-md-3">
+                  <label class="form-label" for="dg-matches-status-filter">Статус</label>
+                  <select class="form-select" id="dg-matches-status-filter">
+                    <option value="pending">pending</option>
+                    <option value="confirmed">confirmed</option>
+                    <option value="rejected">rejected</option>
+                    <option value="all">all</option>
+                  </select>
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label" for="dg-matches-limit">Лимит</label>
+                  <select class="form-select" id="dg-matches-limit">
+                    <option value="50">50</option>
+                    <option value="100" selected>100</option>
+                    <option value="200">200</option>
+                  </select>
+                </div>
+                <div class="col-md-1">
+                  <label class="form-label" for="dg-matches-tf-my-sku">Мой SKU</label>
+                  <input type="text" class="form-control" id="dg-matches-tf-my-sku" autocomplete="off" />
+                </div>
+                <div class="col-md-1">
+                  <label class="form-label" for="dg-matches-tf-comp-sku">SKU конк.</label>
+                  <input type="text" class="form-control" id="dg-matches-tf-comp-sku" autocomplete="off" />
+                </div>
+                <div class="col-md-1">
+                  <label class="form-label" for="dg-matches-tf-match-type">Тип тбл</label>
+                  <select class="form-select" id="dg-matches-tf-match-type">
+                    <option value="all">Все</option>
+                    <option value="sku">SKU</option>
+                    <option value="name">NAME</option>
+                  </select>
+                </div>
+                <div class="col-md-1">
+                  <label class="form-label" for="dg-matches-tf-status">Статус тбл</label>
+                  <select class="form-select" id="dg-matches-tf-status">
+                    <option value="all">Все</option>
+                    <option value="pending">pending</option>
+                    <option value="confirmed">confirmed</option>
+                    <option value="rejected">rejected</option>
+                  </select>
+                </div>
+                <div class="col-md-1">
+                  <label class="form-label" for="dg-matches-tf-conf-min">Схож. от %</label>
+                  <input type="number" class="form-control" id="dg-matches-tf-conf-min" min="0" max="100" />
+                </div>
+                <div class="col-md-1">
+                  <label class="form-label" for="dg-matches-tf-conf-max">Схож. до %</label>
+                  <input type="number" class="form-control" id="dg-matches-tf-conf-max" min="0" max="100" />
+                </div>
+              </div>
+              <div class="table-responsive datagon-my-products-table-wrap">
+                <table class="table table-hover table-sm mb-0 datagon-my-products-table">
+                  <thead>
+                    <tr>
+                      <th style="cursor:pointer" data-match-sort="status">Статус</th>
+                      <th style="cursor:pointer" data-match-sort="match_type">Тип</th>
+                      <th style="cursor:pointer" data-match-sort="confidence">Схожесть</th>
+                      <th style="cursor:pointer" data-match-sort="my_product_name">МОЙ ТОВАР (SKU / Название / Цена)</th>
+                      <th style="cursor:pointer" data-match-sort="competitor_name">КОНКУРЕНТ (SKU / Название / Цена)</th>
+                      <th>Действия</th>
+                    </tr>
+                  </thead>
+                  <tbody id="dg-matches-tbody"></tbody>
+                </table>
+              </div>
+              <div class="mt-2 d-flex justify-content-between align-items-center">
+                <div class="text-muted small" id="dg-matches-page-hint">Страница 1/1</div>
+                <div class="btn-group" role="group">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-matches-prev">Назад</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-matches-next">Вперед</button>
+                </div>
+              </div>
+              <p class="text-muted mb-0 mt-2" id="dg-matches-total-hint">Всего: 0</p>
+            </div>
+          </div>

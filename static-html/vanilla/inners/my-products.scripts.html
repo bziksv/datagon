@@ -1,0 +1,977 @@
+  <script>
+    (function () {
+      var MP_FILTERS_KEY = "datagon_my_products_filters_collapsed_v1";
+      var SORT_STORAGE_VERSION = "v1";
+      var initialLimit = 30;
+
+      var offset = 0;
+      var apiSearch = "";
+      var lastTotal = 0;
+      var lastRows = [];
+      var lastLoading = false;
+      var lastFx = { usd_to_rub: 90, eur_to_rub: 100 };
+      var lastFxUpdatedAt = null;
+      var siteNameById = {};
+      var siteById = {};
+
+      function userSortKey() {
+        try {
+          var u = String(localStorage.getItem("currentUser") || "guest").trim() || "guest";
+          return "datagon_my_products_sort_" + SORT_STORAGE_VERSION + ":" + u;
+        } catch (e) {
+          return "datagon_my_products_sort_" + SORT_STORAGE_VERSION + ":guest";
+        }
+      }
+
+      function buildQuery(params) {
+        var s = new URLSearchParams();
+        Object.keys(params).forEach(function (k) {
+          var v = params[k];
+          if (v === undefined || v === null || v === "" || v === "all") return;
+          s.set(k, String(v));
+        });
+        var q = s.toString();
+        return q ? "?" + q : "";
+      }
+
+      function parseSmartSearch(raw) {
+        var out = { site: "", status: "", search: "" };
+        var tokens = (raw || "").trim().match(/"[^"]+"|\S+/g) || [];
+        var free = [];
+        tokens.forEach(function (token) {
+          var idx = token.indexOf(":");
+          if (idx > 0) {
+            var key = token.slice(0, idx).toLowerCase();
+            var value = token.slice(idx + 1).trim();
+            if (
+              (value.charAt(0) === '"' && value.slice(-1) === '"') ||
+              (value.charAt(0) === "'" && value.slice(-1) === "'")
+            )
+              value = value.slice(1, -1);
+            if (key === "site" || key === "site_id") out.site = value;
+            else if (key === "status") out.status = value;
+            else if (key === "code" || key === "sku" || key === "name" || key === "id") free.push(value);
+            else free.push(token);
+          } else {
+            free.push(token.replace(/^"(.*)"$/, "$1"));
+          }
+        });
+        out.search = free.join(" ").trim();
+        return out;
+      }
+
+      function syncUrlFromDom() {
+        var params = new URLSearchParams();
+        var f = collectApiFilters();
+        Object.keys(f).forEach(function (k) {
+          var v = f[k];
+          if (v === undefined || v === null || v === "" || v === "all") return;
+          if (k === "limit" && Number(v) === initialLimit) return;
+          if (k === "offset" && Number(v) === 0) return;
+          params.set(k, String(v));
+        });
+        var next = params.toString()
+          ? window.location.pathname + "?" + params.toString()
+          : window.location.pathname;
+        try {
+          window.history.replaceState(null, "", next);
+        } catch (e) {}
+      }
+
+      function collectApiFilters() {
+        var lim = Number(document.getElementById("mp-f-limit").value);
+        if (!Number.isFinite(lim) || lim < 1) lim = initialLimit;
+        return {
+          site_id: document.getElementById("f-site").value,
+          status: document.getElementById("mp-f-status").value,
+          source_enabled: document.getElementById("mp-f-source_enabled").value,
+          ms_linked: document.getElementById("f-ms").value,
+          sort_by: document.getElementById("mp-f-sort-by").value,
+          sort_dir: document.getElementById("mp-f-sort-dir").value,
+          search: apiSearch,
+          match_audit: document.getElementById("mp-f-match_audit").value,
+          gap_filter_enabled: document.getElementById("mp-f-gap_enabled").checked ? "1" : "0",
+          gap_exclude_zero: document.getElementById("mp-f-gap_exclude_zero").checked ? "1" : "0",
+          gap_competitor: document.getElementById("mp-f-gap_competitor").value,
+          gap_min_pct: document.getElementById("mp-f-gap_min_pct").value.trim(),
+          gap_max_pct: document.getElementById("mp-f-gap_max_pct").value.trim(),
+          usd_to_rub: document.getElementById("mp-f-usd_to_rub").value.trim(),
+          eur_to_rub: document.getElementById("mp-f-eur_to_rub").value.trim(),
+          stock_min: document.getElementById("mp-f-stock_min").value.trim(),
+          stock_max: document.getElementById("mp-f-stock_max").value.trim(),
+          limit: lim,
+          offset: offset,
+        };
+      }
+
+      function collectTableFilters() {
+        return {
+          source_id: document.getElementById("mp-tf-source_id").value,
+          site_name: document.getElementById("mp-tf-site_name").value,
+          sku: document.getElementById("mp-tf-sku").value,
+          name: document.getElementById("mp-tf-name").value,
+          currency: document.getElementById("mp-tf-currency").value,
+          stock_min: document.getElementById("mp-tf-stock_min").value,
+          stock_max: document.getElementById("mp-tf-stock_max").value,
+          active: document.getElementById("mp-tf-active").value,
+        };
+      }
+
+      function filterRows(rows, tf) {
+        return (rows || []).filter(function (r) {
+          var siteName = String(siteNameById[String(r.site_id)] || "");
+          if (tf.source_id && String(r.source_id || "").indexOf(String(tf.source_id).trim()) === -1)
+            return false;
+          if (tf.site_name && siteName.toLowerCase().indexOf(String(tf.site_name).trim().toLowerCase()) === -1)
+            return false;
+          if (tf.sku && String(r.sku || "").toLowerCase().indexOf(String(tf.sku).trim().toLowerCase()) === -1)
+            return false;
+          if (tf.name && String(r.name || "").toLowerCase().indexOf(String(tf.name).trim().toLowerCase()) === -1)
+            return false;
+          if (tf.currency !== "all" && String(r.currency || "").toUpperCase() !== String(tf.currency).toUpperCase())
+            return false;
+          var stock = Number(r.stock || 0);
+          var min = Number(tf.stock_min || "");
+          var max = Number(tf.stock_max || "");
+          if (Number.isFinite(min) && String(tf.stock_min).trim() !== "" && stock < min) return false;
+          if (Number.isFinite(max) && String(tf.stock_max).trim() !== "" && stock > max) return false;
+          var isActive = Number(r.is_active) ? "1" : "0";
+          if (tf.active !== "all" && isActive !== tf.active) return false;
+          return true;
+        });
+      }
+
+      function fmt(n) {
+        return Number.isFinite(n) ? new Intl.NumberFormat("ru-RU").format(n) : "—";
+      }
+      function formatMoney(value) {
+        var num = Number(value);
+        if (!Number.isFinite(num)) return "-";
+        return num.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      }
+      function formatRuDateTime(value) {
+        if (!value) return "—";
+        var d = new Date(value);
+        if (isNaN(d.getTime())) return String(value);
+        return d.toLocaleString("ru-RU");
+      }
+      function formatFxUpdatedLabel(value) {
+        if (!value) return "неизвестно";
+        var d = new Date(value);
+        if (isNaN(d.getTime())) return "неизвестно";
+        return d.toLocaleString("ru-RU");
+      }
+      function buildSiteUrl(raw) {
+        var v = String(raw || "").trim();
+        if (!v) return "";
+        if (/^https?:\/\//i.test(v)) return v;
+        if (!/[a-z0-9-]+\.[a-z]{2,}/i.test(v)) return "";
+        return "https://" + v;
+      }
+      function normalizeSiteProductUrl(rawUrl, site) {
+        var direct = buildSiteUrl(rawUrl);
+        if (!direct) return "";
+        var isWebasyst = String(site && site.cms_type || "").toLowerCase() === "webasyst";
+        if (!isWebasyst) return direct;
+        try {
+          var u = new URL(direct);
+          var path = String(u.pathname || "/");
+          if (!path.startsWith("/product/")) {
+            var slug = path.replace(/^\/+/, "").replace(/\/+$/, "");
+            if (slug) u.pathname = "/product/" + slug + "/";
+          } else if (!path.endsWith("/")) u.pathname = path + "/";
+          return u.toString();
+        } catch (e) {
+          return direct;
+        }
+      }
+      function safeLink(raw) {
+        var v = String(raw || "").trim();
+        if (!v) return "";
+        if (/^https?:\/\//i.test(v)) return v;
+        return "";
+      }
+      function buildWebasystEditUrl(site, sourceId) {
+        var id = String(sourceId || "").trim();
+        if (!id) return "";
+        if (String(site && site.cms_type || "").toLowerCase() !== "webasyst") return "";
+        var cleanDomain = String(site && site.domain || "")
+          .trim()
+          .replace(/^https?:\/\//i, "")
+          .replace(/\/+$/, "");
+        if (!cleanDomain) return "";
+        return (
+          "https://" +
+          cleanDomain +
+          "/webasyst/shop/?action=products#/product/" +
+          encodeURIComponent(id) +
+          "/edit/"
+        );
+      }
+      function toRubValue(price, currency, usdRub, eurRub) {
+        var n = Number(price);
+        if (!Number.isFinite(n)) return null;
+        var cur = String(currency || "RUB").trim().toUpperCase();
+        if (cur === "RUB" || cur === "RUR" || cur === "₽") return n;
+        if (cur === "USD" || cur === "$") return n * Number(usdRub || 90);
+        if (cur === "EUR" || cur === "€") return n * Number(eurRub || 100);
+        return n;
+      }
+      function formatDeviationPct(myPrice, myCurrency, compPrice, compCurrency, usdRub, eurRub) {
+        var myRub = toRubValue(myPrice, myCurrency, usdRub, eurRub);
+        var compRub = toRubValue(compPrice, compCurrency, usdRub, eurRub);
+        if (!Number.isFinite(myRub) || !Number.isFinite(compRub) || compRub <= 0) return "н/д";
+        var pct = ((myRub - compRub) / compRub) * 100;
+        var sign = pct > 0 ? "+" : "";
+        return sign + pct.toFixed(2) + "%";
+      }
+      function formatBasePriceWithRub(price, currency, usdRub, eurRub) {
+        var cur = String(currency || "RUB").toUpperCase();
+        var base = formatMoney(price);
+        var rub = toRubValue(price, cur, usdRub, eurRub);
+        if (!Number.isFinite(rub)) return { baseText: base + " " + cur, rubText: "" };
+        if (cur === "RUB" || cur === "RUR" || cur === "₽") return { baseText: base + " " + cur, rubText: "" };
+        return { baseText: base + " " + cur, rubText: "≈ " + formatMoney(rub) + " RUB" };
+      }
+      function deviationClass(devText) {
+        var v = String(devText || "").trim();
+        if (!v || v === "н/д") return "text-muted";
+        if (v.charAt(0) === "-") return "text-success";
+        if (v.charAt(0) === "+") return "text-danger";
+        return "text-muted";
+      }
+      function buildMoyskladSearchLink(code) {
+        var value = String(code || "").trim();
+        if (!value) return "";
+        return "/moysklad?search=" + encodeURIComponent("code:" + value) + "&page=1";
+      }
+
+      function getUsdEurForRow() {
+        var f = collectApiFilters();
+        var u = Number(f.usd_to_rub || lastFx.usd_to_rub || 90);
+        var e = Number(f.eur_to_rub || lastFx.eur_to_rub || 100);
+        if (!Number.isFinite(u)) u = 90;
+        if (!Number.isFinite(e)) e = 100;
+        return { usd: u, eur: e };
+      }
+
+      function updateSortHeaders() {
+        var sortBy = document.getElementById("mp-f-sort-by").value;
+        var sortDir = document.getElementById("mp-f-sort-dir").value;
+        document.querySelectorAll("#mp-thead-row [data-mp-sort]").forEach(function (th) {
+          var col = th.getAttribute("data-mp-sort");
+          var base = th.getAttribute("data-mp-label");
+          if (!base) {
+            base = th.textContent.replace(/\s*[↑↓↕]\s*$/, "").trim();
+            th.setAttribute("data-mp-label", base);
+            base = th.getAttribute("data-mp-label");
+          }
+          var arrow = " ↕";
+          if (sortBy === col) arrow = sortDir === "asc" ? " ↑" : " ↓";
+          th.textContent = base + arrow;
+        });
+      }
+
+      function setSort(sortBy) {
+        var curBy = document.getElementById("mp-f-sort-by").value;
+        var curDir = document.getElementById("mp-f-sort-dir").value;
+        var nextDir = "asc";
+        if (curBy === sortBy) nextDir = curDir === "asc" ? "desc" : "asc";
+        document.getElementById("mp-f-sort-by").value = sortBy;
+        document.getElementById("mp-f-sort-dir").value = nextDir;
+        try {
+          localStorage.setItem(
+            userSortKey(),
+            JSON.stringify({ sort_by: sortBy, sort_dir: nextDir })
+          );
+        } catch (e) {}
+        offset = 0;
+        updateSortHeaders();
+        load();
+      }
+
+      function renderRows(rows) {
+        var tbody = document.getElementById("dg-tbody");
+        var rates = getUsdEurForRow();
+        var usdRate = rates.usd;
+        var eurRate = rates.eur;
+        tbody.replaceChildren();
+        if (lastLoading) {
+          var trL = document.createElement("tr");
+          var tdL = document.createElement("td");
+          tdL.colSpan = 13;
+          tdL.className = "text-muted";
+          tdL.textContent = "Загрузка...";
+          trL.appendChild(tdL);
+          tbody.appendChild(trL);
+          return;
+        }
+        if (!rows || !rows.length) {
+          var tr = document.createElement("tr");
+          var td = document.createElement("td");
+          td.colSpan = 13;
+          td.className = "text-muted";
+          td.textContent = "Нет данных";
+          tr.appendChild(td);
+          tbody.appendChild(tr);
+          return;
+        }
+        rows.forEach(function (r, idx) {
+          var tr = document.createElement("tr");
+          var site = siteById[String(r.site_id)];
+          var siteLabel = siteNameById[String(r.site_id)] || "#" + r.site_id;
+
+          var nameTd = document.createElement("td");
+          var productUrl = normalizeSiteProductUrl(r.source_url, site);
+          var editUrl = buildWebasystEditUrl(site, r.source_id);
+          if (productUrl) {
+            var a = document.createElement("a");
+            a.href = productUrl;
+            a.target = "_blank";
+            a.rel = "noopener noreferrer";
+            a.className = "text-decoration-none text-body";
+            a.textContent = r.name || "";
+            nameTd.appendChild(a);
+          } else {
+            nameTd.appendChild(document.createTextNode(r.name || ""));
+          }
+          if (editUrl) {
+            var ed = document.createElement("a");
+            ed.href = editUrl;
+            ed.target = "_blank";
+            ed.rel = "noopener noreferrer";
+            ed.className = "ms-2 small text-decoration-none text-muted";
+            ed.title = "Редактировать карточку в Webasyst";
+            ed.textContent = "[ред.]";
+            nameTd.appendChild(ed);
+          }
+          if (Number(r.in_moysklad) === 1) {
+            var code = String(r.ms_link_code || r.source_id || r.sku || "").trim();
+            if (code) {
+              var msA = document.createElement("a");
+              msA.href = buildMoyskladSearchLink(code);
+              msA.className = "ms-2 small text-decoration-none text-muted";
+              msA.title = "Есть в МойСклад (код " + (r.ms_link_code || r.source_id || "-") + ")";
+              msA.textContent = "[МойСклад]";
+              nameTd.appendChild(msA);
+            }
+          }
+
+          var myPriceUi = formatBasePriceWithRub(r.price, r.currency, usdRate, eurRate);
+          var dmPriceUi = formatBasePriceWithRub(
+            r.dealmed_price,
+            r.dealmed_currency || "RUB",
+            usdRate,
+            eurRate
+          );
+          var mkPriceUi = formatBasePriceWithRub(
+            r.medkompleks_price,
+            r.medkompleks_currency || "RUB",
+            usdRate,
+            eurRate
+          );
+          var dealmedDev =
+            r.dealmed_price === null || r.dealmed_price === undefined
+              ? "н/д"
+              : formatDeviationPct(
+                  r.price,
+                  r.currency,
+                  r.dealmed_price,
+                  r.dealmed_currency,
+                  usdRate,
+                  eurRate
+                );
+          var medkompleksDev =
+            r.medkompleks_price === null || r.medkompleks_price === undefined
+              ? "н/д"
+              : formatDeviationPct(
+                  r.price,
+                  r.currency,
+                  r.medkompleks_price,
+                  r.medkompleks_currency,
+                  usdRate,
+                  eurRate
+                );
+
+          function priceCell(ui, dev, urlField) {
+            var td = document.createElement("td");
+            td.className = "text-end";
+            td.appendChild(document.createTextNode(ui.baseText));
+            if (ui.rubText) {
+              var rub = document.createElement("div");
+              rub.className = "small text-muted";
+              rub.textContent = ui.rubText;
+              td.appendChild(rub);
+            }
+            var d = document.createElement("div");
+            d.className = "small " + deviationClass(dev);
+            d.textContent = "Δ " + dev;
+            td.appendChild(d);
+            var sl = safeLink(r[urlField]);
+            if (sl) {
+              var wrap = document.createElement("div");
+              var la = document.createElement("a");
+              la.href = sl;
+              la.target = "_blank";
+              la.rel = "noopener noreferrer";
+              la.className = "small text-decoration-none text-muted";
+              la.textContent = "[ссылка]";
+              wrap.appendChild(la);
+              td.appendChild(wrap);
+            }
+            return td;
+          }
+
+          var statusTd = document.createElement("td");
+          if (Number(r.is_active)) {
+            var b = document.createElement("span");
+            b.className = "badge bg-success";
+            b.textContent = "Активен";
+            statusTd.appendChild(b);
+          } else {
+            var b2 = document.createElement("span");
+            b2.className = "badge bg-secondary";
+            b2.textContent = "Неактивен";
+            statusTd.appendChild(b2);
+          }
+          var sub = document.createElement("div");
+          sub.className = "small text-muted mt-1";
+          sub.textContent =
+            "На сайте: " + (Number(r.source_enabled) === 0 ? "выключен" : "включен");
+          statusTd.appendChild(sub);
+
+          var compTd = document.createElement("td");
+          compTd.appendChild(document.createTextNode(r.gap_competitor || "-"));
+          if (r.comp_sync_at) {
+            var cs = document.createElement("div");
+            cs.className = "small text-muted mt-1";
+            cs.textContent =
+              "Синх.: " + (r.comp_sync_by || "-") + ", " + formatRuDateTime(r.comp_sync_at);
+            compTd.appendChild(cs);
+          }
+
+          var rowIdBase = "mp-" + r.site_id + "-" + (r.source_id || r.id || idx);
+          var actTd = document.createElement("td");
+          actTd.className = "text-nowrap";
+          var btnRe = document.createElement("button");
+          btnRe.type = "button";
+          btnRe.className = "btn btn-sm btn-outline-primary me-1";
+          btnRe.id = rowIdBase + "-refresh";
+          btnRe.innerHTML = '<i class="pe-7s-refresh me-1"></i>Обновить';
+          btnRe.addEventListener("click", function () {
+            onRefreshOne(r);
+          });
+          var btnSy = document.createElement("button");
+          btnSy.type = "button";
+          btnSy.className = "btn btn-sm btn-outline-success";
+          btnSy.id = rowIdBase + "-sync";
+          btnSy.innerHTML = '<i class="pe-7s-graph3 me-1"></i>Синх. цену';
+          btnSy.addEventListener("click", function () {
+            onSyncPrice(r);
+          });
+          actTd.appendChild(btnRe);
+          actTd.appendChild(btnSy);
+          if (r.match_last_action || r.match_last_by || r.match_last_at) {
+            var ma = document.createElement("div");
+            ma.className = "small text-muted mt-1";
+            var actLabel =
+              r.match_last_action === "confirmed"
+                ? "Подтверждено"
+                : r.match_last_action === "unlinked"
+                  ? "Разорвано"
+                  : r.match_last_action;
+            ma.textContent =
+              actLabel +
+              (r.match_last_by ? ": " + r.match_last_by : "") +
+              (r.match_last_at ? ", " + formatRuDateTime(r.match_last_at) : "");
+            actTd.appendChild(ma);
+          }
+
+          var myTd = document.createElement("td");
+          myTd.className = "text-end";
+          myTd.appendChild(document.createTextNode(myPriceUi.baseText));
+          if (myPriceUi.rubText) {
+            var mr = document.createElement("div");
+            mr.className = "small text-muted";
+            mr.textContent = myPriceUi.rubText;
+            myTd.appendChild(mr);
+          }
+
+          tr.appendChild(tdText(r.source_id || "—"));
+          tr.appendChild(tdText(siteLabel));
+          tr.appendChild(tdText(r.sku || "—"));
+          tr.appendChild(nameTd);
+          tr.appendChild(myTd);
+          tr.appendChild(priceCell(dmPriceUi, dealmedDev, "dealmed_url"));
+          tr.appendChild(priceCell(mkPriceUi, medkompleksDev, "medkompleks_url"));
+          tr.appendChild(tdText(r.currency || "—"));
+          var stTd = document.createElement("td");
+          stTd.className = "text-end";
+          stTd.textContent = String(r.stock != null ? r.stock : "—");
+          tr.appendChild(stTd);
+          tr.appendChild(statusTd);
+          tr.appendChild(tdText(formatRuDateTime(r.updated_at || r.updated)));
+          tr.appendChild(compTd);
+          tr.appendChild(actTd);
+          tbody.appendChild(tr);
+        });
+      }
+
+      function tdText(t) {
+        var td = document.createElement("td");
+        td.textContent = t;
+        return td;
+      }
+
+      function updateHint(filteredLen) {
+        var hint = document.getElementById("dg-mp-table-hint");
+        if (!hint) return;
+        hint.textContent =
+          "Найдено: " + fmt(lastTotal) + "; отображено: " + filteredLen;
+      }
+
+      function applyTableFilterAndRender() {
+        if (lastLoading) {
+          renderRows([]);
+          return;
+        }
+        var filtered = filterRows(lastRows, collectTableFilters());
+        updateHint(filtered.length);
+        renderRows(filtered);
+      }
+
+      function aggregateStats(rows) {
+        var acc = { total: 0, linked: 0, disabled: 0, disappeared: 0 };
+        (rows || []).forEach(function (s) {
+          acc.total += Number(s.total || 0);
+          acc.linked += Number(s.linked || 0);
+          acc.disabled += Number(s.disabled || 0);
+          acc.disappeared += Number(s.disappeared || 0);
+        });
+        acc.unlinked = Math.max(0, acc.total - acc.linked);
+        return acc;
+      }
+
+      function buildStatsQuery() {
+        var f = collectApiFilters();
+        return buildQuery({
+          site_id: f.site_id,
+          status: f.status,
+          source_enabled: f.source_enabled,
+          ms_linked: f.ms_linked,
+          stock_min: f.stock_min,
+          stock_max: f.stock_max,
+        });
+      }
+
+      function updateSubtitle() {
+        var sid = document.getElementById("f-site").value;
+        var el = document.getElementById("dg-mp-subtitle");
+        if (!el) return;
+        if (sid && sid !== "all" && siteNameById[sid]) {
+          el.textContent =
+            "Управление товарами с сайта " +
+            siteNameById[sid] +
+            ", связями с МойСклад и синхронизацией цен.";
+        } else {
+          el.textContent =
+            "Управление товарами, связями с МойСклад и синхронизацией цен.";
+        }
+      }
+
+      function updateSyncSiteButton() {
+        var sid = document.getElementById("f-site").value;
+        var btn = document.getElementById("mp-btn-sync-site");
+        if (btn) btn.disabled = !sid || sid === "all";
+      }
+
+      async function loadSites() {
+        var res = await fetch("/api/my-sites", { credentials: "same-origin" });
+        var rows = await res.json().catch(function () {
+          return [];
+        });
+        siteNameById = {};
+        siteById = {};
+        var sel = document.getElementById("f-site");
+        sel.innerHTML = "";
+        var optAll = document.createElement("option");
+        optAll.value = "all";
+        optAll.textContent = "Все сайты";
+        sel.appendChild(optAll);
+        if (Array.isArray(rows)) {
+          rows.forEach(function (s) {
+            siteNameById[String(s.id)] = s.name || "#" + s.id;
+            siteById[String(s.id)] = s;
+            var o = document.createElement("option");
+            o.value = String(s.id);
+            o.textContent = s.name || "#" + s.id;
+            sel.appendChild(o);
+          });
+        }
+        updateSubtitle();
+        updateSyncSiteButton();
+      }
+
+      function parseUrlToForm() {
+        var params = new URLSearchParams(window.location.search);
+        var keys = [
+          "site_id",
+          "status",
+          "source_enabled",
+          "ms_linked",
+          "sort_by",
+          "sort_dir",
+          "search",
+          "match_audit",
+          "gap_competitor",
+          "gap_min_pct",
+          "gap_max_pct",
+          "usd_to_rub",
+          "eur_to_rub",
+          "stock_min",
+          "stock_max",
+        ];
+        keys.forEach(function (k) {
+          var v = params.get(k);
+          if (v === null || v === "") return;
+          if (k === "site_id") document.getElementById("f-site").value = v;
+          if (k === "status") document.getElementById("mp-f-status").value = v;
+          if (k === "source_enabled")
+            document.getElementById("mp-f-source_enabled").value = v;
+          if (k === "ms_linked") document.getElementById("f-ms").value = v;
+          if (k === "sort_by") document.getElementById("mp-f-sort-by").value = v;
+          if (k === "sort_dir") document.getElementById("mp-f-sort-dir").value = v;
+          if (k === "search") apiSearch = v;
+          if (k === "match_audit")
+            document.getElementById("mp-f-match_audit").value = v;
+          if (k === "gap_competitor")
+            document.getElementById("mp-f-gap_competitor").value = v;
+          if (k === "gap_min_pct")
+            document.getElementById("mp-f-gap_min_pct").value = v;
+          if (k === "gap_max_pct")
+            document.getElementById("mp-f-gap_max_pct").value = v;
+          if (k === "usd_to_rub") document.getElementById("mp-f-usd_to_rub").value = v;
+          if (k === "eur_to_rub") document.getElementById("mp-f-eur_to_rub").value = v;
+          if (k === "stock_min") document.getElementById("mp-f-stock_min").value = v;
+          if (k === "stock_max") document.getElementById("mp-f-stock_max").value = v;
+        });
+        var lim = params.get("limit");
+        if (lim !== null && lim !== "")
+          document.getElementById("mp-f-limit").value = lim;
+        var off = params.get("offset");
+        if (off !== null && off !== "") offset = Number(off) || 0;
+        var gfe = params.get("gap_filter_enabled");
+        if (gfe === "1") document.getElementById("mp-f-gap_enabled").checked = true;
+        if (gfe === "0") document.getElementById("mp-f-gap_enabled").checked = false;
+        var gez = params.get("gap_exclude_zero");
+        if (gez === "0") document.getElementById("mp-f-gap_exclude_zero").checked = false;
+        if (gez === "1") document.getElementById("mp-f-gap_exclude_zero").checked = true;
+
+        if (!params.get("sort_by") || !params.get("sort_dir")) {
+          try {
+            var saved = JSON.parse(localStorage.getItem(userSortKey()) || "{}");
+            if (saved.sort_by)
+              document.getElementById("mp-f-sort-by").value = String(saved.sort_by);
+            if (saved.sort_dir === "asc" || saved.sort_dir === "desc")
+              document.getElementById("mp-f-sort-dir").value = saved.sort_dir;
+          } catch (e) {}
+        }
+      }
+
+      async function load() {
+        var st = document.getElementById("dg-status");
+        if (st) {
+          st.style.display = "none";
+          st.textContent = "";
+        }
+        lastLoading = true;
+        applyTableFilterAndRender();
+        try {
+          var listQs = buildQuery(collectApiFilters());
+          var statsQs = buildStatsQuery();
+          var fxP = fetch("/api/my-products/fx-rates", { credentials: "same-origin" }).then(
+            function (r) {
+              return r.json();
+            }
+          );
+          var statsP = fetch("/api/my-products/stats" + statsQs, {
+            credentials: "same-origin",
+          }).then(function (r) {
+            return r.json();
+          });
+          var prodP = fetch("/api/my-products" + listQs, {
+            credentials: "same-origin",
+          }).then(function (r) {
+            return r.json();
+          });
+
+          var fx = await fxP.catch(function () {
+            return {};
+          });
+          var statsRows = await statsP.catch(function () {
+            return [];
+          });
+          var json = await prodP;
+
+          if (!json || json.error) throw new Error((json && json.error) || "Ошибка загрузки");
+
+          lastFx = {
+            usd_to_rub: Number(fx.usd_to_rub || 0),
+            eur_to_rub: Number(fx.eur_to_rub || 0),
+          };
+          lastFxUpdatedAt = fx.updated_at || fx.updatedAt;
+          var fxEl = document.getElementById("dg-fx-hint");
+          if (fxEl) {
+            fxEl.textContent =
+              "FX: USD " +
+              lastFx.usd_to_rub.toFixed(2) +
+              " | EUR " +
+              lastFx.eur_to_rub.toFixed(2) +
+              " | Обновлен: " +
+              formatFxUpdatedLabel(lastFxUpdatedAt);
+          }
+
+          var agg = aggregateStats(Array.isArray(statsRows) ? statsRows : []);
+          document.getElementById("mp-st-active").textContent = fmt(agg.total);
+          document.getElementById("mp-st-linked").textContent = fmt(agg.linked);
+          document.getElementById("mp-st-unlinked").textContent = fmt(agg.unlinked);
+          document.getElementById("mp-st-disabled").textContent = fmt(agg.disabled);
+          document.getElementById("mp-st-disappeared").textContent = fmt(agg.disappeared);
+
+          lastRows = Array.isArray(json.data) ? json.data : [];
+          lastTotal = Number(json.total || 0);
+          lastLoading = false;
+          syncUrlFromDom();
+          updateSortHeaders();
+          applyTableFilterAndRender();
+        } catch (e) {
+          lastLoading = false;
+          lastRows = [];
+          applyTableFilterAndRender();
+          if (st) {
+            st.style.display = "";
+            st.textContent = "Ошибка: " + (e && e.message ? e.message : e);
+          }
+        }
+      }
+
+      function onRefreshOne(row) {
+        fetch("/api/my-products/refresh-one", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            site_id: Number(row.site_id),
+            sku: row.sku || undefined,
+            source_id: row.source_id || undefined,
+          }),
+        })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok) throw new Error(x.j.error || "refresh-one failed");
+            load();
+          })
+          .catch(function (e) {
+            alert(e.message || String(e));
+          });
+      }
+
+      function onSyncPrice(row) {
+        var min =
+          document.getElementById("mp-f-comp_min").value.trim() || "0.1";
+        var max =
+          document.getElementById("mp-f-comp_max").value.trim() || "1";
+        fetch("/api/my-products/sync-price-from-competitor", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            site_id: Number(row.site_id),
+            sku: row.sku,
+            source_id: row.source_id || undefined,
+            random_min_pct: Number(String(min).replace(",", ".")),
+            random_max_pct: Number(String(max).replace(",", ".")),
+          }),
+        })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok || !x.j.success)
+              throw new Error(x.j.error || x.j.message || "sync-price failed");
+            load();
+          })
+          .catch(function (e) {
+            alert(e.message || String(e));
+          });
+      }
+
+      function post(url, body) {
+        fetch(url, {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: body ? JSON.stringify(body) : "{}",
+        })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok) throw new Error(x.j.error || "Ошибка");
+            load();
+          })
+          .catch(function (e) {
+            alert(e.message || String(e));
+          });
+      }
+
+      function applySmartSearchFromInput() {
+        var raw = document.getElementById("mp-f-smart").value;
+        var parsed = parseSmartSearch(raw);
+        if (parsed.site) {
+          var sel = document.getElementById("f-site");
+          var ok = false;
+          for (var i = 0; i < sel.options.length; i++) {
+            if (String(sel.options[i].value) === String(parsed.site)) {
+              sel.selectedIndex = i;
+              ok = true;
+              break;
+            }
+          }
+        }
+        if (parsed.status) {
+          var sv = parsed.status.toLowerCase();
+          if (sv === "active" || sv === "1")
+            document.getElementById("mp-f-status").value = "1";
+          else if (sv === "inactive" || sv === "hidden" || sv === "0")
+            document.getElementById("mp-f-status").value = "0";
+        }
+        apiSearch = parsed.search || "";
+        offset = 0;
+        updateSubtitle();
+        updateSyncSiteButton();
+        load();
+      }
+
+      document.getElementById("btn-apply").addEventListener("click", function () {
+        offset = 0;
+        try {
+          localStorage.setItem(
+            userSortKey(),
+            JSON.stringify({
+              sort_by: document.getElementById("mp-f-sort-by").value,
+              sort_dir: document.getElementById("mp-f-sort-dir").value,
+            })
+          );
+        } catch (e) {}
+        load();
+      });
+
+      document.querySelectorAll("#mp-thead-row [data-mp-sort]").forEach(function (th) {
+        th.addEventListener("click", function () {
+          setSort(th.getAttribute("data-mp-sort"));
+        });
+      });
+
+      [
+        "mp-tf-source_id",
+        "mp-tf-site_name",
+        "mp-tf-sku",
+        "mp-tf-name",
+        "mp-tf-currency",
+        "mp-tf-stock_min",
+        "mp-tf-stock_max",
+        "mp-tf-active",
+      ].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) {
+          el.addEventListener("input", applyTableFilterAndRender);
+          el.addEventListener("change", applyTableFilterAndRender);
+        }
+      });
+
+      document.getElementById("mp-f-smart").addEventListener("keydown", function (e) {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          applySmartSearchFromInput();
+        }
+      });
+
+      document.getElementById("f-site").addEventListener("change", function () {
+        updateSubtitle();
+        updateSyncSiteButton();
+      });
+
+      document.getElementById("mp-btn-fx").addEventListener("click", function () {
+        fetch("/api/my-products/fx-rates?force=1", { credentials: "same-origin" })
+          .then(function (r) {
+            return r.json();
+          })
+          .then(function () {
+            load();
+          })
+          .catch(function (e) {
+            alert(e.message || String(e));
+          });
+      });
+      document.getElementById("mp-btn-syncall").addEventListener("click", function () {
+        post("/api/sync-all-start");
+      });
+      document.getElementById("mp-btn-sync-site").addEventListener("click", function () {
+        var sid = document.getElementById("f-site").value;
+        if (!sid || sid === "all") return;
+        post("/api/sync-site-start", { site_id: Number(sid) });
+      });
+      document.getElementById("mp-btn-rebuild").addEventListener("click", function () {
+        post("/api/ms/rebuild-links-cache");
+      });
+      document.getElementById("mp-btn-copy").addEventListener("click", function () {
+        navigator.clipboard.writeText(window.location.href).catch(function () {});
+      });
+
+      (function collapse() {
+        var body = document.getElementById("dg-mp-filters-body");
+        var btn = document.getElementById("dg-mp-filters-toggle");
+        function sync() {
+          try {
+            if (localStorage.getItem(MP_FILTERS_KEY) === "1") {
+              body.style.display = "none";
+              btn.textContent = "Развернуть";
+            } else {
+              body.style.display = "";
+              btn.textContent = "Свернуть";
+            }
+          } catch (e) {}
+        }
+        try {
+          if (localStorage.getItem(MP_FILTERS_KEY) === "1") body.style.display = "none";
+        } catch (e) {}
+        sync();
+        btn.addEventListener("click", function () {
+          var hidden = body.style.display === "none";
+          body.style.display = hidden ? "" : "none";
+          btn.textContent = hidden ? "Свернуть" : "Развернуть";
+          try {
+            localStorage.setItem(MP_FILTERS_KEY, hidden ? "0" : "1");
+          } catch (e) {}
+        });
+      })();
+
+      (async function init() {
+        await loadSites();
+        parseUrlToForm();
+        updateSubtitle();
+        updateSyncSiteButton();
+        updateSortHeaders();
+        await load();
+      })();
+    })();
+  </script>

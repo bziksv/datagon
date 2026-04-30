@@ -16,6 +16,13 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { spawnSync } from 'child_process';
 
+function runAssembleVanillaPages(root) {
+    const script = path.join(root, 'scripts', 'build', 'assemble-vanilla-pages.mjs');
+    if (!fs.existsSync(script)) return;
+    const r = spawnSync(process.execPath, [script], { cwd: root, stdio: 'inherit' });
+    if (r.status !== 0) process.exit(r.status ?? 1);
+}
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '../..');
 const spaDir = path.join(root, 'architectui-react-pro');
@@ -60,3 +67,53 @@ fs.mkdirSync(publicDir, { recursive: true });
 cleanPreviousSpaArtifacts();
 fs.cpSync(buildDir, publicDir, { recursive: true });
 console.log('OK: React build скопирован в', publicDir);
+
+/** Подставить в vanilla HTML ссылку на тот же main.*.css, что и у SPA (хеш меняется при сборке). */
+function injectArchitectuiMainCssIntoVanillaHtml() {
+    const indexPath = path.join(publicDir, 'index.html');
+    const vanillaDir = path.join(publicDir, 'vanilla');
+    if (!fs.existsSync(indexPath) || !fs.existsSync(vanillaDir)) return;
+    const indexHtml = fs.readFileSync(indexPath, 'utf8');
+    const m = indexHtml.match(/href="\.\/static\/css\/([^"]+\.css)"/);
+    if (!m) {
+        console.warn('vanilla CSS: в public/index.html не найден ./static/css/main.*.css — пропуск инъекции');
+        return;
+    }
+    const href = '/static/css/' + m[1];
+    const linkTag = '<link rel="stylesheet" href="' + href + '" />';
+    const files = fs.readdirSync(vanillaDir).filter((f) => f.endsWith('.html'));
+    let n = 0;
+    for (const f of files) {
+        const p = path.join(vanillaDir, f);
+        let content = fs.readFileSync(p, 'utf8');
+        if (!content.includes('<!-- ARCHITECTUI_MAIN_CSS -->')) continue;
+        content = content.split('<!-- ARCHITECTUI_MAIN_CSS -->').join(linkTag);
+        fs.writeFileSync(p, content, 'utf8');
+        n += 1;
+    }
+    if (n) console.log('OK: ARCHITECTUI_MAIN_CSS →', href, '(' + n + ' файлов в public/vanilla)');
+}
+
+/** Статические HTML5-страницы (миграция без React): собрать из _template.html + inners/, затем копировать только артефакты в public/vanilla */
+const vanillaSrc = path.join(root, 'static-html', 'vanilla');
+const vanillaDest = path.join(publicDir, 'vanilla');
+if (fs.existsSync(vanillaSrc)) {
+    runAssembleVanillaPages(root);
+    fs.mkdirSync(vanillaDest, { recursive: true });
+    const publishNames = ['dashboard.html', 'my-sites.html', 'moysklad.html', 'my-products.html', 'projects.html', 'queue.html', 'results.html', 'matches.html', 'processes.html', 'settings.html', 'index.html', 'datagon-vanilla.js'];
+    for (const name of publishNames) {
+        const from = path.join(vanillaSrc, name);
+        const to = path.join(vanillaDest, name);
+        if (fs.existsSync(from)) {
+            fs.copyFileSync(from, to);
+        }
+    }
+    const assetsFrom = path.join(vanillaSrc, 'assets');
+    const assetsTo = path.join(vanillaDest, 'assets');
+    if (fs.existsSync(assetsFrom)) {
+        fs.mkdirSync(assetsTo, { recursive: true });
+        fs.cpSync(assetsFrom, assetsTo, { recursive: true });
+    }
+    console.log('OK: static-html/vanilla (собранные html + assets) →', vanillaDest);
+}
+injectArchitectuiMainCssIntoVanillaHtml();

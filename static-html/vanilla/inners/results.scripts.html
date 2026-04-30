@@ -1,0 +1,608 @@
+  <script>
+    (function () {
+      var FILTERS_KEY = "datagon_results_filters_collapsed_v1";
+      var projects = [];
+      var rows = [];
+      var total = 0;
+      var page = 1;
+      var limit = 100;
+      var sortBy = "parsed_at";
+      var sortDir = "desc";
+      var loading = false;
+      var urlDebounce = null;
+
+      function fmtDate(v) {
+        if (!v) return "-";
+        var d = new Date(v);
+        if (isNaN(d.getTime())) return "-";
+        return d.toLocaleString("ru-RU");
+      }
+
+      function readApiFilters() {
+        return {
+          project_id: document.getElementById("dg-res-f-project").value,
+          page_status: document.getElementById("dg-res-f-page_status").value,
+          matched: document.getElementById("dg-res-f-matched").value,
+          availability: document.getElementById("dg-res-f-availability").value,
+          search: document.getElementById("dg-res-f-search").value.trim(),
+        };
+      }
+
+      function readTableFilters() {
+        return {
+          product_name: document.getElementById("dg-res-tf-product_name").value.trim(),
+          sku: document.getElementById("dg-res-tf-sku").value.trim(),
+          project_name: document.getElementById("dg-res-tf-project_name").value.trim(),
+          page_status: document.getElementById("dg-res-tf-page_status").value,
+          availability: document.getElementById("dg-res-tf-availability").value,
+          matched: document.getElementById("dg-res-tf-matched").value,
+          price_min: document.getElementById("dg-res-tf-price_min").value,
+          price_max: document.getElementById("dg-res-tf-price_max").value,
+        };
+      }
+
+      function buildUrl() {
+        var f = readApiFilters();
+        var s = new URLSearchParams({
+          limit: String(limit),
+          offset: String((page - 1) * limit),
+          sort_by: sortBy,
+          sort_dir: sortDir,
+        });
+        Object.keys(f).forEach(function (k) {
+          var v = f[k];
+          if (v === undefined || v === null || v === "" || v === "all") return;
+          s.set(k, String(v));
+        });
+        return "/api/results?" + s.toString();
+      }
+
+      function syncUrl() {
+        var f = readApiFilters();
+        var params = new URLSearchParams();
+        Object.keys(f).forEach(function (k) {
+          var v = f[k];
+          if (v === undefined || v === null || v === "" || v === "all") return;
+          params.set(k, String(v));
+        });
+        if (page > 1) params.set("page", String(page));
+        if (limit !== 100) params.set("limit", String(limit));
+        if (sortBy !== "parsed_at") params.set("sort_by", sortBy);
+        if (sortDir !== "desc") params.set("sort_dir", sortDir);
+        var next = params.toString()
+          ? window.location.pathname + "?" + params.toString()
+          : window.location.pathname;
+        try {
+          window.history.replaceState(null, "", next);
+        } catch (e) {}
+      }
+
+      function scheduleSyncUrl() {
+        if (urlDebounce) clearTimeout(urlDebounce);
+        urlDebounce = setTimeout(function () {
+          urlDebounce = null;
+          syncUrl();
+        }, 200);
+      }
+
+      function parseUrlToForm() {
+        var params = new URLSearchParams(window.location.search);
+        ["project_id", "page_status", "matched", "availability", "search"].forEach(function (k) {
+          var v = params.get(k);
+          if (v === null || v === "") return;
+          if (k === "search") document.getElementById("dg-res-f-search").value = v;
+          if (k === "project_id") document.getElementById("dg-res-f-project").value = v;
+          if (k === "page_status") document.getElementById("dg-res-f-page_status").value = v;
+          if (k === "matched") document.getElementById("dg-res-f-matched").value = v;
+          if (k === "availability") document.getElementById("dg-res-f-availability").value = v;
+        });
+        var p = Number(params.get("page") || 1);
+        var l = Number(params.get("limit") || 100);
+        if (Number.isFinite(p) && p > 0) page = p;
+        if ([50, 100, 500, 1000].includes(l)) {
+          limit = l;
+          document.getElementById("dg-res-limit").value = String(l);
+        }
+        var sb = params.get("sort_by");
+        var sd = params.get("sort_dir");
+        if (sb) sortBy = sb;
+        if (sd === "asc" || sd === "desc") sortDir = sd;
+      }
+
+      function fillProjects(list) {
+        var sel = document.getElementById("dg-res-f-project");
+        var prev = sel.value;
+        sel.innerHTML = '<option value="all">Все проекты</option>';
+        (list || []).forEach(function (p) {
+          var o = document.createElement("option");
+          o.value = String(p.id);
+          o.textContent = p.name || "#" + p.id;
+          sel.appendChild(o);
+        });
+        if ([].some.call(sel.options, function (o) { return o.value === prev; })) sel.value = prev;
+      }
+
+      function pagesCount() {
+        return Math.max(1, Math.ceil(total / limit));
+      }
+
+      function updateHints() {
+        var fh = document.getElementById("dg-res-filters-hint");
+        var th = document.getElementById("dg-res-table-hint");
+        if (fh) fh.textContent = "Всего записей: " + Number(total || 0).toLocaleString("ru-RU");
+        if (th) th.textContent = "Страница " + page + "/" + pagesCount();
+        var prev = document.getElementById("dg-res-prev");
+        var next = document.getElementById("dg-res-next");
+        if (prev) prev.disabled = page <= 1;
+        if (next) next.disabled = page >= pagesCount();
+      }
+
+      function filterRows(data) {
+        var tf = readTableFilters();
+        return (data || []).filter(function (r) {
+          if (tf.product_name && !String(r.product_name || "").toLowerCase().includes(String(tf.product_name).trim().toLowerCase()))
+            return false;
+          if (tf.sku && !String(r.sku || "").toLowerCase().includes(String(tf.sku).trim().toLowerCase())) return false;
+          if (tf.project_name && !String(r.project_name || "").toLowerCase().includes(String(tf.project_name).trim().toLowerCase()))
+            return false;
+          if (tf.page_status !== "all" && String(r.page_status || "").toLowerCase() !== String(tf.page_status).toLowerCase()) return false;
+          var availability = Number(r.is_oos || 0) === 1 ? "oos" : "in_stock";
+          if (tf.availability !== "all" && availability !== tf.availability) return false;
+          var matched = Number(r.is_matched || 0) === 1 ? "1" : "0";
+          if (tf.matched !== "all" && matched !== tf.matched) return false;
+          var price = Number(r.price || 0);
+          var min = Number(tf.price_min || "");
+          var max = Number(tf.price_max || "");
+          if (Number.isFinite(min) && String(tf.price_min).trim() !== "" && price < min) return false;
+          if (Number.isFinite(max) && String(tf.price_max).trim() !== "" && price > max) return false;
+          return true;
+        });
+      }
+
+      function showErr(msg) {
+        var el = document.getElementById("dg-res-err");
+        if (!el) return;
+        if (!msg) {
+          el.style.display = "none";
+          el.textContent = "";
+          return;
+        }
+        el.style.display = "";
+        el.textContent = msg;
+      }
+
+      function renderTable() {
+        var tbody = document.getElementById("dg-res-tbody");
+        tbody.replaceChildren();
+        updateHints();
+        if (loading) {
+          var trL = document.createElement("tr");
+          var tdL = document.createElement("td");
+          tdL.colSpan = 10;
+          tdL.className = "text-muted";
+          tdL.textContent = "Загрузка...";
+          trL.appendChild(tdL);
+          tbody.appendChild(trL);
+          return;
+        }
+        var filtered = filterRows(rows);
+        if (!filtered.length) {
+          var tr = document.createElement("tr");
+          var td = document.createElement("td");
+          td.colSpan = 10;
+          td.className = "text-muted";
+          td.textContent = "Нет результатов";
+          tr.appendChild(td);
+          tbody.appendChild(tr);
+          return;
+        }
+        filtered.forEach(function (r) {
+          var matched = Number(r.is_matched || 0) === 1;
+          var pageStatus = String(r.page_status || "").toLowerCase();
+          var tr = document.createElement("tr");
+          if (matched) tr.className = "table-success";
+          var tdDate = document.createElement("td");
+          var d1 = document.createElement("div");
+          d1.innerHTML = "<b>Результат:</b> " + fmtDate(r.parsed_at);
+          var d2 = document.createElement("div");
+          d2.className = "small text-muted";
+          d2.innerHTML = "<b>Парсинг:</b> " + fmtDate(r.page_parsed_at);
+          tdDate.appendChild(d1);
+          tdDate.appendChild(d2);
+          var tdProj = document.createElement("td");
+          tdProj.textContent = r.project_name || "-";
+          var tdProd = document.createElement("td");
+          var b = document.createElement("b");
+          b.textContent = r.product_name || "-";
+          tdProd.appendChild(b);
+          var tdSku = document.createElement("td");
+          tdSku.textContent = r.sku || "-";
+          var tdMat = document.createElement("td");
+          if (matched) {
+            var badge = document.createElement("span");
+            badge.className = "badge bg-success";
+            badge.textContent = "Сопоставлено";
+            tdMat.appendChild(badge);
+          } else tdMat.textContent = "-";
+          var tdParse = document.createElement("td");
+          if (pageStatus === "pending") {
+            var w = document.createElement("span");
+            w.className = "badge bg-warning";
+            w.textContent = "Ожидает";
+            tdParse.appendChild(w);
+          } else if (pageStatus === "processing") {
+            var inf = document.createElement("span");
+            inf.className = "badge bg-info";
+            inf.textContent = "В обработке";
+            tdParse.appendChild(inf);
+          } else if (pageStatus === "done") {
+            var ok = document.createElement("span");
+            ok.className = "badge bg-success";
+            ok.textContent = "Готово";
+            tdParse.appendChild(ok);
+          } else if (pageStatus === "error") {
+            var er = document.createElement("span");
+            er.className = "badge bg-danger";
+            er.textContent = "Ошибка";
+            tdParse.appendChild(er);
+          } else if (!pageStatus) {
+            var nx = document.createElement("span");
+            nx.className = "text-muted";
+            nx.textContent = "нет в очереди";
+            tdParse.appendChild(nx);
+          }
+          var tdOos = document.createElement("td");
+          if (r.is_oos) {
+            var oos = document.createElement("span");
+            oos.className = "badge bg-danger";
+            oos.textContent = "Под заказ";
+            tdOos.appendChild(oos);
+          } else {
+            var st = document.createElement("span");
+            st.className = "badge bg-success";
+            st.textContent = "В наличии";
+            tdOos.appendChild(st);
+          }
+          var tdPrice = document.createElement("td");
+          if (r.is_oos) tdPrice.textContent = "-";
+          else
+            tdPrice.textContent =
+              Number(r.price || 0).toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) +
+              " " +
+              (r.currency || "RUB");
+          var tdUrl = document.createElement("td");
+          var a = document.createElement("a");
+          a.href = r.page_url || r.url || "#";
+          a.target = "_blank";
+          a.rel = "noopener noreferrer";
+          a.textContent = "Открыть";
+          tdUrl.appendChild(a);
+          var tdAct = document.createElement("td");
+          tdAct.className = "text-nowrap";
+          var btnRe = document.createElement("button");
+          btnRe.type = "button";
+          btnRe.className = "btn btn-sm btn-outline-info me-1";
+          btnRe.innerHTML = '<i class="pe-7s-refresh me-1"></i>↻';
+          btnRe.addEventListener("click", function () {
+            reparseOne(r);
+          });
+          var btnDel = document.createElement("button");
+          btnDel.type = "button";
+          btnDel.className = "btn btn-sm btn-outline-danger";
+          btnDel.innerHTML = '<i class="pe-7s-trash me-1"></i>×';
+          btnDel.addEventListener("click", function () {
+            deleteOne(r.id);
+          });
+          tdAct.appendChild(btnRe);
+          tdAct.appendChild(btnDel);
+          tr.appendChild(tdDate);
+          tr.appendChild(tdProj);
+          tr.appendChild(tdProd);
+          tr.appendChild(tdSku);
+          tr.appendChild(tdMat);
+          tr.appendChild(tdParse);
+          tr.appendChild(tdOos);
+          tr.appendChild(tdPrice);
+          tr.appendChild(tdUrl);
+          tr.appendChild(tdAct);
+          tbody.appendChild(tr);
+        });
+      }
+
+      function loadResults() {
+        loading = true;
+        showErr("");
+        renderTable();
+        fetch(buildUrl(), { credentials: "same-origin" })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok) throw new Error(x.j.error || "Ошибка загрузки результатов");
+            var data = x.j.data || x.j.rows || [];
+            rows = Array.isArray(data) ? data : [];
+            total = Number(x.j.total || 0);
+            loading = false;
+            renderTable();
+            syncUrl();
+          })
+          .catch(function (e) {
+            loading = false;
+            rows = [];
+            total = 0;
+            renderTable();
+            showErr(e.message || "Не удалось загрузить результаты");
+          });
+      }
+
+      function loadBaseData() {
+        return Promise.all([
+          fetch("/api/projects", { credentials: "same-origin" }).then(function (r) {
+            return r.json();
+          }),
+          fetch("/api/settings", { credentials: "same-origin" }).then(function (r) {
+            return r.json();
+          }),
+        ])
+          .then(function (arr) {
+            if (Array.isArray(arr[0])) {
+              projects = arr[0];
+              fillProjects(projects);
+            }
+            var dl = Number(arr[1].default_limit || 100);
+            if ([50, 100, 500, 1000].includes(dl)) {
+              limit = dl;
+              document.getElementById("dg-res-limit").value = String(dl);
+            }
+          })
+          .catch(function () {});
+      }
+
+      function parseSmart() {
+        var raw = String(document.getElementById("dg-res-f-search").value || "").trim();
+        if (!raw) return;
+        var tokens = raw.match(/"[^"]+"|\S+/g) || [];
+        var free = [];
+        var next = readApiFilters();
+        tokens.forEach(function (t) {
+          var idx = t.indexOf(":");
+          if (idx <= 0) {
+            free.push(t.replace(/^"(.*)"$/, "$1"));
+            return;
+          }
+          var key = t.slice(0, idx).toLowerCase();
+          var value = t.slice(idx + 1).replace(/^"(.*)"$/, "$1").trim();
+          if (key === "project" || key === "project_id") next.project_id = value;
+          else if (key === "status" || key === "page_status") next.page_status = value;
+          else if (key === "code" || key === "sku" || key === "name") free.push(value);
+          else free.push(value);
+        });
+        next.search = free.join(" ").trim();
+        document.getElementById("dg-res-f-search").value = next.search;
+        document.getElementById("dg-res-f-page_status").value = next.page_status || "";
+        document.getElementById("dg-res-f-matched").value = next.matched || "all";
+        document.getElementById("dg-res-f-availability").value = next.availability || "all";
+        var sel = document.getElementById("dg-res-f-project");
+        var want = String(next.project_id || "all");
+        if (want !== "all" && [].some.call(sel.options, function (o) { return o.value === want; })) sel.value = want;
+        else sel.value = "all";
+        page = 1;
+        loadResults();
+      }
+
+      function onSort(field) {
+        if (sortBy === field) sortDir = sortDir === "asc" ? "desc" : "asc";
+        else {
+          sortBy = field;
+          sortDir = "asc";
+          page = 1;
+        }
+        loadResults();
+      }
+
+      function clearResults() {
+        if (!window.confirm("Удалить историю результатов по текущему проекту?")) return;
+        var f = readApiFilters();
+        fetch("/api/results/clear", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ project_id: f.project_id === "all" ? null : f.project_id }),
+        })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok) throw new Error(x.j.error || "Не удалось очистить");
+            alert("История очищена");
+            loadResults();
+          })
+          .catch(function (e) {
+            alert(e.message || String(e));
+          });
+      }
+
+      function reparseAll() {
+        if (!window.confirm("Добавить в очередь URL из результатов по текущим фильтрам?")) return;
+        var f = readApiFilters();
+        fetch("/api/parse/refresh-results", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            project_id: f.project_id === "all" ? null : f.project_id,
+            page_status: f.page_status || null,
+            search: f.search || null,
+          }),
+        })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok || !x.j.success) throw new Error(x.j.error || x.j.message || "Не удалось поставить в очередь");
+            alert(x.j.message || "URL добавлены в очередь");
+          })
+          .catch(function (e) {
+            alert(e.message || String(e));
+          });
+      }
+
+      function reparseOne(r) {
+        if (!window.confirm("Поставить страницу в очередь на повторный парсинг?")) return;
+        fetch("/api/parse/refresh-single", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            url: r.url,
+            project_id: r.project_id,
+            page_id: r.page_id || null,
+          }),
+        })
+          .then(function (res) {
+            return res.json().then(function (j) {
+              return { r: res, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok || !x.j.success) throw new Error(x.j.error || x.j.message || "Не удалось поставить в очередь");
+            alert(x.j.message || "Добавлено в очередь");
+          })
+          .catch(function (e) {
+            alert(e.message || String(e));
+          });
+      }
+
+      function deleteOne(id) {
+        if (!window.confirm("Удалить запись из истории?")) return;
+        fetch("/api/results/" + id, { method: "DELETE", credentials: "same-origin" })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Не удалось удалить");
+            alert("Запись удалена");
+            loadResults();
+          })
+          .catch(function (e) {
+            alert(e.message || String(e));
+          });
+      }
+
+      document.getElementById("results-apply").addEventListener("click", function () {
+        if (String(document.getElementById("dg-res-f-search").value || "").trim()) {
+          parseSmart();
+          return;
+        }
+        page = 1;
+        loadResults();
+      });
+      document.getElementById("results-reparse-all").addEventListener("click", reparseAll);
+      document.getElementById("results-clear-history").addEventListener("click", clearResults);
+
+      document.getElementById("dg-res-f-search").addEventListener("keydown", function (e) {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          parseSmart();
+        }
+      });
+
+      document.getElementById("dg-res-f-search").addEventListener("input", function () {
+        scheduleSyncUrl();
+        loadResults();
+      });
+
+      ["dg-res-f-project", "dg-res-f-matched", "dg-res-f-page_status", "dg-res-f-availability"].forEach(function (id) {
+        document.getElementById(id).addEventListener("change", function () {
+          page = 1;
+          scheduleSyncUrl();
+          loadResults();
+        });
+      });
+
+      document.getElementById("dg-res-limit").addEventListener("change", function () {
+        limit = Number(this.value) || 100;
+        page = 1;
+        loadResults();
+      });
+
+      document.getElementById("dg-res-prev").addEventListener("click", function () {
+        if (page > 1) {
+          page--;
+          loadResults();
+        }
+      });
+      document.getElementById("dg-res-next").addEventListener("click", function () {
+        if (page < pagesCount()) {
+          page++;
+          loadResults();
+        }
+      });
+
+      document.querySelectorAll("th[data-res-sort]").forEach(function (th) {
+        th.addEventListener("click", function () {
+          onSort(th.getAttribute("data-res-sort"));
+        });
+      });
+
+      [
+        "dg-res-tf-product_name",
+        "dg-res-tf-sku",
+        "dg-res-tf-project_name",
+        "dg-res-tf-page_status",
+        "dg-res-tf-availability",
+        "dg-res-tf-matched",
+        "dg-res-tf-price_min",
+        "dg-res-tf-price_max",
+      ].forEach(function (id) {
+        var el = document.getElementById(id);
+        el.addEventListener("input", function () {
+          renderTable();
+        });
+        el.addEventListener("change", function () {
+          renderTable();
+        });
+      });
+
+      (function collapse() {
+        var body = document.getElementById("dg-res-filters-body");
+        var btn = document.getElementById("dg-res-filters-toggle");
+        function sync() {
+          try {
+            if (localStorage.getItem(FILTERS_KEY) === "1") {
+              body.style.display = "none";
+              btn.textContent = "Развернуть";
+            } else {
+              body.style.display = "";
+              btn.textContent = "Свернуть";
+            }
+          } catch (e) {}
+        }
+        try {
+          if (localStorage.getItem(FILTERS_KEY) === "1") body.style.display = "none";
+        } catch (e) {}
+        sync();
+        btn.addEventListener("click", function () {
+          var hidden = body.style.display === "none";
+          body.style.display = hidden ? "" : "none";
+          btn.textContent = hidden ? "Свернуть" : "Развернуть";
+          try {
+            localStorage.setItem(FILTERS_KEY, hidden ? "0" : "1");
+          } catch (e) {}
+        });
+      })();
+
+      loadBaseData().then(function () {
+        parseUrlToForm();
+        loadResults();
+      });
+    })();
+  </script>

@@ -192,8 +192,8 @@ const buildMyProductsLinkedUrl = (row) => {
   return `/my-products?site_id=all&status=all&ms_linked=1&search=${encodeURIComponent(code)}`;
 };
 
-/** Сайты из кэша связей (GROUP_CONCAT) — компактные бейджи под названием */
-const MoyskladLinkedSites = ({ siteNames }) => {
+/** Где товар есть на сайтах (кэш source_links_cache → site_names) — под наименованием */
+const MoyskladLinkedSites = ({ siteNames, hasMyProductsLink }) => {
   let raw = "";
   if (siteNames == null) raw = "";
   else if (typeof siteNames === "string") raw = siteNames;
@@ -203,25 +203,34 @@ const MoyskladLinkedSites = ({ siteNames }) => {
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
-  if (!sites.length) return null;
-  return (
-    <div className="mt-2 pt-1" style={{ borderTop: "1px solid #eef1f5" }}>
-      <div className="d-flex flex-wrap align-items-center gap-2">
-        <span className="text-muted" style={{ fontSize: "0.7rem", whiteSpace: "nowrap" }}>
-          Связано с сайтами
+
+  if (!sites.length) {
+    if (!hasMyProductsLink) return null;
+    return (
+      <div className="mt-1">
+        <span className="text-muted" style={{ fontSize: "0.72rem" }}>
+          На сайтах: нет имён в кэше — нажмите «Перестроить кэш связей» выше
         </span>
-        <div className="d-flex flex-wrap gap-1">
-          {sites.map((name, i) => (
-            <span
-              key={`site-${i}-${name.slice(0, 40)}`}
-              className="badge rounded-pill bg-light text-secondary border text-truncate d-inline-block"
-              style={{ fontSize: "0.72rem", fontWeight: 500, maxWidth: 260 }}
-              title={name}
-            >
-              {name}
-            </span>
-          ))}
-        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-1 d-flex flex-wrap align-items-center gap-2">
+      <span className="text-muted" style={{ fontSize: "0.72rem", whiteSpace: "nowrap" }}>
+        На сайтах
+      </span>
+      <div className="d-flex flex-wrap gap-1 align-items-center">
+        {sites.map((name, i) => (
+          <span
+            key={`site-${i}-${name.slice(0, 40)}`}
+            className="badge rounded-pill bg-light text-secondary border text-truncate d-inline-block"
+            style={{ fontSize: "0.72rem", fontWeight: 500, maxWidth: 260 }}
+            title={name}
+          >
+            {name}
+          </span>
+        ))}
       </div>
     </div>
   );
@@ -871,7 +880,7 @@ const MoyskladPage = () => {
                           [Мои товары]
                         </a>
                       )}
-                      <MoyskladLinkedSites siteNames={r.site_names} />
+                      <MoyskladLinkedSites siteNames={r.site_names} hasMyProductsLink={Number(r.in_my_products || 0) === 1} />
                     </td>
                     <td style={{ ...getSizedColStyle("manager"), borderRight: "1px solid #f3f5f8" }}>{r.manager || "-"}</td>
                     <td style={{ ...getSizedColStyle("content_manager"), borderRight: "1px solid #f3f5f8" }}>{r.content_manager || "-"}</td>

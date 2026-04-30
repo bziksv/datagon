@@ -1,0 +1,722 @@
+  <script>
+    (function () {
+      var FILTERS_KEY = "datagon_queue_filters_collapsed_v1";
+      var statusRu = {
+        sitemap: "Sitemap",
+        pending: "Ожидает",
+        processing: "В обработке",
+        done: "Готово",
+        error: "Ошибка",
+      };
+      var statusBadgeClass = {
+        sitemap: "bg-secondary",
+        pending: "bg-warning",
+        processing: "bg-info",
+        done: "bg-success",
+        error: "bg-danger",
+      };
+
+      var projects = [];
+      var rows = [];
+      var total = 0;
+      var page = 1;
+      var limit = 100;
+      var sortBy = "id";
+      var sortDir = "desc";
+      var loading = false;
+      var pollTimer = null;
+      var urlDebounce = null;
+      var searchLoadDebounce = null;
+
+      function readApiFilters() {
+        return {
+          project_id: document.getElementById("dg-q-f-project").value,
+          type: document.getElementById("dg-q-f-type").value,
+          status: document.getElementById("dg-q-f-status").value,
+          matched: document.getElementById("dg-q-f-matched").value,
+          search: document.getElementById("dg-q-f-search").value.trim(),
+        };
+      }
+
+      function readTableFilters() {
+        return {
+          id: document.getElementById("dg-q-tf-id").value.trim(),
+          url: document.getElementById("dg-q-tf-url").value.trim(),
+          added_from: document.getElementById("dg-q-tf-added_from").value.trim(),
+          status: document.getElementById("dg-q-tf-status").value,
+          page_type: document.getElementById("dg-q-tf-page_type").value,
+          matched: document.getElementById("dg-q-tf-matched").value,
+        };
+      }
+
+      function buildQueueUrl() {
+        var f = readApiFilters();
+        var s = new URLSearchParams({
+          limit: String(limit),
+          offset: String((page - 1) * limit),
+          sort_by: sortBy,
+          sort_dir: sortDir,
+        });
+        Object.keys(f).forEach(function (k) {
+          var v = f[k];
+          if (!v || v === "all") return;
+          s.set(k, String(v));
+        });
+        return "/api/pages?" + s.toString();
+      }
+
+      function syncUrl() {
+        var f = readApiFilters();
+        var params = new URLSearchParams();
+        Object.keys(f).forEach(function (k) {
+          var v = f[k];
+          if (!v || v === "all") return;
+          params.set(k, String(v));
+        });
+        if (page > 1) params.set("page", String(page));
+        if (limit !== 100) params.set("limit", String(limit));
+        if (sortBy !== "id") params.set("sort_by", sortBy);
+        if (sortDir !== "desc") params.set("sort_dir", sortDir);
+        var next = params.toString()
+          ? window.location.pathname + "?" + params.toString()
+          : window.location.pathname;
+        try {
+          window.history.replaceState(null, "", next);
+        } catch (e) {}
+      }
+
+      function scheduleSyncUrl() {
+        if (urlDebounce) clearTimeout(urlDebounce);
+        urlDebounce = setTimeout(function () {
+          urlDebounce = null;
+          syncUrl();
+        }, 200);
+      }
+
+      function parseUrlToForm() {
+        var params = new URLSearchParams(window.location.search);
+        ["project_id", "type", "status", "matched", "search"].forEach(function (k) {
+          var v = params.get(k);
+          if (v === null || v === "") return;
+          if (k === "search") document.getElementById("dg-q-f-search").value = v;
+          if (k === "project_id") document.getElementById("dg-q-f-project").value = v;
+          if (k === "type") document.getElementById("dg-q-f-type").value = v;
+          if (k === "status") document.getElementById("dg-q-f-status").value = v;
+          if (k === "matched") document.getElementById("dg-q-f-matched").value = v;
+        });
+        var p = Number(params.get("page") || 1);
+        var l = Number(params.get("limit") || 100);
+        if (Number.isFinite(p) && p > 0) page = p;
+        if ([50, 100, 500, 1000].includes(l)) {
+          limit = l;
+          document.getElementById("dg-q-limit").value = String(l);
+        }
+        var sb = params.get("sort_by") || "id";
+        var sd = params.get("sort_dir") === "asc" ? "asc" : "desc";
+        sortBy = sb;
+        sortDir = sd;
+      }
+
+      function fillProjectSelects(list) {
+        var up = document.getElementById("dg-q-upload-project");
+        var fp = document.getElementById("dg-q-f-project");
+        var upVal = up.value;
+        var fpVal = fp.value;
+        up.innerHTML = '<option value="">Выберите проект...</option>';
+        fp.innerHTML = '<option value="all">Все проекты</option>';
+        (list || []).forEach(function (p) {
+          var o1 = document.createElement("option");
+          o1.value = String(p.id);
+          o1.textContent = p.name || "#" + p.id;
+          up.appendChild(o1);
+          var o2 = document.createElement("option");
+          o2.value = String(p.id);
+          o2.textContent = p.name || "#" + p.id;
+          fp.appendChild(o2);
+        });
+        if ([].slice.call(up.options).some(function (o) { return o.value === upVal; })) up.value = upVal;
+        if ([].slice.call(fp.options).some(function (o) { return o.value === fpVal; })) fp.value = fpVal;
+      }
+
+      function setDiscoveryHint(text) {
+        var el = document.getElementById("dg-q-discovery-hint");
+        if (el) el.textContent = text;
+      }
+
+      function activeProjectId() {
+        var f = readApiFilters();
+        return f.project_id !== "all" ? f.project_id : document.getElementById("dg-q-upload-project").value;
+      }
+
+      function refreshDiscoveryStatus(projectId) {
+        if (!projectId || projectId === "all") {
+          setDiscoveryHint("Автообход: выберите конкретный проект");
+          return;
+        }
+        fetch("/api/pages/discover-status?project_id=" + encodeURIComponent(projectId), { credentials: "same-origin" })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok) throw new Error(x.j.error || "Не удалось получить статус");
+            var json = x.j;
+            var activeLabel = json.active ? "выполняется" : "ожидание";
+            var base =
+              "Автообход (" +
+              activeLabel +
+              "): найдено " +
+              (json.discovered || 0) +
+              ", новых из sitemap " +
+              (json.added_sitemap || 0) +
+              ", добавлено со стр. " +
+              (json.added_from_page || 0);
+            setDiscoveryHint(json.message ? base + " | " + json.message : base);
+          })
+          .catch(function (e) {
+            setDiscoveryHint("Автообход: ошибка статуса - " + (e.message || e));
+          });
+      }
+
+      function filterRows(data) {
+        var tf = readTableFilters();
+        return (data || []).filter(function (r) {
+          if (tf.id && !String(r.id || "").includes(String(tf.id).trim())) return false;
+          if (tf.url && !String(r.url || "").toLowerCase().includes(String(tf.url).trim().toLowerCase())) return false;
+          if (tf.added_from && !String(r.added_from || "").toLowerCase().includes(String(tf.added_from).trim().toLowerCase()))
+            return false;
+          if (tf.status !== "all" && String(r.status || "").toLowerCase() !== String(tf.status).toLowerCase()) return false;
+          if (tf.page_type !== "all" && String(r.page_type || "").toLowerCase() !== String(tf.page_type).toLowerCase())
+            return false;
+          var isMatched = Number(r.is_matched || 0) === 1 ? "1" : "0";
+          if (tf.matched !== "all" && isMatched !== tf.matched) return false;
+          return true;
+        });
+      }
+
+      function appendHighlightedUrl(a, urlValue, needle) {
+        var source = String(urlValue || "");
+        var n = String(needle || "").trim();
+        if (!n) {
+          a.textContent = source;
+          return;
+        }
+        var idx = source.toLowerCase().indexOf(n.toLowerCase());
+        if (idx === -1) {
+          a.textContent = source;
+          return;
+        }
+        a.appendChild(document.createTextNode(source.slice(0, idx)));
+        var mark = document.createElement("mark");
+        mark.textContent = source.slice(idx, idx + n.length);
+        a.appendChild(mark);
+        a.appendChild(document.createTextNode(source.slice(idx + n.length)));
+      }
+
+      function projectName(id) {
+        var found = projects.find(function (p) {
+          return String(p.id) === String(id);
+        });
+        return found ? found.name : id;
+      }
+
+      function renderTable() {
+        var tbody = document.getElementById("dg-q-tbody");
+        var hint = document.getElementById("dg-q-table-hint");
+        tbody.replaceChildren();
+        if (hint) hint.textContent = "Всего: " + Number(total || 0).toLocaleString("ru-RU");
+        var searchNeedle = readApiFilters().search;
+        var filtered = filterRows(rows);
+        if (loading) {
+          var trL = document.createElement("tr");
+          var tdL = document.createElement("td");
+          tdL.colSpan = 11;
+          tdL.className = "text-muted";
+          tdL.textContent = "Загрузка...";
+          trL.appendChild(tdL);
+          tbody.appendChild(trL);
+          updatePager();
+          return;
+        }
+        if (!filtered.length) {
+          var tr = document.createElement("tr");
+          var td = document.createElement("td");
+          td.colSpan = 11;
+          td.className = "text-muted";
+          td.textContent = "Нет данных";
+          tr.appendChild(td);
+          tbody.appendChild(tr);
+          updatePager();
+          return;
+        }
+        filtered.forEach(function (r) {
+          var matched = Number(r.is_matched || 0) === 1;
+          var tr = document.createElement("tr");
+          if (matched) tr.className = "table-success";
+          var canRun = ["sitemap", "pending", "error"].includes(String(r.status || "").toLowerCase());
+          var tdUrl = document.createElement("td");
+          tdUrl.style.maxWidth = "320px";
+          tdUrl.className = "text-truncate";
+          var link = document.createElement("a");
+          link.href = r.url || "#";
+          link.target = "_blank";
+          link.rel = "noopener noreferrer";
+          appendHighlightedUrl(link, r.url, searchNeedle);
+          tdUrl.appendChild(link);
+          var st = String(r.status || "").toLowerCase();
+          var badge = document.createElement("span");
+          badge.className = "badge " + (statusBadgeClass[st] || "bg-secondary");
+          badge.textContent = statusRu[st] || r.status || "-";
+          var tdAct = document.createElement("td");
+          tdAct.className = "text-nowrap";
+          if (canRun) {
+            var btnRun = document.createElement("button");
+            btnRun.type = "button";
+            btnRun.className = "btn btn-sm btn-outline-primary me-1";
+            btnRun.textContent = "Запуск";
+            btnRun.addEventListener("click", function () {
+              parsePage(r.id);
+            });
+            tdAct.appendChild(btnRun);
+          }
+          var btnDel = document.createElement("button");
+          btnDel.type = "button";
+          btnDel.className = "btn btn-sm btn-outline-danger";
+          btnDel.textContent = "Удалить";
+          btnDel.addEventListener("click", function () {
+            deletePage(r.id);
+          });
+          tdAct.appendChild(btnDel);
+          function tdText(t) {
+            var x = document.createElement("td");
+            x.textContent = t == null ? "" : String(t);
+            return x;
+          }
+          tr.appendChild(tdText(r.id));
+          tr.appendChild(tdText(projectName(r.project_id)));
+          tr.appendChild(tdText(r.page_type || "-"));
+          tr.appendChild(tdUrl);
+          tr.appendChild(tdText(r.added_from || "-"));
+          tr.appendChild(
+            tdText(r.added_at ? new Date(r.added_at).toLocaleString("ru-RU") : "-")
+          );
+          var tdSt = document.createElement("td");
+          tdSt.appendChild(badge);
+          tr.appendChild(tdSt);
+          tr.appendChild(
+            tdText(r.parsed_at ? new Date(r.parsed_at).toLocaleString("ru-RU") : "-")
+          );
+          var tdM = document.createElement("td");
+          if (matched) {
+            var b = document.createElement("span");
+            b.className = "badge bg-success";
+            b.textContent = "Сопоставлено";
+            tdM.appendChild(b);
+          } else tdM.textContent = "-";
+          tr.appendChild(tdM);
+          var tdE = document.createElement("td");
+          tdE.className = "small text-danger";
+          tdE.textContent = r.last_error || "";
+          tr.appendChild(tdE);
+          tr.appendChild(tdAct);
+          tbody.appendChild(tr);
+        });
+        updatePager();
+      }
+
+      function pagesCount() {
+        return Math.max(1, Math.ceil(Number(total || 0) / Number(limit || 100)));
+      }
+
+      function updatePager() {
+        var prev = document.getElementById("dg-q-prev");
+        var next = document.getElementById("dg-q-next");
+        var pc = pagesCount();
+        if (prev) prev.disabled = page <= 1;
+        if (next) next.disabled = page >= pc;
+      }
+
+      function showLoadErr(msg) {
+        var el = document.getElementById("dg-q-err");
+        if (!el) return;
+        if (!msg) {
+          el.style.display = "none";
+          el.textContent = "";
+          return;
+        }
+        el.style.display = "";
+        el.textContent = msg;
+      }
+
+      function loadPages() {
+        if (searchLoadDebounce) {
+          clearTimeout(searchLoadDebounce);
+          searchLoadDebounce = null;
+        }
+        loading = true;
+        showLoadErr("");
+        renderTable();
+        fetch(buildQueueUrl(), { credentials: "same-origin" })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok) throw new Error(x.j.error || "Ошибка загрузки очереди");
+            var json = x.j;
+            var data = json.data || json.rows || [];
+            rows = Array.isArray(data) ? data : [];
+            total = Number(json.total || 0);
+            loading = false;
+            renderTable();
+            syncUrl();
+            refreshDiscoveryStatus(activeProjectId());
+          })
+          .catch(function (e) {
+            loading = false;
+            rows = [];
+            total = 0;
+            renderTable();
+            showLoadErr(e.message || "Ошибка загрузки очереди");
+          });
+      }
+
+      function loadBaseData() {
+        return Promise.all([
+          fetch("/api/projects", { credentials: "same-origin" }).then(function (r) {
+            return r.json();
+          }),
+          fetch("/api/settings", { credentials: "same-origin" }).then(function (r) {
+            return r.json();
+          }),
+        ])
+          .then(function (arr) {
+            var pj = arr[0];
+            var st = arr[1];
+            if (Array.isArray(pj)) {
+              projects = pj;
+              fillProjectSelects(projects);
+            }
+            var dl = Number(st.default_limit || 100);
+            if ([50, 100, 500, 1000].includes(dl)) {
+              limit = dl;
+              document.getElementById("dg-q-limit").value = String(dl);
+            }
+          })
+          .catch(function () {});
+      }
+
+      function parseSmartSearch() {
+        var raw = String(document.getElementById("dg-q-f-search").value || "").trim();
+        if (!raw) return;
+        var tokens = raw.match(/"[^"]+"|\S+/g) || [];
+        var free = [];
+        var next = readApiFilters();
+        tokens.forEach(function (token) {
+          var idx = token.indexOf(":");
+          if (idx > 0) {
+            var key = token.slice(0, idx).toLowerCase();
+            var value = token.slice(idx + 1).trim().replace(/^"(.*)"$/, "$1");
+            if (key === "project" || key === "project_id") next.project_id = value;
+            else if (key === "type") next.type = value;
+            else if (key === "status") next.status = value;
+            else if (key === "code" || key === "sku" || key === "name") free.push(value);
+            else free.push(token);
+          } else {
+            free.push(token.replace(/^"(.*)"$/, "$1"));
+          }
+        });
+        next.search = free.join(" ").trim();
+        document.getElementById("dg-q-f-search").value = next.search;
+        document.getElementById("dg-q-f-type").value = next.type && next.type !== "" ? next.type : "all";
+        document.getElementById("dg-q-f-status").value = next.status || "";
+        document.getElementById("dg-q-f-matched").value = next.matched || "all";
+        var sel = document.getElementById("dg-q-f-project");
+        var want = String(next.project_id || "all");
+        if (want !== "all" && [].some.call(sel.options, function (o) { return o.value === want; })) sel.value = want;
+        else sel.value = "all";
+        page = 1;
+        loadPages();
+      }
+
+      function onSort(field) {
+        if (sortBy === field) sortDir = sortDir === "asc" ? "desc" : "asc";
+        else {
+          sortBy = field;
+          sortDir = "asc";
+        }
+        page = 1;
+        loadPages();
+      }
+
+      function postQueueAction(url, body) {
+        return fetch(url, {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body || {}),
+        }).then(function (r) {
+          return r.json().then(function (j) {
+            return { r: r, j: j };
+          });
+        });
+      }
+
+      function addBulk() {
+        var pid = document.getElementById("dg-q-upload-project").value;
+        var text = document.getElementById("dg-q-upload-text").value.trim();
+        if (!pid || !text) {
+          alert("Выберите проект и вставьте URL");
+          return;
+        }
+        postQueueAction("/api/pages/bulk", { project_id: pid, urls_text: text })
+          .then(function (x) {
+            if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Не удалось загрузить URL");
+            document.getElementById("dg-q-upload-text").value = "";
+            alert("Добавлено URL: " + (x.j.count || 0));
+            loadPages();
+          })
+          .catch(function (e) {
+            alert(e.message || String(e));
+          });
+      }
+
+      function startDiscovery() {
+        var aid = activeProjectId();
+        if (!aid) {
+          alert("Выберите конкретный проект");
+          return;
+        }
+        if (!window.confirm("Запустить автообход URL?")) return;
+        postQueueAction("/api/pages/discover-start", { project_id: Number(aid) }).then(function (x) {
+          if (!x.r.ok) throw new Error(x.j.error || x.j.message || "Ошибка действия");
+          refreshDiscoveryStatus(aid);
+        }).catch(function (e) {
+          alert(e.message || String(e));
+        });
+      }
+
+      function stopDiscovery() {
+        var aid = activeProjectId();
+        if (!aid) {
+          alert("Выберите конкретный проект");
+          return;
+        }
+        if (!window.confirm("Остановить автообход URL?")) return;
+        postQueueAction("/api/pages/discover-stop", { project_id: Number(aid) }).then(function (x) {
+          if (!x.r.ok) throw new Error(x.j.error || x.j.message || "Ошибка действия");
+          refreshDiscoveryStatus(aid);
+        }).catch(function (e) {
+          alert(e.message || String(e));
+        });
+      }
+
+      function parseVisible() {
+        if (!window.confirm("Запустить парсинг видимых страниц?")) return;
+        var f = readApiFilters();
+        postQueueAction("/api/parse/visible", {
+          project_id: f.project_id === "all" ? null : f.project_id,
+          status: f.status || null,
+          type: f.type === "all" ? null : f.type,
+        }).then(function (x) {
+          if (!x.r.ok) throw new Error(x.j.error || x.j.message || "Ошибка действия");
+          setTimeout(loadPages, 1000);
+        }).catch(function (e) {
+          alert(e.message || String(e));
+        });
+      }
+
+      function resetOrClear(mode, kind) {
+        var isReset = kind === "reset";
+        if (!window.confirm(isReset ? "Вернуть страницы в очередь?" : "Удалить страницы?")) return;
+        var f = readApiFilters();
+        var payload = {
+          project_id: f.project_id === "all" ? null : f.project_id,
+          status: mode === "filtered" ? f.status || null : null,
+          type: mode === "filtered" ? (f.type === "all" ? null : f.type) : null,
+        };
+        var url = isReset ? "/api/pages/reset" : "/api/pages/clear";
+        postQueueAction(url, payload).then(function (x) {
+          if (!x.r.ok) throw new Error(x.j.error || x.j.message || "Ошибка действия");
+          if (isReset) alert("В pending: " + (x.j.reset != null ? x.j.reset : 0));
+          else alert("Удалено: " + (x.j.deleted != null ? x.j.deleted : 0));
+          loadPages();
+        }).catch(function (e) {
+          alert(e.message || String(e));
+        });
+      }
+
+      function parsePage(id) {
+        postQueueAction("/api/parse/page/" + id, {}).then(function (x) {
+          if (!x.r.ok) throw new Error(x.j.error || x.j.message || "Ошибка действия");
+          setTimeout(loadPages, 1000);
+        }).catch(function (e) {
+          alert(e.message || String(e));
+        });
+      }
+
+      function deletePage(id) {
+        if (!window.confirm("Удалить страницу из очереди?")) return;
+        fetch("/api/pages/" + id, { method: "DELETE", credentials: "same-origin" })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Не удалось удалить");
+            loadPages();
+          })
+          .catch(function (e) {
+            alert(e.message || String(e));
+          });
+      }
+
+      function resetFilters() {
+        document.getElementById("dg-q-f-search").value = "";
+        document.getElementById("dg-q-f-project").value = "all";
+        document.getElementById("dg-q-f-type").value = "all";
+        document.getElementById("dg-q-f-status").value = "";
+        document.getElementById("dg-q-f-matched").value = "all";
+        page = 1;
+        sortBy = "id";
+        sortDir = "desc";
+        loadPages();
+      }
+
+      document.getElementById("queue-upload-urls").addEventListener("click", addBulk);
+      document.getElementById("queue-apply").addEventListener("click", function () {
+        if (String(document.getElementById("dg-q-f-search").value || "").trim()) {
+          parseSmartSearch();
+          return;
+        }
+        page = 1;
+        loadPages();
+      });
+      document.getElementById("queue-reset").addEventListener("click", resetFilters);
+      document.getElementById("queue-discovery-start").addEventListener("click", startDiscovery);
+      document.getElementById("queue-discovery-stop").addEventListener("click", stopDiscovery);
+      document.getElementById("queue-status-refresh").addEventListener("click", function () {
+        refreshDiscoveryStatus(activeProjectId());
+      });
+      document.getElementById("queue-reset-filtered").addEventListener("click", function () {
+        resetOrClear("filtered", "reset");
+      });
+      document.getElementById("queue-parse-visible").addEventListener("click", parseVisible);
+      document.getElementById("queue-clear-filtered").addEventListener("click", function () {
+        resetOrClear("filtered", "clear");
+      });
+      document.getElementById("queue-clear-all").addEventListener("click", function () {
+        resetOrClear("all", "clear");
+      });
+      document.getElementById("queue-copy-link").addEventListener("click", function () {
+        navigator.clipboard.writeText(window.location.href).catch(function () {});
+      });
+
+      document.getElementById("dg-q-f-search").addEventListener("keydown", function (e) {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          parseSmartSearch();
+        }
+      });
+
+      ["dg-q-f-project", "dg-q-f-type", "dg-q-f-status", "dg-q-f-matched"].forEach(function (id) {
+        document.getElementById(id).addEventListener("change", function () {
+          page = 1;
+          scheduleSyncUrl();
+          loadPages();
+        });
+      });
+
+      document.getElementById("dg-q-f-search").addEventListener("input", function () {
+        scheduleSyncUrl();
+        if (searchLoadDebounce) clearTimeout(searchLoadDebounce);
+        searchLoadDebounce = setTimeout(function () {
+          searchLoadDebounce = null;
+          page = 1;
+          loadPages();
+        }, 350);
+      });
+
+      document.getElementById("dg-q-limit").addEventListener("change", function () {
+        limit = Number(this.value) || 100;
+        page = 1;
+        loadPages();
+      });
+
+      document.getElementById("dg-q-prev").addEventListener("click", function () {
+        if (page > 1) {
+          page--;
+          loadPages();
+        }
+      });
+      document.getElementById("dg-q-next").addEventListener("click", function () {
+        if (page < pagesCount()) {
+          page++;
+          loadPages();
+        }
+      });
+
+      document.querySelectorAll("th[data-q-sort]").forEach(function (th) {
+        th.addEventListener("click", function () {
+          onSort(th.getAttribute("data-q-sort"));
+        });
+      });
+
+      [
+        "dg-q-tf-id",
+        "dg-q-tf-url",
+        "dg-q-tf-added_from",
+        "dg-q-tf-status",
+        "dg-q-tf-page_type",
+        "dg-q-tf-matched",
+      ].forEach(function (id) {
+        var el = document.getElementById(id);
+        el.addEventListener("input", function () {
+          renderTable();
+        });
+        el.addEventListener("change", function () {
+          renderTable();
+        });
+      });
+
+      (function collapse() {
+        var body = document.getElementById("dg-q-filters-collapsible");
+        var btn = document.getElementById("dg-q-filters-toggle");
+        function sync() {
+          try {
+            if (localStorage.getItem(FILTERS_KEY) === "1") {
+              body.style.display = "none";
+              btn.textContent = "Развернуть";
+            } else {
+              body.style.display = "";
+              btn.textContent = "Свернуть";
+            }
+          } catch (e) {}
+        }
+        try {
+          if (localStorage.getItem(FILTERS_KEY) === "1") body.style.display = "none";
+        } catch (e) {}
+        sync();
+        btn.addEventListener("click", function () {
+          var hidden = body.style.display === "none";
+          body.style.display = hidden ? "" : "none";
+          btn.textContent = hidden ? "Свернуть" : "Развернуть";
+          try {
+            localStorage.setItem(FILTERS_KEY, hidden ? "0" : "1");
+          } catch (e) {}
+        });
+      })();
+
+      loadBaseData().then(function () {
+        parseUrlToForm();
+        loadPages();
+      });
+      pollTimer = setInterval(loadPages, 5000);
+      window.addEventListener("beforeunload", function () {
+        if (pollTimer) clearInterval(pollTimer);
+      });
+    })();
+  </script>

@@ -1,0 +1,220 @@
+  <script>
+    (function () {
+      var pollTimer;
+      var lastData = null;
+
+      function num(v) {
+        return Number(v || 0).toLocaleString("ru-RU");
+      }
+      function fmtDate(v) {
+        if (!v) return "-";
+        var d = new Date(v);
+        if (isNaN(d.getTime())) return "-";
+        return d.toLocaleString("ru-RU");
+      }
+      function pct(part, total) {
+        var p = Number(part || 0);
+        var t = Number(total || 0);
+        if (t <= 0) return 0;
+        return Math.max(0, Math.min(100, Math.round((p / t) * 100)));
+      }
+      function fmtMb(bytes) {
+        return (Number(bytes || 0) / (1024 * 1024)).toFixed(1) + " MB";
+      }
+
+      function computeHealth(queue, globalSync, moysklad, discoveryActive) {
+        var hasQueueErrors = Number(queue.error || 0) > 0;
+        var hasRunning =
+          Boolean(globalSync.active) ||
+          Boolean(moysklad.active) ||
+          discoveryActive;
+        if (hasQueueErrors) return { label: "Есть проблемы", tone: "danger" };
+        if (hasRunning) return { label: "Рабочая активность", tone: "warning" };
+        return { label: "Стабильно", tone: "success" };
+      }
+
+      function computeLoadState(globalSync, moysklad, discoveryLen, queueProcessing, runtime) {
+        var memory = (runtime && runtime.memory) || {};
+        var activeWorkers =
+          (globalSync.active ? 1 : 0) +
+          (moysklad.active ? 1 : 0) +
+          discoveryLen +
+          (Number(queueProcessing || 0) > 0 ? 1 : 0);
+        var cpu = Number(runtime.cpuPercent || 0);
+        var rssPercent = Number(memory.rssPercentOfSystem || 0);
+        var score =
+          (cpu >= 75 ? 2 : cpu >= 40 ? 1 : 0) +
+          (rssPercent >= 40 ? 2 : rssPercent >= 20 ? 1 : 0) +
+          (activeWorkers >= 3 ? 1 : 0);
+        if (score >= 4) return { label: "Высокая", tone: "danger", score: score };
+        if (score >= 2) return { label: "Средняя", tone: "warning", score: score };
+        return { label: "Низкая", tone: "success", score: score };
+      }
+
+      function render(data, showLoadingHint) {
+        var queue = data.queue || {};
+        var globalSync = data.globalSync || {};
+        var moysklad = data.moysklad || {};
+        var matches = data.matches || {};
+        var runtime = data.runtime || {};
+        var memory = runtime.memory || {};
+        var discovery = Array.isArray(data.discovery)
+          ? data.discovery.filter(function (x) {
+              return x.active;
+            })
+          : [];
+        var refreshedAt = data.refreshedAt || new Date().toISOString();
+
+        var health = computeHealth(queue, globalSync, moysklad, discovery.length > 0);
+        var hb = document.getElementById("dg-health-badge");
+        if (hb) {
+          hb.className = "badge bg-" + health.tone + " dg-health-badge";
+          hb.textContent = health.label;
+        }
+
+        document.getElementById("dg-q-total").textContent = num(queue.total);
+        document.getElementById("dg-q-done").textContent =
+          num(queue.done) + " (" + pct(queue.done, queue.total) + "%)";
+        document.getElementById("dg-q-err").textContent = num(queue.error);
+
+        var sumHint = document.getElementById("dg-summary-hint");
+        if (sumHint) {
+          sumHint.textContent =
+            "Обновлено: " +
+            fmtDate(refreshedAt) +
+            (showLoadingHint ? " (загрузка...)" : "");
+        }
+
+        document.getElementById("dg-gs-prog").textContent =
+          num(globalSync.processed) + "/" + num(globalSync.total);
+        document.getElementById("dg-gs-pct").textContent = String(
+          pct(globalSync.processed, globalSync.total)
+        );
+        document.getElementById("dg-gs-msg").textContent = globalSync.message || "-";
+        var gsh = document.getElementById("dg-gs-hint");
+        if (gsh) gsh.textContent = globalSync.active ? "Выполняется" : "Ожидание";
+
+        document.getElementById("dg-ms-prog").textContent =
+          num(moysklad.processed) + "/" + num(moysklad.total);
+        document.getElementById("dg-ms-pct").textContent = String(
+          pct(moysklad.processed, moysklad.total)
+        );
+        document.getElementById("dg-ms-upd").textContent = fmtDate(moysklad.updatedAt);
+        document.getElementById("dg-ms-msg").textContent = moysklad.message || "-";
+        var msh = document.getElementById("dg-ms-hint");
+        if (msh) msh.textContent = moysklad.active ? "Синхронизация идет" : "Ожидание";
+
+        document.getElementById("dg-mat-site").textContent = num(matches.mySiteId);
+        document.getElementById("dg-mat-prog").textContent =
+          num(matches.processed) + "/" + num(matches.total);
+        document.getElementById("dg-mat-found").textContent =
+          num(matches.foundSku) + "/" + num(matches.foundName);
+        var mh = document.getElementById("dg-mat-hint");
+        if (mh) mh.textContent = matches.status || "idle";
+
+        var loadState = computeLoadState(
+          globalSync,
+          moysklad,
+          discovery.length,
+          queue.processing,
+          runtime
+        );
+        document.getElementById("dg-rt-cpu").textContent =
+          Number(runtime.cpuPercent || 0).toFixed(1) + "%";
+        document.getElementById("dg-rt-ram").textContent =
+          fmtMb(memory.rssBytes) +
+          " (" +
+          Number(memory.rssPercentOfSystem || 0).toFixed(1) +
+          "%)";
+        document.getElementById("dg-rt-up").textContent = num(runtime.uptimeSec) + " сек";
+        document.getElementById("dg-rt-score").textContent = String(loadState.score);
+        var rb = document.getElementById("dg-rt-badge");
+        if (rb) {
+          rb.className = "badge bg-" + loadState.tone;
+          rb.textContent = loadState.label;
+        }
+
+        var autoRuns = Array.isArray(data.autoSyncRuns)
+          ? data.autoSyncRuns.slice(0, 8)
+          : [];
+        var mount = document.getElementById("dg-auto-runs-mount");
+        var ah = document.getElementById("dg-auto-hint");
+        if (ah) ah.textContent = "Записей: " + autoRuns.length;
+        if (mount) {
+          mount.replaceChildren();
+          if (autoRuns.length === 0) {
+            var empty = document.createElement("div");
+            empty.className = "text-muted";
+            empty.textContent = "История пока пустая";
+            mount.appendChild(empty);
+          } else {
+            var ul = document.createElement("ul");
+            ul.className = "mb-0";
+            autoRuns.forEach(function (r) {
+              var li = document.createElement("li");
+              var b = document.createElement("b");
+              b.textContent = r.task_type || "-";
+              li.appendChild(b);
+              li.appendChild(
+                document.createTextNode(
+                  " · " +
+                    (r.status || "-") +
+                    " · старт: " +
+                    fmtDate(r.started_at) +
+                    " · финиш: " +
+                    fmtDate(r.finished_at)
+                )
+              );
+              ul.appendChild(li);
+            });
+            mount.appendChild(ul);
+          }
+        }
+      }
+
+      function loadDashboard() {
+        if (lastData) render(lastData, true);
+        else {
+          var sh = document.getElementById("dg-summary-hint");
+          if (sh) sh.textContent = "Обновлено: — (загрузка...)";
+        }
+        fetch("/api/processes/overview", { credentials: "same-origin" })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { ok: r.ok, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.ok) throw new Error(x.j.error || "Ошибка загрузки дашборда");
+            lastData = x.j;
+            render(x.j, false);
+          })
+          .catch(function (e) {
+            alert(e.message || "Не удалось загрузить dashboard");
+          });
+      }
+
+      document.getElementById("dashboard-sync-all").addEventListener("click", function () {
+        fetch("/api/sync-all-start", { method: "POST", credentials: "same-origin" })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { ok: r.ok, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.ok || !x.j.success) throw new Error(x.j.error || x.j.message || "Не удалось запустить синхронизацию");
+            loadDashboard();
+          })
+          .catch(function (e) {
+            alert(e.message || "Ошибка запуска синхронизации");
+          });
+      });
+
+      document.getElementById("dashboard-refresh").addEventListener("click", function () {
+        loadDashboard();
+      });
+
+      loadDashboard();
+      pollTimer = setInterval(loadDashboard, 15000);
+    })();
+  </script>

@@ -1,0 +1,747 @@
+  <script>
+    (function () {
+      var defaults = {
+        default_limit: 100,
+        parse_batch_size: 50,
+        page_delay_ms: 0,
+        results_retention_days: 120,
+        discover_max_sitemaps: 200,
+        discover_max_urls: 50000,
+        discover_crawl_max_pages: 500,
+        discover_request_delay_ms: 100,
+        auth_session_ttl_days: 14,
+        auth_session_user_limit: 1,
+        sync_batch_size: 500,
+        sync_delay_ms: 2000,
+        sync_mode: "always",
+        ms_sync_page_limit: 1000,
+        ms_sync_delay_ms: 0,
+        auto_sync_myproducts_enabled: 0,
+        auto_sync_myproducts_time: "03:00",
+        auto_sync_moysklad_enabled: 0,
+        auto_sync_moysklad_time: "04:00",
+        log_retention_days: 7,
+      };
+
+      function buildUsernameFromFullName(fullName) {
+        var map = {
+          а: "a", б: "b", в: "v", г: "g", д: "d", е: "e", ё: "e", ж: "zh", з: "z", и: "i", й: "y",
+          к: "k", л: "l", м: "m", н: "n", о: "o", п: "p", р: "r", с: "s", т: "t", у: "u", ф: "f",
+          х: "h", ц: "ts", ч: "ch", ш: "sh", щ: "sch", ъ: "", ы: "y", ь: "", э: "e", ю: "yu", я: "ya",
+        };
+        var source = String(fullName || "").trim().toLowerCase();
+        var out = "";
+        for (var i = 0; i < source.length; i++) {
+          var ch = source[i];
+          out += map[ch] !== undefined ? map[ch] : ch;
+        }
+        return out
+          .replace(/[^a-z0-9\s_-]/g, "")
+          .replace(/\s+/g, "_")
+          .replace(/_+/g, "_")
+          .replace(/^_+|_+$/g, "");
+      }
+
+      function randomPassword(length) {
+        var len = length || 18;
+        var chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*()-_=+";
+        var randomBytes = new Uint32Array(len);
+        crypto.getRandomValues(randomBytes);
+        var out = "";
+        for (var i = 0; i < len; i++) out += chars[randomBytes[i] % chars.length];
+        return out;
+      }
+
+      var users = [];
+      var loadingUsers = false;
+      var editUser = null;
+      var showNewUserPassword = false;
+      var showPasswordChange = false;
+
+      function currentUser() {
+        return window.localStorage.getItem("currentUser") || "admin";
+      }
+      function isAdmin() {
+        return window.localStorage.getItem("isAdmin") === "true" || currentUser() === "admin";
+      }
+      function canManageUsers() {
+        return isAdmin() || window.localStorage.getItem("canManageUsers") === "true";
+      }
+
+      function authHeaders(withJson) {
+        var headers = {};
+        var username = window.localStorage.getItem("currentUser");
+        var token = window.localStorage.getItem("authToken");
+        if (username) headers["x-auth-username"] = username;
+        if (token) headers["x-auth-token"] = token;
+        if (withJson) headers["Content-Type"] = "application/json";
+        return headers;
+      }
+
+      function set(id, val) {
+        var el = document.getElementById(id);
+        if (!el) return;
+        if (el.type === "checkbox") el.checked = !!val;
+        else el.value = val != null ? String(val) : "";
+      }
+      function getNum(id, fallback) {
+        var v = Number(document.getElementById(id).value);
+        return Number.isFinite(v) ? v : fallback;
+      }
+      function getStr(id) {
+        return String(document.getElementById(id).value || "");
+      }
+
+      function applySettingsToForm(s) {
+        var merged = {};
+        Object.keys(defaults).forEach(function (k) {
+          merged[k] = s[k] !== undefined && s[k] !== null ? s[k] : defaults[k];
+        });
+        set("dg-set-default_limit", merged.default_limit);
+        set("dg-set-parse_batch_size", merged.parse_batch_size);
+        set("dg-set-page_delay_ms", merged.page_delay_ms);
+        set("dg-set-results_retention_days", merged.results_retention_days);
+        set("dg-set-auth_session_ttl_days", merged.auth_session_ttl_days);
+        set("dg-set-auth_session_user_limit", merged.auth_session_user_limit);
+        set("dg-set-discover_max_sitemaps", merged.discover_max_sitemaps);
+        set("dg-set-discover_max_urls", merged.discover_max_urls);
+        set("dg-set-discover_crawl_max_pages", merged.discover_crawl_max_pages);
+        set("dg-set-discover_request_delay_ms", merged.discover_request_delay_ms);
+        set("dg-set-sync_batch_size", merged.sync_batch_size);
+        set("dg-set-sync_delay_ms", merged.sync_delay_ms);
+        document.getElementById("dg-set-sync_mode").value = merged.sync_mode || "always";
+        set("dg-set-ms_sync_page_limit", merged.ms_sync_page_limit);
+        set("dg-set-ms_sync_delay_ms", merged.ms_sync_delay_ms);
+        document.getElementById("dg-set-auto_my_en").checked = Number(merged.auto_sync_myproducts_enabled) === 1;
+        set("dg-set-auto_my_time", merged.auto_sync_myproducts_time || "03:00");
+        document.getElementById("dg-set-auto_ms_en").checked = Number(merged.auto_sync_moysklad_enabled) === 1;
+        set("dg-set-auto_ms_time", merged.auto_sync_moysklad_time || "04:00");
+        set("dg-set-log_retention_days", merged.log_retention_days);
+      }
+
+      function updateUsersHint() {
+        var h = document.getElementById("dg-set-users-hint");
+        if (h)
+          h.textContent = isAdmin()
+            ? "Admin может управлять списком пользователей"
+            : "Список пользователей доступен только admin";
+      }
+
+      function applyUserFieldDisabled() {
+        var adm = isAdmin();
+        var can = canManageUsers();
+        ["dg-set-users-search", "dg-set-users-filter-can", "dg-set-users-sess-min", "dg-set-users-sess-max"].forEach(function (id) {
+          document.getElementById(id).disabled = !adm;
+        });
+        ["dg-set-new-fullname", "dg-set-new-username", "dg-set-new-password", "dg-set-new-pw-toggle", "dg-set-new-pw-copy", "dg-set-btn-random-new-pw", "dg-set-btn-add-user"].forEach(function (id) {
+          document.getElementById(id).disabled = !can;
+        });
+        document.getElementById("dg-set-btn-refresh-users").disabled = !adm;
+        updateUsersHint();
+      }
+
+      function loadSettings() {
+        fetch("/api/settings", { credentials: "same-origin" })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok) throw new Error(x.j.error || "Не удалось загрузить настройки");
+            applySettingsToForm(x.j);
+            if (!isAdmin()) set("dg-set-pw-username", currentUser());
+          })
+          .catch(function (e) {
+            alert(e.message || "Ошибка загрузки настроек");
+          });
+      }
+
+      function loadLogsInfo() {
+        fetch("/api/settings/logs-info", { credentials: "same-origin" })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            var box = document.getElementById("dg-set-logs-info");
+            box.replaceChildren();
+            if (!x.r.ok) throw new Error(x.j.error || "Не удалось получить информацию о логах");
+            var rows = Array.isArray(x.j.data) ? x.j.data : [];
+            if (!rows.length) {
+              box.textContent = "Логи не найдены";
+              return;
+            }
+            rows.forEach(function (r) {
+              var mb = (Number(r.size_bytes || 0) / (1024 * 1024)).toFixed(2);
+              var mtime = r.modified_at ? new Date(r.modified_at).toLocaleString("ru-RU") : "нет файла";
+              var d = document.createElement("div");
+              d.textContent = r.name + ": " + mb + " MB (обновлен: " + mtime + ")";
+              box.appendChild(d);
+            });
+          })
+          .catch(function (e) {
+            var box = document.getElementById("dg-set-logs-info");
+            box.replaceChildren();
+            box.textContent = "Ошибка чтения логов: " + (e.message || String(e));
+          });
+      }
+
+      function filteredUsersList() {
+        var needle = String(document.getElementById("dg-set-users-search").value || "")
+          .trim()
+          .toLowerCase();
+        var canF = document.getElementById("dg-set-users-filter-can").value;
+        var smin = document.getElementById("dg-set-users-sess-min").value;
+        var smax = document.getElementById("dg-set-users-sess-max").value;
+        if (!needle) return users;
+        return users.filter(function (u) {
+          var haystack = (String(u.id || "") + " " + String(u.full_name || "") + " " + String(u.username || "")).toLowerCase();
+          if (haystack.indexOf(needle) === -1) return false;
+          var canManage = u.username === "admin" || Number(u.can_manage_users || 0) === 1 ? "1" : "0";
+          if (canF !== "all" && canManage !== canF) return false;
+          var activeSessions = Number(u.active_sessions || 0);
+          var min = Number(smin || "");
+          var max = Number(smax || "");
+          if (Number.isFinite(min) && String(smin).trim() !== "" && activeSessions < min) return false;
+          if (Number.isFinite(max) && String(smax).trim() !== "" && activeSessions > max) return false;
+          return true;
+        });
+      }
+
+      function renderUsers() {
+        applyUserFieldDisabled();
+        var tbody = document.getElementById("dg-set-users-tbody");
+        tbody.replaceChildren();
+        if (!isAdmin()) {
+          var tr = document.createElement("tr");
+          var td = document.createElement("td");
+          td.colSpan = 6;
+          td.className = "text-muted";
+          td.textContent = "Список пользователей доступен только admin";
+          tr.appendChild(td);
+          tbody.appendChild(tr);
+          return;
+        }
+        var list = filteredUsersList();
+        if (!list.length) {
+          var tr0 = document.createElement("tr");
+          var td0 = document.createElement("td");
+          td0.colSpan = 6;
+          td0.className = "text-muted";
+          td0.textContent = loadingUsers ? "Загрузка..." : "Пользователи не найдены";
+          tr0.appendChild(td0);
+          tbody.appendChild(tr0);
+          return;
+        }
+        list.forEach(function (u) {
+          var tr = document.createElement("tr");
+          [["id"], ["full_name", "username"], ["username"]].forEach(function (keys, idx) {
+            var td = document.createElement("td");
+            if (idx === 1) {
+              var b = document.createElement("b");
+              b.textContent = u.full_name || u.username || "-";
+              td.appendChild(b);
+            } else if (idx === 2) {
+              var b2 = document.createElement("b");
+              b2.textContent = u.username || "-";
+              td.appendChild(b2);
+              if (u.username === "admin") {
+                td.appendChild(document.createTextNode(" "));
+                var sp = document.createElement("span");
+                sp.className = "small text-muted";
+                sp.textContent = "(встроенный)";
+                td.appendChild(sp);
+              }
+            } else {
+              td.textContent = u.id;
+            }
+            tr.appendChild(td);
+          });
+          var tdPerm = document.createElement("td");
+          var lab = document.createElement("label");
+          lab.className = "d-flex align-items-center gap-2";
+          var cb = document.createElement("input");
+          cb.type = "checkbox";
+          cb.checked = u.username === "admin" || Number(u.can_manage_users || 0) === 1;
+          cb.disabled = u.username === "admin";
+          cb.addEventListener("change", function () {
+            updatePermission(u, cb.checked);
+          });
+          var spm = document.createElement("span");
+          spm.className = "small text-muted";
+          spm.textContent = u.username === "admin" ? "всегда включено" : "разрешено";
+          lab.appendChild(cb);
+          lab.appendChild(spm);
+          tdPerm.appendChild(lab);
+          tr.appendChild(tdPerm);
+          var tdSess = document.createElement("td");
+          tdSess.textContent = String(Number(u.active_sessions || 0));
+          tr.appendChild(tdSess);
+          var tdAct = document.createElement("td");
+          tdAct.className = "text-nowrap datagon-users-row-actions";
+          var bLogin = document.createElement("button");
+          bLogin.type = "button";
+          bLogin.className = "btn btn-info btn-sm me-1 mb-1";
+          bLogin.textContent = "🔐 Войти как";
+          bLogin.addEventListener("click", function () {
+            loginAsUser(u.username);
+          });
+          var bEdit = document.createElement("button");
+          bEdit.type = "button";
+          bEdit.className = "btn btn-secondary btn-sm me-1 mb-1";
+          bEdit.textContent = "✏️ Редактировать";
+          bEdit.addEventListener("click", function () {
+            openEditUser({ id: u.id, username: u.username, full_name: u.full_name || "" });
+          });
+          var bRev = document.createElement("button");
+          bRev.type = "button";
+          bRev.className = "btn btn-warning btn-sm me-1 mb-1";
+          bRev.textContent = "⛔ Сбросить сессии";
+          bRev.addEventListener("click", function () {
+            revokeSessions(u);
+          });
+          tdAct.appendChild(bLogin);
+          tdAct.appendChild(bEdit);
+          tdAct.appendChild(bRev);
+          if (u.username !== "admin") {
+            var bDel = document.createElement("button");
+            bDel.type = "button";
+            bDel.className = "btn btn-danger btn-sm mb-1";
+            bDel.textContent = "🗑️ Удалить";
+            bDel.addEventListener("click", function () {
+              deleteUser(u);
+            });
+            tdAct.appendChild(bDel);
+          } else {
+            var spx = document.createElement("span");
+            spx.className = "small text-muted";
+            spx.textContent = "Удаление отключено";
+            tdAct.appendChild(spx);
+          }
+          tr.appendChild(tdAct);
+          tbody.appendChild(tr);
+        });
+      }
+
+      function loadUsers() {
+        if (!isAdmin()) {
+          renderUsers();
+          return;
+        }
+        loadingUsers = true;
+        renderUsers();
+        fetch("/api/auth/users", { credentials: "same-origin", headers: authHeaders(false) })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok) throw new Error(x.j.error || "Не удалось загрузить пользователей");
+            users = Array.isArray(x.j.data) ? x.j.data : [];
+          })
+          .catch(function (e) {
+            alert(e.message || "Ошибка загрузки пользователей");
+            users = [];
+          })
+          .then(function () {
+            loadingUsers = false;
+            renderUsers();
+          });
+      }
+
+      function upsertSettings(payload, okText) {
+        fetch("/api/settings", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Не удалось сохранить");
+            alert(okText);
+            loadSettings();
+          })
+          .catch(function (e) {
+            alert(e.message || "Ошибка сохранения");
+          });
+      }
+
+      function saveGeneral() {
+        upsertSettings(
+          {
+            default_limit: getNum("dg-set-default_limit", 100),
+            parse_batch_size: getNum("dg-set-parse_batch_size", 50),
+            page_delay_ms: getNum("dg-set-page_delay_ms", 0),
+            results_retention_days: getNum("dg-set-results_retention_days", 120),
+            auth_session_ttl_days: getNum("dg-set-auth_session_ttl_days", 14),
+            auth_session_user_limit: getNum("dg-set-auth_session_user_limit", 1),
+            discover_max_sitemaps: getNum("dg-set-discover_max_sitemaps", 200),
+            discover_max_urls: getNum("dg-set-discover_max_urls", 50000),
+            discover_crawl_max_pages: getNum("dg-set-discover_crawl_max_pages", 500),
+            discover_request_delay_ms: getNum("dg-set-discover_request_delay_ms", 100),
+            log_retention_days: getNum("dg-set-log_retention_days", 7),
+          },
+          "Общие настройки сохранены"
+        );
+      }
+
+      function saveMyProductsSync() {
+        fetch("/api/settings/sync-myproducts", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sync_batch_size: getNum("dg-set-sync_batch_size", 500),
+            sync_delay_ms: getNum("dg-set-sync_delay_ms", 2000),
+            sync_mode: document.getElementById("dg-set-sync_mode").value,
+          }),
+        })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Не удалось сохранить");
+            alert("Настройки синхронизации продуктов сохранены");
+            loadSettings();
+          })
+          .catch(function (e) {
+            alert(e.message || "Ошибка сохранения");
+          });
+      }
+
+      function saveMoyskladSync() {
+        fetch("/api/settings/sync-moysklad", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ms_sync_page_limit: getNum("dg-set-ms_sync_page_limit", 1000),
+            ms_sync_delay_ms: getNum("dg-set-ms_sync_delay_ms", 0),
+          }),
+        })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Не удалось сохранить");
+            alert("Настройки синхронизации МойСклад сохранены");
+            loadSettings();
+          })
+          .catch(function (e) {
+            alert(e.message || "Ошибка сохранения");
+          });
+      }
+
+      function saveAutoSync() {
+        upsertSettings(
+          {
+            auto_sync_myproducts_enabled: document.getElementById("dg-set-auto_my_en").checked,
+            auto_sync_myproducts_time: getStr("dg-set-auto_my_time") || "03:00",
+            auto_sync_moysklad_enabled: document.getElementById("dg-set-auto_ms_en").checked,
+            auto_sync_moysklad_time: getStr("dg-set-auto_ms_time") || "04:00",
+          },
+          "Расписание автосинхронизации сохранено"
+        );
+      }
+
+      function clearLogsNow() {
+        if (!window.confirm("Очистить server.log и worker.log прямо сейчас?")) return;
+        fetch("/api/settings/logs-clear", { method: "POST", credentials: "same-origin" })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Не удалось очистить логи");
+            alert("Логи очищены");
+            loadLogsInfo();
+          })
+          .catch(function (e) {
+            alert(e.message || "Ошибка очистки логов");
+          });
+      }
+
+      function createUser() {
+        if (!canManageUsers()) return alert("Недостаточно прав");
+        var full_name = getStr("dg-set-new-fullname").trim();
+        var username = getStr("dg-set-new-username").trim();
+        var password = getStr("dg-set-new-password");
+        if (!full_name) return alert("Введите Имя Фамилия");
+        if (!username) return alert("Введите логин");
+        if (password.length < 15) return alert("Пароль должен быть не короче 15 символов");
+        fetch("/api/auth/users", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: authHeaders(true),
+          body: JSON.stringify({ full_name: full_name, username: username, password: password }),
+        })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Не удалось создать пользователя");
+            alert("Пользователь добавлен");
+            set("dg-set-new-fullname", "");
+            set("dg-set-new-username", "");
+            set("dg-set-new-password", "");
+            loadUsers();
+          })
+          .catch(function (e) {
+            alert(e.message || "Ошибка создания пользователя");
+          });
+      }
+
+      function updatePermission(user, enabled) {
+        fetch("/api/auth/users/" + user.id + "/permissions", {
+          method: "PUT",
+          credentials: "same-origin",
+          headers: authHeaders(true),
+          body: JSON.stringify({ can_manage_users: enabled ? 1 : 0 }),
+        })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Не удалось изменить право");
+            loadUsers();
+          })
+          .catch(function (e) {
+            alert(e.message || "Ошибка изменения прав");
+          });
+      }
+
+      function revokeSessions(user) {
+        if (!window.confirm('Завершить все активные сессии пользователя "' + user.username + '"?')) return;
+        fetch("/api/auth/users/" + user.id + "/revoke-sessions", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: authHeaders(false),
+        })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Не удалось завершить сессии");
+            alert("Сессии завершены");
+            loadUsers();
+          })
+          .catch(function (e) {
+            alert(e.message || "Ошибка завершения сессий");
+          });
+      }
+
+      function deleteUser(user) {
+        if (!window.confirm('Удалить пользователя "' + user.username + '"?')) return;
+        fetch("/api/auth/users/" + user.id, {
+          method: "DELETE",
+          credentials: "same-origin",
+          headers: authHeaders(false),
+        })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Не удалось удалить пользователя");
+            alert("Пользователь удален");
+            loadUsers();
+          })
+          .catch(function (e) {
+            alert(e.message || "Ошибка удаления");
+          });
+      }
+
+      function openEditUser(u) {
+        editUser = { id: u.id, username: u.username, full_name: u.full_name || "" };
+        document.getElementById("dg-set-edit-fullname").value = editUser.full_name;
+        document.getElementById("dg-set-edit-username").value = editUser.username;
+        document.getElementById("dg-set-edit-username").readOnly = editUser.username === "admin";
+        document.getElementById("dg-set-edit-card").style.display = "";
+      }
+      function closeEditUser() {
+        editUser = null;
+        document.getElementById("dg-set-edit-card").style.display = "none";
+      }
+
+      function saveEditedUser() {
+        if (!editUser) return;
+        var full_name = getStr("dg-set-edit-fullname").trim();
+        var username = getStr("dg-set-edit-username").trim();
+        if (!full_name || full_name.length < 3) return alert("Имя должно быть не короче 3 символов");
+        if (!username || username.length < 3) return alert("Логин должен быть не короче 3 символов");
+        fetch("/api/auth/users/" + editUser.id, {
+          method: "PUT",
+          credentials: "same-origin",
+          headers: authHeaders(true),
+          body: JSON.stringify({ username: username, full_name: full_name }),
+        })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Не удалось сохранить");
+            alert("Пользователь обновлен");
+            closeEditUser();
+            loadUsers();
+          })
+          .catch(function (e) {
+            alert(e.message || "Ошибка сохранения пользователя");
+          });
+      }
+
+      function loginAsUser(username) {
+        if (!isAdmin()) {
+          alert("Только admin может переключаться на других пользователей");
+          return;
+        }
+        var password = window.prompt('Введите пароль пользователя "' + username + '" для входа:');
+        if (password === null) return;
+        if (!password) {
+          alert("Пароль не введен");
+          return;
+        }
+        fetch("/api/auth/login", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username: username, password: password }),
+        })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Не удалось войти");
+            var json = x.j;
+            window.localStorage.setItem("isLoggedIn", "true");
+            window.localStorage.setItem("currentUser", json.username || username);
+            window.localStorage.setItem("currentUserDisplayName", json.full_name || json.username || username);
+            window.localStorage.setItem("isAdmin", json.isAdmin ? "true" : "false");
+            window.localStorage.setItem("canManageUsers", json.canManageUsers ? "true" : "false");
+            if (json.auth_token) window.localStorage.setItem("authToken", json.auth_token);
+            alert("Вы вошли как " + (json.username || username));
+            window.location.reload();
+          })
+          .catch(function (e) {
+            alert(e.message || "Ошибка входа");
+          });
+      }
+
+      function changePassword() {
+        var un = getStr("dg-set-pw-username").trim();
+        var np = getStr("dg-set-pw-new");
+        if (!un) return alert("Введите логин");
+        if (np.length < 15) return alert("Пароль должен быть не короче 15 символов");
+        fetch("/api/auth/change-password", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: authHeaders(true),
+          body: JSON.stringify({ username: un, newPassword: np }),
+        })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Не удалось сменить пароль");
+            alert("Пароль успешно изменен");
+            set("dg-set-pw-new", "");
+          })
+          .catch(function (e) {
+            alert(e.message || "Ошибка смены пароля");
+          });
+      }
+
+      document.getElementById("dg-set-new-fullname").addEventListener("input", function () {
+        set("dg-set-new-username", buildUsernameFromFullName(getStr("dg-set-new-fullname")));
+      });
+      document.getElementById("dg-set-new-pw-toggle").addEventListener("click", function () {
+        showNewUserPassword = !showNewUserPassword;
+        document.getElementById("dg-set-new-password").type = showNewUserPassword ? "text" : "password";
+      });
+      document.getElementById("dg-set-new-pw-copy").addEventListener("click", function () {
+        var v = getStr("dg-set-new-password");
+        if (!v || !canManageUsers()) return;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(v).then(
+            function () {
+              alert("Пароль скопирован");
+            },
+            function () {}
+          );
+        }
+      });
+      document.getElementById("dg-set-btn-random-new-pw").addEventListener("click", function () {
+        set("dg-set-new-password", randomPassword(18));
+      });
+      document.getElementById("dg-set-btn-add-user").addEventListener("click", createUser);
+      document.getElementById("dg-set-btn-refresh-users").addEventListener("click", loadUsers);
+      ["dg-set-users-search", "dg-set-users-filter-can", "dg-set-users-sess-min", "dg-set-users-sess-max"].forEach(function (id) {
+        document.getElementById(id).addEventListener("input", renderUsers);
+        document.getElementById(id).addEventListener("change", renderUsers);
+      });
+      document.getElementById("dg-set-edit-save").addEventListener("click", saveEditedUser);
+      document.getElementById("dg-set-edit-cancel").addEventListener("click", closeEditUser);
+      document.getElementById("dg-set-btn-save-general").addEventListener("click", saveGeneral);
+      document.getElementById("dg-set-btn-save-myproducts").addEventListener("click", saveMyProductsSync);
+      document.getElementById("dg-set-btn-save-ms").addEventListener("click", saveMoyskladSync);
+      document.getElementById("dg-set-btn-save-auto").addEventListener("click", saveAutoSync);
+      document.getElementById("dg-set-btn-logs-refresh").addEventListener("click", loadLogsInfo);
+      document.getElementById("dg-set-btn-logs-clear").addEventListener("click", clearLogsNow);
+      document.getElementById("dg-set-pw-toggle").addEventListener("click", function () {
+        showPasswordChange = !showPasswordChange;
+        document.getElementById("dg-set-pw-new").type = showPasswordChange ? "text" : "password";
+      });
+      document.getElementById("dg-set-pw-copy").addEventListener("click", function () {
+        var v = getStr("dg-set-pw-new");
+        if (!v) return;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(v).then(
+            function () {
+              alert("Пароль скопирован");
+            },
+            function () {}
+          );
+        }
+      });
+      document.getElementById("dg-set-pw-length").addEventListener("change", function () {
+        var n = Math.max(15, Number(this.value || 15));
+        this.value = String(n);
+      });
+      document.getElementById("dg-set-pw-gen").addEventListener("click", function () {
+        var len = Math.max(15, Number(document.getElementById("dg-set-pw-length").value || 15));
+        set("dg-set-pw-new", randomPassword(len));
+      });
+      document.getElementById("dg-set-pw-submit").addEventListener("click", changePassword);
+
+      set("dg-set-pw-username", isAdmin() ? "admin" : currentUser());
+      document.getElementById("dg-set-pw-username").readOnly = !isAdmin();
+      loadSettings();
+      loadLogsInfo();
+      loadUsers();
+    })();
+  </script>

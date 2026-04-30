@@ -1,0 +1,1254 @@
+  <script>
+    (function () {
+      var MS_COLS = [
+        ["code", "ID / КОД"],
+        ["name", "Наименование товара"],
+        ["manager", "Менеджер"],
+        ["content_manager", "Контент-менеджер"],
+        ["type", "Тип"],
+        ["stock_position", "Склад. поз."],
+        ["no_longer_cooperation", "Перестали сотруднич."],
+        ["stock", "Остаток"],
+        ["stock_days", "Дней на складе"],
+        ["price_comment", "Проработка цены / коммент"],
+        ["vat", "НДС"],
+        ["vat_on_product", "НДС на товаре или комплекте"],
+        ["buy_price", "Закуп. цена"],
+        ["supplier", "Поставщик"],
+        ["supplier2", "Поставщик 2"],
+        ["automation_price", "Автоматизация цены"],
+        ["packing_standard", "Упаковка (стандарт)"],
+        ["packing_own_box", "Упаковка (своя коробка)"],
+        ["packing_weight", "Вес с упаковкой"],
+        ["updated_label", "Обновлено"],
+      ];
+      var SORTABLE_FIELDS = [
+        "code", "name", "manager", "content_manager", "type", "stock_position", "no_longer_cooperation",
+        "stock", "stock_days", "price_comment", "vat", "vat_on_product", "buy_price", "supplier", "supplier2",
+        "automation_price", "packing_standard", "packing_own_box", "packing_weight", "is_archived", "updated_label",
+      ];
+      var SORTABLE = new Set(SORTABLE_FIELDS);
+      var COLUMN_CENTER_KEYS = new Set([
+        "code", "stock_position", "no_longer_cooperation", "stock", "stock_days", "vat", "vat_on_product",
+        "buy_price", "automation_price", "packing_weight",
+      ]);
+      var STICKY_LEFT_KEYS = [];
+      var STICKY_LEFT_SET = new Set(STICKY_LEFT_KEYS);
+      var COL_MIN = {
+        code: 75,
+        name: 320,
+        manager: 110,
+        content_manager: 110,
+        type: 110,
+        stock_position: 95,
+        no_longer_cooperation: 95,
+        stock: 110,
+        stock_days: 110,
+        price_comment: 220,
+        vat: 90,
+        vat_on_product: 110,
+        buy_price: 110,
+        supplier: 240,
+        supplier2: 240,
+        automation_price: 110,
+        packing_standard: 110,
+        packing_own_box: 110,
+        packing_weight: 110,
+        updated_label: 220,
+      };
+      var DEFAULT_MIN = 0;
+      var FLOATING_HEADER_OFFSET_PX = 0;
+      var HEADER_FONT = {
+        verticalAlign: "middle",
+        fontSize: "12px",
+        textAlign: "center",
+        paddingTop: "8px",
+        paddingBottom: "8px",
+      };
+      var CLAMP_CSS = "display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;white-space:normal;word-break:break-word;text-overflow:ellipsis;line-height:1.25;max-height:2.5em";
+
+      var initialFilters = {
+        limit: 100,
+        type: "all",
+        archived: "active",
+        stock_position: "yes",
+        on_site: "all",
+        search: "",
+        supplier: "",
+        supplier2: "",
+        manager: "",
+        content_manager: "",
+        only_stock: "0",
+        no_coop: "0",
+        has_buy_price: "0",
+        has_price_comment: "0",
+        has_automation: "0",
+      };
+      var FILTERS_KEY = "datagon_moysklad_filters_collapsed_v1";
+
+      function userColWidthKey() {
+        try {
+          var u = String(localStorage.getItem("currentUser") || "guest").trim() || "guest";
+          return "datagon_moysklad_col_widths_v1:" + u;
+        } catch (e) {
+          return "datagon_moysklad_col_widths_v1:guest";
+        }
+      }
+
+      var page = 1;
+      var sortBy = "code";
+      var sortDir = "asc";
+      var total = 0;
+      var limit = 100;
+      var lastExportRows = [];
+      var loading = false;
+      var columnWidths = {};
+      var DEFAULT_VISIBLE_KEYS = ["code", "name"];
+      var visibleCols = new Set(DEFAULT_VISIBLE_KEYS);
+      var resizeState = null;
+      var urlSyncTimer = null;
+      var filterReloadTimer = null;
+
+      function scheduleFilterReload() {
+        if (filterReloadTimer) clearTimeout(filterReloadTimer);
+        filterReloadTimer = setTimeout(function () {
+          filterReloadTimer = null;
+          loadData();
+        }, 350);
+      }
+
+      function fmtNum(n) {
+        var x = Number(n || 0);
+        return Number.isFinite(x) ? x.toLocaleString("ru-RU") : "0";
+      }
+      function formatMoneyText(value) {
+        var raw = String(value || "").trim();
+        if (!raw) return "";
+        var parsed = Number(raw.replace(/[^\d.,-]/g, "").replace(",", "."));
+        if (!Number.isFinite(parsed)) return raw;
+        return parsed.toLocaleString("ru-RU") + " ₽";
+      }
+      function msCardUrl(code) {
+        var c = String(code || "").trim();
+        if (!c) return "";
+        return "https://online.moysklad.ru/app/#good?global_codeFilter=" + encodeURIComponent(c) + ",equals";
+      }
+      function myProductsUrl(code) {
+        var c = String(code || "").trim();
+        if (!c) return "";
+        return "/my-products?site_id=all&status=all&ms_linked=1&search=" + encodeURIComponent(c);
+      }
+
+      function readTableFilters() {
+        return {
+          code: document.getElementById("ms-tf-code").value.trim(),
+          name: document.getElementById("ms-tf-name").value.trim(),
+          supplier: document.getElementById("ms-tf-supplier").value.trim(),
+          supplier2: document.getElementById("ms-tf-supplier2").value.trim(),
+          manager: document.getElementById("ms-tf-manager").value.trim(),
+          content_manager: document.getElementById("ms-tf-content_manager").value.trim(),
+          type: document.getElementById("ms-tf-type").value,
+          stock_min: document.getElementById("ms-tf-stock_min").value,
+          stock_max: document.getElementById("ms-tf-stock_max").value,
+          archived: document.getElementById("ms-tf-archived").value,
+        };
+      }
+
+      function readFilters() {
+        return {
+          search: document.getElementById("ms-f-search").value.trim(),
+          limit: Number(document.getElementById("ms-f-limit").value) || 100,
+          archived: document.getElementById("ms-f-archived").value,
+          stock_position: document.getElementById("ms-f-stock_position").value,
+          on_site: document.getElementById("ms-f-on_site").value,
+          type: document.getElementById("ms-f-type").value,
+          supplier: document.getElementById("ms-f-supplier").value.trim(),
+          supplier2: document.getElementById("ms-f-supplier2").value.trim(),
+          manager: document.getElementById("ms-f-manager").value.trim(),
+          content_manager: document.getElementById("ms-f-content_manager").value.trim(),
+          only_stock: document.getElementById("only_stock").checked ? "1" : "0",
+          no_coop: document.getElementById("no_coop").checked ? "1" : "0",
+          has_buy_price: document.getElementById("has_buy_price").checked ? "1" : "0",
+        };
+      }
+
+      function filterRowsByTable(rows, tf) {
+        return (rows || []).filter(function (r) {
+          if (tf.code && !String(r.code || "").toLowerCase().includes(String(tf.code).trim().toLowerCase())) return false;
+          if (tf.name && !String(r.name || "").toLowerCase().includes(String(tf.name).trim().toLowerCase())) return false;
+          if (tf.supplier && !String(r.supplier || "").toLowerCase().includes(String(tf.supplier).trim().toLowerCase())) return false;
+          if (tf.supplier2 && !String(r.supplier2 || "").toLowerCase().includes(String(tf.supplier2).trim().toLowerCase())) return false;
+          if (tf.manager && !String(r.manager || "").toLowerCase().includes(String(tf.manager).trim().toLowerCase())) return false;
+          if (tf.content_manager && !String(r.content_manager || "").toLowerCase().includes(String(tf.content_manager).trim().toLowerCase())) return false;
+          if (tf.type !== "all" && String(r.type || "").toLowerCase() !== String(tf.type).toLowerCase()) return false;
+          var stock = Number(r.stock || 0);
+          var min = Number(tf.stock_min || "");
+          var max = Number(tf.stock_max || "");
+          if (Number.isFinite(min) && String(tf.stock_min).trim() !== "" && stock < min) return false;
+          if (Number.isFinite(max) && String(tf.stock_max).trim() !== "" && stock > max) return false;
+          var archived = Number(r.is_archived || 0) === 1 ? "1" : "0";
+          if (tf.archived !== "all" && archived !== tf.archived) return false;
+          return true;
+        });
+      }
+
+      function appendFilterParams(p, f) {
+        if (f.search) p.set("search", f.search);
+        if (f.type && f.type !== "all") p.set("type", f.type);
+        if (f.archived && f.archived !== "active") p.set("archived", f.archived);
+        if (f.stock_position && f.stock_position !== "yes") p.set("stock_position", f.stock_position);
+        if (f.on_site && f.on_site !== "all") p.set("on_site", f.on_site);
+        if (f.supplier) p.set("supplier", f.supplier);
+        if (f.supplier2) p.set("supplier2", f.supplier2);
+        if (f.manager) p.set("manager", f.manager);
+        if (f.content_manager) p.set("content_manager", f.content_manager);
+        if (f.only_stock === "1") p.set("only_stock", "1");
+        if (f.no_coop === "1") p.set("no_coop", "1");
+        if (f.has_buy_price === "1") p.set("has_buy_price", "1");
+      }
+
+      function syncUrlFromState() {
+        var filters = readFilters();
+        var params = new URLSearchParams();
+        Object.keys(filters).forEach(function (k) {
+          var v = filters[k];
+          if (v === undefined || v === null || v === "" || v === "all") return;
+          if (k === "limit" && Number(v) === Number(initialFilters.limit)) return;
+          if (String(v) === String(initialFilters[k])) return;
+          params.set(k, String(v));
+        });
+        if (Number(page) > 1) params.set("page", String(page));
+        if (sortBy !== "code") params.set("sort_by", sortBy);
+        if (sortDir !== "asc") params.set("sort_dir", sortDir);
+        var next = params.toString()
+          ? window.location.pathname + "?" + params.toString()
+          : window.location.pathname;
+        try {
+          window.history.replaceState(null, "", next);
+        } catch (e) {}
+      }
+
+      function scheduleUrlSync() {
+        if (urlSyncTimer) clearTimeout(urlSyncTimer);
+        urlSyncTimer = setTimeout(function () {
+          urlSyncTimer = null;
+          syncUrlFromState();
+        }, 200);
+      }
+
+      function parseUrlToForm() {
+        var params = new URLSearchParams(window.location.search);
+        var keys = [
+          "limit", "type", "archived", "stock_position", "on_site", "search", "supplier", "supplier2",
+          "manager", "content_manager", "only_stock", "no_coop", "has_buy_price",
+        ];
+        keys.forEach(function (k) {
+          var v = params.get(k);
+          if (v === null || v === "") return;
+          if (k === "limit") document.getElementById("ms-f-limit").value = String(Number(v) || 100);
+          else if (k === "search") document.getElementById("ms-f-search").value = v;
+          else if (k === "type") document.getElementById("ms-f-type").value = v;
+          else if (k === "archived") document.getElementById("ms-f-archived").value = v;
+          else if (k === "stock_position") document.getElementById("ms-f-stock_position").value = v;
+          else if (k === "on_site") document.getElementById("ms-f-on_site").value = v;
+          else if (k === "supplier") document.getElementById("ms-f-supplier").value = v;
+          else if (k === "supplier2") document.getElementById("ms-f-supplier2").value = v;
+          else if (k === "manager") document.getElementById("ms-f-manager").value = v;
+          else if (k === "content_manager") document.getElementById("ms-f-content_manager").value = v;
+          else if (k === "only_stock") document.getElementById("only_stock").checked = v === "1";
+          else if (k === "no_coop") document.getElementById("no_coop").checked = v === "1";
+          else if (k === "has_buy_price") document.getElementById("has_buy_price").checked = v === "1";
+        });
+        var pg = Number(params.get("page") || 1);
+        if (Number.isFinite(pg) && pg > 0) page = pg;
+        var sb = params.get("sort_by");
+        if (sb && SORTABLE.has(sb)) sortBy = sb;
+        var sd = params.get("sort_dir");
+        if (sd === "asc" || sd === "desc") sortDir = sd;
+      }
+
+      function buildExportParams() {
+        var f = readFilters();
+        limit = f.limit;
+        var offset = (page - 1) * limit;
+        var p = new URLSearchParams();
+        appendFilterParams(p, f);
+        p.set("limit", String(limit));
+        p.set("offset", String(offset));
+        p.set("sort_by", sortBy);
+        p.set("sort_dir", sortDir);
+        return p;
+      }
+
+      function buildStatsParams() {
+        var f = readFilters();
+        var p = new URLSearchParams();
+        appendFilterParams(p, f);
+        return p;
+      }
+
+      function getColMin(key) {
+        return COL_MIN[key] != null ? COL_MIN[key] : DEFAULT_MIN;
+      }
+
+      function userVisibleColsKeyVanilla() {
+        try {
+          var u = String(localStorage.getItem("currentUser") || "guest").trim() || "guest";
+          return "datagon_moysklad_visible_cols_v1:" + u;
+        } catch (e) {
+          return "datagon_moysklad_visible_cols_v1:guest";
+        }
+      }
+
+      function userVisibleColsKeyReactCompat() {
+        try {
+          var u = String(localStorage.getItem("currentUser") || "guest").trim() || "guest";
+          return "table_columns_v2:/moysklad:table_0:" + u;
+        } catch (e) {
+          return "table_columns_v2:/moysklad:table_0:guest";
+        }
+      }
+
+      function getVisibleColumns() {
+        return MS_COLS.filter(function (pair) {
+          return visibleCols.has(pair[0]);
+        });
+      }
+
+      function getSizedWidth(key, thRectWidth) {
+        var w = Number(columnWidths[key] || 0);
+        if (Number.isFinite(w) && w > 0) return w;
+        if (Number.isFinite(thRectWidth) && thRectWidth > 0) return Math.round(thRectWidth);
+        return getColMin(key);
+      }
+
+      function getPageHeaderOffset() {
+        var app = document.querySelector(".app-container");
+        var header = document.querySelector(".app-header");
+        var fixed = Boolean(app && app.classList && app.classList.contains("fixed-header"));
+        if (!fixed) return 0;
+        if (!header || !header.getBoundingClientRect) return 60;
+        var r = header.getBoundingClientRect();
+        var h = r && r.height ? Math.round(r.height) : 60;
+        return h > 0 ? h : 60;
+      }
+
+      function updateStickyTopVar() {
+        var top = 0;
+        var app = document.querySelector(".app-container");
+        var header = document.querySelector(".app-header");
+        var fixed = Boolean(app && app.classList && app.classList.contains("fixed-header"));
+        if (fixed && header && header.getBoundingClientRect) {
+          var rect = header.getBoundingClientRect();
+          top = rect && rect.height ? Math.round(rect.height) : 60;
+        }
+        document.documentElement.style.setProperty("--dg-ms-sticky-top", top + "px");
+      }
+
+      function getStickyTopPx() {
+        var app = document.querySelector(".app-container");
+        var header = document.querySelector(".app-header");
+        var fixed = Boolean(app && app.classList && app.classList.contains("fixed-header"));
+        if (!fixed) return 0;
+        if (!header || !header.getBoundingClientRect) return 60;
+        var rect = header.getBoundingClientRect();
+        var h = rect && rect.height ? Math.round(rect.height) : 60;
+        return h > 0 ? h : 60;
+      }
+
+      function updateFloatingHeaderFallback() {
+        var thead = document.getElementById("dg-ms-thead");
+        if (!thead) return;
+        var table = thead.closest("table");
+        if (!table || !table.getBoundingClientRect) return;
+        var row = thead.querySelector("tr");
+        if (!row) return;
+
+        var y = window.scrollY || window.pageYOffset || 0;
+        var headerTop = getStickyTopPx();
+
+        var baseTopAbs = Number(thead.getAttribute("data-dg-base-top") || 0);
+        if (!Number.isFinite(baseTopAbs) || baseTopAbs <= 0) return;
+        var tableRect = table.getBoundingClientRect();
+        var tableBottom = tableRect.bottom + y;
+        var rowRect = row.getBoundingClientRect();
+        var rowHeight = rowRect && rowRect.height ? rowRect.height : 0;
+
+        // Start floating only when THEAD itself reaches header line.
+        var headerLine = y + headerTop;
+        var start = baseTopAbs;
+        var end = tableBottom - rowHeight;
+        if (headerLine <= start || headerLine >= end) {
+          if (thead.style.transform) {
+            thead.style.transform = "";
+            thead.style.position = "";
+            thead.style.zIndex = "";
+          }
+          // Re-sync base top whenever header is in normal flow.
+          var cleanRect = thead.getBoundingClientRect();
+          var cleanAbsTop = (window.scrollY || window.pageYOffset || 0) + (cleanRect && cleanRect.top ? cleanRect.top : 0);
+          if (cleanAbsTop > 0) thead.setAttribute("data-dg-base-top", String(cleanAbsTop));
+          return;
+        }
+
+        var shift = Math.max(0, Math.round(headerLine - start - FLOATING_HEADER_OFFSET_PX));
+        var nextTransform = "translate3d(0," + shift + "px,0)";
+        if (thead.style.transform !== nextTransform) {
+          thead.style.transform = nextTransform;
+          thead.style.position = "relative";
+          thead.style.zIndex = "25";
+          thead.style.willChange = "transform";
+        }
+      }
+
+      var floatingHeaderRaf = 0;
+      function scheduleFloatingHeaderUpdate() {
+        if (floatingHeaderRaf) return;
+        floatingHeaderRaf = requestAnimationFrame(function () {
+          floatingHeaderRaf = 0;
+          updateFloatingHeaderFallback();
+        });
+      }
+
+      function computeStickyLeftMap() {
+        var thead = document.getElementById("dg-ms-thead");
+        if (thead) {
+          var rendered = {};
+          var leftRendered = 0;
+          STICKY_LEFT_KEYS.forEach(function (key) {
+            if (!visibleCols.has(key)) return;
+            var th = thead.querySelector('th[data-col-key="' + key + '"]');
+            if (!th) return;
+            rendered[key] = leftRendered;
+            var rect = th.getBoundingClientRect();
+            var w = rect && rect.width ? Math.round(rect.width) : getSizedWidth(key);
+            leftRendered += w;
+          });
+          if (Object.keys(rendered).length) return rendered;
+        }
+        var left = 0;
+        var map = {};
+        STICKY_LEFT_KEYS.forEach(function (key) {
+          if (!visibleCols.has(key)) return;
+          map[key] = left;
+          left += getSizedWidth(key);
+        });
+        return map;
+      }
+
+      function applyStickyStyle(el, key, leftMap, isHeader) {
+        if (!STICKY_LEFT_SET.has(key)) return;
+        var left = Number(leftMap && leftMap[key] != null ? leftMap[key] : 0);
+        el.style.position = "sticky";
+        el.style.left = left + "px";
+        el.style.zIndex = isHeader ? "3" : "2";
+        if (isHeader) {
+          el.style.background = "#f8f9fa";
+        } else {
+          var row = el.parentElement;
+          var isDanger = row && row.classList && row.classList.contains("table-danger");
+          if (isDanger) {
+            el.style.background = "#f8d7da";
+          } else {
+            var rowIdx = row && typeof row.sectionRowIndex === "number" ? row.sectionRowIndex : 0;
+            el.style.background = rowIdx % 2 === 0 ? "#f8f9fa" : "#ffffff";
+          }
+        }
+        el.style.boxShadow = "inset -1px 0 0 #e6e9ee";
+      }
+
+      function refreshStickyColumns() {
+        var leftMap = computeStickyLeftMap();
+        var thead = document.getElementById("dg-ms-thead");
+        var cols = getVisibleColumns();
+        if (thead) {
+          cols.forEach(function (pair) {
+            var key = pair[0];
+            var th = thead.querySelector('th[data-col-key="' + key + '"]');
+            if (!th) return;
+            if (!STICKY_LEFT_SET.has(key)) return;
+            applyStickyStyle(th, key, leftMap, true);
+          });
+        }
+        var colIndexByKey = {};
+        cols.forEach(function (pair, idx) {
+          colIndexByKey[pair[0]] = idx;
+        });
+        document.querySelectorAll("#dg-tbody tr").forEach(function (tr) {
+          STICKY_LEFT_KEYS.forEach(function (key) {
+            var idx = colIndexByKey[key];
+            if (idx == null) return;
+            var td = tr.children[idx];
+            if (!td) return;
+            applyStickyStyle(td, key, leftMap, false);
+          });
+        });
+      }
+
+      function renderStatusHint(st) {
+        var el = document.getElementById("dg-ms-status-hint");
+        if (!el) return;
+        if (!st) {
+          el.textContent = "Загрузка статуса...";
+          return;
+        }
+        var totalRows = Number(st.total || 0);
+        var processedRows = Number(st.processed || 0);
+        var pct = totalRows > 0 ? Math.round((processedRows / totalRows) * 100) : 0;
+        if (st.active) {
+          el.textContent = (st.message || "Синхронизация идет") + " (" + processedRows + "/" + totalRows + ", " + pct + "%)";
+        } else {
+          el.textContent = st.message || "Ожидание";
+        }
+      }
+
+      function setSyncButtons(st) {
+        var active = Boolean(st && st.active);
+        var syncBtn = document.getElementById("moysklad-sync");
+        var stopBtn = document.getElementById("moysklad-stop");
+        if (syncBtn) syncBtn.disabled = active;
+        if (stopBtn) stopBtn.disabled = !active;
+      }
+
+      function loadStatus() {
+        fetch("/api/ms/status", { credentials: "same-origin" })
+          .then(function (r) {
+            return r.json();
+          })
+          .then(function (j) {
+            renderStatusHint(j);
+            setSyncButtons(j);
+          })
+          .catch(function () {
+            renderStatusHint({ message: "Статус недоступен" });
+          });
+      }
+
+      function numericInner(key, node) {
+        if (!COLUMN_CENTER_KEYS.has(key)) return node;
+        var d = document.createElement("div");
+        d.className = "text-center w-100 dg-ms-numeric-inner d-block";
+        d.style.fontVariantNumeric = "tabular-nums";
+        d.style.boxSizing = "border-box";
+        if (node && node.nodeType) d.appendChild(node);
+        else d.textContent = node == null ? "" : String(node);
+        return d;
+      }
+
+      function renderNameCell(r) {
+        var wrap = document.createElement("div");
+        if (Number(r.is_archived) === 1) {
+          var arch = document.createElement("span");
+          arch.className = "badge bg-danger me-1";
+          arch.textContent = "Архив";
+          wrap.appendChild(arch);
+        }
+        var code = String(r.code || "").trim();
+        var nameText = r.name || "";
+        var url = msCardUrl(code);
+        if (url) {
+          var a = document.createElement("a");
+          a.href = url;
+          a.target = "_blank";
+          a.rel = "noopener noreferrer";
+          a.className = "text-decoration-none text-body";
+          var spName = document.createElement("span");
+          spName.style.whiteSpace = "normal";
+          spName.style.wordBreak = "break-word";
+          spName.title = nameText;
+          spName.textContent = nameText;
+          a.appendChild(spName);
+          wrap.appendChild(a);
+        } else {
+          var sp = document.createElement("span");
+          sp.style.whiteSpace = "normal";
+          sp.style.wordBreak = "break-word";
+          sp.title = nameText;
+          sp.textContent = nameText;
+          wrap.appendChild(sp);
+        }
+        if (Number(r.in_my_products || 0) === 1 && myProductsUrl(code)) {
+          var mp = document.createElement("a");
+          mp.href = myProductsUrl(code);
+          mp.className = "ms-2 small text-decoration-none";
+          mp.textContent = "[Мои товары]";
+          mp.title = r.site_names
+            ? "Открыть в Мои товары: " + String(r.site_names)
+            : "Открыть в Мои товары (код " + (r.code || "-") + ")";
+          wrap.appendChild(mp);
+        }
+        var rawSites = r.site_names;
+        var rawStr = rawSites == null ? "" : typeof rawSites === "string" ? rawSites : Array.isArray(rawSites) ? rawSites.join(", ") : String(rawSites);
+        var sites = rawStr.split(",").map(function (s) {
+          return s.trim();
+        }).filter(Boolean);
+        if (sites.length) {
+          var line = document.createElement("div");
+          line.className = "mt-1 d-flex flex-wrap align-items-center gap-2";
+          var lab = document.createElement("span");
+          lab.className = "text-muted";
+          lab.style.fontSize = "0.72rem";
+          lab.style.whiteSpace = "nowrap";
+          lab.textContent = "На сайтах";
+          line.appendChild(lab);
+          var badgeWrap = document.createElement("div");
+          badgeWrap.className = "d-flex flex-wrap gap-1 align-items-center";
+          sites.forEach(function (name) {
+            var b = document.createElement("span");
+            b.className = "badge rounded-pill bg-light text-secondary border text-truncate d-inline-block";
+            b.style.fontSize = "0.72rem";
+            b.style.fontWeight = "500";
+            b.style.maxWidth = "260px";
+            b.title = name;
+            b.textContent = name;
+            badgeWrap.appendChild(b);
+          });
+          line.appendChild(badgeWrap);
+          wrap.appendChild(line);
+        } else if (Number(r.in_my_products || 0) === 1) {
+          var hint = document.createElement("div");
+          hint.className = "mt-1";
+          var sp = document.createElement("span");
+          sp.className = "text-muted";
+          sp.style.fontSize = "0.72rem";
+          sp.textContent = "На сайтах: нет имён в кэше — нажмите «Перестроить кэш связей» выше";
+          hint.appendChild(sp);
+          wrap.appendChild(hint);
+        }
+        return wrap;
+      }
+
+      function renderCell(key, r) {
+        if (key === "name") return renderNameCell(r);
+        if (key === "stock_position") {
+          var t = String(r.stock_position || "").toLowerCase();
+          var span = document.createElement("span");
+          span.className = t === "да" ? "badge bg-success" : "badge bg-secondary";
+          span.textContent = t === "да" ? "Да" : r.stock_position || "-";
+          return numericInner(key, span);
+        }
+        if (key === "buy_price") {
+          var bp = formatMoneyText(r.buy_price);
+          var txt = document.createTextNode(bp ? bp : "-");
+          return numericInner(key, txt);
+        }
+        if (key === "price_comment") {
+          var sp = document.createElement("span");
+          sp.style.cssText = CLAMP_CSS;
+          sp.title = r.price_comment || "";
+          sp.textContent = r.price_comment || "-";
+          return sp;
+        }
+        if (key === "automation_price") {
+          return numericInner(key, document.createTextNode(r.automation_price || "-"));
+        }
+        var v = r[key];
+        if (key === "stock") {
+          return numericInner(key, document.createTextNode(fmtNum(v)));
+        }
+        var out = document.createElement("span");
+        out.textContent = v != null && v !== "" ? String(v) : "-";
+        return numericInner(key, out);
+      }
+
+      function startColumnResize(e, key) {
+        e.preventDefault();
+        e.stopPropagation();
+        var th = e.currentTarget.closest("th");
+        var w = Number(columnWidths[key] || 0);
+        if (!Number.isFinite(w) || w <= 0) {
+          var rect = th && th.getBoundingClientRect ? th.getBoundingClientRect() : null;
+          w = rect && rect.width ? Math.round(rect.width) : getColMin(key);
+        }
+        resizeState = { key: key, startX: e.clientX, startWidth: w };
+        document.body.style.cursor = "col-resize";
+        document.body.style.userSelect = "none";
+      }
+
+      function applyColumnWidth(key, nextWidth) {
+        columnWidths[key] = nextWidth;
+        var thead = document.getElementById("dg-ms-thead");
+        if (thead) {
+          var th = thead.querySelector('th[data-col-key="' + key + '"]');
+          if (th) {
+            th.style.width = nextWidth + "px";
+            th.style.minWidth = nextWidth + "px";
+            th.style.maxWidth = nextWidth + "px";
+          }
+        }
+        var cols = getVisibleColumns();
+        var colIdx = cols.findIndex(function (p) {
+          return p[0] === key;
+        });
+        if (colIdx < 0) return;
+        document.querySelectorAll("#dg-tbody tr").forEach(function (tr) {
+          var td = tr.children[colIdx];
+          if (td) {
+            td.style.width = nextWidth + "px";
+            td.style.minWidth = nextWidth + "px";
+            td.style.maxWidth = nextWidth + "px";
+          }
+        });
+        refreshStickyColumns();
+      }
+
+      function onMouseMove(e) {
+        if (!resizeState) return;
+        var delta = e.clientX - resizeState.startX;
+        var nextWidth = Math.max(60, Math.min(700, Math.round(resizeState.startWidth + delta)));
+        applyColumnWidth(resizeState.key, nextWidth);
+      }
+
+      function onMouseUp() {
+        if (!resizeState) return;
+        resizeState = null;
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+        try {
+          localStorage.setItem(userColWidthKey(), JSON.stringify(columnWidths || {}));
+        } catch (err) {}
+      }
+
+      function buildThead() {
+        var thead = document.getElementById("dg-ms-thead");
+        thead.innerHTML = "";
+        var tr = document.createElement("tr");
+        var cols = getVisibleColumns();
+        cols.forEach(function (pair) {
+          var key = pair[0];
+          var label = pair[1];
+          var th = document.createElement("th");
+          th.dataset.colKey = key;
+          th.setAttribute("data-col-key", key);
+          var isSortable = SORTABLE.has(key);
+          var minW = getColMin(key);
+          var cw = Number(columnWidths[key] || 0);
+          th.style.position = "sticky";
+          th.style.top = "0";
+          th.style.zIndex = "30";
+          Object.assign(th.style, HEADER_FONT);
+          th.style.background = "#f8f9fa";
+          th.style.borderRight = "1px solid #e6e9ee";
+          if (Number.isFinite(cw) && cw > 0) {
+            th.style.width = cw + "px";
+            th.style.minWidth = cw + "px";
+            th.style.maxWidth = cw + "px";
+          } else {
+            th.style.minWidth = minW + "px";
+            if (key === "code") {
+              th.style.width = minW + "px";
+              th.style.maxWidth = minW + "px";
+            }
+          }
+          th.style.whiteSpace = "normal";
+          th.style.wordBreak = "break-word";
+          th.style.overflowWrap = "break-word";
+          th.style.overflow = "hidden";
+          th.style.verticalAlign = "middle";
+          if (COLUMN_CENTER_KEYS.has(key)) th.className = "dg-ms-numeric";
+          var stickyLeftMap = computeStickyLeftMap();
+          if (STICKY_LEFT_SET.has(key)) applyStickyStyle(th, key, stickyLeftMap, true);
+          if (isSortable) th.style.cursor = "pointer";
+          var labelText = document.createTextNode(
+            label + (sortBy === key ? (sortDir === "asc" ? " ↑" : " ↓") : "")
+          );
+          th.appendChild(numericInner(key, labelText));
+          var handle = document.createElement("span");
+          handle.setAttribute("role", "separator");
+          handle.setAttribute("aria-orientation", "vertical");
+          handle.title = "Потяните, чтобы изменить ширину";
+          handle.style.cssText =
+            "position:absolute;top:0;right:0;width:6px;height:100%;cursor:col-resize;z-index:4;" +
+            "background:linear-gradient(to right,transparent 47%,#d9dee5 47%,#d9dee5 53%,transparent 53%);opacity:0.55";
+          handle.addEventListener("mousedown", function (ev) {
+            ev.stopPropagation();
+            startColumnResize(ev, key);
+          });
+          handle.addEventListener("click", function (ev) {
+            ev.stopPropagation();
+          });
+          th.appendChild(handle);
+          th.addEventListener("click", function () {
+            if (!isSortable) return;
+            if (sortBy === key) sortDir = sortDir === "asc" ? "desc" : "asc";
+            else {
+              sortBy = key;
+              sortDir = "asc";
+            }
+            page = 1;
+            buildThead();
+            loadData();
+          });
+          tr.appendChild(th);
+        });
+        thead.appendChild(tr);
+        // Capture unshifted THEAD absolute top once after render.
+        thead.style.transform = "";
+        thead.style.position = "";
+        thead.style.zIndex = "";
+        var rect = thead.getBoundingClientRect();
+        var absTop = (window.scrollY || window.pageYOffset || 0) + (rect && rect.top ? rect.top : 0);
+        thead.setAttribute("data-dg-base-top", String(absTop));
+        refreshStickyColumns();
+      }
+
+      function getTdStyle(key) {
+        var s = { verticalAlign: "top", whiteSpace: "normal", wordBreak: "break-word" };
+        var minW = getColMin(key);
+        var cw = Number(columnWidths[key] || 0);
+        if (Number.isFinite(cw) && cw > 0) {
+          s.width = cw + "px";
+          s.minWidth = cw + "px";
+          s.maxWidth = cw + "px";
+        } else {
+          s.minWidth = minW + "px";
+          if (key === "code") {
+            s.width = minW + "px";
+            s.maxWidth = minW + "px";
+          }
+        }
+        return s;
+      }
+
+      function applyTdStyle(td, key) {
+        var o = getTdStyle(key);
+        Object.keys(o).forEach(function (k) {
+          td.style[k] = o[k];
+        });
+      }
+
+      function renderTable(rows) {
+        var tbody = document.getElementById("dg-tbody");
+        tbody.replaceChildren();
+        var cols = getVisibleColumns();
+        if (loading) {
+          var trL = document.createElement("tr");
+          var tdL = document.createElement("td");
+          tdL.colSpan = Math.max(1, cols.length);
+          tdL.className = "text-muted";
+          tdL.textContent = "Загрузка...";
+          trL.appendChild(tdL);
+          tbody.appendChild(trL);
+          return;
+        }
+        var tf = readTableFilters();
+        var filtered = filterRowsByTable(rows, tf);
+        if (!filtered || !filtered.length) {
+          var tr = document.createElement("tr");
+          var td = document.createElement("td");
+          td.colSpan = Math.max(1, cols.length);
+          td.className = "text-muted";
+          td.textContent = "Нет данных";
+          tr.appendChild(td);
+          tbody.appendChild(tr);
+          return;
+        }
+        filtered.forEach(function (r) {
+          var tr = document.createElement("tr");
+          if (Number(r.is_archived) === 1) tr.className = "table-danger";
+          cols.forEach(function (pair) {
+            var key = pair[0];
+            var td = document.createElement("td");
+            applyTdStyle(td, key);
+            td.style.borderRight = "1px solid #f3f5f8";
+            if (COLUMN_CENTER_KEYS.has(key)) td.className = "text-center dg-ms-numeric";
+            td.appendChild(renderCell(key, r));
+            tr.appendChild(td);
+          });
+          tbody.appendChild(tr);
+        });
+        refreshStickyColumns();
+      }
+
+      function renderColumnControls() {
+        var list = document.getElementById("dg-ms-columns-list");
+        if (!list) return;
+        list.innerHTML = "";
+        MS_COLS.forEach(function (pair) {
+          var key = pair[0];
+          var label = pair[1];
+          var wrap = document.createElement("label");
+          wrap.className = "form-check d-flex align-items-center gap-2 mb-0";
+          var cb = document.createElement("input");
+          cb.type = "checkbox";
+          cb.className = "form-check-input m-0";
+          cb.checked = visibleCols.has(key);
+          cb.addEventListener("change", function () {
+            if (cb.checked) {
+              visibleCols.add(key);
+            } else {
+              // Keep at least one column visible.
+              if (visibleCols.size <= 1) {
+                cb.checked = true;
+                return;
+              }
+              visibleCols.delete(key);
+            }
+            try {
+              var arr = Array.from(visibleCols);
+              localStorage.setItem(userVisibleColsKeyVanilla(), JSON.stringify(arr));
+              var reactMap = {};
+              MS_COLS.forEach(function (pair, idx) {
+                var v = visibleCols.has(pair[0]);
+                reactMap[pair[0]] = v;
+                reactMap["col_" + idx] = v;
+              });
+              localStorage.setItem(userVisibleColsKeyReactCompat(), JSON.stringify(reactMap));
+            } catch (e) {}
+            buildThead();
+            renderTable(lastExportRows || []);
+            updateTableHint();
+          });
+          var text = document.createElement("span");
+          text.textContent = label;
+          wrap.appendChild(cb);
+          wrap.appendChild(text);
+          list.appendChild(wrap);
+        });
+      }
+
+      function totalPages() {
+        return Math.max(1, Math.ceil(Number(total || 0) / Number(limit || 100)));
+      }
+
+      function updateTableHint() {
+        var el = document.getElementById("dg-ms-table-hint");
+        var foot = document.getElementById("dg-ms-footer-left");
+        var pages = totalPages();
+        var t = "Найдено: " + fmtNum(total) + "; страница " + page + "/" + pages;
+        if (el) el.textContent = t;
+        if (foot) foot.textContent = "Всего: " + fmtNum(total);
+        var prev = document.getElementById("ms-btn-prev");
+        var next = document.getElementById("ms-btn-next");
+        if (prev) prev.disabled = page <= 1;
+        if (next) next.disabled = page >= pages;
+      }
+
+      function applyTableFiltersLive() {
+        if (loading) return;
+        renderTable(lastExportRows || []);
+        updateTableHint();
+      }
+
+      function setApplyResetDisabled(dis) {
+        var a = document.getElementById("moysklad-apply");
+        var r = document.getElementById("moysklad-reset");
+        var ref = document.getElementById("moysklad-refresh");
+        if (a) a.disabled = dis;
+        if (r) r.disabled = dis;
+        if (ref) ref.disabled = dis;
+      }
+
+      function loadData() {
+        if (filterReloadTimer) {
+          clearTimeout(filterReloadTimer);
+          filterReloadTimer = null;
+        }
+        loading = true;
+        setApplyResetDisabled(true);
+        renderTable(lastExportRows || []);
+        var p = buildExportParams();
+        var ps = buildStatsParams();
+        Promise.all([
+          fetch("/api/ms/stats?" + ps.toString(), { credentials: "same-origin" }),
+          fetch("/api/ms/export?" + p.toString(), { credentials: "same-origin" }),
+        ])
+          .then(function (res) {
+            return Promise.all(res.map(function (r) {
+              return r.json();
+            }));
+          })
+          .then(function (arr) {
+            var stats = arr[0];
+            var exp = arr[1];
+            if (stats.error) throw new Error(stats.error);
+            if (exp.error) throw new Error(exp.error);
+            document.getElementById("st-total").textContent = fmtNum(stats.total);
+            document.getElementById("st-pb").textContent =
+              fmtNum(stats.products) + " / " + fmtNum(stats.bundles);
+            var valEl = document.getElementById("st-val");
+            valEl.textContent = formatMoneyText(stats.inventory_value);
+            total = Number(exp.total || 0);
+            var raw = Array.isArray(exp.data) ? exp.data : [];
+            lastExportRows = raw;
+            loading = false;
+            setApplyResetDisabled(false);
+            buildThead();
+            renderTable(raw);
+            updateTableHint();
+            syncUrlFromState();
+            var ds = document.getElementById("dg-status");
+            if (ds) {
+              ds.style.display = "none";
+              ds.textContent = "";
+            }
+          })
+          .catch(function (e) {
+            loading = false;
+            setApplyResetDisabled(false);
+            renderTable(lastExportRows || []);
+            var st = document.getElementById("dg-status");
+            if (st) {
+              st.style.display = "";
+              st.textContent = "Ошибка: " + (e && e.message ? e.message : e);
+              st.classList.add("text-danger");
+            }
+          });
+      }
+
+      function resetFilters() {
+        if (filterReloadTimer) {
+          clearTimeout(filterReloadTimer);
+          filterReloadTimer = null;
+        }
+        document.getElementById("ms-f-search").value = "";
+        document.getElementById("ms-f-limit").value = "100";
+        document.getElementById("ms-f-archived").value = "active";
+        document.getElementById("ms-f-stock_position").value = "yes";
+        document.getElementById("ms-f-on_site").value = "all";
+        document.getElementById("ms-f-type").value = "all";
+        document.getElementById("ms-f-supplier").value = "";
+        document.getElementById("ms-f-supplier2").value = "";
+        document.getElementById("ms-f-manager").value = "";
+        document.getElementById("ms-f-content_manager").value = "";
+        document.getElementById("only_stock").checked = false;
+        document.getElementById("no_coop").checked = false;
+        document.getElementById("has_buy_price").checked = false;
+        document.getElementById("ms-tf-code").value = "";
+        document.getElementById("ms-tf-name").value = "";
+        document.getElementById("ms-tf-type").value = "all";
+        document.getElementById("ms-tf-archived").value = "all";
+        document.getElementById("ms-tf-supplier").value = "";
+        document.getElementById("ms-tf-supplier2").value = "";
+        document.getElementById("ms-tf-manager").value = "";
+        document.getElementById("ms-tf-content_manager").value = "";
+        document.getElementById("ms-tf-stock_min").value = "";
+        document.getElementById("ms-tf-stock_max").value = "";
+        sortBy = "code";
+        sortDir = "asc";
+        page = 1;
+        columnWidths = {};
+        try {
+          localStorage.removeItem(userColWidthKey());
+        } catch (e) {}
+        buildThead();
+      }
+
+      function postAction(url) {
+        fetch(url, { method: "POST", credentials: "same-origin" })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok) throw new Error(x.j.error || "Ошибка");
+            loadStatus();
+            loadData();
+          })
+          .catch(function (e) {
+            alert(e.message || String(e));
+          });
+      }
+
+      window.addEventListener("mousemove", onMouseMove);
+      window.addEventListener("mouseup", onMouseUp);
+      window.addEventListener("resize", refreshStickyColumns);
+      window.addEventListener("resize", updateStickyTopVar);
+      window.addEventListener("resize", buildThead);
+      window.addEventListener("scroll", refreshStickyColumns, { passive: true });
+      window.addEventListener("scroll", scheduleFloatingHeaderUpdate, { passive: true });
+      (function bindMainOuterScroll() {
+        var mainOuter = document.querySelector(".app-main__outer");
+        if (!mainOuter || !mainOuter.addEventListener) return;
+        mainOuter.addEventListener("scroll", refreshStickyColumns, { passive: true });
+        mainOuter.addEventListener("scroll", scheduleFloatingHeaderUpdate, { passive: true });
+      })();
+
+      [
+        "ms-tf-code", "ms-tf-name", "ms-tf-type", "ms-tf-archived", "ms-tf-supplier", "ms-tf-supplier2",
+        "ms-tf-manager", "ms-tf-content_manager", "ms-tf-stock_min", "ms-tf-stock_max",
+      ].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener("input", applyTableFiltersLive);
+        el.addEventListener("change", applyTableFiltersLive);
+      });
+
+      function onApiFilterChange() {
+        scheduleUrlSync();
+        scheduleFilterReload();
+      }
+
+      [
+        "ms-f-search", "ms-f-limit", "ms-f-archived", "ms-f-stock_position", "ms-f-on_site", "ms-f-type",
+        "ms-f-supplier", "ms-f-supplier2", "ms-f-manager", "ms-f-content_manager",
+        "only_stock", "no_coop", "has_buy_price",
+      ].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener("change", onApiFilterChange);
+        el.addEventListener("input", onApiFilterChange);
+      });
+
+      document.getElementById("moysklad-apply").addEventListener("click", function () {
+        if (filterReloadTimer) {
+          clearTimeout(filterReloadTimer);
+          filterReloadTimer = null;
+        }
+        page = 1;
+        loadData();
+      });
+      document.getElementById("moysklad-reset").addEventListener("click", function () {
+        resetFilters();
+        loadData();
+      });
+      document.getElementById("moysklad-refresh").addEventListener("click", function () {
+        loadData();
+      });
+      document.getElementById("moysklad-sync").addEventListener("click", function () {
+        postAction("/api/ms/sync");
+      });
+      document.getElementById("moysklad-stop").addEventListener("click", function () {
+        postAction("/api/ms/stop");
+      });
+      document.getElementById("moysklad-rebuild-cache").addEventListener("click", function () {
+        postAction("/api/ms/rebuild-links-cache");
+      });
+      document.getElementById("moysklad-copy-link").addEventListener("click", function () {
+        navigator.clipboard.writeText(window.location.href).catch(function () {});
+      });
+      document.getElementById("ms-btn-prev").addEventListener("click", function () {
+        if (page > 1) {
+          page -= 1;
+          loadData();
+        }
+      });
+      document.getElementById("ms-btn-next").addEventListener("click", function () {
+        if (page < totalPages()) {
+          page += 1;
+          loadData();
+        }
+      });
+
+      (function filtersCollapse() {
+        var body = document.getElementById("dg-ms-filters-body");
+        var btn = document.getElementById("dg-ms-filters-toggle");
+        function apply() {
+          try {
+            var c = localStorage.getItem(FILTERS_KEY) === "1";
+            if (c) {
+              body.style.display = "none";
+              btn.textContent = "Развернуть";
+            } else {
+              body.style.display = "";
+              btn.textContent = "Свернуть";
+            }
+          } catch (e) {}
+        }
+        try {
+          if (localStorage.getItem(FILTERS_KEY) === "1") body.style.display = "none";
+        } catch (e) {}
+        apply();
+        btn.addEventListener("click", function () {
+          var hidden = body.style.display === "none";
+          body.style.display = hidden ? "" : "none";
+          btn.textContent = hidden ? "Свернуть" : "Развернуть";
+          try {
+            localStorage.setItem(FILTERS_KEY, hidden ? "0" : "1");
+          } catch (e) {}
+        });
+      })();
+
+      (function columnControls() {
+        var toggle = document.getElementById("dg-ms-columns-toggle");
+        var panel = document.getElementById("dg-ms-columns-panel");
+        var allBtn = document.getElementById("dg-ms-columns-all");
+        var noneBtn = document.getElementById("dg-ms-columns-none");
+        var defBtn = document.getElementById("dg-ms-columns-default");
+        if (!toggle || !panel) return;
+        toggle.addEventListener("click", function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          panel.classList.toggle("open");
+        });
+        function saveVisible() {
+          try {
+            var arr = Array.from(visibleCols);
+            localStorage.setItem(userVisibleColsKeyVanilla(), JSON.stringify(arr));
+            var reactMap = {};
+            MS_COLS.forEach(function (pair, idx) {
+              var v = visibleCols.has(pair[0]);
+              reactMap[pair[0]] = v;
+              reactMap["col_" + idx] = v;
+            });
+            localStorage.setItem(userVisibleColsKeyReactCompat(), JSON.stringify(reactMap));
+          } catch (e) {}
+        }
+        if (allBtn) allBtn.addEventListener("click", function () {
+          visibleCols = new Set(MS_COLS.map(function (p) { return p[0]; }));
+          saveVisible();
+          renderColumnControls();
+          buildThead();
+          renderTable(lastExportRows || []);
+          updateTableHint();
+        });
+        if (noneBtn) noneBtn.addEventListener("click", function () {
+          // React manager allows none, but keep one column minimum to avoid blank table.
+          visibleCols = new Set([MS_COLS[0][0]]);
+          saveVisible();
+          renderColumnControls();
+          buildThead();
+          renderTable(lastExportRows || []);
+          updateTableHint();
+        });
+        if (defBtn) defBtn.addEventListener("click", function () {
+          visibleCols = new Set(MS_COLS.map(function (p) { return p[0]; }));
+          saveVisible();
+          renderColumnControls();
+          buildThead();
+          renderTable(lastExportRows || []);
+          updateTableHint();
+        });
+        document.addEventListener("click", function (e) {
+          if (e.target.closest("#dg-ms-columns-panel")) return;
+          if (e.target.closest("#dg-ms-columns-toggle")) return;
+          panel.classList.remove("open");
+        });
+      })();
+
+      try {
+        columnWidths = JSON.parse(localStorage.getItem(userColWidthKey()) || "{}") || {};
+      } catch (e) {
+        columnWidths = {};
+      }
+      try {
+        var allowed = new Set(MS_COLS.map(function (p) { return p[0]; }));
+        var reactRaw = JSON.parse(localStorage.getItem(userVisibleColsKeyReactCompat()) || "null");
+        if (reactRaw && typeof reactRaw === "object" && !Array.isArray(reactRaw)) {
+          var fromReact = MS_COLS.filter(function (pair, idx) {
+            var key = pair[0];
+            var byKey = reactRaw[key];
+            var byIdx = reactRaw["col_" + idx];
+            if (byKey === false || byIdx === false) return false;
+            if (byKey === true || byIdx === true) return true;
+            return true;
+          }).map(function (pair) { return pair[0]; });
+          if (fromReact.length) visibleCols = new Set(fromReact);
+        } else {
+          var rawVisible = JSON.parse(localStorage.getItem(userVisibleColsKeyVanilla()) || "[]");
+          if (Array.isArray(rawVisible) && rawVisible.length) {
+            visibleCols = new Set(rawVisible.filter(function (k) { return allowed.has(k); }));
+          }
+        }
+        if (!visibleCols.size) visibleCols = new Set(DEFAULT_VISIBLE_KEYS);
+      } catch (e) {}
+      parseUrlToForm();
+      updateStickyTopVar();
+      renderColumnControls();
+      buildThead();
+      loadStatus();
+      setInterval(loadStatus, 2000);
+      loadData();
+    })();
+  </script>

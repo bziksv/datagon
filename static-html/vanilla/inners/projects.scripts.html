@@ -1,0 +1,377 @@
+  <script>
+    (function () {
+      var FILTERS_KEY = "datagon_projects_filters_collapsed_v1";
+      var projects = [];
+      var loading = false;
+      var sortBy = "id";
+      var sortDir = "desc";
+      var editProject = null;
+
+      function sortArrow(active, dir) {
+        return active ? (dir === "asc" ? " ▲" : " ▼") : "";
+      }
+
+      function showErr(msg) {
+        var el = document.getElementById("dg-proj-err");
+        if (!el) return;
+        if (!msg) {
+          el.style.display = "none";
+          el.textContent = "";
+          return;
+        }
+        el.style.display = "";
+        el.textContent = msg;
+      }
+
+      function readSmartSearch() {
+        return document.getElementById("dg-proj-smart").value.trim();
+      }
+
+      function readTableFilters() {
+        return {
+          id: document.getElementById("dg-proj-tf-id").value.trim(),
+          name: document.getElementById("dg-proj-tf-name").value.trim(),
+          domain: document.getElementById("dg-proj-tf-domain").value.trim(),
+          pages_min: document.getElementById("dg-proj-tf-pages_min").value,
+          pages_max: document.getElementById("dg-proj-tf-pages_max").value,
+        };
+      }
+
+      function computeRows() {
+        var needle = readSmartSearch().toLowerCase();
+        var rows = (projects || []).map(function (p) {
+          var pending = Number(p.pending_count || 0);
+          var processing = Number(p.processing_count || 0);
+          var done = Number(p.done_count || 0);
+          var error = Number(p.error_count || 0);
+          return Object.assign({}, p, {
+            queueInfo: "⏳ " + pending + " | ⚙️ " + processing + " | ✅ " + done + " | ❌ " + error,
+          });
+        });
+        if (needle) {
+          rows = rows.filter(function (p) {
+            var haystack = (String(p.id || "") + " " + (p.name || "") + " " + (p.domain || "")).toLowerCase();
+            return haystack.includes(needle);
+          });
+        }
+        var tf = readTableFilters();
+        return rows.filter(function (p) {
+          if (tf.id && !String(p.id || "").includes(String(tf.id).trim())) return false;
+          if (tf.name && !String(p.name || "").toLowerCase().includes(String(tf.name).trim().toLowerCase())) return false;
+          if (tf.domain && !String(p.domain || "").toLowerCase().includes(String(tf.domain).trim().toLowerCase())) return false;
+          var pages = Number(p.pages_count || 0);
+          var min = Number(tf.pages_min || "");
+          var max = Number(tf.pages_max || "");
+          if (Number.isFinite(min) && String(tf.pages_min).trim() !== "" && pages < min) return false;
+          if (Number.isFinite(max) && String(tf.pages_max).trim() !== "" && pages > max) return false;
+          return true;
+        });
+      }
+
+      function updateSortHeaders() {
+        document.querySelectorAll("th[data-proj-sort]").forEach(function (th) {
+          var f = th.getAttribute("data-proj-sort");
+          var base = { id: "ID", name: "Имя", domain: "Домен", pages_count: "Страниц" }[f] || f;
+          th.textContent = base + sortArrow(sortBy === f, sortDir);
+        });
+      }
+
+      function setSort(field) {
+        if (sortBy === field) sortDir = sortDir === "asc" ? "desc" : "asc";
+        else {
+          sortBy = field;
+          sortDir = "asc";
+        }
+        document.getElementById("dg-proj-sort-by").value = sortBy;
+        document.getElementById("dg-proj-sort-dir").value = sortDir;
+        updateSortHeaders();
+        loadProjects();
+      }
+
+      function renderTable() {
+        updateSortHeaders();
+        var tbody = document.getElementById("dg-proj-tbody");
+        tbody.replaceChildren();
+        var filtered = computeRows();
+        if (loading) {
+          var trL = document.createElement("tr");
+          var tdL = document.createElement("td");
+          tdL.colSpan = 6;
+          tdL.className = "text-muted";
+          tdL.textContent = "Загрузка...";
+          trL.appendChild(tdL);
+          tbody.appendChild(trL);
+          return;
+        }
+        if (!filtered.length) {
+          var tr = document.createElement("tr");
+          var td = document.createElement("td");
+          td.colSpan = 6;
+          td.className = "text-muted";
+          td.textContent = "Нет проектов";
+          tr.appendChild(td);
+          tbody.appendChild(tr);
+          return;
+        }
+        filtered.forEach(function (p) {
+          var tr = document.createElement("tr");
+          var tdId = document.createElement("td");
+          tdId.textContent = String(p.id);
+          var tdName = document.createElement("td");
+          var b = document.createElement("b");
+          b.textContent = p.name || "";
+          tdName.appendChild(b);
+          var sub = document.createElement("div");
+          sub.className = "small text-muted";
+          sub.textContent = p.domain || "";
+          tdName.appendChild(sub);
+          var tdDom = document.createElement("td");
+          tdDom.textContent = p.domain || "";
+          var tdPages = document.createElement("td");
+          tdPages.textContent = String(Number(p.pages_count || 0));
+          var tdQ = document.createElement("td");
+          var sm = document.createElement("small");
+          sm.textContent = p.queueInfo || "";
+          tdQ.appendChild(sm);
+          var tdAct = document.createElement("td");
+          tdAct.className = "text-nowrap";
+          var btnEd = document.createElement("button");
+          btnEd.type = "button";
+          btnEd.className = "btn btn-warning btn-sm me-1 mb-1";
+          btnEd.textContent = "✏️ Изменить";
+          btnEd.addEventListener("click", function () {
+            openEdit(p);
+          });
+          var btnDel = document.createElement("button");
+          btnDel.type = "button";
+          btnDel.className = "btn btn-danger btn-sm mb-1";
+          btnDel.textContent = "🗑️ Удалить";
+          btnDel.addEventListener("click", function () {
+            deleteProject(p);
+          });
+          tdAct.appendChild(btnEd);
+          tdAct.appendChild(btnDel);
+          tr.appendChild(tdId);
+          tr.appendChild(tdName);
+          tr.appendChild(tdDom);
+          tr.appendChild(tdPages);
+          tr.appendChild(tdQ);
+          tr.appendChild(tdAct);
+          tbody.appendChild(tr);
+        });
+      }
+
+      function loadProjects() {
+        sortBy = document.getElementById("dg-proj-sort-by").value;
+        sortDir = document.getElementById("dg-proj-sort-dir").value;
+        loading = true;
+        showErr("");
+        renderTable();
+        var qs = new URLSearchParams({ sort_by: sortBy, sort_dir: sortDir });
+        fetch("/api/projects?" + qs.toString(), { credentials: "same-origin" })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok) throw new Error(x.j.error || "Не удалось загрузить проекты");
+            projects = Array.isArray(x.j) ? x.j : [];
+            loading = false;
+            renderTable();
+          })
+          .catch(function (e) {
+            loading = false;
+            projects = [];
+            renderTable();
+            showErr(e.message || "Ошибка загрузки проектов");
+          });
+      }
+
+      function readCreateForm() {
+        return {
+          name: document.getElementById("dg-proj-new-name").value.trim(),
+          domain: document.getElementById("dg-proj-new-domain").value.trim(),
+          selector_price: document.getElementById("dg-proj-new-selector_price").value.trim(),
+          selector_name: document.getElementById("dg-proj-new-selector_name").value.trim(),
+          selector_sku: document.getElementById("dg-proj-new-selector_sku").value.trim(),
+          selector_oos: document.getElementById("dg-proj-new-selector_oos").value.trim(),
+        };
+      }
+
+      function createProject() {
+        var f = readCreateForm();
+        if (!f.name || !f.selector_price) {
+          alert("Заполните название и селектор цены");
+          return;
+        }
+        fetch("/api/projects", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(f),
+        })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Не удалось создать проект");
+            document.getElementById("dg-proj-new-name").value = "";
+            document.getElementById("dg-proj-new-domain").value = "";
+            document.getElementById("dg-proj-new-selector_price").value = "";
+            document.getElementById("dg-proj-new-selector_name").value = "";
+            document.getElementById("dg-proj-new-selector_sku").value = "";
+            document.getElementById("dg-proj-new-selector_oos").value = "";
+            loadProjects();
+          })
+          .catch(function (e) {
+            alert(e.message || String(e));
+          });
+      }
+
+      function deleteProject(p) {
+        if (!window.confirm('Удалить проект "' + p.name + '" и связанные страницы?')) return;
+        fetch("/api/projects/" + p.id, { method: "DELETE", credentials: "same-origin" })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Не удалось удалить проект");
+            loadProjects();
+          })
+          .catch(function (e) {
+            alert(e.message || String(e));
+          });
+      }
+
+      function openEdit(p) {
+        editProject = Object.assign({}, p);
+        document.getElementById("dg-proj-edit-title").textContent = "Редактировать проект #" + p.id;
+        document.getElementById("dg-proj-edit-name").value = p.name || "";
+        document.getElementById("dg-proj-edit-domain").value = p.domain || "";
+        document.getElementById("dg-proj-edit-selector_price").value = p.selector_price || "";
+        document.getElementById("dg-proj-edit-selector_name").value = p.selector_name || "";
+        document.getElementById("dg-proj-edit-selector_sku").value = p.selector_sku || "";
+        document.getElementById("dg-proj-edit-selector_oos").value = p.selector_oos || "";
+        document.getElementById("dg-proj-edit-wrap").style.display = "";
+        try {
+          document.getElementById("dg-proj-edit-wrap").scrollIntoView({ behavior: "smooth", block: "nearest" });
+        } catch (e) {}
+      }
+
+      function closeEdit() {
+        editProject = null;
+        document.getElementById("dg-proj-edit-wrap").style.display = "none";
+      }
+
+      function saveEdit() {
+        if (!editProject) return;
+        var body = {
+          name: document.getElementById("dg-proj-edit-name").value.trim(),
+          domain: document.getElementById("dg-proj-edit-domain").value.trim(),
+          selector_price: document.getElementById("dg-proj-edit-selector_price").value.trim(),
+          selector_name: document.getElementById("dg-proj-edit-selector_name").value.trim(),
+          selector_sku: document.getElementById("dg-proj-edit-selector_sku").value.trim(),
+          selector_oos: document.getElementById("dg-proj-edit-selector_oos").value.trim(),
+        };
+        fetch("/api/projects/" + editProject.id, {
+          method: "PUT",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Не удалось сохранить изменения");
+            closeEdit();
+            loadProjects();
+          })
+          .catch(function (e) {
+            alert(e.message || String(e));
+          });
+      }
+
+      document.querySelectorAll("th[data-proj-sort]").forEach(function (th) {
+        th.addEventListener("click", function () {
+          setSort(th.getAttribute("data-proj-sort"));
+        });
+      });
+
+      document.getElementById("dg-proj-sort-by").addEventListener("change", function () {
+        sortBy = this.value;
+        updateSortHeaders();
+        loadProjects();
+      });
+      document.getElementById("dg-proj-sort-dir").addEventListener("change", function () {
+        sortDir = this.value;
+        updateSortHeaders();
+        loadProjects();
+      });
+
+      document.getElementById("dg-proj-btn-refresh").addEventListener("click", function () {
+        loadProjects();
+      });
+      document.getElementById("dg-proj-btn-create").addEventListener("click", createProject);
+      document.getElementById("dg-proj-btn-save").addEventListener("click", saveEdit);
+      document.getElementById("dg-proj-btn-cancel-edit").addEventListener("click", closeEdit);
+
+      [
+        "dg-proj-smart",
+        "dg-proj-tf-id",
+        "dg-proj-tf-name",
+        "dg-proj-tf-domain",
+        "dg-proj-tf-pages_min",
+        "dg-proj-tf-pages_max",
+      ].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener("input", function () {
+          renderTable();
+        });
+        el.addEventListener("change", function () {
+          renderTable();
+        });
+      });
+
+      (function filtersCollapse() {
+        var body = document.getElementById("dg-proj-filters-body");
+        var btn = document.getElementById("dg-proj-filters-toggle");
+        function sync() {
+          try {
+            if (localStorage.getItem(FILTERS_KEY) === "1") {
+              body.style.display = "none";
+              btn.textContent = "Развернуть";
+            } else {
+              body.style.display = "";
+              btn.textContent = "Свернуть";
+            }
+          } catch (e) {}
+        }
+        try {
+          if (localStorage.getItem(FILTERS_KEY) === "1") body.style.display = "none";
+        } catch (e) {}
+        sync();
+        btn.addEventListener("click", function () {
+          var hidden = body.style.display === "none";
+          body.style.display = hidden ? "" : "none";
+          btn.textContent = hidden ? "Свернуть" : "Развернуть";
+          try {
+            localStorage.setItem(FILTERS_KEY, hidden ? "0" : "1");
+          } catch (e) {}
+        });
+      })();
+
+      document.getElementById("dg-proj-sort-by").value = sortBy;
+      document.getElementById("dg-proj-sort-dir").value = sortDir;
+      updateSortHeaders();
+      loadProjects();
+    })();
+  </script>

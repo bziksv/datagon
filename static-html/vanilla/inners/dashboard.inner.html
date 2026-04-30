@@ -1,0 +1,170 @@
+          <div class="app-page-title">
+            <div class="page-title-wrapper">
+              <div class="page-title-heading">
+                <div class="page-title-icon">
+                  <i class="pe-7s-rocket icon-gradient bg-mean-fruit"> </i>
+                </div>
+                <div>
+                  Датагон Dashboard
+                  <div class="page-title-subheading">
+                    Оперативный обзор очередей, синхронизаций и состояния системы.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <style>
+            .dg-health-badge {
+              display: inline-block;
+              max-width: 100%;
+              white-space: normal;
+              word-break: break-word;
+              text-align: center;
+              line-height: 1.15;
+            }
+          </style>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2">
+              <div class="d-flex align-items-center">
+                <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
+                <span>Сводка</span>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="row">
+                <div class="col-md-3">
+                  <div class="card card-body mb-2">
+                    <div class="text-muted"><i class="pe-7s-note2 me-1"></i>Очередь: всего</div>
+                    <h4 class="mb-0" id="dg-q-total">—</h4>
+                  </div>
+                </div>
+                <div class="col-md-3">
+                  <div class="card card-body mb-2">
+                    <div class="text-muted"><i class="pe-7s-check me-1"></i>Очередь: готово</div>
+                    <h4 class="mb-0" id="dg-q-done">—</h4>
+                  </div>
+                </div>
+                <div class="col-md-3">
+                  <div class="card card-body mb-2">
+                    <div class="text-muted"><i class="pe-7s-attention me-1"></i>Очередь: ошибки</div>
+                    <h4 class="mb-0" id="dg-q-err">—</h4>
+                  </div>
+                </div>
+                <div class="col-md-3">
+                  <div class="card card-body mb-2">
+                    <div class="text-muted"><i class="pe-7s-shield me-1"></i>Здоровье</div>
+                    <h4 class="mb-0"><span class="badge" id="dg-health-badge">—</span></h4>
+                  </div>
+                </div>
+              </div>
+              <p class="text-muted mb-0 mt-2" id="dg-summary-hint">Обновлено: —</p>
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="col-md-6">
+              <div class="main-card mb-3 card">
+                <div class="card-header d-flex align-items-center justify-content-between gap-2">
+                  <div class="d-flex align-items-center">
+                    <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
+                    <span>Глобальная синхронизация</span>
+                  </div>
+                </div>
+                <div class="card-body">
+                  <div>Прогресс: <b id="dg-gs-prog">—</b> (<span id="dg-gs-pct">0</span>%)</div>
+                  <div class="text-muted">Сообщение: <span id="dg-gs-msg">—</span></div>
+                  <p class="text-muted mb-0 mt-2" id="dg-gs-hint">Ожидание</p>
+                </div>
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="main-card mb-3 card">
+                <div class="card-header d-flex align-items-center justify-content-between gap-2">
+                  <div class="d-flex align-items-center">
+                    <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
+                    <span>МойСклад</span>
+                  </div>
+                </div>
+                <div class="card-body">
+                  <div>Прогресс: <b id="dg-ms-prog">—</b> (<span id="dg-ms-pct">0</span>%)</div>
+                  <div class="text-muted">Обновлено: <span id="dg-ms-upd">—</span></div>
+                  <div class="text-muted">Сообщение: <span id="dg-ms-msg">—</span></div>
+                  <p class="text-muted mb-0 mt-2" id="dg-ms-hint">Ожидание</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="col-md-6">
+              <div class="main-card mb-3 card">
+                <div class="card-header d-flex align-items-center justify-content-between gap-2">
+                  <div class="d-flex align-items-center">
+                    <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
+                    <span>Сопоставление</span>
+                  </div>
+                </div>
+                <div class="card-body">
+                  <div>Сайт: <b id="dg-mat-site">—</b></div>
+                  <div>Прогресс: <b id="dg-mat-prog">—</b></div>
+                  <div>Найдено SKU/Название: <b id="dg-mat-found">—</b></div>
+                  <p class="text-muted mb-0 mt-2" id="dg-mat-hint">idle</p>
+                </div>
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="main-card mb-3 card">
+                <div class="card-header d-flex align-items-center justify-content-between gap-2">
+                  <div class="d-flex align-items-center">
+                    <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
+                    <span>Нагрузка</span>
+                  </div>
+                </div>
+                <div class="card-body">
+                  <div>CPU процесса: <b id="dg-rt-cpu">—</b></div>
+                  <div>RAM процесса (RSS): <b id="dg-rt-ram">—</b></div>
+                  <div>Uptime: <b id="dg-rt-up">—</b></div>
+                  <div class="text-muted">Оценка: <span id="dg-rt-score">—</span>/5</div>
+                  <p class="text-muted mb-0 mt-2" id="dg-rt-hint-wrap"><span class="badge" id="dg-rt-badge">—</span></p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2">
+              <div class="d-flex align-items-center">
+                <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
+                <span>Последние автозапуски</span>
+              </div>
+            </div>
+            <div class="card-body">
+              <div id="dg-auto-runs-mount"></div>
+              <p class="text-muted mb-0 mt-2" id="dg-auto-hint">Записей: 0</p>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2">
+              <div class="d-flex align-items-center">
+                <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
+                <span>Быстрые действия</span>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="d-flex flex-wrap gap-2">
+                <button type="button" class="btn btn-primary" id="dashboard-sync-all" title="Запустить глобальную синхронизацию товаров по всем сайтам">
+                  <i class="pe-7s-repeat me-1"></i>Запустить синхронизацию всех сайтов
+                </button>
+                <button type="button" class="btn btn-outline-primary" id="dashboard-refresh" title="Обновить метрики дашборда вручную">
+                  <i class="pe-7s-refresh me-1"></i>Обновить дашборд
+                </button>
+                <a class="btn btn-outline-secondary" href="/my-products?ms_linked=0&amp;limit=50"><i class="pe-7s-box2 me-1"></i>Товары без связи с МС</a>
+                <a class="btn btn-outline-secondary" href="/moysklad?archived=active&amp;stock_position=yes&amp;limit=100"><i class="pe-7s-shopbag me-1"></i>МойСклад: активные складские</a>
+                <a class="btn btn-outline-secondary" href="/matches?status=pending&amp;mode=all"><i class="pe-7s-link me-1"></i>Сопоставление: pending</a>
+              </div>
+              <p class="text-muted mb-0 mt-2">Операции управления процессами</p>
+            </div>
+          </div>
