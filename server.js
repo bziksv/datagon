@@ -951,7 +951,41 @@ initDB().then(() => {
         return res.redirect(301, pathname + qs);
     });
 
+    // Старые ссылки вида /mysites.html — в SPA маршрут /my-sites (путь с .html иначе не попадает в SPA fallback)
+    app.get('/mysites.html', (req, res) => {
+        const qs = req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : '';
+        return res.redirect(301, '/my-sites' + qs);
+    });
+
+    // Частая опечатка: /my-product → React Router знает только /my-products
+    app.get(/^\/my-product\/?$/, (req, res) => {
+        const qs = req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : '';
+        return res.redirect(301, '/my-products' + qs);
+    });
+
     app.use(express.static(path.join(__dirname, 'public')));
+
+    const sendReactSpa = (req, res, next) => {
+        if (!reactIndex) return next();
+        return res.sendFile(reactIndex);
+    };
+    // Явные корневые пути SPA (надёжнее, чем только /{*path}, если path-to-regexp режет часть путей)
+    app.get(
+        [
+            '/dashboard',
+            '/my-sites',
+            '/my-products',
+            '/moysklad',
+            '/matches',
+            '/matching',
+            '/queue',
+            '/results',
+            '/projects',
+            '/processes',
+            '/settings',
+        ],
+        sendReactSpa
+    );
 
     // SPA fallback (Express 5 / path-to-regexp v8: не использовать '*' — см. /{*path})
     app.get('/{*path}', (req, res, next) => {

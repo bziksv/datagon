@@ -5,9 +5,13 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node server.js",
+    "dev:datagon": "concurrently -k -n api,spa -c cyan,magenta \"npm run dev:api\" \"bash scripts/run-dev-spa.sh\"",
+    "dev:api": "node server.js",
+    "dev:spa": "bash scripts/run-dev-spa.sh",
     "start:spa": "npm --prefix architectui-react-pro run start",
     "start:3003": "npm --prefix architectui-react-pro run start:3003",
     "build:datagon-spa": "node scripts/build/sync-react-build-to-public.mjs",
+    "deploy:public": "bash scripts/deploy-public.sh",
     "docs:docusaurus:install": "npm --prefix ./docs-docusaurus install",
     "docs:docusaurus:start": "npm --prefix ./docs-docusaurus start",
     "docs:docusaurus:build": "npm --prefix ./docs-docusaurus run build",
@@ -20,6 +24,7 @@
   "license": "ISC",
   "description": "",
   "devDependencies": {
+    "concurrently": "^9.2.1",
     "playwright": "^1.49.0"
   },
   "dependencies": {
