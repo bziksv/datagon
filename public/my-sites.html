@@ -26,6 +26,7 @@
       padding-right: 18px;
       border-right: 1px solid #e6e9ee;
       border-bottom: 1px solid #e6e9ee;
+      text-align: center;
     }
     #ms-main-table thead th:last-child {
       border-right: 0;
@@ -629,6 +630,10 @@
                     <input type="text" class="form-control" id="ms-tf-domain" autocomplete="off" />
                   </div>
                 </div>
+                <div class="mt-2 d-flex flex-wrap gap-2">
+                  <button type="button" class="btn btn-sm btn-primary" id="ms-filters-apply" data-dg-tooltip="Применить фильтры к таблице сайтов. Сохраняет введённое для следующего визита."><i class="pe-7s-search me-1"></i>Применить</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="ms-filters-default" data-dg-tooltip="Сбросить фильтры и сохранённые настройки."><i class="pe-7s-refresh me-1"></i>По умолчанию</button>
+                </div>
                 <div class="table-responsive datagon-my-products-table-wrap">
                   <table class="table table-hover table-striped mb-0" id="ms-main-table">
                     <thead>
@@ -1097,6 +1102,34 @@
         return out;
       }
 
+      function collectMySitesFilterForm() {
+        return {
+          smart: document.getElementById("ms-smart").value,
+          id: document.getElementById("ms-tf-id").value,
+          name: document.getElementById("ms-tf-name").value,
+          cms: document.getElementById("ms-tf-cms").value,
+          domain: document.getElementById("ms-tf-domain").value,
+        };
+      }
+
+      function persistMySitesFilterForm() {
+        try {
+          if (window.DatagonFilters) window.DatagonFilters.save("my_sites", collectMySitesFilterForm());
+        } catch (e) {}
+      }
+
+      function mergeMySitesPrefsFromStorage() {
+        var DF = window.DatagonFilters;
+        if (!DF || !DF.load) return;
+        var prefs = DF.load("my_sites");
+        if (!prefs) return;
+        if (prefs.smart != null) document.getElementById("ms-smart").value = String(prefs.smart);
+        if (prefs.id != null) document.getElementById("ms-tf-id").value = String(prefs.id);
+        if (prefs.name != null) document.getElementById("ms-tf-name").value = String(prefs.name);
+        if (prefs.cms != null) document.getElementById("ms-tf-cms").value = String(prefs.cms);
+        if (prefs.domain != null) document.getElementById("ms-tf-domain").value = String(prefs.domain);
+      }
+
       function updateSortHeaders() {
         document.querySelectorAll("th[data-ms-sort]").forEach(function (th) {
           var col = th.getAttribute("data-ms-sort");
@@ -1393,6 +1426,7 @@
           tbody.appendChild(tr);
         });
         applyStoredColumnWidths();
+        if (!loading) persistMySitesFilterForm();
       }
 
       function onVerify(site) {
@@ -1675,10 +1709,28 @@
         });
       });
 
-      ["ms-smart", "ms-tf-id", "ms-tf-name", "ms-tf-cms", "ms-tf-domain"].forEach(function (id) {
-        var el = document.getElementById(id);
-        if (el) el.addEventListener("input", renderTable);
-        if (el) el.addEventListener("change", renderTable);
+      document.getElementById("ms-filters-apply").addEventListener("click", function () {
+        persistMySitesFilterForm();
+        renderTable();
+      });
+      document.getElementById("ms-filters-default").addEventListener("click", function () {
+        if (window.DatagonFilters) window.DatagonFilters.clear("my_sites");
+        document.getElementById("ms-smart").value = "";
+        document.getElementById("ms-tf-id").value = "";
+        document.getElementById("ms-tf-name").value = "";
+        document.getElementById("ms-tf-cms").value = "all";
+        document.getElementById("ms-tf-domain").value = "";
+        sortBy = "id";
+        sortDir = "asc";
+        try {
+          localStorage.setItem(userSortKey(), JSON.stringify({ sort_by: sortBy, sort_dir: sortDir }));
+        } catch (e) {}
+        try {
+          window.history.replaceState(null, "", window.location.pathname);
+        } catch (e2) {}
+        updateSortHeaders();
+        syncSortUrl();
+        renderTable();
       });
 
       document.querySelectorAll("th[data-ms-sort]").forEach(function (th) {
@@ -1709,6 +1761,7 @@
       })();
 
       loadSortState();
+      mergeMySitesPrefsFromStorage();
       try {
         columnWidths = JSON.parse(localStorage.getItem(userColWidthKey()) || "{}") || {};
       } catch (e) {

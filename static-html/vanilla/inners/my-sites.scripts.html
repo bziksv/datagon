@@ -260,6 +260,34 @@
         return out;
       }
 
+      function collectMySitesFilterForm() {
+        return {
+          smart: document.getElementById("ms-smart").value,
+          id: document.getElementById("ms-tf-id").value,
+          name: document.getElementById("ms-tf-name").value,
+          cms: document.getElementById("ms-tf-cms").value,
+          domain: document.getElementById("ms-tf-domain").value,
+        };
+      }
+
+      function persistMySitesFilterForm() {
+        try {
+          if (window.DatagonFilters) window.DatagonFilters.save("my_sites", collectMySitesFilterForm());
+        } catch (e) {}
+      }
+
+      function mergeMySitesPrefsFromStorage() {
+        var DF = window.DatagonFilters;
+        if (!DF || !DF.load) return;
+        var prefs = DF.load("my_sites");
+        if (!prefs) return;
+        if (prefs.smart != null) document.getElementById("ms-smart").value = String(prefs.smart);
+        if (prefs.id != null) document.getElementById("ms-tf-id").value = String(prefs.id);
+        if (prefs.name != null) document.getElementById("ms-tf-name").value = String(prefs.name);
+        if (prefs.cms != null) document.getElementById("ms-tf-cms").value = String(prefs.cms);
+        if (prefs.domain != null) document.getElementById("ms-tf-domain").value = String(prefs.domain);
+      }
+
       function updateSortHeaders() {
         document.querySelectorAll("th[data-ms-sort]").forEach(function (th) {
           var col = th.getAttribute("data-ms-sort");
@@ -556,6 +584,7 @@
           tbody.appendChild(tr);
         });
         applyStoredColumnWidths();
+        if (!loading) persistMySitesFilterForm();
       }
 
       function onVerify(site) {
@@ -838,10 +867,28 @@
         });
       });
 
-      ["ms-smart", "ms-tf-id", "ms-tf-name", "ms-tf-cms", "ms-tf-domain"].forEach(function (id) {
-        var el = document.getElementById(id);
-        if (el) el.addEventListener("input", renderTable);
-        if (el) el.addEventListener("change", renderTable);
+      document.getElementById("ms-filters-apply").addEventListener("click", function () {
+        persistMySitesFilterForm();
+        renderTable();
+      });
+      document.getElementById("ms-filters-default").addEventListener("click", function () {
+        if (window.DatagonFilters) window.DatagonFilters.clear("my_sites");
+        document.getElementById("ms-smart").value = "";
+        document.getElementById("ms-tf-id").value = "";
+        document.getElementById("ms-tf-name").value = "";
+        document.getElementById("ms-tf-cms").value = "all";
+        document.getElementById("ms-tf-domain").value = "";
+        sortBy = "id";
+        sortDir = "asc";
+        try {
+          localStorage.setItem(userSortKey(), JSON.stringify({ sort_by: sortBy, sort_dir: sortDir }));
+        } catch (e) {}
+        try {
+          window.history.replaceState(null, "", window.location.pathname);
+        } catch (e2) {}
+        updateSortHeaders();
+        syncSortUrl();
+        renderTable();
       });
 
       document.querySelectorAll("th[data-ms-sort]").forEach(function (th) {
@@ -872,6 +919,7 @@
       })();
 
       loadSortState();
+      mergeMySitesPrefsFromStorage();
       try {
         columnWidths = JSON.parse(localStorage.getItem(userColWidthKey()) || "{}") || {};
       } catch (e) {

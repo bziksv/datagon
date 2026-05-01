@@ -101,6 +101,7 @@
       background: #f8f9fa !important;
       border-right: 1px solid #e6e9ee !important;
       vertical-align: middle;
+      text-align: center;
     }
     .dg-mp-table tbody td {
       border-right: 1px solid #f3f5f8;
@@ -677,9 +678,10 @@
                     <option value="desc">По убыванию</option>
                   </select>
                 </div>
-                <div class="col-md-2 d-flex align-items-end">
-                  <button type="button" class="btn btn-sm btn-primary w-100" id="btn-apply" style="height:38px">Применить</button>
-                </div>
+              </div>
+              <div class="mt-2 d-flex flex-wrap gap-2">
+                <button type="button" class="btn btn-sm btn-primary" id="btn-apply" data-dg-tooltip="Применить фильтры и обновить данные. Сохраняет выбранные значения для следующего визита."><i class="pe-7s-search me-1"></i>Применить</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="mp-filter-default" data-dg-tooltip="Сбросить фильтры к значениям по умолчанию и очистить сохранённые настройки."><i class="pe-7s-refresh me-1"></i>По умолчанию</button>
               </div>
               <div class="row g-2 mt-1">
                 <div class="col-md-3 d-flex align-items-end">
@@ -1229,6 +1231,112 @@
           name: document.getElementById("mp-tf-name").value,
           currency: document.getElementById("mp-tf-currency").value,
         };
+      }
+
+      function collectMyProductsFilterFormFull() {
+        return {
+          smart: document.getElementById("mp-f-smart").value,
+          apiSearch: apiSearch,
+          offset: String(offset),
+          site_id: document.getElementById("f-site").value,
+          status: document.getElementById("mp-f-status").value,
+          source_enabled: document.getElementById("mp-f-source_enabled").value,
+          ms_linked: document.getElementById("f-ms").value,
+          sort_by: document.getElementById("mp-f-sort-by").value,
+          sort_dir: document.getElementById("mp-f-sort-dir").value,
+          match_audit: document.getElementById("mp-f-match_audit").value,
+          gap_filter_enabled: document.getElementById("mp-f-gap_enabled").checked ? "1" : "0",
+          gap_exclude_zero: document.getElementById("mp-f-gap_exclude_zero").checked ? "1" : "0",
+          gap_competitor: document.getElementById("mp-f-gap_competitor").value,
+          gap_min_pct: document.getElementById("mp-f-gap_min_pct").value,
+          gap_max_pct: document.getElementById("mp-f-gap_max_pct").value,
+          usd_to_rub: document.getElementById("mp-f-usd_to_rub").value,
+          eur_to_rub: document.getElementById("mp-f-eur_to_rub").value,
+          comp_min: document.getElementById("mp-f-comp_min").value,
+          comp_max: document.getElementById("mp-f-comp_max").value,
+          stock_min: document.getElementById("mp-f-stock_min").value,
+          stock_max: document.getElementById("mp-f-stock_max").value,
+          limit: document.getElementById("mp-f-limit").value,
+          tf_source_id: document.getElementById("mp-tf-source_id").value,
+          tf_site_name: document.getElementById("mp-tf-site_name").value,
+          tf_sku: document.getElementById("mp-tf-sku").value,
+          tf_name: document.getElementById("mp-tf-name").value,
+          tf_currency: document.getElementById("mp-tf-currency").value,
+        };
+      }
+
+      function persistMyProductsFilterForm() {
+        try {
+          if (window.DatagonFilters) window.DatagonFilters.save("my_products", collectMyProductsFilterFormFull());
+        } catch (e) {}
+      }
+
+      function mergeMyProductsPrefsFromStorage() {
+        var DF = window.DatagonFilters;
+        if (!DF || !DF.load) return;
+        var prefs = DF.load("my_products");
+        if (!prefs) return;
+        var p;
+        try {
+          p = new URLSearchParams(window.location.search);
+        } catch (e2) {
+          p = new URLSearchParams();
+        }
+        function miss(k) {
+          return !p.has(k);
+        }
+        if (miss("search")) {
+          if (prefs.smart != null) document.getElementById("mp-f-smart").value = String(prefs.smart);
+          if (prefs.apiSearch != null) apiSearch = String(prefs.apiSearch);
+          else if (prefs.smart != null) apiSearch = String(prefs.smart);
+        }
+        if (miss("offset") && prefs.offset != null) offset = Number(prefs.offset) || 0;
+        if (miss("site_id") && prefs.site_id != null) {
+          var sel = document.getElementById("f-site");
+          var w = String(prefs.site_id);
+          if ([].some.call(sel.options, function (o) {
+            return o.value === w;
+          }))
+            sel.value = w;
+        }
+        if (miss("status") && prefs.status != null) document.getElementById("mp-f-status").value = String(prefs.status);
+        if (miss("source_enabled") && prefs.source_enabled != null)
+          document.getElementById("mp-f-source_enabled").value = String(prefs.source_enabled);
+        if (miss("ms_linked") && prefs.ms_linked != null) document.getElementById("f-ms").value = String(prefs.ms_linked);
+        if (miss("sort_by") && prefs.sort_by != null)
+          document.getElementById("mp-f-sort-by").value = String(prefs.sort_by);
+        if (miss("sort_dir") && prefs.sort_dir != null)
+          document.getElementById("mp-f-sort-dir").value = String(prefs.sort_dir);
+        if (miss("match_audit") && prefs.match_audit != null)
+          document.getElementById("mp-f-match_audit").value = String(prefs.match_audit);
+        if (miss("gap_filter_enabled") && prefs.gap_filter_enabled != null)
+          document.getElementById("mp-f-gap_enabled").checked = String(prefs.gap_filter_enabled) === "1";
+        if (miss("gap_exclude_zero") && prefs.gap_exclude_zero != null)
+          document.getElementById("mp-f-gap_exclude_zero").checked = String(prefs.gap_exclude_zero) === "1";
+        if (miss("gap_competitor") && prefs.gap_competitor != null)
+          document.getElementById("mp-f-gap_competitor").value = String(prefs.gap_competitor);
+        if (miss("gap_min_pct") && prefs.gap_min_pct != null)
+          document.getElementById("mp-f-gap_min_pct").value = String(prefs.gap_min_pct);
+        if (miss("gap_max_pct") && prefs.gap_max_pct != null)
+          document.getElementById("mp-f-gap_max_pct").value = String(prefs.gap_max_pct);
+        if (miss("usd_to_rub") && prefs.usd_to_rub != null)
+          document.getElementById("mp-f-usd_to_rub").value = String(prefs.usd_to_rub);
+        if (miss("eur_to_rub") && prefs.eur_to_rub != null)
+          document.getElementById("mp-f-eur_to_rub").value = String(prefs.eur_to_rub);
+        if (miss("comp_sync_rand_min") && prefs.comp_min != null)
+          document.getElementById("mp-f-comp_min").value = String(prefs.comp_min);
+        if (miss("comp_sync_rand_max") && prefs.comp_max != null)
+          document.getElementById("mp-f-comp_max").value = String(prefs.comp_max);
+        if (miss("stock_min") && prefs.stock_min != null)
+          document.getElementById("mp-f-stock_min").value = String(prefs.stock_min);
+        if (miss("stock_max") && prefs.stock_max != null)
+          document.getElementById("mp-f-stock_max").value = String(prefs.stock_max);
+        if (miss("limit") && prefs.limit != null) document.getElementById("mp-f-limit").value = String(prefs.limit);
+        if (prefs.tf_source_id != null) document.getElementById("mp-tf-source_id").value = String(prefs.tf_source_id);
+        if (prefs.tf_site_name != null) document.getElementById("mp-tf-site_name").value = String(prefs.tf_site_name);
+        if (prefs.tf_sku != null) document.getElementById("mp-tf-sku").value = String(prefs.tf_sku);
+        if (prefs.tf_name != null) document.getElementById("mp-tf-name").value = String(prefs.tf_name);
+        if (prefs.tf_currency != null) document.getElementById("mp-tf-currency").value = String(prefs.tf_currency);
       }
 
       function filterRows(rows, tf) {
@@ -2049,6 +2157,7 @@
           lastLoading = false;
           syncUrlFromDom();
           updateSortHeaders();
+          persistMyProductsFilterForm();
           applyTableFilterAndRender();
         } catch (e) {
           lastLoading = false;
@@ -2178,6 +2287,53 @@
             })
           );
         } catch (e) {}
+        persistMyProductsFilterForm();
+        load();
+      });
+      document.getElementById("mp-filter-default").addEventListener("click", function () {
+        if (window.DatagonFilters) window.DatagonFilters.clear("my_products");
+        document.getElementById("mp-f-smart").value = "";
+        apiSearch = "";
+        offset = 0;
+        document.getElementById("f-site").value = "all";
+        document.getElementById("mp-f-status").value = "all";
+        document.getElementById("mp-f-source_enabled").value = "all";
+        document.getElementById("f-ms").value = "all";
+        document.getElementById("mp-tf-source_id").value = "";
+        document.getElementById("mp-tf-site_name").value = "";
+        document.getElementById("mp-tf-sku").value = "";
+        document.getElementById("mp-tf-name").value = "";
+        document.getElementById("mp-tf-currency").value = "all";
+        document.getElementById("mp-f-stock_min").value = "";
+        document.getElementById("mp-f-stock_max").value = "";
+        document.getElementById("mp-f-limit").value = String(initialLimit);
+        document.getElementById("mp-f-match_audit").value = "all";
+        document.getElementById("mp-f-sort-by").value = "id";
+        document.getElementById("mp-f-sort-dir").value = "asc";
+        document.getElementById("mp-f-gap_enabled").checked = false;
+        document.getElementById("mp-f-gap_exclude_zero").checked = true;
+        document.getElementById("mp-f-gap_competitor").value = "all";
+        document.getElementById("mp-f-gap_min_pct").value = "-100";
+        document.getElementById("mp-f-gap_max_pct").value = "100";
+        document.getElementById("mp-f-usd_to_rub").value = "";
+        document.getElementById("mp-f-eur_to_rub").value = "";
+        document.getElementById("mp-f-comp_min").value = "0.1";
+        document.getElementById("mp-f-comp_max").value = "1";
+        try {
+          window.history.replaceState(null, "", window.location.pathname);
+        } catch (e2) {}
+        try {
+          localStorage.setItem(
+            userSortKey(),
+            JSON.stringify({
+              sort_by: document.getElementById("mp-f-sort-by").value,
+              sort_dir: document.getElementById("mp-f-sort-dir").value,
+            })
+          );
+        } catch (e3) {}
+        updateSubtitle();
+        updateSyncSiteButton();
+        updateSortHeaders();
         load();
       });
 
@@ -2349,6 +2505,7 @@
         initColumnResizeHandles();
         await loadSites();
         parseUrlToForm();
+        mergeMyProductsPrefsFromStorage();
         updateSubtitle();
         updateSyncSiteButton();
         updateSortHeaders();

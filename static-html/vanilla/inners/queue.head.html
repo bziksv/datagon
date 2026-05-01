@@ -1,61 +1,86 @@
-  <!-- Очередь: стили из ARCHITECTUI_MAIN_CSS -->
   <style>
-    .datagon-my-products-table-wrap.table-responsive {
+    body.datagon-vanilla-body[data-dg-active-nav="queue"] .app-main__inner {
+      min-width: 0;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="queue"] .main-card.card > .card-body {
+      min-width: 0;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+    .dg-q-table {
+      font-size: 0.8rem;
+      line-height: 1.25;
+      font-variant-numeric: tabular-nums;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="queue"] .dg-queue-table-scroll-outer {
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
+      overflow-x: auto;
+      overflow-y: visible;
+      -webkit-overflow-scrolling: touch;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="queue"]
+      .dg-queue-table-scroll-outer
+      > .datagon-my-products-table-wrap.table-responsive {
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+      box-sizing: border-box;
       overflow: visible !important;
       max-height: none !important;
     }
-    .datagon-my-products-table-wrap.table-responsive,
-    .datagon-my-products-table-wrap.table-responsive > table {
+    body.datagon-vanilla-body[data-dg-active-nav="queue"]
+      .dg-queue-table-scroll-outer
+      > .datagon-my-products-table-wrap.table-responsive,
+    body.datagon-vanilla-body[data-dg-active-nav="queue"]
+      .dg-queue-table-scroll-outer
+      > .datagon-my-products-table-wrap.table-responsive
+      > table {
       transform: none !important;
       filter: none !important;
       perspective: none !important;
     }
-    #dg-q-main-table {
-      border-collapse: collapse !important;
-      border-spacing: 0 !important;
-    }
-    #dg-q-main-table thead th {
-      position: static !important;
-      top: auto !important;
-      transform: none !important;
-      background: #f8f9fa !important;
-    }
-    .datagon-columns-toolbox {
+    body.datagon-vanilla-body[data-dg-active-nav="queue"] .datagon-columns-toolbox {
       margin: 0 0 10px 0;
       border: 1px solid #e5e7eb;
       border-radius: 8px;
       background: #fafbfc;
       padding: 8px;
     }
-    .datagon-columns-toolbox .columns-top {
+    body.datagon-vanilla-body[data-dg-active-nav="queue"] .datagon-columns-toolbox .columns-top {
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 8px;
       flex-wrap: wrap;
     }
-    .datagon-columns-toolbox .columns-title {
+    body.datagon-vanilla-body[data-dg-active-nav="queue"] .datagon-columns-toolbox .columns-title {
       font-size: 12px;
       color: #6b7280;
       display: none;
     }
-    .datagon-columns-toolbox .btn {
+    body.datagon-vanilla-body[data-dg-active-nav="queue"] .datagon-columns-toolbox .btn {
       border-color: #d1d5db !important;
       box-shadow: none !important;
     }
-    .datagon-columns-panel {
+    body.datagon-vanilla-body[data-dg-active-nav="queue"] .datagon-columns-panel {
       margin-top: 8px;
       border-top: 1px dashed #d1d5db;
       padding-top: 8px;
       display: none;
     }
-    .datagon-columns-panel.open { display: block; }
-    .datagon-columns-panel .columns-grid {
+    body.datagon-vanilla-body[data-dg-active-nav="queue"] .datagon-columns-panel.open {
+      display: block;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="queue"] .datagon-columns-panel .columns-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
       gap: 6px 10px;
     }
-    .datagon-columns-panel label {
+    body.datagon-vanilla-body[data-dg-active-nav="queue"] .datagon-columns-panel label {
       display: inline-flex;
       align-items: center;
       gap: 6px;
@@ -63,12 +88,33 @@
       color: #374151;
       user-select: none;
     }
-    #dg-q-main-table thead th { border-right: 0 !important; }
-    #dg-q-main-table tbody td { border-right: 0 !important; }
+    /* Эталон: как .dg-ms-table / «Мои товары» — шапка #f8f9fa, сетка #e6e9ee / #f3f5f8; подписи по центру (перебив темы). */
+    body.datagon-vanilla-body[data-dg-active-nav="queue"] #dg-q-main-table.dg-q-table thead th {
+      position: sticky !important;
+      top: 0 !important;
+      z-index: 20 !important;
+      background: #f8f9fa !important;
+      border-right: 1px solid #e6e9ee !important;
+      vertical-align: middle;
+      text-align: center !important;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="queue"] #dg-q-main-table.dg-q-table thead th .q-sort-label {
+      display: block;
+      width: 100%;
+      box-sizing: border-box;
+      padding-right: 12px;
+      text-align: center;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="queue"] #dg-q-main-table.dg-q-table tbody td {
+      border-right: 1px solid #f3f5f8;
+      vertical-align: middle;
+    }
     #dg-q-main-table .q-resize-handle {
       display: block !important;
       pointer-events: auto !important;
       opacity: 0 !important;
     }
-    #dg-q-main-table thead th:hover .q-resize-handle { opacity: 0.9 !important; }
+    #dg-q-main-table thead th:hover .q-resize-handle {
+      opacity: 0.9 !important;
+    }
   </style>

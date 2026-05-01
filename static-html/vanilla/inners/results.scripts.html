@@ -13,17 +13,15 @@
       var urlDebounce = null;
       var searchReloadTimer = null;
       var resultsFetchAbortController = null;
-      var SEARCH_RELOAD_DEBOUNCE_MS = 350;
       var DEFAULT_VISIBLE_COLS = [true, true, true, true, true, true, true, true, true, true];
       var visibleCols = DEFAULT_VISIBLE_COLS.slice();
       var columnWidths = {};
       var resizeState = null;
-      var RESULTS_CLIENT_MAX_ROWS = 12000;
-      var resultsDatasetCache = {
-        apiKey: null,
-        rawRows: null,
-        serverMode: false,
-      };
+      var FLOATING_HEADER_OFFSET_PX = 2;
+      var FLOATING_HEADER_START_EPS_PX = 3;
+      var resultsFloatingHeaderRaf = 0;
+      var resultsFloatingLastScrollTs = 0;
+      var loadResultsGeneration = 0;
 
       function storageScope() {
         var userId = window.__DG_USER_ID__ || window.__USER_ID__ || "anon";
@@ -53,20 +51,85 @@
           matched: document.getElementById("dg-res-f-matched").value,
           availability: document.getElementById("dg-res-f-availability").value,
           search: document.getElementById("dg-res-f-search").value.trim(),
+          project_name: document.getElementById("dg-res-f-project_name").value.trim(),
+          price_min: document.getElementById("dg-res-f-price_min").value,
+          price_max: document.getElementById("dg-res-f-price_max").value,
         };
       }
 
-      function readTableFilters() {
+      function collectResultsFilterForm() {
         return {
-          product_name: document.getElementById("dg-res-tf-product_name").value.trim(),
-          sku: document.getElementById("dg-res-tf-sku").value.trim(),
-          project_name: document.getElementById("dg-res-tf-project_name").value.trim(),
-          page_status: document.getElementById("dg-res-tf-page_status").value,
-          availability: document.getElementById("dg-res-tf-availability").value,
-          matched: document.getElementById("dg-res-tf-matched").value,
-          price_min: document.getElementById("dg-res-tf-price_min").value,
-          price_max: document.getElementById("dg-res-tf-price_max").value,
+          search: document.getElementById("dg-res-f-search").value,
+          project_id: document.getElementById("dg-res-f-project").value,
+          page_status: document.getElementById("dg-res-f-page_status").value,
+          matched: document.getElementById("dg-res-f-matched").value,
+          availability: document.getElementById("dg-res-f-availability").value,
+          project_name: document.getElementById("dg-res-f-project_name").value,
+          price_min: document.getElementById("dg-res-f-price_min").value,
+          price_max: document.getElementById("dg-res-f-price_max").value,
+          limit: String(limit),
+          page: String(page),
+          sort_by: sortBy,
+          sort_dir: sortDir,
         };
+      }
+
+      function persistResultsFilterForm() {
+        try {
+          if (window.DatagonFilters) window.DatagonFilters.save("results", collectResultsFilterForm());
+        } catch (e) {}
+      }
+
+      function mergeResultsPrefsFromStorage() {
+        var DF = window.DatagonFilters;
+        if (!DF || !DF.load) return;
+        var prefs = DF.load("results");
+        if (!prefs) return;
+        var p;
+        try {
+          p = new URLSearchParams(window.location.search);
+        } catch (e2) {
+          p = new URLSearchParams();
+        }
+        function missing(k) {
+          return !p.has(k);
+        }
+        if (missing("search") && prefs.search != null)
+          document.getElementById("dg-res-f-search").value = String(prefs.search);
+        if (missing("project_id") && prefs.project_id != null) {
+          var sel = document.getElementById("dg-res-f-project");
+          var want = String(prefs.project_id);
+          if ([].some.call(sel.options, function (o) {
+            return o.value === want;
+          }))
+            sel.value = want;
+          else if (want === "all") sel.value = "all";
+        }
+        if (missing("page_status") && prefs.page_status != null)
+          document.getElementById("dg-res-f-page_status").value = String(prefs.page_status);
+        if (missing("matched") && prefs.matched != null)
+          document.getElementById("dg-res-f-matched").value = String(prefs.matched);
+        if (missing("availability") && prefs.availability != null)
+          document.getElementById("dg-res-f-availability").value = String(prefs.availability);
+        if (missing("project_name") && prefs.project_name != null)
+          document.getElementById("dg-res-f-project_name").value = String(prefs.project_name);
+        if (missing("price_min") && prefs.price_min != null)
+          document.getElementById("dg-res-f-price_min").value = String(prefs.price_min);
+        if (missing("price_max") && prefs.price_max != null)
+          document.getElementById("dg-res-f-price_max").value = String(prefs.price_max);
+        if (missing("limit") && prefs.limit != null) {
+          var l = Number(prefs.limit);
+          if ([50, 100, 500, 1000].includes(l)) {
+            limit = l;
+            document.getElementById("dg-res-limit").value = String(l);
+          }
+        }
+        if (missing("page") && prefs.page != null) {
+          var pg = Number(prefs.page);
+          if (Number.isFinite(pg) && pg > 0) page = pg;
+        }
+        if (missing("sort_by") && prefs.sort_by) sortBy = String(prefs.sort_by);
+        if (missing("sort_dir") && (prefs.sort_dir === "asc" || prefs.sort_dir === "desc")) sortDir = prefs.sort_dir;
       }
 
       function buildUrl() {
@@ -80,6 +143,7 @@
         Object.keys(f).forEach(function (k) {
           var v = f[k];
           if (v === undefined || v === null || v === "" || v === "all") return;
+          if ((k === "price_min" || k === "price_max") && String(v).trim() === "") return;
           s.set(k, String(v));
         });
         return "/api/results?" + s.toString();
@@ -91,6 +155,7 @@
         Object.keys(f).forEach(function (k) {
           var v = f[k];
           if (v === undefined || v === null || v === "" || v === "all") return;
+          if ((k === "price_min" || k === "price_max") && String(v).trim() === "") return;
           params.set(k, String(v));
         });
         if (page > 1) params.set("page", String(page));
@@ -115,7 +180,7 @@
 
       function parseUrlToForm() {
         var params = new URLSearchParams(window.location.search);
-        ["project_id", "page_status", "matched", "availability", "search"].forEach(function (k) {
+        ["project_id", "page_status", "matched", "availability", "search", "project_name", "price_min", "price_max"].forEach(function (k) {
           var v = params.get(k);
           if (v === null || v === "") return;
           if (k === "search") document.getElementById("dg-res-f-search").value = v;
@@ -123,6 +188,9 @@
           if (k === "page_status") document.getElementById("dg-res-f-page_status").value = v;
           if (k === "matched") document.getElementById("dg-res-f-matched").value = v;
           if (k === "availability") document.getElementById("dg-res-f-availability").value = v;
+          if (k === "project_name") document.getElementById("dg-res-f-project_name").value = v;
+          if (k === "price_min") document.getElementById("dg-res-f-price_min").value = v;
+          if (k === "price_max") document.getElementById("dg-res-f-price_max").value = v;
         });
         var p = Number(params.get("page") || 1);
         var l = Number(params.get("limit") || 100);
@@ -180,6 +248,7 @@
           sel.appendChild(o);
         });
         if ([].some.call(sel.options, function (o) { return o.value === prev; })) sel.value = prev;
+        mergeResultsPrefsFromStorage();
       }
 
       function pagesCount() {
@@ -199,106 +268,6 @@
         if (next) next.disabled = page >= pagesCount();
       }
 
-      function filterRows(data) {
-        var tf = readTableFilters();
-        return (data || []).filter(function (r) {
-          if (tf.product_name && !String(r.product_name || "").toLowerCase().includes(String(tf.product_name).trim().toLowerCase()))
-            return false;
-          if (tf.sku && !String(r.sku || "").toLowerCase().includes(String(tf.sku).trim().toLowerCase())) return false;
-          if (tf.project_name && !String(r.project_name || "").toLowerCase().includes(String(tf.project_name).trim().toLowerCase()))
-            return false;
-          if (tf.page_status !== "all" && String(r.page_status || "").toLowerCase() !== String(tf.page_status).toLowerCase()) return false;
-          var availability = Number(r.is_oos || 0) === 1 ? "oos" : "in_stock";
-          if (tf.availability !== "all" && availability !== tf.availability) return false;
-          var matched = Number(r.is_matched || 0) === 1 ? "1" : "0";
-          if (tf.matched !== "all" && matched !== tf.matched) return false;
-          var price = Number(r.price || 0);
-          var min = Number(tf.price_min || "");
-          var max = Number(tf.price_max || "");
-          if (Number.isFinite(min) && String(tf.price_min).trim() !== "" && price < min) return false;
-          if (Number.isFinite(max) && String(tf.price_max).trim() !== "" && price > max) return false;
-          return true;
-        });
-      }
-
-      function apiFiltersKey() {
-        return JSON.stringify(readApiFilters());
-      }
-
-      function invalidateResultsDatasetCache() {
-        resultsDatasetCache.apiKey = null;
-        resultsDatasetCache.rawRows = null;
-        resultsDatasetCache.serverMode = false;
-      }
-
-      function buildResultsFetchUrl(off, lim, sb, sd) {
-        var f = readApiFilters();
-        var s = new URLSearchParams({
-          limit: String(lim),
-          offset: String(off),
-          sort_by: String(sb || "parsed_at"),
-          sort_dir: String(sd || "desc"),
-        });
-        Object.keys(f).forEach(function (k) {
-          var v = f[k];
-          if (v === undefined || v === null || v === "" || v === "all") return;
-          s.set(k, String(v));
-        });
-        return "/api/results?" + s.toString();
-      }
-
-      function sortResultsRows(data) {
-        var dir = sortDir === "asc" ? 1 : -1;
-        var field = sortBy;
-        return data.slice().sort(function (a, b) {
-          var cmp = 0;
-          if (field === "parsed_at" || field === "page_parsed_at") {
-            cmp = new Date(a[field] || 0).getTime() - new Date(b[field] || 0).getTime();
-          } else if (field === "price") {
-            cmp = Number(a.price || 0) - Number(b.price || 0);
-          } else if (field === "is_oos") {
-            cmp = Number(a.is_oos ? 1 : 0) - Number(b.is_oos ? 1 : 0);
-          } else {
-            var av;
-            var bv;
-            if (field === "url") {
-              av = String(a.page_url || a.url || "");
-              bv = String(b.page_url || b.url || "");
-            } else {
-              av = String(a[field] != null ? a[field] : "");
-              bv = String(b[field] != null ? b[field] : "");
-            }
-            cmp = av.localeCompare(bv, "ru", { sensitivity: "base" });
-          }
-          if (cmp !== 0) return cmp * dir;
-          return Number(b.id || 0) - Number(a.id || 0);
-        });
-      }
-
-      function applyClientDatasetView() {
-        if (resultsDatasetCache.serverMode || !resultsDatasetCache.rawRows) return false;
-        if (resultsDatasetCache.apiKey !== apiFiltersKey()) return false;
-        var filtered = filterRows(resultsDatasetCache.rawRows.slice());
-        var sorted = sortResultsRows(filtered);
-        total = sorted.length;
-        var start = (page - 1) * limit;
-        rows = sorted.slice(start, start + limit);
-        return true;
-      }
-
-      function tryRenderFromClientCache() {
-        if (resultsDatasetCache.serverMode) return false;
-        if (!resultsDatasetCache.rawRows || resultsDatasetCache.apiKey !== apiFiltersKey()) return false;
-        loading = false;
-        showErr("");
-        var tbodyRefresh = document.getElementById("dg-res-tbody");
-        if (tbodyRefresh) tbodyRefresh.classList.remove("dg-res-tbody-refreshing");
-        applyClientDatasetView();
-        renderTable();
-        syncUrl();
-        return true;
-      }
-
       function showErr(msg) {
         var el = document.getElementById("dg-res-err");
         if (!el) return;
@@ -311,8 +280,7 @@
         el.textContent = msg;
       }
 
-      /* translate на <thead> даёт «пустое» место и съезд шапки; скролл — в .app-main__outer, не window. Режим: только CSS sticky на th + --dg-table-sticky-top из datagon-vanilla.js */
-      function clearResultsTheadTransform() {
+      function captureResultsTheadBaseTop() {
         var thead = document.getElementById("dg-res-thead");
         if (!thead) return;
         thead.style.transform = "";
@@ -320,16 +288,103 @@
         thead.style.zIndex = "";
         thead.style.willChange = "";
         thead.removeAttribute("data-dg-floating");
-        thead.removeAttribute("data-dg-base-top");
+        var rect = thead.getBoundingClientRect();
+        var absTop = (window.scrollY || window.pageYOffset || 0) + (rect && rect.top ? rect.top : 0);
+        thead.setAttribute("data-dg-base-top", String(absTop));
       }
 
-      function captureResultsFloatingHeaderBase() {
-        clearResultsTheadTransform();
+      function getResultsStickyTopPx() {
+        var app = document.querySelector(".app-container");
+        var header = document.querySelector(".app-header");
+        var fixed = Boolean(app && app.classList && app.classList.contains("fixed-header"));
+        if (!fixed) return 0;
+        if (!header || !header.getBoundingClientRect) return 60;
+        var rect = header.getBoundingClientRect();
+        var h = rect && rect.height ? rect.height : 60;
+        return h > 0 ? h : 60;
       }
 
-      function scheduleCaptureResultsFloatingHeaderBase() {
+      function updateResultsStickyTopVar() {
+        var app = document.querySelector(".app-container");
+        var header = document.querySelector(".app-header");
+        var fixed = Boolean(app && app.classList && app.classList.contains("fixed-header"));
+        var top = 0;
+        if (fixed && header && header.getBoundingClientRect) {
+          var rect = header.getBoundingClientRect();
+          top = rect && rect.height ? rect.height : 60;
+        }
+        document.documentElement.style.setProperty("--dg-table-sticky-top", top + "px");
+      }
+
+      function updateResultsFloatingHeaderFallback() {
+        var thead = document.getElementById("dg-res-thead");
+        if (!thead) return;
+        var table = thead.closest("table");
+        if (!table || !table.getBoundingClientRect) return;
+        var row = thead.querySelector("tr");
+        if (!row) return;
+
+        var y = window.scrollY || window.pageYOffset || 0;
+        var headerTop = getResultsStickyTopPx();
+
+        var baseTopAbs = Number(thead.getAttribute("data-dg-base-top") || 0);
+        if (!Number.isFinite(baseTopAbs) || baseTopAbs <= 0) return;
+        var tableRect = table.getBoundingClientRect();
+        var tableBottom = tableRect.bottom + y;
+        var rowRect = row.getBoundingClientRect();
+        var rowHeight = rowRect && rowRect.height ? rowRect.height : 0;
+
+        var headerLine = y + headerTop;
+        var start = baseTopAbs + FLOATING_HEADER_START_EPS_PX;
+        var end = tableBottom - rowHeight;
+        if (headerLine <= start || headerLine >= end) {
+          if (thead.style.transform) {
+            thead.style.transform = "";
+            thead.style.position = "";
+            thead.style.zIndex = "";
+            thead.style.willChange = "";
+            thead.removeAttribute("data-dg-floating");
+          }
+          return;
+        }
+
+        var zoomAwareOffset = FLOATING_HEADER_OFFSET_PX;
+        var dpr = window.devicePixelRatio || 1;
+        if (Math.abs(dpr - 1) < 0.03) zoomAwareOffset = FLOATING_HEADER_OFFSET_PX - 3;
+        var shift = Math.max(0, headerLine - start - zoomAwareOffset);
+        var shiftPx = Number(shift.toFixed(3));
+        var nextTransform = "translate3d(0," + shiftPx + "px,0)";
+        if (thead.style.transform !== nextTransform) {
+          thead.style.transform = nextTransform;
+          thead.style.position = "relative";
+          thead.style.zIndex = "25";
+          thead.style.willChange = "transform";
+          thead.setAttribute("data-dg-floating", "1");
+        }
+      }
+
+      function resultsFloatingHeaderTick(ts) {
+        resultsFloatingHeaderRaf = 0;
+        updateResultsFloatingHeaderFallback();
+        if (ts - resultsFloatingLastScrollTs < 140) {
+          resultsFloatingHeaderRaf = requestAnimationFrame(resultsFloatingHeaderTick);
+        }
+      }
+
+      function scheduleResultsFloatingHeaderUpdate() {
+        resultsFloatingLastScrollTs = performance.now();
+        if (resultsFloatingHeaderRaf) return;
+        resultsFloatingHeaderRaf = requestAnimationFrame(resultsFloatingHeaderTick);
+      }
+
+      function onScrollResultsFloatingHeader() {
+        scheduleResultsFloatingHeaderUpdate();
+      }
+
+      function resRefreshFloatingAfterLayout() {
         requestAnimationFrame(function () {
-          requestAnimationFrame(captureResultsFloatingHeaderBase);
+          captureResultsTheadBaseTop();
+          scheduleResultsFloatingHeaderUpdate();
         });
       }
 
@@ -347,10 +402,10 @@
           tbody.appendChild(trL);
           applyStoredColumnWidths();
           initColumnResizeHandles();
-          scheduleCaptureResultsFloatingHeaderBase();
+          resRefreshFloatingAfterLayout();
           return;
         }
-        var filtered = filterRows(rows);
+        var filtered = rows || [];
         if (!filtered.length) {
           var tr = document.createElement("tr");
           var td = document.createElement("td");
@@ -361,7 +416,7 @@
           tbody.appendChild(tr);
           applyStoredColumnWidths();
           initColumnResizeHandles();
-          scheduleCaptureResultsFloatingHeaderBase();
+          resRefreshFloatingAfterLayout();
           return;
         }
         filtered.forEach(function (r) {
@@ -478,28 +533,19 @@
         applyVisibleColumns();
         applyStoredColumnWidths();
         initColumnResizeHandles();
+        resRefreshFloatingAfterLayout();
       }
 
       function loadResults(opts) {
         opts = opts || {};
         var showSkeleton = opts.showSkeleton !== false;
-        var forceRefresh = opts.forceRefresh === true;
+        var gen = ++loadResultsGeneration;
         if (searchReloadTimer) {
           clearTimeout(searchReloadTimer);
           searchReloadTimer = null;
         }
         if (resultsFetchAbortController) {
           resultsFetchAbortController.abort();
-        }
-        if (forceRefresh) {
-          invalidateResultsDatasetCache();
-        }
-        if (!forceRefresh && tryRenderFromClientCache()) {
-          return;
-        }
-        var key = apiFiltersKey();
-        if (resultsDatasetCache.apiKey !== key) {
-          invalidateResultsDatasetCache();
         }
         var tbodyRefresh = document.getElementById("dg-res-tbody");
         if (tbodyRefresh) tbodyRefresh.classList.remove("dg-res-tbody-refreshing");
@@ -514,80 +560,29 @@
           updateHints({ refreshSuffix: " · обновление…" });
         }
 
-        function finishServerPage(x) {
-          if (!x.r.ok) throw new Error(x.j.error || "Ошибка загрузки результатов");
-          var data = x.j.data || x.j.rows || [];
-          rows = Array.isArray(data) ? data : [];
-          total = Number(x.j.total || 0);
-          loading = false;
-          if (tbodyRefresh) tbodyRefresh.classList.remove("dg-res-tbody-refreshing");
-          renderTable();
-          syncUrl();
-        }
-
-        function finishClientDataset(acc) {
-          resultsDatasetCache.apiKey = key;
-          resultsDatasetCache.rawRows = acc;
-          resultsDatasetCache.serverMode = false;
-          loading = false;
-          if (tbodyRefresh) tbodyRefresh.classList.remove("dg-res-tbody-refreshing");
-          applyClientDatasetView();
-          renderTable();
-          syncUrl();
-        }
-
-        /* Сначала limit=0: только total + COUNT (без N последовательных чанков по сети). Потом один запрос на весь набор ≤ RESULTS_CLIENT_MAX_ROWS. */
-        var urlProbe = buildResultsFetchUrl(0, 0, "parsed_at", "desc");
-        fetch(urlProbe, { credentials: "same-origin", signal: controller.signal })
+        fetch(buildUrl(), { credentials: "same-origin", signal: controller.signal })
           .then(function (r) {
             return r.json().then(function (j) {
               return { r: r, j: j };
             });
           })
           .then(function (x) {
+            if (gen !== loadResultsGeneration) return;
             if (!x.r.ok) throw new Error(x.j.error || "Ошибка загрузки результатов");
-            var totalN = Number(x.j.total || 0);
-
-            if (totalN > RESULTS_CLIENT_MAX_ROWS) {
-              resultsDatasetCache.apiKey = key;
-              resultsDatasetCache.serverMode = true;
-              resultsDatasetCache.rawRows = null;
-              return fetch(buildUrl(), { credentials: "same-origin", signal: controller.signal })
-                .then(function (r2) {
-                  return r2.json().then(function (j2) {
-                    return { r: r2, j: j2 };
-                  });
-                })
-                .then(finishServerPage);
-            }
-
-            if (totalN === 0) {
-              finishClientDataset([]);
-              return;
-            }
-
-            var fullLim = Math.min(totalN, RESULTS_CLIENT_MAX_ROWS);
-            return fetch(buildResultsFetchUrl(0, fullLim, "parsed_at", "desc"), {
-              credentials: "same-origin",
-              signal: controller.signal,
-            })
-              .then(function (r1) {
-                return r1.json().then(function (j1) {
-                  return { r: r1, j: j1 };
-                });
-              })
-              .then(function (xx) {
-                if (!xx.r.ok) throw new Error(xx.j.error || "Ошибка загрузки результатов");
-                var d = xx.j.data || xx.j.rows || [];
-                var full = Array.isArray(d) ? d : [];
-                finishClientDataset(full);
-              });
+            var data = x.j.data || x.j.rows || [];
+            rows = Array.isArray(data) ? data : [];
+            total = Number(x.j.total || 0);
+            loading = false;
+            if (tbodyRefresh) tbodyRefresh.classList.remove("dg-res-tbody-refreshing");
+            renderTable();
+            syncUrl();
+            persistResultsFilterForm();
           })
           .catch(function (e) {
             if (e.name === "AbortError") return;
+            if (gen !== loadResultsGeneration) return;
             loading = false;
             if (tbodyRefresh) tbodyRefresh.classList.remove("dg-res-tbody-refreshing");
-            invalidateResultsDatasetCache();
             rows = [];
             total = 0;
             renderTable();
@@ -614,11 +609,21 @@
               projects = arr[0];
               fillProjects(projects);
             }
-            var dl = Number(arr[1].default_limit || 100);
-            if ([50, 100, 500, 1000].includes(dl)) {
+            var urlHadLimit = false;
+            try {
+              urlHadLimit = new URLSearchParams(window.location.search).has("limit");
+            } catch (e2) {}
+            var dl = Number((arr[1] && arr[1].default_limit) || 100);
+            if (!urlHadLimit && [50, 100, 500, 1000].includes(dl)) {
+              var prevLimit = limit;
               limit = dl;
-              document.getElementById("dg-res-limit").value = String(dl);
+              var limSel = document.getElementById("dg-res-limit");
+              if (limSel) limSel.value = String(dl);
+              if (prevLimit !== dl) {
+                loadResults({ showSkeleton: false });
+              }
             }
+            return arr;
           })
           .catch(function () {});
       }
@@ -652,6 +657,7 @@
         if (want !== "all" && [].some.call(sel.options, function (o) { return o.value === want; })) sel.value = want;
         else sel.value = "all";
         page = 1;
+        persistResultsFilterForm();
         loadResults();
       }
 
@@ -666,7 +672,7 @@
           localStorage.setItem(userSortKey(), JSON.stringify({ sortBy: sortBy, sortDir: sortDir }));
         } catch (e) {}
         updateSortHeaders();
-        if (tryRenderFromClientCache()) return;
+        persistResultsFilterForm();
         loadResults({ showSkeleton: false });
       }
 
@@ -679,33 +685,52 @@
       function clearAppliedColumnWidths() {
         var table = document.getElementById("dg-res-main-table");
         if (!table || !table.tHead || !table.tHead.rows[0]) return;
+        var cg = table.querySelector("colgroup");
+        if (cg) {
+          for (var ci = 0; ci < cg.children.length; ci++) {
+            cg.children[ci].style.width = "";
+          }
+        }
+        getHeaderCells().forEach(function (th) {
+          th.removeAttribute("data-dg-res-resize-ready");
+          var rh = th.querySelector(".dg-res-resize-handle");
+          if (rh) rh.remove();
+        });
         var rowsList = [table.tHead.rows[0]].concat(
           Array.prototype.slice.call((table.tBodies[0] && table.tBodies[0].rows) || [])
         );
         rowsList.forEach(function (row) {
           for (var i = 0; i < row.cells.length; i++) {
             var c = row.cells[i];
+            if (c.colSpan > 1) continue;
             c.style.width = "";
             c.style.minWidth = "";
             c.style.maxWidth = "";
+            c.style.boxSizing = "";
           }
         });
       }
 
       function applyColumnWidthByIndex(idx, px) {
-        var table = document.getElementById("dg-res-main-table");
-        if (!table) return;
-        var rowsList = [];
-        if (table.tHead && table.tHead.rows && table.tHead.rows[0]) rowsList.push(table.tHead.rows[0]);
-        var bodyRows = Array.prototype.slice.call((table.tBodies[0] && table.tBodies[0].rows) || []);
-        rowsList = rowsList.concat(bodyRows);
-        rowsList.forEach(function (row) {
-          var cell = row.cells[idx];
-          if (!cell || cell.colSpan > 1) return;
+        var w = Math.max(80, Math.min(900, Math.round(Number(px) || 0)));
+        if (!Number.isFinite(w) || w <= 0) return;
+        columnWidths[idx] = w;
+        var headers = getHeaderCells();
+        if (headers[idx]) {
+          headers[idx].style.width = w + "px";
+          headers[idx].style.minWidth = w + "px";
+          headers[idx].style.maxWidth = w + "px";
+        }
+        var tbody = document.getElementById("dg-res-tbody");
+        if (!tbody) return;
+        Array.prototype.forEach.call(tbody.rows || [], function (tr) {
+          if (!tr.cells || !tr.cells[idx]) return;
+          var cell = tr.cells[idx];
+          if (cell.colSpan > 1) return;
           cell.style.boxSizing = "border-box";
-          cell.style.width = px + "px";
-          cell.style.maxWidth = px + "px";
-          cell.style.minWidth = "0";
+          cell.style.width = w + "px";
+          cell.style.minWidth = w + "px";
+          cell.style.maxWidth = w + "px";
         });
       }
 
@@ -713,25 +738,19 @@
         Object.keys(columnWidths || {}).forEach(function (k) {
           var idx = Number(k);
           var px = Number(columnWidths[k]);
-          if (!Number.isFinite(idx) || !Number.isFinite(px) || px < 48) return;
+          if (!Number.isFinite(idx) || !Number.isFinite(px) || px < 80) return;
           applyColumnWidthByIndex(idx, px);
         });
       }
 
       function onResizeMoveResults(e) {
         if (!resizeState) return;
-        var dx = e.clientX - resizeState.startX;
-        var next = Math.max(48, Math.min(700, Math.round(resizeState.startWidth + dx)));
-        columnWidths[resizeState.colIndex] = next;
-        applyColumnWidthByIndex(resizeState.colIndex, next);
+        var delta = e.clientX - resizeState.startX;
+        applyColumnWidthByIndex(resizeState.colIndex, resizeState.startWidth + delta);
+        scheduleResultsFloatingHeaderUpdate();
       }
 
       function onResizeUpResults() {
-        document.removeEventListener("mousemove", onResizeMoveResults);
-        document.removeEventListener("mouseup", onResizeUpResults);
-        document.removeEventListener("pointermove", onResizeMoveResults);
-        document.removeEventListener("pointerup", onResizeUpResults);
-        document.removeEventListener("pointercancel", onResizeUpResults);
         if (!resizeState) return;
         resizeState = null;
         document.body.style.cursor = "";
@@ -739,44 +758,31 @@
         try {
           localStorage.setItem(userColWidthKey(), JSON.stringify(columnWidths || {}));
         } catch (err) {}
-        scheduleCaptureResultsFloatingHeaderBase();
+        resRefreshFloatingAfterLayout();
       }
 
       function initColumnResizeHandles() {
-        var headers = getHeaderCells();
-        headers.forEach(function (th, idx) {
-          var old = th.querySelector(".dg-res-resize-handle");
-          if (old) old.remove();
-          if (th.offsetWidth < 8) return;
+        getHeaderCells().forEach(function (th, idx) {
+          if (th.getAttribute("data-dg-res-resize-ready") === "1") return;
+          th.setAttribute("data-dg-res-resize-ready", "1");
+          th.style.position = "relative";
           var h = document.createElement("span");
           h.className = "dg-res-resize-handle";
           h.setAttribute("role", "separator");
           h.setAttribute("aria-orientation", "vertical");
           h.title = "Потяните, чтобы изменить ширину";
-          function beginResize(ev) {
-            if (ev.button != null && ev.button !== 0) return;
+          h.style.cssText =
+            "position:absolute;top:0;right:0;width:6px;height:100%;cursor:col-resize;z-index:4;" +
+            "background:linear-gradient(to right,transparent 47%,#d9dee5 47%,#d9dee5 53%,transparent 53%);opacity:0.55";
+          h.addEventListener("mousedown", function (ev) {
             ev.preventDefault();
             ev.stopPropagation();
             var rect = th.getBoundingClientRect();
-            var w = Number(columnWidths[idx] || 0);
-            if (!Number.isFinite(w) || w <= 0) w = Math.round(rect.width || 120);
-            resizeState = { colIndex: idx, startX: ev.clientX, startWidth: w };
+            var w = Number(columnWidths[idx] || (rect && rect.width ? rect.width : 0));
+            resizeState = { colIndex: idx, startX: ev.clientX, startWidth: w > 0 ? w : 120 };
             document.body.style.cursor = "col-resize";
             document.body.style.userSelect = "none";
-            if (window.PointerEvent) {
-              document.addEventListener("pointermove", onResizeMoveResults);
-              document.addEventListener("pointerup", onResizeUpResults);
-              document.addEventListener("pointercancel", onResizeUpResults);
-            } else {
-              document.addEventListener("mousemove", onResizeMoveResults);
-              document.addEventListener("mouseup", onResizeUpResults);
-            }
-          }
-          if (window.PointerEvent) {
-            h.addEventListener("pointerdown", beginResize);
-          } else {
-            h.addEventListener("mousedown", beginResize);
-          }
+          });
           h.addEventListener("click", function (ev) {
             ev.stopPropagation();
           });
@@ -802,7 +808,7 @@
             row.cells[i].style.visibility = visibleCols[i] === false ? "collapse" : "";
           }
         });
-        scheduleCaptureResultsFloatingHeaderBase();
+        resRefreshFloatingAfterLayout();
       }
 
       function renderColumnsPanel() {
@@ -904,7 +910,6 @@
           .then(function (x) {
             if (!x.r.ok) throw new Error(x.j.error || "Не удалось очистить");
             alert("История очищена");
-            invalidateResultsDatasetCache();
             loadResults();
           })
           .catch(function (e) {
@@ -976,7 +981,6 @@
           .then(function (x) {
             if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Не удалось удалить");
             alert("Запись удалена");
-            invalidateResultsDatasetCache();
             loadResults({ showSkeleton: false });
           })
           .catch(function (e) {
@@ -990,6 +994,31 @@
           return;
         }
         page = 1;
+        persistResultsFilterForm();
+        loadResults();
+      });
+      document.getElementById("results-default").addEventListener("click", function () {
+        if (window.DatagonFilters) window.DatagonFilters.clear("results");
+        document.getElementById("dg-res-f-search").value = "";
+        document.getElementById("dg-res-f-project").value = "all";
+        document.getElementById("dg-res-f-page_status").value = "";
+        document.getElementById("dg-res-f-matched").value = "all";
+        document.getElementById("dg-res-f-availability").value = "all";
+        document.getElementById("dg-res-f-project_name").value = "";
+        document.getElementById("dg-res-f-price_min").value = "";
+        document.getElementById("dg-res-f-price_max").value = "";
+        limit = 100;
+        document.getElementById("dg-res-limit").value = "100";
+        page = 1;
+        sortBy = "parsed_at";
+        sortDir = "desc";
+        try {
+          localStorage.setItem(userSortKey(), JSON.stringify({ sortBy: sortBy, sortDir: sortDir }));
+        } catch (e) {}
+        updateSortHeaders();
+        try {
+          window.history.replaceState(null, "", window.location.pathname);
+        } catch (e2) {}
         loadResults();
       });
       document.getElementById("results-reparse-all").addEventListener("click", reparseAll);
@@ -1008,40 +1037,30 @@
 
       document.getElementById("dg-res-f-search").addEventListener("input", function () {
         scheduleSyncUrl();
-        if (searchReloadTimer) clearTimeout(searchReloadTimer);
-        searchReloadTimer = setTimeout(function () {
-          searchReloadTimer = null;
-          page = 1;
-          loadResults();
-        }, SEARCH_RELOAD_DEBOUNCE_MS);
       });
 
       ["dg-res-f-project", "dg-res-f-matched", "dg-res-f-page_status", "dg-res-f-availability"].forEach(function (id) {
         document.getElementById(id).addEventListener("change", function () {
           page = 1;
           scheduleSyncUrl();
-          loadResults();
         });
       });
 
       document.getElementById("dg-res-limit").addEventListener("change", function () {
         limit = Number(this.value) || 100;
         page = 1;
-        if (tryRenderFromClientCache()) return;
-        loadResults({ showSkeleton: false });
+        scheduleSyncUrl();
       });
 
       document.getElementById("dg-res-prev").addEventListener("click", function () {
         if (page > 1) {
           page--;
-          if (tryRenderFromClientCache()) return;
           loadResults({ showSkeleton: false });
         }
       });
       document.getElementById("dg-res-next").addEventListener("click", function () {
         if (page < pagesCount()) {
           page++;
-          if (tryRenderFromClientCache()) return;
           loadResults({ showSkeleton: false });
         }
       });
@@ -1059,24 +1078,30 @@
         });
       })();
 
-      [
-        "dg-res-tf-product_name",
-        "dg-res-tf-sku",
-        "dg-res-tf-project_name",
-        "dg-res-tf-page_status",
-        "dg-res-tf-availability",
-        "dg-res-tf-matched",
-        "dg-res-tf-price_min",
-        "dg-res-tf-price_max",
-      ].forEach(function (id) {
-        var el = document.getElementById(id);
-        el.addEventListener("input", function () {
-          if (tryRenderFromClientCache()) return;
-          renderTable();
+      window.addEventListener("mousemove", onResizeMoveResults);
+      window.addEventListener("mouseup", onResizeUpResults);
+
+      var filterAdjustTimer = null;
+      function scheduleFilterAdjustReload() {
+        if (filterAdjustTimer) clearTimeout(filterAdjustTimer);
+        filterAdjustTimer = setTimeout(function () {
+          filterAdjustTimer = null;
+          page = 1;
+          scheduleSyncUrl();
+        }, 350);
+      }
+      document.getElementById("dg-res-f-project_name").addEventListener("input", function () {
+        scheduleSyncUrl();
+        scheduleFilterAdjustReload();
+      });
+      ["dg-res-f-price_min", "dg-res-f-price_max"].forEach(function (id) {
+        document.getElementById(id).addEventListener("input", function () {
+          scheduleSyncUrl();
+          scheduleFilterAdjustReload();
         });
-        el.addEventListener("change", function () {
-          if (tryRenderFromClientCache()) return;
-          renderTable();
+        document.getElementById(id).addEventListener("change", function () {
+          scheduleSyncUrl();
+          scheduleFilterAdjustReload();
         });
       });
 
@@ -1105,19 +1130,32 @@
           try {
             localStorage.setItem(FILTERS_KEY, hidden ? "0" : "1");
           } catch (e) {}
-          scheduleCaptureResultsFloatingHeaderBase();
+          resRefreshFloatingAfterLayout();
         });
       })();
 
+      window.addEventListener("scroll", onScrollResultsFloatingHeader, { passive: true });
       window.addEventListener("resize", function () {
-        captureResultsFloatingHeaderBase();
+        updateResultsStickyTopVar();
+        resRefreshFloatingAfterLayout();
       });
+      (function bindResultsScrollContainers() {
+        var mainOuter = document.querySelector(".app-main__outer");
+        if (mainOuter && mainOuter.addEventListener) {
+          mainOuter.addEventListener("scroll", onScrollResultsFloatingHeader, { passive: true });
+        }
+        var horiz = document.querySelector(".dg-res-table-scroll-outer");
+        if (horiz && horiz.addEventListener) {
+          horiz.addEventListener("scroll", onScrollResultsFloatingHeader, { passive: true });
+        }
+      })();
 
-      loadBaseData().then(function () {
-        parseUrlToForm();
-        updateSortHeaders();
-        initColumnsPanel();
-        loadResults();
-      });
+      updateResultsStickyTopVar();
+      parseUrlToForm();
+      mergeResultsPrefsFromStorage();
+      updateSortHeaders();
+      initColumnsPanel();
+      loadResults();
+      loadBaseData();
     })();
   </script>

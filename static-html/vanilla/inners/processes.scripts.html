@@ -4,6 +4,7 @@
       var overview = null;
       var loading = false;
       var pollTimer = null;
+      var processesPrefsMerged = false;
 
       function fmtNum(v) {
         return Number(v || 0).toLocaleString("ru-RU");
@@ -40,6 +41,32 @@
         return String(document.getElementById("dg-proc-smart-search").value || "")
           .trim()
           .toLowerCase();
+      }
+
+      function collectProcessesFilterForm() {
+        return {
+          smart: document.getElementById("dg-proc-smart-search").value,
+          site_id: getSelectedSiteId(),
+        };
+      }
+
+      function persistProcessesFilterForm() {
+        try {
+          if (window.DatagonFilters) window.DatagonFilters.save("processes", collectProcessesFilterForm());
+        } catch (e) {}
+      }
+
+      function mergeProcessesPrefsFromStorage() {
+        var DF = window.DatagonFilters;
+        if (!DF || !DF.load) return;
+        var prefs = DF.load("processes");
+        if (!prefs) return;
+        if (prefs.smart != null) document.getElementById("dg-proc-smart-search").value = String(prefs.smart);
+        var sel = document.getElementById("dg-proc-site");
+        if (prefs.site_id != null && [].some.call(sel.options, function (o) {
+          return o.value === String(prefs.site_id);
+        }))
+          sel.value = String(prefs.site_id);
       }
 
       function renderFromOverview() {
@@ -231,6 +258,10 @@
             if (!x.r.ok) throw new Error(x.j.error || "Не удалось загрузить сводку процессов");
             overview = x.j;
             applySiteFromResponse(x.j);
+            if (!processesPrefsMerged) {
+              mergeProcessesPrefsFromStorage();
+              processesPrefsMerged = true;
+            }
             renderFromOverview();
             showErr("");
           })
@@ -261,15 +292,23 @@
       }
 
       document.getElementById("dg-proc-refresh-head").addEventListener("click", function () {
+        persistProcessesFilterForm();
         loadOverview();
       });
       document.getElementById("dg-proc-refresh-inline").addEventListener("click", function () {
+        persistProcessesFilterForm();
         loadOverview();
       });
       document.getElementById("dg-proc-site").addEventListener("change", function () {
         loadOverview(this.value);
       });
-      document.getElementById("dg-proc-smart-search").addEventListener("input", function () {
+      document.getElementById("dg-proc-apply").addEventListener("click", function () {
+        persistProcessesFilterForm();
+        if (overview) renderFromOverview();
+      });
+      document.getElementById("dg-proc-default").addEventListener("click", function () {
+        if (window.DatagonFilters) window.DatagonFilters.clear("processes");
+        document.getElementById("dg-proc-smart-search").value = "";
         if (overview) renderFromOverview();
       });
       document.getElementById("dg-proc-ms-stop").addEventListener("click", stopMsSync);

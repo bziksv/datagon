@@ -61,7 +61,7 @@
       margin: 0 !important;
       padding: 0 !important;
     }
-    #dg-proj-main-table thead th {
+    body.datagon-vanilla-body[data-dg-active-nav="projects"] #dg-proj-main-table thead th {
       position: static !important;
       top: auto !important;
       transform: none !important;
@@ -69,6 +69,15 @@
       padding-right: 14px;
       border-right: 1px solid #e6e9ee;
       border-bottom: 1px solid #e6e9ee;
+      text-align: center !important;
+      vertical-align: middle;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="projects"] #dg-proj-main-table thead th .proj-sort-label {
+      display: block;
+      width: 100%;
+      box-sizing: border-box;
+      padding-right: 12px;
+      text-align: center;
     }
     #dg-proj-main-table thead th:last-child {
       border-right: 0;
@@ -626,9 +635,10 @@
                     <option value="desc" selected>По убыванию</option>
                   </select>
                 </div>
-                <div class="col-md-2 d-flex align-items-end">
-                  <button type="button" class="btn btn-sm btn-outline-primary w-100" id="dg-proj-btn-refresh">Обновить</button>
-                </div>
+              </div>
+              <div class="mt-2 d-flex flex-wrap gap-2">
+                <button type="button" class="btn btn-sm btn-primary" id="dg-proj-apply" data-dg-tooltip="Применить фильтры к списку проектов. Сохраняет выбранные значения для следующего визита."><i class="pe-7s-search me-1"></i>Применить</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-proj-default" data-dg-tooltip="Сбросить фильтры к значениям по умолчанию и очистить сохранённые настройки."><i class="pe-7s-refresh me-1"></i>По умолчанию</button>
               </div>
               </div>
             </div>
@@ -960,6 +970,36 @@
         };
       }
 
+      function collectProjectsFilterForm() {
+        return {
+          smart: document.getElementById("dg-proj-smart").value,
+          id: document.getElementById("dg-proj-tf-id").value,
+          name: document.getElementById("dg-proj-tf-name").value,
+          domain: document.getElementById("dg-proj-tf-domain").value,
+          pages_min: document.getElementById("dg-proj-tf-pages_min").value,
+          pages_max: document.getElementById("dg-proj-tf-pages_max").value,
+        };
+      }
+
+      function persistProjectsFilterForm() {
+        try {
+          if (window.DatagonFilters) window.DatagonFilters.save("projects", collectProjectsFilterForm());
+        } catch (e) {}
+      }
+
+      function mergeProjectsPrefsFromStorage() {
+        var DF = window.DatagonFilters;
+        if (!DF || !DF.load) return;
+        var prefs = DF.load("projects");
+        if (!prefs) return;
+        if (prefs.smart != null) document.getElementById("dg-proj-smart").value = String(prefs.smart);
+        if (prefs.id != null) document.getElementById("dg-proj-tf-id").value = String(prefs.id);
+        if (prefs.name != null) document.getElementById("dg-proj-tf-name").value = String(prefs.name);
+        if (prefs.domain != null) document.getElementById("dg-proj-tf-domain").value = String(prefs.domain);
+        if (prefs.pages_min != null) document.getElementById("dg-proj-tf-pages_min").value = String(prefs.pages_min);
+        if (prefs.pages_max != null) document.getElementById("dg-proj-tf-pages_max").value = String(prefs.pages_max);
+      }
+
       function computeRows() {
         var needle = readSmartSearch().toLowerCase();
         var rows = (projects || []).map(function (p) {
@@ -1255,6 +1295,7 @@
         applyVisibleColumns();
         applyStoredColumnWidths();
         initColumnResizeHandles();
+        if (!loading) persistProjectsFilterForm();
       }
 
       function loadProjects() {
@@ -1423,30 +1464,35 @@
         loadProjects();
       });
 
-      document.getElementById("dg-proj-btn-refresh").addEventListener("click", function () {
-        loadProjects();
+      document.getElementById("dg-proj-apply").addEventListener("click", function () {
+        persistProjectsFilterForm();
+        renderTable();
+      });
+      document.getElementById("dg-proj-default").addEventListener("click", function () {
+        if (window.DatagonFilters) window.DatagonFilters.clear("projects");
+        document.getElementById("dg-proj-smart").value = "";
+        document.getElementById("dg-proj-tf-id").value = "";
+        document.getElementById("dg-proj-tf-name").value = "";
+        document.getElementById("dg-proj-tf-domain").value = "";
+        document.getElementById("dg-proj-tf-pages_min").value = "";
+        document.getElementById("dg-proj-tf-pages_max").value = "";
+        document.getElementById("dg-proj-sort-by").value = "id";
+        document.getElementById("dg-proj-sort-dir").value = "desc";
+        sortBy = "id";
+        sortDir = "desc";
+        try {
+          localStorage.setItem(userSortKey(), JSON.stringify({ sort_by: sortBy, sort_dir: sortDir }));
+        } catch (e) {}
+        try {
+          window.history.replaceState(null, "", window.location.pathname);
+        } catch (e2) {}
+        syncSortUrl();
+        updateSortHeaders();
+        renderTable();
       });
       document.getElementById("dg-proj-btn-create").addEventListener("click", createProject);
       document.getElementById("dg-proj-btn-save").addEventListener("click", saveEdit);
       document.getElementById("dg-proj-btn-cancel-edit").addEventListener("click", closeEdit);
-
-      [
-        "dg-proj-smart",
-        "dg-proj-tf-id",
-        "dg-proj-tf-name",
-        "dg-proj-tf-domain",
-        "dg-proj-tf-pages_min",
-        "dg-proj-tf-pages_max",
-      ].forEach(function (id) {
-        var el = document.getElementById(id);
-        if (!el) return;
-        el.addEventListener("input", function () {
-          renderTable();
-        });
-        el.addEventListener("change", function () {
-          renderTable();
-        });
-      });
 
       (function filtersCollapse() {
         var body = document.getElementById("dg-proj-filters-body");
@@ -1534,6 +1580,7 @@
       })();
 
       loadSortState();
+      mergeProjectsPrefsFromStorage();
       document.getElementById("dg-proj-sort-by").value = sortBy;
       document.getElementById("dg-proj-sort-dir").value = sortDir;
       updateSortHeaders();

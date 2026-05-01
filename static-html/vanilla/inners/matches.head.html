@@ -1,81 +1,132 @@
-  <!-- Сопоставление: единая сетка thead/tbody, границы в шапке как в теле, «Действия» с переносом кнопок -->
+  <!-- Сопоставление: таблицы в паритете с «Мои товары» / moysklad (внешний горизонтальный скролл, wrap overflow visible, сетка #e6e9ee / #f3f5f8, sticky thead). -->
   <style>
+    body.datagon-vanilla-body[data-dg-active-nav="matches"] .app-main__inner,
     body[data-dg-active-nav="matches"] .app-main__inner {
       min-width: 0;
+      max-width: 100%;
+      box-sizing: border-box;
     }
-    body[data-dg-active-nav="matches"] #dg-matches-list-scroll {
-      display: block;
+    body.datagon-vanilla-body[data-dg-active-nav="matches"] .main-card.card > .card-body,
+    body[data-dg-active-nav="matches"] .main-card.card > .card-body {
+      min-width: 0;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+
+    body[data-dg-active-nav="matches"] .dg-matches-my-table-scroll-outer,
+    body[data-dg-active-nav="matches"] .dg-matches-list-scroll-outer {
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
+      overflow-x: auto;
+      overflow-y: visible;
+      -webkit-overflow-scrolling: touch;
+    }
+    body[data-dg-active-nav="matches"] .dg-matches-my-table-scroll-outer > .datagon-my-products-table-wrap.table-responsive,
+    body[data-dg-active-nav="matches"] .dg-matches-list-scroll-outer > .datagon-my-products-table-wrap.table-responsive {
       width: 100%;
       max-width: 100%;
       min-width: 0;
       box-sizing: border-box;
-      overflow-x: auto !important;
-      overflow-y: visible !important;
-      -webkit-overflow-scrolling: touch;
+      overflow: visible !important;
+      max-height: none !important;
     }
-    body[data-dg-active-nav="matches"] #dg-matches-list-scroll table#dg-matches-list-table.dg-matches-list-table {
-      table-layout: fixed;
-      width: 1472px;
-      min-width: 1472px;
+    body[data-dg-active-nav="matches"] .dg-matches-my-table-scroll-outer > .datagon-my-products-table-wrap.table-responsive,
+    body[data-dg-active-nav="matches"] .dg-matches-my-table-scroll-outer > .datagon-my-products-table-wrap.table-responsive > table,
+    body[data-dg-active-nav="matches"] .dg-matches-list-scroll-outer > .datagon-my-products-table-wrap.table-responsive,
+    body[data-dg-active-nav="matches"] .dg-matches-list-scroll-outer > .datagon-my-products-table-wrap.table-responsive > table {
+      transform: none !important;
+      filter: none !important;
+      perspective: none !important;
+    }
+
+    body[data-dg-active-nav="matches"] #dg-matches-my-main-table.dg-matches-my-table {
+      font-size: 0.8rem;
+      line-height: 1.25;
+      font-variant-numeric: tabular-nums;
+      width: max-content;
+      min-width: 100%;
       max-width: none;
-      border-collapse: separate !important;
+      table-layout: fixed;
+      border-collapse: collapse !important;
       border-spacing: 0 !important;
-      border: 1px solid #868e96 !important;
-      --bs-table-border-color: #868e96;
     }
-    body[data-dg-active-nav="matches"] table#dg-matches-list-table col.dg-matches-col-0 { width: 140px; }
-    body[data-dg-active-nav="matches"] table#dg-matches-list-table col.dg-matches-col-1 { width: 120px; }
-    body[data-dg-active-nav="matches"] table#dg-matches-list-table col.dg-matches-col-2 { width: 104px; }
-    body[data-dg-active-nav="matches"] table#dg-matches-list-table col.dg-matches-col-3 { width: 328px; }
-    body[data-dg-active-nav="matches"] table#dg-matches-list-table col.dg-matches-col-4 { width: 328px; }
-    body[data-dg-active-nav="matches"] table#dg-matches-list-table col.dg-matches-col-5 { width: 352px; }
-    body[data-dg-active-nav="matches"] table#dg-matches-list-table.table-bordered > :not(caption) > * > * {
-      border-color: #868e96 !important;
-    }
-    body[data-dg-active-nav="matches"] table#dg-matches-list-table thead th,
-    body[data-dg-active-nav="matches"] table#dg-matches-list-table tbody td {
-      vertical-align: middle;
-      border-right: 1px solid #868e96 !important;
-      border-bottom: 1px solid #868e96 !important;
-      box-sizing: border-box;
-      padding: 0.45rem 0.5rem;
-    }
-    body[data-dg-active-nav="matches"] table#dg-matches-list-table thead th {
+    body[data-dg-active-nav="matches"] #dg-matches-my-main-table.dg-matches-my-table thead th {
       position: sticky !important;
-      top: var(--dg-table-sticky-top, 60px) !important;
-      background: #e9ecef !important;
-      font-weight: 600;
-      text-align: left;
-      z-index: 21;
-      border-bottom: 2px solid #6c757d !important;
-      box-shadow: none !important;
+      top: 0 !important;
+      z-index: 20 !important;
+      background: #f8f9fa !important;
+      border-right: 1px solid #e6e9ee !important;
+      vertical-align: middle;
+      text-align: center;
+      box-sizing: border-box;
+      min-width: 0;
     }
-    body[data-dg-active-nav="matches"] table#dg-matches-list-table tbody td {
+    body[data-dg-active-nav="matches"] #dg-matches-my-main-table.dg-matches-my-table tbody td {
+      border-right: 1px solid #f3f5f8;
+      vertical-align: middle;
       background: #fff !important;
+      box-sizing: border-box;
+      min-width: 0;
     }
-    body[data-dg-active-nav="matches"] table#dg-matches-list-table.table-hover tbody tr:hover td {
-      background: #f1f3f5 !important;
+    body[data-dg-active-nav="matches"] #dg-matches-my-main-table.table-hover tbody tr:hover td {
+      background: #f8f9fa !important;
     }
-    body[data-dg-active-nav="matches"] table#dg-matches-list-table .dg-matches-resize-handle {
+    body[data-dg-active-nav="matches"] #dg-matches-my-main-table.dg-matches-my-table thead th .dg-matches-my-resize-handle {
       pointer-events: auto;
     }
-    body[data-dg-active-nav="matches"] table#dg-matches-list-table thead th:nth-child(1),
-    body[data-dg-active-nav="matches"] table#dg-matches-list-table thead th:nth-child(2),
-    body[data-dg-active-nav="matches"] table#dg-matches-list-table thead th:nth-child(3),
-    body[data-dg-active-nav="matches"] table#dg-matches-list-table tbody td:nth-child(1),
-    body[data-dg-active-nav="matches"] table#dg-matches-list-table tbody td:nth-child(2),
-    body[data-dg-active-nav="matches"] table#dg-matches-list-table tbody td:nth-child(3) {
-      text-align: center;
-    }
-    body[data-dg-active-nav="matches"] table#dg-matches-list-table tbody td {
+    body[data-dg-active-nav="matches"] #dg-matches-my-main-table.dg-matches-my-table tbody td:nth-child(4) {
       overflow-wrap: break-word;
       word-break: break-word;
+      white-space: normal;
+      text-align: center;
     }
-    body[data-dg-active-nav="matches"] table#dg-matches-list-table tbody td.dg-matches-act-cell {
+
+    body[data-dg-active-nav="matches"] #dg-matches-list-table.dg-matches-list-table {
+      font-size: 0.8rem;
+      line-height: 1.25;
+      font-variant-numeric: tabular-nums;
+      width: max-content;
+      min-width: 100%;
+      max-width: none;
+      table-layout: fixed;
+      border-collapse: collapse !important;
+      border-spacing: 0 !important;
+    }
+    body[data-dg-active-nav="matches"] #dg-matches-list-table.dg-matches-list-table thead th {
+      position: sticky !important;
+      top: 0 !important;
+      z-index: 20 !important;
+      box-sizing: border-box;
+      background: #f8f9fa !important;
+      border-right: 1px solid #e6e9ee !important;
+      vertical-align: middle !important;
+      text-align: center;
+    }
+    body[data-dg-active-nav="matches"] #dg-matches-list-table.dg-matches-list-table tbody td {
+      vertical-align: middle;
+      overflow-wrap: break-word;
+      word-break: break-word;
+      border-right: 1px solid #f3f5f8;
+      background: #fff !important;
+      box-sizing: border-box;
+    }
+    body[data-dg-active-nav="matches"] #dg-matches-list-table.table-hover tbody tr:hover td {
+      background: #f8f9fa !important;
+    }
+    body[data-dg-active-nav="matches"] #dg-matches-list-table thead th .dg-matches-resize-handle {
+      pointer-events: auto;
+    }
+    body[data-dg-active-nav="matches"] #dg-matches-list-table tbody td:nth-child(1),
+    body[data-dg-active-nav="matches"] #dg-matches-list-table tbody td:nth-child(2),
+    body[data-dg-active-nav="matches"] #dg-matches-list-table tbody td:nth-child(3) {
+      text-align: center;
+    }
+    body[data-dg-active-nav="matches"] #dg-matches-list-table tbody td.dg-matches-act-cell {
       white-space: normal;
       text-align: left;
     }
-    body[data-dg-active-nav="matches"] table#dg-matches-list-table tbody td.dg-matches-act-cell .btn {
+    body[data-dg-active-nav="matches"] #dg-matches-list-table tbody td.dg-matches-act-cell .btn {
       margin-bottom: 0.25rem;
       margin-right: 0.35rem;
     }

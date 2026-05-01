@@ -27,7 +27,7 @@
               <div class="row g-2">
                 <div class="col-md-4">
                   <label class="form-label" for="dg-res-f-search">Умный поиск</label>
-                  <input type="text" class="form-control" id="dg-res-f-search" placeholder='code:... sku:... name:"..." project:2' autocomplete="off" />
+                  <input type="text" class="form-control" id="dg-res-f-search" placeholder='Подстрока в SKU или названии товара; при «Применить»: project:2, status:done' autocomplete="off" />
                 </div>
                 <div class="col-md-2">
                   <label class="form-label" for="dg-res-f-project">Проект</label>
@@ -62,58 +62,23 @@
                   </select>
                 </div>
               </div>
-              <div class="row g-2 mt-1">
-                <div class="col-md-3">
-                  <label class="form-label" for="dg-res-tf-product_name">Товар (таблица)</label>
-                  <input type="text" class="form-control" id="dg-res-tf-product_name" autocomplete="off" />
+              <div class="row g-2 mt-1 align-items-end">
+                <div class="col-md-4">
+                  <label class="form-label" for="dg-res-f-project_name">Название проекта (содержит)</label>
+                  <input type="text" class="form-control" id="dg-res-f-project_name" placeholder="Часть имени проекта" autocomplete="off" />
                 </div>
                 <div class="col-md-2">
-                  <label class="form-label" for="dg-res-tf-sku">SKU (таблица)</label>
-                  <input type="text" class="form-control" id="dg-res-tf-sku" autocomplete="off" />
-                </div>
-                <div class="col-md-3">
-                  <label class="form-label" for="dg-res-tf-project_name">Проект (таблица)</label>
-                  <input type="text" class="form-control" id="dg-res-tf-project_name" autocomplete="off" />
+                  <label class="form-label" for="dg-res-f-price_min">Цена от</label>
+                  <input type="number" class="form-control" id="dg-res-f-price_min" step="any" />
                 </div>
                 <div class="col-md-2">
-                  <label class="form-label" for="dg-res-tf-page_status">Статус таблицы</label>
-                  <select class="form-select" id="dg-res-tf-page_status">
-                    <option value="all">Все</option>
-                    <option value="pending">pending</option>
-                    <option value="processing">processing</option>
-                    <option value="done">done</option>
-                    <option value="error">error</option>
-                  </select>
-                </div>
-                <div class="col-md-2">
-                  <label class="form-label" for="dg-res-tf-availability">Наличие тбл</label>
-                  <select class="form-select" id="dg-res-tf-availability">
-                    <option value="all">Все</option>
-                    <option value="in_stock">В наличии</option>
-                    <option value="oos">Под заказ</option>
-                  </select>
-                </div>
-              </div>
-              <div class="row g-2 mt-1">
-                <div class="col-md-2">
-                  <label class="form-label" for="dg-res-tf-matched">Сопост. тбл</label>
-                  <select class="form-select" id="dg-res-tf-matched">
-                    <option value="all">Все</option>
-                    <option value="1">Да</option>
-                    <option value="0">Нет</option>
-                  </select>
-                </div>
-                <div class="col-md-2">
-                  <label class="form-label" for="dg-res-tf-price_min">Цена от</label>
-                  <input type="number" class="form-control" id="dg-res-tf-price_min" />
-                </div>
-                <div class="col-md-2">
-                  <label class="form-label" for="dg-res-tf-price_max">Цена до</label>
-                  <input type="number" class="form-control" id="dg-res-tf-price_max" />
+                  <label class="form-label" for="dg-res-f-price_max">Цена до</label>
+                  <input type="number" class="form-control" id="dg-res-f-price_max" step="any" />
                 </div>
               </div>
               <div class="mt-3 d-flex flex-wrap gap-2">
-                <button type="button" class="btn btn-sm btn-primary" id="results-apply" title="Применить фильтры результатов"><i class="pe-7s-search me-1"></i>Применить</button>
+                <button type="button" class="btn btn-sm btn-primary" id="results-apply" data-dg-tooltip="Применить фильтры и обновить таблицу. Сохраняет выбранные значения для следующего визита."><i class="pe-7s-search me-1"></i>Применить</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="results-default" data-dg-tooltip="Сбросить фильтры к значениям по умолчанию и очистить сохранённые настройки этой страницы."><i class="pe-7s-refresh me-1"></i>По умолчанию</button>
                 <button type="button" class="btn btn-sm btn-outline-success" id="results-reparse-all" title="Добавить отфильтрованные результаты в очередь повторного парсинга"><i class="pe-7s-refresh-2 me-1"></i>В очередь на перепарсинг</button>
                 <button type="button" class="btn btn-sm btn-outline-danger" id="results-clear-history" title="Очистить историю результатов по текущему проекту"><i class="pe-7s-trash me-1"></i>Очистить историю</button>
               </div>
@@ -142,8 +107,9 @@
                   <div id="dg-res-columns-list" class="columns-grid"></div>
                 </div>
               </div>
-              <div class="table-responsive datagon-my-products-table-wrap">
-                  <table id="dg-res-main-table" class="table table-hover table-striped table-bordered mb-0 datagon-my-products-table dg-ms-table" data-dg-sticky="1">
+              <div class="dg-res-table-scroll-outer" style="width:100%;max-width:100%;overflow-x:auto;overflow-y:visible;-webkit-overflow-scrolling:touch">
+                <div class="table-responsive datagon-my-products-table-wrap" style="display:block;width:100%;max-width:100%;min-width:0;overflow:visible;position:relative">
+                  <table id="dg-res-main-table" class="table table-hover table-striped mb-0 datagon-my-products-table dg-res-table" style="width:max-content;min-width:100%;max-width:none;table-layout:fixed;border-collapse:collapse;border-spacing:0">
                     <colgroup>
                       <col class="dg-res-col-0" />
                       <col class="dg-res-col-1" />
@@ -172,6 +138,7 @@
                     </thead>
                     <tbody id="dg-res-tbody"></tbody>
                   </table>
+                </div>
               </div>
               <div class="mt-3 d-flex justify-content-between align-items-center">
                 <div class="d-flex align-items-center gap-2">

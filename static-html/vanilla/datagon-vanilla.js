@@ -802,7 +802,7 @@
       ".table-responsive.datagon-my-products-table-wrap.dg-table-baseline-wrap{overflow:visible!important;max-height:none!important;}",
       ".table-responsive.datagon-my-products-table-wrap.dg-table-baseline-wrap,.table-responsive.datagon-my-products-table-wrap.dg-table-baseline-wrap > table{transform:none!important;filter:none!important;perspective:none!important;}",
       ".table.datagon-my-products-table{font-size:.8rem;line-height:1.25;font-variant-numeric:tabular-nums;}",
-      "table.table.datagon-my-products-table:not(#dg-matches-list-table):not(#dg-res-main-table) > thead > tr > th{background:#fff!important;border-bottom:1px solid #e6e9ee;}",
+      "table.table.datagon-my-products-table:not(#dg-matches-list-table):not(#dg-matches-my-main-table):not(#dg-res-main-table) > thead > tr > th{background:#fff!important;border-bottom:1px solid #e6e9ee;}",
       "table.table.datagon-my-products-table:not(#dg-matches-list-table):not(#dg-res-main-table) > tbody > tr > td{border-right:1px solid #f3f5f8;}",
       ".table-responsive.dg-table-baseline-wrap td a,.table-responsive.dg-table-baseline-wrap th a{display:inline-flex;align-items:center;gap:4px;}",
       ".table-responsive.dg-table-baseline-wrap td i,.table-responsive.dg-table-baseline-wrap th i{vertical-align:middle;}",
@@ -837,6 +837,7 @@
       id === "dg-q-main-table" ||
       id === "dg-res-main-table" ||
       id === "dg-matches-list-table" ||
+      id === "dg-matches-my-main-table" ||
       id === "mp-main-table"
     )
       return true;
@@ -1054,4 +1055,43 @@
       performVanillaLogout();
     });
   }
+
+  /**
+   * Сохранение значений форм фильтров по странице (per currentUser из localStorage).
+   * Страницы сами решают, когда save/load и как мержить с URL.
+   */
+  window.DatagonFilters = {
+    _prefix: "datagon_filter_form_v1_",
+    _userSuffix: function () {
+      try {
+        var u = String(localStorage.getItem("currentUser") || "guest").trim() || "guest";
+        return u.replace(/[^\w.-]+/g, "_") || "guest";
+      } catch (e) {
+        return "guest";
+      }
+    },
+    storageKey: function (pageSlug) {
+      return this._prefix + this._userSuffix() + ":" + String(pageSlug || "page");
+    },
+    load: function (pageSlug) {
+      try {
+        var raw = localStorage.getItem(this.storageKey(pageSlug));
+        if (!raw) return null;
+        var o = JSON.parse(raw);
+        return o && typeof o === "object" && !Array.isArray(o) ? o : null;
+      } catch (e2) {
+        return null;
+      }
+    },
+    save: function (pageSlug, values) {
+      try {
+        localStorage.setItem(this.storageKey(pageSlug), JSON.stringify(values || {}));
+      } catch (e3) {}
+    },
+    clear: function (pageSlug) {
+      try {
+        localStorage.removeItem(this.storageKey(pageSlug));
+      } catch (e4) {}
+    },
+  };
 })();

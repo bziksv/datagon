@@ -174,6 +174,81 @@
         };
       }
 
+      function collectMoyskladFilterForm() {
+        return {
+          api: readFilters(),
+          table: readTableFilters(),
+          page: String(page),
+          sort_by: sortBy,
+          sort_dir: sortDir,
+        };
+      }
+
+      function persistMoyskladFilterForm() {
+        try {
+          if (window.DatagonFilters) window.DatagonFilters.save("moysklad", collectMoyskladFilterForm());
+        } catch (e) {}
+      }
+
+      function mergeMoyskladPrefsFromStorage() {
+        var DF = window.DatagonFilters;
+        if (!DF || !DF.load) return;
+        var prefs = DF.load("moysklad");
+        if (!prefs || !prefs.api) return;
+        var p;
+        try {
+          p = new URLSearchParams(window.location.search);
+        } catch (e2) {
+          p = new URLSearchParams();
+        }
+        function missing(k) {
+          return !p.has(k);
+        }
+        var api = prefs.api;
+        if (missing("search") && api.search != null) document.getElementById("ms-f-search").value = String(api.search);
+        if (missing("limit") && api.limit != null)
+          document.getElementById("ms-f-limit").value = String(Number(api.limit) || 100);
+        if (missing("archived") && api.archived != null)
+          document.getElementById("ms-f-archived").value = String(api.archived);
+        if (missing("stock_position") && api.stock_position != null)
+          document.getElementById("ms-f-stock_position").value = String(api.stock_position);
+        if (missing("on_site") && api.on_site != null)
+          document.getElementById("ms-f-on_site").value = String(api.on_site);
+        if (missing("type") && api.type != null) document.getElementById("ms-f-type").value = String(api.type);
+        if (missing("supplier") && api.supplier != null)
+          document.getElementById("ms-f-supplier").value = String(api.supplier);
+        if (missing("supplier2") && api.supplier2 != null)
+          document.getElementById("ms-f-supplier2").value = String(api.supplier2);
+        if (missing("manager") && api.manager != null)
+          document.getElementById("ms-f-manager").value = String(api.manager);
+        if (missing("content_manager") && api.content_manager != null)
+          document.getElementById("ms-f-content_manager").value = String(api.content_manager);
+        if (missing("only_stock") && api.only_stock != null)
+          document.getElementById("only_stock").checked = String(api.only_stock) === "1";
+        if (missing("no_coop") && api.no_coop != null)
+          document.getElementById("no_coop").checked = String(api.no_coop) === "1";
+        if (missing("has_buy_price") && api.has_buy_price != null)
+          document.getElementById("has_buy_price").checked = String(api.has_buy_price) === "1";
+        var tbl = prefs.table || {};
+        if (tbl.code != null) document.getElementById("ms-tf-code").value = String(tbl.code);
+        if (tbl.name != null) document.getElementById("ms-tf-name").value = String(tbl.name);
+        if (tbl.type != null) document.getElementById("ms-tf-type").value = String(tbl.type);
+        if (tbl.archived != null) document.getElementById("ms-tf-archived").value = String(tbl.archived);
+        if (tbl.supplier != null) document.getElementById("ms-tf-supplier").value = String(tbl.supplier);
+        if (tbl.supplier2 != null) document.getElementById("ms-tf-supplier2").value = String(tbl.supplier2);
+        if (tbl.manager != null) document.getElementById("ms-tf-manager").value = String(tbl.manager);
+        if (tbl.content_manager != null)
+          document.getElementById("ms-tf-content_manager").value = String(tbl.content_manager);
+        if (tbl.stock_min != null) document.getElementById("ms-tf-stock_min").value = String(tbl.stock_min);
+        if (tbl.stock_max != null) document.getElementById("ms-tf-stock_max").value = String(tbl.stock_max);
+        if (missing("page") && prefs.page != null) {
+          var pg = Number(prefs.page);
+          if (Number.isFinite(pg) && pg > 0) page = pg;
+        }
+        if (missing("sort_by") && prefs.sort_by && SORTABLE.has(String(prefs.sort_by))) sortBy = String(prefs.sort_by);
+        if (missing("sort_dir") && (prefs.sort_dir === "asc" || prefs.sort_dir === "desc")) sortDir = prefs.sort_dir;
+      }
+
       function filterRowsByTable(rows, tf) {
         return (rows || []).filter(function (r) {
           if (tf.code && !String(r.code || "").toLowerCase().includes(String(tf.code).trim().toLowerCase())) return false;
@@ -979,6 +1054,7 @@
             renderTable(raw);
             updateTableHint();
             syncUrlFromState();
+            persistMoyskladFilterForm();
             var ds = document.getElementById("dg-status");
             if (ds) {
               ds.style.display = "none";
@@ -999,6 +1075,7 @@
       }
 
       function resetFilters() {
+        if (window.DatagonFilters) window.DatagonFilters.clear("moysklad");
         if (filterReloadTimer) {
           clearTimeout(filterReloadTimer);
           filterReloadTimer = null;
@@ -1034,6 +1111,9 @@
           localStorage.removeItem(userColWidthKey());
         } catch (e) {}
         buildThead();
+        try {
+          window.history.replaceState(null, "", window.location.pathname);
+        } catch (e) {}
       }
 
       function postAction(url) {
@@ -1077,7 +1157,6 @@
 
       function onApiFilterChange() {
         scheduleUrlSync();
-        scheduleFilterReload();
       }
 
       [
@@ -1244,6 +1323,7 @@
         if (!visibleCols.size) visibleCols = new Set(DEFAULT_VISIBLE_KEYS);
       } catch (e) {}
       parseUrlToForm();
+      mergeMoyskladPrefsFromStorage();
       updateStickyTopVar();
       renderColumnControls();
       buildThead();

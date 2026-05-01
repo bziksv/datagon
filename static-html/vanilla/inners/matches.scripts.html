@@ -142,6 +142,17 @@
         urlTick: null,
       };
 
+      var MATCHES_MY_COL_COUNT = 7;
+      var MATCHES_MY_COL_DEFAULTS = [44, 108, 120, 280, 96, 72, 152];
+      var matchesMyColWidths = {};
+      var matchesMyResizeState = null;
+      var matchesMyResizeGlobalsBound = false;
+      var matchesMyScrollGlobalsBound = false;
+      var FLOATING_MY_OFFSET_PX = 2;
+      var FLOATING_MY_START_EPS_PX = 3;
+      var matchesMyFloatingRaf = 0;
+      var matchesMyFloatingLastScrollTs = 0;
+
       function showErr(msg) {
         var el = document.getElementById("dg-matches-err");
         if (!el) return;
@@ -257,7 +268,7 @@
         var found = document.getElementById("dg-matches-job-found");
         if (found)
           found.textContent =
-            "Найдено по job: SKU " + formatNumber(js.foundSku) + ", Name " + formatNumber(js.foundName);
+            "Найдено по заданию: по SKU " + formatNumber(js.foundSku) + ", по названию " + formatNumber(js.foundName);
         var logsEl = document.getElementById("dg-matches-job-logs");
         if (logsEl) {
           logsEl.replaceChildren();
@@ -294,34 +305,311 @@
         document.getElementById("dg-matches-total-hint").textContent = "Всего: " + formatNumber(state.matchesTotal);
       }
 
+      function formatMatchesMyProductMoney(value) {
+        var num = Number(value);
+        if (!Number.isFinite(num)) num = 0;
+        return num.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      }
+
+      function formatMatchesMyProductUpdated(iso) {
+        if (!iso) return "—";
+        try {
+          var d = new Date(iso);
+          if (Number.isNaN(d.getTime())) return String(iso);
+          return d.toLocaleString("ru-RU", {
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+          });
+        } catch (e) {
+          return "—";
+        }
+      }
+
+      function userMatchesMyColWidthKey() {
+        try {
+          var u = String(localStorage.getItem("currentUser") || "guest").trim() || "guest";
+          return "datagon_matches_my_products_col_widths_v1:" + u;
+        } catch (e) {
+          return "datagon_matches_my_products_col_widths_v1:guest";
+        }
+      }
+
+      function syncMatchesMyTableLayoutWidth() {
+        var tbl = document.getElementById("dg-matches-my-main-table");
+        if (!tbl) return;
+        var sum = 0;
+        for (var i = 0; i < MATCHES_MY_COL_COUNT; i++) {
+          var w = matchesMyColWidths[i];
+          if (!Number.isFinite(w) || w <= 0) w = MATCHES_MY_COL_DEFAULTS[i];
+          sum += w;
+        }
+        tbl.style.width = sum + "px";
+        tbl.style.minWidth = sum + "px";
+      }
+
+      function applyMatchesMyColumnWidth(index, widthPx) {
+        var minW = index === 0 ? 36 : 60;
+        var maxW = index === 0 ? 80 : 900;
+        var w = Math.max(minW, Math.min(maxW, Math.round(Number(widthPx) || 0)));
+        if (!Number.isFinite(w) || w <= 0) return;
+        matchesMyColWidths[index] = w;
+        var col = document.querySelector("#dg-matches-my-main-table col.dg-matches-my-col-" + index);
+        if (col) col.style.width = w + "px";
+        var headRow = document.getElementById("dg-matches-my-thead-row");
+        if (headRow && headRow.cells && headRow.cells[index]) {
+          var th = headRow.cells[index];
+          th.style.boxSizing = "border-box";
+          th.style.width = w + "px";
+          th.style.minWidth = w + "px";
+          th.style.maxWidth = w + "px";
+        }
+        var tb = document.getElementById("dg-matches-my-products-tbody");
+        if (tb) {
+          Array.prototype.forEach.call(tb.rows || [], function (tr) {
+            if (!tr.cells || !tr.cells[index] || tr.cells[index].colSpan > 1) return;
+            var c = tr.cells[index];
+            c.style.boxSizing = "border-box";
+            c.style.width = w + "px";
+            c.style.minWidth = w + "px";
+            c.style.maxWidth = w + "px";
+          });
+        }
+        syncMatchesMyTableLayoutWidth();
+      }
+
+      function applyStoredMatchesMyColWidths() {
+        try {
+          var raw = localStorage.getItem(userMatchesMyColWidthKey());
+          if (raw) matchesMyColWidths = JSON.parse(raw) || {};
+        } catch (e) {
+          matchesMyColWidths = {};
+        }
+        for (var i = 0; i < MATCHES_MY_COL_COUNT; i++) {
+          if (matchesMyColWidths[i] != null) applyMatchesMyColumnWidth(i, matchesMyColWidths[i]);
+        }
+        syncMatchesMyTableLayoutWidth();
+      }
+
+      function onMatchesMyResizeMove(e) {
+        if (!matchesMyResizeState) return;
+        var delta = e.clientX - matchesMyResizeState.startX;
+        applyMatchesMyColumnWidth(matchesMyResizeState.index, matchesMyResizeState.startWidth + delta);
+      }
+
+      function onMatchesMyResizeUp() {
+        if (!matchesMyResizeState) return;
+        matchesMyResizeState = null;
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+        try {
+          localStorage.setItem(userMatchesMyColWidthKey(), JSON.stringify(matchesMyColWidths || {}));
+        } catch (e) {}
+      }
+
+      function ensureMatchesMyResizeGlobals() {
+        if (matchesMyResizeGlobalsBound) return;
+        matchesMyResizeGlobalsBound = true;
+        document.addEventListener("mousemove", onMatchesMyResizeMove);
+        document.addEventListener("mouseup", onMatchesMyResizeUp);
+      }
+
+      function initMatchesMyColumnResizeHandles() {
+        var row = document.getElementById("dg-matches-my-thead-row");
+        if (!row) return;
+        ensureMatchesMyResizeGlobals();
+        var ths = Array.prototype.slice.call(row.querySelectorAll("th"));
+        ths.forEach(function (th, index) {
+          if (index >= MATCHES_MY_COL_COUNT) return;
+          if (th.getAttribute("data-dg-matches-my-resize-ready") === "1") return;
+          th.setAttribute("data-dg-matches-my-resize-ready", "1");
+          th.style.position = "relative";
+          var handle = document.createElement("span");
+          handle.className = "dg-matches-my-resize-handle";
+          handle.setAttribute("role", "separator");
+          handle.setAttribute("aria-orientation", "vertical");
+          handle.title = "Потяните, чтобы изменить ширину колонки";
+          handle.style.cssText =
+            "position:absolute;top:0;right:0;width:6px;height:100%;cursor:col-resize;z-index:4;" +
+            "background:linear-gradient(to right,transparent 47%,#d9dee5 47%,#d9dee5 53%,transparent 53%);opacity:0.55";
+          handle.addEventListener("mousedown", function (ev) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            var col = document.querySelector("#dg-matches-my-main-table col.dg-matches-my-col-" + index);
+            var cur = col && col.style.width ? parseInt(col.style.width, 10) : 0;
+            if (!Number.isFinite(cur) || cur <= 0) cur = MATCHES_MY_COL_DEFAULTS[index];
+            var rect = th.getBoundingClientRect();
+            var w0 = rect && rect.width ? Math.round(rect.width) : cur;
+            matchesMyResizeState = {
+              index: index,
+              startX: ev.clientX,
+              startWidth:
+                Number(matchesMyColWidths[index]) > 0 ? Number(matchesMyColWidths[index]) : w0 || cur,
+            };
+            document.body.style.cursor = "col-resize";
+            document.body.style.userSelect = "none";
+          });
+          handle.addEventListener("click", function (ev) {
+            ev.stopPropagation();
+          });
+          th.appendChild(handle);
+        });
+      }
+
+      function getMatchesMyStickyTopPx() {
+        var app = document.querySelector(".app-container");
+        var header = document.querySelector(".app-header");
+        var fixed = Boolean(app && app.classList && app.classList.contains("fixed-header"));
+        if (!fixed) return 0;
+        if (!header || !header.getBoundingClientRect) return 60;
+        var rect = header.getBoundingClientRect();
+        var h = rect && rect.height ? rect.height : 60;
+        return h > 0 ? h : 60;
+      }
+
+      function captureMatchesMyTheadBaseTop() {
+        var thead = document.getElementById("dg-matches-my-thead");
+        if (!thead) return;
+        thead.style.transform = "";
+        thead.style.position = "";
+        thead.style.zIndex = "";
+        thead.style.willChange = "";
+        thead.removeAttribute("data-dg-floating");
+        var rect = thead.getBoundingClientRect();
+        var absTop = (window.scrollY || window.pageYOffset || 0) + (rect && rect.top ? rect.top : 0);
+        thead.setAttribute("data-dg-base-top", String(absTop));
+      }
+
+      function updateMatchesMyFloatingHeaderFallback() {
+        var thead = document.getElementById("dg-matches-my-thead");
+        if (!thead) return;
+        var table = thead.closest("table");
+        if (!table || !table.getBoundingClientRect) return;
+        var row = thead.querySelector("tr");
+        if (!row) return;
+
+        var y = window.scrollY || window.pageYOffset || 0;
+        var headerTop = getMatchesMyStickyTopPx();
+
+        var baseTopAbs = Number(thead.getAttribute("data-dg-base-top") || 0);
+        if (!Number.isFinite(baseTopAbs) || baseTopAbs <= 0) return;
+        var tableRect = table.getBoundingClientRect();
+        var tableBottom = tableRect.bottom + y;
+        var rowRect = row.getBoundingClientRect();
+        var rowHeight = rowRect && rowRect.height ? rowRect.height : 0;
+
+        var headerLine = y + headerTop;
+        var start = baseTopAbs + FLOATING_MY_START_EPS_PX;
+        var end = tableBottom - rowHeight;
+        if (headerLine <= start || headerLine >= end) {
+          if (thead.style.transform) {
+            thead.style.transform = "";
+            thead.style.position = "";
+            thead.style.zIndex = "";
+            thead.style.willChange = "";
+            thead.removeAttribute("data-dg-floating");
+          }
+          return;
+        }
+
+        var zoomAwareOffset = FLOATING_MY_OFFSET_PX;
+        var dpr = window.devicePixelRatio || 1;
+        if (Math.abs(dpr - 1) < 0.03) zoomAwareOffset = FLOATING_MY_OFFSET_PX - 3;
+        var shift = Math.max(0, headerLine - start - zoomAwareOffset);
+        var shiftPx = Number(shift.toFixed(3));
+        var nextTransform = "translate3d(0," + shiftPx + "px,0)";
+        if (thead.style.transform !== nextTransform) {
+          thead.style.transform = nextTransform;
+          thead.style.position = "relative";
+          thead.style.zIndex = "25";
+          thead.style.willChange = "transform";
+          thead.setAttribute("data-dg-floating", "1");
+        }
+      }
+
+      function matchesMyFloatingHeaderTick(ts) {
+        matchesMyFloatingRaf = 0;
+        updateMatchesMyFloatingHeaderFallback();
+        if (ts - matchesMyFloatingLastScrollTs < 140) {
+          matchesMyFloatingRaf = requestAnimationFrame(matchesMyFloatingHeaderTick);
+        }
+      }
+
+      function scheduleMatchesMyFloatingHeaderUpdate() {
+        matchesMyFloatingLastScrollTs = performance.now();
+        if (matchesMyFloatingRaf) return;
+        matchesMyFloatingRaf = requestAnimationFrame(matchesMyFloatingHeaderTick);
+      }
+
+      function onScrollMatchesMyFloatingHeader() {
+        scheduleMatchesMyFloatingHeaderUpdate();
+      }
+
+      function matchesMyRefreshFloatingAfterLayout() {
+        requestAnimationFrame(function () {
+          captureMatchesMyTheadBaseTop();
+          scheduleMatchesMyFloatingHeaderUpdate();
+        });
+      }
+
+      function ensureMatchesMyScrollAndResizeBound() {
+        if (matchesMyScrollGlobalsBound) return;
+        matchesMyScrollGlobalsBound = true;
+        window.addEventListener("scroll", onScrollMatchesMyFloatingHeader, { passive: true });
+        window.addEventListener("resize", function () {
+          matchesMyRefreshFloatingAfterLayout();
+        });
+        var mainOuter = document.querySelector(".app-main__outer");
+        if (mainOuter && mainOuter.addEventListener) {
+          mainOuter.addEventListener("scroll", onScrollMatchesMyFloatingHeader, { passive: true });
+        }
+        var horiz = document.querySelector(".dg-matches-my-table-scroll-outer");
+        if (horiz && horiz.addEventListener) {
+          horiz.addEventListener("scroll", onScrollMatchesMyFloatingHeader, { passive: true });
+        }
+      }
+
+      function setupMatchesMyProductsTableChrome() {
+        ensureMatchesMyScrollAndResizeBound();
+        applyStoredMatchesMyColWidths();
+        initMatchesMyColumnResizeHandles();
+        matchesMyRefreshFloatingAfterLayout();
+      }
+
       function renderMyProducts() {
         updateMyProductsHints();
         var tbody = document.getElementById("dg-matches-my-products-tbody");
         tbody.replaceChildren();
         var sel = selectedSet();
+        var myProductsColSpan = 7;
         if (state.loadingProducts) {
           var tr = document.createElement("tr");
           var td = document.createElement("td");
-          td.colSpan = 5;
-          td.className = "text-muted";
+          td.colSpan = myProductsColSpan;
+          td.className = "text-muted text-center";
           td.textContent = "Загрузка...";
           tr.appendChild(td);
           tbody.appendChild(tr);
+          setupMatchesMyProductsTableChrome();
           return;
         }
         if (!state.myProducts.length) {
           var tr0 = document.createElement("tr");
           var td0 = document.createElement("td");
-          td0.colSpan = 5;
-          td0.className = "text-muted";
+          td0.colSpan = myProductsColSpan;
+          td0.className = "text-muted text-center";
           td0.textContent = "Нет товаров";
           tr0.appendChild(td0);
           tbody.appendChild(tr0);
+          setupMatchesMyProductsTableChrome();
           return;
         }
         state.myProducts.forEach(function (p) {
           var tr = document.createElement("tr");
           var td0 = document.createElement("td");
+          td0.className = "text-center align-middle";
           var cb = document.createElement("input");
           cb.type = "checkbox";
           cb.checked = !!sel[p.id];
@@ -337,14 +625,29 @@
           });
           td0.appendChild(cb);
           tr.appendChild(td0);
-          ["id", "sku", "name"].forEach(function (k) {
+          var tdCode = document.createElement("td");
+          tdCode.className = "text-center";
+          var codeStr = String(p.source_id != null ? p.source_id : "").trim();
+          tdCode.textContent = codeStr ? codeStr : p.id != null ? String(p.id) : "—";
+          tr.appendChild(tdCode);
+          ["sku", "name"].forEach(function (k) {
             var td = document.createElement("td");
-            td.textContent = k === "sku" || k === "name" ? p[k] || "-" : p[k];
+            td.className = "text-center";
+            td.textContent = p[k] ? String(p[k]) : "—";
             tr.appendChild(td);
           });
           var tdP = document.createElement("td");
-          tdP.textContent = (p.price || 0) + " " + (p.currency || "RUB");
+          tdP.className = "text-center";
+          tdP.textContent = formatMatchesMyProductMoney(p.price);
           tr.appendChild(tdP);
+          var tdCur = document.createElement("td");
+          tdCur.className = "text-center";
+          tdCur.textContent = String(p.currency || "RUB").trim() || "—";
+          tr.appendChild(tdCur);
+          var tdUp = document.createElement("td");
+          tdUp.className = "text-center";
+          tdUp.textContent = formatMatchesMyProductUpdated(p.updated_at);
+          tr.appendChild(tdUp);
           tbody.appendChild(tr);
         });
         var allCb = document.getElementById("dg-matches-my-select-all");
@@ -353,6 +656,7 @@
           state.myProducts.every(function (p) {
             return sel[p.id];
           });
+        setupMatchesMyProductsTableChrome();
       }
 
       function readTableFilters() {
@@ -364,6 +668,59 @@
           confidence_min: document.getElementById("dg-matches-tf-conf-min").value,
           confidence_max: document.getElementById("dg-matches-tf-conf-max").value,
         };
+      }
+
+      function collectMatchesListFilterForm() {
+        return {
+          smart: document.getElementById("dg-matches-smart-filter").value,
+          status_filter: document.getElementById("dg-matches-status-filter").value,
+          limit: document.getElementById("dg-matches-limit").value,
+          my_sku: document.getElementById("dg-matches-tf-my-sku").value,
+          competitor_sku: document.getElementById("dg-matches-tf-comp-sku").value,
+          match_type: document.getElementById("dg-matches-tf-match-type").value,
+          tf_status: document.getElementById("dg-matches-tf-status").value,
+          conf_min: document.getElementById("dg-matches-tf-conf-min").value,
+          conf_max: document.getElementById("dg-matches-tf-conf-max").value,
+        };
+      }
+
+      function persistMatchesListFilterForm() {
+        try {
+          if (window.DatagonFilters) window.DatagonFilters.save("matches_list", collectMatchesListFilterForm());
+        } catch (e) {}
+      }
+
+      function mergeMatchesListPrefsFromStorage() {
+        var DF = window.DatagonFilters;
+        if (!DF || !DF.load) return;
+        var prefs = DF.load("matches_list");
+        if (!prefs) return;
+        var p;
+        try {
+          p = new URLSearchParams(window.location.search);
+        } catch (e2) {
+          p = new URLSearchParams();
+        }
+        function miss(k) {
+          return !p.has(k);
+        }
+        if (prefs.smart != null) document.getElementById("dg-matches-smart-filter").value = String(prefs.smart);
+        if (miss("status") && prefs.status_filter != null)
+          document.getElementById("dg-matches-status-filter").value = String(prefs.status_filter);
+        if (miss("matches_limit") && prefs.limit != null) {
+          var l = Number(prefs.limit);
+          if ([50, 100, 200].indexOf(l) !== -1) {
+            state.matchesLimit = l;
+            document.getElementById("dg-matches-limit").value = String(l);
+          }
+        }
+        if (prefs.my_sku != null) document.getElementById("dg-matches-tf-my-sku").value = String(prefs.my_sku);
+        if (prefs.competitor_sku != null)
+          document.getElementById("dg-matches-tf-comp-sku").value = String(prefs.competitor_sku);
+        if (prefs.match_type != null) document.getElementById("dg-matches-tf-match-type").value = String(prefs.match_type);
+        if (prefs.tf_status != null) document.getElementById("dg-matches-tf-status").value = String(prefs.tf_status);
+        if (prefs.conf_min != null) document.getElementById("dg-matches-tf-conf-min").value = String(prefs.conf_min);
+        if (prefs.conf_max != null) document.getElementById("dg-matches-tf-conf-max").value = String(prefs.conf_max);
       }
 
       function filteredSortedMatches() {
@@ -455,6 +812,25 @@
         matchesColWidths[index] = w;
         var col = document.querySelector("#dg-matches-list-table col.dg-matches-col-" + index);
         if (col) col.style.width = w + "px";
+        var headRow = document.querySelector("#dg-matches-list-table thead tr");
+        if (headRow && headRow.cells && headRow.cells[index]) {
+          var th = headRow.cells[index];
+          th.style.boxSizing = "border-box";
+          th.style.width = w + "px";
+          th.style.minWidth = w + "px";
+          th.style.maxWidth = w + "px";
+        }
+        var tb = document.getElementById("dg-matches-tbody");
+        if (tb) {
+          Array.prototype.forEach.call(tb.rows || [], function (tr) {
+            if (!tr.cells || !tr.cells[index] || tr.cells[index].colSpan > 1) return;
+            var c = tr.cells[index];
+            c.style.boxSizing = "border-box";
+            c.style.width = w + "px";
+            c.style.minWidth = w + "px";
+            c.style.maxWidth = w + "px";
+          });
+        }
         syncMatchesTableLayoutWidth();
       }
 
@@ -503,14 +879,15 @@
           if (index >= 6) return;
           if (th.getAttribute("data-dg-matches-resize-ready") === "1") return;
           th.setAttribute("data-dg-matches-resize-ready", "1");
+          th.style.position = "relative";
           var handle = document.createElement("span");
           handle.className = "dg-matches-resize-handle";
           handle.setAttribute("role", "separator");
           handle.setAttribute("aria-orientation", "vertical");
           handle.title = "Потяните, чтобы изменить ширину колонки";
           handle.style.cssText =
-            "position:absolute;top:0;right:0;width:8px;height:100%;cursor:col-resize;z-index:6;" +
-            "background:linear-gradient(to right,transparent 42%,rgba(90,98,104,.45) 50%,transparent 58%);opacity:0.65";
+            "position:absolute;top:0;right:0;width:6px;height:100%;cursor:col-resize;z-index:4;" +
+            "background:linear-gradient(to right,transparent 47%,#d9dee5 47%,#d9dee5 53%,transparent 53%);opacity:0.55";
           handle.addEventListener("mousedown", function (ev) {
             ev.preventDefault();
             ev.stopPropagation();
@@ -545,7 +922,7 @@
         return { icon: "pe-7s-timer", badge: "warning", label: "Ожидает" };
       }
       function scoreUi(matchType, score) {
-        if (String(matchType || "").toLowerCase() === "sku") return { text: "100% (SKU)", badge: "success" };
+        if (String(matchType || "").toLowerCase() === "sku") return { text: "100% (по SKU)", badge: "success" };
         var pct = Math.round(Number(score || 0) * 100);
         if (pct >= 90) return { text: pct + "%", badge: "success" };
         if (pct >= 70) return { text: pct + "%", badge: "warning" };
@@ -564,6 +941,7 @@
           tdL.textContent = "Загрузка...";
           trL.appendChild(tdL);
           tbody.appendChild(trL);
+          applyStoredMatchesColWidths();
           return;
         }
         var rows = filteredSortedMatches();
@@ -575,6 +953,7 @@
           td0.textContent = "Нет совпадений";
           tr0.appendChild(td0);
           tbody.appendChild(tr0);
+          applyStoredMatchesColWidths();
           return;
         }
         rows.forEach(function (m) {
@@ -730,6 +1109,7 @@
           tr.appendChild(tdAct);
           tbody.appendChild(tr);
         });
+        applyStoredMatchesColWidths();
       }
 
       function loadMyProducts() {
@@ -813,6 +1193,7 @@
             if (showLoader) state.loadingMatches = false;
             renderMatchesTable();
             scheduleSyncUrl();
+            persistMatchesListFilterForm();
           });
       }
 
@@ -1031,11 +1412,10 @@
       document.getElementById("dg-matches-search-mode").addEventListener("change", scheduleSyncUrl);
       document.getElementById("dg-matches-status-filter").addEventListener("change", function () {
         scheduleSyncUrl();
-        loadMatches();
       });
       document.getElementById("dg-matches-limit").addEventListener("change", function () {
         state.matchesLimit = Number(this.value) || 100;
-        loadMatches();
+        scheduleSyncUrl();
       });
       document.getElementById("dg-matches-my-prev").addEventListener("click", function () {
         if (state.myProductsPage > 1) {
@@ -1094,7 +1474,7 @@
         }
       });
       document.getElementById("dg-matches-smart-filter").addEventListener("input", function () {
-        renderMatchesTable();
+        scheduleSyncUrl();
       });
       [
         "dg-matches-tf-my-sku",
@@ -1106,11 +1486,32 @@
       ].forEach(function (id) {
         var el = document.getElementById(id);
         el.addEventListener("input", function () {
-          renderMatchesTable();
+          scheduleSyncUrl();
         });
         el.addEventListener("change", function () {
-          renderMatchesTable();
+          scheduleSyncUrl();
         });
+      });
+      document.getElementById("dg-matches-filters-apply").addEventListener("click", function () {
+        state.matchesPage = 1;
+        persistMatchesListFilterForm();
+        loadMatches();
+      });
+      document.getElementById("dg-matches-filters-default").addEventListener("click", function () {
+        if (window.DatagonFilters) window.DatagonFilters.clear("matches_list");
+        document.getElementById("dg-matches-smart-filter").value = "";
+        document.getElementById("dg-matches-status-filter").value = "pending";
+        state.matchesLimit = 100;
+        document.getElementById("dg-matches-limit").value = "100";
+        document.getElementById("dg-matches-tf-my-sku").value = "";
+        document.getElementById("dg-matches-tf-comp-sku").value = "";
+        document.getElementById("dg-matches-tf-match-type").value = "all";
+        document.getElementById("dg-matches-tf-status").value = "all";
+        document.getElementById("dg-matches-tf-conf-min").value = "";
+        document.getElementById("dg-matches-tf-conf-max").value = "";
+        state.matchesPage = 1;
+        scheduleSyncUrl();
+        loadMatches();
       });
       document.querySelectorAll("th[data-match-sort]").forEach(function (th) {
         th.addEventListener("click", function (ev) {
@@ -1119,6 +1520,7 @@
         });
       });
       setupMatchesListTableChrome();
+      ensureMatchesMyScrollAndResizeBound();
 
       Promise.all([
         fetch("/api/my-sites", { credentials: "same-origin" }).then(function (r) {
@@ -1156,6 +1558,7 @@
             state.matchesLimit = up.matches_limit;
             document.getElementById("dg-matches-limit").value = String(up.matches_limit);
           }
+          mergeMatchesListPrefsFromStorage();
           showErr("");
           syncUrlFromState();
           onMySiteChanged(false);

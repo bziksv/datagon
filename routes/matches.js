@@ -589,18 +589,19 @@ module.exports = (db, settings) => {
             const hasSearch = String(search || '').trim().length > 0;
             const val = `%${String(search || '').trim()}%`;
 
-            let q = 'SELECT id, sku, name, price, currency, updated_at FROM my_products WHERE site_id = ? AND is_active = 1';
+            let q =
+                'SELECT id, source_id, sku, name, price, currency, updated_at FROM my_products WHERE site_id = ? AND is_active = 1';
             let qc = 'SELECT COUNT(*) AS total FROM my_products WHERE site_id = ? AND is_active = 1';
             const p = [my_site_id];
             const pc = [my_site_id];
 
             if (hasSearch) {
-                q += ' AND (sku LIKE ? OR name LIKE ?)';
-                qc += ' AND (sku LIKE ? OR name LIKE ?)';
-                p.push(val, val);
-                pc.push(val, val);
+                q += ' AND (sku LIKE ? OR name LIKE ? OR source_id LIKE ?)';
+                qc += ' AND (sku LIKE ? OR name LIKE ? OR source_id LIKE ?)';
+                p.push(val, val, val);
+                pc.push(val, val, val);
             }
-            q += ' ORDER BY id DESC LIMIT ? OFFSET ?';
+            q += ' ORDER BY updated_at DESC, id DESC LIMIT ? OFFSET ?';
             p.push(l, o);
 
             const [rows] = await db.query(q, p);

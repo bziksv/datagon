@@ -88,6 +88,56 @@ module.exports = (db, settings) => {
         } catch (_) {}
     }
 
+    /** Один батч-запрос вместо коррелированного EXISTS в SELECT по каждой строке (очередь на больших таблицах). */
+    async function attachPageMatchedFlags(rows) {
+        if (!Array.isArray(rows) || rows.length === 0) return;
+        const pairs = [];
+        const seen = new Set();
+        for (const row of rows) {
+            const pid = Number(row.project_id);
+            const url = String(row.url ?? '');
+            if (!Number.isFinite(pid) || !url) {
+                row.is_matched = 0;
+                continue;
+            }
+            const key = JSON.stringify([pid, url]);
+            if (seen.has(key)) continue;
+            seen.add(key);
+            pairs.push([pid, url]);
+        }
+        if (!pairs.length) return;
+        const matched = new Set();
+        const chunkSize = 50;
+        for (let i = 0; i < pairs.length; i += chunkSize) {
+            const slice = pairs.slice(i, i + chunkSize);
+            const placeholders = slice.map(() => '(?, ?)').join(', ');
+            const flat = slice.flat();
+            const [mrows] = await db.query(
+                `
+                SELECT DISTINCT pr.project_id, pr.url
+                FROM prices pr
+                INNER JOIN product_matches pm ON pm.status = 'confirmed'
+                    AND pm.competitor_site_id = pr.project_id
+                    AND (
+                        (pm.competitor_sku IS NOT NULL AND pm.competitor_sku <> '' AND pm.competitor_sku = pr.sku)
+                        OR pm.competitor_name = pr.product_name
+                    )
+                WHERE (pr.project_id, pr.url) IN (${placeholders})
+                `,
+                flat
+            );
+            for (const m of mrows || []) {
+                matched.add(JSON.stringify([Number(m.project_id), String(m.url ?? '')]));
+            }
+        }
+        for (const row of rows) {
+            const pid = Number(row.project_id);
+            const url = String(row.url ?? '');
+            row.is_matched =
+                Number.isFinite(pid) && url && matched.has(JSON.stringify([pid, url])) ? 1 : 0;
+        }
+    }
+
     async function ensureDiscoverySchema() {
         if (discoverySchemaReady) return;
         try {
@@ -738,10 +788,12 @@ module.exports = (db, settings) => {
     // 1. Список страниц (Очередь) - ДОБАВЛЕН ПОИСК ПО URL
     router.get('/', async (req, res) => {
         try {
-            await ensurePagesAddedFromColumn();
-            await ensurePagesAddedAtColumn();
-            await ensurePagesStatusColumnSupportsSitemap();
-            await cleanupDiscoveredUrlsWithQuery();
+            await Promise.all([
+                ensurePagesAddedFromColumn(),
+                ensurePagesAddedAtColumn(),
+                ensurePagesStatusColumnSupportsSitemap(),
+                cleanupDiscoveredUrlsWithQuery()
+            ]);
             const { project_id, status, type, search, matched, limit, offset, sort_by, sort_dir } = req.query;
             const l = parseInt(limit) || (settings.default_limit || 100);
             const o = parseInt(offset) || 0;
@@ -759,21 +811,7 @@ module.exports = (db, settings) => {
             const sortField = sortFieldMap[String(sort_by || 'id')] || 'id';
             
             let q = `
-                SELECT 
-                    pg.*,
-                    EXISTS(
-                        SELECT 1
-                        FROM prices pr
-                        JOIN product_matches pm ON pm.status = 'confirmed'
-                            AND pm.competitor_site_id = pr.project_id
-                            AND (
-                                (pm.competitor_sku IS NOT NULL AND pm.competitor_sku <> '' AND pm.competitor_sku = pr.sku)
-                                OR pm.competitor_name = pr.product_name
-                            )
-                        WHERE pr.project_id = pg.project_id
-                          AND pr.url = pg.url
-                        LIMIT 1
-                    ) AS is_matched
+                SELECT pg.*
                 FROM pages pg
                 WHERE 1=1
             `;
@@ -809,12 +847,19 @@ module.exports = (db, settings) => {
                 pc.push(searchVal); 
             }
 
-            q += ` ORDER BY ${sortField} ${sortDir}, id DESC LIMIT ? OFFSET ?`; 
+            q += ` ORDER BY ${sortField} ${sortDir}, id DESC LIMIT ? OFFSET ?`;
             p.push(l, o);
-            
-            const [rows] = await db.query(q, p);
-            const [count] = await db.query(qc, pc);
-            
+
+            const [[rows], [count]] = await Promise.all([db.query(q, p), db.query(qc, pc)]);
+
+            if (matched === '1') {
+                for (const row of rows) row.is_matched = 1;
+            } else if (matched === '0') {
+                for (const row of rows) row.is_matched = 0;
+            } else {
+                await attachPageMatchedFlags(rows);
+            }
+
             res.json({ data: rows, total: count[0].total });
         } catch (e) {
             console.error('Error fetching pages:', e);
