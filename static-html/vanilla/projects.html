@@ -450,7 +450,14 @@
             <div class="widget-content p-0">
               <div class="widget-content-wrapper">
                 <div class="widget-content-left d-flex align-items-center gap-1 pe-2">
-                  <img width="42" height="42" class="rounded-circle" src="/assets/avatar-header.jpg" alt="" />
+                  <span
+                    class="rounded-circle d-inline-flex align-items-center justify-content-center flex-shrink-0 bg-light text-secondary border"
+                    style="width: 42px; height: 42px; border-color: #e2e8f0"
+                    role="img"
+                    aria-label="Профиль"
+                  >
+                    <i class="pe-7s-user" style="font-size: 1.2rem; line-height: 1; opacity: 0.85" aria-hidden="true"></i>
+                  </span>
                   <button type="button" class="btn btn-link p-0 dg-vanilla-logout d-inline-flex align-items-center justify-content-center text-danger" title="Выйти" aria-label="Выйти из профиля" style="min-width:34px;min-height:34px;line-height:1;border-radius:50%">
                     <i class="lnr-exit" style="font-size:1.2rem"></i>
                   </button>
@@ -590,36 +597,72 @@
                 <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
                 <span>Фильтры и действия</span>
               </div>
-              <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-proj-filters-toggle">Свернуть</button>
+              <div class="d-flex align-items-center gap-2">
+                <div class="dropdown">
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-secondary dg-vanilla-dropdown-toggle"
+                    style="line-height: 1; padding: 0.35rem 0.5rem"
+                    aria-expanded="false"
+                    aria-haspopup="true"
+                    id="dg-proj-filter-blocks-btn"
+                    data-dg-tooltip="Какие поля фильтров показывать (сохраняется в браузере для текущего пользователя)"
+                  >
+                    <i class="pe-7s-config btn-icon-wrapper" style="font-size: 1.1rem" aria-hidden="true"></i>
+                  </button>
+                  <div
+                    class="dropdown-menu dropdown-menu-end rm-pointers p-0 dg-proj-filter-blocks-dropdown"
+                    id="dg-proj-filter-blocks-menu"
+                    style="width: min(420px, calc(100vw - 1.5rem))"
+                  >
+                    <div class="dropdown-menu-header mb-0">
+                      <div class="dropdown-menu-header-inner bg-tempting-azure">
+                        <div
+                          class="menu-header-image opacity-5"
+                          style="background-image: url('/assets/utils/images/dropdown-header/abstract2.jpg')"
+                        ></div>
+                        <div class="menu-header-content text-white px-3 py-2">
+                          <h5 class="menu-header-title mb-0">Поля фильтров</h5>
+                          <h6 class="menu-header-subtitle mb-0 opacity-8 fw-normal small">По группам: переключатели справа</h6>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="dg-proj-filter-blocks-scroll" style="max-height: calc(100vh - 10rem); overflow-y: auto; overflow-x: hidden">
+                      <div id="dg-proj-filter-blocks-toggles" class="list-group list-group-flush"></div>
+                    </div>
+                  </div>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-proj-filters-toggle">Свернуть</button>
+              </div>
             </div>
             <div class="card-body">
               <div id="dg-proj-filters-body">
               <div class="row g-2">
-                <div class="col-md-4">
+                <div class="col-md-4" data-dg-proj-filter-field="smart">
                   <label class="form-label" for="dg-proj-smart">Умный поиск</label>
                   <input type="text" class="form-control" id="dg-proj-smart" placeholder='id:12 name:"project" или просто текст' autocomplete="off" />
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-2" data-dg-proj-filter-field="tf_id">
                   <label class="form-label" for="dg-proj-tf-id">ID</label>
                   <input type="text" class="form-control" id="dg-proj-tf-id" autocomplete="off" />
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-2" data-dg-proj-filter-field="tf_name">
                   <label class="form-label" for="dg-proj-tf-name">Имя проекта</label>
                   <input type="text" class="form-control" id="dg-proj-tf-name" autocomplete="off" />
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-2" data-dg-proj-filter-field="tf_domain">
                   <label class="form-label" for="dg-proj-tf-domain">Домен</label>
                   <input type="text" class="form-control" id="dg-proj-tf-domain" autocomplete="off" />
                 </div>
-                <div class="col-md-1">
+                <div class="col-md-1" data-dg-proj-filter-field="tf_pages_min">
                   <label class="form-label" for="dg-proj-tf-pages_min">Страниц от</label>
                   <input type="number" class="form-control" id="dg-proj-tf-pages_min" />
                 </div>
-                <div class="col-md-1">
+                <div class="col-md-1" data-dg-proj-filter-field="tf_pages_max">
                   <label class="form-label" for="dg-proj-tf-pages_max">Страниц до</label>
                   <input type="number" class="form-control" id="dg-proj-tf-pages_max" />
                 </div>
-                <div class="col-md-3">
+                <div class="col-md-3" data-dg-proj-filter-field="sort_by">
                   <label class="form-label" for="dg-proj-sort-by">Сортировать по</label>
                   <select class="form-select" id="dg-proj-sort-by">
                     <option value="id" selected>ID</option>
@@ -628,7 +671,7 @@
                     <option value="pages_count">Страниц</option>
                   </select>
                 </div>
-                <div class="col-md-3">
+                <div class="col-md-3" data-dg-proj-filter-field="sort_dir">
                   <label class="form-label" for="dg-proj-sort-dir">Направление</label>
                   <select class="form-select" id="dg-proj-sort-dir">
                     <option value="asc">По возрастанию</option>
@@ -636,7 +679,7 @@
                   </select>
                 </div>
               </div>
-              <div class="mt-2 d-flex flex-wrap gap-2">
+              <div class="mt-2 d-flex flex-wrap gap-2" data-dg-proj-filter-field="filter_actions">
                 <button type="button" class="btn btn-sm btn-primary" id="dg-proj-apply" data-dg-tooltip="Применить фильтры к списку проектов. Сохраняет выбранные значения для следующего визита."><i class="pe-7s-search me-1"></i>Применить</button>
                 <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-proj-default" data-dg-tooltip="Сбросить фильтры к значениям по умолчанию и очистить сохранённые настройки."><i class="pe-7s-refresh me-1"></i>По умолчанию</button>
               </div>
@@ -1469,6 +1512,7 @@
         renderTable();
       });
       document.getElementById("dg-proj-default").addEventListener("click", function () {
+        if (window.DatagonProjectsFilterBlocks && window.DatagonProjectsFilterBlocks.reset) window.DatagonProjectsFilterBlocks.reset();
         if (window.DatagonFilters) window.DatagonFilters.clear("projects");
         document.getElementById("dg-proj-smart").value = "";
         document.getElementById("dg-proj-tf-id").value = "";
@@ -1493,6 +1537,41 @@
       document.getElementById("dg-proj-btn-create").addEventListener("click", createProject);
       document.getElementById("dg-proj-btn-save").addEventListener("click", saveEdit);
       document.getElementById("dg-proj-btn-cancel-edit").addEventListener("click", closeEdit);
+
+      (function projectsFilterFieldVisibility() {
+        var FIELD_GROUPS = [
+          {
+            title: "Фильтры",
+            subtitle: "",
+            items: [
+              { key: "smart", title: "Умный поиск", hint: "" },
+              { key: "tf_id", title: "ID", hint: "" },
+              { key: "tf_name", title: "Имя проекта", hint: "" },
+              { key: "tf_domain", title: "Домен", hint: "" },
+              { key: "tf_pages_min", title: "Страниц от", hint: "" },
+              { key: "tf_pages_max", title: "Страниц до", hint: "" },
+              { key: "sort_by", title: "Сортировать по", hint: "" },
+              { key: "sort_dir", title: "Направление", hint: "" },
+            ],
+          },
+          {
+            title: "Действия",
+            subtitle: "",
+            items: [{ key: "filter_actions", title: "Кнопки «Применить» и «По умолчанию»", hint: "" }],
+          },
+        ];
+        if (window.DatagonFilterFieldsVisibility && window.DatagonFilterFieldsVisibility.init) {
+          window.DatagonFilterFieldsVisibility.init({
+            storageKeyPrefix: "datagon_projects_filter_fields_v2",
+            attr: "data-dg-proj-filter-field",
+            fieldGroups: FIELD_GROUPS,
+            togglesRootId: "dg-proj-filter-blocks-toggles",
+            idPrefix: "dg-proj-ff-",
+            exposeAs: "DatagonProjectsFilterBlocks",
+            onAfterApply: function () {},
+          });
+        }
+      })();
 
       (function filtersCollapse() {
         var body = document.getElementById("dg-proj-filters-body");

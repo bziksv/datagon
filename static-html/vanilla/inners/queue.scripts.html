@@ -989,6 +989,7 @@
       }
 
       function resetFilters() {
+        if (window.DatagonQueueFilterBlocks && window.DatagonQueueFilterBlocks.reset) window.DatagonQueueFilterBlocks.reset();
         if (window.DatagonFilters) window.DatagonFilters.clear("queue");
         document.getElementById("dg-q-f-search").value = "";
         document.getElementById("dg-q-f-project").value = "all";
@@ -1120,6 +1121,53 @@
           scheduleSyncUrl();
         });
       });
+
+      (function queueFilterFieldVisibility() {
+        var FIELD_GROUPS = [
+          {
+            title: "Основной ряд",
+            subtitle: "",
+            items: [
+              { key: "smart", title: "Умный поиск", hint: "" },
+              { key: "project", title: "Проект", hint: "" },
+              { key: "type", title: "Тип", hint: "" },
+              { key: "status", title: "Статус", hint: "" },
+              { key: "matched", title: "Сопоставление", hint: "" },
+            ],
+          },
+          {
+            title: "По таблице",
+            subtitle: "",
+            items: [
+              { key: "tf_id", title: "ID", hint: "" },
+              { key: "tf_url", title: "URL", hint: "" },
+              { key: "tf_added_from", title: "Добавлено откуда", hint: "" },
+              { key: "tf_status", title: "Статус (таблица)", hint: "" },
+              { key: "tf_page_type", title: "Тип (таблица)", hint: "" },
+              { key: "tf_matched", title: "Сопоставление (таблица)", hint: "" },
+            ],
+          },
+          {
+            title: "Действия и подсказка",
+            subtitle: "",
+            items: [
+              { key: "filter_actions", title: "Кнопки под фильтром", hint: "" },
+              { key: "discovery_hint", title: "Текст про автообход", hint: "" },
+            ],
+          },
+        ];
+        if (window.DatagonFilterFieldsVisibility && window.DatagonFilterFieldsVisibility.init) {
+          window.DatagonFilterFieldsVisibility.init({
+            storageKeyPrefix: "datagon_queue_filter_fields_v2",
+            attr: "data-dg-q-filter-field",
+            fieldGroups: FIELD_GROUPS,
+            togglesRootId: "dg-q-filter-blocks-toggles",
+            idPrefix: "dg-q-ff-",
+            exposeAs: "DatagonQueueFilterBlocks",
+            onAfterApply: qRefreshFloatingAfterLayout,
+          });
+        }
+      })();
 
       (function collapse() {
         var body = document.getElementById("dg-q-filters-collapsible");

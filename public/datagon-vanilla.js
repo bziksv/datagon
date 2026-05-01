@@ -114,6 +114,7 @@
 
   function positionTooltip(target) {
     if (!dgTooltip || !target) return;
+    dgTooltip.style.transform = "";
     var rect = target.getBoundingClientRect();
     var ttRect = dgTooltip.getBoundingClientRect();
     var gap = 8;
@@ -133,15 +134,32 @@
       dgTooltipTimer = null;
     }
     dgTooltipTarget = null;
-    if (dgTooltip) dgTooltip.style.display = "none";
+    if (dgTooltip) {
+      dgTooltip.style.display = "none";
+      dgTooltip.style.visibility = "";
+    }
   }
 
   function showGlobalTooltip(target, text) {
     ensureTooltipNode();
     if (!dgTooltip || !dgTooltipInner) return;
     dgTooltipInner.textContent = text;
+    dgTooltip.style.transform = "";
+    dgTooltip.style.left = "0px";
+    dgTooltip.style.top = "0px";
+    dgTooltip.style.visibility = "hidden";
     dgTooltip.style.display = "block";
+    void dgTooltip.offsetWidth;
     positionTooltip(target);
+    dgTooltip.style.visibility = "visible";
+    window.requestAnimationFrame(function () {
+      if (dgTooltipTarget !== target) return;
+      positionTooltip(target);
+      window.requestAnimationFrame(function () {
+        if (dgTooltipTarget !== target) return;
+        positionTooltip(target);
+      });
+    });
   }
 
   document
@@ -187,6 +205,7 @@
       if (!(fromButton instanceof HTMLButtonElement)) return;
       var next = event.relatedTarget;
       if (next instanceof Node && fromButton.contains(next)) return;
+      if (fromButton !== dgTooltipTarget) return;
       hideGlobalTooltip();
     },
     true
@@ -200,6 +219,257 @@
     if (!dgTooltipTarget || !dgTooltip || dgTooltip.style.display === "none") return;
     positionTooltip(dgTooltipTarget);
   });
+
+  /**
+   * Per-user visibility toggles for filter form fields (gear menu), same pattern as «Мои товары».
+   * @returns {{ reloadForUser: function, reset: function } | null}
+   */
+  window.DatagonFilterFieldsVisibility = {
+    init: function (opts) {
+      if (!opts || !opts.storageKeyPrefix || !opts.attr || !Array.isArray(opts.fieldGroups) || !opts.togglesRootId) {
+        return null;
+      }
+      var storageKeyPrefix = String(opts.storageKeyPrefix || "").trim();
+      var attr = String(opts.attr || "").trim();
+      var fieldGroups = opts.fieldGroups;
+      var togglesRootId = String(opts.togglesRootId || "").trim();
+      var idPrefix = String(opts.idPrefix || "dg-ff-").trim();
+      var migrateV1 = opts.migrateV1;
+      var onAfterApply = typeof opts.onAfterApply === "function" ? opts.onAfterApply : function () {};
+      var exposeAs = opts.exposeAs ? String(opts.exposeAs).trim() : "";
+
+      var togglesRoot = document.getElementById(togglesRootId);
+      if (!togglesRoot) return null;
+      if (togglesRoot.getAttribute("data-dg-filter-fields-init") === "1") {
+        return togglesRoot.__dgFilterFieldsApi || null;
+      }
+      togglesRoot.setAttribute("data-dg-filter-fields-init", "1");
+
+      function storageUsername() {
+        try {
+          var w = String(window.__datagonSessionUsername || "").trim();
+          if (w) return w;
+          var ls = String(localStorage.getItem("currentUser") || "").trim();
+          if (ls) return ls;
+          return "guest";
+        } catch (eSu) {
+          return "guest";
+        }
+      }
+      function userKey() {
+        try {
+          return storageKeyPrefix + ":" + (storageUsername() || "guest");
+        } catch (e) {
+          return storageKeyPrefix + ":guest";
+        }
+      }
+      function userV1Key() {
+        if (!migrateV1 || !migrateV1.prefix) return "";
+        try {
+          return String(migrateV1.prefix) + (storageUsername() || "guest");
+        } catch (e2) {
+          return String(migrateV1.prefix) + "guest";
+        }
+      }
+      function allFieldKeys() {
+        var keys = [];
+        fieldGroups.forEach(function (g) {
+          (g.items || []).forEach(function (it) {
+            keys.push(it.key);
+          });
+        });
+        return keys;
+      }
+      function migrateFromV1() {
+        if (!migrateV1 || !migrateV1.prefix || !migrateV1.blocks) return;
+        try {
+          if (localStorage.getItem(userKey())) return;
+          var raw = localStorage.getItem(userV1Key());
+          if (!raw) return;
+          var old = JSON.parse(raw);
+          if (!old || typeof old !== "object") return;
+          var next = {};
+          allFieldKeys().forEach(function (k) {
+            next[k] = true;
+          });
+          Object.keys(migrateV1.blocks).forEach(function (block) {
+            if (old[block] === false) {
+              var arr = migrateV1.blocks[block];
+              if (Array.isArray(arr)) {
+                arr.forEach(function (fk) {
+                  next[fk] = false;
+                });
+              }
+            }
+          });
+          localStorage.setItem(userKey(), JSON.stringify(next));
+        } catch (e3) {}
+      }
+      function loadState() {
+        migrateFromV1();
+        var out = {};
+        allFieldKeys().forEach(function (k) {
+          out[k] = true;
+        });
+        try {
+          var raw = localStorage.getItem(userKey());
+          if (!raw) return out;
+          var o = JSON.parse(raw);
+          if (!o || typeof o !== "object") return out;
+          allFieldKeys().forEach(function (k) {
+            if (Object.prototype.hasOwnProperty.call(o, k)) out[k] = !!o[k];
+          });
+        } catch (e4) {}
+        return out;
+      }
+      function saveState(s) {
+        try {
+          localStorage.setItem(userKey(), JSON.stringify(s));
+        } catch (e5) {}
+      }
+      function defaultState() {
+        var out = {};
+        allFieldKeys().forEach(function (k) {
+          out[k] = true;
+        });
+        return out;
+      }
+      function apply(s) {
+        allFieldKeys().forEach(function (k) {
+          var on = s[k] !== false;
+          var sel = "[" + attr + '="' + String(k) + '"]';
+          try {
+            document.querySelectorAll(sel).forEach(function (el) {
+              el.classList.toggle("d-none", !on);
+            });
+          } catch (eQ) {}
+        });
+        try {
+          onAfterApply();
+        } catch (eAp) {}
+      }
+      function appendGroupHeader(root, title, subtitle) {
+        var wrap = document.createElement("div");
+        wrap.className = "dg-filter-field-visibility-group border-bottom border-light";
+        var inner = document.createElement("div");
+        inner.className = "px-3 pt-2 pb-1 bg-light";
+        var t = document.createElement("div");
+        t.className = "fw-semibold text-body";
+        t.style.fontSize = "0.8125rem";
+        t.textContent = title;
+        inner.appendChild(t);
+        if (subtitle) {
+          var st = document.createElement("div");
+          st.className = "text-muted";
+          st.style.fontSize = "0.72rem";
+          st.style.lineHeight = "1.3";
+          st.textContent = subtitle;
+          inner.appendChild(st);
+        }
+        wrap.appendChild(inner);
+        root.appendChild(wrap);
+      }
+
+      var state = defaultState();
+      apply(state);
+      var inputsByKey = {};
+      fieldGroups.forEach(function (grp) {
+        appendGroupHeader(togglesRoot, grp.title, grp.subtitle || "");
+        (grp.items || []).forEach(function (b) {
+          var id = idPrefix + b.key;
+          var row = document.createElement("div");
+          row.className =
+            "list-group-item list-group-item-action border-0 rounded-0 px-3 py-1 d-flex justify-content-between align-items-center gap-2";
+          var textCol = document.createElement("div");
+          textCol.className = "flex-grow-1 min-w-0 pe-1";
+          textCol.style.cursor = "pointer";
+          var titleEl = document.createElement("div");
+          titleEl.className = "fw-semibold text-body";
+          titleEl.style.fontSize = "0.875rem";
+          titleEl.style.lineHeight = "1.35";
+          titleEl.textContent = b.title;
+          textCol.appendChild(titleEl);
+          if (b.hint) {
+            var hintEl = document.createElement("div");
+            hintEl.className = "text-muted mt-0";
+            hintEl.style.fontSize = "0.75rem";
+            hintEl.style.lineHeight = "1.3";
+            hintEl.textContent = b.hint;
+            textCol.appendChild(hintEl);
+          }
+          var lab = document.createElement("label");
+          lab.className = "switch mb-0 flex-shrink-0 align-self-center";
+          lab.setAttribute("for", id);
+          var inp = document.createElement("input");
+          inp.type = "checkbox";
+          inp.id = id;
+          var slider = document.createElement("span");
+          slider.className = "slider round";
+          lab.appendChild(inp);
+          lab.appendChild(slider);
+          row.appendChild(textCol);
+          row.appendChild(lab);
+          togglesRoot.appendChild(row);
+          inputsByKey[b.key] = inp;
+          inp.checked = state[b.key] !== false;
+          textCol.addEventListener("click", function () {
+            inp.click();
+          });
+          inp.addEventListener("change", function () {
+            state[b.key] = inp.checked;
+            saveState(state);
+            apply(state);
+          });
+        });
+      });
+
+      function syncInputsFromState() {
+        allFieldKeys().forEach(function (k) {
+          var inp = inputsByKey[k];
+          if (inp) inp.checked = state[k] !== false;
+        });
+      }
+      function reloadForUser() {
+        state = loadState();
+        syncInputsFromState();
+        apply(state);
+      }
+      var api = {
+        reloadForUser: reloadForUser,
+        reset: function () {
+          state = {};
+          allFieldKeys().forEach(function (k) {
+            state[k] = true;
+          });
+          try {
+            localStorage.removeItem(userKey());
+            var v1k = userV1Key();
+            if (v1k) localStorage.removeItem(v1k);
+          } catch (e6) {}
+          syncInputsFromState();
+          apply(state);
+        },
+      };
+      togglesRoot.__dgFilterFieldsApi = api;
+      if (exposeAs) {
+        try {
+          window[exposeAs] = api;
+        } catch (eEx) {}
+      }
+
+      if (storageUsername() !== "guest") {
+        reloadForUser();
+      }
+      window.addEventListener("datagon-profile-loaded", function () {
+        reloadForUser();
+      });
+      window.setTimeout(function () {
+        reloadForUser();
+      }, 2000);
+
+      return api;
+    },
+  };
 
   function getAuthHeaders() {
     var headers = {};
@@ -250,6 +520,7 @@
           window.localStorage.removeItem("isAdmin");
           window.localStorage.removeItem("isLoggedIn");
           window.localStorage.removeItem("canManageUsers");
+          window.__datagonSessionUsername = "";
         } catch (e) {}
         setUserUi("Гость", false);
         redirectVanillaToLogin();
@@ -257,6 +528,10 @@
   }
 
   function loadCurrentUserProfile() {
+    try {
+      var bootU = String(window.localStorage.getItem("currentUser") || "").trim();
+      if (bootU) window.__datagonSessionUsername = bootU;
+    } catch (_) {}
     var fromStorage = String(window.localStorage.getItem("currentUserDisplayName") || window.localStorage.getItem("currentUser") || "Пользователь");
     var isAdminStored = window.localStorage.getItem("isAdmin") === "true" || window.localStorage.getItem("currentUser") === "admin";
     setUserUi(fromStorage, isAdminStored);
@@ -269,6 +544,9 @@
       .then(function (x) {
         var st = x.r.status;
         if (st === 401 || st === 403) {
+          try {
+            window.__datagonSessionUsername = "";
+          } catch (_) {}
           redirectVanillaToLogin();
           return;
         }
@@ -276,7 +554,12 @@
         var username = String(x.j.username || "").trim();
         var fullName = String(x.j.full_name || "").trim() || username || fromStorage;
         var isAdmin = Boolean(x.j.isAdmin);
-        if (username) window.localStorage.setItem("currentUser", username);
+        if (username) {
+          try {
+            window.__datagonSessionUsername = username;
+          } catch (_) {}
+          window.localStorage.setItem("currentUser", username);
+        }
         if (fullName) window.localStorage.setItem("currentUserDisplayName", fullName);
         window.localStorage.setItem("isAdmin", isAdmin ? "true" : "false");
         setUserUi(fullName || "Пользователь", isAdmin);

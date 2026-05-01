@@ -463,7 +463,14 @@
             <div class="widget-content p-0">
               <div class="widget-content-wrapper">
                 <div class="widget-content-left d-flex align-items-center gap-1 pe-2">
-                  <img width="42" height="42" class="rounded-circle" src="/assets/avatar-header.jpg" alt="" />
+                  <span
+                    class="rounded-circle d-inline-flex align-items-center justify-content-center flex-shrink-0 bg-light text-secondary border"
+                    style="width: 42px; height: 42px; border-color: #e2e8f0"
+                    role="img"
+                    aria-label="Профиль"
+                  >
+                    <i class="pe-7s-user" style="font-size: 1.2rem; line-height: 1; opacity: 0.85" aria-hidden="true"></i>
+                  </span>
                   <button type="button" class="btn btn-link p-0 dg-vanilla-logout d-inline-flex align-items-center justify-content-center text-danger" title="Выйти" aria-label="Выйти из профиля" style="min-width:34px;min-height:34px;line-height:1;border-radius:50%">
                     <i class="lnr-exit" style="font-size:1.2rem"></i>
                   </button>
@@ -569,19 +576,19 @@
                 <div class="dropdown">
                   <button
                     type="button"
-                    class="btn btn-sm btn-outline-secondary btn-shadow dg-vanilla-dropdown-toggle"
+                    class="btn btn-sm btn-outline-secondary dg-vanilla-dropdown-toggle"
                     style="line-height: 1; padding: 0.35rem 0.5rem"
                     aria-expanded="false"
                     aria-haspopup="true"
                     id="dg-mp-filter-blocks-btn"
-                    data-dg-tooltip="Какие блоки фильтров показывать (сохраняется в браузере для текущего пользователя)"
+                    data-dg-tooltip="Какие поля фильтров показывать (сохраняется в браузере для текущего пользователя)"
                   >
                     <i class="pe-7s-config btn-icon-wrapper" style="font-size: 1.1rem" aria-hidden="true"></i>
                   </button>
                   <div
                     class="dropdown-menu dropdown-menu-end rm-pointers p-0 dg-mp-filter-blocks-dropdown"
                     id="dg-mp-filter-blocks-menu"
-                    style="width: min(340px, calc(100vw - 1.5rem))"
+                    style="width: min(420px, calc(100vw - 1.5rem))"
                   >
                     <div class="dropdown-menu-header mb-0">
                       <div class="dropdown-menu-header-inner bg-tempting-azure">
@@ -590,12 +597,15 @@
                           style="background-image: url('/assets/utils/images/dropdown-header/abstract2.jpg')"
                         ></div>
                         <div class="menu-header-content text-white px-3 py-2">
-                          <h5 class="menu-header-title mb-0">Блоки фильтров</h5>
-                          <h6 class="menu-header-subtitle mb-0 opacity-8 fw-normal small">Включите только то, что нужно в работе</h6>
+                          <h5 class="menu-header-title mb-0">Поля фильтров</h5>
+                          <h6 class="menu-header-subtitle mb-0 opacity-8 fw-normal small">По группам: переключатели справа</h6>
                         </div>
                       </div>
                     </div>
-                    <div class="scroll-area-xs" style="max-height: min(360px, 55vh)">
+                    <div
+                      class="dg-mp-filter-blocks-scroll"
+                      style="max-height: calc(100vh - 10rem); overflow-y: auto; overflow-x: hidden"
+                    >
                       <div id="dg-mp-filter-blocks-toggles" class="list-group list-group-flush"></div>
                     </div>
                   </div>
@@ -605,17 +615,16 @@
             </div>
             <div class="card-body">
               <div id="dg-mp-filters-body">
-              <div class="dg-mp-filter-block" data-dg-mp-filter-block="core">
               <div class="row g-2">
-                <div class="col-md-6">
+                <div class="col-md-6" data-dg-mp-filter-field="smart">
                   <label class="form-label" for="mp-f-smart">Умный поиск</label>
                   <input type="text" class="form-control" id="mp-f-smart" placeholder='code:123 sku:ABC-12 name:"насос 25" или просто текст' autocomplete="off" />
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-2" data-dg-mp-filter-field="site">
                   <label class="form-label" for="f-site">Сайт</label>
                   <select class="form-select" id="f-site"></select>
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-2" data-dg-mp-filter-field="status">
                   <label class="form-label" for="mp-f-status">Статус</label>
                   <select class="form-select" id="mp-f-status">
                     <option value="all">Все</option>
@@ -623,7 +632,7 @@
                     <option value="0">Неактивные</option>
                   </select>
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-2" data-dg-mp-filter-field="ms_link">
                   <label class="form-label" for="f-ms">Связь с МС</label>
                   <select class="form-select" id="f-ms">
                     <option value="all">Все</option>
@@ -632,26 +641,24 @@
                   </select>
                 </div>
               </div>
-              </div>
-              <div class="dg-mp-filter-block" data-dg-mp-filter-block="table">
               <div class="row g-2 mt-1">
-                <div class="col-md-2">
+                <div class="col-md-2" data-dg-mp-filter-field="tf_id">
                   <label class="form-label" for="mp-tf-source_id">ID / КОД</label>
                   <input type="text" class="form-control" id="mp-tf-source_id" autocomplete="off" />
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-2" data-dg-mp-filter-field="tf_site">
                   <label class="form-label" for="mp-tf-site_name">Сайт (таблица)</label>
                   <input type="text" class="form-control" id="mp-tf-site_name" autocomplete="off" />
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-2" data-dg-mp-filter-field="tf_sku">
                   <label class="form-label" for="mp-tf-sku">SKU (таблица)</label>
                   <input type="text" class="form-control" id="mp-tf-sku" autocomplete="off" />
                 </div>
-                <div class="col-md-4">
+                <div class="col-md-4" data-dg-mp-filter-field="tf_name">
                   <label class="form-label" for="mp-tf-name">Название (таблица)</label>
                   <input type="text" class="form-control" id="mp-tf-name" autocomplete="off" />
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-2" data-dg-mp-filter-field="tf_currency">
                   <label class="form-label" for="mp-tf-currency">Валюта</label>
                   <select class="form-select" id="mp-tf-currency">
                     <option value="all">Все</option>
@@ -661,21 +668,19 @@
                   </select>
                 </div>
               </div>
-              <p class="text-muted small mb-0 mt-1">
+              <p class="text-muted small mb-0 mt-1" data-dg-mp-filter-field="table_hint">
                 «(таблица)» — быстрый отбор по уже загруженной странице; остаток и «Статус» — в блоке ниже и «Применить».
               </p>
-              </div>
-              <div class="dg-mp-filter-block" data-dg-mp-filter-block="stock_sort">
               <div class="row g-2 mt-1">
-                <div class="col-md-2">
+                <div class="col-md-2" data-dg-mp-filter-field="stock_min">
                   <label class="form-label" for="mp-f-stock_min">Остаток от</label>
                   <input type="number" class="form-control" id="mp-f-stock_min" placeholder="0" />
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-2" data-dg-mp-filter-field="stock_max">
                   <label class="form-label" for="mp-f-stock_max">Остаток до</label>
                   <input type="number" class="form-control" id="mp-f-stock_max" placeholder="1000" />
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-2" data-dg-mp-filter-field="source_enabled">
                   <label class="form-label" for="mp-f-source_enabled">На сайте (вкл/выкл)</label>
                   <select class="form-select" id="mp-f-source_enabled">
                     <option value="all">Все</option>
@@ -683,11 +688,11 @@
                     <option value="0">Нет</option>
                   </select>
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-2" data-dg-mp-filter-field="limit">
                   <label class="form-label" for="mp-f-limit">Лимит</label>
                   <input type="number" class="form-control" id="mp-f-limit" min="1" value="30" />
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-2" data-dg-mp-filter-field="match_audit">
                   <label class="form-label" for="mp-f-match_audit">Статус сопоставления</label>
                   <select class="form-select" id="mp-f-match_audit">
                     <option value="all">Все</option>
@@ -696,7 +701,7 @@
                     <option value="none">Без действий</option>
                   </select>
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-2" data-dg-mp-filter-field="sort_by">
                   <label class="form-label" for="mp-f-sort-by">Сортировать по</label>
                   <select class="form-select" id="mp-f-sort-by">
                     <option value="id">ID / КОД</option>
@@ -712,7 +717,7 @@
                     <option value="updated">Обновлен</option>
                   </select>
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-2" data-dg-mp-filter-field="sort_dir">
                   <label class="form-label" for="mp-f-sort-dir">Направление</label>
                   <select class="form-select" id="mp-f-sort-dir">
                     <option value="asc">По возрастанию</option>
@@ -720,26 +725,24 @@
                   </select>
                 </div>
               </div>
-              </div>
               <div class="mt-2 d-flex flex-wrap gap-2">
                 <button type="button" class="btn btn-sm btn-primary" id="btn-apply" data-dg-tooltip="Применить фильтры и обновить данные. Сохраняет выбранные значения для следующего визита."><i class="pe-7s-search me-1"></i>Применить</button>
                 <button type="button" class="btn btn-sm btn-outline-secondary" id="mp-filter-default" data-dg-tooltip="Сбросить фильтры к значениям по умолчанию и очистить сохранённые настройки."><i class="pe-7s-refresh me-1"></i>По умолчанию</button>
               </div>
-              <div class="dg-mp-filter-block" data-dg-mp-filter-block="gap">
               <div class="row g-2 mt-1">
-                <div class="col-md-3 d-flex align-items-end">
+                <div class="col-md-3 d-flex align-items-end" data-dg-mp-filter-field="gap_enabled">
                   <label class="form-check mb-0">
                     <input class="form-check-input me-1" type="checkbox" id="mp-f-gap_enabled" />
                     Включить фильтр расхождения
                   </label>
                 </div>
-                <div class="col-md-3 d-flex align-items-end">
+                <div class="col-md-3 d-flex align-items-end" data-dg-mp-filter-field="gap_exclude_zero">
                   <label class="form-check mb-0">
                     <input class="form-check-input me-1" type="checkbox" id="mp-f-gap_exclude_zero" checked />
                     Не показывать Δ 0%
                   </label>
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-2" data-dg-mp-filter-field="gap_competitor">
                   <label class="form-label" for="mp-f-gap_competitor">Конкурент (Δ)</label>
                   <select class="form-select" id="mp-f-gap_competitor">
                     <option value="all">Любой (ДМ/МК)</option>
@@ -747,47 +750,50 @@
                     <option value="medkompleks">Медкомплекс</option>
                   </select>
                 </div>
-                <div class="col-md-1">
+                <div class="col-md-1" data-dg-mp-filter-field="gap_min_pct">
                   <label class="form-label" for="mp-f-gap_min_pct">Δ % от</label>
                   <input type="number" step="0.01" class="form-control" id="mp-f-gap_min_pct" value="-100" />
                 </div>
-                <div class="col-md-1">
+                <div class="col-md-1" data-dg-mp-filter-field="gap_max_pct">
                   <label class="form-label" for="mp-f-gap_max_pct">Δ % до</label>
                   <input type="number" step="0.01" class="form-control" id="mp-f-gap_max_pct" value="100" />
                 </div>
-                <div class="col-md-1">
+                <div class="col-md-1" data-dg-mp-filter-field="usd_to_rub">
                   <label class="form-label" for="mp-f-usd_to_rub">USD-&gt;RUB</label>
                   <input type="number" step="0.01" class="form-control" id="mp-f-usd_to_rub" />
                 </div>
-                <div class="col-md-1">
+                <div class="col-md-1" data-dg-mp-filter-field="eur_to_rub">
                   <label class="form-label" for="mp-f-eur_to_rub">EUR-&gt;RUB</label>
                   <input type="number" step="0.01" class="form-control" id="mp-f-eur_to_rub" />
                 </div>
               </div>
-              </div>
-              <div class="dg-mp-filter-block" data-dg-mp-filter-block="comp_sync">
               <div class="row g-2 mt-1">
-                <div class="col-md-2">
+                <div class="col-md-2" data-dg-mp-filter-field="comp_min">
                   <label class="form-label" for="mp-f-comp_min">Синх. % мин</label>
                   <input type="text" class="form-control" id="mp-f-comp_min" value="0.1" />
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-2" data-dg-mp-filter-field="comp_max">
                   <label class="form-label" for="mp-f-comp_max">Синх. % макс</label>
                   <input type="text" class="form-control" id="mp-f-comp_max" value="1" />
                 </div>
                 <div class="col-md-8"></div>
               </div>
-              </div>
-              <div class="dg-mp-filter-block" data-dg-mp-filter-block="sync_bar">
               <div class="mt-3 d-flex flex-wrap gap-2">
-                <button type="button" class="btn btn-sm btn-outline-secondary" id="mp-btn-fx" title="Принудительно обновить валютные курсы"><i class="pe-7s-refresh-2 me-1"></i>Обновить курс</button>
-                <button type="button" class="btn btn-sm btn-outline-primary" id="mp-btn-syncall" title="Запустить синхронизацию товаров по всем сайтам"><i class="pe-7s-repeat me-1"></i>Синхронизировать все</button>
-                <span class="d-inline-flex" id="mp-btn-sync-site-wrap" title="Сначала выберите конкретный сайт (не «Все сайты»)">
+                <span class="d-inline-flex" data-dg-mp-filter-field="btn_fx">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="mp-btn-fx" title="Принудительно обновить валютные курсы"><i class="pe-7s-refresh-2 me-1"></i>Обновить курс</button>
+                </span>
+                <span class="d-inline-flex" data-dg-mp-filter-field="btn_syncall">
+                  <button type="button" class="btn btn-sm btn-outline-primary" id="mp-btn-syncall" title="Запустить синхронизацию товаров по всем сайтам"><i class="pe-7s-repeat me-1"></i>Синхронизировать все</button>
+                </span>
+                <span class="d-inline-flex" id="mp-btn-sync-site-wrap" data-dg-mp-filter-field="btn_sync_site" title="Сначала выберите конкретный сайт (не «Все сайты»)">
                   <button type="button" class="btn btn-sm btn-outline-primary" id="mp-btn-sync-site" disabled><i class="pe-7s-repeat me-1"></i>Синхронизировать выбранный сайт</button>
                 </span>
-                <button type="button" class="btn btn-sm btn-outline-warning" id="mp-btn-rebuild" title="Перестроить кэш связей с МойСклад"><i class="pe-7s-refresh me-1"></i>Перестроить кэш</button>
-                <button type="button" class="btn btn-sm btn-outline-dark" id="mp-btn-copy" title="Скопировать ссылку на текущую страницу с фильтрами"><i class="pe-7s-link me-1"></i>Скопировать ссылку</button>
-              </div>
+                <span class="d-inline-flex" data-dg-mp-filter-field="btn_rebuild">
+                  <button type="button" class="btn btn-sm btn-outline-warning" id="mp-btn-rebuild" title="Перестроить кэш связей с МойСклад"><i class="pe-7s-refresh me-1"></i>Перестроить кэш</button>
+                </span>
+                <span class="d-inline-flex" data-dg-mp-filter-field="btn_copy">
+                  <button type="button" class="btn btn-sm btn-outline-dark" id="mp-btn-copy" title="Скопировать ссылку на текущую страницу с фильтрами"><i class="pe-7s-link me-1"></i>Скопировать ссылку</button>
+                </span>
               </div>
               </div>
               <p class="text-muted mb-0 mt-2" id="dg-fx-hint">FX: —</p>
@@ -2515,132 +2521,97 @@
         renderColumnsPanel();
       })();
 
-      (function mpFilterBlockVisibility() {
-        var BLOCKS = [
-          { key: "core", title: "Поиск и сайт", hint: "Умный поиск, сайт, статус, связь с МойСклад" },
-          { key: "table", title: "Поля таблицы", hint: "ID, сайт, SKU, название, валюта и подсказка" },
-          { key: "stock_sort", title: "Остаток и сортировка", hint: "Лимит, сопоставление, порядок списка" },
-          { key: "gap", title: "Расхождение цен (Δ)", hint: "Фильтр Δ и ручные курсы USD / EUR" },
-          { key: "comp_sync", title: "Синхронизация с конкурентом", hint: "Доля совпадения цен, %" },
-          { key: "sync_bar", title: "Кнопки действий", hint: "Курс, синхронизация, кэш, ссылка" },
-        ];
-        function userKey() {
-          try {
-            var u = String(localStorage.getItem("currentUser") || "guest").trim() || "guest";
-            return "datagon_my_products_filter_blocks_v1:" + u;
-          } catch (e) {
-            return "datagon_my_products_filter_blocks_v1:guest";
-          }
-        }
-        function loadState() {
-          var out = {};
-          BLOCKS.forEach(function (b) {
-            out[b.key] = true;
-          });
-          try {
-            var raw = localStorage.getItem(userKey());
-            if (!raw) return out;
-            var o = JSON.parse(raw);
-            if (!o || typeof o !== "object") return out;
-            BLOCKS.forEach(function (b) {
-              if (Object.prototype.hasOwnProperty.call(o, b.key)) out[b.key] = !!o[b.key];
-            });
-          } catch (e2) {}
-          return out;
-        }
-        function saveState(s) {
-          try {
-            localStorage.setItem(userKey(), JSON.stringify(s));
-          } catch (e) {}
-        }
-        function apply(s) {
-          BLOCKS.forEach(function (b) {
-            var on = s[b.key] !== false;
-            document.querySelectorAll('[data-dg-mp-filter-block="' + b.key + '"]').forEach(function (el) {
-              el.classList.toggle("d-none", !on);
-            });
-          });
-          mpRefreshFloatingAfterLayout();
-        }
-        var state = loadState();
-        apply(state);
-        var togglesRoot = document.getElementById("dg-mp-filter-blocks-toggles");
-        var inputsByKey = {};
-        if (togglesRoot) {
-          BLOCKS.forEach(function (b) {
-            var id = "dg-mp-fb-" + b.key;
-            var row = document.createElement("div");
-            row.className =
-              "list-group-item list-group-item-action border-0 rounded-0 px-3 py-2 d-flex justify-content-between align-items-center gap-3";
-            var textCol = document.createElement("div");
-            textCol.className = "flex-grow-1 min-w-0 pe-1";
-            textCol.style.cursor = "pointer";
-            var titleEl = document.createElement("div");
-            titleEl.className = "fw-semibold text-body";
-            titleEl.style.fontSize = "0.9375rem";
-            titleEl.style.lineHeight = "1.35";
-            titleEl.textContent = b.title;
-            textCol.appendChild(titleEl);
-            if (b.hint) {
-              var hintEl = document.createElement("div");
-              hintEl.className = "small text-muted mt-1";
-              hintEl.style.lineHeight = "1.35";
-              hintEl.textContent = b.hint;
-              textCol.appendChild(hintEl);
-            }
-            var lab = document.createElement("label");
-            lab.className = "switch mb-0 flex-shrink-0 align-self-center";
-            lab.setAttribute("for", id);
-            var inp = document.createElement("input");
-            inp.type = "checkbox";
-            inp.id = id;
-            var slider = document.createElement("span");
-            slider.className = "slider round";
-            lab.appendChild(inp);
-            lab.appendChild(slider);
-            row.appendChild(textCol);
-            row.appendChild(lab);
-            togglesRoot.appendChild(row);
-            inputsByKey[b.key] = inp;
-            inp.checked = state[b.key] !== false;
-            textCol.addEventListener("click", function () {
-              inp.click();
-            });
-            inp.addEventListener("change", function () {
-              state[b.key] = inp.checked;
-              saveState(state);
-              apply(state);
-            });
-          });
-        }
-        function syncInputsFromState() {
-          BLOCKS.forEach(function (b) {
-            var inp = inputsByKey[b.key];
-            if (inp) inp.checked = state[b.key] !== false;
-          });
-        }
-        function reloadForUser() {
-          state = loadState();
-          syncInputsFromState();
-          apply(state);
-        }
-        window.DatagonMyProductsFilterBlocks = {
-          reset: function () {
-            state = {};
-            BLOCKS.forEach(function (b) {
-              state[b.key] = true;
-            });
-            try {
-              localStorage.removeItem(userKey());
-            } catch (e3) {}
-            syncInputsFromState();
-            apply(state);
-          },
-          reloadForUser: reloadForUser,
+      (function mpFilterFieldVisibility() {
+        var V1_PREFIX = "datagon_my_products_filter_blocks_v1:";
+        var V1_BLOCK_FIELDS = {
+          core: ["smart", "site", "status", "ms_link"],
+          table: ["tf_id", "tf_site", "tf_sku", "tf_name", "tf_currency", "table_hint"],
+          stock_sort: ["stock_min", "stock_max", "source_enabled", "limit", "match_audit", "sort_by", "sort_dir"],
+          gap: ["gap_enabled", "gap_exclude_zero", "gap_competitor", "gap_min_pct", "gap_max_pct", "usd_to_rub", "eur_to_rub"],
+          comp_sync: ["comp_min", "comp_max"],
+          sync_bar: ["btn_fx", "btn_syncall", "btn_sync_site", "btn_rebuild", "btn_copy"],
         };
-        window.addEventListener("datagon-profile-loaded", function () {
-          reloadForUser();
-        });
+        var FIELD_GROUPS = [
+          {
+            title: "Поиск и контекст",
+            subtitle: "Первый ряд",
+            items: [
+              { key: "smart", title: "Умный поиск", hint: "code:, sku:, name: …" },
+              { key: "site", title: "Сайт", hint: "Список площадок" },
+              { key: "status", title: "Статус товара", hint: "Активные / неактивные" },
+              { key: "ms_link", title: "Связь с МС", hint: "МойСклад" },
+            ],
+          },
+          {
+            title: "По загруженной таблице",
+            subtitle: "Клиентский отбор",
+            items: [
+              { key: "tf_id", title: "ID / КОД", hint: "" },
+              { key: "tf_site", title: "Сайт (таблица)", hint: "" },
+              { key: "tf_sku", title: "SKU", hint: "" },
+              { key: "tf_name", title: "Название", hint: "" },
+              { key: "tf_currency", title: "Валюта", hint: "" },
+              { key: "table_hint", title: "Подсказка «(таблица)»", hint: "Текст под полями" },
+            ],
+          },
+          {
+            title: "Список и сортировка",
+            subtitle: "API и порядок",
+            items: [
+              { key: "stock_min", title: "Остаток от", hint: "" },
+              { key: "stock_max", title: "Остаток до", hint: "" },
+              { key: "source_enabled", title: "На сайте (вкл/выкл)", hint: "" },
+              { key: "limit", title: "Лимит", hint: "" },
+              { key: "match_audit", title: "Статус сопоставления", hint: "" },
+              { key: "sort_by", title: "Сортировать по", hint: "" },
+              { key: "sort_dir", title: "Направление", hint: "" },
+            ],
+          },
+          {
+            title: "Расхождение Δ и курсы",
+            subtitle: "Опционально",
+            items: [
+              { key: "gap_enabled", title: "Вкл. фильтр Δ", hint: "Чекбокс" },
+              { key: "gap_exclude_zero", title: "Скрыть Δ 0%", hint: "Чекбокс" },
+              { key: "gap_competitor", title: "Конкурент (Δ)", hint: "" },
+              { key: "gap_min_pct", title: "Δ % от", hint: "" },
+              { key: "gap_max_pct", title: "Δ % до", hint: "" },
+              { key: "usd_to_rub", title: "USD → RUB", hint: "Ручной курс" },
+              { key: "eur_to_rub", title: "EUR → RUB", hint: "Ручной курс" },
+            ],
+          },
+          {
+            title: "Синхронизация с конкурентом",
+            subtitle: "Доля совпадения",
+            items: [
+              { key: "comp_min", title: "Синх. % мин", hint: "" },
+              { key: "comp_max", title: "Синх. % макс", hint: "" },
+            ],
+          },
+          {
+            title: "Действия",
+            subtitle: "Кнопки под формой",
+            items: [
+              { key: "btn_fx", title: "Обновить курс", hint: "" },
+              { key: "btn_syncall", title: "Синхронизировать все", hint: "" },
+              { key: "btn_sync_site", title: "Синхронизировать сайт", hint: "" },
+              { key: "btn_rebuild", title: "Перестроить кэш", hint: "" },
+              { key: "btn_copy", title: "Скопировать ссылку", hint: "" },
+            ],
+          },
+        ];
+        if (window.DatagonFilterFieldsVisibility && window.DatagonFilterFieldsVisibility.init) {
+          window.DatagonFilterFieldsVisibility.init({
+            storageKeyPrefix: "datagon_my_products_filter_fields_v2",
+            attr: "data-dg-mp-filter-field",
+            fieldGroups: FIELD_GROUPS,
+            togglesRootId: "dg-mp-filter-blocks-toggles",
+            idPrefix: "dg-mp-ff-",
+            migrateV1: { prefix: V1_PREFIX, blocks: V1_BLOCK_FIELDS },
+            exposeAs: "DatagonMyProductsFilterBlocks",
+            onAfterApply: mpRefreshFloatingAfterLayout,
+          });
+        }
       })();
 
       (function collapse() {

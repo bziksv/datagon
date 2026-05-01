@@ -390,7 +390,14 @@
             <div class="widget-content p-0">
               <div class="widget-content-wrapper">
                 <div class="widget-content-left d-flex align-items-center gap-1 pe-2">
-                  <img width="42" height="42" class="rounded-circle" src="/assets/avatar-header.jpg" alt="" />
+                  <span
+                    class="rounded-circle d-inline-flex align-items-center justify-content-center flex-shrink-0 bg-light text-secondary border"
+                    style="width: 42px; height: 42px; border-color: #e2e8f0"
+                    role="img"
+                    aria-label="Профиль"
+                  >
+                    <i class="pe-7s-user" style="font-size: 1.2rem; line-height: 1; opacity: 0.85" aria-hidden="true"></i>
+                  </span>
                   <button type="button" class="btn btn-link p-0 dg-vanilla-logout d-inline-flex align-items-center justify-content-center text-danger" title="Выйти" aria-label="Выйти из профиля" style="min-width:34px;min-height:34px;line-height:1;border-radius:50%">
                     <i class="lnr-exit" style="font-size:1.2rem"></i>
                   </button>
@@ -599,25 +606,59 @@
                   <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
                   <span>Подключенные сайты</span>
                 </div>
+                <div class="dropdown">
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-secondary dg-vanilla-dropdown-toggle"
+                    style="line-height: 1; padding: 0.35rem 0.5rem"
+                    aria-expanded="false"
+                    aria-haspopup="true"
+                    id="dg-msites-filter-blocks-btn"
+                    data-dg-tooltip="Какие поля фильтров показывать (сохраняется в браузере для текущего пользователя)"
+                  >
+                    <i class="pe-7s-config btn-icon-wrapper" style="font-size: 1.1rem" aria-hidden="true"></i>
+                  </button>
+                  <div
+                    class="dropdown-menu dropdown-menu-end rm-pointers p-0 dg-msites-filter-blocks-dropdown"
+                    id="dg-msites-filter-blocks-menu"
+                    style="width: min(420px, calc(100vw - 1.5rem))"
+                  >
+                    <div class="dropdown-menu-header mb-0">
+                      <div class="dropdown-menu-header-inner bg-tempting-azure">
+                        <div
+                          class="menu-header-image opacity-5"
+                          style="background-image: url('/assets/utils/images/dropdown-header/abstract2.jpg')"
+                        ></div>
+                        <div class="menu-header-content text-white px-3 py-2">
+                          <h5 class="menu-header-title mb-0">Поля фильтров</h5>
+                          <h6 class="menu-header-subtitle mb-0 opacity-8 fw-normal small">По группам: переключатели справа</h6>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="dg-msites-filter-blocks-scroll" style="max-height: calc(100vh - 10rem); overflow-y: auto; overflow-x: hidden">
+                      <div id="dg-msites-filter-blocks-toggles" class="list-group list-group-flush"></div>
+                    </div>
+                  </div>
+                </div>
               </div>
               <div class="card-body">
                 <p class="small text-muted">
                   Быстрые бейджи в статистике открывают предфильтрованную страницу товаров по выбранному сайту.
                 </p>
                 <div class="row g-2 mb-2">
-                  <div class="col-md-4">
+                  <div class="col-md-4" data-dg-msites-filter-field="smart">
                     <label class="form-label" for="ms-smart">Умный поиск</label>
                     <input type="text" class="form-control" id="ms-smart" placeholder='id:2 domain:site.ru или просто текст' autocomplete="off" />
                   </div>
-                  <div class="col-md-2">
+                  <div class="col-md-2" data-dg-msites-filter-field="tf_id">
                     <label class="form-label" for="ms-tf-id">ID</label>
                     <input type="text" class="form-control" id="ms-tf-id" autocomplete="off" />
                   </div>
-                  <div class="col-md-2">
+                  <div class="col-md-2" data-dg-msites-filter-field="tf_name">
                     <label class="form-label" for="ms-tf-name">Название</label>
                     <input type="text" class="form-control" id="ms-tf-name" autocomplete="off" />
                   </div>
-                  <div class="col-md-2">
+                  <div class="col-md-2" data-dg-msites-filter-field="tf_cms">
                     <label class="form-label" for="ms-tf-cms">CMS</label>
                     <select class="form-select" id="ms-tf-cms">
                       <option value="all">Все</option>
@@ -625,12 +666,12 @@
                       <option value="webasyst">Webasyst</option>
                     </select>
                   </div>
-                  <div class="col-md-2">
+                  <div class="col-md-2" data-dg-msites-filter-field="tf_domain">
                     <label class="form-label" for="ms-tf-domain">Домен</label>
                     <input type="text" class="form-control" id="ms-tf-domain" autocomplete="off" />
                   </div>
                 </div>
-                <div class="mt-2 d-flex flex-wrap gap-2">
+                <div class="mt-2 d-flex flex-wrap gap-2" data-dg-msites-filter-field="filter_actions">
                   <button type="button" class="btn btn-sm btn-primary" id="ms-filters-apply" data-dg-tooltip="Применить фильтры к таблице сайтов. Сохраняет введённое для следующего визита."><i class="pe-7s-search me-1"></i>Применить</button>
                   <button type="button" class="btn btn-sm btn-outline-secondary" id="ms-filters-default" data-dg-tooltip="Сбросить фильтры и сохранённые настройки."><i class="pe-7s-refresh me-1"></i>По умолчанию</button>
                 </div>
@@ -1714,6 +1755,7 @@
         renderTable();
       });
       document.getElementById("ms-filters-default").addEventListener("click", function () {
+        if (window.DatagonMySitesFilterBlocks && window.DatagonMySitesFilterBlocks.reset) window.DatagonMySitesFilterBlocks.reset();
         if (window.DatagonFilters) window.DatagonFilters.clear("my_sites");
         document.getElementById("ms-smart").value = "";
         document.getElementById("ms-tf-id").value = "";
@@ -1758,6 +1800,38 @@
             document.getElementById("ms-form-collapse").textContent = "Развернуть";
           }
         } catch (e) {}
+      })();
+
+      (function mySitesFilterFieldVisibility() {
+        var FIELD_GROUPS = [
+          {
+            title: "Фильтры таблицы",
+            subtitle: "",
+            items: [
+              { key: "smart", title: "Умный поиск", hint: "" },
+              { key: "tf_id", title: "ID", hint: "" },
+              { key: "tf_name", title: "Название", hint: "" },
+              { key: "tf_cms", title: "CMS", hint: "" },
+              { key: "tf_domain", title: "Домен", hint: "" },
+            ],
+          },
+          {
+            title: "Действия",
+            subtitle: "",
+            items: [{ key: "filter_actions", title: "«Применить» и «По умолчанию»", hint: "" }],
+          },
+        ];
+        if (window.DatagonFilterFieldsVisibility && window.DatagonFilterFieldsVisibility.init) {
+          window.DatagonFilterFieldsVisibility.init({
+            storageKeyPrefix: "datagon_my_sites_filter_fields_v2",
+            attr: "data-dg-msites-filter-field",
+            fieldGroups: FIELD_GROUPS,
+            togglesRootId: "dg-msites-filter-blocks-toggles",
+            idPrefix: "dg-msites-ff-",
+            exposeAs: "DatagonMySitesFilterBlocks",
+            onAfterApply: function () {},
+          });
+        }
       })();
 
       loadSortState();

@@ -1,6 +1,7 @@
   <script>
     (function () {
       var PRODUCTS_LIMIT = 50;
+      var MATCHES_MY_PRODUCTS_MANUAL_COLLAPSE_KEY = "datagon_matches_my_products_manual_collapsed_v1";
 
       function formatNumber(value) {
         return Number(value || 0).toLocaleString("ru-RU");
@@ -277,6 +278,7 @@
             d.textContent = "• " + l;
             logsEl.appendChild(d);
           });
+          logsEl.classList.toggle("dg-matches-job-logs-reserved", !!js.active || (js.logs || []).length > 0);
         }
         refreshActionButtons();
       }
@@ -1410,6 +1412,48 @@
         loadMyProducts();
       });
       document.getElementById("dg-matches-search-mode").addEventListener("change", scheduleSyncUrl);
+      (function initMatchesFilterLogicToggle() {
+        var btn = document.getElementById("dg-matches-filter-logic-toggle");
+        var panel = document.getElementById("dg-matches-filter-logic");
+        if (!btn || !panel) return;
+        btn.addEventListener("click", function () {
+          var show = panel.classList.contains("d-none");
+          panel.classList.toggle("d-none", !show);
+          btn.setAttribute("aria-expanded", show ? "true" : "false");
+        });
+      })();
+
+      (function matchesMyProductsManualCollapse() {
+        var body = document.getElementById("dg-matches-my-products-body");
+        var btn = document.getElementById("dg-matches-my-products-toggle");
+        if (!body || !btn) return;
+        function apply() {
+          try {
+            var c = localStorage.getItem(MATCHES_MY_PRODUCTS_MANUAL_COLLAPSE_KEY) === "1";
+            if (c) {
+              body.style.display = "none";
+              btn.textContent = "Развернуть";
+            } else {
+              body.style.display = "";
+              btn.textContent = "Свернуть";
+            }
+          } catch (e) {}
+          matchesMyRefreshFloatingAfterLayout();
+        }
+        try {
+          if (localStorage.getItem(MATCHES_MY_PRODUCTS_MANUAL_COLLAPSE_KEY) === "1") body.style.display = "none";
+        } catch (e2) {}
+        apply();
+        btn.addEventListener("click", function () {
+          var hidden = body.style.display === "none";
+          body.style.display = hidden ? "" : "none";
+          btn.textContent = hidden ? "Свернуть" : "Развернуть";
+          try {
+            localStorage.setItem(MATCHES_MY_PRODUCTS_MANUAL_COLLAPSE_KEY, hidden ? "0" : "1");
+          } catch (e3) {}
+          matchesMyRefreshFloatingAfterLayout();
+        });
+      })();
       document.getElementById("dg-matches-status-filter").addEventListener("change", function () {
         scheduleSyncUrl();
       });
@@ -1498,6 +1542,7 @@
         loadMatches();
       });
       document.getElementById("dg-matches-filters-default").addEventListener("click", function () {
+        if (window.DatagonMatchesListFilterBlocks && window.DatagonMatchesListFilterBlocks.reset) window.DatagonMatchesListFilterBlocks.reset();
         if (window.DatagonFilters) window.DatagonFilters.clear("matches_list");
         document.getElementById("dg-matches-smart-filter").value = "";
         document.getElementById("dg-matches-status-filter").value = "pending";
@@ -1521,6 +1566,78 @@
       });
       setupMatchesListTableChrome();
       ensureMatchesMyScrollAndResizeBound();
+
+      (function matchesLaunchFilterFieldVisibility() {
+        var FIELD_GROUPS = [
+          {
+            title: "Параметры",
+            subtitle: "",
+            items: [
+              { key: "smart", title: "Умный поиск", hint: "" },
+              { key: "my_site", title: "Мой сайт", hint: "" },
+              { key: "search_mode", title: "Режим сопоставления", hint: "" },
+              { key: "batch_size", title: "Размер пакета", hint: "" },
+              { key: "micro_pause", title: "Микропауза", hint: "" },
+              { key: "batch_pause", title: "Пауза между пакетами", hint: "" },
+            ],
+          },
+          {
+            title: "Конкуренты и действия",
+            subtitle: "",
+            items: [
+              { key: "competitors", title: "Блок конкурентов", hint: "" },
+              { key: "launch_actions", title: "Кнопки запуска / ссылка", hint: "" },
+            ],
+          },
+        ];
+        if (window.DatagonFilterFieldsVisibility && window.DatagonFilterFieldsVisibility.init) {
+          window.DatagonFilterFieldsVisibility.init({
+            storageKeyPrefix: "datagon_matches_launch_filter_fields_v2",
+            attr: "data-dg-matches-launch-field",
+            fieldGroups: FIELD_GROUPS,
+            togglesRootId: "dg-matches-launch-filter-blocks-toggles",
+            idPrefix: "dg-matches-launch-ff-",
+            exposeAs: "DatagonMatchesLaunchFilterBlocks",
+            onAfterApply: matchesMyRefreshFloatingAfterLayout,
+          });
+        }
+      })();
+
+      (function matchesListFilterFieldVisibility() {
+        var FIELD_GROUPS = [
+          {
+            title: "Фильтры списка",
+            subtitle: "",
+            items: [
+              { key: "smart", title: "Умный фильтр", hint: "" },
+              { key: "status", title: "Статус", hint: "" },
+              { key: "limit", title: "Лимит", hint: "" },
+              { key: "tf_my_sku", title: "Мой SKU", hint: "" },
+              { key: "tf_comp_sku", title: "SKU конк.", hint: "" },
+              { key: "tf_match_type", title: "Тип совпадения", hint: "" },
+              { key: "tf_status", title: "Статус в списке", hint: "" },
+              { key: "tf_conf_min", title: "Схож. от %", hint: "" },
+              { key: "tf_conf_max", title: "Схож. до %", hint: "" },
+            ],
+          },
+          {
+            title: "Действия",
+            subtitle: "",
+            items: [{ key: "list_actions", title: "«Применить» и «По умолчанию»", hint: "" }],
+          },
+        ];
+        if (window.DatagonFilterFieldsVisibility && window.DatagonFilterFieldsVisibility.init) {
+          window.DatagonFilterFieldsVisibility.init({
+            storageKeyPrefix: "datagon_matches_list_filter_fields_v2",
+            attr: "data-dg-matches-list-field",
+            fieldGroups: FIELD_GROUPS,
+            togglesRootId: "dg-matches-list-filter-blocks-toggles",
+            idPrefix: "dg-matches-list-ff-",
+            exposeAs: "DatagonMatchesListFilterBlocks",
+            onAfterApply: matchesMyRefreshFloatingAfterLayout,
+          });
+        }
+      })();
 
       Promise.all([
         fetch("/api/my-sites", { credentials: "same-origin" }).then(function (r) {

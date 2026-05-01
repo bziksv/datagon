@@ -593,6 +593,7 @@
         renderTable();
       });
       document.getElementById("dg-proj-default").addEventListener("click", function () {
+        if (window.DatagonProjectsFilterBlocks && window.DatagonProjectsFilterBlocks.reset) window.DatagonProjectsFilterBlocks.reset();
         if (window.DatagonFilters) window.DatagonFilters.clear("projects");
         document.getElementById("dg-proj-smart").value = "";
         document.getElementById("dg-proj-tf-id").value = "";
@@ -617,6 +618,41 @@
       document.getElementById("dg-proj-btn-create").addEventListener("click", createProject);
       document.getElementById("dg-proj-btn-save").addEventListener("click", saveEdit);
       document.getElementById("dg-proj-btn-cancel-edit").addEventListener("click", closeEdit);
+
+      (function projectsFilterFieldVisibility() {
+        var FIELD_GROUPS = [
+          {
+            title: "Фильтры",
+            subtitle: "",
+            items: [
+              { key: "smart", title: "Умный поиск", hint: "" },
+              { key: "tf_id", title: "ID", hint: "" },
+              { key: "tf_name", title: "Имя проекта", hint: "" },
+              { key: "tf_domain", title: "Домен", hint: "" },
+              { key: "tf_pages_min", title: "Страниц от", hint: "" },
+              { key: "tf_pages_max", title: "Страниц до", hint: "" },
+              { key: "sort_by", title: "Сортировать по", hint: "" },
+              { key: "sort_dir", title: "Направление", hint: "" },
+            ],
+          },
+          {
+            title: "Действия",
+            subtitle: "",
+            items: [{ key: "filter_actions", title: "Кнопки «Применить» и «По умолчанию»", hint: "" }],
+          },
+        ];
+        if (window.DatagonFilterFieldsVisibility && window.DatagonFilterFieldsVisibility.init) {
+          window.DatagonFilterFieldsVisibility.init({
+            storageKeyPrefix: "datagon_projects_filter_fields_v2",
+            attr: "data-dg-proj-filter-field",
+            fieldGroups: FIELD_GROUPS,
+            togglesRootId: "dg-proj-filter-blocks-toggles",
+            idPrefix: "dg-proj-ff-",
+            exposeAs: "DatagonProjectsFilterBlocks",
+            onAfterApply: function () {},
+          });
+        }
+      })();
 
       (function filtersCollapse() {
         var body = document.getElementById("dg-proj-filters-body");

@@ -494,7 +494,14 @@
             <div class="widget-content p-0">
               <div class="widget-content-wrapper">
                 <div class="widget-content-left d-flex align-items-center gap-1 pe-2">
-                  <img width="42" height="42" class="rounded-circle" src="/assets/avatar-header.jpg" alt="" />
+                  <span
+                    class="rounded-circle d-inline-flex align-items-center justify-content-center flex-shrink-0 bg-light text-secondary border"
+                    style="width: 42px; height: 42px; border-color: #e2e8f0"
+                    role="img"
+                    aria-label="Профиль"
+                  >
+                    <i class="pe-7s-user" style="font-size: 1.2rem; line-height: 1; opacity: 0.85" aria-hidden="true"></i>
+                  </span>
                   <button type="button" class="btn btn-link p-0 dg-vanilla-logout d-inline-flex align-items-center justify-content-center text-danger" title="Выйти" aria-label="Выйти из профиля" style="min-width:34px;min-height:34px;line-height:1;border-radius:50%">
                     <i class="lnr-exit" style="font-size:1.2rem"></i>
                   </button>
@@ -596,22 +603,58 @@
                 <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
                 <span>Фильтры и действия</span>
               </div>
-              <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-res-filters-toggle">Свернуть</button>
+              <div class="d-flex align-items-center gap-2">
+                <div class="dropdown">
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-secondary dg-vanilla-dropdown-toggle"
+                    style="line-height: 1; padding: 0.35rem 0.5rem"
+                    aria-expanded="false"
+                    aria-haspopup="true"
+                    id="dg-res-filter-blocks-btn"
+                    data-dg-tooltip="Какие поля фильтров показывать (сохраняется в браузере для текущего пользователя)"
+                  >
+                    <i class="pe-7s-config btn-icon-wrapper" style="font-size: 1.1rem" aria-hidden="true"></i>
+                  </button>
+                  <div
+                    class="dropdown-menu dropdown-menu-end rm-pointers p-0 dg-res-filter-blocks-dropdown"
+                    id="dg-res-filter-blocks-menu"
+                    style="width: min(420px, calc(100vw - 1.5rem))"
+                  >
+                    <div class="dropdown-menu-header mb-0">
+                      <div class="dropdown-menu-header-inner bg-tempting-azure">
+                        <div
+                          class="menu-header-image opacity-5"
+                          style="background-image: url('/assets/utils/images/dropdown-header/abstract2.jpg')"
+                        ></div>
+                        <div class="menu-header-content text-white px-3 py-2">
+                          <h5 class="menu-header-title mb-0">Поля фильтров</h5>
+                          <h6 class="menu-header-subtitle mb-0 opacity-8 fw-normal small">По группам: переключатели справа</h6>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="dg-res-filter-blocks-scroll" style="max-height: calc(100vh - 10rem); overflow-y: auto; overflow-x: hidden">
+                      <div id="dg-res-filter-blocks-toggles" class="list-group list-group-flush"></div>
+                    </div>
+                  </div>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-res-filters-toggle">Свернуть</button>
+              </div>
             </div>
             <div class="card-body">
               <div id="dg-res-filters-body">
               <div class="row g-2">
-                <div class="col-md-4">
+                <div class="col-md-4" data-dg-res-filter-field="smart">
                   <label class="form-label" for="dg-res-f-search">Умный поиск</label>
                   <input type="text" class="form-control" id="dg-res-f-search" placeholder='Подстрока в SKU или названии товара; при «Применить»: project:2, status:done' autocomplete="off" />
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-2" data-dg-res-filter-field="project">
                   <label class="form-label" for="dg-res-f-project">Проект</label>
                   <select class="form-select" id="dg-res-f-project">
                     <option value="all">Все проекты</option>
                   </select>
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-2" data-dg-res-filter-field="matched">
                   <label class="form-label" for="dg-res-f-matched">Сопоставление</label>
                   <select class="form-select" id="dg-res-f-matched">
                     <option value="all">Все</option>
@@ -619,7 +662,7 @@
                     <option value="0">Только несопоставленные</option>
                   </select>
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-2" data-dg-res-filter-field="page_status">
                   <label class="form-label" for="dg-res-f-page_status">Статус парсинга</label>
                   <select class="form-select" id="dg-res-f-page_status">
                     <option value="">Все</option>
@@ -629,7 +672,7 @@
                     <option value="error">Ошибка</option>
                   </select>
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-2" data-dg-res-filter-field="availability">
                   <label class="form-label" for="dg-res-f-availability">Наличие</label>
                   <select class="form-select" id="dg-res-f-availability">
                     <option value="all">Все</option>
@@ -639,20 +682,20 @@
                 </div>
               </div>
               <div class="row g-2 mt-1 align-items-end">
-                <div class="col-md-4">
+                <div class="col-md-4" data-dg-res-filter-field="project_name">
                   <label class="form-label" for="dg-res-f-project_name">Название проекта (содержит)</label>
                   <input type="text" class="form-control" id="dg-res-f-project_name" placeholder="Часть имени проекта" autocomplete="off" />
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-2" data-dg-res-filter-field="price_min">
                   <label class="form-label" for="dg-res-f-price_min">Цена от</label>
                   <input type="number" class="form-control" id="dg-res-f-price_min" step="any" />
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-2" data-dg-res-filter-field="price_max">
                   <label class="form-label" for="dg-res-f-price_max">Цена до</label>
                   <input type="number" class="form-control" id="dg-res-f-price_max" step="any" />
                 </div>
               </div>
-              <div class="mt-3 d-flex flex-wrap gap-2">
+              <div class="mt-3 d-flex flex-wrap gap-2" data-dg-res-filter-field="filter_actions">
                 <button type="button" class="btn btn-sm btn-primary" id="results-apply" data-dg-tooltip="Применить фильтры и обновить таблицу. Сохраняет выбранные значения для следующего визита."><i class="pe-7s-search me-1"></i>Применить</button>
                 <button type="button" class="btn btn-sm btn-outline-secondary" id="results-default" data-dg-tooltip="Сбросить фильтры к значениям по умолчанию и очистить сохранённые настройки этой страницы."><i class="pe-7s-refresh me-1"></i>По умолчанию</button>
                 <button type="button" class="btn btn-sm btn-outline-success" id="results-reparse-all" title="Добавить отфильтрованные результаты в очередь повторного парсинга"><i class="pe-7s-refresh-2 me-1"></i>В очередь на перепарсинг</button>
@@ -1888,6 +1931,7 @@
         loadResults();
       });
       document.getElementById("results-default").addEventListener("click", function () {
+        if (window.DatagonResultsFilterBlocks && window.DatagonResultsFilterBlocks.reset) window.DatagonResultsFilterBlocks.reset();
         if (window.DatagonFilters) window.DatagonFilters.clear("results");
         document.getElementById("dg-res-f-search").value = "";
         document.getElementById("dg-res-f-project").value = "all";
@@ -1994,6 +2038,47 @@
           scheduleFilterAdjustReload();
         });
       });
+
+      (function resultsFilterFieldVisibility() {
+        var FIELD_GROUPS = [
+          {
+            title: "Основной ряд",
+            subtitle: "Поиск и отбор",
+            items: [
+              { key: "smart", title: "Умный поиск", hint: "" },
+              { key: "project", title: "Проект", hint: "" },
+              { key: "matched", title: "Сопоставление", hint: "" },
+              { key: "page_status", title: "Статус парсинга", hint: "" },
+              { key: "availability", title: "Наличие", hint: "" },
+            ],
+          },
+          {
+            title: "Дополнительно",
+            subtitle: "Название и цена",
+            items: [
+              { key: "project_name", title: "Название проекта (содержит)", hint: "" },
+              { key: "price_min", title: "Цена от", hint: "" },
+              { key: "price_max", title: "Цена до", hint: "" },
+            ],
+          },
+          {
+            title: "Действия",
+            subtitle: "Кнопки под фильтром",
+            items: [{ key: "filter_actions", title: "Кнопки «Применить», «По умолчанию» и др.", hint: "" }],
+          },
+        ];
+        if (window.DatagonFilterFieldsVisibility && window.DatagonFilterFieldsVisibility.init) {
+          window.DatagonFilterFieldsVisibility.init({
+            storageKeyPrefix: "datagon_results_filter_fields_v2",
+            attr: "data-dg-res-filter-field",
+            fieldGroups: FIELD_GROUPS,
+            togglesRootId: "dg-res-filter-blocks-toggles",
+            idPrefix: "dg-res-ff-",
+            exposeAs: "DatagonResultsFilterBlocks",
+            onAfterApply: resRefreshFloatingAfterLayout,
+          });
+        }
+      })();
 
       (function collapse() {
         var body = document.getElementById("dg-res-filters-body");

@@ -872,6 +872,7 @@
         renderTable();
       });
       document.getElementById("ms-filters-default").addEventListener("click", function () {
+        if (window.DatagonMySitesFilterBlocks && window.DatagonMySitesFilterBlocks.reset) window.DatagonMySitesFilterBlocks.reset();
         if (window.DatagonFilters) window.DatagonFilters.clear("my_sites");
         document.getElementById("ms-smart").value = "";
         document.getElementById("ms-tf-id").value = "";
@@ -916,6 +917,38 @@
             document.getElementById("ms-form-collapse").textContent = "Развернуть";
           }
         } catch (e) {}
+      })();
+
+      (function mySitesFilterFieldVisibility() {
+        var FIELD_GROUPS = [
+          {
+            title: "Фильтры таблицы",
+            subtitle: "",
+            items: [
+              { key: "smart", title: "Умный поиск", hint: "" },
+              { key: "tf_id", title: "ID", hint: "" },
+              { key: "tf_name", title: "Название", hint: "" },
+              { key: "tf_cms", title: "CMS", hint: "" },
+              { key: "tf_domain", title: "Домен", hint: "" },
+            ],
+          },
+          {
+            title: "Действия",
+            subtitle: "",
+            items: [{ key: "filter_actions", title: "«Применить» и «По умолчанию»", hint: "" }],
+          },
+        ];
+        if (window.DatagonFilterFieldsVisibility && window.DatagonFilterFieldsVisibility.init) {
+          window.DatagonFilterFieldsVisibility.init({
+            storageKeyPrefix: "datagon_my_sites_filter_fields_v2",
+            attr: "data-dg-msites-filter-field",
+            fieldGroups: FIELD_GROUPS,
+            togglesRootId: "dg-msites-filter-blocks-toggles",
+            idPrefix: "dg-msites-ff-",
+            exposeAs: "DatagonMySitesFilterBlocks",
+            onAfterApply: function () {},
+          });
+        }
       })();
 
       loadSortState();

@@ -998,6 +998,7 @@
         loadResults();
       });
       document.getElementById("results-default").addEventListener("click", function () {
+        if (window.DatagonResultsFilterBlocks && window.DatagonResultsFilterBlocks.reset) window.DatagonResultsFilterBlocks.reset();
         if (window.DatagonFilters) window.DatagonFilters.clear("results");
         document.getElementById("dg-res-f-search").value = "";
         document.getElementById("dg-res-f-project").value = "all";
@@ -1104,6 +1105,47 @@
           scheduleFilterAdjustReload();
         });
       });
+
+      (function resultsFilterFieldVisibility() {
+        var FIELD_GROUPS = [
+          {
+            title: "Основной ряд",
+            subtitle: "Поиск и отбор",
+            items: [
+              { key: "smart", title: "Умный поиск", hint: "" },
+              { key: "project", title: "Проект", hint: "" },
+              { key: "matched", title: "Сопоставление", hint: "" },
+              { key: "page_status", title: "Статус парсинга", hint: "" },
+              { key: "availability", title: "Наличие", hint: "" },
+            ],
+          },
+          {
+            title: "Дополнительно",
+            subtitle: "Название и цена",
+            items: [
+              { key: "project_name", title: "Название проекта (содержит)", hint: "" },
+              { key: "price_min", title: "Цена от", hint: "" },
+              { key: "price_max", title: "Цена до", hint: "" },
+            ],
+          },
+          {
+            title: "Действия",
+            subtitle: "Кнопки под фильтром",
+            items: [{ key: "filter_actions", title: "Кнопки «Применить», «По умолчанию» и др.", hint: "" }],
+          },
+        ];
+        if (window.DatagonFilterFieldsVisibility && window.DatagonFilterFieldsVisibility.init) {
+          window.DatagonFilterFieldsVisibility.init({
+            storageKeyPrefix: "datagon_results_filter_fields_v2",
+            attr: "data-dg-res-filter-field",
+            fieldGroups: FIELD_GROUPS,
+            togglesRootId: "dg-res-filter-blocks-toggles",
+            idPrefix: "dg-res-ff-",
+            exposeAs: "DatagonResultsFilterBlocks",
+            onAfterApply: resRefreshFloatingAfterLayout,
+          });
+        }
+      })();
 
       (function collapse() {
         var body = document.getElementById("dg-res-filters-body");

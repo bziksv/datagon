@@ -1075,6 +1075,7 @@
       }
 
       function resetFilters() {
+        if (window.DatagonMoyskladFilterBlocks && window.DatagonMoyskladFilterBlocks.reset) window.DatagonMoyskladFilterBlocks.reset();
         if (window.DatagonFilters) window.DatagonFilters.clear("moysklad");
         if (filterReloadTimer) {
           clearTimeout(filterReloadTimer);
@@ -1209,6 +1210,62 @@
           loadData();
         }
       });
+
+      (function moyskladFilterFieldVisibility() {
+        var FIELD_GROUPS = [
+          {
+            title: "Верхний ряд",
+            subtitle: "Поиск и клиентский отбор",
+            items: [
+              { key: "ms_smart", title: "Умный поиск", hint: "" },
+              { key: "ms_tf_code", title: "ID / КОД", hint: "" },
+              { key: "ms_tf_name", title: "Наименование", hint: "" },
+              { key: "ms_tf_type", title: "Тип (таблица)", hint: "" },
+              { key: "ms_tf_archived", title: "Архивные (таблица)", hint: "" },
+              { key: "ms_tf_supplier", title: "Поставщик (таблица)", hint: "" },
+              { key: "ms_tf_supplier2", title: "Поставщик 2 (таблица)", hint: "" },
+            ],
+          },
+          {
+            title: "Второй ряд",
+            subtitle: "Менеджеры, остатки, API-фильтры",
+            items: [
+              { key: "ms_tf_manager", title: "Менеджер (таблица)", hint: "" },
+              { key: "ms_tf_content_manager", title: "Контент-менеджер (таблица)", hint: "" },
+              { key: "ms_tf_stock_min", title: "Остаток от", hint: "" },
+              { key: "ms_tf_stock_max", title: "Остаток до", hint: "" },
+              { key: "ms_f_supplier", title: "Поставщик (API)", hint: "" },
+              { key: "ms_f_supplier2", title: "Поставщик 2 (API)", hint: "" },
+              { key: "ms_f_manager", title: "Менеджер (API)", hint: "" },
+              { key: "ms_f_content_manager", title: "Контент-менеджер (API)", hint: "" },
+              { key: "ms_f_type", title: "Тип (API)", hint: "" },
+              { key: "ms_f_stock_position", title: "Складская позиция", hint: "" },
+              { key: "ms_f_on_site", title: "На сайте", hint: "" },
+              { key: "ms_f_archived", title: "Статус (архив)", hint: "" },
+              { key: "ms_f_limit", title: "На странице", hint: "" },
+            ],
+          },
+          {
+            title: "Чекбоксы и кнопки",
+            subtitle: "",
+            items: [
+              { key: "ms_filter_checks", title: "Чекбоксы (остаток, сотрудничество, закупка)", hint: "" },
+              { key: "ms_filter_actions", title: "Кнопки действий", hint: "" },
+            ],
+          },
+        ];
+        if (window.DatagonFilterFieldsVisibility && window.DatagonFilterFieldsVisibility.init) {
+          window.DatagonFilterFieldsVisibility.init({
+            storageKeyPrefix: "datagon_moysklad_filter_fields_v2",
+            attr: "data-dg-ms-filter-field",
+            fieldGroups: FIELD_GROUPS,
+            togglesRootId: "dg-ms-filter-blocks-toggles",
+            idPrefix: "dg-ms-ff-",
+            exposeAs: "DatagonMoyskladFilterBlocks",
+            onAfterApply: scheduleFloatingHeaderUpdate,
+          });
+        }
+      })();
 
       (function filtersCollapse() {
         var body = document.getElementById("dg-ms-filters-body");

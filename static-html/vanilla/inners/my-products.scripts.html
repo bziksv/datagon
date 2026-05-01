@@ -1481,132 +1481,97 @@
         renderColumnsPanel();
       })();
 
-      (function mpFilterBlockVisibility() {
-        var BLOCKS = [
-          { key: "core", title: "Поиск и сайт", hint: "Умный поиск, сайт, статус, связь с МойСклад" },
-          { key: "table", title: "Поля таблицы", hint: "ID, сайт, SKU, название, валюта и подсказка" },
-          { key: "stock_sort", title: "Остаток и сортировка", hint: "Лимит, сопоставление, порядок списка" },
-          { key: "gap", title: "Расхождение цен (Δ)", hint: "Фильтр Δ и ручные курсы USD / EUR" },
-          { key: "comp_sync", title: "Синхронизация с конкурентом", hint: "Доля совпадения цен, %" },
-          { key: "sync_bar", title: "Кнопки действий", hint: "Курс, синхронизация, кэш, ссылка" },
-        ];
-        function userKey() {
-          try {
-            var u = String(localStorage.getItem("currentUser") || "guest").trim() || "guest";
-            return "datagon_my_products_filter_blocks_v1:" + u;
-          } catch (e) {
-            return "datagon_my_products_filter_blocks_v1:guest";
-          }
-        }
-        function loadState() {
-          var out = {};
-          BLOCKS.forEach(function (b) {
-            out[b.key] = true;
-          });
-          try {
-            var raw = localStorage.getItem(userKey());
-            if (!raw) return out;
-            var o = JSON.parse(raw);
-            if (!o || typeof o !== "object") return out;
-            BLOCKS.forEach(function (b) {
-              if (Object.prototype.hasOwnProperty.call(o, b.key)) out[b.key] = !!o[b.key];
-            });
-          } catch (e2) {}
-          return out;
-        }
-        function saveState(s) {
-          try {
-            localStorage.setItem(userKey(), JSON.stringify(s));
-          } catch (e) {}
-        }
-        function apply(s) {
-          BLOCKS.forEach(function (b) {
-            var on = s[b.key] !== false;
-            document.querySelectorAll('[data-dg-mp-filter-block="' + b.key + '"]').forEach(function (el) {
-              el.classList.toggle("d-none", !on);
-            });
-          });
-          mpRefreshFloatingAfterLayout();
-        }
-        var state = loadState();
-        apply(state);
-        var togglesRoot = document.getElementById("dg-mp-filter-blocks-toggles");
-        var inputsByKey = {};
-        if (togglesRoot) {
-          BLOCKS.forEach(function (b) {
-            var id = "dg-mp-fb-" + b.key;
-            var row = document.createElement("div");
-            row.className =
-              "list-group-item list-group-item-action border-0 rounded-0 px-3 py-2 d-flex justify-content-between align-items-center gap-3";
-            var textCol = document.createElement("div");
-            textCol.className = "flex-grow-1 min-w-0 pe-1";
-            textCol.style.cursor = "pointer";
-            var titleEl = document.createElement("div");
-            titleEl.className = "fw-semibold text-body";
-            titleEl.style.fontSize = "0.9375rem";
-            titleEl.style.lineHeight = "1.35";
-            titleEl.textContent = b.title;
-            textCol.appendChild(titleEl);
-            if (b.hint) {
-              var hintEl = document.createElement("div");
-              hintEl.className = "small text-muted mt-1";
-              hintEl.style.lineHeight = "1.35";
-              hintEl.textContent = b.hint;
-              textCol.appendChild(hintEl);
-            }
-            var lab = document.createElement("label");
-            lab.className = "switch mb-0 flex-shrink-0 align-self-center";
-            lab.setAttribute("for", id);
-            var inp = document.createElement("input");
-            inp.type = "checkbox";
-            inp.id = id;
-            var slider = document.createElement("span");
-            slider.className = "slider round";
-            lab.appendChild(inp);
-            lab.appendChild(slider);
-            row.appendChild(textCol);
-            row.appendChild(lab);
-            togglesRoot.appendChild(row);
-            inputsByKey[b.key] = inp;
-            inp.checked = state[b.key] !== false;
-            textCol.addEventListener("click", function () {
-              inp.click();
-            });
-            inp.addEventListener("change", function () {
-              state[b.key] = inp.checked;
-              saveState(state);
-              apply(state);
-            });
-          });
-        }
-        function syncInputsFromState() {
-          BLOCKS.forEach(function (b) {
-            var inp = inputsByKey[b.key];
-            if (inp) inp.checked = state[b.key] !== false;
-          });
-        }
-        function reloadForUser() {
-          state = loadState();
-          syncInputsFromState();
-          apply(state);
-        }
-        window.DatagonMyProductsFilterBlocks = {
-          reset: function () {
-            state = {};
-            BLOCKS.forEach(function (b) {
-              state[b.key] = true;
-            });
-            try {
-              localStorage.removeItem(userKey());
-            } catch (e3) {}
-            syncInputsFromState();
-            apply(state);
-          },
-          reloadForUser: reloadForUser,
+      (function mpFilterFieldVisibility() {
+        var V1_PREFIX = "datagon_my_products_filter_blocks_v1:";
+        var V1_BLOCK_FIELDS = {
+          core: ["smart", "site", "status", "ms_link"],
+          table: ["tf_id", "tf_site", "tf_sku", "tf_name", "tf_currency", "table_hint"],
+          stock_sort: ["stock_min", "stock_max", "source_enabled", "limit", "match_audit", "sort_by", "sort_dir"],
+          gap: ["gap_enabled", "gap_exclude_zero", "gap_competitor", "gap_min_pct", "gap_max_pct", "usd_to_rub", "eur_to_rub"],
+          comp_sync: ["comp_min", "comp_max"],
+          sync_bar: ["btn_fx", "btn_syncall", "btn_sync_site", "btn_rebuild", "btn_copy"],
         };
-        window.addEventListener("datagon-profile-loaded", function () {
-          reloadForUser();
-        });
+        var FIELD_GROUPS = [
+          {
+            title: "Поиск и контекст",
+            subtitle: "Первый ряд",
+            items: [
+              { key: "smart", title: "Умный поиск", hint: "code:, sku:, name: …" },
+              { key: "site", title: "Сайт", hint: "Список площадок" },
+              { key: "status", title: "Статус товара", hint: "Активные / неактивные" },
+              { key: "ms_link", title: "Связь с МС", hint: "МойСклад" },
+            ],
+          },
+          {
+            title: "По загруженной таблице",
+            subtitle: "Клиентский отбор",
+            items: [
+              { key: "tf_id", title: "ID / КОД", hint: "" },
+              { key: "tf_site", title: "Сайт (таблица)", hint: "" },
+              { key: "tf_sku", title: "SKU", hint: "" },
+              { key: "tf_name", title: "Название", hint: "" },
+              { key: "tf_currency", title: "Валюта", hint: "" },
+              { key: "table_hint", title: "Подсказка «(таблица)»", hint: "Текст под полями" },
+            ],
+          },
+          {
+            title: "Список и сортировка",
+            subtitle: "API и порядок",
+            items: [
+              { key: "stock_min", title: "Остаток от", hint: "" },
+              { key: "stock_max", title: "Остаток до", hint: "" },
+              { key: "source_enabled", title: "На сайте (вкл/выкл)", hint: "" },
+              { key: "limit", title: "Лимит", hint: "" },
+              { key: "match_audit", title: "Статус сопоставления", hint: "" },
+              { key: "sort_by", title: "Сортировать по", hint: "" },
+              { key: "sort_dir", title: "Направление", hint: "" },
+            ],
+          },
+          {
+            title: "Расхождение Δ и курсы",
+            subtitle: "Опционально",
+            items: [
+              { key: "gap_enabled", title: "Вкл. фильтр Δ", hint: "Чекбокс" },
+              { key: "gap_exclude_zero", title: "Скрыть Δ 0%", hint: "Чекбокс" },
+              { key: "gap_competitor", title: "Конкурент (Δ)", hint: "" },
+              { key: "gap_min_pct", title: "Δ % от", hint: "" },
+              { key: "gap_max_pct", title: "Δ % до", hint: "" },
+              { key: "usd_to_rub", title: "USD → RUB", hint: "Ручной курс" },
+              { key: "eur_to_rub", title: "EUR → RUB", hint: "Ручной курс" },
+            ],
+          },
+          {
+            title: "Синхронизация с конкурентом",
+            subtitle: "Доля совпадения",
+            items: [
+              { key: "comp_min", title: "Синх. % мин", hint: "" },
+              { key: "comp_max", title: "Синх. % макс", hint: "" },
+            ],
+          },
+          {
+            title: "Действия",
+            subtitle: "Кнопки под формой",
+            items: [
+              { key: "btn_fx", title: "Обновить курс", hint: "" },
+              { key: "btn_syncall", title: "Синхронизировать все", hint: "" },
+              { key: "btn_sync_site", title: "Синхронизировать сайт", hint: "" },
+              { key: "btn_rebuild", title: "Перестроить кэш", hint: "" },
+              { key: "btn_copy", title: "Скопировать ссылку", hint: "" },
+            ],
+          },
+        ];
+        if (window.DatagonFilterFieldsVisibility && window.DatagonFilterFieldsVisibility.init) {
+          window.DatagonFilterFieldsVisibility.init({
+            storageKeyPrefix: "datagon_my_products_filter_fields_v2",
+            attr: "data-dg-mp-filter-field",
+            fieldGroups: FIELD_GROUPS,
+            togglesRootId: "dg-mp-filter-blocks-toggles",
+            idPrefix: "dg-mp-ff-",
+            migrateV1: { prefix: V1_PREFIX, blocks: V1_BLOCK_FIELDS },
+            exposeAs: "DatagonMyProductsFilterBlocks",
+            onAfterApply: mpRefreshFloatingAfterLayout,
+          });
+        }
       })();
 
       (function collapse() {

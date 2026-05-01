@@ -428,7 +428,14 @@
             <div class="widget-content p-0">
               <div class="widget-content-wrapper">
                 <div class="widget-content-left d-flex align-items-center gap-1 pe-2">
-                  <img width="42" height="42" class="rounded-circle" src="/assets/avatar-header.jpg" alt="" />
+                  <span
+                    class="rounded-circle d-inline-flex align-items-center justify-content-center flex-shrink-0 bg-light text-secondary border"
+                    style="width: 42px; height: 42px; border-color: #e2e8f0"
+                    role="img"
+                    aria-label="Профиль"
+                  >
+                    <i class="pe-7s-user" style="font-size: 1.2rem; line-height: 1; opacity: 0.85" aria-hidden="true"></i>
+                  </span>
                   <button type="button" class="btn btn-link p-0 dg-vanilla-logout d-inline-flex align-items-center justify-content-center text-danger" title="Выйти" aria-label="Выйти из профиля" style="min-width:34px;min-height:34px;line-height:1;border-radius:50%">
                     <i class="lnr-exit" style="font-size:1.2rem"></i>
                   </button>
@@ -530,24 +537,60 @@
                 <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
                 <span>Фильтры и действия</span>
               </div>
-              <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-ms-filters-toggle">Свернуть</button>
+              <div class="d-flex align-items-center gap-2">
+                <div class="dropdown">
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-secondary dg-vanilla-dropdown-toggle"
+                    style="line-height: 1; padding: 0.35rem 0.5rem"
+                    aria-expanded="false"
+                    aria-haspopup="true"
+                    id="dg-ms-filter-blocks-btn"
+                    data-dg-tooltip="Какие поля фильтров показывать (сохраняется в браузере для текущего пользователя)"
+                  >
+                    <i class="pe-7s-config btn-icon-wrapper" style="font-size: 1.1rem" aria-hidden="true"></i>
+                  </button>
+                  <div
+                    class="dropdown-menu dropdown-menu-end rm-pointers p-0 dg-ms-filter-blocks-dropdown"
+                    id="dg-ms-filter-blocks-menu"
+                    style="width: min(420px, calc(100vw - 1.5rem))"
+                  >
+                    <div class="dropdown-menu-header mb-0">
+                      <div class="dropdown-menu-header-inner bg-tempting-azure">
+                        <div
+                          class="menu-header-image opacity-5"
+                          style="background-image: url('/assets/utils/images/dropdown-header/abstract2.jpg')"
+                        ></div>
+                        <div class="menu-header-content text-white px-3 py-2">
+                          <h5 class="menu-header-title mb-0">Поля фильтров</h5>
+                          <h6 class="menu-header-subtitle mb-0 opacity-8 fw-normal small">По группам: переключатели справа</h6>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="dg-ms-filter-blocks-scroll" style="max-height: calc(100vh - 10rem); overflow-y: auto; overflow-x: hidden">
+                      <div id="dg-ms-filter-blocks-toggles" class="list-group list-group-flush"></div>
+                    </div>
+                  </div>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-ms-filters-toggle">Свернуть</button>
+              </div>
             </div>
             <div class="card-body">
               <div id="dg-ms-filters-body">
               <div class="row g-2 align-items-end">
-                <div class="col-md-4">
+                <div class="col-md-4" data-dg-ms-filter-field="ms_smart">
                   <label class="form-label" for="ms-f-search">Умный поиск</label>
                   <input type="text" class="form-control" id="ms-f-search" placeholder='sku:AB-12 "насос 25" | name:valtec' autocomplete="off" />
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-2" data-dg-ms-filter-field="ms_tf_code">
                   <label class="form-label" for="ms-tf-code">ID / КОД</label>
                   <input type="text" class="form-control" id="ms-tf-code" autocomplete="off" />
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-2" data-dg-ms-filter-field="ms_tf_name">
                   <label class="form-label" for="ms-tf-name">Наименование товара</label>
                   <input type="text" class="form-control" id="ms-tf-name" autocomplete="off" />
                 </div>
-                <div class="col-md-1">
+                <div class="col-md-1" data-dg-ms-filter-field="ms_tf_type">
                   <label class="form-label" for="ms-tf-type">Тип</label>
                   <select class="form-select" id="ms-tf-type">
                     <option value="all">Все</option>
@@ -555,7 +598,7 @@
                     <option value="комплект">Комплект</option>
                   </select>
                 </div>
-                <div class="col-md-1">
+                <div class="col-md-1" data-dg-ms-filter-field="ms_tf_archived">
                   <label class="form-label" for="ms-tf-archived">Архивные</label>
                   <select class="form-select" id="ms-tf-archived">
                     <option value="all">Все</option>
@@ -563,49 +606,49 @@
                     <option value="1">Архив</option>
                   </select>
                 </div>
-                <div class="col-md-1">
+                <div class="col-md-1" data-dg-ms-filter-field="ms_tf_supplier">
                   <label class="form-label" for="ms-tf-supplier">Поставщик</label>
                   <input type="text" class="form-control" id="ms-tf-supplier" autocomplete="off" />
                 </div>
-                <div class="col-md-1">
+                <div class="col-md-1" data-dg-ms-filter-field="ms_tf_supplier2">
                   <label class="form-label" for="ms-tf-supplier2">Поставщик 2</label>
                   <input type="text" class="form-control" id="ms-tf-supplier2" autocomplete="off" />
                 </div>
               </div>
               <div class="row g-2 align-items-end mt-1">
-                <div class="col-md-2">
+                <div class="col-md-2" data-dg-ms-filter-field="ms_tf_manager">
                   <label class="form-label" for="ms-tf-manager">Менеджер</label>
                   <input type="text" class="form-control" id="ms-tf-manager" autocomplete="off" />
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-2" data-dg-ms-filter-field="ms_tf_content_manager">
                   <label class="form-label" for="ms-tf-content_manager">Контент-менеджер</label>
                   <input type="text" class="form-control" id="ms-tf-content_manager" autocomplete="off" />
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-2" data-dg-ms-filter-field="ms_tf_stock_min">
                   <label class="form-label" for="ms-tf-stock_min">Остаток от</label>
                   <input type="number" class="form-control" id="ms-tf-stock_min" />
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-2" data-dg-ms-filter-field="ms_tf_stock_max">
                   <label class="form-label" for="ms-tf-stock_max">Остаток до</label>
                   <input type="number" class="form-control" id="ms-tf-stock_max" />
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-2" data-dg-ms-filter-field="ms_f_supplier">
                   <label class="form-label" for="ms-f-supplier">Поставщик</label>
                   <input type="text" class="form-control" id="ms-f-supplier" autocomplete="off" />
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-2" data-dg-ms-filter-field="ms_f_supplier2">
                   <label class="form-label" for="ms-f-supplier2">Поставщик 2</label>
                   <input type="text" class="form-control" id="ms-f-supplier2" autocomplete="off" />
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-2" data-dg-ms-filter-field="ms_f_manager">
                   <label class="form-label" for="ms-f-manager">Менеджер</label>
                   <input type="text" class="form-control" id="ms-f-manager" autocomplete="off" />
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-2" data-dg-ms-filter-field="ms_f_content_manager">
                   <label class="form-label" for="ms-f-content_manager">Контент-менеджер</label>
                   <input type="text" class="form-control" id="ms-f-content_manager" autocomplete="off" />
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-2" data-dg-ms-filter-field="ms_f_type">
                   <label class="form-label" for="ms-f-type">Тип</label>
                   <select class="form-select" id="ms-f-type">
                     <option value="all">Все</option>
@@ -613,7 +656,7 @@
                     <option value="Комплект">Комплекты</option>
                   </select>
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-2" data-dg-ms-filter-field="ms_f_stock_position">
                   <label class="form-label" for="ms-f-stock_position">Складская позиция</label>
                   <select class="form-select" id="ms-f-stock_position">
                     <option value="yes">Только Да</option>
@@ -621,7 +664,7 @@
                     <option value="all">Все</option>
                   </select>
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-2" data-dg-ms-filter-field="ms_f_on_site">
                   <label class="form-label" for="ms-f-on_site">На сайте</label>
                   <select class="form-select" id="ms-f-on_site">
                     <option value="all">Все</option>
@@ -629,7 +672,7 @@
                     <option value="0">Только нет</option>
                   </select>
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-2" data-dg-ms-filter-field="ms_f_archived">
                   <label class="form-label" for="ms-f-archived">Статус</label>
                   <select class="form-select" id="ms-f-archived">
                     <option value="active">Активные</option>
@@ -637,7 +680,7 @@
                     <option value="all">Все</option>
                   </select>
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-2" data-dg-ms-filter-field="ms_f_limit">
                   <label class="form-label" for="ms-f-limit">На странице</label>
                   <select class="form-select" id="ms-f-limit">
                     <option value="50">50</option>
@@ -647,7 +690,7 @@
                   </select>
                 </div>
               </div>
-              <div class="mt-3 d-flex flex-wrap gap-3">
+              <div class="mt-3 d-flex flex-wrap gap-3" data-dg-ms-filter-field="ms_filter_checks">
                 <div class="form-check">
                   <input class="form-check-input" type="checkbox" id="only_stock" />
                   <label class="form-check-label" for="only_stock">Только с остатком &gt; 0</label>
@@ -661,7 +704,7 @@
                   <label class="form-check-label" for="has_buy_price">Только с закупочной ценой</label>
                 </div>
               </div>
-              <div class="mt-3 d-flex flex-wrap gap-2">
+              <div class="mt-3 d-flex flex-wrap gap-2" data-dg-ms-filter-field="ms_filter_actions">
                 <button type="button" class="btn btn-sm btn-primary" id="moysklad-apply" data-dg-tooltip="Применить фильтры и обновить выгрузку. Сохраняет выбранные значения для следующего визита."><i class="pe-7s-search me-1"></i>Применить</button>
                 <button type="button" class="btn btn-sm btn-outline-secondary" id="moysklad-reset" data-dg-tooltip="Сбросить фильтры к значениям по умолчанию и очистить сохранённые настройки."><i class="pe-7s-refresh me-1"></i>По умолчанию</button>
                 <button type="button" class="btn btn-sm btn-outline-success" id="moysklad-sync"><i class="pe-7s-play me-1"></i>Запустить синхронизацию</button>
@@ -1992,6 +2035,7 @@
       }
 
       function resetFilters() {
+        if (window.DatagonMoyskladFilterBlocks && window.DatagonMoyskladFilterBlocks.reset) window.DatagonMoyskladFilterBlocks.reset();
         if (window.DatagonFilters) window.DatagonFilters.clear("moysklad");
         if (filterReloadTimer) {
           clearTimeout(filterReloadTimer);
@@ -2126,6 +2170,62 @@
           loadData();
         }
       });
+
+      (function moyskladFilterFieldVisibility() {
+        var FIELD_GROUPS = [
+          {
+            title: "Верхний ряд",
+            subtitle: "Поиск и клиентский отбор",
+            items: [
+              { key: "ms_smart", title: "Умный поиск", hint: "" },
+              { key: "ms_tf_code", title: "ID / КОД", hint: "" },
+              { key: "ms_tf_name", title: "Наименование", hint: "" },
+              { key: "ms_tf_type", title: "Тип (таблица)", hint: "" },
+              { key: "ms_tf_archived", title: "Архивные (таблица)", hint: "" },
+              { key: "ms_tf_supplier", title: "Поставщик (таблица)", hint: "" },
+              { key: "ms_tf_supplier2", title: "Поставщик 2 (таблица)", hint: "" },
+            ],
+          },
+          {
+            title: "Второй ряд",
+            subtitle: "Менеджеры, остатки, API-фильтры",
+            items: [
+              { key: "ms_tf_manager", title: "Менеджер (таблица)", hint: "" },
+              { key: "ms_tf_content_manager", title: "Контент-менеджер (таблица)", hint: "" },
+              { key: "ms_tf_stock_min", title: "Остаток от", hint: "" },
+              { key: "ms_tf_stock_max", title: "Остаток до", hint: "" },
+              { key: "ms_f_supplier", title: "Поставщик (API)", hint: "" },
+              { key: "ms_f_supplier2", title: "Поставщик 2 (API)", hint: "" },
+              { key: "ms_f_manager", title: "Менеджер (API)", hint: "" },
+              { key: "ms_f_content_manager", title: "Контент-менеджер (API)", hint: "" },
+              { key: "ms_f_type", title: "Тип (API)", hint: "" },
+              { key: "ms_f_stock_position", title: "Складская позиция", hint: "" },
+              { key: "ms_f_on_site", title: "На сайте", hint: "" },
+              { key: "ms_f_archived", title: "Статус (архив)", hint: "" },
+              { key: "ms_f_limit", title: "На странице", hint: "" },
+            ],
+          },
+          {
+            title: "Чекбоксы и кнопки",
+            subtitle: "",
+            items: [
+              { key: "ms_filter_checks", title: "Чекбоксы (остаток, сотрудничество, закупка)", hint: "" },
+              { key: "ms_filter_actions", title: "Кнопки действий", hint: "" },
+            ],
+          },
+        ];
+        if (window.DatagonFilterFieldsVisibility && window.DatagonFilterFieldsVisibility.init) {
+          window.DatagonFilterFieldsVisibility.init({
+            storageKeyPrefix: "datagon_moysklad_filter_fields_v2",
+            attr: "data-dg-ms-filter-field",
+            fieldGroups: FIELD_GROUPS,
+            togglesRootId: "dg-ms-filter-blocks-toggles",
+            idPrefix: "dg-ms-ff-",
+            exposeAs: "DatagonMoyskladFilterBlocks",
+            onAfterApply: scheduleFloatingHeaderUpdate,
+          });
+        }
+      })();
 
       (function filtersCollapse() {
         var body = document.getElementById("dg-ms-filters-body");

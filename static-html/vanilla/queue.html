@@ -478,7 +478,14 @@
             <div class="widget-content p-0">
               <div class="widget-content-wrapper">
                 <div class="widget-content-left d-flex align-items-center gap-1 pe-2">
-                  <img width="42" height="42" class="rounded-circle" src="/assets/avatar-header.jpg" alt="" />
+                  <span
+                    class="rounded-circle d-inline-flex align-items-center justify-content-center flex-shrink-0 bg-light text-secondary border"
+                    style="width: 42px; height: 42px; border-color: #e2e8f0"
+                    role="img"
+                    aria-label="Профиль"
+                  >
+                    <i class="pe-7s-user" style="font-size: 1.2rem; line-height: 1; opacity: 0.85" aria-hidden="true"></i>
+                  </span>
                   <button type="button" class="btn btn-link p-0 dg-vanilla-logout d-inline-flex align-items-center justify-content-center text-danger" title="Выйти" aria-label="Выйти из профиля" style="min-width:34px;min-height:34px;line-height:1;border-radius:50%">
                     <i class="lnr-exit" style="font-size:1.2rem"></i>
                   </button>
@@ -604,22 +611,58 @@
                 <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
                 <span>Фильтры и действия</span>
               </div>
-              <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-q-filters-toggle" data-dg-tooltip="Сворачивает или разворачивает блок фильтров и действий.">Свернуть</button>
+              <div class="d-flex align-items-center gap-2">
+                <div class="dropdown">
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-secondary dg-vanilla-dropdown-toggle"
+                    style="line-height: 1; padding: 0.35rem 0.5rem"
+                    aria-expanded="false"
+                    aria-haspopup="true"
+                    id="dg-q-filter-blocks-btn"
+                    data-dg-tooltip="Какие поля фильтров показывать (сохраняется в браузере для текущего пользователя)"
+                  >
+                    <i class="pe-7s-config btn-icon-wrapper" style="font-size: 1.1rem" aria-hidden="true"></i>
+                  </button>
+                  <div
+                    class="dropdown-menu dropdown-menu-end rm-pointers p-0 dg-q-filter-blocks-dropdown"
+                    id="dg-q-filter-blocks-menu"
+                    style="width: min(420px, calc(100vw - 1.5rem))"
+                  >
+                    <div class="dropdown-menu-header mb-0">
+                      <div class="dropdown-menu-header-inner bg-tempting-azure">
+                        <div
+                          class="menu-header-image opacity-5"
+                          style="background-image: url('/assets/utils/images/dropdown-header/abstract2.jpg')"
+                        ></div>
+                        <div class="menu-header-content text-white px-3 py-2">
+                          <h5 class="menu-header-title mb-0">Поля фильтров</h5>
+                          <h6 class="menu-header-subtitle mb-0 opacity-8 fw-normal small">По группам: переключатели справа</h6>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="dg-q-filter-blocks-scroll" style="max-height: calc(100vh - 10rem); overflow-y: auto; overflow-x: hidden">
+                      <div id="dg-q-filter-blocks-toggles" class="list-group list-group-flush"></div>
+                    </div>
+                  </div>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-q-filters-toggle" data-dg-tooltip="Сворачивает или разворачивает блок фильтров и действий.">Свернуть</button>
+              </div>
             </div>
             <div class="card-body">
               <div id="dg-q-filters-collapsible">
               <div class="row g-2">
-                <div class="col-md-4">
+                <div class="col-md-4" data-dg-q-filter-field="smart">
                   <label class="form-label" for="dg-q-f-search">Умный поиск</label>
                   <input type="text" class="form-control" id="dg-q-f-search" placeholder='code:123 sku:ABC-12 name:"насос 25" project:3 type:product status:pending' autocomplete="off" />
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-2" data-dg-q-filter-field="project">
                   <label class="form-label" for="dg-q-f-project">Проект</label>
                   <select class="form-select" id="dg-q-f-project">
                     <option value="all">Все проекты</option>
                   </select>
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-2" data-dg-q-filter-field="type">
                   <label class="form-label" for="dg-q-f-type">Тип</label>
                   <select class="form-select" id="dg-q-f-type">
                     <option value="all">Все типы</option>
@@ -628,7 +671,7 @@
                     <option value="info">Инфо</option>
                   </select>
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-2" data-dg-q-filter-field="status">
                   <label class="form-label" for="dg-q-f-status">Статус</label>
                   <select class="form-select" id="dg-q-f-status">
                     <option value="">Все статусы</option>
@@ -639,7 +682,7 @@
                     <option value="done">Готово</option>
                   </select>
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-2" data-dg-q-filter-field="matched">
                   <label class="form-label" for="dg-q-f-matched">Сопоставление</label>
                   <select class="form-select" id="dg-q-f-matched">
                     <option value="all">Все</option>
@@ -647,19 +690,19 @@
                     <option value="0">Только несопоставленные</option>
                   </select>
                 </div>
-                <div class="col-md-1">
+                <div class="col-md-1" data-dg-q-filter-field="tf_id">
                   <label class="form-label" for="dg-q-tf-id">ID</label>
                   <input type="text" class="form-control" id="dg-q-tf-id" autocomplete="off" />
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-2" data-dg-q-filter-field="tf_url">
                   <label class="form-label" for="dg-q-tf-url">URL</label>
                   <input type="text" class="form-control" id="dg-q-tf-url" autocomplete="off" />
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-2" data-dg-q-filter-field="tf_added_from">
                   <label class="form-label" for="dg-q-tf-added_from">Добавлено откуда</label>
                   <input type="text" class="form-control" id="dg-q-tf-added_from" autocomplete="off" />
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-2" data-dg-q-filter-field="tf_status">
                   <label class="form-label" for="dg-q-tf-status">Статус (таблица)</label>
                   <select class="form-select" id="dg-q-tf-status">
                     <option value="all">Все</option>
@@ -670,7 +713,7 @@
                     <option value="error">Ошибка</option>
                   </select>
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-2" data-dg-q-filter-field="tf_page_type">
                   <label class="form-label" for="dg-q-tf-page_type">Тип (таблица)</label>
                   <select class="form-select" id="dg-q-tf-page_type">
                     <option value="all">Все</option>
@@ -679,7 +722,7 @@
                     <option value="info">Инфо</option>
                   </select>
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-2" data-dg-q-filter-field="tf_matched">
                   <label class="form-label" for="dg-q-tf-matched">Сопоставление (таблица)</label>
                   <select class="form-select" id="dg-q-tf-matched">
                     <option value="all">Все</option>
@@ -688,7 +731,7 @@
                   </select>
                 </div>
               </div>
-              <div class="mt-3 d-flex flex-wrap gap-2">
+              <div class="mt-3 d-flex flex-wrap gap-2" data-dg-q-filter-field="filter_actions">
                 <button type="button" class="btn btn-sm btn-primary" id="queue-apply" data-dg-tooltip="Применяет текущие фильтры и обновляет таблицу очереди."><i class="pe-7s-search me-1"></i>Применить</button>
                 <button type="button" class="btn btn-sm btn-outline-secondary" id="queue-reset" data-dg-tooltip="Сбросить фильтры к значениям по умолчанию и очистить сохранённые настройки."><i class="pe-7s-refresh me-1"></i>По умолчанию</button>
                 <button type="button" class="btn btn-sm btn-outline-primary" id="queue-discovery-start" data-dg-tooltip="Запускает автообход URL. Нужен конкретный проект (не «Все проекты»)."><i class="pe-7s-compass me-1"></i>Запустить автообход</button>
@@ -700,7 +743,7 @@
                 <button type="button" class="btn btn-sm btn-outline-danger" id="queue-clear-all" data-dg-tooltip="Полностью очищает очередь проекта/системы. Действие необратимо."><i class="pe-7s-close me-1"></i>Полностью очистить очередь</button>
                 <button type="button" class="btn btn-sm btn-outline-dark" id="queue-copy-link" data-dg-tooltip="Копирует текущий URL страницы вместе с фильтрами и сортировкой."><i class="pe-7s-link me-1"></i>Скопировать ссылку</button>
               </div>
-              <p class="small text-muted mt-2 mb-0">
+              <p class="small text-muted mt-2 mb-0" data-dg-q-filter-field="discovery_hint">
                 <b>Автообход URL:</b> читает <code>robots.txt</code>, затем <code>Sitemap:</code> и внутренние ссылки. Новые URL пишутся в <code>Sitemap</code>, после завершения переводятся в <code>pending</code>.
               </p>
               </div>
@@ -1913,6 +1956,7 @@
       }
 
       function resetFilters() {
+        if (window.DatagonQueueFilterBlocks && window.DatagonQueueFilterBlocks.reset) window.DatagonQueueFilterBlocks.reset();
         if (window.DatagonFilters) window.DatagonFilters.clear("queue");
         document.getElementById("dg-q-f-search").value = "";
         document.getElementById("dg-q-f-project").value = "all";
@@ -2044,6 +2088,53 @@
           scheduleSyncUrl();
         });
       });
+
+      (function queueFilterFieldVisibility() {
+        var FIELD_GROUPS = [
+          {
+            title: "Основной ряд",
+            subtitle: "",
+            items: [
+              { key: "smart", title: "Умный поиск", hint: "" },
+              { key: "project", title: "Проект", hint: "" },
+              { key: "type", title: "Тип", hint: "" },
+              { key: "status", title: "Статус", hint: "" },
+              { key: "matched", title: "Сопоставление", hint: "" },
+            ],
+          },
+          {
+            title: "По таблице",
+            subtitle: "",
+            items: [
+              { key: "tf_id", title: "ID", hint: "" },
+              { key: "tf_url", title: "URL", hint: "" },
+              { key: "tf_added_from", title: "Добавлено откуда", hint: "" },
+              { key: "tf_status", title: "Статус (таблица)", hint: "" },
+              { key: "tf_page_type", title: "Тип (таблица)", hint: "" },
+              { key: "tf_matched", title: "Сопоставление (таблица)", hint: "" },
+            ],
+          },
+          {
+            title: "Действия и подсказка",
+            subtitle: "",
+            items: [
+              { key: "filter_actions", title: "Кнопки под фильтром", hint: "" },
+              { key: "discovery_hint", title: "Текст про автообход", hint: "" },
+            ],
+          },
+        ];
+        if (window.DatagonFilterFieldsVisibility && window.DatagonFilterFieldsVisibility.init) {
+          window.DatagonFilterFieldsVisibility.init({
+            storageKeyPrefix: "datagon_queue_filter_fields_v2",
+            attr: "data-dg-q-filter-field",
+            fieldGroups: FIELD_GROUPS,
+            togglesRootId: "dg-q-filter-blocks-toggles",
+            idPrefix: "dg-q-ff-",
+            exposeAs: "DatagonQueueFilterBlocks",
+            onAfterApply: qRefreshFloatingAfterLayout,
+          });
+        }
+      })();
 
       (function collapse() {
         var body = document.getElementById("dg-q-filters-collapsible");

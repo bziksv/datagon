@@ -23,26 +23,62 @@
                 <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
                 <span>Фильтры и действия</span>
               </div>
-              <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-proc-filters-toggle">Свернуть</button>
+              <div class="d-flex align-items-center gap-2">
+                <div class="dropdown">
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-secondary dg-vanilla-dropdown-toggle"
+                    style="line-height: 1; padding: 0.35rem 0.5rem"
+                    aria-expanded="false"
+                    aria-haspopup="true"
+                    id="dg-proc-filter-blocks-btn"
+                    data-dg-tooltip="Какие поля фильтров показывать (сохраняется в браузере для текущего пользователя)"
+                  >
+                    <i class="pe-7s-config btn-icon-wrapper" style="font-size: 1.1rem" aria-hidden="true"></i>
+                  </button>
+                  <div
+                    class="dropdown-menu dropdown-menu-end rm-pointers p-0 dg-proc-filter-blocks-dropdown"
+                    id="dg-proc-filter-blocks-menu"
+                    style="width: min(420px, calc(100vw - 1.5rem))"
+                  >
+                    <div class="dropdown-menu-header mb-0">
+                      <div class="dropdown-menu-header-inner bg-tempting-azure">
+                        <div
+                          class="menu-header-image opacity-5"
+                          style="background-image: url('/assets/utils/images/dropdown-header/abstract2.jpg')"
+                        ></div>
+                        <div class="menu-header-content text-white px-3 py-2">
+                          <h5 class="menu-header-title mb-0">Поля фильтров</h5>
+                          <h6 class="menu-header-subtitle mb-0 opacity-8 fw-normal small">По группам: переключатели справа</h6>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="dg-proc-filter-blocks-scroll" style="max-height: calc(100vh - 10rem); overflow-y: auto; overflow-x: hidden">
+                      <div id="dg-proc-filter-blocks-toggles" class="list-group list-group-flush"></div>
+                    </div>
+                  </div>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-proc-filters-toggle">Свернуть</button>
+              </div>
             </div>
             <div class="card-body">
               <div id="dg-proc-filters-body">
                 <div class="row g-2">
-                  <div class="col-md-5">
+                  <div class="col-md-5" data-dg-proc-filter-field="smart">
                     <label class="form-label" for="dg-proc-smart-search">Умный поиск</label>
                     <input type="text" class="form-control" id="dg-proc-smart-search" placeholder='task:error status:failed или просто текст' autocomplete="off" />
                   </div>
-                  <div class="col-md-4">
+                  <div class="col-md-4" data-dg-proc-filter-field="site">
                     <label class="form-label" for="dg-proc-site">Мой сайт (сопоставление)</label>
                     <select class="form-select" id="dg-proc-site">
                       <option value="">Нет сайтов</option>
                     </select>
                   </div>
-                  <div class="col-md-3 d-flex align-items-end">
+                  <div class="col-md-3 d-flex align-items-end" data-dg-proc-filter-field="refresh_inline">
                     <button type="button" class="btn btn-sm btn-outline-primary w-100" id="dg-proc-refresh-inline" data-dg-tooltip="Запросить свежие данные с сервера (сайт, логи, очереди).">Обновить сейчас</button>
                   </div>
                 </div>
-                <div class="mt-2 d-flex flex-wrap gap-2">
+                <div class="mt-2 d-flex flex-wrap gap-2" data-dg-proc-filter-field="filter_actions">
                   <button type="button" class="btn btn-sm btn-primary" id="dg-proc-apply" data-dg-tooltip="Применить текстовый фильтр к отображаемым блокам. Сохраняет введённое для следующего визита."><i class="pe-7s-search me-1"></i>Применить</button>
                   <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-proc-default" data-dg-tooltip="Очистить фильтр и сохранённые настройки этой страницы."><i class="pe-7s-refresh me-1"></i>По умолчанию</button>
                 </div>

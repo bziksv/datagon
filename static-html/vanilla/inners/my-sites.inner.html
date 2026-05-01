@@ -127,25 +127,59 @@
                   <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
                   <span>Подключенные сайты</span>
                 </div>
+                <div class="dropdown">
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-secondary dg-vanilla-dropdown-toggle"
+                    style="line-height: 1; padding: 0.35rem 0.5rem"
+                    aria-expanded="false"
+                    aria-haspopup="true"
+                    id="dg-msites-filter-blocks-btn"
+                    data-dg-tooltip="Какие поля фильтров показывать (сохраняется в браузере для текущего пользователя)"
+                  >
+                    <i class="pe-7s-config btn-icon-wrapper" style="font-size: 1.1rem" aria-hidden="true"></i>
+                  </button>
+                  <div
+                    class="dropdown-menu dropdown-menu-end rm-pointers p-0 dg-msites-filter-blocks-dropdown"
+                    id="dg-msites-filter-blocks-menu"
+                    style="width: min(420px, calc(100vw - 1.5rem))"
+                  >
+                    <div class="dropdown-menu-header mb-0">
+                      <div class="dropdown-menu-header-inner bg-tempting-azure">
+                        <div
+                          class="menu-header-image opacity-5"
+                          style="background-image: url('/assets/utils/images/dropdown-header/abstract2.jpg')"
+                        ></div>
+                        <div class="menu-header-content text-white px-3 py-2">
+                          <h5 class="menu-header-title mb-0">Поля фильтров</h5>
+                          <h6 class="menu-header-subtitle mb-0 opacity-8 fw-normal small">По группам: переключатели справа</h6>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="dg-msites-filter-blocks-scroll" style="max-height: calc(100vh - 10rem); overflow-y: auto; overflow-x: hidden">
+                      <div id="dg-msites-filter-blocks-toggles" class="list-group list-group-flush"></div>
+                    </div>
+                  </div>
+                </div>
               </div>
               <div class="card-body">
                 <p class="small text-muted">
                   Быстрые бейджи в статистике открывают предфильтрованную страницу товаров по выбранному сайту.
                 </p>
                 <div class="row g-2 mb-2">
-                  <div class="col-md-4">
+                  <div class="col-md-4" data-dg-msites-filter-field="smart">
                     <label class="form-label" for="ms-smart">Умный поиск</label>
                     <input type="text" class="form-control" id="ms-smart" placeholder='id:2 domain:site.ru или просто текст' autocomplete="off" />
                   </div>
-                  <div class="col-md-2">
+                  <div class="col-md-2" data-dg-msites-filter-field="tf_id">
                     <label class="form-label" for="ms-tf-id">ID</label>
                     <input type="text" class="form-control" id="ms-tf-id" autocomplete="off" />
                   </div>
-                  <div class="col-md-2">
+                  <div class="col-md-2" data-dg-msites-filter-field="tf_name">
                     <label class="form-label" for="ms-tf-name">Название</label>
                     <input type="text" class="form-control" id="ms-tf-name" autocomplete="off" />
                   </div>
-                  <div class="col-md-2">
+                  <div class="col-md-2" data-dg-msites-filter-field="tf_cms">
                     <label class="form-label" for="ms-tf-cms">CMS</label>
                     <select class="form-select" id="ms-tf-cms">
                       <option value="all">Все</option>
@@ -153,12 +187,12 @@
                       <option value="webasyst">Webasyst</option>
                     </select>
                   </div>
-                  <div class="col-md-2">
+                  <div class="col-md-2" data-dg-msites-filter-field="tf_domain">
                     <label class="form-label" for="ms-tf-domain">Домен</label>
                     <input type="text" class="form-control" id="ms-tf-domain" autocomplete="off" />
                   </div>
                 </div>
-                <div class="mt-2 d-flex flex-wrap gap-2">
+                <div class="mt-2 d-flex flex-wrap gap-2" data-dg-msites-filter-field="filter_actions">
                   <button type="button" class="btn btn-sm btn-primary" id="ms-filters-apply" data-dg-tooltip="Применить фильтры к таблице сайтов. Сохраняет введённое для следующего визита."><i class="pe-7s-search me-1"></i>Применить</button>
                   <button type="button" class="btn btn-sm btn-outline-secondary" id="ms-filters-default" data-dg-tooltip="Сбросить фильтры и сохранённые настройки."><i class="pe-7s-refresh me-1"></i>По умолчанию</button>
                 </div>

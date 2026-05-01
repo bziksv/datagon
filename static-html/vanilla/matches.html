@@ -139,14 +139,17 @@
       margin-right: 0.35rem;
     }
 
-    /* Карточка «Параметры запуска»: фиксированная высота зоны логов и запас по строкам счётчиков,
-       чтобы polling loadStatus (≈1.5 с) не дёргал layout при смене числа строк в логах. */
+    /* Зона логов: без фиксированной высоты в простое — иначе пустой блок 120px. Класс
+       .dg-matches-job-logs-reserved ставится из JS при активной задаче или непустых логах,
+       чтобы polling не дёргал layout при смене числа строк (до 10). */
     body[data-dg-active-nav="matches"] #dg-matches-job-logs {
+      box-sizing: border-box;
+      -webkit-overflow-scrolling: touch;
+    }
+    body[data-dg-active-nav="matches"] #dg-matches-job-logs.dg-matches-job-logs-reserved {
       min-height: 120px;
       max-height: 120px;
       overflow: auto;
-      box-sizing: border-box;
-      -webkit-overflow-scrolling: touch;
     }
     body[data-dg-active-nav="matches"] #dg-matches-job-found {
       font-variant-numeric: tabular-nums;
@@ -155,7 +158,7 @@
     }
     body[data-dg-active-nav="matches"] #dg-matches-job-hint {
       font-variant-numeric: tabular-nums;
-      min-height: calc(1.35em * 2);
+      min-height: 1.35em;
       line-height: 1.35;
     }
   </style>
@@ -511,7 +514,14 @@
             <div class="widget-content p-0">
               <div class="widget-content-wrapper">
                 <div class="widget-content-left d-flex align-items-center gap-1 pe-2">
-                  <img width="42" height="42" class="rounded-circle" src="/assets/avatar-header.jpg" alt="" />
+                  <span
+                    class="rounded-circle d-inline-flex align-items-center justify-content-center flex-shrink-0 bg-light text-secondary border"
+                    style="width: 42px; height: 42px; border-color: #e2e8f0"
+                    role="img"
+                    aria-label="Профиль"
+                  >
+                    <i class="pe-7s-user" style="font-size: 1.2rem; line-height: 1; opacity: 0.85" aria-hidden="true"></i>
+                  </span>
                   <button type="button" class="btn btn-link p-0 dg-vanilla-logout d-inline-flex align-items-center justify-content-center text-danger" title="Выйти" aria-label="Выйти из профиля" style="min-width:34px;min-height:34px;line-height:1;border-radius:50%">
                     <i class="lnr-exit" style="font-size:1.2rem"></i>
                   </button>
@@ -610,50 +620,132 @@
           </div>
 
           <div class="main-card mb-3 card">
-            <div class="card-header d-flex align-items-center justify-content-between gap-2">
-              <div class="d-flex align-items-center">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+              <div class="d-flex align-items-center min-w-0">
                 <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
                 <span>Параметры запуска</span>
               </div>
+              <div class="d-flex align-items-center gap-2 ms-auto flex-shrink-0">
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1"
+                  id="dg-matches-filter-logic-toggle"
+                  aria-expanded="false"
+                  aria-controls="dg-matches-filter-logic"
+                  data-dg-tooltip="Справка: режим сопоставления и умный поиск"
+                >
+                  <i class="pe-7s-help1 btn-icon-wrapper" style="font-size: 1rem" aria-hidden="true"></i>
+                  <span class="d-none d-sm-inline">Логика фильтра</span>
+                </button>
+                <div class="dropdown">
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-secondary dg-vanilla-dropdown-toggle"
+                  style="line-height: 1; padding: 0.35rem 0.5rem"
+                  aria-expanded="false"
+                  aria-haspopup="true"
+                  id="dg-matches-launch-filter-blocks-btn"
+                  data-dg-tooltip="Какие поля показывать (сохраняется в браузере для текущего пользователя)"
+                >
+                  <i class="pe-7s-config btn-icon-wrapper" style="font-size: 1.1rem" aria-hidden="true"></i>
+                </button>
+                <div
+                  class="dropdown-menu dropdown-menu-end rm-pointers p-0 dg-matches-launch-filter-blocks-dropdown"
+                  id="dg-matches-launch-filter-blocks-menu"
+                  style="width: min(420px, calc(100vw - 1.5rem))"
+                >
+                  <div class="dropdown-menu-header mb-0">
+                    <div class="dropdown-menu-header-inner bg-tempting-azure">
+                      <div
+                        class="menu-header-image opacity-5"
+                        style="background-image: url('/assets/utils/images/dropdown-header/abstract2.jpg')"
+                      ></div>
+                      <div class="menu-header-content text-white px-3 py-2">
+                        <h5 class="menu-header-title mb-0">Поля блока</h5>
+                        <h6 class="menu-header-subtitle mb-0 opacity-8 fw-normal small">Параметры запуска</h6>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="dg-matches-launch-filter-blocks-scroll" style="max-height: calc(100vh - 10rem); overflow-y: auto; overflow-x: hidden">
+                    <div id="dg-matches-launch-filter-blocks-toggles" class="list-group list-group-flush"></div>
+                  </div>
+                </div>
+                </div>
+              </div>
             </div>
             <div class="card-body">
-              <div class="row g-2 align-items-end">
-                <div class="col-md-3">
-                  <label class="form-label" for="dg-matches-product-search">Умный поиск</label>
+              <div class="row g-3 align-items-end">
+                <div class="col-md-3" data-dg-matches-launch-field="smart">
+                  <label class="form-label mb-1 small text-uppercase text-muted" style="letter-spacing: 0.04em" for="dg-matches-product-search">Умный поиск</label>
                   <input type="text" class="form-control" id="dg-matches-product-search" placeholder='артикул:ABC-12 название:"насос 25" или просто текст' autocomplete="off" />
                 </div>
-                <div class="col-md-3">
-                  <label class="form-label" for="dg-matches-my-site">Мой сайт</label>
+                <div class="col-md-3" data-dg-matches-launch-field="my_site">
+                  <label class="form-label mb-1 small text-uppercase text-muted" style="letter-spacing: 0.04em" for="dg-matches-my-site">Мой сайт</label>
                   <select class="form-select" id="dg-matches-my-site">
                     <option value="">-- выберите --</option>
                   </select>
                 </div>
-                <div class="col-md-3">
-                  <label class="form-label" for="dg-matches-search-mode">Режим сопоставления</label>
+                <div class="col-md-3" data-dg-matches-launch-field="search_mode">
+                  <label class="form-label mb-1 small text-uppercase text-muted" style="letter-spacing: 0.04em" for="dg-matches-search-mode">Режим сопоставления</label>
                   <select class="form-select" id="dg-matches-search-mode">
                     <option value="all">Все поля</option>
                     <option value="sku">Только SKU</option>
                     <option value="name">Только название</option>
                   </select>
                 </div>
-                <div class="col-md-1">
-                  <label class="form-label" for="dg-matches-batch-size">Размер пакета</label>
-                  <input type="number" class="form-control" id="dg-matches-batch-size" min="10" value="200" />
+                <div class="col-md-1" data-dg-matches-launch-field="batch_size">
+                  <label class="form-label mb-1 small text-uppercase text-muted" style="letter-spacing: 0.04em" for="dg-matches-batch-size">Пакет</label>
+                  <input type="number" class="form-control" id="dg-matches-batch-size" min="10" value="200" title="Размер пакета" />
                 </div>
-                <div class="col-md-1">
-                  <label class="form-label" for="dg-matches-micro-pause">Микропауза, мс</label>
-                  <input type="number" class="form-control" id="dg-matches-micro-pause" min="0" value="20" />
+                <div class="col-md-1" data-dg-matches-launch-field="micro_pause">
+                  <label class="form-label mb-1 small text-uppercase text-muted" style="letter-spacing: 0.04em" for="dg-matches-micro-pause">Микро, мс</label>
+                  <input type="number" class="form-control" id="dg-matches-micro-pause" min="0" value="20" title="Микропауза, мс" />
                 </div>
-                <div class="col-md-1">
-                  <label class="form-label" for="dg-matches-batch-pause">Пауза между пакетами, мс</label>
-                  <input type="number" class="form-control" id="dg-matches-batch-pause" min="0" value="1000" />
+                <div class="col-md-1" data-dg-matches-launch-field="batch_pause">
+                  <label class="form-label mb-1 small text-uppercase text-muted" style="letter-spacing: 0.04em" for="dg-matches-batch-pause">Пауза, мс</label>
+                  <input type="number" class="form-control" id="dg-matches-batch-pause" min="0" value="1000" title="Пауза между пакетами, мс" />
                 </div>
               </div>
-              <div class="mt-3">
+              <div id="dg-matches-filter-logic" class="d-none mt-3">
+                <div class="rounded-3 border bg-white shadow-sm overflow-hidden">
+                  <div class="px-3 py-2 border-bottom bg-light d-flex align-items-center gap-2">
+                    <i class="pe-7s-help1 icon-gradient bg-happy-itmeo" style="font-size: 1.25rem" aria-hidden="true"></i>
+                    <div>
+                      <div class="fw-semibold text-body small mb-0">Справка по фильтру и режиму</div>
+                      <div class="text-muted" style="font-size: 0.72rem">Как считает сервер и что уходит в API</div>
+                    </div>
+                  </div>
+                  <div class="px-3 py-3 small text-body-secondary lh-base">
+                  <p class="mb-2 fw-semibold text-body">Режим сопоставления</p>
+                  <ul class="mb-3 ps-3">
+                    <li class="mb-2">
+                      <strong>Все поля</strong> — для каждого вашего товара сначала ищется <strong>точное совпадение SKU</strong> (без учёта регистра, пробелы по краям отбрасываются) среди прайсов выбранных конкурентов. Если пара найдена, она сохраняется как совпадение по SKU с уверенностью 100%. Если SKU пустой или совпадения нет, выполняется шаг по <strong>названию</strong>: нормализованные названия сравниваются по схожести со всеми позициями конкурентов; если лучший результат не ниже порога сервера (по умолчанию <strong>85%</strong>) и выше предыдущих кандидатов — сохраняется одна лучшая пара «по названию».
+                    </li>
+                    <li class="mb-2"><strong>Только SKU</strong> — используется только точное совпадение артикула; сопоставление по названию не выполняется.</li>
+                    <li class="mb-0">
+                      <strong>Только название</strong> — шаг SKU полностью пропускается; остаётся только сравнение названий. Учитываются позиции, у которых после нормализации название длиннее 3 символов (и у вашего товара тоже). Совпадение по SKU при этом не строится, даже если артикулы совпали бы.
+                    </li>
+                  </ul>
+                  <p class="mb-2 fw-semibold text-body pt-1 border-top">Поле «Умный поиск»</p>
+                  <ul class="mb-0 ps-3">
+                    <li class="mb-2">
+                      Для таблицы «Мои товары» строка поиска уходит в <code class="px-1 rounded bg-light border small">/api/matches/my-products</code>: подстрока ищется в <strong>SKU</strong>, <strong>названии</strong> и <strong>коде импорта (source_id)</strong>.
+                    </li>
+                    <li class="mb-0">
+                      Для кнопок «<strong>Запустить авто по фильтру</strong>» и «<strong>Продолжить/повторить</strong>» та же строка передаётся как фильтр набора товаров для сопоставления: на сервере отбираются только активные товары вашего сайта, у которых подстрока входит в <strong>SKU или название</strong> (без source_id). К этому набору затем применяется выбранный режим сопоставления. При «<strong>Запустить по выбранным товарам</strong>» в задачу попадают только отмеченные в таблице ID; строка «Умный поиск» на состав набора для API не влияет.
+                    </li>
+                  </ul>
+                  <p class="mb-0 mt-3 pt-2 border-top text-muted" style="font-size: 0.75rem">
+                    Обход конкурентов и их прайсов идёт по очереди; для режима по названию на один ваш товар выбирается не более одной лучшей позиции конкурента среди кандидатов не ниже порога.
+                  </p>
+                  </div>
+                </div>
+              </div>
+              <div class="mt-3" data-dg-matches-launch-field="competitors">
                 <label class="form-label d-block mb-1">Конкуренты</label>
                 <div class="d-flex flex-wrap gap-3" id="dg-matches-competitors"></div>
               </div>
-              <div class="mt-3 d-flex flex-wrap gap-2">
+              <div class="mt-3 d-flex flex-wrap gap-2" data-dg-matches-launch-field="launch_actions">
                 <button type="button" class="btn btn-primary" id="dg-matches-run-selected">Запустить по выбранным товарам</button>
                 <button type="button" class="btn btn-outline-primary" id="dg-matches-run-auto">Запустить авто по фильтру</button>
                 <button type="button" class="btn btn-outline-warning" id="dg-matches-retry">Продолжить/повторить</button>
@@ -672,8 +764,10 @@
                 <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
                 <span>Мои товары для ручного запуска</span>
               </div>
+              <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-matches-my-products-toggle">Свернуть</button>
             </div>
             <div class="card-body">
+              <div id="dg-matches-my-products-body">
               <div class="dg-matches-my-table-scroll-outer" style="width:100%;max-width:100%;overflow-x:auto;overflow-y:visible;-webkit-overflow-scrolling:touch">
                 <div class="table-responsive datagon-my-products-table-wrap" style="display:block;width:100%;max-width:100%;min-width:0;overflow:visible;position:relative">
                   <table id="dg-matches-my-main-table" class="table table-hover table-striped mb-0 datagon-my-products-table dg-matches-my-table" style="width:max-content;min-width:100%;max-width:none;table-layout:fixed;border-collapse:collapse;border-spacing:0" data-dg-sticky="1">
@@ -709,6 +803,7 @@
                 </div>
               </div>
               <p class="text-muted mb-0 mt-2" id="dg-matches-my-products-hint">Выбрано: 0; всего: 0</p>
+              </div>
             </div>
           </div>
 
@@ -718,14 +813,48 @@
                 <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
                 <span>Совпадения</span>
               </div>
+              <div class="dropdown">
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-secondary dg-vanilla-dropdown-toggle"
+                  style="line-height: 1; padding: 0.35rem 0.5rem"
+                  aria-expanded="false"
+                  aria-haspopup="true"
+                  id="dg-matches-list-filter-blocks-btn"
+                  data-dg-tooltip="Какие поля фильтров показывать (сохраняется в браузере для текущего пользователя)"
+                >
+                  <i class="pe-7s-config btn-icon-wrapper" style="font-size: 1.1rem" aria-hidden="true"></i>
+                </button>
+                <div
+                  class="dropdown-menu dropdown-menu-end rm-pointers p-0 dg-matches-list-filter-blocks-dropdown"
+                  id="dg-matches-list-filter-blocks-menu"
+                  style="width: min(420px, calc(100vw - 1.5rem))"
+                >
+                  <div class="dropdown-menu-header mb-0">
+                    <div class="dropdown-menu-header-inner bg-tempting-azure">
+                      <div
+                        class="menu-header-image opacity-5"
+                        style="background-image: url('/assets/utils/images/dropdown-header/abstract2.jpg')"
+                      ></div>
+                      <div class="menu-header-content text-white px-3 py-2">
+                        <h5 class="menu-header-title mb-0">Поля фильтров</h5>
+                        <h6 class="menu-header-subtitle mb-0 opacity-8 fw-normal small">Список совпадений</h6>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="dg-matches-list-filter-blocks-scroll" style="max-height: calc(100vh - 10rem); overflow-y: auto; overflow-x: hidden">
+                    <div id="dg-matches-list-filter-blocks-toggles" class="list-group list-group-flush"></div>
+                  </div>
+                </div>
+              </div>
             </div>
             <div class="card-body">
               <div class="row g-2 mb-2">
-                <div class="col-md-4">
+                <div class="col-md-4" data-dg-matches-list-field="smart">
                   <label class="form-label" for="dg-matches-smart-filter">Умный фильтр по списку</label>
                   <input type="text" class="form-control" id="dg-matches-smart-filter" placeholder="статус, тип, SKU, название, кто подтвердил…" autocomplete="off" />
                 </div>
-                <div class="col-md-3">
+                <div class="col-md-3" data-dg-matches-list-field="status">
                   <label class="form-label" for="dg-matches-status-filter">Статус</label>
                   <select class="form-select" id="dg-matches-status-filter">
                     <option value="pending">Ожидает</option>
@@ -734,7 +863,7 @@
                     <option value="all">Все</option>
                   </select>
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-2" data-dg-matches-list-field="limit">
                   <label class="form-label" for="dg-matches-limit">Лимит</label>
                   <select class="form-select" id="dg-matches-limit">
                     <option value="50">50</option>
@@ -742,15 +871,15 @@
                     <option value="200">200</option>
                   </select>
                 </div>
-                <div class="col-md-1">
+                <div class="col-md-1" data-dg-matches-list-field="tf_my_sku">
                   <label class="form-label" for="dg-matches-tf-my-sku">Мой SKU</label>
                   <input type="text" class="form-control" id="dg-matches-tf-my-sku" autocomplete="off" />
                 </div>
-                <div class="col-md-1">
+                <div class="col-md-1" data-dg-matches-list-field="tf_comp_sku">
                   <label class="form-label" for="dg-matches-tf-comp-sku">SKU конк.</label>
                   <input type="text" class="form-control" id="dg-matches-tf-comp-sku" autocomplete="off" />
                 </div>
-                <div class="col-md-1">
+                <div class="col-md-1" data-dg-matches-list-field="tf_match_type">
                   <label class="form-label" for="dg-matches-tf-match-type">Тип совпадения</label>
                   <select class="form-select" id="dg-matches-tf-match-type">
                     <option value="all">Все</option>
@@ -758,7 +887,7 @@
                     <option value="name">По названию</option>
                   </select>
                 </div>
-                <div class="col-md-1">
+                <div class="col-md-1" data-dg-matches-list-field="tf_status">
                   <label class="form-label" for="dg-matches-tf-status">Статус в списке</label>
                   <select class="form-select" id="dg-matches-tf-status">
                     <option value="all">Все</option>
@@ -767,16 +896,16 @@
                     <option value="rejected">Отклонено</option>
                   </select>
                 </div>
-                <div class="col-md-1">
+                <div class="col-md-1" data-dg-matches-list-field="tf_conf_min">
                   <label class="form-label" for="dg-matches-tf-conf-min">Схож. от %</label>
                   <input type="number" class="form-control" id="dg-matches-tf-conf-min" min="0" max="100" />
                 </div>
-                <div class="col-md-1">
+                <div class="col-md-1" data-dg-matches-list-field="tf_conf_max">
                   <label class="form-label" for="dg-matches-tf-conf-max">Схож. до %</label>
                   <input type="number" class="form-control" id="dg-matches-tf-conf-max" min="0" max="100" />
                 </div>
               </div>
-              <div class="mt-2 d-flex flex-wrap gap-2">
+              <div class="mt-2 d-flex flex-wrap gap-2" data-dg-matches-list-field="list_actions">
                 <button type="button" class="btn btn-sm btn-primary" id="dg-matches-filters-apply" data-dg-tooltip="Применить фильтры списка совпадений и обновить данные. Сохраняет введённое для следующего визита."><i class="pe-7s-search me-1"></i>Применить</button>
                 <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-matches-filters-default" data-dg-tooltip="Сбросить фильтры списка к значениям по умолчанию и очистить сохранённые настройки."><i class="pe-7s-refresh me-1"></i>По умолчанию</button>
               </div>
@@ -972,6 +1101,7 @@
     <script>
     (function () {
       var PRODUCTS_LIMIT = 50;
+      var MATCHES_MY_PRODUCTS_MANUAL_COLLAPSE_KEY = "datagon_matches_my_products_manual_collapsed_v1";
 
       function formatNumber(value) {
         return Number(value || 0).toLocaleString("ru-RU");
@@ -1248,6 +1378,7 @@
             d.textContent = "• " + l;
             logsEl.appendChild(d);
           });
+          logsEl.classList.toggle("dg-matches-job-logs-reserved", !!js.active || (js.logs || []).length > 0);
         }
         refreshActionButtons();
       }
@@ -2381,6 +2512,48 @@
         loadMyProducts();
       });
       document.getElementById("dg-matches-search-mode").addEventListener("change", scheduleSyncUrl);
+      (function initMatchesFilterLogicToggle() {
+        var btn = document.getElementById("dg-matches-filter-logic-toggle");
+        var panel = document.getElementById("dg-matches-filter-logic");
+        if (!btn || !panel) return;
+        btn.addEventListener("click", function () {
+          var show = panel.classList.contains("d-none");
+          panel.classList.toggle("d-none", !show);
+          btn.setAttribute("aria-expanded", show ? "true" : "false");
+        });
+      })();
+
+      (function matchesMyProductsManualCollapse() {
+        var body = document.getElementById("dg-matches-my-products-body");
+        var btn = document.getElementById("dg-matches-my-products-toggle");
+        if (!body || !btn) return;
+        function apply() {
+          try {
+            var c = localStorage.getItem(MATCHES_MY_PRODUCTS_MANUAL_COLLAPSE_KEY) === "1";
+            if (c) {
+              body.style.display = "none";
+              btn.textContent = "Развернуть";
+            } else {
+              body.style.display = "";
+              btn.textContent = "Свернуть";
+            }
+          } catch (e) {}
+          matchesMyRefreshFloatingAfterLayout();
+        }
+        try {
+          if (localStorage.getItem(MATCHES_MY_PRODUCTS_MANUAL_COLLAPSE_KEY) === "1") body.style.display = "none";
+        } catch (e2) {}
+        apply();
+        btn.addEventListener("click", function () {
+          var hidden = body.style.display === "none";
+          body.style.display = hidden ? "" : "none";
+          btn.textContent = hidden ? "Свернуть" : "Развернуть";
+          try {
+            localStorage.setItem(MATCHES_MY_PRODUCTS_MANUAL_COLLAPSE_KEY, hidden ? "0" : "1");
+          } catch (e3) {}
+          matchesMyRefreshFloatingAfterLayout();
+        });
+      })();
       document.getElementById("dg-matches-status-filter").addEventListener("change", function () {
         scheduleSyncUrl();
       });
@@ -2469,6 +2642,7 @@
         loadMatches();
       });
       document.getElementById("dg-matches-filters-default").addEventListener("click", function () {
+        if (window.DatagonMatchesListFilterBlocks && window.DatagonMatchesListFilterBlocks.reset) window.DatagonMatchesListFilterBlocks.reset();
         if (window.DatagonFilters) window.DatagonFilters.clear("matches_list");
         document.getElementById("dg-matches-smart-filter").value = "";
         document.getElementById("dg-matches-status-filter").value = "pending";
@@ -2492,6 +2666,78 @@
       });
       setupMatchesListTableChrome();
       ensureMatchesMyScrollAndResizeBound();
+
+      (function matchesLaunchFilterFieldVisibility() {
+        var FIELD_GROUPS = [
+          {
+            title: "Параметры",
+            subtitle: "",
+            items: [
+              { key: "smart", title: "Умный поиск", hint: "" },
+              { key: "my_site", title: "Мой сайт", hint: "" },
+              { key: "search_mode", title: "Режим сопоставления", hint: "" },
+              { key: "batch_size", title: "Размер пакета", hint: "" },
+              { key: "micro_pause", title: "Микропауза", hint: "" },
+              { key: "batch_pause", title: "Пауза между пакетами", hint: "" },
+            ],
+          },
+          {
+            title: "Конкуренты и действия",
+            subtitle: "",
+            items: [
+              { key: "competitors", title: "Блок конкурентов", hint: "" },
+              { key: "launch_actions", title: "Кнопки запуска / ссылка", hint: "" },
+            ],
+          },
+        ];
+        if (window.DatagonFilterFieldsVisibility && window.DatagonFilterFieldsVisibility.init) {
+          window.DatagonFilterFieldsVisibility.init({
+            storageKeyPrefix: "datagon_matches_launch_filter_fields_v2",
+            attr: "data-dg-matches-launch-field",
+            fieldGroups: FIELD_GROUPS,
+            togglesRootId: "dg-matches-launch-filter-blocks-toggles",
+            idPrefix: "dg-matches-launch-ff-",
+            exposeAs: "DatagonMatchesLaunchFilterBlocks",
+            onAfterApply: matchesMyRefreshFloatingAfterLayout,
+          });
+        }
+      })();
+
+      (function matchesListFilterFieldVisibility() {
+        var FIELD_GROUPS = [
+          {
+            title: "Фильтры списка",
+            subtitle: "",
+            items: [
+              { key: "smart", title: "Умный фильтр", hint: "" },
+              { key: "status", title: "Статус", hint: "" },
+              { key: "limit", title: "Лимит", hint: "" },
+              { key: "tf_my_sku", title: "Мой SKU", hint: "" },
+              { key: "tf_comp_sku", title: "SKU конк.", hint: "" },
+              { key: "tf_match_type", title: "Тип совпадения", hint: "" },
+              { key: "tf_status", title: "Статус в списке", hint: "" },
+              { key: "tf_conf_min", title: "Схож. от %", hint: "" },
+              { key: "tf_conf_max", title: "Схож. до %", hint: "" },
+            ],
+          },
+          {
+            title: "Действия",
+            subtitle: "",
+            items: [{ key: "list_actions", title: "«Применить» и «По умолчанию»", hint: "" }],
+          },
+        ];
+        if (window.DatagonFilterFieldsVisibility && window.DatagonFilterFieldsVisibility.init) {
+          window.DatagonFilterFieldsVisibility.init({
+            storageKeyPrefix: "datagon_matches_list_filter_fields_v2",
+            attr: "data-dg-matches-list-field",
+            fieldGroups: FIELD_GROUPS,
+            togglesRootId: "dg-matches-list-filter-blocks-toggles",
+            idPrefix: "dg-matches-list-ff-",
+            exposeAs: "DatagonMatchesListFilterBlocks",
+            onAfterApply: matchesMyRefreshFloatingAfterLayout,
+          });
+        }
+      })();
 
       Promise.all([
         fetch("/api/my-sites", { credentials: "same-origin" }).then(function (r) {

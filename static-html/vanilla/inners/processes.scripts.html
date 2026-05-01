@@ -307,11 +307,42 @@
         if (overview) renderFromOverview();
       });
       document.getElementById("dg-proc-default").addEventListener("click", function () {
+        if (window.DatagonProcessesFilterBlocks && window.DatagonProcessesFilterBlocks.reset) window.DatagonProcessesFilterBlocks.reset();
         if (window.DatagonFilters) window.DatagonFilters.clear("processes");
         document.getElementById("dg-proc-smart-search").value = "";
         if (overview) renderFromOverview();
       });
       document.getElementById("dg-proc-ms-stop").addEventListener("click", stopMsSync);
+
+      (function processesFilterFieldVisibility() {
+        var FIELD_GROUPS = [
+          {
+            title: "Фильтры",
+            subtitle: "",
+            items: [
+              { key: "smart", title: "Умный поиск", hint: "" },
+              { key: "site", title: "Мой сайт", hint: "" },
+              { key: "refresh_inline", title: "Кнопка «Обновить сейчас»", hint: "" },
+            ],
+          },
+          {
+            title: "Действия",
+            subtitle: "",
+            items: [{ key: "filter_actions", title: "«Применить» и «По умолчанию»", hint: "" }],
+          },
+        ];
+        if (window.DatagonFilterFieldsVisibility && window.DatagonFilterFieldsVisibility.init) {
+          window.DatagonFilterFieldsVisibility.init({
+            storageKeyPrefix: "datagon_processes_filter_fields_v2",
+            attr: "data-dg-proc-filter-field",
+            fieldGroups: FIELD_GROUPS,
+            togglesRootId: "dg-proc-filter-blocks-toggles",
+            idPrefix: "dg-proc-ff-",
+            exposeAs: "DatagonProcessesFilterBlocks",
+            onAfterApply: function () {},
+          });
+        }
+      })();
 
       (function collapse() {
         var body = document.getElementById("dg-proc-filters-body");
