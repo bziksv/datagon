@@ -83,11 +83,33 @@
                   </select>
                 </div>
                 <div class="col-md-3" data-dg-matches-launch-field="search_mode">
-                  <label class="form-label mb-1 small text-uppercase text-muted" style="letter-spacing: 0.04em" for="dg-matches-search-mode">Режим сопоставления</label>
+                  <div class="d-flex align-items-baseline gap-1 mb-1 flex-wrap">
+                    <label class="form-label mb-0 small text-uppercase text-muted" style="letter-spacing: 0.04em" for="dg-matches-search-mode">Режим сопоставления</label>
+                    <button
+                      type="button"
+                      class="btn btn-link btn-sm p-0 lh-1 border-0 text-muted shadow-none align-baseline"
+                      style="margin-top: -1px"
+                      id="dg-matches-mode-hint-toggle"
+                      aria-expanded="false"
+                      aria-controls="dg-matches-mode-hint"
+                      aria-label="Описание режимов сопоставления"
+                      data-dg-tooltip="Краткие описания всех режимов"
+                    >
+                      <i class="pe-7s-help1" style="font-size: 0.95rem" aria-hidden="true"></i>
+                    </button>
+                  </div>
                   <select class="form-select" id="dg-matches-search-mode">
-                    <option value="all">Все поля</option>
-                    <option value="sku">Только SKU</option>
-                    <option value="name">Только название</option>
+                    <optgroup label="Комбинированно">
+                      <option value="all">Все поля — строгий SKU, затем название</option>
+                    </optgroup>
+                    <optgroup label="Только SKU">
+                      <option value="sku">Строгий отбор (trim + регистр)</option>
+                      <option value="sku_norm">Нормализация артикула</option>
+                      <option value="sku_best">Нормализация + детерминированная строка</option>
+                    </optgroup>
+                    <optgroup label="Название">
+                      <option value="name">Только название</option>
+                    </optgroup>
                   </select>
                 </div>
                 <div class="col-md-1" data-dg-matches-launch-field="batch_size">
@@ -103,6 +125,48 @@
                   <input type="number" class="form-control" id="dg-matches-batch-pause" min="0" value="1000" title="Пауза между пакетами, мс" />
                 </div>
               </div>
+              <div id="dg-matches-mode-hint" class="d-none mt-2">
+                <div class="rounded-3 border shadow-sm bg-white overflow-hidden">
+                  <div class="px-3 py-2 border-bottom bg-light small fw-semibold text-body">Описание режимов сопоставления</div>
+                  <div class="px-3 py-3 small text-body-secondary lh-base">
+                    <p class="mb-2 text-muted" style="font-size: 0.75rem">
+                      Режимы можно менять и сравнивать результаты; позже часть логики можно автоматизировать по метрикам качества.
+                    </p>
+                    <dl class="row mb-0">
+                      <dt class="col-md-4 col-lg-3 mb-2 text-body fw-semibold">
+                        <code class="small">all</code> · Все поля
+                      </dt>
+                      <dd class="col-md-8 col-lg-9 mb-2">
+                        Сначала <strong>строгое</strong> совпадение SKU (<code>trim</code> + верхний регистр). Если нет — сравнение по названию с порогом схожести (по умолчанию 85%).
+                      </dd>
+                      <dt class="col-md-4 col-lg-3 mb-2 text-body fw-semibold">
+                        <code class="small">sku</code> · Строгий SKU
+                      </dt>
+                      <dd class="col-md-8 col-lg-9 mb-2">
+                        Только точное совпадение после <code>trim</code> и приведения к верхнему регистру. Пробелы <em>внутри</em> артикула и Unicode-тире <strong>не</strong> приводятся к общему виду. Название не используется.
+                      </dd>
+                      <dt class="col-md-4 col-lg-3 mb-2 text-body fw-semibold">
+                        <code class="small">sku_norm</code> · Нормализация
+                      </dt>
+                      <dd class="col-md-8 col-lg-9 mb-2">
+                        Ключ SKU: NFKC, верхний регистр, удаление пробелов/NBSP, унификация тире в ASCII-<code>-</code>. Берётся <strong>первая</strong> совпавшая строка прайса в текущем порядке выборки (как раньше для строгого режима, но по нормализованному ключу).
+                      </dd>
+                      <dt class="col-md-4 col-lg-3 mb-2 text-body fw-semibold">
+                        <code class="small">sku_best</code> · Нормализация + выбор строки
+                      </dt>
+                      <dd class="col-md-8 col-lg-9 mb-2">
+                        Тот же ключ, что и в <code>sku_norm</code>, но среди всех строк прайса с этим ключом выбирается одна: сначала большая <strong>дата парсинга</strong> (<code>MAX(parsed_at)</code> по группе строки), затем стабильный порядок по названию и исходному SKU.
+                      </dd>
+                      <dt class="col-md-4 col-lg-3 mb-2 text-body fw-semibold">
+                        <code class="small">name</code> · Только название
+                      </dt>
+                      <dd class="col-md-8 col-lg-9 mb-0">
+                        SKU не участвует; только схожесть нормализованных названий при длине &gt; 3 символов (у вас и у позиции конкурента).
+                      </dd>
+                    </dl>
+                  </div>
+                </div>
+              </div>
               <div id="dg-matches-filter-logic" class="d-none mt-3">
                 <div class="rounded-3 border bg-white shadow-sm overflow-hidden">
                   <div class="px-3 py-2 border-bottom bg-light d-flex align-items-center gap-2">
@@ -113,14 +177,20 @@
                     </div>
                   </div>
                   <div class="px-3 py-3 small text-body-secondary lh-base">
-                  <p class="mb-2 fw-semibold text-body">Режим сопоставления</p>
+                  <p class="mb-2 fw-semibold text-body">Режим сопоставления (сервер)</p>
                   <ul class="mb-3 ps-3">
                     <li class="mb-2">
-                      <strong>Все поля</strong> — для каждого вашего товара сначала ищется <strong>точное совпадение SKU</strong> (без учёта регистра, пробелы по краям отбрасываются) среди прайсов выбранных конкурентов. Если пара найдена, она сохраняется как совпадение по SKU с уверенностью 100%. Если SKU пустой или совпадения нет, выполняется шаг по <strong>названию</strong>: нормализованные названия сравниваются по схожести со всеми позициями конкурентов; если лучший результат не ниже порога сервера (по умолчанию <strong>85%</strong>) и выше предыдущих кандидатов — сохраняется одна лучшая пара «по названию».
+                      <strong>Все поля</strong> — сначала <strong>строгий</strong> SKU (<code>trim</code> + верхний регистр). Если нет пары — шаг по <strong>названию</strong> (порог по умолчанию <strong>85%</strong>).
                     </li>
-                    <li class="mb-2"><strong>Только SKU</strong> — используется только точное совпадение артикула; сопоставление по названию не выполняется.</li>
+                    <li class="mb-2"><strong>SKU строгий</strong> — только <code>trim</code> + верхний регистр; название не используется.</li>
+                    <li class="mb-2">
+                      <strong>SKU нормализация</strong> — один ключ для вашего и конкурента: NFKC, верхний регистр, без пробелов/NBSP, тире приведены к <code>-</code>; берётся первое совпадение в порядке строк прайса.
+                    </li>
+                    <li class="mb-2">
+                      <strong>SKU нормализация + выбор строки</strong> — тот же ключ; среди всех строк с этим ключом выбирается одна по максимальной дате парсинга группы, затем по названию и SKU (стабильно при повторных запусках).
+                    </li>
                     <li class="mb-0">
-                      <strong>Только название</strong> — шаг SKU полностью пропускается; остаётся только сравнение названий. Учитываются позиции, у которых после нормализации название длиннее 3 символов (и у вашего товара тоже). Совпадение по SKU при этом не строится, даже если артикулы совпали бы.
+                      <strong>Только название</strong> — SKU не участвует; длина нормализованного названия &gt; 3 у обеих сторон.
                     </li>
                   </ul>
                   <p class="mb-2 fw-semibold text-body pt-1 border-top">Поле «Умный поиск»</p>

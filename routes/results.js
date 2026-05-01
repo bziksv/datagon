@@ -46,6 +46,26 @@ function invalidateResultsListCache() {
  */
 let resultsListPerfReady = false;
 let resultsPricesPscBackfilled = false;
+/** Полный backfill по prices не должен блокировать GET /api/results (иначе «Загрузка…» без ответа). */
+let resultsPricesPscBackfillPromise = null;
+
+function scheduleResultsPricesPscBackfill(db) {
+    if (resultsPricesPscBackfilled || resultsPricesPscBackfillPromise) return;
+    resultsPricesPscBackfillPromise = (async () => {
+        try {
+            await db.query(
+                `UPDATE prices pr
+                 INNER JOIN pages pg ON pg.id = pr.page_id
+                 SET pr.page_status_cached = pg.status`
+            );
+            resultsPricesPscBackfilled = true;
+        } catch (e) {
+            console.warn('[results] page_status_cached backfill:', e.message);
+        } finally {
+            resultsPricesPscBackfillPromise = null;
+        }
+    })();
+}
 
 async function ensureResultsListPerf(db) {
     if (resultsListPerfReady) return;
@@ -64,18 +84,7 @@ async function ensureResultsListPerf(db) {
         console.warn('[results] page_status_cached column:', e.message);
     }
 
-    if (!resultsPricesPscBackfilled) {
-        try {
-            await db.query(
-                `UPDATE prices pr
-                 INNER JOIN pages pg ON pg.id = pr.page_id
-                 SET pr.page_status_cached = pg.status`
-            );
-            resultsPricesPscBackfilled = true;
-        } catch (e) {
-            console.warn('[results] page_status_cached backfill:', e.message);
-        }
-    }
+    scheduleResultsPricesPscBackfill(db);
 
     const checks = [
         {
@@ -87,6 +96,26 @@ async function ensureResultsListPerf(db) {
             table: 'prices',
             name: 'idx_prices_project_page',
             ddl: 'CREATE INDEX idx_prices_project_page ON prices (project_id, page_id)',
+        },
+        {
+            table: 'prices',
+            name: 'idx_prices_project_sku_parsed',
+            ddl: 'CREATE INDEX idx_prices_project_sku_parsed ON prices (project_id, sku, parsed_at)',
+        },
+        {
+            table: 'prices',
+            name: 'idx_prices_project_name_parsed',
+            ddl: 'CREATE INDEX idx_prices_project_name_parsed ON prices (project_id, product_name(191), parsed_at)',
+        },
+        {
+            table: 'prices',
+            name: 'idx_prices_product_name_id',
+            ddl: 'CREATE INDEX idx_prices_product_name_id ON prices (product_name(191), id)',
+        },
+        {
+            table: 'prices',
+            name: 'idx_prices_parsed_at_id',
+            ddl: 'CREATE INDEX idx_prices_parsed_at_id ON prices (parsed_at, id)',
         },
         {
             table: 'pages',
@@ -102,6 +131,16 @@ async function ensureResultsListPerf(db) {
             table: 'prices',
             name: 'idx_prices_psc_id',
             ddl: 'CREATE INDEX idx_prices_psc_id ON prices (page_status_cached, id)',
+        },
+        {
+            table: 'product_matches',
+            name: 'idx_pm_confirmed_comp_sku',
+            ddl: 'CREATE INDEX idx_pm_confirmed_comp_sku ON product_matches (status, competitor_site_id, competitor_sku(191))',
+        },
+        {
+            table: 'product_matches',
+            name: 'idx_pm_confirmed_comp_name',
+            ddl: 'CREATE INDEX idx_pm_confirmed_comp_name ON product_matches (status, competitor_site_id, competitor_name(191))',
         },
     ];
     for (const idx of checks) {
@@ -150,7 +189,6 @@ module.exports = (db, settings) => {
     // 1. Получить результаты
     router.get('/', async (req, res) => {
         try {
-            await ensureResultsListPerf(db);
             const {
                 project_id,
                 page_status,
@@ -188,8 +226,10 @@ module.exports = (db, settings) => {
                 });
             }
 
+            await ensureResultsListPerf(db);
+
             if (l === 0) {
-                let qcOnly = `SELECT COUNT(*) as total FROM prices pr WHERE 1=1`;
+                let qcOnly = `SELECT COUNT(*) as total FROM prices pr LEFT JOIN pages pg ON pr.page_id = pg.id WHERE 1=1`;
                 const pcOnly = [];
                 if (project_id && project_id !== 'all') {
                     qcOnly += ' AND pr.project_id = ?';
@@ -197,7 +237,7 @@ module.exports = (db, settings) => {
                 }
                 if (page_status && ['pending', 'processing', 'done', 'error'].includes(String(page_status).toLowerCase())) {
                     const pageStatus = String(page_status).toLowerCase();
-                    qcOnly += ' AND pr.page_status_cached = ?';
+                    qcOnly += ' AND COALESCE(pr.page_status_cached, pg.status) = ?';
                     pcOnly.push(pageStatus);
                 }
                 if (search && String(search).trim()) {
@@ -250,8 +290,8 @@ module.exports = (db, settings) => {
                     LIMIT 1
                 )`;
                 }
-                const [[cntOnly]] = await db.query(qcOnly, pcOnly);
-                const payloadCount = { rows: [], total: cntOnly[0].total };
+                const [cntRows] = await db.query(qcOnly, pcOnly);
+                const payloadCount = { rows: [], total: Number(cntRows[0]?.total) || 0 };
                 resultsListResponseCache.set(listCacheKey, { ts: Date.now(), payload: payloadCount });
                 pruneResultsListCache();
                 res.json({
@@ -267,16 +307,19 @@ module.exports = (db, settings) => {
                 project_name: 'p.name',
                 product_name: 'pr.product_name',
                 sku: 'pr.sku',
-                page_status: 'pr.page_status_cached',
+                page_status: 'COALESCE(pr.page_status_cached, pg.status)',
                 is_oos: 'pr.is_oos',
                 price: 'pr.price',
                 url: 'pr.url'
             };
             const sortField = sortFieldMap[String(sort_by || 'parsed_at')] || 'pr.parsed_at';
-            
-            let q = `SELECT pr.*, p.name as project_name, pg.url as page_url,
-                           COALESCE(pg.status, pr.page_status_cached) as page_status, pg.last_error as page_error, pg.parsed_at as page_parsed_at,
-                           EXISTS(
+
+            const isMatchedSql =
+                matched === '0'
+                    ? '0'
+                    : matched === '1'
+                      ? '1'
+                      : `EXISTS(
                                SELECT 1
                                FROM product_matches pm
                                WHERE pm.status = 'confirmed'
@@ -286,65 +329,65 @@ module.exports = (db, settings) => {
                                      OR pm.competitor_name = pr.product_name
                                  )
                                LIMIT 1
-                           ) AS is_matched
-                     FROM prices pr 
-                     JOIN projects p ON pr.project_id = p.id 
-                     LEFT JOIN pages pg ON pr.page_id = pg.id 
-                     WHERE 1=1`;
-            let qc = `SELECT COUNT(*) as total FROM prices pr WHERE 1=1`;
+                           )`;
+
+            const joinFrom =
+                'FROM prices pr JOIN projects p ON pr.project_id = p.id LEFT JOIN pages pg ON pr.page_id = pg.id WHERE 1=1';
+            let qCond = '';
+            let qc = `SELECT COUNT(*) as total FROM prices pr LEFT JOIN pages pg ON pr.page_id = pg.id WHERE 1=1`;
             let p = [], pc = [];
             
             if (project_id && project_id !== 'all') { 
-                q += ' AND pr.project_id = ?'; 
+                qCond += ' AND pr.project_id = ?'; 
                 qc += ' AND pr.project_id = ?'; 
                 p.push(project_id); 
                 pc.push(project_id); 
             }
             if (page_status && ['pending', 'processing', 'done', 'error'].includes(String(page_status).toLowerCase())) {
                 const pageStatus = String(page_status).toLowerCase();
-                q += ' AND pr.page_status_cached = ?';
-                qc += ' AND pr.page_status_cached = ?';
+                qCond += ' AND COALESCE(pr.page_status_cached, pg.status) = ?';
+                qc += ' AND COALESCE(pr.page_status_cached, pg.status) = ?';
                 p.push(pageStatus);
                 pc.push(pageStatus);
             }
 
             if (search && String(search).trim()) {
                 const val = `%${String(search).trim()}%`;
-                q += ' AND (pr.sku LIKE ? OR pr.product_name LIKE ?)';
+                qCond += ' AND (pr.sku LIKE ? OR pr.product_name LIKE ?)';
                 qc += ' AND (pr.sku LIKE ? OR pr.product_name LIKE ?)';
                 p.push(val, val);
                 pc.push(val, val);
             }
             if (project_name && String(project_name).trim()) {
                 const pn = `%${String(project_name).trim()}%`;
-                q += ' AND p.name LIKE ?';
+                qCond += ' AND p.name LIKE ?';
                 qc += ' AND EXISTS (SELECT 1 FROM projects pjn WHERE pjn.id = pr.project_id AND pjn.name LIKE ?)';
                 p.push(pn);
                 pc.push(pn);
             }
             const pMin = parseFloat(String(price_min != null ? price_min : '').trim());
             if (Number.isFinite(pMin)) {
-                q += ' AND pr.price >= ?';
+                qCond += ' AND pr.price >= ?';
                 qc += ' AND pr.price >= ?';
                 p.push(pMin);
                 pc.push(pMin);
             }
             const pMax = parseFloat(String(price_max != null ? price_max : '').trim());
             if (Number.isFinite(pMax)) {
-                q += ' AND pr.price <= ?';
+                qCond += ' AND pr.price <= ?';
                 qc += ' AND pr.price <= ?';
                 p.push(pMax);
                 pc.push(pMax);
             }
             if (availability === 'in_stock') {
-                q += ' AND COALESCE(pr.is_oos, 0) = 0';
+                qCond += ' AND COALESCE(pr.is_oos, 0) = 0';
                 qc += ' AND COALESCE(pr.is_oos, 0) = 0';
             } else if (availability === 'oos') {
-                q += ' AND COALESCE(pr.is_oos, 0) = 1';
+                qCond += ' AND COALESCE(pr.is_oos, 0) = 1';
                 qc += ' AND COALESCE(pr.is_oos, 0) = 1';
             }
             if (matched === '1') {
-                q += ` AND EXISTS(
+                qCond += ` AND EXISTS(
                     SELECT 1
                     FROM product_matches pm
                     WHERE pm.status = 'confirmed'
@@ -367,7 +410,7 @@ module.exports = (db, settings) => {
                     LIMIT 1
                 )`;
             } else if (matched === '0') {
-                q += ` AND NOT EXISTS(
+                qCond += ` AND NOT EXISTS(
                     SELECT 1
                     FROM product_matches pm
                     WHERE pm.status = 'confirmed'
@@ -391,7 +434,15 @@ module.exports = (db, settings) => {
                 )`;
             }
             
-            q += ` ORDER BY ${sortField} ${sortDir}, pr.id DESC LIMIT ? OFFSET ?`;
+            const orderBySql = ` ORDER BY dg_res_sort ${sortDir}, pr.id DESC LIMIT ? OFFSET ?`;
+            const idSub = `SELECT pr.id, ${sortField} AS dg_res_sort ${joinFrom}${qCond}${orderBySql}`;
+            const q = `SELECT pr.*, p.name as project_name, pg.url as page_url,
+                           COALESCE(pg.status, pr.page_status_cached) as page_status, pg.last_error as page_error, pg.parsed_at as page_parsed_at,
+                           ${isMatchedSql} AS is_matched
+                     FROM prices pr 
+                     JOIN projects p ON pr.project_id = p.id 
+                     LEFT JOIN pages pg ON pr.page_id = pg.id 
+                     INNER JOIN (${idSub}) dg_res_ids ON dg_res_ids.id = pr.id`;
             p.push(l, o);
 
             // Параллельно: без COUNT(*) OVER() — оконная агрегация по всему join часто на порядок медленнее двух запросов.
@@ -442,6 +493,11 @@ module.exports = (db, settings) => {
             res.status(500).json({ error: e.message });
         }
     });
+
+    /** Стартовый прогрев индексов/DDL и фонового backfill (см. server.js setImmediate). */
+    router.warmupResultsListPerf = async function warmupResultsListPerf() {
+        await ensureResultsListPerf(db);
+    };
 
     return router;
 };

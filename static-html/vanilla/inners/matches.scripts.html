@@ -89,6 +89,8 @@
         return base.replace(/\/$/, "") + "/webasyst/shop/?action=products#/product/" + encodeURIComponent(id) + "/edit/";
       }
 
+      var MATCH_MODES_ALLOWED = { all: 1, name: 1, sku: 1, sku_norm: 1, sku_best: 1 };
+
       function syncUrlFromState() {
         var params = new URLSearchParams();
         var mySiteId = document.getElementById("dg-matches-my-site").value;
@@ -931,6 +933,35 @@
         return { text: pct + "%", badge: "secondary" };
       }
 
+      function effectiveMatchTypeForScore(m, score) {
+        var t = String(m.match_type || "")
+          .trim()
+          .toLowerCase();
+        if (t) return t;
+        return Math.abs(Number(score) - 1) < 1e-6 ? "sku" : "name";
+      }
+
+      function matchTypeLabel(m) {
+        var mt = String(m.match_type || "")
+          .trim()
+          .toLowerCase();
+        var mm = String(m.matching_mode || "")
+          .trim()
+          .toLowerCase();
+        if (!mt) return "—";
+        if (mt === "name") {
+          if (mm === "all") return "Название · из «все поля»";
+          return "По названию";
+        }
+        if (mt === "sku") {
+          if (mm === "sku_norm") return "SKU · нормализация";
+          if (mm === "sku_best") return "SKU · норм. + строка";
+          if (mm === "all") return "SKU · строго («все поля»)";
+          return "SKU · строго";
+        }
+        return mt;
+      }
+
       function renderMatchesTable() {
         updateMatchesPageHints();
         var tbody = document.getElementById("dg-matches-tbody");
@@ -961,7 +992,7 @@
         rows.forEach(function (m) {
           var score = Number(m.confidence_score || 0);
           var sUi = statusUi(String(m.status || "").toLowerCase());
-          var cUi = scoreUi(String(m.match_type || "").toLowerCase(), score);
+          var cUi = scoreUi(effectiveMatchTypeForScore(m, score), score);
           var myProductUrl =
             normalizeWebasystProductUrl(m.my_product_url || "", m.my_site_domain || "", m.my_site_cms_type || "") ||
             buildProductPageUrlFromSlug(m.my_site_domain || "", m.my_sku || "") ||
@@ -981,7 +1012,16 @@
           tr.appendChild(tdSt);
 
           var tdType = document.createElement("td");
-          tdType.textContent = m.match_type || "";
+          tdType.textContent = matchTypeLabel(m);
+          if (!String(m.match_type || "").trim()) {
+            tdType.title =
+              "В записи нет match_type (часто старые данные). Подпись «—»; значок схожести оценён по confidence. Перезапустите сопоставление для поля.";
+          } else {
+            tdType.title =
+              "Канал: " +
+              String(m.match_type) +
+              (m.matching_mode ? ". Режим задачи: " + String(m.matching_mode) : "");
+          }
           tr.appendChild(tdType);
 
           var tdConf = document.createElement("td");
@@ -1175,7 +1215,11 @@
         });
         var sf = document.getElementById("dg-matches-status-filter").value;
         if (sf !== "all") q.set("status", sf);
-        fetch("/api/matches/list?" + q.toString(), { credentials: "same-origin" })
+        var fetchOpts = { credentials: "same-origin" };
+        try {
+          if (typeof AbortSignal !== "undefined" && AbortSignal.timeout) fetchOpts.signal = AbortSignal.timeout(120000);
+        } catch (eSig) {}
+        fetch("/api/matches/list?" + q.toString(), fetchOpts)
           .then(function (r) {
             return r.json().then(function (j) {
               return { r: r, j: j };
@@ -1187,7 +1231,11 @@
             state.matchesTotal = Number(x.j.total || 0);
           })
           .catch(function (e) {
-            alert(e.message || "Не удалось загрузить сопоставления");
+            if (e && (e.name === "AbortError" || /aborted|timeout/i.test(String(e.message || ""))))
+              alert(
+                "Сервер не ответил за 2 минуты при загрузке совпадений. Частая причина — долгие операции с индексами в БД; перезапустите сервер и откройте страницу снова."
+              );
+            else alert(e.message || "Не удалось загрузить сопоставления");
             state.matches = [];
             state.matchesTotal = 0;
           })
@@ -1415,6 +1463,17 @@
       (function initMatchesFilterLogicToggle() {
         var btn = document.getElementById("dg-matches-filter-logic-toggle");
         var panel = document.getElementById("dg-matches-filter-logic");
+        if (!btn || !panel) return;
+        btn.addEventListener("click", function () {
+          var show = panel.classList.contains("d-none");
+          panel.classList.toggle("d-none", !show);
+          btn.setAttribute("aria-expanded", show ? "true" : "false");
+        });
+      })();
+
+      (function initMatchesModeHintToggle() {
+        var btn = document.getElementById("dg-matches-mode-hint-toggle");
+        var panel = document.getElementById("dg-matches-mode-hint");
         if (!btn || !panel) return;
         btn.addEventListener("click", function () {
           var show = panel.classList.contains("d-none");
@@ -1667,7 +1726,7 @@
           }
           if (up.status && ["pending", "confirmed", "rejected", "all"].indexOf(up.status) !== -1)
             document.getElementById("dg-matches-status-filter").value = up.status;
-          if (up.mode && ["all", "sku", "name"].indexOf(up.mode) !== -1)
+          if (up.mode && MATCH_MODES_ALLOWED[up.mode])
             document.getElementById("dg-matches-search-mode").value = up.mode;
           if (up.product_search) document.getElementById("dg-matches-product-search").value = up.product_search;
           if (Number.isFinite(up.matches_page) && up.matches_page > 0) state.matchesPage = up.matches_page;

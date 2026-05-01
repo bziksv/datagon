@@ -246,6 +246,7 @@ async function initDB() {
             competitor_sku VARCHAR(255),
             competitor_name VARCHAR(500),
             match_type VARCHAR(20) DEFAULT 'name',
+            matching_mode VARCHAR(24) NULL,
             confidence_score DECIMAL(5,4) DEFAULT 0,
             status VARCHAR(20) DEFAULT 'pending',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -404,6 +405,7 @@ async function initDB() {
             { name: 'competitor_sku', sql: 'ALTER TABLE product_matches ADD COLUMN competitor_sku VARCHAR(255)' },
             { name: 'competitor_name', sql: 'ALTER TABLE product_matches ADD COLUMN competitor_name VARCHAR(500)' },
             { name: 'match_type', sql: "ALTER TABLE product_matches ADD COLUMN match_type VARCHAR(20) DEFAULT 'name'" },
+            { name: 'matching_mode', sql: 'ALTER TABLE product_matches ADD COLUMN matching_mode VARCHAR(24) NULL' },
             { name: 'created_at', sql: 'ALTER TABLE product_matches ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP' },
             { name: 'updated_at', sql: 'ALTER TABLE product_matches ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP' },
         ];
@@ -926,11 +928,24 @@ initDB().then(() => {
             return res.status(500).json({ error: e.message });
         }
     });
-    app.use('/api/results', require('./routes/results')(db, appSettings));
+    const resultsRouter = require('./routes/results')(db, appSettings);
+    app.use('/api/results', resultsRouter);
     app.use('/api/my-sites', require('./routes/mysites')(db, appSettings));
     app.use('/api/my-products', require('./routes/myproducts')(db, appSettings));
     matchesRouter = matchesRouterFactory(db, appSettings);
     app.use('/api/matches', matchesRouter);
+    setImmediate(() => {
+        if (matchesRouter && typeof matchesRouter.warmupMatchingIndexes === 'function') {
+            matchesRouter.warmupMatchingIndexes().catch((err) => {
+                console.warn('[matches] warmupMatchingIndexes:', err && err.message ? err.message : err);
+            });
+        }
+        if (resultsRouter && typeof resultsRouter.warmupResultsListPerf === 'function') {
+            resultsRouter.warmupResultsListPerf().catch((err) => {
+                console.warn('[results] warmupResultsListPerf:', err && err.message ? err.message : err);
+            });
+        }
+    });
     app.use('/api/ms', moyskladRouterFactory(db, appSettings, config));
     
     // Алиас для совместимости, если фронт стучится сюда

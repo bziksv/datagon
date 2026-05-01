@@ -31,6 +31,55 @@ function normalizeText(text) {
         .trim();
 }
 
+/** Ключ для сопоставления SKU: NFKC, верхний регистр, Unicode-пробелы и тире унифицированы. */
+function normalizeSkuForMatch(raw) {
+    if (raw == null || raw === '') return '';
+    let s = String(raw).normalize('NFKC').trim().toUpperCase();
+    s = s.replace(/[\u00A0\s]+/g, '');
+    s = s.replace(/[\u2010-\u2015\u2212\uFE58\uFE63\uFF0D]/g, '-');
+    s = s.replace(/-+/g, '-');
+    return s;
+}
+
+const MATCHING_MODES = new Set(['all', 'name', 'sku', 'sku_norm', 'sku_best']);
+
+function sanitizeMatchingMode(mode) {
+    const m = String(mode || '').trim();
+    return MATCHING_MODES.has(m) ? m : 'all';
+}
+
+function strictSkuKey(raw) {
+    return (raw || '').trim().toUpperCase();
+}
+
+function findSkuMatchStrict(compPrices, normMySku) {
+    if (!normMySku) return null;
+    return compPrices.find((c) => strictSkuKey(c.sku) === normMySku) || null;
+}
+
+function findSkuMatchNormFirst(compPrices, normKey) {
+    if (!normKey) return null;
+    return compPrices.find((c) => normalizeSkuForMatch(c.sku) === normKey) || null;
+}
+
+function findSkuMatchNormBest(compPrices, normKey) {
+    if (!normKey) return null;
+    const cand = compPrices.filter((c) => normalizeSkuForMatch(c.sku) === normKey);
+    if (!cand.length) return null;
+    cand.sort((a, b) => {
+        const ta = new Date(a.parsed_at || 0).getTime();
+        const tb = new Date(b.parsed_at || 0).getTime();
+        if (tb !== ta) return tb - ta;
+        const na = String(a.product_name || '');
+        const nb = String(b.product_name || '');
+        if (na !== nb) return na < nb ? -1 : na > nb ? 1 : 0;
+        const sa = String(a.sku || '');
+        const sb = String(b.sku || '');
+        return sa < sb ? -1 : sa > sb ? 1 : 0;
+    });
+    return cand[0];
+}
+
 function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -39,6 +88,32 @@ module.exports = (db, settings) => {
     const cancelledJobs = new Set();
     let perfIndexesReady = false;
     let matchAuditColumnsReady = false;
+    let productMatchesOptionalColsReady = false;
+
+    async function ensureProductMatchesOptionalCols() {
+        if (productMatchesOptionalColsReady) return;
+        const cols = [
+            {
+                name: 'matching_mode',
+                ddl: 'ALTER TABLE product_matches ADD COLUMN matching_mode VARCHAR(24) NULL'
+            }
+        ];
+        for (const c of cols) {
+            try {
+                const [rows] = await db.query(
+                    `SELECT 1
+                     FROM information_schema.columns
+                     WHERE table_schema = DATABASE()
+                       AND table_name = 'product_matches'
+                       AND column_name = ?
+                     LIMIT 1`,
+                    [c.name]
+                );
+                if (!rows.length) await db.query(c.ddl);
+            } catch (_) {}
+        }
+        productMatchesOptionalColsReady = true;
+    }
 
     async function ensureMatchAuditColumns() {
         if (matchAuditColumnsReady) return;
@@ -261,6 +336,9 @@ module.exports = (db, settings) => {
         microPauseMs = 20,
         microPauseEvery = 20
     }) {
+        mode = sanitizeMatchingMode(mode);
+        await ensureProductMatchesOptionalCols();
+        await ensureMatchesPerfIndexes();
         await updateJob(jobId, { message: 'Подготовка...' });
         await addJobLog(jobId, 'Подготовка данных');
         if (!resumeMode) {
@@ -397,11 +475,11 @@ module.exports = (db, settings) => {
             if (!pendingMatches.length) return;
             const values = pendingMatches.map(m => [
                 mySiteId, m.my_sku, m.my_name, m.comp_project_id,
-                m.comp_sku, m.comp_name, m.match_type, m.confidence, 'pending'
+                m.comp_sku, m.comp_name, m.match_type, m.matching_mode, m.confidence, 'pending'
             ]);
             await db.query(`
                 INSERT INTO product_matches
-                (my_site_id, my_sku, my_product_name, competitor_site_id, competitor_sku, competitor_name, match_type, confidence_score, status)
+                (my_site_id, my_sku, my_product_name, competitor_site_id, competitor_sku, competitor_name, match_type, matching_mode, confidence_score, status)
                 VALUES ?
             `, [values]);
             totalMatchesSaved += pendingMatches.length;
@@ -423,12 +501,13 @@ module.exports = (db, settings) => {
             }
             await updateJob(jobId, { message: `Загрузка товаров конкурента #${compId}...` });
             const [compPrices] = await db.query(`
-                SELECT p.sku, p.product_name, p.price, p.currency, p.url, pr.domain as project_domain
+                SELECT p.sku, p.product_name, p.price, p.currency, p.url, pr.domain as project_domain,
+                       MAX(p.parsed_at) AS parsed_at
                 FROM prices p
                 JOIN projects pr ON p.project_id = pr.id
                 WHERE p.project_id = ?
                 GROUP BY p.sku, p.product_name, p.price, p.currency, p.url, pr.domain
-                ORDER BY p.parsed_at DESC
+                ORDER BY MAX(p.parsed_at) DESC
             `, [compId]);
 
             if (compPrices.length === 0) {
@@ -470,11 +549,19 @@ module.exports = (db, settings) => {
                 let bestScore = 0;
                 let matchType = 'none';
 
-                const normMySku = (myProd.sku || '').trim().toUpperCase();
+                const normMySkuStrict = strictSkuKey(myProd.sku);
+                const normMySkuNorm = normalizeSkuForMatch(myProd.sku);
                 const normMyName = normalizeText(myProd.name);
 
-                if (mode !== 'name' && normMySku) {
-                    const skuMatch = compPrices.find(c => (c.sku || '').trim().toUpperCase() === normMySku);
+                if (mode !== 'name') {
+                    let skuMatch = null;
+                    if (mode === 'all' || mode === 'sku') {
+                        if (normMySkuStrict) skuMatch = findSkuMatchStrict(compPrices, normMySkuStrict);
+                    } else if (mode === 'sku_norm') {
+                        if (normMySkuNorm) skuMatch = findSkuMatchNormFirst(compPrices, normMySkuNorm);
+                    } else if (mode === 'sku_best') {
+                        if (normMySkuNorm) skuMatch = findSkuMatchNormBest(compPrices, normMySkuNorm);
+                    }
                     if (skuMatch) {
                         bestMatch = skuMatch;
                         bestScore = 1.0;
@@ -482,7 +569,7 @@ module.exports = (db, settings) => {
                     }
                 }
 
-                if (mode !== 'sku' && matchType !== 'sku' && normMyName.length > 3) {
+                if ((mode === 'all' || mode === 'name') && matchType !== 'sku' && normMyName.length > 3) {
                     for (const compProd of compPrices) {
                         const normCompName = normalizeText(compProd.product_name);
                         if (normCompName.length < 3) continue;
@@ -503,6 +590,7 @@ module.exports = (db, settings) => {
                         comp_name: bestMatch.product_name,
                         comp_project_id: compId,
                         match_type: matchType,
+                        matching_mode: mode,
                         confidence: bestScore
                     });
                     if (matchType === 'sku') foundSku += 1;
@@ -622,7 +710,8 @@ module.exports = (db, settings) => {
 
     // 3. Запуск умного сопоставления в фоне
     router.post('/start-matching', async (req, res) => {
-        const { mySiteId, competitorIds, threshold = 0.85, mode = 'all', productIds = null, productSearch = '', batchSize = 200, batchPauseMs = 1000, microPauseMs = 20, microPauseEvery = 20, resumeMode = false } = req.body;
+        let { mySiteId, competitorIds, threshold = 0.85, mode = 'all', productIds = null, productSearch = '', batchSize = 200, batchPauseMs = 1000, microPauseMs = 20, microPauseEvery = 20, resumeMode = false } = req.body;
+        mode = sanitizeMatchingMode(mode);
         if (!mySiteId || !competitorIds || competitorIds.length === 0) {
             return res.status(400).json({ error: 'Не выбраны сайты' });
         }
@@ -707,7 +796,7 @@ module.exports = (db, settings) => {
             }
         }
         // Всегда даем возможность переопределить параметры из UI при нажатии "Продолжить"
-        payload.mode = mode || payload.mode || 'all';
+        payload.mode = sanitizeMatchingMode(mode || payload.mode || 'all');
         payload.productSearch = typeof productSearch === 'string' ? productSearch : (payload.productSearch || '');
         payload.batchSize = parseInt(batchSize, 10) || payload.batchSize || 200;
         payload.batchPauseMs = parseInt(batchPauseMs, 10) || payload.batchPauseMs || 1000;
@@ -801,7 +890,7 @@ module.exports = (db, settings) => {
         
         try {
             await ensureMatchAuditColumns();
-            await ensureMatchesPerfIndexes();
+            await ensureProductMatchesOptionalCols();
             let q = `
                 SELECT 
                     pm.*,
@@ -987,6 +1076,11 @@ module.exports = (db, settings) => {
 
     router.watchdogTick = async function watchdogTick() {
         await cleanupStaleRunningJobs(180);
+    };
+
+    /** Вынесено из GET /list: создание индексов на больших таблицах не должно блокировать загрузку страницы. */
+    router.warmupMatchingIndexes = async function warmupMatchingIndexes() {
+        await ensureMatchesPerfIndexes();
     };
 
     return router;
