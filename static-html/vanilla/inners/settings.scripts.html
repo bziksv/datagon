@@ -53,13 +53,14 @@
       }
 
       var users = [];
+      var usersLoadForbidden = false;
       var loadingUsers = false;
       var editUser = null;
       var showNewUserPassword = false;
       var showPasswordChange = false;
 
       function currentUser() {
-        return window.localStorage.getItem("currentUser") || "admin";
+        return String(window.localStorage.getItem("currentUser") || "").trim();
       }
       function isAdmin() {
         return window.localStorage.getItem("isAdmin") === "true" || currentUser() === "admin";
@@ -90,6 +91,19 @@
       }
       function getStr(id) {
         return String(document.getElementById(id).value || "");
+      }
+
+      function formatUserDateTime(value) {
+        if (value == null || value === "") return "—";
+        var d = value instanceof Date ? value : new Date(value);
+        if (Number.isNaN(d.getTime())) return "—";
+        return d.toLocaleString("ru-RU", {
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+        });
       }
 
       function applySettingsToForm(s) {
@@ -195,10 +209,9 @@
         var canF = document.getElementById("dg-set-users-filter-can").value;
         var smin = document.getElementById("dg-set-users-sess-min").value;
         var smax = document.getElementById("dg-set-users-sess-max").value;
-        if (!needle) return users;
         return users.filter(function (u) {
           var haystack = (String(u.id || "") + " " + String(u.full_name || "") + " " + String(u.username || "")).toLowerCase();
-          if (haystack.indexOf(needle) === -1) return false;
+          if (needle && haystack.indexOf(needle) === -1) return false;
           var canManage = u.username === "admin" || Number(u.can_manage_users || 0) === 1 ? "1" : "0";
           if (canF !== "all" && canManage !== canF) return false;
           var activeSessions = Number(u.active_sessions || 0);
@@ -214,21 +227,21 @@
         applyUserFieldDisabled();
         var tbody = document.getElementById("dg-set-users-tbody");
         tbody.replaceChildren();
-        if (!isAdmin()) {
-          var tr = document.createElement("tr");
-          var td = document.createElement("td");
-          td.colSpan = 6;
-          td.className = "text-muted";
-          td.textContent = "Список пользователей доступен только admin";
-          tr.appendChild(td);
-          tbody.appendChild(tr);
+        if (usersLoadForbidden) {
+          var trf = document.createElement("tr");
+          var tdf = document.createElement("td");
+          tdf.colSpan = 8;
+          tdf.className = "text-muted";
+          tdf.textContent = "Список пользователей доступен только пользователю admin";
+          trf.appendChild(tdf);
+          tbody.appendChild(trf);
           return;
         }
         var list = filteredUsersList();
         if (!list.length) {
           var tr0 = document.createElement("tr");
           var td0 = document.createElement("td");
-          td0.colSpan = 6;
+          td0.colSpan = 8;
           td0.className = "text-muted";
           td0.textContent = loadingUsers ? "Загрузка..." : "Пользователи не найдены";
           tr0.appendChild(td0);
@@ -279,6 +292,19 @@
           var tdSess = document.createElement("td");
           tdSess.textContent = String(Number(u.active_sessions || 0));
           tr.appendChild(tdSess);
+          var tdReg = document.createElement("td");
+          tdReg.className = "text-nowrap small";
+          tdReg.textContent = formatUserDateTime(u.created_at);
+          tr.appendChild(tdReg);
+          var tdLast = document.createElement("td");
+          tdLast.className = "text-nowrap small";
+          if (!u.last_activity_at) {
+            tdLast.className += " text-muted";
+            tdLast.textContent = "Нет входов";
+          } else {
+            tdLast.textContent = formatUserDateTime(u.last_activity_at);
+          }
+          tr.appendChild(tdLast);
           var tdAct = document.createElement("td");
           tdAct.className = "text-nowrap datagon-users-row-actions";
           var bLogin = document.createElement("button");
@@ -326,11 +352,8 @@
       }
 
       function loadUsers() {
-        if (!isAdmin()) {
-          renderUsers();
-          return;
-        }
         loadingUsers = true;
+        usersLoadForbidden = false;
         renderUsers();
         fetch("/api/auth/users", { credentials: "same-origin", headers: authHeaders(false) })
           .then(function (r) {
@@ -339,7 +362,12 @@
             });
           })
           .then(function (x) {
-            if (!x.r.ok) throw new Error(x.j.error || "Не удалось загрузить пользователей");
+            if (x.r.status === 403) {
+              users = [];
+              usersLoadForbidden = true;
+              return;
+            }
+            if (!x.r.ok) throw new Error((x.j && x.j.error) || "Не удалось загрузить пользователей");
             users = Array.isArray(x.j.data) ? x.j.data : [];
           })
           .catch(function (e) {
@@ -738,10 +766,16 @@
       });
       document.getElementById("dg-set-pw-submit").addEventListener("click", changePassword);
 
-      set("dg-set-pw-username", isAdmin() ? "admin" : currentUser());
+      set("dg-set-pw-username", isAdmin() ? "admin" : currentUser() || "");
       document.getElementById("dg-set-pw-username").readOnly = !isAdmin();
       loadSettings();
       loadLogsInfo();
       loadUsers();
+      window.addEventListener("datagon-profile-loaded", function () {
+        applyUserFieldDisabled();
+        set("dg-set-pw-username", isAdmin() ? "admin" : currentUser() || "");
+        document.getElementById("dg-set-pw-username").readOnly = !isAdmin();
+        loadUsers();
+      });
     })();
   </script>

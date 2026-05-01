@@ -130,4 +130,24 @@
       margin-bottom: 0.25rem;
       margin-right: 0.35rem;
     }
+
+    /* Карточка «Параметры запуска»: фиксированная высота зоны логов и запас по строкам счётчиков,
+       чтобы polling loadStatus (≈1.5 с) не дёргал layout при смене числа строк в логах. */
+    body[data-dg-active-nav="matches"] #dg-matches-job-logs {
+      min-height: 120px;
+      max-height: 120px;
+      overflow: auto;
+      box-sizing: border-box;
+      -webkit-overflow-scrolling: touch;
+    }
+    body[data-dg-active-nav="matches"] #dg-matches-job-found {
+      font-variant-numeric: tabular-nums;
+      min-height: 1.35em;
+      line-height: 1.35;
+    }
+    body[data-dg-active-nav="matches"] #dg-matches-job-hint {
+      font-variant-numeric: tabular-nums;
+      min-height: calc(1.35em * 2);
+      line-height: 1.35;
+    }
   </style>

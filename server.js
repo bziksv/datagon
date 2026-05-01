@@ -527,149 +527,6 @@ function startGlobalSyncBackground(targetSiteId = null) {
 
     return { success: true, message: 'Синхронизация запущена в фоне' };
 }
-app.post('/api/sync-all-start', async (req, res) => {
-    if (syncState.active) return res.json({ success: false, message: 'Синхронизация уже идет' });
-    startGlobalSyncBackground();
-    res.json({ success: true, message: 'Синхронизация запущена в фоне' });
-});
-
-app.post('/api/sync-site-start', async (req, res) => {
-    if (syncState.active) return res.json({ success: false, message: 'Синхронизация уже идет' });
-    const siteId = Number(req.body?.site_id || 0);
-    if (!Number.isFinite(siteId) || siteId <= 0) {
-        return res.status(400).json({ success: false, error: 'site_id обязателен' });
-    }
-    startGlobalSyncBackground(siteId);
-    res.json({ success: true, message: 'Синхронизация выбранного сайта запущена в фоне' });
-});
-
-app.get('/api/sync-status', (req, res) => {
-    res.json(syncState);
-});
-
-app.get('/api/processes/overview', async (req, res) => {
-    try {
-        const selectedSiteIdRaw = req.query.my_site_id;
-        const selectedSiteId = selectedSiteIdRaw ? parseInt(selectedSiteIdRaw, 10) : null;
-
-        const globalSync = {
-            active: Boolean(syncState.active),
-            processed: Number(syncState.processed || 0),
-            total: Number(syncState.total || 0),
-            message: syncState.message || ''
-        };
-
-        const moysklad = typeof moyskladRouterFactory.getJobState === 'function'
-            ? moyskladRouterFactory.getJobState()
-            : { active: false, done: false, processed: 0, total: 0, message: 'Недоступно', logs: [], updatedAt: null };
-        const mskNow = getMoscowNowParts();
-        const autoSync = {
-            now_moscow_time: mskNow.time,
-            now_moscow_date: mskNow.date,
-            queue: [...autoSyncQueue],
-            runner_active: Boolean(autoSyncRunnerActive),
-            config: {
-                myproducts_enabled: Number(appSettings.auto_sync_myproducts_enabled || 0) === 1,
-                myproducts_time: String(appSettings.auto_sync_myproducts_time || '03:00'),
-                moysklad_enabled: Number(appSettings.auto_sync_moysklad_enabled || 0) === 1,
-                moysklad_time: String(appSettings.auto_sync_moysklad_time || '04:00')
-            }
-        };
-        const discovery = (typeof pagesRouter?.getDiscoveryJobsSnapshot === 'function')
-            ? pagesRouter.getDiscoveryJobsSnapshot()
-            : [];
-        let autoSyncRuns = [];
-        try {
-            await ensureAutoSyncRunsTable();
-            const [runs] = await db.query(`
-                SELECT id, task_type, trigger_type, started_at, finished_at, status, message
-                FROM auto_sync_runs
-                ORDER BY id DESC
-                LIMIT 20
-            `);
-            autoSyncRuns = runs;
-        } catch (_) {}
-
-        const [queueRows] = await db.query('SELECT status, COUNT(*) AS cnt FROM pages GROUP BY status');
-        const queue = { pending: 0, processing: 0, done: 0, error: 0, total: 0 };
-        for (const row of queueRows) {
-            const key = row.status;
-            const cnt = Number(row.cnt || 0);
-            if (Object.prototype.hasOwnProperty.call(queue, key)) {
-                queue[key] = cnt;
-            } else {
-                queue.total += cnt;
-            }
-        }
-        queue.total += queue.pending + queue.processing + queue.done + queue.error;
-
-        const [sites] = await db.query('SELECT id, name FROM my_sites ORDER BY name');
-        const matchesSites = sites.map((s) => ({ id: s.id, name: s.name || `Сайт #${s.id}` }));
-        const fallbackSiteId = matchesSites.length ? matchesSites[0].id : null;
-        const effectiveSiteId = Number.isFinite(selectedSiteId) ? selectedSiteId : fallbackSiteId;
-
-        let matches = {
-            mySiteId: effectiveSiteId,
-            active: false,
-            done: false,
-            status: 'idle',
-            processed: 0,
-            total: 0,
-            found: 0,
-            foundSku: 0,
-            foundName: 0,
-            message: effectiveSiteId ? 'Нет задач' : 'Нет доступных сайтов',
-            logs: [],
-            canRetry: false
-        };
-
-        if (effectiveSiteId) {
-            const [jobs] = await db.query(
-                'SELECT * FROM matching_jobs WHERE my_site_id = ? ORDER BY id DESC LIMIT 1',
-                [effectiveSiteId]
-            );
-            if (jobs.length) {
-                const job = jobs[0];
-                const [logs] = await db.query(
-                    'SELECT message, created_at FROM matching_job_logs WHERE job_id = ? ORDER BY id DESC LIMIT 20',
-                    [job.id]
-                );
-                matches = {
-                    mySiteId: effectiveSiteId,
-                    active: job.status === 'running',
-                    done: job.status === 'completed' || job.status === 'failed',
-                    status: job.status,
-                    processed: Number(job.processed || 0),
-                    total: Number(job.total || 0),
-                    found: Number(job.found || 0),
-                    foundSku: Number(job.found_sku || 0),
-                    foundName: Number(job.found_name || 0),
-                    message: job.message || '',
-                    logs: logs.map((l) => {
-                        const t = new Date(l.created_at).toLocaleTimeString('ru-RU');
-                        return `[${t}] ${l.message}`;
-                    }),
-                    canRetry: job.status === 'failed' || job.status === 'completed'
-                };
-            }
-        }
-
-        return res.json({
-            refreshedAt: new Date().toISOString(),
-            globalSync,
-            moysklad,
-            autoSync,
-            autoSyncRuns,
-            discovery,
-            queue,
-            matchesSites,
-            matches,
-            runtime: getRuntimeMetrics()
-        });
-    } catch (e) {
-        return res.status(500).json({ error: e.message });
-    }
-});
 
 async function cleanupLogsByRetentionDays(days) {
     const retentionDays = Number(days) || 7;
@@ -896,6 +753,28 @@ function startUnifiedTaskWatchdog() {
 initDB().then(() => {
     // Подключаем роуты ТОЛЬКО после успешного подключения к БД
     const authModule = require('./routes/auth')(db, appSettings);
+
+    /** Все /api, кроме входа/выхода, только с валидной сессией (httpOnly dg_session и/или x-auth-token). */
+    app.use('/api', async (req, res, next) => {
+        if (req.method === 'OPTIONS') return next();
+        const pathOnly = String(req.path || '').split('?')[0];
+        const isPublicAuth =
+            (req.method === 'POST' && (pathOnly === '/login' || pathOnly === '/auth/login')) ||
+            (req.method === 'POST' && (pathOnly === '/logout' || pathOnly === '/auth/logout'));
+        if (isPublicAuth) return next();
+        try {
+            const actor = await authModule.getActor(req);
+            if (!actor) {
+                res.status(401);
+                return res.json({ error: 'Не авторизован', code: 'AUTH_REQUIRED' });
+            }
+            req.datagonActor = actor;
+            return next();
+        } catch (e) {
+            return next(e);
+        }
+    });
+
     app.use('/api/auth', authModule.router);
     // Совместимость со старым фронтендом/кэшем, где логин идет на /api/login
     app.use('/api', authModule.router);
@@ -903,6 +782,150 @@ initDB().then(() => {
     app.use('/api/projects', require('./routes/projects')(db, appSettings));
     pagesRouter = pagesRouterFactory(db, appSettings);
     app.use('/api/pages', pagesRouter);
+
+    app.post('/api/sync-all-start', async (req, res) => {
+        if (syncState.active) return res.json({ success: false, message: 'Синхронизация уже идет' });
+        startGlobalSyncBackground();
+        res.json({ success: true, message: 'Синхронизация запущена в фоне' });
+    });
+
+    app.post('/api/sync-site-start', async (req, res) => {
+        if (syncState.active) return res.json({ success: false, message: 'Синхронизация уже идет' });
+        const siteId = Number(req.body?.site_id || 0);
+        if (!Number.isFinite(siteId) || siteId <= 0) {
+            return res.status(400).json({ success: false, error: 'site_id обязателен' });
+        }
+        startGlobalSyncBackground(siteId);
+        res.json({ success: true, message: 'Синхронизация выбранного сайта запущена в фоне' });
+    });
+
+    app.get('/api/sync-status', (req, res) => {
+        res.json(syncState);
+    });
+
+    app.get('/api/processes/overview', async (req, res) => {
+        try {
+            const selectedSiteIdRaw = req.query.my_site_id;
+            const selectedSiteId = selectedSiteIdRaw ? parseInt(selectedSiteIdRaw, 10) : null;
+
+            const globalSync = {
+                active: Boolean(syncState.active),
+                processed: Number(syncState.processed || 0),
+                total: Number(syncState.total || 0),
+                message: syncState.message || ''
+            };
+
+            const moysklad = typeof moyskladRouterFactory.getJobState === 'function'
+                ? moyskladRouterFactory.getJobState()
+                : { active: false, done: false, processed: 0, total: 0, message: 'Недоступно', logs: [], updatedAt: null };
+            const mskNow = getMoscowNowParts();
+            const autoSync = {
+                now_moscow_time: mskNow.time,
+                now_moscow_date: mskNow.date,
+                queue: [...autoSyncQueue],
+                runner_active: Boolean(autoSyncRunnerActive),
+                config: {
+                    myproducts_enabled: Number(appSettings.auto_sync_myproducts_enabled || 0) === 1,
+                    myproducts_time: String(appSettings.auto_sync_myproducts_time || '03:00'),
+                    moysklad_enabled: Number(appSettings.auto_sync_moysklad_enabled || 0) === 1,
+                    moysklad_time: String(appSettings.auto_sync_moysklad_time || '04:00')
+                }
+            };
+            const discovery = (typeof pagesRouter?.getDiscoveryJobsSnapshot === 'function')
+                ? pagesRouter.getDiscoveryJobsSnapshot()
+                : [];
+            let autoSyncRuns = [];
+            try {
+                await ensureAutoSyncRunsTable();
+                const [runs] = await db.query(`
+                    SELECT id, task_type, trigger_type, started_at, finished_at, status, message
+                    FROM auto_sync_runs
+                    ORDER BY id DESC
+                    LIMIT 20
+                `);
+                autoSyncRuns = runs;
+            } catch (_) {}
+
+            const [queueRows] = await db.query('SELECT status, COUNT(*) AS cnt FROM pages GROUP BY status');
+            const queue = { pending: 0, processing: 0, done: 0, error: 0, total: 0 };
+            for (const row of queueRows) {
+                const key = row.status;
+                const cnt = Number(row.cnt || 0);
+                if (Object.prototype.hasOwnProperty.call(queue, key)) {
+                    queue[key] = cnt;
+                } else {
+                    queue.total += cnt;
+                }
+            }
+            queue.total += queue.pending + queue.processing + queue.done + queue.error;
+
+            const [sites] = await db.query('SELECT id, name FROM my_sites ORDER BY name');
+            const matchesSites = sites.map((s) => ({ id: s.id, name: s.name || `Сайт #${s.id}` }));
+            const fallbackSiteId = matchesSites.length ? matchesSites[0].id : null;
+            const effectiveSiteId = Number.isFinite(selectedSiteId) ? selectedSiteId : fallbackSiteId;
+
+            let matches = {
+                mySiteId: effectiveSiteId,
+                active: false,
+                done: false,
+                status: 'idle',
+                processed: 0,
+                total: 0,
+                found: 0,
+                foundSku: 0,
+                foundName: 0,
+                message: effectiveSiteId ? 'Нет задач' : 'Нет доступных сайтов',
+                logs: [],
+                canRetry: false
+            };
+
+            if (effectiveSiteId) {
+                const [jobs] = await db.query(
+                    'SELECT * FROM matching_jobs WHERE my_site_id = ? ORDER BY id DESC LIMIT 1',
+                    [effectiveSiteId]
+                );
+                if (jobs.length) {
+                    const job = jobs[0];
+                    const [logs] = await db.query(
+                        'SELECT message, created_at FROM matching_job_logs WHERE job_id = ? ORDER BY id DESC LIMIT 20',
+                        [job.id]
+                    );
+                    matches = {
+                        mySiteId: effectiveSiteId,
+                        active: job.status === 'running',
+                        done: job.status === 'completed' || job.status === 'failed',
+                        status: job.status,
+                        processed: Number(job.processed || 0),
+                        total: Number(job.total || 0),
+                        found: Number(job.found || 0),
+                        foundSku: Number(job.found_sku || 0),
+                        foundName: Number(job.found_name || 0),
+                        message: job.message || '',
+                        logs: logs.map((l) => {
+                            const t = new Date(l.created_at).toLocaleTimeString('ru-RU');
+                            return `[${t}] ${l.message}`;
+                        }),
+                        canRetry: job.status === 'failed' || job.status === 'completed'
+                    };
+                }
+            }
+
+            return res.json({
+                refreshedAt: new Date().toISOString(),
+                globalSync,
+                moysklad,
+                autoSync,
+                autoSyncRuns,
+                discovery,
+                queue,
+                matchesSites,
+                matches,
+                runtime: getRuntimeMetrics()
+            });
+        } catch (e) {
+            return res.status(500).json({ error: e.message });
+        }
+    });
     app.use('/api/results', require('./routes/results')(db, appSettings));
     app.use('/api/my-sites', require('./routes/mysites')(db, appSettings));
     app.use('/api/my-products', require('./routes/myproducts')(db, appSettings));
@@ -938,6 +961,30 @@ initDB().then(() => {
     app.get('/projects', redirectToDatagonHtml('projects.html'));
     app.get('/processes', redirectToDatagonHtml('processes.html'));
     app.get('/settings', redirectToDatagonHtml('settings.html'));
+    app.get('/login', (req, res, next) => {
+        if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+        const qs = qsFromReq(req);
+        return res.redirect(302, '/login.html' + qs);
+    });
+
+    /** HTML-страницы Datagon (vanilla) без сессии не отдаём: редирект на /login.html?then=… */
+    app.use(async (req, res, next) => {
+        if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+        const raw = String(req.path || '').split('?')[0];
+        if (!raw.toLowerCase().endsWith('.html')) return next();
+        if (raw.includes('..')) return res.status(400).end();
+        if (raw.startsWith('/docs') || raw.startsWith('/architectui-react-pro')) return next();
+        const leaf = raw.slice(raw.lastIndexOf('/') + 1).toLowerCase();
+        if (leaf === 'login.html') return next();
+        try {
+            const actor = await authModule.getActor(req);
+            if (actor) return next();
+        } catch (e) {
+            return next(e);
+        }
+        const then = encodeURIComponent(String(req.originalUrl || raw || '/dashboard.html').split('#')[0]);
+        return res.redirect(302, `/login.html?then=${then}`);
+    });
 
     // Полное React-демо ArchitectUI (CRA build → public/architectui-react-pro/). SPA fallback для client routes.
     const architectuiDemoDir = path.join(__dirname, 'public', 'architectui-react-pro');

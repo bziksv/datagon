@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, shrink-to-fit=no" />
+  <title>Вход — Датагон</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <!-- ARCHITECTUI_MAIN_CSS -->
+  <style>
+    html, body {
+      min-height: 100%;
+      margin: 0;
+    }
+    body.dg-login-body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      color: #1e293b;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 16px;
+      box-sizing: border-box;
+      background-color: #0f172a;
+      background-image:
+        radial-gradient(ellipse 120% 80% at 50% -20%, rgba(47, 93, 224, 0.45), transparent 55%),
+        radial-gradient(ellipse 90% 60% at 100% 100%, rgba(30, 63, 158, 0.35), transparent 50%),
+        radial-gradient(ellipse 70% 50% at 0% 80%, rgba(143, 211, 255, 0.12), transparent 45%),
+        repeating-linear-gradient(
+          135deg,
+          rgba(255, 255, 255, 0.03) 0,
+          rgba(255, 255, 255, 0.03) 1px,
+          transparent 1px,
+          transparent 10px
+        ),
+        repeating-linear-gradient(
+          -45deg,
+          rgba(15, 23, 42, 0.5) 0,
+          rgba(15, 23, 42, 0.5) 1px,
+          transparent 1px,
+          transparent 12px
+        );
+    }
+    .dg-login-card {
+      width: 100%;
+      max-width: 420px;
+      border-radius: 16px;
+      box-shadow:
+        0 25px 50px -12px rgba(0, 0, 0, 0.45),
+        0 0 0 1px rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.97);
+      backdrop-filter: blur(12px);
+      overflow: hidden;
+    }
+    .dg-login-card__hero {
+      padding: 2rem 1.75rem 1.35rem;
+      text-align: center;
+      background: linear-gradient(160deg, #1e3a8a 0%, #2f5de0 48%, #1d4ed8 100%);
+      color: #fff;
+      position: relative;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+      box-shadow: inset 0 -12px 24px -12px rgba(15, 23, 42, 0.25);
+    }
+    .dg-login-logo {
+      width: 72px;
+      height: 72px;
+      margin: 0 auto 0.75rem;
+      display: block;
+      filter: drop-shadow(0 8px 24px rgba(0, 0, 0, 0.25));
+    }
+    .dg-login-card__hero h1 {
+      margin: 0;
+      font-size: 1.35rem;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+    .dg-login-card__hero p {
+      margin: 0.35rem 0 0;
+      font-size: 0.875rem;
+      color: rgba(255, 255, 255, 0.92);
+      text-shadow: 0 1px 2px rgba(15, 23, 42, 0.35);
+    }
+    .dg-login-card__body {
+      padding: 1.5rem 1.75rem 1.75rem;
+    }
+    .dg-login-card__body .form-label {
+      font-weight: 500;
+      font-size: 0.875rem;
+      color: #475569;
+    }
+    .dg-login-error {
+      display: none;
+      font-size: 0.875rem;
+      margin-bottom: 0.75rem;
+    }
+  </style>
+</head>
+<body class="dg-login-body">
+  <div class="dg-login-card">
+    <div class="dg-login-card__hero">
+      <img class="dg-login-logo" src="/favicon.svg" width="72" height="72" alt="" />
+      <h1>Датагон</h1>
+      <p>Войдите, чтобы продолжить</p>
+    </div>
+    <div class="dg-login-card__body">
+      <div class="alert alert-danger dg-login-error" role="alert"></div>
+      <form id="dg-login-form" autocomplete="on">
+        <div class="mb-3">
+          <label class="form-label" for="dg-login-username">Логин</label>
+          <input type="text" class="form-control form-control-lg" id="dg-login-username" name="username" autocomplete="username" required />
+        </div>
+        <div class="mb-3">
+          <label class="form-label" for="dg-login-password">Пароль</label>
+          <input type="password" class="form-control form-control-lg" id="dg-login-password" name="password" autocomplete="current-password" required />
+        </div>
+        <button type="submit" class="btn btn-primary btn-lg w-100" id="dg-login-submit">Войти</button>
+      </form>
+    </div>
+  </div>
+  <script>
+    (function () {
+      function thenPath() {
+        try {
+          var p = new URLSearchParams(window.location.search).get("then");
+          if (!p || p.indexOf("..") !== -1) return "/dashboard.html";
+          if (!p.startsWith("/")) return "/dashboard.html";
+          return p.split("#")[0];
+        } catch (e) {
+          return "/dashboard.html";
+        }
+      }
+      function meHeaders() {
+        var h = {};
+        try {
+          var u = window.localStorage.getItem("currentUser");
+          var t = window.localStorage.getItem("authToken");
+          if (u) h["x-auth-username"] = u;
+          if (t) h["x-auth-token"] = t;
+        } catch (e0) {}
+        return h;
+      }
+      fetch("/api/auth/me", { credentials: "same-origin", headers: meHeaders() })
+        .then(function (r) {
+          if (r.ok) window.location.replace(thenPath());
+        })
+        .catch(function () {});
+      var form = document.getElementById("dg-login-form");
+      var err = document.querySelector(".dg-login-error");
+      form.addEventListener("submit", function (e) {
+        e.preventDefault();
+        err.style.display = "none";
+        err.textContent = "";
+        var username = (document.getElementById("dg-login-username").value || "").trim();
+        var password = document.getElementById("dg-login-password").value || "";
+        if (!username || !password) {
+          err.textContent = "Введите логин и пароль";
+          err.style.display = "block";
+          return;
+        }
+        var btn = document.getElementById("dg-login-submit");
+        btn.disabled = true;
+        fetch("/api/auth/login", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username: username, password: password }),
+        })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok || !x.j.success) throw new Error((x.j && x.j.error) || "Ошибка входа");
+            var json = x.j;
+            try {
+              window.localStorage.setItem("isLoggedIn", "true");
+              window.localStorage.setItem("currentUser", json.username || username);
+              window.localStorage.setItem("currentUserDisplayName", json.full_name || json.username || username);
+              window.localStorage.setItem("isAdmin", json.isAdmin ? "true" : "false");
+              if (json.canManageUsers) window.localStorage.setItem("canManageUsers", "true");
+              else window.localStorage.removeItem("canManageUsers");
+              if (json.auth_token) window.localStorage.setItem("authToken", json.auth_token);
+            } catch (e2) {}
+            return fetch("/api/auth/sync-session-cookie", {
+              method: "POST",
+              credentials: "same-origin",
+              headers: Object.assign(
+                { "Content-Type": "application/json" },
+                (function () {
+                  var h = {};
+                  if (json.auth_token) h["x-auth-token"] = json.auth_token;
+                  if (json.username || username) h["x-auth-username"] = json.username || username;
+                  return h;
+                })()
+              ),
+              body: "{}",
+            }).catch(function () {});
+          })
+          .then(function () {
+            window.location.replace(thenPath());
+          })
+          .catch(function (e3) {
+            err.textContent = (e3 && e3.message) || "Ошибка входа";
+            err.style.display = "block";
+            btn.disabled = false;
+          });
+      });
+    })();
+  </script>
+</body>
+</html>

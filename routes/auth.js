@@ -53,6 +53,12 @@ module.exports = (db, appSettings = {}) => {
         if (!manageUsersCols.length) {
             await db.query('ALTER TABLE users ADD COLUMN can_manage_users TINYINT(1) NOT NULL DEFAULT 0 AFTER full_name');
         }
+        const [createdAtCols] = await db.query("SHOW COLUMNS FROM users LIKE 'created_at'");
+        if (!createdAtCols.length) {
+            await db.query(
+                'ALTER TABLE users ADD COLUMN created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP AFTER password_hash'
+            );
+        }
         await db.query(`
             UPDATE users
             SET can_manage_users = 1
@@ -225,13 +231,19 @@ module.exports = (db, appSettings = {}) => {
                     u.username,
                     u.full_name,
                     u.can_manage_users,
+                    u.created_at,
                     COALESCE((
                         SELECT COUNT(*)
                         FROM auth_sessions s
                         WHERE s.user_id = u.id
                           AND s.revoked = 0
                           AND s.expires_at > NOW()
-                    ), 0) AS active_sessions
+                    ), 0) AS active_sessions,
+                    (
+                        SELECT MAX(COALESCE(s.last_seen_at, s.created_at))
+                        FROM auth_sessions s
+                        WHERE s.user_id = u.id
+                    ) AS last_activity_at
                 FROM users u
                 ORDER BY u.username ASC
             `);
@@ -494,5 +506,5 @@ module.exports = (db, appSettings = {}) => {
         }
     });
 
-    return { router, protectDocumentationRoutes };
+    return { router, protectDocumentationRoutes, getActor };
 };

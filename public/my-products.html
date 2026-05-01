@@ -565,10 +565,47 @@
                 <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
                 <span>Фильтры и действия</span>
               </div>
-              <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mp-filters-toggle">Свернуть</button>
+              <div class="d-flex align-items-center gap-2">
+                <div class="dropdown">
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-secondary btn-shadow dg-vanilla-dropdown-toggle"
+                    style="line-height: 1; padding: 0.35rem 0.5rem"
+                    aria-expanded="false"
+                    aria-haspopup="true"
+                    id="dg-mp-filter-blocks-btn"
+                    data-dg-tooltip="Какие блоки фильтров показывать (сохраняется в браузере для текущего пользователя)"
+                  >
+                    <i class="pe-7s-config btn-icon-wrapper" style="font-size: 1.1rem" aria-hidden="true"></i>
+                  </button>
+                  <div
+                    class="dropdown-menu dropdown-menu-end rm-pointers p-0 dg-mp-filter-blocks-dropdown"
+                    id="dg-mp-filter-blocks-menu"
+                    style="width: min(340px, calc(100vw - 1.5rem))"
+                  >
+                    <div class="dropdown-menu-header mb-0">
+                      <div class="dropdown-menu-header-inner bg-tempting-azure">
+                        <div
+                          class="menu-header-image opacity-5"
+                          style="background-image: url('/assets/utils/images/dropdown-header/abstract2.jpg')"
+                        ></div>
+                        <div class="menu-header-content text-white px-3 py-2">
+                          <h5 class="menu-header-title mb-0">Блоки фильтров</h5>
+                          <h6 class="menu-header-subtitle mb-0 opacity-8 fw-normal small">Включите только то, что нужно в работе</h6>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="scroll-area-xs" style="max-height: min(360px, 55vh)">
+                      <div id="dg-mp-filter-blocks-toggles" class="list-group list-group-flush"></div>
+                    </div>
+                  </div>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mp-filters-toggle">Свернуть</button>
+              </div>
             </div>
             <div class="card-body">
               <div id="dg-mp-filters-body">
+              <div class="dg-mp-filter-block" data-dg-mp-filter-block="core">
               <div class="row g-2">
                 <div class="col-md-6">
                   <label class="form-label" for="mp-f-smart">Умный поиск</label>
@@ -595,6 +632,8 @@
                   </select>
                 </div>
               </div>
+              </div>
+              <div class="dg-mp-filter-block" data-dg-mp-filter-block="table">
               <div class="row g-2 mt-1">
                 <div class="col-md-2">
                   <label class="form-label" for="mp-tf-source_id">ID / КОД</label>
@@ -625,6 +664,8 @@
               <p class="text-muted small mb-0 mt-1">
                 «(таблица)» — быстрый отбор по уже загруженной странице; остаток и «Статус» — в блоке ниже и «Применить».
               </p>
+              </div>
+              <div class="dg-mp-filter-block" data-dg-mp-filter-block="stock_sort">
               <div class="row g-2 mt-1">
                 <div class="col-md-2">
                   <label class="form-label" for="mp-f-stock_min">Остаток от</label>
@@ -679,10 +720,12 @@
                   </select>
                 </div>
               </div>
+              </div>
               <div class="mt-2 d-flex flex-wrap gap-2">
                 <button type="button" class="btn btn-sm btn-primary" id="btn-apply" data-dg-tooltip="Применить фильтры и обновить данные. Сохраняет выбранные значения для следующего визита."><i class="pe-7s-search me-1"></i>Применить</button>
                 <button type="button" class="btn btn-sm btn-outline-secondary" id="mp-filter-default" data-dg-tooltip="Сбросить фильтры к значениям по умолчанию и очистить сохранённые настройки."><i class="pe-7s-refresh me-1"></i>По умолчанию</button>
               </div>
+              <div class="dg-mp-filter-block" data-dg-mp-filter-block="gap">
               <div class="row g-2 mt-1">
                 <div class="col-md-3 d-flex align-items-end">
                   <label class="form-check mb-0">
@@ -721,6 +764,8 @@
                   <input type="number" step="0.01" class="form-control" id="mp-f-eur_to_rub" />
                 </div>
               </div>
+              </div>
+              <div class="dg-mp-filter-block" data-dg-mp-filter-block="comp_sync">
               <div class="row g-2 mt-1">
                 <div class="col-md-2">
                   <label class="form-label" for="mp-f-comp_min">Синх. % мин</label>
@@ -732,6 +777,8 @@
                 </div>
                 <div class="col-md-8"></div>
               </div>
+              </div>
+              <div class="dg-mp-filter-block" data-dg-mp-filter-block="sync_bar">
               <div class="mt-3 d-flex flex-wrap gap-2">
                 <button type="button" class="btn btn-sm btn-outline-secondary" id="mp-btn-fx" title="Принудительно обновить валютные курсы"><i class="pe-7s-refresh-2 me-1"></i>Обновить курс</button>
                 <button type="button" class="btn btn-sm btn-outline-primary" id="mp-btn-syncall" title="Запустить синхронизацию товаров по всем сайтам"><i class="pe-7s-repeat me-1"></i>Синхронизировать все</button>
@@ -740,6 +787,7 @@
                 </span>
                 <button type="button" class="btn btn-sm btn-outline-warning" id="mp-btn-rebuild" title="Перестроить кэш связей с МойСклад"><i class="pe-7s-refresh me-1"></i>Перестроить кэш</button>
                 <button type="button" class="btn btn-sm btn-outline-dark" id="mp-btn-copy" title="Скопировать ссылку на текущую страницу с фильтрами"><i class="pe-7s-link me-1"></i>Скопировать ссылку</button>
+              </div>
               </div>
               </div>
               <p class="text-muted mb-0 mt-2" id="dg-fx-hint">FX: —</p>
@@ -2291,6 +2339,7 @@
         load();
       });
       document.getElementById("mp-filter-default").addEventListener("click", function () {
+        if (window.DatagonMyProductsFilterBlocks) window.DatagonMyProductsFilterBlocks.reset();
         if (window.DatagonFilters) window.DatagonFilters.clear("my_products");
         document.getElementById("mp-f-smart").value = "";
         apiSearch = "";
@@ -2464,6 +2513,134 @@
           });
         }
         renderColumnsPanel();
+      })();
+
+      (function mpFilterBlockVisibility() {
+        var BLOCKS = [
+          { key: "core", title: "Поиск и сайт", hint: "Умный поиск, сайт, статус, связь с МойСклад" },
+          { key: "table", title: "Поля таблицы", hint: "ID, сайт, SKU, название, валюта и подсказка" },
+          { key: "stock_sort", title: "Остаток и сортировка", hint: "Лимит, сопоставление, порядок списка" },
+          { key: "gap", title: "Расхождение цен (Δ)", hint: "Фильтр Δ и ручные курсы USD / EUR" },
+          { key: "comp_sync", title: "Синхронизация с конкурентом", hint: "Доля совпадения цен, %" },
+          { key: "sync_bar", title: "Кнопки действий", hint: "Курс, синхронизация, кэш, ссылка" },
+        ];
+        function userKey() {
+          try {
+            var u = String(localStorage.getItem("currentUser") || "guest").trim() || "guest";
+            return "datagon_my_products_filter_blocks_v1:" + u;
+          } catch (e) {
+            return "datagon_my_products_filter_blocks_v1:guest";
+          }
+        }
+        function loadState() {
+          var out = {};
+          BLOCKS.forEach(function (b) {
+            out[b.key] = true;
+          });
+          try {
+            var raw = localStorage.getItem(userKey());
+            if (!raw) return out;
+            var o = JSON.parse(raw);
+            if (!o || typeof o !== "object") return out;
+            BLOCKS.forEach(function (b) {
+              if (Object.prototype.hasOwnProperty.call(o, b.key)) out[b.key] = !!o[b.key];
+            });
+          } catch (e2) {}
+          return out;
+        }
+        function saveState(s) {
+          try {
+            localStorage.setItem(userKey(), JSON.stringify(s));
+          } catch (e) {}
+        }
+        function apply(s) {
+          BLOCKS.forEach(function (b) {
+            var on = s[b.key] !== false;
+            document.querySelectorAll('[data-dg-mp-filter-block="' + b.key + '"]').forEach(function (el) {
+              el.classList.toggle("d-none", !on);
+            });
+          });
+          mpRefreshFloatingAfterLayout();
+        }
+        var state = loadState();
+        apply(state);
+        var togglesRoot = document.getElementById("dg-mp-filter-blocks-toggles");
+        var inputsByKey = {};
+        if (togglesRoot) {
+          BLOCKS.forEach(function (b) {
+            var id = "dg-mp-fb-" + b.key;
+            var row = document.createElement("div");
+            row.className =
+              "list-group-item list-group-item-action border-0 rounded-0 px-3 py-2 d-flex justify-content-between align-items-center gap-3";
+            var textCol = document.createElement("div");
+            textCol.className = "flex-grow-1 min-w-0 pe-1";
+            textCol.style.cursor = "pointer";
+            var titleEl = document.createElement("div");
+            titleEl.className = "fw-semibold text-body";
+            titleEl.style.fontSize = "0.9375rem";
+            titleEl.style.lineHeight = "1.35";
+            titleEl.textContent = b.title;
+            textCol.appendChild(titleEl);
+            if (b.hint) {
+              var hintEl = document.createElement("div");
+              hintEl.className = "small text-muted mt-1";
+              hintEl.style.lineHeight = "1.35";
+              hintEl.textContent = b.hint;
+              textCol.appendChild(hintEl);
+            }
+            var lab = document.createElement("label");
+            lab.className = "switch mb-0 flex-shrink-0 align-self-center";
+            lab.setAttribute("for", id);
+            var inp = document.createElement("input");
+            inp.type = "checkbox";
+            inp.id = id;
+            var slider = document.createElement("span");
+            slider.className = "slider round";
+            lab.appendChild(inp);
+            lab.appendChild(slider);
+            row.appendChild(textCol);
+            row.appendChild(lab);
+            togglesRoot.appendChild(row);
+            inputsByKey[b.key] = inp;
+            inp.checked = state[b.key] !== false;
+            textCol.addEventListener("click", function () {
+              inp.click();
+            });
+            inp.addEventListener("change", function () {
+              state[b.key] = inp.checked;
+              saveState(state);
+              apply(state);
+            });
+          });
+        }
+        function syncInputsFromState() {
+          BLOCKS.forEach(function (b) {
+            var inp = inputsByKey[b.key];
+            if (inp) inp.checked = state[b.key] !== false;
+          });
+        }
+        function reloadForUser() {
+          state = loadState();
+          syncInputsFromState();
+          apply(state);
+        }
+        window.DatagonMyProductsFilterBlocks = {
+          reset: function () {
+            state = {};
+            BLOCKS.forEach(function (b) {
+              state[b.key] = true;
+            });
+            try {
+              localStorage.removeItem(userKey());
+            } catch (e3) {}
+            syncInputsFromState();
+            apply(state);
+          },
+          reloadForUser: reloadForUser,
+        };
+        window.addEventListener("datagon-profile-loaded", function () {
+          reloadForUser();
+        });
       })();
 
       (function collapse() {

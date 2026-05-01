@@ -1305,6 +1305,7 @@
         load();
       });
       document.getElementById("mp-filter-default").addEventListener("click", function () {
+        if (window.DatagonMyProductsFilterBlocks) window.DatagonMyProductsFilterBlocks.reset();
         if (window.DatagonFilters) window.DatagonFilters.clear("my_products");
         document.getElementById("mp-f-smart").value = "";
         apiSearch = "";
@@ -1478,6 +1479,134 @@
           });
         }
         renderColumnsPanel();
+      })();
+
+      (function mpFilterBlockVisibility() {
+        var BLOCKS = [
+          { key: "core", title: "Поиск и сайт", hint: "Умный поиск, сайт, статус, связь с МойСклад" },
+          { key: "table", title: "Поля таблицы", hint: "ID, сайт, SKU, название, валюта и подсказка" },
+          { key: "stock_sort", title: "Остаток и сортировка", hint: "Лимит, сопоставление, порядок списка" },
+          { key: "gap", title: "Расхождение цен (Δ)", hint: "Фильтр Δ и ручные курсы USD / EUR" },
+          { key: "comp_sync", title: "Синхронизация с конкурентом", hint: "Доля совпадения цен, %" },
+          { key: "sync_bar", title: "Кнопки действий", hint: "Курс, синхронизация, кэш, ссылка" },
+        ];
+        function userKey() {
+          try {
+            var u = String(localStorage.getItem("currentUser") || "guest").trim() || "guest";
+            return "datagon_my_products_filter_blocks_v1:" + u;
+          } catch (e) {
+            return "datagon_my_products_filter_blocks_v1:guest";
+          }
+        }
+        function loadState() {
+          var out = {};
+          BLOCKS.forEach(function (b) {
+            out[b.key] = true;
+          });
+          try {
+            var raw = localStorage.getItem(userKey());
+            if (!raw) return out;
+            var o = JSON.parse(raw);
+            if (!o || typeof o !== "object") return out;
+            BLOCKS.forEach(function (b) {
+              if (Object.prototype.hasOwnProperty.call(o, b.key)) out[b.key] = !!o[b.key];
+            });
+          } catch (e2) {}
+          return out;
+        }
+        function saveState(s) {
+          try {
+            localStorage.setItem(userKey(), JSON.stringify(s));
+          } catch (e) {}
+        }
+        function apply(s) {
+          BLOCKS.forEach(function (b) {
+            var on = s[b.key] !== false;
+            document.querySelectorAll('[data-dg-mp-filter-block="' + b.key + '"]').forEach(function (el) {
+              el.classList.toggle("d-none", !on);
+            });
+          });
+          mpRefreshFloatingAfterLayout();
+        }
+        var state = loadState();
+        apply(state);
+        var togglesRoot = document.getElementById("dg-mp-filter-blocks-toggles");
+        var inputsByKey = {};
+        if (togglesRoot) {
+          BLOCKS.forEach(function (b) {
+            var id = "dg-mp-fb-" + b.key;
+            var row = document.createElement("div");
+            row.className =
+              "list-group-item list-group-item-action border-0 rounded-0 px-3 py-2 d-flex justify-content-between align-items-center gap-3";
+            var textCol = document.createElement("div");
+            textCol.className = "flex-grow-1 min-w-0 pe-1";
+            textCol.style.cursor = "pointer";
+            var titleEl = document.createElement("div");
+            titleEl.className = "fw-semibold text-body";
+            titleEl.style.fontSize = "0.9375rem";
+            titleEl.style.lineHeight = "1.35";
+            titleEl.textContent = b.title;
+            textCol.appendChild(titleEl);
+            if (b.hint) {
+              var hintEl = document.createElement("div");
+              hintEl.className = "small text-muted mt-1";
+              hintEl.style.lineHeight = "1.35";
+              hintEl.textContent = b.hint;
+              textCol.appendChild(hintEl);
+            }
+            var lab = document.createElement("label");
+            lab.className = "switch mb-0 flex-shrink-0 align-self-center";
+            lab.setAttribute("for", id);
+            var inp = document.createElement("input");
+            inp.type = "checkbox";
+            inp.id = id;
+            var slider = document.createElement("span");
+            slider.className = "slider round";
+            lab.appendChild(inp);
+            lab.appendChild(slider);
+            row.appendChild(textCol);
+            row.appendChild(lab);
+            togglesRoot.appendChild(row);
+            inputsByKey[b.key] = inp;
+            inp.checked = state[b.key] !== false;
+            textCol.addEventListener("click", function () {
+              inp.click();
+            });
+            inp.addEventListener("change", function () {
+              state[b.key] = inp.checked;
+              saveState(state);
+              apply(state);
+            });
+          });
+        }
+        function syncInputsFromState() {
+          BLOCKS.forEach(function (b) {
+            var inp = inputsByKey[b.key];
+            if (inp) inp.checked = state[b.key] !== false;
+          });
+        }
+        function reloadForUser() {
+          state = loadState();
+          syncInputsFromState();
+          apply(state);
+        }
+        window.DatagonMyProductsFilterBlocks = {
+          reset: function () {
+            state = {};
+            BLOCKS.forEach(function (b) {
+              state[b.key] = true;
+            });
+            try {
+              localStorage.removeItem(userKey());
+            } catch (e3) {}
+            syncInputsFromState();
+            apply(state);
+          },
+          reloadForUser: reloadForUser,
+        };
+        window.addEventListener("datagon-profile-loaded", function () {
+          reloadForUser();
+        });
       })();
 
       (function collapse() {

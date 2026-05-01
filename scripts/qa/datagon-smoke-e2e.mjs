@@ -45,33 +45,6 @@ async function ensurePlaywright() {
     }
 }
 
-async function loginViaApi(page) {
-    const ok = await page.evaluate(
-        async ({ origin, user, password }) => {
-            try {
-                const res = await fetch(`${origin}/api/auth/login`, {
-                    method: 'POST',
-                    credentials: 'include',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username: user, password })
-                });
-                const data = await res.json();
-                if (!data.success) return { ok: false, error: data.error || 'login failed' };
-                localStorage.setItem('isLoggedIn', 'true');
-                if (data.username) localStorage.setItem('currentUser', data.username);
-                localStorage.setItem('currentUserDisplayName', data.full_name || data.username || '');
-                localStorage.setItem('isAdmin', data.isAdmin ? 'true' : 'false');
-                if (data.auth_token) localStorage.setItem('authToken', data.auth_token);
-                return { ok: true };
-            } catch (e) {
-                return { ok: false, error: e.message };
-            }
-        },
-        { origin: baseUrl, user, password }
-    );
-    return ok;
-}
-
 async function main() {
     const chromium = await ensurePlaywright();
     let browser;
@@ -92,21 +65,22 @@ async function main() {
     });
     const page = await context.newPage();
 
-    const boot = `${baseUrl}/dashboard.html`;
-    await page.goto(boot, { waitUntil: 'domcontentloaded', timeout: 60000 });
-
     if (user && password) {
-        const r = await loginViaApi(page);
-        if (!r.ok) {
-            console.error('Вход API не удался:', r.error || 'unknown');
-            await browser.close();
-            process.exit(1);
-        }
-        console.log('OK login via API');
+        await page.goto(`${baseUrl}/login.html?then=/dashboard.html`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+        await page.locator('#dg-login-username').fill(user);
+        await page.locator('#dg-login-password').fill(password);
+        await page.locator('#dg-login-form').evaluate((f) => f.requestSubmit());
+        await page.waitForURL(/dashboard\.html/i, { timeout: 60000 });
+        console.log('OK login через страницу /login.html');
     } else {
+        await page.goto(`${baseUrl}/login.html`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+        await page.getByRole('heading', { name: /Датагон/i }).first().waitFor({ state: 'visible', timeout: 30000 });
         console.warn(
-            'DATAGON_SMOKE_USER / DATAGON_SMOKE_PASSWORD не заданы — проверяем только shell UI (данные API могут не подтянуться).'
+            'DATAGON_SMOKE_USER / DATAGON_SMOKE_PASSWORD не заданы — проверена только страница входа (остальные сценарии пропущены).'
         );
+        await browser.close();
+        console.log('\nГотово: страница входа доступна.');
+        return;
     }
 
     let failed = 0;

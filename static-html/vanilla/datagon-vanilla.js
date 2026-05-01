@@ -224,6 +224,16 @@
     });
   }
 
+  function redirectVanillaToLogin() {
+    try {
+      var path = window.location.pathname + (window.location.search || "");
+      if (/login\.html/i.test(path)) return;
+      window.location.replace("/login.html?then=" + encodeURIComponent(path || "/dashboard.html"));
+    } catch (e) {
+      window.location.replace("/login.html");
+    }
+  }
+
   function performVanillaLogout() {
     fetch("/api/auth/logout", {
       method: "POST",
@@ -239,8 +249,10 @@
           window.localStorage.removeItem("currentUserDisplayName");
           window.localStorage.removeItem("isAdmin");
           window.localStorage.removeItem("isLoggedIn");
+          window.localStorage.removeItem("canManageUsers");
         } catch (e) {}
-        window.location.replace("/sections.html");
+        setUserUi("Гость", false);
+        redirectVanillaToLogin();
       });
   }
 
@@ -255,6 +267,11 @@
         });
       })
       .then(function (x) {
+        var st = x.r.status;
+        if (st === 401 || st === 403) {
+          redirectVanillaToLogin();
+          return;
+        }
         if (!x.r.ok || !x.j || !x.j.success) return;
         var username = String(x.j.username || "").trim();
         var fullName = String(x.j.full_name || "").trim() || username || fromStorage;
@@ -263,6 +280,11 @@
         if (fullName) window.localStorage.setItem("currentUserDisplayName", fullName);
         window.localStorage.setItem("isAdmin", isAdmin ? "true" : "false");
         setUserUi(fullName || "Пользователь", isAdmin);
+        try {
+          window.dispatchEvent(
+            new CustomEvent("datagon-profile-loaded", { detail: { username: username, isAdmin: isAdmin } })
+          );
+        } catch (eEv) {}
       })
       .catch(function () {});
   }
@@ -1046,15 +1068,26 @@
   loadCurrentUserProfile();
   loadOnlineUsers();
 
-  var logoutBtn = document.querySelector(".dg-vanilla-logout");
-  if (logoutBtn) {
-    logoutBtn.addEventListener("click", function (e) {
+  c.addEventListener(
+    "click",
+    function (e) {
+      var t = e.target;
+      if (!t || !t.closest) return;
+      var logoutBtn = t.closest(".dg-vanilla-logout");
+      if (!logoutBtn) return;
       e.preventDefault();
       e.stopPropagation();
       closeAllDropdowns();
       performVanillaLogout();
-    });
-  }
+    },
+    true
+  );
+
+  window.DatagonAuth = {
+    showLogin: function () {
+      redirectVanillaToLogin();
+    },
+  };
 
   /**
    * Сохранение значений форм фильтров по странице (per currentUser из localStorage).
