@@ -712,6 +712,10 @@ module.exports = (db, settings) => {
                 const cn = compPrices.length;
                 compNormNames = new Array(cn);
                 for (let ci = 0; ci < cn; ci += 1) {
+                    if ((ci & 4095) === 0 && cancelledJobs.has(jobId)) {
+                        await completeCancellation(compPos, productStart);
+                        return { matches: [], count: totalMatchesSaved };
+                    }
                     compNormNames[ci] = normalizeText(compPrices[ci].product_name);
                     if (ci > 0 && (ci & 4095) === 0) {
                         await new Promise((r) => setImmediate(r));
@@ -763,11 +767,12 @@ module.exports = (db, settings) => {
                 if ((mode === 'all' || mode === 'name') && matchType !== 'sku' && normMyName.length > 3 && compNormNames) {
                     const nComp = compNormNames.length;
                     for (let ni = 0; ni < nComp; ni += 1) {
-                        if ((ni & 127) === 0 && cancelledJobs.has(jobId)) {
+                        // Отмена на каждой строке: иначе до 128× тяжёлого Levenshtein без проверки — «Остановить» висит.
+                        if (cancelledJobs.has(jobId)) {
                             await completeCancellation(compPos, pIdx);
                             return { matches: [], count: totalMatchesSaved };
                         }
-                        if ((ni & 1023) === 0) {
+                        if ((ni & 255) === 0) {
                             await new Promise((r) => setImmediate(r));
                             const now = Date.now();
                             if (now - lastNameInnerHeartbeatMs >= NAME_MATCH_INNER_HEARTBEAT_MS) {
