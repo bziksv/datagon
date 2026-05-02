@@ -238,6 +238,22 @@ module.exports = (db, settings) => {
     let perfIndexesReady = false;
     let matchAuditColumnsReady = false;
     let productMatchesOptionalColsReady = false;
+    let matchJobPhasesColReady = false;
+
+    async function ensureMatchingJobPhasesColumn() {
+        if (matchJobPhasesColReady) return;
+        try {
+            const [rows] = await db.query(
+                `SELECT 1 FROM information_schema.COLUMNS
+                 WHERE TABLE_SCHEMA = DATABASE()
+                   AND TABLE_NAME = 'matching_jobs'
+                   AND COLUMN_NAME = 'phases_json'
+                 LIMIT 1`
+            );
+            if (!rows.length) await db.query('ALTER TABLE matching_jobs ADD COLUMN phases_json LONGTEXT NULL');
+        } catch (_) {}
+        matchJobPhasesColReady = true;
+    }
 
     async function ensureProductMatchesOptionalCols() {
         if (productMatchesOptionalColsReady) return;
@@ -506,19 +522,52 @@ module.exports = (db, settings) => {
         mode = sanitizeMatchingMode(mode);
         await ensureProductMatchesOptionalCols();
         await ensureMatchesPerfIndexes();
+        await ensureMatchingJobPhasesColumn();
+        const jobPhases = [];
+        async function persistPhases() {
+            await updateJob(jobId, { phases_json: JSON.stringify(jobPhases) });
+        }
+        async function phaseStart(key, title, meta) {
+            jobPhases.push({
+                key: String(key || ''),
+                title: String(title || key || ''),
+                startedAt: new Date().toISOString(),
+                endedAt: null,
+                durationMs: null,
+                meta: meta && typeof meta === 'object' ? meta : {}
+            });
+            await persistPhases();
+        }
+        async function phaseEnd(result) {
+            const p = jobPhases[jobPhases.length - 1];
+            if (!p || p.endedAt) return;
+            const end = new Date();
+            p.endedAt = end.toISOString();
+            p.durationMs = Math.max(0, end.getTime() - new Date(p.startedAt).getTime());
+            p.result = { ...(p.result || {}), ...(result && typeof result === 'object' ? result : {}) };
+            await persistPhases();
+        }
+
         await updateJob(jobId, { message: 'Подготовка...' });
         await addJobLog(jobId, 'Подготовка данных');
+        await phaseStart('prepare', 'Подготовка данных', { mode, threshold, resumeMode, mySiteId });
         if (!resumeMode) {
             await db.query('DELETE FROM product_matches WHERE my_site_id = ? AND status = "pending"', [mySiteId]);
         } else {
             await addJobLog(jobId, 'Режим продолжения: pending-результаты не очищаются');
         }
+        await phaseEnd({ clearedPending: !resumeMode });
+        await phaseStart('load_my_products', 'Загрузка моих товаров', {
+            productSearch: String(productSearch || '').trim().slice(0, 160),
+            byIds: Boolean(Array.isArray(productIds) && productIds.length > 0)
+        });
         await updateJob(jobId, { message: 'Загрузка моих активных товаров...' });
 
         let myProducts = [];
         if (Array.isArray(productIds) && productIds.length > 0) {
             const ids = productIds.map((x) => parseInt(x, 10)).filter(Number.isFinite);
             if (ids.length === 0) {
+                await phaseEnd({ error: 'no_valid_product_ids' });
                 return { matches: [], count: 0 };
             }
             const placeholders = ids.map(() => '?').join(',');
@@ -528,6 +577,7 @@ module.exports = (db, settings) => {
             );
             myProducts = rows;
             await addJobLog(jobId, `Загружено выбранных товаров: ${myProducts.length}`);
+            await phaseEnd({ source: 'selected_ids', count: myProducts.length });
         } else {
             const hasSearch = String(productSearch || '').trim().length > 0;
             const t0 = Date.now();
@@ -579,9 +629,15 @@ module.exports = (db, settings) => {
                 }
             }
             await addJobLog(jobId, `Загрузка моих товаров завершена за ${Math.round((Date.now() - t0) / 1000)}с`);
+            await phaseEnd({
+                source: String(productSearch || '').trim().length > 0 ? 'smart_filter' : 'all_active',
+                count: myProducts.length,
+                durationSec: Math.round((Date.now() - t0) / 1000)
+            });
         }
 
         if (resumeMode) {
+            await phaseStart('resume_filter', 'Фильтр продолжения (уже сопоставленные)', { competitorIds });
             const placeholders = competitorIds.map(() => '?').join(',');
             const [existing] = await db.query(
                 `SELECT DISTINCT my_sku, my_product_name
@@ -599,6 +655,7 @@ module.exports = (db, settings) => {
                 return !matchedKeys.has(key);
             });
             await addJobLog(jobId, `Продолжение: пропущено уже обработанных ${before - myProducts.length}, осталось ${myProducts.length}`);
+            await phaseEnd({ before, after: myProducts.length, skipped: before - myProducts.length });
         }
 
         if (myProducts.length === 0) {
@@ -607,6 +664,7 @@ module.exports = (db, settings) => {
                 processed: 0,
                 total: 0,
                 found: 0,
+                phases_json: JSON.stringify(jobPhases),
                 message: 'Нет активных товаров для сопоставления',
                 finished_at: new Date()
             });
@@ -658,12 +716,20 @@ module.exports = (db, settings) => {
         }
 
         async function completeCancellation(compPos, pIdx) {
+            const pl = jobPhases[jobPhases.length - 1];
+            if (pl && !pl.endedAt) {
+                pl.endedAt = new Date().toISOString();
+                pl.durationMs = Math.max(0, new Date(pl.endedAt).getTime() - new Date(pl.startedAt).getTime());
+                pl.result = { ...(pl.result || {}), userCancelled: true };
+                await persistPhases();
+            }
             await flushPendingMatches();
             await updateJob(jobId, {
                 status: 'cancelled',
                 processed: resumeProcessedBase + processed,
                 checkpoint_comp_index: compPos,
                 checkpoint_product_index: pIdx,
+                phases_json: JSON.stringify(jobPhases),
                 message: 'Остановлено пользователем',
                 finished_at: new Date()
             });
@@ -679,6 +745,7 @@ module.exports = (db, settings) => {
                 return { matches: [], count: totalMatchesSaved };
             }
             await updateJob(jobId, { message: `Загрузка товаров конкурента #${compId}...` });
+            await phaseStart(`c${compId}_prices`, `Конкурент ${compId}: загрузка прайса (SQL)`, { compId });
             const [compPrices] = await db.query(`
                 SELECT p.sku, p.product_name, p.price, p.currency, p.url, pr.domain as project_domain,
                        MAX(p.parsed_at) AS parsed_at
@@ -688,6 +755,7 @@ module.exports = (db, settings) => {
                 GROUP BY p.sku, p.product_name, p.price, p.currency, p.url, pr.domain
                 ORDER BY MAX(p.parsed_at) DESC
             `, [compId]);
+            await phaseEnd({ priceRows: compPrices.length });
 
             if (compPrices.length === 0) {
                 await addJobLog(jobId, `Конкурент ${compId}: нет данных цен`);
@@ -696,6 +764,7 @@ module.exports = (db, settings) => {
                 continue;
             }
 
+            await phaseStart(`c${compId}_index`, `Конкурент ${compId}: индексация прайса`, { compId, mode });
             let skuLookupStrict = null;
             let skuLookupNormFirst = null;
             let skuLookupNormBest = null;
@@ -722,6 +791,25 @@ module.exports = (db, settings) => {
                     }
                 }
             }
+
+            await phaseEnd({
+                normNameRows: compNormNames ? compNormNames.length : 0,
+                skuMap:
+                    mode === 'all' || mode === 'sku'
+                        ? 'strict'
+                        : mode === 'sku_norm'
+                            ? 'norm_first'
+                            : mode === 'sku_best'
+                                ? 'norm_best'
+                                : 'none'
+            });
+
+            const foundSkuAtComp = foundSku;
+            const foundNameAtComp = foundName;
+            await phaseStart(`c${compId}_match`, `Конкурент ${compId}: сопоставление`, {
+                compId,
+                productsToScan: myProducts.length - productStart
+            });
 
             let batchProcessedForCompetitor = 0;
             for (let pIdx = productStart; pIdx < myProducts.length; pIdx += 1) {
@@ -864,10 +952,17 @@ module.exports = (db, settings) => {
                     }
                 }
             }
+            await phaseEnd({
+                productsScanned: batchProcessedForCompetitor,
+                newMatchesSku: foundSku - foundSkuAtComp,
+                newMatchesName: foundName - foundNameAtComp
+            });
         }
 
+        await phaseStart('finalize', 'Сохранение результатов в БД', {});
         await updateJob(jobId, { message: 'Сохранение результатов...', processed: resumeProcessedBase + totalSteps });
         await flushPendingMatches();
+        await phaseEnd({ totalMatchesSaved });
         await updateJob(jobId, {
             status: 'completed',
             processed: resumeProcessedBase + totalSteps,
@@ -876,6 +971,7 @@ module.exports = (db, settings) => {
             found: totalMatchesSaved,
             found_sku: foundSku,
             found_name: foundName,
+            phases_json: JSON.stringify(jobPhases),
             message: `Готово. Найдено: ${totalMatchesSaved}`,
             finished_at: new Date()
         });
@@ -1116,11 +1212,19 @@ module.exports = (db, settings) => {
                     processed: 0,
                     total: 0,
                     found: 0,
+                    phases: [],
                     logs: [],
                     message: 'Нет задач'
                 });
             }
             const job = jobs[0];
+            let phases = [];
+            try {
+                phases = job.phases_json ? JSON.parse(job.phases_json) : [];
+                if (!Array.isArray(phases)) phases = [];
+            } catch (_) {
+                phases = [];
+            }
             const [logs] = await db.query(
                 'SELECT message, created_at FROM matching_job_logs WHERE job_id = ? ORDER BY id DESC LIMIT 20',
                 [job.id]
@@ -1136,6 +1240,7 @@ module.exports = (db, settings) => {
                 foundSku: job.found_sku || 0,
                 foundName: job.found_name || 0,
                 message: job.message || '',
+                phases,
                 logs: logs.map((l) => {
                     const t = new Date(l.created_at).toLocaleTimeString('ru-RU');
                     return `[${t}] ${l.message}`;

@@ -260,6 +260,7 @@ async function initDB() {
             my_site_id INT NOT NULL,
             status VARCHAR(20) NOT NULL DEFAULT 'running',
             params_json LONGTEXT,
+            phases_json LONGTEXT NULL,
             checkpoint_comp_index INT NOT NULL DEFAULT 0,
             checkpoint_product_index INT NOT NULL DEFAULT 0,
             processed INT NOT NULL DEFAULT 0,
@@ -329,6 +330,16 @@ async function initDB() {
         `, [config.db.database]);
         if (!foundNameCol[0]?.cnt) {
             await db.query('ALTER TABLE matching_jobs ADD COLUMN found_name INT NOT NULL DEFAULT 0');
+        }
+        const [phasesJsonCol] = await db.query(`
+            SELECT COUNT(*) AS cnt
+            FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = ?
+              AND TABLE_NAME = 'matching_jobs'
+              AND COLUMN_NAME = 'phases_json'
+        `, [config.db.database]);
+        if (!phasesJsonCol[0]?.cnt) {
+            await db.query('ALTER TABLE matching_jobs ADD COLUMN phases_json LONGTEXT NULL');
         }
         const [buyPriceCol] = await db.query(`
             SELECT COUNT(*) AS cnt
@@ -878,6 +889,7 @@ initDB().then(() => {
                 foundSku: 0,
                 foundName: 0,
                 message: effectiveSiteId ? 'Нет задач' : 'Нет доступных сайтов',
+                phases: [],
                 logs: [],
                 canRetry: false
             };
@@ -893,6 +905,13 @@ initDB().then(() => {
                         'SELECT message, created_at FROM matching_job_logs WHERE job_id = ? ORDER BY id DESC LIMIT 20',
                         [job.id]
                     );
+                    let matchPhases = [];
+                    try {
+                        matchPhases = job.phases_json ? JSON.parse(job.phases_json) : [];
+                        if (!Array.isArray(matchPhases)) matchPhases = [];
+                    } catch (_) {
+                        matchPhases = [];
+                    }
                     matches = {
                         mySiteId: effectiveSiteId,
                         active: job.status === 'running',
@@ -904,6 +923,7 @@ initDB().then(() => {
                         foundSku: Number(job.found_sku || 0),
                         foundName: Number(job.found_name || 0),
                         message: job.message || '',
+                        phases: matchPhases,
                         logs: logs.map((l) => {
                             const t = new Date(l.created_at).toLocaleTimeString('ru-RU');
                             return `[${t}] ${l.message}`;

@@ -778,7 +778,10 @@
               <div><b>Сообщение:</b> <span id="dg-proc-m-msg">—</span></div>
               <div><b>Прогресс:</b> <span id="dg-proc-m-prog">0/0</span>, найдено: <span id="dg-proc-m-found">0</span></div>
               <div><b>SKU:</b> <span id="dg-proc-m-sku">0</span> | <b>Name:</b> <span id="dg-proc-m-name">0</span></div>
-              <div class="small text-muted mt-2" id="dg-proc-m-logs"></div>
+              <div class="mt-3"><b>Этапы (алгоритмы):</b></div>
+              <div class="small text-muted" id="dg-proc-m-phases"></div>
+              <div class="small text-muted mt-2"><b>Журнал:</b></div>
+              <div class="small text-muted" id="dg-proc-m-logs"></div>
             </div>
           </div>
 
@@ -953,6 +956,47 @@
         var d = new Date(v);
         if (isNaN(d.getTime())) return String(v);
         return d.toLocaleDateString("ru-RU") + " " + d.toLocaleTimeString("ru-RU");
+      }
+
+      function fmtDurationMs(ms) {
+        if (ms == null || ms === "") return "—";
+        var n = Number(ms);
+        if (!isFinite(n) || n < 0) return "—";
+        if (n < 1000) return Math.round(n) + " мс";
+        var sec = Math.round(n / 1000);
+        if (sec < 120) return sec + " с";
+        var min = Math.floor(sec / 60);
+        var s2 = sec % 60;
+        return min + " мин " + s2 + " с";
+      }
+
+      function summarizeMatchPhaseResult(r) {
+        if (!r || typeof r !== "object") return "";
+        var bits = [];
+        if (r.clearedPending === true) bits.push("очищен pending");
+        if (r.clearedPending === false) bits.push("pending не очищали (продолжение)");
+        if (r.count != null) bits.push("загружено товаров " + fmtNum(r.count));
+        if (r.source) bits.push("источник: " + r.source);
+        if (r.durationSec != null) bits.push("за " + r.durationSec + " с");
+        if (r.skipped != null) bits.push("отфильтровано " + fmtNum(r.skipped));
+        if (r.remaining != null) bits.push("осталось " + fmtNum(r.remaining));
+        if (r.priceRows != null) bits.push("строк прайса " + fmtNum(r.priceRows));
+        if (r.normNameRows != null) bits.push("нормализаций имён " + fmtNum(r.normNameRows));
+        if (r.skuMap && r.skuMap !== "none") bits.push("индекс SKU: " + r.skuMap);
+        if (r.productsScanned != null) bits.push("обработано позиций " + fmtNum(r.productsScanned));
+        if (r.newMatchesSku != null) bits.push("+совп. SKU " + fmtNum(r.newMatchesSku));
+        if (r.newMatchesName != null) bits.push("+совп. по имени " + fmtNum(r.newMatchesName));
+        if (r.totalMatchesSaved != null) bits.push("вставлено строк " + fmtNum(r.totalMatchesSaved));
+        if (r.userCancelled) bits.push("остановка пользователя");
+        if (r.error) bits.push("ошибка: " + r.error);
+        if (!bits.length) {
+          try {
+            return JSON.stringify(r);
+          } catch (e2) {
+            return "";
+          }
+        }
+        return bits.join(", ");
       }
 
       function authHeaders() {
@@ -1377,6 +1421,63 @@
         document.getElementById("dg-proc-m-found").textContent = fmtNum(matches.found);
         document.getElementById("dg-proc-m-sku").textContent = fmtNum(matches.foundSku);
         document.getElementById("dg-proc-m-name").textContent = fmtNum(matches.foundName);
+        var mPh = document.getElementById("dg-proc-m-phases");
+        if (mPh) {
+          mPh.replaceChildren();
+          var phases = Array.isArray(matches.phases) ? matches.phases : [];
+          var nlow = needle.toLowerCase();
+          var filteredPh = phases.filter(function (ph) {
+            if (!needle) return true;
+            var hay = (
+              String(ph.title || "") +
+              " " +
+              String(ph.key || "") +
+              " " +
+              summarizeMatchPhaseResult(ph.result)
+            ).toLowerCase();
+            return hay.indexOf(nlow) !== -1;
+          });
+          if (!filteredPh.length) {
+            var em = document.createElement("div");
+            em.className = "text-muted fst-italic";
+            em.textContent = phases.length
+              ? "Нет этапов по текущему фильтру — измените умный поиск."
+              : "Этапы появятся после нового запуска сопоставления (в старых задачах phases_json не было).";
+            mPh.appendChild(em);
+          } else {
+            filteredPh.forEach(function (ph) {
+              var row = document.createElement("div");
+              row.className = "mb-2 pb-2 border-bottom border-light";
+              var t0 = document.createElement("div");
+              t0.appendChild(document.createTextNode("▸ "));
+              var tb = document.createElement("b");
+              tb.textContent = ph.title || ph.key || "этап";
+              t0.appendChild(tb);
+              row.appendChild(t0);
+              var meta = document.createElement("div");
+              meta.className = "ms-3 text-muted";
+              var st = fmtDateTime(ph.startedAt);
+              var en = ph.endedAt ? fmtDateTime(ph.endedAt) : "… ещё выполняется";
+              var dur =
+                ph.durationMs != null
+                  ? fmtDurationMs(ph.durationMs)
+                  : ph.endedAt
+                    ? "—"
+                    : "—";
+              meta.textContent =
+                "Старт: " + st + " · Финиш: " + en + " · Длительность: " + dur;
+              row.appendChild(meta);
+              var rs = summarizeMatchPhaseResult(ph.result);
+              if (rs) {
+                var rr = document.createElement("div");
+                rr.className = "ms-3 mt-1";
+                rr.textContent = "Итог: " + rs;
+                row.appendChild(rr);
+              }
+              mPh.appendChild(row);
+            });
+          }
+        }
         var mLogs = document.getElementById("dg-proc-m-logs");
         mLogs.replaceChildren();
         (Array.isArray(matches.logs) ? matches.logs : [])
