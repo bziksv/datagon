@@ -16,6 +16,248 @@
         return d.toLocaleDateString("ru-RU") + " " + d.toLocaleTimeString("ru-RU");
       }
 
+      function authHeaders() {
+        var h = {};
+        try {
+          var u = localStorage.getItem("currentUser");
+          var t = localStorage.getItem("authToken");
+          if (u) h["x-auth-username"] = u;
+          if (t) h["x-auth-token"] = t;
+        } catch (e0) {}
+        return h;
+      }
+
+      var actOffset = 0;
+      var actLimit = 35;
+      var actTotal = 0;
+      var actPageLabelMap = {};
+
+      function kindClass(k) {
+        if (k === "login") return "dg-act-login";
+        if (k === "logout") return "dg-act-logout";
+        if (k === "page_view") return "dg-act-page";
+        if (k === "click") return "dg-act-click";
+        if (k === "ui") return "dg-act-ui";
+        return "";
+      }
+
+      function kindTitle(k) {
+        if (k === "login") return "Вход";
+        if (k === "logout") return "Выход";
+        if (k === "page_view") return "Раздел";
+        if (k === "click") return "Действие";
+        if (k === "ui") return "Запись";
+        return k || "Событие";
+      }
+
+      function fillActUserSelect(users) {
+        var sel = document.getElementById("dg-act-user");
+        if (!sel) return;
+        var prev = sel.value;
+        sel.innerHTML = '<option value="">Все пользователи</option>';
+        (users || []).forEach(function (u) {
+          var o = document.createElement("option");
+          o.value = String(u.id);
+          o.textContent = (u.full_name || u.username || "#" + u.id).trim();
+          sel.appendChild(o);
+        });
+        if (prev && [].some.call(sel.options, function (x) { return x.value === prev; })) sel.value = prev;
+      }
+
+      function fillActPageOptions(pageOptions) {
+        var sel = document.getElementById("dg-act-section");
+        if (!sel) return;
+        actPageLabelMap = {};
+        var prev = sel.value;
+        sel.innerHTML = '<option value="">Все разделы</option>';
+        (pageOptions || []).forEach(function (p) {
+          var val = String((p && p.value) != null ? p.value : "").trim();
+          var lab = String((p && p.label) != null ? p.label : val).trim();
+          if (!val) return;
+          actPageLabelMap[val] = lab;
+          var o = document.createElement("option");
+          o.value = val;
+          o.textContent = lab.length > 64 ? lab.slice(0, 62) + "…" : lab;
+          sel.appendChild(o);
+        });
+        if (prev && [].some.call(sel.options, function (x) { return x.value === prev; })) sel.value = prev;
+      }
+
+      function renderActivityRows(rows) {
+        var mount = document.getElementById("dg-act-list");
+        if (!mount) return;
+        mount.replaceChildren();
+        if (!rows || !rows.length) {
+          document.getElementById("dg-act-empty").style.display = "";
+          return;
+        }
+        document.getElementById("dg-act-empty").style.display = "none";
+        rows.forEach(function (r) {
+          var wrap = document.createElement("div");
+          wrap.className = "dg-act-item " + kindClass(r.kind);
+          var head = document.createElement("div");
+          head.className = "d-flex flex-wrap align-items-center gap-2 mb-1";
+          var badge = document.createElement("span");
+          badge.className = "badge bg-light text-dark border dg-act-badge";
+          badge.textContent = kindTitle(r.kind);
+          var who = document.createElement("strong");
+          who.textContent = (r.full_name || r.username || "Пользователь #" + r.user_id).trim();
+          var when = document.createElement("span");
+          when.className = "text-muted small ms-auto";
+          when.textContent = fmtDateTime(r.created_at);
+          head.appendChild(badge);
+          head.appendChild(who);
+          head.appendChild(when);
+          var title = document.createElement("div");
+          title.className = "fw-semibold";
+          title.textContent = r.label || "—";
+          var sub = document.createElement("div");
+          sub.className = "small text-muted";
+          var bits = [];
+          if (r.section) bits.push("раздел: " + (actPageLabelMap[r.section] || r.section));
+          if (r.detail) {
+            try {
+              var o = JSON.parse(r.detail);
+              if (o && typeof o === "object") {
+                if (o.action === "user_create") {
+                  if (o.username) bits.push("логин: «" + String(o.username) + "»");
+                  if (o.full_name) bits.push(String(o.full_name));
+                } else if (o.action === "user_delete") {
+                  if (o.username) bits.push("удалён логин: «" + String(o.username) + "»");
+                  if (o.full_name) bits.push(String(o.full_name));
+                } else if (o.action === "matching_start" || o.action === "matching_retry") {
+                  if (o.job_id != null) bits.push("задача #" + String(o.job_id));
+                  if (o.site_label) bits.push(String(o.site_label));
+                  if (o.product_search) bits.push("фильтр: «" + String(o.product_search).slice(0, 80) + "»");
+                  if (o.product_ids_count) bits.push("в задаче товаров: " + String(o.product_ids_count));
+                  if (o.products_preview && o.products_preview.length) {
+                    bits.push(
+                      "пример: " +
+                        o.products_preview
+                          .slice(0, 4)
+                          .map(function (p) {
+                            return "#" + p.id + " " + String(p.sku || "").slice(0, 28);
+                          })
+                          .join(", ")
+                    );
+                  }
+                } else if (o.action === "sync_price_from_competitor") {
+                  var nm0 = o.name ? String(o.name).slice(0, 100) : "";
+                  var sk0 = o.sku ? String(o.sku).slice(0, 64) : "";
+                  if (nm0) bits.push(nm0);
+                  if (sk0) bits.push("SKU «" + sk0 + "»");
+                  if (o.new_price != null && o.new_price !== "")
+                    bits.push("новая цена: " + String(o.new_price) + " " + String(o.currency || "").trim());
+                  if (o.competitor_source) bits.push("конкурент: " + String(o.competitor_source));
+                  if (o.random_range_pct) bits.push("диапазон %: " + String(o.random_range_pct));
+                } else if (o.action === "my_product_refresh_cms") {
+                  if (o.name) bits.push(String(o.name).slice(0, 100));
+                  if (o.sku) bits.push("SKU «" + String(o.sku).slice(0, 64) + "»");
+                  if (o.site_id != null) bits.push("сайт #" + String(o.site_id));
+                  if (o.source_id) bits.push("source_id: " + String(o.source_id).slice(0, 48));
+                } else {
+                  if (r.kind === "page_view" && o.path) bits.push("адрес: " + String(o.path));
+                  if (o.text) bits.push("«" + String(o.text).slice(0, 120) + "»");
+                  if (o.tag) bits.push(String(o.tag).toLowerCase());
+                }
+              }
+            } catch (eJ) {
+              bits.push(String(r.detail).slice(0, 160));
+            }
+          }
+          sub.textContent = bits.join(" · ");
+          wrap.appendChild(head);
+          wrap.appendChild(title);
+          if (bits.length) wrap.appendChild(sub);
+          mount.appendChild(wrap);
+        });
+      }
+
+      function syncActPager() {
+        var pg = document.getElementById("dg-act-pager");
+        var hint = document.getElementById("dg-act-page-hint");
+        if (!pg || !hint) return;
+        if (actTotal <= actLimit) {
+          pg.style.display = "none";
+          return;
+        }
+        pg.style.display = "flex";
+        var from = actOffset + 1;
+        var to = Math.min(actOffset + actLimit, actTotal);
+        hint.textContent = from + "–" + to + " из " + actTotal;
+        document.getElementById("dg-act-prev").disabled = actOffset <= 0;
+        document.getElementById("dg-act-next").disabled = actOffset + actLimit >= actTotal;
+      }
+
+      function resetActivityJournalFilters() {
+        var kind = document.getElementById("dg-act-kind");
+        var uid = document.getElementById("dg-act-user");
+        var s = document.getElementById("dg-act-section");
+        var f = document.getElementById("dg-act-from");
+        var t = document.getElementById("dg-act-to");
+        if (kind) kind.value = "";
+        if (uid) uid.value = "";
+        if (s) s.value = "";
+        if (f) f.value = "";
+        if (t) t.value = "";
+        actOffset = 0;
+      }
+
+      function loadActivityJournal() {
+        var deny = document.getElementById("dg-act-deny");
+        var hero = document.getElementById("dg-activity-hero");
+        if (!deny || !hero) return;
+        var uid = String(document.getElementById("dg-act-user").value || "").trim();
+        var kind = String(document.getElementById("dg-act-kind").value || "").trim();
+        var sectionEl = document.getElementById("dg-act-section");
+        var fromEl = document.getElementById("dg-act-from");
+        var toEl = document.getElementById("dg-act-to");
+        var section = sectionEl ? String(sectionEl.value || "").trim() : "";
+        var fromTs = fromEl ? String(fromEl.value || "").trim() : "";
+        var toTs = toEl ? String(toEl.value || "").trim() : "";
+        var qs = new URLSearchParams({ limit: String(actLimit), offset: String(actOffset) });
+        if (uid) qs.set("user_id", uid);
+        if (kind) qs.set("kind", kind);
+        if (section) qs.set("section", section);
+        if (fromTs) qs.set("from_ts", fromTs);
+        if (toTs) qs.set("to_ts", toTs);
+        fetch("/api/activity/events?" + qs.toString(), { credentials: "same-origin", headers: authHeaders() })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (x.r.status === 403) {
+              deny.style.display = "";
+              var listEl = document.getElementById("dg-act-list");
+              if (listEl) listEl.replaceChildren();
+              document.getElementById("dg-act-empty").style.display = "none";
+              document.getElementById("dg-act-pager").style.display = "none";
+              return;
+            }
+            if (!x.r.ok) throw new Error((x.j && x.j.error) || "Журнал недоступен");
+            deny.style.display = "none";
+            actTotal = Number(x.j.total || 0);
+            var hintRet = document.getElementById("dg-act-retention-hint");
+            if (hintRet) {
+              var rd = Number(x.j.retentionDays);
+              if (!Number.isFinite(rd) || rd < 1) rd = 120;
+              hintRet.textContent =
+                "Хранение: события не старше " +
+                rd +
+                " дней (автоочистка при открытии журнала). Более старые записи удаляются.";
+            }
+            fillActUserSelect(x.j.users || []);
+            fillActPageOptions(x.j.pageOptions || []);
+            renderActivityRows(x.j.rows || []);
+            syncActPager();
+          })
+          .catch(function () {
+            deny.style.display = "none";
+          });
+      }
+
       function getSelectedSiteId() {
         return String(document.getElementById("dg-proc-site").value || "");
       }
@@ -294,10 +536,12 @@
       document.getElementById("dg-proc-refresh-head").addEventListener("click", function () {
         persistProcessesFilterForm();
         loadOverview();
+        loadActivityJournal();
       });
       document.getElementById("dg-proc-refresh-inline").addEventListener("click", function () {
         persistProcessesFilterForm();
         loadOverview();
+        loadActivityJournal();
       });
       document.getElementById("dg-proc-site").addEventListener("change", function () {
         loadOverview(this.value);
@@ -385,7 +629,52 @@
         }
       }
 
+      document.getElementById("dg-act-refresh").addEventListener("click", function () {
+        actOffset = 0;
+        loadActivityJournal();
+      });
+      document.getElementById("dg-act-user").addEventListener("change", function () {
+        actOffset = 0;
+        loadActivityJournal();
+      });
+      document.getElementById("dg-act-kind").addEventListener("change", function () {
+        actOffset = 0;
+        loadActivityJournal();
+      });
+      document.getElementById("dg-act-section").addEventListener("change", function () {
+        actOffset = 0;
+        loadActivityJournal();
+      });
+      document.getElementById("dg-act-from").addEventListener("change", function () {
+        actOffset = 0;
+        loadActivityJournal();
+      });
+      document.getElementById("dg-act-to").addEventListener("change", function () {
+        actOffset = 0;
+        loadActivityJournal();
+      });
+      document.getElementById("dg-act-reset-filters").addEventListener("click", function () {
+        resetActivityJournalFilters();
+        loadActivityJournal();
+      });
+      window.addEventListener("pageshow", function (e) {
+        if (e && e.persisted) {
+          resetActivityJournalFilters();
+          loadActivityJournal();
+        }
+      });
+      document.getElementById("dg-act-prev").addEventListener("click", function () {
+        actOffset = Math.max(0, actOffset - actLimit);
+        loadActivityJournal();
+      });
+      document.getElementById("dg-act-next").addEventListener("click", function () {
+        if (actOffset + actLimit < actTotal) actOffset += actLimit;
+        loadActivityJournal();
+      });
+
       loadOverview();
+      resetActivityJournalFilters();
+      loadActivityJournal();
       startPoll();
       window.addEventListener("beforeunload", stopPoll);
     })();

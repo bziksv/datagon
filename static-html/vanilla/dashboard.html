@@ -41,6 +41,19 @@
       border-top: 1px solid rgba(0, 0, 0, 0.07);
       padding-top: 0.65rem;
     }
+    /* Пункты сайдбара с доступом как у журнала активности (admin / право на пользователей) */
+    .dg-sidebar-nav-restricted .metismenu-link {
+      display: inline-flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.15rem 0.35rem;
+    }
+    .dg-sidebar-nav-restricted .dg-nav-restricted-icon {
+      font-size: 0.7rem;
+      opacity: 0.72;
+      line-height: 1;
+      flex-shrink: 0;
+    }
   </style>
 </head>
 <body class="datagon-vanilla-body" data-dg-active-nav="dashboard">
@@ -431,7 +444,21 @@
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="queue" href="/queue.html"><i class="metismenu-icon pe-7s-network"></i>Очередь</a></li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="results" href="/results.html"><i class="metismenu-icon pe-7s-note2"></i>Результаты</a></li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="matches" href="/matches.html"><i class="metismenu-icon pe-7s-link"></i>Сопоставление</a></li>
-                      <li class="metismenu-item"><a class="metismenu-link" data-nav="processes" href="/processes.html"><i class="metismenu-icon pe-7s-timer"></i>Логи</a></li>
+                      <li class="metismenu-item dg-sidebar-nav-restricted" data-dg-nav-restricted="activity">
+                        <a
+                          class="metismenu-link"
+                          data-nav="processes"
+                          href="/processes.html"
+                          title="Активность и процессы (доступ ограничен: администратор или право управления пользователями)"
+                        >
+                          <i class="metismenu-icon pe-7s-timer"></i>Активность
+                          <i
+                            class="pe-7s-lock dg-nav-restricted-icon"
+                            aria-hidden="true"
+                            title="Пункт меню с ограниченным доступом"
+                          ></i>
+                        </a>
+                      </li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="settings" href="/settings.html"><i class="metismenu-icon pe-7s-config"></i>Настройки</a></li>
                       <li class="metismenu-item dg-sidebar-architect-item"><a class="metismenu-link" data-nav="architectui-demo" href="/ref/react-demo-index.html" title="Каталог разделов React-шаблона ArchitectUI"><i class="metismenu-icon pe-7s-plugin"></i>ArchitectUI меню</a></li>
                     </ul>
@@ -578,6 +605,21 @@
                   <p class="text-muted mb-0 mt-2" id="dg-rt-hint-wrap"><span class="badge" id="dg-rt-badge">—</span></p>
                 </div>
               </div>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card border-0 shadow-sm" style="background: linear-gradient(120deg, rgba(102, 126, 234, 0.09), rgba(118, 75, 162, 0.07))">
+            <div class="card-body d-flex flex-wrap align-items-center justify-content-between gap-3 py-3">
+              <div class="d-flex align-items-center">
+                <div class="rounded-3 bg-white shadow-sm d-flex align-items-center justify-content-center me-3" style="width: 52px; height: 52px">
+                  <i class="pe-7s-graph1 text-primary" style="font-size: 1.5rem" aria-hidden="true"></i>
+                </div>
+                <div>
+                  <div class="fw-semibold">Журнал активности</div>
+                  <p class="text-muted small mb-0">Входы в систему, переходы по разделам и нажатия — в одной наглядной ленте.</p>
+                </div>
+              </div>
+              <a class="btn btn-primary" href="/processes.html"><i class="pe-7s-right-arrow me-1"></i>Открыть</a>
             </div>
           </div>
 

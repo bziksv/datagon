@@ -88,7 +88,7 @@ function assemble() {
         },
         {
             out: 'processes.html',
-            PAGE_TITLE: 'Логи и процессы — Датагон',
+            PAGE_TITLE: 'Активность и процессы — Датагон',
             BODY_ATTRS: 'class="datagon-vanilla-body" data-dg-active-nav="processes"',
             EXTRA_HEAD: read(path.join(vanillaDir, 'inners/processes.head.html')),
             MAIN_INNER: read(path.join(vanillaDir, 'inners/processes.inner.html')),

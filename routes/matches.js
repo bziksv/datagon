@@ -1,4 +1,5 @@
 const express = require('express');
+const { recordDatagonActivity } = require('../lib/datagonActivity');
 const router = express.Router();
 
 // Функция расстояния Левенштейна для умного поиска
@@ -52,32 +53,55 @@ function strictSkuKey(raw) {
     return (raw || '').trim().toUpperCase();
 }
 
-function findSkuMatchStrict(compPrices, normMySku) {
-    if (!normMySku) return null;
-    return compPrices.find((c) => strictSkuKey(c.sku) === normMySku) || null;
+/** Один проход по прайсу конкурента: O(1) поиск по строгому SKU для режимов all/sku. */
+function buildStrictSkuLookupMap(compPrices) {
+    const m = new Map();
+    for (const c of compPrices) {
+        const k = strictSkuKey(c.sku);
+        if (k && !m.has(k)) m.set(k, c);
+    }
+    return m;
 }
 
-function findSkuMatchNormFirst(compPrices, normKey) {
-    if (!normKey) return null;
-    return compPrices.find((c) => normalizeSkuForMatch(c.sku) === normKey) || null;
+/** Первое вхождение по нормализованному SKU (порядок строк как в массиве compPrices). */
+function buildNormSkuFirstLookupMap(compPrices) {
+    const m = new Map();
+    for (const c of compPrices) {
+        const nk = normalizeSkuForMatch(c.sku);
+        if (nk && !m.has(nk)) m.set(nk, c);
+    }
+    return m;
 }
 
-function findSkuMatchNormBest(compPrices, normKey) {
-    if (!normKey) return null;
-    const cand = compPrices.filter((c) => normalizeSkuForMatch(c.sku) === normKey);
-    if (!cand.length) return null;
-    cand.sort((a, b) => {
-        const ta = new Date(a.parsed_at || 0).getTime();
-        const tb = new Date(b.parsed_at || 0).getTime();
-        if (tb !== ta) return tb - ta;
-        const na = String(a.product_name || '');
-        const nb = String(b.product_name || '');
-        if (na !== nb) return na < nb ? -1 : na > nb ? 1 : 0;
-        const sa = String(a.sku || '');
-        const sb = String(b.sku || '');
-        return sa < sb ? -1 : sa > sb ? 1 : 0;
-    });
-    return cand[0];
+/** Лучшая строка по ключу нормализованного SKU (parsed_at, затем имя и SKU). */
+function buildNormSkuBestLookupMap(compPrices) {
+    const byNorm = new Map();
+    for (const c of compPrices) {
+        const nk = normalizeSkuForMatch(c.sku);
+        if (!nk) continue;
+        let arr = byNorm.get(nk);
+        if (!arr) {
+            arr = [];
+            byNorm.set(nk, arr);
+        }
+        arr.push(c);
+    }
+    const out = new Map();
+    for (const [nk, cand] of byNorm) {
+        cand.sort((a, b) => {
+            const ta = new Date(a.parsed_at || 0).getTime();
+            const tb = new Date(b.parsed_at || 0).getTime();
+            if (tb !== ta) return tb - ta;
+            const na = String(a.product_name || '');
+            const nb = String(b.product_name || '');
+            if (na !== nb) return na < nb ? -1 : na > nb ? 1 : 0;
+            const sa = String(a.sku || '');
+            const sb = String(b.sku || '');
+            return sa < sb ? -1 : sa > sb ? 1 : 0;
+        });
+        out.set(nk, cand[0]);
+    }
+    return out;
 }
 
 function sleep(ms) {
@@ -85,6 +109,83 @@ function sleep(ms) {
 }
 
 module.exports = (db, settings) => {
+    async function recordMatchingStartActivity(req, meta) {
+        const actor = req.datagonActor;
+        if (!actor || !actor.id) return;
+        const {
+            jobId,
+            mySiteId,
+            mode,
+            productSearch = '',
+            productIds,
+            competitorIds,
+            threshold,
+            replayFromId = null,
+        } = meta;
+        const sid = parseInt(String(mySiteId), 10);
+        if (!Number.isFinite(sid) || sid < 1) return;
+        let siteLabel = `сайт #${sid}`;
+        try {
+            const [srows] = await db.query('SELECT name FROM my_sites WHERE id = ? LIMIT 1', [sid]);
+            if (srows.length && srows[0].name) siteLabel = `${srows[0].name} (#${mySiteId})`;
+        } catch (_) {}
+
+        const pidList = Array.isArray(productIds)
+            ? productIds.map((x) => parseInt(x, 10)).filter((n) => Number.isFinite(n) && n > 0)
+            : [];
+        let productsPreview = [];
+        if (pidList.length) {
+            try {
+                const slice = pidList.slice(0, 20);
+                const ph = slice.map(() => '?').join(',');
+                const [prows] = await db.query(
+                    `SELECT id, sku, name FROM my_products WHERE site_id = ? AND id IN (${ph}) LIMIT 20`,
+                    [sid, ...slice]
+                );
+                productsPreview = prows.map((r) => ({
+                    id: r.id,
+                    sku: String(r.sku || '').slice(0, 64),
+                    name: String(r.name || '').slice(0, 80),
+                }));
+            } catch (_) {}
+        }
+        const compIds = Array.isArray(competitorIds)
+            ? competitorIds.map((x) => parseInt(x, 10)).filter((n) => Number.isFinite(n) && n > 0)
+            : [];
+        const ps = String(productSearch || '').trim();
+        const labelParts = [
+            replayFromId ? 'Повтор сопоставления' : 'Запуск сопоставления',
+            siteLabel,
+            `режим: ${mode}`,
+        ];
+        if (ps) labelParts.push(`фильтр: «${ps.slice(0, 80)}»`);
+        if (pidList.length) labelParts.push(`выбрано товаров: ${pidList.length}`);
+        else if (!ps) labelParts.push('все активные товары сайта');
+
+        const detail = JSON.stringify({
+            action: replayFromId ? 'matching_retry' : 'matching_start',
+            job_id: jobId,
+            my_site_id: sid,
+            site_label: siteLabel,
+            mode,
+            product_search: ps.slice(0, 200),
+            product_ids: pidList.slice(0, 500),
+            product_ids_count: pidList.length,
+            products_preview: productsPreview,
+            competitor_ids: compIds.slice(0, 40),
+            threshold: Number(threshold),
+            replay_from_job_id: replayFromId,
+        });
+
+        await recordDatagonActivity(db, {
+            userId: actor.id,
+            kind: 'ui',
+            section: 'matches',
+            label: labelParts.join(' · ').slice(0, 512),
+            detail,
+        });
+    }
+
     const cancelledJobs = new Set();
     let perfIndexesReady = false;
     let matchAuditColumnsReady = false;
@@ -206,56 +307,74 @@ module.exports = (db, settings) => {
         return username;
     }
 
-    async function getFreshRunningJob(mySiteId, staleAfterSec = 180) {
-        const [rows] = await db.query(
-            `SELECT mj.id, mj.my_site_id, mj.status, mj.message, mj.processed, mj.total, mj.started_at, mj.finished_at,
-                    TIMESTAMPDIFF(
-                        SECOND,
-                        COALESCE(
-                            (SELECT MAX(mjl.created_at) FROM matching_job_logs mjl WHERE mjl.job_id = mj.id),
-                            mj.started_at,
-                            NOW()
-                        ),
-                        NOW()
-                    ) AS idle_sec
-             FROM matching_jobs mj
-             WHERE mj.my_site_id = ? AND mj.status = "running"
-             ORDER BY mj.id DESC
-             LIMIT 1`,
-            [mySiteId]
-        );
-        if (!rows.length) return null;
-        const job = rows[0];
-        const idleSec = Number(job.idle_sec || 0);
-        if (idleSec <= staleAfterSec) return job;
+    async function getFreshRunningJob(mySiteId, staleAfterSec = 600) {
         try {
-            await updateJob(job.id, {
-                status: 'failed',
-                message: `Прервано: нет активности ${idleSec}с (процесс перезапущен или завис)`,
-                finished_at: new Date()
-            });
-            await addJobLog(job.id, `Автозавершение stale-задачи: нет активности ${idleSec}с`);
-        } catch (_) {}
-        return null;
+            const [jobs] = await db.query(
+                `SELECT id, my_site_id, status, message, processed, total, started_at, finished_at
+                 FROM matching_jobs
+                 WHERE my_site_id = ? AND status = "running"
+                 ORDER BY id DESC
+                 LIMIT 1`,
+                [mySiteId]
+            );
+            if (!jobs.length) return null;
+            const job = jobs[0];
+            const [[agg]] = await db.query(
+                'SELECT MAX(created_at) AS max_at FROM matching_job_logs WHERE job_id = ?',
+                [job.id]
+            );
+            const [[idler]] = await db.query(
+                'SELECT TIMESTAMPDIFF(SECOND, COALESCE(?, ?), NOW()) AS idle_sec',
+                [agg?.max_at || null, job.started_at]
+            );
+            const idleSec = Number(idler?.idle_sec || 0);
+            if (idleSec <= staleAfterSec) return job;
+            try {
+                await updateJob(job.id, {
+                    status: 'failed',
+                    message: `Прервано: нет активности ${idleSec}с (процесс перезапущен или завис)`,
+                    finished_at: new Date()
+                });
+                await addJobLog(job.id, `Автозавершение stale-задачи: нет активности ${idleSec}с`);
+            } catch (_) {}
+            return null;
+        } catch (e) {
+            console.error('[matches] getFreshRunningJob:', e && e.message ? e.message : e);
+            return null;
+        }
     }
 
-    async function cleanupStaleRunningJobs(staleAfterSec = 180) {
-        const [rows] = await db.query(
-            `SELECT mj.id, mj.my_site_id, mj.params_json, mj.checkpoint_comp_index, mj.checkpoint_product_index,
-                    TIMESTAMPDIFF(
-                        SECOND,
-                        COALESCE(
-                            (SELECT MAX(mjl.created_at) FROM matching_job_logs mjl WHERE mjl.job_id = mj.id),
-                            mj.started_at,
-                            NOW()
-                        ),
-                        NOW()
-                    ) AS idle_sec
-             FROM matching_jobs mj
-             WHERE mj.status = "running"
-             ORDER BY mj.id DESC
-             LIMIT 50`
-        );
+    async function cleanupStaleRunningJobs(staleAfterSec = 600) {
+        let rows;
+        try {
+            const [running] = await db.query(
+                `SELECT id, my_site_id, params_json, checkpoint_comp_index, checkpoint_product_index, started_at
+                 FROM matching_jobs
+                 WHERE status = "running"
+                 ORDER BY id DESC
+                 LIMIT 50`
+            );
+            if (!running.length) return;
+            const ids = running.map((r) => r.id);
+            const [logAgg] = await db.query(
+                `SELECT job_id, MAX(created_at) AS max_at
+                 FROM matching_job_logs
+                 WHERE job_id IN (${ids.map(() => '?').join(',')})
+                 GROUP BY job_id`,
+                ids
+            );
+            const logMap = new Map((logAgg || []).map((x) => [x.job_id, x.max_at]));
+            const nowMs = Date.now();
+            rows = running.map((r) => {
+                const mx = logMap.get(r.id);
+                const refMs = mx ? new Date(mx).getTime() : new Date(r.started_at).getTime();
+                const idleSec = Math.max(0, Math.floor((nowMs - refMs) / 1000));
+                return { ...r, idle_sec: idleSec };
+            });
+        } catch (e) {
+            console.error('[matches] cleanupStaleRunningJobs:', e && e.message ? e.message : e);
+            return;
+        }
         for (const row of rows) {
             const idleSec = Number(row.idle_sec || 0);
             if (idleSec <= staleAfterSec) continue;
@@ -465,11 +584,15 @@ module.exports = (db, settings) => {
         let foundSku = 0;
         let foundName = 0;
         let loopCounter = 0;
+        let lastProgressLogMs = Date.now();
         const safeBatchSize = Math.max(1, parseInt(batchSize, 10) || 200);
         const safeBatchPauseMs = Math.max(0, parseInt(batchPauseMs, 10) || 1000);
         const safeMicroPauseMs = Math.max(0, parseInt(microPauseMs, 10) || 20);
         const safeMicroPauseEvery = Math.max(1, parseInt(microPauseEvery, 10) || 20);
         const saveChunkSize = Math.max(50, Math.min(500, safeBatchSize));
+        /** Внутри цикла по прайсу (режим name / fallback по названию) — иначе нет новых логов минутами → stale watchdog. */
+        const NAME_MATCH_INNER_HEARTBEAT_MS = 45000;
+        let lastNameInnerHeartbeatMs = Date.now();
 
         async function flushPendingMatches() {
             if (!pendingMatches.length) return;
@@ -486,17 +609,25 @@ module.exports = (db, settings) => {
             pendingMatches.length = 0;
         }
 
+        async function completeCancellation(compPos, pIdx) {
+            await flushPendingMatches();
+            await updateJob(jobId, {
+                status: 'cancelled',
+                processed: resumeProcessedBase + processed,
+                checkpoint_comp_index: compPos,
+                checkpoint_product_index: pIdx,
+                message: 'Остановлено пользователем',
+                finished_at: new Date()
+            });
+            await addJobLog(jobId, 'Задача остановлена пользователем');
+            cancelledJobs.delete(jobId);
+        }
+
         for (let compPos = startCompIndex; compPos < competitorIds.length; compPos += 1) {
             const compId = competitorIds[compPos];
+            const productStart = compPos === startCompIndex ? startProductIndex : 0;
             if (cancelledJobs.has(jobId)) {
-                await flushPendingMatches();
-                await updateJob(jobId, {
-                    status: 'cancelled',
-                    message: 'Остановлено пользователем',
-                    finished_at: new Date()
-                });
-                await addJobLog(jobId, 'Задача остановлена пользователем');
-                cancelledJobs.delete(jobId);
+                await completeCancellation(compPos, productStart);
                 return { matches: [], count: totalMatchesSaved };
             }
             await updateJob(jobId, { message: `Загрузка товаров конкурента #${compId}...` });
@@ -517,22 +648,34 @@ module.exports = (db, settings) => {
                 continue;
             }
 
+            let skuLookupStrict = null;
+            let skuLookupNormFirst = null;
+            let skuLookupNormBest = null;
+            if (mode === 'all' || mode === 'sku') {
+                skuLookupStrict = buildStrictSkuLookupMap(compPrices);
+            } else if (mode === 'sku_norm') {
+                skuLookupNormFirst = buildNormSkuFirstLookupMap(compPrices);
+            } else if (mode === 'sku_best') {
+                skuLookupNormBest = buildNormSkuBestLookupMap(compPrices);
+            }
+
+            let compNormNames = null;
+            if (mode === 'all' || mode === 'name') {
+                const cn = compPrices.length;
+                compNormNames = new Array(cn);
+                for (let ci = 0; ci < cn; ci += 1) {
+                    compNormNames[ci] = normalizeText(compPrices[ci].product_name);
+                    if (ci > 0 && (ci & 4095) === 0) {
+                        await new Promise((r) => setImmediate(r));
+                    }
+                }
+            }
+
             let batchProcessedForCompetitor = 0;
-            const productStart = compPos === startCompIndex ? startProductIndex : 0;
             for (let pIdx = productStart; pIdx < myProducts.length; pIdx += 1) {
                 const myProd = myProducts[pIdx];
                 if (cancelledJobs.has(jobId)) {
-                    await flushPendingMatches();
-                    await updateJob(jobId, {
-                        status: 'cancelled',
-                        processed: resumeProcessedBase + processed,
-                        checkpoint_comp_index: compPos,
-                        checkpoint_product_index: pIdx,
-                        message: 'Остановлено пользователем',
-                        finished_at: new Date()
-                    });
-                    await addJobLog(jobId, 'Задача остановлена пользователем');
-                    cancelledJobs.delete(jobId);
+                    await completeCancellation(compPos, pIdx);
                     return { matches: [], count: totalMatchesSaved };
                 }
                 if (processed % Math.max(10, Math.floor(safeBatchSize / 4)) === 0) {
@@ -556,11 +699,11 @@ module.exports = (db, settings) => {
                 if (mode !== 'name') {
                     let skuMatch = null;
                     if (mode === 'all' || mode === 'sku') {
-                        if (normMySkuStrict) skuMatch = findSkuMatchStrict(compPrices, normMySkuStrict);
+                        if (normMySkuStrict && skuLookupStrict) skuMatch = skuLookupStrict.get(normMySkuStrict) || null;
                     } else if (mode === 'sku_norm') {
-                        if (normMySkuNorm) skuMatch = findSkuMatchNormFirst(compPrices, normMySkuNorm);
+                        if (normMySkuNorm && skuLookupNormFirst) skuMatch = skuLookupNormFirst.get(normMySkuNorm) || null;
                     } else if (mode === 'sku_best') {
-                        if (normMySkuNorm) skuMatch = findSkuMatchNormBest(compPrices, normMySkuNorm);
+                        if (normMySkuNorm && skuLookupNormBest) skuMatch = skuLookupNormBest.get(normMySkuNorm) || null;
                     }
                     if (skuMatch) {
                         bestMatch = skuMatch;
@@ -569,10 +712,30 @@ module.exports = (db, settings) => {
                     }
                 }
 
-                if ((mode === 'all' || mode === 'name') && matchType !== 'sku' && normMyName.length > 3) {
-                    for (const compProd of compPrices) {
-                        const normCompName = normalizeText(compProd.product_name);
+                if ((mode === 'all' || mode === 'name') && matchType !== 'sku' && normMyName.length > 3 && compNormNames) {
+                    const nComp = compNormNames.length;
+                    for (let ni = 0; ni < nComp; ni += 1) {
+                        if ((ni & 127) === 0 && cancelledJobs.has(jobId)) {
+                            await completeCancellation(compPos, pIdx);
+                            return { matches: [], count: totalMatchesSaved };
+                        }
+                        if ((ni & 1023) === 0) {
+                            await new Promise((r) => setImmediate(r));
+                            const now = Date.now();
+                            if (now - lastNameInnerHeartbeatMs >= NAME_MATCH_INNER_HEARTBEAT_MS) {
+                                lastNameInnerHeartbeatMs = now;
+                                await addJobLog(
+                                    jobId,
+                                    `По названию: товар ${pIdx + 1}/${myProducts.length}, строк прайса ${ni}/${nComp} (конк. ${compId})`
+                                );
+                                await updateJob(jobId, {
+                                    message: `Сопоставление по названию: товар ${pIdx + 1}/${myProducts.length}, прайс ${ni}/${nComp}`
+                                });
+                            }
+                        }
+                        const normCompName = compNormNames[ni];
                         if (normCompName.length < 3) continue;
+                        const compProd = compPrices[ni];
                         const score = similarity(normMyName, normCompName);
                         if (score >= threshold && score > bestScore) {
                             bestMatch = compProd;
@@ -611,6 +774,14 @@ module.exports = (db, settings) => {
                         checkpoint_comp_index: compPos,
                         checkpoint_product_index: pIdx
                     });
+                }
+                const hbNow = Date.now();
+                if (hbNow - lastProgressLogMs >= 60000) {
+                    lastProgressLogMs = hbNow;
+                    await addJobLog(
+                        jobId,
+                        `Прогресс: ${resumeProcessedBase + processed}/${resumeProcessedBase + totalSteps} (конк. ${compId})`
+                    );
                 }
                 loopCounter += 1;
 
@@ -739,6 +910,17 @@ module.exports = (db, settings) => {
         const jobId = ins.insertId;
         await addJobLog(jobId, 'Задача создана');
 
+        await recordMatchingStartActivity(req, {
+            jobId,
+            mySiteId,
+            mode,
+            productSearch,
+            productIds,
+            competitorIds,
+            threshold,
+            replayFromId: null,
+        });
+
         executeMatching({ jobId, mySiteId, competitorIds, threshold, mode, productIds, productSearch, batchSize, batchPauseMs, microPauseMs, microPauseEvery, resumeMode, startCompIndex: 0, startProductIndex: 0 }).catch(async (e) => {
             await updateJob(jobId, {
                 status: 'failed',
@@ -815,6 +997,17 @@ module.exports = (db, settings) => {
         const jobId = ins.insertId;
         await addJobLog(jobId, `Создан повтор задачи #${prevRows[0].id} в режиме продолжения`);
 
+        await recordMatchingStartActivity(req, {
+            jobId,
+            mySiteId: payload.mySiteId,
+            mode: payload.mode,
+            productSearch: payload.productSearch,
+            productIds: payload.productIds,
+            competitorIds: payload.competitorIds,
+            threshold: payload.threshold,
+            replayFromId: prevRows[0].id,
+        });
+
         executeMatching({ jobId, ...payload }).catch(async (e) => {
             await updateJob(jobId, {
                 status: 'failed',
@@ -852,36 +1045,56 @@ module.exports = (db, settings) => {
     router.get('/status', async (req, res) => {
         const { my_site_id } = req.query;
         if (!my_site_id) return res.status(400).json({ error: 'my_site_id required' });
-        await getFreshRunningJob(my_site_id);
-        const [jobs] = await db.query(
-            'SELECT * FROM matching_jobs WHERE my_site_id = ? ORDER BY id DESC LIMIT 1',
-            [my_site_id]
-        );
-        if (!jobs.length) {
-            return res.json({ active: false, done: false, processed: 0, total: 0, found: 0, logs: [], message: 'Нет задач' });
+        try {
+            await getFreshRunningJob(my_site_id);
+        } catch (e) {
+            console.error('[matches] GET /status stale check:', e && e.message ? e.message : e);
         }
-        const job = jobs[0];
-        const [logs] = await db.query(
-            'SELECT message, created_at FROM matching_job_logs WHERE job_id = ? ORDER BY id DESC LIMIT 20',
-            [job.id]
-        );
-        return res.json({
-            id: job.id,
-            active: job.status === 'running',
-            done: job.status === 'completed' || job.status === 'failed',
-            status: job.status,
-            processed: job.processed || 0,
-            total: job.total || 0,
-            found: job.found || 0,
-            foundSku: job.found_sku || 0,
-            foundName: job.found_name || 0,
-            message: job.message || '',
-            logs: logs.map((l) => {
-                const t = new Date(l.created_at).toLocaleTimeString('ru-RU');
-                return `[${t}] ${l.message}`;
-            }),
-            canRetry: job.status === 'failed' || job.status === 'completed'
-        });
+        try {
+            const [jobs] = await db.query(
+                'SELECT * FROM matching_jobs WHERE my_site_id = ? ORDER BY id DESC LIMIT 1',
+                [my_site_id]
+            );
+            if (!jobs.length) {
+                return res.json({
+                    active: false,
+                    done: false,
+                    processed: 0,
+                    total: 0,
+                    found: 0,
+                    logs: [],
+                    message: 'Нет задач'
+                });
+            }
+            const job = jobs[0];
+            const [logs] = await db.query(
+                'SELECT message, created_at FROM matching_job_logs WHERE job_id = ? ORDER BY id DESC LIMIT 20',
+                [job.id]
+            );
+            return res.json({
+                id: job.id,
+                active: job.status === 'running',
+                done: job.status === 'completed' || job.status === 'failed',
+                status: job.status,
+                processed: job.processed || 0,
+                total: job.total || 0,
+                found: job.found || 0,
+                foundSku: job.found_sku || 0,
+                foundName: job.found_name || 0,
+                message: job.message || '',
+                logs: logs.map((l) => {
+                    const t = new Date(l.created_at).toLocaleTimeString('ru-RU');
+                    return `[${t}] ${l.message}`;
+                }),
+                canRetry: job.status === 'failed' || job.status === 'completed'
+            });
+        } catch (e) {
+            console.error('[matches] GET /status:', e && e.message ? e.message : e);
+            return res.status(503).json({
+                error: 'Временно нет связи с базой данных',
+                detail: e && e.message ? e.message : String(e)
+            });
+        }
     });
 
     // 4. Получить список сопоставлений (с фильтрами)
@@ -1075,7 +1288,7 @@ module.exports = (db, settings) => {
     });
 
     router.watchdogTick = async function watchdogTick() {
-        await cleanupStaleRunningJobs(180);
+        await cleanupStaleRunningJobs(600);
     };
 
     /** Вынесено из GET /list: создание индексов на больших таблицах не должно блокировать загрузку страницы. */

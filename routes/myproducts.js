@@ -169,6 +169,9 @@ module.exports = (db, settings) => {
     }
 
     function resolveActorName(req) {
+        const actor = req.datagonActor;
+        const fromSession = actor && String(actor.username || '').trim();
+        if (fromSession) return fromSession;
         const direct = String(req.headers['x-auth-username'] || '').trim();
         if (direct) return direct;
         return 'unknown';
@@ -1136,14 +1139,24 @@ module.exports = (db, settings) => {
             myProductsResponseCache.clear();
             myProductsGapSetCache.clear();
 
-            res.json({ 
-                success: true, 
-                message: 'Товар успешно обновлен', 
-                data: { 
-                    price: r.price, 
-                    stock: r.stock, 
-                    name: r.name 
-                } 
+            const [[afterRow]] = await db.query(
+                `SELECT name, price, stock, currency, source_enabled, updated_at
+                 FROM my_products
+                 WHERE site_id = ? AND source_id = ?
+                 LIMIT 1`,
+                [site_id, sourceId]
+            );
+
+            res.json({
+                success: true,
+                message: 'Товар успешно обновлен',
+                data: afterRow || {
+                    price: r.price,
+                    stock: r.stock,
+                    name: r.name,
+                    currency: r.currency || 'RUB',
+                    source_enabled: Number(r.source_enabled) === 0 ? 0 : 1
+                }
             });
 
         } catch (e) {
@@ -1287,10 +1300,19 @@ module.exports = (db, settings) => {
             myProductsResponseCache.clear();
             myProductsGapSetCache.clear();
 
+            const [[syncMeta]] = await db.query(
+                `SELECT price, currency, comp_sync_at, comp_sync_by, comp_sync_note, updated_at
+                 FROM my_products
+                 WHERE site_id = ? AND source_id = ?
+                 LIMIT 1`,
+                [siteIdNum, String(product.source_id || '')]
+            );
+
             return res.json({
                 success: true,
                 message: 'Цена обновлена от конкурента',
                 data: {
+                    ...(syncMeta || {}),
                     competitor_source: selected.source,
                     competitor_price_rub: Number(selected.rub.toFixed(2)),
                     random_pct: Number(randomPct.toFixed(4)),

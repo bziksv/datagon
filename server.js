@@ -780,6 +780,7 @@ initDB().then(() => {
     app.use('/api/auth', authModule.router);
     // Совместимость со старым фронтендом/кэшем, где логин идет на /api/login
     app.use('/api', authModule.router);
+    app.use('/api/activity', require('./routes/activity')(db));
     app.use('/api/settings', require('./routes/settings')(db, appSettings));
     app.use('/api/projects', require('./routes/projects')(db, appSettings));
     pagesRouter = pagesRouterFactory(db, appSettings);

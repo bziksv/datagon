@@ -870,6 +870,11 @@
           btnRe.type = "button";
           btnRe.className = "btn btn-sm btn-outline-primary me-1";
           btnRe.id = rowIdBase + "-refresh";
+          btnRe.setAttribute("data-dg-no-activity", "1");
+          btnRe.setAttribute(
+            "data-dg-tooltip",
+            "Подтянуть из CMS сайта название, цену и остаток для этой строки без перезагрузки всей таблицы."
+          );
           btnRe.innerHTML = '<i class="pe-7s-refresh me-1"></i>Обновить';
           btnRe.addEventListener("click", function () {
             onRefreshOne(r);
@@ -878,6 +883,11 @@
           btnSy.type = "button";
           btnSy.className = "btn btn-sm btn-outline-success";
           btnSy.id = rowIdBase + "-sync";
+          btnSy.setAttribute("data-dg-no-activity", "1");
+          btnSy.setAttribute(
+            "data-dg-tooltip",
+            "Записать на сайт цену от самого дешёвого конкурента: скидка в процентах из полей «Синх. % мин / макс» ниже фильтров."
+          );
           btnSy.innerHTML = '<i class="pe-7s-graph3 me-1"></i>Синх. цену';
           btnSy.addEventListener("click", function () {
             onSyncPrice(r);
@@ -978,6 +988,57 @@
           stock_min: f.stock_min,
           stock_max: f.stock_max,
         });
+      }
+
+      function findLastRowIndex(keyRow) {
+        var sid = Number(keyRow.site_id);
+        var src = String(keyRow.source_id || "").trim();
+        var sku = String(keyRow.sku || "").trim();
+        for (var i = 0; i < lastRows.length; i++) {
+          var r = lastRows[i];
+          if (Number(r.site_id) !== sid) continue;
+          if (src && String(r.source_id || "").trim() === src) return i;
+          if (sku && String(r.sku || "").trim() === sku) return i;
+        }
+        return -1;
+      }
+
+      function applyLocalProductPatch(keyRow, patch) {
+        var idx = findLastRowIndex(keyRow);
+        if (idx < 0) {
+          load();
+          return;
+        }
+        var cur = lastRows[idx];
+        var next = Object.assign({}, cur);
+        Object.keys(patch).forEach(function (k) {
+          if (patch[k] !== undefined) next[k] = patch[k];
+        });
+        lastRows[idx] = next;
+        applyTableFilterAndRender();
+        refreshStatsStrip();
+      }
+
+      function refreshStatsStrip() {
+        var statsQs = buildStatsQuery();
+        return fetch("/api/my-products/stats" + statsQs, { credentials: "same-origin" })
+          .then(function (r) {
+            return r.json();
+          })
+          .then(function (statsRows) {
+            var agg = aggregateStats(Array.isArray(statsRows) ? statsRows : []);
+            var a = document.getElementById("mp-st-active");
+            var l = document.getElementById("mp-st-linked");
+            var u = document.getElementById("mp-st-unlinked");
+            var d = document.getElementById("mp-st-disabled");
+            var di = document.getElementById("mp-st-disappeared");
+            if (a) a.textContent = fmt(agg.total);
+            if (l) l.textContent = fmt(agg.linked);
+            if (u) u.textContent = fmt(agg.unlinked);
+            if (d) d.textContent = fmt(agg.disabled);
+            if (di) di.textContent = fmt(agg.disappeared);
+          })
+          .catch(function () {});
       }
 
       function updateSubtitle() {
@@ -1202,7 +1263,41 @@
           })
           .then(function (x) {
             if (!x.r.ok) throw new Error(x.j.error || "refresh-one failed");
-            load();
+            if (x.j && x.j.success === false)
+              throw new Error(x.j.message || x.j.error || "Обновление не выполнено");
+            if (window.DatagonActivity && window.DatagonActivity.trackNow) {
+              window.DatagonActivity.trackNow({
+                kind: "ui",
+                section: "my-products",
+                label:
+                  "Обновлён товар из CMS: «" +
+                  String(row.name || "").slice(0, 80) +
+                  "» (SKU «" +
+                  String(row.sku || "") +
+                  "», сайт #" +
+                  String(row.site_id) +
+                  ", source_id " +
+                  String(row.source_id || "—") +
+                  ")",
+                detail: JSON.stringify({
+                  action: "my_product_refresh_cms",
+                  site_id: Number(row.site_id),
+                  my_product_id: row.id,
+                  sku: String(row.sku || ""),
+                  source_id: String(row.source_id || ""),
+                  name: String(row.name || "").slice(0, 200),
+                }),
+              });
+            }
+            var d = (x.j && x.j.data) || {};
+            applyLocalProductPatch(row, {
+              name: d.name,
+              price: d.price,
+              stock: d.stock,
+              currency: d.currency,
+              source_enabled: d.source_enabled,
+              updated_at: d.updated_at,
+            });
           })
           .catch(function (e) {
             alert(e.message || String(e));
@@ -1234,7 +1329,47 @@
           .then(function (x) {
             if (!x.r.ok || !x.j.success)
               throw new Error(x.j.error || x.j.message || "sync-price failed");
-            load();
+            var d = (x.j && x.j.data) || {};
+            if (window.DatagonActivity && window.DatagonActivity.trackNow) {
+              window.DatagonActivity.trackNow({
+                kind: "ui",
+                section: "my-products",
+                label:
+                  "Цена с конкурента: «" +
+                  String(row.name || "").slice(0, 80) +
+                  "» (SKU «" +
+                  String(row.sku || "") +
+                  "», сайт #" +
+                  String(row.site_id) +
+                  ") → " +
+                  String(d.target_price != null ? d.target_price : "") +
+                  " " +
+                  String(d.target_currency || row.currency || "").trim() +
+                  (d.competitor_source ? " (от " + d.competitor_source + ")" : ""),
+                detail: JSON.stringify({
+                  action: "sync_price_from_competitor",
+                  site_id: Number(row.site_id),
+                  my_product_id: row.id,
+                  sku: String(row.sku || ""),
+                  source_id: String(row.source_id || ""),
+                  name: String(row.name || "").slice(0, 200),
+                  new_price: d.target_price,
+                  currency: String(d.target_currency || row.currency || ""),
+                  competitor_source: d.competitor_source,
+                  competitor_price_rub: d.competitor_price_rub,
+                  random_pct: d.random_pct,
+                  random_range_pct: String(min) + "–" + String(max),
+                }),
+              });
+            }
+            applyLocalProductPatch(row, {
+              price: d.price != null ? d.price : d.target_price,
+              currency: d.currency != null ? d.currency : d.target_currency,
+              comp_sync_at: d.comp_sync_at,
+              comp_sync_by: d.comp_sync_by != null ? d.comp_sync_by : d.synced_by,
+              comp_sync_note: d.comp_sync_note,
+              updated_at: d.updated_at,
+            });
           })
           .catch(function (e) {
             alert(e.message || String(e));

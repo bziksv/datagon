@@ -1,5 +1,140 @@
           <p class="text-danger small mb-3" id="dg-proc-err" style="display:none" role="alert"></p>
 
+          <style>
+            .dg-activity-timeline .dg-act-item {
+              position: relative;
+              padding-left: 1.25rem;
+              margin-bottom: 1rem;
+              border-left: 3px solid #e9ecef;
+            }
+            .dg-activity-timeline .dg-act-item:last-child {
+              margin-bottom: 0;
+            }
+            .dg-activity-timeline .dg-act-item.dg-act-login {
+              border-left-color: #3ac47d;
+            }
+            .dg-activity-timeline .dg-act-item.dg-act-logout {
+              border-left-color: #6c757d;
+            }
+            .dg-activity-timeline .dg-act-item.dg-act-page {
+              border-left-color: #3f6ad8;
+            }
+            .dg-activity-timeline .dg-act-item.dg-act-click {
+              border-left-color: #f7b924;
+            }
+            .dg-activity-timeline .dg-act-item.dg-act-ui {
+              border-left-color: #16aaff;
+            }
+            .dg-act-badge {
+              font-size: 0.7rem;
+              letter-spacing: 0.02em;
+            }
+            /* Журнал: без .card-header — в теме он часто даёт наложение шапки и контента */
+            #dg-activity-hero .dg-act-hero-top {
+              position: relative;
+              z-index: 2;
+            }
+            #dg-activity-hero .dg-act-toolbar {
+              display: flex;
+              flex-wrap: wrap;
+              align-items: stretch;
+              gap: 0.5rem;
+              width: 100%;
+            }
+            @media (min-width: 992px) {
+              #dg-activity-hero .dg-act-toolbar {
+                width: auto;
+                max-width: min(100%, 28rem);
+                justify-content: flex-end;
+              }
+            }
+            #dg-activity-hero .dg-act-toolbar .form-select {
+              flex: 1 1 9rem;
+              min-width: 0;
+              max-width: 100%;
+            }
+            #dg-activity-hero .dg-act-toolbar .btn {
+              flex: 0 0 auto;
+              align-self: center;
+            }
+            #dg-activity-hero .dg-activity-timeline {
+              position: relative;
+              z-index: 1;
+              clear: both;
+            }
+            #dg-activity-hero .dg-act-extra-filters .form-label {
+              font-size: 0.72rem;
+            }
+          </style>
+
+          <div class="main-card mb-3 card border-0 shadow-sm" id="dg-activity-hero">
+            <div class="card-body pb-2">
+              <div class="dg-act-hero-top d-flex flex-column flex-lg-row gap-3 align-items-stretch align-items-lg-start justify-content-lg-between">
+                <div class="d-flex align-items-center min-w-0 flex-grow-1">
+                  <div
+                    class="rounded-3 d-flex align-items-center justify-content-center me-3 text-white flex-shrink-0"
+                    style="width: 52px; height: 52px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
+                  >
+                    <i class="pe-7s-graph1" style="font-size: 1.45rem" aria-hidden="true"></i>
+                  </div>
+                  <div class="min-w-0">
+                    <h5 class="mb-1 text-break">Журнал активности</h5>
+                    <div class="text-muted small text-break">
+                      Входы, разделы, нажатия и итоги действий (тип «Запись»): создание пользователя, синхронизация цены и т.п. — с полным текстом в строке события.
+                    </div>
+                  </div>
+                </div>
+                <div class="dg-act-toolbar flex-shrink-0">
+                  <select class="form-select form-select-sm" id="dg-act-user" title="Пользователь" autocomplete="off">
+                    <option value="">Все пользователи</option>
+                  </select>
+                  <select class="form-select form-select-sm" id="dg-act-kind" title="Тип события" autocomplete="off">
+                    <option value="">Все типы</option>
+                    <option value="login">Вход</option>
+                    <option value="logout">Выход</option>
+                    <option value="page_view">Раздел</option>
+                    <option value="click">Действие</option>
+                    <option value="ui">Запись</option>
+                  </select>
+                  <button type="button" class="btn btn-sm btn-primary" id="dg-act-refresh">Обновить</button>
+                </div>
+              </div>
+              <hr class="my-3 text-muted opacity-25" />
+              <div class="dg-act-extra-filters row g-2 align-items-end mb-2">
+                <div class="col-12 col-md-5 col-xl-4">
+                  <label class="form-label mb-1" for="dg-act-section">Раздел (страница)</label>
+                  <select class="form-select form-select-sm" id="dg-act-section" title="Фильтр по разделу приложения" autocomplete="off">
+                    <option value="">Все разделы</option>
+                  </select>
+                </div>
+                <div class="col-6 col-md-4 col-xl-3">
+                  <label class="form-label mb-1" for="dg-act-from">С даты и времени</label>
+                  <input type="datetime-local" class="form-control form-control-sm" id="dg-act-from" step="60" />
+                </div>
+                <div class="col-6 col-md-3 col-xl-3">
+                  <label class="form-label mb-1" for="dg-act-to">По дату и время</label>
+                  <input type="datetime-local" class="form-control form-control-sm" id="dg-act-to" step="60" />
+                </div>
+                <div class="col-12 col-xl-2 d-grid">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-act-reset-filters" title="Сбросить раздел, даты, тип события и пользователя">
+                    Сбросить фильтры
+                  </button>
+                </div>
+              </div>
+              <p class="small text-muted mb-3" id="dg-act-retention-hint"></p>
+              <div id="dg-act-deny" class="alert alert-light border text-muted mb-3" style="display: none">
+                Журнал доступен пользователям с правом «управление пользователями» (как в блоке пользователей в Настройках).
+              </div>
+              <div id="dg-act-empty" class="text-muted text-center py-4" style="display: none">Пока нет событий.</div>
+              <div id="dg-act-list" class="dg-activity-timeline"></div>
+              <div class="d-flex justify-content-between align-items-center mt-3 pt-2 border-top small" id="dg-act-pager" style="display: none">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-act-prev">← Раньше</button>
+                <span class="text-muted" id="dg-act-page-hint"></span>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-act-next">Позже →</button>
+              </div>
+            </div>
+          </div>
+
           <div class="app-page-title">
             <div class="page-title-wrapper">
               <div class="page-title-heading">
@@ -7,8 +142,8 @@
                   <i class="pe-7s-timer icon-gradient bg-happy-fisher"> </i>
                 </div>
                 <div>
-                  Логи и процессы
-                  <div class="page-title-subheading">Сводка фоновых задач и очередей в одном месте.</div>
+                  Активность и фоновые задачи
+                  <div class="page-title-subheading">Журнал действий команды и сводка фоновых процессов.</div>
                 </div>
               </div>
               <div class="page-title-actions">

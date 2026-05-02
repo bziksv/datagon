@@ -310,21 +310,24 @@
           var bLogin = document.createElement("button");
           bLogin.type = "button";
           bLogin.className = "btn btn-info btn-sm me-1 mb-1";
-          bLogin.textContent = "🔐 Войти как";
+          bLogin.setAttribute("data-dg-no-activity", "1");
+          bLogin.textContent = "Войти как";
           bLogin.addEventListener("click", function () {
             loginAsUser(u.username);
           });
           var bEdit = document.createElement("button");
           bEdit.type = "button";
           bEdit.className = "btn btn-secondary btn-sm me-1 mb-1";
-          bEdit.textContent = "✏️ Редактировать";
+          bEdit.setAttribute("data-dg-no-activity", "1");
+          bEdit.textContent = "Редактировать";
           bEdit.addEventListener("click", function () {
             openEditUser({ id: u.id, username: u.username, full_name: u.full_name || "" });
           });
           var bRev = document.createElement("button");
           bRev.type = "button";
           bRev.className = "btn btn-warning btn-sm me-1 mb-1";
-          bRev.textContent = "⛔ Сбросить сессии";
+          bRev.setAttribute("data-dg-no-activity", "1");
+          bRev.textContent = "Сбросить сессии";
           bRev.addEventListener("click", function () {
             revokeSessions(u);
           });
@@ -335,7 +338,8 @@
             var bDel = document.createElement("button");
             bDel.type = "button";
             bDel.className = "btn btn-danger btn-sm mb-1";
-            bDel.textContent = "🗑️ Удалить";
+            bDel.setAttribute("data-dg-no-activity", "1");
+            bDel.textContent = "Удалить";
             bDel.addEventListener("click", function () {
               deleteUser(u);
             });

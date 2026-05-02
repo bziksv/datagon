@@ -3,6 +3,110 @@
  * раскрытие центральной области шапки (header-mobile-open), выпадающие меню без Bootstrap JS.
  */
 (function () {
+  function getAuthHeaders() {
+    var headers = {};
+    var username = window.localStorage.getItem("currentUser");
+    var token = window.localStorage.getItem("authToken");
+    if (username) headers["x-auth-username"] = username;
+    if (token) headers["x-auth-token"] = token;
+    return headers;
+  }
+
+  var dgActivityQueue = [];
+  var dgActivityFlushTimer = null;
+  var dgActivityStarted = false;
+
+  function flushDgActivityQueue(opts) {
+    opts = opts || {};
+    if (!dgActivityQueue.length) return;
+    var batch = dgActivityQueue.splice(0, 25);
+    var body = JSON.stringify({ events: batch });
+    try {
+      fetch("/api/activity/track", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: Object.assign({ "Content-Type": "application/json" }, getAuthHeaders()),
+        body: body,
+        keepalive: Boolean(opts.keepalive),
+      }).catch(function () {});
+    } catch (eFlush) {}
+  }
+
+  function scheduleDgActivityFlush() {
+    if (dgActivityFlushTimer) clearTimeout(dgActivityFlushTimer);
+    dgActivityFlushTimer = setTimeout(function () {
+      dgActivityFlushTimer = null;
+      flushDgActivityQueue({});
+    }, 2800);
+  }
+
+  function queueDgActivity(ev) {
+    if (!ev || !ev.kind) return;
+    dgActivityQueue.push(ev);
+    if (dgActivityQueue.length >= 14) flushDgActivityQueue({});
+    else scheduleDgActivityFlush();
+  }
+
+  window.DatagonActivity = {
+    track: function (ev) {
+      queueDgActivity(ev);
+    },
+    trackNow: function (ev) {
+      if (!ev || !ev.kind) return;
+      dgActivityQueue.push(ev);
+      flushDgActivityQueue({});
+    },
+  };
+
+  var DG_ACT_PAGE_LABELS = {
+    dashboard: "Дашборд",
+    "my-sites": "Мои сайты",
+    "my-products": "Мои товары",
+    moysklad: "МойСклад",
+    projects: "Конкуренты",
+    queue: "Очередь парсинга",
+    results: "Результаты",
+    matches: "Сопоставление",
+    processes: "Активность и процессы",
+    settings: "Настройки",
+    sections: "Статические экраны",
+    "architectui-demo": "ArchitectUI меню",
+    auth: "Вход и сессия",
+    login: "Страница входа",
+    app: "Прочее",
+  };
+
+  function dgActNormalizeSectionKey(raw) {
+    var s = String(raw || "").trim().toLowerCase();
+    if (!s) return "app";
+    s = s.replace(/^\/+|\/+$/g, "").replace(/\.html$/i, "");
+    var i = s.lastIndexOf("/");
+    if (i >= 0) s = s.slice(i + 1);
+    s = s.slice(0, 64);
+    return s || "app";
+  }
+
+  function dgActPageLabel(key) {
+    return DG_ACT_PAGE_LABELS[key] || key;
+  }
+
+  function dgActHrefToSectionKey(href) {
+    if (!href || /^javascript:/i.test(href) || href === "#") return null;
+    var path = String(href).split("#")[0].split("?")[0];
+    if (!path || path.charAt(0) !== "/") return null;
+    if (path.indexOf(".html") === -1) return null;
+    return dgActNormalizeSectionKey(path);
+  }
+
+  function dgActCurrentSectionKey() {
+    var nav = null;
+    try {
+      nav = document.body && document.body.getAttribute("data-dg-active-nav");
+    } catch (eNav0) {}
+    if (nav && String(nav).trim()) return dgActNormalizeSectionKey(nav);
+    return dgActNormalizeSectionKey(window.location.pathname || "");
+  }
+
   var c = document.querySelector(".app-container.datagon-vanilla-shell");
   if (!c) return;
 
@@ -471,15 +575,6 @@
     },
   };
 
-  function getAuthHeaders() {
-    var headers = {};
-    var username = window.localStorage.getItem("currentUser");
-    var token = window.localStorage.getItem("authToken");
-    if (username) headers["x-auth-username"] = username;
-    if (token) headers["x-auth-token"] = token;
-    return headers;
-  }
-
   function setUserUi(displayName, isAdmin) {
     var role = isAdmin ? "Админ" : "Пользователь";
     var ids = ["dg-vanilla-user-display-inline"];
@@ -493,6 +588,30 @@
       if (el) el.textContent = role;
     });
   }
+
+  /** Как `actorCanViewActivity` в routes/activity.js: журнал и пункт «Активность». */
+  function canViewActivityNav() {
+    try {
+      var adm =
+        window.localStorage.getItem("isAdmin") === "true" ||
+        window.localStorage.getItem("currentUser") === "admin";
+      var cm = window.localStorage.getItem("canManageUsers") === "true";
+      return Boolean(adm || cm);
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function applyDatagonRestrictedNavVisibility() {
+    var show = canViewActivityNav();
+    document.querySelectorAll('[data-dg-nav-restricted="activity"]').forEach(function (li) {
+      li.style.display = show ? "" : "none";
+    });
+  }
+
+  window.addEventListener("datagon-profile-loaded", function () {
+    applyDatagonRestrictedNavVisibility();
+  });
 
   function redirectVanillaToLogin() {
     try {
@@ -535,6 +654,7 @@
     var fromStorage = String(window.localStorage.getItem("currentUserDisplayName") || window.localStorage.getItem("currentUser") || "Пользователь");
     var isAdminStored = window.localStorage.getItem("isAdmin") === "true" || window.localStorage.getItem("currentUser") === "admin";
     setUserUi(fromStorage, isAdminStored);
+    applyDatagonRestrictedNavVisibility();
     fetch("/api/auth/me", { headers: getAuthHeaders(), credentials: "same-origin" })
       .then(function (r) {
         return r.json().then(function (j) {
@@ -562,7 +682,10 @@
         }
         if (fullName) window.localStorage.setItem("currentUserDisplayName", fullName);
         window.localStorage.setItem("isAdmin", isAdmin ? "true" : "false");
+        if (x.j.canManageUsers) window.localStorage.setItem("canManageUsers", "true");
+        else window.localStorage.removeItem("canManageUsers");
         setUserUi(fullName || "Пользователь", isAdmin);
+        applyDatagonRestrictedNavVisibility();
         try {
           window.dispatchEvent(
             new CustomEvent("datagon-profile-loaded", { detail: { username: username, isAdmin: isAdmin } })
@@ -1410,4 +1533,79 @@
       } catch (e4) {}
     },
   };
+
+  function initDatagonUiActivityTracking() {
+    if (dgActivityStarted) return;
+    if (/login\.html/i.test(window.location.pathname || "")) return;
+    dgActivityStarted = true;
+    var path = window.location.pathname || "";
+    var sk = dgActCurrentSectionKey();
+    queueDgActivity({
+      kind: "page_view",
+      section: sk,
+      label: "Открыта страница «" + (document.title || path).slice(0, 120) + "»",
+      detail: JSON.stringify({ path: path, section_key: sk }),
+    });
+
+    var lastClickTs = 0;
+    document.addEventListener(
+      "click",
+      function (e) {
+        var now = Date.now();
+        if (now - lastClickTs < 520) return;
+        lastClickTs = now;
+        var t = e.target;
+        if (!t || !t.closest) return;
+        if (t.closest("[data-dg-no-activity]")) return;
+        var el = t.closest("a[href],button,.btn,[data-dg-activity]");
+        if (!el) return;
+        if (el.type === "password" || el.name === "password") return;
+        if (el.closest("#dg-login-username") || el.closest("#dg-login-password")) return;
+        var sectionKey = dgActCurrentSectionKey();
+        var link = el.tagName === "A" && el.getAttribute("href") ? el : el.closest("a[href]");
+        var href = link && link.getAttribute("href") ? String(link.getAttribute("href")).trim() : "";
+        var targetKey = href ? dgActHrefToSectionKey(href) : null;
+        if (targetKey) sectionKey = targetKey;
+        var labelParts = [];
+        var dn = el.getAttribute("data-nav");
+        if (dn) labelParts.push("меню: " + dn);
+        var actLabel = String(el.getAttribute("data-dg-activity-label") || "").trim();
+        var tt = String(el.getAttribute("data-dg-tooltip") || el.getAttribute("aria-label") || "").trim();
+        if (tt) labelParts.push(tt);
+        var txRaw = actLabel || String(el.innerText || el.textContent || "").replace(/\s+/g, " ").trim();
+        var tx = txRaw.length > 200 ? txRaw.slice(0, 197) + "…" : txRaw;
+        if (tx && tx.length < 200) labelParts.push(tx.slice(0, 120));
+        if (targetKey) {
+          var destLabel = dgActPageLabel(targetKey);
+          if (dn) labelParts.unshift("«" + destLabel + "»");
+          else labelParts.unshift("→ «" + destLabel + "»");
+        }
+        var hrefForDet = el.getAttribute && el.getAttribute("href");
+        var det = {
+          tag: el.tagName,
+          id: el.id || null,
+          section_key: sectionKey,
+          href: hrefForDet && !/^javascript:/i.test(hrefForDet) ? String(hrefForDet).slice(0, 220) : null,
+          text: tx ? tx.slice(0, 120) : null,
+          activity_label: actLabel || null,
+        };
+        queueDgActivity({
+          kind: "click",
+          section: sectionKey,
+          label: labelParts.length ? labelParts.join(" — ") : "Нажатие в интерфейсе",
+          detail: JSON.stringify(det),
+        });
+      },
+      true
+    );
+
+    window.addEventListener("beforeunload", function () {
+      if (!dgActivityQueue.length) return;
+      flushDgActivityQueue({ keepalive: true });
+    });
+  }
+
+  window.addEventListener("datagon-profile-loaded", function () {
+    initDatagonUiActivityTracking();
+  });
 })();

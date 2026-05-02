@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
+const { recordDatagonActivity } = require('../lib/datagonActivity');
 
 const AUTH_SESSION_COOKIE = 'dg_session';
 
@@ -279,6 +280,8 @@ module.exports = (db, appSettings = {}) => {
         }
 
         try {
+            const actor = await getActor(req);
+            if (!actor) return res.status(401).json({ error: 'Не авторизован' });
             const [exists] = await db.query('SELECT id FROM users WHERE username = ?', [cleanUsername]);
             if (exists.length > 0) {
                 return res.status(409).json({ error: 'Пользователь с таким логином уже существует' });
@@ -288,6 +291,17 @@ module.exports = (db, appSettings = {}) => {
                 'INSERT INTO users (username, full_name, password_hash, can_manage_users) VALUES (?, ?, ?, 0)',
                 [cleanUsername, cleanFullName, passwordHash]
             );
+            await recordDatagonActivity(db, {
+                userId: actor.id,
+                kind: 'ui',
+                section: 'settings',
+                label: `Создан пользователь: логин «${cleanUsername}», имя «${cleanFullName}»`,
+                detail: JSON.stringify({
+                    action: 'user_create',
+                    username: cleanUsername,
+                    full_name: cleanFullName,
+                }),
+            });
             return res.json({ success: true });
         } catch (e) {
             return res.status(500).json({ error: e.message });
@@ -314,6 +328,22 @@ module.exports = (db, appSettings = {}) => {
             const totalUsers = Number(countRows[0]?.cnt || 0);
             if (totalUsers <= 1) {
                 return res.status(400).json({ error: 'Должен остаться хотя бы один пользователь' });
+            }
+            const delUser = rows[0];
+            const actor = await getActor(req);
+            if (actor && actor.id) {
+                await recordDatagonActivity(db, {
+                    userId: actor.id,
+                    kind: 'ui',
+                    section: 'settings',
+                    label: `Удалён пользователь: логин «${delUser.username}», имя «${delUser.full_name || delUser.username}»`,
+                    detail: JSON.stringify({
+                        action: 'user_delete',
+                        user_id: delUser.id,
+                        username: delUser.username,
+                        full_name: delUser.full_name || null,
+                    }),
+                });
             }
             await db.query('DELETE FROM users WHERE id = ?', [id]);
             return res.json({ success: true });
@@ -415,6 +445,15 @@ module.exports = (db, appSettings = {}) => {
                 'INSERT INTO auth_sessions (user_id, token_hash, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL ? DAY))',
                 [user.id, tokenHash, ttlDays]
             );
+            await recordDatagonActivity(db, {
+                userId: user.id,
+                kind: 'login',
+                section: 'auth',
+                label: 'Вход в систему',
+                detail: JSON.stringify({
+                    ua: String(req.headers['user-agent'] || '').slice(0, 400),
+                }),
+            });
             attachSessionCookie(res, token);
             res.json({
                 success: true,
@@ -430,7 +469,17 @@ module.exports = (db, appSettings = {}) => {
     router.post('/logout', async (req, res) => {
         try {
             await ensureAuthSchema();
+            const actor = await getActor(req);
             const token = getBearerToken(req);
+            if (token && actor) {
+                await recordDatagonActivity(db, {
+                    userId: actor.id,
+                    kind: 'logout',
+                    section: 'auth',
+                    label: 'Выход из системы',
+                    detail: null,
+                });
+            }
             if (token) {
                 const tokenHash = sha256(token);
                 await db.query(

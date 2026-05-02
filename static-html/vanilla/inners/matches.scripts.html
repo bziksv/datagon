@@ -209,6 +209,36 @@
         if (v && [].some.call(sel.options, function (o) { return o.value === v; })) sel.value = v;
       }
 
+      function mySiteOptionExists(sel, id) {
+        var s = String(id || "").trim();
+        return (
+          !!s &&
+          [].some.call(sel.options, function (o) {
+            return o.value === s;
+          })
+        );
+      }
+
+      /** Если в URL нет my_site_id: сначала сайт из «Мои товары», затем последний на этой странице; иначе пусто (не первый из списка). */
+      function pickDefaultMySiteIdFromPrefs(sel) {
+        try {
+          var DF = window.DatagonFilters;
+          if (DF && DF.load) {
+            var mp = DF.load("my_products");
+            if (mp && mp.site_id != null && String(mp.site_id).trim() && String(mp.site_id) !== "all") {
+              var sid = String(mp.site_id).trim();
+              if (mySiteOptionExists(sel, sid)) return sid;
+            }
+            var mc = DF.load("matches_ctx");
+            if (mc && mc.my_site_id != null && String(mc.my_site_id).trim()) {
+              var mid = String(mc.my_site_id).trim();
+              if (mySiteOptionExists(sel, mid)) return mid;
+            }
+          }
+        } catch (e) {}
+        return "";
+      }
+
       function renderCompetitors() {
         var box = document.getElementById("dg-matches-competitors");
         box.replaceChildren();
@@ -1380,6 +1410,8 @@
       function onStop() {
         var mySiteId = document.getElementById("dg-matches-my-site").value;
         if (!mySiteId) return alert("Выберите мой сайт");
+        var btn = document.getElementById("dg-matches-stop");
+        if (btn) btn.disabled = true;
         fetch("/api/matches/stop", {
           method: "POST",
           credentials: "same-origin",
@@ -1393,11 +1425,13 @@
           })
           .then(function (x) {
             if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Не удалось остановить задачу");
-            alert("Остановка запрошена");
             return loadStatus();
           })
           .catch(function (e) {
             alert(e.message || "Ошибка остановки");
+          })
+          .then(function () {
+            if (btn) btn.disabled = false;
           });
       }
 
@@ -1453,6 +1487,13 @@
       }
 
       document.getElementById("dg-matches-my-site").addEventListener("change", function () {
+        try {
+          if (window.DatagonFilters && DatagonFilters.save) {
+            DatagonFilters.save("matches_ctx", {
+              my_site_id: String(document.getElementById("dg-matches-my-site").value || ""),
+            });
+          }
+        } catch (eSave) {}
         onMySiteChanged(true);
       });
       document.getElementById("dg-matches-product-search").addEventListener("input", function () {
@@ -1721,8 +1762,9 @@
           var sel = document.getElementById("dg-matches-my-site");
           if (up.my_site_id && [].some.call(sel.options, function (o) { return o.value === String(up.my_site_id); })) {
             sel.value = String(up.my_site_id);
-          } else if (state.mySites.length) {
-            sel.value = String(state.mySites[0].id);
+          } else {
+            var prefSite = pickDefaultMySiteIdFromPrefs(sel);
+            if (prefSite) sel.value = prefSite;
           }
           if (up.status && ["pending", "confirmed", "rejected", "all"].indexOf(up.status) !== -1)
             document.getElementById("dg-matches-status-filter").value = up.status;
