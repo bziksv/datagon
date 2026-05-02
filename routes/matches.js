@@ -24,6 +24,54 @@ function similarity(s1, s2) {
     return (maxLen - levenshtein(s1.toLowerCase(), s2.toLowerCase())) / maxLen;
 }
 
+/** Одна строка DP Левенштейна; если итоговое расстояние > maxDist, возвращает maxDist+1 (ранний отказ не делаем — maxDist уже узкий). */
+function levenshteinBounded(a, b, maxDist) {
+    if (a === b) return 0;
+    const m = a.length;
+    const n = b.length;
+    if (m === 0) return n <= maxDist ? n : maxDist + 1;
+    if (n === 0) return m <= maxDist ? m : maxDist + 1;
+    if (Math.abs(m - n) > maxDist) return maxDist + 1;
+    const row = new Array(n + 1);
+    for (let j = 0; j <= n; j += 1) row[j] = j;
+    for (let i = 1; i <= m; i += 1) {
+        let prevDiag = row[0];
+        row[0] = i;
+        for (let j = 1; j <= n; j += 1) {
+            const tmp = row[j];
+            const cost = a.charCodeAt(i - 1) === b.charCodeAt(j - 1) ? 0 : 1;
+            row[j] = Math.min(row[j] + 1, row[j - 1] + 1, prevDiag + cost);
+            prevDiag = tmp;
+        }
+    }
+    const d = row[n];
+    return d > maxDist ? maxDist + 1 : d;
+}
+
+/**
+ * Схожесть по нормализованным строкам (уже lower-case).
+ * Отсечения без полного LD: верхняя граница score при лучшем расстоянии |L1-L2| = minL/maxL;
+ * затем LD только если потенциально score > bestScore и >= threshold.
+ */
+function nameSimilarityThresholded(normMy, normComp, threshold, bestScore) {
+    const L1 = normMy.length;
+    const L2 = normComp.length;
+    if (L1 < 3 || L2 < 3) return 0;
+    if (normMy === normComp) return 1;
+    const maxL = Math.max(L1, L2);
+    const minL = Math.min(L1, L2);
+    if (minL / maxL < threshold) return 0;
+    const minDiff = Math.abs(L1 - L2);
+    const maxDistForThreshold = maxL * (1 - threshold);
+    if (minDiff > maxDistForThreshold + 1e-12) return 0;
+    const bar = Math.max(threshold, bestScore);
+    let maxDist = Math.floor(maxL * (1 - bar) + 1e-12);
+    if (maxDist < 0) maxDist = 0;
+    const d = levenshteinBounded(normMy, normComp, maxDist);
+    if (d > maxDist) return 0;
+    return (maxL - d) / maxL;
+}
+
 function normalizeText(text) {
     if (!text) return '';
     return text.toLowerCase()
@@ -736,11 +784,12 @@ module.exports = (db, settings) => {
                         const normCompName = compNormNames[ni];
                         if (normCompName.length < 3) continue;
                         const compProd = compPrices[ni];
-                        const score = similarity(normMyName, normCompName);
+                        const score = nameSimilarityThresholded(normMyName, normCompName, threshold, bestScore);
                         if (score >= threshold && score > bestScore) {
                             bestMatch = compProd;
                             bestScore = score;
                             matchType = 'name';
+                            if (score >= 1) break;
                         }
                     }
                 }
