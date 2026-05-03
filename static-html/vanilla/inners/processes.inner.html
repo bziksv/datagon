@@ -65,26 +65,51 @@
             #dg-activity-hero .dg-act-extra-filters .form-label {
               font-size: 0.72rem;
             }
+            .dg-act-item .dg-act-row-detail {
+              white-space: normal;
+              word-break: break-word;
+            }
+            .dg-act-item .dg-act-row-detail.dg-act-row-detail-collapsed {
+              display: -webkit-box;
+              -webkit-line-clamp: 3;
+              -webkit-box-orient: vertical;
+              overflow: hidden;
+            }
           </style>
 
           <div class="main-card mb-3 card border-0 shadow-sm" id="dg-activity-hero">
             <div class="card-body pb-2">
-              <div class="dg-act-hero-top d-flex flex-column flex-lg-row gap-3 align-items-stretch align-items-lg-start justify-content-lg-between">
-                <div class="d-flex align-items-center min-w-0 flex-grow-1">
+              <div class="dg-act-hero-top d-flex flex-column gap-3 align-items-stretch">
+                <div class="d-flex align-items-center min-w-0">
                   <div
                     class="rounded-3 d-flex align-items-center justify-content-center me-3 text-white flex-shrink-0"
                     style="width: 52px; height: 52px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
                   >
                     <i class="pe-7s-graph1" style="font-size: 1.45rem" aria-hidden="true"></i>
                   </div>
-                  <div class="min-w-0">
-                    <h5 class="mb-1 text-break">Журнал активности</h5>
-                    <div class="text-muted small text-break">
-                      Входы, разделы, нажатия и итоги действий (тип «Запись»): создание пользователя, синхронизация цены и т.п. — с полным текстом в строке события.
+                  <div class="min-w-0 flex-grow-1 d-flex flex-column flex-sm-row align-items-sm-start justify-content-sm-between gap-2">
+                    <div class="min-w-0">
+                      <h5 class="mb-1 text-break">Журнал активности</h5>
+                      <div class="text-muted small text-break">
+                        Входы, разделы, нажатия и итоги действий (тип «Запись»): создание пользователя, синхронизация цены и т.п. Полный текст в карточке события; длинные записи можно
+                        <strong>развернуть по кнопке</strong> в строке. Весь блок журнала сворачивается кнопкой справа (состояние в браузере:
+                        <code class="small">datagon_processes_activity_journal_collapsed_v1</code>).
+                      </div>
                     </div>
+                    <button
+                      type="button"
+                      class="btn btn-sm btn-outline-secondary flex-shrink-0 align-self-start"
+                      id="dg-act-hero-toggle"
+                      aria-expanded="true"
+                      aria-controls="dg-act-hero-body"
+                    >
+                      Свернуть журнал
+                    </button>
                   </div>
                 </div>
-                <div class="dg-act-toolbar flex-shrink-0">
+              </div>
+              <div id="dg-act-hero-body">
+                <div class="dg-act-toolbar flex-shrink-0 w-100">
                   <select class="form-select form-select-sm" id="dg-act-user" title="Пользователь" autocomplete="off">
                     <option value="">Все пользователи</option>
                   </select>
@@ -98,39 +123,39 @@
                   </select>
                   <button type="button" class="btn btn-sm btn-primary" id="dg-act-refresh">Обновить</button>
                 </div>
-              </div>
-              <hr class="my-3 text-muted opacity-25" />
-              <div class="dg-act-extra-filters row g-2 align-items-end mb-2">
-                <div class="col-12 col-md-5 col-xl-4">
-                  <label class="form-label mb-1" for="dg-act-section">Раздел (страница)</label>
-                  <select class="form-select form-select-sm" id="dg-act-section" title="Фильтр по разделу приложения" autocomplete="off">
-                    <option value="">Все разделы</option>
-                  </select>
+                <hr class="my-3 text-muted opacity-25" />
+                <div class="dg-act-extra-filters row g-2 align-items-end mb-2">
+                  <div class="col-12 col-md-5 col-xl-4">
+                    <label class="form-label mb-1" for="dg-act-section">Раздел (страница)</label>
+                    <select class="form-select form-select-sm" id="dg-act-section" title="Фильтр по разделу приложения" autocomplete="off">
+                      <option value="">Все разделы</option>
+                    </select>
+                  </div>
+                  <div class="col-6 col-md-4 col-xl-3">
+                    <label class="form-label mb-1" for="dg-act-from">С даты и времени</label>
+                    <input type="datetime-local" class="form-control form-control-sm" id="dg-act-from" step="60" />
+                  </div>
+                  <div class="col-6 col-md-3 col-xl-3">
+                    <label class="form-label mb-1" for="dg-act-to">По дату и время</label>
+                    <input type="datetime-local" class="form-control form-control-sm" id="dg-act-to" step="60" />
+                  </div>
+                  <div class="col-12 col-xl-2 d-grid">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-act-reset-filters" title="Сбросить раздел, даты, тип события и пользователя">
+                      Сбросить фильтры
+                    </button>
+                  </div>
                 </div>
-                <div class="col-6 col-md-4 col-xl-3">
-                  <label class="form-label mb-1" for="dg-act-from">С даты и времени</label>
-                  <input type="datetime-local" class="form-control form-control-sm" id="dg-act-from" step="60" />
+                <p class="small text-muted mb-3" id="dg-act-retention-hint"></p>
+                <div id="dg-act-deny" class="alert alert-light border text-muted mb-3" style="display: none">
+                  Журнал доступен пользователям с правом «управление пользователями» (как в блоке пользователей в Настройках).
                 </div>
-                <div class="col-6 col-md-3 col-xl-3">
-                  <label class="form-label mb-1" for="dg-act-to">По дату и время</label>
-                  <input type="datetime-local" class="form-control form-control-sm" id="dg-act-to" step="60" />
+                <div id="dg-act-empty" class="text-muted text-center py-4" style="display: none">Пока нет событий.</div>
+                <div id="dg-act-list" class="dg-activity-timeline"></div>
+                <div class="d-flex justify-content-between align-items-center mt-3 pt-2 border-top small" id="dg-act-pager" style="display: none">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-act-prev">← Раньше</button>
+                  <span class="text-muted" id="dg-act-page-hint"></span>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-act-next">Позже →</button>
                 </div>
-                <div class="col-12 col-xl-2 d-grid">
-                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-act-reset-filters" title="Сбросить раздел, даты, тип события и пользователя">
-                    Сбросить фильтры
-                  </button>
-                </div>
-              </div>
-              <p class="small text-muted mb-3" id="dg-act-retention-hint"></p>
-              <div id="dg-act-deny" class="alert alert-light border text-muted mb-3" style="display: none">
-                Журнал доступен пользователям с правом «управление пользователями» (как в блоке пользователей в Настройках).
-              </div>
-              <div id="dg-act-empty" class="text-muted text-center py-4" style="display: none">Пока нет событий.</div>
-              <div id="dg-act-list" class="dg-activity-timeline"></div>
-              <div class="d-flex justify-content-between align-items-center mt-3 pt-2 border-top small" id="dg-act-pager" style="display: none">
-                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-act-prev">← Раньше</button>
-                <span class="text-muted" id="dg-act-page-hint"></span>
-                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-act-next">Позже →</button>
               </div>
             </div>
           </div>

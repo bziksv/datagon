@@ -11,6 +11,7 @@
         discover_request_delay_ms: 100,
         auth_session_ttl_days: 14,
         auth_session_user_limit: 1,
+        auth_online_presence_minutes: 15,
         sync_batch_size: 500,
         sync_delay_ms: 2000,
         sync_mode: "always",
@@ -53,6 +54,7 @@
       }
 
       var users = [];
+      var usersPresenceWindowMinutes = 15;
       var usersLoadForbidden = false;
       var loadingUsers = false;
       var editUser = null;
@@ -117,6 +119,7 @@
         set("dg-set-results_retention_days", merged.results_retention_days);
         set("dg-set-auth_session_ttl_days", merged.auth_session_ttl_days);
         set("dg-set-auth_session_user_limit", merged.auth_session_user_limit);
+        set("dg-set-auth_online_presence_minutes", merged.auth_online_presence_minutes);
         set("dg-set-discover_max_sitemaps", merged.discover_max_sitemaps);
         set("dg-set-discover_max_urls", merged.discover_max_urls);
         set("dg-set-discover_crawl_max_pages", merged.discover_crawl_max_pages);
@@ -131,14 +134,36 @@
         document.getElementById("dg-set-auto_ms_en").checked = Number(merged.auto_sync_moysklad_enabled) === 1;
         set("dg-set-auto_ms_time", merged.auto_sync_moysklad_time || "04:00");
         set("dg-set-log_retention_days", merged.log_retention_days);
+        usersPresenceWindowMinutes = getNum("dg-set-auth_online_presence_minutes", 15);
+        syncUsersSessionsHeader();
+        updateUsersHint();
       }
 
       function updateUsersHint() {
         var h = document.getElementById("dg-set-users-hint");
-        if (h)
-          h.textContent = isAdmin()
-            ? "Admin может управлять списком пользователей"
-            : "Список пользователей доступен только admin";
+        if (!h) return;
+        if (!isAdmin()) {
+          h.textContent = "Список пользователей доступен только admin";
+          return;
+        }
+        var pm = Number(usersPresenceWindowMinutes || 15);
+        h.textContent =
+          "Admin может управлять списком пользователей. В таблице: по каждой строке — сколько у этого логина сессий в окне " +
+          (Number.isFinite(pm) ? pm : 15) +
+          " мин и сколько всего действующих cookie (TTL). Виджет в шапке: для admin — число пользователей онлайн в окне; для остальных — 0 или 1 по вашим сессиям (вкладки не удваивают число людей).";
+      }
+
+      function userSessionsOnlineCount(u) {
+        if (u && u.active_sessions_recent != null) return Number(u.active_sessions_recent || 0);
+        return Number(u.active_sessions || 0);
+      }
+
+      function syncUsersSessionsHeader() {
+        var th = document.getElementById("dg-set-users-th-sessions");
+        if (!th) return;
+        var pm = Number(usersPresenceWindowMinutes || 15);
+        var label = Number.isFinite(pm) ? pm : 15;
+        th.textContent = "Онлайн (" + label + " мин) / действующих";
       }
 
       function applyUserFieldDisabled() {
@@ -214,7 +239,7 @@
           if (needle && haystack.indexOf(needle) === -1) return false;
           var canManage = u.username === "admin" || Number(u.can_manage_users || 0) === 1 ? "1" : "0";
           if (canF !== "all" && canManage !== canF) return false;
-          var activeSessions = Number(u.active_sessions || 0);
+          var activeSessions = userSessionsOnlineCount(u);
           var min = Number(smin || "");
           var max = Number(smax || "");
           if (Number.isFinite(min) && String(smin).trim() !== "" && activeSessions < min) return false;
@@ -290,7 +315,17 @@
           tdPerm.appendChild(lab);
           tr.appendChild(tdPerm);
           var tdSess = document.createElement("td");
-          tdSess.textContent = String(Number(u.active_sessions || 0));
+          var recent = Number(u.active_sessions_recent != null ? u.active_sessions_recent : u.active_sessions || 0);
+          var total = Number(u.active_sessions || 0);
+          tdSess.textContent = total > 0 ? String(recent) + " / " + String(total) : "0";
+          tdSess.title =
+            "За последние " +
+            (Number(usersPresenceWindowMinutes || 15) || 15) +
+            " мин (по последней активности сессий этого логина): " +
+            recent +
+            ". Всего действующих сессий (TTL): " +
+            total +
+            ". Виджет в шапке для каждого пользователя — только его 0/1, не сумма по таблице.";
           tr.appendChild(tdSess);
           var tdReg = document.createElement("td");
           tdReg.className = "text-nowrap small";
@@ -373,6 +408,10 @@
             }
             if (!x.r.ok) throw new Error((x.j && x.j.error) || "Не удалось загрузить пользователей");
             users = Array.isArray(x.j.data) ? x.j.data : [];
+            var pm = Number(x.j.presenceWindowMinutes);
+            usersPresenceWindowMinutes = Number.isFinite(pm) ? pm : 15;
+            syncUsersSessionsHeader();
+            updateUsersHint();
           })
           .catch(function (e) {
             alert(e.message || "Ошибка загрузки пользователей");
@@ -406,6 +445,17 @@
           });
       }
 
+      function saveSessionsAndOnline() {
+        upsertSettings(
+          {
+            auth_session_ttl_days: getNum("dg-set-auth_session_ttl_days", 14),
+            auth_session_user_limit: getNum("dg-set-auth_session_user_limit", 1),
+            auth_online_presence_minutes: getNum("dg-set-auth_online_presence_minutes", 15),
+          },
+          "Настройки сессий и онлайн сохранены"
+        );
+      }
+
       function saveGeneral() {
         upsertSettings(
           {
@@ -413,15 +463,13 @@
             parse_batch_size: getNum("dg-set-parse_batch_size", 50),
             page_delay_ms: getNum("dg-set-page_delay_ms", 0),
             results_retention_days: getNum("dg-set-results_retention_days", 120),
-            auth_session_ttl_days: getNum("dg-set-auth_session_ttl_days", 14),
-            auth_session_user_limit: getNum("dg-set-auth_session_user_limit", 1),
             discover_max_sitemaps: getNum("dg-set-discover_max_sitemaps", 200),
             discover_max_urls: getNum("dg-set-discover_max_urls", 50000),
             discover_crawl_max_pages: getNum("dg-set-discover_crawl_max_pages", 500),
             discover_request_delay_ms: getNum("dg-set-discover_request_delay_ms", 100),
             log_retention_days: getNum("dg-set-log_retention_days", 7),
           },
-          "Общие настройки сохранены"
+          "Настройки парсера сохранены"
         );
       }
 
@@ -739,6 +787,7 @@
       document.getElementById("dg-set-edit-save").addEventListener("click", saveEditedUser);
       document.getElementById("dg-set-edit-cancel").addEventListener("click", closeEditUser);
       document.getElementById("dg-set-btn-save-general").addEventListener("click", saveGeneral);
+      document.getElementById("dg-set-btn-save-sessions").addEventListener("click", saveSessionsAndOnline);
       document.getElementById("dg-set-btn-save-myproducts").addEventListener("click", saveMyProductsSync);
       document.getElementById("dg-set-btn-save-ms").addEventListener("click", saveMoyskladSync);
       document.getElementById("dg-set-btn-save-auto").addEventListener("click", saveAutoSync);

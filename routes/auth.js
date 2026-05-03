@@ -207,6 +207,120 @@ module.exports = (db, appSettings = {}) => {
         }
     });
 
+    /**
+     * Виджет «онлайн» в шапке: для не-admin — 0 или 1 по текущему пользователю.
+     * Для admin дополнительно globalDistinctUsersOnline — число разных пользователей с активностью в окне
+     * (та же логика, что колонка «Онлайн (N мин)» в GET /api/auth/users: MAX по действующим сессиям ≥ порога).
+     * Счётчики «сессий в окне» / TTL — по неревокнутым неистёкшим cookie.
+     */
+    router.get('/sessions-overview', async (req, res) => {
+        try {
+            const actor = await getActor(req);
+            if (!actor) return res.status(401).json({ error: 'Не авторизован' });
+            await ensureAuthSchema();
+            const presenceMin = Math.max(1, Math.min(24 * 60, Number(appSettings?.auth_online_presence_minutes ?? 15)));
+            const pm = presenceMin;
+            const uid = Number(actor.id);
+            const [sessionOverviewRows] = await db.query(
+                `
+                SELECT
+                    CASE
+                        WHEN (
+                            SELECT MAX(COALESCE(s.last_seen_at, s.created_at))
+                            FROM auth_sessions s
+                            WHERE s.user_id = ?
+                        ) >= DATE_SUB(NOW(), INTERVAL ? MINUTE)
+                        THEN 1 ELSE 0
+                    END AS me_online,
+                    (
+                        SELECT COUNT(*)
+                        FROM auth_sessions s
+                        WHERE s.user_id = ?
+                          AND s.revoked = 0
+                          AND s.expires_at > NOW()
+                          AND (
+                              SELECT MAX(COALESCE(s2.last_seen_at, s2.created_at))
+                              FROM auth_sessions s2
+                              WHERE s2.user_id = ? AND s2.revoked = 0 AND s2.expires_at > NOW()
+                          ) >= DATE_SUB(NOW(), INTERVAL ? MINUTE)
+                    ) AS my_sessions,
+                    (
+                        SELECT MAX(COALESCE(s.last_seen_at, s.created_at))
+                        FROM auth_sessions s
+                        WHERE s.user_id = ?
+                    ) AS my_last_activity_at,
+                    (
+                        SELECT COUNT(*)
+                        FROM auth_sessions s
+                        WHERE s.user_id = ? AND s.revoked = 0 AND s.expires_at > NOW()
+                    ) AS ttl_sessions
+                `,
+                [uid, pm, uid, uid, pm, uid, uid]
+            );
+            const row0 = sessionOverviewRows[0] || {};
+            const meOnlineRaw = Number(row0.me_online);
+            const selfOnline = meOnlineRaw === 1 ? 1 : 0;
+            let globalDistinctUsersOnline = null;
+            if (await isAdminActor(req)) {
+                const [gRows] = await db.query(
+                    `
+                    SELECT COUNT(*) AS cnt
+                    FROM users u
+                    WHERE EXISTS (
+                        SELECT 1 FROM auth_sessions s
+                        WHERE s.user_id = u.id AND s.revoked = 0 AND s.expires_at > NOW()
+                    )
+                      AND (
+                        SELECT MAX(COALESCE(s.last_seen_at, s.created_at))
+                        FROM auth_sessions s
+                        WHERE s.user_id = u.id AND s.revoked = 0 AND s.expires_at > NOW()
+                    ) >= DATE_SUB(NOW(), INTERVAL ? MINUTE)
+                    `,
+                    [pm]
+                );
+                globalDistinctUsersOnline = Number(gRows?.[0]?.cnt || 0);
+            }
+            const [oldestRows] = await db.query(
+                `SELECT MIN(s.created_at) AS ca
+                 FROM auth_sessions s
+                 WHERE s.user_id = ?
+                   AND s.revoked = 0
+                   AND s.expires_at > NOW()
+                   AND (
+                       SELECT MAX(COALESCE(s2.last_seen_at, s2.created_at))
+                       FROM auth_sessions s2
+                       WHERE s2.user_id = ? AND s2.revoked = 0 AND s2.expires_at > NOW()
+                   ) >= DATE_SUB(NOW(), INTERVAL ? MINUTE)`,
+                [uid, uid, pm]
+            );
+            const oldestSelf = oldestRows[0] || {};
+            const totalActiveSessions = Number(row0.my_sessions || 0);
+            const sessionsTtlCount = Number(row0.ttl_sessions || 0);
+            return res.json({
+                success: true,
+                presenceWindowMinutes: presenceMin,
+                totalActiveSessions,
+                /** Все неревокнутые сессии с неистёкшим cookie (без фильтра «окно активности»). */
+                sessionsTtlCount,
+                /** 0/1 по той же отметке времени, что «Последняя активность» в настройках (см. lastActivityAt). */
+                selfOnline,
+                /** Совместимость со старым клиентом; всегда дублирует selfOnline (не число сессий). */
+                distinctUsersOnline: selfOnline,
+                /**
+                 * Только для admin: сколько разных пользователей имеют хотя бы одну действующую сессию
+                 * и MAX(last_seen) по их действующим сессиям в пределах окна (как колонка «Онлайн» в /api/auth/users).
+                 */
+                globalDistinctUsersOnline,
+                lastActivityAt: row0.my_last_activity_at || null,
+                oldestSessionStartedAt: oldestSelf?.ca || null,
+                refreshedAt: new Date().toISOString(),
+                onlineViewerScope: 'self',
+            });
+        } catch (e) {
+            return res.status(500).json({ error: e.message });
+        }
+    });
+
     /** Выставить dg_session по уже валидному x-auth-token (нужно для /docs/* после входа только в localStorage). */
     router.post('/sync-session-cookie', async (req, res) => {
         try {
@@ -226,7 +340,9 @@ module.exports = (db, appSettings = {}) => {
             const isAdmin = await isAdminActor(_req);
             if (!isAdmin) return res.status(403).json({ error: 'Только admin может просматривать пользователей' });
             await ensureAuthSchema();
-            const [rows] = await db.query(`
+            const presenceMin = Math.max(1, Math.min(24 * 60, Number(appSettings?.auth_online_presence_minutes ?? 15)));
+            const [rows] = await db.query(
+                `
                 SELECT
                     u.id,
                     u.username,
@@ -240,6 +356,20 @@ module.exports = (db, appSettings = {}) => {
                           AND s.revoked = 0
                           AND s.expires_at > NOW()
                     ), 0) AS active_sessions,
+                    COALESCE((
+                        SELECT COUNT(*)
+                        FROM auth_sessions s
+                        WHERE s.user_id = u.id
+                          AND s.revoked = 0
+                          AND s.expires_at > NOW()
+                          AND (
+                              SELECT MAX(COALESCE(s2.last_seen_at, s2.created_at))
+                              FROM auth_sessions s2
+                              WHERE s2.user_id = u.id
+                                AND s2.revoked = 0
+                                AND s2.expires_at > NOW()
+                          ) >= DATE_SUB(NOW(), INTERVAL ? MINUTE)
+                    ), 0) AS active_sessions_recent,
                     (
                         SELECT MAX(COALESCE(s.last_seen_at, s.created_at))
                         FROM auth_sessions s
@@ -247,8 +377,10 @@ module.exports = (db, appSettings = {}) => {
                     ) AS last_activity_at
                 FROM users u
                 ORDER BY u.username ASC
-            `);
-            return res.json({ data: rows });
+            `,
+                [presenceMin]
+            );
+            return res.json({ data: rows, presenceWindowMinutes: presenceMin });
         } catch (e) {
             return res.status(500).json({ error: e.message });
         }

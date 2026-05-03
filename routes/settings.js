@@ -63,7 +63,7 @@ module.exports = (db, appSettings) => {
             auto_sync_myproducts_enabled, auto_sync_myproducts_time,
             auto_sync_moysklad_enabled, auto_sync_moysklad_time,
             discover_max_sitemaps, discover_max_urls, discover_crawl_max_pages, discover_request_delay_ms,
-            auth_session_ttl_days, auth_session_user_limit
+            auth_session_ttl_days, auth_session_user_limit, auth_online_presence_minutes
         } = req.body;
         try {
             const queries = [];
@@ -86,6 +86,12 @@ module.exports = (db, appSettings) => {
             if (discover_request_delay_ms !== undefined) queries.push(['discover_request_delay_ms', Math.max(0, Number(discover_request_delay_ms || 100))]);
             if (auth_session_ttl_days !== undefined) queries.push(['auth_session_ttl_days', Math.max(1, Number(auth_session_ttl_days || 14))]);
             if (auth_session_user_limit !== undefined) queries.push(['auth_session_user_limit', Math.max(1, Number(auth_session_user_limit || 1))]);
+            if (auth_online_presence_minutes !== undefined) {
+                queries.push([
+                    'auth_online_presence_minutes',
+                    Math.max(1, Math.min(24 * 60, Number(auth_online_presence_minutes || 15)))
+                ]);
+            }
             
             for (const [key, val] of queries) {
                 await db.query('INSERT INTO app_settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value=?', [key, val, val]);
@@ -115,6 +121,9 @@ module.exports = (db, appSettings) => {
             if(discover_request_delay_ms !== undefined) appSettings.discover_request_delay_ms = Math.max(0, Number(discover_request_delay_ms || 100));
             if(auth_session_ttl_days !== undefined) appSettings.auth_session_ttl_days = Math.max(1, Number(auth_session_ttl_days || 14));
             if(auth_session_user_limit !== undefined) appSettings.auth_session_user_limit = Math.max(1, Number(auth_session_user_limit || 1));
+            if(auth_online_presence_minutes !== undefined) {
+                appSettings.auth_online_presence_minutes = Math.max(1, Math.min(24 * 60, Number(auth_online_presence_minutes || 15)));
+            }
 
             res.json({ success: true });
         } catch (e) { res.status(500).json({ error: e.message }); }

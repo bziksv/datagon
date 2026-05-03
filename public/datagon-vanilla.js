@@ -697,10 +697,16 @@
 
   function loadOnlineUsers() {
     var out = document.getElementById("dg-vanilla-online-users");
+    var unit = document.getElementById("dg-vanilla-online-users-unit");
+    var role = document.getElementById("dg-vanilla-online-users-role");
+    var sessLn = document.getElementById("dg-vanilla-online-users-sessions");
     var note = document.getElementById("dg-vanilla-online-users-note");
-    if (out) out.textContent = "...";
-    if (note) note.textContent = "Загрузка...";
-    fetch("/api/auth/users", { headers: getAuthHeaders(), credentials: "same-origin" })
+    if (out) out.textContent = "…";
+    if (unit) unit.textContent = "";
+    if (role) role.textContent = "…";
+    if (sessLn) sessLn.textContent = "";
+    if (note) note.textContent = "";
+    fetch("/api/auth/sessions-overview", { headers: getAuthHeaders(), credentials: "same-origin" })
       .then(function (r) {
         return r.json().then(function (j) {
           return { r: r, j: j };
@@ -708,16 +714,56 @@
       })
       .then(function (x) {
         if (!x.r.ok) throw new Error((x.j && x.j.error) || "Недоступно");
-        var rows = Array.isArray(x.j && x.j.data) ? x.j.data : [];
-        var online = rows.reduce(function (acc, u) {
-          return acc + Number(u.active_sessions || 0);
-        }, 0);
-        if (out) out.textContent = String(online);
-        if (note) note.textContent = "Обновлено сейчас";
+        var j = x.j || {};
+        var rawSelf =
+          j.selfOnline !== undefined && j.selfOnline !== null ? Number(j.selfOnline) : Number(j.distinctUsersOnline);
+        var online01 = rawSelf === 1 ? 1 : 0;
+        var totalSess = Number(j.totalActiveSessions || 0);
+        var ttlSess =
+          j.sessionsTtlCount !== undefined && j.sessionsTtlCount !== null
+            ? Number(j.sessionsTtlCount)
+            : totalSess;
+        if (!Number.isFinite(ttlSess) || ttlSess < 0) ttlSess = 0;
+        var pm = Number(j.presenceWindowMinutes || 15);
+        var pmLabel = Number.isFinite(pm) ? pm : 15;
+        var isAdminUser = false;
+        try {
+          isAdminUser = window.localStorage.getItem("isAdmin") === "true";
+        } catch (eAd) {}
+        var gRaw = j.globalDistinctUsersOnline;
+        var gNum = gRaw == null || gRaw === "" ? NaN : Number(gRaw);
+        var showGlobal = isAdminUser && Number.isFinite(gNum) && gNum >= 0;
+        var displayNum = showGlobal ? Math.floor(gNum) : online01;
+        if (out) out.textContent = String(displayNum);
+        if (unit) {
+          if (showGlobal) unit.textContent = "онлайн · " + pmLabel + " мин";
+          else if (online01 === 1) unit.textContent = "в окне";
+          else unit.textContent = "вне окна · " + pmLabel + " мин";
+        }
+        if (role) {
+          if (showGlobal) role.textContent = "";
+          else if (online01 === 0) role.textContent = "Без запросов к API дольше " + pmLabel + " мин";
+          else role.textContent = "";
+        }
+        if (sessLn) {
+          if (showGlobal) sessLn.textContent = "";
+          else if (online01 === 1 && totalSess > 1) sessLn.textContent = "Сессий: " + totalSess;
+          else if (online01 === 0 && ttlSess > 0) sessLn.textContent = "Cookie-сессий: " + ttlSess;
+          else sessLn.textContent = "";
+        }
+        if (note) {
+          var tRef = j.refreshedAt ? new Date(j.refreshedAt) : new Date();
+          var refStr = isNaN(tRef.getTime()) ? "—" : tRef.toLocaleString("ru-RU");
+          note.textContent = refStr;
+        }
       })
       .catch(function (e) {
-        if (out) out.textContent = "-";
-        if (note) note.textContent = (e && e.message) || "Недоступно";
+        if (out) out.textContent = "—";
+        var unitE = document.getElementById("dg-vanilla-online-users-unit");
+        if (unitE) unitE.textContent = "";
+        if (role) role.textContent = "Недоступно";
+        if (sessLn) sessLn.textContent = "";
+        if (note) note.textContent = (e && e.message) || "Ошибка";
       });
   }
 
@@ -1266,7 +1312,9 @@
       id === "dg-res-main-table" ||
       id === "dg-matches-list-table" ||
       id === "dg-matches-my-main-table" ||
-      id === "mp-main-table"
+      id === "mp-main-table" ||
+      id === "dg-manual-queue-table" ||
+      id === "dg-manual-archive-table"
     )
       return true;
     return false;

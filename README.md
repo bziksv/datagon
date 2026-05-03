@@ -67,9 +67,19 @@ npm install
 npm start
 ```
 
-После запуска откройте:
+После запуска откройте (порт из `config.js`, ниже для типового `3000`):
 
 - `http://localhost:3000/` (редирект на `/dashboard.html`) или сразу `http://localhost:3000/dashboard.html`
+- `http://localhost:3000/my-sites.html`
+- `http://localhost:3000/my-products.html`
+- `http://localhost:3000/moysklad.html`
+- `http://localhost:3000/projects.html`
+- `http://localhost:3000/queue.html`
+- `http://localhost:3000/results.html`
+- `http://localhost:3000/matches.html`
+- `http://localhost:3000/processes.html`
+- `http://localhost:3000/settings.html`
+- `http://localhost:3000/sections.html` — каталог статических экранов (`sections.html`)
 
 ## Первый вход
 

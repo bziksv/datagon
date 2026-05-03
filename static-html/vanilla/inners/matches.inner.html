@@ -9,8 +9,134 @@
                 <div>
                   Сопоставление
                   <div class="page-title-subheading">
-                    Перенос управления matching jobs и ручной валидации совпадений.
+                    Запуск сопоставления и таблица совпадений: сайт для задачи и сайт для списка настраиваются отдельно.
                   </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card dg-matches-workflow-guide shadow-sm">
+            <div class="card-header bg-light d-flex align-items-center justify-content-between flex-wrap gap-2 py-2 px-3">
+              <div class="d-flex align-items-center gap-2 min-w-0 flex-wrap">
+                <span class="badge rounded-pill bg-primary px-2 py-1">Гайд</span>
+                <span class="fw-semibold text-body mb-0 small">Как проходить страницу по шагам</span>
+              </div>
+              <button
+                type="button"
+                class="btn btn-sm btn-outline-primary d-inline-flex align-items-center gap-1"
+                id="dg-matches-workflow-toggle"
+                aria-expanded="false"
+                aria-controls="dg-matches-workflow-panel"
+              >
+                <i class="pe-7s-angle-down" id="dg-matches-workflow-toggle-icon" style="font-size: 1.1rem" aria-hidden="true"></i>
+                <span id="dg-matches-workflow-toggle-label">Развернуть</span>
+              </button>
+            </div>
+            <div id="dg-matches-workflow-panel" class="d-none card-body pt-3 border-top bg-white">
+              <p class="text-muted small mb-4 lh-base">
+                Рекомендуемый порядок: сначала SKU-прогон с «Нормализация + детерминированная строка», при необходимости — «Нормализация артикула», затем «Строгий отбор»; после этого — «Только название» и ручная доводка. Так вы быстрее закрываете очевидные пары и не смешиваете разные типы ошибок в одной куче.
+              </p>
+              <div class="alert alert-light border small mb-4 mb-md-3" role="note">
+                <div class="fw-semibold text-body mb-2">Что подставляется при открытии страницы</div>
+                <ol class="mb-0 ps-3 lh-lg text-body-secondary">
+                  <li class="mb-2">
+                    <strong class="text-body">Параметры в адресе (query)</strong> имеют приоритет:
+                    <code class="small">my_site_id</code>, <code class="small">list_my_site_id</code>, <code class="small">list_competitor_id</code>,
+                    <code class="small">status</code>, <code class="small">mode</code>, <code class="small">product_search</code>,
+                    <code class="small">matches_page</code>, <code class="small">matches_limit</code> и др. Если параметра в URL нет — может подставиться значение из сохранённых фильтров (следующий пункт).
+                  </li>
+                  <li class="mb-2">
+                    <strong class="text-body">Сохранённые фильтры</strong> в браузере (модуль фильтров, <code class="small">localStorage</code>):
+                    список «Совпадений», конкурент, умный поиск, статус и лимит — только для тех полей, которых нет в query; сайт запуска по умолчанию — из контекста «Мои товары», если нет <code class="small">my_site_id</code>.
+                  </li>
+                  <li class="mb-2">
+                    <strong class="text-body">Вид карточек и гайда</strong> — в <code class="small">localStorage</code> под префиксом <code class="small">datagon_matches_*</code> (развёрнутость гайда, шагов 1–4, «Мои товары», ширины колонок). На сопоставление товаров не влияет.
+                  </li>
+                  <li class="mb-0">
+                    <strong class="text-body">Ручное сопоставление (шаг 3):</strong> поиск в прайсе и «Подтвердить вручную» — только в блоке под строкой очереди по кнопке <strong>«Найти по конкуренту»</strong>; очередь зависит от «Мой сайт (список)» и конкурента в «Совпадениях».
+                  </li>
+                </ol>
+              </div>
+              <div class="dg-matches-workflow-step border rounded-2 mb-3 overflow-hidden">
+                <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 px-2 py-2 bg-light border-bottom">
+                  <div class="d-flex align-items-start gap-2 min-w-0">
+                    <span class="badge bg-success rounded-1 px-2 py-1 flex-shrink-0">Шаг 1</span>
+                    <h6 class="mb-0 text-body fw-semibold">Параметры запуска</h6>
+                  </div>
+                  <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0" id="dg-matches-workflow-t1-toggle">Свернуть</button>
+                </div>
+                <div id="dg-matches-workflow-t1-body" class="small text-body-secondary lh-lg px-2 pb-3 pt-2">
+                  <p class="mb-2">
+                    Выберите <strong>мой сайт (запуск)</strong>, отметьте <strong>конкурентов</strong>, при необходимости сузьте набор через <strong>умный поиск</strong> и пакетные параметры. Для первого прохода по артикулам рекомендуем режим
+                    <strong>«Нормализация + детерминированная строка»</strong> — он устойчив к типичным расхождениям в SKU и к нескольким строкам прайса с одним ключом. При необходимости затем прогоните
+                    <strong>«Нормализация артикула»</strong>, затем <strong>«Строгий отбор (trim + регистр)»</strong>, чтобы сузить или перепроверить остатки. Нажмите
+                    <strong>«Запустить авто по фильтру»</strong> или отметьте товары в таблице «Мои товары» и запустите по выбранным.
+                  </p>
+                  <p class="mb-2">
+                    Дождитесь завершения задачи по логам. Затем <strong>смените режим на «Только название»</strong>, снова запустите сопоставление по тому же или расширенному набору — так вы отдельно обрабатываете артикулы и названия, без смешения логики в одном прогоне. Ожидающие строки в «Совпадениях» по разным режимам (SKU / название / нормализации) для тех же конкурентов <strong>сохраняются</strong>; заново снимаются только ожидающие по выбранным конкурентам при режиме запуска <strong>«все поля»</strong>.
+                  </p>
+                  <p class="mb-0">
+                    В статусе задачи числитель/знаменатель — <strong>пары «наш товар × конкурент»</strong> (шаги воркера), а не число URL в очереди парсинга прайса.
+                  </p>
+                </div>
+              </div>
+              <div class="dg-matches-workflow-step border rounded-2 mb-3 overflow-hidden">
+                <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 px-2 py-2 bg-light border-bottom">
+                  <div class="d-flex align-items-start gap-2 min-w-0">
+                    <span class="badge bg-info text-dark rounded-1 px-2 py-1 flex-shrink-0">Шаг 2</span>
+                    <h6 class="mb-0 text-body fw-semibold">Совпадения</h6>
+                  </div>
+                  <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0" id="dg-matches-workflow-t2-toggle">Свернуть</button>
+                </div>
+                <div id="dg-matches-workflow-t2-body" class="small text-body-secondary lh-lg px-2 pb-3 pt-2">
+                  <p class="mb-2">
+                    В блоке <strong>«Совпадения»</strong> выберите <strong>«Мой сайт (список)»</strong> и при необходимости <strong>конкурента</strong>, отфильтруйте статус
+                    <strong>«Ожидает»</strong>, примените фильтры. Просмотрите каждую строку: верные пары подтверждайте, сомнительные или неверные —
+                    <strong>отклоняйте</strong> (они попадут в ручную очередь и не будут снова автоматически предлагаться для этого конкурента, пока вы их не уберёте из очереди).
+                  </p>
+                  <p class="mb-0">
+                    После полного прохода по результатам <strong>SKU</strong> вернитесь к шагу&nbsp;1, переключите режим на <strong>название</strong>, снова запустите задачу и повторите тот же цикл в этом блоке для новых строк «Ожидает».
+                  </p>
+                </div>
+              </div>
+              <div class="dg-matches-workflow-step border rounded-2 mb-3 overflow-hidden">
+                <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 px-2 py-2 bg-light border-bottom">
+                  <div class="d-flex align-items-start gap-2 min-w-0">
+                    <span class="badge bg-warning text-dark rounded-1 px-2 py-1 flex-shrink-0">Шаг 3</span>
+                    <h6 class="mb-0 text-body fw-semibold">Ручное сопоставление</h6>
+                  </div>
+                  <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0" id="dg-matches-workflow-t3-toggle">Свернуть</button>
+                </div>
+                <div id="dg-matches-workflow-t3-body" class="small text-body-secondary lh-lg px-2 pb-3 pt-2">
+                  <p class="mb-2">
+                    Очередь шага&nbsp;3 — <strong>не только</strong> отклонения из шага&nbsp;2: сюда попадают и товары с <strong>отклонённым</strong> авто-совпадением, и те, по которым при последнем прогоне с шага&nbsp;1 <strong>авто не нашло пару</strong> (оба варианта пишутся в исключения, чтобы не гонять их снова в авто). Для выбранного конкурента они исключены из следующих автоматических прогонов по SKU и названию, пока запись не удалена из очереди. В таблице колонка
+                    <strong>«Причина»</strong> различает эти два случая (подписи на бейджах; при наведении — развёрнутое пояснение). Кнопка
+                    <strong>«События»</strong> — таблица последних событий по товару сразу под строкой очереди.
+                  </p>
+                  <p class="mb-2">
+                    Используйте те же <strong>«Мой сайт (список)»</strong> и фильтр <strong>«Конкурент»</strong> в «Совпадениях» для очереди. Кнопка
+                    <strong>«Найти по конкуренту»</strong> в строке открывает под ней поиск в прайсе, подстановку SKU/названия из результата и кнопку
+                    <strong>«Подтвердить вручную»</strong> — так создаётся запись «Вручную» и строка снимается с очереди. Кнопка
+                    <strong>«Вернуть в авто»</strong> убирает строку из очереди без фиксации пары — товар снова участвует в авто-сопоставлении.
+                  </p>
+                  <p class="mb-0">
+                    Кнопка <strong>«В архив»</strong> переносит ситуацию на шаг&nbsp;4, если вы осознанно отказываетесь от ручной привязки после разбора.
+                  </p>
+                </div>
+              </div>
+              <div class="dg-matches-workflow-step border rounded-2 mb-0 overflow-hidden">
+                <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 px-2 py-2 bg-light border-bottom">
+                  <div class="d-flex align-items-start gap-2 min-w-0">
+                    <span class="badge bg-secondary rounded-1 px-2 py-1 flex-shrink-0">Шаг 4</span>
+                    <h6 class="mb-0 text-body fw-semibold">Архив: отказ после ручного сопоставления</h6>
+                  </div>
+                  <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0" id="dg-matches-workflow-t4-toggle">Свернуть</button>
+                </div>
+                <div id="dg-matches-workflow-t4-body" class="small text-body-secondary lh-lg px-2 pb-3 pt-2">
+                  <p class="mb-0">
+                    Сюда попадают только позиции после <strong>ручного отказа</strong> из шага&nbsp;3. Записи можно удалить — товар снова сможет участвовать в авто-сопоставлении. Этот блок для «хвоста», который вы решите обработать позже отдельной политикой.
+                  </p>
                 </div>
               </div>
             </div>
@@ -21,8 +147,10 @@
               <div class="d-flex align-items-center min-w-0">
                 <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
                 <span>Параметры запуска</span>
+                <span class="badge bg-light text-muted border ms-2 d-none d-md-inline">Шаг 1</span>
               </div>
               <div class="d-flex align-items-center gap-2 ms-auto flex-shrink-0">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-matches-step1-toggle">Свернуть</button>
                 <button
                   type="button"
                   class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1"
@@ -71,14 +199,15 @@
               </div>
             </div>
             <div class="card-body">
+              <div id="dg-matches-step1-body">
               <div class="row g-3 align-items-end">
                 <div class="col-md-3" data-dg-matches-launch-field="smart">
                   <label class="form-label mb-1 small text-uppercase text-muted" style="letter-spacing: 0.04em" for="dg-matches-product-search">Умный поиск</label>
                   <input type="text" class="form-control" id="dg-matches-product-search" placeholder='артикул:ABC-12 название:"насос 25" или просто текст' autocomplete="off" />
                 </div>
                 <div class="col-md-3" data-dg-matches-launch-field="my_site">
-                  <label class="form-label mb-1 small text-uppercase text-muted" style="letter-spacing: 0.04em" for="dg-matches-my-site">Мой сайт</label>
-                  <select class="form-select" id="dg-matches-my-site">
+                  <label class="form-label mb-1 small text-uppercase text-muted" style="letter-spacing: 0.04em" for="dg-matches-my-site">Мой сайт (запуск)</label>
+                  <select class="form-select" id="dg-matches-my-site" title="Товары, задача сопоставления и статус — только для этого сайта">
                     <option value="">-- выберите --</option>
                   </select>
                 </div>
@@ -103,9 +232,9 @@
                       <option value="all">Все поля — строгий SKU, затем название</option>
                     </optgroup>
                     <optgroup label="Только SKU">
-                      <option value="sku">Строгий отбор (trim + регистр)</option>
-                      <option value="sku_norm">Нормализация артикула</option>
                       <option value="sku_best">Нормализация + детерминированная строка</option>
+                      <option value="sku_norm">Нормализация артикула</option>
+                      <option value="sku">Строгий отбор (trim + регистр)</option>
                     </optgroup>
                     <optgroup label="Название">
                       <option value="name">Только название</option>
@@ -122,9 +251,12 @@
                 </div>
                 <div class="col-md-1" data-dg-matches-launch-field="batch_pause">
                   <label class="form-label mb-1 small text-uppercase text-muted" style="letter-spacing: 0.04em" for="dg-matches-batch-pause">Пауза, мс</label>
-                  <input type="number" class="form-control" id="dg-matches-batch-pause" min="0" value="1000" title="Пауза между пакетами, мс" />
+                  <input type="number" class="form-control" id="dg-matches-batch-pause" min="0" value="200" title="Пауза между пакетами (мс). Большие значения сильно удлиняют прогон." />
                 </div>
               </div>
+              <p class="small text-muted mb-0 mt-1 lh-sm" style="font-size: 0.8rem">
+                Время только на паузы между пакетами растёт примерно как <strong>(число пар товар–конкурент / пакет) × пауза</strong> (плюс SQL и логи). При двух конкурентах и десятках тысяч товаров пауза <strong>1000&nbsp;мс</strong> даёт уже <strong>минуты</strong> ожидания без учёта БД; для ускорения используйте <strong>0–200&nbsp;мс</strong>, если нагрузка на MySQL допустима.
+              </p>
               <div id="dg-matches-mode-hint" class="d-none mt-2">
                 <div class="rounded-3 border shadow-sm bg-white overflow-hidden">
                   <div class="px-3 py-2 border-bottom bg-light small fw-semibold text-body">Описание режимов сопоставления</div>
@@ -140,10 +272,10 @@
                         Сначала <strong>строгое</strong> совпадение SKU (<code>trim</code> + верхний регистр). Если нет — сравнение по названию с порогом схожести (по умолчанию 85%).
                       </dd>
                       <dt class="col-md-4 col-lg-3 mb-2 text-body fw-semibold">
-                        <code class="small">sku</code> · Строгий SKU
+                        <code class="small">sku_best</code> · Нормализация + выбор строки
                       </dt>
                       <dd class="col-md-8 col-lg-9 mb-2">
-                        Только точное совпадение после <code>trim</code> и приведения к верхнему регистру. Пробелы <em>внутри</em> артикула и Unicode-тире <strong>не</strong> приводятся к общему виду. Название не используется.
+                        Тот же ключ, что и в <code>sku_norm</code>, но среди всех строк прайса с этим ключом выбирается одна: сначала большая <strong>дата парсинга</strong> (<code>MAX(parsed_at)</code> по группе строки), затем стабильный порядок по названию и исходному SKU.
                       </dd>
                       <dt class="col-md-4 col-lg-3 mb-2 text-body fw-semibold">
                         <code class="small">sku_norm</code> · Нормализация
@@ -152,10 +284,10 @@
                         Ключ SKU: NFKC, верхний регистр, удаление пробелов/NBSP, унификация тире в ASCII-<code>-</code>. Берётся <strong>первая</strong> совпавшая строка прайса в текущем порядке выборки (как раньше для строгого режима, но по нормализованному ключу).
                       </dd>
                       <dt class="col-md-4 col-lg-3 mb-2 text-body fw-semibold">
-                        <code class="small">sku_best</code> · Нормализация + выбор строки
+                        <code class="small">sku</code> · Строгий SKU
                       </dt>
                       <dd class="col-md-8 col-lg-9 mb-2">
-                        Тот же ключ, что и в <code>sku_norm</code>, но среди всех строк прайса с этим ключом выбирается одна: сначала большая <strong>дата парсинга</strong> (<code>MAX(parsed_at)</code> по группе строки), затем стабильный порядок по названию и исходному SKU.
+                        Только точное совпадение после <code>trim</code> и приведения к верхнему регистру. Пробелы <em>внутри</em> артикула и Unicode-тире <strong>не</strong> приводятся к общему виду. Название не используется.
                       </dd>
                       <dt class="col-md-4 col-lg-3 mb-2 text-body fw-semibold">
                         <code class="small">name</code> · Только название
@@ -182,13 +314,13 @@
                     <li class="mb-2">
                       <strong>Все поля</strong> — сначала <strong>строгий</strong> SKU (<code>trim</code> + верхний регистр). Если нет пары — шаг по <strong>названию</strong> (порог по умолчанию <strong>85%</strong>).
                     </li>
-                    <li class="mb-2"><strong>SKU строгий</strong> — только <code>trim</code> + верхний регистр; название не используется.</li>
+                    <li class="mb-2">
+                      <strong>SKU нормализация + выбор строки</strong> — тот же ключ, что у нормализации; среди всех строк с этим ключом выбирается одна по максимальной дате парсинга группы, затем по названию и SKU (стабильно при повторных запусках). Рекомендуемый первый прогон по артикулам.
+                    </li>
                     <li class="mb-2">
                       <strong>SKU нормализация</strong> — один ключ для вашего и конкурента: NFKC, верхний регистр, без пробелов/NBSP, тире приведены к <code>-</code>; берётся первое совпадение в порядке строк прайса.
                     </li>
-                    <li class="mb-2">
-                      <strong>SKU нормализация + выбор строки</strong> — тот же ключ; среди всех строк с этим ключом выбирается одна по максимальной дате парсинга группы, затем по названию и SKU (стабильно при повторных запусках).
-                    </li>
+                    <li class="mb-2"><strong>SKU строгий</strong> — только <code>trim</code> + верхний регистр; название не используется.</li>
                     <li class="mb-0">
                       <strong>Только название</strong> — SKU не участвует; длина нормализованного названия &gt; 3 у обеих сторон.
                     </li>
@@ -219,9 +351,43 @@
                 <button type="button" class="btn btn-outline-danger" id="dg-matches-stop">Остановить</button>
                 <button type="button" class="btn btn-outline-dark" id="dg-matches-copy-link"><i class="pe-7s-link me-1"></i>Скопировать ссылку</button>
               </div>
-              <div class="mt-2 text-muted small" id="dg-matches-job-found">Найдено по заданию: по SKU 0, по названию 0</div>
-              <div class="mt-2 small" id="dg-matches-job-logs"></div>
-              <p class="text-muted mb-0 mt-2" id="dg-matches-job-hint">Ожидание (0/0, 0%)</p>
+              <p class="small text-muted mb-0 mt-2 lh-sm" id="dg-matches-retry-explain">
+                <strong>Продолжить/повторить</strong> — новая задача по последней <strong>остановленной, сбойной или отменённой</strong> (если таких не было — по последней <strong>завершённой</strong>): подставляются сохранённые параметры и
+                <strong>чекпоинт</strong>, список товаров снова загружается, но уже сопоставленные с выбранными конкурентами позиции <strong>пропускаются</strong> (см. в логе «Продолжение: пропущено…»). Счётчики справа и числитель
+                <strong>пар «наш товар × конкурент»</strong> (знаменатель ≈ ваши товары в задаче × отмеченные конкуренты; не объём очереди парсинга) при продолжении
+                <strong>наращиваются с предыдущей задачи</strong>. «Новых записей в „Совпадениях“» — только новые строки в БД за этот прогон.
+              </p>
+              <div class="mt-2 dg-matches-job-status-block">
+                <div class="d-flex flex-wrap align-items-baseline column-gap-3 row-gap-1 mb-2">
+                  <p class="text-body mb-0 fw-semibold" id="dg-matches-job-hint">Ожидание</p>
+                  <span class="small text-muted" id="dg-matches-job-times" aria-live="polite"
+                    >Старт: — · Окончание: —</span
+                  >
+                </div>
+                <p class="small mb-2 lh-sm d-none border-start border-3 border-warning ps-2 py-1 bg-light rounded-end" id="dg-matches-job-stop-hint">
+                  <strong>Остановка уже принята.</strong> Воркер дорабатывает текущий шаг (запрос к MySQL, пакет вставки совпадений или тяжёлая индексация прайса) — это нормально. Дальше в логе появится «Задача остановлена пользователем», статус сменится, появится время окончания. Если зависло надолго — обновите вкладку (watchdog по неактивности).
+                </p>
+                <div class="row g-2 align-items-stretch dg-matches-job-logs-found-row">
+                  <div class="col-12 col-xl-8 min-width-0">
+                    <div class="small text-uppercase text-muted mb-1" style="font-size: 0.68rem; letter-spacing: 0.04em">
+                      Лог задачи
+                    </div>
+                    <div id="dg-matches-job-logs" class="small dg-matches-job-logs-box"></div>
+                  </div>
+                  <div class="col-12 col-xl-4 min-width-0">
+                    <div class="small text-uppercase text-muted mb-1" style="font-size: 0.68rem; letter-spacing: 0.04em">
+                      Счётчики задачи и в БД
+                    </div>
+                    <div id="dg-matches-job-found" class="small text-body-secondary dg-matches-job-found-box">
+                      В этой задаче: по SKU 0, по названию 0
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <p class="small text-muted mb-0 mt-1 lh-sm" style="font-size: 0.8rem">
+                Прогресс опрашивается раз в 1,5 с для выбранного «<strong>Мой сайт (запуск)</strong>». «<strong>Остановить</strong>» обрабатывается между товарами, между чанками лога и <strong>до</strong> пакетной вставки совпадений в БД; один долгий <code class="small">INSERT</code> по сотням строк или загрузка всего прайса SQL всё ещё могут занять секунды без разрыва. Режим <strong>только по названию</strong> и индексация «<strong>Нормализация + детерминированная строка</strong>» на очень большом прайсе тоже задерживают смену статуса. При долгом «Остановка задачи…» обновите вкладку — сработает watchdog «нет активности» в БД.
+              </p>
+              </div>
             </div>
           </div>
 
@@ -237,7 +403,7 @@
               <div id="dg-matches-my-products-body">
               <div class="dg-matches-my-table-scroll-outer" style="width:100%;max-width:100%;overflow-x:auto;overflow-y:visible;-webkit-overflow-scrolling:touch">
                 <div class="table-responsive datagon-my-products-table-wrap" style="display:block;width:100%;max-width:100%;min-width:0;overflow:visible;position:relative">
-                  <table id="dg-matches-my-main-table" class="table table-hover table-striped mb-0 datagon-my-products-table dg-matches-my-table" style="width:max-content;min-width:100%;max-width:none;table-layout:fixed;border-collapse:collapse;border-spacing:0" data-dg-sticky="1">
+                  <table id="dg-matches-my-main-table" class="table table-hover table-striped mb-0 datagon-my-products-table dg-ms-table dg-matches-my-table" style="width:max-content;min-width:100%;max-width:none;table-layout:fixed;border-collapse:collapse;border-spacing:0" data-dg-sticky="1">
                     <colgroup>
                       <col class="dg-matches-my-col dg-matches-my-col-0" />
                       <col class="dg-matches-my-col dg-matches-my-col-1" />
@@ -251,9 +417,9 @@
                       <tr id="dg-matches-my-thead-row">
                         <th class="text-center" style="width:44px;box-sizing:border-box"><input type="checkbox" id="dg-matches-my-select-all" title="Выбрать все на странице" /></th>
                         <th class="text-center" style="cursor:default">ID / КОД</th>
-                        <th class="text-center" style="cursor:default">Артикул (SKU)</th>
-                        <th class="text-center" style="cursor:default">Название</th>
-                        <th class="text-center" style="cursor:default">Цена</th>
+                        <th class="text-start" style="cursor:default">Артикул (SKU)</th>
+                        <th class="text-start" style="cursor:default">Название</th>
+                        <th class="text-end" style="cursor:default">Цена</th>
                         <th class="text-center" style="cursor:default">Валюта</th>
                         <th class="text-center" style="cursor:default">Обновлён</th>
                       </tr>
@@ -275,11 +441,14 @@
           </div>
 
           <div class="main-card mb-3 card">
-            <div class="card-header d-flex align-items-center justify-content-between gap-2">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
               <div class="d-flex align-items-center">
                 <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
                 <span>Совпадения</span>
+                <span class="badge bg-light text-muted border ms-2 d-none d-md-inline">Шаг 2</span>
               </div>
+              <div class="d-flex align-items-center gap-2 ms-auto flex-shrink-0">
+              <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-matches-step2-toggle">Свернуть</button>
               <div class="dropdown">
                 <button
                   type="button"
@@ -314,71 +483,118 @@
                   </div>
                 </div>
               </div>
+              </div>
             </div>
             <div class="card-body">
-              <div class="row g-2 mb-2">
-                <div class="col-md-4" data-dg-matches-list-field="smart">
-                  <label class="form-label" for="dg-matches-smart-filter">Умный фильтр по списку</label>
-                  <input type="text" class="form-control" id="dg-matches-smart-filter" placeholder="статус, тип, SKU, название, кто подтвердил…" autocomplete="off" />
+              <div id="dg-matches-step2-body">
+              <p class="small text-muted mb-2">
+                Ниже — только просмотр и фильтры списка совпадений. Режим «Параметры запуска» и «Мой сайт (запуск)» на состав строк в таблице не влияют.
+                Новый прогон сопоставления <strong>не стирает</strong> ожидающие результаты другого режима (например, после прогона по названию по-прежнему видны строки «По SKU» при фильтре «Все» или «По SKU»), кроме режима
+                <strong>«все поля»</strong> — он заново очищает ожидающие только по <em>выбранным в задаче</em> конкурентам. Фильтр <strong>«Тип совпадения»</strong> «По SKU» / «По названию» отсекает строки другого типа: если последний прогон был только по названию, выберите «По названию» или «Все» и нажмите «Применить».
+              </p>
+              <div class="dg-matches-list-filters">
+                <div class="row g-3 align-items-end">
+                  <div class="col-12 col-sm-6 col-xl-2" data-dg-matches-list-field="list_my_site">
+                    <label class="form-label mb-1 small text-uppercase text-muted" style="letter-spacing: 0.04em" for="dg-matches-list-my-site">Мой сайт (список)</label>
+                    <select class="form-select" id="dg-matches-list-my-site" title="Какой сайт загружать в таблицу совпадений; может отличаться от сайта запуска">
+                      <option value="">-- выберите --</option>
+                    </select>
+                  </div>
+                  <div class="col-12 col-sm-6 col-xl-2" data-dg-matches-list-field="list_competitor">
+                    <label class="form-label mb-1 small text-uppercase text-muted" style="letter-spacing: 0.04em" for="dg-matches-list-competitor">Конкурент</label>
+                    <select
+                      class="form-select"
+                      id="dg-matches-list-competitor"
+                      title="Только совпадения с выбранным проектом конкурента; «Все конкуренты» — без ограничения по прайсу"
+                    >
+                      <option value="">Все конкуренты</option>
+                    </select>
+                  </div>
+                  <div class="col-12 col-xl-4" data-dg-matches-list-field="smart">
+                    <label class="form-label mb-1 small text-uppercase text-muted" style="letter-spacing: 0.04em" for="dg-matches-smart-filter">Умный фильтр по списку</label>
+                    <input type="text" class="form-control" id="dg-matches-smart-filter" placeholder="статус, тип, SKU, название, кто подтвердил…" autocomplete="off" />
+                  </div>
+                  <div class="col-12 col-sm-6 col-xl-2" data-dg-matches-list-field="status">
+                    <label class="form-label mb-1 small text-uppercase text-muted" style="letter-spacing: 0.04em" for="dg-matches-status-filter">Статус</label>
+                    <select class="form-select" id="dg-matches-status-filter">
+                      <option value="pending">Ожидает</option>
+                      <option value="confirmed">Подтверждено</option>
+                      <option value="rejected">Отклонено</option>
+                      <option value="all">Все</option>
+                    </select>
+                  </div>
+                  <div class="col-12 col-sm-6 col-xl-2" data-dg-matches-list-field="limit">
+                    <label class="form-label mb-1 small text-uppercase text-muted" style="letter-spacing: 0.04em" for="dg-matches-limit">Лимит</label>
+                    <select class="form-select" id="dg-matches-limit">
+                      <option value="50">50</option>
+                      <option value="100" selected>100</option>
+                      <option value="200">200</option>
+                    </select>
+                  </div>
                 </div>
-                <div class="col-md-3" data-dg-matches-list-field="status">
-                  <label class="form-label" for="dg-matches-status-filter">Статус</label>
-                  <select class="form-select" id="dg-matches-status-filter">
-                    <option value="pending">Ожидает</option>
-                    <option value="confirmed">Подтверждено</option>
-                    <option value="rejected">Отклонено</option>
-                    <option value="all">Все</option>
-                  </select>
+                <div class="row g-3 align-items-end mt-1">
+                  <div class="col-6 col-md-4 col-lg-2" data-dg-matches-list-field="tf_my_sku">
+                    <label class="form-label mb-1 small text-uppercase text-muted" style="letter-spacing: 0.04em" for="dg-matches-tf-my-sku">Мой SKU</label>
+                    <input type="text" class="form-control" id="dg-matches-tf-my-sku" autocomplete="off" />
+                  </div>
+                  <div class="col-6 col-md-4 col-lg-2" data-dg-matches-list-field="tf_comp_sku">
+                    <label class="form-label mb-1 small text-uppercase text-muted" style="letter-spacing: 0.04em" for="dg-matches-tf-comp-sku">SKU конк.</label>
+                    <input type="text" class="form-control" id="dg-matches-tf-comp-sku" autocomplete="off" />
+                  </div>
+                  <div class="col-6 col-md-4 col-lg-2" data-dg-matches-list-field="tf_match_type">
+                    <label class="form-label mb-1 small text-uppercase text-muted" style="letter-spacing: 0.04em" for="dg-matches-tf-match-type">Тип совпадения</label>
+                    <select
+                      class="form-select"
+                      id="dg-matches-tf-match-type"
+                      title="Какие строки показывать. «Все» — и по SKU, и по названию. В колонке «Схожесть»: по названию — подпись вида «98% по названию», по SKU — «100% по SKU»."
+                    >
+                      <option value="all">Все</option>
+                      <option value="sku">По SKU</option>
+                      <option value="name">По названию</option>
+                    </select>
+                  </div>
+                  <div class="col-6 col-md-4 col-lg-2" data-dg-matches-list-field="tf_status">
+                    <label class="form-label mb-1 small text-uppercase text-muted" style="letter-spacing: 0.04em" for="dg-matches-tf-status">Статус в списке</label>
+                    <select class="form-select" id="dg-matches-tf-status">
+                      <option value="all">Все</option>
+                      <option value="pending">Ожидает</option>
+                      <option value="confirmed">Подтверждено</option>
+                      <option value="rejected">Отклонено</option>
+                    </select>
+                  </div>
+                  <div class="col-6 col-md-4 col-lg-2" data-dg-matches-list-field="tf_conf_min">
+                    <label class="form-label mb-1 small text-uppercase text-muted" style="letter-spacing: 0.04em" for="dg-matches-tf-conf-min">Схож. от %</label>
+                    <input
+                      type="number"
+                      class="form-control"
+                      id="dg-matches-tf-conf-min"
+                      min="0"
+                      max="100"
+                      title="Порог по полю уверенности (0–100%). У строк по SKU обычно 100%; у совпадений по названию — доля схожести."
+                    />
+                  </div>
+                  <div class="col-6 col-md-4 col-lg-2" data-dg-matches-list-field="tf_conf_max">
+                    <label class="form-label mb-1 small text-uppercase text-muted" style="letter-spacing: 0.04em" for="dg-matches-tf-conf-max">Схож. до %</label>
+                    <input
+                      type="number"
+                      class="form-control"
+                      id="dg-matches-tf-conf-max"
+                      min="0"
+                      max="100"
+                      title="Верхняя граница уверенности (0–100%). У строк по SKU обычно 100%; у совпадений по названию — доля схожести."
+                    />
+                  </div>
                 </div>
-                <div class="col-md-2" data-dg-matches-list-field="limit">
-                  <label class="form-label" for="dg-matches-limit">Лимит</label>
-                  <select class="form-select" id="dg-matches-limit">
-                    <option value="50">50</option>
-                    <option value="100" selected>100</option>
-                    <option value="200">200</option>
-                  </select>
+                <div class="row align-items-center mt-2 pt-1 border-top border-light" data-dg-matches-list-field="list_actions">
+                  <div class="col-12 d-flex flex-wrap gap-2">
+                    <button type="button" class="btn btn-sm btn-primary" id="dg-matches-filters-apply" data-dg-tooltip="Применить фильтры списка совпадений и обновить данные. Сохраняет введённое для следующего визита."><i class="pe-7s-search me-1"></i>Применить</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-matches-filters-default" data-dg-tooltip="Сбросить фильтры списка к значениям по умолчанию и очистить сохранённые настройки."><i class="pe-7s-refresh me-1"></i>По умолчанию</button>
+                  </div>
                 </div>
-                <div class="col-md-1" data-dg-matches-list-field="tf_my_sku">
-                  <label class="form-label" for="dg-matches-tf-my-sku">Мой SKU</label>
-                  <input type="text" class="form-control" id="dg-matches-tf-my-sku" autocomplete="off" />
-                </div>
-                <div class="col-md-1" data-dg-matches-list-field="tf_comp_sku">
-                  <label class="form-label" for="dg-matches-tf-comp-sku">SKU конк.</label>
-                  <input type="text" class="form-control" id="dg-matches-tf-comp-sku" autocomplete="off" />
-                </div>
-                <div class="col-md-1" data-dg-matches-list-field="tf_match_type">
-                  <label class="form-label" for="dg-matches-tf-match-type">Тип совпадения</label>
-                  <select class="form-select" id="dg-matches-tf-match-type">
-                    <option value="all">Все</option>
-                    <option value="sku">По SKU</option>
-                    <option value="name">По названию</option>
-                  </select>
-                </div>
-                <div class="col-md-1" data-dg-matches-list-field="tf_status">
-                  <label class="form-label" for="dg-matches-tf-status">Статус в списке</label>
-                  <select class="form-select" id="dg-matches-tf-status">
-                    <option value="all">Все</option>
-                    <option value="pending">Ожидает</option>
-                    <option value="confirmed">Подтверждено</option>
-                    <option value="rejected">Отклонено</option>
-                  </select>
-                </div>
-                <div class="col-md-1" data-dg-matches-list-field="tf_conf_min">
-                  <label class="form-label" for="dg-matches-tf-conf-min">Схож. от %</label>
-                  <input type="number" class="form-control" id="dg-matches-tf-conf-min" min="0" max="100" />
-                </div>
-                <div class="col-md-1" data-dg-matches-list-field="tf_conf_max">
-                  <label class="form-label" for="dg-matches-tf-conf-max">Схож. до %</label>
-                  <input type="number" class="form-control" id="dg-matches-tf-conf-max" min="0" max="100" />
-                </div>
-              </div>
-              <div class="mt-2 d-flex flex-wrap gap-2" data-dg-matches-list-field="list_actions">
-                <button type="button" class="btn btn-sm btn-primary" id="dg-matches-filters-apply" data-dg-tooltip="Применить фильтры списка совпадений и обновить данные. Сохраняет введённое для следующего визита."><i class="pe-7s-search me-1"></i>Применить</button>
-                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-matches-filters-default" data-dg-tooltip="Сбросить фильтры списка к значениям по умолчанию и очистить сохранённые настройки."><i class="pe-7s-refresh me-1"></i>По умолчанию</button>
               </div>
               <div class="dg-matches-list-scroll-outer" style="width:100%;max-width:100%;overflow-x:auto;overflow-y:visible;-webkit-overflow-scrolling:touch">
                 <div class="table-responsive datagon-my-products-table-wrap w-100" style="display:block;width:100%;max-width:100%;min-width:0;overflow:visible;position:relative">
-                  <table id="dg-matches-list-table" class="table table-hover table-striped mb-0 datagon-my-products-table dg-matches-list-table" style="width:max-content;min-width:100%;max-width:none;table-layout:fixed;border-collapse:collapse;border-spacing:0" data-dg-sticky="1">
+                  <table id="dg-matches-list-table" class="table table-hover table-striped mb-0 datagon-my-products-table dg-ms-table dg-matches-list-table" style="width:max-content;min-width:100%;max-width:none;table-layout:fixed;border-collapse:collapse;border-spacing:0" data-dg-sticky="1">
                     <colgroup>
                       <col class="dg-matches-col-0" />
                       <col class="dg-matches-col-1" />
@@ -391,9 +607,27 @@
                       <tr>
                         <th style="cursor:pointer" data-match-sort="status">Статус</th>
                         <th style="cursor:pointer" data-match-sort="match_type">Тип</th>
-                        <th style="cursor:pointer" data-match-sort="confidence">Схожесть</th>
-                        <th style="cursor:pointer" data-match-sort="my_product_name">Мой товар (SKU, название, цена)</th>
-                        <th style="cursor:pointer" data-match-sort="competitor_name">Конкурент (SKU, название, цена)</th>
+                        <th
+                          style="cursor:pointer"
+                          data-match-sort="confidence"
+                          title="Схожесть (confidence_score): по названию — «NN% по названию»; по SKU — «100% по SKU» (или доля, если не 1.0). Наведите на ячейку — точное значение 0–1. Не зависит от фильтра «Тип совпадения»."
+                        >
+                          Схожесть
+                        </th>
+                        <th
+                          style="cursor:pointer"
+                          data-match-sort="my_product_name"
+                          title="В ячейке: артикул, наименование и цена блоками с подписью."
+                        >
+                          Мой товар
+                        </th>
+                        <th
+                          style="cursor:pointer"
+                          data-match-sort="competitor_name"
+                          title="В ячейке: артикул, наименование и цена конкурента; ниже строка «Обновлено» по дате парсинга прайса."
+                        >
+                          Конкурент
+                        </th>
                         <th>Действия</th>
                       </tr>
                     </thead>
@@ -409,5 +643,162 @@
                 </div>
               </div>
               <p class="text-muted mb-0 mt-2" id="dg-matches-total-hint">Всего: 0</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+              <div class="d-flex align-items-center gap-2">
+              <i class="header-icon pe-7s-users icon-gradient bg-mean-fruit me-2"></i>
+              <span>Ручное сопоставление</span>
+              <span class="badge bg-light text-muted border ms-2 d-none d-md-inline">Шаг 3</span>
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0" id="dg-matches-step3-toggle">Свернуть</button>
+            </div>
+            <div class="card-body">
+              <div id="dg-matches-step3-body">
+              <p class="small text-muted mb-3">
+                Одна общая очередь на <strong>две ситуации</strong> (см. колонку «Причина»): после «Отклонить» в совпадениях (шаг&nbsp;2) <strong>и</strong> после
+                авто-прогона (шаг&nbsp;1), если для этого конкурента <strong>не найдено</strong> пары. Это не ошибка — так товар не участвует в следующем авто, пока вы не
+                разберёте строку или не нажмёте «Вернуть в авто». Подпись «Авто не нашло пару» ставится <strong>только</strong> после прогона с шага&nbsp;1, а не после «Отклонить».
+                Ручная фиксация (под строкой очереди) создаёт строку «Подтверждено» с типом «Вручную».
+              </p>
+              <p class="small text-secondary mb-2 lh-base">
+                <strong>Колонка «Причина»:</strong>
+                <span class="text-body-secondary">«Авто-совпадение вы отклонили»</span> — в шаге 2 «Совпадения» для этой строки было предложение от
+                авто-сопоставления, но вы нажали «Отклонить»;
+                <span class="text-body-secondary">«Авто не нашло пару»</span> — в последнем прогоне задачи пара для этого конкурента не найдена. Наведите
+                курсор на бейдж — откроется пояснение.
+              </p>
+              <p class="small text-secondary mb-2">
+                Фильтры <strong>«Мой сайт (список)»</strong> и <strong>«Конкурент»</strong> берутся из блока «Совпадения» выше (при смене нажмите «Обновить очередь»). Селект
+                <strong>«Причина»</strong> ниже ограничивает очередь по значению колонки «Причина» (или показывает все).
+              </p>
+              <div class="row g-2 align-items-end mb-2">
+                <div class="col-12 col-md-6">
+                  <label class="form-label mb-0 small text-uppercase text-muted" for="dg-manual-queue-search">Поиск в очереди</label>
+                  <input type="text" class="form-control" id="dg-manual-queue-search" placeholder="SKU, название, код импорта…" autocomplete="off" />
+                </div>
+                <div class="col-12 col-md-6 d-flex flex-wrap gap-2 align-items-end">
+                  <button type="button" class="btn btn-sm btn-primary" id="dg-manual-queue-refresh">
+                    <i class="pe-7s-refresh me-1"></i>Обновить очередь
+                  </button>
+                </div>
+              </div>
+              <div class="row g-2 align-items-end mb-2">
+                <div class="col-12 col-sm-6 col-md-4 col-lg-3">
+                  <label class="form-label mb-0 small text-uppercase text-muted" for="dg-manual-queue-limit">Лимит</label>
+                  <select
+                    class="form-select form-select-sm"
+                    id="dg-manual-queue-limit"
+                    title="Сколько строк очереди загружать за раз (как «Лимит» в блоке «Совпадения»; на сервере до 300)"
+                  >
+                    <option value="50">50</option>
+                    <option value="100" selected>100</option>
+                    <option value="200">200</option>
+                  </select>
+                </div>
+                <div class="col-12 col-sm-6 col-md-4 col-lg-3">
+                  <label class="form-label mb-0 small text-uppercase text-muted" for="dg-manual-queue-reason">Причина</label>
+                  <select
+                    class="form-select form-select-sm"
+                    id="dg-manual-queue-reason"
+                    title="Показать только строки с выбранной причиной или все"
+                  >
+                    <option value="">Все</option>
+                    <option value="no_match">Авто не нашло пару</option>
+                    <option value="rejected">Авто-совпадение вы отклонили</option>
+                  </select>
+                </div>
+                <div class="col-12 col-sm-12 col-md-4 col-lg-6 d-flex flex-wrap align-items-end gap-2 justify-content-md-end">
+                  <div class="text-muted small" id="dg-manual-queue-page-hint">Страница 1/1</div>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-manual-queue-prev">Назад</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-manual-queue-next">Вперёд</button>
+                </div>
+              </div>
+              <p class="small text-muted mb-2 lh-base" id="dg-manual-queue-actions-legend">
+                <strong>Действия в строке:</strong>
+                <span class="text-body-secondary">«События»</span> — таблица событий под строкой (повторное нажатие сворачивает);
+                <span class="text-body-secondary">«Найти по конкуренту»</span> — поиск в прайсе под строкой, выбор результата и «Подтвердить вручную» в том же блоке;
+                <span class="text-body-secondary">«Вернуть в авто»</span> — убрать из очереди, снова участвует в авто-сопоставлении;
+                <span class="text-body-secondary">«В архив»</span> — отказ от ручной привязки, запись уходит в архив (шаг&nbsp;4).
+              </p>
+              <p
+                class="small text-body-secondary mb-2 fw-semibold lh-sm"
+                id="dg-manual-queue-count-top"
+                aria-live="polite"
+              >
+                Очередь: —
+              </p>
+              <div class="table-responsive mb-2">
+                <table id="dg-manual-queue-table" class="table table-sm table-hover table-bordered mb-0">
+                  <thead class="table-light">
+                    <tr>
+                      <th
+                        scope="col"
+                        title="Колонка объясняет происхождение строки. «Авто не нашло пару» — после прогона шага 1 система зафиксировала, что для этого товара и конкурента в прайсе не нашлось пары в выбранном режиме (запись не из ручного ввода). «Авто-совпадение вы отклонили» — в шаге 2 вы отклонили предложенную пару. Детальная подсказка — наведите курсор на бейдж в ячейке."
+                      >
+                        Причина
+                      </th>
+                      <th>Конкурент</th>
+                      <th>Наш товар</th>
+                      <th>Обновлено</th>
+                      <th style="min-width: 300px">Действия</th>
+                    </tr>
+                  </thead>
+                  <tbody id="dg-manual-queue-tbody">
+                    <tr>
+                      <td colspan="5" class="text-muted small">Выберите «Мой сайт (список)» в блоке «Совпадения» — очередь подгрузится автоматически; при смене конкурента нажмите «Обновить очередь».</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <p
+                class="small text-body-secondary mb-3 fw-semibold lh-sm"
+                id="dg-manual-queue-count-bottom"
+                aria-live="polite"
+              >
+                Очередь: —
+              </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+              <div class="d-flex align-items-center gap-2">
+              <i class="header-icon pe-7s-close-circle icon-gradient bg-strong-bliss me-2"></i>
+              <span>Архив: отказ после ручного сопоставления</span>
+              <span class="badge bg-light text-muted border ms-2 d-none d-md-inline">Шаг 4</span>
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0" id="dg-matches-step4-toggle">Свернуть</button>
+            </div>
+            <div class="card-body">
+              <div id="dg-matches-step4-body">
+              <p class="small text-muted mb-2">
+                Сюда попадают позиции только после действия <strong>«В архив»</strong> в блоке ручного сопоставления. Удаление из архива снова
+                включает товар в обычное авто-сопоставление (как и удаление из очереди выше).
+              </p>
+              <button type="button" class="btn btn-sm btn-outline-primary mb-2" id="dg-manual-archive-refresh">Обновить архив</button>
+              <div class="table-responsive">
+                <table id="dg-manual-archive-table" class="table table-sm table-hover table-bordered mb-0">
+                  <thead class="table-light">
+                    <tr>
+                      <th>Конкурент</th>
+                      <th>Наш товар</th>
+                      <th>SKU / название конк. (на момент отказа)</th>
+                      <th>Заметка</th>
+                      <th style="width: 120px">Действие</th>
+                    </tr>
+                  </thead>
+                  <tbody id="dg-manual-archive-tbody">
+                    <tr>
+                      <td colspan="5" class="text-muted small">Пусто.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              </div>
             </div>
           </div>

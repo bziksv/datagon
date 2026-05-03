@@ -47,7 +47,9 @@ let appSettings = {
     discover_crawl_max_pages: 500,
     discover_request_delay_ms: 100,
     auth_session_ttl_days: 14,
-    auth_session_user_limit: 1
+    auth_session_user_limit: 1,
+    /** Сколько минут без запросов к API — сессия не считается «онлайн» в виджете шапки. */
+    auth_online_presence_minutes: 15
 };
 let syncState = { active: false, processed: 0, total: 0, message: '' };
 const moyskladRouterFactory = require('./routes/moysklad');
@@ -170,14 +172,15 @@ async function initDB() {
             ['auto_sync_moysklad_enabled','0'],['auto_sync_moysklad_time','04:00'],
             ['discover_max_sitemaps','200'],['discover_max_urls','50000'],
             ['discover_crawl_max_pages','500'],['discover_request_delay_ms','100'],
-            ['auth_session_ttl_days','14'],['auth_session_user_limit','1']
+            ['auth_session_ttl_days','14'],['auth_session_user_limit','1'],
+            ['auth_online_presence_minutes','15']
         ];
         for (const [k, v] of defaults) await db.query('INSERT IGNORE INTO app_settings (setting_key, setting_value) VALUES (?, ?)', [k, v]);
 
         const [rows] = await db.query('SELECT * FROM app_settings');
         rows.forEach(r => {
             if (appSettings.hasOwnProperty(r.setting_key)) {
-                appSettings[r.setting_key] = r.setting_key.includes('limit') || r.setting_key.includes('size') || r.setting_key.includes('delay') || r.setting_key.includes('days')
+                appSettings[r.setting_key] = r.setting_key.includes('limit') || r.setting_key.includes('size') || r.setting_key.includes('delay') || r.setting_key.includes('days') || r.setting_key.includes('minutes')
                     ? parseInt(r.setting_value)
                     : r.setting_value;
             }
@@ -280,6 +283,42 @@ async function initDB() {
             message TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             INDEX idx_mjl_job (job_id, id)
+        )`);
+        await db.query(`CREATE TABLE IF NOT EXISTS match_exclusion (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            my_site_id INT NOT NULL,
+            competitor_site_id INT NOT NULL,
+            my_product_id INT NOT NULL,
+            reason VARCHAR(24) NOT NULL,
+            source_product_match_id INT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            UNIQUE KEY uq_match_exclusion (my_site_id, competitor_site_id, my_product_id),
+            INDEX idx_mex_site (my_site_id),
+            INDEX idx_mex_comp (competitor_site_id)
+        )`);
+        await db.query(`CREATE TABLE IF NOT EXISTS match_manual_archive (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            my_site_id INT NOT NULL,
+            competitor_site_id INT NOT NULL,
+            my_product_id INT NOT NULL,
+            competitor_sku VARCHAR(255) NULL,
+            competitor_name VARCHAR(500) NULL,
+            note VARCHAR(500) NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_march_site (my_site_id),
+            INDEX idx_march_comp (competitor_site_id)
+        )`);
+        await db.query(`CREATE TABLE IF NOT EXISTS match_product_log (
+            id BIGINT AUTO_INCREMENT PRIMARY KEY,
+            my_site_id INT NOT NULL,
+            my_product_id INT NOT NULL,
+            competitor_site_id INT NULL,
+            event VARCHAR(64) NOT NULL,
+            message VARCHAR(512) NULL,
+            detail_json LONGTEXT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_mplog_prod (my_site_id, my_product_id, id)
         )`);
         const [paramsCol] = await db.query(`
             SELECT COUNT(*) AS cnt

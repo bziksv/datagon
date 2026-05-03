@@ -2,9 +2,27 @@
     (function () {
       var PRODUCTS_LIMIT = 50;
       var MATCHES_MY_PRODUCTS_MANUAL_COLLAPSE_KEY = "datagon_matches_my_products_manual_collapsed_v1";
+      var MATCHES_STEP_LAUNCH_COLLAPSE_KEY = "datagon_matches_step_launch_collapsed_v1";
+      var MATCHES_STEP_LIST_COLLAPSE_KEY = "datagon_matches_step_list_collapsed_v1";
+      var MATCHES_STEP_MANUAL_COLLAPSE_KEY = "datagon_matches_step_manual_collapsed_v1";
+      var MATCHES_STEP_ARCHIVE_COLLAPSE_KEY = "datagon_matches_step_archive_collapsed_v1";
+      var MATCHES_WORKFLOW_PANEL_OPEN_KEY = "datagon_matches_workflow_panel_open_v1";
+      var MATCHES_WORKFLOW_TEXT_1_KEY = "datagon_matches_workflow_text1_collapsed_v1";
+      var MATCHES_WORKFLOW_TEXT_2_KEY = "datagon_matches_workflow_text2_collapsed_v1";
+      var MATCHES_WORKFLOW_TEXT_3_KEY = "datagon_matches_workflow_text3_collapsed_v1";
+      var MATCHES_WORKFLOW_TEXT_4_KEY = "datagon_matches_workflow_text4_collapsed_v1";
 
       function formatNumber(value) {
         return Number(value || 0).toLocaleString("ru-RU");
+      }
+      function ruRecordsWord(n) {
+        var v = Math.floor(Number(n) || 0);
+        var x = Math.abs(v) % 100;
+        var x1 = x % 10;
+        if (x > 10 && x < 20) return "записей";
+        if (x1 === 1) return "запись";
+        if (x1 >= 2 && x1 <= 4) return "записи";
+        return "записей";
       }
       function formatDateTime(value) {
         if (!value) return "-";
@@ -93,18 +111,29 @@
 
       function syncUrlFromState() {
         var params = new URLSearchParams();
-        var mySiteId = document.getElementById("dg-matches-my-site").value;
+        var launchSite = document.getElementById("dg-matches-my-site").value;
+        var listSite = document.getElementById("dg-matches-list-my-site").value;
         var statusFilter = document.getElementById("dg-matches-status-filter").value;
         var searchMode = document.getElementById("dg-matches-search-mode").value;
         var productSearch = String(document.getElementById("dg-matches-product-search").value || "").trim();
         var matchesPage = Number(state.matchesPage || 1);
         var matchesLimit = Number(state.matchesLimit || 100);
-        if (mySiteId) params.set("my_site_id", String(mySiteId));
+        if (launchSite) params.set("my_site_id", String(launchSite));
+        if (listSite && listSite !== launchSite) params.set("list_my_site_id", String(listSite));
+        var listCompEl = document.getElementById("dg-matches-list-competitor");
+        var listComp = listCompEl && listCompEl.value ? String(listCompEl.value).trim() : "";
+        if (listComp) params.set("list_competitor_id", listComp);
         if (statusFilter && statusFilter !== "pending") params.set("status", statusFilter);
         if (searchMode && searchMode !== "all") params.set("mode", searchMode);
         if (productSearch) params.set("product_search", productSearch);
         if (matchesPage > 1) params.set("matches_page", String(matchesPage));
         if (matchesLimit !== 100) params.set("matches_limit", String(matchesLimit));
+        var mqPage = Number(state.manualQueuePage || 1);
+        var mqLimit = Number(state.manualQueueLimit || 100);
+        if (mqPage > 1) params.set("manual_queue_page", String(mqPage));
+        if (mqLimit !== 100) params.set("manual_queue_limit", String(mqLimit));
+        var mqReason = String(state.manualQueueReason || "").trim().toLowerCase();
+        if (mqReason === "no_match" || mqReason === "rejected") params.set("manual_queue_reason", mqReason);
         var next = params.toString()
           ? window.location.pathname + "?" + params.toString()
           : window.location.pathname;
@@ -137,12 +166,28 @@
           total: 0,
           foundSku: 0,
           foundName: 0,
+          dbFoundSku: 0,
+          dbFoundName: 0,
+          dbMatchCountsAvailable: false,
           logs: [],
           canRetry: false,
+          startedAt: null,
+          finishedAt: null,
+          stopPending: false,
         },
         jobDoneReloaded: false,
         statusTimer: null,
+        /** Подряд неудачных опросов /api/matches/status (сервер занят или недоступен). */
+        statusPollFailures: 0,
         urlTick: null,
+        /** Последний my_site_id, с которым реально вызывали /api/matches/list (для текста пустой таблицы). */
+        lastMatchesQuerySiteId: "",
+        /** Очередь ручного сопоставления (шаг 3): пагинация как у списка совпадений. */
+        manualQueuePage: 1,
+        manualQueueLimit: 100,
+        manualQueueTotal: 0,
+        /** Шаг 3: фильтр очереди по match_exclusion.reason (пусто = все). */
+        manualQueueReason: "",
       };
 
       var MATCHES_MY_COL_COUNT = 7;
@@ -172,12 +217,22 @@
         var p = new URLSearchParams(window.location.search);
         return {
           my_site_id: p.get("my_site_id") || "",
+          list_my_site_id: p.get("list_my_site_id") || "",
+          list_competitor_id: p.get("list_competitor_id") || "",
           status: p.get("status") || "",
           mode: p.get("mode") || "",
           product_search: p.get("product_search") || "",
           matches_page: Number(p.get("matches_page") || 1),
           matches_limit: Number(p.get("matches_limit") || 100),
+          manual_queue_page: Number(p.get("manual_queue_page") || 1),
+          manual_queue_limit: Number(p.get("manual_queue_limit") || 100),
+          manual_queue_reason: String(p.get("manual_queue_reason") || "").trim().toLowerCase(),
         };
+      }
+
+      function normalizeManualQueueReason(v) {
+        var s = String(v || "").trim().toLowerCase();
+        return s === "no_match" || s === "rejected" ? s : "";
       }
 
       function scheduleSyncUrl() {
@@ -198,16 +253,89 @@
 
       function fillMySitesSelect() {
         var sel = document.getElementById("dg-matches-my-site");
+        var selList = document.getElementById("dg-matches-list-my-site");
         var v = sel.value;
-        sel.innerHTML = '<option value="">-- выберите --</option>';
+        var vList = selList ? selList.value : "";
+        var optEmpty = '<option value="">-- выберите --</option>';
+        sel.innerHTML = optEmpty;
+        if (selList) selList.innerHTML = optEmpty;
         state.mySites.forEach(function (s) {
           var o = document.createElement("option");
           o.value = String(s.id);
           o.textContent = s.name || "#" + s.id;
           sel.appendChild(o);
+          if (selList) selList.appendChild(o.cloneNode(true));
         });
         if (v && [].some.call(sel.options, function (o) { return o.value === v; })) sel.value = v;
+        if (selList && vList && [].some.call(selList.options, function (o) { return o.value === vList; })) selList.value = vList;
       }
+
+      function listCompetitorOptionExists(sel, id) {
+        var s = String(id || "").trim();
+        return (
+          !!s &&
+          !!sel &&
+          [].some.call(sel.options, function (o) {
+            return o.value === s;
+          })
+        );
+      }
+
+      function fillListCompetitorSelect() {
+        var sel = document.getElementById("dg-matches-list-competitor");
+        if (!sel) return;
+        var prev = String(sel.value || "").trim();
+        sel.replaceChildren();
+        var o0 = document.createElement("option");
+        o0.value = "";
+        o0.textContent = "Все конкуренты";
+        sel.appendChild(o0);
+        (state.competitors || []).forEach(function (c) {
+          var idNum = Number(c.id);
+          if (!Number.isFinite(idNum) || idNum <= 0) return;
+          var o = document.createElement("option");
+          o.value = String(c.id);
+          var nm = String(c.name || "").trim();
+          var dm = String(c.domain || "").trim();
+          o.textContent = nm || dm || "#" + c.id;
+          sel.appendChild(o);
+        });
+        if (prev && listCompetitorOptionExists(sel, prev)) sel.value = prev;
+        else sel.value = "";
+        fillManualFindCompSelect();
+      }
+
+      /** Заполнить селект проектов конкурента для прайса. preferredProjectId — приоритет (например competitor_site_id строки очереди). */
+      function populateManualFindCompSelectInto(targetSel, preferredProjectId) {
+        if (!targetSel) return;
+        var pref =
+          preferredProjectId != null && String(preferredProjectId).trim() !== ""
+            ? String(preferredProjectId).trim()
+            : String(targetSel.value || "").trim();
+        targetSel.replaceChildren();
+        var o0 = document.createElement("option");
+        o0.value = "";
+        o0.textContent = "Выберите конкурента…";
+        targetSel.appendChild(o0);
+        (state.competitors || []).forEach(function (c) {
+          var idNum = Number(c.id);
+          if (!Number.isFinite(idNum) || idNum <= 0) return;
+          var o = document.createElement("option");
+          o.value = String(c.id);
+          var nm = String(c.name || "").trim();
+          var dm = String(c.domain || "").trim();
+          o.textContent = nm || dm || "#" + c.id;
+          targetSel.appendChild(o);
+        });
+        var listEl = document.getElementById("dg-matches-list-competitor");
+        var listV = listEl && String(listEl.value || "").trim();
+        if (pref && listCompetitorOptionExists(targetSel, pref)) targetSel.value = pref;
+        else if (listV && listCompetitorOptionExists(targetSel, listV)) targetSel.value = listV;
+        else targetSel.value = "";
+      }
+
+      /** Раньше заполнял общий селект «Поиск в прайсе»; селекты только inline под строкой очереди. */
+      function fillManualFindCompSelect() {}
 
       function mySiteOptionExists(sel, id) {
         var s = String(id || "").trim();
@@ -284,33 +412,97 @@
         document.getElementById("dg-matches-stop").disabled = !mySiteId || !js.active;
       }
 
+      function formatJobInstant(iso) {
+        if (!iso) return "—";
+        try {
+          var d = new Date(iso);
+          if (Number.isNaN(d.getTime())) return "—";
+          return d.toLocaleString("ru-RU", {
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+          });
+        } catch (e) {
+          return "—";
+        }
+      }
+
       function updateJobUi() {
         var js = state.jobStatus;
         var pct = js.total > 0 ? Math.round((js.processed / js.total) * 100) : 0;
         var hint = document.getElementById("dg-matches-job-hint");
-        if (hint)
-          hint.textContent =
-            (js.message || "Ожидание") +
-            " (" +
-            formatNumber(js.processed) +
-            "/" +
-            formatNumber(js.total) +
-            ", " +
-            pct +
-            "%)";
+        if (hint) {
+          var msg = js.message || "Ожидание";
+          var base = msg;
+          if (js.total > 0 || js.processed > 0) {
+            base +=
+              " · пары «наш товар × конкурент» (не страницы прайса): " +
+              formatNumber(js.processed) +
+              " / " +
+              formatNumber(js.total) +
+              " (" +
+              pct +
+              "%)";
+          }
+          if (js.active && state.statusPollFailures >= 3)
+            base += " · нет ответа сервера на опрос статуса (возможна долгая фаза «по названию» — подождите или обновите страницу)";
+          hint.textContent = base;
+        }
+        var timesEl = document.getElementById("dg-matches-job-times");
+        if (timesEl) {
+          var startStr = formatJobInstant(js.startedAt);
+          var stopPend =
+            !!js.stopPending ||
+            (!!js.active && /Остановка\s+задачи/i.test(String(js.message || "")));
+          var endStr;
+          if (js.active) endStr = stopPend ? "остановка (ждём шаг БД)…" : "выполняется…";
+          else endStr = js.finishedAt ? formatJobInstant(js.finishedAt) : "—";
+          timesEl.textContent = "Старт: " + startStr + " · Окончание: " + endStr;
+        }
+        var stopHint = document.getElementById("dg-matches-job-stop-hint");
+        if (stopHint) {
+          var showStop =
+            !!js.active &&
+            (!!js.stopPending || /Остановка\s+задачи/i.test(String(js.message || "")));
+          stopHint.classList.toggle("d-none", !showStop);
+        }
         var found = document.getElementById("dg-matches-job-found");
-        if (found)
-          found.textContent =
-            "Найдено по заданию: по SKU " + formatNumber(js.foundSku) + ", по названию " + formatNumber(js.foundName);
+        if (found) {
+          found.replaceChildren();
+          var l1 = document.createElement("div");
+          l1.className = "mb-0";
+          l1.textContent =
+            "В этой задаче (с переносом счётчика): по SKU " +
+            formatNumber(js.foundSku) +
+            ", по названию " +
+            formatNumber(js.foundName);
+          found.appendChild(l1);
+          if (js.dbMatchCountsAvailable) {
+            var l2 = document.createElement("div");
+            l2.className = "small text-muted mt-1 mb-0";
+            l2.textContent =
+              "Уже в таблице «Совпадения» по конкурентам из задачи: по SKU " +
+              formatNumber(js.dbFoundSku || 0) +
+              ", по названию " +
+              formatNumber(js.dbFoundName || 0);
+            found.appendChild(l2);
+          }
+        }
         var logsEl = document.getElementById("dg-matches-job-logs");
         if (logsEl) {
           logsEl.replaceChildren();
-          (js.logs || []).slice(0, 10).forEach(function (l, i) {
+          (js.logs || []).slice(0, 20).forEach(function (l, i) {
             var d = document.createElement("div");
             d.textContent = "• " + l;
             logsEl.appendChild(d);
           });
-          logsEl.classList.toggle("dg-matches-job-logs-reserved", !!js.active || (js.logs || []).length > 0);
+          var hasLogReserve = !!js.active || (js.logs || []).length > 0;
+          logsEl.classList.toggle("dg-matches-job-logs-reserved", hasLogReserve);
+          var row = logsEl.closest(".dg-matches-job-logs-found-row");
+          if (row) row.classList.toggle("dg-matches-job-has-content", hasLogReserve);
         }
         refreshActionButtons();
       }
@@ -360,6 +552,42 @@
         } catch (e) {
           return "—";
         }
+      }
+
+      /** Цена + валюта для колонок «Совпадения» (мой товар / конкурент). */
+      function formatMatchesListPriceLine(price, currency) {
+        if (price == null || String(price).trim() === "") return "—";
+        var c = String(currency || "").trim();
+        var num = Number(price);
+        var pStr = Number.isFinite(num)
+          ? num.toLocaleString("ru-RU", { minimumFractionDigits: 0, maximumFractionDigits: 4 })
+          : String(price).trim();
+        return c ? pStr + " " + c : pStr;
+      }
+
+      function appendMatchesListProductBlock(td, sku, name, priceLine) {
+        td.classList.add("dg-matches-product-cell");
+        var stack = document.createElement("div");
+        stack.className = "dg-matches-product-stack";
+        var rows = [
+          ["Артикул", sku || "—", "dg-matches-product-line__value--sku"],
+          ["Наименование", name || "—", "dg-matches-product-line__value--name"],
+          ["Цена", priceLine || "—", "dg-matches-product-line__value--price"],
+        ];
+        rows.forEach(function (r) {
+          var line = document.createElement("div");
+          line.className = "dg-matches-product-line";
+          var lab = document.createElement("div");
+          lab.className = "dg-matches-product-line__label";
+          lab.textContent = r[0];
+          var val = document.createElement("div");
+          val.className = "dg-matches-product-line__value " + r[2];
+          val.textContent = r[1];
+          line.appendChild(lab);
+          line.appendChild(val);
+          stack.appendChild(line);
+        });
+        td.appendChild(stack);
       }
 
       function userMatchesMyColWidthKey() {
@@ -588,6 +816,39 @@
         });
       }
 
+      function bindMatchesPersistedSectionCollapse(storageKey, bodyId, btnId) {
+        var body = document.getElementById(bodyId);
+        var btn = document.getElementById(btnId);
+        if (!body || !btn) return;
+        function apply() {
+          try {
+            var collapsed = localStorage.getItem(storageKey) === "1";
+            if (collapsed) {
+              body.style.display = "none";
+              btn.textContent = "Развернуть";
+            } else {
+              body.style.display = "";
+              btn.textContent = "Свернуть";
+            }
+          } catch (e) {}
+          try {
+            matchesMyRefreshFloatingAfterLayout();
+          } catch (e2) {}
+        }
+        apply();
+        btn.addEventListener("click", function () {
+          var hidden = body.style.display === "none";
+          body.style.display = hidden ? "" : "none";
+          btn.textContent = hidden ? "Свернуть" : "Развернуть";
+          try {
+            localStorage.setItem(storageKey, hidden ? "0" : "1");
+          } catch (e3) {}
+          try {
+            matchesMyRefreshFloatingAfterLayout();
+          } catch (e4) {}
+        });
+      }
+
       function ensureMatchesMyScrollAndResizeBound() {
         if (matchesMyScrollGlobalsBound) return;
         matchesMyScrollGlobalsBound = true;
@@ -664,14 +925,16 @@
           var codeStr = String(p.source_id != null ? p.source_id : "").trim();
           tdCode.textContent = codeStr ? codeStr : p.id != null ? String(p.id) : "—";
           tr.appendChild(tdCode);
-          ["sku", "name"].forEach(function (k) {
-            var td = document.createElement("td");
-            td.className = "text-center";
-            td.textContent = p[k] ? String(p[k]) : "—";
-            tr.appendChild(td);
-          });
+          var tdSku = document.createElement("td");
+          tdSku.className = "dg-matches-my-sku-cell";
+          tdSku.textContent = p.sku ? String(p.sku) : "—";
+          tr.appendChild(tdSku);
+          var tdName = document.createElement("td");
+          tdName.className = "dg-matches-my-name-cell";
+          tdName.textContent = p.name ? String(p.name) : "—";
+          tr.appendChild(tdName);
           var tdP = document.createElement("td");
-          tdP.className = "text-center";
+          tdP.className = "dg-matches-my-price-cell";
           tdP.textContent = formatMatchesMyProductMoney(p.price);
           tr.appendChild(tdP);
           var tdCur = document.createElement("td");
@@ -706,6 +969,11 @@
 
       function collectMatchesListFilterForm() {
         return {
+          list_my_site_id: document.getElementById("dg-matches-list-my-site").value,
+          list_competitor_site_id: (function () {
+            var el = document.getElementById("dg-matches-list-competitor");
+            return el ? el.value : "";
+          })(),
           smart: document.getElementById("dg-matches-smart-filter").value,
           status_filter: document.getElementById("dg-matches-status-filter").value,
           limit: document.getElementById("dg-matches-limit").value,
@@ -726,9 +994,15 @@
 
       function mergeMatchesListPrefsFromStorage() {
         var DF = window.DatagonFilters;
-        if (!DF || !DF.load) return;
+        if (!DF || !DF.load) {
+          fillListCompetitorSelect();
+          return;
+        }
         var prefs = DF.load("matches_list");
-        if (!prefs) return;
+        if (!prefs) {
+          fillListCompetitorSelect();
+          return;
+        }
         var p;
         try {
           p = new URLSearchParams(window.location.search);
@@ -737,6 +1011,17 @@
         }
         function miss(k) {
           return !p.has(k);
+        }
+        var listSel = document.getElementById("dg-matches-list-my-site");
+        if (listSel && prefs.list_my_site_id != null && miss("list_my_site_id")) {
+          var lid = String(prefs.list_my_site_id).trim();
+          if (lid && mySiteOptionExists(listSel, lid)) listSel.value = lid;
+        }
+        fillListCompetitorSelect();
+        var compSelMerge = document.getElementById("dg-matches-list-competitor");
+        if (compSelMerge && prefs.list_competitor_site_id != null && miss("list_competitor_id")) {
+          var cidM = String(prefs.list_competitor_site_id).trim();
+          if (cidM && listCompetitorOptionExists(compSelMerge, cidM)) compSelMerge.value = cidM;
         }
         if (prefs.smart != null) document.getElementById("dg-matches-smart-filter").value = String(prefs.smart);
         if (miss("status") && prefs.status_filter != null)
@@ -775,6 +1060,7 @@
                   m.competitor_name,
                   m.confirmed_by,
                   m.unlinked_by,
+                  m.rejected_by,
                 ]
                   .map(function (x) {
                     return String(x || "").toLowerCase();
@@ -791,10 +1077,15 @@
             String(m.competitor_sku || "").toLowerCase().indexOf(String(tf.competitor_sku).trim().toLowerCase()) === -1
           )
             return false;
-          if (tf.match_type !== "all" && String(m.match_type || "").toLowerCase() !== String(tf.match_type).toLowerCase())
-            return false;
+          if (tf.match_type !== "all") {
+            var wantMt = String(tf.match_type).toLowerCase();
+            var rowMt = String(m.match_type || "").trim().toLowerCase();
+            if (!rowMt)
+              rowMt = String(effectiveMatchTypeForScore(m, normalizeConfidence01(m.confidence_score))).toLowerCase();
+            if (rowMt !== wantMt) return false;
+          }
           if (tf.status !== "all" && String(m.status || "").toLowerCase() !== String(tf.status).toLowerCase()) return false;
-          var pct = Number(m.confidence_score || 0) * 100;
+          var pct = normalizeConfidence01(m.confidence_score) * 100;
           var min = Number(tf.confidence_min || "");
           var max = Number(tf.confidence_max || "");
           if (Number.isFinite(min) && String(tf.confidence_min).trim() !== "" && pct < min) return false;
@@ -805,7 +1096,7 @@
         var sortBy = state.matchesSortBy;
         return byColumns.slice().sort(function (a, b) {
           if (sortBy === "confidence") {
-            return (Number(a.confidence_score || 0) - Number(b.confidence_score || 0)) * dir;
+            return (normalizeConfidence01(a.confidence_score) - normalizeConfidence01(b.confidence_score)) * dir;
           }
           var av = String(a[sortBy] || "");
           var bv = String(b[sortBy] || "");
@@ -813,7 +1104,7 @@
         });
       }
 
-      var MATCHES_COL_DEFAULTS = [140, 120, 104, 328, 328, 352];
+      var MATCHES_COL_DEFAULTS = [140, 120, 200, 328, 328, 352];
       var matchesColWidths = {};
       var matchesResizeState = null;
       var matchesResizeGlobalsBound = false;
@@ -955,12 +1246,31 @@
         if (status === "rejected") return { icon: "pe-7s-close-circle", badge: "danger", label: "Отклонено" };
         return { icon: "pe-7s-timer", badge: "warning", label: "Ожидает" };
       }
-      function scoreUi(matchType, score) {
-        if (String(matchType || "").toLowerCase() === "sku") return { text: "100% (по SKU)", badge: "success" };
-        var pct = Math.round(Number(score || 0) * 100);
-        if (pct >= 90) return { text: pct + "%", badge: "success" };
-        if (pct >= 70) return { text: pct + "%", badge: "warning" };
-        return { text: pct + "%", badge: "secondary" };
+      /** БД: 0..1; редкий legacy — уже в процентах 0..100. */
+      function normalizeConfidence01(raw) {
+        var n = Number(raw);
+        if (!Number.isFinite(n) || n < 0) return 0;
+        if (n > 1 && n <= 100) return n / 100;
+        if (n > 100) return 1;
+        return n;
+      }
+      function scoreUi(matchType, score01) {
+        var mt = String(matchType || "").toLowerCase();
+        if (mt === "manual") return { text: "Вручную", badge: "info" };
+        if (mt === "sku") {
+          var skuPct = Math.round(Number(score01 || 0) * 100);
+          if (skuPct >= 100) return { text: "100% по SKU", badge: "success" };
+          if (skuPct >= 90) return { text: skuPct + "% по SKU", badge: "success" };
+          if (skuPct >= 70) return { text: skuPct + "% по SKU", badge: "warning" };
+          return { text: skuPct + "% по SKU", badge: "secondary" };
+        }
+        var pct = Math.round(Number(score01 || 0) * 100);
+        if (pct < 0) pct = 0;
+        if (pct > 100) pct = 100;
+        var text = pct + "% по названию";
+        if (pct >= 90) return { text: text, badge: "success" };
+        if (pct >= 70) return { text: text, badge: "warning" };
+        return { text: text, badge: "secondary" };
       }
 
       function effectiveMatchTypeForScore(m, score) {
@@ -979,6 +1289,7 @@
           .trim()
           .toLowerCase();
         if (!mt) return "—";
+        if (mt === "manual") return "Вручную";
         if (mt === "name") {
           if (mm === "all") return "Название · из «все поля»";
           return "По названию";
@@ -1013,16 +1324,51 @@
           var td0 = document.createElement("td");
           td0.colSpan = 6;
           td0.className = "text-muted";
-          td0.textContent = "Нет совпадений";
+          var rawLen = state.matches.length;
+          var smart = String(document.getElementById("dg-matches-smart-filter").value || "").trim();
+          var tf0 = readTableFilters();
+          var filtersOn =
+            smart !== "" ||
+            (tf0.my_sku && String(tf0.my_sku).trim() !== "") ||
+            (tf0.competitor_sku && String(tf0.competitor_sku).trim() !== "") ||
+            tf0.match_type !== "all" ||
+            tf0.status !== "all" ||
+            (String(tf0.confidence_min || "").trim() !== "") ||
+            (String(tf0.confidence_max || "").trim() !== "");
+          if (rawLen > 0 && filtersOn) {
+            td0.textContent =
+              "По фильтрам строк нет (загружено " +
+              rawLen +
+              " на странице). Попробуйте «Тип совпадения: Все», «По умолчанию» или умный фильтр очистить. Если только что меняли «Тип», нажмите «Применить», чтобы список перезапросился с сервера.";
+          } else if (rawLen === 0) {
+            var listSel0 = document.getElementById("dg-matches-list-my-site");
+            var listSiteV = String(listSel0 && listSel0.value ? listSel0.value : "").trim();
+            var siteChosen =
+              !!String(state.lastMatchesQuerySiteId || "").trim() ||
+              !!listSiteV ||
+              !!(listSel0 && listSel0.selectedIndex > 0);
+            var tot = Number(state.matchesTotal || 0);
+            if (siteChosen) {
+              td0.textContent =
+                "По текущим фильтрам на сервере 0 строк (всего: " +
+                formatNumber(tot) +
+                "). Смените верхний «Статус» (часто «Все»), «Все конкуренты», «Тип совпадения: Все» или запустите сопоставление. Поля «Мой SKU» / «SKU конк.» / «Статус в списке» режут уже загруженную выборку — после их смены нажмите «Применить». Если на сервере всё ещё старая страница — обновите вкладку без кэша (Ctrl+F5).";
+            } else {
+              td0.textContent =
+                "Выберите «Мой сайт (список)», при необходимости фильтры и «Применить», либо запустите сопоставление.";
+            }
+          } else {
+            td0.textContent = "Нет совпадений";
+          }
           tr0.appendChild(td0);
           tbody.appendChild(tr0);
           applyStoredMatchesColWidths();
           return;
         }
         rows.forEach(function (m) {
-          var score = Number(m.confidence_score || 0);
+          var score01 = normalizeConfidence01(m.confidence_score);
           var sUi = statusUi(String(m.status || "").toLowerCase());
-          var cUi = scoreUi(effectiveMatchTypeForScore(m, score), score);
+          var cUi = scoreUi(effectiveMatchTypeForScore(m, score01), score01);
           var myProductUrl =
             normalizeWebasystProductUrl(m.my_product_url || "", m.my_site_domain || "", m.my_site_cms_type || "") ||
             buildProductPageUrlFromSlug(m.my_site_domain || "", m.my_sku || "") ||
@@ -1059,23 +1405,21 @@
           bConf.className = "badge bg-" + cUi.badge;
           bConf.textContent = cUi.text;
           tdConf.appendChild(bConf);
+          tdConf.title =
+            "confidence_score (0–1): " +
+            (Number.isFinite(score01) ? score01.toFixed(4) : "—") +
+            ". Для «По названию» — доля схожести строк; для SKU — 1.0 при полном совпадении.";
           tr.appendChild(tdConf);
 
           var tdMy = document.createElement("td");
-          var d1 = document.createElement("div");
-          var b1 = document.createElement("b");
-          b1.textContent = m.my_sku || "-";
-          d1.appendChild(b1);
-          tdMy.appendChild(d1);
-          var d2 = document.createElement("div");
-          d2.textContent = m.my_product_name || "-";
-          tdMy.appendChild(d2);
-          var d3 = document.createElement("div");
-          d3.className = "text-muted small";
-          d3.textContent = (m.my_price != null ? m.my_price : "-") + " " + (m.my_currency || "");
-          tdMy.appendChild(d3);
+          appendMatchesListProductBlock(
+            tdMy,
+            m.my_sku,
+            m.my_product_name,
+            formatMatchesListPriceLine(m.my_price, m.my_currency)
+          );
           var links = document.createElement("div");
-          links.className = "small mt-1 d-flex gap-2 flex-wrap";
+          links.className = "dg-matches-product-links small mt-2 d-flex gap-2 flex-wrap";
           if (myProductUrl) {
             var a1 = document.createElement("a");
             a1.href = myProductUrl;
@@ -1098,24 +1442,18 @@
           tr.appendChild(tdMy);
 
           var tdComp = document.createElement("td");
-          var c1 = document.createElement("div");
-          var bc = document.createElement("b");
-          bc.textContent = m.competitor_sku || "-";
-          c1.appendChild(bc);
-          tdComp.appendChild(c1);
-          var c2 = document.createElement("div");
-          c2.textContent = m.competitor_name || "-";
-          tdComp.appendChild(c2);
-          var c3 = document.createElement("div");
-          c3.className = "text-muted small";
-          c3.textContent = (m.competitor_price != null ? m.competitor_price : "-") + " " + (m.competitor_currency || "");
-          tdComp.appendChild(c3);
+          appendMatchesListProductBlock(
+            tdComp,
+            m.competitor_sku,
+            m.competitor_name,
+            formatMatchesListPriceLine(m.competitor_price, m.competitor_currency)
+          );
           var c4 = document.createElement("div");
-          c4.className = "text-muted small";
+          c4.className = "dg-matches-product-meta small text-muted mt-2";
           c4.textContent = "Обновлено: " + formatDateTime(m.competitor_parsed_at);
           tdComp.appendChild(c4);
           var clinks = document.createElement("div");
-          clinks.className = "small mt-1 d-flex gap-2 flex-wrap";
+          clinks.className = "dg-matches-product-links small mt-2 d-flex gap-2 flex-wrap";
           if (competitorUrl) {
             var ac = document.createElement("a");
             ac.href = competitorUrl;
@@ -1146,6 +1484,7 @@
             var bOk = document.createElement("button");
             bOk.type = "button";
             bOk.className = "btn btn-sm btn-outline-success me-1";
+            bOk.setAttribute("data-dg-no-activity", "1");
             bOk.innerHTML = '<i class="pe-7s-check me-1"></i>Подтвердить';
             bOk.addEventListener("click", function () {
               updateMatch(m.id, "confirmed");
@@ -1153,6 +1492,7 @@
             var bNo = document.createElement("button");
             bNo.type = "button";
             bNo.className = "btn btn-sm btn-outline-danger";
+            bNo.setAttribute("data-dg-no-activity", "1");
             bNo.innerHTML = '<i class="pe-7s-close-circle me-1"></i>Отклонить';
             bNo.addEventListener("click", function () {
               updateMatch(m.id, "rejected");
@@ -1162,20 +1502,32 @@
           } else if (st === "confirmed") {
             var meta = document.createElement("div");
             meta.className = "small text-muted mb-1";
-            meta.textContent = "Кто: " + (m.confirmed_by || "-") + " | " + formatDateTime(m.confirmed_at);
+            meta.textContent =
+              "Подтверждено" +
+              (m.confirmed_by ? ": " + String(m.confirmed_by) : "") +
+              (m.confirmed_at ? ", " + formatDateTime(m.confirmed_at) : "");
             tdAct.appendChild(meta);
             var bUn = document.createElement("button");
             bUn.type = "button";
             bUn.className = "btn btn-sm btn-outline-warning";
+            bUn.setAttribute("data-dg-no-activity", "1");
             bUn.innerHTML = '<i class="pe-7s-link me-1"></i>Разорвать';
             bUn.addEventListener("click", function () {
               updateMatch(m.id, "unlink");
             });
             tdAct.appendChild(bUn);
+          } else if (st === "rejected") {
+            var metaRj = document.createElement("div");
+            metaRj.className = "small text-muted mb-0";
+            metaRj.textContent =
+              "Отклонено" +
+              (m.rejected_by ? ": " + String(m.rejected_by) : "") +
+              (m.rejected_at ? ", " + formatDateTime(m.rejected_at) : "");
+            tdAct.appendChild(metaRj);
           } else {
             var sp = document.createElement("span");
-            sp.className = "text-muted";
-            sp.textContent = "Отклонено";
+            sp.className = "text-muted small";
+            sp.textContent = st ? String(st) : "—";
             tdAct.appendChild(sp);
           }
           tr.appendChild(tdAct);
@@ -1225,13 +1577,15 @@
       }
 
       function loadMatches(silent) {
-        var mySiteId = document.getElementById("dg-matches-my-site").value;
+        var mySiteId = document.getElementById("dg-matches-list-my-site").value;
         if (!mySiteId) {
+          state.lastMatchesQuerySiteId = "";
           state.matches = [];
           state.matchesTotal = 0;
           renderMatchesTable();
           return;
         }
+        state.lastMatchesQuerySiteId = String(mySiteId);
         var showLoader = !silent;
         if (showLoader) {
           state.loadingMatches = true;
@@ -1245,6 +1599,11 @@
         });
         var sf = document.getElementById("dg-matches-status-filter").value;
         if (sf !== "all") q.set("status", sf);
+        var mtList = document.getElementById("dg-matches-tf-match-type").value;
+        if (mtList && mtList !== "all") q.set("match_type", mtList);
+        var compF = document.getElementById("dg-matches-list-competitor");
+        var compId = compF && String(compF.value || "").trim();
+        if (compId) q.set("competitor_site_id", compId);
         var fetchOpts = { credentials: "same-origin" };
         try {
           if (typeof AbortSignal !== "undefined" && AbortSignal.timeout) fetchOpts.signal = AbortSignal.timeout(120000);
@@ -1280,7 +1639,11 @@
       function loadStatus() {
         var mySiteId = document.getElementById("dg-matches-my-site").value;
         if (!mySiteId) return;
-        fetch("/api/matches/status?my_site_id=" + encodeURIComponent(mySiteId), { credentials: "same-origin" })
+        var fetchOpts = { credentials: "same-origin" };
+        try {
+          if (typeof AbortSignal !== "undefined" && AbortSignal.timeout) fetchOpts.signal = AbortSignal.timeout(20000);
+        } catch (eT) {}
+        fetch("/api/matches/status?my_site_id=" + encodeURIComponent(mySiteId), fetchOpts)
           .then(function (r) {
             return r.json().then(function (j) {
               return { r: r, j: j };
@@ -1288,6 +1651,7 @@
           })
           .then(function (x) {
             if (!x.r.ok) return;
+            state.statusPollFailures = 0;
             var json = x.j;
             if (json.active) state.jobDoneReloaded = false;
             state.jobStatus = {
@@ -1298,8 +1662,16 @@
               total: Number(json.total || 0),
               foundSku: Number(json.foundSku || 0),
               foundName: Number(json.foundName || 0),
+              dbFoundSku: Number(json.dbFoundSku || 0),
+              dbFoundName: Number(json.dbFoundName || 0),
+              dbMatchCountsAvailable: !!json.dbMatchCountsAvailable,
               logs: Array.isArray(json.logs) ? json.logs : [],
               canRetry: !!json.canRetry,
+              startedAt: json.startedAt != null ? json.startedAt : json.started_at != null ? json.started_at : null,
+              finishedAt: json.finishedAt != null ? json.finishedAt : json.finished_at != null ? json.finished_at : null,
+              stopPending:
+                json.stopPending === true ||
+                (!!json.active && /Остановка\s+задачи/i.test(String(json.message || ""))),
             };
             updateJobUi();
             if (json.done && !state.jobDoneReloaded) {
@@ -1307,7 +1679,16 @@
               loadMatches(true);
             }
           })
-          .catch(function () {});
+          .catch(function (e) {
+            state.statusPollFailures += 1;
+            updateJobUi();
+          });
+      }
+
+      /** Опрос задачи сопоставления привязан к «Мой сайт (запуск)»; вызывать после успешного start/retry/stop. */
+      function ensureMatchesJobPolling() {
+        var sel = document.getElementById("dg-matches-my-site");
+        if (sel && String(sel.value || "").trim()) startStatusPoll();
       }
 
       function startStatusPoll() {
@@ -1337,6 +1718,7 @@
           .then(function (x) {
             if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Не удалось запустить сопоставление");
             alert("Сопоставление запущено");
+            ensureMatchesJobPolling();
             return loadStatus();
           })
           .catch(function (e) {
@@ -1356,7 +1738,7 @@
           productIds: state.selectedProductIds,
           batchSize: Number(document.getElementById("dg-matches-batch-size").value || 200),
           microPauseMs: Number(document.getElementById("dg-matches-micro-pause").value || 20),
-          batchPauseMs: Number(document.getElementById("dg-matches-batch-pause").value || 1000),
+          batchPauseMs: Number(document.getElementById("dg-matches-batch-pause").value || 200),
         });
       }
 
@@ -1371,7 +1753,7 @@
           productSearch: String(document.getElementById("dg-matches-product-search").value || "").trim(),
           batchSize: Number(document.getElementById("dg-matches-batch-size").value || 200),
           microPauseMs: Number(document.getElementById("dg-matches-micro-pause").value || 20),
-          batchPauseMs: Number(document.getElementById("dg-matches-batch-pause").value || 1000),
+          batchPauseMs: Number(document.getElementById("dg-matches-batch-pause").value || 200),
         });
       }
 
@@ -1389,7 +1771,7 @@
             productSearch: String(document.getElementById("dg-matches-product-search").value || "").trim(),
             batchSize: Number(document.getElementById("dg-matches-batch-size").value || 200),
             microPauseMs: Number(document.getElementById("dg-matches-micro-pause").value || 20),
-            batchPauseMs: Number(document.getElementById("dg-matches-batch-pause").value || 1000),
+            batchPauseMs: Number(document.getElementById("dg-matches-batch-pause").value || 200),
           }),
         })
           .then(function (r) {
@@ -1400,6 +1782,7 @@
           .then(function (x) {
             if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Не удалось повторить задачу");
             alert("Повтор запущен (из задачи #" + x.j.replayFrom + ")");
+            ensureMatchesJobPolling();
             return loadStatus();
           })
           .catch(function (e) {
@@ -1425,6 +1808,7 @@
           })
           .then(function (x) {
             if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Не удалось остановить задачу");
+            ensureMatchesJobPolling();
             return loadStatus();
           })
           .catch(function (e) {
@@ -1456,6 +1840,12 @@
           .then(function (x) {
             if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Не удалось обновить статус");
             loadMatches(true);
+            if (window.__dgMatchesRefreshManualLanes) window.__dgMatchesRefreshManualLanes();
+            if (action === "rejected" && x.j.exclusion_created === false) {
+              alert(
+                "Отклонение сохранено, но запись не попала в ручную очередь: не удалось сопоставить SKU/название из строки с «Мои товары». Проверьте активность товара и совпадение полей."
+              );
+            }
           })
           .catch(function (e) {
             alert(e.message || "Ошибка обновления статуса");
@@ -1471,18 +1861,24 @@
         renderMatchesTable();
       }
 
-      function onMySiteChanged(resetPages) {
+      function onLaunchSiteChanged(resetPages) {
+        var sel = document.getElementById("dg-matches-my-site");
+        var listSel = document.getElementById("dg-matches-list-my-site");
         if (resetPages) {
           state.myProductsPage = 1;
-          state.matchesPage = 1;
           state.selectedProductIds = [];
           state.jobDoneReloaded = false;
         }
+        var prev = sel.getAttribute("data-dg-prev-launch") || "";
+        var next = sel.value || "";
+        var lv = listSel ? listSel.value || "" : "";
+        if (listSel && (!lv || lv === prev)) listSel.value = next;
+        sel.setAttribute("data-dg-prev-launch", next);
         scheduleSyncUrl();
+        fillListCompetitorSelect();
         loadMyProducts();
-        loadMatches();
         stopStatusPoll();
-        if (document.getElementById("dg-matches-my-site").value) startStatusPoll();
+        if (sel.value) startStatusPoll();
         renderMyProducts();
       }
 
@@ -1494,7 +1890,20 @@
             });
           }
         } catch (eSave) {}
-        onMySiteChanged(true);
+        onLaunchSiteChanged(true);
+      });
+      document.getElementById("dg-matches-list-my-site").addEventListener("change", function () {
+        state.matchesPage = 1;
+        fillListCompetitorSelect();
+        scheduleSyncUrl();
+        persistMatchesListFilterForm();
+        loadMatches();
+      });
+      document.getElementById("dg-matches-list-competitor").addEventListener("change", function () {
+        state.matchesPage = 1;
+        scheduleSyncUrl();
+        persistMatchesListFilterForm();
+        loadMatches();
       });
       document.getElementById("dg-matches-product-search").addEventListener("input", function () {
         scheduleSyncUrl();
@@ -1511,6 +1920,57 @@
           btn.setAttribute("aria-expanded", show ? "true" : "false");
         });
       })();
+
+      (function initMatchesWorkflowGuide() {
+        var btn = document.getElementById("dg-matches-workflow-toggle");
+        var panel = document.getElementById("dg-matches-workflow-panel");
+        var label = document.getElementById("dg-matches-workflow-toggle-label");
+        var icon = document.getElementById("dg-matches-workflow-toggle-icon");
+        if (!btn || !panel) return;
+        function setOpen(open) {
+          if (open) {
+            panel.classList.remove("d-none");
+            btn.setAttribute("aria-expanded", "true");
+            if (label) label.textContent = "Свернуть";
+            if (icon) {
+              icon.className = "pe-7s-angle-up";
+              icon.style.fontSize = "1.1rem";
+            }
+          } else {
+            panel.classList.add("d-none");
+            btn.setAttribute("aria-expanded", "false");
+            if (label) label.textContent = "Развернуть";
+            if (icon) {
+              icon.className = "pe-7s-angle-down";
+              icon.style.fontSize = "1.1rem";
+            }
+          }
+          try {
+            localStorage.setItem(MATCHES_WORKFLOW_PANEL_OPEN_KEY, open ? "1" : "0");
+          } catch (e) {}
+          try {
+            matchesMyRefreshFloatingAfterLayout();
+          } catch (e2) {}
+        }
+        try {
+          setOpen(localStorage.getItem(MATCHES_WORKFLOW_PANEL_OPEN_KEY) === "1");
+        } catch (e3) {
+          setOpen(false);
+        }
+        btn.addEventListener("click", function () {
+          setOpen(panel.classList.contains("d-none"));
+        });
+      })();
+
+      bindMatchesPersistedSectionCollapse(MATCHES_WORKFLOW_TEXT_1_KEY, "dg-matches-workflow-t1-body", "dg-matches-workflow-t1-toggle");
+      bindMatchesPersistedSectionCollapse(MATCHES_WORKFLOW_TEXT_2_KEY, "dg-matches-workflow-t2-body", "dg-matches-workflow-t2-toggle");
+      bindMatchesPersistedSectionCollapse(MATCHES_WORKFLOW_TEXT_3_KEY, "dg-matches-workflow-t3-body", "dg-matches-workflow-t3-toggle");
+      bindMatchesPersistedSectionCollapse(MATCHES_WORKFLOW_TEXT_4_KEY, "dg-matches-workflow-t4-body", "dg-matches-workflow-t4-toggle");
+
+      bindMatchesPersistedSectionCollapse(MATCHES_STEP_LAUNCH_COLLAPSE_KEY, "dg-matches-step1-body", "dg-matches-step1-toggle");
+      bindMatchesPersistedSectionCollapse(MATCHES_STEP_LIST_COLLAPSE_KEY, "dg-matches-step2-body", "dg-matches-step2-toggle");
+      bindMatchesPersistedSectionCollapse(MATCHES_STEP_MANUAL_COLLAPSE_KEY, "dg-matches-step3-body", "dg-matches-step3-toggle");
+      bindMatchesPersistedSectionCollapse(MATCHES_STEP_ARCHIVE_COLLAPSE_KEY, "dg-matches-step4-body", "dg-matches-step4-toggle");
 
       (function initMatchesModeHintToggle() {
         var btn = document.getElementById("dg-matches-mode-hint-toggle");
@@ -1555,11 +2015,17 @@
         });
       })();
       document.getElementById("dg-matches-status-filter").addEventListener("change", function () {
+        state.matchesPage = 1;
         scheduleSyncUrl();
+        persistMatchesListFilterForm();
+        loadMatches();
       });
       document.getElementById("dg-matches-limit").addEventListener("change", function () {
         state.matchesLimit = Number(this.value) || 100;
+        state.matchesPage = 1;
         scheduleSyncUrl();
+        persistMatchesListFilterForm();
+        loadMatches();
       });
       document.getElementById("dg-matches-my-prev").addEventListener("click", function () {
         if (state.myProductsPage > 1) {
@@ -1634,6 +2100,11 @@
         });
         el.addEventListener("change", function () {
           scheduleSyncUrl();
+          if (id === "dg-matches-tf-match-type") {
+            state.matchesPage = 1;
+            persistMatchesListFilterForm();
+            loadMatches();
+          }
         });
       });
       document.getElementById("dg-matches-filters-apply").addEventListener("click", function () {
@@ -1641,9 +2112,16 @@
         persistMatchesListFilterForm();
         loadMatches();
       });
-      document.getElementById("dg-matches-filters-default").addEventListener("click", function () {
+        document.getElementById("dg-matches-filters-default").addEventListener("click", function () {
         if (window.DatagonMatchesListFilterBlocks && window.DatagonMatchesListFilterBlocks.reset) window.DatagonMatchesListFilterBlocks.reset();
         if (window.DatagonFilters) window.DatagonFilters.clear("matches_list");
+        var launchV = document.getElementById("dg-matches-my-site").value || "";
+        var lsEl = document.getElementById("dg-matches-list-my-site");
+        if (launchV && mySiteOptionExists(lsEl, launchV)) lsEl.value = launchV;
+        else if (!launchV) lsEl.value = "";
+        fillListCompetitorSelect();
+        var lc = document.getElementById("dg-matches-list-competitor");
+        if (lc) lc.value = "";
         document.getElementById("dg-matches-smart-filter").value = "";
         document.getElementById("dg-matches-status-filter").value = "pending";
         state.matchesLimit = 100;
@@ -1674,7 +2152,7 @@
             subtitle: "",
             items: [
               { key: "smart", title: "Умный поиск", hint: "" },
-              { key: "my_site", title: "Мой сайт", hint: "" },
+              { key: "my_site", title: "Мой сайт (запуск)", hint: "Таблица товаров и задача; не задаёт сайт списка совпадений." },
               { key: "search_mode", title: "Режим сопоставления", hint: "" },
               { key: "batch_size", title: "Размер пакета", hint: "" },
               { key: "micro_pause", title: "Микропауза", hint: "" },
@@ -1709,15 +2187,21 @@
             title: "Фильтры списка",
             subtitle: "",
             items: [
+              { key: "list_my_site", title: "Мой сайт (список)", hint: "Отдельно от сайта запуска." },
+              { key: "list_competitor", title: "Конкурент (список)", hint: "Фильтр по project_id конкурента на сервере." },
               { key: "smart", title: "Умный фильтр", hint: "" },
               { key: "status", title: "Статус", hint: "" },
               { key: "limit", title: "Лимит", hint: "" },
               { key: "tf_my_sku", title: "Мой SKU", hint: "" },
               { key: "tf_comp_sku", title: "SKU конк.", hint: "" },
-              { key: "tf_match_type", title: "Тип совпадения", hint: "" },
+              {
+                key: "tf_match_type",
+                title: "Тип совпадения",
+                hint: "При «По названию» / «По SKU» учитывается при загрузке с сервера (не только среди 100 строк по score). Пустой match_type: как в колонке «Тип».",
+              },
               { key: "tf_status", title: "Статус в списке", hint: "" },
-              { key: "tf_conf_min", title: "Схож. от %", hint: "" },
-              { key: "tf_conf_max", title: "Схож. до %", hint: "" },
+              { key: "tf_conf_min", title: "Схож. от %", hint: "По confidence; по SKU обычно 100%." },
+              { key: "tf_conf_max", title: "Схож. до %", hint: "По confidence; по SKU обычно 100%." },
             ],
           },
           {
@@ -1760,11 +2244,17 @@
           renderCompetitors();
           var up = parseUrlParams();
           var sel = document.getElementById("dg-matches-my-site");
+          var listSel = document.getElementById("dg-matches-list-my-site");
           if (up.my_site_id && [].some.call(sel.options, function (o) { return o.value === String(up.my_site_id); })) {
             sel.value = String(up.my_site_id);
           } else {
             var prefSite = pickDefaultMySiteIdFromPrefs(sel);
             if (prefSite) sel.value = prefSite;
+          }
+          if (up.list_my_site_id && listSel && mySiteOptionExists(listSel, up.list_my_site_id)) {
+            listSel.value = String(up.list_my_site_id);
+          } else if (listSel && sel.value) {
+            listSel.value = sel.value;
           }
           if (up.status && ["pending", "confirmed", "rejected", "all"].indexOf(up.status) !== -1)
             document.getElementById("dg-matches-status-filter").value = up.status;
@@ -1776,13 +2266,1206 @@
             state.matchesLimit = up.matches_limit;
             document.getElementById("dg-matches-limit").value = String(up.matches_limit);
           }
+          if (Number.isFinite(up.manual_queue_page) && up.manual_queue_page > 0) state.manualQueuePage = up.manual_queue_page;
+          if ([50, 100, 200].indexOf(up.manual_queue_limit) !== -1) {
+            state.manualQueueLimit = up.manual_queue_limit;
+            var mqLimEl = document.getElementById("dg-manual-queue-limit");
+            if (mqLimEl) mqLimEl.value = String(up.manual_queue_limit);
+          }
+          state.manualQueueReason = normalizeManualQueueReason(up.manual_queue_reason);
+          var mqReasonEl = document.getElementById("dg-manual-queue-reason");
+          if (mqReasonEl) mqReasonEl.value = state.manualQueueReason || "";
           mergeMatchesListPrefsFromStorage();
+          fillListCompetitorSelect();
+          var compElInit = document.getElementById("dg-matches-list-competitor");
+          if (compElInit && up.list_competitor_id && listCompetitorOptionExists(compElInit, up.list_competitor_id))
+            compElInit.value = String(up.list_competitor_id);
           showErr("");
+          sel.setAttribute("data-dg-prev-launch", sel.value || "");
           syncUrlFromState();
-          onMySiteChanged(false);
+          onLaunchSiteChanged(false);
+          if (listSel && listSel.value) {
+            loadMatches();
+            if (window.__dgMatchesRefreshManualLanes) window.__dgMatchesRefreshManualLanes();
+          } else {
+            state.matches = [];
+            state.matchesTotal = 0;
+            renderMatchesTable();
+          }
         })
         .catch(function (e) {
           showErr(e.message || "Ошибка загрузки справочников");
         });
+
+      (function initManualMatchBlocks() {
+        /** Активный селект конкурента из строки под очередью (если открыт inline-поиск). */
+        var manualFindInlineActiveSelect = null;
+
+        function listSiteId() {
+          var el = document.getElementById("dg-matches-list-my-site");
+          return el && el.value ? String(el.value).trim() : "";
+        }
+        function listCompetitorId() {
+          var el = document.getElementById("dg-matches-list-competitor");
+          return el && el.value ? String(el.value).trim() : "";
+        }
+        /** Проект конкурента для прайса и подтверждения: селект под строкой очереди или фильтр «Совпадения». */
+        function resolveManualCompetitorSiteId() {
+          if (
+            manualFindInlineActiveSelect &&
+            manualFindInlineActiveSelect.isConnected &&
+            String(manualFindInlineActiveSelect.value || "").trim()
+          ) {
+            return String(manualFindInlineActiveSelect.value).trim();
+          }
+          return listCompetitorId();
+        }
+
+        function submitManualMatchConfirm(sid, cid, pid, cs, cn) {
+          if (!sid || !cid || !Number.isFinite(pid) || pid < 1) {
+            alert("Нужны сайт (списком в «Совпадениях»), конкурент (в селекте под строкой или в фильтре «Совпадения») и ID нашего товара.");
+            return Promise.reject(new Error("bad_input"));
+          }
+          if (!cs && !cn) {
+            alert("Укажите SKU или название позиции конкурента.");
+            return Promise.reject(new Error("bad_input"));
+          }
+          return fetch("/api/matches/manual-match/confirm", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              my_site_id: parseInt(sid, 10),
+              competitor_site_id: parseInt(cid, 10),
+              my_product_id: pid,
+              competitor_sku: cs,
+              competitor_name: cn,
+            }),
+          })
+            .then(function (r) {
+              return r.json().then(function (j) {
+                return { r: r, j: j };
+              });
+            })
+            .then(function (x) {
+              if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Ошибка");
+              alert("Сохранено как подтвержденное вручную.");
+              loadManualQueue();
+              loadMatches(true);
+            })
+            .catch(function (e) {
+              if (e && e.message !== "bad_input") alert(e.message || "Ошибка");
+            });
+        }
+        function parseManualFindCompQuery(raw) {
+          var s = String(raw || "").trim();
+          if (!s) return "";
+          var m = s.match(/^(?:название|name)\s*:\s*(.+)$/i);
+          if (m) return String(m[1] || "").trim();
+          m = s.match(/^(?:sku|артикул)\s*:\s*(.+)$/i);
+          if (m) return String(m[1] || "").trim();
+          return s;
+        }
+        /** Запрос без префикса name: — похож на один артикул (для авто-выбора прайса при пустом селекте конкурента). */
+        function manualFindQueryLooksSkuOnly(qRaw, q) {
+          var raw = String(qRaw || "").trim();
+          if (/^(?:sku|артикул)\s*:/i.test(raw)) return true;
+          var t = String(q || "").trim();
+          if (!t || t.length > 120 || t.length < 2) return false;
+          if (/\s/.test(t)) return false;
+          return /^[A-Za-z0-9А-Яа-яЁё._\-\/]+$/.test(t);
+        }
+        function removeManualQueueInlineFindPanel() {
+          manualFindInlineActiveSelect = null;
+          var tb = document.getElementById("dg-manual-queue-tbody");
+          if (!tb) return;
+          var det = tb.querySelector("tr.dg-manual-queue-inline-detail");
+          if (!det) return;
+          var pid = String(det.getAttribute("data-parent-exclusion-id") || "").trim();
+          det.remove();
+          if (pid) {
+            var main = tb.querySelector('tr[data-dg-manual-inline-open="' + pid + '"]');
+            if (main) {
+              main.removeAttribute("data-dg-manual-inline-open");
+              var bf = main.querySelector("[data-dg-manual-find-toggle]");
+              if (bf) {
+                bf.textContent = "Найти по конкуренту";
+                bf.setAttribute("aria-expanded", "false");
+                bf.setAttribute(
+                  "data-dg-tooltip",
+                  "Развернуть под строкой поиск в прайсе, подстановку SKU/названия из результатов и подтверждение пары."
+                );
+                bf.setAttribute("aria-label", bf.getAttribute("data-dg-tooltip"));
+              }
+            }
+          }
+        }
+
+        function removeManualQueueInlineLogPanel() {
+          var tb = document.getElementById("dg-manual-queue-tbody");
+          if (!tb) return;
+          var det = tb.querySelector("tr.dg-manual-queue-inline-log");
+          if (!det) return;
+          var pid = String(det.getAttribute("data-parent-exclusion-id") || "").trim();
+          det.remove();
+          if (pid) {
+            var main = tb.querySelector('tr[data-dg-manual-inline-log-open="' + pid + '"]');
+            if (main) {
+              main.removeAttribute("data-dg-manual-inline-log-open");
+              var bl = main.querySelector("[data-dg-manual-log-toggle]");
+              if (bl) {
+                bl.textContent = "События";
+                bl.setAttribute("aria-expanded", "false");
+                bl.setAttribute(
+                  "data-dg-tooltip",
+                  "Развернуть под строкой таблицу последних событий сопоставления по этому товару (подтверждения, отклонения, очередь, архив)."
+                );
+                bl.setAttribute("aria-label", bl.getAttribute("data-dg-tooltip"));
+              }
+            }
+          }
+        }
+
+        function removeManualQueueAllInlinePanels() {
+          removeManualQueueInlineFindPanel();
+          removeManualQueueInlineLogPanel();
+        }
+
+        function runManualPricesSearchFetch(projectIdStr, q, resEl, pickTarget) {
+          fetch(
+            "/api/matches/prices-search?project_id=" +
+              encodeURIComponent(projectIdStr) +
+              "&q=" +
+              encodeURIComponent(q) +
+              "&limit=30",
+            { credentials: "same-origin" }
+          )
+            .then(function (r) {
+              return r.json().then(function (j) {
+                return { r: r, j: j };
+              });
+            })
+            .then(function (x) {
+              if (!x.r.ok) throw new Error(x.j.error || "Ошибка поиска");
+              var rows = x.j.data || [];
+              if (!rows.length) {
+                resEl.textContent = "Ничего не найдено.";
+                return;
+              }
+              resEl.replaceChildren();
+              var ul = document.createElement("div");
+              ul.className = "list-group list-group-flush border rounded";
+              rows.forEach(function (pr) {
+                var a = document.createElement("button");
+                a.type = "button";
+                a.className = "list-group-item list-group-item-action text-start small py-2";
+                a.innerHTML =
+                  "<strong>" +
+                  (pr.sku || "—") +
+                  "</strong> · " +
+                  (pr.product_name || "—") +
+                  "<div class=\"text-muted\">" +
+                  (pr.price != null ? pr.price : "") +
+                  " " +
+                  (pr.currency || "") +
+                  "</div>";
+                a.addEventListener("click", function () {
+                  var sEl = pickTarget && pickTarget.skuEl ? pickTarget.skuEl : null;
+                  var nEl = pickTarget && pickTarget.nameEl ? pickTarget.nameEl : null;
+                  if (sEl) sEl.value = pr.sku || "";
+                  if (nEl) nEl.value = pr.product_name || "";
+                });
+                ul.appendChild(a);
+              });
+              resEl.appendChild(ul);
+            })
+            .catch(function (e) {
+              alert(e.message || "Ошибка");
+            });
+        }
+
+        function runManualPricesSearchInline(compSel, qEl, resEl, pickTarget) {
+          if (!compSel || !qEl || !resEl) {
+            alert("Выберите конкурента (прайс) в селекте.");
+            return;
+          }
+          var qRaw = String(qEl.value || "").trim();
+          var q = parseManualFindCompQuery(qRaw);
+          if (!q) {
+            alert("Введите подстроку для поиска в прайсе (или название: … / sku: …).");
+            return;
+          }
+          var cid = String(compSel.value || "").trim();
+          if (!cid) {
+            if (!manualFindQueryLooksSkuOnly(qRaw, q)) {
+              alert(
+                "Выберите конкурента в селекте «Конкурент (прайс)» или введите артикул одной строкой (без пробелов) — если он есть только в одном прайсе, проект подставится сам."
+              );
+              return;
+            }
+            fetch("/api/matches/prices-resolve-sku?sku=" + encodeURIComponent(q), { credentials: "same-origin" })
+              .then(function (r) {
+                return r.json().then(function (j) {
+                  return { r: r, j: j };
+                });
+              })
+              .then(function (x) {
+                if (!x.r.ok) throw new Error(x.j.error || "Ошибка");
+                var n = Number(x.j.count || 0);
+                var projects = x.j.data || [];
+                if (n === 1 && x.j.project_id != null) {
+                  var pid = String(x.j.project_id);
+                  if (!listCompetitorOptionExists(compSel, pid)) {
+                    alert("Проект #" + pid + " не найден в селекте конкурентов — обновите страницу или список проектов.");
+                    return;
+                  }
+                  compSel.value = pid;
+                  runManualPricesSearchFetch(pid, q, resEl, pickTarget);
+                  return;
+                }
+                if (n > 1) {
+                  var names = projects
+                    .slice(0, 8)
+                    .map(function (p) {
+                      return (p.project_name || "") + " (#" + p.project_id + ")";
+                    })
+                    .join("; ");
+                  alert(
+                    "Артикул «" +
+                      q +
+                      "» есть у " +
+                      n +
+                      " конкурентов — выберите нужный прайс в селекте и нажмите «Найти в прайсе» снова." +
+                      (names ? " Например: " + names + (n > 8 ? "…" : "") : "")
+                  );
+                  return;
+                }
+                alert(
+                  "Артикул «" +
+                    q +
+                    "» не найден как точное совпадение SKU ни в одном прайсе. Выберите конкурента вручную или введите подстроку для обычного поиска после выбора прайса."
+                );
+              })
+              .catch(function (e) {
+                alert(e.message || "Ошибка");
+              });
+            return;
+          }
+          runManualPricesSearchFetch(cid, q, resEl, pickTarget);
+        }
+
+        function openManualQueueInlinePanel(trMain, row, toggleBtn) {
+          removeManualQueueAllInlinePanels();
+
+          var trDetail = document.createElement("tr");
+          trDetail.className = "dg-manual-queue-inline-detail";
+          trDetail.setAttribute("data-parent-exclusion-id", String(row.id));
+          var td = document.createElement("td");
+          td.colSpan = 5;
+          td.className = "p-0 bg-light";
+
+          var root = document.createElement("div");
+          root.className = "dg-manual-inline-find-root p-3 ms-0 ms-md-2 border-start border-3 border-primary rounded-end";
+          var cap = document.createElement("div");
+          cap.className = "small fw-semibold text-body mb-2";
+          cap.textContent = "Поиск в прайсе конкурента (под этой строкой очереди)";
+          root.appendChild(cap);
+
+          var rowF = document.createElement("div");
+          rowF.className = "row g-2 align-items-end mb-2";
+
+          var col1 = document.createElement("div");
+          col1.className = "col-12 col-md-4";
+          var lb1 = document.createElement("label");
+          lb1.className = "form-label mb-0 small text-uppercase text-muted";
+          lb1.textContent = "Конкурент (прайс)";
+          var compSel = document.createElement("select");
+          compSel.className = "form-select form-select-sm dg-manual-inline-comp-select";
+          compSel.setAttribute("aria-label", "Проект конкурента для поиска в прайсе");
+          populateManualFindCompSelectInto(
+            compSel,
+            row.competitor_site_id != null && String(row.competitor_site_id).trim() !== ""
+              ? row.competitor_site_id
+              : ""
+          );
+          manualFindInlineActiveSelect = compSel;
+          col1.appendChild(lb1);
+          col1.appendChild(compSel);
+
+          var col2 = document.createElement("div");
+          col2.className = "col-12 col-md-5";
+          var lb2 = document.createElement("label");
+          lb2.className = "form-label mb-0 small text-uppercase text-muted";
+          lb2.textContent = "Поиск";
+          var qInp = document.createElement("input");
+          qInp.type = "text";
+          qInp.className = "form-control form-control-sm dg-manual-inline-q";
+          qInp.placeholder = "подстрока или название: … или sku: …";
+          qInp.setAttribute("autocomplete", "off");
+          col2.appendChild(lb2);
+          col2.appendChild(qInp);
+
+          var col3 = document.createElement("div");
+          col3.className = "col-12 col-md-3 d-flex flex-wrap gap-2 align-items-end";
+          var bSearch = document.createElement("button");
+          bSearch.type = "button";
+          bSearch.className = "btn btn-sm btn-primary flex-grow-1";
+          bSearch.textContent = "Найти в прайсе";
+          col3.appendChild(bSearch);
+
+          rowF.appendChild(col1);
+          rowF.appendChild(col2);
+          rowF.appendChild(col3);
+          root.appendChild(rowF);
+
+          var bSync = document.createElement("button");
+          bSync.type = "button";
+          bSync.className = "btn btn-link btn-sm p-0 small d-block mb-2";
+          bSync.textContent = "Подставить конкурента из фильтра «Совпадения»";
+          bSync.addEventListener("click", function () {
+            var listEl = document.getElementById("dg-matches-list-competitor");
+            var v = listEl && String(listEl.value || "").trim();
+            if (!v) {
+              alert("В «Совпадениях» выбран режим «Все конкуренты» — укажите конкурента в списке или в селекте.");
+              return;
+            }
+            if (listCompetitorOptionExists(compSel, v)) compSel.value = v;
+            else alert("Конкурент из списка недоступен в селекте.");
+          });
+          root.appendChild(bSync);
+
+          var confirmWrap = document.createElement("div");
+          confirmWrap.className = "border rounded bg-white p-2 mb-2";
+          var capConf = document.createElement("div");
+          capConf.className = "small fw-semibold text-body mb-2";
+          capConf.textContent = "Подтверждение пары";
+          confirmWrap.appendChild(capConf);
+
+          var rowPid = document.createElement("div");
+          rowPid.className = "mb-2";
+          var lbPid = document.createElement("label");
+          lbPid.className = "form-label mb-0 small text-uppercase text-muted";
+          lbPid.textContent = "ID нашего товара";
+          var pidInp = document.createElement("input");
+          pidInp.type = "text";
+          pidInp.className = "form-control form-control-sm dg-manual-inline-confirm-pid";
+          pidInp.setAttribute("inputmode", "numeric");
+          pidInp.setAttribute("autocomplete", "off");
+          pidInp.value = String(row.my_product_id || "");
+          rowPid.appendChild(lbPid);
+          rowPid.appendChild(pidInp);
+          confirmWrap.appendChild(rowPid);
+
+          var rowSku = document.createElement("div");
+          rowSku.className = "mb-2";
+          var lbSku = document.createElement("label");
+          lbSku.className = "form-label mb-0 small text-uppercase text-muted";
+          lbSku.textContent = "SKU конкурента";
+          var skuInp = document.createElement("input");
+          skuInp.type = "text";
+          skuInp.className = "form-control form-control-sm dg-manual-inline-confirm-sku";
+          skuInp.setAttribute("autocomplete", "off");
+          rowSku.appendChild(lbSku);
+          rowSku.appendChild(skuInp);
+          confirmWrap.appendChild(rowSku);
+
+          var rowNm = document.createElement("div");
+          rowNm.className = "mb-2";
+          var lbNm = document.createElement("label");
+          lbNm.className = "form-label mb-0 small text-uppercase text-muted";
+          lbNm.textContent = "Название конкурента";
+          var nameInp = document.createElement("input");
+          nameInp.type = "text";
+          nameInp.className = "form-control form-control-sm dg-manual-inline-confirm-name";
+          nameInp.setAttribute("autocomplete", "off");
+          rowNm.appendChild(lbNm);
+          rowNm.appendChild(nameInp);
+          confirmWrap.appendChild(rowNm);
+
+          var bConf = document.createElement("button");
+          bConf.type = "button";
+          bConf.className = "btn btn-sm btn-success";
+          bConf.textContent = "Подтвердить вручную";
+          bConf.addEventListener("click", function () {
+            var sid = listSiteId();
+            var cid = resolveManualCompetitorSiteId();
+            var pid = parseInt(String(pidInp.value || "").trim(), 10);
+            var cs = String(skuInp.value || "").trim();
+            var cn = String(nameInp.value || "").trim();
+            submitManualMatchConfirm(sid, cid, pid, cs, cn);
+          });
+          confirmWrap.appendChild(bConf);
+          root.appendChild(confirmWrap);
+
+          var pickTarget = { skuEl: skuInp, nameEl: nameInp };
+
+          var resEl = document.createElement("div");
+          resEl.className = "small text-muted dg-manual-inline-results";
+          resEl.textContent =
+            "Введите запрос и нажмите «Найти в прайсе». Клик по строке результата подставит SKU и название в поля блока «Подтверждение пары» выше.";
+          root.appendChild(resEl);
+
+          bSearch.addEventListener("click", function () {
+            runManualPricesSearchInline(compSel, qInp, resEl, pickTarget);
+          });
+          qInp.addEventListener("keydown", function (ev) {
+            if (ev.key === "Enter") {
+              ev.preventDefault();
+              runManualPricesSearchInline(compSel, qInp, resEl, pickTarget);
+            }
+          });
+
+          td.appendChild(root);
+          trDetail.appendChild(td);
+          trMain.parentNode.insertBefore(trDetail, trMain.nextSibling);
+          trMain.setAttribute("data-dg-manual-inline-open", String(row.id));
+          if (toggleBtn) {
+            toggleBtn.textContent = "Свернуть поиск";
+            toggleBtn.setAttribute("aria-expanded", "true");
+            toggleBtn.setAttribute(
+              "data-dg-tooltip",
+              "Свернуть блок под этой строкой (введённые поля не очищаются)."
+            );
+            toggleBtn.setAttribute("aria-label", toggleBtn.getAttribute("data-dg-tooltip"));
+          }
+          try {
+            qInp.focus();
+          } catch (eF) {}
+        }
+
+        function openManualQueueInlineLogPanel(trMain, row, toggleBtn) {
+          removeManualQueueAllInlinePanels();
+
+          var trDetail = document.createElement("tr");
+          trDetail.className = "dg-manual-queue-inline-log";
+          trDetail.setAttribute("data-parent-exclusion-id", String(row.id));
+          var td = document.createElement("td");
+          td.colSpan = 5;
+          td.className = "p-0 bg-light";
+
+          var root = document.createElement("div");
+          root.className = "p-3 ms-0 ms-md-2 border-start border-3 border-secondary rounded-end";
+          var cap = document.createElement("div");
+          cap.className = "small fw-semibold text-body mb-2";
+          cap.textContent = "События сопоставления (под этой строкой очереди)";
+          root.appendChild(cap);
+
+          var host = document.createElement("div");
+          host.className = "dg-manual-inline-log-host";
+          root.appendChild(host);
+
+          td.appendChild(root);
+          trDetail.appendChild(td);
+          trMain.parentNode.insertBefore(trDetail, trMain.nextSibling);
+          trMain.setAttribute("data-dg-manual-inline-log-open", String(row.id));
+          if (toggleBtn) {
+            toggleBtn.textContent = "Свернуть события";
+            toggleBtn.setAttribute("aria-expanded", "true");
+            toggleBtn.setAttribute("data-dg-tooltip", "Свернуть таблицу событий под этой строкой.");
+            toggleBtn.setAttribute("aria-label", toggleBtn.getAttribute("data-dg-tooltip"));
+          }
+          loadProductLogTableInto(host, row.my_product_id);
+        }
+
+        function reasonBadgeEscAttr(s) {
+          return String(s || "")
+            .replace(/&/g, "&amp;")
+            .replace(/"/g, "&quot;")
+            .replace(/</g, "&lt;");
+        }
+        function reasonBadgeEscHtml(s) {
+          return String(s || "")
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;");
+        }
+        /** Подписи в колонке «Причина»: понятный текст + подсказка (как в шаге 2 «Совпадения»). */
+        function setManualQueueCountUi(message) {
+          var top = document.getElementById("dg-manual-queue-count-top");
+          var bot = document.getElementById("dg-manual-queue-count-bottom");
+          var t = String(message || "—");
+          if (top) top.textContent = t;
+          if (bot) bot.textContent = t;
+        }
+        function formatManualQueueCountLine(meta, shownLen) {
+          if (!listSiteId()) return "Выберите «Мой сайт (список)» — количество строк очереди неизвестно.";
+          var m = meta && typeof meta === "object" ? meta : {};
+          var total = Number.isFinite(Number(m.total)) ? Math.max(0, Math.floor(Number(m.total))) : null;
+          var shown = Math.max(0, Math.floor(Number(shownLen) || 0));
+          var lim = Number.isFinite(Number(m.limit)) ? Math.max(1, Math.floor(Number(m.limit))) : 100;
+          var off = Number.isFinite(Number(m.offset)) ? Math.max(0, Math.floor(Number(m.offset))) : 0;
+          var page = Number.isFinite(Number(m.page)) ? Math.max(1, Math.floor(Number(m.page))) : 1;
+          var pages = Number.isFinite(Number(m.pages)) ? Math.max(1, Math.floor(Number(m.pages))) : 1;
+          if (total === null) total = shown;
+          if (total === 0)
+            return (
+              "По текущему фильтру в очереди 0 " +
+              ruRecordsWord(0) +
+              ". Много строк «Авто не нашло пару» — нормально: после каждого прогона шага 1 сюда попадают все товары без пары по выбранному конкуренту (не только отклонения из шага 2)."
+            );
+          if (total <= lim)
+            return "В очереди по фильтру: " + formatNumber(total) + " " + ruRecordsWord(total) + " (все на одной странице).";
+          var fromN = shown ? off + 1 : 0;
+          var toN = off + shown;
+          return (
+            "Всего по фильтру: " +
+            formatNumber(total) +
+            " " +
+            ruRecordsWord(total) +
+            ". Страница " +
+            page +
+            " из " +
+            pages +
+            ": записи " +
+            formatNumber(fromN) +
+            "–" +
+            formatNumber(toN) +
+            " (лимит страницы " +
+            formatNumber(lim) +
+            ", как в блоке «Совпадения»). Остальные — кнопки «Назад»/«Вперёд» или поиск в очереди."
+          );
+        }
+        function manualQueuePages() {
+          var lim = Math.max(1, Number(state.manualQueueLimit) || 100);
+          var tot = Math.max(0, Number(state.manualQueueTotal) || 0);
+          return Math.max(1, Math.ceil(tot / lim));
+        }
+        function updateManualQueuePaginationUi() {
+          var hint = document.getElementById("dg-manual-queue-page-hint");
+          var prev = document.getElementById("dg-manual-queue-prev");
+          var next = document.getElementById("dg-manual-queue-next");
+          if (!listSiteId()) {
+            if (hint) hint.textContent = "Страница —";
+            if (prev) prev.disabled = true;
+            if (next) next.disabled = true;
+            return;
+          }
+          var pgs = manualQueuePages();
+          if (hint) hint.textContent = "Страница " + state.manualQueuePage + "/" + pgs;
+          if (prev) prev.disabled = state.manualQueuePage <= 1;
+          if (next) next.disabled = state.manualQueuePage >= pgs;
+        }
+        function reasonBadge(reason) {
+          var r = String(reason || "").toLowerCase();
+          if (r === "rejected") {
+            var tipR =
+              "В блоке «Совпадения» (шаг 2) система предложила пару автоматически, но вы нажали «Отклонить». Эта строка в очереди — чтобы вручную подобрать пару в прайсе или вернуть товар в авто-сопоставление.";
+            return (
+              '<span class="badge bg-warning text-dark text-wrap text-start" style="cursor:help" title="' +
+              reasonBadgeEscAttr(tipR) +
+              '" role="status">Авто-совпадение вы отклонили</span>'
+            );
+          }
+          if (r === "no_match") {
+            var tipN =
+              "Эту строку вы не добавляли вручную: её создаёт последний прогон авто-сопоставления (шаг 1). Для пары «ваш товар × этот конкурент» в том режиме и с теми настройками, что были у задачи, в прайсе конкурента не нашлось подходящей позиции (SKU или название — в зависимости от режима). По большому каталогу таких записей может быть очень много — это нормально. «Вернуть в авто» удаляет исключение; иначе подберите пару вручную или запустите сопоставление с другим режимом/фильтром.";
+            return (
+              '<span class="badge bg-secondary text-wrap text-start" style="cursor:help" title="' +
+              reasonBadgeEscAttr(tipN) +
+              '" role="status">Авто не нашло пару</span>'
+            );
+          }
+          return (
+            '<span class="badge bg-light text-dark border text-wrap text-start">' +
+            reasonBadgeEscHtml(reason || "—") +
+            "</span>"
+          );
+        }
+        function renderManualQueue(rows, meta) {
+          var tb = document.getElementById("dg-manual-queue-tbody");
+          if (!tb) return;
+          var shown = rows && rows.length ? rows.length : 0;
+          setManualQueueCountUi(formatManualQueueCountLine(meta, shown));
+          tb.replaceChildren();
+          if (!listSiteId()) {
+            var tr0 = document.createElement("tr");
+            var td0 = document.createElement("td");
+            td0.colSpan = 5;
+            td0.className = "text-muted small";
+            td0.textContent = "Выберите «Мой сайт (список)» в блоке «Совпадения».";
+            tr0.appendChild(td0);
+            tb.appendChild(tr0);
+            updateManualQueuePaginationUi();
+            return;
+          }
+          if (!rows || !rows.length) {
+            var tr1 = document.createElement("tr");
+            var td1 = document.createElement("td");
+            td1.colSpan = 5;
+            td1.className = "text-muted small";
+            td1.innerHTML =
+              "Очередь пуста для выбранного сайта" +
+              (listCompetitorId() ? " и конкурента" : "") +
+              ". Строки с причиной «Авто-совпадение вы отклонили» появляются после кнопки «Отклонить» в «Совпадениях» (шаг 2); «Авто не нашло пару» — когда в последнем прогоне пары не было. Если пусто — смените конкурента в фильтре или поиск в очереди.";
+            tr1.appendChild(td1);
+            tb.appendChild(tr1);
+            updateManualQueuePaginationUi();
+            return;
+          }
+          rows.forEach(function (row) {
+            var tr = document.createElement("tr");
+            var tdR = document.createElement("td");
+            tdR.innerHTML = reasonBadge(row.reason);
+            tr.appendChild(tdR);
+            var tdC = document.createElement("td");
+            tdC.className = "small";
+            tdC.textContent =
+              (row.comp_project_name || row.comp_domain || "—") + " (#" + String(row.competitor_site_id || "") + ")";
+            tr.appendChild(tdC);
+            var tdM = document.createElement("td");
+            tdM.className = "small";
+            tdM.innerHTML =
+              "<div><strong>" +
+              (row.mp_sku || "—") +
+              "</strong></div><div>" +
+              (row.mp_name || "—") +
+              "</div><div class=\"text-muted\">ID " +
+              row.my_product_id +
+              "</div>";
+            tr.appendChild(tdM);
+            var tdU = document.createElement("td");
+            tdU.className = "small text-muted";
+            tdU.textContent = formatDateTime(row.updated_at || row.created_at);
+            tr.appendChild(tdU);
+            var tdA = document.createElement("td");
+            tdA.className = "small align-top";
+            var wrap = document.createElement("div");
+            wrap.className = "d-flex flex-column flex-md-row flex-wrap gap-1";
+            var bLog = document.createElement("button");
+            bLog.type = "button";
+            bLog.className = "btn btn-sm btn-outline-secondary text-nowrap";
+            bLog.textContent = "События";
+            bLog.setAttribute("data-dg-manual-log-toggle", "1");
+            bLog.setAttribute("aria-expanded", "false");
+            bLog.setAttribute(
+              "data-dg-tooltip",
+              "Развернуть под этой строкой таблицу последних событий сопоставления по этому товару (подтверждения, отклонения, очередь, архив)."
+            );
+            bLog.setAttribute("aria-label", bLog.getAttribute("data-dg-tooltip"));
+            bLog.addEventListener("click", function () {
+              if (String(tr.getAttribute("data-dg-manual-inline-log-open") || "") === String(row.id)) {
+                removeManualQueueInlineLogPanel();
+                return;
+              }
+              openManualQueueInlineLogPanel(tr, row, bLog);
+            });
+            var bFill = document.createElement("button");
+            bFill.type = "button";
+            bFill.className = "btn btn-sm btn-outline-primary text-nowrap";
+            bFill.textContent = "Найти по конкуренту";
+            bFill.setAttribute("data-dg-manual-find-toggle", "1");
+            bFill.setAttribute("aria-expanded", "false");
+            bFill.setAttribute(
+              "data-dg-tooltip",
+              "Развернуть под строкой поиск в прайсе конкурента, подстановку из результатов и кнопку «Подтвердить вручную»."
+            );
+            bFill.setAttribute("aria-label", bFill.getAttribute("data-dg-tooltip"));
+            bFill.addEventListener("click", function () {
+              if (String(tr.getAttribute("data-dg-manual-inline-open") || "") === String(row.id)) {
+                removeManualQueueInlineFindPanel();
+                return;
+              }
+              openManualQueueInlinePanel(tr, row, bFill);
+            });
+            var bDel = document.createElement("button");
+            bDel.type = "button";
+            bDel.className = "btn btn-sm btn-outline-danger text-nowrap";
+            bDel.textContent = "Вернуть в авто";
+            bDel.setAttribute(
+              "data-dg-tooltip",
+              "Удалить строку из очереди: товар снова участвует в авто-сопоставлении по SKU и названию для этого конкурента."
+            );
+            bDel.setAttribute("aria-label", bDel.getAttribute("data-dg-tooltip"));
+            bDel.addEventListener("click", function () {
+              if (!confirm("Убрать из очереди? Товар снова будет участвовать в авто-сопоставлении для этого конкурента.")) return;
+              fetch("/api/matches/manual-queue/" + encodeURIComponent(String(row.id)), {
+                method: "DELETE",
+                credentials: "same-origin",
+              })
+                .then(function (r) {
+                  return r.json().then(function (j) {
+                    return { r: r, j: j };
+                  });
+                })
+                .then(function (x) {
+                  if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Ошибка");
+                  loadManualQueue();
+                })
+                .catch(function (e) {
+                  alert(e.message || "Ошибка");
+                });
+            });
+            var bArch = document.createElement("button");
+            bArch.type = "button";
+            bArch.className = "btn btn-sm btn-outline-dark text-nowrap";
+            bArch.textContent = "В архив";
+            bArch.setAttribute(
+              "data-dg-tooltip",
+              "Отказ от ручной привязки: запись уходит в архив (шаг 4), из очереди исчезает. Позже можно удалить из архива и вернуть товар в авто-сопоставление."
+            );
+            bArch.setAttribute("aria-label", bArch.getAttribute("data-dg-tooltip"));
+            bArch.addEventListener("click", function () {
+              var note = prompt("Краткая заметка (необязательно):", "") || "";
+              fetch("/api/matches/manual-match/archive", {
+                method: "POST",
+                credentials: "same-origin",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ exclusion_id: row.id, note: note }),
+              })
+                .then(function (r) {
+                  return r.json().then(function (j) {
+                    return { r: r, j: j };
+                  });
+                })
+                .then(function (x) {
+                  if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Ошибка");
+                  loadManualQueue();
+                  loadManualArchive();
+                })
+                .catch(function (e) {
+                  alert(e.message || "Ошибка");
+                });
+            });
+            wrap.appendChild(bLog);
+            wrap.appendChild(bFill);
+            wrap.appendChild(bDel);
+            wrap.appendChild(bArch);
+            tdA.appendChild(wrap);
+            tr.appendChild(tdA);
+            tb.appendChild(tr);
+          });
+          updateManualQueuePaginationUi();
+        }
+        function loadManualQueue() {
+          var sid = listSiteId();
+          if (!sid) {
+            state.manualQueueTotal = 0;
+            renderManualQueue([], {});
+            return;
+          }
+          var limRaw = Number(state.manualQueueLimit);
+          var lim = [50, 100, 200].indexOf(limRaw) !== -1 ? limRaw : 100;
+          state.manualQueueLimit = lim;
+          var limSel = document.getElementById("dg-manual-queue-limit");
+          if (limSel) limSel.value = String(lim);
+          var off = (Math.max(1, Number(state.manualQueuePage) || 1) - 1) * lim;
+          var params = new URLSearchParams();
+          params.set("my_site_id", sid);
+          var cid = listCompetitorId();
+          if (cid) params.set("competitor_site_id", cid);
+          var sq = document.getElementById("dg-manual-queue-search");
+          if (sq && String(sq.value || "").trim()) params.set("search", String(sq.value || "").trim());
+          var exReason = normalizeManualQueueReason(state.manualQueueReason);
+          state.manualQueueReason = exReason;
+          if (exReason) params.set("exclusion_reason", exReason);
+          params.set("limit", String(lim));
+          params.set("offset", String(off));
+          fetch("/api/matches/manual-queue?" + params.toString(), { credentials: "same-origin" })
+            .then(function (r) {
+              return r.json().then(function (j) {
+                return { r: r, j: j };
+              });
+            })
+            .then(function (x) {
+              if (!x.r.ok) throw new Error(x.j.error || "Ошибка загрузки очереди");
+              var total = Number(x.j.total != null ? x.j.total : 0);
+              var limR = Number(x.j.limit != null ? x.j.limit : lim);
+              var offR = Number(x.j.offset != null ? x.j.offset : off);
+              var pages = Math.max(1, Math.ceil(total / limR));
+              if (total === 0) state.manualQueuePage = 1;
+              else if (state.manualQueuePage > pages) {
+                state.manualQueuePage = pages;
+                loadManualQueue();
+                return;
+              }
+              state.manualQueueTotal = total;
+              renderManualQueue(x.j.data || [], {
+                total: total,
+                limit: limR,
+                offset: offR,
+                page: state.manualQueuePage,
+                pages: pages,
+              });
+              scheduleSyncUrl();
+            })
+            .catch(function (e) {
+              setManualQueueCountUi("Не удалось загрузить очередь.");
+              updateManualQueuePaginationUi();
+              alert(e.message || "Ошибка");
+            });
+        }
+        function renderManualArchive(rows) {
+          var tb = document.getElementById("dg-manual-archive-tbody");
+          if (!tb) return;
+          tb.replaceChildren();
+          if (!listSiteId()) {
+            var tr0 = document.createElement("tr");
+            var td0 = document.createElement("td");
+            td0.colSpan = 5;
+            td0.className = "text-muted small";
+            td0.textContent = "Выберите «Мой сайт (список)».";
+            tr0.appendChild(td0);
+            tb.appendChild(tr0);
+            return;
+          }
+          if (!rows || !rows.length) {
+            var tr1 = document.createElement("tr");
+            var td1 = document.createElement("td");
+            td1.colSpan = 5;
+            td1.className = "text-muted small";
+            td1.textContent = "Архив пуст.";
+            tr1.appendChild(td1);
+            tb.appendChild(tr1);
+            return;
+          }
+          rows.forEach(function (row) {
+            var tr = document.createElement("tr");
+            var tdC = document.createElement("td");
+            tdC.className = "small";
+            tdC.textContent =
+              (row.comp_project_name || row.comp_domain || "—") + " (#" + String(row.competitor_site_id || "") + ")";
+            tr.appendChild(tdC);
+            var tdM = document.createElement("td");
+            tdM.className = "small";
+            tdM.innerHTML =
+              "<div><strong>" +
+              (row.mp_sku || "—") +
+              "</strong></div><div>" +
+              (row.mp_name || "—") +
+              "</div><div class=\"text-muted\">ID " +
+              row.my_product_id +
+              "</div>";
+            tr.appendChild(tdM);
+            var tdCn = document.createElement("td");
+            tdCn.className = "small";
+            tdCn.textContent = (row.competitor_sku || "—") + " / " + (row.competitor_name || "—");
+            tr.appendChild(tdCn);
+            var tdN = document.createElement("td");
+            tdN.className = "small text-muted";
+            tdN.textContent = row.note || "—";
+            tr.appendChild(tdN);
+            var tdA = document.createElement("td");
+            var bDel = document.createElement("button");
+            bDel.type = "button";
+            bDel.className = "btn btn-sm btn-outline-danger";
+            bDel.textContent = "Удалить";
+            bDel.addEventListener("click", function () {
+              if (!confirm("Удалить из архива? Товар снова сможет участвовать в авто-сопоставлении.")) return;
+              fetch("/api/matches/manual-archive/" + encodeURIComponent(String(row.id)), {
+                method: "DELETE",
+                credentials: "same-origin",
+              })
+                .then(function (r) {
+                  return r.json().then(function (j) {
+                    return { r: r, j: j };
+                  });
+                })
+                .then(function (x) {
+                  if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Ошибка");
+                  loadManualArchive();
+                })
+                .catch(function (e) {
+                  alert(e.message || "Ошибка");
+                });
+            });
+            tdA.appendChild(bDel);
+            tr.appendChild(tdA);
+            tb.appendChild(tr);
+          });
+        }
+        function loadManualArchive() {
+          var sid = listSiteId();
+          if (!sid) {
+            renderManualArchive([]);
+            return;
+          }
+          var params = new URLSearchParams();
+          params.set("my_site_id", sid);
+          var cid = listCompetitorId();
+          if (cid) params.set("competitor_site_id", cid);
+          params.set("limit", "200");
+          fetch("/api/matches/manual-archive?" + params.toString(), { credentials: "same-origin" })
+            .then(function (r) {
+              return r.json().then(function (j) {
+                return { r: r, j: j };
+              });
+            })
+            .then(function (x) {
+              if (!x.r.ok) throw new Error(x.j.error || "Ошибка архива");
+              renderManualArchive(x.j.data || []);
+            })
+            .catch(function (e) {
+              alert(e.message || "Ошибка");
+            });
+        }
+        function formatMatchProductLogDetail(ev) {
+          var detailJson = ev && ev.detail_json != null ? String(ev.detail_json).trim() : "";
+          if (!detailJson) {
+            if (ev && ev.competitor_site_id != null && Number(ev.competitor_site_id) > 0) {
+              return "\n  — конкурент (проект) #" + String(ev.competitor_site_id);
+            }
+            return "";
+          }
+          var o = null;
+          try {
+            o = JSON.parse(detailJson);
+          } catch (e0) {
+            return "\n  — детали: " + detailJson.slice(0, 400);
+          }
+          if (!o || typeof o !== "object") return "";
+          var parts = [];
+          if (o.source_product_match_id != null && String(o.source_product_match_id).trim() !== "")
+            parts.push("запись совпадения #" + String(o.source_product_match_id));
+          if (o.rejected_by && String(o.rejected_by).trim() !== "" && String(o.rejected_by).trim() !== "unknown")
+            parts.push("отклонил: " + String(o.rejected_by).trim());
+          if (o.product_match_id != null && String(o.product_match_id).trim() !== "")
+            parts.push("совпадение #" + String(o.product_match_id));
+          if (o.exclusion_id != null && String(o.exclusion_id).trim() !== "")
+            parts.push("строка очереди id " + String(o.exclusion_id));
+          if (o.archive_id != null && String(o.archive_id).trim() !== "")
+            parts.push("архив id " + String(o.archive_id));
+          if (o.competitor_sku || o.competitor_name) {
+            var cn = [];
+            if (o.competitor_sku) cn.push("SKU «" + String(o.competitor_sku).slice(0, 80) + "»");
+            if (o.competitor_name) cn.push(String(o.competitor_name).slice(0, 120));
+            if (cn.length) parts.push(cn.join(", "));
+          }
+          if (o.note) parts.push("заметка: " + String(o.note).slice(0, 200));
+          var known = {
+            source_product_match_id: 1,
+            rejected_by: 1,
+            product_match_id: 1,
+            exclusion_id: 1,
+            archive_id: 1,
+            competitor_sku: 1,
+            competitor_name: 1,
+            note: 1,
+          };
+          Object.keys(o).forEach(function (k) {
+            if (known[k]) return;
+            var v = o[k];
+            if (v == null || String(v).trim() === "") return;
+            parts.push(k + ": " + String(v).slice(0, 120));
+          });
+          var tail = "";
+          if (ev && ev.competitor_site_id != null && Number(ev.competitor_site_id) > 0) {
+            tail = " · конкурент #" + String(ev.competitor_site_id);
+          }
+          if (!parts.length) {
+            try {
+              return "\n  — " + JSON.stringify(o).slice(0, 500) + tail;
+            } catch (e1) {
+              return "\n  — " + detailJson.slice(0, 400) + tail;
+            }
+          }
+          return "\n  — " + parts.join(" · ") + tail;
+        }
+
+        function loadProductLogTableInto(container, myProductId) {
+          var sid = listSiteId();
+          var pid = parseInt(String(myProductId || "").trim(), 10);
+          container.replaceChildren();
+          if (!sid || !Number.isFinite(pid) || pid < 1) {
+            var sp = document.createElement("div");
+            sp.className = "small text-danger";
+            sp.textContent = "Укажите «Мой сайт (список)» в «Совпадениях».";
+            container.appendChild(sp);
+            return;
+          }
+          var load = document.createElement("div");
+          load.className = "small text-muted py-2";
+          load.textContent = "Загрузка…";
+          container.appendChild(load);
+          fetch(
+            "/api/matches/product-match-log?my_site_id=" +
+              encodeURIComponent(sid) +
+              "&my_product_id=" +
+              encodeURIComponent(String(pid)) +
+              "&limit=80",
+            { credentials: "same-origin" }
+          )
+            .then(function (r) {
+              return r.json().then(function (j) {
+                return { r: r, j: j };
+              });
+            })
+            .then(function (x) {
+              load.remove();
+              if (!x.r.ok) throw new Error(x.j.error || "Ошибка лога");
+              var events = x.j.data || [];
+              if (!events.length) {
+                var em = document.createElement("div");
+                em.className = "small text-muted";
+                em.textContent = "Событий пока нет.";
+                container.appendChild(em);
+                return;
+              }
+              var wrap = document.createElement("div");
+              wrap.className = "table-responsive";
+              var tbl = document.createElement("table");
+              tbl.className = "table table-sm table-bordered mb-0 align-middle";
+              var thead = document.createElement("thead");
+              thead.className = "table-light";
+              var hr = document.createElement("tr");
+              ["Когда", "Событие", "Сообщение", "Детали"].forEach(function (h) {
+                var th = document.createElement("th");
+                th.className = "small";
+                th.scope = "col";
+                th.textContent = h;
+                hr.appendChild(th);
+              });
+              thead.appendChild(hr);
+              tbl.appendChild(thead);
+              var tbod = document.createElement("tbody");
+              events.forEach(function (ev) {
+                var tr = document.createElement("tr");
+                var t1 = document.createElement("td");
+                t1.className = "small text-nowrap text-muted";
+                t1.textContent = formatDateTime(ev.created_at);
+                var t2 = document.createElement("td");
+                t2.className = "small font-monospace";
+                t2.textContent = String(ev.event || "—");
+                var t3 = document.createElement("td");
+                t3.className = "small";
+                t3.textContent = String(ev.message || "").trim() || "—";
+                var t4 = document.createElement("td");
+                t4.className = "small text-muted";
+                var det = formatMatchProductLogDetail(ev);
+                var one = String(det || "")
+                  .replace(/\n+/g, " ")
+                  .replace(/\s+/g, " ")
+                  .trim();
+                if (!one) one = "—";
+                if (one.length > 400) one = one.slice(0, 397) + "…";
+                t4.textContent = one;
+                tr.appendChild(t1);
+                tr.appendChild(t2);
+                tr.appendChild(t3);
+                tr.appendChild(t4);
+                tbod.appendChild(tr);
+              });
+              tbl.appendChild(tbod);
+              wrap.appendChild(tbl);
+              container.appendChild(wrap);
+            })
+            .catch(function (e) {
+              load.remove();
+              var er = document.createElement("div");
+              er.className = "small text-danger";
+              er.textContent = e.message || "Ошибка";
+              container.appendChild(er);
+            });
+        }
+
+        function loadProductLog() {
+          var sid = listSiteId();
+          var pidEl = document.getElementById("dg-manual-log-product-id");
+          var out = document.getElementById("dg-manual-log-output");
+          if (!out || !pidEl) return;
+          var pid = parseInt(String(pidEl.value || "").trim(), 10);
+          if (!sid || !Number.isFinite(pid) || pid < 1) {
+            out.textContent = "Укажите сайт (список) и ID товара.";
+            return;
+          }
+          fetch(
+            "/api/matches/product-match-log?my_site_id=" +
+              encodeURIComponent(sid) +
+              "&my_product_id=" +
+              encodeURIComponent(String(pid)) +
+              "&limit=80",
+            { credentials: "same-origin" }
+          )
+            .then(function (r) {
+              return r.json().then(function (j) {
+                return { r: r, j: j };
+              });
+            })
+            .then(function (x) {
+              if (!x.r.ok) throw new Error(x.j.error || "Ошибка лога");
+              var lines = (x.j.data || []).map(function (ev) {
+                return (
+                  formatDateTime(ev.created_at) +
+                  "  [" +
+                  ev.event +
+                  "] " +
+                  (ev.message || "") +
+                  formatMatchProductLogDetail(ev)
+                );
+              });
+              out.textContent = lines.length ? lines.join("\n\n") : "Событий пока нет.";
+            })
+            .catch(function (e) {
+              out.textContent = e.message || "Ошибка";
+            });
+        }
+        function bindManual() {
+          var bQ = document.getElementById("dg-manual-queue-refresh");
+          if (bQ)
+            bQ.addEventListener("click", function () {
+              state.manualQueuePage = 1;
+              loadManualQueue();
+            });
+          var limQ = document.getElementById("dg-manual-queue-limit");
+          if (limQ)
+            limQ.addEventListener("change", function () {
+              state.manualQueueLimit = Number(this.value) || 100;
+              state.manualQueuePage = 1;
+              loadManualQueue();
+              scheduleSyncUrl();
+            });
+          var reasonQ = document.getElementById("dg-manual-queue-reason");
+          if (reasonQ)
+            reasonQ.addEventListener("change", function () {
+              state.manualQueueReason = normalizeManualQueueReason(this.value);
+              this.value = state.manualQueueReason || "";
+              state.manualQueuePage = 1;
+              loadManualQueue();
+              scheduleSyncUrl();
+            });
+          var prevQ = document.getElementById("dg-manual-queue-prev");
+          if (prevQ)
+            prevQ.addEventListener("click", function () {
+              if (state.manualQueuePage > 1) {
+                state.manualQueuePage--;
+                loadManualQueue();
+                scheduleSyncUrl();
+              }
+            });
+          var nextQ = document.getElementById("dg-manual-queue-next");
+          if (nextQ)
+            nextQ.addEventListener("click", function () {
+              if (state.manualQueuePage < manualQueuePages()) {
+                state.manualQueuePage++;
+                loadManualQueue();
+                scheduleSyncUrl();
+              }
+            });
+          var bA = document.getElementById("dg-manual-archive-refresh");
+          if (bA) bA.addEventListener("click", loadManualArchive);
+          var bLog = document.getElementById("dg-manual-log-load");
+          if (bLog) bLog.addEventListener("click", loadProductLog);
+          var ls = document.getElementById("dg-matches-list-my-site");
+          var lc = document.getElementById("dg-matches-list-competitor");
+          if (ls)
+            ls.addEventListener("change", function () {
+              state.manualQueuePage = 1;
+              loadManualQueue();
+              loadManualArchive();
+              scheduleSyncUrl();
+            });
+          if (lc)
+            lc.addEventListener("change", function () {
+              state.manualQueuePage = 1;
+              loadManualQueue();
+              loadManualArchive();
+              scheduleSyncUrl();
+            });
+          window.__dgMatchesRefreshManualLanes = function () {
+            loadManualQueue();
+            loadManualArchive();
+          };
+        }
+        bindManual();
+      })();
     })();
   </script>

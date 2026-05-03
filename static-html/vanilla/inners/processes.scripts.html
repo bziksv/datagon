@@ -72,6 +72,9 @@
       var actLimit = 35;
       var actTotal = 0;
       var actPageLabelMap = {};
+      var ACT_JOURNAL_COLLAPSE_KEY = "datagon_processes_activity_journal_collapsed_v1";
+      /** Длинные карточки: свёрнуто по умолчанию, кнопка «Развернуть запись». */
+      var ACT_ROW_EXPAND_THRESHOLD = 300;
 
       function kindClass(k) {
         if (k === "login") return "dg-act-login";
@@ -150,10 +153,7 @@
           head.appendChild(who);
           head.appendChild(when);
           var title = document.createElement("div");
-          title.className = "fw-semibold";
-          title.textContent = r.label || "—";
-          var sub = document.createElement("div");
-          sub.className = "small text-muted";
+          title.className = "fw-semibold text-break";
           var bits = [];
           if (r.section) bits.push("раздел: " + (actPageLabelMap[r.section] || r.section));
           if (r.detail) {
@@ -196,6 +196,20 @@
                   if (o.sku) bits.push("SKU «" + String(o.sku).slice(0, 64) + "»");
                   if (o.site_id != null) bits.push("сайт #" + String(o.site_id));
                   if (o.source_id) bits.push("source_id: " + String(o.source_id).slice(0, 48));
+                } else if (
+                  o.ui_action === "matches_reject" ||
+                  o.ui_action === "matches_confirm" ||
+                  o.ui_action === "matches_unlink"
+                ) {
+                  if (o.my_product_name_full)
+                    bits.push("наш товар: «" + String(o.my_product_name_full) + "»");
+                  if (o.my_sku) bits.push("наш SKU: " + String(o.my_sku));
+                  if (o.competitor_name_full)
+                    bits.push("конкурент: «" + String(o.competitor_name_full) + "»");
+                  if (o.competitor_sku) bits.push("SKU конкурента: " + String(o.competitor_sku));
+                  if (o.my_site_name) bits.push("сайт: " + String(o.my_site_name));
+                  if (o.competitor_project_label) bits.push("прайс: " + String(o.competitor_project_label));
+                  if (o.product_match_id != null) bits.push("запись #" + String(o.product_match_id));
                 } else {
                   if (r.kind === "page_view" && o.path) bits.push("адрес: " + String(o.path));
                   if (o.text) bits.push("«" + String(o.text).slice(0, 120) + "»");
@@ -206,10 +220,40 @@
               bits.push(String(r.detail).slice(0, 160));
             }
           }
-          sub.textContent = bits.join(" · ");
+          var labelFull = String(r.label || "—");
+          var subLine = bits.length ? bits.join(" · ") : "";
+          title.textContent = labelFull;
+          var sub = null;
+          if (bits.length) {
+            sub = document.createElement("div");
+            sub.className = "small text-muted";
+            sub.textContent = subLine;
+          }
+          var needsRowExpand =
+            labelFull.length > 160 ||
+            subLine.length > 220 ||
+            labelFull.length + subLine.length > ACT_ROW_EXPAND_THRESHOLD;
           wrap.appendChild(head);
           wrap.appendChild(title);
-          if (bits.length) wrap.appendChild(sub);
+          if (sub) wrap.appendChild(sub);
+          if (needsRowExpand) {
+            title.classList.add("dg-act-row-detail", "dg-act-row-detail-collapsed");
+            if (sub) sub.classList.add("dg-act-row-detail", "dg-act-row-detail-collapsed");
+            var rowTgl = document.createElement("button");
+            rowTgl.type = "button";
+            rowTgl.className = "btn btn-link btn-sm p-0 align-self-start mt-1 text-decoration-none";
+            rowTgl.setAttribute("aria-expanded", "false");
+            rowTgl.textContent = "Развернуть запись";
+            rowTgl.addEventListener("click", function () {
+              var open = rowTgl.getAttribute("aria-expanded") === "true";
+              var next = !open;
+              rowTgl.setAttribute("aria-expanded", next ? "true" : "false");
+              rowTgl.textContent = next ? "Свернуть запись" : "Развернуть запись";
+              title.classList.toggle("dg-act-row-detail-collapsed", !next);
+              if (sub) sub.classList.toggle("dg-act-row-detail-collapsed", !next);
+            });
+            wrap.appendChild(rowTgl);
+          }
           mount.appendChild(wrap);
         });
       }
@@ -726,6 +770,28 @@
           pollTimer = null;
         }
       }
+
+      (function initActivityJournalHeroCollapse() {
+        var btn = document.getElementById("dg-act-hero-toggle");
+        var body = document.getElementById("dg-act-hero-body");
+        if (!btn || !body) return;
+        function apply(collapsed) {
+          body.style.display = collapsed ? "none" : "";
+          btn.textContent = collapsed ? "Развернуть журнал" : "Свернуть журнал";
+          btn.setAttribute("aria-expanded", collapsed ? "false" : "true");
+          try {
+            localStorage.setItem(ACT_JOURNAL_COLLAPSE_KEY, collapsed ? "1" : "0");
+          } catch (e) {}
+        }
+        try {
+          apply(localStorage.getItem(ACT_JOURNAL_COLLAPSE_KEY) === "1");
+        } catch (e2) {
+          apply(false);
+        }
+        btn.addEventListener("click", function () {
+          apply(body.style.display !== "none");
+        });
+      })();
 
       document.getElementById("dg-act-refresh").addEventListener("click", function () {
         actOffset = 0;

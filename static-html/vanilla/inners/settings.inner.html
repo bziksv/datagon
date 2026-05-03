@@ -39,11 +39,23 @@
                   </div>
                   <div class="col-md-2">
                     <label class="form-label" for="dg-set-users-sess-min">Сессий от</label>
-                    <input type="number" class="form-control" id="dg-set-users-sess-min" min="0" />
+                    <input
+                      type="number"
+                      class="form-control"
+                      id="dg-set-users-sess-min"
+                      min="0"
+                      title="Считает по «онлайн»-сессиям за окно из настроек «Онлайн в шапке: активность (мин)» (не по всем действующим cookie)."
+                    />
                   </div>
                   <div class="col-md-2">
                     <label class="form-label" for="dg-set-users-sess-max">Сессий до</label>
-                    <input type="number" class="form-control" id="dg-set-users-sess-max" min="0" />
+                    <input
+                      type="number"
+                      class="form-control"
+                      id="dg-set-users-sess-max"
+                      min="0"
+                      title="Считает по «онлайн»-сессиям за окно из настроек «Онлайн в шапке: активность (мин)»."
+                    />
                   </div>
                 </div>
                 <div class="row g-2 align-items-end datagon-users-create-grid">
@@ -89,7 +101,12 @@
                         <th>Имя Фамилия</th>
                         <th>Логин</th>
                         <th>Создание пользователей</th>
-                        <th>Активных сессий</th>
+                        <th
+                          id="dg-set-users-th-sessions"
+                          title="По строке: слева — сессии этого логина с запросом за окно минут; справа — все его действующие cookie. Виджет в шапке показывает число разных логинов, не сумму по столбцу."
+                        >
+                          Онлайн / действующих
+                        </th>
                         <th>Зарегистрирован</th>
                         <th>Последняя активность</th>
                         <th>Действия</th>
@@ -126,20 +143,56 @@
             </div>
           </div>
 
+          <div class="main-card mb-3 card" id="dg-settings-sessions-card">
+            <div class="card-header d-flex align-items-center">
+              <i class="header-icon pe-7s-users icon-gradient bg-happy-fisher me-2"> </i>
+              <span>Сессии и виджет «Онлайн»</span>
+            </div>
+            <div class="card-body">
+              <p class="small text-muted">
+                Вход в приложение и виджет «Вы в сети» в шапке: для <strong>admin</strong> — сколько <strong>разных</strong> пользователей с активностью в окне минут; для остальных — 0 или 1 по вашим сессиям. Свод по логинам — в таблице ниже (только admin). К парсеру конкурентов не относится.
+              </p>
+              <div class="row g-2">
+                <div class="col-md-4">
+                  <label class="form-label" for="dg-set-auth_session_ttl_days">Сессия TTL (дней)</label>
+                  <input type="number" class="form-control" id="dg-set-auth_session_ttl_days" />
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label" for="dg-set-auth_session_user_limit">Лимит сессий на пользователя</label>
+                  <input type="number" class="form-control" id="dg-set-auth_session_user_limit" />
+                </div>
+                <div class="col-md-4" id="dg-settings-online-presence">
+                  <label class="form-label" for="dg-set-auth_online_presence_minutes">Онлайн в шапке: активность (мин)</label>
+                  <input
+                    type="number"
+                    class="form-control"
+                    id="dg-set-auth_online_presence_minutes"
+                    min="1"
+                    max="1440"
+                    title="Окно для виджета «Вы в сети» и колонки онлайн в таблице: насколько свежей должна быть последняя активность сессий"
+                  />
+                </div>
+              </div>
+              <div class="mt-3">
+                <button type="button" class="btn btn-success" id="dg-set-btn-save-sessions" data-dg-activity-label="Сохранить настройки сессий и онлайн">
+                  Сохранить сессии и онлайн
+                </button>
+              </div>
+            </div>
+          </div>
+
           <div class="main-card mb-3 card">
             <div class="card-header d-flex align-items-center">
               <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
               <span>Общие настройки (Парсер конкурентов)</span>
             </div>
             <div class="card-body">
-              <p class="small text-muted">Параметры отображения и работы основного парсера.</p>
+              <p class="small text-muted">Параметры отображения и работы основного парсера конкурентов.</p>
               <div class="row g-2">
                 <div class="col-md-3"><label class="form-label" for="dg-set-default_limit">Результатов на странице</label><input type="number" class="form-control" id="dg-set-default_limit" /></div>
                 <div class="col-md-3"><label class="form-label" for="dg-set-parse_batch_size">Размер пакета парсинга</label><input type="number" class="form-control" id="dg-set-parse_batch_size" /></div>
                 <div class="col-md-3"><label class="form-label" for="dg-set-page_delay_ms">Задержка между страницами (мс)</label><input type="number" class="form-control" id="dg-set-page_delay_ms" /></div>
                 <div class="col-md-3"><label class="form-label" for="dg-set-results_retention_days">Хранение результатов (дней)</label><input type="number" class="form-control" id="dg-set-results_retention_days" /></div>
-                <div class="col-md-3"><label class="form-label" for="dg-set-auth_session_ttl_days">Сессия TTL (дней)</label><input type="number" class="form-control" id="dg-set-auth_session_ttl_days" /></div>
-                <div class="col-md-3"><label class="form-label" for="dg-set-auth_session_user_limit">Лимит сессий на пользователя</label><input type="number" class="form-control" id="dg-set-auth_session_user_limit" /></div>
                 <div class="col-md-3"><label class="form-label" for="dg-set-discover_max_sitemaps">Автообход: max sitemap</label><input type="number" class="form-control" id="dg-set-discover_max_sitemaps" /></div>
                 <div class="col-md-3"><label class="form-label" for="dg-set-discover_max_urls">Автообход: max URL</label><input type="number" class="form-control" id="dg-set-discover_max_urls" /></div>
                 <div class="col-md-3"><label class="form-label" for="dg-set-discover_crawl_max_pages">Fallback crawl pages</label><input type="number" class="form-control" id="dg-set-discover_crawl_max_pages" /></div>

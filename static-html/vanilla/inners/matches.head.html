@@ -40,6 +40,7 @@
       perspective: none !important;
     }
 
+    /* Эталон визуала как moysklad (.dg-ms-table): сетка #e6e9ee / #f3f5f8, sticky thead, #f8f9fa */
     body[data-dg-active-nav="matches"] #dg-matches-my-main-table.dg-matches-my-table {
       font-size: 0.8rem;
       line-height: 1.25;
@@ -75,14 +76,30 @@
     body[data-dg-active-nav="matches"] #dg-matches-my-main-table.dg-matches-my-table thead th .dg-matches-my-resize-handle {
       pointer-events: auto;
     }
-    body[data-dg-active-nav="matches"] #dg-matches-my-main-table.dg-matches-my-table tbody td:nth-child(4) {
+    body[data-dg-active-nav="matches"] #dg-matches-my-main-table.dg-matches-my-table tbody td.dg-matches-my-name-cell {
       overflow-wrap: break-word;
       word-break: break-word;
       white-space: normal;
-      text-align: center;
+      text-align: left;
+      line-height: 1.35;
+    }
+    body[data-dg-active-nav="matches"] #dg-matches-my-main-table.dg-matches-my-table tbody td.dg-matches-my-sku-cell {
+      text-align: left;
+      vertical-align: top;
+      font-weight: 600;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 0.9rem;
+      line-height: 1.35;
+    }
+    body[data-dg-active-nav="matches"] #dg-matches-my-main-table.dg-matches-my-table tbody td.dg-matches-my-price-cell {
+      text-align: right;
+      vertical-align: top;
+      font-weight: 600;
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
     }
 
-    body[data-dg-active-nav="matches"] #dg-matches-list-table.dg-matches-list-table {
+    body[data-dg-active-nav="matches"] #dg-matches-list-table.dg-ms-table {
       font-size: 0.8rem;
       line-height: 1.25;
       font-variant-numeric: tabular-nums;
@@ -93,7 +110,7 @@
       border-collapse: collapse !important;
       border-spacing: 0 !important;
     }
-    body[data-dg-active-nav="matches"] #dg-matches-list-table.dg-matches-list-table thead th {
+    body[data-dg-active-nav="matches"] #dg-matches-list-table.dg-ms-table thead th {
       position: sticky !important;
       top: 0 !important;
       z-index: 20 !important;
@@ -103,7 +120,7 @@
       vertical-align: middle !important;
       text-align: center;
     }
-    body[data-dg-active-nav="matches"] #dg-matches-list-table.dg-matches-list-table tbody td {
+    body[data-dg-active-nav="matches"] #dg-matches-list-table.dg-ms-table tbody td {
       vertical-align: middle;
       overflow-wrap: break-word;
       word-break: break-word;
@@ -122,6 +139,19 @@
     body[data-dg-active-nav="matches"] #dg-matches-list-table tbody td:nth-child(3) {
       text-align: center;
     }
+    /* «Схожесть»: inline-block badge иначе вылезает за col при table-layout:fixed и наезжает на соседнюю колонку */
+    body[data-dg-active-nav="matches"] #dg-matches-list-table thead th:nth-child(3),
+    body[data-dg-active-nav="matches"] #dg-matches-list-table tbody td:nth-child(3) {
+      min-width: 0;
+      overflow: hidden;
+    }
+    body[data-dg-active-nav="matches"] #dg-matches-list-table tbody td:nth-child(3) .badge {
+      display: inline-block;
+      max-width: 100%;
+      white-space: normal;
+      line-height: 1.25;
+      word-break: break-word;
+    }
     body[data-dg-active-nav="matches"] #dg-matches-list-table tbody td.dg-matches-act-cell {
       white-space: normal;
       text-align: left;
@@ -130,27 +160,95 @@
       margin-bottom: 0.25rem;
       margin-right: 0.35rem;
     }
+    body[data-dg-active-nav="matches"] #dg-matches-list-table tbody td:nth-child(4),
+    body[data-dg-active-nav="matches"] #dg-matches-list-table tbody td:nth-child(5) {
+      vertical-align: top;
+      text-align: left;
+    }
+    body[data-dg-active-nav="matches"] #dg-matches-list-table .dg-matches-product-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 0.45rem;
+      min-width: 0;
+    }
+    body[data-dg-active-nav="matches"] #dg-matches-list-table .dg-matches-product-line__label {
+      font-size: 0.65rem;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: #6c757d;
+      line-height: 1.15;
+      margin-bottom: 0.08rem;
+    }
+    body[data-dg-active-nav="matches"] #dg-matches-list-table .dg-matches-product-line__value {
+      font-size: 0.875rem;
+      line-height: 1.38;
+      color: #212529;
+      word-break: break-word;
+    }
+    body[data-dg-active-nav="matches"] #dg-matches-list-table .dg-matches-product-line__value--sku {
+      font-weight: 600;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 0.9rem;
+    }
+    body[data-dg-active-nav="matches"] #dg-matches-list-table .dg-matches-product-line__value--name {
+      font-weight: 400;
+    }
+    body[data-dg-active-nav="matches"] #dg-matches-list-table .dg-matches-product-line__value--price {
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      color: #0d6efd;
+    }
+    body[data-dg-active-nav="matches"] #dg-matches-list-table .dg-matches-product-meta {
+      line-height: 1.3;
+    }
 
-    /* Зона логов: без фиксированной высоты в простое — иначе пустой блок 120px. Класс
-       .dg-matches-job-logs-reserved ставится из JS при активной задаче или непустых логах,
-       чтобы polling не дёргал layout при смене числа строк (до 10). */
-    body[data-dg-active-nav="matches"] #dg-matches-job-logs {
+    /* Лог + блок «Найдено»: при активной задаче или непустом логе фиксируем высоту панели,
+       чтобы polling не дёргал layout (до 20 строк с API). Рядом — расширенный блок итогов. */
+    body[data-dg-active-nav="matches"] .dg-matches-job-logs-box {
       box-sizing: border-box;
       -webkit-overflow-scrolling: touch;
     }
-    body[data-dg-active-nav="matches"] #dg-matches-job-logs.dg-matches-job-logs-reserved {
-      min-height: 120px;
-      max-height: 120px;
+    body[data-dg-active-nav="matches"] .dg-matches-job-logs-box.dg-matches-job-logs-reserved {
+      min-height: 200px;
+      max-height: 280px;
       overflow: auto;
     }
-    body[data-dg-active-nav="matches"] #dg-matches-job-found {
+    body[data-dg-active-nav="matches"] .dg-matches-job-found-box {
       font-variant-numeric: tabular-nums;
-      min-height: 1.35em;
-      line-height: 1.35;
+      line-height: 1.45;
+    }
+    body[data-dg-active-nav="matches"] .dg-matches-job-logs-found-row.dg-matches-job-has-content .dg-matches-job-found-box {
+      min-height: 200px;
     }
     body[data-dg-active-nav="matches"] #dg-matches-job-hint {
       font-variant-numeric: tabular-nums;
       min-height: 1.35em;
       line-height: 1.35;
+    }
+    body[data-dg-active-nav="matches"] #dg-matches-job-times {
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Фильтры «Совпадения»: две сетки по 12 колонок, выравнивание полей по нижнему краю */
+    body[data-dg-active-nav="matches"] .dg-matches-list-filters > .row {
+      min-width: 0;
+    }
+    body[data-dg-active-nav="matches"] .dg-matches-list-filters [data-dg-matches-list-field] {
+      min-width: 0;
+    }
+    body[data-dg-active-nav="matches"] .dg-matches-list-filters .form-select,
+    body[data-dg-active-nav="matches"] .dg-matches-list-filters .form-control {
+      width: 100%;
+      max-width: 100%;
+    }
+
+    body[data-dg-active-nav="matches"] .dg-matches-workflow-guide .dg-matches-workflow-step {
+      position: relative;
+      padding-left: 0.5rem;
+      border-left: 3px solid rgba(25, 135, 84, 0.35);
+    }
+    body[data-dg-active-nav="matches"] .dg-matches-workflow-guide .dg-matches-workflow-step + .dg-matches-workflow-step {
+      margin-top: 1.25rem;
     }
   </style>

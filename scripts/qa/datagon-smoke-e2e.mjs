@@ -32,6 +32,11 @@ const cases = [
         name: 'matches',
         path: '/matches.html',
         mustSee: ['Сопоставление', 'Умный поиск']
+    },
+    {
+        name: 'processes',
+        path: '/processes.html',
+        mustSee: ['Активность и фоновые задачи', 'Фильтры и действия']
     }
 ];
 
