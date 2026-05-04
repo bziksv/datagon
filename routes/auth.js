@@ -3,6 +3,7 @@ const router = express.Router();
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const { recordDatagonActivity } = require('../lib/datagonActivity');
+const datagonSpecialties = require('../lib/datagonSpecialties');
 
 const AUTH_SESSION_COOKIE = 'dg_session';
 
@@ -94,23 +95,36 @@ module.exports = (db, appSettings = {}) => {
         const t = String(token || '').trim();
         if (!t) return null;
         const tokenHash = sha256(t);
-        const [rows] = await db.query(`
-            SELECT u.id, u.username, u.full_name, u.can_manage_users, s.id AS session_id
+        const [rows] = await db.query(
+            `
+            SELECT u.id, u.username, u.full_name, u.can_manage_users, u.specialty_id, sp.name AS specialty_name, s.id AS session_id
             FROM auth_sessions s
             JOIN users u ON u.id = s.user_id
+            LEFT JOIN specialties sp ON sp.id = u.specialty_id
             WHERE s.token_hash = ?
               AND s.revoked = 0
               AND s.expires_at > NOW()
             LIMIT 1
-        `, [tokenHash]);
+        `,
+            [tokenHash]
+        );
         if (!rows.length) return null;
         const actor = rows[0];
         db.query('UPDATE auth_sessions SET last_seen_at = NOW() WHERE id = ?', [actor.session_id]).catch(() => {});
+        let page_modes = {};
+        try {
+            page_modes = await datagonSpecialties.getPageModesForSpecialty(db, actor.specialty_id);
+        } catch (_) {
+            page_modes = await datagonSpecialties.getPageModesForSpecialty(db, null);
+        }
         return {
             id: actor.id,
             username: actor.username,
             full_name: actor.full_name,
-            can_manage_users: Number(actor.can_manage_users || 0) === 1 || actor.username === 'admin'
+            can_manage_users: Number(actor.can_manage_users || 0) === 1 || actor.username === 'admin',
+            specialty_id: actor.specialty_id != null ? Number(actor.specialty_id) : null,
+            specialty_name: actor.specialty_name || null,
+            page_modes
         };
     }
 
@@ -199,7 +213,10 @@ module.exports = (db, appSettings = {}) => {
                 username: actor.username,
                 full_name: actor.full_name || actor.username,
                 isAdmin: actor.username === 'admin',
-                canManageUsers: actor.username === 'admin' || actor.can_manage_users === true
+                canManageUsers: actor.username === 'admin' || actor.can_manage_users === true,
+                specialty_id: actor.specialty_id != null ? Number(actor.specialty_id) : null,
+                specialty_name: actor.specialty_name || null,
+                page_modes: actor.page_modes || {}
             });
         } catch (e) {
             return res.status(500).json({ error: e.message });
@@ -347,6 +364,8 @@ module.exports = (db, appSettings = {}) => {
                     u.username,
                     u.full_name,
                     u.can_manage_users,
+                    u.specialty_id,
+                    sp.name AS specialty_name,
                     u.created_at,
                     COALESCE((
                         SELECT COUNT(*)
@@ -375,6 +394,7 @@ module.exports = (db, appSettings = {}) => {
                         WHERE s.user_id = u.id
                     ) AS last_activity_at
                 FROM users u
+                LEFT JOIN specialties sp ON sp.id = u.specialty_id
                 ORDER BY u.username ASC
             `,
                 [presenceMin]
@@ -418,9 +438,20 @@ module.exports = (db, appSettings = {}) => {
                 return res.status(409).json({ error: 'Пользователь с таким логином уже существует' });
             }
             const passwordHash = await bcrypt.hash(rawPassword, 10);
+            let specId = parseInt(req.body?.specialty_id, 10);
+            if (!Number.isFinite(specId) || specId <= 0) {
+                const [[d]] = await db.query(
+                    'SELECT id FROM specialties WHERE name = ? ORDER BY id ASC LIMIT 1',
+                    [datagonSpecialties.DEFAULT_SPECIALTY_NAME]
+                );
+                specId = d && d.id ? Number(d.id) : null;
+            } else {
+                const [ex] = await db.query('SELECT id FROM specialties WHERE id = ?', [specId]);
+                if (!ex.length) return res.status(400).json({ error: 'Некорректная специальность' });
+            }
             await db.query(
-                'INSERT INTO users (username, full_name, password_hash, can_manage_users) VALUES (?, ?, ?, 0)',
-                [cleanUsername, cleanFullName, passwordHash]
+                'INSERT INTO users (username, full_name, password_hash, can_manage_users, specialty_id) VALUES (?, ?, ?, 0, ?)',
+                [cleanUsername, cleanFullName, passwordHash, specId]
             );
             await recordDatagonActivity(db, {
                 userId: actor.id,
@@ -510,7 +541,20 @@ module.exports = (db, appSettings = {}) => {
             const [dups] = await db.query('SELECT id FROM users WHERE username = ? AND id <> ?', [cleanUsername, id]);
             if (dups.length) return res.status(409).json({ error: 'Пользователь с таким логином уже существует' });
 
-            await db.query('UPDATE users SET username = ?, full_name = ? WHERE id = ?', [cleanUsername, cleanFullName, id]);
+            let specSql = '';
+            const params = [cleanUsername, cleanFullName];
+            if (req.body && Object.prototype.hasOwnProperty.call(req.body, 'specialty_id')) {
+                const sid = parseInt(req.body.specialty_id, 10);
+                if (!Number.isFinite(sid) || sid <= 0) {
+                    return res.status(400).json({ error: 'Некорректная специальность' });
+                }
+                const [ex] = await db.query('SELECT id FROM specialties WHERE id = ?', [sid]);
+                if (!ex.length) return res.status(400).json({ error: 'Специальность не найдена' });
+                specSql = ', specialty_id = ?';
+                params.push(sid);
+            }
+            params.push(id);
+            await db.query(`UPDATE users SET username = ?, full_name = ?${specSql} WHERE id = ?`, params);
             return res.json({ success: true });
         } catch (e) {
             return res.status(500).json({ error: e.message });
@@ -586,12 +630,28 @@ module.exports = (db, appSettings = {}) => {
                 }),
             });
             attachSessionCookie(res, token);
+            let page_modes = {};
+            let specialty_name = null;
+            try {
+                page_modes = await datagonSpecialties.getPageModesForSpecialty(db, user.specialty_id);
+                if (user.specialty_id != null) {
+                    const [sn] = await db.query('SELECT name FROM specialties WHERE id = ? LIMIT 1', [
+                        user.specialty_id
+                    ]);
+                    specialty_name = sn[0]?.name || null;
+                }
+            } catch (_) {
+                page_modes = await datagonSpecialties.getPageModesForSpecialty(db, null);
+            }
             res.json({
                 success: true,
                 username: user.username,
                 full_name: user.full_name || user.username,
                 isAdmin: user.username === 'admin',
                 canManageUsers: user.username === 'admin' || Number(user.can_manage_users || 0) === 1,
+                specialty_id: user.specialty_id != null ? Number(user.specialty_id) : null,
+                specialty_name,
+                page_modes,
                 auth_token: token
             });
         } catch (e) { res.status(500).json({ error: e.message }); }

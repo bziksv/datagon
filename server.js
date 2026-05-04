@@ -49,7 +49,10 @@ let appSettings = {
     auth_session_ttl_days: 14,
     auth_session_user_limit: 1,
     /** Сколько минут без запросов к API — сессия не считается «онлайн» в виджете шапки. */
-    auth_online_presence_minutes: 15
+    auth_online_presence_minutes: 15,
+    /** HTTP(S)-прокси для загрузки страниц конкурентов (очередь, автообход, worker). */
+    fetch_proxy_enabled: 0,
+    fetch_proxy_list: ''
 };
 let syncState = { active: false, processed: 0, total: 0, message: '' };
 const moyskladRouterFactory = require('./routes/moysklad');
@@ -173,16 +176,23 @@ async function initDB() {
             ['discover_max_sitemaps','200'],['discover_max_urls','50000'],
             ['discover_crawl_max_pages','500'],['discover_request_delay_ms','100'],
             ['auth_session_ttl_days','14'],['auth_session_user_limit','1'],
-            ['auth_online_presence_minutes','15']
+            ['auth_online_presence_minutes','15'],
+            ['fetch_proxy_enabled','0'],
+            ['fetch_proxy_list','']
         ];
         for (const [k, v] of defaults) await db.query('INSERT IGNORE INTO app_settings (setting_key, setting_value) VALUES (?, ?)', [k, v]);
 
         const [rows] = await db.query('SELECT * FROM app_settings');
         rows.forEach(r => {
             if (appSettings.hasOwnProperty(r.setting_key)) {
-                appSettings[r.setting_key] = r.setting_key.includes('limit') || r.setting_key.includes('size') || r.setting_key.includes('delay') || r.setting_key.includes('days') || r.setting_key.includes('minutes')
-                    ? parseInt(r.setting_value)
-                    : r.setting_value;
+                const asInt =
+                    r.setting_key.includes('limit') ||
+                    r.setting_key.includes('size') ||
+                    r.setting_key.includes('delay') ||
+                    r.setting_key.includes('days') ||
+                    r.setting_key.includes('minutes') ||
+                    r.setting_key === 'fetch_proxy_enabled';
+                appSettings[r.setting_key] = asInt ? parseInt(r.setting_value, 10) : r.setting_value;
             }
         });
         console.log('[Settings] Loaded', appSettings);
@@ -200,6 +210,11 @@ async function initDB() {
                 WHERE status = 'processing'
             `);
         } catch (_) {}
+        try {
+            await require('./lib/datagonSpecialties').ensureSchemaAndSeed(db);
+        } catch (eSp) {
+            console.warn('[DB] specialties:', eSp && eSp.message ? eSp.message : eSp);
+        }
         // Fast-start mode: avoid blocking startup on heavy schema checks/migrations.
         // The current project DB is already initialized; this keeps the app available
         // even if long-running DDL statements are blocked by metadata locks.
@@ -827,10 +842,30 @@ initDB().then(() => {
         }
     });
 
+    const { apiRelativePathToPageKey, isHttpReadMethod } = require('./lib/datagonPageRegistry');
+    app.use('/api', (req, res, next) => {
+        if (!req.datagonActor) return next();
+        if (req.datagonActor.username === 'admin') return next();
+        const pathOnly = String(req.path || '').split('?')[0];
+        const pageKey = apiRelativePathToPageKey(pathOnly);
+        if (pageKey == null) return next();
+        const mode = req.datagonActor.page_modes[pageKey] || 'full';
+        if (mode === 'hidden') {
+            res.status(403);
+            return res.json({ error: 'Нет доступа к разделу', code: 'PAGE_HIDDEN' });
+        }
+        if (mode === 'view' && !isHttpReadMethod(req.method)) {
+            res.status(403);
+            return res.json({ error: 'Режим только просмотра', code: 'PAGE_VIEW_ONLY' });
+        }
+        return next();
+    });
+
     app.use('/api/auth', authModule.router);
     // Совместимость со старым фронтендом/кэшем, где логин идет на /api/login
     app.use('/api', authModule.router);
     app.use('/api/activity', require('./routes/activity')(db));
+    app.use('/api/specialties', require('./routes/specialties')(db));
     app.use('/api/settings', require('./routes/settings')(db, appSettings));
     app.use('/api/projects', require('./routes/projects')(db, appSettings));
     pagesRouter = pagesRouterFactory(db, appSettings);
@@ -1058,7 +1093,16 @@ initDB().then(() => {
         if (leaf === 'login.html') return next();
         try {
             const actor = await authModule.getActor(req);
-            if (actor) return next();
+            if (actor) {
+                if (actor.username !== 'admin') {
+                    const { htmlLeafToPageKey } = require('./lib/datagonPageRegistry');
+                    const pk = htmlLeafToPageKey(leaf);
+                    if (pk && actor.page_modes && actor.page_modes[pk] === 'hidden') {
+                        return res.redirect(302, '/dashboard.html');
+                    }
+                }
+                return next();
+            }
         } catch (e) {
             return next(e);
         }

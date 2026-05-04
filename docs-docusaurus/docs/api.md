@@ -89,6 +89,22 @@ Body:
 
 Используются панелью и админкой (после входа): `GET /api/auth/me`, `GET /api/auth/sessions-overview`, `POST /api/auth/sync-session-cookie`, `POST /api/auth/logout`, CRUD пользователей (`GET/POST /api/auth/users`, `PUT/DELETE /api/auth/users/:id`, `PUT /api/auth/users/:id/permissions`, `POST /api/auth/users/:id/revoke-sessions`). Детали полей — в коде роутера.
 
+Ответы `GET /api/auth/me` и `POST /api/auth/login` (успех) дополнительно содержат: `specialty_id`, `specialty_name`, `page_modes` — объект «ключ раздела» → `hidden` | `view` | `full` (см. `lib/datagonPageRegistry.js`). При создании/редактировании пользователя можно передать `specialty_id` в теле `POST /api/auth/users` и `PUT /api/auth/users/:id`.
+
+### Специальности и матрица доступа (только `admin`)
+
+Все под `/api/specialties/*` требуют роль **admin**.
+
+- `GET /api/specialties` — список специальностей (с числом привязанных пользователей).
+- `POST /api/specialties` — создать; body: `{ "name": "..." }`.
+- `PUT /api/specialties/:id` — переименовать; body: `{ "name": "..." }`.
+- `DELETE /api/specialties/:id` — удалить (нельзя удалить системную «Полный доступ» и специальность с привязанными пользователями).
+- `GET /api/specialties/pages` — каталог разделов панели (ключ, заголовок, html-файл) для матрицы.
+- `GET /api/specialties/:id/access` — текущие режимы по разделам.
+- `PUT /api/specialties/:id/access` — сохранить режимы; body: `{ "modes": { "dashboard": "full", "results": "view", ... } }`.
+
+Записи к не-GET API (кроме путей без привязки к разделу в реестре) для не-admin проверяются по режиму раздела: при `hidden` — 403, при `view` — разрешены только GET/HEAD/OPTIONS.
+
 ## Settings
 
 ### GET `/api/settings`

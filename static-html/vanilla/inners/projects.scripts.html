@@ -7,10 +7,25 @@
       var sortBy = "id";
       var sortDir = "desc";
       var editProject = null;
-      var DEFAULT_VISIBLE_COLS = ["id", "name", "domain", "pages_count", "queue", "actions"];
+      var DEFAULT_VISIBLE_COLS = ["id", "name", "domain", "pages_count", "fetch_proxy", "queue", "actions"];
       var visibleCols = DEFAULT_VISIBLE_COLS.slice();
       var columnWidths = {};
       var resizeState = null;
+
+      function projColumnKey(th, index, headersLength) {
+        var k = th.getAttribute("data-proj-sort") || th.getAttribute("data-proj-col");
+        if (k) return k;
+        return index === headersLength - 2 ? "queue" : "actions";
+      }
+
+      function projectProxyCellHtml(p) {
+        var mode = String(p.fetch_proxy_mode || "inherit").toLowerCase();
+        if (mode === "custom") mode = "inherit";
+        if (mode === "direct") {
+          return { main: "Напрямую", sub: "без прокси" };
+        }
+        return { main: "Общий список", sub: "Настройки / Очередь" };
+      }
 
       function sortArrow(active, dir) {
         return active ? (dir === "asc" ? " ↑" : " ↓") : "";
@@ -66,6 +81,18 @@
           if (saved && allowed[saved.sort_by]) sortBy = saved.sort_by;
           if (saved && (saved.sort_dir === "asc" || saved.sort_dir === "desc")) sortDir = saved.sort_dir;
         } catch (e) {}
+      }
+
+      function syncEditFetchProxyHint() {
+        var modeEl = document.getElementById("dg-proj-edit-fetch_proxy_mode");
+        var hint = document.getElementById("dg-proj-edit-fetch_proxy_hint");
+        if (!modeEl || !hint) return;
+        if (modeEl.value === "direct") {
+          hint.textContent = "Запросы к сайту конкурента — с IP сервера, без прокси.";
+        } else {
+          hint.textContent =
+            "Один общий список адресов на весь сервер (Настройки или Очередь → «Прокси…» при «Все проекты»).";
+        }
       }
 
       function showErr(msg) {
@@ -274,9 +301,9 @@
 
       function applyVisibleColumns() {
         var headers = getHeaderCells();
+        var n = headers.length;
         headers.forEach(function (th, index) {
-          var key = th.getAttribute("data-proj-sort");
-          if (!key) key = index === headers.length - 2 ? "queue" : "actions";
+          var key = projColumnKey(th, index, n);
           var show = visibleCols.indexOf(key) >= 0;
           th.style.display = show ? "" : "none";
           document.querySelectorAll("#dg-proj-tbody tr").forEach(function (tr) {
@@ -291,8 +318,7 @@
         list.replaceChildren();
         var headers = getHeaderCells();
         headers.forEach(function (th, index) {
-          var key = th.getAttribute("data-proj-sort");
-          if (!key) key = index === headers.length - 2 ? "queue" : "actions";
+          var key = projColumnKey(th, index, headers.length);
           var label = String(th.textContent || "").replace(/\s*[↑↓]\s*$/, "").trim();
           var row = document.createElement("label");
           var cb = document.createElement("input");
@@ -349,7 +375,7 @@
         if (loading) {
           var trL = document.createElement("tr");
           var tdL = document.createElement("td");
-          tdL.colSpan = 6;
+          tdL.colSpan = 7;
           tdL.className = "text-muted";
           tdL.textContent = "Загрузка...";
           trL.appendChild(tdL);
@@ -361,7 +387,7 @@
         if (!filtered.length) {
           var tr = document.createElement("tr");
           var td = document.createElement("td");
-          td.colSpan = 6;
+          td.colSpan = 7;
           td.className = "text-muted";
           td.textContent = "Нет проектов";
           tr.appendChild(td);
@@ -386,6 +412,17 @@
           tdDom.textContent = p.domain || "";
           var tdPages = document.createElement("td");
           tdPages.textContent = String(Number(p.pages_count || 0));
+          var tdPx = document.createElement("td");
+          tdPx.className = "small";
+          var px = projectProxyCellHtml(p);
+          var pxMain = document.createElement("div");
+          pxMain.textContent = px.main;
+          var pxSub = document.createElement("div");
+          pxSub.className = "text-muted";
+          pxSub.style.fontSize = "0.85em";
+          pxSub.textContent = px.sub;
+          tdPx.appendChild(pxMain);
+          tdPx.appendChild(pxSub);
           var tdQ = document.createElement("td");
           var sm = document.createElement("small");
           sm.textContent = p.queueInfo || "";
@@ -412,6 +449,7 @@
           tr.appendChild(tdName);
           tr.appendChild(tdDom);
           tr.appendChild(tdPages);
+          tr.appendChild(tdPx);
           tr.appendChild(tdQ);
           tr.appendChild(tdAct);
           tbody.appendChild(tr);
@@ -458,6 +496,7 @@
           selector_name: document.getElementById("dg-proj-new-selector_name").value.trim(),
           selector_sku: document.getElementById("dg-proj-new-selector_sku").value.trim(),
           selector_oos: document.getElementById("dg-proj-new-selector_oos").value.trim(),
+          fetch_proxy_mode: document.getElementById("dg-proj-new-fetch_proxy_mode").value,
         };
       }
 
@@ -486,6 +525,7 @@
             document.getElementById("dg-proj-new-selector_name").value = "";
             document.getElementById("dg-proj-new-selector_sku").value = "";
             document.getElementById("dg-proj-new-selector_oos").value = "";
+            document.getElementById("dg-proj-new-fetch_proxy_mode").value = "inherit";
             loadProjects();
           })
           .catch(function (e) {
@@ -519,6 +559,10 @@
         document.getElementById("dg-proj-edit-selector_name").value = p.selector_name || "";
         document.getElementById("dg-proj-edit-selector_sku").value = p.selector_sku || "";
         document.getElementById("dg-proj-edit-selector_oos").value = p.selector_oos || "";
+        var pm = String(p.fetch_proxy_mode || "inherit").toLowerCase();
+        if (pm === "custom") pm = "inherit";
+        document.getElementById("dg-proj-edit-fetch_proxy_mode").value = pm === "direct" ? "direct" : "inherit";
+        syncEditFetchProxyHint();
         document.getElementById("dg-proj-edit-wrap").style.display = "";
         try {
           document.getElementById("dg-proj-edit-wrap").scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -539,6 +583,7 @@
           selector_name: document.getElementById("dg-proj-edit-selector_name").value.trim(),
           selector_sku: document.getElementById("dg-proj-edit-selector_sku").value.trim(),
           selector_oos: document.getElementById("dg-proj-edit-selector_oos").value.trim(),
+          fetch_proxy_mode: document.getElementById("dg-proj-edit-fetch_proxy_mode").value,
         };
         fetch("/api/projects/" + editProject.id, {
           method: "PUT",
@@ -618,6 +663,8 @@
       document.getElementById("dg-proj-btn-create").addEventListener("click", createProject);
       document.getElementById("dg-proj-btn-save").addEventListener("click", saveEdit);
       document.getElementById("dg-proj-btn-cancel-edit").addEventListener("click", closeEdit);
+      var epm = document.getElementById("dg-proj-edit-fetch_proxy_mode");
+      if (epm) epm.addEventListener("change", syncEditFetchProxyHint);
 
       (function projectsFilterFieldVisibility() {
         var FIELD_GROUPS = [
@@ -689,6 +736,18 @@
             visibleCols = DEFAULT_VISIBLE_COLS.filter(function (k) {
               return rawVisible.indexOf(k) >= 0;
             });
+            var oldDefaultSet = ["id", "name", "domain", "pages_count", "queue", "actions"];
+            var matchesOldDefault =
+              visibleCols.length === oldDefaultSet.length &&
+              oldDefaultSet.every(function (k) {
+                return visibleCols.indexOf(k) >= 0;
+              });
+            if (matchesOldDefault) {
+              visibleCols = DEFAULT_VISIBLE_COLS.slice();
+              try {
+                localStorage.setItem(userVisibleColsKey(), JSON.stringify(visibleCols));
+              } catch (e2) {}
+            }
           }
         } catch (e) {}
         try {

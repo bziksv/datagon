@@ -1,8 +1,20 @@
 const express = require('express');
 const router = express.Router();
+const { ensureProjectFetchProxyColumns } = require('../lib/datagonFetchProxy');
+
+const FETCH_PROXY_MODES = new Set(['inherit', 'direct']);
+
+function normFetchProxyMode(raw) {
+    const m = String(raw || 'inherit').toLowerCase();
+    if (m === 'custom') return 'inherit';
+    return FETCH_PROXY_MODES.has(m) ? m : 'inherit';
+}
 
 module.exports = (db) => {
     router.get('/', async (req, res) => {
+        try {
+            await ensureProjectFetchProxyColumns(db);
+        } catch (_) {}
         const sortBy = String(req.query.sort_by || 'id');
         const sortDir = String(req.query.sort_dir || 'desc').toLowerCase() === 'asc' ? 'ASC' : 'DESC';
         const sortFieldMap = {
@@ -42,16 +54,42 @@ module.exports = (db) => {
     });
 
     router.post('/', async (req, res) => {
-        const { name, domain, selector_price, selector_name, selector_sku, selector_oos } = req.body;
-        const [r] = await db.query('INSERT INTO projects (name, domain, selector_price, selector_name, selector_sku, selector_oos) VALUES (?,?,?,?,?,?)', 
-            [name, domain, selector_price, selector_name||'', selector_sku||'', selector_oos||'']);
+        try {
+            await ensureProjectFetchProxyColumns(db);
+        } catch (_) {}
+        const { name, domain, selector_price, selector_name, selector_sku, selector_oos, fetch_proxy_mode } = req.body;
+        const [r] = await db.query(
+            `INSERT INTO projects (name, domain, selector_price, selector_name, selector_sku, selector_oos, fetch_proxy_mode, fetch_proxy_enabled, fetch_proxy_list) VALUES (?,?,?,?,?,?,?,?,?)`,
+            [
+                name,
+                domain,
+                selector_price,
+                selector_name || '',
+                selector_sku || '',
+                selector_oos || '',
+                normFetchProxyMode(fetch_proxy_mode),
+                0,
+                ''
+            ]
+        );
         res.json({ success: true, id: r.insertId });
     });
 
     router.put('/:id', async (req, res) => {
-        const { name, domain, selector_price, selector_name, selector_sku, selector_oos } = req.body;
-        await db.query('UPDATE projects SET name=?, domain=?, selector_price=?, selector_name=?, selector_sku=?, selector_oos=? WHERE id=?', 
-            [name, domain, selector_price, selector_name, selector_sku, selector_oos, req.params.id]);
+        try {
+            await ensureProjectFetchProxyColumns(db);
+        } catch (_) {}
+        const { name, domain, selector_price, selector_name, selector_sku, selector_oos, fetch_proxy_mode } = req.body;
+        const [existing] = await db.query('SELECT fetch_proxy_mode FROM projects WHERE id = ?', [req.params.id]);
+        const row0 = existing && existing[0] ? existing[0] : {};
+        const mode =
+            fetch_proxy_mode !== undefined
+                ? normFetchProxyMode(fetch_proxy_mode)
+                : normFetchProxyMode(row0.fetch_proxy_mode);
+        await db.query(
+            `UPDATE projects SET name=?, domain=?, selector_price=?, selector_name=?, selector_sku=?, selector_oos=?, fetch_proxy_mode=?, fetch_proxy_enabled=0, fetch_proxy_list=? WHERE id=?`,
+            [name, domain, selector_price, selector_name, selector_sku, selector_oos, mode, '', req.params.id]
+        );
         res.json({ success: true });
     });
 

@@ -9,6 +9,8 @@
         discover_max_urls: 50000,
         discover_crawl_max_pages: 500,
         discover_request_delay_ms: 100,
+        fetch_proxy_enabled: 0,
+        fetch_proxy_list: "",
         auth_session_ttl_days: 14,
         auth_session_user_limit: 1,
         auth_online_presence_minutes: 15,
@@ -60,6 +62,9 @@
       var editUser = null;
       var showNewUserPassword = false;
       var showPasswordChange = false;
+      var specList = [];
+      var specPageDefs = [];
+      var DEFAULT_SPEC_NAME = "Полный доступ";
 
       function currentUser() {
         return String(window.localStorage.getItem("currentUser") || "").trim();
@@ -124,6 +129,8 @@
         set("dg-set-discover_max_urls", merged.discover_max_urls);
         set("dg-set-discover_crawl_max_pages", merged.discover_crawl_max_pages);
         set("dg-set-discover_request_delay_ms", merged.discover_request_delay_ms);
+        document.getElementById("dg-set-fetch_proxy_enabled").checked = Number(merged.fetch_proxy_enabled) === 1;
+        set("dg-set-fetch_proxy_list", merged.fetch_proxy_list || "");
         set("dg-set-sync_batch_size", merged.sync_batch_size);
         set("dg-set-sync_delay_ms", merged.sync_delay_ms);
         document.getElementById("dg-set-sync_mode").value = merged.sync_mode || "always";
@@ -166,16 +173,286 @@
         th.textContent = "Онлайн (" + label + " мин) / действующих";
       }
 
+      function syncSpecAdminVisibility() {
+        var card = document.getElementById("dg-set-spec-admin-card");
+        if (card) card.style.display = isAdmin() ? "" : "none";
+      }
+
+      function fillSpecialtySelects() {
+        var ids = ["dg-set-new-specialty", "dg-set-spec-matrix-id", "dg-set-edit-specialty"];
+        ids.forEach(function (id) {
+          var el = document.getElementById(id);
+          if (!el || el.tagName !== "SELECT") return;
+          el.replaceChildren();
+          specList.forEach(function (sp) {
+            var o = document.createElement("option");
+            o.value = String(sp.id);
+            o.textContent = sp.name + (sp.users_count != null ? " (" + sp.users_count + ")" : "");
+            el.appendChild(o);
+          });
+        });
+      }
+
+      function loadSpecPageDefsOnce() {
+        if (specPageDefs.length) return Promise.resolve();
+        return fetch("/api/specialties/pages", { credentials: "same-origin", headers: authHeaders(false) })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok) return;
+            specPageDefs = Array.isArray(x.j.data) ? x.j.data : [];
+          })
+          .catch(function () {});
+      }
+
+      function loadSpecialtiesAdmin() {
+        if (!isAdmin()) {
+          specList = [];
+          fillSpecialtySelects();
+          return Promise.resolve();
+        }
+        return fetch("/api/specialties", { credentials: "same-origin", headers: authHeaders(false) })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            specList = x.r.ok && Array.isArray(x.j.data) ? x.j.data : [];
+            fillSpecialtySelects();
+            renderSpecList();
+            renderUsers();
+            var msel = document.getElementById("dg-set-spec-matrix-id");
+            var tbody = document.getElementById("dg-set-spec-matrix-tbody");
+            if (msel && specList.length && tbody && !tbody.children.length) {
+              msel.value = String(specList[0].id);
+              return loadSpecMatrix();
+            }
+          })
+          .catch(function () {
+            specList = [];
+          });
+      }
+
+      function renderSpecList() {
+        var tbody = document.getElementById("dg-set-spec-list-tbody");
+        if (!tbody) return;
+        tbody.replaceChildren();
+        if (!isAdmin()) return;
+        if (!specList.length) {
+          var tr0 = document.createElement("tr");
+          var td0 = document.createElement("td");
+          td0.colSpan = 4;
+          td0.className = "text-muted";
+          td0.textContent = "Нет данных (загрузите снова после входа admin)";
+          tr0.appendChild(td0);
+          tbody.appendChild(tr0);
+          return;
+        }
+        specList.forEach(function (sp) {
+          var tr = document.createElement("tr");
+          var tdId = document.createElement("td");
+          tdId.textContent = String(sp.id);
+          var tdN = document.createElement("td");
+          tdN.textContent = sp.name || "";
+          var tdC = document.createElement("td");
+          tdC.textContent = String(sp.users_count != null ? sp.users_count : "0");
+          var tdA = document.createElement("td");
+          tdA.className = "text-nowrap";
+          var bRen = document.createElement("button");
+          bRen.type = "button";
+          bRen.className = "btn btn-sm btn-outline-secondary me-1 mb-1";
+          bRen.setAttribute("data-dg-no-activity", "1");
+          bRen.textContent = "Переименовать";
+          bRen.addEventListener("click", function () {
+            var nn = window.prompt("Новое название специальности", sp.name || "");
+            if (nn == null) return;
+            nn = String(nn).trim();
+            if (nn.length < 2) return alert("Слишком короткое название");
+            fetch("/api/specialties/" + sp.id, {
+              method: "PUT",
+              credentials: "same-origin",
+              headers: authHeaders(true),
+              body: JSON.stringify({ name: nn }),
+            })
+              .then(function (r) {
+                return r.json().then(function (j) {
+                  return { r: r, j: j };
+                });
+              })
+              .then(function (x) {
+                if (!x.r.ok) throw new Error((x.j && x.j.error) || "Ошибка");
+                return loadSpecialtiesAdmin();
+              })
+              .catch(function (e) {
+                alert(e.message || "Ошибка");
+              });
+          });
+          var bDel = document.createElement("button");
+          bDel.type = "button";
+          bDel.className = "btn btn-sm btn-outline-danger mb-1";
+          bDel.setAttribute("data-dg-no-activity", "1");
+          bDel.textContent = "Удалить";
+          bDel.disabled =
+            sp.name === DEFAULT_SPEC_NAME || Number(sp.users_count || 0) > 0;
+          bDel.addEventListener("click", function () {
+            if (!window.confirm('Удалить специальность «' + (sp.name || "") + "»?")) return;
+            fetch("/api/specialties/" + sp.id, { method: "DELETE", credentials: "same-origin", headers: authHeaders(false) })
+              .then(function (r) {
+                return r.json().then(function (j) {
+                  return { r: r, j: j };
+                });
+              })
+              .then(function (x) {
+                if (!x.r.ok) throw new Error((x.j && x.j.error) || "Ошибка");
+                return loadSpecialtiesAdmin();
+              })
+              .catch(function (e) {
+                alert(e.message || "Ошибка");
+              });
+          });
+          tdA.appendChild(bRen);
+          tdA.appendChild(bDel);
+          tr.appendChild(tdId);
+          tr.appendChild(tdN);
+          tr.appendChild(tdC);
+          tr.appendChild(tdA);
+          tbody.appendChild(tr);
+        });
+      }
+
+      function loadSpecMatrix() {
+        var hint = document.getElementById("dg-set-spec-matrix-hint");
+        var sid = parseInt(document.getElementById("dg-set-spec-matrix-id").value, 10);
+        if (!Number.isFinite(sid)) {
+          if (hint) hint.textContent = "Выберите специальность в списке.";
+          return Promise.resolve();
+        }
+        return loadSpecPageDefsOnce()
+          .then(function () {
+            return fetch("/api/specialties/" + sid + "/access", { credentials: "same-origin", headers: authHeaders(false) });
+          })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok) throw new Error((x.j && x.j.error) || "Не удалось загрузить матрицу");
+            var modes = x.j.modes || {};
+            var tbody = document.getElementById("dg-set-spec-matrix-tbody");
+            tbody.replaceChildren();
+            specPageDefs.forEach(function (p) {
+              var tr = document.createElement("tr");
+              var td1 = document.createElement("td");
+              td1.textContent = (p.title || "") + " (" + (p.key || "") + ")";
+              var td2 = document.createElement("td");
+              var sel = document.createElement("select");
+              sel.className = "form-select form-select-sm";
+              sel.setAttribute("data-page-key", p.key);
+              [
+                { v: "hidden", t: "Скрытый" },
+                { v: "view", t: "Просмотр" },
+                { v: "full", t: "Полный" },
+              ].forEach(function (opt) {
+                var o = document.createElement("option");
+                o.value = opt.v;
+                o.textContent = opt.t;
+                sel.appendChild(o);
+              });
+              var cur = modes[p.key] || "hidden";
+              sel.value = cur === "view" || cur === "full" || cur === "hidden" ? cur : "hidden";
+              td2.appendChild(sel);
+              tr.appendChild(td1);
+              tr.appendChild(td2);
+              tbody.appendChild(tr);
+            });
+            if (hint) hint.textContent = "Измените режимы и нажмите «Сохранить матрицу».";
+          })
+          .catch(function (e) {
+            if (hint) hint.textContent = e.message || String(e);
+          });
+      }
+
+      function saveSpecMatrix() {
+        var sid = parseInt(document.getElementById("dg-set-spec-matrix-id").value, 10);
+        if (!Number.isFinite(sid)) return alert("Выберите специальность");
+        var modes = {};
+        document.querySelectorAll("#dg-set-spec-matrix-tbody select[data-page-key]").forEach(function (sel) {
+          var k = sel.getAttribute("data-page-key");
+          if (k) modes[k] = sel.value;
+        });
+        fetch("/api/specialties/" + sid + "/access", {
+          method: "PUT",
+          credentials: "same-origin",
+          headers: authHeaders(true),
+          body: JSON.stringify({ modes: modes }),
+        })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok) throw new Error((x.j && x.j.error) || "Не удалось сохранить");
+            alert("Матрица доступа сохранена");
+            return loadSpecMatrix();
+          })
+          .catch(function (e) {
+            alert(e.message || "Ошибка");
+          });
+      }
+
+      function addSpecialty() {
+        var name = String(document.getElementById("dg-set-spec-new-name").value || "").trim();
+        if (name.length < 2) return alert("Введите название (от 2 символов)");
+        fetch("/api/specialties", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: authHeaders(true),
+          body: JSON.stringify({ name: name }),
+        })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok) throw new Error((x.j && x.j.error) || "Не удалось создать");
+            set("dg-set-spec-new-name", "");
+            return loadSpecialtiesAdmin();
+          })
+          .then(function () {
+            if (specList.length) {
+              var last = specList[specList.length - 1];
+              document.getElementById("dg-set-spec-matrix-id").value = String(last.id);
+              return loadSpecMatrix();
+            }
+          })
+          .catch(function (e) {
+            alert(e.message || "Ошибка");
+          });
+      }
+
       function applyUserFieldDisabled() {
         var adm = isAdmin();
         var can = canManageUsers();
+        syncSpecAdminVisibility();
         ["dg-set-users-search", "dg-set-users-filter-can", "dg-set-users-sess-min", "dg-set-users-sess-max"].forEach(function (id) {
           document.getElementById(id).disabled = !adm;
         });
-        ["dg-set-new-fullname", "dg-set-new-username", "dg-set-new-password", "dg-set-new-pw-toggle", "dg-set-new-pw-copy", "dg-set-btn-random-new-pw", "dg-set-btn-add-user"].forEach(function (id) {
-          document.getElementById(id).disabled = !can;
+        ["dg-set-new-fullname", "dg-set-new-username", "dg-set-new-specialty", "dg-set-new-password", "dg-set-new-pw-toggle", "dg-set-new-pw-copy", "dg-set-btn-random-new-pw", "dg-set-btn-add-user"].forEach(function (id) {
+          var node = document.getElementById(id);
+          if (node) node.disabled = !can;
         });
         document.getElementById("dg-set-btn-refresh-users").disabled = !adm;
+        ["dg-set-spec-new-name", "dg-set-spec-add", "dg-set-spec-matrix-id", "dg-set-spec-matrix-load", "dg-set-spec-matrix-save"].forEach(function (id) {
+          var node = document.getElementById(id);
+          if (node) node.disabled = !adm;
+        });
         updateUsersHint();
       }
 
@@ -235,7 +512,15 @@
         var smin = document.getElementById("dg-set-users-sess-min").value;
         var smax = document.getElementById("dg-set-users-sess-max").value;
         return users.filter(function (u) {
-          var haystack = (String(u.id || "") + " " + String(u.full_name || "") + " " + String(u.username || "")).toLowerCase();
+          var haystack = (
+            String(u.id || "") +
+            " " +
+            String(u.full_name || "") +
+            " " +
+            String(u.username || "") +
+            " " +
+            String(u.specialty_name || "")
+          ).toLowerCase();
           if (needle && haystack.indexOf(needle) === -1) return false;
           var canManage = u.username === "admin" || Number(u.can_manage_users || 0) === 1 ? "1" : "0";
           if (canF !== "all" && canManage !== canF) return false;
@@ -255,7 +540,7 @@
         if (usersLoadForbidden) {
           var trf = document.createElement("tr");
           var tdf = document.createElement("td");
-          tdf.colSpan = 8;
+          tdf.colSpan = 9;
           tdf.className = "text-muted";
           tdf.textContent = "Список пользователей доступен только пользователю admin";
           trf.appendChild(tdf);
@@ -266,7 +551,7 @@
         if (!list.length) {
           var tr0 = document.createElement("tr");
           var td0 = document.createElement("td");
-          td0.colSpan = 8;
+          td0.colSpan = 9;
           td0.className = "text-muted";
           td0.textContent = loadingUsers ? "Загрузка..." : "Пользователи не найдены";
           tr0.appendChild(td0);
@@ -297,6 +582,48 @@
             }
             tr.appendChild(td);
           });
+          var tdSpec = document.createElement("td");
+          tdSpec.className = "text-nowrap";
+          var selRow = document.createElement("select");
+          selRow.className = "form-select form-select-sm";
+          selRow.disabled = u.username === "admin" || !isAdmin();
+          specList.forEach(function (sp) {
+            var o = document.createElement("option");
+            o.value = String(sp.id);
+            o.textContent = sp.name;
+            if (Number(u.specialty_id) === Number(sp.id)) o.selected = true;
+            selRow.appendChild(o);
+          });
+          selRow.addEventListener("change", function () {
+            if (!isAdmin() || u.username === "admin") return;
+            var sid = parseInt(selRow.value, 10);
+            if (!Number.isFinite(sid)) return;
+            fetch("/api/auth/users/" + u.id, {
+              method: "PUT",
+              credentials: "same-origin",
+              headers: authHeaders(true),
+              body: JSON.stringify({
+                username: u.username,
+                full_name: u.full_name || u.username,
+                specialty_id: sid,
+              }),
+            })
+              .then(function (r) {
+                return r.json().then(function (j) {
+                  return { r: r, j: j };
+                });
+              })
+              .then(function (x) {
+                if (!x.r.ok || !x.j.success) throw new Error((x.j && x.j.error) || "Не удалось сохранить специальность");
+                loadUsers();
+              })
+              .catch(function (e) {
+                alert(e.message || "Ошибка");
+                loadUsers();
+              });
+          });
+          tdSpec.appendChild(selRow);
+          tr.appendChild(tdSpec);
           var tdPerm = document.createElement("td");
           var lab = document.createElement("label");
           lab.className = "d-flex align-items-center gap-2";
@@ -418,6 +745,9 @@
             users = [];
           })
           .then(function () {
+            return loadSpecialtiesAdmin();
+          })
+          .then(function () {
             loadingUsers = false;
             renderUsers();
           });
@@ -467,6 +797,8 @@
             discover_max_urls: getNum("dg-set-discover_max_urls", 50000),
             discover_crawl_max_pages: getNum("dg-set-discover_crawl_max_pages", 500),
             discover_request_delay_ms: getNum("dg-set-discover_request_delay_ms", 100),
+            fetch_proxy_enabled: document.getElementById("dg-set-fetch_proxy_enabled").checked ? 1 : 0,
+            fetch_proxy_list: getStr("dg-set-fetch_proxy_list"),
             log_retention_days: getNum("dg-set-log_retention_days", 7),
           },
           "Настройки парсера сохранены"
@@ -562,11 +894,15 @@
         if (!full_name) return alert("Введите Имя Фамилия");
         if (!username) return alert("Введите логин");
         if (password.length < 15) return alert("Пароль должен быть не короче 15 символов");
+        var specRaw = document.getElementById("dg-set-new-specialty") && document.getElementById("dg-set-new-specialty").value;
+        var specId = parseInt(specRaw, 10);
+        var payload = { full_name: full_name, username: username, password: password };
+        if (Number.isFinite(specId) && specId > 0) payload.specialty_id = specId;
         fetch("/api/auth/users", {
           method: "POST",
           credentials: "same-origin",
           headers: authHeaders(true),
-          body: JSON.stringify({ full_name: full_name, username: username, password: password }),
+          body: JSON.stringify(payload),
         })
           .then(function (r) {
             return r.json().then(function (j) {
@@ -656,6 +992,12 @@
         document.getElementById("dg-set-edit-fullname").value = editUser.full_name;
         document.getElementById("dg-set-edit-username").value = editUser.username;
         document.getElementById("dg-set-edit-username").readOnly = editUser.username === "admin";
+        fillSpecialtySelects();
+        var spEl = document.getElementById("dg-set-edit-specialty");
+        if (spEl) {
+          spEl.value = u.specialty_id != null ? String(u.specialty_id) : "";
+          spEl.disabled = editUser.username === "admin";
+        }
         document.getElementById("dg-set-edit-card").style.display = "";
       }
       function closeEditUser() {
@@ -669,11 +1011,16 @@
         var username = getStr("dg-set-edit-username").trim();
         if (!full_name || full_name.length < 3) return alert("Имя должно быть не короче 3 символов");
         if (!username || username.length < 3) return alert("Логин должен быть не короче 3 символов");
+        var body = { username: username, full_name: full_name };
+        if (editUser.username !== "admin") {
+          var sid = parseInt(document.getElementById("dg-set-edit-specialty").value, 10);
+          if (Number.isFinite(sid) && sid > 0) body.specialty_id = sid;
+        }
         fetch("/api/auth/users/" + editUser.id, {
           method: "PUT",
           credentials: "same-origin",
           headers: authHeaders(true),
-          body: JSON.stringify({ username: username, full_name: full_name }),
+          body: JSON.stringify(body),
         })
           .then(function (r) {
             return r.json().then(function (j) {
@@ -722,6 +1069,13 @@
             window.localStorage.setItem("isAdmin", json.isAdmin ? "true" : "false");
             window.localStorage.setItem("canManageUsers", json.canManageUsers ? "true" : "false");
             if (json.auth_token) window.localStorage.setItem("authToken", json.auth_token);
+            try {
+              if (json.page_modes && typeof json.page_modes === "object") {
+                window.localStorage.setItem("datagonPageModesV1", JSON.stringify(json.page_modes));
+              } else window.localStorage.removeItem("datagonPageModesV1");
+              if (json.specialty_name) window.localStorage.setItem("datagonSpecialtyNameV1", String(json.specialty_name));
+              else window.localStorage.removeItem("datagonSpecialtyNameV1");
+            } catch (eLs) {}
             alert("Вы вошли как " + (json.username || username));
             window.location.reload();
           })
@@ -818,6 +1172,15 @@
         set("dg-set-pw-new", randomPassword(len));
       });
       document.getElementById("dg-set-pw-submit").addEventListener("click", changePassword);
+
+      var specAdd = document.getElementById("dg-set-spec-add");
+      if (specAdd) specAdd.addEventListener("click", addSpecialty);
+      var specML = document.getElementById("dg-set-spec-matrix-load");
+      if (specML) specML.addEventListener("click", function () { loadSpecMatrix(); });
+      var specMS = document.getElementById("dg-set-spec-matrix-save");
+      if (specMS) specMS.addEventListener("click", saveSpecMatrix);
+      var specMId = document.getElementById("dg-set-spec-matrix-id");
+      if (specMId) specMId.addEventListener("change", function () { loadSpecMatrix(); });
 
       set("dg-set-pw-username", isAdmin() ? "admin" : currentUser() || "");
       document.getElementById("dg-set-pw-username").readOnly = !isAdmin();

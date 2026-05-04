@@ -12,6 +12,32 @@
     return headers;
   }
 
+  (function installViewOnlyFetchGuard() {
+    if (window.__datagonFetchViewGuard) return;
+    window.__datagonFetchViewGuard = true;
+    var orig = window.fetch;
+    window.fetch = function (input, init) {
+      try {
+        if (document.body && document.body.getAttribute("data-dg-page-access") === "view") {
+          var method = "GET";
+          if (init && init.method) method = String(init.method);
+          else if (typeof Request !== "undefined" && input && input instanceof Request)
+            method = String(input.method || "GET");
+          var m = method.toUpperCase();
+          if (m !== "GET" && m !== "HEAD" && m !== "OPTIONS") {
+            return Promise.resolve(
+              new Response(JSON.stringify({ error: "Режим только просмотра", code: "PAGE_VIEW_ONLY" }), {
+                status: 403,
+                headers: { "Content-Type": "application/json" },
+              })
+            );
+          }
+        }
+      } catch (eGw) {}
+      return orig.apply(this, arguments);
+    };
+  })();
+
   var dgActivityQueue = [];
   var dgActivityFlushTimer = null;
   var dgActivityStarted = false;
@@ -115,6 +141,9 @@
     var link = document.querySelector('.metismenu-link[data-nav="' + key + '"]');
     if (link) link.classList.add("active");
   }
+
+  applyDatagonRestrictedNavVisibility();
+  applyViewOnlyShell();
 
   try {
     if (localStorage.getItem("datagon_closed_sidebar_v1") === "1") {
@@ -602,15 +631,105 @@
     }
   }
 
+  function readStoredPageModes() {
+    try {
+      var raw = window.localStorage.getItem("datagonPageModesV1");
+      if (!raw) return null;
+      var o = JSON.parse(raw);
+      return o && typeof o === "object" ? o : null;
+    } catch (eR) {
+      return null;
+    }
+  }
+
   function applyDatagonRestrictedNavVisibility() {
     var show = canViewActivityNav();
     document.querySelectorAll('[data-dg-nav-restricted="activity"]').forEach(function (li) {
       li.style.display = show ? "" : "none";
     });
+    var isAdmin = false;
+    try {
+      isAdmin =
+        window.localStorage.getItem("isAdmin") === "true" ||
+        window.localStorage.getItem("currentUser") === "admin";
+    } catch (eAdm) {}
+    var pm = readStoredPageModes();
+    document.querySelectorAll(".metismenu-link[data-nav]").forEach(function (a) {
+      var navKey = a.getAttribute("data-nav");
+      if (!navKey) return;
+      var li = a.closest(".metismenu-item");
+      if (!li) return;
+      if (isAdmin) {
+        li.style.display = "";
+        return;
+      }
+      var mode = pm == null ? "full" : pm[navKey];
+      if (mode === undefined || mode === null || mode === "") mode = "full";
+      if (mode === "hidden") li.style.display = "none";
+      else li.style.display = "";
+    });
+  }
+
+  function removeViewOnlyBanner() {
+    var b = document.getElementById("dg-view-only-banner");
+    if (b) b.remove();
+  }
+
+  function ensureViewOnlyBanner() {
+    if (document.getElementById("dg-view-only-banner")) return;
+    var bar = document.createElement("div");
+    bar.id = "dg-view-only-banner";
+    bar.className = "alert alert-warning border-0 rounded-0 text-center mb-0 py-2";
+    bar.setAttribute("role", "status");
+    bar.textContent =
+      "Режим только просмотра: запуск действий и сохранение изменений отключены. Данные можно только просматривать.";
+    var mainInner = document.querySelector(".app-main__inner");
+    if (mainInner) mainInner.insertBefore(bar, mainInner.firstChild);
+  }
+
+  function applyViewOnlyShell() {
+    var isAdmin = false;
+    try {
+      isAdmin =
+        window.localStorage.getItem("isAdmin") === "true" ||
+        window.localStorage.getItem("currentUser") === "admin";
+    } catch (eA) {}
+    if (isAdmin) {
+      try {
+        document.body.removeAttribute("data-dg-page-access");
+      } catch (eB) {}
+      removeViewOnlyBanner();
+      return;
+    }
+    var navKey = null;
+    try {
+      navKey = document.body && document.body.getAttribute("data-dg-active-nav");
+    } catch (eN) {}
+    navKey = navKey ? String(navKey).trim() : "";
+    if (!navKey) {
+      try {
+        document.body.removeAttribute("data-dg-page-access");
+      } catch (eC) {}
+      removeViewOnlyBanner();
+      return;
+    }
+    var pm = readStoredPageModes();
+    if (!pm || pm[navKey] !== "view") {
+      try {
+        document.body.removeAttribute("data-dg-page-access");
+      } catch (eD) {}
+      removeViewOnlyBanner();
+      return;
+    }
+    try {
+      document.body.setAttribute("data-dg-page-access", "view");
+    } catch (eE) {}
+    ensureViewOnlyBanner();
   }
 
   window.addEventListener("datagon-profile-loaded", function () {
     applyDatagonRestrictedNavVisibility();
+    applyViewOnlyShell();
   });
 
   function redirectVanillaToLogin() {
@@ -639,6 +758,8 @@
           window.localStorage.removeItem("isAdmin");
           window.localStorage.removeItem("isLoggedIn");
           window.localStorage.removeItem("canManageUsers");
+          window.localStorage.removeItem("datagonPageModesV1");
+          window.localStorage.removeItem("datagonSpecialtyNameV1");
           window.__datagonSessionUsername = "";
         } catch (e) {}
         setUserUi("Гость", false);
@@ -655,6 +776,7 @@
     var isAdminStored = window.localStorage.getItem("isAdmin") === "true" || window.localStorage.getItem("currentUser") === "admin";
     setUserUi(fromStorage, isAdminStored);
     applyDatagonRestrictedNavVisibility();
+    applyViewOnlyShell();
     fetch("/api/auth/me", { headers: getAuthHeaders(), credentials: "same-origin" })
       .then(function (r) {
         return r.json().then(function (j) {
@@ -684,8 +806,16 @@
         window.localStorage.setItem("isAdmin", isAdmin ? "true" : "false");
         if (x.j.canManageUsers) window.localStorage.setItem("canManageUsers", "true");
         else window.localStorage.removeItem("canManageUsers");
+        try {
+          if (x.j.page_modes && typeof x.j.page_modes === "object") {
+            window.localStorage.setItem("datagonPageModesV1", JSON.stringify(x.j.page_modes));
+          } else window.localStorage.removeItem("datagonPageModesV1");
+          if (x.j.specialty_name) window.localStorage.setItem("datagonSpecialtyNameV1", String(x.j.specialty_name));
+          else window.localStorage.removeItem("datagonSpecialtyNameV1");
+        } catch (ePm) {}
         setUserUi(fullName || "Пользователь", isAdmin);
         applyDatagonRestrictedNavVisibility();
+        applyViewOnlyShell();
         try {
           window.dispatchEvent(
             new CustomEvent("datagon-profile-loaded", { detail: { username: username, isAdmin: isAdmin } })

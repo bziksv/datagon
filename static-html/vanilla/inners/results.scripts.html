@@ -505,14 +505,16 @@
           var btnRe = document.createElement("button");
           btnRe.type = "button";
           btnRe.className = "btn btn-sm btn-outline-info me-1";
-          btnRe.innerHTML = '<i class="pe-7s-refresh me-1"></i>↻';
+          btnRe.innerHTML = '<i class="pe-7s-refresh" aria-hidden="true"></i>';
+          btnRe.setAttribute("data-dg-tooltip", "Снова в очередь на парсинг");
           btnRe.addEventListener("click", function () {
             reparseOne(r);
           });
           var btnDel = document.createElement("button");
           btnDel.type = "button";
           btnDel.className = "btn btn-sm btn-outline-danger";
-          btnDel.innerHTML = '<i class="pe-7s-trash me-1"></i>×';
+          btnDel.innerHTML = '<i class="pe-7s-trash" aria-hidden="true"></i>';
+          btnDel.setAttribute("data-dg-tooltip", "Удалить из результатов");
           btnDel.addEventListener("click", function () {
             deleteOne(r.id);
           });

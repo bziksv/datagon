@@ -2,6 +2,9 @@ const mysql = require('mysql2/promise');
 const axios = require('axios');
 const cheerio = require('cheerio');
 const config = require('./config');
+const { fetchHtmlForSiteParse } = require('./lib/datagonSiteFetch');
+const { resolveFetchProxy, ensureProjectFetchProxyColumns } = require('./lib/datagonFetchProxy');
+const { assertHtmlNotWafChallenge, hasGenericProductSignals } = require('./lib/datagonPageClassify');
 
 // НАСТРОЙКИ
 const PAUSE_MS = 1000; // 1 секунда между запросами
@@ -21,6 +24,20 @@ async function runWorker() {
 
         let consecutiveErrors = 0;
         let processedCount = 0;
+
+        try {
+            await ensureProjectFetchProxyColumns(db);
+        } catch (_) {}
+
+        let appProxySettings = { fetch_proxy_enabled: 0, fetch_proxy_list: '' };
+        try {
+            const [setRows] = await db.query(
+                "SELECT setting_key, setting_value FROM app_settings WHERE setting_key IN ('fetch_proxy_enabled','fetch_proxy_list')"
+            );
+            setRows.forEach((r) => {
+                appProxySettings[r.setting_key] = r.setting_value;
+            });
+        } catch (_) {}
 
         // Получаем все активные проекты
         const [projects] = await db.query('SELECT * FROM projects WHERE is_active = TRUE OR is_active IS NULL');
@@ -46,26 +63,20 @@ async function runWorker() {
 
             console.log(`[Worker] Проект "${project.name}": найдено ${pages.length} страниц.`);
 
+            const fetchProxyOpt = resolveFetchProxy(project, appProxySettings);
+
             for (const page of pages) {
                 if (consecutiveErrors >= MAX_ERRORS_IN_ROW) break;
 
                 try {
                     await db.query('UPDATE pages SET status = "processing" WHERE id = ?', [page.id]);
 
-                    const response = await axios.get(page.url, {
-                        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
-                        timeout: 10000, 
-                        validateStatus: function (status) {
-                            return status < 500; 
-                        }
+                    const html = await fetchHtmlForSiteParse(axios, page.url, {
+                        timeout: 22000,
+                        proxy: fetchProxyOpt
                     });
-
-                    // Проверка на 5xx и 429
-                    if (response.status >= 500 || response.status === 429) {
-                        throw new Error(`Сервер вернул ошибку ${response.status}`);
-                    }
-
-                    const $ = cheerio.load(response.data);
+                    assertHtmlNotWafChallenge(html);
+                    const $ = cheerio.load(html);
                     let pageType = 'product';
                     
                     const priceSelectors = project.selector_price ? project.selector_price.split(',') : [];
@@ -78,7 +89,8 @@ async function runWorker() {
                         for (let sel of oosSelectors) { if ($(sel.trim()).length > 0) { hasOosElement = true; break; } }
                     }
 
-                    if (!hasPriceElement && !hasOosElement) {
+                    const genericProduct = hasGenericProductSignals($, html);
+                    if (!hasPriceElement && !hasOosElement && !genericProduct) {
                         if ($('.catalog-grid, .news-list, .item_list').length > 0) pageType = 'category';
                         else pageType = 'info';
                     }
@@ -103,7 +115,10 @@ async function runWorker() {
                         if (text) { priceText = text; break; }
                     }
                     if (priceText) {
-                        priceText = priceText.replace(/[^0-9,.]/g, '').replace(',', '.');
+                        priceText = String(priceText)
+                            .replace(/[\s\u00A0\u202F]/g, '')
+                            .replace(/[^0-9,.]/g, '')
+                            .replace(',', '.');
                         price = parseFloat(priceText);
                     }
 
@@ -147,7 +162,17 @@ async function runWorker() {
                     console.error(`  -> Ошибка ${page.url}: ${error.message}`);
                     
                     // Критические ошибки сервера или сети
-                    const isServerCrash = error.message.includes('500') || error.message.includes('502') || error.message.includes('503') || error.message.includes('504') || error.code === 'ECONNABORTED' || error.code === 'ENOTFOUND' || error.code === 'ECONNRESET';
+                    const isServerCrash =
+                        error.message.includes('500') ||
+                        error.message.includes('502') ||
+                        error.message.includes('503') ||
+                        error.message.includes('504') ||
+                        error.message.includes('403') ||
+                        error.message.includes('429') ||
+                        error.message.includes('401') ||
+                        error.code === 'ECONNABORTED' ||
+                        error.code === 'ENOTFOUND' ||
+                        error.code === 'ECONNRESET';
 
                     if (isServerCrash) {
                         consecutiveErrors++;

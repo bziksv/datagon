@@ -538,7 +538,8 @@
                     </div>
                   </div>
                 </div>
-                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-q-filters-toggle" data-dg-tooltip="Сворачивает или разворачивает блок фильтров и действий.">Свернуть</button>
+                <button type="button" class="btn btn-sm btn-outline-primary" id="dg-q-proxy-open" data-dg-tooltip="Единый список прокси сервера (при «Все проекты») или только режим проекта: общий список / напрямую.">Прокси…</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-q-filters-toggle" data-dg-tooltip="Сворачивает поля фильтра (поиск, проект, тип…). Кнопки «Применить» и массовые действия ниже остаются доступны.">Свернуть</button>
               </div>
             </div>
             <div class="card-body">
@@ -623,23 +624,83 @@
                   </select>
                 </div>
               </div>
+              <div class="row g-2 align-items-start mt-1" data-dg-q-filter-field="fetch_proxy">
+                <div class="col-12"><hr class="my-1" /></div>
+                <div class="col-md-5 col-lg-4">
+                  <div class="form-check" id="dg-q-fetch-proxy-global-wrap">
+                    <input class="form-check-input" type="checkbox" id="dg-q-fetch-proxy-enabled" />
+                    <label class="form-check-label" for="dg-q-fetch-proxy-enabled">Глобально: загрузка через прокси</label>
+                  </div>
+                  <p class="small text-muted mb-0" id="dg-q-proxy-project-note" style="display: none">
+                    Для выбранного проекта режим задаётся в «Проектах» или кнопкой «Прокси…». Чекбокс ниже относится только к режиму «все проекты».
+                  </p>
+                  <p class="small text-muted mb-0">
+                    Один общий список на сервер (редактирование при «Все проекты»). Поддерживаются <code>socks5://…</code> и <code>http://…</code>; на запуск —
+                    <strong>первые 40</strong> строк. По проекту только: использовать этот список или напрямую («Проекты» или «Прокси…»).
+                  </p>
+                </div>
+                <div class="col-md-7 col-lg-8">
+                  <span class="small text-muted" id="dg-q-proxy-pill">Прокси: —</span>
+                </div>
+              </div>
+              <p class="small text-muted mt-2 mb-0" data-dg-q-filter-field="discovery_hint">
+                <b>Автообход URL:</b> читает <code>robots.txt</code>, затем <code>Sitemap:</code> и внутренние ссылки. Новые URL пишутся в <code>Sitemap</code>, после завершения переводятся в <code>pending</code>.
+              </p>
+              </div>
               <div class="mt-3 d-flex flex-wrap gap-2" data-dg-q-filter-field="filter_actions">
                 <button type="button" class="btn btn-sm btn-primary" id="queue-apply" data-dg-tooltip="Применяет текущие фильтры и обновляет таблицу очереди."><i class="pe-7s-search me-1"></i>Применить</button>
                 <button type="button" class="btn btn-sm btn-outline-secondary" id="queue-reset" data-dg-tooltip="Сбросить фильтры к значениям по умолчанию и очистить сохранённые настройки."><i class="pe-7s-refresh me-1"></i>По умолчанию</button>
                 <button type="button" class="btn btn-sm btn-outline-primary" id="queue-discovery-start" data-dg-tooltip="Запускает автообход URL. Нужен конкретный проект (не «Все проекты»)."><i class="pe-7s-compass me-1"></i>Запустить автообход</button>
                 <button type="button" class="btn btn-sm btn-outline-warning" id="queue-discovery-stop" data-dg-tooltip="Останавливает активный автообход URL для выбранного проекта."><i class="pe-7s-close-circle me-1"></i>Остановить автообход</button>
                 <button type="button" class="btn btn-sm btn-outline-info" id="queue-status-refresh" data-dg-tooltip="Обновляет статус автообхода и счетчики по выбранному проекту."><i class="pe-7s-signal me-1"></i>Обновить статус</button>
-                <button type="button" class="btn btn-sm btn-outline-info" id="queue-reset-filtered" data-dg-tooltip="Возвращает в pending страницы, попавшие под текущие фильтры."><i class="pe-7s-back-2 me-1"></i>Вернуть в очередь (фильтр)</button>
+                <button type="button" class="btn btn-sm btn-outline-info" id="queue-reset-filtered" data-dg-tooltip="Ставит статус «Ожидают» (pending) строкам по текущим фильтрам. Строки не удаляются — счётчик «Записей под фильтром» при «все статусы» почти не меняется."><i class="pe-7s-back-2 me-1"></i>Вернуть в очередь (фильтр)</button>
                 <button type="button" class="btn btn-sm btn-outline-success" id="queue-parse-visible" data-dg-tooltip="Ставит в парсинг страницы, видимые по текущим фильтрам."><i class="pe-7s-play me-1"></i>Парсинг видимых</button>
                 <button type="button" class="btn btn-sm btn-outline-warning" id="queue-clear-filtered" data-dg-tooltip="Удаляет из очереди страницы, попавшие под текущие фильтры."><i class="pe-7s-trash me-1"></i>Удалить по фильтрам</button>
                 <button type="button" class="btn btn-sm btn-outline-danger" id="queue-clear-all" data-dg-tooltip="Полностью очищает очередь проекта/системы. Действие необратимо."><i class="pe-7s-close me-1"></i>Полностью очистить очередь</button>
                 <button type="button" class="btn btn-sm btn-outline-dark" id="queue-copy-link" data-dg-tooltip="Копирует текущий URL страницы вместе с фильтрами и сортировкой."><i class="pe-7s-link me-1"></i>Скопировать ссылку</button>
               </div>
-              <p class="small text-muted mt-2 mb-0" data-dg-q-filter-field="discovery_hint">
-                <b>Автообход URL:</b> читает <code>robots.txt</code>, затем <code>Sitemap:</code> и внутренние ссылки. Новые URL пишутся в <code>Sitemap</code>, после завершения переводятся в <code>pending</code>.
-              </p>
-              </div>
               <p class="text-muted mb-0 mt-2" id="dg-q-discovery-hint">Автообход: нет данных</p>
+              <details id="dg-q-discovery-details" class="mt-2" style="display: none">
+                <summary class="small text-muted" style="cursor: pointer">
+                  История автообхода (последние запуски из БД, с ошибками)
+                </summary>
+                <div id="dg-q-discovery-history" class="mt-2"></div>
+              </details>
+            </div>
+          </div>
+
+          <div
+            id="dg-q-proxy-overlay"
+            style="display: none; position: fixed; inset: 0; z-index: 2000; background: rgba(15, 23, 42, 0.45); align-items: center; justify-content: center; padding: 1rem"
+            aria-modal="true"
+            role="dialog"
+          >
+            <div class="bg-white rounded shadow-lg p-3 p-md-4" style="max-width: 720px; width: 100%; max-height: 90vh; overflow: auto">
+              <h5 class="mb-2">Прокси для загрузки страниц</h5>
+              <p class="small text-muted mb-2" id="dg-q-proxy-modal-scope">—</p>
+              <div class="mb-3" id="dg-q-proxy-mode-row" style="display: none">
+                <label class="form-label" for="dg-q-proxy-mode">Загрузка страниц этого проекта</label>
+                <select class="form-select" id="dg-q-proxy-mode">
+                  <option value="inherit">Через общий список прокси (как ниже при «Все проекты»)</option>
+                  <option value="direct">Напрямую с сервера (без прокси)</option>
+                </select>
+                <p class="small text-muted mt-2 mb-0" id="dg-q-proxy-project-hint" style="display: none">
+                  Список адресов один на весь сервер: откройте «Прокси…» при фильтре <strong>Все проекты</strong> (или раздел «Настройки»). Здесь только выбор: использовать этот список или обходить прокси для сайта конкурента.
+                </p>
+              </div>
+              <div id="dg-q-proxy-global-block">
+                <p class="small text-muted">Один адрес на строку: <code>socks5://user:pass@host:1080</code>, <code>socks5://host:1080</code> или коротко <code>host:1080</code> (как SOCKS5). Также <code>http://…</code>. Сохраняется в общих настройках сервера и используется всеми проектами в режиме «через общий список».</p>
+                <label class="form-label" for="dg-q-proxy-list">Общий список</label>
+                <textarea class="form-control font-monospace small" id="dg-q-proxy-list" rows="10" placeholder="socks5://127.0.0.1:1080&#10;socks5://user:pass@proxy.example.com:1080"></textarea>
+                <div class="form-check mt-3">
+                  <input class="form-check-input" type="checkbox" id="dg-q-proxy-modal-enabled" />
+                  <label class="form-check-label" for="dg-q-proxy-modal-enabled">Включить использование прокси (глобально)</label>
+                </div>
+              </div>
+              <div class="d-flex justify-content-end gap-2 mt-3">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-q-proxy-cancel">Отмена</button>
+                <button type="button" class="btn btn-sm btn-primary" id="dg-q-proxy-save">Сохранить</button>
+              </div>
             </div>
           </div>
 
@@ -700,7 +761,14 @@
                   <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-q-next" data-dg-tooltip="Переход на следующую страницу очереди.">Вперед</button>
                 </div>
               </div>
-              <p class="text-muted mb-0 mt-2" id="dg-q-table-hint">Всего: 0</p>
+              <div class="mt-2 mb-0" id="dg-q-table-hint-wrap">
+                <p class="mb-1 fw-semibold text-body small mb-0" id="dg-q-table-hint">Записей под фильтром: 0</p>
+                <p class="text-muted mb-0 small" style="font-size: 0.8125rem; line-height: 1.4; max-width: 52rem">
+                  Пока в фильтре не выбран <strong>статус</strong>, в счёт входят «Ожидают», «Готово» и «Ошибка» одновременно.
+                  «Вернуть в очередь (фильтр)» только переводит в «Ожидают», строки <strong>не удаляет</strong> — число почти не падает.
+                  Убрать строки из очереди: «Удалить по фильтрам» или «Удалить» в строке.
+                </p>
+              </div>
             </div>
           </div>
 
@@ -780,6 +848,18 @@
     <script>
     (function () {
       var FILTERS_KEY = "datagon_queue_filters_collapsed_v1";
+      var QUEUE_SMART_SEARCH_PLACEHOLDER =
+        'code:123 sku:ABC-12 name:"насос 25" project:3 type:product status:pending';
+      function normalizeSpaces(s) {
+        return String(s || "").replace(/\s+/g, " ").trim();
+      }
+      /** Текст из placeholder не считаем фильтром по URL (иначе сброс/список дают 0 строк). */
+      function effectiveSearchForServer(raw) {
+        var t = String(raw || "").trim();
+        if (!t) return "";
+        if (normalizeSpaces(t) === normalizeSpaces(QUEUE_SMART_SEARCH_PLACEHOLDER)) return "";
+        return t;
+      }
       var SORT_STORAGE_VERSION = "v1";
       var statusRu = {
         sitemap: "Sitemap",
@@ -813,6 +893,17 @@
       var visibleCols = DEFAULT_VISIBLE_COLS.slice();
       var columnWidths = {};
       var resizeState = null;
+
+      var fetchProxyState = { enabled: false, list: "" };
+
+      /** Даты в интерфейсе — московское время (независимо от часового пояса браузера). */
+      var MSK_TZ = { timeZone: "Europe/Moscow" };
+      function formatDateTimeMsk(value) {
+        if (value == null || value === "") return "-";
+        var d = value instanceof Date ? value : new Date(value);
+        if (isNaN(d.getTime())) return "-";
+        return d.toLocaleString("ru-RU", MSK_TZ);
+      }
 
       var FLOATING_HEADER_OFFSET_PX = 2;
       var FLOATING_HEADER_START_EPS_PX = 3;
@@ -1116,7 +1207,7 @@
           type: document.getElementById("dg-q-f-type").value,
           status: document.getElementById("dg-q-f-status").value,
           matched: document.getElementById("dg-q-f-matched").value,
-          search: document.getElementById("dg-q-f-search").value.trim(),
+          search: effectiveSearchForServer(document.getElementById("dg-q-f-search").value),
         };
       }
 
@@ -1312,6 +1403,57 @@
         if (el) el.textContent = text;
       }
 
+      function renderDiscoveryHistory(runs) {
+        var box = document.getElementById("dg-q-discovery-history");
+        var det = document.getElementById("dg-q-discovery-details");
+        if (!box || !det) return;
+        box.replaceChildren();
+        if (!Array.isArray(runs) || !runs.length) {
+          det.style.display = "none";
+          return;
+        }
+        det.style.display = "";
+        runs.forEach(function (run) {
+          var block = document.createElement("div");
+          block.className = "small mb-2 pb-2 border-bottom";
+          var head = document.createElement("div");
+          head.className = "fw-semibold";
+          var whenRaw = run.finished_at || run.started_at;
+          var when = whenRaw ? formatDateTimeMsk(whenRaw) : "—";
+          head.textContent = "Запуск #" + String(run.id || "?") + " · " + String(run.status || "") + " · " + when;
+          block.appendChild(head);
+          var meta = document.createElement("div");
+          meta.className = "text-muted";
+          meta.textContent =
+            "Найдено " +
+            String(run.discovered != null ? run.discovered : 0) +
+            ", новых " +
+            String(run.added != null ? run.added : 0) +
+            (run.message ? " · " + String(run.message).slice(0, 200) : "");
+          block.appendChild(meta);
+          if (run.source) {
+            var src = document.createElement("div");
+            src.className = "text-muted";
+            src.textContent = "Источник: " + run.source;
+            block.appendChild(src);
+          }
+          if (Array.isArray(run.errors) && run.errors.length) {
+            var lab = document.createElement("div");
+            lab.className = "mt-1 fw-semibold text-danger";
+            lab.textContent = "Ошибки:";
+            block.appendChild(lab);
+            var pre = document.createElement("pre");
+            pre.className = "mb-0 mt-1 p-2 bg-light rounded small text-danger";
+            pre.style.whiteSpace = "pre-wrap";
+            pre.style.maxHeight = "160px";
+            pre.style.overflow = "auto";
+            pre.textContent = run.errors.join("\n");
+            block.appendChild(pre);
+          }
+          box.appendChild(block);
+        });
+      }
+
       function activeProjectId() {
         var f = readApiFilters();
         return f.project_id !== "all" ? f.project_id : document.getElementById("dg-q-upload-project").value;
@@ -1322,7 +1464,9 @@
           setDiscoveryHint("Автообход: выберите конкретный проект");
           return;
         }
-        fetch("/api/pages/discover-status?project_id=" + encodeURIComponent(projectId), { credentials: "same-origin" })
+        fetch("/api/pages/discover-status?project_id=" + encodeURIComponent(projectId) + "&history=8", {
+          credentials: "same-origin",
+        })
           .then(function (r) {
             return r.json().then(function (j) {
               return { r: r, j: j };
@@ -1341,10 +1485,16 @@
               (json.added_sitemap || 0) +
               ", добавлено со стр. " +
               (json.added_from_page || 0);
-            setDiscoveryHint(json.message ? base + " | " + json.message : base);
+            var errTail = "";
+            if (Array.isArray(json.errors) && json.errors.length) {
+              errTail = " | Ошибки: " + json.errors.slice(0, 3).join(" · ");
+            }
+            setDiscoveryHint((json.message ? base + " | " + json.message : base) + errTail);
+            renderDiscoveryHistory(json.recent_runs || []);
           })
           .catch(function (e) {
             setDiscoveryHint("Автообход: ошибка статуса - " + (e.message || e));
+            renderDiscoveryHistory([]);
           });
       }
 
@@ -1395,7 +1545,7 @@
         var tbody = document.getElementById("dg-q-tbody");
         var hint = document.getElementById("dg-q-table-hint");
         tbody.replaceChildren();
-        if (hint) hint.textContent = "Всего: " + Number(total || 0).toLocaleString("ru-RU");
+        if (hint) hint.textContent = "Записей под фильтром: " + Number(total || 0).toLocaleString("ru-RU");
         var searchNeedle = readApiFilters().search;
         var filtered = filterRows(rows);
         if (loading) {
@@ -1474,15 +1624,11 @@
           tr.appendChild(tdText(r.page_type || "-"));
           tr.appendChild(tdUrl);
           tr.appendChild(tdText(r.added_from || "-"));
-          tr.appendChild(
-            tdText(r.added_at ? new Date(r.added_at).toLocaleString("ru-RU") : "-")
-          );
+          tr.appendChild(tdText(r.added_at ? formatDateTimeMsk(r.added_at) : "-"));
           var tdSt = document.createElement("td");
           tdSt.appendChild(badge);
           tr.appendChild(tdSt);
-          tr.appendChild(
-            tdText(r.parsed_at ? new Date(r.parsed_at).toLocaleString("ru-RU") : "-")
-          );
+          tr.appendChild(tdText(r.parsed_at ? formatDateTimeMsk(r.parsed_at) : "-"));
           var tdM = document.createElement("td");
           if (matched) {
             var b = document.createElement("span");
@@ -1523,10 +1669,12 @@
         if (!msg) {
           el.style.display = "none";
           el.textContent = "";
+          el.className = "text-danger small mb-3";
           return;
         }
         el.style.display = "";
         el.textContent = msg;
+        el.className = "text-danger small mb-3";
       }
 
       function loadPages(opts) {
@@ -1592,8 +1740,189 @@
               limit = dl;
               document.getElementById("dg-q-limit").value = String(dl);
             }
+            fetchProxyState.enabled = Number(st.fetch_proxy_enabled) === 1;
+            fetchProxyState.list = String(st.fetch_proxy_list || "");
+            syncFetchProxyUi();
           })
           .catch(function () {});
+      }
+
+      /** Эффективные прокси-опции с учётом режима проекта (дублирует логику сервера). */
+      function effectiveProxyForQueue(project, settingsObj) {
+        var st = settingsObj || {
+          fetch_proxy_enabled: fetchProxyState.enabled ? 1 : 0,
+          fetch_proxy_list: fetchProxyState.list,
+        };
+        if (!project) {
+          return {
+            enabled: Number(st.fetch_proxy_enabled) === 1,
+            list: String(st.fetch_proxy_list || ""),
+            mode: "global",
+          };
+        }
+        var mode = String(project.fetch_proxy_mode || "inherit").toLowerCase();
+        if (mode === "custom") mode = "inherit";
+        if (mode === "direct") {
+          return { enabled: false, list: "", mode: "direct" };
+        }
+        return {
+          enabled: Number(st.fetch_proxy_enabled) === 1,
+          list: String(st.fetch_proxy_list || ""),
+          mode: "inherit",
+        };
+      }
+
+      function proxyLineStats(listStr) {
+        var lines = String(listStr || "")
+          .split(/[\r\n,;]+/)
+          .map(function (l) {
+            return l.trim();
+          })
+          .filter(Boolean);
+        var maxUse = 40;
+        var used = Math.min(maxUse, lines.length);
+        var extra = lines.length > maxUse ? " (берутся первые " + maxUse + " из " + lines.length + ")" : "";
+        return { lines: lines, used: used, extra: extra };
+      }
+
+      function syncFetchProxyUi() {
+        var sel = document.getElementById("dg-q-f-project");
+        var pid = sel ? String(sel.value || "all") : "all";
+        var en = document.getElementById("dg-q-fetch-proxy-enabled");
+        var globalWrap = document.getElementById("dg-q-fetch-proxy-global-wrap");
+        var projNote = document.getElementById("dg-q-proxy-project-note");
+        var pill = document.getElementById("dg-q-proxy-pill");
+        var settingsObj = {
+          fetch_proxy_enabled: fetchProxyState.enabled ? 1 : 0,
+          fetch_proxy_list: fetchProxyState.list,
+        };
+        if (pid === "all") {
+          if (globalWrap) globalWrap.style.display = "";
+          if (projNote) projNote.style.display = "none";
+          if (en) en.checked = !!fetchProxyState.enabled;
+        } else {
+          if (globalWrap) globalWrap.style.display = "none";
+          if (projNote) projNote.style.display = "";
+        }
+        if (pill) {
+          if (pid === "all") {
+            var sg = proxyLineStats(fetchProxyState.list);
+            pill.textContent = fetchProxyState.enabled
+              ? "Глобально: вкл · используется " + sg.used + " шт." + sg.extra
+              : "Глобально: выкл";
+          } else {
+            var p = (projects || []).find(function (x) {
+              return String(x.id) === String(pid);
+            });
+            var eff = effectiveProxyForQueue(p, settingsObj);
+            var eg = proxyLineStats(eff.list);
+            var modeRu = eff.mode === "direct" ? "напрямую" : "общий список";
+            var name = p ? p.name || "#" + p.id : pid;
+            pill.textContent =
+              name +
+              ": " +
+              modeRu +
+              " · " +
+              (eff.enabled ? "вкл · " + eg.used + " шт." + eg.extra : "выкл");
+          }
+        }
+      }
+
+      function syncQueueProxyModalFields() {
+        var ta = document.getElementById("dg-q-proxy-list");
+        var m = document.getElementById("dg-q-proxy-modal-enabled");
+        var sel = document.getElementById("dg-q-f-project");
+        var isGlobal = !sel || String(sel.value || "all") === "all";
+        if (isGlobal) {
+          if (ta) ta.disabled = false;
+          if (m) m.disabled = false;
+        }
+      }
+
+      function openFetchProxyModal() {
+        var ov = document.getElementById("dg-q-proxy-overlay");
+        var ta = document.getElementById("dg-q-proxy-list");
+        var m = document.getElementById("dg-q-proxy-modal-enabled");
+        var scope = document.getElementById("dg-q-proxy-modal-scope");
+        var modeRow = document.getElementById("dg-q-proxy-mode-row");
+        var modeEl = document.getElementById("dg-q-proxy-mode");
+        var globalBlock = document.getElementById("dg-q-proxy-global-block");
+        var projHint = document.getElementById("dg-q-proxy-project-hint");
+        var sel = document.getElementById("dg-q-f-project");
+        var pid = sel ? String(sel.value || "all") : "all";
+        if (pid === "all") {
+          if (modeRow) modeRow.style.display = "none";
+          if (projHint) projHint.style.display = "none";
+          if (globalBlock) globalBlock.style.display = "";
+          if (scope)
+            scope.textContent =
+              "Единый список прокси для сервера (тот же, что в «Настройках»). Проекты с режимом «через общий список» используют этот список и глобальный переключатель «вкл».";
+          if (ta) {
+            ta.value = fetchProxyState.list;
+            ta.disabled = false;
+          }
+          if (m) {
+            m.checked = !!fetchProxyState.enabled;
+            m.disabled = false;
+          }
+        } else {
+          if (modeRow) modeRow.style.display = "";
+          if (globalBlock) globalBlock.style.display = "none";
+          if (projHint) projHint.style.display = "";
+          var p = (projects || []).find(function (x) {
+            return String(x.id) === String(pid);
+          });
+          if (scope)
+            scope.textContent =
+              "Проект «" +
+              (p && p.name ? p.name : "#" + pid) +
+              "»: только выбор общего списка или обход прокси. Список адресов меняйте при фильтре «Все проекты».";
+          if (modeEl) {
+            var pm = String((p && p.fetch_proxy_mode) || "inherit").toLowerCase();
+            if (pm === "custom") pm = "inherit";
+            modeEl.value = pm === "direct" ? "direct" : "inherit";
+          }
+        }
+        syncQueueProxyModalFields();
+        if (ov) {
+          ov.style.display = "flex";
+        }
+      }
+
+      function closeFetchProxyModal() {
+        var ov = document.getElementById("dg-q-proxy-overlay");
+        if (ov) ov.style.display = "none";
+      }
+
+      function saveFetchProxyToServer(payload, okMsg) {
+        return fetch("/api/settings/fetch-proxy", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok || !x.j.success) throw new Error((x.j && x.j.error) || "Не удалось сохранить прокси");
+            fetchProxyState.enabled = !!payload.fetch_proxy_enabled;
+            fetchProxyState.list = String(payload.fetch_proxy_list || "");
+            syncFetchProxyUi();
+            if (okMsg) {
+              var errEl = document.getElementById("dg-q-err");
+              if (errEl) {
+                errEl.textContent = okMsg;
+                errEl.className = "text-success small mb-3";
+                errEl.style.display = "";
+                setTimeout(function () {
+                  errEl.style.display = "none";
+                }, 3500);
+              }
+            }
+          });
       }
 
       function parseSmartSearch() {
@@ -1651,7 +1980,15 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body || {}),
         }).then(function (r) {
-          return r.json().then(function (j) {
+          return r.text().then(function (t) {
+            var j = {};
+            if (t) {
+              try {
+                j = JSON.parse(t);
+              } catch (e) {
+                j = { error: (t && t.slice(0, 400)) || "HTTP " + r.status };
+              }
+            }
             return { r: r, j: j };
           });
         });
@@ -1723,21 +2060,54 @@
 
       function resetOrClear(mode, kind) {
         var isReset = kind === "reset";
-        if (!window.confirm(isReset ? "Вернуть страницы в очередь?" : "Удалить страницы?")) return;
+        if (!window.confirm(isReset ? "Вернуть страницы в очередь?" : "Удалить страницы?")) {
+          var elC = document.getElementById("dg-q-err");
+          if (elC) {
+            elC.className = "text-secondary small mb-3";
+            elC.style.display = "";
+            elC.textContent = "Действие не выполнено: в окне подтверждения выбрана «Отмена».";
+            setTimeout(function () {
+              showLoadErr("");
+            }, 4200);
+          }
+          return;
+        }
+        showLoadErr("");
         var f = readApiFilters();
+        var tf = readTableFilters();
         var payload = {
+          mode: mode,
           project_id: f.project_id === "all" ? null : f.project_id,
           status: mode === "filtered" ? f.status || null : null,
           type: mode === "filtered" ? (f.type === "all" ? null : f.type) : null,
         };
+        if (mode === "filtered") {
+          payload.tf_status = tf.status;
+          payload.tf_page_type = tf.page_type;
+          payload.tf_id = tf.id;
+          payload.tf_url = tf.url;
+          payload.tf_added_from = tf.added_from;
+          payload.tf_matched = tf.matched;
+          if (f.search) payload.search = f.search;
+          if (f.matched && f.matched !== "all") payload.matched = f.matched;
+        }
         var url = isReset ? "/api/pages/reset" : "/api/pages/clear";
         postQueueAction(url, payload).then(function (x) {
-          if (!x.r.ok) throw new Error(x.j.error || x.j.message || "Ошибка действия");
-          if (isReset) alert("В pending: " + (x.j.reset != null ? x.j.reset : 0));
-          else alert("Удалено: " + (x.j.deleted != null ? x.j.deleted : 0));
+          if (!x.r.ok) throw new Error((x.j && (x.j.error || x.j.message)) || "Ошибка действия");
+          if (isReset) {
+            var n = x.j.reset != null ? x.j.reset : 0;
+            alert(
+              n > 0
+                ? "Обновлено в «Ожидают»: " + n + " строк. Счётчик под таблицей см. пояснение — без фильтра по статусу он почти не меняется."
+                : "Не обновлено ни одной строки (0). Нажмите «Применить», проверьте фильтры и что в «Умном поиске» не висит лишний текст как в подсказке поля."
+            );
+          } else {
+            var d = x.j.deleted != null ? x.j.deleted : 0;
+            alert(d > 0 ? "Удалено: " + d : "Удалено: 0 (см. подсказку для сброса — те же фильтры).");
+          }
           loadPages();
         }).catch(function (e) {
-          alert(e.message || String(e));
+          showLoadErr(e.message || String(e));
         });
       }
 
@@ -1830,11 +2200,16 @@
         }
       });
 
-      ["dg-q-f-project", "dg-q-f-type", "dg-q-f-status", "dg-q-f-matched"].forEach(function (id) {
+      ["dg-q-f-type", "dg-q-f-status", "dg-q-f-matched"].forEach(function (id) {
         document.getElementById(id).addEventListener("change", function () {
           page = 1;
           scheduleSyncUrl();
         });
+      });
+      document.getElementById("dg-q-f-project").addEventListener("change", function () {
+        page = 1;
+        scheduleSyncUrl();
+        syncFetchProxyUi();
       });
 
       document.getElementById("dg-q-f-search").addEventListener("input", function () {
@@ -1930,6 +2305,7 @@
             title: "Действия и подсказка",
             subtitle: "",
             items: [
+              { key: "fetch_proxy", title: "Прокси для загрузки страниц", hint: "" },
               { key: "filter_actions", title: "Кнопки под фильтром", hint: "" },
               { key: "discovery_hint", title: "Текст про автообход", hint: "" },
             ],
@@ -2033,6 +2409,133 @@
             try { localStorage.setItem(userVisibleColsKey(), JSON.stringify(visibleCols)); } catch (e) {}
             renderColumnsPanel();
             applyVisibleColumns();
+          });
+        }
+      })();
+
+      (function bindFetchProxyControls() {
+        var openBtn = document.getElementById("dg-q-proxy-open");
+        var en = document.getElementById("dg-q-fetch-proxy-enabled");
+        var ov = document.getElementById("dg-q-proxy-overlay");
+        var ca = document.getElementById("dg-q-proxy-cancel");
+        var sv = document.getElementById("dg-q-proxy-save");
+        var pan = ov ? ov.querySelector("div.bg-white") : null;
+        if (openBtn) {
+          openBtn.addEventListener("click", function () {
+            openFetchProxyModal();
+          });
+        }
+        if (en) {
+          en.addEventListener("change", function () {
+            var sel = document.getElementById("dg-q-f-project");
+            if (sel && String(sel.value || "all") !== "all") {
+              en.checked = fetchProxyState.enabled;
+              alert("Глобальный переключатель действует только при фильтре «Все проекты».");
+              return;
+            }
+            var want = en.checked;
+            saveFetchProxyToServer(
+              { fetch_proxy_enabled: want, fetch_proxy_list: fetchProxyState.list },
+              "Прокси: сохранено"
+            ).catch(function (e) {
+              en.checked = fetchProxyState.enabled;
+              alert(e.message || "Ошибка");
+            });
+          });
+        }
+        if (ov) {
+          ov.addEventListener("click", function (ev) {
+            if (ev.target === ov) closeFetchProxyModal();
+          });
+        }
+        if (ca) ca.addEventListener("click", closeFetchProxyModal);
+        if (sv) {
+          sv.addEventListener("click", function () {
+            var ta = document.getElementById("dg-q-proxy-list");
+            var m = document.getElementById("dg-q-proxy-modal-enabled");
+            var modeEl = document.getElementById("dg-q-proxy-mode");
+            var sel = document.getElementById("dg-q-f-project");
+            var pid = sel ? String(sel.value || "all") : "all";
+            if (pid === "all") {
+              saveFetchProxyToServer(
+                {
+                  fetch_proxy_enabled: !!(m && m.checked),
+                  fetch_proxy_list: ta ? ta.value : "",
+                },
+                "Прокси сохранён"
+              )
+                .then(function () {
+                  closeFetchProxyModal();
+                })
+                .catch(function (e) {
+                  alert(e.message || "Ошибка");
+                });
+              return;
+            }
+            var p = (projects || []).find(function (x) {
+              return String(x.id) === String(pid);
+            });
+            if (!p) {
+              alert("Проект не найден");
+              return;
+            }
+            var mode = modeEl ? modeEl.value : "inherit";
+            var body = {
+              name: p.name || "",
+              domain: p.domain || "",
+              selector_price: p.selector_price || "",
+              selector_name: p.selector_name || "",
+              selector_sku: p.selector_sku || "",
+              selector_oos: p.selector_oos || "",
+              fetch_proxy_mode: mode,
+            };
+            fetch("/api/projects/" + encodeURIComponent(pid), {
+              method: "PUT",
+              credentials: "same-origin",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(body),
+            })
+              .then(function (r) {
+                return r.json().then(function (j) {
+                  return { r: r, j: j };
+                });
+              })
+              .then(function (x) {
+                if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Не удалось сохранить");
+                return fetch("/api/projects", { credentials: "same-origin" }).then(function (r2) {
+                  return r2.json();
+                });
+              })
+              .then(function (rows) {
+                if (Array.isArray(rows)) {
+                  projects = rows;
+                  fillProjectSelects(projects);
+                  if (sel) sel.value = pid;
+                }
+                syncFetchProxyUi();
+                closeFetchProxyModal();
+                var errEl = document.getElementById("dg-q-err");
+                if (errEl) {
+                  errEl.textContent = "Прокси проекта сохранён";
+                  errEl.className = "text-success small mb-3";
+                  errEl.style.display = "";
+                  setTimeout(function () {
+                    errEl.style.display = "none";
+                  }, 3500);
+                }
+              })
+              .catch(function (e) {
+                alert(e.message || "Ошибка");
+              });
+          });
+        }
+        var modeSel = document.getElementById("dg-q-proxy-mode");
+        if (modeSel) {
+          modeSel.addEventListener("change", syncQueueProxyModalFields);
+        }
+        if (pan) {
+          pan.addEventListener("click", function (ev) {
+            ev.stopPropagation();
           });
         }
       })();

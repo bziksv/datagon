@@ -45,6 +45,15 @@
                   <label class="form-label" for="dg-proj-new-selector_oos">Селектор ПОД ЗАКАЗ</label>
                   <input type="text" class="form-control" id="dg-proj-new-selector_oos" placeholder=".out-of-stock" autocomplete="off" />
                 </div>
+                <div class="col-12"><hr class="my-2" /></div>
+                <div class="col-md-6">
+                  <label class="form-label" for="dg-proj-new-fetch_proxy_mode">Прокси (загрузка страниц конкурента)</label>
+                  <select class="form-select" id="dg-proj-new-fetch_proxy_mode">
+                    <option value="inherit" selected>Общий список (Настройки / Очередь → Прокси…)</option>
+                    <option value="direct">Напрямую с сервера</option>
+                  </select>
+                  <p class="small text-muted mb-0 mt-1">Один список адресов на весь сервер; отдельный список на проект не задаётся.</p>
+                </div>
               </div>
               <div class="mt-3">
                 <button type="button" class="btn btn-success" id="dg-proj-btn-create">➕ Создать проект</button>
@@ -176,8 +185,9 @@
                       <th role="button" style="cursor:pointer" data-proj-sort="name">Имя</th>
                       <th role="button" style="cursor:pointer" data-proj-sort="domain">Домен</th>
                       <th role="button" style="cursor:pointer" data-proj-sort="pages_count">Страниц</th>
-                      <th>Очередь</th>
-                      <th>Действия</th>
+                      <th data-proj-col="fetch_proxy">Прокси</th>
+                      <th data-proj-col="queue">Очередь</th>
+                      <th data-proj-col="actions">Действия</th>
                     </tr>
                   </thead>
                   <tbody id="dg-proj-tbody"></tbody>
@@ -216,6 +226,15 @@
                 <div class="col-md-4">
                   <label class="form-label" for="dg-proj-edit-selector_oos">Селектор ПОД ЗАКАЗ</label>
                   <input type="text" class="form-control" id="dg-proj-edit-selector_oos" autocomplete="off" />
+                </div>
+                <div class="col-12"><hr class="my-2" /></div>
+                <div class="col-md-6">
+                  <label class="form-label" for="dg-proj-edit-fetch_proxy_mode">Прокси (загрузка страниц конкурента)</label>
+                  <select class="form-select" id="dg-proj-edit-fetch_proxy_mode">
+                    <option value="inherit">Общий список (Настройки / Очередь → Прокси…)</option>
+                    <option value="direct">Напрямую с сервера</option>
+                  </select>
+                  <p class="small text-muted mb-0 mt-1" id="dg-proj-edit-fetch_proxy_hint"></p>
                 </div>
               </div>
               <div class="mt-3 d-flex gap-2">

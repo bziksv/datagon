@@ -6,6 +6,30 @@ const router = express.Router();
 module.exports = (db, appSettings) => {
     router.get('/', async (req, res) => res.json(appSettings));
 
+    router.post('/fetch-proxy', async (req, res) => {
+        const { fetch_proxy_enabled, fetch_proxy_list } = req.body || {};
+        try {
+            const en = fetch_proxy_enabled ? 1 : 0;
+            const list = String(fetch_proxy_list != null ? fetch_proxy_list : appSettings.fetch_proxy_list || '').slice(
+                0,
+                120000
+            );
+            await db.query(
+                'INSERT INTO app_settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value=?',
+                ['fetch_proxy_enabled', String(en), String(en)]
+            );
+            await db.query(
+                'INSERT INTO app_settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value=?',
+                ['fetch_proxy_list', list, list]
+            );
+            appSettings.fetch_proxy_enabled = en;
+            appSettings.fetch_proxy_list = list;
+            return res.json({ success: true });
+        } catch (e) {
+            return res.status(500).json({ error: e.message });
+        }
+    });
+
     router.post('/sync-myproducts', async (req, res) => {
         const { sync_batch_size, sync_delay_ms, sync_mode } = req.body || {};
         try {
@@ -63,7 +87,8 @@ module.exports = (db, appSettings) => {
             auto_sync_myproducts_enabled, auto_sync_myproducts_time,
             auto_sync_moysklad_enabled, auto_sync_moysklad_time,
             discover_max_sitemaps, discover_max_urls, discover_crawl_max_pages, discover_request_delay_ms,
-            auth_session_ttl_days, auth_session_user_limit, auth_online_presence_minutes
+            auth_session_ttl_days, auth_session_user_limit, auth_online_presence_minutes,
+            fetch_proxy_enabled, fetch_proxy_list
         } = req.body;
         try {
             const queries = [];
@@ -92,7 +117,13 @@ module.exports = (db, appSettings) => {
                     Math.max(1, Math.min(24 * 60, Number(auth_online_presence_minutes || 15)))
                 ]);
             }
-            
+            if (fetch_proxy_enabled !== undefined) {
+                queries.push(['fetch_proxy_enabled', fetch_proxy_enabled ? 1 : 0]);
+            }
+            if (fetch_proxy_list !== undefined) {
+                queries.push(['fetch_proxy_list', String(fetch_proxy_list || '').slice(0, 120000)]);
+            }
+
             for (const [key, val] of queries) {
                 await db.query('INSERT INTO app_settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value=?', [key, val, val]);
             }
@@ -124,6 +155,8 @@ module.exports = (db, appSettings) => {
             if(auth_online_presence_minutes !== undefined) {
                 appSettings.auth_online_presence_minutes = Math.max(1, Math.min(24 * 60, Number(auth_online_presence_minutes || 15)));
             }
+            if (fetch_proxy_enabled !== undefined) appSettings.fetch_proxy_enabled = fetch_proxy_enabled ? 1 : 0;
+            if (fetch_proxy_list !== undefined) appSettings.fetch_proxy_list = String(fetch_proxy_list || '').slice(0, 120000);
 
             res.json({ success: true });
         } catch (e) { res.status(500).json({ error: e.message }); }

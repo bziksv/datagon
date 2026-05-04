@@ -1,6 +1,18 @@
   <script>
     (function () {
       var FILTERS_KEY = "datagon_queue_filters_collapsed_v1";
+      var QUEUE_SMART_SEARCH_PLACEHOLDER =
+        'code:123 sku:ABC-12 name:"насос 25" project:3 type:product status:pending';
+      function normalizeSpaces(s) {
+        return String(s || "").replace(/\s+/g, " ").trim();
+      }
+      /** Текст из placeholder не считаем фильтром по URL (иначе сброс/список дают 0 строк). */
+      function effectiveSearchForServer(raw) {
+        var t = String(raw || "").trim();
+        if (!t) return "";
+        if (normalizeSpaces(t) === normalizeSpaces(QUEUE_SMART_SEARCH_PLACEHOLDER)) return "";
+        return t;
+      }
       var SORT_STORAGE_VERSION = "v1";
       var statusRu = {
         sitemap: "Sitemap",
@@ -34,6 +46,17 @@
       var visibleCols = DEFAULT_VISIBLE_COLS.slice();
       var columnWidths = {};
       var resizeState = null;
+
+      var fetchProxyState = { enabled: false, list: "" };
+
+      /** Даты в интерфейсе — московское время (независимо от часового пояса браузера). */
+      var MSK_TZ = { timeZone: "Europe/Moscow" };
+      function formatDateTimeMsk(value) {
+        if (value == null || value === "") return "-";
+        var d = value instanceof Date ? value : new Date(value);
+        if (isNaN(d.getTime())) return "-";
+        return d.toLocaleString("ru-RU", MSK_TZ);
+      }
 
       var FLOATING_HEADER_OFFSET_PX = 2;
       var FLOATING_HEADER_START_EPS_PX = 3;
@@ -337,7 +360,7 @@
           type: document.getElementById("dg-q-f-type").value,
           status: document.getElementById("dg-q-f-status").value,
           matched: document.getElementById("dg-q-f-matched").value,
-          search: document.getElementById("dg-q-f-search").value.trim(),
+          search: effectiveSearchForServer(document.getElementById("dg-q-f-search").value),
         };
       }
 
@@ -533,6 +556,57 @@
         if (el) el.textContent = text;
       }
 
+      function renderDiscoveryHistory(runs) {
+        var box = document.getElementById("dg-q-discovery-history");
+        var det = document.getElementById("dg-q-discovery-details");
+        if (!box || !det) return;
+        box.replaceChildren();
+        if (!Array.isArray(runs) || !runs.length) {
+          det.style.display = "none";
+          return;
+        }
+        det.style.display = "";
+        runs.forEach(function (run) {
+          var block = document.createElement("div");
+          block.className = "small mb-2 pb-2 border-bottom";
+          var head = document.createElement("div");
+          head.className = "fw-semibold";
+          var whenRaw = run.finished_at || run.started_at;
+          var when = whenRaw ? formatDateTimeMsk(whenRaw) : "—";
+          head.textContent = "Запуск #" + String(run.id || "?") + " · " + String(run.status || "") + " · " + when;
+          block.appendChild(head);
+          var meta = document.createElement("div");
+          meta.className = "text-muted";
+          meta.textContent =
+            "Найдено " +
+            String(run.discovered != null ? run.discovered : 0) +
+            ", новых " +
+            String(run.added != null ? run.added : 0) +
+            (run.message ? " · " + String(run.message).slice(0, 200) : "");
+          block.appendChild(meta);
+          if (run.source) {
+            var src = document.createElement("div");
+            src.className = "text-muted";
+            src.textContent = "Источник: " + run.source;
+            block.appendChild(src);
+          }
+          if (Array.isArray(run.errors) && run.errors.length) {
+            var lab = document.createElement("div");
+            lab.className = "mt-1 fw-semibold text-danger";
+            lab.textContent = "Ошибки:";
+            block.appendChild(lab);
+            var pre = document.createElement("pre");
+            pre.className = "mb-0 mt-1 p-2 bg-light rounded small text-danger";
+            pre.style.whiteSpace = "pre-wrap";
+            pre.style.maxHeight = "160px";
+            pre.style.overflow = "auto";
+            pre.textContent = run.errors.join("\n");
+            block.appendChild(pre);
+          }
+          box.appendChild(block);
+        });
+      }
+
       function activeProjectId() {
         var f = readApiFilters();
         return f.project_id !== "all" ? f.project_id : document.getElementById("dg-q-upload-project").value;
@@ -543,7 +617,9 @@
           setDiscoveryHint("Автообход: выберите конкретный проект");
           return;
         }
-        fetch("/api/pages/discover-status?project_id=" + encodeURIComponent(projectId), { credentials: "same-origin" })
+        fetch("/api/pages/discover-status?project_id=" + encodeURIComponent(projectId) + "&history=8", {
+          credentials: "same-origin",
+        })
           .then(function (r) {
             return r.json().then(function (j) {
               return { r: r, j: j };
@@ -562,10 +638,16 @@
               (json.added_sitemap || 0) +
               ", добавлено со стр. " +
               (json.added_from_page || 0);
-            setDiscoveryHint(json.message ? base + " | " + json.message : base);
+            var errTail = "";
+            if (Array.isArray(json.errors) && json.errors.length) {
+              errTail = " | Ошибки: " + json.errors.slice(0, 3).join(" · ");
+            }
+            setDiscoveryHint((json.message ? base + " | " + json.message : base) + errTail);
+            renderDiscoveryHistory(json.recent_runs || []);
           })
           .catch(function (e) {
             setDiscoveryHint("Автообход: ошибка статуса - " + (e.message || e));
+            renderDiscoveryHistory([]);
           });
       }
 
@@ -616,7 +698,7 @@
         var tbody = document.getElementById("dg-q-tbody");
         var hint = document.getElementById("dg-q-table-hint");
         tbody.replaceChildren();
-        if (hint) hint.textContent = "Всего: " + Number(total || 0).toLocaleString("ru-RU");
+        if (hint) hint.textContent = "Записей под фильтром: " + Number(total || 0).toLocaleString("ru-RU");
         var searchNeedle = readApiFilters().search;
         var filtered = filterRows(rows);
         if (loading) {
@@ -695,15 +777,11 @@
           tr.appendChild(tdText(r.page_type || "-"));
           tr.appendChild(tdUrl);
           tr.appendChild(tdText(r.added_from || "-"));
-          tr.appendChild(
-            tdText(r.added_at ? new Date(r.added_at).toLocaleString("ru-RU") : "-")
-          );
+          tr.appendChild(tdText(r.added_at ? formatDateTimeMsk(r.added_at) : "-"));
           var tdSt = document.createElement("td");
           tdSt.appendChild(badge);
           tr.appendChild(tdSt);
-          tr.appendChild(
-            tdText(r.parsed_at ? new Date(r.parsed_at).toLocaleString("ru-RU") : "-")
-          );
+          tr.appendChild(tdText(r.parsed_at ? formatDateTimeMsk(r.parsed_at) : "-"));
           var tdM = document.createElement("td");
           if (matched) {
             var b = document.createElement("span");
@@ -744,10 +822,12 @@
         if (!msg) {
           el.style.display = "none";
           el.textContent = "";
+          el.className = "text-danger small mb-3";
           return;
         }
         el.style.display = "";
         el.textContent = msg;
+        el.className = "text-danger small mb-3";
       }
 
       function loadPages(opts) {
@@ -813,8 +893,189 @@
               limit = dl;
               document.getElementById("dg-q-limit").value = String(dl);
             }
+            fetchProxyState.enabled = Number(st.fetch_proxy_enabled) === 1;
+            fetchProxyState.list = String(st.fetch_proxy_list || "");
+            syncFetchProxyUi();
           })
           .catch(function () {});
+      }
+
+      /** Эффективные прокси-опции с учётом режима проекта (дублирует логику сервера). */
+      function effectiveProxyForQueue(project, settingsObj) {
+        var st = settingsObj || {
+          fetch_proxy_enabled: fetchProxyState.enabled ? 1 : 0,
+          fetch_proxy_list: fetchProxyState.list,
+        };
+        if (!project) {
+          return {
+            enabled: Number(st.fetch_proxy_enabled) === 1,
+            list: String(st.fetch_proxy_list || ""),
+            mode: "global",
+          };
+        }
+        var mode = String(project.fetch_proxy_mode || "inherit").toLowerCase();
+        if (mode === "custom") mode = "inherit";
+        if (mode === "direct") {
+          return { enabled: false, list: "", mode: "direct" };
+        }
+        return {
+          enabled: Number(st.fetch_proxy_enabled) === 1,
+          list: String(st.fetch_proxy_list || ""),
+          mode: "inherit",
+        };
+      }
+
+      function proxyLineStats(listStr) {
+        var lines = String(listStr || "")
+          .split(/[\r\n,;]+/)
+          .map(function (l) {
+            return l.trim();
+          })
+          .filter(Boolean);
+        var maxUse = 40;
+        var used = Math.min(maxUse, lines.length);
+        var extra = lines.length > maxUse ? " (берутся первые " + maxUse + " из " + lines.length + ")" : "";
+        return { lines: lines, used: used, extra: extra };
+      }
+
+      function syncFetchProxyUi() {
+        var sel = document.getElementById("dg-q-f-project");
+        var pid = sel ? String(sel.value || "all") : "all";
+        var en = document.getElementById("dg-q-fetch-proxy-enabled");
+        var globalWrap = document.getElementById("dg-q-fetch-proxy-global-wrap");
+        var projNote = document.getElementById("dg-q-proxy-project-note");
+        var pill = document.getElementById("dg-q-proxy-pill");
+        var settingsObj = {
+          fetch_proxy_enabled: fetchProxyState.enabled ? 1 : 0,
+          fetch_proxy_list: fetchProxyState.list,
+        };
+        if (pid === "all") {
+          if (globalWrap) globalWrap.style.display = "";
+          if (projNote) projNote.style.display = "none";
+          if (en) en.checked = !!fetchProxyState.enabled;
+        } else {
+          if (globalWrap) globalWrap.style.display = "none";
+          if (projNote) projNote.style.display = "";
+        }
+        if (pill) {
+          if (pid === "all") {
+            var sg = proxyLineStats(fetchProxyState.list);
+            pill.textContent = fetchProxyState.enabled
+              ? "Глобально: вкл · используется " + sg.used + " шт." + sg.extra
+              : "Глобально: выкл";
+          } else {
+            var p = (projects || []).find(function (x) {
+              return String(x.id) === String(pid);
+            });
+            var eff = effectiveProxyForQueue(p, settingsObj);
+            var eg = proxyLineStats(eff.list);
+            var modeRu = eff.mode === "direct" ? "напрямую" : "общий список";
+            var name = p ? p.name || "#" + p.id : pid;
+            pill.textContent =
+              name +
+              ": " +
+              modeRu +
+              " · " +
+              (eff.enabled ? "вкл · " + eg.used + " шт." + eg.extra : "выкл");
+          }
+        }
+      }
+
+      function syncQueueProxyModalFields() {
+        var ta = document.getElementById("dg-q-proxy-list");
+        var m = document.getElementById("dg-q-proxy-modal-enabled");
+        var sel = document.getElementById("dg-q-f-project");
+        var isGlobal = !sel || String(sel.value || "all") === "all";
+        if (isGlobal) {
+          if (ta) ta.disabled = false;
+          if (m) m.disabled = false;
+        }
+      }
+
+      function openFetchProxyModal() {
+        var ov = document.getElementById("dg-q-proxy-overlay");
+        var ta = document.getElementById("dg-q-proxy-list");
+        var m = document.getElementById("dg-q-proxy-modal-enabled");
+        var scope = document.getElementById("dg-q-proxy-modal-scope");
+        var modeRow = document.getElementById("dg-q-proxy-mode-row");
+        var modeEl = document.getElementById("dg-q-proxy-mode");
+        var globalBlock = document.getElementById("dg-q-proxy-global-block");
+        var projHint = document.getElementById("dg-q-proxy-project-hint");
+        var sel = document.getElementById("dg-q-f-project");
+        var pid = sel ? String(sel.value || "all") : "all";
+        if (pid === "all") {
+          if (modeRow) modeRow.style.display = "none";
+          if (projHint) projHint.style.display = "none";
+          if (globalBlock) globalBlock.style.display = "";
+          if (scope)
+            scope.textContent =
+              "Единый список прокси для сервера (тот же, что в «Настройках»). Проекты с режимом «через общий список» используют этот список и глобальный переключатель «вкл».";
+          if (ta) {
+            ta.value = fetchProxyState.list;
+            ta.disabled = false;
+          }
+          if (m) {
+            m.checked = !!fetchProxyState.enabled;
+            m.disabled = false;
+          }
+        } else {
+          if (modeRow) modeRow.style.display = "";
+          if (globalBlock) globalBlock.style.display = "none";
+          if (projHint) projHint.style.display = "";
+          var p = (projects || []).find(function (x) {
+            return String(x.id) === String(pid);
+          });
+          if (scope)
+            scope.textContent =
+              "Проект «" +
+              (p && p.name ? p.name : "#" + pid) +
+              "»: только выбор общего списка или обход прокси. Список адресов меняйте при фильтре «Все проекты».";
+          if (modeEl) {
+            var pm = String((p && p.fetch_proxy_mode) || "inherit").toLowerCase();
+            if (pm === "custom") pm = "inherit";
+            modeEl.value = pm === "direct" ? "direct" : "inherit";
+          }
+        }
+        syncQueueProxyModalFields();
+        if (ov) {
+          ov.style.display = "flex";
+        }
+      }
+
+      function closeFetchProxyModal() {
+        var ov = document.getElementById("dg-q-proxy-overlay");
+        if (ov) ov.style.display = "none";
+      }
+
+      function saveFetchProxyToServer(payload, okMsg) {
+        return fetch("/api/settings/fetch-proxy", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok || !x.j.success) throw new Error((x.j && x.j.error) || "Не удалось сохранить прокси");
+            fetchProxyState.enabled = !!payload.fetch_proxy_enabled;
+            fetchProxyState.list = String(payload.fetch_proxy_list || "");
+            syncFetchProxyUi();
+            if (okMsg) {
+              var errEl = document.getElementById("dg-q-err");
+              if (errEl) {
+                errEl.textContent = okMsg;
+                errEl.className = "text-success small mb-3";
+                errEl.style.display = "";
+                setTimeout(function () {
+                  errEl.style.display = "none";
+                }, 3500);
+              }
+            }
+          });
       }
 
       function parseSmartSearch() {
@@ -872,7 +1133,15 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body || {}),
         }).then(function (r) {
-          return r.json().then(function (j) {
+          return r.text().then(function (t) {
+            var j = {};
+            if (t) {
+              try {
+                j = JSON.parse(t);
+              } catch (e) {
+                j = { error: (t && t.slice(0, 400)) || "HTTP " + r.status };
+              }
+            }
             return { r: r, j: j };
           });
         });
@@ -944,21 +1213,54 @@
 
       function resetOrClear(mode, kind) {
         var isReset = kind === "reset";
-        if (!window.confirm(isReset ? "Вернуть страницы в очередь?" : "Удалить страницы?")) return;
+        if (!window.confirm(isReset ? "Вернуть страницы в очередь?" : "Удалить страницы?")) {
+          var elC = document.getElementById("dg-q-err");
+          if (elC) {
+            elC.className = "text-secondary small mb-3";
+            elC.style.display = "";
+            elC.textContent = "Действие не выполнено: в окне подтверждения выбрана «Отмена».";
+            setTimeout(function () {
+              showLoadErr("");
+            }, 4200);
+          }
+          return;
+        }
+        showLoadErr("");
         var f = readApiFilters();
+        var tf = readTableFilters();
         var payload = {
+          mode: mode,
           project_id: f.project_id === "all" ? null : f.project_id,
           status: mode === "filtered" ? f.status || null : null,
           type: mode === "filtered" ? (f.type === "all" ? null : f.type) : null,
         };
+        if (mode === "filtered") {
+          payload.tf_status = tf.status;
+          payload.tf_page_type = tf.page_type;
+          payload.tf_id = tf.id;
+          payload.tf_url = tf.url;
+          payload.tf_added_from = tf.added_from;
+          payload.tf_matched = tf.matched;
+          if (f.search) payload.search = f.search;
+          if (f.matched && f.matched !== "all") payload.matched = f.matched;
+        }
         var url = isReset ? "/api/pages/reset" : "/api/pages/clear";
         postQueueAction(url, payload).then(function (x) {
-          if (!x.r.ok) throw new Error(x.j.error || x.j.message || "Ошибка действия");
-          if (isReset) alert("В pending: " + (x.j.reset != null ? x.j.reset : 0));
-          else alert("Удалено: " + (x.j.deleted != null ? x.j.deleted : 0));
+          if (!x.r.ok) throw new Error((x.j && (x.j.error || x.j.message)) || "Ошибка действия");
+          if (isReset) {
+            var n = x.j.reset != null ? x.j.reset : 0;
+            alert(
+              n > 0
+                ? "Обновлено в «Ожидают»: " + n + " строк. Счётчик под таблицей см. пояснение — без фильтра по статусу он почти не меняется."
+                : "Не обновлено ни одной строки (0). Нажмите «Применить», проверьте фильтры и что в «Умном поиске» не висит лишний текст как в подсказке поля."
+            );
+          } else {
+            var d = x.j.deleted != null ? x.j.deleted : 0;
+            alert(d > 0 ? "Удалено: " + d : "Удалено: 0 (см. подсказку для сброса — те же фильтры).");
+          }
           loadPages();
         }).catch(function (e) {
-          alert(e.message || String(e));
+          showLoadErr(e.message || String(e));
         });
       }
 
@@ -1051,11 +1353,16 @@
         }
       });
 
-      ["dg-q-f-project", "dg-q-f-type", "dg-q-f-status", "dg-q-f-matched"].forEach(function (id) {
+      ["dg-q-f-type", "dg-q-f-status", "dg-q-f-matched"].forEach(function (id) {
         document.getElementById(id).addEventListener("change", function () {
           page = 1;
           scheduleSyncUrl();
         });
+      });
+      document.getElementById("dg-q-f-project").addEventListener("change", function () {
+        page = 1;
+        scheduleSyncUrl();
+        syncFetchProxyUi();
       });
 
       document.getElementById("dg-q-f-search").addEventListener("input", function () {
@@ -1151,6 +1458,7 @@
             title: "Действия и подсказка",
             subtitle: "",
             items: [
+              { key: "fetch_proxy", title: "Прокси для загрузки страниц", hint: "" },
               { key: "filter_actions", title: "Кнопки под фильтром", hint: "" },
               { key: "discovery_hint", title: "Текст про автообход", hint: "" },
             ],
@@ -1254,6 +1562,133 @@
             try { localStorage.setItem(userVisibleColsKey(), JSON.stringify(visibleCols)); } catch (e) {}
             renderColumnsPanel();
             applyVisibleColumns();
+          });
+        }
+      })();
+
+      (function bindFetchProxyControls() {
+        var openBtn = document.getElementById("dg-q-proxy-open");
+        var en = document.getElementById("dg-q-fetch-proxy-enabled");
+        var ov = document.getElementById("dg-q-proxy-overlay");
+        var ca = document.getElementById("dg-q-proxy-cancel");
+        var sv = document.getElementById("dg-q-proxy-save");
+        var pan = ov ? ov.querySelector("div.bg-white") : null;
+        if (openBtn) {
+          openBtn.addEventListener("click", function () {
+            openFetchProxyModal();
+          });
+        }
+        if (en) {
+          en.addEventListener("change", function () {
+            var sel = document.getElementById("dg-q-f-project");
+            if (sel && String(sel.value || "all") !== "all") {
+              en.checked = fetchProxyState.enabled;
+              alert("Глобальный переключатель действует только при фильтре «Все проекты».");
+              return;
+            }
+            var want = en.checked;
+            saveFetchProxyToServer(
+              { fetch_proxy_enabled: want, fetch_proxy_list: fetchProxyState.list },
+              "Прокси: сохранено"
+            ).catch(function (e) {
+              en.checked = fetchProxyState.enabled;
+              alert(e.message || "Ошибка");
+            });
+          });
+        }
+        if (ov) {
+          ov.addEventListener("click", function (ev) {
+            if (ev.target === ov) closeFetchProxyModal();
+          });
+        }
+        if (ca) ca.addEventListener("click", closeFetchProxyModal);
+        if (sv) {
+          sv.addEventListener("click", function () {
+            var ta = document.getElementById("dg-q-proxy-list");
+            var m = document.getElementById("dg-q-proxy-modal-enabled");
+            var modeEl = document.getElementById("dg-q-proxy-mode");
+            var sel = document.getElementById("dg-q-f-project");
+            var pid = sel ? String(sel.value || "all") : "all";
+            if (pid === "all") {
+              saveFetchProxyToServer(
+                {
+                  fetch_proxy_enabled: !!(m && m.checked),
+                  fetch_proxy_list: ta ? ta.value : "",
+                },
+                "Прокси сохранён"
+              )
+                .then(function () {
+                  closeFetchProxyModal();
+                })
+                .catch(function (e) {
+                  alert(e.message || "Ошибка");
+                });
+              return;
+            }
+            var p = (projects || []).find(function (x) {
+              return String(x.id) === String(pid);
+            });
+            if (!p) {
+              alert("Проект не найден");
+              return;
+            }
+            var mode = modeEl ? modeEl.value : "inherit";
+            var body = {
+              name: p.name || "",
+              domain: p.domain || "",
+              selector_price: p.selector_price || "",
+              selector_name: p.selector_name || "",
+              selector_sku: p.selector_sku || "",
+              selector_oos: p.selector_oos || "",
+              fetch_proxy_mode: mode,
+            };
+            fetch("/api/projects/" + encodeURIComponent(pid), {
+              method: "PUT",
+              credentials: "same-origin",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(body),
+            })
+              .then(function (r) {
+                return r.json().then(function (j) {
+                  return { r: r, j: j };
+                });
+              })
+              .then(function (x) {
+                if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Не удалось сохранить");
+                return fetch("/api/projects", { credentials: "same-origin" }).then(function (r2) {
+                  return r2.json();
+                });
+              })
+              .then(function (rows) {
+                if (Array.isArray(rows)) {
+                  projects = rows;
+                  fillProjectSelects(projects);
+                  if (sel) sel.value = pid;
+                }
+                syncFetchProxyUi();
+                closeFetchProxyModal();
+                var errEl = document.getElementById("dg-q-err");
+                if (errEl) {
+                  errEl.textContent = "Прокси проекта сохранён";
+                  errEl.className = "text-success small mb-3";
+                  errEl.style.display = "";
+                  setTimeout(function () {
+                    errEl.style.display = "none";
+                  }, 3500);
+                }
+              })
+              .catch(function (e) {
+                alert(e.message || "Ошибка");
+              });
+          });
+        }
+        var modeSel = document.getElementById("dg-q-proxy-mode");
+        if (modeSel) {
+          modeSel.addEventListener("change", syncQueueProxyModalFields);
+        }
+        if (pan) {
+          pan.addEventListener("click", function (ev) {
+            ev.stopPropagation();
           });
         }
       })();

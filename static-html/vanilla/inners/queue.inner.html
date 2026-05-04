@@ -79,7 +79,8 @@
                     </div>
                   </div>
                 </div>
-                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-q-filters-toggle" data-dg-tooltip="Сворачивает или разворачивает блок фильтров и действий.">Свернуть</button>
+                <button type="button" class="btn btn-sm btn-outline-primary" id="dg-q-proxy-open" data-dg-tooltip="Единый список прокси сервера (при «Все проекты») или только режим проекта: общий список / напрямую.">Прокси…</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-q-filters-toggle" data-dg-tooltip="Сворачивает поля фильтра (поиск, проект, тип…). Кнопки «Применить» и массовые действия ниже остаются доступны.">Свернуть</button>
               </div>
             </div>
             <div class="card-body">
@@ -164,23 +165,83 @@
                   </select>
                 </div>
               </div>
+              <div class="row g-2 align-items-start mt-1" data-dg-q-filter-field="fetch_proxy">
+                <div class="col-12"><hr class="my-1" /></div>
+                <div class="col-md-5 col-lg-4">
+                  <div class="form-check" id="dg-q-fetch-proxy-global-wrap">
+                    <input class="form-check-input" type="checkbox" id="dg-q-fetch-proxy-enabled" />
+                    <label class="form-check-label" for="dg-q-fetch-proxy-enabled">Глобально: загрузка через прокси</label>
+                  </div>
+                  <p class="small text-muted mb-0" id="dg-q-proxy-project-note" style="display: none">
+                    Для выбранного проекта режим задаётся в «Проектах» или кнопкой «Прокси…». Чекбокс ниже относится только к режиму «все проекты».
+                  </p>
+                  <p class="small text-muted mb-0">
+                    Один общий список на сервер (редактирование при «Все проекты»). Поддерживаются <code>socks5://…</code> и <code>http://…</code>; на запуск —
+                    <strong>первые 40</strong> строк. По проекту только: использовать этот список или напрямую («Проекты» или «Прокси…»).
+                  </p>
+                </div>
+                <div class="col-md-7 col-lg-8">
+                  <span class="small text-muted" id="dg-q-proxy-pill">Прокси: —</span>
+                </div>
+              </div>
+              <p class="small text-muted mt-2 mb-0" data-dg-q-filter-field="discovery_hint">
+                <b>Автообход URL:</b> читает <code>robots.txt</code>, затем <code>Sitemap:</code> и внутренние ссылки. Новые URL пишутся в <code>Sitemap</code>, после завершения переводятся в <code>pending</code>.
+              </p>
+              </div>
               <div class="mt-3 d-flex flex-wrap gap-2" data-dg-q-filter-field="filter_actions">
                 <button type="button" class="btn btn-sm btn-primary" id="queue-apply" data-dg-tooltip="Применяет текущие фильтры и обновляет таблицу очереди."><i class="pe-7s-search me-1"></i>Применить</button>
                 <button type="button" class="btn btn-sm btn-outline-secondary" id="queue-reset" data-dg-tooltip="Сбросить фильтры к значениям по умолчанию и очистить сохранённые настройки."><i class="pe-7s-refresh me-1"></i>По умолчанию</button>
                 <button type="button" class="btn btn-sm btn-outline-primary" id="queue-discovery-start" data-dg-tooltip="Запускает автообход URL. Нужен конкретный проект (не «Все проекты»)."><i class="pe-7s-compass me-1"></i>Запустить автообход</button>
                 <button type="button" class="btn btn-sm btn-outline-warning" id="queue-discovery-stop" data-dg-tooltip="Останавливает активный автообход URL для выбранного проекта."><i class="pe-7s-close-circle me-1"></i>Остановить автообход</button>
                 <button type="button" class="btn btn-sm btn-outline-info" id="queue-status-refresh" data-dg-tooltip="Обновляет статус автообхода и счетчики по выбранному проекту."><i class="pe-7s-signal me-1"></i>Обновить статус</button>
-                <button type="button" class="btn btn-sm btn-outline-info" id="queue-reset-filtered" data-dg-tooltip="Возвращает в pending страницы, попавшие под текущие фильтры."><i class="pe-7s-back-2 me-1"></i>Вернуть в очередь (фильтр)</button>
+                <button type="button" class="btn btn-sm btn-outline-info" id="queue-reset-filtered" data-dg-tooltip="Ставит статус «Ожидают» (pending) строкам по текущим фильтрам. Строки не удаляются — счётчик «Записей под фильтром» при «все статусы» почти не меняется."><i class="pe-7s-back-2 me-1"></i>Вернуть в очередь (фильтр)</button>
                 <button type="button" class="btn btn-sm btn-outline-success" id="queue-parse-visible" data-dg-tooltip="Ставит в парсинг страницы, видимые по текущим фильтрам."><i class="pe-7s-play me-1"></i>Парсинг видимых</button>
                 <button type="button" class="btn btn-sm btn-outline-warning" id="queue-clear-filtered" data-dg-tooltip="Удаляет из очереди страницы, попавшие под текущие фильтры."><i class="pe-7s-trash me-1"></i>Удалить по фильтрам</button>
                 <button type="button" class="btn btn-sm btn-outline-danger" id="queue-clear-all" data-dg-tooltip="Полностью очищает очередь проекта/системы. Действие необратимо."><i class="pe-7s-close me-1"></i>Полностью очистить очередь</button>
                 <button type="button" class="btn btn-sm btn-outline-dark" id="queue-copy-link" data-dg-tooltip="Копирует текущий URL страницы вместе с фильтрами и сортировкой."><i class="pe-7s-link me-1"></i>Скопировать ссылку</button>
               </div>
-              <p class="small text-muted mt-2 mb-0" data-dg-q-filter-field="discovery_hint">
-                <b>Автообход URL:</b> читает <code>robots.txt</code>, затем <code>Sitemap:</code> и внутренние ссылки. Новые URL пишутся в <code>Sitemap</code>, после завершения переводятся в <code>pending</code>.
-              </p>
-              </div>
               <p class="text-muted mb-0 mt-2" id="dg-q-discovery-hint">Автообход: нет данных</p>
+              <details id="dg-q-discovery-details" class="mt-2" style="display: none">
+                <summary class="small text-muted" style="cursor: pointer">
+                  История автообхода (последние запуски из БД, с ошибками)
+                </summary>
+                <div id="dg-q-discovery-history" class="mt-2"></div>
+              </details>
+            </div>
+          </div>
+
+          <div
+            id="dg-q-proxy-overlay"
+            style="display: none; position: fixed; inset: 0; z-index: 2000; background: rgba(15, 23, 42, 0.45); align-items: center; justify-content: center; padding: 1rem"
+            aria-modal="true"
+            role="dialog"
+          >
+            <div class="bg-white rounded shadow-lg p-3 p-md-4" style="max-width: 720px; width: 100%; max-height: 90vh; overflow: auto">
+              <h5 class="mb-2">Прокси для загрузки страниц</h5>
+              <p class="small text-muted mb-2" id="dg-q-proxy-modal-scope">—</p>
+              <div class="mb-3" id="dg-q-proxy-mode-row" style="display: none">
+                <label class="form-label" for="dg-q-proxy-mode">Загрузка страниц этого проекта</label>
+                <select class="form-select" id="dg-q-proxy-mode">
+                  <option value="inherit">Через общий список прокси (как ниже при «Все проекты»)</option>
+                  <option value="direct">Напрямую с сервера (без прокси)</option>
+                </select>
+                <p class="small text-muted mt-2 mb-0" id="dg-q-proxy-project-hint" style="display: none">
+                  Список адресов один на весь сервер: откройте «Прокси…» при фильтре <strong>Все проекты</strong> (или раздел «Настройки»). Здесь только выбор: использовать этот список или обходить прокси для сайта конкурента.
+                </p>
+              </div>
+              <div id="dg-q-proxy-global-block">
+                <p class="small text-muted">Один адрес на строку: <code>socks5://user:pass@host:1080</code>, <code>socks5://host:1080</code> или коротко <code>host:1080</code> (как SOCKS5). Также <code>http://…</code>. Сохраняется в общих настройках сервера и используется всеми проектами в режиме «через общий список».</p>
+                <label class="form-label" for="dg-q-proxy-list">Общий список</label>
+                <textarea class="form-control font-monospace small" id="dg-q-proxy-list" rows="10" placeholder="socks5://127.0.0.1:1080&#10;socks5://user:pass@proxy.example.com:1080"></textarea>
+                <div class="form-check mt-3">
+                  <input class="form-check-input" type="checkbox" id="dg-q-proxy-modal-enabled" />
+                  <label class="form-check-label" for="dg-q-proxy-modal-enabled">Включить использование прокси (глобально)</label>
+                </div>
+              </div>
+              <div class="d-flex justify-content-end gap-2 mt-3">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-q-proxy-cancel">Отмена</button>
+                <button type="button" class="btn btn-sm btn-primary" id="dg-q-proxy-save">Сохранить</button>
+              </div>
             </div>
           </div>
 
@@ -241,6 +302,13 @@
                   <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-q-next" data-dg-tooltip="Переход на следующую страницу очереди.">Вперед</button>
                 </div>
               </div>
-              <p class="text-muted mb-0 mt-2" id="dg-q-table-hint">Всего: 0</p>
+              <div class="mt-2 mb-0" id="dg-q-table-hint-wrap">
+                <p class="mb-1 fw-semibold text-body small mb-0" id="dg-q-table-hint">Записей под фильтром: 0</p>
+                <p class="text-muted mb-0 small" style="font-size: 0.8125rem; line-height: 1.4; max-width: 52rem">
+                  Пока в фильтре не выбран <strong>статус</strong>, в счёт входят «Ожидают», «Готово» и «Ошибка» одновременно.
+                  «Вернуть в очередь (фильтр)» только переводит в «Ожидают», строки <strong>не удаляет</strong> — число почти не падает.
+                  Убрать строки из очереди: «Удалить по фильтрам» или «Удалить» в строке.
+                </p>
+              </div>
             </div>
           </div>

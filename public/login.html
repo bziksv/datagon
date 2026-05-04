@@ -179,6 +179,11 @@
               if (json.canManageUsers) window.localStorage.setItem("canManageUsers", "true");
               else window.localStorage.removeItem("canManageUsers");
               if (json.auth_token) window.localStorage.setItem("authToken", json.auth_token);
+              if (json.page_modes && typeof json.page_modes === "object") {
+                window.localStorage.setItem("datagonPageModesV1", JSON.stringify(json.page_modes));
+              } else window.localStorage.removeItem("datagonPageModesV1");
+              if (json.specialty_name) window.localStorage.setItem("datagonSpecialtyNameV1", String(json.specialty_name));
+              else window.localStorage.removeItem("datagonSpecialtyNameV1");
             } catch (e2) {}
             return fetch("/api/auth/sync-session-cookie", {
               method: "POST",
