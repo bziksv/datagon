@@ -9,19 +9,25 @@ export default [
   },
   {
     path: '/docs/',
-    component: ComponentCreator('/docs/', '1fe'),
+    component: ComponentCreator('/docs/', '814'),
     routes: [
       {
         path: '/docs/',
-        component: ComponentCreator('/docs/', 'bbb'),
+        component: ComponentCreator('/docs/', 'cb4'),
         routes: [
           {
             path: '/docs/',
-            component: ComponentCreator('/docs/', 'e46'),
+            component: ComponentCreator('/docs/', 'c97'),
             routes: [
               {
                 path: '/docs/api/',
                 component: ComponentCreator('/docs/api/', 'bb3'),
+                exact: true,
+                sidebar: "docsSidebar"
+              },
+              {
+                path: '/docs/architectui-migration/',
+                component: ComponentCreator('/docs/architectui-migration/', '747'),
                 exact: true,
                 sidebar: "docsSidebar"
               },
@@ -32,8 +38,14 @@ export default [
                 sidebar: "docsSidebar"
               },
               {
-                path: '/docs/manual/',
-                component: ComponentCreator('/docs/manual/', 'de0'),
+                path: '/docs/deploy/',
+                component: ComponentCreator('/docs/deploy/', 'eca'),
+                exact: true,
+                sidebar: "docsSidebar"
+              },
+              {
+                path: '/docs/glossary/',
+                component: ComponentCreator('/docs/glossary/', '411'),
                 exact: true,
                 sidebar: "docsSidebar"
               },
@@ -88,6 +100,12 @@ export default [
               {
                 path: '/docs/settings/',
                 component: ComponentCreator('/docs/settings/', '5bf'),
+                exact: true,
+                sidebar: "docsSidebar"
+              },
+              {
+                path: '/docs/',
+                component: ComponentCreator('/docs/', '3cd'),
                 exact: true,
                 sidebar: "docsSidebar"
               }

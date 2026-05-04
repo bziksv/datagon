@@ -56,6 +56,9 @@ export default {
     [
       "/Users/stanislav/Documents/projects/p.datagon.ru/docs-docusaurus/node_modules/@easyops-cn/docusaurus-search-local/dist/server/server/index.js",
       {
+        "indexDocs": false,
+        "indexBlog": false,
+        "indexPages": true,
         "language": [
           "ru",
           "en"

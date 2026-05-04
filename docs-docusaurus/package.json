@@ -7,7 +7,13 @@
     "prebuild": "node ./scripts/patch-docusaurus-progress.cjs",
     "start": "CI=true docusaurus start --port 3004",
     "build": "CI=true docusaurus build --out-dir ../public/docs",
-    "serve": "docusaurus serve --dir ../public/docs --port 3005"
+    "serve": "docusaurus serve --dir ../public/docs --port 3005",
+    "capture-screenshots": "playwright test",
+    "capture-screenshots:real": "DOCS_CAPTURE_REAL_ONLY=1 playwright test",
+    "capture-screenshots:install": "playwright install chromium"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0"
   },
   "dependencies": {
     "@docusaurus/core": "3.9.2",

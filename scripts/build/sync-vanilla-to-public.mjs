@@ -52,6 +52,17 @@ function injectArchitectuiMainCssIntoDatagonHtml() {
     'ref/forms.html',
     'ref/charts.html',
     'ref/react-demo-index.html',
+    'doc-screenshots/mysites-sample.html',
+    'doc-screenshots/manual-sample.html',
+    'doc-screenshots/myproducts-sample.html',
+    'doc-screenshots/dashboard-sample.html',
+    'doc-screenshots/queue-sample.html',
+    'doc-screenshots/projects-sample.html',
+    'doc-screenshots/results-sample.html',
+    'doc-screenshots/matches-sample.html',
+    'doc-screenshots/processes-sample.html',
+    'doc-screenshots/moysklad-sample.html',
+    'doc-screenshots/settings-sample.html',
   ];
   let n = 0;
   for (const name of publishHtml) {
@@ -95,8 +106,19 @@ const publishNames = [
   'ref/widgets.html',
   'ref/forms.html',
   'ref/charts.html',
-  'ref/react-demo-index.html',
-  'datagon-vanilla.js',
+    'ref/react-demo-index.html',
+    'doc-screenshots/mysites-sample.html',
+    'doc-screenshots/manual-sample.html',
+    'doc-screenshots/myproducts-sample.html',
+    'doc-screenshots/dashboard-sample.html',
+    'doc-screenshots/queue-sample.html',
+    'doc-screenshots/projects-sample.html',
+    'doc-screenshots/results-sample.html',
+    'doc-screenshots/matches-sample.html',
+    'doc-screenshots/processes-sample.html',
+    'doc-screenshots/moysklad-sample.html',
+    'doc-screenshots/settings-sample.html',
+    'datagon-vanilla.js',
 ];
 
 for (const name of publishNames) {

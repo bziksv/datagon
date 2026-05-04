@@ -1,8 +1,85 @@
 :root {
   --ifm-color-primary: #3f6ad8;
+  --dg-doc-tip-bg: #f4f7fd;
+  --dg-doc-tip-border: #c9d6f3;
 }
 
 .theme-doc-markdown h1,
 .theme-doc-markdown h2 {
   letter-spacing: 0.01em;
+}
+
+/* Карточка-скриншот в справке
+   Важно: не задавать img { width: 100% } — микро-заглушки 1×1 растягиваются
+   во весь контейнер и дают огромный «цветной квадрат» (интерполяция одного пикселя). */
+.theme-doc-markdown .dg-doc-shot {
+  margin: 1.5rem 0;
+  border: 1px solid var(--ifm-toc-border-color);
+  border-radius: 10px;
+  overflow: hidden;
+  min-height: 120px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(160deg, #f0f3f9 0%, #e6ebf4 45%, #eef1f8 100%);
+  box-shadow: 0 4px 24px rgba(15, 34, 58, 0.08);
+}
+
+.theme-doc-markdown .dg-doc-shot img {
+  display: block;
+  max-width: 100%;
+  width: auto;
+  height: auto;
+  max-height: min(75vh, 1100px);
+  object-fit: contain;
+  margin: 0.75rem auto;
+  box-shadow: 0 2px 16px rgba(15, 34, 58, 0.12);
+  border-radius: 6px;
+  background: var(--ifm-background-color);
+}
+
+.theme-doc-markdown .dg-doc-shot figcaption {
+  margin: 0;
+  padding: 0.65rem 1rem 0.75rem;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--ifm-color-emphasis-700);
+  border-top: 1px solid var(--ifm-toc-border-color);
+  background: var(--ifm-hover-overlay);
+}
+
+/* Врезка «на заметку» */
+.theme-doc-markdown blockquote.dg-doc-tip {
+  margin: 1.25rem 0;
+  padding: 0.85rem 1rem 0.95rem 1.1rem;
+  border-left: 4px solid var(--ifm-color-primary);
+  border-radius: 0 8px 8px 0;
+  background: var(--dg-doc-tip-bg);
+  border-top: 1px solid var(--dg-doc-tip-border);
+  border-right: 1px solid var(--dg-doc-tip-border);
+  border-bottom: 1px solid var(--dg-doc-tip-border);
+  color: var(--ifm-color-emphasis-800);
+}
+
+.theme-doc-markdown blockquote.dg-doc-tip p:last-child {
+  margin-bottom: 0;
+}
+
+.theme-doc-markdown blockquote.dg-doc-tip p {
+  margin-bottom: 0.5rem;
+}
+
+html[data-theme="dark"] {
+  --dg-doc-tip-bg: rgba(63, 106, 216, 0.12);
+  --dg-doc-tip-border: rgba(99, 140, 230, 0.35);
+}
+
+html[data-theme="dark"] .theme-doc-markdown .dg-doc-shot {
+  box-shadow: 0 4px 28px rgba(0, 0, 0, 0.35);
+  background: linear-gradient(160deg, #1e2430 0%, #252b38 50%, #1a1f2a 100%);
+}
+
+html[data-theme="dark"] .theme-doc-markdown .dg-doc-shot img {
+  background: var(--ifm-background-surface-color);
 }

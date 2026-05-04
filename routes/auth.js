@@ -121,23 +121,23 @@ module.exports = (db, appSettings = {}) => {
     function safeDocTargetFilename(pathname) {
         const prefix = '/docs/';
         const pathOnly = String(pathname || '').split('?')[0];
-        let tail = 'manual.html';
+        let tail = 'index.html';
         if (pathOnly.startsWith(prefix)) {
-            tail = pathOnly.slice(prefix.length) || 'manual.html';
+            tail = pathOnly.slice(prefix.length) || 'index.html';
         } else if (pathOnly === '/docs' || pathOnly === '/docs/') {
-            tail = 'manual.html';
+            tail = 'index.html';
         }
-        tail = String(tail).replace(/\/+$/, '') || 'manual.html';
-        if (tail.includes('..') || tail.includes('/')) return 'manual.html';
+        tail = String(tail).replace(/\/+$/, '') || 'index.html';
+        if (tail.includes('..') || tail.includes('/')) return 'index.html';
         if (/^[a-zA-Z0-9._-]+\.html$/i.test(tail)) {
-            if (tail.toLowerCase() === 'session-bridge.html') return 'manual.html';
+            if (tail.toLowerCase() === 'session-bridge.html') return 'index.html';
             return tail;
         }
         // Docusaurus: /docs/search → tail "search" → bridge maps search.html → /docs/search/
         if (/^[a-zA-Z0-9_-]+$/.test(tail)) {
             return `${tail}.html`;
         }
-        return 'manual.html';
+        return 'index.html';
     }
 
     function protectDocumentationRoutes(req, res, next) {
@@ -171,9 +171,8 @@ module.exports = (db, appSettings = {}) => {
                     redirectToBridge();
                     return;
                 }
-                // Docusaurus has no public/docs/index.html (first doc is manual/). Avoid Express "Cannot GET /docs/".
-                if (p === '/docs' || p === '/docs/') {
-                    res.redirect(302, '/docs/manual/');
+                if (p === '/docs/manual' || p === '/docs/manual/') {
+                    res.redirect(301, '/docs/');
                     return;
                 }
                 next();

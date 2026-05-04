@@ -36,6 +36,11 @@ const config = {
     [
       require.resolve("@easyops-cn/docusaurus-search-local"),
       {
+        // Доки на routeBasePath: "/" (URL /docs/<slug>/), а плагин по умолчанию ждёт префикс "docs"
+        // в пути после baseUrl → пустой индекс и отсутствует search-index.json. Индексируем как pages.
+        indexDocs: false,
+        indexBlog: false,
+        indexPages: true,
         language: ["ru", "en"],
         hashed: false,
         highlightSearchTermsOnTargetPage: true,

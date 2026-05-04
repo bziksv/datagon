@@ -1048,7 +1048,12 @@ initDB().then(() => {
         const raw = String(req.path || '').split('?')[0];
         if (!raw.toLowerCase().endsWith('.html')) return next();
         if (raw.includes('..')) return res.status(400).end();
-        if (raw.startsWith('/docs') || raw.startsWith('/architectui-react-pro')) return next();
+        if (raw.startsWith('/doc-screenshots/')) {
+            return next();
+        }
+        if (raw.startsWith('/docs') || raw.startsWith('/architectui-react-pro')) {
+            return next();
+        }
         const leaf = raw.slice(raw.lastIndexOf('/') + 1).toLowerCase();
         if (leaf === 'login.html') return next();
         try {

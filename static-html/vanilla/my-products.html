@@ -7,8 +7,18 @@
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <link rel="stylesheet" href="/static/css/main.989b22a9.css" />
     <style>
-    /* Удержание wide-таблицы: flex min-width:auto иначе тянет layout (дублирует base.scss до пересборки CRA) */
+    /* Удержание wide-таблицы: flex min-width:auto иначе тянет layout (паритет с moysklad + цепочка до app-main__outer) */
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .app-main__outer {
+      min-width: 0;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
     body.datagon-vanilla-body[data-dg-active-nav="my-products"] .app-main__inner {
+      min-width: 0;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .main-card.card {
       min-width: 0;
       max-width: 100%;
       box-sizing: border-box;
@@ -23,6 +33,7 @@
     body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-table-scroll-outer {
       width: 100%;
       max-width: 100%;
+      min-width: 0;
       box-sizing: border-box;
       overflow-x: auto;
       overflow-y: visible;
@@ -749,9 +760,9 @@
                   <div id="dg-mp-columns-list" class="columns-grid"></div>
                 </div>
               </div>
-              <div class="dg-mp-table-scroll-outer" style="width:100%;max-width:100%;overflow-x:auto;overflow-y:visible;-webkit-overflow-scrolling:touch">
+              <div class="dg-mp-table-scroll-outer" style="width:100%;max-width:100%;min-width:0;overflow-x:auto;overflow-y:visible;-webkit-overflow-scrolling:touch">
                 <div class="table-responsive datagon-my-products-table-wrap" style="display:block;width:100%;max-width:100%;min-width:0;overflow:visible;position:relative">
-                <table id="mp-main-table" class="table table-hover table-striped mb-0 datagon-my-products-table dg-mp-table" style="width:max-content;min-width:100%;max-width:none;table-layout:fixed;border-collapse:collapse;border-spacing:0">
+                <table id="mp-main-table" class="table table-hover table-striped mb-0 datagon-my-products-table dg-mp-table" style="width:max-content;min-width:min(100%,2200px);max-width:none;table-layout:fixed;border-collapse:collapse;border-spacing:0">
                   <thead id="dg-mp-thead">
                     <tr id="mp-thead-row">
                       <th role="button" data-mp-sort="id" class="text-center" style="cursor:pointer">ID / КОД</th>
@@ -1373,16 +1384,51 @@
         return Array.prototype.slice.call(document.querySelectorAll("#mp-thead-row th"));
       }
 
+      /** Снять заданные ширины у колонки (нужно для скрытых th/td иначе table-layout:fixed тянет таблицу). */
+      function clearColumnIndexSizing(index) {
+        var headers = getHeaderCells();
+        var th = headers[index];
+        if (th) {
+          th.style.width = "";
+          th.style.minWidth = "";
+          th.style.maxWidth = "";
+        }
+        document.querySelectorAll("#dg-tbody tr").forEach(function (tr) {
+          if (!tr.cells || !tr.cells[index]) return;
+          var td = tr.cells[index];
+          td.style.width = "";
+          td.style.minWidth = "";
+          td.style.maxWidth = "";
+        });
+      }
+
+      function sanitizeColumnWidths(raw) {
+        var out = {};
+        if (!raw || typeof raw !== "object") return out;
+        Object.keys(raw).forEach(function (k) {
+          var idx = Number(k);
+          if (!Number.isFinite(idx) || idx < 0 || idx > 64) return;
+          var w = Number(raw[k]);
+          if (!Number.isFinite(w)) return;
+          out[String(idx)] = Math.max(80, Math.min(900, Math.round(w)));
+        });
+        return out;
+      }
+
       function applyColumnWidthByIndex(index, widthPx) {
         var w = Math.max(80, Math.min(900, Math.round(Number(widthPx) || 0)));
         if (!Number.isFinite(w) || w <= 0) return;
-        columnWidths[index] = w;
         var headers = getHeaderCells();
-        if (headers[index]) {
-          headers[index].style.width = w + "px";
-          headers[index].style.minWidth = w + "px";
-          headers[index].style.maxWidth = w + "px";
+        var th = headers[index];
+        if (!th) return;
+        if (th.style.display === "none") {
+          clearColumnIndexSizing(index);
+          return;
         }
+        columnWidths[index] = w;
+        th.style.width = w + "px";
+        th.style.minWidth = w + "px";
+        th.style.maxWidth = w + "px";
         document.querySelectorAll("#dg-tbody tr").forEach(function (tr) {
           if (!tr.cells || !tr.cells[index]) return;
           tr.cells[index].style.width = w + "px";
@@ -1487,6 +1533,7 @@
           document.querySelectorAll("#dg-tbody tr").forEach(function (tr) {
             if (tr.cells && tr.cells[index]) tr.cells[index].style.display = show ? "" : "none";
           });
+          if (!show) clearColumnIndexSizing(index);
         });
         mpRefreshFloatingAfterLayout();
       }
@@ -2466,6 +2513,7 @@
           });
         }
         renderColumnsPanel();
+        applyVisibleColumns();
       })();
 
       (function mpFilterFieldVisibility() {
@@ -2593,7 +2641,7 @@
       (async function init() {
         updateMpStickyTopVar();
         try {
-          columnWidths = JSON.parse(localStorage.getItem(userColWidthKey()) || "{}") || {};
+          columnWidths = sanitizeColumnWidths(JSON.parse(localStorage.getItem(userColWidthKey()) || "{}"));
         } catch (e) {
           columnWidths = {};
         }

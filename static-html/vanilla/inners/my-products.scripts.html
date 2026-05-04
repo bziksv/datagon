@@ -521,16 +521,51 @@
         return Array.prototype.slice.call(document.querySelectorAll("#mp-thead-row th"));
       }
 
+      /** Снять заданные ширины у колонки (нужно для скрытых th/td иначе table-layout:fixed тянет таблицу). */
+      function clearColumnIndexSizing(index) {
+        var headers = getHeaderCells();
+        var th = headers[index];
+        if (th) {
+          th.style.width = "";
+          th.style.minWidth = "";
+          th.style.maxWidth = "";
+        }
+        document.querySelectorAll("#dg-tbody tr").forEach(function (tr) {
+          if (!tr.cells || !tr.cells[index]) return;
+          var td = tr.cells[index];
+          td.style.width = "";
+          td.style.minWidth = "";
+          td.style.maxWidth = "";
+        });
+      }
+
+      function sanitizeColumnWidths(raw) {
+        var out = {};
+        if (!raw || typeof raw !== "object") return out;
+        Object.keys(raw).forEach(function (k) {
+          var idx = Number(k);
+          if (!Number.isFinite(idx) || idx < 0 || idx > 64) return;
+          var w = Number(raw[k]);
+          if (!Number.isFinite(w)) return;
+          out[String(idx)] = Math.max(80, Math.min(900, Math.round(w)));
+        });
+        return out;
+      }
+
       function applyColumnWidthByIndex(index, widthPx) {
         var w = Math.max(80, Math.min(900, Math.round(Number(widthPx) || 0)));
         if (!Number.isFinite(w) || w <= 0) return;
-        columnWidths[index] = w;
         var headers = getHeaderCells();
-        if (headers[index]) {
-          headers[index].style.width = w + "px";
-          headers[index].style.minWidth = w + "px";
-          headers[index].style.maxWidth = w + "px";
+        var th = headers[index];
+        if (!th) return;
+        if (th.style.display === "none") {
+          clearColumnIndexSizing(index);
+          return;
         }
+        columnWidths[index] = w;
+        th.style.width = w + "px";
+        th.style.minWidth = w + "px";
+        th.style.maxWidth = w + "px";
         document.querySelectorAll("#dg-tbody tr").forEach(function (tr) {
           if (!tr.cells || !tr.cells[index]) return;
           tr.cells[index].style.width = w + "px";
@@ -635,6 +670,7 @@
           document.querySelectorAll("#dg-tbody tr").forEach(function (tr) {
             if (tr.cells && tr.cells[index]) tr.cells[index].style.display = show ? "" : "none";
           });
+          if (!show) clearColumnIndexSizing(index);
         });
         mpRefreshFloatingAfterLayout();
       }
@@ -1614,6 +1650,7 @@
           });
         }
         renderColumnsPanel();
+        applyVisibleColumns();
       })();
 
       (function mpFilterFieldVisibility() {
@@ -1741,7 +1778,7 @@
       (async function init() {
         updateMpStickyTopVar();
         try {
-          columnWidths = JSON.parse(localStorage.getItem(userColWidthKey()) || "{}") || {};
+          columnWidths = sanitizeColumnWidths(JSON.parse(localStorage.getItem(userColWidthKey()) || "{}"));
         } catch (e) {
           columnWidths = {};
         }

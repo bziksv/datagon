@@ -11,6 +11,8 @@ export default {
   "46133e1b": [() => import(/* webpackChunkName: "46133e1b" */ "@site/docs/projects.md"), "@site/docs/projects.md", require.resolveWeak("@site/docs/projects.md")],
   "5e95c892": [() => import(/* webpackChunkName: "5e95c892" */ "@theme/DocsRoot"), "@theme/DocsRoot", require.resolveWeak("@theme/DocsRoot")],
   "5fbc5cf1": [() => import(/* webpackChunkName: "5fbc5cf1" */ "@site/docs/api.md"), "@site/docs/api.md", require.resolveWeak("@site/docs/api.md")],
+  "8719ed3d": [() => import(/* webpackChunkName: "8719ed3d" */ "@site/docs/architectui-migration.md"), "@site/docs/architectui-migration.md", require.resolveWeak("@site/docs/architectui-migration.md")],
+  "99e04881": [() => import(/* webpackChunkName: "99e04881" */ "@site/docs/deploy.md"), "@site/docs/deploy.md", require.resolveWeak("@site/docs/deploy.md")],
   "9ea974a1": [() => import(/* webpackChunkName: "9ea974a1" */ "@site/docs/manual.md"), "@site/docs/manual.md", require.resolveWeak("@site/docs/manual.md")],
   "a2734471": [() => import(/* webpackChunkName: "a2734471" */ "@site/docs/matches.md"), "@site/docs/matches.md", require.resolveWeak("@site/docs/matches.md")],
   "a7bd4aaa": [() => import(/* webpackChunkName: "a7bd4aaa" */ "@theme/DocVersionRoot"), "@theme/DocVersionRoot", require.resolveWeak("@theme/DocVersionRoot")],
@@ -18,4 +20,5 @@ export default {
   "aba21aa0": [() => import(/* webpackChunkName: "aba21aa0" */ "@generated/docusaurus-plugin-content-docs/default/__plugin.json"), "@generated/docusaurus-plugin-content-docs/default/__plugin.json", require.resolveWeak("@generated/docusaurus-plugin-content-docs/default/__plugin.json")],
   "de016bd4": [() => import(/* webpackChunkName: "de016bd4" */ "@site/docs/myproducts.md"), "@site/docs/myproducts.md", require.resolveWeak("@site/docs/myproducts.md")],
   "dec09136": [() => import(/* webpackChunkName: "dec09136" */ "@site/docs/settings.md"), "@site/docs/settings.md", require.resolveWeak("@site/docs/settings.md")],
+  "e747ec83": [() => import(/* webpackChunkName: "e747ec83" */ "@site/docs/glossary.md"), "@site/docs/glossary.md", require.resolveWeak("@site/docs/glossary.md")],
   "fe0bc103": [() => import(/* webpackChunkName: "fe0bc103" */ "@site/docs/moysklad.md"), "@site/docs/moysklad.md", require.resolveWeak("@site/docs/moysklad.md")],};

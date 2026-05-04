@@ -10,7 +10,7 @@
  *
  * Переменные окружения:
  *   DATAGON_SMOKE_BASE_URL — по умолчанию http://127.0.0.1:3000
- *   DATAGON_SMOKE_USER / DATAGON_SMOKE_PASSWORD — опционально, для API-входа (как в capture-doc-screenshots)
+ *   DATAGON_SMOKE_USER / DATAGON_SMOKE_PASSWORD — опционально, для API-входа (логика как в docs:capture-screenshots)
  */
 
 const baseUrl = (process.env.DATAGON_SMOKE_BASE_URL || 'http://127.0.0.1:3000').replace(/\/$/, '');

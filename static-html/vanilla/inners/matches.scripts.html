@@ -1882,45 +1882,6 @@
         renderMyProducts();
       }
 
-      document.getElementById("dg-matches-my-site").addEventListener("change", function () {
-        try {
-          if (window.DatagonFilters && DatagonFilters.save) {
-            DatagonFilters.save("matches_ctx", {
-              my_site_id: String(document.getElementById("dg-matches-my-site").value || ""),
-            });
-          }
-        } catch (eSave) {}
-        onLaunchSiteChanged(true);
-      });
-      document.getElementById("dg-matches-list-my-site").addEventListener("change", function () {
-        state.matchesPage = 1;
-        fillListCompetitorSelect();
-        scheduleSyncUrl();
-        persistMatchesListFilterForm();
-        loadMatches();
-      });
-      document.getElementById("dg-matches-list-competitor").addEventListener("change", function () {
-        state.matchesPage = 1;
-        scheduleSyncUrl();
-        persistMatchesListFilterForm();
-        loadMatches();
-      });
-      document.getElementById("dg-matches-product-search").addEventListener("input", function () {
-        scheduleSyncUrl();
-        loadMyProducts();
-      });
-      document.getElementById("dg-matches-search-mode").addEventListener("change", scheduleSyncUrl);
-      (function initMatchesFilterLogicToggle() {
-        var btn = document.getElementById("dg-matches-filter-logic-toggle");
-        var panel = document.getElementById("dg-matches-filter-logic");
-        if (!btn || !panel) return;
-        btn.addEventListener("click", function () {
-          var show = panel.classList.contains("d-none");
-          panel.classList.toggle("d-none", !show);
-          btn.setAttribute("aria-expanded", show ? "true" : "false");
-        });
-      })();
-
       (function initMatchesWorkflowGuide() {
         var btn = document.getElementById("dg-matches-workflow-toggle");
         var panel = document.getElementById("dg-matches-workflow-panel");
@@ -1971,6 +1932,58 @@
       bindMatchesPersistedSectionCollapse(MATCHES_STEP_LIST_COLLAPSE_KEY, "dg-matches-step2-body", "dg-matches-step2-toggle");
       bindMatchesPersistedSectionCollapse(MATCHES_STEP_MANUAL_COLLAPSE_KEY, "dg-matches-step3-body", "dg-matches-step3-toggle");
       bindMatchesPersistedSectionCollapse(MATCHES_STEP_ARCHIVE_COLLAPSE_KEY, "dg-matches-step4-body", "dg-matches-step4-toggle");
+
+      var dgMatchesMySiteEl = document.getElementById("dg-matches-my-site");
+      if (dgMatchesMySiteEl) {
+        dgMatchesMySiteEl.addEventListener("change", function () {
+          try {
+            if (window.DatagonFilters && DatagonFilters.save) {
+              DatagonFilters.save("matches_ctx", {
+                my_site_id: String(document.getElementById("dg-matches-my-site").value || ""),
+              });
+            }
+          } catch (eSave) {}
+          onLaunchSiteChanged(true);
+        });
+      }
+      var dgMatchesListMySiteEl = document.getElementById("dg-matches-list-my-site");
+      if (dgMatchesListMySiteEl) {
+        dgMatchesListMySiteEl.addEventListener("change", function () {
+          state.matchesPage = 1;
+          fillListCompetitorSelect();
+          scheduleSyncUrl();
+          persistMatchesListFilterForm();
+          loadMatches();
+        });
+      }
+      var dgMatchesListCompetitorEl = document.getElementById("dg-matches-list-competitor");
+      if (dgMatchesListCompetitorEl) {
+        dgMatchesListCompetitorEl.addEventListener("change", function () {
+          state.matchesPage = 1;
+          scheduleSyncUrl();
+          persistMatchesListFilterForm();
+          loadMatches();
+        });
+      }
+      var dgMatchesProductSearchEl = document.getElementById("dg-matches-product-search");
+      if (dgMatchesProductSearchEl) {
+        dgMatchesProductSearchEl.addEventListener("input", function () {
+          scheduleSyncUrl();
+          loadMyProducts();
+        });
+      }
+      var dgMatchesSearchModeEl = document.getElementById("dg-matches-search-mode");
+      if (dgMatchesSearchModeEl) dgMatchesSearchModeEl.addEventListener("change", scheduleSyncUrl);
+      (function initMatchesFilterLogicToggle() {
+        var btn = document.getElementById("dg-matches-filter-logic-toggle");
+        var panel = document.getElementById("dg-matches-filter-logic");
+        if (!btn || !panel) return;
+        btn.addEventListener("click", function () {
+          var show = panel.classList.contains("d-none");
+          panel.classList.toggle("d-none", !show);
+          btn.setAttribute("aria-expanded", show ? "true" : "false");
+        });
+      })();
 
       (function initMatchesModeHintToggle() {
         var btn = document.getElementById("dg-matches-mode-hint-toggle");

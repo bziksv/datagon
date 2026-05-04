@@ -29,17 +29,23 @@
         }
 
         var params = new URLSearchParams(window.location.search);
-        var thenFile = params.get("then") || "manual.html";
+        var thenFile = params.get("then") || "index.html";
         params.delete("then");
 
         var slug = String(thenFile).replace(/\.html$/i, "");
         if (!slug || slug.toLowerCase() === "session-bridge") {
-          slug = "manual";
+          slug = "index";
         }
 
-        var base = "/docs/" + encodeURIComponent(slug) + "/";
-        var rest = params.toString();
-        window.location.replace(rest ? base + "?" + rest : base);
+        // Главная справка: slug "/" в Docusaurus → URL /docs/ (старые then=manual.html тоже сюда).
+        if (slug === "index" || slug === "manual") {
+          var restHome = params.toString();
+          window.location.replace(restHome ? "/docs/?" + restHome : "/docs/");
+        } else {
+          var base = "/docs/" + encodeURIComponent(slug) + "/";
+          var rest = params.toString();
+          window.location.replace(rest ? base + "?" + rest : base);
+        }
       })();
     </script>
   </body>

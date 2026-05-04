@@ -16,9 +16,11 @@
     "docs:docusaurus:install": "npm --prefix ./docs-docusaurus install",
     "docs:docusaurus:start": "npm --prefix ./docs-docusaurus start",
     "docs:docusaurus:build": "npm --prefix ./docs-docusaurus run build",
-    "docs:capture-screenshots": "node scripts/docs/capture-doc-screenshots.mjs",
-    "docs:install-browsers": "playwright install chromium",
-    "test:datagon-smoke-e2e": "node scripts/qa/datagon-smoke-e2e.mjs"
+    "docs:capture-screenshots": "npm --prefix ./docs-docusaurus run capture-screenshots",
+    "docs:capture-screenshots:real": "DOCS_CAPTURE_REAL_ONLY=1 npm run docs:capture-screenshots",
+    "docs:install-browsers": "npm --prefix ./docs-docusaurus run capture-screenshots:install",
+    "test:datagon-smoke-e2e": "node scripts/qa/datagon-smoke-e2e.mjs",
+    "test:api-http-smoke": "node scripts/qa/api-http-smoke.mjs"
   },
   "keywords": [],
   "author": "",

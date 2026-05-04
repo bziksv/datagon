@@ -2,6 +2,7 @@
 module.exports = {
   docsSidebar: [
     "manual",
+    "glossary",
     "mysites",
     "myproducts",
     "moysklad",
@@ -12,6 +13,8 @@ module.exports = {
     "processes",
     "settings",
     "api",
+    "deploy",
+    "architectui-migration",
     "capture-screenshots",
   ],
 };

@@ -34,12 +34,16 @@
 
 - `server.js` — запуск приложения, инициализация БД, подключение роутов.
 - `routes/` — серверные API-модули.
-- `public/` — пользовательский интерфейс: тема ArchitectUI Bootstrap (`public/static/css/main.*.css` + `public/static/media/`), HTML-страницы панели в корне `public/` (`*.html`), редиректы со старых путей `/dashboard`, `/moysklad` и т.д. на те же имена `*.html` (см. `server.js`).
+- `lib/` — общая серверная логика, подключаемая из `server.js` и роутов.
+- `public/` — собранный пользовательский интерфейс: тема ArchitectUI Bootstrap (`public/static/css/main.*.css` + `public/static/media/`), HTML-страницы панели в корне `public/` (`*.html`), редиректы со старых путей `/dashboard`, `/moysklad` и т.д. на те же имена `*.html` (см. `server.js`).
+- `static-html/vanilla/` — исходники HTML/инклюдов панели; после правок: `npm run sync:vanilla-public` → обновление `public/*.html` и связанных файлов.
+- `vendor/architectui-react-pro/` — эталонный React-шаблон ArchitectUI (визуальный source of truth); демо в `public/architectui-react-pro/` после `npm run build:architectui-demo`.
 - `worker.js`, `sync-worker.js` — фоновые скрипты пакетной обработки.
 - `config.js` — порт, доступ к БД, токен МойСклад.
 - `scripts/` — утилиты сборки, скриншотов документации, smoke e2e (см. `scripts/README.md`).
-- `docs-docusaurus/` — исходники пользовательской документации (Docusaurus).
-- `docs/repo/` — документация для разработчиков: API, деплой, план миграции UI.
+- `docs-docusaurus/` — исходники **всей** веб-документации (пользовательские разделы, полный REST API, деплой, архив плана ArchitectUI); сборка: `npm run docs:docusaurus:build` → `public/docs/`. Скриншоты: **`@playwright/test`** (`playwright.config.mjs`, `e2e/capture-doc-screenshots.spec.mjs`); без кредов в git — макеты `*-sample.html`, с кредами — как в панели. Команды: `npm run docs:install-browsers`, `npm run docs:capture-screenshots` (или **`docs:capture-screenshots:real`** — только живые страницы) → `docs-docusaurus/static/screenshots/`, затем `docs:docusaurus:build`.
+- `deploy/` — примеры конфигурации **nginx** для продакшена (не входят в Docusaurus).
+- `docs/README.md` — краткий указатель на веб-документацию и каталог `deploy/`.
 
 ## Быстрый старт (локально)
 
@@ -97,7 +101,7 @@ npm start
 
 ## Разделы API
 
-Подробное описание всех методов и параметров — в [`docs/repo/API.md`](docs/repo/API.md).
+Подробное описание всех методов и параметров — в веб-справке после сборки: **`/docs/api/`** (исходник: `docs-docusaurus/docs/api.md`).
 
 Коротко по группам:
 
@@ -114,7 +118,7 @@ npm start
 
 ## Важные замечания
 
-- В проекте нет автоматических тестов и CI-пайплайна.
+- Полноценного CI-пайплайна (например, GitHub Actions) в репозитории нет; локально доступен ручной smoke e2e по ключевым экранам: `npm run test:datagon-smoke-e2e` (Playwright, см. `scripts/qa/datagon-smoke-e2e.mjs`; перед этим `npm start` и при необходимости `npm run docs:install-browsers`).
 - Таблицы БД создаются/дополняются автоматически при старте `server.js`.
 - Для старых клиентов сохранена совместимость входа через `POST /api/login`.
 
@@ -236,5 +240,5 @@ curl -i -X POST "http://localhost:3000/api/auth/login" \
 
 ## Деплой
 
-См. [`docs/repo/DEPLOY.md`](docs/repo/DEPLOY.md).
+См. раздел **«Деплой»** в веб-справке (`/docs/deploy/`, исходник `docs-docusaurus/docs/deploy.md`) и примеры nginx в **`deploy/`**.
 
