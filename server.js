@@ -13,6 +13,18 @@ const PORT = config.port || 3000;
 let db;
 const postInitTasks = [];
 
+function pickFirstAllowedHtmlForActor(actor) {
+    try {
+        const { PAGE_DEFS } = require('./lib/datagonPageRegistry');
+        const modes = (actor && actor.page_modes) || {};
+        for (const p of PAGE_DEFS) {
+            const mode = String(modes[p.key] || 'full').toLowerCase();
+            if (mode !== 'hidden') return `/${p.htmlFile}`;
+        }
+    } catch (_) {}
+    return '/login.html';
+}
+
 function buildSourceUrl(domain, rawPath, cmsType = '') {
     const d = String(domain || '').trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '');
     const p = String(rawPath || '').trim();
@@ -1098,7 +1110,7 @@ initDB().then(() => {
                     const { htmlLeafToPageKey } = require('./lib/datagonPageRegistry');
                     const pk = htmlLeafToPageKey(leaf);
                     if (pk && actor.page_modes && actor.page_modes[pk] === 'hidden') {
-                        return res.redirect(302, '/dashboard.html');
+                        return res.redirect(302, pickFirstAllowedHtmlForActor(actor));
                     }
                 }
                 return next();
