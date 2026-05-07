@@ -43,7 +43,7 @@ description: Глобальные параметры парсинга, синх�
 | `sync_mode` | Политика запуска синка (как интерпретирует сервер — см. код). |
 | `log_retention_days` / `results_retention_days` | Срок хранения логов и строк `prices`. |
 | `ms_sync_page_limit` / `ms_sync_delay_ms` | Пакеты и паузы при обходе выгрузки МС. |
-| `auto_sync_myproducts_*` / `auto_sync_moysklad_*` / `auto_sync_marketplaces_*` / `auto_sync_huckster_*` | Расписание фоновых задач по московскому времени (если включено). Для Huckster нужны сохранённые `huckster_email` / `huckster_password` или переменные `HUCKSTER_*`. |
+| `auto_sync_myproducts_*` / `auto_sync_moysklad_*` / `auto_sync_marketplaces_*` / `auto_sync_huckster_*` / `auto_sync_db_size_*` | Расписание фоновых задач по московскому времени (если включено), включая ежедневный пересчёт размера БД для дашборда. |
 | `auth_session_ttl_days` / `auth_session_user_limit` | Длительность сессии и лимит одновременных сессий на пользователя. |
 | `auth_online_presence_minutes` | Окно для виджета «онлайн» в шапке. |
 | `fetch_proxy_enabled` / `fetch_proxy_list` | Глобальный выключатель и список прокси для загрузки HTML конкурентов (worker и точечный парсинг учитывают настройки проекта). |

@@ -90,6 +90,10 @@
       border-bottom: 1px solid #e9ecef;
       background: #fafbfc;
     }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"] .dg-huckster-pagination {
+      border-top: 1px solid #e9ecef;
+      background: #fff;
+    }
     body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"]
       .dg-huckster-matrix-card
       .dg-huckster-matrix-toolbar
@@ -377,7 +381,9 @@
       color: #0b6f36;
       box-shadow: inset 0 0 0 1px rgba(13, 122, 62, 0.28);
       font-weight: 700;
-      white-space: nowrap;
+      white-space: normal;
+      overflow-wrap: anywhere;
+      line-height: 1.25;
     }
     body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"]
       table.dg-huckster-matrix-table
@@ -387,7 +393,34 @@
       color: #b4233a;
       box-shadow: inset 0 0 0 1px rgba(217, 37, 80, 0.32);
       font-weight: 700;
-      white-space: nowrap;
+      white-space: normal;
+      overflow-wrap: anywhere;
+      line-height: 1.25;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"]
+      table.dg-huckster-matrix-table
+      tbody
+      td.dg-huckster-bridge-price {
+      white-space: normal;
+      overflow-wrap: anywhere;
+      font-variant-numeric: tabular-nums;
+      font-weight: 600;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"]
+      table.dg-huckster-matrix-table
+      tbody
+      td.dg-huckster-bridge-model-ok,
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"]
+      table.dg-huckster-matrix-table
+      tbody
+      td.dg-huckster-bridge-model-missing,
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"]
+      table.dg-huckster-matrix-table
+      tbody
+      td.dg-huckster-bridge-model-off {
+      white-space: normal;
+      overflow-wrap: anywhere;
+      line-height: 1.25;
     }
     body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"]
       table.dg-huckster-matrix-table
@@ -866,10 +899,10 @@
                 <div>
                   Huckster
                   <div class="page-title-subheading">
-                    <strong>Huckster Export (набор 1):</strong> товары — wiki §3–4 <code>repricer/items/list</code>; колонки <strong>Юнит / Модели Unit</strong> — wiki §13–14 (<code>unit/set/list</code>, <code>unit/set/get</code>), для набора 1 в Unit только модели с «онлайн» и «калькулятор» в названии.
-                    <strong>Huckster Export RRC (набор 2):</strong> строки из МойСклад, сопоставление с кабинетами FBO/РРЦ по той же bridge-схеме.
-                    <strong>Обновлено (repricer)</strong> — последнее изменение позиции по полям ответа repricer; <strong>Актуально на</strong> — когда Datagon собрал снимок. <strong>Репрайсер включён</strong> — да/нет по признакам включения в API (выключенные строки в матрице остаются).
-                    Строка = один UID; пустые UID/наименование — нет строки в выдаче repricer для кабинета. См.
+                    Таблицы <strong>Huckster Export</strong> и <strong>Huckster Export RRC</strong> строятся от товаров МойСклад: код МС сопоставляется с UID в Huckster по кабинетам Ozon, WB и ЯМ.
+                    В блоке <strong>Наборы</strong> задаются кабинеты для каждого набора и опциональный <strong>Тип цены МойСклад</strong>. Если тип цены выбран, при обновлении остаются только товары, где эта цена больше 0, а в таблицу добавляется колонка с названием цены и её значением.
+                    <strong>Репрайсер ВКЛЮЧЕН</strong> означает, что по UID найден ровно один включённый repricer для маркетплейса; <strong>Репрайсер ВЫКЛЮЧЕН</strong> — товар не найден, выключен или кабинет не определяется однозначно. Колонки <strong>Модель</strong> показывают назначение Unit-модели, а <strong>Актуально на</strong> — время сборки снимка Datagon.
+                    См.
                     <a href="https://wiki.huckster.ru/prochie-instrukcii/rukovodstvo-polzovatelya-po-rabote-s-api-repraisera-huckster" target="_blank" rel="noopener">wiki Huckster</a>.
                   </div>
                 </div>
@@ -891,12 +924,34 @@
                     <h6 class="mb-0">Набор 1 (Huckster Export)</h6>
                     <button type="button" class="btn btn-sm btn-outline-primary" id="dg-huckster-add-set1">+ Добавить строку</button>
                   </div>
+                  <div class="row g-2 align-items-end mb-2">
+                    <div class="col-md-5">
+                      <label class="form-label small mb-1" for="dg-huckster-price-type-set1">Тип цены МойСклад</label>
+                      <select class="form-select form-select-sm" id="dg-huckster-price-type-set1"></select>
+                    </div>
+                    <div class="col-md-7">
+                      <div class="small text-muted">
+                        Если выбран тип цены, в таблицу попадут только товары, где эта цена больше 0.
+                      </div>
+                    </div>
+                  </div>
                   <div class="table-responsive">
                     <table class="table table-sm table-striped mb-0" id="dg-huckster-set1-table"></table>
                   </div>
                   <div class="d-flex align-items-center justify-content-between mb-2 flex-wrap gap-2 mt-3">
                     <h6 class="mb-0">Набор 2 (Huckster Export RRC)</h6>
                     <button type="button" class="btn btn-sm btn-outline-primary" id="dg-huckster-add-set2">+ Добавить строку</button>
+                  </div>
+                  <div class="row g-2 align-items-end mb-2">
+                    <div class="col-md-5">
+                      <label class="form-label small mb-1" for="dg-huckster-price-type-set2">Тип цены МойСклад</label>
+                      <select class="form-select form-select-sm" id="dg-huckster-price-type-set2"></select>
+                    </div>
+                    <div class="col-md-7">
+                      <div class="small text-muted">
+                        Для RRC можно выбрать цену РРЦ, чтобы убрать строки с нулевой ценой из МойСклад.
+                      </div>
+                    </div>
                   </div>
                   <div class="table-responsive">
                     <table class="table table-sm table-striped mb-0" id="dg-huckster-set2-table"></table>
@@ -1062,7 +1117,7 @@
                         class="form-control form-control-sm"
                         id="dg-huckster-w-name"
                         data-huckster-width-key="name_px"
-                        min="120"
+                        min="80"
                         max="1600"
                         step="5"
                         autocomplete="off"
@@ -1078,16 +1133,20 @@
                       <input type="number" class="form-control form-control-sm" data-huckster-width-key="stock_px" min="60" max="220" step="1" autocomplete="off" style="width:4.25rem" />
                     </div>
                     <div class="dg-huckster-width-control">
+                      <label class="small text-muted mb-0 text-nowrap">Цена</label>
+                      <input type="number" class="form-control form-control-sm" data-huckster-width-key="price_px" min="80" max="360" step="5" autocomplete="off" style="width:4.25rem" />
+                    </div>
+                    <div class="dg-huckster-width-control">
                       <label class="small text-muted mb-0 text-nowrap">Статус</label>
-                      <input type="number" class="form-control form-control-sm" data-huckster-width-key="bridge_status_px" min="120" max="360" step="5" autocomplete="off" style="width:4.25rem" />
+                      <input type="number" class="form-control form-control-sm" data-huckster-width-key="bridge_status_px" min="70" max="360" step="5" autocomplete="off" style="width:4.25rem" />
                     </div>
                     <div class="dg-huckster-width-control">
                       <label class="small text-muted mb-0 text-nowrap">Модели</label>
-                      <input type="number" class="form-control form-control-sm" data-huckster-width-key="bridge_models_px" min="140" max="640" step="5" autocomplete="off" style="width:4.25rem" />
+                      <input type="number" class="form-control form-control-sm" data-huckster-width-key="bridge_models_px" min="90" max="640" step="5" autocomplete="off" style="width:4.25rem" />
                     </div>
                     <div class="dg-huckster-width-control">
                       <label class="small text-muted mb-0 text-nowrap">Модели Unit</label>
-                      <input type="number" class="form-control form-control-sm" data-huckster-width-key="unit_models_px" min="160" max="700" step="5" autocomplete="off" style="width:4.25rem" />
+                      <input type="number" class="form-control form-control-sm" data-huckster-width-key="unit_models_px" min="90" max="700" step="5" autocomplete="off" style="width:4.25rem" />
                     </div>
                     <div class="dg-huckster-width-control">
                       <label class="small text-muted mb-0 text-nowrap">Обновлено</label>
@@ -1103,8 +1162,9 @@
                     </div>
                     <div class="dg-huckster-width-control">
                       <label class="small text-muted mb-0 text-nowrap">Актуально</label>
-                      <input type="number" class="form-control form-control-sm" data-huckster-width-key="sync_px" min="100" max="240" step="1" autocomplete="off" style="width:4.25rem" />
+                      <input type="number" class="form-control form-control-sm" data-huckster-width-key="sync_px" min="80" max="240" step="1" autocomplete="off" style="width:4.25rem" />
                     </div>
+                    <button type="button" class="btn btn-sm btn-outline-primary" data-huckster-width-apply>Применить</button>
                   </div>
                 </div>
                 <div class="dg-huckster-matrix-scroll">
@@ -1113,6 +1173,23 @@
                       class="table mb-0 dg-huckster-matrix-table"
                       id="dg-huckster-table-1"
                     ></table>
+                  </div>
+                </div>
+                <div class="dg-huckster-pagination px-3 py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                  <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <label class="small text-muted mb-0" for="dg-huckster-page-limit-1">На странице</label>
+                    <select class="form-select form-select-sm" id="dg-huckster-page-limit-1" style="width:auto">
+                      <option value="50">50</option>
+                      <option value="100" selected>100</option>
+                      <option value="200">200</option>
+                      <option value="500">500</option>
+                      <option value="1000">1000</option>
+                    </select>
+                    <span class="text-muted small" id="dg-huckster-page-hint-1">—</span>
+                  </div>
+                  <div class="btn-group" role="group" aria-label="Страницы Huckster Export">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-huckster-page-prev-1">Назад</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-huckster-page-next-1">Вперед</button>
                   </div>
                 </div>
               </div>
@@ -1174,7 +1251,7 @@
                         class="form-control form-control-sm"
                         id="dg-huckster-w-name-2"
                         data-huckster-width-key="name_px"
-                        min="120"
+                        min="80"
                         max="1600"
                         step="5"
                         autocomplete="off"
@@ -1190,16 +1267,20 @@
                       <input type="number" class="form-control form-control-sm" data-huckster-width-key="stock_px" min="60" max="220" step="1" autocomplete="off" style="width:4.25rem" />
                     </div>
                     <div class="dg-huckster-width-control">
+                      <label class="small text-muted mb-0 text-nowrap">Цена</label>
+                      <input type="number" class="form-control form-control-sm" data-huckster-width-key="price_px" min="80" max="360" step="5" autocomplete="off" style="width:4.25rem" />
+                    </div>
+                    <div class="dg-huckster-width-control">
                       <label class="small text-muted mb-0 text-nowrap">Статус</label>
-                      <input type="number" class="form-control form-control-sm" data-huckster-width-key="bridge_status_px" min="120" max="360" step="5" autocomplete="off" style="width:4.25rem" />
+                      <input type="number" class="form-control form-control-sm" data-huckster-width-key="bridge_status_px" min="70" max="360" step="5" autocomplete="off" style="width:4.25rem" />
                     </div>
                     <div class="dg-huckster-width-control">
                       <label class="small text-muted mb-0 text-nowrap">Модели</label>
-                      <input type="number" class="form-control form-control-sm" data-huckster-width-key="bridge_models_px" min="140" max="640" step="5" autocomplete="off" style="width:4.25rem" />
+                      <input type="number" class="form-control form-control-sm" data-huckster-width-key="bridge_models_px" min="90" max="640" step="5" autocomplete="off" style="width:4.25rem" />
                     </div>
                     <div class="dg-huckster-width-control">
                       <label class="small text-muted mb-0 text-nowrap">Модели Unit</label>
-                      <input type="number" class="form-control form-control-sm" data-huckster-width-key="unit_models_px" min="160" max="700" step="5" autocomplete="off" style="width:4.25rem" />
+                      <input type="number" class="form-control form-control-sm" data-huckster-width-key="unit_models_px" min="90" max="700" step="5" autocomplete="off" style="width:4.25rem" />
                     </div>
                     <div class="dg-huckster-width-control">
                       <label class="small text-muted mb-0 text-nowrap">Обновлено</label>
@@ -1215,8 +1296,9 @@
                     </div>
                     <div class="dg-huckster-width-control">
                       <label class="small text-muted mb-0 text-nowrap">Актуально</label>
-                      <input type="number" class="form-control form-control-sm" data-huckster-width-key="sync_px" min="100" max="240" step="1" autocomplete="off" style="width:4.25rem" />
+                      <input type="number" class="form-control form-control-sm" data-huckster-width-key="sync_px" min="80" max="240" step="1" autocomplete="off" style="width:4.25rem" />
                     </div>
+                    <button type="button" class="btn btn-sm btn-outline-primary" data-huckster-width-apply>Применить</button>
                   </div>
                 </div>
                 <div class="dg-huckster-matrix-scroll">
@@ -1225,6 +1307,23 @@
                       class="table mb-0 dg-huckster-matrix-table"
                       id="dg-huckster-table-2"
                     ></table>
+                  </div>
+                </div>
+                <div class="dg-huckster-pagination px-3 py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                  <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <label class="small text-muted mb-0" for="dg-huckster-page-limit-2">На странице</label>
+                    <select class="form-select form-select-sm" id="dg-huckster-page-limit-2" style="width:auto">
+                      <option value="50">50</option>
+                      <option value="100" selected>100</option>
+                      <option value="200">200</option>
+                      <option value="500">500</option>
+                      <option value="1000">1000</option>
+                    </select>
+                    <span class="text-muted small" id="dg-huckster-page-hint-2">—</span>
+                  </div>
+                  <div class="btn-group" role="group" aria-label="Страницы Huckster Export RRC">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-huckster-page-prev-2">Назад</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-huckster-page-next-2">Вперед</button>
                   </div>
                 </div>
               </div>
@@ -1259,8 +1358,13 @@
               var API_STOP = "/api/exports/huckster/stop";
               var API_SNAPSHOT = "/api/exports/huckster/snapshot";
               var API_CONFIG = "/api/exports/huckster/config";
+              var API_PRICE_TYPES = "/api/exports/huckster/price-types";
               var shopsSet1 = [];
               var shopsSet2 = [];
+              var hucksterPriceTypeOptions = [];
+              var hucksterPriceTypeSet1 = "";
+              var hucksterPriceTypeSet2 = "";
+              var hucksterPriceTypesLoading = false;
               var syncPollTick = null;
               var syncTimerTick = null;
               var timerStartMs = 0;
@@ -1270,6 +1374,8 @@
               var HUCKSTER_UPDATE_COLLAPSE_KEY = "datagon_huckster_update_collapsed_v1";
               var hucksterSearchRedrawT1 = null;
               var hucksterSearchRedrawT2 = null;
+              var hucksterMatrixPage1 = 1;
+              var hucksterMatrixPage2 = 1;
 
               function matrixSearchStorageKey(which) {
                 var u = "guest";
@@ -1277,6 +1383,14 @@
                   u = String(window.localStorage.getItem("currentUser") || "guest").trim() || "guest";
                 } catch (e0) {}
                 return "dg_huckster_matrix_smart_search_" + which + "_v1_" + u.replace(/[^\w.-]+/g, "_");
+              }
+
+              function hucksterPaginationStorageKey(which) {
+                var u = "guest";
+                try {
+                  u = String(window.localStorage.getItem("currentUser") || "guest").trim() || "guest";
+                } catch (e0) {}
+                return "dg_huckster_matrix_page_limit_" + which + "_v1_" + u.replace(/[^\w.-]+/g, "_");
               }
 
               function parseHucksterSmartTokens(raw) {
@@ -1646,34 +1760,35 @@
                   }
                   if (Number.isFinite(u) && u >= 40 && u <= 400) return u;
                 } catch (eUid) {}
-                return 85;
+                return 70;
               }
 
               function readStoredNameColW_() {
                 try {
                   var kName = matrixWidthStorageKey("name_px");
                   var n = parseInt(localStorage.getItem(kName), 10);
-                  if (!Number.isFinite(n) || n < 120 || n > 1600) {
+                  if (!Number.isFinite(n) || n < 80 || n > 1600) {
                     var legN = parseInt(localStorage.getItem("dg_huckster_matrix_name_px_v1"), 10);
                     if (Number.isFinite(legN) && legN >= 120 && legN <= 1600) n = legN;
                   }
-                  if (Number.isFinite(n) && n >= 120 && n <= 1600) return n;
+                  if (Number.isFinite(n) && n >= 80 && n <= 1600) return n;
                 } catch (eName) {}
-                return 450;
+                return 190;
               }
 
               var HUCKSTER_WIDTH_SPECS = {
-                uid_px: { def: 85, min: 40, max: 400 },
-                name_px: { def: 450, min: 120, max: 1600 },
+                uid_px: { def: 70, min: 40, max: 400 },
+                name_px: { def: 190, min: 80, max: 1600 },
                 manager_px: { def: 180, min: 100, max: 360 },
                 stock_px: { def: 88, min: 60, max: 220 },
-                bridge_status_px: { def: 190, min: 120, max: 360 },
-                bridge_models_px: { def: 240, min: 140, max: 640 },
+                price_px: { def: 150, min: 80, max: 360 },
+                bridge_status_px: { def: 190, min: 70, max: 360 },
+                bridge_models_px: { def: 240, min: 90, max: 640 },
                 updated_px: { def: 118, min: 90, max: 240 },
                 repricer_px: { def: 76, min: 70, max: 180 },
                 unit_px: { def: 88, min: 70, max: 180 },
-                unit_models_px: { def: 280, min: 160, max: 700 },
-                sync_px: { def: 136, min: 100, max: 240 },
+                unit_models_px: { def: 280, min: 90, max: 700 },
+                sync_px: { def: 118, min: 80, max: 240 },
               };
 
               function getWidthSpec_(key) {
@@ -1698,12 +1813,6 @@
               }
 
               function getMatrixColW(key) {
-                var spec = getWidthSpec_(key);
-                var els = document.querySelectorAll('[data-huckster-width-key="' + key + '"]');
-                for (var i = 0; i < els.length; i++) {
-                  var raw = String(els[i].value || "").trim();
-                  if (raw !== "") return clampNum(Number(raw), spec.min, spec.max);
-                }
                 return readStoredMatrixColW_(key);
               }
 
@@ -1715,21 +1824,25 @@
                 return getMatrixColW("name_px");
               }
 
-              var matrixColWidthRedrawT = null;
-              function scheduleMatrixColWidthRedraw() {
-                if (matrixColWidthRedrawT) clearTimeout(matrixColWidthRedrawT);
-                matrixColWidthRedrawT = setTimeout(function () {
-                  matrixColWidthRedrawT = null;
-                  try {
-                    Object.keys(HUCKSTER_WIDTH_SPECS).forEach(function (key) {
-                      var w = getMatrixColW(key);
-                      setWidthInputsTo_(key, String(w));
-                      localStorage.setItem(matrixWidthStorageKey(key), String(w));
-                    });
-                  } catch (e) {}
-                  redrawHucksterMatrix(1);
-                  redrawHucksterMatrix(2);
-                }, 120);
+              function applyMatrixColWidths() {
+                try {
+                  Object.keys(HUCKSTER_WIDTH_SPECS).forEach(function (key) {
+                    var spec = getWidthSpec_(key);
+                    var els = document.querySelectorAll('[data-huckster-width-key="' + key + '"]');
+                    var next = readStoredMatrixColW_(key);
+                    for (var i = 0; i < els.length; i++) {
+                      var raw = String(els[i].value || "").trim();
+                      if (raw !== "") {
+                        next = clampNum(Number(raw), spec.min, spec.max);
+                        break;
+                      }
+                    }
+                    setWidthInputsTo_(key, String(next));
+                    localStorage.setItem(matrixWidthStorageKey(key), String(next));
+                  });
+                } catch (e) {}
+                redrawHucksterMatrix(1);
+                redrawHucksterMatrix(2);
               }
 
               function initHucksterMatrixColWidthControls() {
@@ -1739,9 +1852,13 @@
                 var els = document.querySelectorAll("[data-huckster-width-key]");
                 for (var ii = 0; ii < els.length; ii++) {
                   var el = els[ii];
-                  el.addEventListener("input", scheduleMatrixColWidthRedraw);
-                  el.addEventListener("change", scheduleMatrixColWidthRedraw);
+                  el.addEventListener("keydown", function (ev) {
+                    if (ev.key === "Enter") applyMatrixColWidths();
+                  });
                 }
+                document.querySelectorAll("[data-huckster-width-apply]").forEach(function (btn) {
+                  btn.addEventListener("click", applyMatrixColWidths);
+                });
               }
 
               var HUCKSTER_MATRIX_SYNC_HEADER = "Актуально на";
@@ -1881,6 +1998,85 @@
                 }
                 el.textContent = "· " + text;
                 el.setAttribute("title", title);
+              }
+
+              function hucksterMatrixPageRef(which) {
+                return which === 1 ? hucksterMatrixPage1 : hucksterMatrixPage2;
+              }
+
+              function setHucksterMatrixPage(which, nextPage) {
+                var p = Math.max(1, Math.floor(Number(nextPage) || 1));
+                if (which === 1) hucksterMatrixPage1 = p;
+                else hucksterMatrixPage2 = p;
+              }
+
+              function resetHucksterMatrixPage(which) {
+                setHucksterMatrixPage(which, 1);
+              }
+
+              function hucksterMatrixLimit(which) {
+                var el = document.getElementById("dg-huckster-page-limit-" + which);
+                var n = Number(el && el.value);
+                return [50, 100, 200, 500, 1000].indexOf(n) >= 0 ? n : 100;
+              }
+
+              function restoreHucksterPaginationControls() {
+                [1, 2].forEach(function (which) {
+                  var el = document.getElementById("dg-huckster-page-limit-" + which);
+                  if (!el) return;
+                  try {
+                    var stored = Number(localStorage.getItem(hucksterPaginationStorageKey(which)));
+                    if ([50, 100, 200, 500, 1000].indexOf(stored) >= 0) el.value = String(stored);
+                  } catch (e) {}
+                });
+              }
+
+              function updateHucksterPaginationControls(which, filteredBodyCount, pageBodyCount) {
+                var totalFiltered = Math.max(0, Math.floor(Number(filteredBodyCount) || 0));
+                var limit = hucksterMatrixLimit(which);
+                var pages = Math.max(1, Math.ceil(totalFiltered / limit));
+                var current = Math.min(Math.max(1, hucksterMatrixPageRef(which)), pages);
+                setHucksterMatrixPage(which, current);
+                var hint = document.getElementById("dg-huckster-page-hint-" + which);
+                if (hint) {
+                  hint.textContent =
+                    "Найдено: " +
+                    totalFiltered.toLocaleString("ru-RU") +
+                    "; страница " +
+                    current +
+                    "/" +
+                    pages +
+                    "; показано: " +
+                    Math.max(0, Math.floor(Number(pageBodyCount) || 0)).toLocaleString("ru-RU");
+                }
+                var prev = document.getElementById("dg-huckster-page-prev-" + which);
+                var next = document.getElementById("dg-huckster-page-next-" + which);
+                if (prev) prev.disabled = current <= 1;
+                if (next) next.disabled = current >= pages;
+              }
+
+              function paginateHucksterMatrixRows(which, rows, bridgeMeta) {
+                if (!rows || rows.length < 2) {
+                  updateHucksterPaginationControls(which, 0, 0);
+                  return { rows: rows ? rows.slice() : [], bridgeMeta: bridgeMeta || null, filteredBodyCount: 0, pageBodyCount: 0 };
+                }
+                var totalFiltered = Math.max(0, rows.length - 1);
+                var limit = hucksterMatrixLimit(which);
+                var pages = Math.max(1, Math.ceil(totalFiltered / limit));
+                var page = Math.min(Math.max(1, hucksterMatrixPageRef(which)), pages);
+                setHucksterMatrixPage(which, page);
+                var start = 1 + (page - 1) * limit;
+                var end = Math.min(rows.length, start + limit);
+                var pageRows = [rows[0]].concat(rows.slice(start, end));
+                var pageMeta = null;
+                if (bridgeMeta) pageMeta = [null].concat(bridgeMeta.slice(start, end));
+                updateHucksterPaginationControls(which, totalFiltered, Math.max(0, pageRows.length - 1));
+                return {
+                  rows: pageRows,
+                  bridgeMeta: pageMeta,
+                  filteredBodyCount: totalFiltered,
+                  pageBodyCount: Math.max(0, pageRows.length - 1),
+                };
               }
 
               function matrixColMeta(idx, prefixCount, colCount, hasSyncCol, perCabinetUnit, perCabinetRepricer) {
@@ -2346,6 +2542,7 @@
                     : unitGapShopIndexesByUid;
                 gap = gap && typeof gap === "object" ? gap : null;
                 if (tableId === "dg-huckster-table-1") {
+                  resetHucksterMatrixPage(1);
                   hucksterMatrixFull1 = arr;
                   hucksterMatrixUnitGap1 = arr ? gap : null;
                   if (arr && bridgeIn && bridgeIn.length === arr.length) {
@@ -2354,6 +2551,7 @@
                     hucksterBridgeMeta1 = null;
                   }
                 } else if (tableId === "dg-huckster-table-2") {
+                  resetHucksterMatrixPage(2);
                   hucksterMatrixFull2 = arr;
                   hucksterMatrixUnitGap2 = arr ? gap : null;
                   if (arr && bridgeIn && bridgeIn.length === arr.length) {
@@ -2391,6 +2589,7 @@
                 if (t === "Наименование товара") return "Название товара из МойСклад.";
                 if (t === "Менеджер") return "Менеджер из МойСклад (поле manager в ms_export).";
                 if (t === "Остаток") return "Остаток из ms_export. В bridge попадают складские позиции; товары с прекращённым сотрудничеством скрываются, кроме остатка больше нуля.";
+                if (t.indexOf("Цена") === 0) return "Выбранный тип цены из полной карточки МойСклад. В таблицу попадают только строки, где эта цена больше 0.";
                 if (t === "Ozon" || t === "WB" || t === "ЯМ") return "Статус repricer по этому маркетплейсу: зелёный — ровно один включённый repricer по UID; красный — включённого repricer нет или кабинет не определяется однозначно.";
                 if (t.indexOf("Модель ") === 0) return "Unit-модель Huckster, где найден этот UID для выбранного кабинета маркетплейса.";
                 if (t === HUCKSTER_MATRIX_SYNC_HEADER) return "Когда Datagon успешно собрал этот тест/снимок матрицы.";
@@ -2404,6 +2603,7 @@
                 var nameW = getNameColW();
                 var managerW = getMatrixColW("manager_px");
                 var stockW = getMatrixColW("stock_px");
+                var priceW = getMatrixColW("price_px");
                 var statusW = getMatrixColW("bridge_status_px");
                 var modelW = getMatrixColW("bridge_models_px");
                 var syncW = getMatrixColW("sync_px");
@@ -2423,6 +2623,7 @@
                   else if (h === "Наименование товара") { w = nameW; cls = "dg-huckster-bridge-col-name"; }
                   else if (h === "Менеджер") { w = managerW; cls = "dg-huckster-bridge-col-manager"; }
                   else if (h === "Остаток") { w = stockW; }
+                  else if (h.indexOf("Цена") === 0) { w = priceW; cls = "dg-huckster-bridge-col-price"; }
                   else if (h === "Ozon" || h === "WB" || h === "ЯМ") { w = statusW; }
                   else if (h.indexOf("Модель ") === 0) { w = modelW; cls = "dg-huckster-col-unit-models"; }
                   else if (h === HUCKSTER_MATRIX_SYNC_HEADER) { w = syncW; cls = "dg-huckster-col-sync"; }
@@ -2457,6 +2658,7 @@
                     if (isCab) val = st === "ok" ? "Репрайсер ВКЛЮЧЕН" : "Репрайсер ВЫКЛЮЧЕН";
                     var cls = [];
                     if (isCab) cls.push(st === "ok" ? "dg-huckster-bridge-cab-ok" : "dg-huckster-bridge-cab-bad");
+                    if (String(head[j] || "").indexOf("Цена") === 0) cls.push("dg-huckster-bridge-price");
                     var isModelCol = String(head[j] || "").indexOf("Модель ") === 0;
                     if (isModelCol) {
                       if (val === "Модель не назначена") cls.push("dg-huckster-bridge-model-missing");
@@ -2661,6 +2863,7 @@
                 var searchRaw = searchEl ? String(searchEl.value || "") : "";
                 var tokens = parseHucksterSmartTokens(searchRaw);
                 if (!full || !full.length) {
+                  updateHucksterPaginationControls(which, 0, 0);
                   renderMatrix(tableId, [], {
                     apiEmpty: true,
                     filterActive: onlyNotFound,
@@ -2689,13 +2892,15 @@
                 if (isBridge && bridgeAfterControls && tokens.length) {
                   bridgeFinal = alignBridgeMetaToRows(step2, bridgeAfterControls, toRender);
                 }
+                var paged = paginateHucksterMatrixRows(which, toRender, isBridge ? bridgeFinal : null);
                 var unitGapByUid = which === 1 ? hucksterMatrixUnitGap1 : hucksterMatrixUnitGap2;
-                renderMatrix(tableId, toRender, {
+                renderMatrix(tableId, paged.rows, {
                   filterActive: onlyNotFound,
                   searchActive: tokens.length > 0,
                   unitGapByUid: unitGapByUid || null,
-                  totalBodyCount: totalBody,
-                  bridgeMeta: isBridge ? bridgeFinal : null,
+                  totalBodyCount: paged.filteredBodyCount,
+                  sourceBodyCount: totalBody,
+                  bridgeMeta: isBridge ? paged.bridgeMeta : null,
                 });
               }
 
@@ -3131,6 +3336,46 @@
                 table.innerHTML = html;
               }
 
+              function mergePriceTypeOptions(selectedValue) {
+                var out = [];
+                var seen = {};
+                function add(v) {
+                  var s = String(v || "").trim();
+                  if (!s || seen[s]) return;
+                  seen[s] = true;
+                  out.push(s);
+                }
+                add(selectedValue);
+                (hucksterPriceTypeOptions || []).forEach(add);
+                return out;
+              }
+
+              function renderPriceTypeSelect(selectId, selectedValue) {
+                var sel = document.getElementById(selectId);
+                if (!sel) return;
+                var value = String(selectedValue || "").trim();
+                var html = '<option value="">Не фильтровать по цене</option>';
+                if (hucksterPriceTypesLoading && !hucksterPriceTypeOptions.length && !value) {
+                  html += '<option value="" disabled>Загрузка типов цен...</option>';
+                }
+                mergePriceTypeOptions(value).forEach(function (name) {
+                  html +=
+                    '<option value="' +
+                    escAttr(name) +
+                    '"' +
+                    (name === value ? " selected" : "") +
+                    ">" +
+                    esc(name) +
+                    "</option>";
+                });
+                sel.innerHTML = html;
+              }
+
+              function renderPriceTypeSelects() {
+                renderPriceTypeSelect("dg-huckster-price-type-set1", hucksterPriceTypeSet1);
+                renderPriceTypeSelect("dg-huckster-price-type-set2", hucksterPriceTypeSet2);
+              }
+
               function collectConfigFromInputs() {
                 function collectOneSet(setKey, sourceLen) {
                   var out = [];
@@ -3149,6 +3394,8 @@
                 return {
                   set1: collectOneSet("set1", shopsSet1.length),
                   set2: collectOneSet("set2", shopsSet2.length),
+                  price_type_set_1: String((document.getElementById("dg-huckster-price-type-set1") || {}).value || "").trim(),
+                  price_type_set_2: String((document.getElementById("dg-huckster-price-type-set2") || {}).value || "").trim(),
                 };
               }
 
@@ -3168,6 +3415,7 @@
               function rerenderConfig() {
                 renderConfigTable("dg-huckster-set1-table", shopsSet1, "set1");
                 renderConfigTable("dg-huckster-set2-table", shopsSet2, "set2");
+                renderPriceTypeSelects();
                 bindConfigActions();
               }
 
@@ -3195,9 +3443,12 @@
                     }
                     shopsSet1 = Array.isArray(x.json.set1) ? x.json.set1 : cfg.set1;
                     shopsSet2 = Array.isArray(x.json.set2) ? x.json.set2 : cfg.set2;
+                    hucksterPriceTypeSet1 = String(x.json.price_type_set_1 || cfg.price_type_set_1 || "").trim();
+                    hucksterPriceTypeSet2 = String(x.json.price_type_set_2 || cfg.price_type_set_2 || "").trim();
+                    hucksterPriceTypeOptions = Array.isArray(x.json.price_type_options) ? x.json.price_type_options : hucksterPriceTypeOptions;
                     rerenderConfig();
                     loadSavedSnapshotFromDb().finally(function () {
-                      setStatusBase("Наборы Huckster сохранены.", false);
+                      setStatusBase("Наборы Huckster сохранены. Для применения фильтра по типу цены запустите «Обновить Huckster».", false);
                     });
                   })
                   .catch(function (e) {
@@ -3217,7 +3468,33 @@
                     }
                     shopsSet1 = Array.isArray(x.json.set1) ? x.json.set1 : [];
                     shopsSet2 = Array.isArray(x.json.set2) ? x.json.set2 : [];
+                    hucksterPriceTypeSet1 = String(x.json.price_type_set_1 || "").trim();
+                    hucksterPriceTypeSet2 = String(x.json.price_type_set_2 || "").trim();
+                    hucksterPriceTypeOptions = Array.isArray(x.json.price_type_options) ? x.json.price_type_options : [];
                     rerenderConfig();
+                  });
+              }
+
+              function loadPriceTypeOptions() {
+                hucksterPriceTypesLoading = true;
+                renderPriceTypeSelects();
+                return fetchJsonSafe(API_PRICE_TYPES, {
+                  method: "GET",
+                  credentials: "same-origin",
+                  headers: authHeaders(false),
+                })
+                  .then(function (x) {
+                    if (!x.ok || !x.json || !x.json.success) {
+                      throw new Error(responseErrorMessage(x, "Ошибка загрузки типов цен"));
+                    }
+                    hucksterPriceTypeOptions = Array.isArray(x.json.price_type_options) ? x.json.price_type_options : [];
+                    hucksterPriceTypesLoading = false;
+                    renderPriceTypeSelects();
+                  })
+                  .catch(function (e) {
+                    hucksterPriceTypesLoading = false;
+                    renderPriceTypeSelects();
+                    throw e;
                   });
               }
 
@@ -3276,6 +3553,8 @@
                   var el = document.getElementById(id);
                   if (el) el.value = "";
                 });
+                resetHucksterMatrixPage(1);
+                resetHucksterMatrixPage(2);
                 redrawHucksterMatrix(1);
                 redrawHucksterMatrix(2);
               }
@@ -3421,20 +3700,31 @@
 
               initHucksterMatrixColWidthControls();
               restoreMatrixSearchInputs();
+              restoreHucksterPaginationControls();
 
               var filt1 = document.getElementById("dg-huckster-filter-notfound-1");
-              if (filt1) filt1.addEventListener("change", function () { redrawHucksterMatrix(1); });
+              if (filt1) filt1.addEventListener("change", function () {
+                resetHucksterMatrixPage(1);
+                redrawHucksterMatrix(1);
+              });
               var filt2 = document.getElementById("dg-huckster-filter-notfound-2");
-              if (filt2) filt2.addEventListener("change", function () { redrawHucksterMatrix(2); });
+              if (filt2) filt2.addEventListener("change", function () {
+                resetHucksterMatrixPage(2);
+                redrawHucksterMatrix(2);
+              });
 
               ["dg-huckster-filter-manager", "dg-huckster-filter-ozon", "dg-huckster-filter-wb", "dg-huckster-filter-yandex", "dg-huckster-filter-models"].forEach(function (id) {
                 var el = document.getElementById(id);
                 if (!el) return;
                 el.addEventListener("input", function () {
+                  resetHucksterMatrixPage(1);
+                  resetHucksterMatrixPage(2);
                   redrawHucksterMatrix(1);
                   redrawHucksterMatrix(2);
                 });
                 el.addEventListener("change", function () {
+                  resetHucksterMatrixPage(1);
+                  resetHucksterMatrixPage(2);
                   redrawHucksterMatrix(1);
                   redrawHucksterMatrix(2);
                 });
@@ -3445,6 +3735,7 @@
               var smart1 = document.getElementById("dg-huckster-smart-search-1");
               if (smart1) {
                 smart1.addEventListener("input", function () {
+                  resetHucksterMatrixPage(1);
                   persistMatrixSearch(1);
                   scheduleRedrawHucksterSearch(1);
                 });
@@ -3452,10 +3743,38 @@
               var smart2 = document.getElementById("dg-huckster-smart-search-2");
               if (smart2) {
                 smart2.addEventListener("input", function () {
+                  resetHucksterMatrixPage(2);
                   persistMatrixSearch(2);
                   scheduleRedrawHucksterSearch(2);
                 });
               }
+
+              [1, 2].forEach(function (which) {
+                var limitEl = document.getElementById("dg-huckster-page-limit-" + which);
+                if (limitEl) {
+                  limitEl.addEventListener("change", function () {
+                    resetHucksterMatrixPage(which);
+                    try {
+                      localStorage.setItem(hucksterPaginationStorageKey(which), String(hucksterMatrixLimit(which)));
+                    } catch (e) {}
+                    redrawHucksterMatrix(which);
+                  });
+                }
+                var prev = document.getElementById("dg-huckster-page-prev-" + which);
+                if (prev) {
+                  prev.addEventListener("click", function () {
+                    setHucksterMatrixPage(which, hucksterMatrixPageRef(which) - 1);
+                    redrawHucksterMatrix(which);
+                  });
+                }
+                var next = document.getElementById("dg-huckster-page-next-" + which);
+                if (next) {
+                  next.addEventListener("click", function () {
+                    setHucksterMatrixPage(which, hucksterMatrixPageRef(which) + 1);
+                    redrawHucksterMatrix(which);
+                  });
+                }
+              });
 
               var btn = document.getElementById("dg-huckster-sync-btn");
               if (btn) btn.addEventListener("click", runSync);
@@ -3468,12 +3787,26 @@
               var add1 = document.getElementById("dg-huckster-add-set1");
               var add2 = document.getElementById("dg-huckster-add-set2");
               var saveCfg = document.getElementById("dg-huckster-save-config");
+              var priceTypeSel1 = document.getElementById("dg-huckster-price-type-set1");
+              var priceTypeSel2 = document.getElementById("dg-huckster-price-type-set2");
               if (add1) add1.addEventListener("click", function () { addShopRow("set1"); });
               if (add2) add2.addEventListener("click", function () { addShopRow("set2"); });
               if (saveCfg) saveCfg.addEventListener("click", saveConfig);
-              loadConfig().catch(function (e) {
-                setStatusBase("Ошибка загрузки наборов Huckster: " + String(e.message || e), false);
+              if (priceTypeSel1) priceTypeSel1.addEventListener("change", function () {
+                hucksterPriceTypeSet1 = String(priceTypeSel1.value || "").trim();
               });
+              if (priceTypeSel2) priceTypeSel2.addEventListener("change", function () {
+                hucksterPriceTypeSet2 = String(priceTypeSel2.value || "").trim();
+              });
+              loadConfig()
+                .then(function () {
+                  return loadPriceTypeOptions().catch(function (ePrice) {
+                    setStatusBase("Наборы Huckster загружены. Типы цен пока не загрузились: " + String(ePrice.message || ePrice), false);
+                  });
+                })
+                .catch(function (e) {
+                  setStatusBase("Ошибка загрузки наборов Huckster: " + String(e.message || e), false);
+                });
               loadSavedSnapshotFromDb()
                 .catch(function () {})
                 .then(function () {

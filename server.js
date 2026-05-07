@@ -82,11 +82,15 @@ let appSettings = {
     huckster_max_offset_per_shop: 0,
     huckster_shops_set_1: '',
     huckster_shops_set_2: '',
+    huckster_ms_price_type_set_1: '',
+    huckster_ms_price_type_set_2: '',
     mp_ozon_include_archived: 0,
     auto_sync_marketplaces_enabled: 0,
     auto_sync_marketplaces_time: '05:00',
     auto_sync_huckster_enabled: 0,
-    auto_sync_huckster_time: '06:00'
+    auto_sync_huckster_time: '06:00',
+    auto_sync_db_size_enabled: 1,
+    auto_sync_db_size_time: '02:00'
 };
 let syncState = { active: false, processed: 0, total: 0, message: '' };
 const moyskladRouterFactory = require('./routes/moysklad');
@@ -104,6 +108,8 @@ let lastCpuUsage = process.cpuUsage();
 let lastCpuCheckAt = process.hrtime.bigint();
 let sourceEnabledColumnReady = false;
 let sourceIdentityIndexesReady = false;
+const DB_SIZE_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+let dbSizeCache = null;
 
 async function ensureSourceEnabledColumn() {
     if (sourceEnabledColumnReady) return;
@@ -231,11 +237,15 @@ async function initDB() {
             ['huckster_max_offset_per_shop','0'],
             ['huckster_shops_set_1',''],
             ['huckster_shops_set_2',''],
+            ['huckster_ms_price_type_set_1',''],
+            ['huckster_ms_price_type_set_2',''],
             ['mp_ozon_include_archived','0'],
             ['auto_sync_marketplaces_enabled','0'],
             ['auto_sync_marketplaces_time','05:00'],
             ['auto_sync_huckster_enabled','0'],
-            ['auto_sync_huckster_time','06:00']
+            ['auto_sync_huckster_time','06:00'],
+            ['auto_sync_db_size_enabled','1'],
+            ['auto_sync_db_size_time','02:00']
         ];
         for (const [k, v] of defaults) await db.query('INSERT IGNORE INTO app_settings (setting_key, setting_value) VALUES (?, ?)', [k, v]);
 
@@ -243,12 +253,15 @@ async function initDB() {
         rows.forEach(r => {
             if (appSettings.hasOwnProperty(r.setting_key)) {
                 const asInt =
-                    r.setting_key.includes('limit') ||
-                    r.setting_key.includes('size') ||
-                    r.setting_key.includes('delay') ||
-                    r.setting_key.includes('days') ||
-                    r.setting_key.includes('minutes') ||
-                    r.setting_key === 'fetch_proxy_enabled';
+                    !r.setting_key.endsWith('_time') &&
+                    (
+                        r.setting_key.includes('limit') ||
+                        r.setting_key.includes('size') ||
+                        r.setting_key.includes('delay') ||
+                        r.setting_key.includes('days') ||
+                        r.setting_key.includes('minutes') ||
+                        r.setting_key === 'fetch_proxy_enabled'
+                    );
                 appSettings[r.setting_key] = asInt ? parseInt(r.setting_value, 10) : r.setting_value;
             }
         });
@@ -732,10 +745,44 @@ function getRuntimeMetrics() {
     };
 }
 
-function enqueueAutoSyncTask(taskType) {
+async function getDatabaseSizeMetrics(forceRefresh = false) {
+    const now = Date.now();
+    if (!forceRefresh && dbSizeCache && now - Number(dbSizeCache.cachedAtMs || 0) < DB_SIZE_CACHE_TTL_MS) {
+        return { ...dbSizeCache.data, cached: true };
+    }
+    const [rows] = await db.query(
+        `
+            SELECT
+                COALESCE(SUM(data_length + index_length), 0) AS size_bytes,
+                COALESCE(SUM(data_length), 0) AS data_bytes,
+                COALESCE(SUM(index_length), 0) AS index_bytes,
+                COUNT(*) AS table_count
+            FROM information_schema.TABLES
+            WHERE table_schema = ?
+        `,
+        [config.db.database]
+    );
+    const row = rows && rows[0] ? rows[0] : {};
+    const data = {
+        database: config.db.database,
+        sizeBytes: Number(row.size_bytes || 0),
+        dataBytes: Number(row.data_bytes || 0),
+        indexBytes: Number(row.index_bytes || 0),
+        tableCount: Number(row.table_count || 0),
+        cachedAt: new Date(now).toISOString(),
+        ttlSec: Math.floor(DB_SIZE_CACHE_TTL_MS / 1000)
+    };
+    dbSizeCache = { cachedAtMs: now, data };
+    return { ...data, cached: false };
+}
+
+function enqueueAutoSyncTask(taskType, triggerType = 'schedule') {
     if (!taskType) return;
-    if (autoSyncQueue.includes(taskType)) return;
-    autoSyncQueue.push(taskType);
+    const type = String(taskType || '').trim();
+    if (!type) return;
+    if (autoSyncRunIds.has(type)) return;
+    if (autoSyncQueue.some((item) => (typeof item === 'string' ? item : item?.type) === type)) return;
+    autoSyncQueue.push({ type, triggerType: String(triggerType || 'schedule').trim() || 'schedule' });
 }
 
 async function ensureAutoSyncRunsTable() {
@@ -789,17 +836,25 @@ async function processAutoSyncQueue() {
     autoSyncRunnerActive = true;
     try {
         while (autoSyncQueue.length > 0) {
-            const task = autoSyncQueue.shift();
-            if (task === 'myproducts') {
+            const item = autoSyncQueue.shift();
+            const task = typeof item === 'string' ? item : item?.type;
+            const triggerType = typeof item === 'string' ? 'schedule' : (item?.triggerType || 'schedule');
+            if (task === 'db_size') {
+                console.log('[AUTO SYNC] Queue start: db_size');
+                await startAutoSyncRun('db_size', triggerType);
+                await getDatabaseSizeMetrics(true);
+                await finishAutoSyncRun('db_size', 'completed', 'Размер БД пересчитан');
+                console.log('[AUTO SYNC] Queue done: db_size');
+            } else if (task === 'myproducts') {
                 console.log('[AUTO SYNC] Queue start: myproducts');
-                await startAutoSyncRun('myproducts', 'schedule');
+                await startAutoSyncRun('myproducts', triggerType);
                 if (!syncState.active) startGlobalSyncBackground();
                 const done = await waitUntil(() => !syncState.active, 12 * 60 * 60 * 1000, 1000);
                 await finishAutoSyncRun('myproducts', done ? 'completed' : 'failed', done ? 'Завершено' : 'Таймаут ожидания');
                 console.log('[AUTO SYNC] Queue done: myproducts');
             } else if (task === 'moysklad') {
                 console.log('[AUTO SYNC] Queue start: moysklad');
-                await startAutoSyncRun('moysklad', 'schedule');
+                await startAutoSyncRun('moysklad', triggerType);
                 if (typeof moyskladRouterFactory.triggerSync === 'function') {
                     await moyskladRouterFactory.triggerSync();
                 }
@@ -813,7 +868,7 @@ async function processAutoSyncQueue() {
                 console.log('[AUTO SYNC] Queue done: moysklad');
             } else if (task === 'marketplaces') {
                 console.log('[AUTO SYNC] Queue start: marketplaces');
-                await startAutoSyncRun('marketplaces', 'schedule');
+                await startAutoSyncRun('marketplaces', triggerType);
                 if (typeof exportsMarketplacesRouterFactory.triggerSync === 'function') {
                     const startRes = await exportsMarketplacesRouterFactory.triggerSync('all');
                     if (startRes && startRes.started === false && startRes.reason !== 'already_running') {
@@ -830,7 +885,7 @@ async function processAutoSyncQueue() {
                 console.log('[AUTO SYNC] Queue done: marketplaces');
             } else if (task === 'huckster') {
                 console.log('[AUTO SYNC] Queue start: huckster');
-                await startAutoSyncRun('huckster', 'schedule');
+                await startAutoSyncRun('huckster', triggerType);
                 if (typeof exportsHucksterRouterFactory.triggerSync === 'function') {
                     const startRes = await exportsHucksterRouterFactory.triggerSync();
                     if (startRes && startRes.started === false && startRes.reason !== 'already_running') {
@@ -865,6 +920,9 @@ async function processAutoSyncQueue() {
         if (autoSyncRunIds.has('huckster')) {
             await finishAutoSyncRun('huckster', 'failed', e.message || 'Ошибка очереди');
         }
+        if (autoSyncRunIds.has('db_size')) {
+            await finishAutoSyncRun('db_size', 'failed', e.message || 'Ошибка очереди');
+        }
     } finally {
         autoSyncRunnerActive = false;
     }
@@ -894,6 +952,11 @@ function startAutoSyncScheduler() {
                     type: 'huckster',
                     enabled: Number(appSettings.auto_sync_huckster_enabled || 0) === 1,
                     time: String(appSettings.auto_sync_huckster_time || '06:00').slice(0, 5)
+                },
+                {
+                    type: 'db_size',
+                    enabled: Number(appSettings.auto_sync_db_size_enabled ?? 1) === 1,
+                    time: String(appSettings.auto_sync_db_size_time || '02:00').slice(0, 5)
                 }
             ];
             for (const t of tasks) {
@@ -977,6 +1040,26 @@ initDB().then(() => {
     app.use('/api', authModule.router);
     app.use('/api/activity', require('./routes/activity')(db));
     app.use('/api/specialties', require('./routes/specialties')(db));
+    app.post('/api/settings/auto-sync-run', async (req, res) => {
+        try {
+            const task = String(req.body?.task || '').trim();
+            const allowed = new Set(['myproducts', 'moysklad', 'marketplaces', 'huckster', 'db_size']);
+            if (!allowed.has(task)) {
+                return res.status(400).json({ success: false, error: 'Некорректный тип автосинхронизации' });
+            }
+            enqueueAutoSyncTask(task, 'manual');
+            processAutoSyncQueue();
+            return res.json({
+                success: true,
+                queued: true,
+                task,
+                queue: autoSyncQueue.map((item) => (typeof item === 'string' ? item : item?.type)).filter(Boolean),
+                runner_active: Boolean(autoSyncRunnerActive)
+            });
+        } catch (e) {
+            return res.status(500).json({ success: false, error: e.message || 'Ошибка запуска автосинхронизации' });
+        }
+    });
     app.use('/api/settings', require('./routes/settings')(db, appSettings));
     app.use('/api/exports/marketplaces', exportsMarketplacesRouterFactory(db, appSettings));
     app.use('/api/exports/huckster', exportsHucksterRouterFactory(db, appSettings));
@@ -1002,6 +1085,16 @@ initDB().then(() => {
 
     app.get('/api/sync-status', (req, res) => {
         res.json(syncState);
+    });
+
+    app.get('/api/processes/db-size', async (req, res) => {
+        try {
+            const forceRefresh = String(req.query.refresh || '') === '1';
+            const databaseSize = await getDatabaseSizeMetrics(forceRefresh);
+            return res.json({ success: true, databaseSize });
+        } catch (e) {
+            return res.status(500).json({ success: false, error: e.message || 'Не удалось получить размер базы данных' });
+        }
     });
 
     app.get('/api/processes/overview', async (req, res) => {
@@ -1033,7 +1126,9 @@ initDB().then(() => {
                     marketplaces_enabled: Number(appSettings.auto_sync_marketplaces_enabled || 0) === 1,
                     marketplaces_time: String(appSettings.auto_sync_marketplaces_time || '05:00'),
                     huckster_enabled: Number(appSettings.auto_sync_huckster_enabled || 0) === 1,
-                    huckster_time: String(appSettings.auto_sync_huckster_time || '06:00')
+                    huckster_time: String(appSettings.auto_sync_huckster_time || '06:00'),
+                    db_size_enabled: Number(appSettings.auto_sync_db_size_enabled ?? 1) === 1,
+                    db_size_time: String(appSettings.auto_sync_db_size_time || '02:00')
                 }
             };
             const discovery = (typeof pagesRouter?.getDiscoveryJobsSnapshot === 'function')
@@ -1124,6 +1219,13 @@ initDB().then(() => {
                 }
             }
 
+            let databaseSize = null;
+            try {
+                databaseSize = await getDatabaseSizeMetrics(false);
+            } catch (e) {
+                databaseSize = { error: e.message || 'Не удалось получить размер базы данных' };
+            }
+
             return res.json({
                 refreshedAt: new Date().toISOString(),
                 globalSync,
@@ -1134,6 +1236,7 @@ initDB().then(() => {
                 queue,
                 matchesSites,
                 matches,
+                databaseSize,
                 runtime: getRuntimeMetrics()
             });
         } catch (e) {

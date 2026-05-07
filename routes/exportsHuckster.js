@@ -3,7 +3,12 @@
 const express = require('express');
 const axios = require('axios');
 const { saveHucksterSnapshot, loadHucksterSnapshot, clearHucksterSnapshot } = require('../lib/hucksterSnapshotStore');
-const { fetchMsExportBridgeCandidates, buildMsHucksterBridgeExport } = require('../lib/hucksterMsBridgeMatrix');
+const {
+    fetchMsExportBridgeCandidates,
+    filterMsRowsByPositivePriceType,
+    fetchMoyskladPriceTypeNames,
+    buildMsHucksterBridgeExport,
+} = require('../lib/hucksterMsBridgeMatrix');
 
 const SHOPS_SET_1 = [
     { id: 'ozon', name: 'Ozon', marketplace: 'ozon', shop_id: '139080' },
@@ -440,7 +445,9 @@ function createExportsHucksterRouter(_db, appSettings) {
     function getConfiguredSets() {
         const set1 = parseShopsJson(appSettings.huckster_shops_set_1, SHOPS_SET_1);
         const set2 = parseShopsJson(appSettings.huckster_shops_set_2, SHOPS_SET_2);
-        return { set1, set2 };
+        const priceTypeSet1 = String(appSettings.huckster_ms_price_type_set_1 || '').trim();
+        const priceTypeSet2 = String(appSettings.huckster_ms_price_type_set_2 || '').trim();
+        return { set1, set2, priceTypeSet1, priceTypeSet2 };
     }
 
     /** Запуск фоновой синхронизации (из POST /sync или из планировщика server.js). */
@@ -544,8 +551,14 @@ function createExportsHucksterRouter(_db, appSettings) {
                 } catch (eMs) {
                     console.warn('[huckster] ms bridge rows:', eMs && eMs.message ? eMs.message : eMs);
                 }
-                const set1 = buildMsHucksterBridgeExport(cfg.set1, set1Items, msBridgeRows, syncedAt);
-                const set2 = buildMsHucksterBridgeExport(cfg.set2, set2Items, msBridgeRows, syncedAt);
+                const set1MsBridgeRows = await filterMsRowsByPositivePriceType(_db, msBridgeRows, cfg.priceTypeSet1);
+                const set2MsBridgeRows = await filterMsRowsByPositivePriceType(_db, msBridgeRows, cfg.priceTypeSet2);
+                const set1 = buildMsHucksterBridgeExport(cfg.set1, set1Items, set1MsBridgeRows, syncedAt, {
+                    priceTypeName: cfg.priceTypeSet1,
+                });
+                const set2 = buildMsHucksterBridgeExport(cfg.set2, set2Items, set2MsBridgeRows, syncedAt, {
+                    priceTypeName: cfg.priceTypeSet2,
+                });
                 syncState.error = null;
                 syncState.result = {
                     success: true,
@@ -735,7 +748,18 @@ function createExportsHucksterRouter(_db, appSettings) {
             success: true,
             set1: cfg.set1,
             set2: cfg.set2,
+            price_type_set_1: cfg.priceTypeSet1,
+            price_type_set_2: cfg.priceTypeSet2,
+            price_type_options: [],
             defaults: { set1: SHOPS_SET_1, set2: SHOPS_SET_2 },
+        });
+    });
+
+    router.get('/price-types', async (_req, res) => {
+        const priceTypeOptions = await fetchMoyskladPriceTypeNames(_db);
+        return res.json({
+            success: true,
+            price_type_options: priceTypeOptions,
         });
     });
 
@@ -746,6 +770,8 @@ function createExportsHucksterRouter(_db, appSettings) {
             const set2Raw = Array.isArray(body.set2) ? body.set2 : [];
             const set1 = set1Raw.map(normalizeShop).filter(Boolean);
             const set2 = set2Raw.map(normalizeShop).filter(Boolean);
+            const priceTypeSet1 = String(body.price_type_set_1 || '').trim();
+            const priceTypeSet2 = String(body.price_type_set_2 || '').trim();
             if (!set1.length || !set2.length) {
                 return res.status(400).json({ error: 'Наборы set1/set2 должны содержать минимум по одной валидной строке', code: 'BAD_SETS' });
             }
@@ -762,9 +788,26 @@ function createExportsHucksterRouter(_db, appSettings) {
                 'INSERT INTO app_settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value=?',
                 ['huckster_shops_set_2', set2Json, set2Json]
             );
+            await _db.query(
+                'INSERT INTO app_settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value=?',
+                ['huckster_ms_price_type_set_1', priceTypeSet1, priceTypeSet1]
+            );
+            await _db.query(
+                'INSERT INTO app_settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value=?',
+                ['huckster_ms_price_type_set_2', priceTypeSet2, priceTypeSet2]
+            );
             appSettings.huckster_shops_set_1 = set1Json;
             appSettings.huckster_shops_set_2 = set2Json;
-            return res.json({ success: true, set1, set2 });
+            appSettings.huckster_ms_price_type_set_1 = priceTypeSet1;
+            appSettings.huckster_ms_price_type_set_2 = priceTypeSet2;
+            return res.json({
+                success: true,
+                set1,
+                set2,
+                price_type_set_1: priceTypeSet1,
+                price_type_set_2: priceTypeSet2,
+                price_type_options: [],
+            });
         } catch (e) {
             return res.status(500).json({ error: e.message || String(e), code: 'SAVE_CONFIG_FAILED' });
         }

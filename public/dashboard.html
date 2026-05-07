@@ -460,6 +460,24 @@
             }
           </style>
 
+          <div class="main-card mb-3 card border-0 shadow-sm">
+            <div class="card-body d-flex flex-wrap align-items-center justify-content-between gap-3 py-3">
+              <div class="d-flex align-items-center">
+                <div class="rounded-3 bg-light d-flex align-items-center justify-content-center me-3" style="width: 52px; height: 52px">
+                  <i class="pe-7s-server text-primary" style="font-size: 1.5rem" aria-hidden="true"></i>
+                </div>
+                <div>
+                  <div class="text-muted small">Размер базы данных</div>
+                  <h3 class="mb-0" id="dg-db-size">—</h3>
+                  <div class="text-muted small" id="dg-db-size-meta">Кэш: —</div>
+                </div>
+              </div>
+              <button type="button" class="btn btn-outline-primary" id="dashboard-db-size-refresh" data-dg-activity-label="Обновить размер базы данных">
+                <i class="pe-7s-refresh me-1"></i>Обновить размер БД
+              </button>
+            </div>
+          </div>
+
           <div class="main-card mb-3 card">
             <div class="card-header d-flex align-items-center justify-content-between gap-2">
               <div class="d-flex align-items-center">
@@ -715,6 +733,32 @@
       function fmtMb(bytes) {
         return (Number(bytes || 0) / (1024 * 1024)).toFixed(1) + " MB";
       }
+      function parseJsonResponse(r, fallbackMessage) {
+        var ct = String((r.headers && r.headers.get("content-type")) || "").toLowerCase();
+        if (ct.indexOf("application/json") !== -1) {
+          return r.json().then(function (j) {
+            return { ok: r.ok, j: j };
+          });
+        }
+        return r.text().then(function (text) {
+          var msg = fallbackMessage || "Сервер вернул не JSON";
+          if (r.redirected || (text && text.indexOf("<!DOCTYPE") !== -1)) {
+            msg = "Сессия истекла или сервер вернул HTML вместо JSON. Обновите страницу и войдите заново.";
+          }
+          return { ok: false, j: { error: msg } };
+        });
+      }
+      function fmtBytes(bytes) {
+        var n = Number(bytes || 0);
+        if (!Number.isFinite(n) || n <= 0) return "0 Б";
+        var units = ["Б", "КБ", "МБ", "ГБ", "ТБ"];
+        var idx = 0;
+        while (n >= 1024 && idx < units.length - 1) {
+          n = n / 1024;
+          idx += 1;
+        }
+        return (idx === 0 ? Math.round(n) : n.toFixed(n >= 10 ? 1 : 2)) + " " + units[idx];
+      }
 
       function computeHealth(queue, globalSync, moysklad, discoveryActive) {
         var hasQueueErrors = Number(queue.error || 0) > 0;
@@ -758,6 +802,7 @@
             })
           : [];
         var refreshedAt = data.refreshedAt || new Date().toISOString();
+        renderDatabaseSize(data.databaseSize);
 
         var health = computeHealth(queue, globalSync, moysklad, discovery.length > 0);
         var hb = document.getElementById("dg-health-badge");
@@ -866,6 +911,32 @@
         }
       }
 
+      function renderDatabaseSize(databaseSize) {
+        var sizeEl = document.getElementById("dg-db-size");
+        var metaEl = document.getElementById("dg-db-size-meta");
+        if (!sizeEl || !metaEl) return;
+        if (!databaseSize) {
+          sizeEl.textContent = "—";
+          metaEl.textContent = "Кэш: —";
+          return;
+        }
+        if (databaseSize.error) {
+          sizeEl.textContent = "Ошибка";
+          metaEl.textContent = databaseSize.error;
+          return;
+        }
+        sizeEl.textContent = fmtBytes(databaseSize.sizeBytes);
+        var parts = [
+          "таблиц: " + num(databaseSize.tableCount),
+          "данные: " + fmtBytes(databaseSize.dataBytes),
+          "индексы: " + fmtBytes(databaseSize.indexBytes),
+          "обновлено: " + fmtDate(databaseSize.cachedAt),
+        ];
+        if (databaseSize.cached) parts.push("из кэша");
+        else parts.push("свежий расчёт");
+        metaEl.textContent = parts.join(" · ");
+      }
+
       function loadDashboard() {
         if (lastData) render(lastData, true);
         else {
@@ -874,9 +945,7 @@
         }
         fetch("/api/processes/overview", { credentials: "same-origin" })
           .then(function (r) {
-            return r.json().then(function (j) {
-              return { ok: r.ok, j: j };
-            });
+            return parseJsonResponse(r, "Ошибка загрузки дашборда");
           })
           .then(function (x) {
             if (!x.ok) throw new Error(x.j.error || "Ошибка загрузки дашборда");
@@ -885,6 +954,24 @@
           })
           .catch(function (e) {
             alert(e.message || "Не удалось загрузить dashboard");
+          });
+      }
+
+      function refreshDatabaseSize() {
+        var metaEl = document.getElementById("dg-db-size-meta");
+        if (metaEl) metaEl.textContent = "Пересчитываем размер базы...";
+        fetch("/api/processes/db-size?refresh=1", { credentials: "same-origin" })
+          .then(function (r) {
+            return parseJsonResponse(r, "Не удалось обновить размер базы");
+          })
+          .then(function (x) {
+            if (!x.ok || !x.j.success) throw new Error(x.j.error || "Не удалось обновить размер базы");
+            if (lastData) lastData.databaseSize = x.j.databaseSize;
+            renderDatabaseSize(x.j.databaseSize);
+          })
+          .catch(function (e) {
+            if (metaEl) metaEl.textContent = "Ошибка: " + (e.message || String(e));
+            alert(e.message || "Ошибка обновления размера базы");
           });
       }
 
@@ -907,6 +994,7 @@
       document.getElementById("dashboard-refresh").addEventListener("click", function () {
         loadDashboard();
       });
+      document.getElementById("dashboard-db-size-refresh").addEventListener("click", refreshDatabaseSize);
 
       loadDashboard();
       pollTimer = setInterval(loadDashboard, 15000);
