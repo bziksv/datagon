@@ -4,6 +4,10 @@ const axios = require('axios');
 const router = express.Router();
 
 const BASE_URL = 'https://api.moysklad.ru/api/remap/1.2';
+const MS_DETAIL_EXPAND_PRODUCT =
+    'attributes,supplier,images,country,uom,salePrices,buyPrice,minPrice,barcodes,countryOfOrigin';
+const MS_DETAIL_EXPAND_BUNDLE =
+    'attributes,supplier,images,country,uom,salePrices,buyPrice,minPrice,components,components.assortment,countryOfOrigin';
 const MS_ATTRS = [
     'Автоматизация цены',
     'Складская позиция',
@@ -35,6 +39,7 @@ const SOURCE_LINKS_CACHE_TTL_MS = 2 * 60 * 1000;
 const msStatsCache = new Map();
 const MS_STATS_CACHE_TTL_MS = 2 * 60 * 1000;
 let msArchivedColumnReady = false;
+let msEntityDetailsTableReady = false;
 
 function addLog(msg) {
     const stamp = new Date().toLocaleTimeString('ru-RU');
@@ -270,6 +275,98 @@ async function getMsProductAttributesMeta(headers) {
     const resp = await axios.get(`${BASE_URL}/entity/product/metadata/attributes`, { headers, timeout: 30000 });
     msAttrsMetaCache = { ts: now, rows: resp.data?.rows || [] };
     return msAttrsMetaCache.rows;
+}
+
+async function ensureMsEntityDetailsTable(db) {
+    if (msEntityDetailsTableReady) return;
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS ms_entity_details (
+            uuid VARCHAR(64) PRIMARY KEY,
+            code VARCHAR(255),
+            kind VARCHAR(32) NOT NULL,
+            name VARCHAR(500),
+            payload_json LONGTEXT NOT NULL,
+            source VARCHAR(32) NOT NULL DEFAULT 'sync',
+            fetched_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            INDEX idx_ms_entity_details_code (code),
+            INDEX idx_ms_entity_details_kind (kind),
+            INDEX idx_ms_entity_details_updated (updated_at)
+        )
+    `);
+    msEntityDetailsTableReady = true;
+}
+
+function moyskladEntityUuid(entity) {
+    const href = String(entity?.meta?.href || '').trim();
+    const fromHref = href ? href.split('/').pop() : '';
+    return String(entity?.id || fromHref || '').trim();
+}
+
+function moyskladEntityKind(entity, fallbackKind = '') {
+    const t = String(entity?.meta?.type || fallbackKind || '').toLowerCase();
+    return t === 'bundle' || fallbackKind === 'bundle' ? 'bundle' : 'product';
+}
+
+async function saveMoyskladEntityDetails(db, entities, source = 'sync') {
+    const list = Array.isArray(entities) ? entities : [entities];
+    const values = [];
+    for (const entity of list) {
+        if (!entity || typeof entity !== 'object') continue;
+        const uuid = moyskladEntityUuid(entity);
+        if (!uuid) continue;
+        const kind = moyskladEntityKind(entity);
+        const code = normalizeCode(entity.code);
+        const name = String(entity.name || '');
+        let payload = '';
+        try {
+            payload = JSON.stringify(entity);
+        } catch (_) {
+            payload = '';
+        }
+        if (!payload) continue;
+        values.push([uuid, code, kind, name, payload, String(source || 'sync').slice(0, 32)]);
+    }
+    if (!values.length) return 0;
+    await ensureMsEntityDetailsTable(db);
+    const chunkSize = 100;
+    for (let i = 0; i < values.length; i += chunkSize) {
+        const chunk = values.slice(i, i + chunkSize);
+        await db.query(
+            `INSERT INTO ms_entity_details (uuid, code, kind, name, payload_json, source)
+             VALUES ?
+             ON DUPLICATE KEY UPDATE
+                code = VALUES(code),
+                kind = VALUES(kind),
+                name = VALUES(name),
+                payload_json = VALUES(payload_json),
+                source = VALUES(source),
+                fetched_at = CURRENT_TIMESTAMP`,
+            [chunk]
+        );
+    }
+    return values.length;
+}
+
+async function loadMoyskladEntityDetail(db, uuid) {
+    await ensureMsEntityDetailsTable(db);
+    const [rows] = await db.query(
+        'SELECT uuid, kind, payload_json, updated_at FROM ms_entity_details WHERE uuid = ? LIMIT 1',
+        [uuid]
+    );
+    const row = rows && rows[0];
+    if (!row || !row.payload_json) return null;
+    try {
+        const entity = JSON.parse(row.payload_json);
+        if (!entity || typeof entity !== 'object') return null;
+        return {
+            entity,
+            kind: row.kind === 'bundle' ? 'bundle' : 'product',
+            updated_at: row.updated_at,
+        };
+    } catch (_) {
+        return null;
+    }
 }
 
 function stripHtmlToText(html) {
@@ -795,7 +892,7 @@ async function syncMsExport(db, config, settings = {}) {
     addLog('Этап 2/6: загрузка товаров');
     jobState.message = 'Загрузка товаров...';
     const products = await fetchAllWithArchivedStatuses(`${BASE_URL}/entity/product`, headers, {
-        expand: 'supplier',
+        expand: MS_DETAIL_EXPAND_PRODUCT,
         pageLimit: settings.ms_sync_page_limit,
         delayMs: settings.ms_sync_delay_ms,
         onPhaseProgress: ({ phase, loaded, total }) => {
@@ -811,7 +908,7 @@ async function syncMsExport(db, config, settings = {}) {
     addLog('Этап 3/6: загрузка комплектов');
     jobState.message = 'Загрузка комплектов...';
     const bundles = await fetchAllWithArchivedStatuses(`${BASE_URL}/entity/bundle`, headers, {
-        expand: 'supplier,components,components.assortment',
+        expand: MS_DETAIL_EXPAND_BUNDLE,
         pageLimit: settings.ms_sync_page_limit,
         delayMs: settings.ms_sync_delay_ms,
         onPhaseProgress: ({ phase, loaded, total }) => {
@@ -998,16 +1095,21 @@ async function syncMsExport(db, config, settings = {}) {
             ) VALUES ?
         `, [exportRows]);
     }
+    addLog('Сохранение полных карточек МойСклад...');
+    jobState.message = 'Сохранение полных карточек МойСклад...';
+    ensureNotCancelled();
+    const detailSaved = await saveMoyskladEntityDetails(db, all, 'sync');
 
     jobState.active = false;
     jobState.done = true;
     jobState.cancelRequested = false;
-    jobState.message = `Готово. Записей: ${exportRows.length}`;
+    jobState.message = `Готово. Записей: ${exportRows.length}; карточек: ${detailSaved}`;
     addLog(jobState.message);
 }
 
 function createMoyskladRouter(db, settings, config) {
     ensureMsArchivedColumn(db).catch(() => {});
+    ensureMsEntityDetailsTable(db).catch(() => {});
     async function triggerMsSyncNow() {
         if (jobState.active) return { started: false, reason: 'already_running' };
         msStatsCache.clear();
@@ -1305,65 +1407,77 @@ function createMoyskladRouter(db, settings, config) {
                 return res.status(400).json({ error: 'Некорректный uuid' });
             }
             const token = getToken(config);
-            if (!token) {
-                return res.status(503).json({ error: 'MS_TOKEN не задан (env MS_TOKEN или config.msToken)' });
-            }
-            const headers = { Authorization: `Bearer ${token}` };
-            const expandProduct =
-                'attributes,supplier,images,country,uom,salePrices,buyPrice,minPrice,barcodes,countryOfOrigin';
-            const expandBundle =
-                'attributes,supplier,images,country,uom,salePrices,buyPrice,minPrice,components,components.assortment,countryOfOrigin';
-
+            const headers = token ? { Authorization: `Bearer ${token}` } : null;
             const preferBundle = kindHint.includes('комплект') || kindHint === 'bundle';
 
             let entity = null;
             let kind = 'product';
+            let detailSource = 'db';
 
             async function loadProduct() {
+                if (!headers) throw new Error('MS_TOKEN не задан (env MS_TOKEN или config.msToken)');
                 const r = await axios.get(`${BASE_URL}/entity/product/${encodeURIComponent(uuid)}`, {
                     headers,
                     timeout: 45000,
-                    params: { expand: expandProduct }
+                    params: { expand: MS_DETAIL_EXPAND_PRODUCT }
                 });
                 return r.data;
             }
             async function loadBundle() {
+                if (!headers) throw new Error('MS_TOKEN не задан (env MS_TOKEN или config.msToken)');
                 const r = await axios.get(`${BASE_URL}/entity/bundle/${encodeURIComponent(uuid)}`, {
                     headers,
                     timeout: 45000,
-                    params: { expand: expandBundle }
+                    params: { expand: MS_DETAIL_EXPAND_BUNDLE }
                 });
                 return r.data;
             }
 
-            if (preferBundle) {
-                try {
-                    entity = await loadBundle();
-                    kind = 'bundle';
-                } catch (e1) {
-                    const st1 = e1.response?.status;
-                    if (st1 !== 404) throw e1;
-                    entity = await loadProduct();
-                    kind = 'product';
-                }
-            } else {
-                try {
-                    entity = await loadProduct();
-                    kind = 'product';
-                } catch (e2) {
-                    const st2 = e2.response?.status;
-                    if (st2 !== 404) throw e2;
-                    entity = await loadBundle();
-                    kind = 'bundle';
-                }
+            const stored = await loadMoyskladEntityDetail(db, uuid);
+            if (stored && stored.entity) {
+                entity = stored.entity;
+                kind = stored.kind;
             }
 
+            if (!entity) {
+                if (!headers) {
+                    return res.status(503).json({ error: 'MS_TOKEN не задан (env MS_TOKEN или config.msToken)' });
+                }
+                detailSource = 'api';
+                if (preferBundle) {
+                    try {
+                        entity = await loadBundle();
+                        kind = 'bundle';
+                    } catch (e1) {
+                        const st1 = e1.response?.status;
+                        if (st1 !== 404) throw e1;
+                        entity = await loadProduct();
+                        kind = 'product';
+                    }
+                } else {
+                    try {
+                        entity = await loadProduct();
+                        kind = 'product';
+                    } catch (e2) {
+                        const st2 = e2.response?.status;
+                        if (st2 !== 404) throw e2;
+                        entity = await loadBundle();
+                        kind = 'bundle';
+                    }
+                }
+                await saveMoyskladEntityDetails(db, entity, 'detail');
+            }
+
+            if (!headers) {
+                return res.status(503).json({ error: 'MS_TOKEN не задан (env MS_TOKEN или config.msToken)' });
+            }
             const attrMeta = await getMsProductAttributesMeta(headers);
             const { webHref, blocks } = buildMoyskladDetailPayload(attrMeta, entity, kind);
             return res.json({
                 success: true,
                 uuid,
                 kind,
+                source: detailSource,
                 webHref,
                 blocks
             });
