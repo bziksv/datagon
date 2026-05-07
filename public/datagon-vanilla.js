@@ -278,6 +278,16 @@
     return String(target.textContent || "").replace(/\s+/g, " ").trim();
   }
 
+  function promoteNativeTitleTooltip(target) {
+    if (!(target instanceof HTMLElement)) return;
+    var title = String(target.getAttribute("title") || "").trim();
+    if (!title) return;
+    if (!target.getAttribute("data-dg-tooltip")) {
+      target.setAttribute("data-dg-tooltip", title);
+    }
+    target.removeAttribute("title");
+  }
+
   function ensureTooltipNode() {
     if (dgTooltip) return;
     dgTooltip = document.createElement("div");
@@ -345,14 +355,9 @@
   }
 
   document
-    .querySelectorAll(".datagon-shell button[title]")
-    .forEach(function (btn) {
-      var title = String(btn.getAttribute("title") || "").trim();
-      if (!title) return;
-      if (!btn.getAttribute("data-dg-tooltip")) {
-        btn.setAttribute("data-dg-tooltip", title);
-      }
-      btn.removeAttribute("title");
+    .querySelectorAll(".datagon-shell [title]")
+    .forEach(function (el) {
+      promoteNativeTitleTooltip(el);
     });
 
   document.addEventListener(
@@ -360,10 +365,11 @@
     function (event) {
       var target =
         event.target && event.target.closest
-          ? event.target.closest(".datagon-shell [data-dg-tooltip], .datagon-shell button")
+          ? event.target.closest(".datagon-shell [data-dg-tooltip], .datagon-shell [title], .datagon-shell button")
           : null;
       if (!(target instanceof HTMLElement)) return;
       if (target instanceof HTMLButtonElement && target.disabled) return;
+      promoteNativeTitleTooltip(target);
       var hint = getGlobalHintText(target);
       if (!hint) return;
 
@@ -382,7 +388,7 @@
     function (event) {
       var fromTarget =
         event.target && event.target.closest
-          ? event.target.closest(".datagon-shell [data-dg-tooltip], .datagon-shell button")
+          ? event.target.closest(".datagon-shell [data-dg-tooltip], .datagon-shell [title], .datagon-shell button")
           : null;
       if (!(fromTarget instanceof HTMLElement)) return;
       var next = event.relatedTarget;
