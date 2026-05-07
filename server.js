@@ -64,12 +64,36 @@ let appSettings = {
     auth_online_presence_minutes: 15,
     /** HTTP(S)-прокси для загрузки страниц конкурентов (очередь, автообход, worker). */
     fetch_proxy_enabled: 0,
-    fetch_proxy_list: ''
+    fetch_proxy_list: '',
+    /** Ключи и дефолтные паузы интеграций маркетплейсов. */
+    ozon_client_id: '',
+    ozon_api_key: '',
+    wb_api_key: '',
+    ym_api_key: '',
+    ym_campaign_id: '',
+    ym_business_id: '',
+    mp_ozon_delay_ms: 400,
+    mp_wb_delay_cards_ms: 600,
+    mp_wb_delay_other_ms: 1600,
+    mp_yandex_delay_ms: 280,
+    huckster_email: '',
+    huckster_password: '',
+    huckster_delay_ms: 270,
+    huckster_max_offset_per_shop: 0,
+    huckster_shops_set_1: '',
+    huckster_shops_set_2: '',
+    mp_ozon_include_archived: 0,
+    auto_sync_marketplaces_enabled: 0,
+    auto_sync_marketplaces_time: '05:00',
+    auto_sync_huckster_enabled: 0,
+    auto_sync_huckster_time: '06:00'
 };
 let syncState = { active: false, processed: 0, total: 0, message: '' };
 const moyskladRouterFactory = require('./routes/moysklad');
 const pagesRouterFactory = require('./routes/pages');
 const matchesRouterFactory = require('./routes/matches');
+const exportsMarketplacesRouterFactory = require('./routes/exportsMarketplaces');
+const exportsHucksterRouterFactory = require('./routes/exportsHuckster');
 let pagesRouter = null;
 let matchesRouter = null;
 const autoSyncLastRunByTask = new Map();
@@ -190,7 +214,28 @@ async function initDB() {
             ['auth_session_ttl_days','14'],['auth_session_user_limit','1'],
             ['auth_online_presence_minutes','15'],
             ['fetch_proxy_enabled','0'],
-            ['fetch_proxy_list','']
+            ['fetch_proxy_list',''],
+            ['ozon_client_id',''],
+            ['ozon_api_key',''],
+            ['wb_api_key',''],
+            ['ym_api_key',''],
+            ['ym_campaign_id',''],
+            ['ym_business_id',''],
+            ['mp_ozon_delay_ms','400'],
+            ['mp_wb_delay_cards_ms','600'],
+            ['mp_wb_delay_other_ms','1600'],
+            ['mp_yandex_delay_ms','280'],
+            ['huckster_email',''],
+            ['huckster_password',''],
+            ['huckster_delay_ms','270'],
+            ['huckster_max_offset_per_shop','0'],
+            ['huckster_shops_set_1',''],
+            ['huckster_shops_set_2',''],
+            ['mp_ozon_include_archived','0'],
+            ['auto_sync_marketplaces_enabled','0'],
+            ['auto_sync_marketplaces_time','05:00'],
+            ['auto_sync_huckster_enabled','0'],
+            ['auto_sync_huckster_time','06:00']
         ];
         for (const [k, v] of defaults) await db.query('INSERT IGNORE INTO app_settings (setting_key, setting_value) VALUES (?, ?)', [k, v]);
 
@@ -766,6 +811,44 @@ async function processAutoSyncQueue() {
                 }, 12 * 60 * 60 * 1000, 1000);
                 await finishAutoSyncRun('moysklad', done ? 'completed' : 'failed', done ? 'Завершено' : 'Таймаут ожидания');
                 console.log('[AUTO SYNC] Queue done: moysklad');
+            } else if (task === 'marketplaces') {
+                console.log('[AUTO SYNC] Queue start: marketplaces');
+                await startAutoSyncRun('marketplaces', 'schedule');
+                if (typeof exportsMarketplacesRouterFactory.triggerSync === 'function') {
+                    const startRes = await exportsMarketplacesRouterFactory.triggerSync('all');
+                    if (startRes && startRes.started === false && startRes.reason !== 'already_running') {
+                        throw new Error(startRes.error || startRes.reason || 'Не удалось запустить обновление маркетплейсов');
+                    }
+                }
+                const done = await waitUntil(() => {
+                    const s = typeof exportsMarketplacesRouterFactory.getSyncState === 'function'
+                        ? exportsMarketplacesRouterFactory.getSyncState()
+                        : { active: false };
+                    return !s.active;
+                }, 12 * 60 * 60 * 1000, 1000);
+                await finishAutoSyncRun('marketplaces', done ? 'completed' : 'failed', done ? 'Завершено' : 'Таймаут ожидания');
+                console.log('[AUTO SYNC] Queue done: marketplaces');
+            } else if (task === 'huckster') {
+                console.log('[AUTO SYNC] Queue start: huckster');
+                await startAutoSyncRun('huckster', 'schedule');
+                if (typeof exportsHucksterRouterFactory.triggerSync === 'function') {
+                    const startRes = await exportsHucksterRouterFactory.triggerSync();
+                    if (startRes && startRes.started === false && startRes.reason !== 'already_running') {
+                        throw new Error(
+                            startRes.reason === 'missing_creds'
+                                ? 'Huckster: задайте email и password в настройках или HUCKSTER_* в окружении'
+                                : startRes.reason || 'Не удалось запустить обновление Huckster'
+                        );
+                    }
+                }
+                const done = await waitUntil(() => {
+                    const s = typeof exportsHucksterRouterFactory.getSyncState === 'function'
+                        ? exportsHucksterRouterFactory.getSyncState()
+                        : { active: false };
+                    return !s.active;
+                }, 12 * 60 * 60 * 1000, 1000);
+                await finishAutoSyncRun('huckster', done ? 'completed' : 'failed', done ? 'Завершено' : 'Таймаут ожидания');
+                console.log('[AUTO SYNC] Queue done: huckster');
             }
         }
     } catch (e) {
@@ -775,6 +858,12 @@ async function processAutoSyncQueue() {
         }
         if (autoSyncRunIds.has('moysklad')) {
             await finishAutoSyncRun('moysklad', 'failed', e.message || 'Ошибка очереди');
+        }
+        if (autoSyncRunIds.has('marketplaces')) {
+            await finishAutoSyncRun('marketplaces', 'failed', e.message || 'Ошибка очереди');
+        }
+        if (autoSyncRunIds.has('huckster')) {
+            await finishAutoSyncRun('huckster', 'failed', e.message || 'Ошибка очереди');
         }
     } finally {
         autoSyncRunnerActive = false;
@@ -795,6 +884,16 @@ function startAutoSyncScheduler() {
                     type: 'moysklad',
                     enabled: Number(appSettings.auto_sync_moysklad_enabled || 0) === 1,
                     time: String(appSettings.auto_sync_moysklad_time || '04:00').slice(0, 5)
+                },
+                {
+                    type: 'marketplaces',
+                    enabled: Number(appSettings.auto_sync_marketplaces_enabled || 0) === 1,
+                    time: String(appSettings.auto_sync_marketplaces_time || '05:00').slice(0, 5)
+                },
+                {
+                    type: 'huckster',
+                    enabled: Number(appSettings.auto_sync_huckster_enabled || 0) === 1,
+                    time: String(appSettings.auto_sync_huckster_time || '06:00').slice(0, 5)
                 }
             ];
             for (const t of tasks) {
@@ -879,6 +978,8 @@ initDB().then(() => {
     app.use('/api/activity', require('./routes/activity')(db));
     app.use('/api/specialties', require('./routes/specialties')(db));
     app.use('/api/settings', require('./routes/settings')(db, appSettings));
+    app.use('/api/exports/marketplaces', exportsMarketplacesRouterFactory(db, appSettings));
+    app.use('/api/exports/huckster', exportsHucksterRouterFactory(db, appSettings));
     app.use('/api/projects', require('./routes/projects')(db, appSettings));
     pagesRouter = pagesRouterFactory(db, appSettings);
     app.use('/api/pages', pagesRouter);
@@ -928,7 +1029,11 @@ initDB().then(() => {
                     myproducts_enabled: Number(appSettings.auto_sync_myproducts_enabled || 0) === 1,
                     myproducts_time: String(appSettings.auto_sync_myproducts_time || '03:00'),
                     moysklad_enabled: Number(appSettings.auto_sync_moysklad_enabled || 0) === 1,
-                    moysklad_time: String(appSettings.auto_sync_moysklad_time || '04:00')
+                    moysklad_time: String(appSettings.auto_sync_moysklad_time || '04:00'),
+                    marketplaces_enabled: Number(appSettings.auto_sync_marketplaces_enabled || 0) === 1,
+                    marketplaces_time: String(appSettings.auto_sync_marketplaces_time || '05:00'),
+                    huckster_enabled: Number(appSettings.auto_sync_huckster_enabled || 0) === 1,
+                    huckster_time: String(appSettings.auto_sync_huckster_time || '06:00')
                 }
             };
             const discovery = (typeof pagesRouter?.getDiscoveryJobsSnapshot === 'function')
@@ -1107,9 +1212,8 @@ initDB().then(() => {
             const actor = await authModule.getActor(req);
             if (actor) {
                 if (actor.username !== 'admin') {
-                    const { htmlLeafToPageKey } = require('./lib/datagonPageRegistry');
-                    const pk = htmlLeafToPageKey(leaf);
-                    if (pk && actor.page_modes && actor.page_modes[pk] === 'hidden') {
+                    const { isHtmlLeafAccessHidden } = require('./lib/datagonPageRegistry');
+                    if (actor.page_modes && isHtmlLeafAccessHidden(actor.page_modes, leaf)) {
                         return res.redirect(302, pickFirstAllowedHtmlForActor(actor));
                     }
                 }

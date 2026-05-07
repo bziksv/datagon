@@ -75,6 +75,43 @@
     .dg-ms-table tbody td {
       border-right: 1px solid #f3f5f8;
     }
+    .dg-ms-detail-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 2000;
+      background: rgba(15, 23, 42, 0.45);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0.75rem;
+      box-sizing: border-box;
+    }
+    .dg-ms-detail-panel {
+      width: 100%;
+      max-width: 920px;
+      max-height: 92vh;
+      overflow: hidden;
+    }
+    .dg-ms-detail-kv {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8rem;
+    }
+    .dg-ms-detail-kv th,
+    .dg-ms-detail-kv td {
+      border: 1px solid #e6e9ee;
+      padding: 0.35rem 0.5rem;
+      vertical-align: top;
+    }
+    .dg-ms-detail-kv th {
+      width: 32%;
+      background: #f8fafc;
+      font-weight: 600;
+      color: #334155;
+    }
+    .dg-ms-detail-kv td a {
+      word-break: break-all;
+    }
   </style>
 
   <style>
@@ -96,7 +133,9 @@
       display: flex;
       flex-direction: column;
     }
-    .dg-sidebar-nav-measure .metismenu-container {
+    /* Только корневой список меню: иначе вложенный ul.metismenu-container (под «Маркетплейсы» и т.п.)
+       получает min-height:100% + flex и растягивается на всю колонку — вертикальная линия темы залезает на соседние пункты. */
+    .dg-sidebar-nav-measure .vertical-nav-menu > .metismenu-container {
       display: flex;
       flex-direction: column;
       flex: 1 1 auto;
@@ -122,6 +161,33 @@
       opacity: 0.72;
       line-height: 1;
       flex-shrink: 0;
+    }
+    @media (max-width: 991.98px) {
+      /* На мобильном layout не должен наследовать desktop-сдвиг fixed/closed sidebar. */
+      .datagon-vanilla-shell .app-main__outer {
+        margin-left: 0 !important;
+      }
+      .datagon-vanilla-shell .app-footer {
+        left: 0 !important;
+        width: 100% !important;
+      }
+      .datagon-vanilla-shell .app-footer .app-footer__inner {
+        margin-left: 0 !important;
+      }
+      /* На телефонах слой мобильного меню должен перекрывать фиксированный футер. */
+      .datagon-vanilla-shell .sidebar-mobile-overlay {
+        z-index: 1090;
+      }
+      .datagon-vanilla-shell .app-sidebar {
+        z-index: 1100;
+      }
+      .datagon-vanilla-shell .app-footer {
+        z-index: 1080;
+      }
+      .datagon-vanilla-shell.sidebar-mobile-open .app-footer {
+        pointer-events: none;
+        opacity: 0.25;
+      }
     }
   </style>
 </head>
@@ -394,7 +460,73 @@
                         </a>
                       </li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="settings" href="/settings.html"><i class="metismenu-icon pe-7s-config"></i>Настройки</a></li>
-                      <li class="metismenu-item dg-sidebar-architect-item"><a class="metismenu-link" data-nav="architectui-demo" href="/ref/react-demo-index.html" title="Каталог разделов React-шаблона ArchitectUI"><i class="metismenu-icon pe-7s-plugin"></i>ArchitectUI меню</a></li>
+                      <li class="metismenu-item dg-sidebar-architect-item">
+                        <a
+                          class="metismenu-link"
+                          data-nav="architectui-demo"
+                          href="/ref/react-demo-index.html"
+                          title="Каталог разделов React-шаблона ArchitectUI"
+                        >
+                          <i class="metismenu-icon pe-7s-plugin"></i>ArchitectUI
+                        </a>
+                      </li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="exports-ms" href="/exports-ms.html" title="Перенос сценариев Google Sheets: карточки МС, остатки, комплекты"><i class="metismenu-icon pe-7s-cloud-download"></i>Выгрузки МС</a></li>
+                      <li class="metismenu-item">
+                        <a
+                          href="#"
+                          class="metismenu-link dg-vanilla-submenu-toggle"
+                          aria-expanded="false"
+                          title="Интеграции маркетплейсов: ключи и диагностика выгрузок"
+                        >
+                          <i class="metismenu-icon pe-7s-graph3"></i>Маркетплейсы
+                          <i class="metismenu-state-icon pe-7s-angle-down" aria-hidden="true"></i>
+                        </a>
+                        <ul class="metismenu-container">
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces"
+                              href="/exports-marketplaces.html"
+                              title="Ключи API и справка"
+                            >
+                              <i class="metismenu-icon pe-7s-config"></i>Настройки
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-ozon"
+                              href="/exports-marketplaces-ozon.html"
+                              title="Таблица и выгрузка Ozon"
+                            >
+                              <i class="metismenu-icon pe-7s-graph2"></i>Ozon
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-wildberries"
+                              href="/exports-marketplaces-wildberries.html"
+                              title="Таблица и выгрузка Wildberries"
+                            >
+                              <i class="metismenu-icon pe-7s-graph2"></i>Wildberries
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-yandex"
+                              href="/exports-marketplaces-yandex.html"
+                              title="Таблица и выгрузка Яндекс Маркет"
+                            >
+                              <i class="metismenu-icon pe-7s-graph2"></i>Яндекс Маркет
+                            </a>
+                          </li>
+                        </ul>
+                      </li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="exports-huckster" href="/exports-huckster.html" title="Интеграция Huckster / e-teleport — матрица UID по магазинам"><i class="metismenu-icon pe-7s-cart"></i>Huckster</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="exports-summary" href="/exports-summary.html" title="Сводка по менеджерам, подсветки НДС/габаритов, уведомления в чат"><i class="metismenu-icon pe-7s-note"></i>Сводка и синхронизация</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="exports-dimensions" href="/exports-dimensions.html" title="Лист «Габариты»: проверки, сортировка, слияние в новые позиции"><i class="metismenu-icon pe-7s-scissors"></i>Габариты</a></li>
                     </ul>
                   </div>
                 </div>
@@ -697,6 +829,26 @@
             </div>
           </div>
 
+          <!-- Карточка товара МойСклад (lazy по клику на наименование) -->
+          <div id="dg-ms-detail-overlay" class="dg-ms-detail-overlay" style="display: none" aria-hidden="true">
+            <div class="dg-ms-detail-panel card shadow-lg border-0">
+              <div class="card-header d-flex align-items-center justify-content-between gap-2">
+                <div class="fw-semibold text-truncate" id="dg-ms-detail-title">Карточка МойСклад</div>
+                <div class="d-flex align-items-center gap-2 flex-shrink-0">
+                  <a class="btn btn-sm btn-outline-primary d-none" id="dg-ms-detail-open-ms" href="#" target="_blank" rel="noopener noreferrer">Открыть в МойСклад</a>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-ms-detail-close" aria-label="Закрыть">Закрыть</button>
+                </div>
+              </div>
+              <div class="card-body" style="max-height: min(78vh, 720px); overflow-y: auto">
+                <p class="text-muted small mb-2" id="dg-ms-detail-hint">
+                  Данные карточки запрашиваются из API МойСклад по нажатию (отдельно от синхронизации <code>ms_export</code>).
+                  Справочник имён атрибутов на сервере кэшируется до <strong>60&nbsp;мин.</strong> — после переименования атрибута в МС подписи в блоке «Атрибуты» могут обновиться с задержкой.
+                </p>
+                <div id="dg-ms-detail-body" class="small"></div>
+              </div>
+            </div>
+          </div>
+
         </div>
 
         <div class="app-footer">
@@ -881,6 +1033,7 @@
       var resizeState = null;
       var urlSyncTimer = null;
       var filterReloadTimer = null;
+      var gridReloadTimer = null;
 
       function scheduleFilterReload() {
         if (filterReloadTimer) clearTimeout(filterReloadTimer);
@@ -888,6 +1041,16 @@
           filterReloadTimer = null;
           loadData();
         }, 350);
+      }
+
+      /** Фильтры первой строки (ms-tf-*) — на сервере (g_*), с debounce при вводе. */
+      function scheduleGridFilterReload() {
+        if (gridReloadTimer) clearTimeout(gridReloadTimer);
+        gridReloadTimer = setTimeout(function () {
+          gridReloadTimer = null;
+          page = 1;
+          loadData();
+        }, 400);
       }
 
       function fmtNum(n) {
@@ -901,10 +1064,20 @@
         if (!Number.isFinite(parsed)) return raw;
         return parsed.toLocaleString("ru-RU") + " ₽";
       }
-      function msCardUrl(code) {
-        var c = String(code || "").trim();
-        if (!c) return "";
-        return "https://online.moysklad.ru/app/#good?global_codeFilter=" + encodeURIComponent(c) + ",equals";
+      /** Ссылка на карточку в веб-интерфейсе МойСклад (по uuid из выгрузки). */
+      function msOpenInWebHref(uuid, typeMs) {
+        var u = String(uuid || "").trim();
+        if (!u) return "";
+        var t = String(typeMs || "").toLowerCase();
+        if (t.indexOf("комплект") >= 0) {
+          return "https://online.moysklad.ru/app/#bundle/edit?id=" + encodeURIComponent(u);
+        }
+        return "https://online.moysklad.ru/app/#good/edit?id=" + encodeURIComponent(u);
+      }
+      function msKindQueryParam(typeMs) {
+        var t = String(typeMs || "").toLowerCase();
+        if (t.indexOf("комплект") >= 0) return "bundle";
+        return "product";
       }
       function myProductsUrl(code) {
         var c = String(code || "").trim();
@@ -1021,26 +1194,6 @@
         if (missing("sort_dir") && (prefs.sort_dir === "asc" || prefs.sort_dir === "desc")) sortDir = prefs.sort_dir;
       }
 
-      function filterRowsByTable(rows, tf) {
-        return (rows || []).filter(function (r) {
-          if (tf.code && !String(r.code || "").toLowerCase().includes(String(tf.code).trim().toLowerCase())) return false;
-          if (tf.name && !String(r.name || "").toLowerCase().includes(String(tf.name).trim().toLowerCase())) return false;
-          if (tf.supplier && !String(r.supplier || "").toLowerCase().includes(String(tf.supplier).trim().toLowerCase())) return false;
-          if (tf.supplier2 && !String(r.supplier2 || "").toLowerCase().includes(String(tf.supplier2).trim().toLowerCase())) return false;
-          if (tf.manager && !String(r.manager || "").toLowerCase().includes(String(tf.manager).trim().toLowerCase())) return false;
-          if (tf.content_manager && !String(r.content_manager || "").toLowerCase().includes(String(tf.content_manager).trim().toLowerCase())) return false;
-          if (tf.type !== "all" && String(r.type || "").toLowerCase() !== String(tf.type).toLowerCase()) return false;
-          var stock = Number(r.stock || 0);
-          var min = Number(tf.stock_min || "");
-          var max = Number(tf.stock_max || "");
-          if (Number.isFinite(min) && String(tf.stock_min).trim() !== "" && stock < min) return false;
-          if (Number.isFinite(max) && String(tf.stock_max).trim() !== "" && stock > max) return false;
-          var archived = Number(r.is_archived || 0) === 1 ? "1" : "0";
-          if (tf.archived !== "all" && archived !== tf.archived) return false;
-          return true;
-        });
-      }
-
       function appendFilterParams(p, f) {
         if (f.search) p.set("search", f.search);
         if (f.type && f.type !== "all") p.set("type", f.type);
@@ -1056,6 +1209,20 @@
         if (f.has_buy_price === "1") p.set("has_buy_price", "1");
       }
 
+      function appendGridFilterParams(p) {
+        var tf = readTableFilters();
+        if (tf.code) p.set("g_code", tf.code);
+        if (tf.name) p.set("g_name", tf.name);
+        if (tf.supplier) p.set("g_supplier", tf.supplier);
+        if (tf.supplier2) p.set("g_supplier2", tf.supplier2);
+        if (tf.manager) p.set("g_manager", tf.manager);
+        if (tf.content_manager) p.set("g_content_manager", tf.content_manager);
+        if (tf.type && tf.type !== "all") p.set("g_type", tf.type);
+        if (String(tf.stock_min || "").trim() !== "") p.set("g_stock_min", String(tf.stock_min).trim());
+        if (String(tf.stock_max || "").trim() !== "") p.set("g_stock_max", String(tf.stock_max).trim());
+        if (tf.archived && tf.archived !== "all") p.set("g_archived", tf.archived);
+      }
+
       function syncUrlFromState() {
         var filters = readFilters();
         var params = new URLSearchParams();
@@ -1069,6 +1236,17 @@
         if (Number(page) > 1) params.set("page", String(page));
         if (sortBy !== "code") params.set("sort_by", sortBy);
         if (sortDir !== "asc") params.set("sort_dir", sortDir);
+        var tfu = readTableFilters();
+        if (tfu.code) params.set("g_code", tfu.code);
+        if (tfu.name) params.set("g_name", tfu.name);
+        if (tfu.supplier) params.set("g_supplier", tfu.supplier);
+        if (tfu.supplier2) params.set("g_supplier2", tfu.supplier2);
+        if (tfu.manager) params.set("g_manager", tfu.manager);
+        if (tfu.content_manager) params.set("g_content_manager", tfu.content_manager);
+        if (tfu.type && tfu.type !== "all") params.set("g_type", tfu.type);
+        if (String(tfu.stock_min || "").trim() !== "") params.set("g_stock_min", String(tfu.stock_min).trim());
+        if (String(tfu.stock_max || "").trim() !== "") params.set("g_stock_max", String(tfu.stock_max).trim());
+        if (tfu.archived && tfu.archived !== "all") params.set("g_archived", tfu.archived);
         var next = params.toString()
           ? window.location.pathname + "?" + params.toString()
           : window.location.pathname;
@@ -1108,6 +1286,25 @@
           else if (k === "no_coop") document.getElementById("no_coop").checked = v === "1";
           else if (k === "has_buy_price") document.getElementById("has_buy_price").checked = v === "1";
         });
+        [
+          ["g_code", "ms-tf-code"],
+          ["g_name", "ms-tf-name"],
+          ["g_supplier", "ms-tf-supplier"],
+          ["g_supplier2", "ms-tf-supplier2"],
+          ["g_manager", "ms-tf-manager"],
+          ["g_content_manager", "ms-tf-content_manager"],
+          ["g_type", "ms-tf-type"],
+          ["g_stock_min", "ms-tf-stock_min"],
+          ["g_stock_max", "ms-tf-stock_max"],
+          ["g_archived", "ms-tf-archived"],
+        ].forEach(function (pair) {
+          var gk = pair[0];
+          var id = pair[1];
+          var gv = params.get(gk);
+          if (gv === null || gv === "") return;
+          var el = document.getElementById(id);
+          if (el) el.value = gv;
+        });
         var pg = Number(params.get("page") || 1);
         if (Number.isFinite(pg) && pg > 0) page = pg;
         var sb = params.get("sort_by");
@@ -1122,6 +1319,7 @@
         var offset = (page - 1) * limit;
         var p = new URLSearchParams();
         appendFilterParams(p, f);
+        appendGridFilterParams(p);
         p.set("limit", String(limit));
         p.set("offset", String(offset));
         p.set("sort_by", sortBy);
@@ -1133,6 +1331,7 @@
         var f = readFilters();
         var p = new URLSearchParams();
         appendFilterParams(p, f);
+        appendGridFilterParams(p);
         return p;
       }
 
@@ -1397,6 +1596,178 @@
         return d;
       }
 
+      function closeMsDetailModal() {
+        var ov = document.getElementById("dg-ms-detail-overlay");
+        if (!ov) return;
+        ov.style.display = "none";
+        ov.setAttribute("aria-hidden", "true");
+      }
+
+      function trimLinkHref(raw) {
+        return String(raw || "").replace(/[)\].,;:!?]+$/g, "");
+      }
+
+      function isDangerousAutoLinkHref(href) {
+        var low = String(href || "").trim().toLowerCase();
+        return (
+          low.indexOf("javascript:") === 0 ||
+          low.indexOf("data:") === 0 ||
+          low.indexOf("vbscript:") === 0
+        );
+      }
+
+      /**
+       * Текст + кликабельные ссылки: https/http, www., mailto:, tel:, ftp:// и прочие scheme://…
+       * Без innerHTML (только DOM). Опасные схемы остаются обычным текстом.
+       */
+      function appendTextWithAutoLinks(el, raw) {
+        var s = String(raw == null ? "" : raw);
+        el.textContent = "";
+        if (!s) return;
+        var re =
+          /(https?:\/\/[^\s<>"'`]+)|(www\.[^\s<>"'`]+)|([a-z][a-z0-9+.-]*:\/\/[^\s<>"'`]+)|(mailto:[^\s<>"'`]+)|(tel:\+?[^\s<>"'`]+)/gi;
+        var last = 0;
+        var m;
+        while ((m = re.exec(s)) !== null) {
+          if (m.index > last) {
+            el.appendChild(document.createTextNode(s.slice(last, m.index)));
+          }
+          var full = m[0];
+          var href = trimLinkHref(full);
+          var display = href;
+          if (!href) {
+            last = m.index + full.length;
+            continue;
+          }
+          if (/^www\./i.test(href)) {
+            href = "https://" + href;
+          }
+          if (href.length < 4 || isDangerousAutoLinkHref(href)) {
+            el.appendChild(document.createTextNode(full));
+            last = m.index + full.length;
+            continue;
+          }
+          var a = document.createElement("a");
+          a.href = href;
+          a.className = "text-break";
+          a.textContent = display;
+          var low = href.toLowerCase();
+          if (
+            low.indexOf("http:") === 0 ||
+            low.indexOf("https:") === 0 ||
+            low.indexOf("ftp:") === 0
+          ) {
+            a.target = "_blank";
+            a.rel = "noopener noreferrer";
+          }
+          el.appendChild(a);
+          last = m.index + full.length;
+        }
+        if (last < s.length) {
+          el.appendChild(document.createTextNode(s.slice(last)));
+        }
+      }
+
+      function renderMsDetailBlocks(blocks) {
+        var body = document.getElementById("dg-ms-detail-body");
+        if (!body) return;
+        body.innerHTML = "";
+        if (!blocks || !blocks.length) {
+          body.textContent = "Нет данных.";
+          return;
+        }
+        blocks.forEach(function (blk) {
+          if (blk.title) {
+            var h = document.createElement("div");
+            h.className = "fw-semibold mb-2 mt-2";
+            h.style.fontSize = "0.9rem";
+            h.textContent = blk.title;
+            body.appendChild(h);
+          }
+          var tbl = document.createElement("table");
+          tbl.className = "dg-ms-detail-kv mb-3";
+          (blk.rows || []).forEach(function (row) {
+            var tr = document.createElement("tr");
+            var th = document.createElement("th");
+            th.textContent = row.label || "";
+            var td = document.createElement("td");
+            td.style.whiteSpace = "pre-wrap";
+            td.style.wordBreak = "break-word";
+            appendTextWithAutoLinks(td, row.value == null ? "" : String(row.value));
+            tr.appendChild(th);
+            tr.appendChild(td);
+            tbl.appendChild(tr);
+          });
+          body.appendChild(tbl);
+        });
+      }
+
+      function openMsDetailModal(uuid, code, nameText, typeMs) {
+        var u = String(uuid || "").trim();
+        var ov = document.getElementById("dg-ms-detail-overlay");
+        var titleEl = document.getElementById("dg-ms-detail-title");
+        var body = document.getElementById("dg-ms-detail-body");
+        var openMs = document.getElementById("dg-ms-detail-open-ms");
+        if (!ov || !titleEl || !body) return;
+        if (!u) return;
+        titleEl.textContent = nameText || "Товар МойСклад";
+        body.innerHTML = '<p class="text-muted mb-0">Загрузка…</p>';
+        if (openMs) {
+          openMs.classList.add("d-none");
+          openMs.href = "#";
+        }
+        ov.style.display = "flex";
+        ov.setAttribute("aria-hidden", "false");
+        var q = "/api/ms/detail/" + encodeURIComponent(u) + "?kind=" + encodeURIComponent(msKindQueryParam(typeMs));
+        fetch(q, { credentials: "same-origin" })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { ok: r.ok, st: r.status, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.ok) {
+              body.innerHTML =
+                '<p class="text-danger mb-0">' +
+                String(x.j && x.j.error ? x.j.error : "Ошибка " + x.st) +
+                "</p>";
+              return;
+            }
+            var j = x.j || {};
+            if (openMs) {
+              var hrefMs = j.webHref || msOpenInWebHref(u, typeMs);
+              if (hrefMs) {
+                openMs.href = hrefMs;
+                openMs.classList.remove("d-none");
+              }
+            }
+            renderMsDetailBlocks(j.blocks);
+          })
+          .catch(function () {
+            body.innerHTML = '<p class="text-danger mb-0">Сеть недоступна</p>';
+          });
+      }
+
+      function initMsDetailModal() {
+        var ov = document.getElementById("dg-ms-detail-overlay");
+        var closeBtn = document.getElementById("dg-ms-detail-close");
+        var panel = ov ? ov.querySelector(".dg-ms-detail-panel") : null;
+        if (closeBtn) closeBtn.addEventListener("click", closeMsDetailModal);
+        if (ov) {
+          ov.addEventListener("click", function (e) {
+            if (e.target === ov) closeMsDetailModal();
+          });
+        }
+        if (panel) {
+          panel.addEventListener("click", function (e) {
+            e.stopPropagation();
+          });
+        }
+        document.addEventListener("keydown", function (e) {
+          if (e.key === "Escape") closeMsDetailModal();
+        });
+      }
+
       function renderNameCell(r) {
         var wrap = document.createElement("div");
         if (Number(r.is_archived) === 1) {
@@ -1406,21 +1777,24 @@
           wrap.appendChild(arch);
         }
         var code = String(r.code || "").trim();
+        var uuid = String(r.uuid || "").trim();
         var nameText = r.name || "";
-        var url = msCardUrl(code);
-        if (url) {
-          var a = document.createElement("a");
-          a.href = url;
-          a.target = "_blank";
-          a.rel = "noopener noreferrer";
-          a.className = "text-decoration-none text-body";
-          var spName = document.createElement("span");
-          spName.style.whiteSpace = "normal";
-          spName.style.wordBreak = "break-word";
-          spName.title = nameText;
-          spName.textContent = nameText;
-          a.appendChild(spName);
-          wrap.appendChild(a);
+        var typeMs = r.type || "";
+
+        if (uuid) {
+          var btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "btn btn-link p-0 text-start text-decoration-none text-body";
+          btn.style.whiteSpace = "normal";
+          btn.style.wordBreak = "break-word";
+          btn.style.verticalAlign = "baseline";
+          btn.textContent = nameText;
+          btn.title = "Карточка и все свойства из МойСклад";
+          btn.addEventListener("click", function (e) {
+            e.preventDefault();
+            openMsDetailModal(uuid, code, nameText, typeMs);
+          });
+          wrap.appendChild(btn);
         } else {
           var sp = document.createElement("span");
           sp.style.whiteSpace = "normal";
@@ -1429,6 +1803,19 @@
           sp.textContent = nameText;
           wrap.appendChild(sp);
         }
+
+        var msHref = uuid ? msOpenInWebHref(uuid, typeMs) : "";
+        if (msHref) {
+          var msA = document.createElement("a");
+          msA.href = msHref;
+          msA.target = "_blank";
+          msA.rel = "noopener noreferrer";
+          msA.className = "ms-2 small text-muted text-decoration-none";
+          msA.textContent = "[МойСклад]";
+          msA.title = "Открыть в интерфейсе МойСклад";
+          wrap.appendChild(msA);
+        }
+
         if (Number(r.in_my_products || 0) === 1 && myProductsUrl(code)) {
           var mp = document.createElement("a");
           mp.href = myProductsUrl(code);
@@ -1680,9 +2067,8 @@
           tbody.appendChild(trL);
           return;
         }
-        var tf = readTableFilters();
-        var filtered = filterRowsByTable(rows, tf);
-        if (!filtered || !filtered.length) {
+        var list = rows || [];
+        if (!list.length) {
           var tr = document.createElement("tr");
           var td = document.createElement("td");
           td.colSpan = Math.max(1, cols.length);
@@ -1692,7 +2078,7 @@
           tbody.appendChild(tr);
           return;
         }
-        filtered.forEach(function (r) {
+        list.forEach(function (r) {
           var tr = document.createElement("tr");
           if (Number(r.is_archived) === 1) tr.className = "table-danger";
           cols.forEach(function (pair) {
@@ -1775,8 +2161,7 @@
 
       function applyTableFiltersLive() {
         if (loading) return;
-        renderTable(lastExportRows || []);
-        updateTableHint();
+        scheduleGridFilterReload();
       }
 
       function setApplyResetDisabled(dis) {
@@ -1792,6 +2177,10 @@
         if (filterReloadTimer) {
           clearTimeout(filterReloadTimer);
           filterReloadTimer = null;
+        }
+        if (gridReloadTimer) {
+          clearTimeout(gridReloadTimer);
+          gridReloadTimer = null;
         }
         loading = true;
         setApplyResetDisabled(true);
@@ -1852,6 +2241,10 @@
         if (filterReloadTimer) {
           clearTimeout(filterReloadTimer);
           filterReloadTimer = null;
+        }
+        if (gridReloadTimer) {
+          clearTimeout(gridReloadTimer);
+          gridReloadTimer = null;
         }
         document.getElementById("ms-f-search").value = "";
         document.getElementById("ms-f-limit").value = "100";
@@ -2151,6 +2544,7 @@
         }
         if (!visibleCols.size) visibleCols = new Set(DEFAULT_VISIBLE_KEYS);
       } catch (e) {}
+      initMsDetailModal();
       parseUrlToForm();
       mergeMoyskladPrefsFromStorage();
       updateStickyTopVar();

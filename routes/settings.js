@@ -86,9 +86,13 @@ module.exports = (db, appSettings) => {
             ms_sync_page_limit, ms_sync_delay_ms,
             auto_sync_myproducts_enabled, auto_sync_myproducts_time,
             auto_sync_moysklad_enabled, auto_sync_moysklad_time,
+            auto_sync_marketplaces_enabled, auto_sync_marketplaces_time,
+            auto_sync_huckster_enabled, auto_sync_huckster_time,
             discover_max_sitemaps, discover_max_urls, discover_crawl_max_pages, discover_request_delay_ms,
             auth_session_ttl_days, auth_session_user_limit, auth_online_presence_minutes,
-            fetch_proxy_enabled, fetch_proxy_list
+            fetch_proxy_enabled, fetch_proxy_list,
+            ozon_client_id, ozon_api_key, wb_api_key, ym_api_key, ym_campaign_id, ym_business_id,
+            mp_ozon_delay_ms, mp_wb_delay_cards_ms, mp_wb_delay_other_ms, mp_yandex_delay_ms, mp_ozon_include_archived
         } = req.body;
         try {
             const queries = [];
@@ -105,6 +109,10 @@ module.exports = (db, appSettings) => {
             if (auto_sync_myproducts_time !== undefined) queries.push(['auto_sync_myproducts_time', auto_sync_myproducts_time || '03:00']);
             if (auto_sync_moysklad_enabled !== undefined) queries.push(['auto_sync_moysklad_enabled', auto_sync_moysklad_enabled ? 1 : 0]);
             if (auto_sync_moysklad_time !== undefined) queries.push(['auto_sync_moysklad_time', auto_sync_moysklad_time || '04:00']);
+            if (auto_sync_marketplaces_enabled !== undefined) queries.push(['auto_sync_marketplaces_enabled', auto_sync_marketplaces_enabled ? 1 : 0]);
+            if (auto_sync_marketplaces_time !== undefined) queries.push(['auto_sync_marketplaces_time', auto_sync_marketplaces_time || '05:00']);
+            if (auto_sync_huckster_enabled !== undefined) queries.push(['auto_sync_huckster_enabled', auto_sync_huckster_enabled ? 1 : 0]);
+            if (auto_sync_huckster_time !== undefined) queries.push(['auto_sync_huckster_time', auto_sync_huckster_time || '06:00']);
             if (discover_max_sitemaps !== undefined) queries.push(['discover_max_sitemaps', Math.max(10, Number(discover_max_sitemaps || 200))]);
             if (discover_max_urls !== undefined) queries.push(['discover_max_urls', Math.max(100, Number(discover_max_urls || 50000))]);
             if (discover_crawl_max_pages !== undefined) queries.push(['discover_crawl_max_pages', Math.max(10, Number(discover_crawl_max_pages || 500))]);
@@ -123,6 +131,17 @@ module.exports = (db, appSettings) => {
             if (fetch_proxy_list !== undefined) {
                 queries.push(['fetch_proxy_list', String(fetch_proxy_list || '').slice(0, 120000)]);
             }
+            if (ozon_client_id !== undefined) queries.push(['ozon_client_id', String(ozon_client_id || '').slice(0, 8000)]);
+            if (ozon_api_key !== undefined) queries.push(['ozon_api_key', String(ozon_api_key || '').slice(0, 8000)]);
+            if (wb_api_key !== undefined) queries.push(['wb_api_key', String(wb_api_key || '').slice(0, 8000)]);
+            if (ym_api_key !== undefined) queries.push(['ym_api_key', String(ym_api_key || '').slice(0, 8000)]);
+            if (ym_campaign_id !== undefined) queries.push(['ym_campaign_id', String(ym_campaign_id || '').slice(0, 8000)]);
+            if (ym_business_id !== undefined) queries.push(['ym_business_id', String(ym_business_id || '').slice(0, 8000)]);
+            if (mp_ozon_delay_ms !== undefined) queries.push(['mp_ozon_delay_ms', Math.max(300, Number(mp_ozon_delay_ms || 400))]);
+            if (mp_wb_delay_cards_ms !== undefined) queries.push(['mp_wb_delay_cards_ms', Math.max(350, Number(mp_wb_delay_cards_ms || 600))]);
+            if (mp_wb_delay_other_ms !== undefined) queries.push(['mp_wb_delay_other_ms', Math.max(1000, Number(mp_wb_delay_other_ms || 1600))]);
+            if (mp_yandex_delay_ms !== undefined) queries.push(['mp_yandex_delay_ms', Math.max(200, Number(mp_yandex_delay_ms || 280))]);
+            if (mp_ozon_include_archived !== undefined) queries.push(['mp_ozon_include_archived', mp_ozon_include_archived ? 1 : 0]);
 
             for (const [key, val] of queries) {
                 await db.query('INSERT INTO app_settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value=?', [key, val, val]);
@@ -146,6 +165,10 @@ module.exports = (db, appSettings) => {
             if(auto_sync_myproducts_time !== undefined) appSettings.auto_sync_myproducts_time = auto_sync_myproducts_time || '03:00';
             if(auto_sync_moysklad_enabled !== undefined) appSettings.auto_sync_moysklad_enabled = auto_sync_moysklad_enabled ? 1 : 0;
             if(auto_sync_moysklad_time !== undefined) appSettings.auto_sync_moysklad_time = auto_sync_moysklad_time || '04:00';
+            if(auto_sync_marketplaces_enabled !== undefined) appSettings.auto_sync_marketplaces_enabled = auto_sync_marketplaces_enabled ? 1 : 0;
+            if(auto_sync_marketplaces_time !== undefined) appSettings.auto_sync_marketplaces_time = auto_sync_marketplaces_time || '05:00';
+            if(auto_sync_huckster_enabled !== undefined) appSettings.auto_sync_huckster_enabled = auto_sync_huckster_enabled ? 1 : 0;
+            if(auto_sync_huckster_time !== undefined) appSettings.auto_sync_huckster_time = auto_sync_huckster_time || '06:00';
             if(discover_max_sitemaps !== undefined) appSettings.discover_max_sitemaps = Math.max(10, Number(discover_max_sitemaps || 200));
             if(discover_max_urls !== undefined) appSettings.discover_max_urls = Math.max(100, Number(discover_max_urls || 50000));
             if(discover_crawl_max_pages !== undefined) appSettings.discover_crawl_max_pages = Math.max(10, Number(discover_crawl_max_pages || 500));
@@ -157,6 +180,17 @@ module.exports = (db, appSettings) => {
             }
             if (fetch_proxy_enabled !== undefined) appSettings.fetch_proxy_enabled = fetch_proxy_enabled ? 1 : 0;
             if (fetch_proxy_list !== undefined) appSettings.fetch_proxy_list = String(fetch_proxy_list || '').slice(0, 120000);
+            if (ozon_client_id !== undefined) appSettings.ozon_client_id = String(ozon_client_id || '').slice(0, 8000);
+            if (ozon_api_key !== undefined) appSettings.ozon_api_key = String(ozon_api_key || '').slice(0, 8000);
+            if (wb_api_key !== undefined) appSettings.wb_api_key = String(wb_api_key || '').slice(0, 8000);
+            if (ym_api_key !== undefined) appSettings.ym_api_key = String(ym_api_key || '').slice(0, 8000);
+            if (ym_campaign_id !== undefined) appSettings.ym_campaign_id = String(ym_campaign_id || '').slice(0, 8000);
+            if (ym_business_id !== undefined) appSettings.ym_business_id = String(ym_business_id || '').slice(0, 8000);
+            if (mp_ozon_delay_ms !== undefined) appSettings.mp_ozon_delay_ms = Math.max(300, Number(mp_ozon_delay_ms || 400));
+            if (mp_wb_delay_cards_ms !== undefined) appSettings.mp_wb_delay_cards_ms = Math.max(350, Number(mp_wb_delay_cards_ms || 600));
+            if (mp_wb_delay_other_ms !== undefined) appSettings.mp_wb_delay_other_ms = Math.max(1000, Number(mp_wb_delay_other_ms || 1600));
+            if (mp_yandex_delay_ms !== undefined) appSettings.mp_yandex_delay_ms = Math.max(200, Number(mp_yandex_delay_ms || 280));
+            if (mp_ozon_include_archived !== undefined) appSettings.mp_ozon_include_archived = mp_ozon_include_archived ? 1 : 0;
 
             res.json({ success: true });
         } catch (e) { res.status(500).json({ error: e.message }); }

@@ -260,6 +260,177 @@ function toBinaryFlag(value) {
     return 0;
 }
 
+/** Кэш справочника атрибутов товара (имена по id) — снижает число запросов при открытии карточек. */
+const MS_ATTRS_META_CACHE_TTL_MS = 60 * 60 * 1000;
+let msAttrsMetaCache = { ts: 0, rows: [] };
+
+async function getMsProductAttributesMeta(headers) {
+    const now = Date.now();
+    if (msAttrsMetaCache.rows.length && now - msAttrsMetaCache.ts < MS_ATTRS_META_CACHE_TTL_MS) return msAttrsMetaCache.rows;
+    const resp = await axios.get(`${BASE_URL}/entity/product/metadata/attributes`, { headers, timeout: 30000 });
+    msAttrsMetaCache = { ts: now, rows: resp.data?.rows || [] };
+    return msAttrsMetaCache.rows;
+}
+
+function stripHtmlToText(html) {
+    return String(html || '')
+        .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+        .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function formatMsDetailScalar(val) {
+    if (val == null) return '';
+    if (typeof val === 'boolean') return val ? 'Да' : 'Нет';
+    if (typeof val === 'number') return String(val);
+    if (typeof val === 'string') return val.trim();
+    if (typeof val === 'object') {
+        if (val.name != null) return String(val.name);
+        if (Array.isArray(val)) return val.map(formatMsDetailScalar).filter(Boolean).join(', ');
+        if (val.sum != null && val.currency != null) return `${val.sum} ${val.currency}`;
+        try {
+            return JSON.stringify(val).slice(0, 1200);
+        } catch (_) {
+            return String(val);
+        }
+    }
+    return String(val);
+}
+
+function pushDetailRow(rows, label, value) {
+    const v =
+        value == null
+            ? ''
+            : typeof value === 'string'
+              ? value.trim()
+              : formatMsDetailScalar(value);
+    if (v !== '') rows.push({ label, value: v });
+}
+
+function buildMoyskladDetailPayload(attrMetaRows, entity, kind) {
+    const idToName = new Map();
+    for (const r of attrMetaRows || []) {
+        if (r && r.id) idToName.set(r.id, r.name);
+    }
+    const main = [];
+    pushDetailRow(main, 'Код', entity.code);
+    pushDetailRow(main, 'Артикул', entity.article);
+    pushDetailRow(main, 'Внешний код', entity.externalCode);
+    pushDetailRow(main, 'Наименование', entity.name);
+    pushDetailRow(main, 'Тип в МойСклад', kind === 'bundle' ? 'Комплект' : 'Товар');
+    pushDetailRow(main, 'Архив', entity.archived ? 'Да' : '');
+
+    const desc = stripHtmlToText(entity.description);
+    if (desc) main.push({ label: 'Описание', value: desc.slice(0, 8000) });
+
+    if (entity.effectiveVat != null && entity.effectiveVat !== '') {
+        pushDetailRow(main, 'НДС (effectiveVat)', entity.effectiveVat);
+    } else if (entity.vat != null && entity.vat !== '') {
+        pushDetailRow(main, 'НДС', entity.vat);
+    }
+    if (entity.vatEnabled != null) pushDetailRow(main, 'Учёт НДС', entity.vatEnabled ? 'Да' : 'Нет');
+
+    if (entity.weight != null && entity.weight !== '') pushDetailRow(main, 'Вес', entity.weight);
+    if (entity.volume != null && entity.volume !== '') pushDetailRow(main, 'Объём', entity.volume);
+
+    if (entity.buyPrice && entity.buyPrice.value != null) {
+        const cents = Number(entity.buyPrice.value);
+        if (Number.isFinite(cents)) pushDetailRow(main, 'Закупочная цена', `${(cents / 100).toFixed(2)} ₽`);
+    }
+    if (entity.minPrice && entity.minPrice.value != null) {
+        const cents = Number(entity.minPrice.value);
+        if (Number.isFinite(cents)) pushDetailRow(main, 'Мин. цена', `${(cents / 100).toFixed(2)} ₽`);
+    }
+
+    if (Array.isArray(entity.salePrices) && entity.salePrices.length) {
+        for (const sp of entity.salePrices) {
+            if (sp?.value == null) continue;
+            const cents = Number(sp.value);
+            if (!Number.isFinite(cents)) continue;
+            const pt = String(sp?.priceType?.name || '').trim();
+            const label = pt ? pt : 'Цена продажи';
+            const value = `${(cents / 100).toFixed(2)} ₽`;
+            main.push({ label, value });
+        }
+    }
+
+    if (entity.countryOfOrigin) {
+        const c = entity.countryOfOrigin;
+        pushDetailRow(main, 'Страна происхождения', c.name || c);
+    }
+    if (entity.country) {
+        const c = entity.country;
+        pushDetailRow(main, 'Страна', c.name || c);
+    }
+    if (entity.uom) {
+        const u = entity.uom;
+        pushDetailRow(main, 'Ед. измерения', u.name || u);
+    }
+    if (entity.supplier) {
+        const s = entity.supplier;
+        pushDetailRow(main, 'Поставщик', s.name || s);
+    }
+
+    if (Array.isArray(entity.barcodes) && entity.barcodes.length) {
+        const parts = [];
+        for (const b of entity.barcodes) {
+            if (!b) continue;
+            if (typeof b === 'string') parts.push(b);
+            else if (b.ean13) parts.push(`EAN13: ${b.ean13}`);
+            else if (b.ean8) parts.push(`EAN8: ${b.ean8}`);
+            else if (b.code128) parts.push(`Code128: ${b.code128}`);
+            else parts.push(JSON.stringify(b));
+        }
+        if (parts.length) main.push({ label: 'Штрихкоды', value: parts.join(', ') });
+    }
+
+    if (Array.isArray(entity.images) && entity.images.length) {
+        const urls = [];
+        for (const im of entity.images) {
+            const u = im?.miniature?.downloadHref || im?.meta?.downloadHref || im?.filename;
+            if (u) urls.push(String(u));
+        }
+        if (urls.length) main.push({ label: 'Изображения (ссылки)', value: urls.slice(0, 12).join('\n') });
+    }
+
+    if (kind === 'bundle' && Array.isArray(entity.components?.rows) && entity.components.rows.length) {
+        const lines = [];
+        let i = 0;
+        for (const c of entity.components.rows) {
+            i += 1;
+            const a = c.assortment || {};
+            const nm = String(a.name || '').trim();
+            const code = String(a.code || '').trim();
+            const qty = Number(c.quantity || 1);
+            const head = nm || code || 'позиция';
+            lines.push(`${i}. ${head}${code && nm !== code ? ` (${code})` : ''} × ${qty}`);
+        }
+        if (lines.length) main.push({ label: 'Состав комплекта', value: lines.join('\n') });
+    }
+
+    const blocks = [{ title: 'Данные из МойСклад (полная карточка)', rows: main }];
+
+    const attrRows = [];
+    for (const a of entity.attributes || []) {
+        const nm = String(a?.name || idToName.get(a?.id) || a?.id || '').trim();
+        if (!nm) continue;
+        attrRows.push({ label: nm, value: formatMsDetailScalar(a.value) || '—' });
+    }
+    if (attrRows.length) {
+        blocks.push({
+            title: 'Атрибуты (все, в т.ч. не попавшие в выгрузку ms_export)',
+            rows: attrRows
+        });
+    }
+
+    return {
+        webHref: entity?.meta?.uuidHref ? String(entity.meta.uuidHref) : null,
+        blocks
+    };
+}
+
 async function ensureMsArchivedColumn(db) {
     if (msArchivedColumnReady) return;
     const [rows] = await db.query(`
@@ -304,7 +475,17 @@ function buildExportFilters(query, whereSql, whereParams) {
         stock_days_min,
         stock_days_max,
         buy_price_min,
-        buy_price_max
+        buy_price_max,
+        g_code = '',
+        g_name = '',
+        g_supplier = '',
+        g_supplier2 = '',
+        g_manager = '',
+        g_content_manager = '',
+        g_type = '',
+        g_stock_min,
+        g_stock_max,
+        g_archived = 'all'
     } = query || {};
 
     let sql = whereSql || ' WHERE 1=1';
@@ -440,6 +621,59 @@ function buildExportFilters(query, whereSql, whereParams) {
     if (buyPriceMaxNum !== null) {
         sql += ` AND ${buyExpr} <= ?`;
         params.push(buyPriceMaxNum);
+    }
+
+    /** Фильтры «сетки» (как в UI ms-tf-*): подстрока в поле, тип/архив/остаток — AND к остальным условиям. */
+    if (String(g_code).trim()) {
+        const val = `%${String(g_code).trim()}%`;
+        sql += ' AND LOWER(code) LIKE LOWER(?)';
+        params.push(val);
+    }
+    if (String(g_name).trim()) {
+        const val = `%${String(g_name).trim()}%`;
+        sql += ' AND LOWER(name) LIKE LOWER(?)';
+        params.push(val);
+    }
+    if (String(g_supplier).trim()) {
+        const val = `%${String(g_supplier).trim()}%`;
+        sql += ' AND LOWER(supplier) LIKE LOWER(?)';
+        params.push(val);
+    }
+    if (String(g_supplier2).trim()) {
+        const val = `%${String(g_supplier2).trim()}%`;
+        sql += ' AND LOWER(supplier2) LIKE LOWER(?)';
+        params.push(val);
+    }
+    if (String(g_manager).trim()) {
+        const val = `%${String(g_manager).trim()}%`;
+        sql += ' AND LOWER(manager) LIKE LOWER(?)';
+        params.push(val);
+    }
+    if (String(g_content_manager).trim()) {
+        const val = `%${String(g_content_manager).trim()}%`;
+        sql += ' AND LOWER(content_manager) LIKE LOWER(?)';
+        params.push(val);
+    }
+    const gType = String(g_type || '').trim();
+    if (gType && gType.toLowerCase() !== 'all') {
+        sql += ' AND LOWER(TRIM(COALESCE(type, \'\'))) = LOWER(TRIM(?))';
+        params.push(gType);
+    }
+    const gStockMin = parseFlexibleNumber(g_stock_min);
+    const gStockMax = parseFlexibleNumber(g_stock_max);
+    if (gStockMin !== null && String(g_stock_min).trim() !== '') {
+        sql += ' AND COALESCE(stock, 0) >= ?';
+        params.push(gStockMin);
+    }
+    if (gStockMax !== null && String(g_stock_max).trim() !== '') {
+        sql += ' AND COALESCE(stock, 0) <= ?';
+        params.push(gStockMax);
+    }
+    const gArch = String(g_archived || 'all').trim().toLowerCase();
+    if (gArch === '0') {
+        sql += ' AND COALESCE(is_archived, 0) = 0';
+    } else if (gArch === '1') {
+        sql += ' AND COALESCE(is_archived, 0) = 1';
     }
 
     return { sql, params };
@@ -890,10 +1124,32 @@ function createMoyskladRouter(db, settings, config) {
                 stock_days_min,
                 stock_days_max,
                 buy_price_min,
-                buy_price_max
+                buy_price_max,
+                g_code = '',
+                g_name = '',
+                g_supplier = '',
+                g_supplier2 = '',
+                g_manager = '',
+                g_content_manager = '',
+                g_type = '',
+                g_stock_min,
+                g_stock_max,
+                g_archived = 'all'
             } = req.query;
 
             const stockPosition = String(stock_position).toLowerCase();
+            const gridFilters = {
+                g_code,
+                g_name,
+                g_supplier,
+                g_supplier2,
+                g_manager,
+                g_content_manager,
+                g_type,
+                g_stock_min,
+                g_stock_max,
+                g_archived
+            };
             const baseWhereSql = ' WHERE 1=1';
             const baseParams = [];
             const withJoinBase = ' WHERE 1=1';
@@ -907,7 +1163,8 @@ function createMoyskladRouter(db, settings, config) {
                 search, type, archived, supplier, supplier2, manager, content_manager, vat, vat_on_product, uuid,
                 packing_standard, packing_own_box, packing_weight, updated_label, stock_position: stockPosition,
                 on_site: 'all', only_stock, no_coop, has_buy_price, has_price_comment, has_automation,
-                stock_min, stock_max, stock_days_min, stock_days_max, buy_price_min, buy_price_max
+                stock_min, stock_max, stock_days_min, stock_days_max, buy_price_min, buy_price_max,
+                ...gridFilters
             }, baseWhereSql, baseParams);
             let whereSql = baseFilter.sql;
             const whereParams = baseFilter.params;
@@ -916,7 +1173,8 @@ function createMoyskladRouter(db, settings, config) {
                 search, type, archived, supplier, supplier2, manager, content_manager, vat, vat_on_product, uuid,
                 packing_standard, packing_own_box, packing_weight, updated_label, stock_position: stockPosition,
                 on_site, only_stock, no_coop, has_buy_price, has_price_comment, has_automation,
-                stock_min, stock_max, stock_days_min, stock_days_max, buy_price_min, buy_price_max
+                stock_min, stock_max, stock_days_min, stock_days_max, buy_price_min, buy_price_max,
+                ...gridFilters
             }, withJoinBase, withJoinParams);
 
             // Goods metrics are calculated only for products, but with all active filters.
@@ -950,7 +1208,17 @@ function createMoyskladRouter(db, settings, config) {
                 stock_days_min: stock_days_min ?? null,
                 stock_days_max: stock_days_max ?? null,
                 buy_price_min: buy_price_min ?? null,
-                buy_price_max: buy_price_max ?? null
+                buy_price_max: buy_price_max ?? null,
+                g_code: String(g_code || ''),
+                g_name: String(g_name || ''),
+                g_supplier: String(g_supplier || ''),
+                g_supplier2: String(g_supplier2 || ''),
+                g_manager: String(g_manager || ''),
+                g_content_manager: String(g_content_manager || ''),
+                g_type: String(g_type || ''),
+                g_stock_min: g_stock_min ?? null,
+                g_stock_max: g_stock_max ?? null,
+                g_archived: String(g_archived || 'all')
             });
             const cached = msStatsCache.get(statsCacheKey);
             if (cached && (Date.now() - cached.ts) < MS_STATS_CACHE_TTL_MS) {
@@ -1024,6 +1292,92 @@ function createMoyskladRouter(db, settings, config) {
         }
     });
 
+    /**
+     * Полная карточка сущности из API МойСклад (по uuid из ms_export), в т.ч. все атрибуты.
+     * Отдельный GET от ночной синхронизации: учитывайте лимиты API при массовом открытии.
+     * Query: kind — подсказка типа: `product` | `bundle` | строка с «комплект» (как в ms_export.type).
+     */
+    router.get('/detail/:uuid', async (req, res) => {
+        try {
+            const uuid = String(req.params.uuid || '').trim();
+            const kindHint = String(req.query.kind || '').trim().toLowerCase();
+            if (!uuid || uuid.length < 10) {
+                return res.status(400).json({ error: 'Некорректный uuid' });
+            }
+            const token = getToken(config);
+            if (!token) {
+                return res.status(503).json({ error: 'MS_TOKEN не задан (env MS_TOKEN или config.msToken)' });
+            }
+            const headers = { Authorization: `Bearer ${token}` };
+            const expandProduct =
+                'attributes,supplier,images,country,uom,salePrices,buyPrice,minPrice,barcodes,countryOfOrigin';
+            const expandBundle =
+                'attributes,supplier,images,country,uom,salePrices,buyPrice,minPrice,components,components.assortment,countryOfOrigin';
+
+            const preferBundle = kindHint.includes('комплект') || kindHint === 'bundle';
+
+            let entity = null;
+            let kind = 'product';
+
+            async function loadProduct() {
+                const r = await axios.get(`${BASE_URL}/entity/product/${encodeURIComponent(uuid)}`, {
+                    headers,
+                    timeout: 45000,
+                    params: { expand: expandProduct }
+                });
+                return r.data;
+            }
+            async function loadBundle() {
+                const r = await axios.get(`${BASE_URL}/entity/bundle/${encodeURIComponent(uuid)}`, {
+                    headers,
+                    timeout: 45000,
+                    params: { expand: expandBundle }
+                });
+                return r.data;
+            }
+
+            if (preferBundle) {
+                try {
+                    entity = await loadBundle();
+                    kind = 'bundle';
+                } catch (e1) {
+                    const st1 = e1.response?.status;
+                    if (st1 !== 404) throw e1;
+                    entity = await loadProduct();
+                    kind = 'product';
+                }
+            } else {
+                try {
+                    entity = await loadProduct();
+                    kind = 'product';
+                } catch (e2) {
+                    const st2 = e2.response?.status;
+                    if (st2 !== 404) throw e2;
+                    entity = await loadBundle();
+                    kind = 'bundle';
+                }
+            }
+
+            const attrMeta = await getMsProductAttributesMeta(headers);
+            const { webHref, blocks } = buildMoyskladDetailPayload(attrMeta, entity, kind);
+            return res.json({
+                success: true,
+                uuid,
+                kind,
+                webHref,
+                blocks
+            });
+        } catch (e) {
+            const st = e.response?.status;
+            const err0 = e.response?.data?.errors?.[0];
+            const msg = err0?.error || err0?.errorMessage || e.message || 'Ошибка МойСклад';
+            if (st === 401 || st === 403) {
+                return res.status(st).json({ error: String(msg), status: st });
+            }
+            return res.status(502).json({ error: String(msg), status: st || null });
+        }
+    });
+
     router.get('/export', async (req, res) => {
         try {
             await ensureSourceLinksCache(false);
@@ -1055,6 +1409,16 @@ function createMoyskladRouter(db, settings, config) {
                 stock_days_max,
                 buy_price_min,
                 buy_price_max,
+                g_code = '',
+                g_name = '',
+                g_supplier = '',
+                g_supplier2 = '',
+                g_manager = '',
+                g_content_manager = '',
+                g_type = '',
+                g_stock_min,
+                g_stock_max,
+                g_archived = 'all',
                 limit = 100,
                 offset = 0,
                 sort_by = 'code',
@@ -1095,7 +1459,17 @@ function createMoyskladRouter(db, settings, config) {
                 packing_standard, packing_own_box, packing_weight, updated_label,
                 on_site, stock_position,
                 only_stock, no_coop, has_buy_price, has_price_comment, has_automation,
-                stock_min, stock_max, stock_days_min, stock_days_max, buy_price_min, buy_price_max
+                stock_min, stock_max, stock_days_min, stock_days_max, buy_price_min, buy_price_max,
+                g_code,
+                g_name,
+                g_supplier,
+                g_supplier2,
+                g_manager,
+                g_content_manager,
+                g_type,
+                g_stock_min,
+                g_stock_max,
+                g_archived
             }, ' AND 1=1', []);
             q += filters.sql;
             qc += filters.sql;

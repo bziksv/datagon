@@ -96,6 +96,10 @@
     processes: "Активность и процессы",
     settings: "Настройки",
     sections: "Статические экраны",
+    "exports-marketplaces": "Маркетплейсы — Настройки",
+    "exports-marketplaces-ozon": "Маркетплейсы — Ozon",
+    "exports-marketplaces-wildberries": "Маркетплейсы — Wildberries",
+    "exports-marketplaces-yandex": "Маркетплейсы — Яндекс Маркет",
     "architectui-demo": "ArchitectUI меню",
     auth: "Вход и сессия",
     login: "Страница входа",
@@ -141,6 +145,51 @@
     var link = document.querySelector('.metismenu-link[data-nav="' + key + '"]');
     if (link) link.classList.add("active");
   }
+
+  function dgVanillaInitSidebarSubmenus() {
+    var shell = document.querySelector(".datagon-vanilla-shell .vertical-nav-menu");
+    if (!shell) return;
+    function setToggleOpen(toggle, open) {
+      var ul = toggle && toggle.nextElementSibling;
+      if (!ul || !ul.classList || !ul.classList.contains("metismenu-container")) return;
+      ul.classList.toggle("visible", !!open);
+      toggle.setAttribute("aria-expanded", open ? "true" : "false");
+      var st = toggle.querySelector(".metismenu-state-icon");
+      if (st) st.classList.toggle("rotate-minus-90", !!open);
+      toggle.classList.toggle("has-active-child", !!open);
+    }
+    shell.querySelectorAll("a.dg-vanilla-submenu-toggle").forEach(function (toggle) {
+      if (toggle.getAttribute("data-dg-submenu-bound") === "1") return;
+      toggle.setAttribute("data-dg-submenu-bound", "1");
+      toggle.addEventListener("click", function (e) {
+        e.preventDefault();
+        var ul = toggle.nextElementSibling;
+        var open = !(ul && ul.classList && ul.classList.contains("visible"));
+        setToggleOpen(toggle, open);
+      });
+    });
+    shell.querySelectorAll(".metismenu-item > ul.metismenu-container").forEach(function (nested) {
+      var activeIn = nested.querySelector(".metismenu-link.active");
+      var navKey = "";
+      try {
+        navKey = document.body && document.body.getAttribute("data-dg-active-nav");
+      } catch (eNk) {}
+      navKey = navKey ? String(navKey).trim() : "";
+      var match =
+        navKey &&
+        nested.querySelector('.metismenu-link[data-nav="' + navKey.replace(/"/g, "") + '"]');
+      if (activeIn || match) {
+        var toggle = nested.previousElementSibling;
+        if (toggle && toggle.classList.contains("dg-vanilla-submenu-toggle")) {
+          setToggleOpen(toggle, true);
+        } else {
+          nested.classList.add("visible");
+        }
+      }
+    });
+  }
+
+  dgVanillaInitSidebarSubmenus();
 
   applyDatagonRestrictedNavVisibility();
   applyViewOnlyShell();
@@ -212,21 +261,21 @@
     });
   }
 
-  // Global button tooltips parity with React DatagonGlobalTooltips.
+  // Global tooltips parity with React DatagonGlobalTooltips.
   var DG_TOOLTIP_DELAY_MS = 80;
   var dgTooltip = null;
   var dgTooltipInner = null;
   var dgTooltipTimer = null;
   var dgTooltipTarget = null;
 
-  function getButtonHintText(button) {
-    var explicit = String(button.getAttribute("data-dg-tooltip") || "").trim();
+  function getGlobalHintText(target) {
+    var explicit = String(target.getAttribute("data-dg-tooltip") || "").trim();
     if (explicit) return explicit;
-    var title = String(button.getAttribute("title") || "").trim();
+    var title = String(target.getAttribute("title") || "").trim();
     if (title) return title;
-    var aria = String(button.getAttribute("aria-label") || "").trim();
+    var aria = String(target.getAttribute("aria-label") || "").trim();
     if (aria) return aria;
-    return String(button.textContent || "").replace(/\s+/g, " ").trim();
+    return String(target.textContent || "").replace(/\s+/g, " ").trim();
   }
 
   function ensureTooltipNode() {
@@ -309,20 +358,20 @@
   document.addEventListener(
     "mouseover",
     function (event) {
-      var button =
+      var target =
         event.target && event.target.closest
-          ? event.target.closest(".datagon-shell button")
+          ? event.target.closest(".datagon-shell [data-dg-tooltip], .datagon-shell button")
           : null;
-      if (!(button instanceof HTMLButtonElement)) return;
-      if (button.disabled) return;
-      var hint = getButtonHintText(button);
+      if (!(target instanceof HTMLElement)) return;
+      if (target instanceof HTMLButtonElement && target.disabled) return;
+      var hint = getGlobalHintText(target);
       if (!hint) return;
 
       hideGlobalTooltip();
-      dgTooltipTarget = button;
+      dgTooltipTarget = target;
       dgTooltipTimer = window.setTimeout(function () {
-        if (!dgTooltipTarget || dgTooltipTarget !== button) return;
-        showGlobalTooltip(button, hint);
+        if (!dgTooltipTarget || dgTooltipTarget !== target) return;
+        showGlobalTooltip(target, hint);
       }, DG_TOOLTIP_DELAY_MS);
     },
     true
@@ -331,14 +380,14 @@
   document.addEventListener(
     "mouseout",
     function (event) {
-      var fromButton =
+      var fromTarget =
         event.target && event.target.closest
-          ? event.target.closest(".datagon-shell button")
+          ? event.target.closest(".datagon-shell [data-dg-tooltip], .datagon-shell button")
           : null;
-      if (!(fromButton instanceof HTMLButtonElement)) return;
+      if (!(fromTarget instanceof HTMLElement)) return;
       var next = event.relatedTarget;
-      if (next instanceof Node && fromButton.contains(next)) return;
-      if (fromButton !== dgTooltipTarget) return;
+      if (next instanceof Node && fromTarget.contains(next)) return;
+      if (fromTarget !== dgTooltipTarget) return;
       hideGlobalTooltip();
     },
     true
@@ -642,6 +691,27 @@
     }
   }
 
+  /** Режим доступа к пункту меню: дочерние страницы маркетплейсов наследуют «exports-marketplaces», если у них нет своей записи; при скрытом родителе всё скрыто. */
+  function datagonEffectivePageMode(pm, navKey) {
+    if (pm == null) return "full";
+    var nk = String(navKey || "").trim();
+    var mpChild =
+      nk === "exports-marketplaces-ozon" ||
+      nk === "exports-marketplaces-wildberries" ||
+      nk === "exports-marketplaces-yandex";
+    var parentMode = pm["exports-marketplaces"];
+    if (parentMode === "hidden" && (nk === "exports-marketplaces" || mpChild)) return "hidden";
+    if (mpChild) {
+      var own = pm[nk];
+      if (own !== undefined && own !== null && own !== "") return String(own);
+      if (parentMode !== undefined && parentMode !== null && parentMode !== "") return String(parentMode);
+      return "full";
+    }
+    var m = pm[nk];
+    if (m === undefined || m === null || m === "") return "full";
+    return String(m);
+  }
+
   function applyDatagonRestrictedNavVisibility() {
     var show = canViewActivityNav();
     document.querySelectorAll('[data-dg-nav-restricted="activity"]').forEach(function (li) {
@@ -663,8 +733,7 @@
         li.style.display = "";
         return;
       }
-      var mode = pm == null ? "full" : pm[navKey];
-      if (mode === undefined || mode === null || mode === "") mode = "full";
+      var mode = datagonEffectivePageMode(pm, navKey);
       if (mode === "hidden") li.style.display = "none";
       else li.style.display = "";
     });
@@ -714,7 +783,7 @@
       return;
     }
     var pm = readStoredPageModes();
-    if (!pm || pm[navKey] !== "view") {
+    if (!pm || datagonEffectivePageMode(pm, navKey) !== "view") {
       try {
         document.body.removeAttribute("data-dg-page-access");
       } catch (eD) {}
@@ -730,6 +799,7 @@
   window.addEventListener("datagon-profile-loaded", function () {
     applyDatagonRestrictedNavVisibility();
     applyViewOnlyShell();
+    dgVanillaInitSidebarSubmenus();
   });
 
   function redirectVanillaToLogin() {
@@ -1444,7 +1514,11 @@
       id === "dg-matches-my-main-table" ||
       id === "mp-main-table" ||
       id === "dg-manual-queue-table" ||
-      id === "dg-manual-archive-table"
+      id === "dg-manual-archive-table" ||
+      id === "dg-huckster-table-1" ||
+      id === "dg-huckster-table-2" ||
+      id === "dg-huckster-set1-table" ||
+      id === "dg-huckster-set2-table"
     )
       return true;
     return false;

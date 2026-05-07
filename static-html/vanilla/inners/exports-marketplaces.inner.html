@@ -1,0 +1,123 @@
+          <div class="app-page-title">
+            <div class="page-title-wrapper">
+              <div class="page-title-heading">
+                <div class="page-title-icon">
+                  <i class="pe-7s-graph3 icon-gradient bg-happy-fisher"> </i>
+                </div>
+                <div>
+                  Маркетплейсы — Настройки
+                  <div class="page-title-subheading">
+                    Меню <strong>Маркетплейсы → Настройки</strong>: ключи API и справка. Таблицы выгрузок — на отдельных страницах <strong>Ozon</strong>, <strong>Wildberries</strong>, <strong>Яндекс Маркет</strong> (пункты того же подменю).
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center gap-2">
+              <i class="header-icon pe-7s-info icon-gradient bg-malibu-beach me-2"></i>
+              <span>Как устроено</span>
+            </div>
+            <div class="card-body">
+              <ul class="mb-0 ps-3">
+                <li class="mb-2">
+                  <strong>Ключи.</strong> Сначала переменные окружения сервера:
+                  <code>OZON_CLIENT_ID</code>, <code>OZON_API_KEY</code>, <code>WB_API_KEY</code>, <code>YM_API_KEY</code>, <code>YM_CAMPAIGN_ID</code>, при необходимости <code>YM_BUSINESS_ID</code>.
+                  Иначе — значения из БД (<code>app_settings</code>), форма ниже (админ или полный доступ к «Настройкам» приложения).
+                </li>
+                <li class="mb-2">
+                  <strong>Таблицы.</strong> На страницах Ozon / Wildberries / Яндекс Маркет сервер отдаёт выборку в wide-таблицу (до 40 строк) и CSV по кнопкам на этих страницах.
+                </li>
+                <li class="mb-0">
+                  <strong>Лимиты API.</strong> См. <code>GET /api/exports/marketplaces/status</code> (<code>rate_limits_ms_min</code>); паузы в query только увеличиваются; при 429/503 — повтор с backoff.
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center gap-2">
+              <i class="header-icon pe-7s-way icon-gradient bg-happy-fisher me-2"></i>
+              <span>Страницы выгрузок</span>
+            </div>
+            <div class="card-body">
+              <p class="mb-3">Откройте нужный маркетплейс (та же ветка в боковом меню):</p>
+              <div class="d-flex flex-wrap gap-2">
+                <a class="btn btn-primary" href="/exports-marketplaces-ozon.html">Ozon</a>
+                <a class="btn btn-primary" href="/exports-marketplaces-wildberries.html">Wildberries</a>
+                <a class="btn btn-primary" href="/exports-marketplaces-yandex.html">Яндекс Маркет</a>
+              </div>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+              <div class="d-flex align-items-center">
+                <i class="header-icon pe-7s-check icon-gradient bg-happy-fisher me-2"></i>
+                <span>Состояние ключей</span>
+              </div>
+              <div id="dg-mp-status-line" class="small text-muted">Загрузка…</div>
+            </div>
+            <div class="card-body">
+              <div class="d-flex flex-wrap gap-2" id="dg-mp-status-badges">
+                <span class="badge bg-secondary">Ozon: …</span>
+                <span class="badge bg-secondary">WB: …</span>
+                <span class="badge bg-secondary">Я.Маркет: …</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card" id="dg-mp-keys-card" style="display: none">
+            <div class="card-header d-flex align-items-center gap-2">
+              <i class="header-icon pe-7s-lock icon-gradient bg-strong-bliss me-2"></i>
+              <span>Ключи в БД (app_settings)</span>
+            </div>
+            <div class="card-body">
+              <p class="small text-muted">Доступно администратору или пользователю с полным доступом к разделу «Настройки». Значения хранятся в открытом виде в таблице настроек — как и прочие параметры приложения.</p>
+              <div class="row g-2">
+                <div class="col-md-6">
+                  <label class="form-label" for="dg-k-ozon-client">OZON_CLIENT_ID</label>
+                  <input type="text" class="form-control" id="dg-k-ozon-client" autocomplete="off" />
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label" for="dg-k-ozon-key">OZON_API_KEY</label>
+                  <input type="password" class="form-control" id="dg-k-ozon-key" autocomplete="new-password" />
+                </div>
+                <div class="col-12">
+                  <label class="form-label" for="dg-k-wb">WB_API_KEY</label>
+                  <input type="password" class="form-control" id="dg-k-wb" autocomplete="new-password" />
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label" for="dg-k-ym-key">YM_API_KEY</label>
+                  <input type="password" class="form-control" id="dg-k-ym-key" autocomplete="new-password" />
+                </div>
+                <div class="col-md-3">
+                  <label class="form-label" for="dg-k-ym-camp">YM_CAMPAIGN_ID</label>
+                  <input type="text" class="form-control" id="dg-k-ym-camp" autocomplete="off" />
+                </div>
+                <div class="col-md-3">
+                  <label class="form-label" for="dg-k-ym-bus">YM_BUSINESS_ID</label>
+                  <input type="text" class="form-control" id="dg-k-ym-bus" autocomplete="off" />
+                </div>
+                <div class="col-md-3">
+                  <label class="form-label" for="dg-k-ozon-delay">Ozon delay, мс</label>
+                  <input type="number" class="form-control" id="dg-k-ozon-delay" min="300" step="50" />
+                </div>
+                <div class="col-md-3">
+                  <label class="form-label" for="dg-k-wb-cards-delay">WB cards delay, мс</label>
+                  <input type="number" class="form-control" id="dg-k-wb-cards-delay" min="350" step="50" />
+                </div>
+                <div class="col-md-3">
+                  <label class="form-label" for="dg-k-wb-other-delay">WB prices/stocks delay, мс</label>
+                  <input type="number" class="form-control" id="dg-k-wb-other-delay" min="1000" step="50" />
+                </div>
+                <div class="col-md-3">
+                  <label class="form-label" for="dg-k-ym-delay">Я.Маркет delay, мс</label>
+                  <input type="number" class="form-control" id="dg-k-ym-delay" min="200" step="50" />
+                </div>
+              </div>
+              <button type="button" class="btn btn-success mt-3" id="dg-mp-save-keys">Сохранить ключи</button>
+              <span id="dg-mp-keys-msg" class="ms-2 small text-muted"></span>
+            </div>
+          </div>

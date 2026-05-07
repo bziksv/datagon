@@ -67,8 +67,20 @@ function scheduleResultsPricesPscBackfill(db) {
     })();
 }
 
+/** Один инстанс DDL/проверок на процесс — иначе параллельные GET дублируют CREATE INDEX. */
+let ensureResultsListPerfInflight = null;
+
 async function ensureResultsListPerf(db) {
     if (resultsListPerfReady) return;
+    if (!ensureResultsListPerfInflight) {
+        ensureResultsListPerfInflight = runEnsureResultsListPerfOnce(db).finally(() => {
+            ensureResultsListPerfInflight = null;
+        });
+    }
+    await ensureResultsListPerfInflight;
+}
+
+async function runEnsureResultsListPerfOnce(db) {
     try {
         const [colRows] = await db.query(
             `SELECT COUNT(*) AS cnt
@@ -314,23 +326,6 @@ module.exports = (db, settings) => {
             };
             const sortField = sortFieldMap[String(sort_by || 'parsed_at')] || 'pr.parsed_at';
 
-            const isMatchedSql =
-                matched === '0'
-                    ? '0'
-                    : matched === '1'
-                      ? '1'
-                      : `EXISTS(
-                               SELECT 1
-                               FROM product_matches pm
-                               WHERE pm.status = 'confirmed'
-                                 AND pm.competitor_site_id = pr.project_id
-                                 AND (
-                                     (pm.competitor_sku IS NOT NULL AND pm.competitor_sku <> '' AND pm.competitor_sku = pr.sku)
-                                     OR pm.competitor_name = pr.product_name
-                                 )
-                               LIMIT 1
-                           )`;
-
             const joinFrom =
                 'FROM prices pr JOIN projects p ON pr.project_id = p.id LEFT JOIN pages pg ON pr.page_id = pg.id WHERE 1=1';
             let qCond = '';
@@ -436,17 +431,40 @@ module.exports = (db, settings) => {
             
             const orderBySql = ` ORDER BY dg_res_sort ${sortDir}, pr.id DESC LIMIT ? OFFSET ?`;
             const idSub = `SELECT pr.id, ${sortField} AS dg_res_sort ${joinFrom}${qCond}${orderBySql}`;
+            const subParams = p.slice();
+            const isMatchedExpr =
+                matched === '0' ? '0' : matched === '1' ? '1' : 'COALESCE(dg_res_pm.dg_m, 0)';
+            /** Вместо EXISTS на каждую строку страницы — один join к матчам только по id текущей страницы (тот же idSub). */
+            const matchJoinSql =
+                matched === '0' || matched === '1'
+                    ? ''
+                    : ` LEFT JOIN (
+                        SELECT prm.id AS price_id, 1 AS dg_m
+                        FROM prices prm
+                        INNER JOIN product_matches pm ON pm.status = 'confirmed'
+                          AND pm.competitor_site_id = prm.project_id
+                          AND (
+                            (pm.competitor_sku IS NOT NULL AND pm.competitor_sku <> '' AND pm.competitor_sku = prm.sku)
+                            OR pm.competitor_name = prm.product_name
+                          )
+                        INNER JOIN (${idSub}) dg_res_pick ON dg_res_pick.id = prm.id
+                        GROUP BY prm.id
+                      ) dg_res_pm ON dg_res_pm.price_id = pr.id`;
             const q = `SELECT pr.*, p.name as project_name, pg.url as page_url,
                            COALESCE(pg.status, pr.page_status_cached) as page_status, pg.last_error as page_error, pg.parsed_at as page_parsed_at,
-                           ${isMatchedSql} AS is_matched
+                           ${isMatchedExpr} AS is_matched
                      FROM prices pr 
                      JOIN projects p ON pr.project_id = p.id 
                      LEFT JOIN pages pg ON pr.page_id = pg.id 
-                     INNER JOIN (${idSub}) dg_res_ids ON dg_res_ids.id = pr.id`;
-            p.push(l, o);
+                     INNER JOIN (${idSub}) dg_res_ids ON dg_res_ids.id = pr.id
+                     ${matchJoinSql}`;
+            const pRows =
+                matched === '0' || matched === '1'
+                    ? subParams.concat([l, o])
+                    : subParams.concat([l, o, ...subParams, l, o]);
 
             // Параллельно: без COUNT(*) OVER() — оконная агрегация по всему join часто на порядок медленнее двух запросов.
-            const [rowsPacket, countPacket] = await Promise.all([db.query(q, p), db.query(qc, pc)]);
+            const [rowsPacket, countPacket] = await Promise.all([db.query(q, pRows), db.query(qc, pc)]);
             const rows = rowsPacket[0];
             const total = Number(countPacket[0][0]?.total) || 0;
 

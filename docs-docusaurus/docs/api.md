@@ -30,6 +30,7 @@ description: Справочник REST-эндпоинтов p.datagon.ru (осн
 | Матчинг, confirm/reject | [Matches](#matches) |
 | Ручной матчинг, очереди, вспомогательные GET | [Расширенные маршруты матчинга](#расширенные-маршруты-матчинга) |
 | МойСклад, `ms_export` | [MoySklad](#moysklad) |
+| Выгрузки Ozon / WB / Я.Маркет | [Exports / marketplaces](#exports--marketplaces) |
 | Массовый синк источников | [Глобальная синхронизация (server.js)](#глобальная-синхронизация-serverjs) |
 | Сводка фоновых задач (логи в UI) | [Обзор процессов](#обзор-процессов) |
 | События активности в UI | [Активность](#активность) |
@@ -61,6 +62,7 @@ description: Справочник REST-эндпоинтов p.datagon.ru (осн
 - `/api/my-products` -> `routes/myproducts.js`
 - `/api/matches` -> `routes/matches.js`
 - `/api/ms` -> `routes/moysklad.js`
+- `/api/exports/marketplaces` -> `routes/exportsMarketplaces.js`
 - `/api/activity` -> `routes/activity.js`
 - `GET /api/processes/overview`, `POST /api/sync-all-start`, `POST /api/sync-site-start`, `GET /api/sync-status` -> `server.js`
 
@@ -121,9 +123,22 @@ Body (пример):
   "page_delay_ms": 0,
   "sync_batch_size": 500,
   "sync_delay_ms": 2000,
-  "sync_mode": "always"
+  "sync_mode": "always",
+  "fetch_proxy_enabled": 0,
+  "fetch_proxy_list": ""
 }
 ```
+
+Дополнительные поля (см. также отдельный эндпоинт ниже):
+
+- **`fetch_proxy_enabled`** — `0` / `1`: использовать ли HTTP(S)-прокси при загрузке страниц конкурентов (для проектов в режиме «наследовать глобальные»).
+- **`fetch_proxy_list`** — многострочный список прокси в формате, который ожидает клиент (см. UI «Настройки» и `routes/settings.js`); до ~120 000 символов.
+- **`auto_sync_marketplaces_enabled`** / **`auto_sync_marketplaces_time`** — ежедневное обновление снапшотов маркетплейсов (МСК, `HH:MM`).
+- **`auto_sync_huckster_enabled`** / **`auto_sync_huckster_time`** — ежедневное обновление матриц Huckster (МСК); учётные данные — из `app_settings` или `HUCKSTER_EMAIL` / `HUCKSTER_PASSWORD`.
+
+### POST `/api/settings/fetch-proxy`
+
+Только **`fetch_proxy_enabled`** и **`fetch_proxy_list`** (удобно сохранять блок прокси без остальных полей настроек). Body: JSON `{ "fetch_proxy_enabled": 1, "fetch_proxy_list": "…" }`. Ответ: `{ "success": true }`.
 
 ### POST `/api/settings/sync-myproducts`
 
@@ -157,12 +172,15 @@ Body:
   "selector_price": ".price",
   "selector_name": "h1",
   "selector_sku": ".sku",
-  "selector_oos": ".out-of-stock"
+  "selector_oos": ".out-of-stock",
+  "fetch_proxy_mode": "inherit"
 }
 ```
 
+- **`fetch_proxy_mode`** — `inherit` (по умолчанию: если глобально включён прокси — запросы идут через него) или `direct` (всегда без прокси для этого проекта). Значение `custom` в API приводится к `inherit` (см. `lib/datagonFetchProxy.js`).
+
 ### PUT `/api/projects/:id`
-Обновить проект.
+Обновить проект. Тело — как у `POST` (все поля селекторов и при необходимости **`fetch_proxy_mode`**).
 
 ### DELETE `/api/projects/:id`
 Удалить проект.
@@ -447,10 +465,22 @@ Query:
 - `type` (`all`, `Товар`, `Комплект`)
 - `limit`
 - `offset`
+- прочие поля фильтрации — см. `buildExportFilters` в `routes/moysklad.js`
+- **сеточные** фильтры (первая строка полей на экране «МойСклад», те же условия что и для `/api/ms/stats`): `g_code`, `g_name`, `g_supplier`, `g_supplier2`, `g_manager`, `g_content_manager`, `g_type` (подстрока типа, регистр не важен), `g_stock_min`, `g_stock_max`, `g_archived` (`all` | `0` | `1`)
+
+### GET `/api/ms/detail/:uuid`
+
+**Одиночная** загрузка полной карточки товара или комплекта из JSON API МойСклад (включая все атрибуты), для экрана «МойСклад» по клику на наименование. Это **не** часть ночной синхронизации в `ms_export`: каждый открытый диалог — отдельные запросы к API (плюс кэшируемый на **~60 минут** справочник имён атрибутов `metadata/attributes`, см. `MS_ATTRS_META_CACHE_TTL_MS` в `routes/moysklad.js`). Учитывайте [лимиты МойСклад](https://dev.moysklad.ru/doc/api/remap/1.2/#/general/limits) при массовом просмотре.
+
+Query:
+
+- `kind` — подсказка типа сущности: `product` | `bundle` или строка с подстрокой «комплект» (как в поле `type` выгрузки).
+
+Ответ: `success`, `kind`, `uuid`, `webHref` (если API вернул `meta.uuidHref`), `blocks` — массив секций с табличными строками `label` / `value` для отображения в UI. В блоке карточки показываются все `salePrices` из МойСклад; типы цен с нулевым значением отображаются как `0.00 ₽`.
 
 ### GET `/api/ms/stats`
 
-Агрегированная статистика по выгрузке МойСклад (с кэшем на сервере; параметры — в `routes/moysklad.js`).
+Агрегированная статистика по выгрузке МойСклад (с кэшем на сервере; параметры — в `routes/moysklad.js`). Набор фильтров совпадает с `GET /api/ms/export`, включая **`g_*`** (сеточные поля экрана).
 
 ### POST `/api/ms/stop`
 
@@ -459,6 +489,165 @@ Query:
 ### POST `/api/ms/rebuild-links-cache`
 
 Пересборка серверного кэша связей кодов с `ms_export` (используется из UI «Мои товары»).
+
+## Exports / marketplaces
+
+Префикс: `/api/exports/marketplaces`. Доступ к API проверяется по странице **`exports-marketplaces`** (матрица `page_modes`: скрытие «Настроек» отключает и вызовы API выгрузок). Настройки ключей/лимитов перенесены в **`/settings.html#marketplaces`**; страница `/exports-marketplaces.html` оставлена как редирект. Отдельные экраны таблиц — **`/exports-marketplaces-ozon.html`**, **`/exports-marketplaces-wildberries.html`**, **`/exports-marketplaces-yandex.html`**: они автозагружают последний сохранённый снапшот и имеют кнопку принудительного обновления. Сами запросы выполняются **на сервере** (долгие циклы допустимы; таймауты прокси/nginx настройте под свой каталог).
+
+**Учётные данные** (в порядке приоритета):
+
+1. Переменные окружения: `OZON_CLIENT_ID`, `OZON_API_KEY`, `WB_API_KEY`, `YM_API_KEY`, `YM_CAMPAIGN_ID`, `YM_BUSINESS_ID` (последний опционально — для ссылки «Покупателю» на Я.Маркете).
+2. Либо ключи в таблице `app_settings`: `ozon_client_id`, `ozon_api_key`, `wb_api_key`, `ym_api_key`, `ym_campaign_id`, `ym_business_id` — через `POST /api/exports/marketplaces/config` (только **admin** или пользователь с **полным** доступом к разделу «Настройки»).
+
+### GET `/api/exports/marketplaces/status`
+
+Возвращает JSON `{ configured: { ozon, wildberries, yandex_market }, rate_limits_ms_min, hints }` — какие интеграции считаются настроенными (без раскрытия значений ключей) и **минимальные паузы между запросами** к каждому маркетплейсу (мс). Параметры `delay_*` в выгрузках не опускаются ниже этих значений.
+
+**Поведение при лимитах:** HTTP-клиент к маркетплейсам повторяет запрос при **429 / 502 / 503** с экспоненциальным backoff и с учётом заголовка **`Retry-After`** (секунды), до ограниченного числа попыток. Точные RPM по кабинету не зашиты в код — ориентируйтесь на официальную документацию и при необходимости увеличивайте `delay_*`.
+
+### POST `/api/exports/marketplaces/config`
+
+Legacy-совместимость для старого экрана настроек маркетплейсов. Новая UI-практика — сохранять эти поля через `POST /api/settings`.
+
+### GET `/api/exports/marketplaces/ozon`
+
+Query:
+
+- `format` — `json` (по умолчанию) или `csv` (файл UTF-8 с BOM, разделитель `;`).
+- `max_items` — ограничение строк каталога (1…25000, по умолчанию 5000 на бэкенде если не передано; экран диагностики в панели по умолчанию шлёт 300).
+- `include_archived` — `1` для `visibility: ALL` в списке Ozon (как в скрипте с `OZON_INCLUDE_ARCHIVED`).
+- `delay_ms` — пауза между запросами к Ozon (мс, по умолчанию 400; не ниже минимума из `rate_limits_ms_min.ozon`).
+
+Параметр `max_items` оставлен для интеграций и ручных `curl`, но UI-экраны маркетплейсов его больше не задают.
+
+Ответ JSON: `{ marketplace, updatedAt, count, persisted_count, headers, headerLabels, rows }` — `headers` — ключи полей в объектах `rows`, `headerLabels` — подписи столбцов для UI (для Ozon с суффиксом «Ozon», как в CSV), `persisted_count` — сколько строк сохранено/обновлено в БД для последующей обработки. CSV UTF-8 с BOM: первая строка — `headerLabels` для Ozon: «Артикул (offer_id) Ozon», «Наименование Ozon», «Цена Ozon», «НДС Ozon», «Статус Ozon», «Причина блокировки Ozon», «Остаток Ozon», «Длина (см) Ozon», «Ширина (см) Ozon», «Высота (см) Ozon», «Вес (кг) Ozon», «Кабинет Ozon», «Покупателю Ozon», «Обновлено Ozon».
+
+### GET `/api/exports/marketplaces/wildberries`
+
+Query: `format`, `max_items`, `delay_cards`, `delay_other` (мс; по умолчанию 600 и 1600, не ниже `rate_limits_ms_min.wbCards` / `wbPricesStocks`). Логика: карточки `content/v2/get/cards/list`, цены `discounts-prices-api`, остатки `marketplace-api` по складам (при ошибке остатков таблица всё равно возвращается с нулевыми остатками).
+
+Ответ JSON: как у Ozon — `headers`, `headerLabels`, `rows`, `persisted_count`. Заголовки CSV/UI для WB (суффикс « WB»): «Артикул продавца WB», «Наименование WB», «Цена WB», «НДС WB», «Остаток WB», «Длина (см) WB», «Ширина (см) WB», «Высота (см) WB», «Вес (кг) WB», «Кабинет WB», «Покупателю WB», «Обновлено WB».
+
+### GET `/api/exports/marketplaces/yandex-market`
+
+Query: `format`, `max_items`, `delay_ms` (по умолчанию 280 мс, не ниже `rate_limits_ms_min.yandex`). Листинг SKU через `GET …/offer-prices`, цены `POST …/offer-prices`, карточные данные `POST …/stats/skus`.
+
+Ответ JSON: как у Ozon — `headers`, `headerLabels`, `rows`, `persisted_count`. Заголовки CSV/UI для Я.Маркета (суффикс « Я.Маркет»): «Артикул Я.Маркет», «Наименование Я.Маркет», «Цена Я.Маркет», «НДС Я.Маркет», «Остаток Я.Маркет», «Длина (см) Я.Маркет», «Ширина (см) Я.Маркет», «Высота (см) Я.Маркет», «Вес (кг) Я.Маркет», «Кабинет Я.Маркет», «Покупателю Я.Маркет», «Обновлено Я.Маркет».
+
+### GET `/api/exports/marketplaces/snapshot`
+
+Чтение последнего сохранённого снапшота из `marketplace_export_rows` (без live-запросов к внешнему API).
+
+Query:
+
+- `shop` — обязательный: `ozon` | `wildberries` (`wb`) | `yandex` (`yandex-market`, `ym`).
+- `max_items` — ограничение выдачи (1…25000, по умолчанию 300).
+
+Ответ JSON: `{ marketplace, source: "snapshot", updatedAt, count, headers, headerLabels, rows }`.
+
+- `rows` строятся из `row_json` (с fallback на нормализованные колонки таблицы).
+- Если сохранённых строк нет, возвращается `count=0` и пустой `rows`.
+- Этот маршрут используется UI-экранами маркетплейсов для автоподгрузки данных при открытии страницы и для кнопки «Показать последнее сохранённое».
+
+### POST `/api/exports/marketplaces/sync`
+
+Принудительный запуск обновления с live API маркетплейсов и сохранением в `marketplace_export_rows`.
+
+Body (JSON):
+
+- `shop` — `all` (по умолчанию), `ozon`, `wildberries` (`wb`), `yandex-market` (`ym`).
+
+Ответ: `{ success: true, started: true }`. Если задача уже выполняется — `409`.
+
+### GET `/api/exports/marketplaces/sync-status`
+
+Текущий статус фонового обновления маркетплейсов: активность, сообщение, состояние по каждой площадке.
+
+Технически строки сохраняются в таблицу `marketplace_export_rows` (создаётся автоматически): уникальность по паре `(marketplace, external_id)`, полные данные каждой строки — в `row_json`, плюс нормализованные колонки (`price`, `vat`, `stock`, габариты, ссылки и т.д.) для SQL-обработки.
+
+## Exports / Huckster
+
+Префикс: `/api/exports/huckster`. Экран: `/exports-huckster.html`.
+
+Матрицы (`sheet_export` / `sheet_export_rrc`):
+
+- **`sheet_export` (набор 1, Huckster Export)** и **`sheet_export_rrc` (набор 2, Huckster Export RRC):** строки из таблицы **`ms_export`** (МойСклад): **складская позиция** = «Да»; **«Перестали сотрудничать»** = «Да» отфильтровываются, **кроме** позиций с **остатком больше нуля** (их оставляем). Колонки: **ID / КОД** (= код МС, сопоставляется с `uid` в repricer), **Наименование товара**, **Менеджер**, **Остаток**, по маркетплейсам **Ozon / WB / ЯМ** — статус **«Репрайсер ВКЛЮЧЕН»** (зелёный), если по этому коду есть **ровно один** включённый repricer в маркетплейсе; иначе **«Репрайсер ВЫКЛЮЧЕН»** (красный: ноль или больше одного включённых — нельзя однозначно выбрать кабинет). Рядом колонки **«Модель …»** показывают назначение Unit-модели: название модели (зелёный), **«Модель не назначена»** (красный) или **«Модель назначена, но Репрайсер на модели выключен»** (жёлтый). Для набора 1 действует фильтр Unit-моделей «онлайн»+«калькулятор», для RRC — полный набор Unit-моделей. Последняя колонка **«Актуально на»** — время синка. В JSON добавлены **`bridge_row_meta`** (состояния кабинетов для подсветки), **`matrix_kind`: `ms_bridge_v1`**. Реализация: `lib/hucksterMsBridgeMatrix.js` + `routes/exportsHuckster.js`.
+
+Старые снапшоты наборов 1/2 с первой колонкой **«Обновлено (repricer)»** UI отображает по прежней сетке (UID × кабинеты).
+
+Ежедневный запуск по расписанию (МСК): флаги **`auto_sync_huckster_enabled`** / **`auto_sync_huckster_time`** в `POST /api/settings` — см. раздел [Settings](#settings); реализация в `server.js` (очередь `auto_sync_runs`, тип задачи `huckster`).
+
+### POST `/api/exports/huckster/sync`
+
+Принудительно **запускает фоновое** обновление двух матриц Huckster (аналог листов Google Sheets `Huckster Export` и `Huckster Export RRC`) через API `wbs.e-teleport.ru`.
+
+Основная кнопка экрана `/exports-huckster.html` отправляет **пустое** тело `{}` и полагается на креды, уже сохранённые на сервере (см. ниже `credentials` / переменные окружения). Кнопка **«Тест UID»** отправляет `test_uids` и не перезаписывает сохранённый snapshot.
+
+Body (JSON):
+
+- `email` — логин Huckster (опционально, если задан `HUCKSTER_EMAIL` или `app_settings.huckster_email`).
+- `password` — пароль Huckster (опционально, если задан `HUCKSTER_PASSWORD` или `app_settings.huckster_password`).
+- `delay_ms` — пауза между страницами пагинации (мс, по умолчанию 270, не ниже 135). Размер страницы к e-teleport: repricer и unit — по 900 записей (на 10% ниже верхнего лимита API 1000).
+- `max_offset_per_shop` — ограничение offset на магазин (`0` = без ограничения).
+- `test_uids` / `uids` / `uid_list` — опциональный тестовый список UID/кодов (`["12461"]` или строка через запятую/пробел). В матрицу попадут только эти UID; пагинация по кабинету останавливается раньше, если все UID найдены. Тестовый запуск отдаёт результат в `sync-status`, но **не сохраняет** его как `latest` snapshot.
+
+Ответ JSON при запуске: `{ "success": true, "started": true, "started_at": "..." }`.  
+Если задача уже выполняется — `409` с кодом `ALREADY_RUNNING`.
+
+### GET `/api/exports/huckster/sync-status`
+
+Текущий статус фонового обновления Huckster (для polling в UI).
+
+Ответ JSON (основные поля):
+
+- `active` — выполняется ли обновление сейчас.
+- `status_text` — текст текущего этапа (аутентификация / текущий магазин / завершение).
+- `progress.total_shops`, `progress.done_shops` — шаги загрузки: **два прохода** по всем магазинам обоих наборов (`total_shops = 2 × число магазинов`). Сначала везде **Repricer** (`repricer/items/list`), затем везде **Unit-модели**; матрицы в ответе собираются только после обоих проходов.
+- `progress.current_shop_name`, `progress.current_set` — текущий магазин и набор (`set1` / `set2`); `status_text` начинается с `Repricer —` или `Unit-модели —`.
+- `result` — финальный результат (при успехе: `sheet_export.rows`, `sheet_export_rrc.rows`, `updated_at`; для тестового запуска ещё `test_uids`).
+- `error` — объект ошибки (в том числе `HUCKSTER_STOPPED` после ручной остановки).
+
+### POST `/api/exports/huckster/stop`
+
+Запрашивает остановку активного обновления Huckster.
+
+Ответ JSON: `{ "success": true, "stop_requested": true }`.  
+Если активной задачи нет — `409` с кодом `NOT_RUNNING`.
+
+Успешное завершение обновления дополнительно сохраняет матрицы в таблицу `huckster_matrix_snapshots` (строка `id=latest`, поле `payload_json` LONGTEXT).
+
+### GET `/api/exports/huckster/snapshot`
+
+Последнее успешное сохранение матриц (без запросов к e-teleport). Используется UI для автоподгрузки после обновления страницы.
+
+Ответ JSON: `success`, `source: "snapshot"`, `empty` (boolean), `updated_at`, опционально `stored_at` (время записи в БД), `sheet_export` / `sheet_export_rrc` — те же объекты, что в результате sync (`rows`, `total_uids` или `total_rows`, при новой bridge-схеме ещё `bridge_row_meta`, `matrix_kind`). Если сохранений ещё не было — `empty: true` и пустые `rows`.
+
+### DELETE `/api/exports/huckster/snapshot`
+
+Удаляет из БД последний сохранённый снапшот матриц (`DELETE FROM huckster_matrix_snapshots WHERE id='latest'`). Идемпотентно: если записи не было — успех. Сбрасывает в памяти процесса поле `result` у фонового статуса Huckster, чтобы `GET /sync-status` не отдавал устаревшие `sheet_export` после очистки. Требует авторизацию (как остальные методы под `/api/exports/huckster` после входа). На экране `/exports-huckster.html` вызывается из кнопки **«Очистить таблицы»** (после подтверждения).
+
+Ответ JSON: `{ "success": true, "cleared": true }`.
+
+### GET `/api/exports/huckster/config`
+
+Возвращает текущие наборы магазинов `set1` / `set2` для Huckster. На экране `/exports-huckster.html` в форме редактируются **оба** набора; тот же контракт доступен через этот API.
+
+### POST `/api/exports/huckster/config`
+
+Сохраняет наборы магазинов Huckster.
+
+Body (JSON):
+
+- `set1`: массив объектов `{ id, name, marketplace, shop_id }`
+- `set2`: массив объектов `{ id, name, marketplace, shop_id }`
+
+`marketplace` допускает только `ozon`, `wildberries`, `yandex`. Оба набора обязаны содержать хотя бы одну валидную строку. Панель при сохранении отправляет оба массива из формы.
+
+### POST `/api/exports/huckster/credentials`
+
+Сохраняет в `app_settings` логин, пароль и параметры для Huckster (используются `POST /sync` без тела и планировщиком в `server.js`, если в теле sync не переданы `email` / `password`).
+
+Body (JSON): `email`, `password` (обязательны), опционально `delay_ms` (не ниже 135), `max_offset_per_shop` (число, `0` = без ограничения).
 
 ## Глобальная синхронизация (server.js)
 

@@ -1,0 +1,174 @@
+  <script>
+    (function () {
+      var API = "/api/exports/marketplaces";
+      var shop = String(document.body.getAttribute("data-dg-mp-shop") || "ozon").trim();
+      var exportPath =
+        shop === "wildberries" ? "/wildberries" : shop === "yandex" ? "/yandex-market" : "/ozon";
+
+      function authHeaders(json) {
+        var headers = {};
+        var username = window.localStorage.getItem("currentUser");
+        var token = window.localStorage.getItem("authToken");
+        if (username) headers["x-auth-username"] = username;
+        if (token) headers["x-auth-token"] = token;
+        if (json) headers["Content-Type"] = "application/json";
+        return headers;
+      }
+
+      function setMsg(text, kind) {
+        var el = document.getElementById("dg-mp-msg");
+        if (!el) return;
+        el.classList.remove("d-none", "alert-danger", "alert-success", "alert-secondary", "alert-warning");
+        el.classList.add("alert-" + (kind || "secondary"));
+        el.textContent = text || "";
+      }
+
+      function escCell(v) {
+        var s = v === null || v === undefined ? "" : String(v);
+        if (s.length > 500) s = s.slice(0, 497) + "…";
+        return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+      }
+
+      function isHttpUrl(value) {
+        var s = value === null || value === undefined ? "" : String(value).trim();
+        return /^https?:\/\//i.test(s);
+      }
+
+      function renderCellValue(headerKey, rawValue) {
+        var val = rawValue === null || rawValue === undefined ? "" : String(rawValue);
+        var isLinkColumn = headerKey === "cabinet_url" || headerKey === "buyer_url";
+        if ((isLinkColumn || isHttpUrl(val)) && val.trim()) {
+          var safeHref = escCell(val.trim());
+          return (
+            '<a href="' +
+            safeHref +
+            '" target="_blank" rel="noopener noreferrer" class="text-primary">Открыть</a>'
+          );
+        }
+        return escCell(val);
+      }
+
+      function renderMarketTable(headers, rows, headerLabels, maxRows) {
+        var table = document.getElementById("dg-mp-table-main");
+        if (!table) return;
+        var thead = table.querySelector("thead");
+        var tbody = table.querySelector("tbody");
+        if (!thead || !tbody) return;
+        maxRows = maxRows || 40;
+        headers = headers || [];
+        rows = rows || [];
+        var labels =
+          headerLabels && headerLabels.length === headers.length ? headerLabels : headers;
+        if (!headers.length) {
+          thead.innerHTML = '<tr><th class="text-muted">Нет колонок</th></tr>';
+          tbody.innerHTML = '<tr><td class="text-muted">Пустой ответ API.</td></tr>';
+          return;
+        }
+        thead.innerHTML =
+          "<tr>" +
+          labels
+            .map(function (lab) {
+              return '<th scope="col">' + escCell(lab) + "</th>";
+            })
+            .join("") +
+          "</tr>";
+        var slice = rows.slice(0, maxRows);
+        if (!slice.length) {
+          tbody.innerHTML =
+            '<tr><td class="text-muted" colspan="' +
+            headers.length +
+            '">Нет строк в выборке.</td></tr>';
+          return;
+        }
+        tbody.innerHTML = slice
+          .map(function (row) {
+            return (
+              "<tr>" +
+              headers
+                .map(function (h) {
+                  return "<td>" + renderCellValue(h, row[h]) + "</td>";
+                })
+                .join("") +
+              "</tr>"
+            );
+          })
+          .join("");
+      }
+
+      function runRefreshFromMarketplace() {
+        setMsg("Обновляем из маркетплейса… подождите.", "warning");
+        var q = "format=json";
+        if (shop === "ozon") {
+          var arch = document.getElementById("dg-mp-ozon-archived");
+          if (arch && arch.checked) q += "&include_archived=1";
+        }
+        var url = API + exportPath + "?" + q;
+        fetch(url, { headers: authHeaders(false), credentials: "same-origin" })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { ok: r.ok, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.ok) throw new Error((x.j && x.j.error) || "Ошибка");
+            setMsg(
+              "Обновлено из маркетплейса. Строк: " +
+                (x.j.count != null ? x.j.count : "?") +
+                ". Сохранено: " +
+                (x.j.persisted_count != null ? x.j.persisted_count : "?") +
+                ". Метка: " +
+                (x.j.updatedAt || "—"),
+              "success"
+            );
+            renderMarketTable(x.j.headers || [], x.j.rows || [], x.j.headerLabels, 40);
+          })
+          .catch(function (e) {
+            setMsg(String(e.message || e), "danger");
+          });
+      }
+
+      function loadSavedSnapshot() {
+        setMsg("Загружаем последний сохранённый снапшот…", "warning");
+        var url =
+          API +
+          "/snapshot?shop=" +
+          encodeURIComponent(shop);
+        fetch(url, { headers: authHeaders(false), credentials: "same-origin" })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { ok: r.ok, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.ok) throw new Error((x.j && x.j.error) || "Ошибка");
+            renderMarketTable(x.j.headers || [], x.j.rows || [], x.j.headerLabels, 40);
+            if (x.j.count > 0) {
+              setMsg(
+                "Показан последний сохранённый снапшот. Строк: " +
+                  x.j.count +
+                  ". Метка: " +
+                  (x.j.updatedAt || "—"),
+                "secondary"
+              );
+            } else {
+              setMsg("Сохранённых строк пока нет. Нажмите «Обновить из маркетплейса».", "secondary");
+            }
+          })
+          .catch(function (e) {
+            setMsg(String(e.message || e), "danger");
+          });
+      }
+
+      var refreshBtn = document.getElementById("dg-mp-refresh-market");
+      var snapshotBtn = document.getElementById("dg-mp-load-snapshot");
+      if (refreshBtn)
+        refreshBtn.addEventListener("click", function () {
+          runRefreshFromMarketplace();
+        });
+      if (snapshotBtn)
+        snapshotBtn.addEventListener("click", function () {
+          loadSavedSnapshot();
+        });
+      loadSavedSnapshot();
+    })();
+  </script>

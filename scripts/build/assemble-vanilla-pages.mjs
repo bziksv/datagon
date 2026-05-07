@@ -21,6 +21,10 @@ function read(p) {
 
 function assemble() {
     const template = read(tmplPath);
+    const mpExtraHead =
+        read(path.join(vanillaDir, 'inners/exports-suite.head.html')) +
+        read(path.join(vanillaDir, 'inners/exports-marketplaces.head.html'));
+    const mpShopScripts = read(path.join(vanillaDir, 'inners/exports-marketplaces-shop.scripts.html'));
     const pages = [
         {
             out: 'dashboard.html',
@@ -181,6 +185,75 @@ function assemble() {
             EXTRA_HEAD: read(path.join(vanillaDir, 'inners/index.head.html')),
             MAIN_INNER: read(path.join(vanillaDir, 'inners/index.inner.html')),
             PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/index.scripts.html')),
+        },
+        {
+            out: 'exports-ms.html',
+            PAGE_TITLE: 'Выгрузки МС — Датагон',
+            BODY_ATTRS: 'class="datagon-vanilla-body" data-dg-active-nav="exports-ms"',
+            EXTRA_HEAD: read(path.join(vanillaDir, 'inners/exports-suite.head.html')),
+            MAIN_INNER: read(path.join(vanillaDir, 'inners/exports-ms.inner.html')),
+            PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/exports-suite.scripts.html')),
+        },
+        {
+            out: 'exports-marketplaces.html',
+            PAGE_TITLE: 'Маркетплейсы — Настройки — Датагон',
+            BODY_ATTRS: 'class="datagon-vanilla-body" data-dg-active-nav="exports-marketplaces"',
+            EXTRA_HEAD: mpExtraHead,
+            MAIN_INNER: read(path.join(vanillaDir, 'inners/exports-marketplaces.inner.html')),
+            PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/exports-marketplaces.scripts.html')),
+        },
+        {
+            out: 'exports-marketplaces-ozon.html',
+            PAGE_TITLE: 'Маркетплейсы — Ozon — Датагон',
+            BODY_ATTRS:
+                'class="datagon-vanilla-body" data-dg-active-nav="exports-marketplaces-ozon" data-dg-mp-shop="ozon"',
+            EXTRA_HEAD: mpExtraHead,
+            MAIN_INNER: read(path.join(vanillaDir, 'inners/exports-marketplaces-ozon.inner.html')),
+            PAGE_SCRIPTS: mpShopScripts,
+        },
+        {
+            out: 'exports-marketplaces-wildberries.html',
+            PAGE_TITLE: 'Маркетплейсы — Wildberries — Датагон',
+            BODY_ATTRS:
+                'class="datagon-vanilla-body" data-dg-active-nav="exports-marketplaces-wildberries" data-dg-mp-shop="wildberries"',
+            EXTRA_HEAD: mpExtraHead,
+            MAIN_INNER: read(path.join(vanillaDir, 'inners/exports-marketplaces-wildberries.inner.html')),
+            PAGE_SCRIPTS: mpShopScripts,
+        },
+        {
+            out: 'exports-marketplaces-yandex.html',
+            PAGE_TITLE: 'Маркетплейсы — Яндекс Маркет — Датагон',
+            BODY_ATTRS:
+                'class="datagon-vanilla-body" data-dg-active-nav="exports-marketplaces-yandex" data-dg-mp-shop="yandex"',
+            EXTRA_HEAD: mpExtraHead,
+            MAIN_INNER: read(path.join(vanillaDir, 'inners/exports-marketplaces-yandex.inner.html')),
+            PAGE_SCRIPTS: mpShopScripts,
+        },
+        {
+            out: 'exports-huckster.html',
+            PAGE_TITLE: 'Huckster — Датагон',
+            BODY_ATTRS: 'class="datagon-vanilla-body" data-dg-active-nav="exports-huckster"',
+            EXTRA_HEAD:
+                read(path.join(vanillaDir, 'inners/exports-suite.head.html')) +
+                read(path.join(vanillaDir, 'inners/exports-huckster.head.html')),
+            MAIN_INNER: read(path.join(vanillaDir, 'inners/exports-huckster.inner.html')),
+            PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/exports-suite.scripts.html')),
+        },
+        {
+            out: 'exports-summary.html',
+            PAGE_TITLE: 'Сводка и синхронизация — Датагон',
+            BODY_ATTRS: 'class="datagon-vanilla-body" data-dg-active-nav="exports-summary"',
+            EXTRA_HEAD: read(path.join(vanillaDir, 'inners/exports-suite.head.html')),
+            MAIN_INNER: read(path.join(vanillaDir, 'inners/exports-summary.inner.html')),
+            PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/exports-suite.scripts.html')),
+        },
+        {
+            out: 'exports-dimensions.html',
+            PAGE_TITLE: 'Габариты — Датагон',
+            BODY_ATTRS: 'class="datagon-vanilla-body" data-dg-active-nav="exports-dimensions"',
+            EXTRA_HEAD: read(path.join(vanillaDir, 'inners/exports-suite.head.html')),
+            MAIN_INNER: read(path.join(vanillaDir, 'inners/exports-dimensions.inner.html')),
+            PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/exports-suite.scripts.html')),
         },
     ];
 

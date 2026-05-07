@@ -162,7 +162,9 @@
       display: flex;
       flex-direction: column;
     }
-    .dg-sidebar-nav-measure .metismenu-container {
+    /* Только корневой список меню: иначе вложенный ul.metismenu-container (под «Маркетплейсы» и т.п.)
+       получает min-height:100% + flex и растягивается на всю колонку — вертикальная линия темы залезает на соседние пункты. */
+    .dg-sidebar-nav-measure .vertical-nav-menu > .metismenu-container {
       display: flex;
       flex-direction: column;
       flex: 1 1 auto;
@@ -188,6 +190,33 @@
       opacity: 0.72;
       line-height: 1;
       flex-shrink: 0;
+    }
+    @media (max-width: 991.98px) {
+      /* На мобильном layout не должен наследовать desktop-сдвиг fixed/closed sidebar. */
+      .datagon-vanilla-shell .app-main__outer {
+        margin-left: 0 !important;
+      }
+      .datagon-vanilla-shell .app-footer {
+        left: 0 !important;
+        width: 100% !important;
+      }
+      .datagon-vanilla-shell .app-footer .app-footer__inner {
+        margin-left: 0 !important;
+      }
+      /* На телефонах слой мобильного меню должен перекрывать фиксированный футер. */
+      .datagon-vanilla-shell .sidebar-mobile-overlay {
+        z-index: 1090;
+      }
+      .datagon-vanilla-shell .app-sidebar {
+        z-index: 1100;
+      }
+      .datagon-vanilla-shell .app-footer {
+        z-index: 1080;
+      }
+      .datagon-vanilla-shell.sidebar-mobile-open .app-footer {
+        pointer-events: none;
+        opacity: 0.25;
+      }
     }
   </style>
 </head>
@@ -460,7 +489,73 @@
                         </a>
                       </li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="settings" href="/settings.html"><i class="metismenu-icon pe-7s-config"></i>Настройки</a></li>
-                      <li class="metismenu-item dg-sidebar-architect-item"><a class="metismenu-link" data-nav="architectui-demo" href="/ref/react-demo-index.html" title="Каталог разделов React-шаблона ArchitectUI"><i class="metismenu-icon pe-7s-plugin"></i>ArchitectUI меню</a></li>
+                      <li class="metismenu-item dg-sidebar-architect-item">
+                        <a
+                          class="metismenu-link"
+                          data-nav="architectui-demo"
+                          href="/ref/react-demo-index.html"
+                          title="Каталог разделов React-шаблона ArchitectUI"
+                        >
+                          <i class="metismenu-icon pe-7s-plugin"></i>ArchitectUI
+                        </a>
+                      </li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="exports-ms" href="/exports-ms.html" title="Перенос сценариев Google Sheets: карточки МС, остатки, комплекты"><i class="metismenu-icon pe-7s-cloud-download"></i>Выгрузки МС</a></li>
+                      <li class="metismenu-item">
+                        <a
+                          href="#"
+                          class="metismenu-link dg-vanilla-submenu-toggle"
+                          aria-expanded="false"
+                          title="Интеграции маркетплейсов: ключи и диагностика выгрузок"
+                        >
+                          <i class="metismenu-icon pe-7s-graph3"></i>Маркетплейсы
+                          <i class="metismenu-state-icon pe-7s-angle-down" aria-hidden="true"></i>
+                        </a>
+                        <ul class="metismenu-container">
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces"
+                              href="/exports-marketplaces.html"
+                              title="Ключи API и справка"
+                            >
+                              <i class="metismenu-icon pe-7s-config"></i>Настройки
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-ozon"
+                              href="/exports-marketplaces-ozon.html"
+                              title="Таблица и выгрузка Ozon"
+                            >
+                              <i class="metismenu-icon pe-7s-graph2"></i>Ozon
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-wildberries"
+                              href="/exports-marketplaces-wildberries.html"
+                              title="Таблица и выгрузка Wildberries"
+                            >
+                              <i class="metismenu-icon pe-7s-graph2"></i>Wildberries
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-yandex"
+                              href="/exports-marketplaces-yandex.html"
+                              title="Таблица и выгрузка Яндекс Маркет"
+                            >
+                              <i class="metismenu-icon pe-7s-graph2"></i>Яндекс Маркет
+                            </a>
+                          </li>
+                        </ul>
+                      </li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="exports-huckster" href="/exports-huckster.html" title="Интеграция Huckster / e-teleport — матрица UID по магазинам"><i class="metismenu-icon pe-7s-cart"></i>Huckster</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="exports-summary" href="/exports-summary.html" title="Сводка по менеджерам, подсветки НДС/габаритов, уведомления в чат"><i class="metismenu-icon pe-7s-note"></i>Сводка и синхронизация</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="exports-dimensions" href="/exports-dimensions.html" title="Лист «Габариты»: проверки, сортировка, слияние в новые позиции"><i class="metismenu-icon pe-7s-scissors"></i>Габариты</a></li>
                     </ul>
                   </div>
                 </div>
@@ -599,11 +694,15 @@
           </div>
 
           <div class="main-card mb-3 card">
-            <div class="card-header d-flex align-items-center">
-              <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
-              <span>Таблица результатов</span>
+            <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+              <div class="d-flex align-items-center">
+                <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
+                <span>Таблица результатов</span>
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-res-table-toggle">Свернуть</button>
             </div>
             <div class="card-body">
+              <div id="dg-res-table-collapse-body">
               <div class="datagon-columns-toolbox mb-2">
                 <div class="columns-top">
                   <button type="button" class="btn btn-sm" id="dg-res-columns-toggle">🧩 Столбцы</button>
@@ -667,6 +766,7 @@
                 </div>
               </div>
               <p class="text-muted mb-0 mt-2" id="dg-res-table-hint">Страница 1/1</p>
+              </div>
             </div>
           </div>
 
@@ -746,6 +846,7 @@
     <script>
     (function () {
       var FILTERS_KEY = "datagon_results_filters_collapsed_v1";
+      var TABLE_COLLAPSE_KEY = "datagon_results_table_collapsed_v1";
       var projects = [];
       var rows = [];
       var total = 0;
@@ -1362,13 +1463,9 @@
             } catch (e2) {}
             var dl = Number((arr[1] && arr[1].default_limit) || 100);
             if (!urlHadLimit && [50, 100, 500, 1000].includes(dl)) {
-              var prevLimit = limit;
               limit = dl;
               var limSel = document.getElementById("dg-res-limit");
               if (limSel) limSel.value = String(dl);
-              if (prevLimit !== dl) {
-                loadResults({ showSkeleton: false });
-              }
             }
             return arr;
           })
@@ -1923,6 +2020,36 @@
         });
       })();
 
+      (function collapseTableSection() {
+        var body = document.getElementById("dg-res-table-collapse-body");
+        var btn = document.getElementById("dg-res-table-toggle");
+        if (!body || !btn) return;
+        function sync() {
+          try {
+            if (localStorage.getItem(TABLE_COLLAPSE_KEY) === "1") {
+              body.style.display = "none";
+              btn.textContent = "Развернуть";
+            } else {
+              body.style.display = "";
+              btn.textContent = "Свернуть";
+            }
+          } catch (e) {}
+        }
+        try {
+          if (localStorage.getItem(TABLE_COLLAPSE_KEY) === "1") body.style.display = "none";
+        } catch (e) {}
+        sync();
+        btn.addEventListener("click", function () {
+          var hidden = body.style.display === "none";
+          body.style.display = hidden ? "" : "none";
+          btn.textContent = hidden ? "Свернуть" : "Развернуть";
+          try {
+            localStorage.setItem(TABLE_COLLAPSE_KEY, hidden ? "0" : "1");
+          } catch (e) {}
+          resRefreshFloatingAfterLayout();
+        });
+      })();
+
       window.addEventListener("scroll", onScrollResultsFloatingHeader, { passive: true });
       window.addEventListener("resize", function () {
         updateResultsStickyTopVar();
@@ -1944,8 +2071,13 @@
       mergeResultsPrefsFromStorage();
       updateSortHeaders();
       initColumnsPanel();
-      loadResults();
-      loadBaseData();
+      loadBaseData()
+        .then(function () {
+          loadResults();
+        })
+        .catch(function () {
+          loadResults();
+        });
     })();
   </script>
 

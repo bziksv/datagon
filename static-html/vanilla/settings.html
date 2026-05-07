@@ -27,7 +27,9 @@
       display: flex;
       flex-direction: column;
     }
-    .dg-sidebar-nav-measure .metismenu-container {
+    /* Только корневой список меню: иначе вложенный ul.metismenu-container (под «Маркетплейсы» и т.п.)
+       получает min-height:100% + flex и растягивается на всю колонку — вертикальная линия темы залезает на соседние пункты. */
+    .dg-sidebar-nav-measure .vertical-nav-menu > .metismenu-container {
       display: flex;
       flex-direction: column;
       flex: 1 1 auto;
@@ -53,6 +55,33 @@
       opacity: 0.72;
       line-height: 1;
       flex-shrink: 0;
+    }
+    @media (max-width: 991.98px) {
+      /* На мобильном layout не должен наследовать desktop-сдвиг fixed/closed sidebar. */
+      .datagon-vanilla-shell .app-main__outer {
+        margin-left: 0 !important;
+      }
+      .datagon-vanilla-shell .app-footer {
+        left: 0 !important;
+        width: 100% !important;
+      }
+      .datagon-vanilla-shell .app-footer .app-footer__inner {
+        margin-left: 0 !important;
+      }
+      /* На телефонах слой мобильного меню должен перекрывать фиксированный футер. */
+      .datagon-vanilla-shell .sidebar-mobile-overlay {
+        z-index: 1090;
+      }
+      .datagon-vanilla-shell .app-sidebar {
+        z-index: 1100;
+      }
+      .datagon-vanilla-shell .app-footer {
+        z-index: 1080;
+      }
+      .datagon-vanilla-shell.sidebar-mobile-open .app-footer {
+        pointer-events: none;
+        opacity: 0.25;
+      }
     }
   </style>
 </head>
@@ -325,7 +354,73 @@
                         </a>
                       </li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="settings" href="/settings.html"><i class="metismenu-icon pe-7s-config"></i>Настройки</a></li>
-                      <li class="metismenu-item dg-sidebar-architect-item"><a class="metismenu-link" data-nav="architectui-demo" href="/ref/react-demo-index.html" title="Каталог разделов React-шаблона ArchitectUI"><i class="metismenu-icon pe-7s-plugin"></i>ArchitectUI меню</a></li>
+                      <li class="metismenu-item dg-sidebar-architect-item">
+                        <a
+                          class="metismenu-link"
+                          data-nav="architectui-demo"
+                          href="/ref/react-demo-index.html"
+                          title="Каталог разделов React-шаблона ArchitectUI"
+                        >
+                          <i class="metismenu-icon pe-7s-plugin"></i>ArchitectUI
+                        </a>
+                      </li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="exports-ms" href="/exports-ms.html" title="Перенос сценариев Google Sheets: карточки МС, остатки, комплекты"><i class="metismenu-icon pe-7s-cloud-download"></i>Выгрузки МС</a></li>
+                      <li class="metismenu-item">
+                        <a
+                          href="#"
+                          class="metismenu-link dg-vanilla-submenu-toggle"
+                          aria-expanded="false"
+                          title="Интеграции маркетплейсов: ключи и диагностика выгрузок"
+                        >
+                          <i class="metismenu-icon pe-7s-graph3"></i>Маркетплейсы
+                          <i class="metismenu-state-icon pe-7s-angle-down" aria-hidden="true"></i>
+                        </a>
+                        <ul class="metismenu-container">
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces"
+                              href="/exports-marketplaces.html"
+                              title="Ключи API и справка"
+                            >
+                              <i class="metismenu-icon pe-7s-config"></i>Настройки
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-ozon"
+                              href="/exports-marketplaces-ozon.html"
+                              title="Таблица и выгрузка Ozon"
+                            >
+                              <i class="metismenu-icon pe-7s-graph2"></i>Ozon
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-wildberries"
+                              href="/exports-marketplaces-wildberries.html"
+                              title="Таблица и выгрузка Wildberries"
+                            >
+                              <i class="metismenu-icon pe-7s-graph2"></i>Wildberries
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-yandex"
+                              href="/exports-marketplaces-yandex.html"
+                              title="Таблица и выгрузка Яндекс Маркет"
+                            >
+                              <i class="metismenu-icon pe-7s-graph2"></i>Яндекс Маркет
+                            </a>
+                          </li>
+                        </ul>
+                      </li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="exports-huckster" href="/exports-huckster.html" title="Интеграция Huckster / e-teleport — матрица UID по магазинам"><i class="metismenu-icon pe-7s-cart"></i>Huckster</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="exports-summary" href="/exports-summary.html" title="Сводка по менеджерам, подсветки НДС/габаритов, уведомления в чат"><i class="metismenu-icon pe-7s-note"></i>Сводка и синхронизация</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="exports-dimensions" href="/exports-dimensions.html" title="Лист «Габариты»: проверки, сортировка, слияние в новые позиции"><i class="metismenu-icon pe-7s-scissors"></i>Габариты</a></li>
                     </ul>
                   </div>
                 </div>
@@ -354,7 +449,7 @@
             </div>
           </div>
 
-          <div class="main-card mb-3 card">
+          <div class="main-card mb-3 card" id="marketplaces">
             <div class="card-header d-flex align-items-center justify-content-between gap-2">
               <div class="d-flex align-items-center">
                 <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
@@ -685,6 +780,43 @@
 
           <div class="main-card mb-3 card">
             <div class="card-header d-flex align-items-center">
+              <i class="header-icon pe-7s-graph3 icon-gradient bg-happy-fisher me-2"> </i>
+              <span>Маркетплейсы: ключи и лимиты API</span>
+            </div>
+            <div class="card-body">
+              <p class="small text-muted">Единые настройки Ozon, Wildberries и Яндекс Маркета. Принудительное обновление запускается ниже отдельной кнопкой.</p>
+              <div class="row g-2">
+                <div class="col-md-3"><label class="form-label" for="dg-set-ozon_client_id">OZON_CLIENT_ID</label><input type="text" class="form-control" id="dg-set-ozon_client_id" autocomplete="off" /></div>
+                <div class="col-md-3"><label class="form-label" for="dg-set-ozon_api_key">OZON_API_KEY</label><input type="password" class="form-control" id="dg-set-ozon_api_key" autocomplete="new-password" /></div>
+                <div class="col-md-3"><label class="form-label" for="dg-set-wb_api_key">WB_API_KEY</label><input type="password" class="form-control" id="dg-set-wb_api_key" autocomplete="new-password" /></div>
+                <div class="col-md-3"><label class="form-label" for="dg-set-ym_api_key">YM_API_KEY</label><input type="password" class="form-control" id="dg-set-ym_api_key" autocomplete="new-password" /></div>
+                <div class="col-md-3"><label class="form-label" for="dg-set-ym_campaign_id">YM_CAMPAIGN_ID</label><input type="text" class="form-control" id="dg-set-ym_campaign_id" autocomplete="off" /></div>
+                <div class="col-md-3"><label class="form-label" for="dg-set-ym_business_id">YM_BUSINESS_ID</label><input type="text" class="form-control" id="dg-set-ym_business_id" autocomplete="off" /></div>
+                <div class="col-md-2"><label class="form-label" for="dg-set-mp_ozon_delay_ms">Ozon delay (мс)</label><input type="number" class="form-control" id="dg-set-mp_ozon_delay_ms" min="300" /></div>
+                <div class="col-md-2"><label class="form-label" for="dg-set-mp_wb_delay_cards_ms">WB cards delay (мс)</label><input type="number" class="form-control" id="dg-set-mp_wb_delay_cards_ms" min="350" /></div>
+                <div class="col-md-2"><label class="form-label" for="dg-set-mp_wb_delay_other_ms">WB other delay (мс)</label><input type="number" class="form-control" id="dg-set-mp_wb_delay_other_ms" min="1000" /></div>
+                <div class="col-md-2"><label class="form-label" for="dg-set-mp_yandex_delay_ms">Yandex delay (мс)</label><input type="number" class="form-control" id="dg-set-mp_yandex_delay_ms" min="200" /></div>
+                <div class="col-md-4 d-flex align-items-end">
+                  <div class="form-check">
+                    <input type="checkbox" class="form-check-input" id="dg-set-mp_ozon_include_archived" />
+                    <label class="form-check-label" for="dg-set-mp_ozon_include_archived">Ozon: включать архивные товары</label>
+                  </div>
+                </div>
+              </div>
+              <div class="mt-3 d-flex gap-2 flex-wrap">
+                <button type="button" class="btn btn-success" id="dg-set-btn-save-marketplaces" data-dg-activity-label="Сохранить настройки маркетплейсов">
+                  Сохранить настройки маркетплейсов
+                </button>
+                <button type="button" class="btn btn-primary" id="dg-set-btn-sync-marketplaces-now" data-dg-activity-label="Принудительно обновить маркетплейсы">
+                  Обновить из маркетплейсов сейчас
+                </button>
+              </div>
+              <p class="small text-muted mt-2 mb-0" id="dg-set-marketplaces-sync-hint"></p>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center">
               <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
               <span>Автосинхронизация по расписанию</span>
             </div>
@@ -705,6 +837,23 @@
                     <span>Включить</span>
                     <input type="time" class="form-control" id="dg-set-auto_ms_time" style="max-width:140px" />
                   </div>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label">Маркетплейсы: время запуска (МСК)</label>
+                  <div class="d-flex gap-2 align-items-center">
+                    <input type="checkbox" id="dg-set-auto_market_en" />
+                    <span>Включить</span>
+                    <input type="time" class="form-control" id="dg-set-auto_market_time" style="max-width:140px" />
+                  </div>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label">Huckster (e-teleport): время запуска (МСК)</label>
+                  <div class="d-flex gap-2 align-items-center">
+                    <input type="checkbox" id="dg-set-auto_huckster_en" />
+                    <span>Включить</span>
+                    <input type="time" class="form-control" id="dg-set-auto_huckster_time" style="max-width:140px" />
+                  </div>
+                  <p class="small text-muted mb-0 mt-1">Нужны доступы Huckster в <code>app_settings</code> / <code>HUCKSTER_*</code> или <code>POST /api/exports/huckster/credentials</code> (см. <a href="/docs/api/">/docs/api/</a>).</p>
                 </div>
               </div>
               <div class="mt-3">
@@ -867,7 +1016,22 @@
         auto_sync_myproducts_time: "03:00",
         auto_sync_moysklad_enabled: 0,
         auto_sync_moysklad_time: "04:00",
+        auto_sync_marketplaces_enabled: 0,
+        auto_sync_marketplaces_time: "05:00",
+        auto_sync_huckster_enabled: 0,
+        auto_sync_huckster_time: "06:00",
         log_retention_days: 7,
+        ozon_client_id: "",
+        ozon_api_key: "",
+        wb_api_key: "",
+        ym_api_key: "",
+        ym_campaign_id: "",
+        ym_business_id: "",
+        mp_ozon_delay_ms: 400,
+        mp_wb_delay_cards_ms: 600,
+        mp_wb_delay_other_ms: 1600,
+        mp_yandex_delay_ms: 280,
+        mp_ozon_include_archived: 0,
       };
 
       function buildUsernameFromFullName(fullName) {
@@ -984,7 +1148,22 @@
         set("dg-set-auto_my_time", merged.auto_sync_myproducts_time || "03:00");
         document.getElementById("dg-set-auto_ms_en").checked = Number(merged.auto_sync_moysklad_enabled) === 1;
         set("dg-set-auto_ms_time", merged.auto_sync_moysklad_time || "04:00");
+        document.getElementById("dg-set-auto_market_en").checked = Number(merged.auto_sync_marketplaces_enabled) === 1;
+        set("dg-set-auto_market_time", merged.auto_sync_marketplaces_time || "05:00");
+        document.getElementById("dg-set-auto_huckster_en").checked = Number(merged.auto_sync_huckster_enabled) === 1;
+        set("dg-set-auto_huckster_time", merged.auto_sync_huckster_time || "06:00");
         set("dg-set-log_retention_days", merged.log_retention_days);
+        set("dg-set-ozon_client_id", merged.ozon_client_id || "");
+        set("dg-set-ozon_api_key", merged.ozon_api_key || "");
+        set("dg-set-wb_api_key", merged.wb_api_key || "");
+        set("dg-set-ym_api_key", merged.ym_api_key || "");
+        set("dg-set-ym_campaign_id", merged.ym_campaign_id || "");
+        set("dg-set-ym_business_id", merged.ym_business_id || "");
+        set("dg-set-mp_ozon_delay_ms", merged.mp_ozon_delay_ms || 400);
+        set("dg-set-mp_wb_delay_cards_ms", merged.mp_wb_delay_cards_ms || 600);
+        set("dg-set-mp_wb_delay_other_ms", merged.mp_wb_delay_other_ms || 1600);
+        set("dg-set-mp_yandex_delay_ms", merged.mp_yandex_delay_ms || 280);
+        document.getElementById("dg-set-mp_ozon_include_archived").checked = Number(merged.mp_ozon_include_archived) === 1;
         usersPresenceWindowMinutes = getNum("dg-set-auth_online_presence_minutes", 15);
         syncUsersSessionsHeader();
         updateUsersHint();
@@ -1707,9 +1886,57 @@
             auto_sync_myproducts_time: getStr("dg-set-auto_my_time") || "03:00",
             auto_sync_moysklad_enabled: document.getElementById("dg-set-auto_ms_en").checked,
             auto_sync_moysklad_time: getStr("dg-set-auto_ms_time") || "04:00",
+            auto_sync_marketplaces_enabled: document.getElementById("dg-set-auto_market_en").checked,
+            auto_sync_marketplaces_time: getStr("dg-set-auto_market_time") || "05:00",
+            auto_sync_huckster_enabled: document.getElementById("dg-set-auto_huckster_en").checked,
+            auto_sync_huckster_time: getStr("dg-set-auto_huckster_time") || "06:00",
           },
           "Расписание автосинхронизации сохранено"
         );
+      }
+
+      function saveMarketplacesSettings() {
+        upsertSettings(
+          {
+            ozon_client_id: getStr("dg-set-ozon_client_id"),
+            ozon_api_key: getStr("dg-set-ozon_api_key"),
+            wb_api_key: getStr("dg-set-wb_api_key"),
+            ym_api_key: getStr("dg-set-ym_api_key"),
+            ym_campaign_id: getStr("dg-set-ym_campaign_id"),
+            ym_business_id: getStr("dg-set-ym_business_id"),
+            mp_ozon_delay_ms: getNum("dg-set-mp_ozon_delay_ms", 400),
+            mp_wb_delay_cards_ms: getNum("dg-set-mp_wb_delay_cards_ms", 600),
+            mp_wb_delay_other_ms: getNum("dg-set-mp_wb_delay_other_ms", 1600),
+            mp_yandex_delay_ms: getNum("dg-set-mp_yandex_delay_ms", 280),
+            mp_ozon_include_archived: document.getElementById("dg-set-mp_ozon_include_archived").checked,
+          },
+          "Настройки маркетплейсов сохранены"
+        );
+      }
+
+      function syncMarketplacesNow() {
+        var hint = document.getElementById("dg-set-marketplaces-sync-hint");
+        if (hint) hint.textContent = "Запускаем принудительное обновление маркетплейсов...";
+        fetch("/api/exports/marketplaces/sync", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: authHeaders(true),
+          body: JSON.stringify({ shop: "all" }),
+        })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok) throw new Error((x.j && x.j.error) || "Не удалось запустить обновление");
+            if (hint) hint.textContent = "Обновление маркетплейсов запущено в фоне.";
+            alert("Обновление маркетплейсов запущено");
+          })
+          .catch(function (e) {
+            if (hint) hint.textContent = "Ошибка: " + (e.message || String(e));
+            alert(e.message || "Ошибка запуска обновления маркетплейсов");
+          });
       }
 
       function clearLogsNow() {
@@ -1988,6 +2215,8 @@
       document.getElementById("dg-set-btn-save-sessions").addEventListener("click", saveSessionsAndOnline);
       document.getElementById("dg-set-btn-save-myproducts").addEventListener("click", saveMyProductsSync);
       document.getElementById("dg-set-btn-save-ms").addEventListener("click", saveMoyskladSync);
+      document.getElementById("dg-set-btn-save-marketplaces").addEventListener("click", saveMarketplacesSettings);
+      document.getElementById("dg-set-btn-sync-marketplaces-now").addEventListener("click", syncMarketplacesNow);
       document.getElementById("dg-set-btn-save-auto").addEventListener("click", saveAutoSync);
       document.getElementById("dg-set-btn-logs-refresh").addEventListener("click", loadLogsInfo);
       document.getElementById("dg-set-btn-logs-clear").addEventListener("click", clearLogsNow);

@@ -1,6 +1,7 @@
   <script>
     (function () {
       var FILTERS_KEY = "datagon_results_filters_collapsed_v1";
+      var TABLE_COLLAPSE_KEY = "datagon_results_table_collapsed_v1";
       var projects = [];
       var rows = [];
       var total = 0;
@@ -617,13 +618,9 @@
             } catch (e2) {}
             var dl = Number((arr[1] && arr[1].default_limit) || 100);
             if (!urlHadLimit && [50, 100, 500, 1000].includes(dl)) {
-              var prevLimit = limit;
               limit = dl;
               var limSel = document.getElementById("dg-res-limit");
               if (limSel) limSel.value = String(dl);
-              if (prevLimit !== dl) {
-                loadResults({ showSkeleton: false });
-              }
             }
             return arr;
           })
@@ -1178,6 +1175,36 @@
         });
       })();
 
+      (function collapseTableSection() {
+        var body = document.getElementById("dg-res-table-collapse-body");
+        var btn = document.getElementById("dg-res-table-toggle");
+        if (!body || !btn) return;
+        function sync() {
+          try {
+            if (localStorage.getItem(TABLE_COLLAPSE_KEY) === "1") {
+              body.style.display = "none";
+              btn.textContent = "Развернуть";
+            } else {
+              body.style.display = "";
+              btn.textContent = "Свернуть";
+            }
+          } catch (e) {}
+        }
+        try {
+          if (localStorage.getItem(TABLE_COLLAPSE_KEY) === "1") body.style.display = "none";
+        } catch (e) {}
+        sync();
+        btn.addEventListener("click", function () {
+          var hidden = body.style.display === "none";
+          body.style.display = hidden ? "" : "none";
+          btn.textContent = hidden ? "Свернуть" : "Развернуть";
+          try {
+            localStorage.setItem(TABLE_COLLAPSE_KEY, hidden ? "0" : "1");
+          } catch (e) {}
+          resRefreshFloatingAfterLayout();
+        });
+      })();
+
       window.addEventListener("scroll", onScrollResultsFloatingHeader, { passive: true });
       window.addEventListener("resize", function () {
         updateResultsStickyTopVar();
@@ -1199,7 +1226,12 @@
       mergeResultsPrefsFromStorage();
       updateSortHeaders();
       initColumnsPanel();
-      loadResults();
-      loadBaseData();
+      loadBaseData()
+        .then(function () {
+          loadResults();
+        })
+        .catch(function () {
+          loadResults();
+        });
     })();
   </script>

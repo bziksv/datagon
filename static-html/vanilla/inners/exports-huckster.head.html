@@ -1,0 +1,424 @@
+  <style>
+    /* Huckster: паритет с маркетплейсами — цепочка min-width:0 + горизонтальный скролл wide-таблицы */
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"] .app-main__outer {
+      min-width: 0;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"] .app-main__inner {
+      min-width: 0;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"] .main-card.card {
+      min-width: 0;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"] .main-card.card > .card-body {
+      min-width: 0;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+    /* Шапка матрицы: одна линия по вертикали (заголовок + поиск/фильтр/кнопка), при узком экране — перенос. */
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"] .dg-huckster-matrix-card > .card-header.dg-huckster-matrix-card-head {
+      display: flex !important;
+      flex-direction: row !important;
+      flex-wrap: wrap !important;
+      align-items: center !important;
+      justify-content: space-between !important;
+      gap: 0.65rem 1rem;
+      min-width: 0;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"]
+      .dg-huckster-matrix-card
+      .dg-huckster-matrix-card-head-title {
+      flex: 1 1 12rem;
+      min-width: 0;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"] .dg-huckster-matrix-card .dg-huckster-matrix-count {
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"] .dg-huckster-matrix-card .dg-huckster-matrix-toolbar {
+      display: grid !important;
+      grid-template-columns: minmax(0, 1fr) auto auto;
+      align-items: center;
+      column-gap: 0.75rem;
+      row-gap: 0.5rem;
+      flex: 1 1 17rem;
+      min-width: 0;
+      max-width: 100%;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"]
+      .dg-huckster-matrix-card
+      .dg-huckster-colwidth-wrap {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: flex-start;
+      gap: 0.35rem 0.65rem;
+      width: 100%;
+      min-width: 0;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"]
+      .dg-huckster-matrix-card
+      .dg-huckster-colwidth-wrap
+      .form-control-sm {
+      min-width: 0;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"]
+      .dg-huckster-matrix-card
+      .dg-huckster-colwidth-wrap
+      .dg-huckster-width-control {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      flex: 0 0 auto;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"] .dg-huckster-colwidth-strip {
+      padding: 0.45rem 0.75rem;
+      border-bottom: 1px solid #e9ecef;
+      background: #fafbfc;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"]
+      .dg-huckster-matrix-card
+      .dg-huckster-matrix-toolbar
+      .form-check {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      min-height: 1.5rem;
+      margin-bottom: 0;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"]
+      .dg-huckster-matrix-card
+      .dg-huckster-matrix-toolbar
+      .form-check-input {
+      margin-top: 0;
+      flex-shrink: 0;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"]
+      .dg-huckster-matrix-card
+      .dg-huckster-matrix-toolbar
+      .form-check-label {
+      line-height: 1.2;
+      padding-top: 0;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"]
+      .dg-huckster-matrix-card
+      .dg-huckster-matrix-toolbar
+      .dg-huckster-matrix-search-wrap {
+      min-width: 0;
+      width: 100%;
+    }
+    @media (max-width: 575.98px) {
+      body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"]
+        .dg-huckster-matrix-card
+        > .card-header.dg-huckster-matrix-card-head
+        .dg-huckster-matrix-card-head-title {
+        flex: 1 1 100%;
+      }
+      body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"]
+        .dg-huckster-matrix-card
+        > .card-header.dg-huckster-matrix-card-head
+        .dg-huckster-matrix-toolbar {
+        flex: 1 1 100%;
+      }
+      body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"] .dg-huckster-matrix-card .dg-huckster-matrix-toolbar {
+        grid-template-columns: minmax(0, 1fr);
+        justify-items: stretch;
+      }
+      body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"]
+        .dg-huckster-matrix-card
+        .dg-huckster-matrix-toolbar
+        .form-check {
+        justify-self: start;
+      }
+      body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"]
+        .dg-huckster-matrix-card
+        .dg-huckster-matrix-toolbar
+        > .btn {
+        justify-self: start;
+      }
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"] .dg-huckster-matrix-card .dg-huckster-matrix-hint {
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"] #dg-huckster-config-sets .row > [class*="col-"] {
+      min-width: 0;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"] #dg-huckster-config-sets .dg-huckster-config-two-cols {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"] #dg-huckster-config-sets .table-responsive {
+      max-width: 100%;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"] #dg-huckster-config-sets table.table-sm {
+      table-layout: fixed;
+      width: 100%;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"] #dg-huckster-config-sets table.table-sm td {
+      overflow: hidden;
+      vertical-align: middle;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"] #dg-huckster-config-sets table.table-sm .form-control-sm,
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"] #dg-huckster-config-sets table.table-sm .form-select-sm {
+      min-width: 0;
+      width: 100%;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"] .dg-huckster-matrix-scroll {
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+      box-sizing: border-box;
+      overflow-x: auto;
+      overflow-y: visible;
+      -webkit-overflow-scrolling: touch;
+      contain: inline-size;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"]
+      .dg-huckster-matrix-scroll
+      > .table-responsive.datagon-my-products-table-wrap {
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+      box-sizing: border-box;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"]
+      .dg-huckster-matrix-scroll
+      > .table-responsive.datagon-my-products-table-wrap,
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"]
+      .dg-huckster-matrix-scroll
+      > .table-responsive.datagon-my-products-table-wrap
+      > table {
+      transform: none !important;
+      filter: none !important;
+      perspective: none !important;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"] table.dg-huckster-matrix-table {
+      display: table;
+      font-size: 0.8rem;
+      line-height: 1.25;
+      font-variant-numeric: tabular-nums;
+      width: max-content;
+      min-width: min(100%, 900px);
+      max-width: none;
+      border-collapse: collapse;
+      border-spacing: 0;
+      /* auto: ширины колонок из <colgroup> совпадают у thead и tbody; fixed + transform на шапке давали сдвиг */
+      table-layout: auto;
+    }
+    /* Без зебры / hover-фона строки: подсветка ячеек не «проседает». */
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"] table.dg-huckster-matrix-table.table > tbody > tr {
+      --bs-table-bg-type: transparent;
+      --bs-table-color-state: inherit;
+      background-color: #fff;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"]
+      table.dg-huckster-matrix-table.table
+      > tbody
+      > tr:hover
+      > td:not(.dg-huckster-missing-market-cell):not(.dg-huckster-unit-no-cell):not(.dg-huckster-bridge-cab-ok):not(.dg-huckster-bridge-cab-bad):not(.dg-huckster-bridge-model-ok):not(.dg-huckster-bridge-model-missing):not(.dg-huckster-bridge-model-off):not(.dg-huckster-bridge-name-model-diff) {
+      background-color: #fff;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"] table.dg-huckster-matrix-table thead {
+      display: table-header-group;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"] table.dg-huckster-matrix-table tbody {
+      display: table-row-group;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"] table.dg-huckster-matrix-table tr {
+      display: table-row;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"] table.dg-huckster-matrix-table th,
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"] table.dg-huckster-matrix-table td {
+      display: table-cell;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"] table.dg-huckster-matrix-table thead th {
+      background: #f8f9fa !important;
+      border-right: 1px solid #e6e9ee;
+      text-align: center;
+      vertical-align: middle;
+      font-weight: 600;
+      padding: 0.45rem 0.65rem;
+      cursor: default;
+      user-select: text;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"] table.dg-huckster-matrix-table tbody td {
+      border-right: 1px solid #f3f5f8;
+      text-align: center;
+      vertical-align: middle;
+      padding: 0.45rem 0.65rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"] table.dg-huckster-matrix-table thead th.dg-huckster-col-uid,
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"] table.dg-huckster-matrix-table tbody td.dg-huckster-col-uid {
+      white-space: nowrap;
+      text-align: center;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"] table.dg-huckster-matrix-table thead th.dg-huckster-col-name,
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"] table.dg-huckster-matrix-table tbody td.dg-huckster-col-name {
+      white-space: normal;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+      text-align: center;
+      vertical-align: middle;
+      line-height: 1.35;
+      overflow: visible;
+      text-overflow: unset;
+      max-width: none;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"] table.dg-huckster-matrix-table thead th.dg-huckster-col-updated,
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"] table.dg-huckster-matrix-table tbody td.dg-huckster-col-updated {
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+      text-align: center;
+      vertical-align: middle;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"] table.dg-huckster-matrix-table thead th.dg-huckster-col-repricer,
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"] table.dg-huckster-matrix-table tbody td.dg-huckster-col-repricer {
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+      text-align: center;
+      vertical-align: middle;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"] table.dg-huckster-matrix-table thead th.dg-huckster-col-unit,
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"] table.dg-huckster-matrix-table tbody td.dg-huckster-col-unit {
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+      text-align: center;
+      vertical-align: middle;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"] table.dg-huckster-matrix-table thead th.dg-huckster-col-unit-models,
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"] table.dg-huckster-matrix-table tbody td.dg-huckster-col-unit-models {
+      white-space: normal;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+      text-align: center;
+      vertical-align: middle;
+      line-height: 1.35;
+      font-size: 0.8125rem;
+    }
+    /* Подсветка: матрица без table-striped, иначе зебра перебивает фон */
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"]
+      table.dg-huckster-matrix-table
+      tbody
+      td.dg-huckster-missing-market-cell,
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"]
+      table.dg-huckster-matrix-table
+      tbody
+      td.dg-huckster-unit-no-cell {
+      background-color: #fce4ec !important;
+      box-shadow: inset 0 0 0 2px #d92550 !important;
+      font-weight: 600;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"] table.dg-huckster-matrix-table tbody td.dg-huckster-unit-no-cell {
+      color: #cc4d00 !important;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"]
+      table.dg-huckster-matrix-table
+      tbody
+      tr.dg-huckster-row-unit-no
+      td.dg-huckster-col-updated {
+      box-shadow: inset 3px 0 0 0 rgba(204, 77, 0, 0.65);
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"] table.dg-huckster-matrix-table thead th.dg-huckster-col-sync,
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"] table.dg-huckster-matrix-table tbody td.dg-huckster-col-sync {
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+      text-align: center;
+      vertical-align: middle;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"]
+      table.dg-huckster-matrix-table
+      thead
+      th.dg-huckster-sep-col,
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"]
+      table.dg-huckster-matrix-table
+      tbody
+      td.dg-huckster-sep-col {
+      width: 19px;
+      min-width: 19px;
+      max-width: 19px;
+      padding: 0;
+      background: transparent !important;
+    }
+    /* Матрица «Мой склад ↔ Huckster» (набор 1): кабинет однозначно включён — зелёный; иначе красный статус. */
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"]
+      table.dg-huckster-matrix-table
+      tbody
+      td.dg-huckster-bridge-cab-ok {
+      background-color: #e9f7ef !important;
+      color: #0b6f36;
+      box-shadow: inset 0 0 0 1px rgba(13, 122, 62, 0.28);
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"]
+      table.dg-huckster-matrix-table
+      tbody
+      td.dg-huckster-bridge-cab-bad {
+      background-color: #fdecef !important;
+      color: #b4233a;
+      box-shadow: inset 0 0 0 1px rgba(217, 37, 80, 0.32);
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"]
+      table.dg-huckster-matrix-table
+      tbody
+      td.dg-huckster-bridge-model-ok {
+      background-color: #e9f7ef !important;
+      color: #0b6f36;
+      box-shadow: inset 0 0 0 1px rgba(13, 122, 62, 0.22);
+      font-weight: 600;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"]
+      table.dg-huckster-matrix-table
+      tbody
+      td.dg-huckster-bridge-model-missing {
+      background-color: #fdecef !important;
+      color: #b4233a;
+      box-shadow: inset 0 0 0 1px rgba(217, 37, 80, 0.32);
+      font-weight: 700;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"]
+      table.dg-huckster-matrix-table
+      tbody
+      td.dg-huckster-bridge-model-off {
+      background-color: #fff4d6 !important;
+      color: #8a5a00;
+      box-shadow: inset 0 0 0 1px rgba(245, 179, 0, 0.35);
+      font-weight: 700;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"]
+      table.dg-huckster-matrix-table
+      tbody
+      td.dg-huckster-bridge-name-model-diff {
+      background-color: #fff4d6 !important;
+      color: #5f4700;
+      box-shadow: inset 0 0 0 2px rgba(245, 179, 0, 0.42);
+      font-weight: 700;
+    }
+    @media (max-width: 767.98px) {
+      body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"] .app-main__inner {
+        padding-bottom: 86px;
+      }
+    }
+  </style>

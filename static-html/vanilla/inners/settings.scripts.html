@@ -23,7 +23,22 @@
         auto_sync_myproducts_time: "03:00",
         auto_sync_moysklad_enabled: 0,
         auto_sync_moysklad_time: "04:00",
+        auto_sync_marketplaces_enabled: 0,
+        auto_sync_marketplaces_time: "05:00",
+        auto_sync_huckster_enabled: 0,
+        auto_sync_huckster_time: "06:00",
         log_retention_days: 7,
+        ozon_client_id: "",
+        ozon_api_key: "",
+        wb_api_key: "",
+        ym_api_key: "",
+        ym_campaign_id: "",
+        ym_business_id: "",
+        mp_ozon_delay_ms: 400,
+        mp_wb_delay_cards_ms: 600,
+        mp_wb_delay_other_ms: 1600,
+        mp_yandex_delay_ms: 280,
+        mp_ozon_include_archived: 0,
       };
 
       function buildUsernameFromFullName(fullName) {
@@ -140,7 +155,22 @@
         set("dg-set-auto_my_time", merged.auto_sync_myproducts_time || "03:00");
         document.getElementById("dg-set-auto_ms_en").checked = Number(merged.auto_sync_moysklad_enabled) === 1;
         set("dg-set-auto_ms_time", merged.auto_sync_moysklad_time || "04:00");
+        document.getElementById("dg-set-auto_market_en").checked = Number(merged.auto_sync_marketplaces_enabled) === 1;
+        set("dg-set-auto_market_time", merged.auto_sync_marketplaces_time || "05:00");
+        document.getElementById("dg-set-auto_huckster_en").checked = Number(merged.auto_sync_huckster_enabled) === 1;
+        set("dg-set-auto_huckster_time", merged.auto_sync_huckster_time || "06:00");
         set("dg-set-log_retention_days", merged.log_retention_days);
+        set("dg-set-ozon_client_id", merged.ozon_client_id || "");
+        set("dg-set-ozon_api_key", merged.ozon_api_key || "");
+        set("dg-set-wb_api_key", merged.wb_api_key || "");
+        set("dg-set-ym_api_key", merged.ym_api_key || "");
+        set("dg-set-ym_campaign_id", merged.ym_campaign_id || "");
+        set("dg-set-ym_business_id", merged.ym_business_id || "");
+        set("dg-set-mp_ozon_delay_ms", merged.mp_ozon_delay_ms || 400);
+        set("dg-set-mp_wb_delay_cards_ms", merged.mp_wb_delay_cards_ms || 600);
+        set("dg-set-mp_wb_delay_other_ms", merged.mp_wb_delay_other_ms || 1600);
+        set("dg-set-mp_yandex_delay_ms", merged.mp_yandex_delay_ms || 280);
+        document.getElementById("dg-set-mp_ozon_include_archived").checked = Number(merged.mp_ozon_include_archived) === 1;
         usersPresenceWindowMinutes = getNum("dg-set-auth_online_presence_minutes", 15);
         syncUsersSessionsHeader();
         updateUsersHint();
@@ -863,9 +893,57 @@
             auto_sync_myproducts_time: getStr("dg-set-auto_my_time") || "03:00",
             auto_sync_moysklad_enabled: document.getElementById("dg-set-auto_ms_en").checked,
             auto_sync_moysklad_time: getStr("dg-set-auto_ms_time") || "04:00",
+            auto_sync_marketplaces_enabled: document.getElementById("dg-set-auto_market_en").checked,
+            auto_sync_marketplaces_time: getStr("dg-set-auto_market_time") || "05:00",
+            auto_sync_huckster_enabled: document.getElementById("dg-set-auto_huckster_en").checked,
+            auto_sync_huckster_time: getStr("dg-set-auto_huckster_time") || "06:00",
           },
           "Расписание автосинхронизации сохранено"
         );
+      }
+
+      function saveMarketplacesSettings() {
+        upsertSettings(
+          {
+            ozon_client_id: getStr("dg-set-ozon_client_id"),
+            ozon_api_key: getStr("dg-set-ozon_api_key"),
+            wb_api_key: getStr("dg-set-wb_api_key"),
+            ym_api_key: getStr("dg-set-ym_api_key"),
+            ym_campaign_id: getStr("dg-set-ym_campaign_id"),
+            ym_business_id: getStr("dg-set-ym_business_id"),
+            mp_ozon_delay_ms: getNum("dg-set-mp_ozon_delay_ms", 400),
+            mp_wb_delay_cards_ms: getNum("dg-set-mp_wb_delay_cards_ms", 600),
+            mp_wb_delay_other_ms: getNum("dg-set-mp_wb_delay_other_ms", 1600),
+            mp_yandex_delay_ms: getNum("dg-set-mp_yandex_delay_ms", 280),
+            mp_ozon_include_archived: document.getElementById("dg-set-mp_ozon_include_archived").checked,
+          },
+          "Настройки маркетплейсов сохранены"
+        );
+      }
+
+      function syncMarketplacesNow() {
+        var hint = document.getElementById("dg-set-marketplaces-sync-hint");
+        if (hint) hint.textContent = "Запускаем принудительное обновление маркетплейсов...";
+        fetch("/api/exports/marketplaces/sync", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: authHeaders(true),
+          body: JSON.stringify({ shop: "all" }),
+        })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok) throw new Error((x.j && x.j.error) || "Не удалось запустить обновление");
+            if (hint) hint.textContent = "Обновление маркетплейсов запущено в фоне.";
+            alert("Обновление маркетплейсов запущено");
+          })
+          .catch(function (e) {
+            if (hint) hint.textContent = "Ошибка: " + (e.message || String(e));
+            alert(e.message || "Ошибка запуска обновления маркетплейсов");
+          });
       }
 
       function clearLogsNow() {
@@ -1144,6 +1222,8 @@
       document.getElementById("dg-set-btn-save-sessions").addEventListener("click", saveSessionsAndOnline);
       document.getElementById("dg-set-btn-save-myproducts").addEventListener("click", saveMyProductsSync);
       document.getElementById("dg-set-btn-save-ms").addEventListener("click", saveMoyskladSync);
+      document.getElementById("dg-set-btn-save-marketplaces").addEventListener("click", saveMarketplacesSettings);
+      document.getElementById("dg-set-btn-sync-marketplaces-now").addEventListener("click", syncMarketplacesNow);
       document.getElementById("dg-set-btn-save-auto").addEventListener("click", saveAutoSync);
       document.getElementById("dg-set-btn-logs-refresh").addEventListener("click", loadLogsInfo);
       document.getElementById("dg-set-btn-logs-clear").addEventListener("click", clearLogsNow);

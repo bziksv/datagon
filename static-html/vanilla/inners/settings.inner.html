@@ -14,7 +14,7 @@
             </div>
           </div>
 
-          <div class="main-card mb-3 card">
+          <div class="main-card mb-3 card" id="marketplaces">
             <div class="card-header d-flex align-items-center justify-content-between gap-2">
               <div class="d-flex align-items-center">
                 <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
@@ -345,6 +345,43 @@
 
           <div class="main-card mb-3 card">
             <div class="card-header d-flex align-items-center">
+              <i class="header-icon pe-7s-graph3 icon-gradient bg-happy-fisher me-2"> </i>
+              <span>Маркетплейсы: ключи и лимиты API</span>
+            </div>
+            <div class="card-body">
+              <p class="small text-muted">Единые настройки Ozon, Wildberries и Яндекс Маркета. Принудительное обновление запускается ниже отдельной кнопкой.</p>
+              <div class="row g-2">
+                <div class="col-md-3"><label class="form-label" for="dg-set-ozon_client_id">OZON_CLIENT_ID</label><input type="text" class="form-control" id="dg-set-ozon_client_id" autocomplete="off" /></div>
+                <div class="col-md-3"><label class="form-label" for="dg-set-ozon_api_key">OZON_API_KEY</label><input type="password" class="form-control" id="dg-set-ozon_api_key" autocomplete="new-password" /></div>
+                <div class="col-md-3"><label class="form-label" for="dg-set-wb_api_key">WB_API_KEY</label><input type="password" class="form-control" id="dg-set-wb_api_key" autocomplete="new-password" /></div>
+                <div class="col-md-3"><label class="form-label" for="dg-set-ym_api_key">YM_API_KEY</label><input type="password" class="form-control" id="dg-set-ym_api_key" autocomplete="new-password" /></div>
+                <div class="col-md-3"><label class="form-label" for="dg-set-ym_campaign_id">YM_CAMPAIGN_ID</label><input type="text" class="form-control" id="dg-set-ym_campaign_id" autocomplete="off" /></div>
+                <div class="col-md-3"><label class="form-label" for="dg-set-ym_business_id">YM_BUSINESS_ID</label><input type="text" class="form-control" id="dg-set-ym_business_id" autocomplete="off" /></div>
+                <div class="col-md-2"><label class="form-label" for="dg-set-mp_ozon_delay_ms">Ozon delay (мс)</label><input type="number" class="form-control" id="dg-set-mp_ozon_delay_ms" min="300" /></div>
+                <div class="col-md-2"><label class="form-label" for="dg-set-mp_wb_delay_cards_ms">WB cards delay (мс)</label><input type="number" class="form-control" id="dg-set-mp_wb_delay_cards_ms" min="350" /></div>
+                <div class="col-md-2"><label class="form-label" for="dg-set-mp_wb_delay_other_ms">WB other delay (мс)</label><input type="number" class="form-control" id="dg-set-mp_wb_delay_other_ms" min="1000" /></div>
+                <div class="col-md-2"><label class="form-label" for="dg-set-mp_yandex_delay_ms">Yandex delay (мс)</label><input type="number" class="form-control" id="dg-set-mp_yandex_delay_ms" min="200" /></div>
+                <div class="col-md-4 d-flex align-items-end">
+                  <div class="form-check">
+                    <input type="checkbox" class="form-check-input" id="dg-set-mp_ozon_include_archived" />
+                    <label class="form-check-label" for="dg-set-mp_ozon_include_archived">Ozon: включать архивные товары</label>
+                  </div>
+                </div>
+              </div>
+              <div class="mt-3 d-flex gap-2 flex-wrap">
+                <button type="button" class="btn btn-success" id="dg-set-btn-save-marketplaces" data-dg-activity-label="Сохранить настройки маркетплейсов">
+                  Сохранить настройки маркетплейсов
+                </button>
+                <button type="button" class="btn btn-primary" id="dg-set-btn-sync-marketplaces-now" data-dg-activity-label="Принудительно обновить маркетплейсы">
+                  Обновить из маркетплейсов сейчас
+                </button>
+              </div>
+              <p class="small text-muted mt-2 mb-0" id="dg-set-marketplaces-sync-hint"></p>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center">
               <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
               <span>Автосинхронизация по расписанию</span>
             </div>
@@ -365,6 +402,23 @@
                     <span>Включить</span>
                     <input type="time" class="form-control" id="dg-set-auto_ms_time" style="max-width:140px" />
                   </div>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label">Маркетплейсы: время запуска (МСК)</label>
+                  <div class="d-flex gap-2 align-items-center">
+                    <input type="checkbox" id="dg-set-auto_market_en" />
+                    <span>Включить</span>
+                    <input type="time" class="form-control" id="dg-set-auto_market_time" style="max-width:140px" />
+                  </div>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label">Huckster (e-teleport): время запуска (МСК)</label>
+                  <div class="d-flex gap-2 align-items-center">
+                    <input type="checkbox" id="dg-set-auto_huckster_en" />
+                    <span>Включить</span>
+                    <input type="time" class="form-control" id="dg-set-auto_huckster_time" style="max-width:140px" />
+                  </div>
+                  <p class="small text-muted mb-0 mt-1">Нужны доступы Huckster в <code>app_settings</code> / <code>HUCKSTER_*</code> или <code>POST /api/exports/huckster/credentials</code> (см. <a href="/docs/api/">/docs/api/</a>).</p>
                 </div>
               </div>
               <div class="mt-3">
