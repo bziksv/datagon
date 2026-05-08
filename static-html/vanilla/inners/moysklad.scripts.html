@@ -71,7 +71,6 @@
       var initialFilters = {
         limit: 100,
         type: "all",
-        archived: "active",
         stock_position: "yes",
         on_site: "all",
         search: "",
@@ -101,6 +100,11 @@
       var sortDir = "asc";
       var total = 0;
       var limit = 100;
+      var transientStatusText = "";
+      var transientStatusUntil = 0;
+      var pendingAction = false;
+      var bundleRecalcPollTimer = null;
+      var bundleRecalcPostInflight = false;
       var lastExportRows = [];
       var loading = false;
       var columnWidths = {};
@@ -181,7 +185,6 @@
         return {
           search: document.getElementById("ms-f-search").value.trim(),
           limit: Number(document.getElementById("ms-f-limit").value) || 100,
-          archived: document.getElementById("ms-f-archived").value,
           stock_position: document.getElementById("ms-f-stock_position").value,
           on_site: document.getElementById("ms-f-on_site").value,
           type: document.getElementById("ms-f-type").value,
@@ -229,8 +232,15 @@
         if (missing("search") && api.search != null) document.getElementById("ms-f-search").value = String(api.search);
         if (missing("limit") && api.limit != null)
           document.getElementById("ms-f-limit").value = String(Number(api.limit) || 100);
-        if (missing("archived") && api.archived != null)
-          document.getElementById("ms-f-archived").value = String(api.archived);
+        if (missing("g_archived") && missing("archived") && api.archived != null) {
+          var tfA = document.getElementById("ms-tf-archived");
+          if (tfA) {
+            var legacyA = String(api.archived);
+            if (legacyA === "active") tfA.value = "0";
+            else if (legacyA === "archived") tfA.value = "1";
+            else tfA.value = "all";
+          }
+        }
         if (missing("stock_position") && api.stock_position != null)
           document.getElementById("ms-f-stock_position").value = String(api.stock_position);
         if (missing("on_site") && api.on_site != null)
@@ -271,9 +281,10 @@
       }
 
       function appendFilterParams(p, f) {
+        /* Сервер по умолчанию archived=active; архив только через g_archived (селект «Архивные» в верхнем ряду). */
+        p.set("archived", "all");
         if (f.search) p.set("search", f.search);
         if (f.type && f.type !== "all") p.set("type", f.type);
-        if (f.archived && f.archived !== "active") p.set("archived", f.archived);
         if (f.stock_position && f.stock_position !== "yes") p.set("stock_position", f.stock_position);
         if (f.on_site && f.on_site !== "all") p.set("on_site", f.on_site);
         if (f.supplier) p.set("supplier", f.supplier);
@@ -351,8 +362,14 @@
           if (k === "limit") document.getElementById("ms-f-limit").value = String(Number(v) || 100);
           else if (k === "search") document.getElementById("ms-f-search").value = v;
           else if (k === "type") document.getElementById("ms-f-type").value = v;
-          else if (k === "archived") document.getElementById("ms-f-archived").value = v;
-          else if (k === "stock_position") document.getElementById("ms-f-stock_position").value = v;
+          else if (k === "archived") {
+            var elA = document.getElementById("ms-tf-archived");
+            if (elA) {
+              if (v === "active") elA.value = "0";
+              else if (v === "archived") elA.value = "1";
+              else elA.value = "all";
+            }
+          } else if (k === "stock_position") document.getElementById("ms-f-stock_position").value = v;
           else if (k === "on_site") document.getElementById("ms-f-on_site").value = v;
           else if (k === "supplier") document.getElementById("ms-f-supplier").value = v;
           else if (k === "supplier2") document.getElementById("ms-f-supplier2").value = v;
@@ -625,6 +642,12 @@
       function renderStatusHint(st) {
         var el = document.getElementById("dg-ms-status-hint");
         if (!el) return;
+        var nowMs = Date.now();
+        if (pendingAction) return;
+        if (transientStatusText && transientStatusUntil > nowMs) {
+          el.textContent = transientStatusText;
+          return;
+        }
         if (!st) {
           el.textContent = "Загрузка статуса...";
           return;
@@ -1280,8 +1303,10 @@
             document.getElementById("st-total").textContent = fmtNum(stats.total);
             document.getElementById("st-pb").textContent =
               fmtNum(stats.products) + " / " + fmtNum(stats.bundles);
-            var valEl = document.getElementById("st-val");
-            valEl.textContent = formatMoneyText(stats.inventory_value);
+            var valProd = document.getElementById("st-val-products");
+            var valBund = document.getElementById("st-val-bundles");
+            if (valProd) valProd.textContent = formatMoneyText(stats.inventory_value_products);
+            if (valBund) valBund.textContent = formatMoneyText(stats.inventory_value_bundles);
             total = Number(exp.total || 0);
             var raw = Array.isArray(exp.data) ? exp.data : [];
             lastExportRows = raw;
@@ -1324,7 +1349,6 @@
         }
         document.getElementById("ms-f-search").value = "";
         document.getElementById("ms-f-limit").value = "100";
-        document.getElementById("ms-f-archived").value = "active";
         document.getElementById("ms-f-stock_position").value = "yes";
         document.getElementById("ms-f-on_site").value = "all";
         document.getElementById("ms-f-type").value = "all";
@@ -1359,6 +1383,24 @@
       }
 
       function postAction(url) {
+        if (url === "/api/ms/recalc-bundle-stocks" && bundleRecalcPostInflight) {
+          return;
+        }
+        if (url === "/api/ms/recalc-bundle-stocks") {
+          bundleRecalcPostInflight = true;
+          var rbStart = document.getElementById("moysklad-recalc-bundles");
+          if (rbStart) rbStart.disabled = true;
+        }
+        var statusHintPre = document.getElementById("dg-ms-status-hint");
+        if (statusHintPre) statusHintPre.textContent = "Выполняем...";
+        var dsPre = document.getElementById("dg-status");
+        if (url === "/api/ms/recalc-bundle-stocks" && dsPre) {
+          dsPre.style.display = "none";
+          dsPre.textContent = "";
+        }
+        pendingAction = true;
+        transientStatusText = "Выполняем...";
+        transientStatusUntil = Date.now() + 30000;
         fetch(url, { method: "POST", credentials: "same-origin" })
           .then(function (r) {
             return r.json().then(function (j) {
@@ -1367,10 +1409,89 @@
           })
           .then(function (x) {
             if (!x.r.ok) throw new Error(x.j.error || "Ошибка");
+            var actionMsg = (x.j && x.j.message) ? String(x.j.message) : "Готово";
+            if (url === "/api/ms/recalc-bundle-stocks") {
+              actionMsg = "Пересчет остатков комплектов запущен...";
+              if (bundleRecalcPollTimer) clearInterval(bundleRecalcPollTimer);
+              bundleRecalcPollTimer = setInterval(function () {
+                fetch("/api/ms/recalc-bundle-stocks-status", { credentials: "same-origin" })
+                  .then(function (r) { return r.json(); })
+                  .then(function (st) {
+                    if (!st || st.success === false) return;
+                    var total = Number(st.total_bundles || 0);
+                    var processed = Number(st.processed || 0);
+                    var upd = Number(st.updated || 0);
+                    var skNoComp = Number(st.skipped_no_components || 0);
+                    var skUnres = Number(st.skipped_unresolved || 0);
+                    var skExport = Number(st.export_no_row || 0);
+                    var err = Number(st.errors || 0);
+                    var skipped = skNoComp + skUnres;
+                    var detail =
+                      "без состава в кэше: " +
+                      skNoComp +
+                      ", коды/остатки: " +
+                      skUnres +
+                      (skExport ? ", нет строки в выгрузке: " + skExport : "");
+                    var liveMsg = st.active
+                      ? ("Пересчет комплектов: " + processed + "/" + total + " — обновлено: " + upd + "; " + detail + "; ошибок: " + err)
+                      : ("Остатки комплектов: обновлено " + upd + "; " + detail + "; ошибок: " + err + (skipped ? " (всего пропусков: " + skipped + ")" : ""));
+                    transientStatusText = liveMsg;
+                    transientStatusUntil = Date.now() + 15000;
+                    var statusHintLive = document.getElementById("dg-ms-status-hint");
+                    if (statusHintLive) statusHintLive.textContent = liveMsg;
+                    if (!st.active) {
+                      pendingAction = false;
+                      bundleRecalcPostInflight = false;
+                      clearInterval(bundleRecalcPollTimer);
+                      bundleRecalcPollTimer = null;
+                      var recalcDoneBtn = document.getElementById("moysklad-recalc-bundles");
+                      if (recalcDoneBtn) recalcDoneBtn.disabled = false;
+                      loadData();
+                    }
+                  })
+                  .catch(function () {});
+              }, 1000);
+            }
+            var statusHint = document.getElementById("dg-ms-status-hint");
+            if (statusHint) {
+              statusHint.textContent = actionMsg;
+            }
+            transientStatusText = actionMsg;
+            transientStatusUntil = Date.now() + 12000;
+            if (url !== "/api/ms/recalc-bundle-stocks") pendingAction = false;
+            if (url !== "/api/ms/recalc-bundle-stocks") {
+              var ds = document.getElementById("dg-status");
+              if (ds) {
+                ds.style.display = "";
+                ds.textContent = actionMsg;
+                ds.classList.remove("text-danger");
+                ds.classList.add("text-muted");
+                setTimeout(function () {
+                  ds.style.display = "none";
+                  ds.textContent = "";
+                }, 2500);
+              }
+            }
             loadStatus();
-            loadData();
+            if (url !== "/api/ms/recalc-bundle-stocks") loadData();
           })
           .catch(function (e) {
+            pendingAction = false;
+            if (url === "/api/ms/recalc-bundle-stocks") {
+              bundleRecalcPostInflight = false;
+              var recalcErrBtn = document.getElementById("moysklad-recalc-bundles");
+              if (recalcErrBtn) recalcErrBtn.disabled = false;
+            }
+            var msg = "Ошибка: " + (e && e.message ? e.message : String(e));
+            var statusHintErr = document.getElementById("dg-ms-status-hint");
+            if (statusHintErr) statusHintErr.textContent = msg;
+            var ds = document.getElementById("dg-status");
+            if (ds) {
+              ds.style.display = "";
+              ds.textContent = msg;
+              ds.classList.remove("text-muted");
+              ds.classList.add("text-danger");
+            }
             alert(e.message || String(e));
           });
       }
@@ -1402,7 +1523,7 @@
       }
 
       [
-        "ms-f-search", "ms-f-limit", "ms-f-archived", "ms-f-stock_position", "ms-f-on_site", "ms-f-type",
+        "ms-f-search", "ms-f-limit", "ms-f-stock_position", "ms-f-on_site", "ms-f-type",
         "ms-f-supplier", "ms-f-supplier2", "ms-f-manager", "ms-f-content_manager",
         "only_stock", "no_coop", "has_buy_price",
       ].forEach(function (id) {
@@ -1436,6 +1557,9 @@
       document.getElementById("moysklad-rebuild-cache").addEventListener("click", function () {
         postAction("/api/ms/rebuild-links-cache");
       });
+      document.getElementById("moysklad-recalc-bundles").addEventListener("click", function () {
+        postAction("/api/ms/recalc-bundle-stocks");
+      });
       document.getElementById("moysklad-copy-link").addEventListener("click", function () {
         navigator.clipboard.writeText(window.location.href).catch(function () {});
       });
@@ -1462,7 +1586,7 @@
               { key: "ms_tf_code", title: "ID / КОД", hint: "" },
               { key: "ms_tf_name", title: "Наименование", hint: "" },
               { key: "ms_tf_type", title: "Тип (таблица)", hint: "" },
-              { key: "ms_tf_archived", title: "Архивные (таблица)", hint: "" },
+              { key: "ms_tf_archived", title: "Архивные", hint: "Активные / архив / все (параметр g_archived)" },
               { key: "ms_tf_supplier", title: "Поставщик (таблица)", hint: "" },
               { key: "ms_tf_supplier2", title: "Поставщик 2 (таблица)", hint: "" },
             ],
@@ -1482,7 +1606,6 @@
               { key: "ms_f_type", title: "Тип (API)", hint: "" },
               { key: "ms_f_stock_position", title: "Складская позиция", hint: "" },
               { key: "ms_f_on_site", title: "На сайте", hint: "" },
-              { key: "ms_f_archived", title: "Статус (архив)", hint: "" },
               { key: "ms_f_limit", title: "На странице", hint: "" },
             ],
           },

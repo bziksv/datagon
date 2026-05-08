@@ -4,8 +4,8 @@ const express = require('express');
 const axios = require('axios');
 const { saveHucksterSnapshot, loadHucksterSnapshot, clearHucksterSnapshot } = require('../lib/hucksterSnapshotStore');
 const {
-    fetchMsExportBridgeCandidates,
-    filterMsRowsByPositivePriceType,
+    fetchMsExportBridgeRowsAll,
+    enrichMsRowsWithPriceType,
     fetchMoyskladPriceTypeNames,
     buildMsHucksterBridgeExport,
 } = require('../lib/hucksterMsBridgeMatrix');
@@ -83,6 +83,47 @@ function parseUidList(raw) {
         out.push(u);
     }
     return out;
+}
+
+function appSettingBool01(v) {
+    if (v === true || v === 1) return true;
+    if (v === false || v === 0) return false;
+    const s = String(v == null ? '' : v).trim().toLowerCase();
+    return s === '1' || s === 'true' || s === 'yes';
+}
+
+function bodyHasOwn(body, key) {
+    return body != null && typeof body === 'object' && Object.prototype.hasOwnProperty.call(body, key);
+}
+
+async function persistMsBridgeArchiveFilters(db, bodyObj, appSettingsRef) {
+    if (!bodyObj || typeof bodyObj !== 'object' || typeof db?.query !== 'function') return;
+    const pairs = [];
+    if (bodyHasOwn(bodyObj, 'ms_exclude_archived_bundles')) {
+        pairs.push([
+            'huckster_ms_exclude_archived_bundles',
+            appSettingBool01(bodyObj.ms_exclude_archived_bundles) ? '1' : '0',
+        ]);
+    }
+    if (bodyHasOwn(bodyObj, 'ms_exclude_archived_products_zero_stock')) {
+        pairs.push([
+            'huckster_ms_exclude_archived_products_zero_stock',
+            appSettingBool01(bodyObj.ms_exclude_archived_products_zero_stock) ? '1' : '0',
+        ]);
+    }
+    if (bodyHasOwn(bodyObj, 'ms_exclude_products_with_bundles')) {
+        pairs.push([
+            'huckster_ms_exclude_products_with_bundles',
+            appSettingBool01(bodyObj.ms_exclude_products_with_bundles) ? '1' : '0',
+        ]);
+    }
+    for (const [k, v] of pairs) {
+        await db.query(
+            'INSERT INTO app_settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value=?',
+            [k, v, v]
+        );
+        appSettingsRef[k] = v === '1' ? 1 : 0;
+    }
 }
 
 function authHeaders(req) {
@@ -241,11 +282,11 @@ async function fetchRepricerProductsForShop(shop, sessionId, opts, isStopped) {
 }
 
 /** Дописать inUnitModel и названия Unit-наборов к уже загруженному списку repricer. `unitSetFilter` — только наборы list, для которых вернётся true (например только «Онлайн калькулятор» для Export). */
-async function enrichProductsWithUnitModels(shop, sessionId, products, opts, isStopped, unitSetFilter) {
+async function enrichProductsWithUnitModels(shop, sessionId, products, opts, isStopped, unitSetFilter, onUnitProgress) {
     throwIfStopped(isStopped);
     let info = null;
     try {
-        info = await fetchAllUnitModelInfo(shop, sessionId, opts, isStopped, unitSetFilter);
+        info = await fetchAllUnitModelInfo(shop, sessionId, opts, isStopped, unitSetFilter, onUnitProgress);
     } catch (e) {
         console.warn('[huckster] unit economy models:', e && e.message ? e.message : e);
         info = null;
@@ -311,7 +352,7 @@ function extractUnitSetDisplayName(st, setId) {
  * @param {(st: object) => boolean} [unitSetFilter] — если задан, обрабатываются только строки set_list, для которых filter(st) === true.
  * @returns {{ uidSet: Set<string>, uidToNames: Map<string, Set<string>> }}
  */
-async function fetchAllUnitModelInfo(shop, sessionId, opts, isStopped, unitSetFilter) {
+async function fetchAllUnitModelInfo(shop, sessionId, opts, isStopped, unitSetFilter, onProgress) {
     const uidSet = new Set();
     const uidToNames = new Map();
     const delayMs = Math.max(HUCKSTER_DELAY_MS_MIN, Number(opts.delay_ms || HUCKSTER_DELAY_MS_DEFAULT));
@@ -323,6 +364,32 @@ async function fetchAllUnitModelInfo(shop, sessionId, opts, isStopped, unitSetFi
         'Content-Type': 'application/json',
         Cookie: `ss-id=${sessionId}`,
     };
+    async function postUnit(url, payload, titleForLog) {
+        const maxAttempts = 3;
+        let lastErr = null;
+        for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+            try {
+                return await axios.post(url, payload, { timeout: 120000, headers });
+            } catch (e) {
+                lastErr = e;
+                const msg = e?.response?.data?.error?.message || e?.message || String(e);
+                console.warn('[huckster] %s attempt %s/%s %s/%s: %s', titleForLog, attempt, maxAttempts, shop.marketplace, shop.shop_id, msg);
+                if (typeof onProgress === 'function') {
+                    onProgress({
+                        phase: 'request_retry',
+                        title: titleForLog,
+                        attempt,
+                        attempts: maxAttempts,
+                        error: String(msg),
+                    });
+                }
+                if (attempt < maxAttempts) {
+                    await new Promise((r) => setTimeout(r, Math.max(500, delayMs)));
+                }
+            }
+        }
+        throw lastErr || new Error(`${titleForLog}: unknown error`);
+    }
 
     function noteUidInSet(uid, setLabel) {
         const u = String(uid || '').trim();
@@ -336,10 +403,13 @@ async function fetchAllUnitModelInfo(shop, sessionId, opts, isStopped, unitSetFi
     }
 
     throwIfStopped(isStopped);
-    const listRes = await axios.post(
+    if (typeof onProgress === 'function') {
+        onProgress({ phase: 'set_list_start' });
+    }
+    const listRes = await postUnit(
         'https://wbs.e-teleport.ru/markets/integrations/unit/set/list',
         { marketplace: shop.marketplace, shop_id: shop.shop_id },
-        { timeout: 120000, headers }
+        'unit/set/list'
     );
     const listPayload = listRes && listRes.data ? listRes.data : {};
     if (listPayload.error) {
@@ -361,7 +431,11 @@ async function fetchAllUnitModelInfo(shop, sessionId, opts, isStopped, unitSetFi
             setList = filtered;
         }
     }
+    if (typeof onProgress === 'function') {
+        onProgress({ phase: 'set_list_done', set_count: setList.length });
+    }
 
+    let setIndex = 0;
     for (const st of setList) {
         throwIfStopped(isStopped);
         if (!unitSetRowMatchesShop(st, shop)) continue;
@@ -369,12 +443,38 @@ async function fetchAllUnitModelInfo(shop, sessionId, opts, isStopped, unitSetFi
         const setId = String(st.id != null ? st.id : st.set_id != null ? st.set_id : '').trim();
         if (!setId) continue;
         const setLabel = extractUnitSetDisplayName(st, setId);
+        setIndex += 1;
+        if (typeof onProgress === 'function') {
+            onProgress({
+                phase: 'set_start',
+                set_id: setId,
+                set_label: setLabel,
+                set_index: setIndex,
+                set_total: setList.length,
+            });
+        }
 
         let offset = 0;
+        let page = 0;
         /* eslint-disable no-await-in-loop */
         for (;;) {
             throwIfStopped(isStopped);
-            const gr = await axios.post(
+            page += 1;
+            if (typeof onProgress === 'function') {
+                onProgress({
+                    phase: 'set_page',
+                    set_id: setId,
+                    set_label: setLabel,
+                    set_index: setIndex,
+                    set_total: setList.length,
+                    page,
+                    offset,
+                    uid_found: uidSet.size,
+                    uid_filter_found: foundFiltered.size,
+                    uid_filter_total: uidFilter ? uidFilter.size : 0,
+                });
+            }
+            const gr = await postUnit(
                 'https://wbs.e-teleport.ru/markets/integrations/unit/set/get',
                 {
                     marketplace: shop.marketplace,
@@ -383,7 +483,7 @@ async function fetchAllUnitModelInfo(shop, sessionId, opts, isStopped, unitSetFi
                     limit: limitGet,
                     offset,
                 },
-                { timeout: 120000, headers }
+                `unit/set/get set_id=${setId} offset=${offset}`
             );
             const gp = gr && gr.data ? gr.data : {};
             if (gp.error) {
@@ -450,9 +550,78 @@ function createExportsHucksterRouter(_db, appSettings) {
         return { set1, set2, priceTypeSet1, priceTypeSet2 };
     }
 
+    function isMsNoLongerCooperationYes(v) {
+        const s = String(v == null ? '' : v).trim().toLowerCase();
+        return s === 'да' || s === 'yes' || s === '1' || s === 'true';
+    }
+
+    function buildHucksterSignalsByCode(set1Items, set2Items) {
+        const byCode = new Map();
+        function touch(code) {
+            const c = String(code || '').trim();
+            if (!c) return null;
+            if (!byCode.has(c)) {
+                byCode.set(c, { repricer: false, modelNames: new Set() });
+            }
+            return byCode.get(c);
+        }
+        const buckets = [set1Items || {}, set2Items || {}];
+        for (const bucket of buckets) {
+            for (const shopId of Object.keys(bucket)) {
+                const list = Array.isArray(bucket[shopId]) ? bucket[shopId] : [];
+                for (const row of list) {
+                    const rec = touch(row && row.uid);
+                    if (!rec) continue;
+                    if (row && row.repricerEnabled === true) rec.repricer = true;
+                    const names = String((row && row.unitModelNames) || '').trim();
+                    if (names) {
+                        for (const part of names.split(';')) {
+                            const nm = String(part || '').trim();
+                            if (nm) rec.modelNames.add(nm);
+                        }
+                    }
+                }
+            }
+        }
+        return byCode;
+    }
+
+    function buildHucksterLostRows(msRows, signalMap, syncedAtIso) {
+        const header = ['ID / КОД', 'Наименование товара', 'Менеджер', 'Остаток', 'Repricer', 'Модели Huckster', 'Актуально на'];
+        const rows = [header];
+        const syncCell = syncedAtIso ? new Date(syncedAtIso).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' }) : '';
+        for (const ms of msRows || []) {
+            const code = String(ms && ms.code ? ms.code : '').trim();
+            if (!code) continue;
+            const sig = signalMap.get(code);
+            if (!sig) continue;
+            if (!sig.repricer && (!sig.modelNames || sig.modelNames.size === 0)) continue;
+            if (!isMsNoLongerCooperationYes(ms.no_longer_cooperation)) continue;
+            if (Number(ms.stock || 0) !== 0) continue;
+            const models = sig.modelNames && sig.modelNames.size
+                ? Array.from(sig.modelNames).sort((a, b) => a.localeCompare(b, 'ru', { numeric: true })).join('; ')
+                : '';
+            rows.push([
+                code,
+                String(ms.name || ''),
+                String(ms.manager || ''),
+                String(ms.stock != null ? ms.stock : ''),
+                sig.repricer ? 'Да' : 'Нет',
+                models || '—',
+                syncCell,
+            ]);
+        }
+        return {
+            rows,
+            total_rows: Math.max(0, rows.length - 1),
+            matrix_kind: 'huckster_lost_v1',
+        };
+    }
+
     /** Запуск фоновой синхронизации (из POST /sync или из планировщика server.js). */
     function tryStartHucksterSync(body) {
         const bodyObj = body || {};
+        /* Строки моста = все коды из ms_export; сужение только UI (фильтры страницы + архив) и test_uids на синке. */
         if (syncState.active) {
             return { ok: false, code: 'ALREADY_RUNNING' };
         }
@@ -529,13 +698,49 @@ function createExportsHucksterRouter(_db, appSettings) {
                     const bucket = item.set === 'set1' ? set1Items : set2Items;
                     const raw = bucket[item.shop.id];
                     const set1UnitFilter = makeSet1OnlineCalculatorUnitFilter();
+                    const unitProgress = (p) => {
+                        if (!p || typeof p !== 'object') return;
+                        const setLabel2 = item.set === 'set1' ? 'Huckster Export' : 'Huckster Export RRC';
+                        const prefix = `Unit-модели — ${item.shop.name} (${setLabel2})`;
+                        if (p.phase === 'set_list_start') {
+                            syncState.status_text = `${prefix}: загружаем список наборов...`;
+                            return;
+                        }
+                        if (p.phase === 'set_list_done') {
+                            syncState.status_text = `${prefix}: наборов ${Number(p.set_count || 0)}.`;
+                            return;
+                        }
+                        if (p.phase === 'set_start') {
+                            syncState.status_text = `${prefix}: набор ${Number(p.set_index || 0)}/${Number(
+                                p.set_total || 0
+                            )} (${String(p.set_label || p.set_id || '').slice(0, 48)})`;
+                            return;
+                        }
+                        if (p.phase === 'set_page') {
+                            const pg = Number(p.page || 0);
+                            const off = Number(p.offset || 0);
+                            const uf = Number(p.uid_filter_found || 0);
+                            const ut = Number(p.uid_filter_total || 0);
+                            syncState.status_text =
+                                ut > 0
+                                    ? `${prefix}: набор ${Number(p.set_index || 0)}/${Number(p.set_total || 0)}, стр. ${pg}, offset ${off}, UID ${uf}/${ut}`
+                                    : `${prefix}: набор ${Number(p.set_index || 0)}/${Number(p.set_total || 0)}, стр. ${pg}, offset ${off}`;
+                            return;
+                        }
+                        if (p.phase === 'request_retry') {
+                            syncState.status_text = `${prefix}: ретрай ${Number(p.attempt || 0)}/${Number(
+                                p.attempts || 0
+                            )} (${String(p.title || '')})`;
+                        }
+                    };
                     bucket[item.shop.id] = await enrichProductsWithUnitModels(
                         item.shop,
                         sessionId,
                         raw,
                         opts,
                         () => syncState.stop_requested,
-                        item.set === 'set1' ? set1UnitFilter : null
+                        item.set === 'set1' ? set1UnitFilter : null,
+                        unitProgress
                     );
                     syncState.progress.done_shops += 1;
                 }
@@ -543,7 +748,7 @@ function createExportsHucksterRouter(_db, appSettings) {
                 let msBridgeRows = [];
                 try {
                     if (typeof _db?.query === 'function') {
-                        msBridgeRows = await fetchMsExportBridgeCandidates(_db);
+                        msBridgeRows = await fetchMsExportBridgeRowsAll(_db);
                         if (opts.uid_filter) {
                             msBridgeRows = msBridgeRows.filter((r) => opts.uid_filter.has(String(r.code || '').trim()));
                         }
@@ -551,14 +756,16 @@ function createExportsHucksterRouter(_db, appSettings) {
                 } catch (eMs) {
                     console.warn('[huckster] ms bridge rows:', eMs && eMs.message ? eMs.message : eMs);
                 }
-                const set1MsBridgeRows = await filterMsRowsByPositivePriceType(_db, msBridgeRows, cfg.priceTypeSet1);
-                const set2MsBridgeRows = await filterMsRowsByPositivePriceType(_db, msBridgeRows, cfg.priceTypeSet2);
+                const set1MsBridgeRows = await enrichMsRowsWithPriceType(_db, msBridgeRows, cfg.priceTypeSet1);
+                const set2MsBridgeRows = await enrichMsRowsWithPriceType(_db, msBridgeRows, cfg.priceTypeSet2);
                 const set1 = buildMsHucksterBridgeExport(cfg.set1, set1Items, set1MsBridgeRows, syncedAt, {
                     priceTypeName: cfg.priceTypeSet1,
                 });
                 const set2 = buildMsHucksterBridgeExport(cfg.set2, set2Items, set2MsBridgeRows, syncedAt, {
                     priceTypeName: cfg.priceTypeSet2,
                 });
+                const signalsByCode = buildHucksterSignalsByCode(set1Items, set2Items);
+                const sheetLost = buildHucksterLostRows(msBridgeRows, signalsByCode, syncedAt);
                 syncState.error = null;
                 syncState.result = {
                     success: true,
@@ -566,6 +773,7 @@ function createExportsHucksterRouter(_db, appSettings) {
                     test_uids: opts.test_uids,
                     sheet_export: set1,
                     sheet_export_rrc: set2,
+                    sheet_export_lost: sheetLost,
                 };
                 syncState.status_text = opts.test_uids.length
                     ? `Тест Huckster завершён: ${opts.test_uids.join(', ')}.`
@@ -621,6 +829,11 @@ function createExportsHucksterRouter(_db, appSettings) {
 
     router.post('/sync', async (req, res) => {
         try {
+            try {
+                await persistMsBridgeArchiveFilters(_db, req.body || {}, appSettings);
+            } catch (pe) {
+                console.warn('[huckster] persist ms bridge filters:', pe && pe.message ? pe.message : pe);
+            }
             const r = tryStartHucksterSync(req.body || {});
             if (!r.ok && r.code === 'ALREADY_RUNNING') {
                 return res.status(409).json({
@@ -664,6 +877,7 @@ function createExportsHucksterRouter(_db, appSettings) {
                     updated_at: null,
                     sheet_export: { rows: [], total_uids: 0, unit_gap_shop_indexes_by_uid: {} },
                     sheet_export_rrc: { rows: [], total_uids: 0, unit_gap_shop_indexes_by_uid: {} },
+                    sheet_export_lost: { rows: [], total_rows: 0, matrix_kind: 'huckster_lost_v1' },
                 });
             }
             return res.json({
@@ -674,6 +888,7 @@ function createExportsHucksterRouter(_db, appSettings) {
                 stored_at: snap.stored_at || null,
                 sheet_export: snap.sheet_export,
                 sheet_export_rrc: snap.sheet_export_rrc,
+                sheet_export_lost: snap.sheet_export_lost || { rows: [], total_rows: 0, matrix_kind: 'huckster_lost_v1' },
             });
         } catch (e) {
             return res.status(500).json({ success: false, error: e.message || String(e), code: 'SNAPSHOT_READ_FAILED' });
@@ -750,6 +965,11 @@ function createExportsHucksterRouter(_db, appSettings) {
             set2: cfg.set2,
             price_type_set_1: cfg.priceTypeSet1,
             price_type_set_2: cfg.priceTypeSet2,
+            ms_exclude_archived_bundles: appSettingBool01(appSettings.huckster_ms_exclude_archived_bundles),
+            ms_exclude_archived_products_zero_stock: appSettingBool01(
+                appSettings.huckster_ms_exclude_archived_products_zero_stock
+            ),
+            ms_exclude_products_with_bundles: appSettingBool01(appSettings.huckster_ms_exclude_products_with_bundles),
             price_type_options: [],
             defaults: { set1: SHOPS_SET_1, set2: SHOPS_SET_2 },
         });
@@ -761,6 +981,94 @@ function createExportsHucksterRouter(_db, appSettings) {
             success: true,
             price_type_options: priceTypeOptions,
         });
+    });
+
+    /**
+     * Признаки архива/типа по кодам из ms_export (+ kind из ms_entity_details) для перерисовки матрицы
+     * без повторного вызова Huckster (только чтение своей БД).
+     */
+    router.post('/ms-bridge-row-flags', async (req, res) => {
+        try {
+            if (typeof _db?.query !== 'function') {
+                return res.status(500).json({ success: false, error: 'БД недоступна', code: 'NO_DB' });
+            }
+            const raw = req.body?.codes;
+            if (!Array.isArray(raw)) {
+                return res.status(400).json({ success: false, error: 'Ожидается codes: string[]', code: 'BAD_BODY' });
+            }
+            const seen = new Set();
+            const codes = [];
+            for (const c of raw) {
+                const s = String(c == null ? '' : c).trim();
+                if (!s || seen.has(s)) continue;
+                seen.add(s);
+                codes.push(s);
+                if (codes.length >= 6000) break;
+            }
+            const flags = {};
+            if (!codes.length) {
+                return res.json({ success: true, flags });
+            }
+            const chunkSize = 400;
+            for (let i = 0; i < codes.length; i += chunkSize) {
+                const chunk = codes.slice(i, i + chunkSize);
+                const placeholders = chunk.map(() => '?').join(',');
+                const sql = `
+                    SELECT code,
+                        COALESCE(is_archived, 0) AS ia,
+                        LOWER(TRIM(COALESCE(type, ''))) AS tl,
+                        COALESCE(stock, 0) AS st,
+                        EXISTS (
+                            SELECT 1 FROM ms_entity_details d
+                            WHERE d.uuid = SUBSTRING_INDEX(ms_export.uuid, '?', 1)
+                              AND LOWER(TRIM(COALESCE(d.kind, ''))) = 'bundle'
+                        ) AS bk
+                    FROM ms_export
+                    WHERE code IN (${placeholders})
+                `;
+                const [rows] = await _db.query(sql, chunk);
+                for (const r of rows || []) {
+                    const code = String(r.code != null ? r.code : '').trim();
+                    if (!code) continue;
+                    const ia = Number(r.ia) === 1;
+                    const tl = String(r.tl || '');
+                    const bk = Number(r.bk) === 1;
+                    const isBundleLike = tl === 'комплект' || bk;
+                    flags[code] = {
+                        archived_any: ia,
+                        archived_bundle: ia && isBundleLike,
+                        archived_product_no_stock: ia && tl === 'товар' && Number(r.st) <= 0,
+                    };
+                }
+            }
+            return res.json({ success: true, flags });
+        } catch (e) {
+            return res.status(500).json({ success: false, error: e.message || String(e), code: 'MS_FLAGS_FAILED' });
+        }
+    });
+
+    /** Сохранить только галочки фильтра архива МС (без полного POST /config и без Huckster). */
+    router.post('/archive-filters', async (req, res) => {
+        try {
+            if (typeof _db?.query !== 'function') {
+                return res.status(500).json({ success: false, error: 'БД недоступна', code: 'NO_DB' });
+            }
+            await persistMsBridgeArchiveFilters(_db, req.body || {}, appSettings);
+            return res.json({
+                success: true,
+                ms_exclude_archived_bundles: appSettingBool01(appSettings.huckster_ms_exclude_archived_bundles),
+                ms_exclude_archived_products_zero_stock: appSettingBool01(
+                    appSettings.huckster_ms_exclude_archived_products_zero_stock
+                ),
+                ms_exclude_products_with_bundles: appSettingBool01(appSettings.huckster_ms_exclude_products_with_bundles),
+            });
+        } catch (e) {
+            return res.status(500).json({
+                success: false,
+                error: e.message || String(e),
+                code: 'ARCHIVE_FILTERS_SAVE_FAILED',
+            });
+        }
     });
 
     router.post('/config', async (req, res) => {
@@ -800,12 +1108,24 @@ function createExportsHucksterRouter(_db, appSettings) {
             appSettings.huckster_shops_set_2 = set2Json;
             appSettings.huckster_ms_price_type_set_1 = priceTypeSet1;
             appSettings.huckster_ms_price_type_set_2 = priceTypeSet2;
+            if (
+                bodyHasOwn(body, 'ms_exclude_archived_bundles') ||
+                bodyHasOwn(body, 'ms_exclude_archived_products_zero_stock') ||
+                bodyHasOwn(body, 'ms_exclude_products_with_bundles')
+            ) {
+                await persistMsBridgeArchiveFilters(_db, body, appSettings);
+            }
             return res.json({
                 success: true,
                 set1,
                 set2,
                 price_type_set_1: priceTypeSet1,
                 price_type_set_2: priceTypeSet2,
+                ms_exclude_archived_bundles: appSettingBool01(appSettings.huckster_ms_exclude_archived_bundles),
+                ms_exclude_archived_products_zero_stock: appSettingBool01(
+                    appSettings.huckster_ms_exclude_archived_products_zero_stock
+                ),
+                ms_exclude_products_with_bundles: appSettingBool01(appSettings.huckster_ms_exclude_products_with_bundles),
                 price_type_options: [],
             });
         } catch (e) {

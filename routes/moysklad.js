@@ -8,6 +8,8 @@ const MS_DETAIL_EXPAND_PRODUCT =
     'attributes,supplier,images,country,uom,salePrices,buyPrice,minPrice,barcodes,countryOfOrigin';
 const MS_DETAIL_EXPAND_BUNDLE =
     'attributes,supplier,images,country,uom,salePrices,buyPrice,minPrice,components,components.assortment,countryOfOrigin';
+/** МойСклад: expand вложенных полей в списке `entity/bundle` при limit > 100 часто не раскрывается (остаётся meta без rows). */
+const MS_BUNDLE_LIST_PAGE_LIMIT = 100;
 const MS_ATTRS = [
     'Автоматизация цены',
     'Складская позиция',
@@ -32,6 +34,20 @@ const jobState = {
     logs: [],
     updatedAt: null,
 };
+const bundleRecalcState = {
+    active: false,
+    started_at: null,
+    finished_at: null,
+    total_bundles: 0,
+    processed: 0,
+    updated: 0,
+    skipped_no_components: 0,
+    skipped_unresolved: 0,
+    /** UPDATE ms_export затронул 0 строк (код/тип не совпал с выгрузкой) */
+    export_no_row: 0,
+    errors: 0,
+    message: 'Ожидание'
+};
 let sourceLinksCacheReady = false;
 let sourceLinksCacheLastBuiltAt = 0;
 let sourceLinksCacheBuildPromise = null;
@@ -41,11 +57,50 @@ const MS_STATS_CACHE_TTL_MS = 2 * 60 * 1000;
 let msArchivedColumnReady = false;
 let msEntityDetailsTableReady = false;
 
+/** Пул БД для записи строк журнала синка (ставится в createMoyskladRouter). */
+let moyskladSyncLogDb = null;
+let msSyncLogTableReady = false;
+const MS_SYNC_LOG_RETENTION_DAYS = 90;
+
+async function ensureMsSyncLogTable(db) {
+    if (!db || msSyncLogTableReady) return;
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS dg_ms_sync_log (
+            id BIGINT AUTO_INCREMENT PRIMARY KEY,
+            created_at TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP(3),
+            line TEXT NOT NULL,
+            INDEX idx_dg_ms_sync_log_time (created_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `);
+    msSyncLogTableReady = true;
+}
+
+function pruneMsSyncLogOldRows(db) {
+    if (!db) return Promise.resolve();
+    return ensureMsSyncLogTable(db)
+        .then(() =>
+            db.query('DELETE FROM dg_ms_sync_log WHERE created_at < DATE_SUB(NOW(), INTERVAL ? DAY) LIMIT 50000', [
+                MS_SYNC_LOG_RETENTION_DAYS
+            ])
+        )
+        .catch(() => {});
+}
+
+function persistMoyskladSyncLogLine(db, fullLine) {
+    if (!db || !fullLine) return;
+    const safe = String(fullLine).slice(0, 12000);
+    ensureMsSyncLogTable(db)
+        .then(() => db.query('INSERT INTO dg_ms_sync_log (line) VALUES (?)', [safe]))
+        .catch(() => {});
+}
+
 function addLog(msg) {
     const stamp = new Date().toLocaleTimeString('ru-RU');
-    jobState.logs.unshift(`[${stamp}] ${msg}`);
+    const full = `[${stamp}] ${msg}`;
+    jobState.logs.unshift(full);
     jobState.logs = jobState.logs.slice(0, 30);
     jobState.updatedAt = new Date().toISOString();
+    persistMoyskladSyncLogLine(moyskladSyncLogDb, full);
 }
 
 function ensureNotCancelled() {
@@ -268,6 +323,7 @@ function toBinaryFlag(value) {
 /** Кэш справочника атрибутов товара (имена по id) — снижает число запросов при открытии карточек. */
 const MS_ATTRS_META_CACHE_TTL_MS = 60 * 60 * 1000;
 let msAttrsMetaCache = { ts: 0, rows: [] };
+const msRefNameCache = new Map();
 
 async function getMsProductAttributesMeta(headers) {
     const now = Date.now();
@@ -275,6 +331,21 @@ async function getMsProductAttributesMeta(headers) {
     const resp = await axios.get(`${BASE_URL}/entity/product/metadata/attributes`, { headers, timeout: 30000 });
     msAttrsMetaCache = { ts: now, rows: resp.data?.rows || [] };
     return msAttrsMetaCache.rows;
+}
+
+async function resolveMsMetaNameByHref(headers, refObj) {
+    const href = String(refObj?.meta?.href || '').trim();
+    if (!href || !headers) return '';
+    if (msRefNameCache.has(href)) return msRefNameCache.get(href);
+    try {
+        const resp = await axios.get(href, { headers, timeout: 30000 });
+        const name = String(resp?.data?.name || '').trim();
+        msRefNameCache.set(href, name);
+        return name;
+    } catch (_) {
+        msRefNameCache.set(href, '');
+        return '';
+    }
 }
 
 async function ensureMsEntityDetailsTable(db) {
@@ -299,8 +370,13 @@ async function ensureMsEntityDetailsTable(db) {
 
 function moyskladEntityUuid(entity) {
     const href = String(entity?.meta?.href || '').trim();
-    const fromHref = href ? href.split('/').pop() : '';
-    return String(entity?.id || fromHref || '').trim();
+    let fromHref = href ? href.split('/').pop() : '';
+    /* href иногда заканчивается на ?expand=… — иначе uuid в ms_export не совпадёт с ms_entity_details */
+    fromHref = String(fromHref || '').split('?')[0].trim();
+    return String(entity?.id || fromHref || '')
+        .trim()
+        .split('?')[0]
+        .trim();
 }
 
 function moyskladEntityKind(entity, fallbackKind = '') {
@@ -396,6 +472,30 @@ function formatMsDetailScalar(val) {
     return String(val);
 }
 
+function formatMsMetaRef(value) {
+    if (!value || typeof value !== 'object') return '';
+    const meta = value.meta && typeof value.meta === 'object' ? value.meta : null;
+    const hrefRaw = meta && meta.href != null ? String(meta.href).trim() : '';
+    const uuidHrefRaw = meta && meta.uuidHref != null ? String(meta.uuidHref).trim() : '';
+    const typeRaw = meta && meta.type != null ? String(meta.type).trim() : '';
+    const href = hrefRaw || '';
+    const uuidHref = uuidHrefRaw || '';
+    const type = typeRaw || '';
+    let id = '';
+    if (href) {
+        const last = href.split('/').pop() || '';
+        id = String(last.split('?')[0] || '').trim();
+    }
+    if (!type && !id && !href && !uuidHref) return '';
+    const head = [];
+    if (type) head.push(type);
+    if (id) head.push(`ID: ${id}`);
+    const prefix = head.join(', ');
+    const link = uuidHref || href;
+    if (prefix && link) return `${prefix}\n${link}`;
+    return prefix || link || '';
+}
+
 function pushDetailRow(rows, label, value) {
     const v =
         value == null
@@ -463,11 +563,13 @@ function buildMoyskladDetailPayload(attrMetaRows, entity, kind) {
     }
     if (entity.uom) {
         const u = entity.uom;
-        pushDetailRow(main, 'Ед. измерения', u.name || u);
+        const uName = String(u?.name || '').trim();
+        pushDetailRow(main, 'Ед. измерения', uName || formatMsMetaRef(u) || u);
     }
     if (entity.supplier) {
         const s = entity.supplier;
-        pushDetailRow(main, 'Поставщик', s.name || s);
+        const sName = String(s?.name || '').trim();
+        pushDetailRow(main, 'Поставщик', sName || formatMsMetaRef(s) || s);
     }
 
     if (Array.isArray(entity.barcodes) && entity.barcodes.length) {
@@ -843,7 +945,7 @@ async function fetchAllWithArchivedStatuses(url, headers, params = {}) {
 
 async function resolveAssortmentCode(assortment, headers, assortmentCodeCache) {
     if (!assortment) return '';
-    const directCode = normalizeCode(assortment.code);
+    const directCode = normalizeCode(assortment.code || assortment.article);
     if (directCode) return directCode;
 
     const href = assortment.meta?.href;
@@ -875,6 +977,7 @@ async function syncMsExport(db, config, settings = {}) {
     jobState.total = 0;
     jobState.message = 'Загрузка метаданных МойСклад...';
     jobState.logs = [];
+    pruneMsSyncLogOldRows(db).catch(() => {});
     addLog('Старт синхронизации');
     addLog('Этап 1/6: метаданные атрибутов');
 
@@ -907,9 +1010,13 @@ async function syncMsExport(db, config, settings = {}) {
 
     addLog('Этап 3/6: загрузка комплектов');
     jobState.message = 'Загрузка комплектов...';
+    const bundleListPageLimit = Math.min(
+        Math.max(100, Math.min(parseInt(settings.ms_sync_page_limit, 10) || 1000, 5000)),
+        MS_BUNDLE_LIST_PAGE_LIMIT
+    );
     const bundles = await fetchAllWithArchivedStatuses(`${BASE_URL}/entity/bundle`, headers, {
         expand: MS_DETAIL_EXPAND_BUNDLE,
-        pageLimit: settings.ms_sync_page_limit,
+        pageLimit: bundleListPageLimit,
         delayMs: settings.ms_sync_delay_ms,
         onPhaseProgress: ({ phase, loaded, total }) => {
             const phaseLabel = phase === 'archived' ? 'архивные' : 'активные';
@@ -919,7 +1026,9 @@ async function syncMsExport(db, config, settings = {}) {
         }
     });
     jobState.message = `Загрузка комплектов: ${bundles.length}`;
-    addLog(`Загружено товаров: ${products.length}, комплектов: ${bundles.length}`);
+    addLog(
+        `Загружено товаров: ${products.length}, комплектов: ${bundles.length} (страница списка комплектов: limit=${bundleListPageLimit} — expand состава в МС)`
+    );
 
     const supplierCache = new Map();
     const getSupplierName = async (supplier) => {
@@ -1018,7 +1127,10 @@ async function syncMsExport(db, config, settings = {}) {
         if (!salePrice) salePrice = extractSalePriceFromItem(item);
 
         if (type === 'Комплект' && bundleComponents.has(code)) {
-            const components = bundleComponents.get(code);
+            const components = Array.isArray(bundleComponents.get(code)) ? bundleComponents.get(code) : [];
+            // Если компоненты комплекта не удалось резолвить (пустой список),
+            // не затираем остаток из stock report нулем.
+            if (components.length > 0) {
             let minStock = Number.POSITIVE_INFINITY;
             let bundleBuyTotal = 0;
             let hasBundleBuyParts = false;
@@ -1038,6 +1150,7 @@ async function syncMsExport(db, config, settings = {}) {
             if (hasBundleBuyParts && bundleBuyTotal > 0) {
                 buyPrice = formatMoneyFixed2(bundleBuyTotal);
             }
+            }
         }
 
         const vat = item.vat === 0 || item.vat === '0' ? 'без НДС' : String(item.vat || '').replace('%', '');
@@ -1049,7 +1162,7 @@ async function syncMsExport(db, config, settings = {}) {
             item.name || '',
             String(getAttrValue(item, attrsMap, 'Менеджер поддерживающий товар') || ''),
             String(getAttrValue(item, attrsMap, 'Ответственный контент-менджер') || ''),
-            item.meta?.href?.split('/').pop() || '',
+            moyskladEntityUuid(item),
             type,
             hasStockPosition ? 'Да' : 'Нет',
             (getAttrValue(item, attrsMap, 'Перестали сотрудничать / Не производится (дет.в комментах)') ? 'Да' : 'Нет'),
@@ -1108,6 +1221,7 @@ async function syncMsExport(db, config, settings = {}) {
 }
 
 function createMoyskladRouter(db, settings, config) {
+    moyskladSyncLogDb = db;
     ensureMsArchivedColumn(db).catch(() => {});
     ensureMsEntityDetailsTable(db).catch(() => {});
     async function triggerMsSyncNow() {
@@ -1164,6 +1278,172 @@ function createMoyskladRouter(db, settings, config) {
             sourceLinksCacheBuildPromise = null;
         }
     }
+
+    async function recalcBundleStocksFromCache(onProgress) {
+        await ensureMsEntityDetailsTable(db);
+
+        const token = getToken(config);
+        const headers = token ? { Authorization: `Bearer ${token}` } : null;
+        const assortmentCodeCache = new Map();
+
+        const [stockRows] = await db.query(
+            `SELECT UPPER(TRIM(COALESCE(code, ''))) AS code_key, COALESCE(stock, 0) AS stock
+             FROM ms_export
+             WHERE COALESCE(code, '') <> ''`
+        );
+        const stockByCode = new Map();
+        for (const row of stockRows || []) {
+            const codeKey = String(row.code_key || '').trim();
+            if (!codeKey) continue;
+            stockByCode.set(codeKey, Number(row.stock || 0));
+        }
+
+        const [bundleRows] = await db.query(
+            `SELECT code, payload_json
+             FROM ms_entity_details
+             WHERE kind = 'bundle'
+               AND COALESCE(code, '') <> ''`
+        );
+
+        let updated = 0;
+        let skippedNoComponents = 0;
+        let skippedUnresolved = 0;
+        let exportNoRow = 0;
+        let errors = 0;
+        let processed = 0;
+
+        for (const row of bundleRows || []) {
+            try {
+                const bundleCode = normalizeCode(row.code);
+                if (!bundleCode) {
+                    skippedUnresolved += 1;
+                    continue;
+                }
+
+                let payload = null;
+                try {
+                    payload = row.payload_json ? JSON.parse(row.payload_json) : null;
+                } catch (_) {
+                    payload = null;
+                }
+                const compRows = Array.isArray(payload?.components?.rows) ? payload.components.rows : [];
+                if (!compRows.length) {
+                    skippedNoComponents += 1;
+                    continue;
+                }
+
+                let minStock = Number.POSITIVE_INFINITY;
+                let allResolved = true;
+                let resolvedCount = 0;
+
+                for (const comp of compRows) {
+                    const qty = Math.max(1, Number(comp?.quantity || 1));
+                    let compCode = '';
+                    if (headers) {
+                        compCode = await resolveAssortmentCode(comp?.assortment, headers, assortmentCodeCache);
+                    } else {
+                        compCode = normalizeCode(comp?.assortment?.code || comp?.assortment?.article || '');
+                    }
+                    if (!compCode) {
+                        allResolved = false;
+                        continue;
+                    }
+                    const compStock = Number(stockByCode.get(compCode) || 0);
+                    const bundlesPossible = Math.floor(compStock / qty);
+                    minStock = Math.min(minStock, bundlesPossible);
+                    resolvedCount += 1;
+                }
+
+                if (!allResolved || resolvedCount === 0 || !Number.isFinite(minStock)) {
+                    skippedUnresolved += 1;
+                    continue;
+                }
+
+                const nextStock = Math.max(0, minStock);
+                const [r] = await db.query(
+                    `UPDATE ms_export
+                     SET stock = ?
+                     WHERE code = ? AND type = 'Комплект'`,
+                    [nextStock, bundleCode]
+                );
+                if (Number(r?.affectedRows || 0) > 0) {
+                    updated += 1;
+                } else {
+                    exportNoRow += 1;
+                }
+            } catch (_) {
+                errors += 1;
+            }
+            processed += 1;
+            if (typeof onProgress === 'function' && (processed % 100 === 0 || processed === bundleRows.length)) {
+                onProgress({
+                    total_bundles: Number((bundleRows || []).length || 0),
+                    processed,
+                    updated,
+                    skipped_no_components: skippedNoComponents,
+                    skipped_unresolved: skippedUnresolved,
+                    export_no_row: exportNoRow,
+                    errors
+                });
+                await new Promise((resolve) => setImmediate(resolve));
+            }
+        }
+
+        msStatsCache.clear();
+        return {
+            total_bundles: Number((bundleRows || []).length || 0),
+            updated,
+            skipped_no_components: skippedNoComponents,
+            skipped_unresolved: skippedUnresolved,
+            export_no_row: exportNoRow,
+            errors
+        };
+    }
+    async function startBundleRecalcBackground() {
+        if (bundleRecalcState.active) return { started: false, reason: 'already_running' };
+        bundleRecalcState.active = true;
+        bundleRecalcState.started_at = new Date().toISOString();
+        bundleRecalcState.finished_at = null;
+        bundleRecalcState.total_bundles = 0;
+        bundleRecalcState.processed = 0;
+        bundleRecalcState.updated = 0;
+        bundleRecalcState.skipped_no_components = 0;
+        bundleRecalcState.skipped_unresolved = 0;
+        bundleRecalcState.export_no_row = 0;
+        bundleRecalcState.errors = 0;
+        bundleRecalcState.message = 'Пересчитываем остатки комплектов...';
+
+        recalcBundleStocksFromCache((p) => {
+            bundleRecalcState.total_bundles = Number(p.total_bundles || 0);
+            bundleRecalcState.processed = Number(p.processed || 0);
+            bundleRecalcState.updated = Number(p.updated || 0);
+            bundleRecalcState.skipped_no_components = Number(p.skipped_no_components || 0);
+            bundleRecalcState.skipped_unresolved = Number(p.skipped_unresolved || 0);
+            bundleRecalcState.export_no_row = Number(p.export_no_row || 0);
+            bundleRecalcState.errors = Number(p.errors || 0);
+            bundleRecalcState.message = `Пересчет комплектов: ${bundleRecalcState.processed}/${bundleRecalcState.total_bundles}`;
+        })
+            .then((result) => {
+                bundleRecalcState.active = false;
+                bundleRecalcState.finished_at = new Date().toISOString();
+                bundleRecalcState.total_bundles = Number(result.total_bundles || 0);
+                bundleRecalcState.processed = Number(result.total_bundles || 0);
+                bundleRecalcState.updated = Number(result.updated || 0);
+                bundleRecalcState.skipped_no_components = Number(result.skipped_no_components || 0);
+                bundleRecalcState.skipped_unresolved = Number(result.skipped_unresolved || 0);
+                bundleRecalcState.export_no_row = Number(result.export_no_row || 0);
+                bundleRecalcState.errors = Number(result.errors || 0);
+                bundleRecalcState.message = 'Пересчет остатков комплектов завершен';
+            })
+            .catch((e) => {
+                bundleRecalcState.active = false;
+                bundleRecalcState.finished_at = new Date().toISOString();
+                bundleRecalcState.message = `Ошибка пересчета: ${e.message || e}`;
+                bundleRecalcState.errors = Number(bundleRecalcState.errors || 0) + 1;
+            });
+
+        return { started: true };
+    }
     router.post('/sync', async (_req, res) => {
         const r = await triggerMsSyncNow();
         if (!r.started) return res.status(409).json({ error: 'Синхронизация уже запущена' });
@@ -1191,6 +1471,28 @@ function createMoyskladRouter(db, settings, config) {
         } catch (e) {
             return res.status(500).json({ error: e.message });
         }
+    });
+
+    router.post('/recalc-bundle-stocks', async (_req, res) => {
+        try {
+            const start = await startBundleRecalcBackground();
+            if (!start.started) {
+                return res.status(409).json({ error: 'Пересчёт уже выполняется', code: 'ALREADY_RUNNING' });
+            }
+            return res.json({
+                success: true,
+                started: true,
+                message: 'Пересчет остатков комплектов запущен'
+            });
+        } catch (e) {
+            return res.status(500).json({ error: e.message || 'Не удалось пересчитать остатки комплектов' });
+        }
+    });
+    router.get('/recalc-bundle-stocks-status', async (_req, res) => {
+        return res.json({
+            success: true,
+            ...bundleRecalcState
+        });
     });
 
     router.get('/status', async (_req, res) => {
@@ -1256,9 +1558,9 @@ function createMoyskladRouter(db, settings, config) {
             const baseParams = [];
             const withJoinBase = ' WHERE 1=1';
             const withJoinParams = [];
-            let goodsWhereSql = ' WHERE type = ?';
-            const goodsWhereParams = ['Товар'];
-            // For stock/value metrics, exclude poster products by any word form ("плакат", "плакаты", etc.).
+            let goodsWhereSql = ' WHERE type IN (?, ?)';
+            const goodsWhereParams = ['Товар', 'Комплект'];
+            // Для оценки закупа по остатку — и товары, и комплекты (строки выгрузки); без «плакатов» в имени.
             goodsWhereSql += ' AND LOWER(name) NOT LIKE ?';
             goodsWhereParams.push('%плакат%');
             const baseFilter = buildExportFilters({
@@ -1279,7 +1581,7 @@ function createMoyskladRouter(db, settings, config) {
                 ...gridFilters
             }, withJoinBase, withJoinParams);
 
-            // Goods metrics are calculated only for products, but with all active filters.
+            // Закуп по остатку и сумма штук на складе: те же фильтры, что и для выборки (on_site здесь как в baseFilter).
             goodsWhereSql += whereSql.replace(' WHERE 1=1', '');
             goodsWhereParams.push(...whereParams);
 
@@ -1347,32 +1649,34 @@ function createMoyskladRouter(db, settings, config) {
                 ${withJoinFilter.sql}
             `, withJoinFilter.params);
             const [[stockUnits]] = await db.query(`SELECT COALESCE(SUM(stock), 0) AS stock_units FROM ms_export${goodsWhereSql}`, goodsWhereParams);
-            const [[inventoryValue]] = await db.query(`
-                SELECT COALESCE(SUM(
-                    CASE
-                        WHEN buy_price IS NULL OR buy_price = '' THEN 0
-                        ELSE stock * COALESCE(
-                            CAST(
-                                REPLACE(
-                                    REPLACE(
-                                        REPLACE(
-                                            REPLACE(buy_price, '₽', ''),
-                                            ' ',
-                                            ''
-                                        ),
-                                        ' ',
-                                        ''
-                                    ),
-                                    ',',
-                                    '.'
-                                ) AS DECIMAL(15,2)
-                            ),
-                            0
-                        )
-                    END
-                ), 0) AS inventory_value
+            const buyToDec = `CAST(
+                REPLACE(
+                    REPLACE(
+                        REPLACE(
+                            REPLACE(buy_price, '₽', ''),
+                            ' ',
+                            ''
+                        ),
+                        ' ',
+                        ''
+                    ),
+                    ',',
+                    '.'
+                ) AS DECIMAL(15,2)
+            )`;
+            const lineVal = `CASE
+                WHEN buy_price IS NULL OR buy_price = '' THEN 0
+                ELSE stock * COALESCE(${buyToDec}, 0)
+            END`;
+            const [[invSplit]] = await db.query(
+                `
+                SELECT
+                    COALESCE(SUM(CASE WHEN type = 'Товар' THEN ${lineVal} ELSE 0 END), 0) AS inventory_value_products,
+                    COALESCE(SUM(CASE WHEN type = 'Комплект' THEN ${lineVal} ELSE 0 END), 0) AS inventory_value_bundles
                 FROM ms_export${goodsWhereSql}
-            `, goodsWhereParams);
+            `,
+                goodsWhereParams
+            );
             let products = 0;
             let bundles = 0;
             for (const row of byType) {
@@ -1385,7 +1689,8 @@ function createMoyskladRouter(db, settings, config) {
                 bundles,
                 stock_sum: Number(stock?.stock_sum || 0),
                 stock_units: Number(stockUnits?.stock_units || 0),
-                inventory_value: Number(inventoryValue?.inventory_value || 0)
+                inventory_value_products: Number(invSplit?.inventory_value_products || 0),
+                inventory_value_bundles: Number(invSplit?.inventory_value_bundles || 0)
             };
             msStatsCache.set(statsCacheKey, { ts: Date.now(), data: response });
             return res.json(response);
@@ -1470,6 +1775,27 @@ function createMoyskladRouter(db, settings, config) {
 
             if (!headers) {
                 return res.status(503).json({ error: 'MS_TOKEN не задан (env MS_TOKEN или config.msToken)' });
+            }
+            let msExportSupplier = '';
+            try {
+                const [seRows] = await db.query(
+                    `SELECT supplier
+                     FROM ms_export
+                     WHERE uuid = ?
+                     LIMIT 1`,
+                    [uuid]
+                );
+                msExportSupplier = String(seRows?.[0]?.supplier || '').trim();
+            } catch (_) {
+                msExportSupplier = '';
+            }
+            if (entity?.uom && (!entity.uom.name || !String(entity.uom.name).trim())) {
+                const uomName = await resolveMsMetaNameByHref(headers, entity.uom);
+                if (uomName) entity.uom.name = uomName;
+            }
+            if (entity?.supplier && (!entity.supplier.name || !String(entity.supplier.name).trim())) {
+                const supplierName = msExportSupplier || (await resolveMsMetaNameByHref(headers, entity.supplier));
+                if (supplierName) entity.supplier.name = supplierName;
             }
             const attrMeta = await getMsProductAttributesMeta(headers);
             const { webHref, blocks } = buildMoyskladDetailPayload(attrMeta, entity, kind);
@@ -1620,6 +1946,20 @@ createMoyskladRouter.getJobState = function getJobState() {
         logs: Array.isArray(jobState.logs) ? [...jobState.logs] : [],
         updatedAt: jobState.updatedAt || null
     };
+};
+
+/** Последние строки журнала синка из БД (переживают рестарт Node). */
+createMoyskladRouter.fetchMsSyncPersistedLogs = async function fetchMsSyncPersistedLogs(db, limit) {
+    if (!db) return [];
+    const lim = Math.max(10, Math.min(Number(limit) || 50, 200));
+    try {
+        await ensureMsSyncLogTable(db);
+        const [rows] = await db.query('SELECT created_at, line FROM dg_ms_sync_log ORDER BY id DESC LIMIT ?', [lim]);
+        const list = rows || [];
+        return list.slice().reverse();
+    } catch (_) {
+        return [];
+    }
 };
 
 module.exports = createMoyskladRouter;

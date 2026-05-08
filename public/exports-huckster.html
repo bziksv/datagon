@@ -38,6 +38,9 @@
       justify-content: space-between !important;
       gap: 0.65rem 1rem;
       min-width: 0;
+      min-height: 0;
+      height: auto !important;
+      overflow: visible;
     }
     body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"]
       .dg-huckster-matrix-card
@@ -52,12 +55,14 @@
     body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"] .dg-huckster-matrix-card .dg-huckster-matrix-toolbar {
       display: grid !important;
       grid-template-columns: minmax(0, 1fr) auto auto;
+      grid-template-areas: "search notfound toggle";
       align-items: center;
       column-gap: 0.75rem;
       row-gap: 0.5rem;
       flex: 1 1 17rem;
       min-width: 0;
       max-width: 100%;
+      align-self: flex-start;
     }
     body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"]
       .dg-huckster-matrix-card
@@ -98,11 +103,13 @@
       .dg-huckster-matrix-card
       .dg-huckster-matrix-toolbar
       .form-check {
+      grid-area: notfound;
       display: inline-flex;
       align-items: center;
       gap: 0.35rem;
       min-height: 1.5rem;
       margin-bottom: 0;
+      white-space: nowrap;
     }
     body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"]
       .dg-huckster-matrix-card
@@ -122,8 +129,24 @@
       .dg-huckster-matrix-card
       .dg-huckster-matrix-toolbar
       .dg-huckster-matrix-search-wrap {
+      grid-area: search;
       min-width: 0;
       width: 100%;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"]
+      .dg-huckster-matrix-card
+      .dg-huckster-matrix-toolbar
+      > .btn {
+      grid-area: toggle;
+      white-space: nowrap;
+    }
+    @media (max-width: 1280px) {
+      body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"] .dg-huckster-matrix-card .dg-huckster-matrix-toolbar {
+        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-areas:
+          "search search"
+          "notfound toggle";
+      }
     }
     @media (max-width: 575.98px) {
       body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"]
@@ -140,6 +163,10 @@
       }
       body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"] .dg-huckster-matrix-card .dg-huckster-matrix-toolbar {
         grid-template-columns: minmax(0, 1fr);
+        grid-template-areas:
+          "search"
+          "notfound"
+          "toggle";
         justify-items: stretch;
       }
       body.datagon-vanilla-body[data-dg-active-nav="exports-huckster"]
@@ -1056,6 +1083,40 @@
                     <button type="button" class="btn btn-sm btn-outline-secondary w-100" id="dg-huckster-filter-reset">Сбросить фильтры</button>
                   </div>
                 </div>
+                <div class="row g-2 mt-2 pt-2 border-top">
+                  <div class="col-12">
+                    <div class="form-check mb-0">
+                      <input type="checkbox" class="form-check-input" id="dg-huckster-ms-exclude-archived-bundles" />
+                      <label
+                        class="form-check-label small"
+                        for="dg-huckster-ms-exclude-archived-bundles"
+                        title="Только сущности «Комплект» в МойСклад: в выгрузке type=«Комплект» или в кэше карточек kind=bundle. Перерисовка с экрана — запрос к своей БД (ms_export), без «Обновить Huckster»."
+                      >
+                        Исключить архивные комплекты из МС (даже с остатком)
+                      </label>
+                    </div>
+                    <div class="form-check mb-0 mt-1">
+                      <input type="checkbox" class="form-check-input" id="dg-huckster-ms-exclude-archived-products-zero-stock" />
+                      <label
+                        class="form-check-label small"
+                        for="dg-huckster-ms-exclude-archived-products-zero-stock"
+                        title="Архивные товары (type=«Товар») только при остатке ≤ 0. Сужение списка на экране — свой БД, без Huckster."
+                      >
+                        Исключить архивные товары из МС только без остатка
+                      </label>
+                    </div>
+                    <div class="form-check mb-0 mt-1">
+                      <input type="checkbox" class="form-check-input" id="dg-huckster-ms-exclude-products-with-bundles" />
+                      <label
+                        class="form-check-label small"
+                        for="dg-huckster-ms-exclude-products-with-bundles"
+                        title="Если в таблице есть коды вида N-... (например 2187-10, 2187-comp), то базовый код N (например 2187) скрывается."
+                      >
+                        Исключить товары если есть комплекты
+                      </label>
+                    </div>
+                  </div>
+                </div>
               </div>
               <p class="small text-muted mt-2 mb-0" id="dg-huckster-status">Готов к обновлению.</p>
               </div>
@@ -1330,6 +1391,24 @@
             </div>
           </div>
 
+          <div class="main-card mb-3 card dg-huckster-matrix-card">
+            <div class="card-header dg-huckster-matrix-card-head">
+              <div class="dg-huckster-matrix-card-head-title d-flex flex-wrap align-items-center gap-2 min-w-0">
+                <i class="header-icon pe-7s-attention icon-gradient bg-warning me-2 flex-shrink-0"></i>
+                <span class="text-break">Huckster Потеряшки</span>
+                <span class="small text-muted text-break">Есть модель и/или включен repricer в Huckster, но в МС «Перестали сотрудничать=Да» и остаток 0</span>
+                <span class="small text-muted dg-huckster-matrix-count ms-1 flex-shrink-0" id="dg-huckster-matrix-count-lost"></span>
+              </div>
+            </div>
+            <div class="card-body p-0">
+              <div class="dg-huckster-matrix-scroll">
+                <div class="table-responsive datagon-my-products-table-wrap">
+                  <table class="table mb-0 dg-huckster-matrix-table" id="dg-huckster-table-lost"></table>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <script>
             (function () {
               function matrixWidthStorageKey(which) {
@@ -1341,6 +1420,7 @@
               }
               var lastMatrixRows1 = null;
               var lastMatrixRows2 = null;
+              var lastMatrixRowsLost = null;
               var hucksterMatrixFull1 = null;
               var hucksterMatrixFull2 = null;
               /** Матрица набора 1 «Мой склад ↔ Huckster»: bridge_row_meta с сервера (подсветка кабинетов). */
@@ -1359,12 +1439,19 @@
               var API_SNAPSHOT = "/api/exports/huckster/snapshot";
               var API_CONFIG = "/api/exports/huckster/config";
               var API_PRICE_TYPES = "/api/exports/huckster/price-types";
+              var API_MS_BRIDGE_FLAGS = "/api/exports/huckster/ms-bridge-row-flags";
+              var API_ARCHIVE_FILTERS = "/api/exports/huckster/archive-filters";
               var shopsSet1 = [];
               var shopsSet2 = [];
               var hucksterPriceTypeOptions = [];
               var hucksterPriceTypeSet1 = "";
               var hucksterPriceTypeSet2 = "";
               var hucksterPriceTypesLoading = false;
+              /** Код → признаки из ms_export для фильтра архива на экране без повторного sync Huckster. */
+              var hucksterMsRowFlags = null;
+              var hucksterMsArchiveRedrawTimer = null;
+              var hucksterPersistArchiveTimer = null;
+              var hucksterArchiveUiActive = false;
               var syncPollTick = null;
               var syncTimerTick = null;
               var timerStartMs = 0;
@@ -1567,6 +1654,15 @@
                       clearTimeout(hucksterSearchRedrawT2);
                       hucksterSearchRedrawT2 = null;
                     }
+                    if (hucksterMsArchiveRedrawTimer) {
+                      clearTimeout(hucksterMsArchiveRedrawTimer);
+                      hucksterMsArchiveRedrawTimer = null;
+                    }
+                    if (hucksterPersistArchiveTimer) {
+                      clearTimeout(hucksterPersistArchiveTimer);
+                      hucksterPersistArchiveTimer = null;
+                    }
+                    hucksterMsRowFlags = null;
                     try {
                       localStorage.removeItem(matrixSearchStorageKey(1));
                       localStorage.removeItem(matrixSearchStorageKey(2));
@@ -1582,6 +1678,7 @@
                     hasRenderedCurrentResult = true;
                     setHucksterMatrixFromApi("dg-huckster-table-1", [], null);
                     setHucksterMatrixFromApi("dg-huckster-table-2", [], null);
+                    setHucksterLostFromApi({ rows: [] });
                     setStatusBase("Таблицы очищены, снимок матриц удалён из БД. Загрузите заново — «Обновить Huckster».", false);
                   })
                   .catch(function (e) {
@@ -1662,6 +1759,7 @@
                       if (x.json.result && x.json.result.success && !hasRenderedCurrentResult) {
                         var se = x.json.result.sheet_export;
                         var se2 = x.json.result.sheet_export_rrc;
+                        var seLost = x.json.result.sheet_export_lost;
                         setHucksterMatrixFromApi("dg-huckster-table-1", {
                           rows: se && se.rows,
                           bridge_row_meta: se && se.bridge_row_meta,
@@ -1671,6 +1769,9 @@
                           rows: se2 && se2.rows,
                           bridge_row_meta: se2 && se2.bridge_row_meta,
                           unit_gap_shop_indexes_by_uid: se2 && se2.unit_gap_shop_indexes_by_uid,
+                        });
+                        setHucksterLostFromApi({
+                          rows: seLost && seLost.rows,
                         });
                         hasRenderedCurrentResult = true;
                       } else if ((x.json.error || (x.json.result && !x.json.result.success)) && !hasRenderedCurrentResult) {
@@ -1694,7 +1795,8 @@
                   /* Наборы 1 и 2 грузим независимо: раньше при пустом наборе 1 набор 2 не показывался вообще. */
                   var r1 = j.sheet_export && Array.isArray(j.sheet_export.rows) ? j.sheet_export.rows : [];
                   var r2 = j.sheet_export_rrc && Array.isArray(j.sheet_export_rrc.rows) ? j.sheet_export_rrc.rows : [];
-                  if (r1.length === 0 && r2.length === 0) return;
+                  var rLost = j.sheet_export_lost && Array.isArray(j.sheet_export_lost.rows) ? j.sheet_export_lost.rows : [];
+                  if (r1.length === 0 && r2.length === 0 && rLost.length === 0) return;
                   setHucksterMatrixFromApi("dg-huckster-table-1", {
                     rows: r1,
                     bridge_row_meta: j.sheet_export && j.sheet_export.bridge_row_meta,
@@ -1705,6 +1807,7 @@
                     bridge_row_meta: j.sheet_export_rrc && j.sheet_export_rrc.bridge_row_meta,
                     unit_gap_shop_indexes_by_uid: j.sheet_export_rrc && j.sheet_export_rrc.unit_gap_shop_indexes_by_uid,
                   });
+                  setHucksterLostFromApi({ rows: rLost });
                   hasRenderedCurrentResult = true;
                   if (opts.skipStatus) return;
                   var rawWhen = j.updated_at != null && String(j.updated_at).trim() ? j.updated_at : j.stored_at;
@@ -1824,18 +1927,29 @@
                 return getMatrixColW("name_px");
               }
 
-              function applyMatrixColWidths() {
+              function widthControlScopeFrom_(el) {
+                return el && el.closest ? el.closest(".dg-huckster-colwidth-wrap") : null;
+              }
+
+              function widthInputValueFromScope_(scope, key) {
+                var scoped = scope ? scope.querySelector('[data-huckster-width-key="' + key + '"]') : null;
+                if (scoped) {
+                  var scopedRaw = String(scoped.value || "").trim();
+                  if (scopedRaw !== "") return scopedRaw;
+                }
+                var first = document.querySelector('[data-huckster-width-key="' + key + '"]');
+                return first ? String(first.value || "").trim() : "";
+              }
+
+              function applyMatrixColWidths(sourceEl) {
+                var scope = widthControlScopeFrom_(sourceEl);
                 try {
                   Object.keys(HUCKSTER_WIDTH_SPECS).forEach(function (key) {
                     var spec = getWidthSpec_(key);
-                    var els = document.querySelectorAll('[data-huckster-width-key="' + key + '"]');
                     var next = readStoredMatrixColW_(key);
-                    for (var i = 0; i < els.length; i++) {
-                      var raw = String(els[i].value || "").trim();
-                      if (raw !== "") {
-                        next = clampNum(Number(raw), spec.min, spec.max);
-                        break;
-                      }
+                    var raw = widthInputValueFromScope_(scope, key);
+                    if (raw !== "") {
+                      next = clampNum(Number(raw), spec.min, spec.max);
                     }
                     setWidthInputsTo_(key, String(next));
                     localStorage.setItem(matrixWidthStorageKey(key), String(next));
@@ -1853,11 +1967,13 @@
                 for (var ii = 0; ii < els.length; ii++) {
                   var el = els[ii];
                   el.addEventListener("keydown", function (ev) {
-                    if (ev.key === "Enter") applyMatrixColWidths();
+                    if (ev.key === "Enter") applyMatrixColWidths(ev.currentTarget);
                   });
                 }
                 document.querySelectorAll("[data-huckster-width-apply]").forEach(function (btn) {
-                  btn.addEventListener("click", applyMatrixColWidths);
+                  btn.addEventListener("click", function (ev) {
+                    applyMatrixColWidths(ev.currentTarget);
+                  });
                 });
               }
 
@@ -1991,10 +2107,24 @@
                   title = "Строк матрицы нет (одна строка = один repricer-UID в наборе)";
                 } else if (s === t) {
                   text = s + " " + hucksterPluralTovar(s);
-                  title = "В наборе " + t + " " + w2 + " (умный поиск и «Не найдено» не сужают список)";
+                  title =
+                    "В наборе " +
+                    t +
+                    " " +
+                    w2 +
+                    " (умный поиск и «Не найдено» не сужают список)" +
+                    (hucksterArchiveUiActive ? "; архив МС — по данным ms_export без Huckster" : "");
                 } else {
                   text = s + " из " + t + " " + w2;
-                  title = "Показано " + s + " из " + t + " " + w2 + " с учётом умного поиска и фильтра «Не найдено»";
+                  title =
+                    "Показано " +
+                    s +
+                    " из " +
+                    t +
+                    " " +
+                    w2 +
+                    " с учётом умного поиска и фильтра «Не найдено»" +
+                    (hucksterArchiveUiActive ? "; архив МС — по ms_export без Huckster" : "");
                 }
                 el.textContent = "· " + text;
                 el.setAttribute("title", title);
@@ -2562,6 +2692,44 @@
                 }
                 updateBridgeManagerFilterOptions();
                 redrawHucksterMatrix(tableId === "dg-huckster-table-1" ? 1 : 2);
+                scheduleRefreshMsBridgeArchiveFlagsAndRedraw();
+              }
+
+              function setHucksterLostFromApi(payload) {
+                var table = document.getElementById("dg-huckster-table-lost");
+                var badge = document.getElementById("dg-huckster-matrix-count-lost");
+                var rows = payload && Array.isArray(payload.rows) ? payload.rows : [];
+                var norm = normalizeMatrixRowsForRender(rows);
+                lastMatrixRowsLost = norm && norm.length ? norm : null;
+                if (!table) return;
+                if (!lastMatrixRowsLost || lastMatrixRowsLost.length < 2) {
+                  table.innerHTML = '<thead><tr><th class="text-muted">Нет данных</th></tr></thead><tbody><tr><td class="text-muted">Нет данных.</td></tr></tbody>';
+                  if (badge) badge.textContent = "· 0 товаров";
+                  return;
+                }
+                var head = lastMatrixRowsLost[0];
+                var body = lastMatrixRowsLost.slice(1);
+                var thead = "<thead><tr>";
+                for (var i = 0; i < head.length; i++) {
+                  thead += "<th>" + esc(String(head[i] == null ? "" : head[i])) + "</th>";
+                }
+                thead += "</tr></thead>";
+                var tbody = "<tbody>";
+                for (var r = 0; r < body.length; r++) {
+                  var row = body[r] || [];
+                  tbody += "<tr>";
+                  for (var c = 0; c < head.length; c++) {
+                    var val = row[c] == null ? "" : String(row[c]);
+                    tbody += "<td title=\"" + escAttr(val) + "\">" + esc(val) + "</td>";
+                  }
+                  tbody += "</tr>";
+                }
+                tbody += "</tbody>";
+                table.innerHTML = thead + tbody;
+                if (badge) {
+                  var n = Math.max(0, body.length);
+                  badge.textContent = "· " + n.toLocaleString("ru-RU") + " товаров";
+                }
               }
 
               function alignBridgeMetaToRows(refRows, refMeta, targetRows) {
@@ -2588,8 +2756,8 @@
                 if (t === "ID / КОД") return "Код товара из МойСклад; сопоставляется с UID Huckster в repricer.";
                 if (t === "Наименование товара") return "Название товара из МойСклад.";
                 if (t === "Менеджер") return "Менеджер из МойСклад (поле manager в ms_export).";
-                if (t === "Остаток") return "Остаток из ms_export. В bridge попадают складские позиции; товары с прекращённым сотрудничеством скрываются, кроме остатка больше нуля.";
-                if (t.indexOf("Цена") === 0) return "Выбранный тип цены из полной карточки МойСклад. В таблицу попадают только строки, где эта цена больше 0.";
+                if (t === "Остаток") return "Остаток из ms_export. Строки моста — все коды из выгрузки МС; сужение списка — фильтрами на этой странице и галочками архива.";
+                if (t.indexOf("Цена") === 0) return "Выбранный тип цены из карточки МойСклад (если задан в настройках набора). Пусто — если цены нет или 0; строки при этом не скрываются.";
                 if (t === "Ozon" || t === "WB" || t === "ЯМ") return "Статус repricer по этому маркетплейсу: зелёный — ровно один включённый repricer по UID; красный — включённого repricer нет или кабинет не определяется однозначно.";
                 if (t.indexOf("Модель ") === 0) return "Unit-модель Huckster, где найден этот UID для выбранного кабинета маркетплейса.";
                 if (t === HUCKSTER_MATRIX_SYNC_HEADER) return "Когда Datagon успешно собрал этот тест/снимок матрицы.";
@@ -2609,6 +2777,7 @@
                 var syncW = getMatrixColW("sync_px");
                 var head = rows[0];
                 var colCount = head.length;
+                var codeIdx = bridgeColIndex_(head, "ID / КОД");
                 var cabCols = [
                   { j: bridgeColIndex_(head, "Ozon"), mp: "ozon" },
                   { j: bridgeColIndex_(head, "WB"), mp: "wildberries" },
@@ -2689,7 +2858,16 @@
                     } else if (val) {
                       tip = ' title="' + escAttr(val) + '"';
                     }
-                    tbody += '<td class="' + cls.join(" ") + '"' + tip + ">" + esc(val) + "</td>";
+                    var cellHtml = esc(val);
+                    if (j === codeIdx) {
+                      var codeRaw = String(val || "").trim();
+                      var ff = hucksterMsRowFlags && hucksterMsRowFlags[codeRaw];
+                      if (ff && ff.archived_any) {
+                        cellHtml = '<span class="badge bg-danger me-1">Архив</span>' + cellHtml;
+                        tip = ' title="' + escAttr("Архивная позиция МойСклад: " + codeRaw) + '"';
+                      }
+                    }
+                    tbody += '<td class="' + cls.join(" ") + '"' + tip + ">" + cellHtml + "</td>";
                   }
                   tbody += "</tr>";
                 }
@@ -2875,7 +3053,20 @@
                 var totalBody = matrixBodyRowCount(full);
                 var head0 = full[0];
                 var isBridge = head0 && matrixIsMsBridgeHeader(head0[0]);
-                var step1 = onlyNotFound ? filterMatrixRowsNotFound(full) : full.slice();
+                var archP = getMsBridgeArchiveSyncPayload();
+                var exB = !!archP.ms_exclude_archived_bundles;
+                var exP = !!archP.ms_exclude_archived_products_zero_stock;
+                var exPB = !!archP.ms_exclude_products_with_bundles;
+                hucksterArchiveUiActive = !!(isBridge && (exB || exP));
+                var work = full.slice();
+                if (isBridge && (exB || exP) && hucksterMsRowFlags) {
+                  work = filterBridgeRowsByMsArchive(work, hucksterMsRowFlags, exB, exP);
+                }
+                if (isBridge && exPB) {
+                  work = filterBridgeRowsExcludeProductsWithBundles(work, true);
+                }
+                totalBody = matrixBodyRowCount(work);
+                var step1 = onlyNotFound ? filterMatrixRowsNotFound(work) : work.slice();
                 var bridgeAfterNotFound = null;
                 if (isBridge && bridgeFull && step1.length) {
                   bridgeAfterNotFound = alignBridgeMetaToRows(full, bridgeFull, step1);
@@ -3376,6 +3567,149 @@
                 renderPriceTypeSelect("dg-huckster-price-type-set2", hucksterPriceTypeSet2);
               }
 
+              function getMsBridgeArchiveSyncPayload() {
+                var e1 = document.getElementById("dg-huckster-ms-exclude-archived-bundles");
+                var e2 = document.getElementById("dg-huckster-ms-exclude-archived-products-zero-stock");
+                var e3 = document.getElementById("dg-huckster-ms-exclude-products-with-bundles");
+                return {
+                  ms_exclude_archived_bundles: !!(e1 && e1.checked),
+                  ms_exclude_archived_products_zero_stock: !!(e2 && e2.checked),
+                  ms_exclude_products_with_bundles: !!(e3 && e3.checked),
+                };
+              }
+
+              function applyMsBridgeArchiveFiltersFromServer(json) {
+                if (!json || typeof json !== "object") return;
+                var e1 = document.getElementById("dg-huckster-ms-exclude-archived-bundles");
+                var e2 = document.getElementById("dg-huckster-ms-exclude-archived-products-zero-stock");
+                var e3 = document.getElementById("dg-huckster-ms-exclude-products-with-bundles");
+                if (e1) e1.checked = !!json.ms_exclude_archived_bundles;
+                if (e2) e2.checked = !!json.ms_exclude_archived_products_zero_stock;
+                if (e3) e3.checked = !!json.ms_exclude_products_with_bundles;
+              }
+
+              function filterBridgeRowsExcludeProductsWithBundles(matrixRows, enabled) {
+                if (!enabled) return matrixRows ? matrixRows.slice() : [];
+                if (!matrixRows || matrixRows.length < 2) return matrixRows ? matrixRows.slice() : [];
+                var head = matrixRows[0];
+                if (!matrixIsMsBridgeHeader(head[0])) return matrixRows.slice();
+                var codeIdx = bridgeColIndex_(head, "ID / КОД");
+                if (codeIdx < 0) return matrixRows.slice();
+                var baseWithBundles = {};
+                var i;
+                for (i = 1; i < matrixRows.length; i++) {
+                  var row = matrixRows[i];
+                  var code = String(row[codeIdx] != null ? row[codeIdx] : "").trim();
+                  if (!code) continue;
+                  var dashPos = code.indexOf("-");
+                  if (dashPos <= 0 || dashPos >= code.length - 1) continue;
+                  var base = String(code.slice(0, dashPos)).trim();
+                  if (!base) continue;
+                  baseWithBundles[base] = 1;
+                }
+                var out = [matrixRows[0]];
+                for (i = 1; i < matrixRows.length; i++) {
+                  var row2 = matrixRows[i];
+                  var code2 = String(row2[codeIdx] != null ? row2[codeIdx] : "").trim();
+                  if (code2 && baseWithBundles[code2]) continue;
+                  out.push(row2);
+                }
+                return out;
+              }
+
+              function collectAllBridgeCodesFromStoredMatrices() {
+                var out = [];
+                var seen = {};
+                function addFromMatrix(arr) {
+                  if (!arr || arr.length < 2) return;
+                  var h0 = arr[0];
+                  if (!matrixIsMsBridgeHeader(h0[0])) return;
+                  var i;
+                  for (i = 1; i < arr.length; i++) {
+                    var c = String(arr[i][0] != null ? arr[i][0] : "").trim();
+                    if (!c || seen[c]) continue;
+                    seen[c] = 1;
+                    out.push(c);
+                  }
+                }
+                addFromMatrix(hucksterMatrixFull1);
+                addFromMatrix(hucksterMatrixFull2);
+                return out;
+              }
+
+              function filterBridgeRowsByMsArchive(matrixRows, flagsMap, excludeBundles, excludeProductsNoStock) {
+                if (!matrixRows || matrixRows.length < 2) return matrixRows ? matrixRows.slice() : [];
+                if (!excludeBundles && !excludeProductsNoStock) return matrixRows.slice();
+                var head = matrixRows[0];
+                if (!matrixIsMsBridgeHeader(head[0])) return matrixRows.slice();
+                var codeIdx = bridgeColIndex_(head, "ID / КОД");
+                if (codeIdx < 0) return matrixRows.slice();
+                var out = [matrixRows[0]];
+                var i;
+                for (i = 1; i < matrixRows.length; i++) {
+                  var row = matrixRows[i];
+                  var code = String(row[codeIdx] != null ? row[codeIdx] : "").trim();
+                  var f = flagsMap && flagsMap[code];
+                  if (f) {
+                    if (excludeBundles && f.archived_bundle) continue;
+                    if (excludeProductsNoStock && f.archived_product_no_stock) continue;
+                  }
+                  out.push(row);
+                }
+                return out;
+              }
+
+              function scheduleRefreshMsBridgeArchiveFlagsAndRedraw() {
+                if (hucksterMsArchiveRedrawTimer) clearTimeout(hucksterMsArchiveRedrawTimer);
+                hucksterMsArchiveRedrawTimer = setTimeout(function () {
+                  hucksterMsArchiveRedrawTimer = null;
+                  refreshMsBridgeArchiveFlagsThenRedraw();
+                }, 80);
+              }
+
+              function refreshMsBridgeArchiveFlagsThenRedraw() {
+                var codes = collectAllBridgeCodesFromStoredMatrices();
+                if (!codes.length) {
+                  hucksterMsRowFlags = {};
+                  redrawHucksterMatrix(1);
+                  redrawHucksterMatrix(2);
+                  return;
+                }
+                fetchJsonSafe(API_MS_BRIDGE_FLAGS, {
+                  method: "POST",
+                  credentials: "same-origin",
+                  headers: authHeaders(true),
+                  body: JSON.stringify({ codes: codes }),
+                })
+                  .then(function (x) {
+                    if (!x.ok || !x.json || !x.json.success) {
+                      throw new Error("bad");
+                    }
+                    hucksterMsRowFlags = x.json.flags && typeof x.json.flags === "object" ? x.json.flags : {};
+                    redrawHucksterMatrix(1);
+                    redrawHucksterMatrix(2);
+                  })
+                  .catch(function () {
+                    hucksterMsRowFlags = null;
+                    redrawHucksterMatrix(1);
+                    redrawHucksterMatrix(2);
+                  });
+              }
+
+              function persistMsArchiveFiltersDebounced() {
+                if (hucksterPersistArchiveTimer) clearTimeout(hucksterPersistArchiveTimer);
+                hucksterPersistArchiveTimer = setTimeout(function () {
+                  hucksterPersistArchiveTimer = null;
+                  var body = getMsBridgeArchiveSyncPayload();
+                  fetchJsonSafe(API_ARCHIVE_FILTERS, {
+                    method: "POST",
+                    credentials: "same-origin",
+                    headers: authHeaders(true),
+                    body: JSON.stringify(body),
+                  }).catch(function () {});
+                }, 400);
+              }
+
               function collectConfigFromInputs() {
                 function collectOneSet(setKey, sourceLen) {
                   var out = [];
@@ -3391,11 +3725,15 @@
                   });
                   return out.filter(function (r) { return r.id && r.name && r.marketplace && r.shop_id; });
                 }
+                var msArch = getMsBridgeArchiveSyncPayload();
                 return {
                   set1: collectOneSet("set1", shopsSet1.length),
                   set2: collectOneSet("set2", shopsSet2.length),
                   price_type_set_1: String((document.getElementById("dg-huckster-price-type-set1") || {}).value || "").trim(),
                   price_type_set_2: String((document.getElementById("dg-huckster-price-type-set2") || {}).value || "").trim(),
+                  ms_exclude_archived_bundles: msArch.ms_exclude_archived_bundles,
+                  ms_exclude_archived_products_zero_stock: msArch.ms_exclude_archived_products_zero_stock,
+                  ms_exclude_products_with_bundles: msArch.ms_exclude_products_with_bundles,
                 };
               }
 
@@ -3447,6 +3785,8 @@
                     hucksterPriceTypeSet2 = String(x.json.price_type_set_2 || cfg.price_type_set_2 || "").trim();
                     hucksterPriceTypeOptions = Array.isArray(x.json.price_type_options) ? x.json.price_type_options : hucksterPriceTypeOptions;
                     rerenderConfig();
+                    applyMsBridgeArchiveFiltersFromServer(x.json);
+                    scheduleRefreshMsBridgeArchiveFlagsAndRedraw();
                     loadSavedSnapshotFromDb().finally(function () {
                       setStatusBase("Наборы Huckster сохранены. Для применения фильтра по типу цены запустите «Обновить Huckster».", false);
                     });
@@ -3472,6 +3812,8 @@
                     hucksterPriceTypeSet2 = String(x.json.price_type_set_2 || "").trim();
                     hucksterPriceTypeOptions = Array.isArray(x.json.price_type_options) ? x.json.price_type_options : [];
                     rerenderConfig();
+                    applyMsBridgeArchiveFiltersFromServer(x.json);
+                    scheduleRefreshMsBridgeArchiveFlagsAndRedraw();
                   });
               }
 
@@ -3504,6 +3846,7 @@
                 hasRenderedCurrentResult = false;
                 setHucksterMatrixFromApi("dg-huckster-table-1", []);
                 setHucksterMatrixFromApi("dg-huckster-table-2", []);
+                setHucksterLostFromApi({ rows: [] });
                 setSyncButtonsState(true);
                 fetchJsonSafe(API_SYNC, {
                   method: "POST",
@@ -3533,7 +3876,7 @@
               }
 
               function runSync() {
-                runSyncWithPayload({});
+                runSyncWithPayload(getMsBridgeArchiveSyncPayload());
               }
 
               function runSyncTestUids() {
@@ -3545,7 +3888,9 @@
                   if (input && input.focus) input.focus();
                   return;
                 }
-                runSyncWithPayload({ test_uids: list });
+                var p = getMsBridgeArchiveSyncPayload();
+                p.test_uids = list;
+                runSyncWithPayload(p);
               }
 
               function resetBridgeFilters() {
@@ -3731,6 +4076,17 @@
               });
               var bridgeFilterReset = document.getElementById("dg-huckster-filter-reset");
               if (bridgeFilterReset) bridgeFilterReset.addEventListener("click", resetBridgeFilters);
+
+              ["dg-huckster-ms-exclude-archived-bundles", "dg-huckster-ms-exclude-archived-products-zero-stock", "dg-huckster-ms-exclude-products-with-bundles"].forEach(
+                function (id) {
+                  var el = document.getElementById(id);
+                  if (!el) return;
+                  el.addEventListener("change", function () {
+                    persistMsArchiveFiltersDebounced();
+                    scheduleRefreshMsBridgeArchiveFlagsAndRedraw();
+                  });
+                }
+              );
 
               var smart1 = document.getElementById("dg-huckster-smart-search-1");
               if (smart1) {

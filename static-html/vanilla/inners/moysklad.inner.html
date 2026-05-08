@@ -155,14 +155,6 @@
                     <option value="0">Только нет</option>
                   </select>
                 </div>
-                <div class="col-md-2" data-dg-ms-filter-field="ms_f_archived">
-                  <label class="form-label" for="ms-f-archived">Статус</label>
-                  <select class="form-select" id="ms-f-archived">
-                    <option value="active">Активные</option>
-                    <option value="archived">Архивные</option>
-                    <option value="all">Все</option>
-                  </select>
-                </div>
                 <div class="col-md-2" data-dg-ms-filter-field="ms_f_limit">
                   <label class="form-label" for="ms-f-limit">На странице</label>
                   <select class="form-select" id="ms-f-limit">
@@ -192,6 +184,7 @@
                 <button type="button" class="btn btn-sm btn-outline-secondary" id="moysklad-reset" data-dg-tooltip="Сбросить фильтры к значениям по умолчанию и очистить сохранённые настройки."><i class="pe-7s-refresh me-1"></i>По умолчанию</button>
                 <button type="button" class="btn btn-sm btn-outline-success" id="moysklad-sync"><i class="pe-7s-play me-1"></i>Запустить синхронизацию</button>
                 <button type="button" class="btn btn-sm btn-outline-warning" id="moysklad-stop"><i class="pe-7s-close-circle me-1"></i>Остановить</button>
+                <button type="button" class="btn btn-sm btn-outline-danger" id="moysklad-recalc-bundles" data-dg-tooltip="Быстрый пересчет остатков только для комплектов из уже сохраненных карточек МойСклад (без полного sync)."><i class="pe-7s-calculator me-1"></i>Пересчитать остатки комплектов</button>
                 <button type="button" class="btn btn-sm btn-outline-info" id="moysklad-rebuild-cache"><i class="pe-7s-refresh-2 me-1"></i>Перестроить кэш связей</button>
                 <button type="button" class="btn btn-sm btn-outline-primary" id="moysklad-refresh"><i class="pe-7s-refresh me-1"></i>Обновить</button>
                 <button type="button" class="btn btn-sm btn-outline-dark" id="moysklad-copy-link"><i class="pe-7s-link me-1"></i>Скопировать ссылку</button>
@@ -202,22 +195,30 @@
           </div>
 
           <div class="row">
-            <div class="col-md-4">
+            <div class="col-6 col-md-3">
               <div class="card mb-3 card-body text-center">
                 <div class="text-muted"><i class="pe-7s-menu me-1"></i>Всего в выборке</div>
                 <h3 class="mb-0" style="font-variant-numeric: tabular-nums" id="st-total">0</h3>
               </div>
             </div>
-            <div class="col-md-4">
+            <div class="col-6 col-md-3">
               <div class="card mb-3 card-body text-center">
                 <div class="text-muted"><i class="pe-7s-box1 me-1"></i>Товары / Комплекты</div>
                 <h3 class="mb-0" style="font-variant-numeric: tabular-nums" id="st-pb">0 / 0</h3>
               </div>
             </div>
-            <div class="col-md-4">
+            <div class="col-6 col-md-3">
               <div class="card mb-3 card-body text-center">
-                <div class="text-muted"><i class="pe-7s-cash me-1"></i>Сумма остатков</div>
-                <h3 class="mb-0" style="font-variant-numeric: tabular-nums" id="st-val"></h3>
+                <div class="text-muted"><i class="pe-7s-cash me-1"></i>Сумма по товарам</div>
+                <div class="text-muted small mb-1" style="font-size: 0.75rem; line-height: 1.25">остаток × закуп, только «Товар»</div>
+                <h3 class="mb-0" style="font-variant-numeric: tabular-nums" id="st-val-products">0 ₽</h3>
+              </div>
+            </div>
+            <div class="col-6 col-md-3">
+              <div class="card mb-3 card-body text-center">
+                <div class="text-muted"><i class="pe-7s-cash me-1"></i>Сумма по комплектам</div>
+                <div class="text-muted small mb-1" style="font-size: 0.75rem; line-height: 1.25">остаток × закуп, только «Комплект»</div>
+                <h3 class="mb-0" style="font-variant-numeric: tabular-nums" id="st-val-bundles">0 ₽</h3>
               </div>
             </div>
           </div>

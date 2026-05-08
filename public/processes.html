@@ -705,7 +705,10 @@
               <div><b>Статус:</b> <span id="dg-proc-ms-status">—</span></div>
               <div><b>Сообщение:</b> <span id="dg-proc-ms-msg">—</span></div>
               <div><b>Прогресс:</b> <span id="dg-proc-ms-prog">0/0</span></div>
-              <div class="small text-muted mt-2" id="dg-proc-ms-logs"></div>
+              <div class="small text-muted mt-2 mb-1">Текущая сессия (память процесса, до 30 строк):</div>
+              <div class="small text-muted mt-1" id="dg-proc-ms-logs"></div>
+              <div class="small text-muted mt-2 mb-1">Архив шагов синка в БД (последние 50, переживают рестарт):</div>
+              <div class="small text-muted font-monospace" id="dg-proc-ms-plogs" style="white-space: pre-wrap; word-break: break-word"></div>
             </div>
           </div>
 
@@ -1270,6 +1273,31 @@
             d.textContent = "• " + line;
             msLogs.appendChild(d);
           });
+
+        var msPlogs = document.getElementById("dg-proc-ms-plogs");
+        if (msPlogs) {
+          msPlogs.replaceChildren();
+          var plRaw = Array.isArray(overview.moyskladPersistedLogs) ? overview.moyskladPersistedLogs : [];
+          var nLow = needle ? String(needle).toLowerCase() : "";
+          var pl = nLow
+            ? plRaw.filter(function (row) {
+                var t = String(row.created_at != null ? fmtDateTime(row.created_at) : "").toLowerCase();
+                var line = String(row.line || "").toLowerCase();
+                return line.indexOf(nLow) !== -1 || t.indexOf(nLow) !== -1;
+              })
+            : plRaw;
+          if (!pl.length) {
+            msPlogs.textContent = nLow ? "(нет совпадений в архиве)" : "(пока пусто — после следующего синка появятся строки)";
+          } else {
+            pl.forEach(function (row) {
+              var t = row.created_at != null ? fmtDateTime(row.created_at) : "—";
+              var line = String(row.line || "");
+              var d = document.createElement("div");
+              d.textContent = "• " + t + "  " + line;
+              msPlogs.appendChild(d);
+            });
+          }
+        }
 
         var autoSync = overview.autoSync || {};
         var cfg = autoSync.config || {};

@@ -490,6 +490,8 @@ Query:
 
 Агрегированная статистика по выгрузке МойСклад (с кэшем на сервере; параметры — в `routes/moysklad.js`). Набор фильтров совпадает с `GET /api/ms/export`, включая **`g_*`** (сеточные поля экрана).
 
+Поля **`inventory_value_products`** и **`inventory_value_bundles`**: суммы **`остаток × закупочная цена`** отдельно по строкам **`Товар`** и **`Комплект`** (те же фильтры, что у выборки; без «плакат» в наименовании); пустая закупка даёт 0 для строки. В UI — две карточки «Сумма по товарам» / «Сумма по комплектам»; общей склеенной суммы нет.
+
 ### POST `/api/ms/stop`
 
 Остановить фоновую задачу синхронизации с API МойСклад.
@@ -497,6 +499,18 @@ Query:
 ### POST `/api/ms/rebuild-links-cache`
 
 Пересборка серверного кэша связей кодов с `ms_export` (используется из UI «Мои товары»).
+
+### POST `/api/ms/recalc-bundle-stocks`
+
+Быстрый пересчёт остатков только для строк `type='Комплект'` в `ms_export` на основе уже сохранённых карточек из `ms_entity_details` и текущих остатков компонентов в `ms_export`. Нужен, когда у части комплектов остаток ушёл в `0`/пусто и не хочется ждать полный `POST /api/ms/sync`.
+
+Маршрут запускает задачу **в фоне** и сразу возвращает `success`, `started`, `message`. Если пересчёт уже выполняется — `409 ALREADY_RUNNING`.
+
+### GET `/api/ms/recalc-bundle-stocks-status`
+
+Статус фонового пересчёта остатков комплектов.
+
+Ответ: `success`, `active`, `started_at`, `finished_at`, `total_bundles`, `processed`, `updated`, `skipped_no_components` (в кэше нет строк состава), `skipped_unresolved` (не удалось получить коды позиций / остатки), `export_no_row` (расчёт был, но `UPDATE ms_export` не нашёл строку с этим кодом и типом «Комплект»), `errors`, `message`.
 
 ## Exports / marketplaces
 
@@ -577,9 +591,11 @@ Body (JSON):
 
 Префикс: `/api/exports/huckster`. Экран: `/exports-huckster.html`.
 
-Матрицы (`sheet_export` / `sheet_export_rrc`):
+Матрицы (`sheet_export` / `sheet_export_rrc` / `sheet_export_lost`):
 
-- **`sheet_export` (набор 1, Huckster Export)** и **`sheet_export_rrc` (набор 2, Huckster Export RRC):** строки из таблицы **`ms_export`** (МойСклад): **складская позиция** = «Да»; **«Перестали сотрудничать»** = «Да» отфильтровываются, **кроме** позиций с **остатком больше нуля** (их оставляем). Если для набора выбран тип цены МойСклад (`price_type_set_*`), дополнительно остаются только строки, где в `ms_entity_details.payload_json.salePrices` значение этой цены больше `0`, а в таблицу добавляется колонка с названием выбранного типа цены и значением в рублях. Колонки: **ID / КОД** (= код МС, сопоставляется с `uid` в repricer), **Наименование товара**, **Менеджер**, **Остаток**, опционально **выбранный тип цены**, по маркетплейсам **Ozon / WB / ЯМ** — статус **«Репрайсер ВКЛЮЧЕН»** (зелёный), если по этому коду есть **ровно один** включённый repricer в маркетплейсе; иначе **«Репрайсер ВЫКЛЮЧЕН»** (красный: ноль или больше одного включённых — нельзя однозначно выбрать кабинет). Рядом колонки **«Модель …»** показывают назначение Unit-модели: название модели (зелёный), **«Модель не назначена»** (красный) или **«Модель назначена, но Репрайсер на модели выключен»** (жёлтый). Для набора 1 действует фильтр Unit-моделей «онлайн»+«калькулятор», для RRC — полный набор Unit-моделей. Последняя колонка **«Актуально на»** — время синка. В JSON добавлены **`bridge_row_meta`** (состояния кабинетов для подсветки), **`matrix_kind`: `ms_bridge_v1`**. Реализация: `lib/hucksterMsBridgeMatrix.js` + `routes/exportsHuckster.js`.
+- **`sheet_export` (набор 1, Huckster Export)** и **`sheet_export_rrc` (набор 2, Huckster Export RRC):** строки моста — **все** позиции из **`ms_export`** с непустым кодом (без серверного отсечения по складской позиции, сотрудничанию или цене). Сужение списка на экране — **блок фильтров** (менеджер, маркетплейсы, модели, умный поиск, «Не найдено», пагинация) и **галочки «архив МС»** (`app_settings` + `POST /ms-bridge-row-flags`). Смысл галочек: **скрыть архивные комплекты** (`is_archived` и при этом `type` = «Комплект» или в `ms_entity_details.kind` = `bundle`) **даже с остатком**; **скрыть архивные товары** (`type` = «Товар», `is_archived`) **только при** `stock ≤ 0`. Если для набора задан тип цены МойСклад (`price_type_set_*`), в таблицу добавляется **колонка** с этим типом (значение из `ms_entity_details.payload_json.salePrices` или пусто при отсутствии/нуле; **строки не удаляются**). Колонки: **ID / КОД** (= код МС, сопоставляется с `uid` в repricer), **Наименование товара**, **Менеджер**, **Остаток**, опционально **выбранный тип цены**, по маркетплейсам **Ozon / WB / ЯМ** — статус **«Репрайсер ВКЛЮЧЕН»** (зелёный), если по этому коду есть **ровно один** включённый repricer в маркетплейсе; иначе **«Репрайсер ВЫКЛЮЧЕН»** (красный: ноль или больше одного включённых — нельзя однозначно выбрать кабинет). Рядом колонки **«Модель …»** показывают назначение Unit-модели: название модели (зелёный), **«Модель не назначена»** (красный) или **«Модель назначена, но Репрайсер на модели выключен»** (жёлтый). Для набора 1 при обогащении из Huckster учитываются только Unit-модели «онлайн»+«калькулятор», для RRC — полный набор Unit-моделей. Последняя колонка **«Актуально на»** — время синка. В JSON добавлены **`bridge_row_meta`** (состояния кабинетов для подсветки), **`matrix_kind`: `ms_bridge_v1`**.
+
+- **`sheet_export_lost` (потеряшки):** отдельная выборка для аудита. Строка попадает в набор, если в Huckster по коду есть **любая Unit-модель и/или включенный repricer**, а в МойСклад у этого кода одновременно `no_longer_cooperation = Да` и `stock = 0`. Колонки: `ID / КОД`, `Наименование товара`, `Менеджер`, `Остаток`, `Repricer` (Да/Нет), `Модели Huckster`, `Актуально на`. Реализация: `routes/exportsHuckster.js`.
 
 Старые снапшоты наборов 1/2 с первой колонкой **«Обновлено (repricer)»** UI отображает по прежней сетке (UID × кабинеты).
 
@@ -589,10 +605,13 @@ Body (JSON):
 
 Принудительно **запускает фоновое** обновление двух матриц Huckster (аналог листов Google Sheets `Huckster Export` и `Huckster Export RRC`) через API `wbs.e-teleport.ru`.
 
-Основная кнопка экрана `/exports-huckster.html` отправляет **пустое** тело `{}` и полагается на креды, уже сохранённые на сервере (см. ниже `credentials` / переменные окружения). Кнопка **«Тест UID»** отправляет `test_uids` и не перезаписывает сохранённый snapshot.
+Основная кнопка экрана `/exports-huckster.html` отправляет в теле три булевых поля фильтра МС (`ms_exclude_archived_bundles`, `ms_exclude_archived_products_zero_stock`, `ms_exclude_products_with_bundles`); сервер **сохраняет** их в `app_settings` (для экрана и планировщика), **не** сужая при этом выборку из `ms_export` при `POST /sync` — в снапшот попадают все строки моста, а галочки управляют только отображением (см. `POST /ms-bridge-row-flags`). Креды — из `app_settings` / env, если в теле не переданы `email` / `password`. Кнопка **«Тест UID»** добавляет `test_uids` к тем же полям и не перезаписывает сохранённый snapshot.
 
 Body (JSON):
 
+- `ms_exclude_archived_bundles` — сохраняется в `app_settings.huckster_ms_exclude_archived_bundles` (экран: скрыть архивные комплекты в матрице).
+- `ms_exclude_archived_products_zero_stock` — сохраняется в `app_settings.huckster_ms_exclude_archived_products_zero_stock` (экран: скрыть архивные товары без остатка).
+- `ms_exclude_products_with_bundles` — сохраняется в `app_settings.huckster_ms_exclude_products_with_bundles` (экран: скрыть базовый код `N`, если есть строки `N-...`).
 - `email` — логин Huckster (опционально, если задан `HUCKSTER_EMAIL` или `app_settings.huckster_email`).
 - `password` — пароль Huckster (опционально, если задан `HUCKSTER_PASSWORD` или `app_settings.huckster_password`).
 - `delay_ms` — пауза между страницами пагинации (мс, по умолчанию 270, не ниже 135). Размер страницы к e-teleport: repricer и unit — по 900 записей (на 10% ниже верхнего лимита API 1000).
@@ -612,7 +631,7 @@ Body (JSON):
 - `status_text` — текст текущего этапа (аутентификация / текущий магазин / завершение).
 - `progress.total_shops`, `progress.done_shops` — шаги загрузки: **два прохода** по всем магазинам обоих наборов (`total_shops = 2 × число магазинов`). Сначала везде **Repricer** (`repricer/items/list`), затем везде **Unit-модели**; матрицы в ответе собираются только после обоих проходов.
 - `progress.current_shop_name`, `progress.current_set` — текущий магазин и набор (`set1` / `set2`); `status_text` начинается с `Repricer —` или `Unit-модели —`.
-- `result` — финальный результат (при успехе: `sheet_export.rows`, `sheet_export_rrc.rows`, `updated_at`; для тестового запуска ещё `test_uids`).
+- `result` — финальный результат (при успехе: `sheet_export.rows`, `sheet_export_rrc.rows`, `sheet_export_lost.rows`, `updated_at`; для тестового запуска ещё `test_uids`).
 - `error` — объект ошибки (в том числе `HUCKSTER_STOPPED` после ручной остановки).
 
 ### POST `/api/exports/huckster/stop`
@@ -628,7 +647,7 @@ Body (JSON):
 
 Последнее успешное сохранение матриц (без запросов к e-teleport). Используется UI для автоподгрузки после обновления страницы.
 
-Ответ JSON: `success`, `source: "snapshot"`, `empty` (boolean), `updated_at`, опционально `stored_at` (время записи в БД), `sheet_export` / `sheet_export_rrc` — те же объекты, что в результате sync (`rows`, `total_uids` или `total_rows`, при новой bridge-схеме ещё `bridge_row_meta`, `matrix_kind`). Если сохранений ещё не было — `empty: true` и пустые `rows`.
+Ответ JSON: `success`, `source: "snapshot"`, `empty` (boolean), `updated_at`, опционально `stored_at` (время записи в БД), `sheet_export` / `sheet_export_rrc` / `sheet_export_lost` — те же объекты, что в результате sync (`rows`, `total_uids` или `total_rows`, при новой bridge-схеме ещё `bridge_row_meta`, `matrix_kind`). Если сохранений ещё не было — `empty: true` и пустые `rows`.
 
 ### DELETE `/api/exports/huckster/snapshot`
 
@@ -642,12 +661,25 @@ Body (JSON):
 
 Ответ также содержит:
 
-- `price_type_set_1`, `price_type_set_2` — выбранные типы цен МойСклад для фильтра строк набора;
+- `price_type_set_1`, `price_type_set_2` — выбранные типы цен МойСклад для **колонки** в матрице набора (не для отсечения строк на сервере);
+- `ms_exclude_archived_bundles`, `ms_exclude_archived_products_zero_stock`, `ms_exclude_products_with_bundles` — текущие флаги фильтров МС для моста (см. описание матриц выше);
 - `price_type_options` — совместимое поле, актуальный список загружается отдельным `GET /api/exports/huckster/price-types`, чтобы настройки кабинетов отрисовывались без ожидания сканирования карточек МойСклад.
 
 ### GET `/api/exports/huckster/price-types`
 
 Возвращает список названий типов цен, найденных в сохранённых полных карточках МойСклад (`ms_entity_details.payload_json.salePrices`). Используется селектами **«Тип цены МойСклад»** в блоке **«Наборы»**.
+
+### POST `/api/exports/huckster/ms-bridge-row-flags`
+
+Только чтение **своей** БД (`ms_export`, при необходимости `ms_entity_details`): по списку кодов возвращает признаки для фильтра архива на экране **без** запроса к Huckster (e-teleport). UI вызывает после смены галочек «архив МС», чтобы перерисовать уже загруженный снапшот матрицы.
+
+Body (JSON): `codes` — массив строк (коды из колонки **ID / КОД**), до **6000** уникальных значений.
+
+Ответ: `{ "success": true, "flags": { "2187-100": { "archived_any": true, "archived_bundle": true, "archived_product_no_stock": false }, ... } }` — для кодов, найденных в `ms_export` (нет кода в ответе — строку матрицы не сужаем по архиву). Поле `archived_any` используется UI для бейджа «Архив» в колонке `ID / КОД`.
+
+### POST `/api/exports/huckster/archive-filters`
+
+Сохраняет в `app_settings` только флаги фильтра МС: `ms_exclude_archived_bundles`, `ms_exclude_archived_products_zero_stock`, `ms_exclude_products_with_bundles` (как при `POST /sync`, но без запуска синхронизации Huckster).
 
 ### POST `/api/exports/huckster/config`
 
@@ -659,6 +691,7 @@ Body (JSON):
 - `set2`: массив объектов `{ id, name, marketplace, shop_id }`
 - `price_type_set_1`: опциональное название типа цены МойСклад для `Huckster Export`
 - `price_type_set_2`: опциональное название типа цены МойСклад для `Huckster Export RRC`
+- `ms_exclude_archived_bundles`, `ms_exclude_archived_products_zero_stock`, `ms_exclude_products_with_bundles` — опционально; при наличии в теле сохраняются в `app_settings` (как при `POST /sync`)
 
 `marketplace` допускает только `ozon`, `wildberries`, `yandex`. Оба набора обязаны содержать хотя бы одну валидную строку. Панель при сохранении отправляет оба массива из формы. Если для набора выбран `price_type_set_*`, при следующей сборке Huckster-матрицы сервер оставит только строки, где в сохранённой полной карточке МойСклад значение выбранного типа цены больше `0`.
 
@@ -686,7 +719,9 @@ Body (JSON): `email`, `password` (обязательны), опциональн�
 
 ### GET `/api/processes/overview`
 
-Сводка для экранов «Дашборд» / «Логи»: глобальный синк, МойСклад, авто-синки, discover, очередь `pages`, матчинг по `my_site_id`, метрики runtime и размер базы данных. Query: `my_site_id` (опционально, для блока матчинга). Размер базы считается через `information_schema.TABLES` и кэшируется на 24 часа.
+Сводка для экранов «Дашборд» / «Логи»: глобальный синк, МойСклад, авто-синки, discover, очередь `pages`, матчинг по `my_site_id`, метрики runtime и размер базы данных. Query: `my_site_id` (опционально, для блока матчинга). Размер базы считается через `information_schema.TABLES` и кэшируется на 5 минут.
+
+В ответе поле **`moyskladPersistedLogs`**: массив `{ created_at, line }` — последние шаги синка МойСклада из таблицы **`dg_ms_sync_log`** (переживают рестарт Node; строки пишутся из `routes/moysklad.js` при каждом `addLog`).
 
 ### GET `/api/processes/db-size`
 

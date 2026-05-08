@@ -84,6 +84,12 @@ let appSettings = {
     huckster_shops_set_2: '',
     huckster_ms_price_type_set_1: '',
     huckster_ms_price_type_set_2: '',
+    /** Фильтр строк МС для моста Huckster: исключать архивные комплекты (всегда при включении). */
+    huckster_ms_exclude_archived_bundles: 0,
+    /** Исключать архивные товары только при нулевом/отрицательном остатке. */
+    huckster_ms_exclude_archived_products_zero_stock: 0,
+    /** Если есть коды вида N-..., скрывать базовый товар N в матрицах Huckster. */
+    huckster_ms_exclude_products_with_bundles: 0,
     mp_ozon_include_archived: 0,
     auto_sync_marketplaces_enabled: 0,
     auto_sync_marketplaces_time: '05:00',
@@ -108,7 +114,8 @@ let lastCpuUsage = process.cpuUsage();
 let lastCpuCheckAt = process.hrtime.bigint();
 let sourceEnabledColumnReady = false;
 let sourceIdentityIndexesReady = false;
-const DB_SIZE_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+// Держим кэш коротким, чтобы виджет "Размер БД" на дашборде обновлялся заметно чаще.
+const DB_SIZE_CACHE_TTL_MS = 5 * 60 * 1000;
 let dbSizeCache = null;
 
 async function ensureSourceEnabledColumn() {
@@ -239,6 +246,9 @@ async function initDB() {
             ['huckster_shops_set_2',''],
             ['huckster_ms_price_type_set_1',''],
             ['huckster_ms_price_type_set_2',''],
+            ['huckster_ms_exclude_archived_bundles','0'],
+            ['huckster_ms_exclude_archived_products_zero_stock','0'],
+            ['huckster_ms_exclude_products_with_bundles','0'],
             ['mp_ozon_include_archived','0'],
             ['auto_sync_marketplaces_enabled','0'],
             ['auto_sync_marketplaces_time','05:00'],
@@ -822,6 +832,59 @@ async function finishAutoSyncRun(taskType, status = 'completed', message = '') {
     autoSyncRunIds.delete(taskType);
 }
 
+/**
+ * После рестарта Node в памяти нет autoSyncRunIds и waitUntil не «дожимает» старую задачу,
+ * а строки в БД остаются status=running без finished_at — закрываем их при холодном старте.
+ */
+async function closeStaleAutoSyncRunsOnStartup() {
+    try {
+        await ensureAutoSyncRunsTable();
+        const [r] = await db.query(
+            `UPDATE auto_sync_runs
+             SET status = 'interrupted',
+                 message = CONCAT(
+                     TRIM(COALESCE(message, '')),
+                     CASE WHEN TRIM(COALESCE(message, '')) = '' THEN '' ELSE ' ' END,
+                     '(запись закрыта при старте сервера: предыдущий процесс не вызвал финиш; если синк шёл — проверьте МойСклад и логи)'
+                 ),
+                 finished_at = NOW()
+             WHERE status = 'running' AND finished_at IS NULL`
+        );
+        const n = Number(r?.affectedRows || 0);
+        if (n > 0) {
+            console.log(`[AUTO SYNC] Закрыто незавершённых записей auto_sync_runs при старте: ${n}`);
+        }
+    } catch (e) {
+        console.warn('[AUTO SYNC] closeStaleAutoSyncRunsOnStartup:', e.message || e);
+    }
+}
+
+/** Если запись осталась running дольше суток — вероятно сбой без рестарта; закрываем. */
+async function closeAncientRunningAutoSyncRuns() {
+    try {
+        await ensureAutoSyncRunsTable();
+        const [r] = await db.query(
+            `UPDATE auto_sync_runs
+             SET status = 'failed',
+                 message = CONCAT(
+                     TRIM(COALESCE(message, '')),
+                     CASE WHEN TRIM(COALESCE(message, '')) = '' THEN '' ELSE ' ' END,
+                     '(авто: running дольше 24 ч — см. логи Node и экран МойСклад)'
+                 ),
+                 finished_at = NOW()
+             WHERE status = 'running'
+               AND finished_at IS NULL
+               AND started_at < DATE_SUB(NOW(), INTERVAL 24 HOUR)`
+        );
+        const n = Number(r?.affectedRows || 0);
+        if (n > 0) {
+            console.warn(`[AUTO SYNC] Принудительно закрыто «вечных» running-записей (>24ч): ${n}`);
+        }
+    } catch (e) {
+        console.warn('[AUTO SYNC] closeAncientRunningAutoSyncRuns:', e.message || e);
+    }
+}
+
 async function waitUntil(predicate, timeoutMs = 24 * 60 * 60 * 1000, tickMs = 1000) {
     const started = Date.now();
     while (Date.now() - started < timeoutMs) {
@@ -1226,10 +1289,20 @@ initDB().then(() => {
                 databaseSize = { error: e.message || 'Не удалось получить размер базы данных' };
             }
 
+            let moyskladPersistedLogs = [];
+            if (typeof moyskladRouterFactory.fetchMsSyncPersistedLogs === 'function') {
+                try {
+                    moyskladPersistedLogs = await moyskladRouterFactory.fetchMsSyncPersistedLogs(db, 50);
+                } catch (_) {
+                    moyskladPersistedLogs = [];
+                }
+            }
+
             return res.json({
                 refreshedAt: new Date().toISOString(),
                 globalSync,
                 moysklad,
+                moyskladPersistedLogs,
                 autoSync,
                 autoSyncRuns,
                 discovery,
@@ -1418,8 +1491,16 @@ initDB().then(() => {
         cleanupLogsByRetentionDays(appSettings.log_retention_days).catch(() => {});
         cleanupResultsByRetentionDays(appSettings.results_retention_days).catch(() => {});
     }, 12 * 60 * 60 * 1000);
-    startAutoSyncScheduler();
-    startUnifiedTaskWatchdog();
+    closeStaleAutoSyncRunsOnStartup()
+        .catch((e) => console.warn('[AUTO SYNC]', e.message || e))
+        .finally(() => {
+            startAutoSyncScheduler();
+            startUnifiedTaskWatchdog();
+            closeAncientRunningAutoSyncRuns().catch(() => {});
+            setInterval(() => {
+                closeAncientRunningAutoSyncRuns().catch(() => {});
+            }, 6 * 60 * 60 * 1000);
+        });
 }).catch(err => {
     console.error('Failed to start server:', err);
     process.exit(1);
