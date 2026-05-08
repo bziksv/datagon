@@ -2,9 +2,12 @@
 
 const express = require('express');
 const axios = require('axios');
+const fs = require('fs/promises');
+const path = require('path');
 const { saveHucksterSnapshot, loadHucksterSnapshot, clearHucksterSnapshot } = require('../lib/hucksterSnapshotStore');
 const {
     fetchMsExportBridgeRowsAll,
+    fetchMsExportBridgeCandidates,
     enrichMsRowsWithPriceType,
     fetchMoyskladPriceTypeNames,
     buildMsHucksterBridgeExport,
@@ -27,6 +30,57 @@ const HUCKSTER_REPRICER_PAGE_LIMIT = 900;
 const HUCKSTER_UNIT_PAGE_LIMIT = 900;
 const HUCKSTER_DELAY_MS_DEFAULT = 270;
 const HUCKSTER_DELAY_MS_MIN = 135;
+const HUCKSTER_REPRICER_REQUEST_TIMEOUT_MS = 45000;
+const HUCKSTER_REPRICER_RETRY_MAX = 2;
+const HUCKSTER_REPRICER_SHOP_TIMEOUT_MS = 90000;
+const HUCKSTER_REPRICER_SHOP_TIMEOUT_YM_SET1_MS = 180000;
+const HUCKSTER_POSTPROCESS_TIMEOUT_MS = 90000;
+const HUCKSTER_UNIT_REQUEST_TIMEOUT_MS = 45000;
+const HUCKSTER_UNIT_RETRY_MAX = 2;
+const HUCKSTER_UNIT_HARD_TIMEOUT_MS = 60000;
+const HUCKSTER_UNIT_SHOP_TIMEOUT_MS = 90000;
+const HUCKSTER_SYNC_LOG_FILE = path.join(process.cwd(), 'logs', 'huckster-sync.log');
+const HUCKSTER_SYNC_LOG_MAX_BYTES = 10 * 1024 * 1024; // 10 MB
+const HUCKSTER_SYNC_LOG_ROTATE_KEEP = 5;
+let hucksterLogLastRotateCheckAt = 0;
+
+function hucksterLogLine(level, message, meta) {
+    const ts = new Date().toISOString();
+    const payload = meta && typeof meta === 'object' ? ` ${JSON.stringify(meta)}` : '';
+    return `[${ts}] [${level}] ${message}${payload}\n`;
+}
+
+async function appendHucksterLog(level, message, meta) {
+    try {
+        await fs.mkdir(path.dirname(HUCKSTER_SYNC_LOG_FILE), { recursive: true });
+        const now = Date.now();
+        if (now - hucksterLogLastRotateCheckAt > 30 * 1000) {
+            hucksterLogLastRotateCheckAt = now;
+            try {
+                const st = await fs.stat(HUCKSTER_SYNC_LOG_FILE);
+                if (Number(st.size || 0) >= HUCKSTER_SYNC_LOG_MAX_BYTES) {
+                    for (let i = HUCKSTER_SYNC_LOG_ROTATE_KEEP; i >= 1; i -= 1) {
+                        const src = `${HUCKSTER_SYNC_LOG_FILE}.${i}`;
+                        const dst = `${HUCKSTER_SYNC_LOG_FILE}.${i + 1}`;
+                        try {
+                            if (i === HUCKSTER_SYNC_LOG_ROTATE_KEEP) {
+                                await fs.unlink(src);
+                            } else {
+                                await fs.rename(src, dst);
+                            }
+                        } catch (_) {}
+                    }
+                    try {
+                        await fs.rename(HUCKSTER_SYNC_LOG_FILE, `${HUCKSTER_SYNC_LOG_FILE}.1`);
+                    } catch (_) {}
+                }
+            } catch (_) {}
+        }
+        await fs.appendFile(HUCKSTER_SYNC_LOG_FILE, hucksterLogLine(level, message, meta), 'utf8');
+    } catch (_) {
+        // no-op: logging must not break sync flow
+    }
+}
 
 /**
  * Набор 1 (Huckster Export): в матрице учитываем только модели Unit с названием «онлайн» + «калькулятор»
@@ -226,14 +280,40 @@ function makeStoppedError() {
     return err;
 }
 
+async function withTimeout(promise, timeoutMs, timeoutMessage) {
+    let timer = null;
+    try {
+        return await Promise.race([
+            promise,
+            new Promise((_, reject) => {
+                timer = setTimeout(() => {
+                    reject(new Error(timeoutMessage || `Timeout ${timeoutMs}ms`));
+                }, timeoutMs);
+            }),
+        ]);
+    } finally {
+        if (timer) clearTimeout(timer);
+    }
+}
+
 function throwIfStopped(isStopped) {
     if (typeof isStopped === 'function' && isStopped()) {
         throw makeStoppedError();
     }
 }
 
+function getRepricerShopTimeoutMs(setKey, shop) {
+    const set = String(setKey || '').trim().toLowerCase();
+    const shopId = String((shop && shop.id) || '').trim().toLowerCase();
+    const mp = String((shop && shop.marketplace) || '').trim().toLowerCase();
+    if (set === 'set1' && (shopId === 'ym' || mp === 'yandex')) {
+        return HUCKSTER_REPRICER_SHOP_TIMEOUT_YM_SET1_MS;
+    }
+    return HUCKSTER_REPRICER_SHOP_TIMEOUT_MS;
+}
+
 /** Только repricer/items/list по одному магазину (без Unit-моделей). Все позиции с uid; «включён в репрайсер» — отдельное поле (раньше выключенные отбрасывались). */
-async function fetchRepricerProductsForShop(shop, sessionId, opts, isStopped) {
+async function fetchRepricerProductsForShop(shop, sessionId, opts, isStopped, onProgress, setActiveAbortController) {
     /** @type {Map<string, { uid: string, name: string, updatedAt: string, repricerEnabled: boolean }>} */
     const byUid = new Map();
     let offset = 0;
@@ -242,20 +322,82 @@ async function fetchRepricerProductsForShop(shop, sessionId, opts, isStopped) {
     const delayMs = Math.max(HUCKSTER_DELAY_MS_MIN, Number(opts.delay_ms || HUCKSTER_DELAY_MS_DEFAULT));
     const uidFilter = opts.uid_filter instanceof Set ? opts.uid_filter : null;
     const foundFiltered = new Set();
+    async function postRepricer(payload, titleForLog) {
+        const maxAttempts = HUCKSTER_REPRICER_RETRY_MAX;
+        let lastErr = null;
+        for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+            throwIfStopped(isStopped);
+            const startedAt = Date.now();
+            const controller = new AbortController();
+            if (typeof setActiveAbortController === 'function') setActiveAbortController(controller);
+            const killer = setTimeout(() => controller.abort(), HUCKSTER_REPRICER_REQUEST_TIMEOUT_MS + 5000);
+            try {
+                const resp = await axios.post(
+                    'https://wbs.e-teleport.ru/markets/integrations/repricer/items/list',
+                    payload,
+                    {
+                        timeout: HUCKSTER_REPRICER_REQUEST_TIMEOUT_MS,
+                        signal: controller.signal,
+                        headers: {
+                            Accept: 'application/json',
+                            'Content-Type': 'application/json',
+                            Cookie: `ss-id=${sessionId}`,
+                        },
+                    }
+                );
+                const elapsed = Date.now() - startedAt;
+                console.info('[huckster] %s ok %sms %s/%s', titleForLog, elapsed, shop.marketplace, shop.shop_id);
+                return resp;
+            } catch (e) {
+                lastErr = e;
+                const elapsed = Date.now() - startedAt;
+                const msg = e?.response?.data?.error?.message || e?.message || String(e);
+                console.warn(
+                    '[huckster] %s fail %sms attempt %s/%s %s/%s: %s',
+                    titleForLog,
+                    elapsed,
+                    attempt,
+                    maxAttempts,
+                    shop.marketplace,
+                    shop.shop_id,
+                    msg
+                );
+                if (typeof onProgress === 'function') {
+                    onProgress({
+                        phase: 'request_retry',
+                        title: titleForLog,
+                        attempt,
+                        attempts: maxAttempts,
+                        error: String(msg),
+                    });
+                }
+                if (attempt < maxAttempts) {
+                    throwIfStopped(isStopped);
+                    await new Promise((r) => setTimeout(r, Math.max(500, delayMs)));
+                }
+            } finally {
+                clearTimeout(killer);
+                if (typeof setActiveAbortController === 'function') setActiveAbortController(null);
+            }
+        }
+        throw lastErr || new Error(`${titleForLog}: unknown error`);
+    }
 
     while (maxOffset === 0 || offset < maxOffset) {
         throwIfStopped(isStopped);
-        const r = await axios.post(
-            'https://wbs.e-teleport.ru/markets/integrations/repricer/items/list',
+        if (typeof onProgress === 'function') {
+            onProgress({
+                phase: 'page',
+                page: Math.floor(offset / limit) + 1,
+                offset,
+                uid_found: byUid.size,
+                uid_filter_found: foundFiltered.size,
+                uid_filter_total: uidFilter ? uidFilter.size : 0,
+            });
+        }
+        const r = await postRepricer(
             { marketplace: shop.marketplace, shop_id: shop.shop_id, limit, offset },
-            {
-                timeout: 120000,
-                headers: {
-                    Accept: 'application/json',
-                    'Content-Type': 'application/json',
-                    Cookie: `ss-id=${sessionId}`,
-                },
-            }
+            `repricer/items/list offset=${offset}`
         );
         const payload = r && r.data ? r.data : {};
         if (payload.error) throw new Error(payload.error.message || JSON.stringify(payload.error));
@@ -282,11 +424,19 @@ async function fetchRepricerProductsForShop(shop, sessionId, opts, isStopped) {
 }
 
 /** Дописать inUnitModel и названия Unit-наборов к уже загруженному списку repricer. `unitSetFilter` — только наборы list, для которых вернётся true (например только «Онлайн калькулятор» для Export). */
-async function enrichProductsWithUnitModels(shop, sessionId, products, opts, isStopped, unitSetFilter, onUnitProgress) {
+async function enrichProductsWithUnitModels(shop, sessionId, products, opts, isStopped, unitSetFilter, onUnitProgress, setActiveAbortController) {
     throwIfStopped(isStopped);
     let info = null;
     try {
-        info = await fetchAllUnitModelInfo(shop, sessionId, opts, isStopped, unitSetFilter, onUnitProgress);
+        info = await fetchAllUnitModelInfo(
+            shop,
+            sessionId,
+            opts,
+            isStopped,
+            unitSetFilter,
+            onUnitProgress,
+            setActiveAbortController
+        );
     } catch (e) {
         console.warn('[huckster] unit economy models:', e && e.message ? e.message : e);
         info = null;
@@ -352,7 +502,7 @@ function extractUnitSetDisplayName(st, setId) {
  * @param {(st: object) => boolean} [unitSetFilter] — если задан, обрабатываются только строки set_list, для которых filter(st) === true.
  * @returns {{ uidSet: Set<string>, uidToNames: Map<string, Set<string>> }}
  */
-async function fetchAllUnitModelInfo(shop, sessionId, opts, isStopped, unitSetFilter, onProgress) {
+async function fetchAllUnitModelInfo(shop, sessionId, opts, isStopped, unitSetFilter, onProgress, setActiveAbortController) {
     const uidSet = new Set();
     const uidToNames = new Map();
     const delayMs = Math.max(HUCKSTER_DELAY_MS_MIN, Number(opts.delay_ms || HUCKSTER_DELAY_MS_DEFAULT));
@@ -365,15 +515,43 @@ async function fetchAllUnitModelInfo(shop, sessionId, opts, isStopped, unitSetFi
         Cookie: `ss-id=${sessionId}`,
     };
     async function postUnit(url, payload, titleForLog) {
-        const maxAttempts = 3;
+        const maxAttempts = HUCKSTER_UNIT_RETRY_MAX;
         let lastErr = null;
         for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+            const startedAt = Date.now();
+            const hardTimer = setTimeout(() => {
+                /* no-op marker timer for logs */
+            }, HUCKSTER_UNIT_HARD_TIMEOUT_MS);
             try {
-                return await axios.post(url, payload, { timeout: 120000, headers });
+                const controller = new AbortController();
+                if (typeof setActiveAbortController === 'function') setActiveAbortController(controller);
+                const killer = setTimeout(() => controller.abort(), HUCKSTER_UNIT_HARD_TIMEOUT_MS);
+                try {
+                    const resp = await axios.post(url, payload, {
+                        timeout: HUCKSTER_UNIT_REQUEST_TIMEOUT_MS,
+                        headers,
+                        signal: controller.signal,
+                    });
+                    const elapsed = Date.now() - startedAt;
+                    console.info('[huckster] %s ok %sms %s/%s', titleForLog, elapsed, shop.marketplace, shop.shop_id);
+                    return resp;
+                } finally {
+                    clearTimeout(killer);
+                }
             } catch (e) {
                 lastErr = e;
                 const msg = e?.response?.data?.error?.message || e?.message || String(e);
-                console.warn('[huckster] %s attempt %s/%s %s/%s: %s', titleForLog, attempt, maxAttempts, shop.marketplace, shop.shop_id, msg);
+                const elapsed = Date.now() - startedAt;
+                console.warn(
+                    '[huckster] %s fail %sms attempt %s/%s %s/%s: %s',
+                    titleForLog,
+                    elapsed,
+                    attempt,
+                    maxAttempts,
+                    shop.marketplace,
+                    shop.shop_id,
+                    msg
+                );
                 if (typeof onProgress === 'function') {
                     onProgress({
                         phase: 'request_retry',
@@ -384,8 +562,12 @@ async function fetchAllUnitModelInfo(shop, sessionId, opts, isStopped, unitSetFi
                     });
                 }
                 if (attempt < maxAttempts) {
+                    throwIfStopped(isStopped);
                     await new Promise((r) => setTimeout(r, Math.max(500, delayMs)));
                 }
+            } finally {
+                clearTimeout(hardTimer);
+                if (typeof setActiveAbortController === 'function') setActiveAbortController(null);
             }
         }
         throw lastErr || new Error(`${titleForLog}: unknown error`);
@@ -540,6 +722,7 @@ function createExportsHucksterRouter(_db, appSettings) {
         },
         result: null,
         error: null,
+        active_abort_controller: null,
     };
 
     function getConfiguredSets() {
@@ -555,29 +738,47 @@ function createExportsHucksterRouter(_db, appSettings) {
         return s === 'да' || s === 'yes' || s === '1' || s === 'true';
     }
 
-    function buildHucksterSignalsByCode(set1Items, set2Items) {
+    function buildHucksterSignalsByCode(cfg, set1Items, set2Items) {
         const byCode = new Map();
+        function emptyMarkets() {
+            return {
+                ozon: { repricer: false, modelNames: new Set() },
+                wildberries: { repricer: false, modelNames: new Set() },
+                yandex: { repricer: false, modelNames: new Set() },
+            };
+        }
         function touch(code) {
             const c = String(code || '').trim();
             if (!c) return null;
             if (!byCode.has(c)) {
-                byCode.set(c, { repricer: false, modelNames: new Set() });
+                byCode.set(c, { repricer: false, modelNames: new Set(), markets: emptyMarkets() });
             }
             return byCode.get(c);
         }
-        const buckets = [set1Items || {}, set2Items || {}];
-        for (const bucket of buckets) {
-            for (const shopId of Object.keys(bucket)) {
-                const list = Array.isArray(bucket[shopId]) ? bucket[shopId] : [];
+        const bucketDefs = [
+            { shops: Array.isArray(cfg && cfg.set1) ? cfg.set1 : [], items: set1Items || {} },
+            { shops: Array.isArray(cfg && cfg.set2) ? cfg.set2 : [], items: set2Items || {} },
+        ];
+        for (const def of bucketDefs) {
+            const mpByShopId = new Map(
+                (def.shops || []).map((s) => [String((s && s.id) || ''), String((s && s.marketplace) || '').toLowerCase()])
+            );
+            for (const shopId of Object.keys(def.items || {})) {
+                const list = Array.isArray(def.items[shopId]) ? def.items[shopId] : [];
+                const mp = mpByShopId.get(String(shopId || '')) || '';
                 for (const row of list) {
                     const rec = touch(row && row.uid);
                     if (!rec) continue;
                     if (row && row.repricerEnabled === true) rec.repricer = true;
+                    const marketRec = rec.markets && rec.markets[mp] ? rec.markets[mp] : null;
+                    if (marketRec && row && row.repricerEnabled === true) marketRec.repricer = true;
                     const names = String((row && row.unitModelNames) || '').trim();
                     if (names) {
                         for (const part of names.split(';')) {
                             const nm = String(part || '').trim();
-                            if (nm) rec.modelNames.add(nm);
+                            if (!nm) continue;
+                            rec.modelNames.add(nm);
+                            if (marketRec) marketRec.modelNames.add(nm);
                         }
                     }
                 }
@@ -587,9 +788,20 @@ function createExportsHucksterRouter(_db, appSettings) {
     }
 
     function buildHucksterLostRows(msRows, signalMap, syncedAtIso) {
-        const header = ['ID / КОД', 'Наименование товара', 'Менеджер', 'Остаток', 'Repricer', 'Модели Huckster', 'Актуально на'];
+        const header = ['ID / КОД', 'Наименование товара', 'Менеджер', 'Остаток', 'Ozon', 'Модель Ozon', 'WB', 'Модель WB', 'ЯМ', 'Модель ЯМ', 'Актуально на'];
         const rows = [header];
         const syncCell = syncedAtIso ? new Date(syncedAtIso).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' }) : '';
+        function repricerCell(marketSig) {
+            return marketSig && marketSig.repricer ? 'Репрайсер ВКЛЮЧЕН' : 'Репрайсер ВЫКЛЮЧЕН';
+        }
+        function modelCell(marketSig) {
+            const names = marketSig && marketSig.modelNames && marketSig.modelNames.size
+                ? Array.from(marketSig.modelNames).sort((a, b) => a.localeCompare(b, 'ru', { numeric: true })).join('; ')
+                : '';
+            if (marketSig && marketSig.repricer) return names || 'Модель не назначена';
+            if (names) return `Модель назначена, но Репрайсер на модели выключен: ${names}`;
+            return 'Модель не назначена';
+        }
         for (const ms of msRows || []) {
             const code = String(ms && ms.code ? ms.code : '').trim();
             if (!code) continue;
@@ -598,16 +810,20 @@ function createExportsHucksterRouter(_db, appSettings) {
             if (!sig.repricer && (!sig.modelNames || sig.modelNames.size === 0)) continue;
             if (!isMsNoLongerCooperationYes(ms.no_longer_cooperation)) continue;
             if (Number(ms.stock || 0) !== 0) continue;
-            const models = sig.modelNames && sig.modelNames.size
-                ? Array.from(sig.modelNames).sort((a, b) => a.localeCompare(b, 'ru', { numeric: true })).join('; ')
-                : '';
+            const mo = sig.markets && sig.markets.ozon ? sig.markets.ozon : null;
+            const mw = sig.markets && sig.markets.wildberries ? sig.markets.wildberries : null;
+            const my = sig.markets && sig.markets.yandex ? sig.markets.yandex : null;
             rows.push([
                 code,
                 String(ms.name || ''),
                 String(ms.manager || ''),
                 String(ms.stock != null ? ms.stock : ''),
-                sig.repricer ? 'Да' : 'Нет',
-                models || '—',
+                repricerCell(mo),
+                modelCell(mo),
+                repricerCell(mw),
+                modelCell(mw),
+                repricerCell(my),
+                modelCell(my),
                 syncCell,
             ]);
         }
@@ -648,6 +864,7 @@ function createExportsHucksterRouter(_db, appSettings) {
             .concat(cfg.set2.map((shop) => ({ set: 'set2', shop })));
         syncState.active = true;
         syncState.stop_requested = false;
+        syncState.active_abort_controller = null;
         syncState.started_at = new Date().toISOString();
         syncState.finished_at = null;
         syncState.error = null;
@@ -666,6 +883,10 @@ function createExportsHucksterRouter(_db, appSettings) {
 
         (async () => {
             try {
+                const setActiveAbortController = (controller) => {
+                    syncState.active_abort_controller = controller || null;
+                };
+                await appendHucksterLog('INFO', 'sync_started', { started_at: syncState.started_at, test_uids: opts.test_uids });
                 throwIfStopped(() => syncState.stop_requested);
                 const sessionId = await hucksterAuth(email, password);
                 const set1Items = {};
@@ -678,14 +899,71 @@ function createExportsHucksterRouter(_db, appSettings) {
                     syncState.progress.current_shop_name = item.shop.name;
                     syncState.progress.current_set = item.set;
                     syncState.status_text = `Repricer — ${item.shop.name} (${setLabel})...`;
-                    const rows = await fetchRepricerProductsForShop(
-                        item.shop,
-                        sessionId,
-                        opts,
-                        () => syncState.stop_requested
+                    const repricerShopTimeoutMs = getRepricerShopTimeoutMs(item.set, item.shop);
+                    await appendHucksterLog('INFO', 'repricer_shop_start', {
+                        set: item.set,
+                        shop_id: item.shop.id,
+                        shop_name: item.shop.name,
+                        marketplace: item.shop.marketplace,
+                        timeout_ms: repricerShopTimeoutMs,
+                    });
+                    const repricerProgress = (p) => {
+                        if (!p || typeof p !== 'object') return;
+                        const prefix = `Repricer — ${item.shop.name} (${setLabel})`;
+                        if (p.phase === 'page') {
+                            const pg = Number(p.page || 0);
+                            const off = Number(p.offset || 0);
+                            const uf = Number(p.uid_filter_found || 0);
+                            const ut = Number(p.uid_filter_total || 0);
+                            syncState.status_text =
+                                ut > 0
+                                    ? `${prefix}: стр. ${pg}, offset ${off}, UID ${uf}/${ut}`
+                                    : `${prefix}: стр. ${pg}, offset ${off}`;
+                            appendHucksterLog('INFO', 'repricer_page', {
+                                set: item.set,
+                                shop_id: item.shop.id,
+                                page: pg,
+                                offset: off,
+                                uid_filter_found: uf,
+                                uid_filter_total: ut,
+                            });
+                            return;
+                        }
+                        if (p.phase === 'request_retry') {
+                            syncState.status_text = `${prefix}: ретрай ${Number(p.attempt || 0)}/${Number(
+                                p.attempts || 0
+                            )} (${String(p.title || '')})`;
+                            appendHucksterLog('WARN', 'repricer_retry', {
+                                set: item.set,
+                                shop_id: item.shop.id,
+                                attempt: Number(p.attempt || 0),
+                                attempts: Number(p.attempts || 0),
+                                title: String(p.title || ''),
+                                error: String(p.error || ''),
+                            });
+                        }
+                    };
+                    const rows = await withTimeout(
+                        fetchRepricerProductsForShop(
+                            item.shop,
+                            sessionId,
+                            opts,
+                            () => syncState.stop_requested,
+                            repricerProgress,
+                            setActiveAbortController
+                        ),
+                        repricerShopTimeoutMs,
+                        `Timeout Repricer: ${item.shop.name} (${setLabel}) > ${Math.round(
+                            repricerShopTimeoutMs / 1000
+                        )}s`
                     );
                     if (item.set === 'set1') set1Items[item.shop.id] = rows;
                     else set2Items[item.shop.id] = rows;
+                    await appendHucksterLog('INFO', 'repricer_shop_done', {
+                        set: item.set,
+                        shop_id: item.shop.id,
+                        rows: Array.isArray(rows) ? rows.length : 0,
+                    });
                     syncState.progress.done_shops += 1;
                 }
                 for (const item of allShops) {
@@ -695,6 +973,12 @@ function createExportsHucksterRouter(_db, appSettings) {
                     syncState.progress.current_shop_name = item.shop.name;
                     syncState.progress.current_set = item.set;
                     syncState.status_text = `Unit-модели — ${item.shop.name} (${setLabel})...`;
+                    await appendHucksterLog('INFO', 'unit_shop_start', {
+                        set: item.set,
+                        shop_id: item.shop.id,
+                        shop_name: item.shop.name,
+                        marketplace: item.shop.marketplace,
+                    });
                     const bucket = item.set === 'set1' ? set1Items : set2Items;
                     const raw = bucket[item.shop.id];
                     const set1UnitFilter = makeSet1OnlineCalculatorUnitFilter();
@@ -704,16 +988,30 @@ function createExportsHucksterRouter(_db, appSettings) {
                         const prefix = `Unit-модели — ${item.shop.name} (${setLabel2})`;
                         if (p.phase === 'set_list_start') {
                             syncState.status_text = `${prefix}: загружаем список наборов...`;
+                            appendHucksterLog('INFO', 'unit_set_list_start', { set: item.set, shop_id: item.shop.id });
                             return;
                         }
                         if (p.phase === 'set_list_done') {
                             syncState.status_text = `${prefix}: наборов ${Number(p.set_count || 0)}.`;
+                            appendHucksterLog('INFO', 'unit_set_list_done', {
+                                set: item.set,
+                                shop_id: item.shop.id,
+                                set_count: Number(p.set_count || 0),
+                            });
                             return;
                         }
                         if (p.phase === 'set_start') {
                             syncState.status_text = `${prefix}: набор ${Number(p.set_index || 0)}/${Number(
                                 p.set_total || 0
                             )} (${String(p.set_label || p.set_id || '').slice(0, 48)})`;
+                            appendHucksterLog('INFO', 'unit_set_start', {
+                                set: item.set,
+                                shop_id: item.shop.id,
+                                set_id: String(p.set_id || ''),
+                                set_label: String(p.set_label || ''),
+                                set_index: Number(p.set_index || 0),
+                                set_total: Number(p.set_total || 0),
+                            });
                             return;
                         }
                         if (p.phase === 'set_page') {
@@ -721,51 +1019,175 @@ function createExportsHucksterRouter(_db, appSettings) {
                             const off = Number(p.offset || 0);
                             const uf = Number(p.uid_filter_found || 0);
                             const ut = Number(p.uid_filter_total || 0);
+                            const setLabelShort = String(p.set_label || p.set_id || '').slice(0, 28);
                             syncState.status_text =
                                 ut > 0
-                                    ? `${prefix}: набор ${Number(p.set_index || 0)}/${Number(p.set_total || 0)}, стр. ${pg}, offset ${off}, UID ${uf}/${ut}`
-                                    : `${prefix}: набор ${Number(p.set_index || 0)}/${Number(p.set_total || 0)}, стр. ${pg}, offset ${off}`;
+                                    ? `${prefix}: ${setLabelShort} | набор ${Number(p.set_index || 0)}/${Number(p.set_total || 0)}, стр. ${pg}, offset ${off}, UID ${uf}/${ut}`
+                                    : `${prefix}: ${setLabelShort} | набор ${Number(p.set_index || 0)}/${Number(p.set_total || 0)}, стр. ${pg}, offset ${off}`;
+                            appendHucksterLog('INFO', 'unit_set_page', {
+                                set: item.set,
+                                shop_id: item.shop.id,
+                                set_id: String(p.set_id || ''),
+                                set_label: String(p.set_label || ''),
+                                set_index: Number(p.set_index || 0),
+                                set_total: Number(p.set_total || 0),
+                                page: pg,
+                                offset: off,
+                                uid_filter_found: uf,
+                                uid_filter_total: ut,
+                            });
                             return;
                         }
                         if (p.phase === 'request_retry') {
                             syncState.status_text = `${prefix}: ретрай ${Number(p.attempt || 0)}/${Number(
                                 p.attempts || 0
                             )} (${String(p.title || '')})`;
+                            appendHucksterLog('WARN', 'unit_retry', {
+                                set: item.set,
+                                shop_id: item.shop.id,
+                                attempt: Number(p.attempt || 0),
+                                attempts: Number(p.attempts || 0),
+                                title: String(p.title || ''),
+                                error: String(p.error || ''),
+                            });
                         }
                     };
-                    bucket[item.shop.id] = await enrichProductsWithUnitModels(
-                        item.shop,
-                        sessionId,
-                        raw,
-                        opts,
-                        () => syncState.stop_requested,
-                        item.set === 'set1' ? set1UnitFilter : null,
-                        unitProgress
-                    );
+                    try {
+                        bucket[item.shop.id] = await withTimeout(
+                            enrichProductsWithUnitModels(
+                                item.shop,
+                                sessionId,
+                                raw,
+                                opts,
+                                () => syncState.stop_requested,
+                                item.set === 'set1' ? set1UnitFilter : null,
+                                unitProgress,
+                                setActiveAbortController
+                            ),
+                            HUCKSTER_UNIT_SHOP_TIMEOUT_MS,
+                            `Timeout Unit-моделей: ${item.shop.name} (${setLabel}) > ${Math.round(
+                                HUCKSTER_UNIT_SHOP_TIMEOUT_MS / 1000
+                            )}s`
+                        );
+                    } catch (eUnitShop) {
+                        const msg = eUnitShop && eUnitShop.message ? eUnitShop.message : String(eUnitShop);
+                        syncState.status_text = `Ошибка Unit-моделей: ${item.shop.name} (${setLabel}) — ${msg}`;
+                        await appendHucksterLog('ERROR', 'unit_shop_failed', {
+                            set: item.set,
+                            shop_id: item.shop.id,
+                            error: msg,
+                        });
+                        throw eUnitShop;
+                    }
+                    await appendHucksterLog('INFO', 'unit_shop_done', {
+                        set: item.set,
+                        shop_id: item.shop.id,
+                        rows: Array.isArray(bucket[item.shop.id]) ? bucket[item.shop.id].length : 0,
+                    });
                     syncState.progress.done_shops += 1;
                 }
                 const syncedAt = new Date().toISOString();
-                let msBridgeRows = [];
+                let msBridgeRowsAll = [];
+                let msBridgeRowsSet1 = [];
+                let msBridgeRowsSet2Base = [];
                 try {
                     if (typeof _db?.query === 'function') {
-                        msBridgeRows = await fetchMsExportBridgeRowsAll(_db);
+                        syncState.status_text = 'Финализация: загрузка строк МойСклад...';
+                        await appendHucksterLog('INFO', 'postprocess_ms_rows_start', {});
+                        msBridgeRowsAll = await fetchMsExportBridgeRowsAll(_db);
+                        await appendHucksterLog('INFO', 'postprocess_ms_rows_done', {
+                            rows: Array.isArray(msBridgeRowsAll) ? msBridgeRowsAll.length : 0,
+                        });
+                        const set1Filters = {
+                            exclude_archived_bundles:
+                                bodyHasOwn(bodyObj, 'ms_exclude_archived_bundles')
+                                    ? appSettingBool01(bodyObj.ms_exclude_archived_bundles)
+                                    : appSettingBool01(appSettings.huckster_ms_exclude_archived_bundles),
+                            exclude_archived_products_zero_stock:
+                                bodyHasOwn(bodyObj, 'ms_exclude_archived_products_zero_stock')
+                                    ? appSettingBool01(bodyObj.ms_exclude_archived_products_zero_stock)
+                                    : appSettingBool01(appSettings.huckster_ms_exclude_archived_products_zero_stock),
+                        };
+                        msBridgeRowsSet1 = await fetchMsExportBridgeCandidates(_db, set1Filters);
+                        msBridgeRowsSet2Base = msBridgeRowsSet1.slice();
+                        await appendHucksterLog('INFO', 'postprocess_ms_rows_set1_filtered_done', {
+                            rows: Array.isArray(msBridgeRowsSet1) ? msBridgeRowsSet1.length : 0,
+                            ...set1Filters,
+                        });
                         if (opts.uid_filter) {
-                            msBridgeRows = msBridgeRows.filter((r) => opts.uid_filter.has(String(r.code || '').trim()));
+                            msBridgeRowsAll = msBridgeRowsAll.filter((r) => opts.uid_filter.has(String(r.code || '').trim()));
+                            msBridgeRowsSet1 = msBridgeRowsSet1.filter((r) => opts.uid_filter.has(String(r.code || '').trim()));
+                            msBridgeRowsSet2Base = msBridgeRowsSet2Base.filter((r) =>
+                                opts.uid_filter.has(String(r.code || '').trim())
+                            );
+                            await appendHucksterLog('INFO', 'postprocess_ms_rows_uid_filtered', {
+                                rows_all: Array.isArray(msBridgeRowsAll) ? msBridgeRowsAll.length : 0,
+                                rows_set1: Array.isArray(msBridgeRowsSet1) ? msBridgeRowsSet1.length : 0,
+                                rows_set2_base: Array.isArray(msBridgeRowsSet2Base) ? msBridgeRowsSet2Base.length : 0,
+                                uid_filter_total: opts.uid_filter.size,
+                            });
                         }
                     }
                 } catch (eMs) {
                     console.warn('[huckster] ms bridge rows:', eMs && eMs.message ? eMs.message : eMs);
                 }
-                const set1MsBridgeRows = await enrichMsRowsWithPriceType(_db, msBridgeRows, cfg.priceTypeSet1);
-                const set2MsBridgeRows = await enrichMsRowsWithPriceType(_db, msBridgeRows, cfg.priceTypeSet2);
+                syncState.status_text = 'Финализация: обогащение ценами МойСклад (набор 1)...';
+                await appendHucksterLog('INFO', 'postprocess_enrich_set1_start', {
+                    price_type: String(cfg.priceTypeSet1 || ''),
+                });
+                const set1MsBridgeRows = await withTimeout(
+                    enrichMsRowsWithPriceType(_db, msBridgeRowsSet1, cfg.priceTypeSet1),
+                    HUCKSTER_POSTPROCESS_TIMEOUT_MS,
+                    `Timeout postprocess set1 > ${Math.round(HUCKSTER_POSTPROCESS_TIMEOUT_MS / 1000)}s`
+                );
+                await appendHucksterLog('INFO', 'postprocess_enrich_set1_done', {
+                    rows: Array.isArray(set1MsBridgeRows) ? set1MsBridgeRows.length : 0,
+                });
+                syncState.status_text = 'Финализация: обогащение ценами МойСклад (набор 2)...';
+                await appendHucksterLog('INFO', 'postprocess_enrich_set2_start', {
+                    price_type: String(cfg.priceTypeSet2 || ''),
+                });
+                const set2EnrichProgress = (p) => {
+                    if (!p || typeof p !== 'object') return;
+                    if (p.phase !== 'detail_chunk_done') return;
+                    const ci = Number(p.chunk_index || 0);
+                    const ct = Number(p.chunk_total || 0);
+                    const loaded = Number(p.rows_loaded || 0);
+                    if (ct > 0) {
+                        syncState.status_text = `Финализация: обогащение ценами МойСклад (набор 2), chunk ${ci}/${ct}...`;
+                    }
+                    appendHucksterLog('INFO', 'postprocess_enrich_set2_chunk', {
+                        chunk_index: ci,
+                        chunk_total: ct,
+                        rows_loaded: loaded,
+                    });
+                };
+                const set2MsBridgeRows = await withTimeout(
+                    enrichMsRowsWithPriceType(_db, msBridgeRowsSet2Base, cfg.priceTypeSet2, set2EnrichProgress),
+                    HUCKSTER_POSTPROCESS_TIMEOUT_MS,
+                    `Timeout postprocess set2 > ${Math.round(HUCKSTER_POSTPROCESS_TIMEOUT_MS / 1000)}s`
+                );
+                const set2MsBridgeRowsFiltered = set2MsBridgeRows.filter(
+                    (r) => Number(r && r.selected_price_type_value_cents) > 0
+                );
+                await appendHucksterLog('INFO', 'postprocess_enrich_set2_done', {
+                    rows: Array.isArray(set2MsBridgeRowsFiltered) ? set2MsBridgeRowsFiltered.length : 0,
+                });
+                syncState.status_text = 'Финализация: сборка матриц Huckster...';
+                await appendHucksterLog('INFO', 'postprocess_build_exports_start', {});
                 const set1 = buildMsHucksterBridgeExport(cfg.set1, set1Items, set1MsBridgeRows, syncedAt, {
                     priceTypeName: cfg.priceTypeSet1,
                 });
-                const set2 = buildMsHucksterBridgeExport(cfg.set2, set2Items, set2MsBridgeRows, syncedAt, {
+                const set2 = buildMsHucksterBridgeExport(cfg.set2, set2Items, set2MsBridgeRowsFiltered, syncedAt, {
                     priceTypeName: cfg.priceTypeSet2,
                 });
-                const signalsByCode = buildHucksterSignalsByCode(set1Items, set2Items);
-                const sheetLost = buildHucksterLostRows(msBridgeRows, signalsByCode, syncedAt);
+                const signalsByCode = buildHucksterSignalsByCode(cfg, set1Items, set2Items);
+                const sheetLost = buildHucksterLostRows(msBridgeRowsAll, signalsByCode, syncedAt);
+                await appendHucksterLog('INFO', 'postprocess_build_exports_done', {
+                    set1_rows: Number(set1.total_rows || 0),
+                    set2_rows: Number(set2.total_rows || 0),
+                    lost_rows: Number(sheetLost.total_rows || 0),
+                });
                 syncState.error = null;
                 syncState.result = {
                     success: true,
@@ -778,9 +1200,18 @@ function createExportsHucksterRouter(_db, appSettings) {
                 syncState.status_text = opts.test_uids.length
                     ? `Тест Huckster завершён: ${opts.test_uids.join(', ')}.`
                     : 'Обновление Huckster завершено.';
+                await appendHucksterLog('INFO', 'sync_completed', {
+                    finished_at: new Date().toISOString(),
+                    set1_rows: Number(set1.total_rows || 0),
+                    set2_rows: Number(set2.total_rows || 0),
+                    lost_rows: Number(sheetLost.total_rows || 0),
+                });
                 if (!opts.test_uids.length) {
                     try {
+                        syncState.status_text = 'Финализация: сохранение снапшота в БД...';
+                        await appendHucksterLog('INFO', 'postprocess_snapshot_save_start', {});
                         await saveHucksterSnapshot(_db, syncState.result);
+                        await appendHucksterLog('INFO', 'postprocess_snapshot_save_done', {});
                     } catch (saveErr) {
                         console.error('[huckster] snapshot save:', saveErr && saveErr.message ? saveErr.message : saveErr);
                     }
@@ -789,16 +1220,21 @@ function createExportsHucksterRouter(_db, appSettings) {
                 if (e && e.code === 'HUCKSTER_STOPPED') {
                     syncState.error = { code: 'HUCKSTER_STOPPED', error: e.message || 'Остановлено пользователем' };
                     syncState.status_text = 'Обновление Huckster остановлено.';
+                    await appendHucksterLog('WARN', 'sync_stopped', { error: e.message || 'stopped' });
                 } else {
                     syncState.error = {
                         code: 'HUCKSTER_SYNC_FAILED',
                         error: e && e.message ? e.message : String(e),
                     };
                     syncState.status_text = 'Ошибка обновления Huckster.';
+                    await appendHucksterLog('ERROR', 'sync_failed', {
+                        error: e && e.message ? e.message : String(e),
+                    });
                 }
             } finally {
                 syncState.active = false;
                 syncState.stop_requested = false;
+                syncState.active_abort_controller = null;
                 syncState.finished_at = new Date().toISOString();
                 syncState.progress.current_shop_id = '';
                 syncState.progress.current_shop_name = '';
@@ -918,6 +1354,11 @@ function createExportsHucksterRouter(_db, appSettings) {
             return res.status(409).json({ success: false, code: 'NOT_RUNNING', error: 'Обновление Huckster не запущено' });
         }
         syncState.stop_requested = true;
+        if (syncState.active_abort_controller && typeof syncState.active_abort_controller.abort === 'function') {
+            try {
+                syncState.active_abort_controller.abort();
+            } catch (_) {}
+        }
         syncState.status_text = 'Запрошена остановка обновления Huckster...';
         return res.json({ success: true, stop_requested: true });
     });

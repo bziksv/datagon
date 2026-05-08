@@ -263,6 +263,7 @@
 
   // Global tooltips parity with React DatagonGlobalTooltips.
   var DG_TOOLTIP_DELAY_MS = 80;
+  var DG_COLUMNS_TOOLBOX_ENABLED = false;
   var dgTooltip = null;
   var dgTooltipInner = null;
   var dgTooltipTimer = null;
@@ -1579,6 +1580,7 @@
   }
 
   function setupColumnsToolboxForTable(wrap, table, tableIndex) {
+    if (!DG_COLUMNS_TOOLBOX_ENABLED) return;
     if (!wrap || !table) return;
     if (shouldSkipGlobalTableBaseline(table)) return;
     if (table.classList.contains("dg-ms-table")) return;

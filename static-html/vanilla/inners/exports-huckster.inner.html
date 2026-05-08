@@ -480,12 +480,68 @@
                 <span class="small text-muted text-break">Есть модель и/или включен repricer в Huckster, но в МС «Перестали сотрудничать=Да» и остаток 0</span>
                 <span class="small text-muted dg-huckster-matrix-count ms-1 flex-shrink-0" id="dg-huckster-matrix-count-lost"></span>
               </div>
+              <div class="dg-huckster-matrix-toolbar">
+                <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0" id="dg-huckster-matrix-lost-toggle">Свернуть</button>
+              </div>
             </div>
-            <div class="card-body p-0">
+            <div id="dg-huckster-matrix-lost-body">
+              <div class="card-body p-0">
+              <div class="dg-huckster-colwidth-strip">
+                <div class="dg-huckster-colwidth-wrap" title="Те же ширины колонок, что и в наборе 1.">
+                  <span class="small text-muted text-nowrap">Ширина, px:</span>
+                  <div class="dg-huckster-width-control">
+                    <label class="small text-muted mb-0 text-nowrap">UID</label>
+                    <input type="number" class="form-control form-control-sm" data-huckster-width-key="uid_px" min="40" max="400" step="1" autocomplete="off" style="width:4.25rem" />
+                  </div>
+                  <div class="dg-huckster-width-control">
+                    <label class="small text-muted mb-0 text-nowrap">Название</label>
+                    <input type="number" class="form-control form-control-sm" data-huckster-width-key="name_px" min="80" max="1600" step="5" autocomplete="off" style="width:4.5rem" />
+                  </div>
+                  <div class="dg-huckster-width-control">
+                    <label class="small text-muted mb-0 text-nowrap">Менеджер</label>
+                    <input type="number" class="form-control form-control-sm" data-huckster-width-key="manager_px" min="100" max="360" step="5" autocomplete="off" style="width:4.25rem" />
+                  </div>
+                  <div class="dg-huckster-width-control">
+                    <label class="small text-muted mb-0 text-nowrap">Остаток</label>
+                    <input type="number" class="form-control form-control-sm" data-huckster-width-key="stock_px" min="60" max="220" step="1" autocomplete="off" style="width:4.25rem" />
+                  </div>
+                  <div class="dg-huckster-width-control">
+                    <label class="small text-muted mb-0 text-nowrap">Статус</label>
+                    <input type="number" class="form-control form-control-sm" data-huckster-width-key="bridge_status_px" min="70" max="360" step="5" autocomplete="off" style="width:4.25rem" />
+                  </div>
+                  <div class="dg-huckster-width-control">
+                    <label class="small text-muted mb-0 text-nowrap">Модели</label>
+                    <input type="number" class="form-control form-control-sm" data-huckster-width-key="bridge_models_px" min="90" max="640" step="5" autocomplete="off" style="width:4.25rem" />
+                  </div>
+                  <div class="dg-huckster-width-control">
+                    <label class="small text-muted mb-0 text-nowrap">Актуально</label>
+                    <input type="number" class="form-control form-control-sm" data-huckster-width-key="sync_px" min="80" max="240" step="1" autocomplete="off" style="width:4.25rem" />
+                  </div>
+                  <button type="button" class="btn btn-sm btn-outline-primary" data-huckster-width-apply>Применить</button>
+                </div>
+              </div>
               <div class="dg-huckster-matrix-scroll">
                 <div class="table-responsive datagon-my-products-table-wrap">
                   <table class="table mb-0 dg-huckster-matrix-table" id="dg-huckster-table-lost"></table>
                 </div>
+              </div>
+              <div class="dg-huckster-pagination px-3 py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                  <label class="small text-muted mb-0" for="dg-huckster-page-limit-lost">На странице</label>
+                  <select class="form-select form-select-sm" id="dg-huckster-page-limit-lost" style="width:auto">
+                    <option value="50">50</option>
+                    <option value="100" selected>100</option>
+                    <option value="200">200</option>
+                    <option value="500">500</option>
+                    <option value="1000">1000</option>
+                  </select>
+                  <span class="text-muted small" id="dg-huckster-page-hint-lost">—</span>
+                </div>
+                <div class="btn-group" role="group" aria-label="Страницы Huckster Потеряшки">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-huckster-page-prev-lost">Назад</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-huckster-page-next-lost">Вперед</button>
+                </div>
+              </div>
               </div>
             </div>
           </div>
@@ -513,6 +569,7 @@
               var hucksterMatrixUnitGap2 = null;
               var HUCKSTER_MATRIX_EXPORT_COLLAPSE_KEY = "datagon_huckster_matrix_export_collapsed_v1";
               var HUCKSTER_MATRIX_RRC_COLLAPSE_KEY = "datagon_huckster_matrix_rrc_collapsed_v1";
+              var HUCKSTER_MATRIX_LOST_COLLAPSE_KEY = "datagon_huckster_matrix_lost_collapsed_v1";
               var HUCKSTER_SETS_EXPANDED_KEY = "datagon_huckster_sets_expanded_v1";
               var API_SYNC = "/api/exports/huckster/sync";
               var API_SYNC_STATUS = "/api/exports/huckster/sync-status";
@@ -544,6 +601,7 @@
               var hucksterSearchRedrawT2 = null;
               var hucksterMatrixPage1 = 1;
               var hucksterMatrixPage2 = 1;
+              var hucksterMatrixPageLost = 1;
 
               function matrixSearchStorageKey(which) {
                 var u = "guest";
@@ -1038,6 +1096,7 @@
                 } catch (e) {}
                 redrawHucksterMatrix(1);
                 redrawHucksterMatrix(2);
+                redrawHucksterLostMatrix();
               }
 
               function initHucksterMatrixColWidthControls() {
@@ -1049,6 +1108,9 @@
                   var el = els[ii];
                   el.addEventListener("keydown", function (ev) {
                     if (ev.key === "Enter") applyMatrixColWidths(ev.currentTarget);
+                  });
+                  el.addEventListener("change", function (ev) {
+                    applyMatrixColWidths(ev.currentTarget);
                   });
                 }
                 document.querySelectorAll("[data-huckster-width-apply]").forEach(function (btn) {
@@ -1174,7 +1236,12 @@
               }
 
               function updateHucksterMatrixCountBadge(tableId, shown, totalAll) {
-                var id = tableId === "dg-huckster-table-1" ? "dg-huckster-matrix-count-1" : "dg-huckster-matrix-count-2";
+                var id =
+                  tableId === "dg-huckster-table-1"
+                    ? "dg-huckster-matrix-count-1"
+                    : tableId === "dg-huckster-table-lost"
+                    ? "dg-huckster-matrix-count-lost"
+                    : "dg-huckster-matrix-count-2";
                 var el = document.getElementById(id);
                 if (!el) return;
                 var s = Math.max(0, Math.floor(Number(shown) || 0));
@@ -1212,12 +1279,15 @@
               }
 
               function hucksterMatrixPageRef(which) {
-                return which === 1 ? hucksterMatrixPage1 : hucksterMatrixPage2;
+                if (which === 1) return hucksterMatrixPage1;
+                if (which === "lost") return hucksterMatrixPageLost;
+                return hucksterMatrixPage2;
               }
 
               function setHucksterMatrixPage(which, nextPage) {
                 var p = Math.max(1, Math.floor(Number(nextPage) || 1));
                 if (which === 1) hucksterMatrixPage1 = p;
+                else if (which === "lost") hucksterMatrixPageLost = p;
                 else hucksterMatrixPage2 = p;
               }
 
@@ -1232,7 +1302,7 @@
               }
 
               function restoreHucksterPaginationControls() {
-                [1, 2].forEach(function (which) {
+                [1, 2, "lost"].forEach(function (which) {
                   var el = document.getElementById("dg-huckster-page-limit-" + which);
                   if (!el) return;
                   try {
@@ -1620,6 +1690,7 @@
                 var managers = [];
                 collectBridgeManagerOptions_(hucksterMatrixFull1, seen, managers);
                 collectBridgeManagerOptions_(hucksterMatrixFull2, seen, managers);
+                collectBridgeManagerOptions_(lastMatrixRowsLost, seen, managers);
                 managers.sort(function (a, b) {
                   return a.localeCompare(b, "ru", { numeric: true });
                 });
@@ -1632,9 +1703,20 @@
                 else select.value = "";
               }
 
-              function bridgeCabState_(metaRow, mp) {
+              function bridgeCabStateFromRow_(row, head, mp) {
+                if (!row || !head) return "bad";
+                var col = mp === "ozon" ? "Ozon" : mp === "wildberries" ? "WB" : mp === "yandex" ? "ЯМ" : "";
+                if (!col) return "bad";
+                var idx = bridgeColIndex_(head, col);
+                if (idx < 0) return "bad";
+                var raw = String(row[idx] || "").toLowerCase();
+                return raw.indexOf("включен") >= 0 || raw.indexOf("включён") >= 0 ? "ok" : "bad";
+              }
+
+              function bridgeCabState_(metaRow, mp, row, head) {
                 var st = metaRow && metaRow.cabinets ? String(metaRow.cabinets[mp] || "") : "";
-                return st === "ok" ? "ok" : "bad";
+                if (st) return st === "ok" ? "ok" : "bad";
+                return bridgeCabStateFromRow_(row, head, mp);
               }
 
               function bridgeModelBase_(raw, opts) {
@@ -1724,9 +1806,9 @@
                   var row = rows[i] || [];
                   var metaRow = meta && meta[i] ? meta[i] : null;
                   if (f.manager && managerIdx >= 0 && String(row[managerIdx] || "").trim() !== f.manager) continue;
-                  if (f.ozon && bridgeCabState_(metaRow, "ozon") !== f.ozon) continue;
-                  if (f.wildberries && bridgeCabState_(metaRow, "wildberries") !== f.wildberries) continue;
-                  if (f.yandex && bridgeCabState_(metaRow, "yandex") !== f.yandex) continue;
+                  if (f.ozon && bridgeCabState_(metaRow, "ozon", row, head) !== f.ozon) continue;
+                  if (f.wildberries && bridgeCabState_(metaRow, "wildberries", row, head) !== f.wildberries) continue;
+                  if (f.yandex && bridgeCabState_(metaRow, "yandex", row, head) !== f.yandex) continue;
                   if (f.models && bridgeModelsDiffState_(row, head, opts) !== f.models) continue;
                   outRows.push(row);
                   if (outMeta) outMeta.push(metaRow);
@@ -1776,41 +1858,42 @@
                 scheduleRefreshMsBridgeArchiveFlagsAndRedraw();
               }
 
-              function setHucksterLostFromApi(payload) {
+              function redrawHucksterLostMatrix() {
                 var table = document.getElementById("dg-huckster-table-lost");
-                var badge = document.getElementById("dg-huckster-matrix-count-lost");
+                if (!table) return;
+                var full = lastMatrixRowsLost && lastMatrixRowsLost.length ? lastMatrixRowsLost.slice() : null;
+                if (!full || full.length < 2) {
+                  table.innerHTML = '<thead><tr><th class="text-muted">Нет данных</th></tr></thead><tbody><tr><td class="text-muted">Нет данных.</td></tr></tbody>';
+                  updateHucksterMatrixCountBadge("dg-huckster-table-lost", 0, 0);
+                  updateHucksterPaginationControls("lost", 0, 0);
+                  return;
+                }
+                var work = full.slice();
+                var archP = getMsBridgeArchiveSyncPayload();
+                if (hucksterMsRowFlags && (archP.ms_exclude_archived_bundles || archP.ms_exclude_archived_products_zero_stock)) {
+                  work = filterBridgeRowsByMsArchive(
+                    work,
+                    hucksterMsRowFlags,
+                    !!archP.ms_exclude_archived_bundles,
+                    !!archP.ms_exclude_archived_products_zero_stock
+                  );
+                }
+                if (archP.ms_exclude_products_with_bundles) {
+                  work = filterBridgeRowsExcludeProductsWithBundles(work, true);
+                }
+                var filtered = filterBridgeRowsByControls(work, null, { rrc: false });
+                var paged = paginateHucksterMatrixRows("lost", filtered.rows, null);
+                renderMsBridgeMatrixTable(table, "dg-huckster-table-lost", paged.rows, {
+                  totalBodyCount: paged.filteredBodyCount,
+                });
+              }
+
+              function setHucksterLostFromApi(payload) {
                 var rows = payload && Array.isArray(payload.rows) ? payload.rows : [];
                 var norm = normalizeMatrixRowsForRender(rows);
                 lastMatrixRowsLost = norm && norm.length ? norm : null;
-                if (!table) return;
-                if (!lastMatrixRowsLost || lastMatrixRowsLost.length < 2) {
-                  table.innerHTML = '<thead><tr><th class="text-muted">Нет данных</th></tr></thead><tbody><tr><td class="text-muted">Нет данных.</td></tr></tbody>';
-                  if (badge) badge.textContent = "· 0 товаров";
-                  return;
-                }
-                var head = lastMatrixRowsLost[0];
-                var body = lastMatrixRowsLost.slice(1);
-                var thead = "<thead><tr>";
-                for (var i = 0; i < head.length; i++) {
-                  thead += "<th>" + esc(String(head[i] == null ? "" : head[i])) + "</th>";
-                }
-                thead += "</tr></thead>";
-                var tbody = "<tbody>";
-                for (var r = 0; r < body.length; r++) {
-                  var row = body[r] || [];
-                  tbody += "<tr>";
-                  for (var c = 0; c < head.length; c++) {
-                    var val = row[c] == null ? "" : String(row[c]);
-                    tbody += "<td title=\"" + escAttr(val) + "\">" + esc(val) + "</td>";
-                  }
-                  tbody += "</tr>";
-                }
-                tbody += "</tbody>";
-                table.innerHTML = thead + tbody;
-                if (badge) {
-                  var n = Math.max(0, body.length);
-                  badge.textContent = "· " + n.toLocaleString("ru-RU") + " товаров";
-                }
+                resetHucksterMatrixPage("lost");
+                redrawHucksterLostMatrix();
               }
 
               function alignBridgeMetaToRows(refRows, refMeta, targetRows) {
@@ -1847,6 +1930,7 @@
 
               function renderMsBridgeMatrixTable(table, tableId, rows, renderOpts) {
                 renderOpts = renderOpts || {};
+                var isLostTable = tableId === "dg-huckster-table-lost";
                 var bridgeMeta = renderOpts.bridgeMeta || [];
                 var uidW = getUidColW();
                 var nameW = getNameColW();
@@ -1905,15 +1989,35 @@
                         break;
                       }
                     }
-                    if (isCab) val = st === "ok" ? "Репрайсер ВКЛЮЧЕН" : "Репрайсер ВЫКЛЮЧЕН";
+                    if (isCab && !isLostTable) val = st === "ok" ? "Репрайсер ВКЛЮЧЕН" : "Репрайсер ВЫКЛЮЧЕН";
                     var cls = [];
-                    if (isCab) cls.push(st === "ok" ? "dg-huckster-bridge-cab-ok" : "dg-huckster-bridge-cab-bad");
+                    if (isCab) {
+                      if (isLostTable) {
+                        var cabVal = String(val || "").toLowerCase();
+                        var cabOn = cabVal.indexOf("включен") >= 0 || cabVal.indexOf("включён") >= 0;
+                        cls.push(cabOn ? "dg-huckster-bridge-cab-bad" : "dg-huckster-bridge-cab-ok");
+                      } else {
+                        cls.push(st === "ok" ? "dg-huckster-bridge-cab-ok" : "dg-huckster-bridge-cab-bad");
+                      }
+                    }
                     if (String(head[j] || "").indexOf("Цена") === 0) cls.push("dg-huckster-bridge-price");
                     var isModelCol = String(head[j] || "").indexOf("Модель ") === 0;
                     if (isModelCol) {
-                      if (val === "Модель не назначена") cls.push("dg-huckster-bridge-model-missing");
-                      else if (val === "Модель назначена, но Репрайсер на модели выключен") cls.push("dg-huckster-bridge-model-off");
-                      else if (String(val || "").trim()) cls.push("dg-huckster-bridge-model-ok");
+                      var modelValRaw = String(val || "").trim();
+                      var modelVal = modelValRaw.toLowerCase();
+                      var modelOff =
+                        modelVal.indexOf("модель назначена, но репрайсер на модели выключен") === 0;
+                      var modelMissing = modelValRaw === "Модель не назначена";
+                      if (isLostTable) {
+                        if (modelMissing || !modelValRaw) cls.push("dg-huckster-bridge-model-ok");
+                        else cls.push(modelOff ? "dg-huckster-bridge-model-missing" : "dg-huckster-bridge-model-missing");
+                      } else if (modelMissing) {
+                        cls.push("dg-huckster-bridge-model-missing");
+                      } else if (modelOff) {
+                        cls.push("dg-huckster-bridge-model-off");
+                      } else if (modelValRaw) {
+                        cls.push("dg-huckster-bridge-model-ok");
+                      }
                     }
                     if (modelProblem && j === nameIdx) cls.push("dg-huckster-bridge-name-model-diff");
                     var tip = "";
@@ -2715,6 +2819,7 @@
                 }
                 addFromMatrix(hucksterMatrixFull1);
                 addFromMatrix(hucksterMatrixFull2);
+                addFromMatrix(lastMatrixRowsLost);
                 return out;
               }
 
@@ -2754,6 +2859,7 @@
                   hucksterMsRowFlags = {};
                   redrawHucksterMatrix(1);
                   redrawHucksterMatrix(2);
+                  redrawHucksterLostMatrix();
                   return;
                 }
                 fetchJsonSafe(API_MS_BRIDGE_FLAGS, {
@@ -2769,11 +2875,13 @@
                     hucksterMsRowFlags = x.json.flags && typeof x.json.flags === "object" ? x.json.flags : {};
                     redrawHucksterMatrix(1);
                     redrawHucksterMatrix(2);
+                    redrawHucksterLostMatrix();
                   })
                   .catch(function () {
                     hucksterMsRowFlags = null;
                     redrawHucksterMatrix(1);
                     redrawHucksterMatrix(2);
+                    redrawHucksterLostMatrix();
                   });
               }
 
@@ -2981,8 +3089,10 @@
                 });
                 resetHucksterMatrixPage(1);
                 resetHucksterMatrixPage(2);
+                resetHucksterMatrixPage("lost");
                 redrawHucksterMatrix(1);
                 redrawHucksterMatrix(2);
+                redrawHucksterLostMatrix();
               }
 
               function stopSync() {
@@ -3124,6 +3234,35 @@
                 });
               })();
 
+              (function hucksterMatrixLostCollapse() {
+                var body = document.getElementById("dg-huckster-matrix-lost-body");
+                var cbtn = document.getElementById("dg-huckster-matrix-lost-toggle");
+                if (!body || !cbtn) return;
+                function sync() {
+                  try {
+                    if (localStorage.getItem(HUCKSTER_MATRIX_LOST_COLLAPSE_KEY) === "1") {
+                      body.style.display = "none";
+                      cbtn.textContent = "Развернуть";
+                    } else {
+                      body.style.display = "";
+                      cbtn.textContent = "Свернуть";
+                    }
+                  } catch (e) {}
+                }
+                try {
+                  if (localStorage.getItem(HUCKSTER_MATRIX_LOST_COLLAPSE_KEY) === "1") body.style.display = "none";
+                } catch (e) {}
+                sync();
+                cbtn.addEventListener("click", function () {
+                  var hidden = body.style.display === "none";
+                  body.style.display = hidden ? "" : "none";
+                  cbtn.textContent = hidden ? "Свернуть" : "Развернуть";
+                  try {
+                    localStorage.setItem(HUCKSTER_MATRIX_LOST_COLLAPSE_KEY, hidden ? "0" : "1");
+                  } catch (e) {}
+                });
+              })();
+
               initHucksterMatrixColWidthControls();
               restoreMatrixSearchInputs();
               restoreHucksterPaginationControls();
@@ -3145,14 +3284,18 @@
                 el.addEventListener("input", function () {
                   resetHucksterMatrixPage(1);
                   resetHucksterMatrixPage(2);
+                  resetHucksterMatrixPage("lost");
                   redrawHucksterMatrix(1);
                   redrawHucksterMatrix(2);
+                  redrawHucksterLostMatrix();
                 });
                 el.addEventListener("change", function () {
                   resetHucksterMatrixPage(1);
                   resetHucksterMatrixPage(2);
+                  resetHucksterMatrixPage("lost");
                   redrawHucksterMatrix(1);
                   redrawHucksterMatrix(2);
+                  redrawHucksterLostMatrix();
                 });
               });
               var bridgeFilterReset = document.getElementById("dg-huckster-filter-reset");
@@ -3186,7 +3329,7 @@
                 });
               }
 
-              [1, 2].forEach(function (which) {
+              [1, 2, "lost"].forEach(function (which) {
                 var limitEl = document.getElementById("dg-huckster-page-limit-" + which);
                 if (limitEl) {
                   limitEl.addEventListener("change", function () {
@@ -3194,21 +3337,24 @@
                     try {
                       localStorage.setItem(hucksterPaginationStorageKey(which), String(hucksterMatrixLimit(which)));
                     } catch (e) {}
-                    redrawHucksterMatrix(which);
+                    if (which === "lost") redrawHucksterLostMatrix();
+                    else redrawHucksterMatrix(which);
                   });
                 }
                 var prev = document.getElementById("dg-huckster-page-prev-" + which);
                 if (prev) {
                   prev.addEventListener("click", function () {
                     setHucksterMatrixPage(which, hucksterMatrixPageRef(which) - 1);
-                    redrawHucksterMatrix(which);
+                    if (which === "lost") redrawHucksterLostMatrix();
+                    else redrawHucksterMatrix(which);
                   });
                 }
                 var next = document.getElementById("dg-huckster-page-next-" + which);
                 if (next) {
                   next.addEventListener("click", function () {
                     setHucksterMatrixPage(which, hucksterMatrixPageRef(which) + 1);
-                    redrawHucksterMatrix(which);
+                    if (which === "lost") redrawHucksterLostMatrix();
+                    else redrawHucksterMatrix(which);
                   });
                 }
               });
