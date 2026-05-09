@@ -1,0 +1,134 @@
+          <div class="app-page-title">
+            <div class="page-title-wrapper">
+              <div class="page-title-heading">
+                <div class="page-title-icon">
+                  <i class="pe-7s-attention icon-gradient bg-strong-bliss"> </i>
+                </div>
+                <div>
+                  Маркетплейсы — Проблемы с товарами
+                  <div class="page-title-subheading">
+                    Товары МойСклад (фильтр <strong>«Складская позиция = Да»</strong> и <strong>«Перестали сотрудничать = Нет»</strong>) с сопоставлением артикулов на Ozon, Wildberries и Я.Маркете. Если кода маркетплейса нет в последнем снапшоте — ячейки «Код» и «Название» подсвечены красным.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center gap-2 flex-wrap">
+              <i class="header-icon pe-7s-filter icon-gradient bg-strong-bliss me-2"></i>
+              <span>Фильтр маркетплейса</span>
+            </div>
+            <div class="card-body">
+              <div class="btn-group flex-wrap" role="group" aria-label="Фильтр маркетплейса" id="dg-mpu-scope-group">
+                <input type="radio" class="btn-check" name="dg-mpu-scope" id="dg-mpu-scope-all" value="all" checked>
+                <label class="btn btn-outline-primary" for="dg-mpu-scope-all" title="Все товары МС по основному фильтру; красным подсвечены отсутствующие коды.">Все товары</label>
+
+                <input type="radio" class="btn-check" name="dg-mpu-scope" id="dg-mpu-scope-any" value="any">
+                <label class="btn btn-outline-primary" for="dg-mpu-scope-any" title="Только те, у кого хотя бы один из 3 маркетплейсов не нашёл товар">Есть проблемы (хотя бы где-то)</label>
+
+                <input type="radio" class="btn-check" name="dg-mpu-scope" id="dg-mpu-scope-all3" value="all3">
+                <label class="btn btn-outline-primary" for="dg-mpu-scope-all3" title="Только те, что отсутствуют на всех 3 маркетплейсах сразу">Нет ни на одном</label>
+
+                <input type="radio" class="btn-check" name="dg-mpu-scope" id="dg-mpu-scope-ozon" value="ozon">
+                <label class="btn btn-outline-primary" for="dg-mpu-scope-ozon">Нет на Ozon</label>
+
+                <input type="radio" class="btn-check" name="dg-mpu-scope" id="dg-mpu-scope-wb" value="wb">
+                <label class="btn btn-outline-primary" for="dg-mpu-scope-wb">Нет на Wildberries</label>
+
+                <input type="radio" class="btn-check" name="dg-mpu-scope" id="dg-mpu-scope-ym" value="ym">
+                <label class="btn btn-outline-primary" for="dg-mpu-scope-ym">Нет на Я.Маркет</label>
+              </div>
+              <div id="dg-mpu-msg" class="alert alert-secondary mt-3 mb-0 d-none" role="status"></div>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center gap-2 flex-wrap">
+              <i class="header-icon pe-7s-graph2 icon-gradient bg-strong-bliss me-2"></i>
+              <span id="dg-mpu-table-title">Таблица — все товары</span>
+              <div class="ms-auto d-flex align-items-center gap-2 flex-nowrap dg-mp-search-box">
+                <label class="small text-muted mb-0 flex-shrink-0" for="dg-mp-search">Поиск</label>
+                <input type="search" class="form-control form-control-sm dg-mp-search-input" id="dg-mp-search" placeholder="Артикул или наименование" autocomplete="off" />
+                <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0" id="dg-mp-search-clear" title="Очистить поиск">×</button>
+              </div>
+            </div>
+            <div class="card-body p-0">
+              <div class="dg-mp-toolbox mx-3 mt-3" id="dg-mpu-toolbox">
+                <div class="dg-mp-toolbox-top">
+                  <div class="dg-mpu-toolbox-wrap">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mpu-cols-toggle" title="Управление видимостью колонок">🧩 Столбцы</button>
+                    <div class="dg-mpu-cols-panel" id="dg-mpu-cols-panel">
+                      <div class="d-flex justify-content-between align-items-center">
+                        <strong class="small">Видимость колонок</strong>
+                        <button type="button" class="btn btn-link btn-sm p-0" id="dg-mpu-cols-reset" title="Сбросить видимость к дефолту">сбросить</button>
+                      </div>
+                      <div class="dg-mpu-cols-grid" id="dg-mpu-cols-grid"></div>
+                    </div>
+                  </div>
+                  <div class="dg-mpu-toolbox-wrap">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mpu-widths-toggle" title="Ручная ширина каждой колонки в пикселях (или drag за правый край заголовка)">📏 Ширины</button>
+                    <div class="dg-mpu-cols-panel" id="dg-mpu-widths-panel">
+                      <div class="d-flex justify-content-between align-items-center">
+                        <strong class="small">Ширины колонок (px)</strong>
+                        <button type="button" class="btn btn-link btn-sm p-0" id="dg-mpu-widths-reset" title="Сбросить ширины к дефолту">по умолчанию</button>
+                      </div>
+                      <div class="dg-mp-widths-grid" id="dg-mpu-widths-grid"></div>
+                    </div>
+                  </div>
+                  <div class="dg-mp-filter-group" id="dg-mpu-filter-group">
+                    <span class="dg-mp-filter-lbl">Дополнительно:</span>
+                    <label class="dg-mp-filter-sel" for="dg-mpu-flt-manager">
+                      <span class="dg-mp-filter-lbl">Менеджер</span>
+                      <select class="form-select form-select-sm" id="dg-mpu-flt-manager">
+                        <option value="">— все —</option>
+                      </select>
+                    </label>
+                    <label class="dg-mp-filter-sel" for="dg-mpu-flt-cmgr">
+                      <span class="dg-mp-filter-lbl">Контент-менеджер</span>
+                      <select class="form-select form-select-sm" id="dg-mpu-flt-cmgr">
+                        <option value="">— все —</option>
+                      </select>
+                    </label>
+                  </div>
+                  <div class="dg-mp-filter-actions ms-auto d-flex align-items-center gap-2">
+                    <span class="badge bg-warning text-dark d-none" id="dg-mpu-flt-dirty" title="Есть несохранённые изменения фильтров">не применено</span>
+                    <button type="button" class="btn btn-sm btn-primary" id="dg-mpu-flt-apply" title="Применить фильтры и поиск (или нажмите Enter в поле поиска)">Применить</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mpu-flt-reset" title="Сбросить scope, поиск, менеджера и контент-менеджера">Сбросить</button>
+                  </div>
+                </div>
+              </div>
+              <div class="dg-mp-mkt-scroll">
+                <div class="table-responsive datagon-my-products-table-wrap">
+                  <table class="table table-hover table-striped mb-0 datagon-my-products-table dg-mp-mkt-table" id="dg-mp-table-main">
+                    <thead>
+                      <tr>
+                        <th class="text-muted">Загрузка…</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td class="text-muted py-3">Данные появятся здесь.</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <div class="dg-mp-pagination px-3 py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                  <label class="small text-muted mb-0" for="dg-mp-page-limit">На странице</label>
+                  <select class="form-select form-select-sm" id="dg-mp-page-limit" style="width:auto">
+                    <option value="50">50</option>
+                    <option value="100" selected>100</option>
+                    <option value="200">200</option>
+                    <option value="500">500</option>
+                  </select>
+                  <span class="text-muted small" id="dg-mp-page-hint">—</span>
+                </div>
+                <div class="btn-group" role="group" aria-label="Страницы">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mp-page-prev">Назад</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mp-page-next">Вперед</button>
+                </div>
+              </div>
+            </div>
+          </div>

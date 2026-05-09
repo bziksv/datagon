@@ -230,6 +230,15 @@ function assemble() {
             PAGE_SCRIPTS: mpShopScripts,
         },
         {
+            out: 'exports-marketplaces-issues.html',
+            PAGE_TITLE: 'Маркетплейсы — Проблемы с товарами — Датагон',
+            BODY_ATTRS:
+                'class="datagon-vanilla-body" data-dg-active-nav="exports-marketplaces-issues"',
+            EXTRA_HEAD: mpExtraHead,
+            MAIN_INNER: read(path.join(vanillaDir, 'inners/exports-marketplaces-issues.inner.html')),
+            PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/exports-marketplaces-issues.scripts.html')),
+        },
+        {
             out: 'exports-huckster.html',
             PAGE_TITLE: 'Huckster — Датагон',
             BODY_ATTRS: 'class="datagon-vanilla-body" data-dg-active-nav="exports-huckster"',

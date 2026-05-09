@@ -92,7 +92,7 @@ module.exports = (db, appSettings) => {
             discover_max_sitemaps, discover_max_urls, discover_crawl_max_pages, discover_request_delay_ms,
             auth_session_ttl_days, auth_session_user_limit, auth_online_presence_minutes,
             fetch_proxy_enabled, fetch_proxy_list,
-            ozon_client_id, ozon_api_key, wb_api_key, ym_api_key, ym_campaign_id, ym_business_id,
+            ozon_client_id, ozon_api_key, wb_api_key, wb_token_type, ym_api_key, ym_campaign_id, ym_business_id,
             mp_ozon_delay_ms, mp_wb_delay_cards_ms, mp_wb_delay_other_ms, mp_yandex_delay_ms, mp_ozon_include_archived
         } = req.body;
         try {
@@ -137,6 +137,11 @@ module.exports = (db, appSettings) => {
             if (ozon_client_id !== undefined) queries.push(['ozon_client_id', String(ozon_client_id || '').slice(0, 8000)]);
             if (ozon_api_key !== undefined) queries.push(['ozon_api_key', String(ozon_api_key || '').slice(0, 8000)]);
             if (wb_api_key !== undefined) queries.push(['wb_api_key', String(wb_api_key || '').slice(0, 8000)]);
+            if (wb_token_type !== undefined) {
+                const allowedTokenTypes = ['personal', 'service', 'base', 'test'];
+                const norm = String(wb_token_type || 'base').trim().toLowerCase();
+                queries.push(['wb_token_type', allowedTokenTypes.includes(norm) ? norm : 'base']);
+            }
             if (ym_api_key !== undefined) queries.push(['ym_api_key', String(ym_api_key || '').slice(0, 8000)]);
             if (ym_campaign_id !== undefined) queries.push(['ym_campaign_id', String(ym_campaign_id || '').slice(0, 8000)]);
             if (ym_business_id !== undefined) queries.push(['ym_business_id', String(ym_business_id || '').slice(0, 8000)]);
@@ -188,6 +193,11 @@ module.exports = (db, appSettings) => {
             if (ozon_client_id !== undefined) appSettings.ozon_client_id = String(ozon_client_id || '').slice(0, 8000);
             if (ozon_api_key !== undefined) appSettings.ozon_api_key = String(ozon_api_key || '').slice(0, 8000);
             if (wb_api_key !== undefined) appSettings.wb_api_key = String(wb_api_key || '').slice(0, 8000);
+            if (wb_token_type !== undefined) {
+                const allowedTokenTypes = ['personal', 'service', 'base', 'test'];
+                const norm = String(wb_token_type || 'base').trim().toLowerCase();
+                appSettings.wb_token_type = allowedTokenTypes.includes(norm) ? norm : 'base';
+            }
             if (ym_api_key !== undefined) appSettings.ym_api_key = String(ym_api_key || '').slice(0, 8000);
             if (ym_campaign_id !== undefined) appSettings.ym_campaign_id = String(ym_campaign_id || '').slice(0, 8000);
             if (ym_business_id !== undefined) appSettings.ym_business_id = String(ym_business_id || '').slice(0, 8000);

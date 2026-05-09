@@ -7,7 +7,7 @@
                 <div>
                   Маркетплейсы — Ozon
                   <div class="page-title-subheading">
-                    Меню <strong>Маркетплейсы → Ozon</strong>. Пробная выгрузка каталога в таблице (до 40 строк в браузере). Ключи API задаются на странице <a href="/exports-marketplaces.html">Настройки</a>.
+                    Меню <strong>Маркетплейсы → Ozon</strong>. Каталог из ЛК Ozon с клиентской пагинацией. Ключи API задаются на странице <a href="/exports-marketplaces.html">Настройки</a>.
                   </div>
                 </div>
               </div>
@@ -34,6 +34,7 @@
                 <button type="button" class="btn btn-outline-primary" id="dg-mp-load-snapshot">Показать последнее сохранённое</button>
               </div>
               <div id="dg-mp-msg" class="alert alert-secondary mt-3 mb-0 d-none" role="status"></div>
+              <div id="dg-mp-log" class="dg-mp-log d-none" role="status" aria-live="polite"></div>
             </div>
           </div>
 
@@ -41,7 +42,11 @@
             <div class="card-header d-flex align-items-center gap-2 flex-wrap">
               <i class="header-icon pe-7s-graph2 icon-gradient bg-happy-fisher me-2"></i>
               <span>Таблица Ozon</span>
-              <span class="small text-muted ms-md-auto">Колонки как в CSV; до 40 строк</span>
+              <div class="ms-auto d-flex align-items-center gap-2 flex-nowrap dg-mp-search-box">
+                <label class="small text-muted mb-0 flex-shrink-0" for="dg-mp-search">Поиск</label>
+                <input type="search" class="form-control form-control-sm dg-mp-search-input" id="dg-mp-search" placeholder="Артикул или наименование" autocomplete="off" />
+                <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0" id="dg-mp-search-clear" title="Очистить поиск">×</button>
+              </div>
             </div>
             <div class="card-body p-0">
               <div class="dg-mp-mkt-scroll">
@@ -58,6 +63,22 @@
                       </tr>
                     </tbody>
                   </table>
+                </div>
+              </div>
+              <div class="dg-mp-pagination px-3 py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                  <label class="small text-muted mb-0" for="dg-mp-page-limit">На странице</label>
+                  <select class="form-select form-select-sm" id="dg-mp-page-limit" style="width:auto">
+                    <option value="50">50</option>
+                    <option value="100" selected>100</option>
+                    <option value="200">200</option>
+                    <option value="500">500</option>
+                  </select>
+                  <span class="text-muted small" id="dg-mp-page-hint">—</span>
+                </div>
+                <div class="btn-group" role="group" aria-label="Страницы маркетплейса">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mp-page-prev">Назад</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mp-page-next">Вперед</button>
                 </div>
               </div>
             </div>

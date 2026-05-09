@@ -69,6 +69,7 @@ let appSettings = {
     ozon_client_id: '',
     ozon_api_key: '',
     wb_api_key: '',
+    wb_token_type: 'base',
     ym_api_key: '',
     ym_campaign_id: '',
     ym_business_id: '',
@@ -231,6 +232,7 @@ async function initDB() {
             ['ozon_client_id',''],
             ['ozon_api_key',''],
             ['wb_api_key',''],
+            ['wb_token_type','base'],
             ['ym_api_key',''],
             ['ym_campaign_id',''],
             ['ym_business_id',''],
@@ -965,8 +967,33 @@ async function processAutoSyncQueue() {
                         : { active: false };
                     return !s.active;
                 }, 12 * 60 * 60 * 1000, 1000);
-                await finishAutoSyncRun('huckster', done ? 'completed' : 'failed', done ? 'Завершено' : 'Таймаут ожидания');
-                console.log('[AUTO SYNC] Queue done: huckster');
+                // Honest-статус: completed только если result.success И снапшот реально сохранён.
+                // Раньше тут безусловно ставился completed по факту "syncState.active вернулся в false",
+                // из-за чего processes показывал completed даже когда снапшот не записался
+                // (см. диагностику 09.05.2026 — saveHucksterSnapshot тихо падал, лог huckster-sync.log
+                // не пополнялся, а auto_sync_runs всё равно говорил «Завершено»).
+                const finalState = typeof exportsHucksterRouterFactory.getSyncState === 'function'
+                    ? exportsHucksterRouterFactory.getSyncState()
+                    : { active: false, result_success: false, snapshot_saved_at: null, error: null };
+                let status = 'failed';
+                let message;
+                if (!done) {
+                    message = 'Таймаут ожидания (12 ч)';
+                } else if (finalState.error) {
+                    const ph = finalState.error.phase ? ` [${finalState.error.phase}]` : '';
+                    const code = finalState.error.code ? ` ${finalState.error.code}` : '';
+                    const text = finalState.error.error || 'неизвестная ошибка';
+                    message = `Ошибка${ph}${code}: ${text}`.slice(0, 480);
+                } else if (finalState.result_success && finalState.snapshot_saved_at) {
+                    status = 'completed';
+                    message = `Снапшот сохранён ${finalState.snapshot_saved_at}`;
+                } else if (finalState.result_success) {
+                    message = 'Матрицы собраны, но снапшот не сохранён в БД (см. logs/huckster-sync.log)';
+                } else {
+                    message = 'Завершено без успешного результата (см. logs/huckster-sync.log)';
+                }
+                await finishAutoSyncRun('huckster', status, message);
+                console.log(`[AUTO SYNC] Queue done: huckster — ${status} (${message})`);
             }
         }
     } catch (e) {
@@ -1470,6 +1497,12 @@ initDB().then(() => {
     app.get('/mysites.html', (req, res) => {
         const qs = req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : '';
         return res.redirect(301, '/my-sites.html' + qs);
+    });
+
+    // BC-редирект: страница «Неопубликованные товары» переименована в «Проблемы с товарами».
+    app.get('/exports-marketplaces-unpublished.html', (req, res) => {
+        const qs = req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : '';
+        return res.redirect(301, '/exports-marketplaces-issues.html' + qs);
     });
 
     app.get(/^\/my-product\/?$/, (req, res) => {

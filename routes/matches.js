@@ -1,4 +1,5 @@
 const express = require('express');
+const crypto = require('crypto');
 const { recordDatagonActivity } = require('../lib/datagonActivity');
 const router = express.Router();
 
@@ -96,6 +97,24 @@ function normalizeSkuForMatch(raw) {
     s = s.replace(/[\u2010-\u2015\u2212\uFE58\uFE63\uFF0D]/g, '-');
     s = s.replace(/-+/g, '-');
     return s;
+}
+
+/**
+ * Стабильный ключ одной логической пары «наш товар ↔ позиция конкурента» (без учёта id строки).
+ * Используется для предотвращения дублей в product_matches и для UNIQUE INDEX.
+ * При наличии обоих SKU — только по нормализованным SKU; иначе — по нормализованным названиям.
+ */
+function computeMatchIdentityHash(mySiteId, compSiteId, mySku, myName, compSku, compName) {
+    const sid = Number(mySiteId);
+    const cid = Number(compSiteId);
+    const ns = normalizeSkuForMatch(mySku);
+    const cs = normalizeSkuForMatch(compSku);
+    if (ns && cs) {
+        return crypto.createHash('sha256').update(`sku|${sid}|${cid}|${ns}|${cs}`).digest('hex');
+    }
+    const nn = normalizeText(myName || '');
+    const cn = normalizeText(compName || '');
+    return crypto.createHash('sha256').update(`name|${sid}|${cid}|${nn}|${cn}`).digest('hex');
 }
 
 const MATCHING_MODES = new Set(['all', 'name', 'sku', 'sku_norm', 'sku_best']);
@@ -577,6 +596,156 @@ module.exports = (db, settings) => {
         }
         perfIndexesReady = true;
     }
+
+    let productMatchIdentityReady = false;
+    let productMatchIdentityPromise = null;
+
+    /**
+     * Удаляет лишние строки с одинаковым (my_site_id, competitor_site_id, match_identity_hash).
+     * Возвращает суммарное число удалённых строк. Параметр { silent } глушит per-group лог
+     * (он спамил при параллельных батчах: каждый flush звал ensureProductMatchIdentitySchema
+     * → dedup → лог на каждую группу).
+     */
+    async function dedupeProductMatchesByIdentityHash(opts) {
+        const silent = !!(opts && opts.silent);
+        let removedTotal = 0;
+        try {
+            const [groups] = await db.query(`
+                SELECT
+                    match_identity_hash AS h,
+                    my_site_id AS sid,
+                    competitor_site_id AS cid,
+                    GROUP_CONCAT(
+                        id ORDER BY
+                            (status = 'confirmed') DESC,
+                            COALESCE(confirmed_at, '1970-01-01') DESC,
+                            id ASC
+                        SEPARATOR ','
+                    ) AS ids,
+                    COUNT(*) AS cnt
+                FROM product_matches
+                WHERE match_identity_hash IS NOT NULL AND TRIM(match_identity_hash) <> ''
+                GROUP BY match_identity_hash, my_site_id, competitor_site_id
+                HAVING cnt > 1
+            `);
+            for (const g of groups || []) {
+                const ids = String(g.ids || '')
+                    .split(',')
+                    .map((x) => parseInt(String(x).trim(), 10))
+                    .filter((n) => Number.isFinite(n) && n > 0);
+                if (ids.length < 2) continue;
+                const removeIds = ids.slice(1);
+                await db.query('DELETE FROM product_matches WHERE id IN (?)', [removeIds]);
+                removedTotal += removeIds.length;
+            }
+            if (!silent && removedTotal > 0) {
+                console.warn(`[matches] dedupe product_matches: removed ${removedTotal} duplicate row(s) total`);
+            }
+        } catch (e) {
+            console.warn('[matches] dedupeProductMatchesByIdentityHash:', e && e.message ? e.message : e);
+        }
+        return removedTotal;
+    }
+
+    /**
+     * Колонка match_identity_hash + UNIQUE(my_site_id, competitor_site_id, match_identity_hash).
+     * Без этого повторный матчинг или двойное подтверждение могли создавать идентичные строки.
+     *
+     * Promise-singleton: первый вызов выполняет миграцию, все последующие конкурентные
+     * вызовы (а их много из flushPendingMatchesCore на каждом батче) ждут одну и ту же
+     * promise → нет повторного backfill/dedupe/CREATE INDEX и спама в лог.
+     *
+     * После первой успешной инициализации все последующие вызовы — мгновенный no-op.
+     */
+    function ensureProductMatchIdentitySchema() {
+        if (productMatchIdentityReady) return Promise.resolve();
+        if (productMatchIdentityPromise) return productMatchIdentityPromise;
+        productMatchIdentityPromise = (async () => {
+            // 1) Колонка
+            try {
+                const [col] = await db.query(
+                    `SELECT 1 FROM information_schema.COLUMNS
+                     WHERE TABLE_SCHEMA = DATABASE()
+                       AND TABLE_NAME = 'product_matches'
+                       AND COLUMN_NAME = 'match_identity_hash'
+                     LIMIT 1`
+                );
+                if (!col.length) {
+                    await db.query('ALTER TABLE product_matches ADD COLUMN match_identity_hash CHAR(64) NULL');
+                }
+            } catch (e) {
+                console.warn('[matches] ALTER match_identity_hash:', e && e.message ? e.message : e);
+            }
+
+            // 2) Backfill хешей
+            let backfilled = 0;
+            try {
+                for (;;) {
+                    const [rows] = await db.query(
+                        `SELECT id, my_site_id, competitor_site_id, my_sku, my_product_name, competitor_sku, competitor_name
+                         FROM product_matches
+                         WHERE match_identity_hash IS NULL OR TRIM(COALESCE(match_identity_hash, '')) = ''
+                         LIMIT 800`
+                    );
+                    if (!rows || !rows.length) break;
+                    for (const r of rows) {
+                        const h = computeMatchIdentityHash(
+                            r.my_site_id,
+                            r.competitor_site_id,
+                            r.my_sku,
+                            r.my_product_name,
+                            r.competitor_sku,
+                            r.competitor_name
+                        );
+                        await db.query('UPDATE product_matches SET match_identity_hash = ? WHERE id = ?', [h, r.id]);
+                        backfilled += 1;
+                    }
+                }
+            } catch (e) {
+                console.warn('[matches] backfill match_identity_hash:', e && e.message ? e.message : e);
+            }
+
+            // 3) Удаляем дубли (молча, выводим только итог)
+            const removed = await dedupeProductMatchesByIdentityHash({ silent: true });
+
+            // 4) UNIQUE INDEX. Если не получилось из-за оставшихся дублей (например,
+            // gap между backfill и dedup) — повторяем dedup ещё раз и пробуем снова.
+            let indexOk = false;
+            for (let attempt = 0; attempt < 2 && !indexOk; attempt += 1) {
+                try {
+                    await db.query(
+                        'CREATE UNIQUE INDEX uq_pm_site_comp_identity ON product_matches (my_site_id, competitor_site_id, match_identity_hash)'
+                    );
+                    indexOk = true;
+                } catch (e) {
+                    const msg = e && e.message ? String(e.message) : '';
+                    if (/Duplicate key name|already exists/i.test(msg)) {
+                        indexOk = true;
+                        break;
+                    }
+                    if (/Duplicate entry/i.test(msg) && attempt === 0) {
+                        await dedupeProductMatchesByIdentityHash({ silent: true });
+                        continue;
+                    }
+                    console.warn('[matches] CREATE UNIQUE INDEX uq_pm_site_comp_identity:', msg);
+                    break;
+                }
+            }
+
+            if (backfilled > 0 || removed > 0) {
+                console.log(
+                    `[matches] product_matches identity schema: backfilled=${backfilled}, removed_duplicates=${removed}, unique_index=${indexOk ? 'ok' : 'failed'}`
+                );
+            }
+            productMatchIdentityReady = true;
+        })().catch((err) => {
+            // На случай повторной попытки — позволяем ещё раз запустить миграцию.
+            productMatchIdentityPromise = null;
+            throw err;
+        });
+        return productMatchIdentityPromise;
+    }
+
     async function updateJob(jobId, fields) {
         const keys = Object.keys(fields);
         if (!keys.length) return;
@@ -590,7 +759,18 @@ module.exports = (db, settings) => {
     }
 
     async function resolveActorDisplayName(req) {
-        const username = String(req.headers['x-auth-username'] || '').trim();
+        // 1) Доверяем сессии: req.datagonActor проставляется глобальным auth-middleware в server.js
+        //    из httpOnly-cookie dg_session. Этот источник работает всегда, когда пользователь залогинен,
+        //    и не зависит от того, что фронт положил в localStorage.
+        const actor = req && req.datagonActor;
+        if (actor) {
+            const fullName = String(actor.full_name || '').trim();
+            if (fullName) return fullName;
+            const actorUser = String(actor.username || '').trim();
+            if (actorUser) return actorUser;
+        }
+        // 2) Fallback: legacy x-auth-username из localStorage (для совместимости со старым фронтом).
+        const username = String((req && req.headers && req.headers['x-auth-username']) || '').trim();
         if (!username) return 'unknown';
         try {
             const [rows] = await db.query(
@@ -1146,15 +1326,47 @@ module.exports = (db, settings) => {
 
         async function flushPendingMatchesCore() {
             if (!pendingMatches.length) return;
-            const values = pendingMatches.map(m => [
-                mySiteId, m.my_sku, m.my_name, m.comp_project_id,
-                m.comp_sku, m.comp_name, m.match_type, m.matching_mode, m.confidence, 'pending'
+            await ensureProductMatchIdentitySchema();
+            const values = pendingMatches.map((m) => [
+                mySiteId,
+                m.my_sku,
+                m.my_name,
+                m.comp_project_id,
+                m.comp_sku,
+                m.comp_name,
+                m.match_type,
+                m.matching_mode,
+                m.confidence,
+                'pending',
+                computeMatchIdentityHash(
+                    mySiteId,
+                    m.comp_project_id,
+                    m.my_sku,
+                    m.my_name,
+                    m.comp_sku,
+                    m.comp_name
+                ),
             ]);
-            await db.query(`
+            await db.query(
+                `
                 INSERT INTO product_matches
-                (my_site_id, my_sku, my_product_name, competitor_site_id, competitor_sku, competitor_name, match_type, matching_mode, confidence_score, status)
+                (my_site_id, my_sku, my_product_name, competitor_site_id, competitor_sku, competitor_name,
+                 match_type, matching_mode, confidence_score, status, match_identity_hash)
                 VALUES ?
-            `, [values]);
+                ON DUPLICATE KEY UPDATE
+                  confidence_score = IF(status = 'confirmed', confidence_score,
+                    GREATEST(COALESCE(confidence_score, 0), VALUES(confidence_score))),
+                  match_type = IF(status = 'confirmed', match_type, VALUES(match_type)),
+                  matching_mode = IF(status = 'confirmed', matching_mode, VALUES(matching_mode)),
+                  my_sku = IF(status = 'confirmed', my_sku, VALUES(my_sku)),
+                  my_product_name = IF(status = 'confirmed', my_product_name, VALUES(my_product_name)),
+                  competitor_sku = IF(status = 'confirmed', competitor_sku, VALUES(competitor_sku)),
+                  competitor_name = IF(status = 'confirmed', competitor_name, VALUES(competitor_name)),
+                  status = IF(status = 'confirmed', status, VALUES(status)),
+                  updated_at = CURRENT_TIMESTAMP
+            `,
+                [values]
+            );
             totalMatchesSaved += pendingMatches.length;
             pendingMatches.length = 0;
         }
@@ -1924,6 +2136,7 @@ module.exports = (db, settings) => {
         try {
             await ensureMatchAuditColumns();
             await ensureProductMatchesOptionalCols();
+            await ensureProductMatchIdentitySchema();
             let q = `
                 SELECT 
                     pm.*,
@@ -2099,6 +2312,7 @@ module.exports = (db, settings) => {
         try {
             await ensureMatchAuditColumns();
             await ensureMatchLaneTables();
+            await ensureProductMatchIdentitySchema();
             const actRow = await loadProductMatchActivityRow(id);
             if (!actRow) return res.status(404).json({ error: 'Запись не найдена' });
             const row = {
@@ -2108,9 +2322,21 @@ module.exports = (db, settings) => {
                 my_product_name: actRow.my_product_name
             };
             const actor = await resolveActorDisplayName(req);
+            const idHash = computeMatchIdentityHash(
+                actRow.my_site_id,
+                actRow.competitor_site_id,
+                actRow.my_sku,
+                actRow.my_product_name,
+                actRow.competitor_sku,
+                actRow.competitor_name
+            );
             await db.query(
-                'UPDATE product_matches SET status = "confirmed", confirmed_by = ?, confirmed_at = NOW(), unlinked_by = NULL, unlinked_at = NULL, rejected_by = NULL, rejected_at = NULL WHERE id = ?',
-                [actor, id]
+                'UPDATE product_matches SET status = "confirmed", confirmed_by = ?, confirmed_at = NOW(), unlinked_by = NULL, unlinked_at = NULL, rejected_by = NULL, rejected_at = NULL, match_identity_hash = ? WHERE id = ?',
+                [actor, idHash, id]
+            );
+            await db.query(
+                'DELETE FROM product_matches WHERE my_site_id = ? AND competitor_site_id = ? AND match_identity_hash = ? AND id <> ?',
+                [actRow.my_site_id, actRow.competitor_site_id, idHash, id]
             );
             const mpId = await resolveMyProductId(db, row.my_site_id, row.my_sku, row.my_product_name);
             if (mpId) {
@@ -2469,18 +2695,57 @@ module.exports = (db, settings) => {
         try {
             await ensureMatchLaneTables();
             await ensureMatchAuditColumns();
+            await ensureProductMatchIdentitySchema();
             const [[mp]] = await db.query(
                 'SELECT id, sku, name FROM my_products WHERE id = ? AND site_id = ? AND is_active = 1 LIMIT 1',
                 [myProductId, mySiteId]
             );
             if (!mp) return res.status(404).json({ error: 'Товар не найден на выбранном сайте' });
             const actor = await resolveActorDisplayName(req);
+            const idHash = computeMatchIdentityHash(
+                mySiteId,
+                competitorSiteId,
+                mp.sku,
+                mp.name,
+                competitorSku,
+                competitorName
+            );
             await db.query(
                 `INSERT INTO product_matches
-                 (my_site_id, my_sku, my_product_name, competitor_site_id, competitor_sku, competitor_name, match_type, matching_mode, confidence_score, status, confirmed_by, confirmed_at)
-                 VALUES (?, ?, ?, ?, ?, ?, 'manual', 'manual', 1.0000, 'confirmed', ?, NOW())`,
-                [mySiteId, mp.sku || '', mp.name || '', competitorSiteId, competitorSku || null, competitorName || null, actor]
+                 (my_site_id, my_sku, my_product_name, competitor_site_id, competitor_sku, competitor_name,
+                  match_type, matching_mode, confidence_score, status, confirmed_by, confirmed_at, match_identity_hash)
+                 VALUES (?, ?, ?, ?, ?, ?, 'manual', 'manual', 1.0000, 'confirmed', ?, NOW(), ?)
+                 ON DUPLICATE KEY UPDATE
+                   status = 'confirmed',
+                   confirmed_by = VALUES(confirmed_by),
+                   confirmed_at = VALUES(confirmed_at),
+                   match_type = 'manual',
+                   matching_mode = 'manual',
+                   confidence_score = 1.0000,
+                   my_sku = VALUES(my_sku),
+                   my_product_name = VALUES(my_product_name),
+                   competitor_sku = VALUES(competitor_sku),
+                   competitor_name = VALUES(competitor_name),
+                   rejected_by = NULL,
+                   rejected_at = NULL,
+                   unlinked_by = NULL,
+                   unlinked_at = NULL,
+                   updated_at = CURRENT_TIMESTAMP`,
+                [mySiteId, mp.sku || '', mp.name || '', competitorSiteId, competitorSku || null, competitorName || null, actor, idHash]
             );
+            const [[keepRow]] = await db.query(
+                `SELECT id FROM product_matches
+                 WHERE my_site_id = ? AND competitor_site_id = ? AND match_identity_hash = ?
+                 ORDER BY (status = 'confirmed') DESC, COALESCE(confirmed_at, '1970-01-01') DESC, id ASC
+                 LIMIT 1`,
+                [mySiteId, competitorSiteId, idHash]
+            );
+            if (keepRow && keepRow.id) {
+                await db.query(
+                    'DELETE FROM product_matches WHERE my_site_id = ? AND competitor_site_id = ? AND match_identity_hash = ? AND id <> ?',
+                    [mySiteId, competitorSiteId, idHash, keepRow.id]
+                );
+            }
             await db.query(
                 'DELETE FROM match_exclusion WHERE my_site_id = ? AND competitor_site_id = ? AND my_product_id = ?',
                 [mySiteId, competitorSiteId, myProductId]
@@ -2540,6 +2805,7 @@ module.exports = (db, settings) => {
     /** Вынесено из GET /list: создание индексов на больших таблицах не должно блокировать загрузку страницы. */
     router.warmupMatchingIndexes = async function warmupMatchingIndexes() {
         await ensureMatchesPerfIndexes();
+        await ensureProductMatchIdentitySchema();
     };
 
     return router;

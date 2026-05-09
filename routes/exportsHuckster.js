@@ -722,6 +722,10 @@ function createExportsHucksterRouter(_db, appSettings) {
         },
         result: null,
         error: null,
+        // ISO-время фактического сохранения снапшота в huckster_matrix_snapshots.
+        // Используется server.js / processAutoSyncQueue, чтобы пометить запуск
+        // completed только если снапшот реально записался, а не просто IIFE завершилась.
+        snapshot_saved_at: null,
         active_abort_controller: null,
     };
 
@@ -881,14 +885,27 @@ function createExportsHucksterRouter(_db, appSettings) {
             current_set: '',
         };
 
+        // Сбрасываем «снапшот сохранён» от предыдущего запуска: его выставит блок
+        // postprocess_snapshot_save_done, и server.js / processAutoSyncQueue использует
+        // это для honest-статуса processes (см. getSyncState/triggerSync).
+        syncState.snapshot_saved_at = null;
+
         (async () => {
+            // «Ранний» лог-сигнал: чтобы при моментальном падении в IIFE (до основного try)
+            // в huckster-sync.log оставался хотя бы один INFO-маркер с временем старта.
+            // appendHucksterLog проглатывает свои ошибки — это просто метка для диагностики.
+            try { await appendHucksterLog('INFO', 'sync_iife_entered', { started_at: syncState.started_at }); } catch (_) {}
+            let lastPhase = 'init';
             try {
                 const setActiveAbortController = (controller) => {
                     syncState.active_abort_controller = controller || null;
                 };
+                lastPhase = 'sync_started';
                 await appendHucksterLog('INFO', 'sync_started', { started_at: syncState.started_at, test_uids: opts.test_uids });
                 throwIfStopped(() => syncState.stop_requested);
+                lastPhase = 'huckster_auth';
                 const sessionId = await hucksterAuth(email, password);
+                lastPhase = 'repricer';
                 const set1Items = {};
                 const set2Items = {};
                 /* Фаза 1: repricer по всем магазинам обоих наборов, затем фаза 2: Unit-модели везде; матрицы — только в конце. */
@@ -966,6 +983,7 @@ function createExportsHucksterRouter(_db, appSettings) {
                     });
                     syncState.progress.done_shops += 1;
                 }
+                lastPhase = 'unit_models';
                 for (const item of allShops) {
                     throwIfStopped(() => syncState.stop_requested);
                     const setLabel = item.set === 'set1' ? 'Huckster Export' : 'Huckster Export RRC';
@@ -1087,6 +1105,7 @@ function createExportsHucksterRouter(_db, appSettings) {
                     syncState.progress.done_shops += 1;
                 }
                 const syncedAt = new Date().toISOString();
+                lastPhase = 'postprocess_ms_rows';
                 let msBridgeRowsAll = [];
                 let msBridgeRowsSet1 = [];
                 let msBridgeRowsSet2Base = [];
@@ -1173,6 +1192,7 @@ function createExportsHucksterRouter(_db, appSettings) {
                 await appendHucksterLog('INFO', 'postprocess_enrich_set2_done', {
                     rows: Array.isArray(set2MsBridgeRowsFiltered) ? set2MsBridgeRowsFiltered.length : 0,
                 });
+                lastPhase = 'postprocess_build_exports';
                 syncState.status_text = 'Финализация: сборка матриц Huckster...';
                 await appendHucksterLog('INFO', 'postprocess_build_exports_start', {});
                 const set1 = buildMsHucksterBridgeExport(cfg.set1, set1Items, set1MsBridgeRows, syncedAt, {
@@ -1207,28 +1227,48 @@ function createExportsHucksterRouter(_db, appSettings) {
                     lost_rows: Number(sheetLost.total_rows || 0),
                 });
                 if (!opts.test_uids.length) {
+                    lastPhase = 'snapshot_save';
                     try {
                         syncState.status_text = 'Финализация: сохранение снапшота в БД...';
                         await appendHucksterLog('INFO', 'postprocess_snapshot_save_start', {});
                         await saveHucksterSnapshot(_db, syncState.result);
-                        await appendHucksterLog('INFO', 'postprocess_snapshot_save_done', {});
+                        syncState.snapshot_saved_at = new Date().toISOString();
+                        await appendHucksterLog('INFO', 'postprocess_snapshot_save_done', {
+                            snapshot_saved_at: syncState.snapshot_saved_at,
+                        });
                     } catch (saveErr) {
-                        console.error('[huckster] snapshot save:', saveErr && saveErr.message ? saveErr.message : saveErr);
+                        const msg = saveErr && saveErr.message ? saveErr.message : String(saveErr);
+                        console.error('[huckster] snapshot save:', msg);
+                        // Снапшот не сохранился — для server.js это «failed», даже если все
+                        // предыдущие фазы прошли. Оставляем result.success=true, но не
+                        // ставим snapshot_saved_at и пишем error, чтобы processes увидел.
+                        syncState.error = { code: 'HUCKSTER_SNAPSHOT_SAVE_FAILED', error: msg };
+                        await appendHucksterLog('ERROR', 'sync_failed', {
+                            phase: 'snapshot_save',
+                            error: msg,
+                        });
                     }
                 }
             } catch (e) {
                 if (e && e.code === 'HUCKSTER_STOPPED') {
-                    syncState.error = { code: 'HUCKSTER_STOPPED', error: e.message || 'Остановлено пользователем' };
+                    syncState.error = {
+                        code: 'HUCKSTER_STOPPED',
+                        error: e.message || 'Остановлено пользователем',
+                        phase: lastPhase,
+                    };
                     syncState.status_text = 'Обновление Huckster остановлено.';
-                    await appendHucksterLog('WARN', 'sync_stopped', { error: e.message || 'stopped' });
+                    await appendHucksterLog('WARN', 'sync_stopped', { phase: lastPhase, error: e.message || 'stopped' });
                 } else {
+                    const msg = e && e.message ? e.message : String(e);
                     syncState.error = {
                         code: 'HUCKSTER_SYNC_FAILED',
-                        error: e && e.message ? e.message : String(e),
+                        error: msg,
+                        phase: lastPhase,
                     };
-                    syncState.status_text = 'Ошибка обновления Huckster.';
+                    syncState.status_text = `Ошибка обновления Huckster (фаза ${lastPhase}): ${msg}`;
                     await appendHucksterLog('ERROR', 'sync_failed', {
-                        error: e && e.message ? e.message : String(e),
+                        phase: lastPhase,
+                        error: msg,
                     });
                 }
             } finally {
@@ -1255,7 +1295,19 @@ function createExportsHucksterRouter(_db, appSettings) {
         return { started: true, started_at: r.started_at };
     };
     createExportsHucksterRouter.getSyncState = function getHucksterSyncState() {
-        return { active: syncState.active };
+        // Расширенный снимок состояния — нужен server.js / processAutoSyncQueue,
+        // чтобы помечать запись auto_sync_runs honestly:
+        //   completed — только если result.success === true и snapshot_saved_at не null;
+        //   failed    — если есть error (auth/repricer/snapshot_save/HUCKSTER_STOPPED).
+        return {
+            active: syncState.active,
+            started_at: syncState.started_at,
+            finished_at: syncState.finished_at,
+            status_text: syncState.status_text,
+            error: syncState.error,
+            result_success: !!(syncState.result && syncState.result.success),
+            snapshot_saved_at: syncState.snapshot_saved_at,
+        };
     };
 
     router.use((req, res, next) => {

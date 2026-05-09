@@ -1,18 +1,21 @@
   <style>
-    /* Таблицы маркетплейсов: визуальный эталон как у «Мои товары» / МойСклад (.dg-mp-table / .dg-ms-table), без sticky (обычный thead). */
+    /* Таблицы маркетплейсов: эталон как у «Мои товары» / МойСклад (.dg-mp-table); без глобального baseline из datagon-vanilla.js (#dg-mp-table-main в shouldSkipGlobalTableBaseline). */
     body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .app-main__inner .main-card.card > .card-body {
       min-width: 0;
       max-width: 100%;
       box-sizing: border-box;
     }
+    /* Обёртки таблицы: убраны все overflow-кадры — иначе CSS sticky на <th>
+       прилипает к ближайшему scrolling-контейнеру и уезжает вместе с ним.
+       Эталон moysklad (см. moysklad.head.html): `.table-responsive { overflow: visible !important }`,
+       таблица «выкатывается» за пределы карточки, sticky-Y работает относительно window
+       и заголовки честно прилипают под app-header через top: var(--dg-table-sticky-top). */
     body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-mkt-scroll {
       width: 100%;
       max-width: 100%;
       min-width: 0;
       box-sizing: border-box;
-      overflow-x: auto;
-      overflow-y: visible;
-      -webkit-overflow-scrolling: touch;
+      overflow: visible !important;
     }
     body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"]
       .dg-mp-mkt-scroll
@@ -21,7 +24,173 @@
       max-width: 100%;
       min-width: 0;
       box-sizing: border-box;
+      overflow: visible !important;
+      max-height: none !important;
     }
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"]
+      .dg-mp-mkt-scroll
+      > .table-responsive,
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"]
+      .dg-mp-mkt-scroll
+      > .table-responsive
+      > table {
+      transform: none !important;
+      filter: none !important;
+      perspective: none !important;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-pagination {
+      border-top: 1px solid #e9ecef;
+      background: #fff;
+    }
+    /* Toolbox столбцов и ширин (повторяет схему Huckster). */
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-toolbox {
+      border: 1px solid #e9ecef;
+      background: #fafbfc;
+      border-radius: 8px;
+      padding: 8px;
+      margin: 0 0 10px 0;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-toolbox-top {
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    /* Группа расширенных фильтров (исключить плакаты + менеджеры). */
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-filter-group {
+      display: inline-flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px 12px;
+      padding: 4px 8px;
+      border: 1px dashed #d1d5db;
+      border-radius: 6px;
+      background: #fff;
+      margin-left: 6px;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-filter-check {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: #374151;
+      margin: 0;
+      user-select: none;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-filter-sel {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin: 0;
+      font-size: 12px;
+      color: #374151;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-filter-sel select {
+      width: auto;
+      min-width: 140px;
+      max-width: 220px;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-filter-lbl {
+      color: #6b7280;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-filter-reset {
+      font-size: 12px;
+      color: #6b7280;
+      text-decoration: underline dotted;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-filter-reset:hover {
+      color: #1f2937;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-toolbox-panel {
+      margin-top: 8px;
+      border-top: 1px dashed #d1d5db;
+      padding-top: 8px;
+      display: none;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-toolbox-panel.open {
+      display: block;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-toolbox-actions {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-bottom: 8px;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-cols-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 6px 12px;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-cols-grid label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: #374151;
+      user-select: none;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-widths-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 6px 12px;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-width-control {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: #374151;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-width-control input {
+      width: 70px;
+    }
+    /* Лог обновления маркетплейса (шаги + тайминги). */
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-log {
+      border: 1px solid #e9ecef;
+      background: #f8f9fa;
+      border-radius: 8px;
+      padding: 8px 10px;
+      margin: 10px 0 0 0;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      font-size: 12px;
+      color: #1f2937;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-log-head {
+      font-weight: 600;
+      color: #374151;
+      margin-bottom: 6px;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-log-body {
+      max-height: 260px;
+      overflow-y: auto;
+      border-top: 1px dashed #d1d5db;
+      padding-top: 6px;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-log-row {
+      display: flex;
+      gap: 10px;
+      padding: 1px 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-log-t {
+      flex: 0 0 auto;
+      color: #6b7280;
+      min-width: 80px;
+      text-align: right;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-log-msg {
+      flex: 1 1 auto;
+      color: #111827;
+    }
+    /* table-layout: fixed обязателен — иначе браузер не даёт сузить колонку
+       ниже её min-content (например, заголовок «Артикул (offer_id) Ozon» ~170px).
+       С fixed ширина из <colgroup> ставится жёстко, а длинный текст переносится
+       благодаря white-space: normal + word-break: break-word. */
     body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-mkt-table {
       font-size: 0.8rem;
       line-height: 1.25;
@@ -31,22 +200,177 @@
       max-width: none;
       border-collapse: collapse;
       border-spacing: 0;
-      table-layout: auto;
+      table-layout: fixed;
     }
+    /* Плавающий заголовок таблицы — через native CSS sticky на <th> (как в moysklad,
+       где это основной механизм; см. moysklad.scripts.html, строка ~1060). Глобальная
+       CSS-переменная --dg-table-sticky-top равна высоте app-header и обновляется в
+       datagon-vanilla.js#initGlobalTableBaseline на resize / mutation. Это стабильнее
+       JS translate3d и не «съезжает» при позднем layout (шрифты, картинки). */
     body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-mkt-table thead th {
+      position: sticky;
+      top: var(--dg-table-sticky-top, 60px);
+      z-index: 25;
       background: #f8f9fa;
       border-right: 1px solid #e6e9ee;
       vertical-align: middle;
-      white-space: nowrap;
+      white-space: normal;
+      word-break: break-word;
+      overflow-wrap: anywhere;
       padding: 0.5rem 0.65rem;
       font-weight: 600;
+    }
+    /* Поиск в шапке карточки «Таблица»: всегда одной строкой, инпут гибко
+       сжимается. Вся группа целиком переносится под заголовок только если ей
+       совсем не хватает ширины (родитель card-header — flex-wrap). */
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-search-box {
+      min-width: 0;
+      max-width: 100%;
+      flex-wrap: nowrap;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-search-input {
+      width: 260px;
+      min-width: 0;
+      max-width: 100%;
+      flex: 1 1 260px;
+    }
+    @media (max-width: 575.98px) {
+      body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-search-box {
+        margin-left: 0 !important;
+        width: 100%;
+        margin-top: 6px;
+      }
+      body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-search-input {
+        flex: 1 1 auto;
+      }
+    }
+    /* Сортируемые заголовки: курсор и стрелка-индикатор. */
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-mkt-table thead th.dg-mp-sortable {
+      cursor: pointer;
+      user-select: none;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-mkt-table thead th.dg-mp-sortable:hover {
+      background: #eef1f5;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-mkt-table thead th .dg-mp-sort-arrow {
+      color: #6b7280;
+      font-size: 11px;
+      margin-left: 4px;
+      letter-spacing: 0;
+    }
+    /* «Проблемы с товарами»: подсветка ячеек, в которых не нашли код/название
+       на соответствующем маркетплейсе (см. exports-marketplaces-issues.scripts.html). */
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table tbody td.dg-mpu-missing {
+      background: #fdecec;
+      box-shadow: inset 0 0 0 1px #f5b0b0;
+      color: #b42318;
+    }
+    /* «Проблемы с товарами»: на этой странице 10–11 широких колонок (МС + 3 маркетплейса × code/name),
+       и даже при дефолтных ширинах ~140–220px таблица заметно шире карточки на типовых ноутбуках.
+       Поэтому здесь сознательно ОТКАЗЫВАЕМСЯ от sticky-baseline маркетплейсов (overflow:visible на
+       обёртках) и возвращаем горизонтальный скролл внутри карточки: .dg-mp-mkt-scroll и
+       .table-responsive получают overflow-x:auto, таблица не «вылазит» за пределы карточки/экрана.
+       Sticky-th в этом случае прилипает к ближайшему scrolling-контейнеру (.table-responsive) —
+       top:0 даёт «липкую» строку при горизонтальном скролле, под app-header при вертикальном
+       скролле страницы заголовок не плывёт (это известный trade-off CSS-спеки overflow). Если
+       нужно меньше колонок и плавающую под app-header шапку — пользуйтесь «🧩 Столбцы» и скрывайте
+       колонки; меньшая таблица помещается в карточку, и тогда обёртку можно вернуть на overflow:visible. */
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-scroll,
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-scroll > .table-responsive {
+      overflow-x: auto !important;
+      overflow-y: visible !important;
+      max-height: none !important;
+      max-width: 100%;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table thead th {
+      top: 0;
+      padding-right: 14px;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mpu-resizer {
+      position: absolute;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      width: 6px;
+      cursor: col-resize;
+      user-select: none;
+      touch-action: none;
+      z-index: 26;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mpu-resizer:hover,
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mpu-resizer.dg-mpu-resizing {
+      background: rgba(13, 110, 253, 0.35);
+    }
+    /* Toolbox (управление видимостью + сброс ширин) на странице «Проблемы с товарами». */
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mpu-toolbox {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mpu-cols-panel {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: auto;
+      margin-top: 4px;
+      min-width: 260px;
+      max-width: 320px;
+      background: #fff;
+      border: 1px solid #e6e9ee;
+      border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+      padding: 10px 12px;
+      z-index: 30;
+      display: none;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mpu-cols-panel.open {
+      display: block;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mpu-cols-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-top: 6px;
+      max-height: 320px;
+      overflow-y: auto;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] #dg-mpu-widths-panel .dg-mp-widths-grid {
+      grid-template-columns: 1fr;
+      max-height: 320px;
+      overflow-y: auto;
+      margin-top: 6px;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] #dg-mpu-widths-panel .dg-mp-width-control {
+      justify-content: space-between;
+      width: 100%;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mpu-cols-grid label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: #374151;
+      user-select: none;
+      margin: 0;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mpu-toolbox-wrap {
+      position: relative;
     }
     body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-mkt-table tbody td {
       border-right: 1px solid #f3f5f8;
       vertical-align: middle;
-      padding: 0.45rem 0.65rem;
-      max-width: 22rem;
       word-break: break-word;
+      overflow-wrap: anywhere;
+      padding: 0.45rem 0.65rem;
+      word-break: break-word;
+    }
+    /* Default-ширины колонок задаются JS (state.colWidths), здесь только разрешаем перенос строк
+       и убираем жёсткие max-width (иначе пользовательская ширина не применится). */
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-mkt-table th,
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-mkt-table td {
+      max-width: none;
+      white-space: normal;
     }
     @media (max-width: 767.98px) {
       body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .app-main__inner {

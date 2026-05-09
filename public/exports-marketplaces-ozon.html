@@ -8,20 +8,23 @@
   <link rel="stylesheet" href="/static/css/main.989b22a9.css" />
   
   <style>
-    /* Таблицы маркетплейсов: визуальный эталон как у «Мои товары» / МойСклад (.dg-mp-table / .dg-ms-table), без sticky (обычный thead). */
+    /* Таблицы маркетплейсов: эталон как у «Мои товары» / МойСклад (.dg-mp-table); без глобального baseline из datagon-vanilla.js (#dg-mp-table-main в shouldSkipGlobalTableBaseline). */
     body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .app-main__inner .main-card.card > .card-body {
       min-width: 0;
       max-width: 100%;
       box-sizing: border-box;
     }
+    /* Обёртки таблицы: убраны все overflow-кадры — иначе CSS sticky на <th>
+       прилипает к ближайшему scrolling-контейнеру и уезжает вместе с ним.
+       Эталон moysklad (см. moysklad.head.html): `.table-responsive { overflow: visible !important }`,
+       таблица «выкатывается» за пределы карточки, sticky-Y работает относительно window
+       и заголовки честно прилипают под app-header через top: var(--dg-table-sticky-top). */
     body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-mkt-scroll {
       width: 100%;
       max-width: 100%;
       min-width: 0;
       box-sizing: border-box;
-      overflow-x: auto;
-      overflow-y: visible;
-      -webkit-overflow-scrolling: touch;
+      overflow: visible !important;
     }
     body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"]
       .dg-mp-mkt-scroll
@@ -30,7 +33,173 @@
       max-width: 100%;
       min-width: 0;
       box-sizing: border-box;
+      overflow: visible !important;
+      max-height: none !important;
     }
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"]
+      .dg-mp-mkt-scroll
+      > .table-responsive,
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"]
+      .dg-mp-mkt-scroll
+      > .table-responsive
+      > table {
+      transform: none !important;
+      filter: none !important;
+      perspective: none !important;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-pagination {
+      border-top: 1px solid #e9ecef;
+      background: #fff;
+    }
+    /* Toolbox столбцов и ширин (повторяет схему Huckster). */
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-toolbox {
+      border: 1px solid #e9ecef;
+      background: #fafbfc;
+      border-radius: 8px;
+      padding: 8px;
+      margin: 0 0 10px 0;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-toolbox-top {
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    /* Группа расширенных фильтров (исключить плакаты + менеджеры). */
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-filter-group {
+      display: inline-flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px 12px;
+      padding: 4px 8px;
+      border: 1px dashed #d1d5db;
+      border-radius: 6px;
+      background: #fff;
+      margin-left: 6px;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-filter-check {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: #374151;
+      margin: 0;
+      user-select: none;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-filter-sel {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin: 0;
+      font-size: 12px;
+      color: #374151;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-filter-sel select {
+      width: auto;
+      min-width: 140px;
+      max-width: 220px;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-filter-lbl {
+      color: #6b7280;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-filter-reset {
+      font-size: 12px;
+      color: #6b7280;
+      text-decoration: underline dotted;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-filter-reset:hover {
+      color: #1f2937;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-toolbox-panel {
+      margin-top: 8px;
+      border-top: 1px dashed #d1d5db;
+      padding-top: 8px;
+      display: none;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-toolbox-panel.open {
+      display: block;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-toolbox-actions {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-bottom: 8px;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-cols-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 6px 12px;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-cols-grid label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: #374151;
+      user-select: none;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-widths-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 6px 12px;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-width-control {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: #374151;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-width-control input {
+      width: 70px;
+    }
+    /* Лог обновления маркетплейса (шаги + тайминги). */
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-log {
+      border: 1px solid #e9ecef;
+      background: #f8f9fa;
+      border-radius: 8px;
+      padding: 8px 10px;
+      margin: 10px 0 0 0;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      font-size: 12px;
+      color: #1f2937;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-log-head {
+      font-weight: 600;
+      color: #374151;
+      margin-bottom: 6px;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-log-body {
+      max-height: 260px;
+      overflow-y: auto;
+      border-top: 1px dashed #d1d5db;
+      padding-top: 6px;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-log-row {
+      display: flex;
+      gap: 10px;
+      padding: 1px 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-log-t {
+      flex: 0 0 auto;
+      color: #6b7280;
+      min-width: 80px;
+      text-align: right;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-log-msg {
+      flex: 1 1 auto;
+      color: #111827;
+    }
+    /* table-layout: fixed обязателен — иначе браузер не даёт сузить колонку
+       ниже её min-content (например, заголовок «Артикул (offer_id) Ozon» ~170px).
+       С fixed ширина из <colgroup> ставится жёстко, а длинный текст переносится
+       благодаря white-space: normal + word-break: break-word. */
     body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-mkt-table {
       font-size: 0.8rem;
       line-height: 1.25;
@@ -40,22 +209,177 @@
       max-width: none;
       border-collapse: collapse;
       border-spacing: 0;
-      table-layout: auto;
+      table-layout: fixed;
     }
+    /* Плавающий заголовок таблицы — через native CSS sticky на <th> (как в moysklad,
+       где это основной механизм; см. moysklad.scripts.html, строка ~1060). Глобальная
+       CSS-переменная --dg-table-sticky-top равна высоте app-header и обновляется в
+       datagon-vanilla.js#initGlobalTableBaseline на resize / mutation. Это стабильнее
+       JS translate3d и не «съезжает» при позднем layout (шрифты, картинки). */
     body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-mkt-table thead th {
+      position: sticky;
+      top: var(--dg-table-sticky-top, 60px);
+      z-index: 25;
       background: #f8f9fa;
       border-right: 1px solid #e6e9ee;
       vertical-align: middle;
-      white-space: nowrap;
+      white-space: normal;
+      word-break: break-word;
+      overflow-wrap: anywhere;
       padding: 0.5rem 0.65rem;
       font-weight: 600;
+    }
+    /* Поиск в шапке карточки «Таблица»: всегда одной строкой, инпут гибко
+       сжимается. Вся группа целиком переносится под заголовок только если ей
+       совсем не хватает ширины (родитель card-header — flex-wrap). */
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-search-box {
+      min-width: 0;
+      max-width: 100%;
+      flex-wrap: nowrap;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-search-input {
+      width: 260px;
+      min-width: 0;
+      max-width: 100%;
+      flex: 1 1 260px;
+    }
+    @media (max-width: 575.98px) {
+      body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-search-box {
+        margin-left: 0 !important;
+        width: 100%;
+        margin-top: 6px;
+      }
+      body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-search-input {
+        flex: 1 1 auto;
+      }
+    }
+    /* Сортируемые заголовки: курсор и стрелка-индикатор. */
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-mkt-table thead th.dg-mp-sortable {
+      cursor: pointer;
+      user-select: none;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-mkt-table thead th.dg-mp-sortable:hover {
+      background: #eef1f5;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-mkt-table thead th .dg-mp-sort-arrow {
+      color: #6b7280;
+      font-size: 11px;
+      margin-left: 4px;
+      letter-spacing: 0;
+    }
+    /* «Проблемы с товарами»: подсветка ячеек, в которых не нашли код/название
+       на соответствующем маркетплейсе (см. exports-marketplaces-issues.scripts.html). */
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table tbody td.dg-mpu-missing {
+      background: #fdecec;
+      box-shadow: inset 0 0 0 1px #f5b0b0;
+      color: #b42318;
+    }
+    /* «Проблемы с товарами»: на этой странице 10–11 широких колонок (МС + 3 маркетплейса × code/name),
+       и даже при дефолтных ширинах ~140–220px таблица заметно шире карточки на типовых ноутбуках.
+       Поэтому здесь сознательно ОТКАЗЫВАЕМСЯ от sticky-baseline маркетплейсов (overflow:visible на
+       обёртках) и возвращаем горизонтальный скролл внутри карточки: .dg-mp-mkt-scroll и
+       .table-responsive получают overflow-x:auto, таблица не «вылазит» за пределы карточки/экрана.
+       Sticky-th в этом случае прилипает к ближайшему scrolling-контейнеру (.table-responsive) —
+       top:0 даёт «липкую» строку при горизонтальном скролле, под app-header при вертикальном
+       скролле страницы заголовок не плывёт (это известный trade-off CSS-спеки overflow). Если
+       нужно меньше колонок и плавающую под app-header шапку — пользуйтесь «🧩 Столбцы» и скрывайте
+       колонки; меньшая таблица помещается в карточку, и тогда обёртку можно вернуть на overflow:visible. */
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-scroll,
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-scroll > .table-responsive {
+      overflow-x: auto !important;
+      overflow-y: visible !important;
+      max-height: none !important;
+      max-width: 100%;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table thead th {
+      top: 0;
+      padding-right: 14px;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mpu-resizer {
+      position: absolute;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      width: 6px;
+      cursor: col-resize;
+      user-select: none;
+      touch-action: none;
+      z-index: 26;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mpu-resizer:hover,
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mpu-resizer.dg-mpu-resizing {
+      background: rgba(13, 110, 253, 0.35);
+    }
+    /* Toolbox (управление видимостью + сброс ширин) на странице «Проблемы с товарами». */
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mpu-toolbox {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mpu-cols-panel {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: auto;
+      margin-top: 4px;
+      min-width: 260px;
+      max-width: 320px;
+      background: #fff;
+      border: 1px solid #e6e9ee;
+      border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+      padding: 10px 12px;
+      z-index: 30;
+      display: none;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mpu-cols-panel.open {
+      display: block;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mpu-cols-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-top: 6px;
+      max-height: 320px;
+      overflow-y: auto;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] #dg-mpu-widths-panel .dg-mp-widths-grid {
+      grid-template-columns: 1fr;
+      max-height: 320px;
+      overflow-y: auto;
+      margin-top: 6px;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] #dg-mpu-widths-panel .dg-mp-width-control {
+      justify-content: space-between;
+      width: 100%;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mpu-cols-grid label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: #374151;
+      user-select: none;
+      margin: 0;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mpu-toolbox-wrap {
+      position: relative;
     }
     body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-mkt-table tbody td {
       border-right: 1px solid #f3f5f8;
       vertical-align: middle;
-      padding: 0.45rem 0.65rem;
-      max-width: 22rem;
       word-break: break-word;
+      overflow-wrap: anywhere;
+      padding: 0.45rem 0.65rem;
+      word-break: break-word;
+    }
+    /* Default-ширины колонок задаются JS (state.colWidths), здесь только разрешаем перенос строк
+       и убираем жёсткие max-width (иначе пользовательская ширина не применится). */
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-mkt-table th,
+    body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-mkt-table td {
+      max-width: none;
+      white-space: normal;
     }
     @media (max-width: 767.98px) {
       body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .app-main__inner {
@@ -95,6 +419,63 @@
       flex: 1 1 auto;
       min-height: 100%;
       margin-bottom: 0;
+    }
+    /*
+      Подменю «Маркетплейсы»: ArchitectUI скрывает .metismenu-icon у подпунктов и даёт малый padding.
+      Не трогаем узкую полоску без hover — большой padding раздувает li и смещает «left:50%» у всех иконок колонки.
+      При развороте по hover из closed-sidebar класс closed-sidebar не снимается — нужен отдельный селектор с .app-sidebar:hover.
+    */
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon {
+      display: block !important;
+    }
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link {
+      padding-left: 3.4375rem !important;
+      position: relative;
+      /* Длинные подписи подпунктов («Проблемы с товарами», «Яндекс Маркет»)
+         не должны обрезаться ellipsis: разрешаем перенос на 2 строки и
+         выравниваем иконку по верхней строке. */
+      white-space: normal !important;
+      line-height: 1.25;
+      align-items: flex-start;
+      padding-top: 0.45rem !important;
+      padding-bottom: 0.45rem !important;
+      padding-right: 0.5rem !important;
+      min-height: 2rem;
+      height: auto !important;
+    }
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon {
+      top: 0.55rem !important;
     }
     .dg-sidebar-architect-item {
       margin-top: auto;
@@ -435,7 +816,7 @@
                           <i class="metismenu-icon pe-7s-graph3"></i>Маркетплейсы
                           <i class="metismenu-state-icon pe-7s-angle-down" aria-hidden="true"></i>
                         </a>
-                        <ul class="metismenu-container">
+                        <ul class="metismenu-container dg-vanilla-mp-submenu">
                           <li class="metismenu-item">
                             <a
                               class="metismenu-link"
@@ -476,6 +857,16 @@
                               <i class="metismenu-icon pe-7s-graph2"></i>Яндекс Маркет
                             </a>
                           </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-issues"
+                              href="/exports-marketplaces-issues.html"
+                              title="Товары МойСклад с проблемами публикации на маркетплейсах"
+                            >
+                              <i class="metismenu-icon pe-7s-attention"></i>Проблемы с товарами
+                            </a>
+                          </li>
                         </ul>
                       </li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="exports-huckster" href="/exports-huckster.html" title="Интеграция Huckster / e-teleport — матрица UID по магазинам"><i class="metismenu-icon pe-7s-cart"></i>Huckster</a></li>
@@ -502,7 +893,7 @@
                 <div>
                   Маркетплейсы — Ozon
                   <div class="page-title-subheading">
-                    Меню <strong>Маркетплейсы → Ozon</strong>. Пробная выгрузка каталога в таблице (до 40 строк в браузере). Ключи API задаются на странице <a href="/exports-marketplaces.html">Настройки</a>.
+                    Меню <strong>Маркетплейсы → Ozon</strong>. Каталог из ЛК Ozon с клиентской пагинацией. Ключи API задаются на странице <a href="/exports-marketplaces.html">Настройки</a>.
                   </div>
                 </div>
               </div>
@@ -529,6 +920,7 @@
                 <button type="button" class="btn btn-outline-primary" id="dg-mp-load-snapshot">Показать последнее сохранённое</button>
               </div>
               <div id="dg-mp-msg" class="alert alert-secondary mt-3 mb-0 d-none" role="status"></div>
+              <div id="dg-mp-log" class="dg-mp-log d-none" role="status" aria-live="polite"></div>
             </div>
           </div>
 
@@ -536,7 +928,11 @@
             <div class="card-header d-flex align-items-center gap-2 flex-wrap">
               <i class="header-icon pe-7s-graph2 icon-gradient bg-happy-fisher me-2"></i>
               <span>Таблица Ozon</span>
-              <span class="small text-muted ms-md-auto">Колонки как в CSV; до 40 строк</span>
+              <div class="ms-auto d-flex align-items-center gap-2 flex-nowrap dg-mp-search-box">
+                <label class="small text-muted mb-0 flex-shrink-0" for="dg-mp-search">Поиск</label>
+                <input type="search" class="form-control form-control-sm dg-mp-search-input" id="dg-mp-search" placeholder="Артикул или наименование" autocomplete="off" />
+                <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0" id="dg-mp-search-clear" title="Очистить поиск">×</button>
+              </div>
             </div>
             <div class="card-body p-0">
               <div class="dg-mp-mkt-scroll">
@@ -553,6 +949,22 @@
                       </tr>
                     </tbody>
                   </table>
+                </div>
+              </div>
+              <div class="dg-mp-pagination px-3 py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                  <label class="small text-muted mb-0" for="dg-mp-page-limit">На странице</label>
+                  <select class="form-select form-select-sm" id="dg-mp-page-limit" style="width:auto">
+                    <option value="50">50</option>
+                    <option value="100" selected>100</option>
+                    <option value="200">200</option>
+                    <option value="500">500</option>
+                  </select>
+                  <span class="text-muted small" id="dg-mp-page-hint">—</span>
+                </div>
+                <div class="btn-group" role="group" aria-label="Страницы маркетплейса">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mp-page-prev">Назад</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mp-page-next">Вперед</button>
                 </div>
               </div>
             </div>
@@ -637,6 +1049,102 @@
       var shop = String(document.body.getAttribute("data-dg-mp-shop") || "ozon").trim();
       var exportPath =
         shop === "wildberries" ? "/wildberries" : shop === "yandex" ? "/yandex-market" : "/ozon";
+      var PAGE_SIZE_KEY = "dg.mp.page.size." + shop;
+      var COLS_VISIBLE_KEY = "dg.mp.cols." + shop;
+      var COLS_WIDTH_KEY = "dg.mp.colwidths." + shop;
+      var FILTER_EXCLUDE_POSTERS_KEY = "dg.mp.flt.excl_posters." + shop;
+      var FILTER_MANAGER_KEY = "dg.mp.flt.manager." + shop;
+      var FILTER_CONTENT_MGR_KEY = "dg.mp.flt.cmgr." + shop;
+      var DEFAULT_PAGE_SIZE = 100;
+      var ALLOWED_PAGE_SIZES = [50, 100, 200, 500];
+
+      // Дефолтные ширины (px) по «осмысленному» ключу. Для остальных — DEFAULT_COL_WIDTH.
+      var DEFAULT_COL_WIDTH = 140;
+      var COL_WIDTH_DEFAULTS_BY_KEY = {
+        offer_id: 130,
+        vendor_code: 130,
+        shop_sku: 130,
+        manager: 150,
+        content_manager: 160,
+        name: 360,
+        title: 360,
+        price: 110,
+        vat: 90,
+        status: 130,
+        block_reason: 220,
+        stock: 90,
+        stock_fit: 90,
+        length_cm: 100,
+        width_cm: 100,
+        height_cm: 100,
+        weight_kg: 100,
+        length: 100,
+        width: 100,
+        height: 100,
+        weight: 100,
+        cabinet_url: 110,
+        buyer_url: 110,
+        updated: 130,
+      };
+      var COL_MIN_WIDTH = 40;
+      var COL_MAX_WIDTH = 800;
+
+      // Колонки, скрытые ПО УМОЛЧАНИЮ (при первом открытии или нажатии «По умолчанию»).
+      // Цель — чтобы таблица 14–15 колонок не «выкатывалась» за карточку при стандартном
+      // ширине окна. Пользователь включит при необходимости через «🧩 Столбцы».
+      var DEFAULT_HIDDEN_COLS = {
+        block_reason: true,
+        cabinet_url: true,
+        buyer_url: true,
+        length_cm: true,
+        width_cm: true,
+        height_cm: true,
+        weight_kg: true,
+        length: true,
+        width: true,
+        height: true,
+        weight: true,
+      };
+
+      // Ключи, по которым работает «умный поиск» (артикул + наименование).
+      // Поля приходят с бэкенда: Ozon → offer_id/name, WB → vendor_code/shop_sku/title,
+      // Yandex → offer_id/shop_sku/name. Также поддерживаем sku/nm_id, если они в headers.
+      var SEARCH_KEYS = ["offer_id", "vendor_code", "shop_sku", "sku", "nm_id", "name", "title"];
+      // Приоритет «артикулов» для дефолтной сортировки: WB присылает vendor_code,
+      // Ozon — offer_id, Yandex — offer_id/shop_sku. Берём первый, что есть в headers.
+      var DEFAULT_SORT_KEY_PRIORITY = ["vendor_code", "offer_id", "shop_sku", "sku", "nm_id"];
+      // Колонки, в которых значения сортируются как числа (а не как строки).
+      // price хранится с разделителями (' 1 230 ₽'), но извлечём цифры — см. asNumberOrNaN.
+      var NUMERIC_COL_HINT = {
+        price: true,
+        vat: true,
+        stock: true,
+        stock_fit: true,
+        length_cm: true, width_cm: true, height_cm: true, weight_kg: true,
+        length: true, width: true, height: true, weight: true,
+      };
+
+      var state = {
+        headers: [],
+        headerLabels: [],
+        rowsAll: [],
+        rows: [],
+        page: 1,
+        pageSize: DEFAULT_PAGE_SIZE,
+        visible: {},
+        colWidths: {},
+        search: "",
+        sortKey: null,
+        sortDir: "asc",
+        // Расширенные фильтры (применяются ДО умного поиска и сортировки):
+        // exclude_posters — отбросить строки, в name/title которых встречается «плакат»;
+        // manager / content_manager — точное совпадение (пусто = «все»).
+        filters: {
+          exclude_posters: false,
+          manager: "",
+          content_manager: "",
+        },
+      };
 
       function authHeaders(json) {
         var headers = {};
@@ -656,6 +1164,61 @@
         el.textContent = text || "";
       }
 
+      function fmtMs(ms) {
+        var n = Number(ms) || 0;
+        if (n < 1000) return n + " мс";
+        var s = n / 1000;
+        if (s < 60) return s.toFixed(s < 10 ? 2 : 1) + " с";
+        var m = Math.floor(s / 60);
+        var rest = Math.round(s - m * 60);
+        return m + " мин " + rest + " с";
+      }
+
+      function renderSummaryLog(summary) {
+        var box = document.getElementById("dg-mp-log");
+        if (!box) return;
+        if (!summary || !Array.isArray(summary.steps) || !summary.steps.length) {
+          box.classList.add("d-none");
+          box.innerHTML = "";
+          return;
+        }
+        var rows = summary.steps
+          .map(function (s) {
+            var ctxStr = "";
+            if (s.ctx && typeof s.ctx === "object") {
+              var keys = Object.keys(s.ctx);
+              if (keys.length) {
+                ctxStr =
+                  " " +
+                  keys
+                    .map(function (k) {
+                      var v = s.ctx[k];
+                      var sv = typeof v === "object" && v !== null ? JSON.stringify(v) : String(v == null ? "" : v);
+                      return k + "=" + sv;
+                    })
+                    .join(" ");
+              }
+            }
+            return (
+              '<div class="dg-mp-log-row"><span class="dg-mp-log-t">+' +
+              fmtMs(s.tMs) +
+              '</span><span class="dg-mp-log-msg">' +
+              escCell(s.msg + ctxStr) +
+              "</span></div>"
+            );
+          })
+          .join("");
+        box.classList.remove("d-none");
+        box.innerHTML =
+          '<div class="dg-mp-log-head">Лог обновления (всего ' +
+          fmtMs(summary.durationMs || 0) +
+          ", шагов: " +
+          summary.steps.length +
+          ')</div><div class="dg-mp-log-body">' +
+          rows +
+          "</div>";
+      }
+
       function escCell(v) {
         var s = v === null || v === undefined ? "" : String(v);
         if (s.length > 500) s = s.slice(0, 497) + "…";
@@ -673,108 +1236,927 @@
         if ((isLinkColumn || isHttpUrl(val)) && val.trim()) {
           var safeHref = escCell(val.trim());
           return (
-            '<a href="' +
-            safeHref +
-            '" target="_blank" rel="noopener noreferrer" class="text-primary">Открыть</a>'
+            '<a href="' + safeHref + '" target="_blank" rel="noopener noreferrer" class="text-primary">Открыть</a>'
           );
         }
         return escCell(val);
       }
 
-      function renderMarketTable(headers, rows, headerLabels, maxRows) {
+      function fmtNum(n) {
+        var x = Math.max(0, Math.floor(Number(n) || 0));
+        return x.toLocaleString("ru-RU");
+      }
+
+      // ---- Page size storage ----
+      function readStoredPageSize() {
+        try {
+          var stored = parseInt(window.localStorage.getItem(PAGE_SIZE_KEY) || "", 10);
+          if (ALLOWED_PAGE_SIZES.indexOf(stored) >= 0) return stored;
+        } catch (e) {}
+        return DEFAULT_PAGE_SIZE;
+      }
+      function writeStoredPageSize(size) {
+        try { window.localStorage.setItem(PAGE_SIZE_KEY, String(size)); } catch (e) {}
+      }
+
+      // ---- Visible columns storage ----
+      // Версия схемы хранения visible-набора: при увеличении значения старые
+      // настройки пользователя «всё включено» (когда таблица из 14–15 колонок не
+      // помещалась в карточку) однократно сбрасываются к компактному дефолту.
+      var COLS_VISIBLE_VERSION = 2;
+      var COLS_VISIBLE_VERSION_KEY = COLS_VISIBLE_KEY + ".v";
+      function readStoredVisible() {
+        try {
+          var ver = parseInt(window.localStorage.getItem(COLS_VISIBLE_VERSION_KEY) || "0", 10);
+          var raw = window.localStorage.getItem(COLS_VISIBLE_KEY);
+          if (ver < COLS_VISIBLE_VERSION) {
+            // Одноразовая миграция: сносим устаревшие настройки видимости,
+            // пишем актуальную версию — applyApiPayload выставит компактный дефолт.
+            try { window.localStorage.removeItem(COLS_VISIBLE_KEY); } catch (e1) {}
+            try { window.localStorage.setItem(COLS_VISIBLE_VERSION_KEY, String(COLS_VISIBLE_VERSION)); } catch (e2) {}
+            return {};
+          }
+          if (!raw) return {};
+          var o = JSON.parse(raw);
+          if (o && typeof o === "object" && !Array.isArray(o)) return o;
+        } catch (e) {}
+        return {};
+      }
+      function writeStoredVisible(map) {
+        try { window.localStorage.setItem(COLS_VISIBLE_KEY, JSON.stringify(map || {})); } catch (e) {}
+      }
+      function isColVisible(key) {
+        return state.visible[key] !== false;
+      }
+
+      // ---- Column widths storage ----
+      function readStoredWidths() {
+        try {
+          var raw = window.localStorage.getItem(COLS_WIDTH_KEY);
+          if (!raw) return {};
+          var o = JSON.parse(raw);
+          if (o && typeof o === "object" && !Array.isArray(o)) return o;
+        } catch (e) {}
+        return {};
+      }
+      function writeStoredWidths(map) {
+        try { window.localStorage.setItem(COLS_WIDTH_KEY, JSON.stringify(map || {})); } catch (e) {}
+      }
+      function defaultWidthFor(key) {
+        var w = COL_WIDTH_DEFAULTS_BY_KEY[key];
+        return Number.isFinite(w) ? w : DEFAULT_COL_WIDTH;
+      }
+      function colWidthOf(key) {
+        var w = state.colWidths[key];
+        if (Number.isFinite(w) && w >= COL_MIN_WIDTH && w <= COL_MAX_WIDTH) return w;
+        return defaultWidthFor(key);
+      }
+      function setColWidth(key, value) {
+        var n = parseInt(value, 10);
+        if (!Number.isFinite(n)) return;
+        n = Math.max(COL_MIN_WIDTH, Math.min(COL_MAX_WIDTH, n));
+        state.colWidths[key] = n;
+        writeStoredWidths(state.colWidths);
+      }
+
+      // ---- Search (умный поиск по артикулу/наименованию) ----
+      function searchableKeys() {
+        var keys = state.headers.filter(function (k) { return SEARCH_KEYS.indexOf(k) >= 0; });
+        return keys.length ? keys : state.headers.slice();
+      }
+      function nameOf(row) {
+        return String((row && (row.name != null ? row.name : row.title)) || "");
+      }
+      // Применяет к state.rowsAll последовательно:
+      //   1) расширенные фильтры (исключить плакаты, менеджер, контент-менеджер);
+      //   2) умный поиск (multi-token, AND, по SEARCH_KEYS).
+      // Результат в state.rows. Имя сохранено для совместимости с местами вызова.
+      function applySearchFilter() {
+        var src = state.rowsAll;
+        var f = state.filters || {};
+
+        if (f.exclude_posters) {
+          src = src.filter(function (row) {
+            return nameOf(row).toLowerCase().indexOf("плакат") < 0;
+          });
+        }
+        if (f.manager) {
+          var mv = String(f.manager);
+          src = src.filter(function (row) { return String(row.manager || "") === mv; });
+        }
+        if (f.content_manager) {
+          var cmv = String(f.content_manager);
+          src = src.filter(function (row) { return String(row.content_manager || "") === cmv; });
+        }
+
+        var q = String(state.search || "").trim().toLowerCase();
+        if (!q) {
+          state.rows = src.slice();
+          return;
+        }
+        var tokens = q.split(/\s+/).filter(Boolean);
+        var keys = searchableKeys();
+        state.rows = src.filter(function (row) {
+          var hay = "";
+          for (var i = 0; i < keys.length; i++) {
+            var v = row[keys[i]];
+            if (v == null) continue;
+            hay += " " + String(v).toLowerCase();
+          }
+          for (var j = 0; j < tokens.length; j++) {
+            if (hay.indexOf(tokens[j]) < 0) return false;
+          }
+          return true;
+        });
+      }
+
+      // ---- Filters storage ----
+      function readBool(key, dflt) {
+        try {
+          var raw = window.localStorage.getItem(key);
+          if (raw == null) return !!dflt;
+          return raw === "1" || raw === "true";
+        } catch (e) { return !!dflt; }
+      }
+      function writeBool(key, v) {
+        try { window.localStorage.setItem(key, v ? "1" : "0"); } catch (e) {}
+      }
+      function readStr(key) {
+        try { return window.localStorage.getItem(key) || ""; } catch (e) { return ""; }
+      }
+      function writeStr(key, v) {
+        try {
+          if (v) window.localStorage.setItem(key, String(v));
+          else window.localStorage.removeItem(key);
+        } catch (e) {}
+      }
+      function uniqueValuesFor(key) {
+        var seen = Object.create(null);
+        var out = [];
+        for (var i = 0; i < state.rowsAll.length; i++) {
+          var v = state.rowsAll[i][key];
+          if (v == null) continue;
+          var s = String(v).trim();
+          if (!s) continue;
+          if (seen[s]) continue;
+          seen[s] = true;
+          out.push(s);
+        }
+        out.sort(function (a, b) {
+          if (NAT_COLLATOR) return NAT_COLLATOR.compare(a, b);
+          return a < b ? -1 : a > b ? 1 : 0;
+        });
+        return out;
+      }
+
+      // ---- Sorting ----
+      function pickDefaultSortKey() {
+        for (var i = 0; i < DEFAULT_SORT_KEY_PRIORITY.length; i++) {
+          var k = DEFAULT_SORT_KEY_PRIORITY[i];
+          if (state.headers.indexOf(k) >= 0) return k;
+        }
+        return state.headers.length ? state.headers[0] : null;
+      }
+      function asNumberOrNaN(v) {
+        if (v == null) return NaN;
+        if (typeof v === "number") return v;
+        var s = String(v).trim();
+        if (!s) return NaN;
+        // Достаём первое число с поддержкой пробелов в разрядах и запятой как разделителя.
+        // Пример: "1 230 ₽" → 1230, "12,5%" → 12.5, "Без НДС" → NaN.
+        var m = s.replace(/\u00A0/g, " ").match(/-?\d[\d \t]*(?:[.,]\d+)?/);
+        if (!m) return NaN;
+        var raw = m[0].replace(/[ \t]/g, "").replace(",", ".");
+        var n = parseFloat(raw);
+        return Number.isFinite(n) ? n : NaN;
+      }
+      // Естественная сортировка строк: "art-2" < "art-10" (ru-RU + numeric option).
+      var NAT_COLLATOR = (function () {
+        try { return new Intl.Collator("ru-RU", { numeric: true, sensitivity: "base" }); }
+        catch (e) { return null; }
+      })();
+      function compareCells(a, b, isNumericHint) {
+        var aNull = a == null || a === "";
+        var bNull = b == null || b === "";
+        if (aNull && bNull) return 0;
+        if (aNull) return 1;  // пустые в конец независимо от направления
+        if (bNull) return -1;
+        if (isNumericHint) {
+          var na = asNumberOrNaN(a), nb = asNumberOrNaN(b);
+          var aNaN = !Number.isFinite(na), bNaN = !Number.isFinite(nb);
+          if (!aNaN && !bNaN) return na - nb;
+          if (!aNaN) return -1;
+          if (!bNaN) return 1;
+        }
+        var sa = String(a), sb = String(b);
+        if (NAT_COLLATOR) return NAT_COLLATOR.compare(sa, sb);
+        return sa < sb ? -1 : sa > sb ? 1 : 0;
+      }
+      function applySort() {
+        if (!state.sortKey || state.headers.indexOf(state.sortKey) < 0) return;
+        var k = state.sortKey;
+        var dir = state.sortDir === "desc" ? -1 : 1;
+        var hint = !!NUMERIC_COL_HINT[k];
+        // Sniff: если 80% непустых значений в фильтрованных строках — числа, считаем колонку числовой.
+        if (!hint && state.rows.length) {
+          var checked = 0, numeric = 0;
+          var lim = Math.min(state.rows.length, 50);
+          for (var i = 0; i < lim; i++) {
+            var v = state.rows[i][k];
+            if (v == null || v === "") continue;
+            checked++;
+            if (Number.isFinite(asNumberOrNaN(v))) numeric++;
+          }
+          if (checked >= 5 && numeric / checked >= 0.8) hint = true;
+        }
+        state.rows.sort(function (r1, r2) {
+          var c = compareCells(r1[k], r2[k], hint);
+          return c * dir;
+        });
+      }
+      function setSort(key) {
+        if (!key || state.headers.indexOf(key) < 0) return;
+        if (state.sortKey === key) {
+          state.sortDir = state.sortDir === "asc" ? "desc" : "asc";
+        } else {
+          state.sortKey = key;
+          state.sortDir = "asc";
+        }
+        applySort();
+        state.page = 1;
+        renderAll();
+      }
+
+      // ---- Pagination ----
+      function totalPages() {
+        var size = Math.max(1, Number(state.pageSize) || DEFAULT_PAGE_SIZE);
+        return Math.max(1, Math.ceil((state.rows.length || 0) / size));
+      }
+      function clampPage() {
+        var pages = totalPages();
+        if (state.page < 1) state.page = 1;
+        if (state.page > pages) state.page = pages;
+      }
+      function renderPaginationControls(pageRowsCount) {
+        var hint = document.getElementById("dg-mp-page-hint");
+        var prev = document.getElementById("dg-mp-page-prev");
+        var next = document.getElementById("dg-mp-page-next");
+        var pages = totalPages();
+        if (hint) {
+          var hasFilter = !!String(state.search || "").trim();
+          var base =
+            "Найдено: " + fmtNum(state.rows.length) +
+            "; страница " + state.page + "/" + pages +
+            "; показано: " + fmtNum(pageRowsCount);
+          if (hasFilter) base += " (фильтр из " + fmtNum(state.rowsAll.length) + ")";
+          hint.textContent = base;
+        }
+        if (prev) prev.disabled = state.page <= 1;
+        if (next) next.disabled = state.page >= pages;
+      }
+
+      // ---- Table render ----
+      function visibleHeaderKeys() {
+        return state.headers.filter(isColVisible);
+      }
+
+      function renderColgroup(table) {
+        var keys = visibleHeaderKeys();
+        var existing = table.querySelector(":scope > colgroup");
+        if (existing) existing.parentNode.removeChild(existing);
+        var cg = document.createElement("colgroup");
+        keys.forEach(function (k) {
+          var col = document.createElement("col");
+          col.style.width = colWidthOf(k) + "px";
+          col.setAttribute("data-col-key", k);
+          cg.appendChild(col);
+        });
+        var firstChild = table.firstElementChild;
+        table.insertBefore(cg, firstChild);
+      }
+
+      function renderTableHead() {
         var table = document.getElementById("dg-mp-table-main");
         if (!table) return;
         var thead = table.querySelector("thead");
-        var tbody = table.querySelector("tbody");
-        if (!thead || !tbody) return;
-        maxRows = maxRows || 40;
-        headers = headers || [];
-        rows = rows || [];
-        var labels =
-          headerLabels && headerLabels.length === headers.length ? headerLabels : headers;
-        if (!headers.length) {
+        if (!thead) return;
+        if (!state.headers.length) {
           thead.innerHTML = '<tr><th class="text-muted">Нет колонок</th></tr>';
-          tbody.innerHTML = '<tr><td class="text-muted">Пустой ответ API.</td></tr>';
           return;
         }
+        var keys = visibleHeaderKeys();
+        var labelByKey = {};
+        state.headers.forEach(function (k, i) {
+          labelByKey[k] = (state.headerLabels && state.headerLabels[i]) || k;
+        });
         thead.innerHTML =
           "<tr>" +
-          labels
-            .map(function (lab) {
-              return '<th scope="col">' + escCell(lab) + "</th>";
+          keys
+            .map(function (k) {
+              var arrow = "";
+              if (state.sortKey === k) arrow = state.sortDir === "desc" ? " ▼" : " ▲";
+              return (
+                '<th scope="col" data-col-key="' + escCell(k) + '" class="dg-mp-sortable" ' +
+                'role="button" tabindex="0" aria-sort="' +
+                (state.sortKey === k ? (state.sortDir === "desc" ? "descending" : "ascending") : "none") +
+                '" title="Сортировать по «' + escCell(labelByKey[k]) + '»">' +
+                escCell(labelByKey[k]) +
+                '<span class="dg-mp-sort-arrow">' + arrow + "</span>" +
+                "</th>"
+              );
             })
             .join("") +
           "</tr>";
-        var slice = rows.slice(0, maxRows);
-        if (!slice.length) {
-          tbody.innerHTML =
-            '<tr><td class="text-muted" colspan="' +
-            headers.length +
-            '">Нет строк в выборке.</td></tr>';
-          return;
+        // Делегируем клик по th: переключаем сортировку.
+        var ths = thead.querySelectorAll("th[data-col-key]");
+        ths.forEach(function (th) {
+          th.addEventListener("click", function (e) {
+            // Игнорируем клик внутри ручки ресайза, если она перекроет.
+            var k = th.getAttribute("data-col-key");
+            if (k) setSort(k);
+          });
+          th.addEventListener("keydown", function (e) {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              var k = th.getAttribute("data-col-key");
+              if (k) setSort(k);
+            }
+          });
+        });
+        renderColgroup(table);
+      }
+
+      function renderTableBody() {
+        var table = document.getElementById("dg-mp-table-main");
+        if (!table) return 0;
+        var tbody = table.querySelector("tbody");
+        if (!tbody) return 0;
+        if (!state.headers.length) {
+          tbody.innerHTML = '<tr><td class="text-muted">Пустой ответ API.</td></tr>';
+          return 0;
         }
+        var keys = visibleHeaderKeys();
+        if (!state.rows.length || !keys.length) {
+          tbody.innerHTML = '<tr><td class="text-muted" colspan="' + Math.max(1, keys.length) + '">Нет строк в выборке.</td></tr>';
+          return 0;
+        }
+        clampPage();
+        var size = Math.max(1, Number(state.pageSize) || DEFAULT_PAGE_SIZE);
+        var start = (state.page - 1) * size;
+        var slice = state.rows.slice(start, start + size);
         tbody.innerHTML = slice
           .map(function (row) {
             return (
               "<tr>" +
-              headers
-                .map(function (h) {
-                  return "<td>" + renderCellValue(h, row[h]) + "</td>";
+              keys
+                .map(function (k) {
+                  return '<td data-col-key="' + escCell(k) + '">' + renderCellValue(k, row[k]) + "</td>";
                 })
                 .join("") +
               "</tr>"
             );
           })
           .join("");
+        return slice.length;
       }
 
+      function renderAll() {
+        renderTableHead();
+        var shown = renderTableBody();
+        renderPaginationControls(shown);
+      }
+
+      function applyApiPayload(payload) {
+        state.headers = (payload && payload.headers) || [];
+        state.headerLabels = (payload && payload.headerLabels) || [];
+        state.rowsAll = (payload && payload.rows) || [];
+        renderSummaryLog((payload && payload.summary) || null);
+        // На первой загрузке инициализируем visibility и widths, пропущенные в storage.
+        // Колонки из DEFAULT_HIDDEN_COLS изначально скрыты, чтобы таблица не «выкатывалась»
+        // за карточку (см. правило datagon-table-behavior-lock: sticky-th требует, чтобы
+        // обёртка была без overflow-кадра, поэтому управляем шириной через подбор колонок).
+        state.headers.forEach(function (k) {
+          if (!Object.prototype.hasOwnProperty.call(state.visible, k)) {
+            state.visible[k] = !DEFAULT_HIDDEN_COLS[k];
+          }
+          if (!Object.prototype.hasOwnProperty.call(state.colWidths, k)) state.colWidths[k] = defaultWidthFor(k);
+        });
+        // Дефолт: сортировка по «артикулу» по возрастанию. Если пользователь
+        // уже выбрал свою колонку — сохраняем выбор; иначе берём первый из
+        // приоритета (vendor_code → offer_id → shop_sku ...).
+        if (!state.sortKey || state.headers.indexOf(state.sortKey) < 0) {
+          state.sortKey = pickDefaultSortKey();
+          state.sortDir = "asc";
+        }
+        applySearchFilter();
+        applySort();
+        state.page = 1;
+        rebuildToolbox();
+        renderAll();
+      }
+
+      // ---- Toolbox UI (columns + widths) ----
+      function ensureToolboxContainer() {
+        var existing = document.getElementById("dg-mp-toolbox");
+        if (existing) return existing;
+        var wrap = document.querySelector(".dg-mp-mkt-scroll");
+        if (!wrap) return null;
+        var toolbox = document.createElement("div");
+        toolbox.id = "dg-mp-toolbox";
+        toolbox.className = "dg-mp-toolbox mx-3 mt-3";
+        toolbox.innerHTML =
+          '<div class="dg-mp-toolbox-top">' +
+          '<button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mp-toggle-cols">🧩 Столбцы</button>' +
+          '<button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mp-toggle-widths">📏 Ширины</button>' +
+          '<div class="dg-mp-filter-group">' +
+            '<label class="dg-mp-filter-check"><input type="checkbox" id="dg-mp-flt-exclude-posters"> <span>Исключить плакаты</span></label>' +
+            '<label class="dg-mp-filter-sel"><span class="dg-mp-filter-lbl">Менеджер</span>' +
+              '<select id="dg-mp-flt-manager" class="form-select form-select-sm"></select>' +
+            '</label>' +
+            '<label class="dg-mp-filter-sel"><span class="dg-mp-filter-lbl">Контент-менеджер</span>' +
+              '<select id="dg-mp-flt-content_manager" class="form-select form-select-sm"></select>' +
+            '</label>' +
+            '<button type="button" class="btn btn-sm btn-link p-0 dg-mp-filter-reset" id="dg-mp-flt-reset" title="Сбросить расширенные фильтры">сбросить</button>' +
+          '</div>' +
+          '</div>' +
+          '<div class="dg-mp-toolbox-panel" id="dg-mp-cols-panel">' +
+          '<div class="dg-mp-toolbox-actions">' +
+          '<button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mp-cols-all">Выделить все</button>' +
+          '<button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mp-cols-none">Снять все</button>' +
+          '<button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mp-cols-default">По умолчанию</button>' +
+          '</div>' +
+          '<div class="dg-mp-cols-grid" id="dg-mp-cols-grid"></div>' +
+          '</div>' +
+          '<div class="dg-mp-toolbox-panel" id="dg-mp-widths-panel">' +
+          '<div class="dg-mp-toolbox-actions">' +
+          '<button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mp-widths-default">По умолчанию</button>' +
+          '</div>' +
+          '<div class="dg-mp-widths-grid" id="dg-mp-widths-grid"></div>' +
+          '</div>';
+        wrap.parentNode.insertBefore(toolbox, wrap);
+        bindToolboxEvents();
+        return toolbox;
+      }
+
+      function bindToolboxEvents() {
+        var bToggleCols = document.getElementById("dg-mp-toggle-cols");
+        var bToggleW = document.getElementById("dg-mp-toggle-widths");
+        var pCols = document.getElementById("dg-mp-cols-panel");
+        var pW = document.getElementById("dg-mp-widths-panel");
+        if (bToggleCols && pCols) bToggleCols.addEventListener("click", function () {
+          pCols.classList.toggle("open");
+          if (pW) pW.classList.remove("open");
+        });
+        if (bToggleW && pW) bToggleW.addEventListener("click", function () {
+          pW.classList.toggle("open");
+          if (pCols) pCols.classList.remove("open");
+        });
+
+        var bAll = document.getElementById("dg-mp-cols-all");
+        var bNone = document.getElementById("dg-mp-cols-none");
+        var bDef = document.getElementById("dg-mp-cols-default");
+        if (bAll) bAll.addEventListener("click", function () {
+          state.headers.forEach(function (k) { state.visible[k] = true; });
+          writeStoredVisible(state.visible);
+          rebuildToolbox();
+          renderAll();
+        });
+        if (bNone) bNone.addEventListener("click", function () {
+          state.headers.forEach(function (k, idx) { state.visible[k] = idx === 0; });
+          writeStoredVisible(state.visible);
+          rebuildToolbox();
+          renderAll();
+        });
+        if (bDef) bDef.addEventListener("click", function () {
+          // «По умолчанию» = компактный набор (длинные/редко-нужные колонки скрыты,
+          // см. DEFAULT_HIDDEN_COLS). Чтобы включить все — кнопка «Выделить все».
+          state.headers.forEach(function (k) { state.visible[k] = !DEFAULT_HIDDEN_COLS[k]; });
+          writeStoredVisible(state.visible);
+          rebuildToolbox();
+          renderAll();
+        });
+
+        var bWDef = document.getElementById("dg-mp-widths-default");
+        if (bWDef) bWDef.addEventListener("click", function () {
+          state.headers.forEach(function (k) { state.colWidths[k] = defaultWidthFor(k); });
+          writeStoredWidths(state.colWidths);
+          rebuildToolbox();
+          renderAll();
+        });
+
+        // Расширенные фильтры (исключить плакаты + менеджеры).
+        var cbExclPosters = document.getElementById("dg-mp-flt-exclude-posters");
+        if (cbExclPosters) {
+          cbExclPosters.checked = !!state.filters.exclude_posters;
+          cbExclPosters.addEventListener("change", function () {
+            state.filters.exclude_posters = !!cbExclPosters.checked;
+            writeBool(FILTER_EXCLUDE_POSTERS_KEY, state.filters.exclude_posters);
+            applySearchFilter();
+            applySort();
+            state.page = 1;
+            renderAll();
+          });
+        }
+        var selMgr = document.getElementById("dg-mp-flt-manager");
+        if (selMgr) selMgr.addEventListener("change", function () {
+          state.filters.manager = String(selMgr.value || "");
+          writeStr(FILTER_MANAGER_KEY, state.filters.manager);
+          applySearchFilter();
+          applySort();
+          state.page = 1;
+          renderAll();
+        });
+        var selCm = document.getElementById("dg-mp-flt-content_manager");
+        if (selCm) selCm.addEventListener("change", function () {
+          state.filters.content_manager = String(selCm.value || "");
+          writeStr(FILTER_CONTENT_MGR_KEY, state.filters.content_manager);
+          applySearchFilter();
+          applySort();
+          state.page = 1;
+          renderAll();
+        });
+        var btnReset = document.getElementById("dg-mp-flt-reset");
+        if (btnReset) btnReset.addEventListener("click", function () {
+          state.filters.exclude_posters = false;
+          state.filters.manager = "";
+          state.filters.content_manager = "";
+          writeBool(FILTER_EXCLUDE_POSTERS_KEY, false);
+          writeStr(FILTER_MANAGER_KEY, "");
+          writeStr(FILTER_CONTENT_MGR_KEY, "");
+          if (cbExclPosters) cbExclPosters.checked = false;
+          if (selMgr) selMgr.value = "";
+          if (selCm) selCm.value = "";
+          applySearchFilter();
+          applySort();
+          state.page = 1;
+          renderAll();
+        });
+      }
+
+      function rebuildToolbox() {
+        ensureToolboxContainer();
+        var labelByKey = {};
+        state.headers.forEach(function (k, i) {
+          labelByKey[k] = (state.headerLabels && state.headerLabels[i]) || k;
+        });
+        var grid = document.getElementById("dg-mp-cols-grid");
+        if (grid) {
+          grid.innerHTML = "";
+          state.headers.forEach(function (k, idx) {
+            var lb = document.createElement("label");
+            var cb = document.createElement("input");
+            cb.type = "checkbox";
+            cb.checked = isColVisible(k);
+            cb.addEventListener("change", function () {
+              if (!cb.checked) {
+                var anyOther = state.headers.some(function (h) {
+                  return h !== k && state.visible[h] !== false;
+                });
+                if (!anyOther) { cb.checked = true; return; }
+              }
+              state.visible[k] = cb.checked;
+              writeStoredVisible(state.visible);
+              renderAll();
+            });
+            lb.appendChild(cb);
+            lb.appendChild(document.createTextNode(" " + (labelByKey[k] || k)));
+            grid.appendChild(lb);
+          });
+        }
+        // ---- Расширенные фильтры: пересобрать опции под актуальные данные ----
+        function fillSelect(sel, values, currentValue, allLabel) {
+          if (!sel) return;
+          sel.innerHTML = "";
+          var optAll = document.createElement("option");
+          optAll.value = "";
+          optAll.textContent = allLabel;
+          sel.appendChild(optAll);
+          var preserved = "";
+          for (var i = 0; i < values.length; i++) {
+            var v = values[i];
+            var opt = document.createElement("option");
+            opt.value = v;
+            opt.textContent = v;
+            if (v === currentValue) preserved = v;
+            sel.appendChild(opt);
+          }
+          sel.value = preserved;
+        }
+        var hasManager = state.headers.indexOf("manager") >= 0;
+        var hasContentMgr = state.headers.indexOf("content_manager") >= 0;
+        var selMgr2 = document.getElementById("dg-mp-flt-manager");
+        var selCm2 = document.getElementById("dg-mp-flt-content_manager");
+        var labelMgr = selMgr2 && selMgr2.parentElement;
+        var labelCm = selCm2 && selCm2.parentElement;
+        if (selMgr2 && labelMgr) {
+          if (hasManager) {
+            labelMgr.style.display = "";
+            fillSelect(selMgr2, uniqueValuesFor("manager"), state.filters.manager, "Все менеджеры");
+            if (selMgr2.value !== state.filters.manager) {
+              // выбранное значение исчезло из набора (например, после refresh) — сбрасываем
+              state.filters.manager = "";
+              writeStr(FILTER_MANAGER_KEY, "");
+            }
+          } else {
+            labelMgr.style.display = "none";
+            state.filters.manager = "";
+          }
+        }
+        if (selCm2 && labelCm) {
+          if (hasContentMgr) {
+            labelCm.style.display = "";
+            fillSelect(selCm2, uniqueValuesFor("content_manager"), state.filters.content_manager, "Все контент-менеджеры");
+            if (selCm2.value !== state.filters.content_manager) {
+              state.filters.content_manager = "";
+              writeStr(FILTER_CONTENT_MGR_KEY, "");
+            }
+          } else {
+            labelCm.style.display = "none";
+            state.filters.content_manager = "";
+          }
+        }
+        var cbExcl = document.getElementById("dg-mp-flt-exclude-posters");
+        if (cbExcl) cbExcl.checked = !!state.filters.exclude_posters;
+
+        var wgrid = document.getElementById("dg-mp-widths-grid");
+        if (wgrid) {
+          wgrid.innerHTML = "";
+          state.headers.forEach(function (k) {
+            var ctl = document.createElement("div");
+            ctl.className = "dg-mp-width-control";
+            var lab = document.createElement("span");
+            lab.textContent = labelByKey[k] || k;
+            var input = document.createElement("input");
+            input.type = "number";
+            input.min = String(COL_MIN_WIDTH);
+            input.max = String(COL_MAX_WIDTH);
+            input.step = "10";
+            input.className = "form-control form-control-sm";
+            input.value = String(colWidthOf(k));
+            input.addEventListener("change", function () {
+              setColWidth(k, input.value);
+              input.value = String(colWidthOf(k));
+              renderAll();
+            });
+            ctl.appendChild(lab);
+            ctl.appendChild(input);
+            wgrid.appendChild(ctl);
+          });
+        }
+      }
+
+      // ---- Floating header ----
+      // Реализован через CSS `position: sticky; top: var(--dg-table-sticky-top)`
+      // на каждом <th> (см. exports-marketplaces.head.html). Это эталон от moysklad.scripts.html
+      // строка ~1060: native sticky точнее JS translate3d и не «съезжает» при позднем layout.
+      // CSS-переменная --dg-table-sticky-top — высота app-header. На странице маркетплейсов
+      // глобальный datagon-vanilla.js#initGlobalTableBaseline её не выставляет (наша таблица
+      // в shouldSkipGlobalTableBaseline), поэтому считаем сами и слушаем resize.
+      function syncStickyTopVar() {
+        var app = document.querySelector(".app-container");
+        var header = document.querySelector(".app-header");
+        var fixed = Boolean(app && app.classList && app.classList.contains("fixed-header"));
+        var top = 0;
+        if (fixed && header && header.getBoundingClientRect) {
+          var r = header.getBoundingClientRect();
+          top = r && r.height ? Math.round(r.height) : 60;
+        }
+        document.documentElement.style.setProperty("--dg-table-sticky-top", top + "px");
+      }
+      function bindStickyTopVar() {
+        syncStickyTopVar();
+        window.addEventListener("resize", syncStickyTopVar);
+        // app-header может перерисовываться позже (тема ArchitectUI инициализируется
+        // после load); реагируем на изменения DOM в нём.
+        var hdr = document.querySelector(".app-header");
+        if (hdr && window.ResizeObserver) {
+          try {
+            var ro = new ResizeObserver(function () { syncStickyTopVar(); });
+            ro.observe(hdr);
+          } catch (e) {}
+        }
+        if (document.fonts && document.fonts.ready && typeof document.fonts.ready.then === "function") {
+          document.fonts.ready.then(function () { syncStickyTopVar(); });
+        }
+        window.addEventListener("load", function () { syncStickyTopVar(); });
+      }
+
+      var refreshWaitTimerId = null;
+      /** Wall-clock начала «Обновить из маркетплейса» — для строки статуса при NDJSON. */
+      var refreshWallClockT0 = null;
+
+      function stopRefreshWaitTicker() {
+        if (refreshWaitTimerId) {
+          clearInterval(refreshWaitTimerId);
+          refreshWaitTimerId = null;
+        }
+      }
+
+      function fmtElapsedSince(t0) {
+        var sec = Math.floor((Date.now() - t0) / 1000);
+        var m = Math.floor(sec / 60);
+        var r = sec % 60;
+        if (m <= 0) return r + " сек";
+        return m + " мин " + r + " сек";
+      }
+
+      function refreshLongRunningHint() {
+        if (shop === "wildberries") {
+          return "Wildberries: сервер последовательно запрашивает карточки, цены и остатки по складам; при большом каталоге это часто 3–15 минут. Страницу можно не закрывать.";
+        }
+        if (shop === "yandex") {
+          return "Яндекс Маркет: несколько раундов запросов к Partner API; при большом каталоге ответ может идти долго.";
+        }
+        return "Ozon: список товаров и детали по батчам; при большом каталоге ответ может идти несколько минут.";
+      }
+
+      function tickRefreshWaitUi(t0) {
+        // Как только пришёл первый кадр NDJSON, лог ведёт только renderSummaryLog.
+        // Раньше тикер раз в 1 с затирал #dg-mp-log заглушкой — из‑за этого «моргало»
+        // между реальным логом и текстом «Ожидание ответа сервера».
+        var streaming =
+          liveSummary && Array.isArray(liveSummary.steps) && liveSummary.steps.length > 0;
+        if (streaming) return;
+
+        var elapsed = fmtElapsedSince(t0);
+        var hint = refreshLongRunningHint();
+        setMsg("Обновляем из маркетплейса… прошло " + elapsed + ". " + hint, "warning");
+        var box = document.getElementById("dg-mp-log");
+        if (box) {
+          box.classList.remove("d-none");
+          box.innerHTML =
+            '<div class="dg-mp-log-head">Подключение к серверу</div>' +
+            '<div class="dg-mp-log-body">' +
+            '<div class="mb-1">' +
+            escCell(
+              "Устанавливается поток NDJSON — шаги появятся ниже по мере выполнения на сервере. Уже прошло: " +
+                elapsed +
+                "."
+            ) +
+            "</div>" +
+            '<div class="small text-muted">' +
+            escCell(hint) +
+            "</div>" +
+            "</div>";
+        }
+      }
+
+      function startRefreshWaitTicker() {
+        stopRefreshWaitTicker();
+        var t0 = Date.now();
+        tickRefreshWaitUi(t0);
+        refreshWaitTimerId = setInterval(function () {
+          tickRefreshWaitUi(t0);
+        }, 1000);
+      }
+
+      // Накапливаем частичный summary в режиме NDJSON, чтобы блок «Лог обновления»
+      // обновлялся в реальном времени по мере прихода шагов.
+      var liveSummary = null;
+      function appendLiveStep(step) {
+        if (!liveSummary) liveSummary = { kind: shop, durationMs: 0, steps: [] };
+        var wasEmpty = liveSummary.steps.length === 0;
+        liveSummary.steps.push(step);
+        liveSummary.durationMs = Math.max(liveSummary.durationMs, Number(step.tMs) || 0);
+        renderSummaryLog(liveSummary);
+        // Первый шаг: выключаем секундный тикер — он больше не нужен и только
+        // конфликтовал бы с setMsg ниже.
+        if (wasEmpty) stopRefreshWaitTicker();
+        var last = liveSummary.steps[liveSummary.steps.length - 1];
+        if (last) {
+          var wall =
+            refreshWallClockT0 != null ? "прошло " + fmtElapsedSince(refreshWallClockT0) + "; " : "";
+          setMsg(
+            "Обновляем " +
+              shop +
+              "… " +
+              wall +
+              fmtMs(liveSummary.durationMs) +
+              " с начала запроса · " +
+              last.msg,
+            "warning"
+          );
+        }
+      }
+
+      function processStreamLine(line, ctx) {
+        if (!line) return;
+        var evt;
+        try {
+          evt = JSON.parse(line);
+        } catch (e) {
+          return;
+        }
+        if (evt && evt.type === "step" && evt.step) {
+          appendLiveStep(evt.step);
+        } else if (evt && evt.type === "result" && evt.payload) {
+          stopRefreshWaitTicker();
+          ctx.payload = evt.payload;
+        } else if (evt && evt.type === "error") {
+          stopRefreshWaitTicker();
+          ctx.error = evt.payload || { error: "Ошибка" };
+          if (evt.payload && evt.payload.summary) renderSummaryLog(evt.payload.summary);
+        }
+      }
+
+      function fetchNdjson(url, ctx) {
+        return fetch(url, { headers: authHeaders(false), credentials: "same-origin" }).then(function (r) {
+          if (!r.ok && !(r.headers.get("content-type") || "").indexOf("ndjson") >= 0) {
+            // ошибка ещё до открытия стрима (404/401/...)
+            return r.text().then(function (txt) {
+              throw new Error("HTTP " + r.status + (txt ? ": " + txt.slice(0, 200) : ""));
+            });
+          }
+          if (!r.body || !r.body.getReader) {
+            // фолбэк для очень старых окружений: читаем весь текст
+            return r.text().then(function (txt) {
+              String(txt || "")
+                .split("\n")
+                .forEach(function (ln) { processStreamLine(ln.trim(), ctx); });
+            });
+          }
+          var reader = r.body.getReader();
+          var decoder = new TextDecoder("utf-8");
+          var buf = "";
+          function pump() {
+            return reader.read().then(function (chunk) {
+              if (chunk.done) {
+                var tail = (buf + decoder.decode()).trim();
+                if (tail) processStreamLine(tail, ctx);
+                return;
+              }
+              buf += decoder.decode(chunk.value, { stream: true });
+              var idx;
+              while ((idx = buf.indexOf("\n")) >= 0) {
+                var line = buf.slice(0, idx).trim();
+                buf = buf.slice(idx + 1);
+                processStreamLine(line, ctx);
+              }
+              return pump();
+            });
+          }
+          return pump();
+        });
+      }
+
+      // ---- API ----
       function runRefreshFromMarketplace() {
-        setMsg("Обновляем из маркетплейса… подождите.", "warning");
-        var q = "format=json";
+        var refreshBtn = document.getElementById("dg-mp-refresh-market");
+        var snapshotBtn = document.getElementById("dg-mp-load-snapshot");
+        if (refreshBtn) refreshBtn.disabled = true;
+        if (snapshotBtn) snapshotBtn.disabled = true;
+        liveSummary = null;
+        refreshWallClockT0 = Date.now();
+        startRefreshWaitTicker();
+        var q = "format=ndjson";
         if (shop === "ozon") {
           var arch = document.getElementById("dg-mp-ozon-archived");
           if (arch && arch.checked) q += "&include_archived=1";
         }
         var url = API + exportPath + "?" + q;
-        fetch(url, { headers: authHeaders(false), credentials: "same-origin" })
-          .then(function (r) {
-            return r.json().then(function (j) {
-              return { ok: r.ok, j: j };
-            });
-          })
-          .then(function (x) {
-            if (!x.ok) throw new Error((x.j && x.j.error) || "Ошибка");
+        var ctx = { payload: null, error: null };
+        fetchNdjson(url, ctx)
+          .then(function () {
+            if (ctx.error) {
+              throw new Error(ctx.error.error || "Ошибка");
+            }
+            var p = ctx.payload;
+            if (!p) throw new Error("Сервер не вернул результат");
+            var dur = p && p.summary && p.summary.durationMs;
             setMsg(
               "Обновлено из маркетплейса. Строк: " +
-                (x.j.count != null ? x.j.count : "?") +
+                (p.count != null ? p.count : "?") +
                 ". Сохранено: " +
-                (x.j.persisted_count != null ? x.j.persisted_count : "?") +
+                (p.persisted_count != null ? p.persisted_count : "?") +
+                ". Время: " +
+                (dur != null ? fmtMs(dur) : "—") +
                 ". Метка: " +
-                (x.j.updatedAt || "—"),
+                (p.updatedAt || "—"),
               "success"
             );
-            renderMarketTable(x.j.headers || [], x.j.rows || [], x.j.headerLabels, 40);
+            applyApiPayload(p);
           })
           .catch(function (e) {
             setMsg(String(e.message || e), "danger");
+          })
+          .finally(function () {
+            stopRefreshWaitTicker();
+            refreshWallClockT0 = null;
+            if (refreshBtn) refreshBtn.disabled = false;
+            if (snapshotBtn) snapshotBtn.disabled = false;
           });
       }
 
       function loadSavedSnapshot() {
         setMsg("Загружаем последний сохранённый снапшот…", "warning");
-        var url =
-          API +
-          "/snapshot?shop=" +
-          encodeURIComponent(shop);
+        var url = API + "/snapshot?shop=" + encodeURIComponent(shop);
         fetch(url, { headers: authHeaders(false), credentials: "same-origin" })
           .then(function (r) {
-            return r.json().then(function (j) {
-              return { ok: r.ok, j: j };
-            });
+            return r.json().then(function (j) { return { ok: r.ok, j: j }; });
           })
           .then(function (x) {
             if (!x.ok) throw new Error((x.j && x.j.error) || "Ошибка");
-            renderMarketTable(x.j.headers || [], x.j.rows || [], x.j.headerLabels, 40);
+            applyApiPayload(x.j);
             if (x.j.count > 0) {
               setMsg(
                 "Показан последний сохранённый снапшот. Строк: " +
@@ -784,7 +2166,8 @@
                 "secondary"
               );
             } else {
-              setMsg("Сохранённых строк пока нет. Нажмите «Обновить из маркетплейса».", "secondary");
+              var fallback = "Сохранённых строк пока нет. Нажмите «Обновить из маркетплейса».";
+              setMsg(x.j && x.j.note ? x.j.note : fallback, "secondary");
             }
           })
           .catch(function (e) {
@@ -792,16 +2175,95 @@
           });
       }
 
-      var refreshBtn = document.getElementById("dg-mp-refresh-market");
-      var snapshotBtn = document.getElementById("dg-mp-load-snapshot");
-      if (refreshBtn)
-        refreshBtn.addEventListener("click", function () {
-          runRefreshFromMarketplace();
+      function bindControls() {
+        var refreshBtn = document.getElementById("dg-mp-refresh-market");
+        var snapshotBtn = document.getElementById("dg-mp-load-snapshot");
+        var limitSel = document.getElementById("dg-mp-page-limit");
+        var prevBtn = document.getElementById("dg-mp-page-prev");
+        var nextBtn = document.getElementById("dg-mp-page-next");
+        var searchInp = document.getElementById("dg-mp-search");
+        var searchClearBtn = document.getElementById("dg-mp-search-clear");
+
+        if (refreshBtn) refreshBtn.addEventListener("click", runRefreshFromMarketplace);
+        if (snapshotBtn) snapshotBtn.addEventListener("click", loadSavedSnapshot);
+
+        if (limitSel) {
+          state.pageSize = readStoredPageSize();
+          limitSel.value = String(state.pageSize);
+          limitSel.addEventListener("change", function () {
+            var v = parseInt(limitSel.value, 10);
+            if (ALLOWED_PAGE_SIZES.indexOf(v) < 0) v = DEFAULT_PAGE_SIZE;
+            state.pageSize = v;
+            state.page = 1;
+            writeStoredPageSize(v);
+            renderAll();
+          });
+        }
+        if (prevBtn) prevBtn.addEventListener("click", function () {
+          if (state.page > 1) { state.page -= 1; renderAll(); }
         });
-      if (snapshotBtn)
-        snapshotBtn.addEventListener("click", function () {
-          loadSavedSnapshot();
+        if (nextBtn) nextBtn.addEventListener("click", function () {
+          if (state.page < totalPages()) { state.page += 1; renderAll(); }
         });
+
+        // Умный поиск: артикул и наименование, мульти-токен (пробел = AND), без регистра.
+        if (searchInp) {
+          var searchTimer = null;
+          var apply = function () {
+            state.search = searchInp.value;
+            applySearchFilter();
+            applySort();
+            state.page = 1;
+            renderAll();
+          };
+          searchInp.addEventListener("input", function () {
+            if (searchTimer) clearTimeout(searchTimer);
+            searchTimer = setTimeout(apply, 150);
+          });
+          searchInp.addEventListener("search", apply); // системная очистка крестиком в браузере
+          searchInp.addEventListener("keydown", function (e) {
+            if (e.key === "Escape") {
+              searchInp.value = "";
+              apply();
+            }
+          });
+        }
+        if (searchClearBtn) {
+          searchClearBtn.addEventListener("click", function () {
+            if (!searchInp) return;
+            searchInp.value = "";
+            state.search = "";
+            applySearchFilter();
+            applySort();
+            state.page = 1;
+            renderAll();
+            searchInp.focus();
+          });
+        }
+      }
+
+      function loadWbTokenBanner() {
+        if (shop !== "wildberries") return;
+        var el = document.getElementById("dg-mp-token-banner");
+        if (!el) return;
+        el.className = "alert alert-info mt-3 mb-0 small";
+        el.innerHTML =
+          "<strong>Wildberries API:</strong> цены (<code>discounts-prices-api</code>) и остатки (<code>marketplace-api</code>) — " +
+          "<strong>разные категории</strong> с разными лимитами. Таблица «150 запросов в минуту, 200 мс» из документации относится к " +
+          "<strong>Маркетплейсу</strong> (склады/остатки), не к ценам. При частых 429 увеличьте «WB other delay» в " +
+          "<a href=\"/settings.html\">Настройках</a>.";
+        el.classList.remove("d-none");
+      }
+
+      state.pageSize = readStoredPageSize();
+      state.visible = readStoredVisible();
+      state.colWidths = readStoredWidths();
+      state.filters.exclude_posters = readBool(FILTER_EXCLUDE_POSTERS_KEY, false);
+      state.filters.manager = readStr(FILTER_MANAGER_KEY);
+      state.filters.content_manager = readStr(FILTER_CONTENT_MGR_KEY);
+      bindControls();
+      bindStickyTopVar();
+      loadWbTokenBanner();
       loadSavedSnapshot();
     })();
   </script>

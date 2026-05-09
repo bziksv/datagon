@@ -25,6 +25,18 @@
       background: #fafbfc;
       padding: 8px;
     }
+    /* Поле «Умный поиск» в шапке карточки «Выгрузка МойСклад» — компактный
+       зеркальный input, привязанный к #ms-f-search. На узких экранах flex-wrap
+       перенесёт его на свою строку, на широких — займёт пространство между
+       заголовком и кнопками-toolbox'ами. */
+    .dg-ms-header-search { min-width: 0; }
+    .dg-ms-header-search .input-group-text {
+      border-color: #d1d5db;
+      font-size: 14px;
+      padding-left: 8px;
+      padding-right: 4px;
+    }
+    .dg-ms-header-search .form-control { font-size: 13px; }
     .datagon-columns-toolbox .columns-top {
       display: flex;
       align-items: center;
@@ -52,6 +64,24 @@
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
       gap: 6px 10px;
+    }
+    .datagon-columns-toolbox .dg-ms-widths-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 6px 10px;
+    }
+    .datagon-columns-toolbox .dg-ms-widths-grid label {
+      display: inline-flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 12px;
+      color: #374151;
+      margin: 0;
+    }
+    .datagon-columns-toolbox .dg-ms-widths-grid input[type="number"] {
+      width: 88px;
+      flex: 0 0 auto;
     }
     .datagon-columns-panel label {
       display: inline-flex;
@@ -141,6 +171,63 @@
       flex: 1 1 auto;
       min-height: 100%;
       margin-bottom: 0;
+    }
+    /*
+      Подменю «Маркетплейсы»: ArchitectUI скрывает .metismenu-icon у подпунктов и даёт малый padding.
+      Не трогаем узкую полоску без hover — большой padding раздувает li и смещает «left:50%» у всех иконок колонки.
+      При развороте по hover из closed-sidebar класс closed-sidebar не снимается — нужен отдельный селектор с .app-sidebar:hover.
+    */
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon {
+      display: block !important;
+    }
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link {
+      padding-left: 3.4375rem !important;
+      position: relative;
+      /* Длинные подписи подпунктов («Проблемы с товарами», «Яндекс Маркет»)
+         не должны обрезаться ellipsis: разрешаем перенос на 2 строки и
+         выравниваем иконку по верхней строке. */
+      white-space: normal !important;
+      line-height: 1.25;
+      align-items: flex-start;
+      padding-top: 0.45rem !important;
+      padding-bottom: 0.45rem !important;
+      padding-right: 0.5rem !important;
+      min-height: 2rem;
+      height: auto !important;
+    }
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon {
+      top: 0.55rem !important;
     }
     .dg-sidebar-architect-item {
       margin-top: auto;
@@ -481,7 +568,7 @@
                           <i class="metismenu-icon pe-7s-graph3"></i>Маркетплейсы
                           <i class="metismenu-state-icon pe-7s-angle-down" aria-hidden="true"></i>
                         </a>
-                        <ul class="metismenu-container">
+                        <ul class="metismenu-container dg-vanilla-mp-submenu">
                           <li class="metismenu-item">
                             <a
                               class="metismenu-link"
@@ -520,6 +607,16 @@
                               title="Таблица и выгрузка Яндекс Маркет"
                             >
                               <i class="metismenu-icon pe-7s-graph2"></i>Яндекс Маркет
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-issues"
+                              href="/exports-marketplaces-issues.html"
+                              title="Товары МойСклад с проблемами публикации на маркетплейсах"
+                            >
+                              <i class="metismenu-icon pe-7s-attention"></i>Проблемы с товарами
                             </a>
                           </li>
                         </ul>
@@ -604,7 +701,7 @@
               <div class="row g-2 align-items-end">
                 <div class="col-md-4" data-dg-ms-filter-field="ms_smart">
                   <label class="form-label" for="ms-f-search">Умный поиск</label>
-                  <input type="text" class="form-control" id="ms-f-search" placeholder='sku:AB-12 "насос 25" | name:valtec' autocomplete="off" />
+                  <input type="text" class="form-control" id="ms-f-search" placeholder="Код, артикул или наименование" autocomplete="off" data-dg-tooltip='Ищет по полям: код, наименование, поставщик 1/2. Поддерживает группы (через | как ИЛИ) и явные ключи: sku:AB-12, name:valtec, supplier:вектор, manager:иван, stock:да' />
                 </div>
                 <div class="col-md-2" data-dg-ms-filter-field="ms_tf_code">
                   <label class="form-label" for="ms-tf-code">ID / КОД</label>
@@ -648,37 +745,13 @@
                   <label class="form-label" for="ms-tf-content_manager">Контент-менеджер</label>
                   <input type="text" class="form-control" id="ms-tf-content_manager" autocomplete="off" />
                 </div>
-                <div class="col-md-2" data-dg-ms-filter-field="ms_tf_stock_min">
+                <div class="col-md-1" data-dg-ms-filter-field="ms_tf_stock_min">
                   <label class="form-label" for="ms-tf-stock_min">Остаток от</label>
                   <input type="number" class="form-control" id="ms-tf-stock_min" />
                 </div>
-                <div class="col-md-2" data-dg-ms-filter-field="ms_tf_stock_max">
+                <div class="col-md-1" data-dg-ms-filter-field="ms_tf_stock_max">
                   <label class="form-label" for="ms-tf-stock_max">Остаток до</label>
                   <input type="number" class="form-control" id="ms-tf-stock_max" />
-                </div>
-                <div class="col-md-2" data-dg-ms-filter-field="ms_f_supplier">
-                  <label class="form-label" for="ms-f-supplier">Поставщик</label>
-                  <input type="text" class="form-control" id="ms-f-supplier" autocomplete="off" />
-                </div>
-                <div class="col-md-2" data-dg-ms-filter-field="ms_f_supplier2">
-                  <label class="form-label" for="ms-f-supplier2">Поставщик 2</label>
-                  <input type="text" class="form-control" id="ms-f-supplier2" autocomplete="off" />
-                </div>
-                <div class="col-md-2" data-dg-ms-filter-field="ms_f_manager">
-                  <label class="form-label" for="ms-f-manager">Менеджер</label>
-                  <input type="text" class="form-control" id="ms-f-manager" autocomplete="off" />
-                </div>
-                <div class="col-md-2" data-dg-ms-filter-field="ms_f_content_manager">
-                  <label class="form-label" for="ms-f-content_manager">Контент-менеджер</label>
-                  <input type="text" class="form-control" id="ms-f-content_manager" autocomplete="off" />
-                </div>
-                <div class="col-md-2" data-dg-ms-filter-field="ms_f_type">
-                  <label class="form-label" for="ms-f-type">Тип</label>
-                  <select class="form-select" id="ms-f-type">
-                    <option value="all">Все</option>
-                    <option value="Товар">Товары</option>
-                    <option value="Комплект">Комплекты</option>
-                  </select>
                 </div>
                 <div class="col-md-2" data-dg-ms-filter-field="ms_f_stock_position">
                   <label class="form-label" for="ms-f-stock_position">Складская позиция</label>
@@ -767,18 +840,30 @@
           <p class="text-muted small mb-2 text-danger" id="dg-status" style="display:none"></p>
 
           <div class="main-card mb-3 card">
-            <div class="card-header d-flex align-items-center justify-content-between gap-2">
-              <div class="d-flex align-items-center">
-                <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
-                <span>Выгрузка МойСклад</span>
+            <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+              <div class="d-flex align-items-center gap-3 flex-grow-1" style="min-width: 0">
+                <div class="d-flex align-items-center flex-shrink-0">
+                  <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
+                  <span>Выгрузка МойСклад</span>
+                </div>
+                <div class="dg-ms-header-search" style="flex: 0 1 380px; min-width: 220px">
+                  <div class="input-group input-group-sm">
+                    <span class="input-group-text bg-white text-muted px-2" aria-hidden="true">🔎</span>
+                    <input type="search" class="form-control" id="dg-ms-table-search-mirror"
+                           placeholder="Умный поиск: код, артикул, наименование (Enter — применить)"
+                           autocomplete="off"
+                           data-dg-tooltip='Умный поиск по таблице. Ищет по коду, наименованию, поставщикам 1/2. Поддерживает группы (через | как ИЛИ) и явные ключи: sku:AB-12, name:valtec, supplier:вектор, manager:иван, stock:да. Enter — применить, Esc — очистить.' />
+                  </div>
+                </div>
+              </div>
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-ms-columns-toggle" title="Управление видимостью столбцов таблицы">🧩 Столбцы</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-ms-widths-toggle" title="Ручная ширина каждой колонки в пикселях (или drag за правый край заголовка)">📏 Ширины</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-ms-table-toggle" title="Свернуть/развернуть тело карточки с таблицей">Свернуть</button>
               </div>
             </div>
-            <div class="card-body">
-              <div class="datagon-columns-toolbox mb-2">
-                <div class="columns-top">
-                  <button type="button" class="btn btn-sm" id="dg-ms-columns-toggle">🧩 Столбцы</button>
-                  <div class="columns-title">Включение/выключение видимых столбцов:</div>
-                </div>
+            <div class="card-body" id="dg-ms-table-body">
+              <div class="datagon-columns-toolbox mb-2 d-none" id="dg-ms-toolbox-panels">
                 <div class="datagon-columns-panel" id="dg-ms-columns-panel">
                   <div class="columns-actions mb-2">
                     <button type="button" class="btn btn-sm" id="dg-ms-columns-all">Выделить все</button>
@@ -786,6 +871,12 @@
                     <button type="button" class="btn btn-sm" id="dg-ms-columns-default">По умолчанию</button>
                   </div>
                   <div id="dg-ms-columns-list" class="columns-grid"></div>
+                </div>
+                <div class="datagon-columns-panel" id="dg-ms-widths-panel">
+                  <div class="columns-actions mb-2">
+                    <button type="button" class="btn btn-sm" id="dg-ms-widths-default">По умолчанию</button>
+                  </div>
+                  <div id="dg-ms-widths-list" class="dg-ms-widths-grid"></div>
                 </div>
               </div>
               <div style="width:100%;max-width:100%;overflow-x:auto;overflow-y:visible;-webkit-overflow-scrolling:touch">
@@ -1106,16 +1197,21 @@
       }
 
       function readFilters() {
+        // Поля supplier/supplier2/manager/content_manager/type больше не дублируются
+        // в строке «API» — оставлены только в строке «Таблица» (ms-tf-*). Эти значения
+        // уходят на бэк как g_supplier / g_manager / g_type и т.д. (см. appendGridFilterParams),
+        // что эквивалентно прежним API-фильтрам. Поэтому из readFilters() возвращаем
+        // их пустыми, чтобы appendFilterParams не дублировал параметры на стороне сервера.
         return {
           search: document.getElementById("ms-f-search").value.trim(),
           limit: Number(document.getElementById("ms-f-limit").value) || 100,
           stock_position: document.getElementById("ms-f-stock_position").value,
           on_site: document.getElementById("ms-f-on_site").value,
-          type: document.getElementById("ms-f-type").value,
-          supplier: document.getElementById("ms-f-supplier").value.trim(),
-          supplier2: document.getElementById("ms-f-supplier2").value.trim(),
-          manager: document.getElementById("ms-f-manager").value.trim(),
-          content_manager: document.getElementById("ms-f-content_manager").value.trim(),
+          type: "all",
+          supplier: "",
+          supplier2: "",
+          manager: "",
+          content_manager: "",
           only_stock: document.getElementById("only_stock").checked ? "1" : "0",
           no_coop: document.getElementById("no_coop").checked ? "1" : "0",
           has_buy_price: document.getElementById("has_buy_price").checked ? "1" : "0",
@@ -1169,15 +1265,9 @@
           document.getElementById("ms-f-stock_position").value = String(api.stock_position);
         if (missing("on_site") && api.on_site != null)
           document.getElementById("ms-f-on_site").value = String(api.on_site);
-        if (missing("type") && api.type != null) document.getElementById("ms-f-type").value = String(api.type);
-        if (missing("supplier") && api.supplier != null)
-          document.getElementById("ms-f-supplier").value = String(api.supplier);
-        if (missing("supplier2") && api.supplier2 != null)
-          document.getElementById("ms-f-supplier2").value = String(api.supplier2);
-        if (missing("manager") && api.manager != null)
-          document.getElementById("ms-f-manager").value = String(api.manager);
-        if (missing("content_manager") && api.content_manager != null)
-          document.getElementById("ms-f-content_manager").value = String(api.content_manager);
+        // Старые ключи api.type / api.supplier / ... теперь живут только в табличных полях
+        // (ms-tf-*). Сохранённые ранее значения переносим в соответствующие inputs ниже —
+        // блоки `if (tbl.* != null)` всё равно выставят правильное состояние.
         if (missing("only_stock") && api.only_stock != null)
           document.getElementById("only_stock").checked = String(api.only_stock) === "1";
         if (missing("no_coop") && api.no_coop != null)
@@ -1283,9 +1373,15 @@
         keys.forEach(function (k) {
           var v = params.get(k);
           if (v === null || v === "") return;
+          // Старые URL-ключи без префикса g_ (?supplier=…, ?manager=…, ?type=…) сохраняем
+          // ради совместимости — мапим их на табличные input'ы (ms-tf-*), которые теперь
+          // единственный источник истины для этих фильтров.
           if (k === "limit") document.getElementById("ms-f-limit").value = String(Number(v) || 100);
           else if (k === "search") document.getElementById("ms-f-search").value = v;
-          else if (k === "type") document.getElementById("ms-f-type").value = v;
+          else if (k === "type") {
+            var elT = document.getElementById("ms-tf-type");
+            if (elT) elT.value = String(v).toLowerCase();
+          }
           else if (k === "archived") {
             var elA = document.getElementById("ms-tf-archived");
             if (elA) {
@@ -1295,10 +1391,22 @@
             }
           } else if (k === "stock_position") document.getElementById("ms-f-stock_position").value = v;
           else if (k === "on_site") document.getElementById("ms-f-on_site").value = v;
-          else if (k === "supplier") document.getElementById("ms-f-supplier").value = v;
-          else if (k === "supplier2") document.getElementById("ms-f-supplier2").value = v;
-          else if (k === "manager") document.getElementById("ms-f-manager").value = v;
-          else if (k === "content_manager") document.getElementById("ms-f-content_manager").value = v;
+          else if (k === "supplier") {
+            var elS1 = document.getElementById("ms-tf-supplier");
+            if (elS1) elS1.value = v;
+          }
+          else if (k === "supplier2") {
+            var elS2 = document.getElementById("ms-tf-supplier2");
+            if (elS2) elS2.value = v;
+          }
+          else if (k === "manager") {
+            var elM = document.getElementById("ms-tf-manager");
+            if (elM) elM.value = v;
+          }
+          else if (k === "content_manager") {
+            var elCM = document.getElementById("ms-tf-content_manager");
+            if (elCM) elCM.value = v;
+          }
           else if (k === "only_stock") document.getElementById("only_stock").checked = v === "1";
           else if (k === "no_coop") document.getElementById("no_coop").checked = v === "1";
           else if (k === "has_buy_price") document.getElementById("has_buy_price").checked = v === "1";
@@ -1567,13 +1675,18 @@
         var el = document.getElementById("dg-ms-status-hint");
         if (!el) return;
         var nowMs = Date.now();
-        if (pendingAction) return;
+        if (pendingAction) {
+          el.style.display = "";
+          return;
+        }
         if (transientStatusText && transientStatusUntil > nowMs) {
           el.textContent = transientStatusText;
+          el.style.display = "";
           return;
         }
         if (!st) {
           el.textContent = "Загрузка статуса...";
+          el.style.display = "";
           return;
         }
         var totalRows = Number(st.total || 0);
@@ -1581,8 +1694,21 @@
         var pct = totalRows > 0 ? Math.round((processedRows / totalRows) * 100) : 0;
         if (st.active) {
           el.textContent = (st.message || "Синхронизация идет") + " (" + processedRows + "/" + totalRows + ", " + pct + "%)";
+          el.style.display = "";
+          return;
+        }
+        // Сервер по умолчанию шлёт jobState.message = 'Ожидание', даже когда никакой
+        // синхронизации нет (см. routes/moysklad.js — глобальный jobState). Показывать
+        // эту заглушку под формой бессмысленно: пользователь правомерно спрашивает
+        // «кого ждёт». Поэтому отображаем подсказку только если бэк прислал реальный
+        // message (отличный от дефолтного «Ожидание»), либо есть transient/active state.
+        var msg = String((st && st.message) || "").trim();
+        if (msg && msg !== "Ожидание") {
+          el.textContent = msg;
+          el.style.display = "";
         } else {
-          el.textContent = st.message || "Ожидание";
+          el.textContent = "";
+          el.style.display = "none";
         }
       }
 
@@ -2275,11 +2401,6 @@
         document.getElementById("ms-f-limit").value = "100";
         document.getElementById("ms-f-stock_position").value = "yes";
         document.getElementById("ms-f-on_site").value = "all";
-        document.getElementById("ms-f-type").value = "all";
-        document.getElementById("ms-f-supplier").value = "";
-        document.getElementById("ms-f-supplier2").value = "";
-        document.getElementById("ms-f-manager").value = "";
-        document.getElementById("ms-f-content_manager").value = "";
         document.getElementById("only_stock").checked = false;
         document.getElementById("no_coop").checked = false;
         document.getElementById("has_buy_price").checked = false;
@@ -2447,8 +2568,7 @@
       }
 
       [
-        "ms-f-search", "ms-f-limit", "ms-f-stock_position", "ms-f-on_site", "ms-f-type",
-        "ms-f-supplier", "ms-f-supplier2", "ms-f-manager", "ms-f-content_manager",
+        "ms-f-search", "ms-f-limit", "ms-f-stock_position", "ms-f-on_site",
         "only_stock", "no_coop", "has_buy_price",
       ].forEach(function (id) {
         var el = document.getElementById(id);
@@ -2465,6 +2585,57 @@
         page = 1;
         loadData();
       });
+
+      // Двусторонняя синхронизация дублирующего поля «Умный поиск» в шапке карточки
+      // «Выгрузка МойСклад» (#dg-ms-table-search-mirror) с основным полем фильтра
+      // (#ms-f-search). Enter — применить (триггерим клик по «Применить»), Esc —
+      // очистить и применить. По правилу datagon-table-filter-apply.mdc серверный
+      // запрос не делается на каждое нажатие клавиши; только по Enter / Apply.
+      (function bindHeaderSearchMirror() {
+        var primary = document.getElementById("ms-f-search");
+        var mirror = document.getElementById("dg-ms-table-search-mirror");
+        var applyBtn = document.getElementById("moysklad-apply");
+        if (!primary || !mirror) return;
+        var syncing = false;
+        function copy(from, to) {
+          if (syncing) return;
+          if (to.value === from.value) return;
+          syncing = true;
+          to.value = from.value;
+          // Триггерим input, чтобы сработали уже подключённые слушатели
+          // (scheduleUrlSync и т.п.) — без них URL/состояние не обновится.
+          to.dispatchEvent(new Event("input", { bubbles: true }));
+          syncing = false;
+        }
+        primary.addEventListener("input", function () { copy(primary, mirror); });
+        mirror.addEventListener("input", function () { copy(mirror, primary); });
+        function apply() {
+          if (applyBtn) applyBtn.click();
+          else { page = 1; loadData(); }
+        }
+        function bindKeys(el) {
+          el.addEventListener("keydown", function (e) {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              apply();
+            } else if (e.key === "Escape") {
+              if (!el.value) return;
+              el.value = "";
+              copy(el, el === primary ? mirror : primary);
+              apply();
+            }
+          });
+          // Нативное «Esc / X» в <input type="search">
+          el.addEventListener("search", function () {
+            copy(el, el === primary ? mirror : primary);
+            apply();
+          });
+        }
+        bindKeys(primary);
+        bindKeys(mirror);
+        // Стартовая синхронизация (после mergeMoyskladPrefsFromStorage / parseUrlToForm)
+        copy(primary, mirror);
+      })();
       document.getElementById("moysklad-reset").addEventListener("click", function () {
         resetFilters();
         loadData();
@@ -2504,30 +2675,25 @@
         var FIELD_GROUPS = [
           {
             title: "Верхний ряд",
-            subtitle: "Поиск и клиентский отбор",
+            subtitle: "Поиск и колонка-фильтры",
             items: [
-              { key: "ms_smart", title: "Умный поиск", hint: "" },
+              { key: "ms_smart", title: "Умный поиск", hint: "Ищет по полям: код, наименование, поставщик 1/2. Поддерживает ключи sku:, name:, supplier:, manager:, stock:" },
               { key: "ms_tf_code", title: "ID / КОД", hint: "" },
               { key: "ms_tf_name", title: "Наименование", hint: "" },
-              { key: "ms_tf_type", title: "Тип (таблица)", hint: "" },
-              { key: "ms_tf_archived", title: "Архивные", hint: "Активные / архив / все (параметр g_archived)" },
-              { key: "ms_tf_supplier", title: "Поставщик (таблица)", hint: "" },
-              { key: "ms_tf_supplier2", title: "Поставщик 2 (таблица)", hint: "" },
+              { key: "ms_tf_type", title: "Тип", hint: "Товар / Комплект / Все" },
+              { key: "ms_tf_archived", title: "Архивные", hint: "Активные / Архив / Все" },
+              { key: "ms_tf_supplier", title: "Поставщик", hint: "" },
+              { key: "ms_tf_supplier2", title: "Поставщик 2", hint: "" },
             ],
           },
           {
             title: "Второй ряд",
-            subtitle: "Менеджеры, остатки, API-фильтры",
+            subtitle: "Менеджеры, остатки, отображение",
             items: [
-              { key: "ms_tf_manager", title: "Менеджер (таблица)", hint: "" },
-              { key: "ms_tf_content_manager", title: "Контент-менеджер (таблица)", hint: "" },
+              { key: "ms_tf_manager", title: "Менеджер", hint: "" },
+              { key: "ms_tf_content_manager", title: "Контент-менеджер", hint: "" },
               { key: "ms_tf_stock_min", title: "Остаток от", hint: "" },
               { key: "ms_tf_stock_max", title: "Остаток до", hint: "" },
-              { key: "ms_f_supplier", title: "Поставщик (API)", hint: "" },
-              { key: "ms_f_supplier2", title: "Поставщик 2 (API)", hint: "" },
-              { key: "ms_f_manager", title: "Менеджер (API)", hint: "" },
-              { key: "ms_f_content_manager", title: "Контент-менеджер (API)", hint: "" },
-              { key: "ms_f_type", title: "Тип (API)", hint: "" },
               { key: "ms_f_stock_position", title: "Складская позиция", hint: "" },
               { key: "ms_f_on_site", title: "На сайте", hint: "" },
               { key: "ms_f_limit", title: "На странице", hint: "" },
@@ -2590,12 +2756,32 @@
         var allBtn = document.getElementById("dg-ms-columns-all");
         var noneBtn = document.getElementById("dg-ms-columns-none");
         var defBtn = document.getElementById("dg-ms-columns-default");
+        var widthsToggle = document.getElementById("dg-ms-widths-toggle");
+        var widthsPanel = document.getElementById("dg-ms-widths-panel");
+        var panelsWrap = document.getElementById("dg-ms-toolbox-panels");
         if (!toggle || !panel) return;
+        function syncWrap() {
+          if (!panelsWrap) return;
+          var open = panel.classList.contains("open") || (widthsPanel && widthsPanel.classList.contains("open"));
+          panelsWrap.classList.toggle("d-none", !open);
+        }
         toggle.addEventListener("click", function (e) {
           e.preventDefault();
           e.stopPropagation();
           panel.classList.toggle("open");
+          if (widthsPanel) widthsPanel.classList.remove("open");
+          syncWrap();
         });
+        if (widthsToggle && widthsPanel) {
+          widthsToggle.addEventListener("click", function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            widthsPanel.classList.toggle("open");
+            panel.classList.remove("open");
+            if (widthsPanel.classList.contains("open")) renderWidthControls();
+            syncWrap();
+          });
+        }
         function saveVisible() {
           try {
             var arr = Array.from(visibleCols);
@@ -2637,7 +2823,94 @@
         document.addEventListener("click", function (e) {
           if (e.target.closest("#dg-ms-columns-panel")) return;
           if (e.target.closest("#dg-ms-columns-toggle")) return;
+          if (e.target.closest("#dg-ms-widths-panel")) return;
+          if (e.target.closest("#dg-ms-widths-toggle")) return;
           panel.classList.remove("open");
+          if (widthsPanel) widthsPanel.classList.remove("open");
+          syncWrap();
+        });
+
+        var widthsDefault = document.getElementById("dg-ms-widths-default");
+        if (widthsDefault) widthsDefault.addEventListener("click", function () {
+          columnWidths = {};
+          try { localStorage.removeItem(userColWidthKey()); } catch (e) {}
+          buildThead();
+          renderTable(lastExportRows || []);
+          renderWidthControls();
+        });
+      })();
+
+      // Панель «📏 Ширины»: список «<лейбл> <input number px>» для каждой колонки.
+      // Использует ту же связку (columnWidths + applyColumnWidth + userColWidthKey),
+      // что drag-резайзер на правом крае <th>, поэтому изменения мгновенно видны
+      // в шапке/теле таблицы и сохраняются в localStorage.
+      function renderWidthControls() {
+        var list = document.getElementById("dg-ms-widths-list");
+        if (!list) return;
+        list.innerHTML = "";
+        MS_COLS.forEach(function (pair) {
+          var key = pair[0];
+          var label = pair[1];
+          var minW = (typeof getColMin === "function") ? getColMin(key) : 60;
+          var current = Number(columnWidths[key] || 0);
+          if (!Number.isFinite(current) || current <= 0) current = minW;
+          var wrap = document.createElement("label");
+          var span = document.createElement("span");
+          span.textContent = label;
+          span.style.flex = "1 1 auto";
+          span.style.overflow = "hidden";
+          span.style.textOverflow = "ellipsis";
+          span.style.whiteSpace = "nowrap";
+          var input = document.createElement("input");
+          input.type = "number";
+          input.className = "form-control form-control-sm";
+          input.min = "60";
+          input.max = "700";
+          input.step = "10";
+          input.value = String(current);
+          input.setAttribute("data-col-key", key);
+          input.addEventListener("change", function () {
+            var k = this.getAttribute("data-col-key");
+            var n = parseInt(this.value, 10);
+            if (!Number.isFinite(n)) { this.value = String(columnWidths[k] || (typeof getColMin === "function" ? getColMin(k) : 60)); return; }
+            n = Math.max(60, Math.min(700, n));
+            applyColumnWidth(k, n);
+            try { localStorage.setItem(userColWidthKey(), JSON.stringify(columnWidths || {})); } catch (e) {}
+            this.value = String(n);
+          });
+          wrap.appendChild(span);
+          wrap.appendChild(input);
+          list.appendChild(wrap);
+        });
+      }
+
+      // «Свернуть/Развернуть» для карточки с таблицей — по образцу кнопки в
+      // карточке «Фильтры и действия» (см. filtersCollapse выше). Прячет/показывает
+      // только тело карточки `#dg-ms-table-body`, шапка карточки с заголовком и
+      // кнопками (Столбцы/Ширины) остаётся видна. Состояние сохраняется в localStorage.
+      (function tableCardCollapse() {
+        var btn = document.getElementById("dg-ms-table-toggle");
+        var body = document.getElementById("dg-ms-table-body");
+        if (!btn || !body) return;
+        var STORAGE_KEY = "dg.ms.table-card.collapsed.v1";
+        function apply() {
+          var c = false;
+          try { c = localStorage.getItem(STORAGE_KEY) === "1"; } catch (e) {}
+          if (c) {
+            body.style.display = "none";
+            btn.textContent = "Развернуть";
+          } else {
+            body.style.display = "";
+            btn.textContent = "Свернуть";
+          }
+        }
+        apply();
+        btn.addEventListener("click", function () {
+          var hidden = body.style.display === "none";
+          body.style.display = hidden ? "" : "none";
+          btn.textContent = hidden ? "Свернуть" : "Развернуть";
+          try { localStorage.setItem(STORAGE_KEY, hidden ? "0" : "1"); } catch (e) {}
+          if (typeof refreshStickyColumns === "function" && hidden) setTimeout(refreshStickyColumns, 50);
         });
       })();
 

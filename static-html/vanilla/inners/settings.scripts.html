@@ -1,5 +1,40 @@
   <script>
     (function () {
+      // Удержание позиции скролла при асинхронных fetch-ах, которые
+      // дорисовывают DOM ВЫШЕ позиции пользователя (таблицы пользователей /
+      // специальностей / матрицы доступа) или повторно прогоняют форму
+      // (loadSettings + applySettingsToForm). Без этого вертикальная
+      // позиция «прыгает наверх» во время первой загрузки и после кликов
+      // «Сохранить», см. жалобу про «Тип WB-токена внизу».
+      var dgUserScrollAt = 0;
+      ["wheel", "touchmove", "keydown", "pointerdown"].forEach(function (ev) {
+        window.addEventListener(ev, function () {
+          dgUserScrollAt = Date.now();
+        }, { passive: true });
+      });
+      function dgKeepScroll(maybePromise) {
+        var prevY = window.scrollY || document.documentElement.scrollTop || 0;
+        function tryRestore() {
+          if (Date.now() - dgUserScrollAt < 1500) return;
+          var cur = window.scrollY || document.documentElement.scrollTop || 0;
+          if (Math.abs(cur - prevY) <= 4) return;
+          window.scrollTo({ top: prevY, left: 0, behavior: "auto" });
+        }
+        function schedule() {
+          requestAnimationFrame(function () {
+            tryRestore();
+            requestAnimationFrame(tryRestore);
+          });
+        }
+        if (maybePromise && typeof maybePromise.then === "function") {
+          return maybePromise.then(
+            function (v) { schedule(); return v; },
+            function (e) { schedule(); throw e; }
+          );
+        }
+        schedule();
+        return maybePromise;
+      }
       var defaults = {
         default_limit: 100,
         parse_batch_size: 50,
@@ -33,6 +68,7 @@
         ozon_client_id: "",
         ozon_api_key: "",
         wb_api_key: "",
+        wb_token_type: "base",
         ym_api_key: "",
         ym_campaign_id: "",
         ym_business_id: "",
@@ -167,6 +203,7 @@
         set("dg-set-ozon_client_id", merged.ozon_client_id || "");
         set("dg-set-ozon_api_key", merged.ozon_api_key || "");
         set("dg-set-wb_api_key", merged.wb_api_key || "");
+        set("dg-set-wb_token_type", merged.wb_token_type || "base");
         set("dg-set-ym_api_key", merged.ym_api_key || "");
         set("dg-set-ym_campaign_id", merged.ym_campaign_id || "");
         set("dg-set-ym_business_id", merged.ym_business_id || "");
@@ -365,7 +402,8 @@
           if (hint) hint.textContent = "Выберите специальность в списке.";
           return Promise.resolve();
         }
-        return loadSpecPageDefsOnce()
+        return dgKeepScroll(
+          loadSpecPageDefsOnce()
           .then(function () {
             return fetch("/api/specialties/" + sid + "/access", { credentials: "same-origin", headers: authHeaders(false) });
           })
@@ -408,7 +446,8 @@
           })
           .catch(function (e) {
             if (hint) hint.textContent = e.message || String(e);
-          });
+          })
+        );
       }
 
       function saveSpecMatrix() {
@@ -491,24 +530,27 @@
       }
 
       function loadSettings() {
-        fetch("/api/settings", { credentials: "same-origin" })
-          .then(function (r) {
-            return r.json().then(function (j) {
-              return { r: r, j: j };
-            });
-          })
-          .then(function (x) {
-            if (!x.r.ok) throw new Error(x.j.error || "Не удалось загрузить настройки");
-            applySettingsToForm(x.j);
-            if (!isAdmin()) set("dg-set-pw-username", currentUser());
-          })
-          .catch(function (e) {
-            alert(e.message || "Ошибка загрузки настроек");
-          });
+        return dgKeepScroll(
+          fetch("/api/settings", { credentials: "same-origin" })
+            .then(function (r) {
+              return r.json().then(function (j) {
+                return { r: r, j: j };
+              });
+            })
+            .then(function (x) {
+              if (!x.r.ok) throw new Error(x.j.error || "Не удалось загрузить настройки");
+              applySettingsToForm(x.j);
+              if (!isAdmin()) set("dg-set-pw-username", currentUser());
+            })
+            .catch(function (e) {
+              alert(e.message || "Ошибка загрузки настроек");
+            })
+        );
       }
 
       function loadLogsInfo() {
-        fetch("/api/settings/logs-info", { credentials: "same-origin" })
+        return dgKeepScroll(
+          fetch("/api/settings/logs-info", { credentials: "same-origin" })
           .then(function (r) {
             return r.json().then(function (j) {
               return { r: r, j: j };
@@ -535,7 +577,8 @@
             var box = document.getElementById("dg-set-logs-info");
             box.replaceChildren();
             box.textContent = "Ошибка чтения логов: " + (e.message || String(e));
-          });
+          })
+        );
       }
 
       function filteredUsersList() {
@@ -755,7 +798,8 @@
         loadingUsers = true;
         usersLoadForbidden = false;
         renderUsers();
-        fetch("/api/auth/users", { credentials: "same-origin", headers: authHeaders(false) })
+        return dgKeepScroll(
+          fetch("/api/auth/users", { credentials: "same-origin", headers: authHeaders(false) })
           .then(function (r) {
             return r.json().then(function (j) {
               return { r: r, j: j };
@@ -784,128 +828,234 @@
           .then(function () {
             loadingUsers = false;
             renderUsers();
-          });
+          })
+        );
       }
 
-      function upsertSettings(payload, okText) {
-        fetch("/api/settings", {
+      /**
+       * Универсальный движок «Сохранить» для страницы Настроек.
+       *
+       * По правилу `datagon-settings-save-feedback`: каждая кнопка «Сохранить» обязана
+       * показывать inline-результат рядом с собой (без alert как единственного источника).
+       *
+       * Параметры:
+       *   sectionId      — id секции (например, "marketplaces"). Под кнопкой ожидается
+       *                    `<div id="dg-set-${sectionId}-save-msg" class="alert d-none">`,
+       *                    кнопка — `dg-set-btn-save-${sectionId}`.
+       *   payload        — объект для POST /api/settings.
+       *   okText         — короткое описание успеха (например, "Настройки маркетплейсов сохранены").
+       *   verifyKeys     — список ключей, по которым после успеха сверяем фактически
+       *                    сохранённое значение в БД через GET /api/settings (чтобы поймать
+       *                    ситуации «POST вернул success, но whitelist бэкенда отбросил поле»).
+       */
+      function setSaveMsg(sectionId, kind, html) {
+        var box = document.getElementById("dg-set-" + sectionId + "-save-msg");
+        if (!box) return;
+        var cls = kind === "success" ? "alert-success" : kind === "warning" ? "alert-warning" : kind === "danger" ? "alert-danger" : "alert-secondary";
+        box.className = "alert mt-3 mb-0 " + cls;
+        box.innerHTML = html;
+      }
+      function maskValue(v) {
+        var s = String(v == null ? "" : v);
+        if (s === "") return "<em>не задан</em>";
+        if (s.length <= 8) return "*** (" + s.length + " симв.)";
+        return s.slice(0, 4) + "…" + s.slice(-4) + " (" + s.length + " симв.)";
+      }
+      function fmtVerify(payload, settings, verifyKeys) {
+        if (!verifyKeys || !verifyKeys.length) return "";
+        var lines = [];
+        var anyMismatch = false;
+        verifyKeys.forEach(function (k) {
+          if (!(k in payload)) return;
+          var sent = payload[k];
+          var got = settings && settings[k] !== undefined ? settings[k] : "";
+          var mask = /api_key|password|secret/i.test(k);
+          var sentDisplay = mask ? maskValue(sent) : (sent === "" ? "<em>пусто</em>" : "<code>" + String(sent) + "</code>");
+          var gotDisplay = mask ? maskValue(got) : (got === "" || got == null ? "<em>пусто</em>" : "<code>" + String(got) + "</code>");
+          var same = String(sent || "") === String(got || "");
+          if (!same) anyMismatch = true;
+          lines.push("• <strong>" + k + ":</strong> в БД " + gotDisplay + (same ? "" : " (вы отправили " + sentDisplay + ")"));
+        });
+        return { html: lines.join("<br>"), mismatch: anyMismatch };
+      }
+      function runSaveWithInlineFeedback(opts) {
+        var sectionId = opts.sectionId;
+        var btnId = "dg-set-btn-save-" + sectionId;
+        var btn = document.getElementById(btnId);
+        var payload = opts.payload || {};
+        var okText = opts.okText || "Сохранено";
+        var verifyKeys = Array.isArray(opts.verifyKeys) ? opts.verifyKeys : [];
+        if (btn) btn.disabled = true;
+        setSaveMsg(sectionId, "warning", "Сохраняем…");
+        return dgKeepScroll(
+          fetch("/api/settings", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          })
+            .then(function (r) {
+              return r.json().then(function (j) { return { r: r, j: j }; });
+            })
+            .then(function (x) {
+              if (!x.r.ok || !x.j.success) {
+                throw new Error((x.j && x.j.error) || ("HTTP " + x.r.status));
+              }
+              return fetch("/api/settings", { credentials: "same-origin" }).then(function (r) { return r.json(); });
+            })
+            .then(function (settings) {
+              applySettingsToForm(settings || {});
+              var verify = fmtVerify(payload, settings || {}, verifyKeys);
+              var ok = !verify || !verify.mismatch;
+              var html = "<strong>" + (ok ? okText + "." : okText + ", но фактическое значение в БД отличается!") + "</strong>";
+              if (verify && verify.html) html += "<br>" + verify.html;
+              html += "<br><span class=\"small text-muted\">При смене ключей/паролей маркетплейсов, расписаний и параметров API нужен перезапуск Node для применения.</span>";
+              setSaveMsg(sectionId, ok ? "success" : "warning", html);
+            })
+            .catch(function (e) {
+              setSaveMsg(sectionId, "danger", "<strong>Ошибка сохранения.</strong> " + (e && e.message ? e.message : String(e)));
+            })
+            .then(function () {
+              if (btn) btn.disabled = false;
+            })
+        );
+      }
+      // Совместимость со старым кодом: upsertSettings(payload, okText) теперь использует
+      // тот же inline-движок, при условии что у вызывающей кнопки есть message-box.
+      // Имя секции — суффикс id кнопки после "dg-set-btn-save-".
+      function upsertSettings(payload, okText, sectionId, verifyKeys) {
+        return runSaveWithInlineFeedback({
+          sectionId: sectionId || "general",
+          payload: payload,
+          okText: okText || "Сохранено",
+          verifyKeys: verifyKeys || Object.keys(payload || {}),
+        });
+      }
+
+      function saveSessionsAndOnline() {
+        var payload = {
+          auth_session_ttl_days: getNum("dg-set-auth_session_ttl_days", 14),
+          auth_session_user_limit: getNum("dg-set-auth_session_user_limit", 1),
+          auth_online_presence_minutes: getNum("dg-set-auth_online_presence_minutes", 15),
+        };
+        runSaveWithInlineFeedback({
+          sectionId: "sessions",
+          payload: payload,
+          okText: "Настройки сессий и онлайн сохранены",
+          verifyKeys: Object.keys(payload),
+        });
+      }
+
+      function saveGeneral() {
+        var payload = {
+          default_limit: getNum("dg-set-default_limit", 100),
+          parse_batch_size: getNum("dg-set-parse_batch_size", 50),
+          page_delay_ms: getNum("dg-set-page_delay_ms", 0),
+          results_retention_days: getNum("dg-set-results_retention_days", 120),
+          discover_max_sitemaps: getNum("dg-set-discover_max_sitemaps", 200),
+          discover_max_urls: getNum("dg-set-discover_max_urls", 50000),
+          discover_crawl_max_pages: getNum("dg-set-discover_crawl_max_pages", 500),
+          discover_request_delay_ms: getNum("dg-set-discover_request_delay_ms", 100),
+          fetch_proxy_enabled: document.getElementById("dg-set-fetch_proxy_enabled").checked ? 1 : 0,
+          fetch_proxy_list: getStr("dg-set-fetch_proxy_list"),
+          log_retention_days: getNum("dg-set-log_retention_days", 7),
+        };
+        runSaveWithInlineFeedback({
+          sectionId: "general",
+          payload: payload,
+          okText: "Настройки парсера сохранены",
+          verifyKeys: ["default_limit", "parse_batch_size", "page_delay_ms", "results_retention_days", "log_retention_days"],
+        });
+      }
+
+      function saveMyProductsSync() {
+        var sectionId = "myproducts";
+        var btn = document.getElementById("dg-set-btn-save-" + sectionId);
+        var payload = {
+          sync_batch_size: getNum("dg-set-sync_batch_size", 500),
+          sync_delay_ms: getNum("dg-set-sync_delay_ms", 2000),
+          sync_mode: document.getElementById("dg-set-sync_mode").value,
+        };
+        if (btn) btn.disabled = true;
+        setSaveMsg(sectionId, "warning", "Сохраняем…");
+        fetch("/api/settings/sync-myproducts", {
           method: "POST",
           credentials: "same-origin",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         })
-          .then(function (r) {
-            return r.json().then(function (j) {
-              return { r: r, j: j };
-            });
-          })
+          .then(function (r) { return r.json().then(function (j) { return { r: r, j: j }; }); })
           .then(function (x) {
-            if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Не удалось сохранить");
-            alert(okText);
-            loadSettings();
+            if (!x.r.ok || !x.j.success) throw new Error((x.j && x.j.error) || ("HTTP " + x.r.status));
+            return fetch("/api/settings", { credentials: "same-origin" }).then(function (r) { return r.json(); });
+          })
+          .then(function (settings) {
+            applySettingsToForm(settings || {});
+            var verify = fmtVerify(payload, settings || {}, Object.keys(payload));
+            var ok = !verify.mismatch;
+            var html = "<strong>" + (ok ? "Настройки синхронизации продуктов сохранены." : "Сохранено, но фактическое значение в БД отличается!") + "</strong>";
+            if (verify.html) html += "<br>" + verify.html;
+            setSaveMsg(sectionId, ok ? "success" : "warning", html);
           })
           .catch(function (e) {
-            alert(e.message || "Ошибка сохранения");
-          });
-      }
-
-      function saveSessionsAndOnline() {
-        upsertSettings(
-          {
-            auth_session_ttl_days: getNum("dg-set-auth_session_ttl_days", 14),
-            auth_session_user_limit: getNum("dg-set-auth_session_user_limit", 1),
-            auth_online_presence_minutes: getNum("dg-set-auth_online_presence_minutes", 15),
-          },
-          "Настройки сессий и онлайн сохранены"
-        );
-      }
-
-      function saveGeneral() {
-        upsertSettings(
-          {
-            default_limit: getNum("dg-set-default_limit", 100),
-            parse_batch_size: getNum("dg-set-parse_batch_size", 50),
-            page_delay_ms: getNum("dg-set-page_delay_ms", 0),
-            results_retention_days: getNum("dg-set-results_retention_days", 120),
-            discover_max_sitemaps: getNum("dg-set-discover_max_sitemaps", 200),
-            discover_max_urls: getNum("dg-set-discover_max_urls", 50000),
-            discover_crawl_max_pages: getNum("dg-set-discover_crawl_max_pages", 500),
-            discover_request_delay_ms: getNum("dg-set-discover_request_delay_ms", 100),
-            fetch_proxy_enabled: document.getElementById("dg-set-fetch_proxy_enabled").checked ? 1 : 0,
-            fetch_proxy_list: getStr("dg-set-fetch_proxy_list"),
-            log_retention_days: getNum("dg-set-log_retention_days", 7),
-          },
-          "Настройки парсера сохранены"
-        );
-      }
-
-      function saveMyProductsSync() {
-        fetch("/api/settings/sync-myproducts", {
-          method: "POST",
-          credentials: "same-origin",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            sync_batch_size: getNum("dg-set-sync_batch_size", 500),
-            sync_delay_ms: getNum("dg-set-sync_delay_ms", 2000),
-            sync_mode: document.getElementById("dg-set-sync_mode").value,
-          }),
-        })
-          .then(function (r) {
-            return r.json().then(function (j) {
-              return { r: r, j: j };
-            });
+            setSaveMsg(sectionId, "danger", "<strong>Ошибка сохранения.</strong> " + (e && e.message ? e.message : String(e)));
           })
-          .then(function (x) {
-            if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Не удалось сохранить");
-            alert("Настройки синхронизации продуктов сохранены");
-            loadSettings();
-          })
-          .catch(function (e) {
-            alert(e.message || "Ошибка сохранения");
-          });
+          .then(function () { if (btn) btn.disabled = false; });
       }
 
       function saveMoyskladSync() {
+        var sectionId = "ms";
+        var btn = document.getElementById("dg-set-btn-save-" + sectionId);
+        var payload = {
+          ms_sync_page_limit: getNum("dg-set-ms_sync_page_limit", 1000),
+          ms_sync_delay_ms: getNum("dg-set-ms_sync_delay_ms", 0),
+        };
+        if (btn) btn.disabled = true;
+        setSaveMsg(sectionId, "warning", "Сохраняем…");
         fetch("/api/settings/sync-moysklad", {
           method: "POST",
           credentials: "same-origin",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            ms_sync_page_limit: getNum("dg-set-ms_sync_page_limit", 1000),
-            ms_sync_delay_ms: getNum("dg-set-ms_sync_delay_ms", 0),
-          }),
+          body: JSON.stringify(payload),
         })
-          .then(function (r) {
-            return r.json().then(function (j) {
-              return { r: r, j: j };
-            });
-          })
+          .then(function (r) { return r.json().then(function (j) { return { r: r, j: j }; }); })
           .then(function (x) {
-            if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Не удалось сохранить");
-            alert("Настройки синхронизации МойСклад сохранены");
-            loadSettings();
+            if (!x.r.ok || !x.j.success) throw new Error((x.j && x.j.error) || ("HTTP " + x.r.status));
+            return fetch("/api/settings", { credentials: "same-origin" }).then(function (r) { return r.json(); });
+          })
+          .then(function (settings) {
+            applySettingsToForm(settings || {});
+            var verify = fmtVerify(payload, settings || {}, Object.keys(payload));
+            var ok = !verify.mismatch;
+            var html = "<strong>" + (ok ? "Настройки синхронизации МойСклад сохранены." : "Сохранено, но фактическое значение в БД отличается!") + "</strong>";
+            if (verify.html) html += "<br>" + verify.html;
+            setSaveMsg(sectionId, ok ? "success" : "warning", html);
           })
           .catch(function (e) {
-            alert(e.message || "Ошибка сохранения");
-          });
+            setSaveMsg(sectionId, "danger", "<strong>Ошибка сохранения.</strong> " + (e && e.message ? e.message : String(e)));
+          })
+          .then(function () { if (btn) btn.disabled = false; });
       }
 
       function saveAutoSync() {
-        upsertSettings(
-          {
-            auto_sync_myproducts_enabled: document.getElementById("dg-set-auto_my_en").checked,
-            auto_sync_myproducts_time: getStr("dg-set-auto_my_time") || "03:00",
-            auto_sync_moysklad_enabled: document.getElementById("dg-set-auto_ms_en").checked,
-            auto_sync_moysklad_time: getStr("dg-set-auto_ms_time") || "04:00",
-            auto_sync_marketplaces_enabled: document.getElementById("dg-set-auto_market_en").checked,
-            auto_sync_marketplaces_time: getStr("dg-set-auto_market_time") || "05:00",
-            auto_sync_huckster_enabled: document.getElementById("dg-set-auto_huckster_en").checked,
-            auto_sync_huckster_time: getStr("dg-set-auto_huckster_time") || "06:00",
-            auto_sync_db_size_enabled: document.getElementById("dg-set-auto_db_size_en").checked,
-            auto_sync_db_size_time: getStr("dg-set-auto_db_size_time") || "02:00",
-          },
-          "Расписание автосинхронизации сохранено"
-        );
+        var payload = {
+          auto_sync_myproducts_enabled: document.getElementById("dg-set-auto_my_en").checked,
+          auto_sync_myproducts_time: getStr("dg-set-auto_my_time") || "03:00",
+          auto_sync_moysklad_enabled: document.getElementById("dg-set-auto_ms_en").checked,
+          auto_sync_moysklad_time: getStr("dg-set-auto_ms_time") || "04:00",
+          auto_sync_marketplaces_enabled: document.getElementById("dg-set-auto_market_en").checked,
+          auto_sync_marketplaces_time: getStr("dg-set-auto_market_time") || "05:00",
+          auto_sync_huckster_enabled: document.getElementById("dg-set-auto_huckster_en").checked,
+          auto_sync_huckster_time: getStr("dg-set-auto_huckster_time") || "06:00",
+          auto_sync_db_size_enabled: document.getElementById("dg-set-auto_db_size_en").checked,
+          auto_sync_db_size_time: getStr("dg-set-auto_db_size_time") || "02:00",
+        };
+        runSaveWithInlineFeedback({
+          sectionId: "auto",
+          payload: payload,
+          okText: "Расписание автосинхронизации сохранено",
+          verifyKeys: ["auto_sync_myproducts_time", "auto_sync_moysklad_time", "auto_sync_marketplaces_time", "auto_sync_huckster_time", "auto_sync_db_size_time"],
+        });
       }
 
       function runAutoSyncNow(task, label) {
@@ -936,22 +1086,26 @@
       }
 
       function saveMarketplacesSettings() {
-        upsertSettings(
-          {
-            ozon_client_id: getStr("dg-set-ozon_client_id"),
-            ozon_api_key: getStr("dg-set-ozon_api_key"),
-            wb_api_key: getStr("dg-set-wb_api_key"),
-            ym_api_key: getStr("dg-set-ym_api_key"),
-            ym_campaign_id: getStr("dg-set-ym_campaign_id"),
-            ym_business_id: getStr("dg-set-ym_business_id"),
-            mp_ozon_delay_ms: getNum("dg-set-mp_ozon_delay_ms", 400),
-            mp_wb_delay_cards_ms: getNum("dg-set-mp_wb_delay_cards_ms", 600),
-            mp_wb_delay_other_ms: getNum("dg-set-mp_wb_delay_other_ms", 1600),
-            mp_yandex_delay_ms: getNum("dg-set-mp_yandex_delay_ms", 280),
-            mp_ozon_include_archived: document.getElementById("dg-set-mp_ozon_include_archived").checked,
-          },
-          "Настройки маркетплейсов сохранены"
-        );
+        var payload = {
+          ozon_client_id: getStr("dg-set-ozon_client_id"),
+          ozon_api_key: getStr("dg-set-ozon_api_key"),
+          wb_api_key: getStr("dg-set-wb_api_key"),
+          wb_token_type: (getStr("dg-set-wb_token_type") || "base").toLowerCase(),
+          ym_api_key: getStr("dg-set-ym_api_key"),
+          ym_campaign_id: getStr("dg-set-ym_campaign_id"),
+          ym_business_id: getStr("dg-set-ym_business_id"),
+          mp_ozon_delay_ms: getNum("dg-set-mp_ozon_delay_ms", 400),
+          mp_wb_delay_cards_ms: getNum("dg-set-mp_wb_delay_cards_ms", 600),
+          mp_wb_delay_other_ms: getNum("dg-set-mp_wb_delay_other_ms", 1600),
+          mp_yandex_delay_ms: getNum("dg-set-mp_yandex_delay_ms", 280),
+          mp_ozon_include_archived: document.getElementById("dg-set-mp_ozon_include_archived").checked,
+        };
+        runSaveWithInlineFeedback({
+          sectionId: "marketplaces",
+          payload: payload,
+          okText: "Настройки маркетплейсов сохранены",
+          verifyKeys: ["wb_api_key", "wb_token_type", "ozon_client_id", "ozon_api_key", "ym_api_key", "ym_campaign_id", "ym_business_id", "mp_ozon_delay_ms", "mp_wb_delay_cards_ms", "mp_wb_delay_other_ms", "mp_yandex_delay_ms"],
+        });
       }
 
       function syncMarketplacesNow() {

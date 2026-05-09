@@ -420,12 +420,25 @@
       }
       var storageKeyPrefix = String(opts.storageKeyPrefix || "").trim();
       var attr = String(opts.attr || "").trim();
-      var fieldGroups = opts.fieldGroups;
+      // Делаем глубокую копию fieldGroups, чтобы мутации (auto-discovery) не
+      // модифицировали массив, переданный страницей.
+      var fieldGroups = (opts.fieldGroups || []).map(function (g) {
+        return {
+          title: g.title,
+          subtitle: g.subtitle || "",
+          items: (g.items || []).slice(),
+        };
+      });
       var togglesRootId = String(opts.togglesRootId || "").trim();
       var idPrefix = String(opts.idPrefix || "dg-ff-").trim();
       var migrateV1 = opts.migrateV1;
       var onAfterApply = typeof opts.onAfterApply === "function" ? opts.onAfterApply : function () {};
       var exposeAs = opts.exposeAs ? String(opts.exposeAs).trim() : "";
+      var autoDiscoverTitle = String(opts.autoDiscoverTitle || "Прочие фильтры (авто)");
+      var autoDiscoverSubtitle = String(
+        opts.autoDiscoverSubtitle ||
+          "Автоматически обнаружены поля с атрибутом — добавьте их в fieldGroups, чтобы задать порядок и подпись",
+      );
 
       var togglesRoot = document.getElementById(togglesRootId);
       if (!togglesRoot) return null;
@@ -433,6 +446,51 @@
         return togglesRoot.__dgFilterFieldsApi || null;
       }
       togglesRoot.setAttribute("data-dg-filter-fields-init", "1");
+
+      // Auto-discovery: ищем в DOM все элементы с `[attr="..."]`, которых нет в
+      // явных группах, и добавляем их в синтетическую группу в конце списка.
+      // Так разработчик может разметить новый input/блок только в HTML
+      // (через data-... атрибут) — переключатель появится автоматически. Подпись
+      // берётся из data-dg-filter-field-title (если задан), иначе — из ближайшего
+      // .form-label / <label>; иначе — гуманизированный ключ.
+      (function autoDiscoverOrphans() {
+        if (!attr) return;
+        var explicit = Object.create(null);
+        fieldGroups.forEach(function (g) {
+          (g.items || []).forEach(function (it) {
+            if (it && it.key) explicit[String(it.key)] = true;
+          });
+        });
+        var seen = Object.create(null);
+        var orphans = [];
+        try {
+          document.querySelectorAll("[" + attr + "]").forEach(function (el) {
+            var key = String(el.getAttribute(attr) || "").trim();
+            if (!key || explicit[key] || seen[key]) return;
+            var override = (el.getAttribute("data-dg-filter-field-title") || "").trim();
+            var title = override;
+            if (!title) {
+              var labelEl = el.querySelector(".form-label, label");
+              title = labelEl ? String(labelEl.textContent || "").trim() : "";
+            }
+            if (!title) {
+              title = key
+                .replace(/^(ms_tf_|ms_f_|ms_|dg_|tf_|f_)/i, "")
+                .replace(/_/g, " ")
+                .replace(/^\s*\S/, function (c) { return c.toUpperCase(); });
+            }
+            seen[key] = true;
+            orphans.push({ key: key, title: title, hint: "" });
+          });
+        } catch (eAuto) {}
+        if (orphans.length) {
+          fieldGroups.push({
+            title: autoDiscoverTitle,
+            subtitle: autoDiscoverSubtitle,
+            items: orphans,
+          });
+        }
+      })();
 
       function storageUsername() {
         try {
@@ -1525,7 +1583,9 @@
       id === "dg-huckster-table-1" ||
       id === "dg-huckster-table-2" ||
       id === "dg-huckster-set1-table" ||
-      id === "dg-huckster-set2-table"
+      id === "dg-huckster-set2-table" ||
+      /** Маркетплейсы (Ozon/WB/Я.Маркет): свои стили в exports-marketplaces.head.html; глобальный baseline ломает шапку/колонки. */
+      id === "dg-mp-table-main"
     )
       return true;
     return false;

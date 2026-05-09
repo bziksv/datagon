@@ -63,7 +63,7 @@
               <div class="row g-2 align-items-end">
                 <div class="col-md-4" data-dg-ms-filter-field="ms_smart">
                   <label class="form-label" for="ms-f-search">Умный поиск</label>
-                  <input type="text" class="form-control" id="ms-f-search" placeholder='sku:AB-12 "насос 25" | name:valtec' autocomplete="off" />
+                  <input type="text" class="form-control" id="ms-f-search" placeholder="Код, артикул или наименование" autocomplete="off" data-dg-tooltip='Ищет по полям: код, наименование, поставщик 1/2. Поддерживает группы (через | как ИЛИ) и явные ключи: sku:AB-12, name:valtec, supplier:вектор, manager:иван, stock:да' />
                 </div>
                 <div class="col-md-2" data-dg-ms-filter-field="ms_tf_code">
                   <label class="form-label" for="ms-tf-code">ID / КОД</label>
@@ -107,37 +107,13 @@
                   <label class="form-label" for="ms-tf-content_manager">Контент-менеджер</label>
                   <input type="text" class="form-control" id="ms-tf-content_manager" autocomplete="off" />
                 </div>
-                <div class="col-md-2" data-dg-ms-filter-field="ms_tf_stock_min">
+                <div class="col-md-1" data-dg-ms-filter-field="ms_tf_stock_min">
                   <label class="form-label" for="ms-tf-stock_min">Остаток от</label>
                   <input type="number" class="form-control" id="ms-tf-stock_min" />
                 </div>
-                <div class="col-md-2" data-dg-ms-filter-field="ms_tf_stock_max">
+                <div class="col-md-1" data-dg-ms-filter-field="ms_tf_stock_max">
                   <label class="form-label" for="ms-tf-stock_max">Остаток до</label>
                   <input type="number" class="form-control" id="ms-tf-stock_max" />
-                </div>
-                <div class="col-md-2" data-dg-ms-filter-field="ms_f_supplier">
-                  <label class="form-label" for="ms-f-supplier">Поставщик</label>
-                  <input type="text" class="form-control" id="ms-f-supplier" autocomplete="off" />
-                </div>
-                <div class="col-md-2" data-dg-ms-filter-field="ms_f_supplier2">
-                  <label class="form-label" for="ms-f-supplier2">Поставщик 2</label>
-                  <input type="text" class="form-control" id="ms-f-supplier2" autocomplete="off" />
-                </div>
-                <div class="col-md-2" data-dg-ms-filter-field="ms_f_manager">
-                  <label class="form-label" for="ms-f-manager">Менеджер</label>
-                  <input type="text" class="form-control" id="ms-f-manager" autocomplete="off" />
-                </div>
-                <div class="col-md-2" data-dg-ms-filter-field="ms_f_content_manager">
-                  <label class="form-label" for="ms-f-content_manager">Контент-менеджер</label>
-                  <input type="text" class="form-control" id="ms-f-content_manager" autocomplete="off" />
-                </div>
-                <div class="col-md-2" data-dg-ms-filter-field="ms_f_type">
-                  <label class="form-label" for="ms-f-type">Тип</label>
-                  <select class="form-select" id="ms-f-type">
-                    <option value="all">Все</option>
-                    <option value="Товар">Товары</option>
-                    <option value="Комплект">Комплекты</option>
-                  </select>
                 </div>
                 <div class="col-md-2" data-dg-ms-filter-field="ms_f_stock_position">
                   <label class="form-label" for="ms-f-stock_position">Складская позиция</label>
@@ -226,18 +202,30 @@
           <p class="text-muted small mb-2 text-danger" id="dg-status" style="display:none"></p>
 
           <div class="main-card mb-3 card">
-            <div class="card-header d-flex align-items-center justify-content-between gap-2">
-              <div class="d-flex align-items-center">
-                <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
-                <span>Выгрузка МойСклад</span>
+            <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+              <div class="d-flex align-items-center gap-3 flex-grow-1" style="min-width: 0">
+                <div class="d-flex align-items-center flex-shrink-0">
+                  <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
+                  <span>Выгрузка МойСклад</span>
+                </div>
+                <div class="dg-ms-header-search" style="flex: 0 1 380px; min-width: 220px">
+                  <div class="input-group input-group-sm">
+                    <span class="input-group-text bg-white text-muted px-2" aria-hidden="true">🔎</span>
+                    <input type="search" class="form-control" id="dg-ms-table-search-mirror"
+                           placeholder="Умный поиск: код, артикул, наименование (Enter — применить)"
+                           autocomplete="off"
+                           data-dg-tooltip='Умный поиск по таблице. Ищет по коду, наименованию, поставщикам 1/2. Поддерживает группы (через | как ИЛИ) и явные ключи: sku:AB-12, name:valtec, supplier:вектор, manager:иван, stock:да. Enter — применить, Esc — очистить.' />
+                  </div>
+                </div>
+              </div>
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-ms-columns-toggle" title="Управление видимостью столбцов таблицы">🧩 Столбцы</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-ms-widths-toggle" title="Ручная ширина каждой колонки в пикселях (или drag за правый край заголовка)">📏 Ширины</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-ms-table-toggle" title="Свернуть/развернуть тело карточки с таблицей">Свернуть</button>
               </div>
             </div>
-            <div class="card-body">
-              <div class="datagon-columns-toolbox mb-2">
-                <div class="columns-top">
-                  <button type="button" class="btn btn-sm" id="dg-ms-columns-toggle">🧩 Столбцы</button>
-                  <div class="columns-title">Включение/выключение видимых столбцов:</div>
-                </div>
+            <div class="card-body" id="dg-ms-table-body">
+              <div class="datagon-columns-toolbox mb-2 d-none" id="dg-ms-toolbox-panels">
                 <div class="datagon-columns-panel" id="dg-ms-columns-panel">
                   <div class="columns-actions mb-2">
                     <button type="button" class="btn btn-sm" id="dg-ms-columns-all">Выделить все</button>
@@ -245,6 +233,12 @@
                     <button type="button" class="btn btn-sm" id="dg-ms-columns-default">По умолчанию</button>
                   </div>
                   <div id="dg-ms-columns-list" class="columns-grid"></div>
+                </div>
+                <div class="datagon-columns-panel" id="dg-ms-widths-panel">
+                  <div class="columns-actions mb-2">
+                    <button type="button" class="btn btn-sm" id="dg-ms-widths-default">По умолчанию</button>
+                  </div>
+                  <div id="dg-ms-widths-list" class="dg-ms-widths-grid"></div>
                 </div>
               </div>
               <div style="width:100%;max-width:100%;overflow-x:auto;overflow-y:visible;-webkit-overflow-scrolling:touch">

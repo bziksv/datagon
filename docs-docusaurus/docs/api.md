@@ -427,6 +427,8 @@ Query:
 ### GET `/api/matches/list`
 Список найденных сопоставлений.
 
+Логическая пара «наш сайт + конкурент + товар» хранится с полем `match_identity_hash` (SHA-256 от нормализованных SKU или от пары названий) и уникальным индексом по `(my_site_id, competitor_site_id, match_identity_hash)`, чтобы не появлялись дубли строк при повторном матчинге. При первом запросе к списку или задаче матчинга сервер при необходимости добавляет колонку, заполняет хеш для старых строк, сливает дубликаты и создаёт индекс (см. `ensureProductMatchIdentitySchema` в `routes/matches.js`). Подтверждение (`POST /confirm`, `POST /manual-match/confirm`) также удаляет лишние строки с тем же хешом.
+
 Query:
 - `my_site_id`
 - `status` (`pending`, `confirmed`, `rejected`)
@@ -459,6 +461,8 @@ Body:
 
 ## MoySklad
 
+> **Эталон списочной страницы.** UI `/moysklad.html` — образец, по которому делаются все новые списочные страницы Datagon vanilla (две карточки: «Фильтры и действия» + «Выгрузка <X>», шестерёнка с auto-discovery полей, поиск-зеркало в шапке таблицы, кнопки `🧩 Столбцы` / `📏 Ширины` / `Свернуть` справа). Контракт — в правилах `.cursor/rules/datagon-list-page-baseline-moysklad.mdc` и `.cursor/rules/datagon-table-filter-apply.mdc`; пользовательская справка — [МойСклад](/docs/moysklad/#эталон-списочной-страницы).
+
 ### POST `/api/ms/sync`
 Запустить фоновую синхронизацию в таблицу `ms_export`.
 
@@ -469,12 +473,12 @@ Body:
 Получить экспортированные строки.
 
 Query:
-- `search`
+- `search` — **умный поиск** по `code`, `name`, `supplier`, `supplier2`. Поддерживает группы через `|` (как ИЛИ) и явные ключи `sku:` (=`code:`), `name:`, `supplier:`, `manager:`, `content_manager:`, `stock:` (`да|нет|yes|no|1|0`). Без префикса token ищется по `code OR name OR supplier OR supplier2`. Реализация — `buildSmartSearchClause` в `routes/moysklad.js`.
 - `type` (`all`, `Товар`, `Комплект`)
 - `limit`
 - `offset`
 - прочие поля фильтрации — см. `buildExportFilters` в `routes/moysklad.js`
-- **сеточные** фильтры (первая строка полей на экране «МойСклад», те же условия что и для `/api/ms/stats`): `g_code`, `g_name`, `g_supplier`, `g_supplier2`, `g_manager`, `g_content_manager`, `g_type` (подстрока типа, регистр не важен), `g_stock_min`, `g_stock_max`, `g_archived` (`all` | `0` | `1`)
+- **сеточные** фильтры (поля карточки «Фильтры и действия» на экране «МойСклад» — распределены по двум рядам, см. [МойСклад → Блоки интерфейса](/docs/moysklad/#блоки-интерфейса); те же условия что и для `/api/ms/stats`): `g_code`, `g_name`, `g_supplier`, `g_supplier2`, `g_manager`, `g_content_manager`, `g_type` (подстрока типа, регистр не важен), `g_stock_min`, `g_stock_max`, `g_archived` (`all` | `0` | `1`). Эти `g_*` параметры — единственный источник для соответствующих значений из формы; **дублирующиеся** API-поля (`supplier=`, `manager=`, `type=` и т.п.) на UI **не показываются** (см. `static-html/vanilla/inners/moysklad.inner.html` — оставлены только `ms-tf-*` поля), и `routes/moysklad.js` обратно совместим с обоими наборами параметров.
 
 ### GET `/api/ms/detail/:uuid`
 
@@ -514,18 +518,26 @@ Query:
 
 ## Exports / marketplaces
 
-Префикс: `/api/exports/marketplaces`. Доступ к API проверяется по странице **`exports-marketplaces`** (матрица `page_modes`: скрытие «Настроек» отключает и вызовы API выгрузок). Настройки ключей/лимитов перенесены в **`/settings.html#marketplaces`**; страница `/exports-marketplaces.html` оставлена как редирект. Отдельные экраны таблиц — **`/exports-marketplaces-ozon.html`**, **`/exports-marketplaces-wildberries.html`**, **`/exports-marketplaces-yandex.html`**: они автозагружают последний сохранённый снапшот и имеют кнопку принудительного обновления. Сами запросы выполняются **на сервере** (долгие циклы допустимы; таймауты прокси/nginx настройте под свой каталог).
+Префикс: `/api/exports/marketplaces`. Доступ к API проверяется по странице **`exports-marketplaces`** (матрица `page_modes`: скрытие «Настроек» отключает и вызовы API выгрузок). Настройки ключей/лимитов перенесены в **`/settings.html#marketplaces`**; страница `/exports-marketplaces.html` оставлена как редирект. Отдельные экраны таблиц — **`/exports-marketplaces-ozon.html`**, **`/exports-marketplaces-wildberries.html`**, **`/exports-marketplaces-yandex.html`**: они автозагружают последний сохранённый снапшот и имеют кнопку принудительного обновления. UI-toolbox таблицы маркетплейсов: кнопки «Столбцы» (чекбоксы видимости) и «Ширины» (input px на колонку); состояние сохраняется в `localStorage` (`dg.mp.cols.<shop>`, `dg.mp.colwidths.<shop>`, `dg.mp.page.size.<shop>`). Заголовок таблицы — sticky-th под верхним меню (с CSS-переменной `--dg-table-sticky-top`). Сами запросы выполняются **на сервере** (долгие циклы допустимы; таймауты прокси/nginx настройте под свой каталог). Для новых страниц этой группы целевая структура — по эталону `/moysklad.html` (карточки «Фильтры и действия» + «Выгрузка <X>», кнопки «Столбцы»/«Ширины»/«Свернуть» в card-header справа, поиск-зеркало в шапке таблицы; см. `.cursor/rules/datagon-list-page-baseline-moysklad.mdc`).
 
 **Учётные данные** (в порядке приоритета):
 
-1. Переменные окружения: `OZON_CLIENT_ID`, `OZON_API_KEY`, `WB_API_KEY`, `YM_API_KEY`, `YM_CAMPAIGN_ID`, `YM_BUSINESS_ID` (последний опционально — для ссылки «Покупателю» на Я.Маркете).
-2. Либо ключи в таблице `app_settings`: `ozon_client_id`, `ozon_api_key`, `wb_api_key`, `ym_api_key`, `ym_campaign_id`, `ym_business_id` — через `POST /api/exports/marketplaces/config` (только **admin** или пользователь с **полным** доступом к разделу «Настройки»).
+1. Переменные окружения: `OZON_CLIENT_ID`, `OZON_API_KEY`, `WB_API_KEY`, `WB_TOKEN_TYPE` (`personal`|`service`|`base`|`test`, по умолчанию `base`), `YM_API_KEY`, `YM_CAMPAIGN_ID`, `YM_BUSINESS_ID` (последний опционально — для ссылки «Покупателю» на Я.Маркете).
+2. Либо ключи в таблице `app_settings`: `ozon_client_id`, `ozon_api_key`, `wb_api_key`, `wb_token_type`, `ym_api_key`, `ym_campaign_id`, `ym_business_id` — через `POST /api/exports/marketplaces/config` (только **admin** или пользователь с **полным** доступом к разделу «Настройки»).
 
 ### GET `/api/exports/marketplaces/status`
 
 Возвращает JSON `{ configured: { ozon, wildberries, yandex_market }, rate_limits_ms_min, hints }` — какие интеграции считаются настроенными (без раскрытия значений ключей) и **минимальные паузы между запросами** к каждому маркетплейсу (мс). Параметры `delay_*` в выгрузках не опускаются ниже этих значений.
 
-**Поведение при лимитах:** HTTP-клиент к маркетплейсам повторяет запрос при **429 / 502 / 503** с экспоненциальным backoff и с учётом заголовка **`Retry-After`** (секунды), до ограниченного числа попыток. Точные RPM по кабинету не зашиты в код — ориентируйтесь на официальную документацию и при необходимости увеличивайте `delay_*`.
+**Поведение при лимитах:** HTTP-клиент к маркетплейсам повторяет запрос при **429 / 500 / 502 / 503 / 504** с экспоненциальным backoff и с учётом заголовков `Retry-After`, а для WB ещё и **`X-Ratelimit-Retry`** / **`X-Ratelimit-Reset`** (см. документацию WB OpenAPI: «Rate Limits»). На 429 пауза не меньше 5 сек и не больше 60 сек на одну попытку.
+
+Сверка с официальными лимитами WB (Personal/Service tokens):
+
+- **Content** (`POST content-api/.../v2/get/cards/list`) — 100 запросов/мин, интервал 600 мс, burst 5.
+- **Prices & Discounts** (`GET discounts-prices-api/.../v2/list/goods/filter`) — 10 запросов/6 сек (~100 RPM), burst ~10.
+- **Marketplace** (`GET .../v3/warehouses`, `POST .../v3/stocks/{warehouseId}`) — 300 запросов/мин, интервал 200 мс, burst 20.
+
+Категории не делят одно окно: 429 на prices/stocks обычно означает либо параллельных клиентов на том же токене, либо временный сбой WB. Для prices/stocks применяется ограниченный «бюджет ожидания» (≈ 120 сек на запрос) — при его исчерпании фаза помечается как `step:prices:failed` / `step:stocks:skipped`, а `cards` (а где удалось — и stocks) всё равно сохраняются. Пользователь получает свежий каталог даже при недоступности одного из эндпоинтов.
 
 ### POST `/api/exports/marketplaces/config`
 
@@ -536,25 +548,41 @@ Legacy-совместимость для старого экрана настр�
 Query:
 
 - `format` — `json` (по умолчанию) или `csv` (файл UTF-8 с BOM, разделитель `;`).
-- `max_items` — ограничение строк каталога (1…25000, по умолчанию 5000 на бэкенде если не передано; экран диагностики в панели по умолчанию шлёт 300).
+- `max_items` — ограничение строк каталога (1…25000, по умолчанию **25000** — тянем весь каталог продавца; передайте меньшее значение, чтобы ограничить).
 - `include_archived` — `1` для `visibility: ALL` в списке Ozon (как в скрипте с `OZON_INCLUDE_ARCHIVED`).
 - `delay_ms` — пауза между запросами к Ozon (мс, по умолчанию 400; не ниже минимума из `rate_limits_ms_min.ozon`).
 
 Параметр `max_items` оставлен для интеграций и ручных `curl`, но UI-экраны маркетплейсов его больше не задают.
 
-Ответ JSON: `{ marketplace, updatedAt, count, persisted_count, headers, headerLabels, rows }` — `headers` — ключи полей в объектах `rows`, `headerLabels` — подписи столбцов для UI (для Ozon с суффиксом «Ozon», как в CSV), `persisted_count` — сколько строк сохранено/обновлено в БД для последующей обработки. CSV UTF-8 с BOM: первая строка — `headerLabels` для Ozon: «Артикул (offer_id) Ozon», «Наименование Ozon», «Цена Ozon», «НДС Ozon», «Статус Ozon», «Причина блокировки Ozon», «Остаток Ozon», «Длина (см) Ozon», «Ширина (см) Ozon», «Высота (см) Ozon», «Вес (кг) Ozon», «Кабинет Ozon», «Покупателю Ozon», «Обновлено Ozon».
+Ответ JSON: `{ marketplace, updatedAt, count, persisted_count, headers, headerLabels, rows }` — `headers` — ключи полей в объектах `rows`, `headerLabels` — подписи столбцов для UI, `persisted_count` — сколько строк сохранено/обновлено в БД для последующей обработки. Порядок колонок: **артикул → наименование → `manager` → `content_manager` → остальные поля**. `manager` / `content_manager` — это **актуальные** значения из `ms_export.manager` / `ms_export.content_manager`, найденные по ключу `ms_export.code = offer_id` (LEFT JOIN, при отсутствии связи поля пустые). CSV UTF-8 с BOM: первая строка — `headerLabels` для Ozon: «Артикул (offer_id) Ozon», «Наименование Ozon», «Менеджер», «Контент-менеджер», «Цена Ozon», «НДС Ozon», «Статус Ozon», «Причина блокировки Ozon», «Остаток Ozon», «Длина (см) Ozon», «Ширина (см) Ozon», «Высота (см) Ozon», «Вес (кг) Ozon», «Кабинет Ozon», «Покупателю Ozon», «Обновлено Ozon».
+
+Поведение поля **`vat` (Ozon)**: API возвращает долю (`'0'`/`'0.05'`/`'0.07'`/`'0.10'`/`'0.20'`). Сервер форматирует так: `0` → «Без НДС», `0.05` → «5», `0.07` → «7», `0.10` → «10», `0.20` → «20». Старые целочисленные значения (`5/7/10/20`) поддержаны для обратной совместимости со снапшотами.
 
 ### GET `/api/exports/marketplaces/wildberries`
 
-Query: `format`, `max_items`, `delay_cards`, `delay_other` (мс; по умолчанию 600 и 1600, не ниже `rate_limits_ms_min.wbCards` / `wbPricesStocks`). Логика: карточки `content/v2/get/cards/list`, цены `discounts-prices-api`, остатки `marketplace-api` по складам (при ошибке остатков таблица всё равно возвращается с нулевыми остатками).
+Query: `format`, `max_items`, `delay_cards`, `delay_other` (мс; по умолчанию 600 и 1600, не ниже `rate_limits_ms_min.wbCards` / `wbPricesStocks`). Логика: карточки `content/v2/get/cards/list`, цены `discounts-prices-api/.../v2/list/goods/filter`, остатки `marketplace-api/.../v3/warehouses` + `v3/stocks/{warehouseId}` по складам (при ошибке остатков таблица всё равно возвращается с нулевыми остатками; аналогично — при `step:prices:failed` сохраняются карточки и остатки без цен).
 
-Ответ JSON: как у Ozon — `headers`, `headerLabels`, `rows`, `persisted_count`. Заголовки CSV/UI для WB (суффикс « WB»): «Артикул продавца WB», «Наименование WB», «Цена WB», «НДС WB», «Остаток WB», «Длина (см) WB», «Ширина (см) WB», «Высота (см) WB», «Вес (кг) WB», «Кабинет WB», «Покупателю WB», «Обновлено WB».
+#### Разные категории API WB и поле `wb_token_type`
+
+Источник: `process.env.WB_TOKEN_TYPE` → `app_settings.wb_token_type` → `'base'` (по умолчанию). Значения: `personal` | `service` | `base` | `test`. Поле **не отключает** загрузку цен в коде — оно для справки и подстройки пауз. В `GET /api/exports/marketplaces/status`: `wb_token_type`, `wb_prices_disabled_by_token` (всегда `false`; поле оставлено для совместимости клиентов).
+
+Таблица из общего раздела WB про лимиты категории **«Маркетплейс»** (пример для Базового токена: **150 запросов за 1 минуту**, интервал **200 мс**, всплеск **10**) относится к **`marketplace-api`** (склады, остатки: `v3/warehouses`, `v3/stocks/{warehouseId}`). **Не к ценам.**
+
+Цены запрашиваются через **`discounts-prices-api`** — категория **«Цены и скидки»**, отдельное окно лимитов. В описании метода `GET …/api/v2/list/goods/filter` в OpenAPI указано ограничение для методов этой категории (часто: **10 запросов за 6 секунд**, интервал **600 мс**, burst **5**). У конкретных методов категории «Цены и скидки» в документе могут быть дополнительные строки таблицы по типу токена — сверяйтесь с актуальной страницей метода на [dev.wildberries.ru](https://dev.wildberries.ru/ru/openapi/work-with-products).
+
+Категория «Контент» (`POST …/content/v2/get/cards/list`): см. лимиты категории Content в документации (часто 100 запросов/мин, интервал 600 мс для ряда методов).
+
+Паузы в экспорте: `delay_cards`, `delay_other` (минимумы — `rate_limits_ms_min`). При **429** на ценах или остатках увеличьте `mp_wb_delay_other_ms` и проверьте, что тот же токен параллельно не используется другим клиентом.
+
+Ответ JSON: как у Ozon — `headers`, `headerLabels`, `rows`, `persisted_count`. Порядок колонок: **артикул → наименование → `manager` → `content_manager` → остальные** (`manager`/`content_manager` подтянуты по ключу `ms_export.code = vendor_code`). Заголовки CSV/UI для WB: «Артикул продавца WB», «Наименование WB», «Менеджер», «Контент-менеджер», «Цена WB», «НДС WB», «Остаток WB», «Длина (см) WB», «Ширина (см) WB», «Высота (см) WB», «Вес (кг) WB», «Кабинет WB», «Покупателю WB», «Обновлено WB».
 
 ### GET `/api/exports/marketplaces/yandex-market`
 
 Query: `format`, `max_items`, `delay_ms` (по умолчанию 280 мс, не ниже `rate_limits_ms_min.yandex`). Листинг SKU через `GET …/offer-prices`, цены `POST …/offer-prices`, карточные данные `POST …/stats/skus`.
 
-Ответ JSON: как у Ozon — `headers`, `headerLabels`, `rows`, `persisted_count`. Заголовки CSV/UI для Я.Маркета (суффикс « Я.Маркет»): «Артикул Я.Маркет», «Наименование Я.Маркет», «Цена Я.Маркет», «НДС Я.Маркет», «Остаток Я.Маркет», «Длина (см) Я.Маркет», «Ширина (см) Я.Маркет», «Высота (см) Я.Маркет», «Вес (кг) Я.Маркет», «Кабинет Я.Маркет», «Покупателю Я.Маркет», «Обновлено Я.Маркет».
+Ответ JSON: как у Ozon — `headers`, `headerLabels`, `rows`, `persisted_count`. Порядок колонок: **артикул → наименование → `manager` → `content_manager` → остальные** (`manager`/`content_manager` подтянуты по ключу `ms_export.code = shop_sku`). Заголовки CSV/UI для Я.Маркета: «Артикул Я.Маркет», «Наименование Я.Маркет», «Менеджер», «Контент-менеджер», «Цена Я.Маркет», «НДС Я.Маркет», «Остаток Я.Маркет», «Длина (см) Я.Маркет», «Ширина (см) Я.Маркет», «Высота (см) Я.Маркет», «Вес (кг) Я.Маркет», «Кабинет Я.Маркет», «Покупателю Я.Маркет», «Обновлено Я.Маркет».
+
+Поведение поля **`vat` (Я.Маркет)**: ставки НДС — простыми числами без суффикса «%»/«(УСН)»: `2`→«10», `5`→«0», `6`→«без НДС», `7`→«20», `10`→«5», `11`→«7», `14`→«22». Это согласовано с тем, что для Ozon `0` → «Без НДС», `0.05` → «5».
 
 ### GET `/api/exports/marketplaces/snapshot`
 
@@ -563,12 +591,13 @@ Query: `format`, `max_items`, `delay_ms` (по умолчанию 280 мс, не
 Query:
 
 - `shop` — обязательный: `ozon` | `wildberries` (`wb`) | `yandex` (`yandex-market`, `ym`).
-- `max_items` — ограничение выдачи (1…25000, по умолчанию 300).
+- `max_items` — ограничение выдачи (1…25000). По умолчанию **25000** (раньше было 300, из-за чего на больших каталогах WB страница выглядела «пустой» при наличии данных в БД).
 
-Ответ JSON: `{ marketplace, source: "snapshot", updatedAt, count, headers, headerLabels, rows }`.
+Ответ JSON: `{ marketplace, source: "snapshot", updatedAt, count, headers, headerLabels, rows, note }`.
 
-- `rows` строятся из `row_json` (с fallback на нормализованные колонки таблицы).
-- Если сохранённых строк нет, возвращается `count=0` и пустой `rows`.
+- `rows` строятся из `row_json` (с fallback на нормализованные колонки таблицы), VAT нормализуется (см. Ozon/Я.Маркет выше).
+- Поля `manager` / `content_manager` подмешиваются к каждой строке из `ms_export` по ключу `code = artикул маркетплейса` — это позволяет сопоставлять товары между МойСклад и Ozon/WB/Я.Маркет.
+- Если сохранённых строк нет, возвращается `count=0`, пустой `rows` и `note` с подсказкой («Сохранённого снапшота нет…», или «… ключи маркетплейса не заданы»).
 - Этот маршрут используется UI-экранами маркетплейсов для автоподгрузки данных при открытии страницы и для кнопки «Показать последнее сохранённое».
 
 ### POST `/api/exports/marketplaces/sync`
@@ -586,6 +615,38 @@ Body (JSON):
 Текущий статус фонового обновления маркетплейсов: активность, сообщение, состояние по каждой площадке.
 
 Технически строки сохраняются в таблицу `marketplace_export_rows` (создаётся автоматически): уникальность по паре `(marketplace, external_id)`, полные данные каждой строки — в `row_json`, плюс нормализованные колонки (`price`, `vat`, `stock`, габариты, ссылки и т.д.) для SQL-обработки.
+
+### GET `/api/exports/marketplaces/issues`
+
+Проблемы с товарами (бывш. «Неопубликованные»). Возвращает строки **`ms_export`** по основному фильтру `stock_position = 'Да' AND no_longer_cooperation = 'Нет'` с сопоставлением артикулов на 3 маркетплейсах через **`marketplace_export_rows.external_id`** (= `offer_id` для Ozon, `vendor_code` для WB, `shop_sku` для YM, см. `lib/marketplaceExportStore.js#externalIdFor`). Если код маркетплейса не найден в последнем снапшоте — соответствующие поля `*_code` / `*_name` приходят `null`; фронт подсвечивает такие ячейки красным.
+
+Query:
+
+- `scope` — фильтр выборки:
+  - `all` (по умолчанию) — все товары МС по основному фильтру;
+  - `any` — у кого хотя бы один из 3 маркетплейсов не нашёл товар;
+  - `all3` — нет ни на одном из 3 маркетплейсов;
+  - `ozon` / `wb` / `ym` — нет на конкретном маркетплейсе.
+- `max_items` — лимит выборки, 1..100000, по умолчанию 50000.
+
+Ответ JSON:
+
+```json
+{
+  "scope": "all",
+  "scope_label": "все товары",
+  "count": 123,
+  "headers": ["code","name","manager","content_manager","synced_at","ozon_code","ozon_name","wb_code","wb_name","ym_code","ym_name"],
+  "headerLabels": ["Код МС","Название МС","Менеджер","Контент-менеджер","Синхронизация МС","Код Ozon","Название Ozon","Код Wildberries","Название Wildberries","Код Я.Маркет","Название Я.Маркет"],
+  "rows": [
+    { "code": "ABC-1", "name": "...", "ozon_code": "ABC-1", "ozon_name": "...", "wb_code": null, "wb_name": null, "ym_code": "ABC-1", "ym_name": "..." }
+  ]
+}
+```
+
+Экран: `/exports-marketplaces-issues.html` (пункт меню **Маркетплейсы → Проблемы с товарами**, после «Яндекс Маркет»). UI: радио-фильтр (Все товары / Есть проблемы / Нет ни на одном / Нет на Ozon / Нет на Wildberries / Нет на Я.Маркет), умный поиск по артикулу/наименованию МС/маркетплейсов и ФИО менеджеров, сортировка по любой колонке кликом по заголовку (по умолчанию по «Код МС» asc), клиентская пагинация 50/100/200/500. Фильтр маркетплейса, поиск и селекты «Менеджер» / «Контент-менеджер» собраны в один тулбокс над таблицей и срабатывают **только** по кнопке «Применить» (или Enter в поле поиска); пока изменения не применены, рядом с кнопкой видно «не применено». Это общий контракт для всех таблиц Datagon, см. правило `.cursor/rules/datagon-table-filter-apply.mdc`.
+
+Старый URL `/exports-marketplaces-unpublished.html` отвечает 301-редиректом на новый. Старый key специальностей `exports-marketplaces-unpublished` мигрируется в `exports-marketplaces-issues` при старте Node (см. `lib/datagonSpecialties.js#PAGE_KEY_RENAMES`).
 
 ## Exports / Huckster
 
