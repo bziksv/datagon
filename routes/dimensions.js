@@ -508,15 +508,57 @@ async function fetchPackingTypesFromMs(forceRefresh) {
         e.code = 'ATTR_NOT_FOUND';
         throw e;
     }
-    const dictHref = String(packingAttr.customEntityMeta && packingAttr.customEntityMeta.href ? packingAttr.customEntityMeta.href : '');
-    if (!dictHref) {
+    // У `customentity`-атрибута в метаданных продукта `customEntityMeta.href` ведёт
+    // на МЕТАДАННЫЕ справочника:
+    //   /context/companysettings/metadata/customEntities/<uuid>
+    // — это объект `{meta, entityMeta, attributes, id, name, ...}` БЕЗ массива `rows`.
+    // Список значений справочника живёт в `entityMeta.href`:
+    //   /entity/customentity/<uuid>
+    // и оттуда уже приходит `{rows: [{id, name, meta, ...}]}`. Старый код читал
+    // metadata-URL напрямую и стабильно получал `rows.length = 0`, поэтому UI
+    // на /exports-dimensions.html (кнопка «🔄 Тип упаковки» и `<select>` в
+    // ячейке `packing_type`) показывал пустой справочник — «не импортируется».
+    const customEntityMetaHref = String(
+        packingAttr.customEntityMeta && packingAttr.customEntityMeta.href
+            ? packingAttr.customEntityMeta.href
+            : ''
+    );
+    if (!customEntityMetaHref) {
         const e = new Error('У атрибута «!!Тип УПАКОВКИ» нет customEntityMeta.href — это не customentity?');
         e.code = 'NOT_CUSTOM_ENTITY';
         throw e;
     }
-    /** Customentity API: GET {dictHref} возвращает либо список rows напрямую, либо метаданные.
-     *  Для надёжности грузим с большим limit и собираем строки. */
-    const url = dictHref + (dictHref.indexOf('?') >= 0 ? '&' : '?') + 'limit=1000';
+    let entityListHref = '';
+    // Иногда в метаданных уже есть готовый `entityMeta.href` — используем его без
+    // лишнего запроса. Если нет, идём на customEntityMeta.href и забираем оттуда.
+    if (packingAttr.customEntityMeta && packingAttr.customEntityMeta.entityMeta
+        && packingAttr.customEntityMeta.entityMeta.href) {
+        entityListHref = String(packingAttr.customEntityMeta.entityMeta.href);
+    } else {
+        const metaResp = await axios.get(customEntityMetaHref, { headers, timeout: 30000 });
+        const em = metaResp && metaResp.data && metaResp.data.entityMeta;
+        entityListHref = em && em.href ? String(em.href) : '';
+        // Совместимость с возможным будущим поведением МС: если справочник вдруг
+        // вернул `rows` прямо здесь, тоже принимаем (но в текущем API этого не
+        // бывает — там только описание справочника).
+        if (!entityListHref && metaResp && metaResp.data && Array.isArray(metaResp.data.rows)) {
+            const directRows = metaResp.data.rows
+                .map((r) => ({
+                    id: r && r.id ? String(r.id) : '',
+                    name: r && r.name ? String(r.name).trim() : '',
+                    href: r && r.meta && r.meta.href ? String(r.meta.href) : '',
+                }))
+                .filter((r) => r.name);
+            packingTypesCache = { ts: now, rows: directRows, source_url: customEntityMetaHref };
+            return packingTypesCache;
+        }
+    }
+    if (!entityListHref) {
+        const e = new Error('У customentity «!!Тип УПАКОВКИ» нет entityMeta.href — нечего импортировать');
+        e.code = 'NO_ENTITY_HREF';
+        throw e;
+    }
+    const url = entityListHref + (entityListHref.indexOf('?') >= 0 ? '&' : '?') + 'limit=1000';
     const resp = await axios.get(url, { headers, timeout: 30000 });
     const rows = resp && resp.data && Array.isArray(resp.data.rows) ? resp.data.rows : [];
     const out = rows
@@ -526,7 +568,7 @@ async function fetchPackingTypesFromMs(forceRefresh) {
             href: r && r.meta && r.meta.href ? String(r.meta.href) : '',
         }))
         .filter((r) => r.name);
-    packingTypesCache = { ts: now, rows: out, source_url: dictHref };
+    packingTypesCache = { ts: now, rows: out, source_url: entityListHref };
     return packingTypesCache;
 }
 

@@ -991,6 +991,8 @@ Body (JSON, опционально):
 
 - `?refresh=1` — форсированный обход кэша (повторный импорт).
 
+Откуда берутся значения. В метаданных продукта (`/entity/product/metadata/attributes`) у атрибута «!!Тип УПАКОВКИ» (`type: "customentity"`) поле `customEntityMeta.href` указывает на МЕТАДАННЫЕ справочника — `/context/companysettings/metadata/customEntities/<uuid>` (структура `{meta, entityMeta, attributes, id, name, createShared}`, без `rows`). Список значений живёт в `entityMeta.href` — `/entity/customentity/<uuid>`. Поэтому сервер сначала идёт за метаданными, забирает оттуда `entityMeta.href`, и только потом дёргает список с `?limit=1000`. Раньше код шёл сразу на `customEntityMeta.href` и стабильно получал `rows.length = 0` — на UI кнопка «🔄 Тип упаковки» отрабатывала, но `<select>` оставались пустыми. В ответе поле `source_url` теперь содержит **`entityMeta.href`** (URL списка), что упрощает диагностику.
+
 Ответ: `{ success: true, rows: [{ id, name, href }, ...], source_url, refreshed_at, cache_age_ms }`.
 
 При проблемах с метаданными МС — `503` с `code: 'NO_TOKEN' | 'ATTR_NOT_FOUND' | 'NOT_CUSTOM_ENTITY' | 'FETCH_FAILED'`.
