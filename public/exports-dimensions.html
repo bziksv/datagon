@@ -2618,18 +2618,64 @@
       }
 
       /**
-       * После того как у строки изменился `packing_type` — пересчитать локальный
-       * `row.dimensions_parsed` через серверный парсер `/api/exports/dimensions/parse-packing`
-       * и перерисовать соседние ячейки длины/ширины/высоты в этой же строке.
+       * Клиентский парсер «Тип упаковки» — паритет с серверным
+       * `parsePackingDims` / `detectPackingKind` / `extractNumbersFromPacking`
+       * в `routes/dimensions.js`. Реализован локально, чтобы авто-заливка после
+       * смены `<select>` packing_type работала **синхронно**, без сетевого запроса.
+       * Это избавляет от race-condition «пользователь сменил упаковку → нажал
+       * ↗ В МС: все правки до того, как ответ /parse-packing вернулся → инпуты
+       * длина/ширина/высота-коробка ещё пустые → фронт отправил `null` → сервер
+       * очистил поля» (именно с этим столкнулся юзер 5123-KOMPLECT-7).
+       */
+      function clientDetectPackingKind(s) {
+        var text = String(s == null ? '' : s).toLowerCase();
+        if (!text) return 'empty';
+        if (/сво[ея]\s*упаковк/.test(text)) return 'custom_box';
+        if (/пакет/.test(text)) return 'bag';
+        if (/короб|гофр/.test(text)) return 'box';
+        return 'unknown';
+      }
+      function clientExtractNumbersFromPacking(s) {
+        var text = String(s == null ? '' : s);
+        if (!text) return [];
+        var seq = text.match(/\d+(?:[.,]\d+)?(?:\s*[*xх×\/]\s*\d+(?:[.,]\d+)?){1,4}/i);
+        if (!seq) return [];
+        var nums = seq[0].split(/[*xх×\/]/);
+        var out = [];
+        for (var i = 0; i < nums.length; i++) {
+          var v = Number(String(nums[i]).replace(',', '.').trim());
+          if (Number.isFinite(v) && v > 0) out.push(v);
+        }
+        return out;
+      }
+      function clientParsePackingDims(packingType) {
+        var kind = clientDetectPackingKind(packingType);
+        var list = clientExtractNumbersFromPacking(packingType);
+        var out = { kind: kind, length_cm: null, width_cm: null, height_box_cm: null, height_bag_cm: null };
+        if (kind === 'bag') {
+          if (list.length >= 2) { out.length_cm = list[0]; out.width_cm = list[1]; }
+        } else if (kind === 'box') {
+          if (list.length >= 3) { out.length_cm = list[0]; out.width_cm = list[1]; out.height_box_cm = list[2]; }
+          else if (list.length === 2) { out.length_cm = list[0]; out.width_cm = list[1]; }
+        } else if (kind === 'custom_box') {
+          /** ничего не парсим */
+        } else {
+          if (list.length >= 3) { out.length_cm = list[0]; out.width_cm = list[1]; out.height_box_cm = list[2]; }
+          else if (list.length === 2) { out.length_cm = list[0]; out.width_cm = list[1]; }
+        }
+        return out;
+      }
+
+      /**
+       * После того как у строки изменился `packing_type` — синхронно пересчитать
+       * локальный `row.dimensions_parsed` (через клиентский парсер) и перерисовать
+       * соседние ячейки длины/ширины/высоты в этой же строке.
        *
        * Поведение целевых ячеек (см. resolveCellSource):
        *   • если у ячейки есть пользовательский override → значение НЕ трогается;
        *   • если override нет, но есть значение из МС → значение НЕ трогается
        *     (МС-замер для конкретного товара важнее «дефолта» из имени упаковки);
-       *   • если ни override, ни МС-значения нет → подставляется новое parsed-значение
-       *     (для «Гофкороб 30*20*15» — длина=30, ширина=20, высота-коробка=15;
-       *     для «курьерский пакет 15*22» — длина=15, ширина=22; «своя упаковка» —
-       *     ничего не парсим).
+       *   • если ни override, ни МС-значения нет → подставляется новое parsed-значение.
        *
        * Также пересчитывается `disabled`-состояние полей (см. isFieldDisabledForPacking):
        *   • bag → height_box_cm заблокирован;
@@ -2637,37 +2683,37 @@
        *
        * `<select>` packing_type сама не перерисовывается — фокус и значение,
        * которое только что выбрал пользователь, остаются нетронутыми.
-       *
-       * Без этой функции авто-подстановка размеров работала ТОЛЬКО при первом
-       * импорте списка из МС (там parsed считается на сервере), а ручная смена
-       * типа упаковки в `<select>` оставляла соседние ячейки с прежними значениями.
        */
       function refreshParsedAfterPackingChange(code) {
         var row = findRowByCode(code);
         if (!row) return;
         var packing = (row.measurement && row.measurement.packing_type)
           || (row.dimensions_ms && row.dimensions_ms.packing_type) || '';
-        var url = '/api/exports/dimensions/parse-packing?text=' + encodeURIComponent(String(packing));
-        fetch(url, { credentials: 'same-origin' })
-          .then(function (r) { return r.ok ? r.json() : null; })
-          .then(function (j) {
-            if (!j || !j.success) return;
-            row.dimensions_parsed = j.parsed || null;
-            var tbody = document.getElementById('dg-dim-tbody');
-            if (!tbody) return;
-            var tr = tbody.querySelector('tr[data-dg-code="' + cssEscape(String(code)) + '"]');
-            if (!tr) return;
-            var cols = getVisibleColsList();
-            var keys = { length_cm: true, width_cm: true, height_box_cm: true, height_bag_cm: true };
-            for (var i = 0; i < cols.length; i++) {
-              if (!keys[cols[i].key]) continue;
-              var td = tr.children[i];
-              if (!td) continue;
-              try { td.innerHTML = cols[i].render ? cols[i].render(row, cols[i]) : ''; }
-              catch (_) { /** ignore: ячейка останется как есть */ }
-            }
-          })
-          .catch(function () { /** tolerable: значения соседних ячеек просто не пересчитаются */ });
+        row.dimensions_parsed = clientParsePackingDims(String(packing));
+        var tbody = document.getElementById('dg-dim-tbody');
+        if (!tbody) return;
+        var tr = tbody.querySelector('tr[data-dg-code="' + cssEscape(String(code)) + '"]');
+        if (!tr) return;
+        var cols = getVisibleColsList();
+        var keys = { length_cm: true, width_cm: true, height_box_cm: true, height_bag_cm: true };
+        for (var i = 0; i < cols.length; i++) {
+          if (!keys[cols[i].key]) continue;
+          var td = tr.children[i];
+          if (!td) continue;
+          // Не перерисовываем ячейку, если в ней лежит несохранённый ручной ввод
+          // (`data-dirty=1`) или сейчас в неё сфокусирован пользователь — иначе
+          // re-render через `col.render` стёр бы то, что пользователь только что
+          // набрал. Сохранение этого ввода произойдёт обычным путём (blur/Enter
+          // → POST /measure), и после успешного сохранения значение уже будет
+          // override и `resolveCellSource` корректно его покажет.
+          var existingInput = td.querySelector('.dg-dim-input');
+          if (existingInput) {
+            if (existingInput.getAttribute('data-dirty') === '1') continue;
+            if (document.activeElement === existingInput) continue;
+          }
+          try { td.innerHTML = cols[i].render ? cols[i].render(row, cols[i]) : ''; }
+          catch (_) { /** ignore: ячейка останется как есть */ }
+        }
       }
 
       /**
@@ -2718,6 +2764,22 @@
        *   • Пустая строка → null (стираем override).
        *   • Невалидные числа → НЕ включаются в результат, чтобы не затереть БД мусором.
        */
+      /**
+       * Собираем текущие значения видимых инпутов строки для отправки в МС.
+       *
+       * Важный нюанс семантики (см. `routes/dimensions.js#persistMeasurementFields`):
+       * сервер при inline-`measurement` обходит ТОЛЬКО переданные ключи, и для
+       * каждого делает UPSERT — то есть `null` означает «очистить override», а
+       * отсутствующий ключ — «не трогать». Поэтому пустые инпуты мы НЕ кладём в
+       * `out` (раньше клали как `null`, и при «↗ В МС: все правки» сервер очищал
+       * длину/ширину/высоту-коробку, если авто-заливка после смены packing_type
+       * не успела по сети прибыть к моменту клика).
+       *
+       * Если пользователь хочет именно ОЧИСТИТЬ поле — он всё ещё может: делает
+       * это явным действием через ячейку (стереть значение → blur/Enter → POST
+       * /api/exports/dimensions/measure с `null`). Кнопка «↗ В МС» при этом
+       * больше не зачищает поля по неосторожности.
+       */
       function gatherRowInputValues(code) {
         var out = {};
         if (!code) return out;
@@ -2732,10 +2794,7 @@
           var field = input.getAttribute('data-dg-field') || '';
           if (!field) continue;
           var raw = input.value;
-          if (raw == null || String(raw).trim() === '') {
-            out[field] = null;
-            continue;
-          }
+          if (raw == null || String(raw).trim() === '') continue;
           if (input.type === 'number') {
             var n = Number(String(raw).replace(',', '.'));
             if (Number.isFinite(n) && n >= 0) out[field] = n;

@@ -784,10 +784,19 @@ function createDimensionsRouter(db, appSettings = {}) {
                     weight_kg: r.m_weight_kg,
                     packing_type: r.m_packing_type,
                 });
-                /** Парсим «Тип упаковки» из МС: даёт authoritative kind + автозначения
-                 *  для L/W/H, которые UI показывает как ghost-default, пока не появится
-                 *  user-override (см. /measure ниже). */
-                const parsed = parsePackingDims(dimsMs.packing_type);
+                /** Парсим «Тип упаковки»: даёт authoritative kind + автозначения
+                 *  для L/W/H, которые UI показывает как ghost-default, пока не
+                 *  появится user-override (см. /measure ниже). Источник —
+                 *  override (`measurement.packing_type`), если он есть; иначе
+                 *  МС-значение (`dimensions_ms.packing_type`). До этого сервер
+                 *  всегда брал МС-значение, и после смены упаковки в UI
+                 *  parsed-фолбэк оставался старым до следующего полного синка
+                 *  МС (`POST /api/ms/sync` обновляет `ms_export`, а только
+                 *  оттуда читается `dimensions_ms`). */
+                const packingForParse = (measurement && measurement.packing_type)
+                    ? measurement.packing_type
+                    : dimsMs.packing_type;
+                const parsed = parsePackingDims(packingForParse);
                 return {
                     code: String(r.code || ''),
                     name: String(r.name || ''),
