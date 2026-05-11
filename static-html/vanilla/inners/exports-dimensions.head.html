@@ -1,0 +1,154 @@
+  <style>
+    /* Эталон поведения таблицы для /exports-dimensions.html.
+       Контракты: datagon-table-behavior-lock.mdc, datagon-list-page-baseline-moysklad.mdc.
+       Схема — как Ozon/WB/Я.Маркет (shop): обёртки без overflow-кадра + native sticky на <th>
+       с top: var(--dg-table-sticky-top, 60px). На странице нет горизонтального скролла
+       внутри карточки: таблица узкая (4 колонки), table-layout: fixed + min-width на th. */
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .app-main__outer,
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .app-main__inner {
+      min-width: 0;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .app-main__inner .main-card.card {
+      min-width: 0;
+      max-width: 100%;
+    }
+    /* Обёртки без overflow: иначе CSS sticky на <th> прицепится к scrolling-контейнеру
+       и заголовки уедут вверх вместе с прокруткой карточки (см. рулу
+       datagon-table-behavior-lock.mdc — раздел маркетплейсы shop). */
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-scroll {
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+      box-sizing: border-box;
+      overflow: visible !important;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions']
+      .dg-dim-scroll
+      > .table-responsive {
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+      box-sizing: border-box;
+      overflow: visible !important;
+      max-height: none !important;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions']
+      .dg-dim-scroll
+      > .table-responsive,
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions']
+      .dg-dim-scroll
+      > .table-responsive
+      > table {
+      transform: none !important;
+      filter: none !important;
+      perspective: none !important;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-table {
+      width: 100%;
+      max-width: none;
+      border-collapse: collapse;
+      border-spacing: 0;
+      table-layout: fixed;
+      font-size: 0.8rem;
+      line-height: 1.25;
+      font-variant-numeric: tabular-nums;
+    }
+    /* Плавающий заголовок: native sticky на каждом <th>, top — высота app-header
+       через CSS-переменную --dg-table-sticky-top (выставляется JS в
+       exports-dimensions.scripts.html). Это эталон shop-маркетплейсов. */
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-table thead th {
+      position: sticky;
+      top: var(--dg-table-sticky-top, 60px);
+      z-index: 25;
+      background: #f8f9fa;
+      color: #374151;
+      font-weight: 600;
+      vertical-align: middle;
+      white-space: normal;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+      padding: 0.5rem 0.65rem;
+      border-bottom: 1px solid #e6e9ee;
+      border-right: 1px solid #e6e9ee;
+      user-select: text;
+      -webkit-user-select: text;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-table thead th.dg-dim-sortable {
+      cursor: pointer;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-table thead th.dg-dim-sortable:hover {
+      background: #eef1f5;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-sort-arrow {
+      color: #6b7280;
+      font-size: 11px;
+      margin-left: 4px;
+      letter-spacing: 0;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-table tbody td {
+      padding: 0.45rem 0.65rem;
+      border-right: 1px solid #f3f5f8;
+      border-bottom: 1px solid #f3f5f8;
+      vertical-align: middle;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-table tbody td.dg-dim-cell-name {
+      white-space: normal;
+      word-break: break-word;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-table tbody tr:nth-child(even) td {
+      background: #fafbfc;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-table tbody tr:hover td {
+      background: #f0f4ff;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+      font-weight: 600;
+      color: #1f2937;
+      font-variant-numeric: tabular-nums;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-type-badge {
+      display: inline-block;
+      margin-left: 6px;
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-size: 0.65rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: #4b5563;
+      background: #eef0f3;
+      border: 1px solid #e2e6ea;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-type-bundle {
+      color: #5b21b6;
+      background: #f3eafe;
+      border-color: #e2cffb;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-empty {
+      color: #9ca3af;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-status-yes {
+      color: #0f5132;
+      font-weight: 600;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-status-no {
+      color: #842029;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-pagination {
+      border-top: 1px solid #e9ecef;
+      background: #fff;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-header-search {
+      flex: 0 1 380px;
+      min-width: 220px;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-status-hint:empty {
+      display: none !important;
+    }
+  </style>

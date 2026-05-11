@@ -3,10 +3,164 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, shrink-to-fit=no" />
-  <title>Габариты — Датагон</title>
+  <title>Маркетплейсы — Габариты — Датагон</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <link rel="stylesheet" href="/static/css/main.989b22a9.css" />
   
+  <style>
+    /* Эталон поведения таблицы для /exports-dimensions.html.
+       Контракты: datagon-table-behavior-lock.mdc, datagon-list-page-baseline-moysklad.mdc.
+       Схема — как Ozon/WB/Я.Маркет (shop): обёртки без overflow-кадра + native sticky на <th>
+       с top: var(--dg-table-sticky-top, 60px). На странице нет горизонтального скролла
+       внутри карточки: таблица узкая (4 колонки), table-layout: fixed + min-width на th. */
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .app-main__outer,
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .app-main__inner {
+      min-width: 0;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .app-main__inner .main-card.card {
+      min-width: 0;
+      max-width: 100%;
+    }
+    /* Обёртки без overflow: иначе CSS sticky на <th> прицепится к scrolling-контейнеру
+       и заголовки уедут вверх вместе с прокруткой карточки (см. рулу
+       datagon-table-behavior-lock.mdc — раздел маркетплейсы shop). */
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-scroll {
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+      box-sizing: border-box;
+      overflow: visible !important;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions']
+      .dg-dim-scroll
+      > .table-responsive {
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+      box-sizing: border-box;
+      overflow: visible !important;
+      max-height: none !important;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions']
+      .dg-dim-scroll
+      > .table-responsive,
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions']
+      .dg-dim-scroll
+      > .table-responsive
+      > table {
+      transform: none !important;
+      filter: none !important;
+      perspective: none !important;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-table {
+      width: 100%;
+      max-width: none;
+      border-collapse: collapse;
+      border-spacing: 0;
+      table-layout: fixed;
+      font-size: 0.8rem;
+      line-height: 1.25;
+      font-variant-numeric: tabular-nums;
+    }
+    /* Плавающий заголовок: native sticky на каждом <th>, top — высота app-header
+       через CSS-переменную --dg-table-sticky-top (выставляется JS в
+       exports-dimensions.scripts.html). Это эталон shop-маркетплейсов. */
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-table thead th {
+      position: sticky;
+      top: var(--dg-table-sticky-top, 60px);
+      z-index: 25;
+      background: #f8f9fa;
+      color: #374151;
+      font-weight: 600;
+      vertical-align: middle;
+      white-space: normal;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+      padding: 0.5rem 0.65rem;
+      border-bottom: 1px solid #e6e9ee;
+      border-right: 1px solid #e6e9ee;
+      user-select: text;
+      -webkit-user-select: text;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-table thead th.dg-dim-sortable {
+      cursor: pointer;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-table thead th.dg-dim-sortable:hover {
+      background: #eef1f5;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-sort-arrow {
+      color: #6b7280;
+      font-size: 11px;
+      margin-left: 4px;
+      letter-spacing: 0;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-table tbody td {
+      padding: 0.45rem 0.65rem;
+      border-right: 1px solid #f3f5f8;
+      border-bottom: 1px solid #f3f5f8;
+      vertical-align: middle;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-table tbody td.dg-dim-cell-name {
+      white-space: normal;
+      word-break: break-word;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-table tbody tr:nth-child(even) td {
+      background: #fafbfc;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-table tbody tr:hover td {
+      background: #f0f4ff;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+      font-weight: 600;
+      color: #1f2937;
+      font-variant-numeric: tabular-nums;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-type-badge {
+      display: inline-block;
+      margin-left: 6px;
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-size: 0.65rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: #4b5563;
+      background: #eef0f3;
+      border: 1px solid #e2e6ea;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-type-bundle {
+      color: #5b21b6;
+      background: #f3eafe;
+      border-color: #e2cffb;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-empty {
+      color: #9ca3af;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-status-yes {
+      color: #0f5132;
+      font-weight: 600;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-status-no {
+      color: #842029;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-pagination {
+      border-top: 1px solid #e9ecef;
+      background: #fff;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-header-search {
+      flex: 0 1 380px;
+      min-width: 220px;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-status-hint:empty {
+      display: none !important;
+    }
+  </style>
 
   <style>
     /* Один список сайдбара: «ArchitectUI меню» у нижнего края области навигации, без второго блока/ul */
@@ -476,6 +630,16 @@
                           <li class="metismenu-item">
                             <a
                               class="metismenu-link"
+                              data-nav="exports-dimensions"
+                              href="/exports-dimensions.html"
+                              title="Реестр замеров габаритов товаров МойСклад"
+                            >
+                              <i class="metismenu-icon pe-7s-scissors"></i>Габариты
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
                               data-nav="exports-marketplaces-issues"
                               href="/exports-marketplaces-issues.html"
                               title="Товары МойСклад с проблемами публикации на маркетплейсах"
@@ -487,7 +651,6 @@
                       </li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="exports-huckster" href="/exports-huckster.html" title="Интеграция Huckster / e-teleport — матрица UID по магазинам"><i class="metismenu-icon pe-7s-cart"></i>Huckster</a></li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="exports-summary" href="/exports-summary.html" title="Сводка по менеджерам, подсветки НДС/габаритов, уведомления в чат"><i class="metismenu-icon pe-7s-note"></i>Сводка и синхронизация</a></li>
-                      <li class="metismenu-item"><a class="metismenu-link" data-nav="exports-dimensions" href="/exports-dimensions.html" title="Лист «Габариты»: проверки, сортировка, слияние в новые позиции"><i class="metismenu-icon pe-7s-scissors"></i>Габариты</a></li>
                     </ul>
                   </div>
                 </div>
@@ -509,15 +672,153 @@
                 <div>
                   Габариты
                   <div class="page-title-subheading">
-                    Лист «Габариты»: синхронизация с МС, проверка обязательных полей, сортировка, подсветка, разбор строки Д×Ш×В, слияние в «Новые позиции».
+                    Реестр замеров габаритов товаров и комплектов МойСклад. В список попадают только <strong>складские позиции</strong> (МС: «Складская позиция = Да»), у которых <strong>сотрудничество не прекращено</strong>. Исключение: если по поставщику <em>прекращено</em>, но на складе <strong>есть остаток</strong> — позиция всё равно показывается.
                   </div>
                 </div>
               </div>
             </div>
           </div>
+
           <div class="main-card mb-3 card">
-            <div class="card-body">
-              <p class="text-muted mb-0">Раздел в подготовке: при необходимости вынесем правила валидации в отдельный модуль и API.</p>
+            <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+              <div class="d-flex align-items-center">
+                <i class="header-icon pe-7s-filter icon-gradient bg-happy-fisher me-2"></i>
+                <span>Фильтры и действия</span>
+              </div>
+              <div class="d-flex align-items-center gap-2">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-dim-filters-toggle">Свернуть</button>
+              </div>
+            </div>
+            <div class="card-body" id="dg-dim-filters-body">
+              <div class="row g-2 align-items-end">
+                <div class="col-md-5">
+                  <label class="form-label" for="dg-dim-f-search">Умный поиск</label>
+                  <input
+                    type="text"
+                    class="form-control"
+                    id="dg-dim-f-search"
+                    placeholder="Код или наименование (Enter — применить)"
+                    autocomplete="off"
+                    data-dg-tooltip="Ищет по полям: код, наименование. Мульти-токен через пробел = AND."
+                  />
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label" for="dg-dim-f-type">Тип</label>
+                  <select class="form-select" id="dg-dim-f-type">
+                    <option value="all">Все</option>
+                    <option value="товар">Товар</option>
+                    <option value="комплект">Комплект</option>
+                  </select>
+                </div>
+                <div class="col-md-3">
+                  <label class="form-label" for="dg-dim-f-scope">Замер</label>
+                  <select class="form-select" id="dg-dim-f-scope">
+                    <option value="all">Все позиции</option>
+                    <option value="without">Без замера</option>
+                    <option value="with">С замером</option>
+                  </select>
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label" for="dg-dim-f-limit">На странице</label>
+                  <select class="form-select" id="dg-dim-f-limit">
+                    <option value="50">50</option>
+                    <option value="100" selected>100</option>
+                    <option value="200">200</option>
+                    <option value="500">500</option>
+                  </select>
+                </div>
+              </div>
+              <div class="mt-3 d-flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  class="btn btn-sm btn-primary"
+                  id="dg-dim-apply"
+                  data-dg-tooltip="Применить фильтры и обновить таблицу. Сохраняет выбранные значения для следующего визита."
+                >
+                  <i class="pe-7s-search me-1"></i>Применить
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-secondary"
+                  id="dg-dim-reset"
+                  data-dg-tooltip="Сбросить фильтры к значениям по умолчанию и очистить сохранённые настройки."
+                >
+                  <i class="pe-7s-refresh me-1"></i>По умолчанию
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-primary"
+                  id="dg-dim-refresh"
+                  data-dg-tooltip="Перечитать список с сервера без сброса фильтров."
+                >
+                  <i class="pe-7s-refresh-2 me-1"></i>Обновить
+                </button>
+              </div>
+              <p class="dg-dim-status-hint text-muted mb-0 mt-2 small" id="dg-dim-status-hint"></p>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+              <div class="d-flex align-items-center gap-3 flex-grow-1" style="min-width: 0">
+                <div class="d-flex align-items-center flex-shrink-0">
+                  <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"></i>
+                  <span>Реестр замеров габаритов</span>
+                </div>
+                <div class="dg-dim-header-search">
+                  <div class="input-group input-group-sm">
+                    <span class="input-group-text bg-white text-muted px-2" aria-hidden="true">🔎</span>
+                    <input
+                      type="search"
+                      class="form-control"
+                      id="dg-dim-table-search-mirror"
+                      placeholder="Умный поиск: код или наименование (Enter — применить)"
+                      autocomplete="off"
+                      data-dg-tooltip="Зеркало умного поиска из карточки «Фильтры и действия». Enter — применить, Esc — очистить."
+                    />
+                  </div>
+                </div>
+              </div>
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-secondary"
+                  id="dg-dim-table-toggle"
+                  title="Свернуть/развернуть тело карточки с таблицей"
+                >
+                  Свернуть
+                </button>
+              </div>
+            </div>
+            <div class="card-body p-0" id="dg-dim-table-body">
+              <div class="dg-dim-scroll">
+                <div class="table-responsive">
+                  <table class="table table-hover mb-0 dg-dim-table" id="dg-dim-table">
+                    <thead>
+                      <tr>
+                        <th class="dg-dim-sortable" data-dg-sort="code" style="width: 160px">Код</th>
+                        <th class="dg-dim-sortable" data-dg-sort="name">Наименование</th>
+                        <th class="dg-dim-sortable" data-dg-sort="measured_by_name" style="width: 220px">
+                          <span title="Кто замерял габариты (пользователь Datagon)">!! Кто замерял</span>
+                        </th>
+                        <th class="dg-dim-sortable" data-dg-sort="measured_at" style="width: 180px">Дата замера</th>
+                      </tr>
+                    </thead>
+                    <tbody id="dg-dim-tbody">
+                      <tr>
+                        <td colspan="4" class="text-muted small py-3 text-center">Загрузка…</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <div class="dg-dim-pagination px-3 py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div class="text-muted small" id="dg-dim-page-hint">—</div>
+                <div class="btn-group" role="group" aria-label="Страницы реестра габаритов">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-dim-page-prev">Назад</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-dim-page-next">Вперёд</button>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -594,7 +895,438 @@
   </div>
 
   <script src="/datagon-vanilla.js"></script>
-  
+    <script>
+    (function () {
+      var LIST_URL = '/api/exports/dimensions/list';
+      var STORAGE_KEY = 'datagon_dimensions_filters_v1';
+      var FILTERS_COLLAPSED_KEY = 'datagon_dimensions_filters_collapsed_v1';
+      var TABLE_COLLAPSED_KEY = 'datagon_dimensions_table_collapsed_v1';
+
+      var DEFAULT_FILTERS = {
+        search: '',
+        type: 'all',
+        scope: 'all',
+        limit: 100,
+      };
+
+      var state = {
+        applied: cloneFilters(DEFAULT_FILTERS),
+        pending: cloneFilters(DEFAULT_FILTERS),
+        sortBy: 'code',
+        sortDir: 'asc',
+        offset: 0,
+        total: 0,
+        loading: false,
+        rows: [],
+        lastError: '',
+      };
+
+      function cloneFilters(src) {
+        return {
+          search: String((src && src.search) || ''),
+          type: String((src && src.type) || 'all'),
+          scope: String((src && src.scope) || 'all'),
+          limit: Number((src && src.limit) || 100) || 100,
+        };
+      }
+
+      function loadSavedFilters() {
+        try {
+          var raw = localStorage.getItem(STORAGE_KEY);
+          if (!raw) return null;
+          var v = JSON.parse(raw);
+          if (!v || typeof v !== 'object') return null;
+          return cloneFilters(v);
+        } catch (e) {
+          return null;
+        }
+      }
+
+      function persistFilters() {
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(state.applied));
+        } catch (e) {}
+      }
+
+      function escapeHtml(s) {
+        return String(s == null ? '' : s)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
+      function applyFormFromState(s) {
+        var elSearch = document.getElementById('dg-dim-f-search');
+        var elType = document.getElementById('dg-dim-f-type');
+        var elScope = document.getElementById('dg-dim-f-scope');
+        var elLimit = document.getElementById('dg-dim-f-limit');
+        var elMirror = document.getElementById('dg-dim-table-search-mirror');
+        if (elSearch) elSearch.value = s.search;
+        if (elType) elType.value = s.type;
+        if (elScope) elScope.value = s.scope;
+        if (elLimit) elLimit.value = String(s.limit);
+        if (elMirror) elMirror.value = s.search;
+      }
+
+      function readFormToPending() {
+        var elSearch = document.getElementById('dg-dim-f-search');
+        var elType = document.getElementById('dg-dim-f-type');
+        var elScope = document.getElementById('dg-dim-f-scope');
+        var elLimit = document.getElementById('dg-dim-f-limit');
+        state.pending.search = elSearch ? String(elSearch.value || '').trim() : '';
+        state.pending.type = elType ? String(elType.value || 'all') : 'all';
+        state.pending.scope = elScope ? String(elScope.value || 'all') : 'all';
+        var limNum = Number((elLimit && elLimit.value) || 100);
+        state.pending.limit = Number.isFinite(limNum) && limNum > 0 ? limNum : 100;
+      }
+
+      function setStatusHint(msg, kind) {
+        var el = document.getElementById('dg-dim-status-hint');
+        if (!el) return;
+        el.classList.remove('text-danger', 'text-success', 'text-muted');
+        if (kind === 'error') el.classList.add('text-danger');
+        else if (kind === 'success') el.classList.add('text-success');
+        else el.classList.add('text-muted');
+        el.textContent = String(msg || '');
+      }
+
+      function formatDateTimeMsk(value) {
+        if (!value) return '';
+        var d;
+        try {
+          d = new Date(value);
+        } catch (e) {
+          return String(value);
+        }
+        if (!d || isNaN(d.getTime())) return String(value);
+        try {
+          return d.toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' });
+        } catch (e) {
+          return d.toISOString();
+        }
+      }
+
+      function commitFilters() {
+        readFormToPending();
+        state.applied = cloneFilters(state.pending);
+        state.offset = 0;
+        persistFilters();
+        loadList();
+      }
+
+      function resetFilters() {
+        state.pending = cloneFilters(DEFAULT_FILTERS);
+        state.applied = cloneFilters(DEFAULT_FILTERS);
+        state.offset = 0;
+        try {
+          localStorage.removeItem(STORAGE_KEY);
+        } catch (e) {}
+        applyFormFromState(state.applied);
+        loadList();
+      }
+
+      function renderTable() {
+        var tbody = document.getElementById('dg-dim-tbody');
+        if (!tbody) return;
+        if (state.loading) {
+          tbody.innerHTML = '<tr><td colspan="4" class="text-muted small py-3 text-center">Загрузка…</td></tr>';
+          return;
+        }
+        if (state.lastError) {
+          tbody.innerHTML =
+            '<tr><td colspan="4" class="text-danger small py-3 text-center">' +
+            escapeHtml(state.lastError) +
+            '</td></tr>';
+          return;
+        }
+        if (!Array.isArray(state.rows) || state.rows.length === 0) {
+          tbody.innerHTML =
+            '<tr><td colspan="4" class="text-muted small py-4 text-center">Пока ничего не найдено. Попробуйте изменить фильтры.</td></tr>';
+          return;
+        }
+        var html = '';
+        for (var i = 0; i < state.rows.length; i++) {
+          var r = state.rows[i] || {};
+          var code = escapeHtml(r.code);
+          var typeRaw = String(r.type || '').toLowerCase();
+          var typeBadge =
+            typeRaw === 'комплект'
+              ? '<span class="dg-dim-type-badge dg-dim-type-bundle" title="Комплект">КПЛ</span>'
+              : typeRaw === 'товар'
+                ? ''
+                : typeRaw
+                  ? '<span class="dg-dim-type-badge" title="' + escapeHtml(r.type) + '">' + escapeHtml(r.type) + '</span>'
+                  : '';
+          var nameHtml = r.name
+            ? escapeHtml(r.name)
+            : '<span class="dg-dim-empty">— без наименования —</span>';
+          var measuredBy = String(r.measured_by_name || '').trim();
+          var measuredAt = String(r.measured_at || '').trim();
+          var measuredByCell = measuredBy
+            ? '<span class="dg-dim-status-yes">' + escapeHtml(measuredBy) + '</span>'
+            : '<span class="dg-dim-status-no">— не замерен —</span>';
+          var measuredAtCell = measuredAt
+            ? escapeHtml(formatDateTimeMsk(measuredAt))
+            : '<span class="dg-dim-empty">—</span>';
+          html +=
+            '<tr data-dg-code="' +
+            code +
+            '">' +
+            '<td class="dg-dim-code">' +
+            code +
+            typeBadge +
+            '</td>' +
+            '<td class="dg-dim-cell-name" title="' +
+            escapeHtml(r.name || '') +
+            '">' +
+            nameHtml +
+            '</td>' +
+            '<td>' +
+            measuredByCell +
+            '</td>' +
+            '<td>' +
+            measuredAtCell +
+            '</td>' +
+            '</tr>';
+        }
+        tbody.innerHTML = html;
+      }
+
+      function renderPagination() {
+        var hint = document.getElementById('dg-dim-page-hint');
+        var btnPrev = document.getElementById('dg-dim-page-prev');
+        var btnNext = document.getElementById('dg-dim-page-next');
+        var lim = Math.max(1, Number(state.applied.limit || 100));
+        var page = Math.floor(state.offset / lim) + 1;
+        var pages = Math.max(1, Math.ceil((state.total || 0) / lim));
+        if (hint) {
+          hint.textContent =
+            'Найдено: ' +
+            (state.total || 0) +
+            '; страница ' +
+            page +
+            '/' +
+            pages +
+            '; показано: ' +
+            (state.rows ? state.rows.length : 0);
+        }
+        if (btnPrev) btnPrev.disabled = state.offset <= 0;
+        if (btnNext) btnNext.disabled = state.offset + lim >= (state.total || 0);
+      }
+
+      function loadList() {
+        state.loading = true;
+        state.lastError = '';
+        renderTable();
+        var qs = new URLSearchParams();
+        qs.set('search', state.applied.search);
+        qs.set('type', state.applied.type);
+        qs.set('scope', state.applied.scope);
+        qs.set('limit', String(state.applied.limit));
+        qs.set('offset', String(state.offset));
+        qs.set('sort_by', state.sortBy);
+        qs.set('sort_dir', state.sortDir);
+        fetch(LIST_URL + '?' + qs.toString(), { credentials: 'same-origin' })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { ok: r.ok, j: j };
+            });
+          })
+          .then(function (x) {
+            state.loading = false;
+            if (!x.ok || !x.j || x.j.success === false) {
+              state.rows = [];
+              state.total = 0;
+              state.lastError = (x.j && x.j.error) || 'Ошибка загрузки списка';
+            } else {
+              state.rows = Array.isArray(x.j.rows) ? x.j.rows : [];
+              state.total = Number(x.j.total || 0) || 0;
+            }
+            renderTable();
+            renderPagination();
+            setStatusHint(
+              state.lastError
+                ? 'Ошибка: ' + state.lastError
+                : 'Готово. Записей всего: ' + (state.total || 0) + '.',
+              state.lastError ? 'error' : 'success',
+            );
+          })
+          .catch(function (e) {
+            state.loading = false;
+            state.lastError = (e && e.message) || 'Сеть';
+            state.rows = [];
+            state.total = 0;
+            renderTable();
+            renderPagination();
+            setStatusHint('Сетевая ошибка: ' + state.lastError, 'error');
+          });
+      }
+
+      function bindHeaderSearchMirror() {
+        var elSearch = document.getElementById('dg-dim-f-search');
+        var elMirror = document.getElementById('dg-dim-table-search-mirror');
+        if (!elSearch || !elMirror) return;
+        var syncing = false;
+        elSearch.addEventListener('input', function () {
+          if (syncing) return;
+          syncing = true;
+          elMirror.value = elSearch.value;
+          syncing = false;
+        });
+        elMirror.addEventListener('input', function () {
+          if (syncing) return;
+          syncing = true;
+          elSearch.value = elMirror.value;
+          syncing = false;
+        });
+        function handleEnterCommit(ev) {
+          if (ev.key !== 'Enter') return;
+          ev.preventDefault();
+          commitFilters();
+        }
+        elSearch.addEventListener('keydown', handleEnterCommit);
+        elMirror.addEventListener('keydown', handleEnterCommit);
+        elMirror.addEventListener('search', function () {
+          state.pending.search = elMirror.value;
+          state.applied.search = elMirror.value;
+          if (elSearch) elSearch.value = elMirror.value;
+          state.offset = 0;
+          persistFilters();
+          loadList();
+        });
+      }
+
+      function bindCardCollapse(storageKey, bodyId, btnId) {
+        var body = document.getElementById(bodyId);
+        var btn = document.getElementById(btnId);
+        if (!body || !btn) return;
+        function apply() {
+          var collapsed = false;
+          try {
+            collapsed = localStorage.getItem(storageKey) === '1';
+          } catch (e) {}
+          body.style.display = collapsed ? 'none' : '';
+          btn.textContent = collapsed ? 'Развернуть' : 'Свернуть';
+        }
+        apply();
+        btn.addEventListener('click', function () {
+          var hidden = body.style.display === 'none';
+          body.style.display = hidden ? '' : 'none';
+          btn.textContent = hidden ? 'Свернуть' : 'Развернуть';
+          try {
+            localStorage.setItem(storageKey, hidden ? '0' : '1');
+          } catch (e) {}
+        });
+      }
+
+      function bindSort() {
+        var thead = document.querySelector('#dg-dim-table thead');
+        if (!thead) return;
+        thead.addEventListener('click', function (ev) {
+          var sel = window.getSelection ? window.getSelection() : null;
+          if (sel && String(sel.toString() || '').trim().length > 0) return;
+          var th = ev.target && ev.target.closest('th');
+          if (!th) return;
+          var key = th.getAttribute('data-dg-sort');
+          if (!key) return;
+          if (state.sortBy === key) {
+            state.sortDir = state.sortDir === 'asc' ? 'desc' : 'asc';
+          } else {
+            state.sortBy = key;
+            state.sortDir = 'asc';
+          }
+          state.offset = 0;
+          loadList();
+        });
+      }
+
+      function bindEvents() {
+        var elApply = document.getElementById('dg-dim-apply');
+        var elReset = document.getElementById('dg-dim-reset');
+        var elRefresh = document.getElementById('dg-dim-refresh');
+        var elPrev = document.getElementById('dg-dim-page-prev');
+        var elNext = document.getElementById('dg-dim-page-next');
+        if (elApply) elApply.addEventListener('click', function (ev) { ev.preventDefault(); commitFilters(); });
+        if (elReset) elReset.addEventListener('click', function (ev) { ev.preventDefault(); resetFilters(); });
+        if (elRefresh) elRefresh.addEventListener('click', function (ev) { ev.preventDefault(); loadList(); });
+        if (elPrev)
+          elPrev.addEventListener('click', function () {
+            var lim = Math.max(1, Number(state.applied.limit || 100));
+            state.offset = Math.max(0, state.offset - lim);
+            loadList();
+          });
+        if (elNext)
+          elNext.addEventListener('click', function () {
+            var lim = Math.max(1, Number(state.applied.limit || 100));
+            state.offset = state.offset + lim;
+            loadList();
+          });
+        var elType = document.getElementById('dg-dim-f-type');
+        var elScope = document.getElementById('dg-dim-f-scope');
+        var elLimit = document.getElementById('dg-dim-f-limit');
+        [elType, elScope, elLimit].forEach(function (el) {
+          if (!el) return;
+          el.addEventListener('change', function () {
+            readFormToPending();
+          });
+        });
+      }
+
+      /* Плавающий заголовок: native CSS sticky на каждом <th> (см. exports-dimensions.head.html).
+         Здесь только синхронизируем CSS-переменную --dg-table-sticky-top с высотой
+         .app-header (fixed-header). Без этого заголовки могут «съезжать», т.к. наша таблица
+         помечена в shouldSkipGlobalTableBaseline и глобальный datagon-vanilla.js
+         переменную для неё не выставляет. Эталон — shop-маркетплейсы. */
+      function syncStickyTopVar() {
+        var app = document.querySelector('.app-container');
+        var header = document.querySelector('.app-header');
+        var fixed = Boolean(app && app.classList && app.classList.contains('fixed-header'));
+        var top = 0;
+        if (fixed && header && header.getBoundingClientRect) {
+          var r = header.getBoundingClientRect();
+          top = r && r.height ? Math.round(r.height) : 60;
+        }
+        document.documentElement.style.setProperty('--dg-table-sticky-top', top + 'px');
+      }
+      function bindStickyTopVar() {
+        syncStickyTopVar();
+        window.addEventListener('resize', syncStickyTopVar);
+        var hdr = document.querySelector('.app-header');
+        if (hdr && window.ResizeObserver) {
+          try {
+            var ro = new ResizeObserver(function () { syncStickyTopVar(); });
+            ro.observe(hdr);
+          } catch (e) {}
+        }
+        if (document.fonts && document.fonts.ready && typeof document.fonts.ready.then === 'function') {
+          document.fonts.ready.then(function () { syncStickyTopVar(); });
+        }
+        window.addEventListener('load', function () { syncStickyTopVar(); });
+      }
+
+      function init() {
+        var saved = loadSavedFilters();
+        if (saved) state.applied = cloneFilters(saved);
+        state.pending = cloneFilters(state.applied);
+        applyFormFromState(state.applied);
+        bindEvents();
+        bindHeaderSearchMirror();
+        bindSort();
+        bindCardCollapse(FILTERS_COLLAPSED_KEY, 'dg-dim-filters-body', 'dg-dim-filters-toggle');
+        bindCardCollapse(TABLE_COLLAPSED_KEY, 'dg-dim-table-body', 'dg-dim-table-toggle');
+        bindStickyTopVar();
+        loadList();
+      }
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+      } else {
+        init();
+      }
+    })();
+  </script>
 
 </body>
 </html>

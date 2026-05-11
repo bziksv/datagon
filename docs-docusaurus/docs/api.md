@@ -63,6 +63,7 @@ description: Справочник REST-эндпоинтов p.datagon.ru (осн
 - `/api/matches` -> `routes/matches.js`
 - `/api/ms` -> `routes/moysklad.js`
 - `/api/exports/marketplaces` -> `routes/exportsMarketplaces.js`
+- `/api/exports/dimensions` -> `routes/dimensions.js`
 - `/api/activity` -> `routes/activity.js`
 - `GET /api/processes/overview`, `POST /api/sync-all-start`, `POST /api/sync-site-start`, `GET /api/sync-status` -> `server.js`
 
@@ -457,7 +458,7 @@ Body:
 
 ## Расширенные маршруты матчинга
 
-Эндпоинты для экрана «Сопоставление» (ручная очередь, архив, поиск по ценам конкурента, лог): `GET/DELETE /api/matches/manual-queue`, `GET/DELETE /api/matches/manual-archive`, `GET /api/matches/prices-resolve-sku`, `GET /api/matches/prices-search`, `GET /api/matches/product-match-log`, `POST /api/matches/manual-match/confirm`, `POST /api/matches/manual-match/archive`. Точные query и JSON — в `routes/matches.js`.
+Эндпоинты для экрана «Сопоставление» (ручная очередь, архив, поиск по ценам конкурента, лог): `GET/DELETE /api/matches/manual-queue`, `GET/DELETE /api/matches/manual-archive`, `GET /api/matches/prices-resolve-sku`, `GET /api/matches/prices-search`, `GET /api/matches/product-match-log`, `POST /api/matches/manual-match/confirm`, `POST /api/matches/manual-match/archive`. Точные query и JSON — в `routes/matches.js`. **Поле `archived_by`** в ответе `GET /api/matches/manual-archive` — пользователь, который нажал «В архив» в блоке ручного сопоставления (заполняется при `POST /api/matches/manual-match/archive` через `resolveActorDisplayName`); миграция колонки `match_manual_archive.archived_by VARCHAR(100) NULL` живёт внутри `ensureMatchLaneTables()`.
 
 ## MoySklad
 
@@ -618,7 +619,7 @@ Body (JSON):
 
 ### GET `/api/exports/marketplaces/issues`
 
-Проблемы с товарами (бывш. «Неопубликованные»). Возвращает строки **`ms_export`** по основному фильтру `stock_position = 'Да' AND no_longer_cooperation = 'Нет'` с сопоставлением артикулов на 3 маркетплейсах через **`marketplace_export_rows.external_id`** (= `offer_id` для Ozon, `vendor_code` для WB, `shop_sku` для YM, см. `lib/marketplaceExportStore.js#externalIdFor`). Если код маркетплейса не найден в последнем снапшоте — соответствующие поля `*_code` / `*_name` приходят `null`; фронт подсвечивает такие ячейки красным.
+Проблемы с товарами (бывш. «Неопубликованные»). Возвращает строки **`ms_export`** по основному фильтру `stock_position = 'Да' AND no_longer_cooperation = 'Нет'` с сопоставлением артикулов на 3 маркетплейсах через **`marketplace_export_rows.external_id`** (= `offer_id` для Ozon, `vendor_code` для WB, `shop_sku` для YM, см. `lib/marketplaceExportStore.js#externalIdFor`). По каждой строке возвращается полный паспорт МС (`ms_stock`, `ms_vat` из `ms_export`) и каждого маркетплейса: `*_code`, `*_name`, `*_vat` (нормализован `prettifyMarketplaceVat`), `*_stock`, `*_length` / `*_width` / `*_height` (см), `*_weight` (кг), `*_cabinet_url`, `*_buyer_url`, `*_updated` (метка свежести снапшота — `updated_label` или форматированный `updated_at`). Поля **`uuid`** и **`type`** из `ms_export` приходят в каждом объекте `rows[]`, но **не** входят в массив **`headers`** (нужны UI для карточки МС и `GET /api/ms/detail/:uuid`, а не как отдельные колонки). Если код маркетплейса не найден в последнем снапшоте — все его поля приходят `null`; фронт подсвечивает пары `(*_code, *_name)` красным. Порядок колонок МС в `headers`/`headerLabels`: `code`, `name`, `manager`, `content_manager`, `ms_vat`, `ms_stock`, `synced_at`.
 
 Query:
 
@@ -626,8 +627,11 @@ Query:
   - `all` (по умолчанию) — все товары МС по основному фильтру;
   - `any` — у кого хотя бы один из 3 маркетплейсов не нашёл товар;
   - `all3` — нет ни на одном из 3 маркетплейсов;
-  - `ozon` / `wb` / `ym` — нет на конкретном маркетплейсе.
+  - `ozon` / `wb` / `ym` — нет на конкретном маркетплейсе;
+  - `vat_mismatch` (алиас `vat-mismatch`) — товар есть в снапшоте маркетплейса, но нормализованный НДС МС не совпадает с НДС на этой площадке (Wildberries со значением «не указан» в сравнении не участвует);
+  - `dims_mismatch` (алиас `dims-mismatch`) — товар есть минимум на двух маркетплейсах, и по хотя бы одной из осей длина/ширина/высота (см) или вес (кг) **обе площадки отдают число**, а значения расходятся с допуском 0,02 (пара «число vs пусто» не считается расхождением). С МойСклад не сравнивается: в `ms_export` нет этих полей. Отбор **в памяти** после `prettifyMarketplaceVat` и фильтра комплектов, в пределах первых `max_items` строк по `ORDER BY m.code` — при очень большом каталоге возможны «хвосты» за пределом лимита.
 - `max_items` — лимит выборки, 1..100000, по умолчанию 50000.
+- `exclude_bundle_components` — `1` (по умолчанию) исключает товары, чей `code` встречается как компонент хотя бы одного комплекта (`ms_entity_details.kind = 'bundle'`, поле `payload_json.components.rows[].assortment.code`). Любое явно «ложное» значение (`0` / `false` / `no` / `off`) выключает фильтр. Полный набор кодов-компонентов кэшируется в памяти процесса на 5 минут (см. `getBundleComponentCodesCached` в `routes/exportsMarketplaces.js`); первый запрос после рестарта Node читает payload всех bundle-сущностей, последующие — берут готовый Set.
 
 Ответ JSON:
 
@@ -636,17 +640,99 @@ Query:
   "scope": "all",
   "scope_label": "все товары",
   "count": 123,
-  "headers": ["code","name","manager","content_manager","synced_at","ozon_code","ozon_name","wb_code","wb_name","ym_code","ym_name"],
-  "headerLabels": ["Код МС","Название МС","Менеджер","Контент-менеджер","Синхронизация МС","Код Ozon","Название Ozon","Код Wildberries","Название Wildberries","Код Я.Маркет","Название Я.Маркет"],
+  "headers": ["code","name","manager","content_manager","ms_vat","ms_stock","synced_at","ozon_code","ozon_name","ozon_vat","ozon_stock","ozon_length","ozon_width","ozon_height","ozon_weight","ozon_cabinet_url","ozon_buyer_url","ozon_updated","wb_code","wb_name","wb_vat","wb_stock","wb_length","wb_width","wb_height","wb_weight","wb_cabinet_url","wb_buyer_url","wb_updated","ym_code","ym_name","ym_vat","ym_stock","ym_length","ym_width","ym_height","ym_weight","ym_cabinet_url","ym_buyer_url","ym_updated"],
+  "headerLabels": ["Код МС","Название МС","Менеджер","Контент-менеджер","НДС МС","Остаток по МС","Синхронизация МС","Код Ozon","Название Ozon","НДС Ozon","Остаток Ozon","Длина (см) Ozon","Ширина (см) Ozon","Высота (см) Ozon","Вес (кг) Ozon","Кабинет Ozon","Покупателю Ozon","Обновлено Ozon","Код Wildberries","Название Wildberries","НДС WB","Остаток WB","Длина (см) WB","Ширина (см) WB","Высота (см) WB","Вес (кг) WB","Кабинет WB","Покупателю WB","Обновлено WB","Код Я.Маркет","Название Я.Маркет","НДС Я.Маркет","Остаток Я.Маркет","Длина (см) Я.Маркет","Ширина (см) Я.Маркет","Высота (см) Я.Маркет","Вес (кг) Я.Маркет","Кабинет Я.Маркет","Покупателю Я.Маркет","Обновлено Я.Маркет"],
   "rows": [
-    { "code": "ABC-1", "name": "...", "ozon_code": "ABC-1", "ozon_name": "...", "wb_code": null, "wb_name": null, "ym_code": "ABC-1", "ym_name": "..." }
-  ]
+    { "code": "ABC-1", "name": "...", "uuid": "…", "type": "Товар", "manager": null, "content_manager": null, "ms_vat": "20%", "ms_stock": 12, "synced_at": "01.01.2026 12:00", "ozon_code": "ABC-1", "ozon_name": "...", "ozon_vat": "20", "ozon_stock": "12", "ozon_length": "30", "ozon_width": "20", "ozon_height": "10", "ozon_weight": "0.5", "ozon_cabinet_url": "https://seller.ozon.ru/...", "ozon_buyer_url": "https://www.ozon.ru/...", "ozon_updated": "01.01.2026 12:30", "wb_code": null, "wb_name": null, "wb_vat": null, "wb_stock": null, "wb_length": null, "wb_width": null, "wb_height": null, "wb_weight": null, "wb_cabinet_url": null, "wb_buyer_url": null, "wb_updated": null, "ym_code": "ABC-1", "ym_name": "...", "ym_vat": "20", "ym_stock": "8", "ym_length": "30", "ym_width": "20", "ym_height": "10", "ym_weight": "0.5", "ym_cabinet_url": "https://partner.market.yandex.ru/...", "ym_buyer_url": "https://market.yandex.ru/...", "ym_updated": "01.01.2026 12:35" }
+  ],
+  "exclude_bundle_components": true,
+  "bundle_component_codes_known": 482,
+  "removed_by_bundle_filter": 17
 }
 ```
 
-Экран: `/exports-marketplaces-issues.html` (пункт меню **Маркетплейсы → Проблемы с товарами**, после «Яндекс Маркет»). UI: радио-фильтр (Все товары / Есть проблемы / Нет ни на одном / Нет на Ozon / Нет на Wildberries / Нет на Я.Маркет), умный поиск по артикулу/наименованию МС/маркетплейсов и ФИО менеджеров, сортировка по любой колонке кликом по заголовку (по умолчанию по «Код МС» asc), клиентская пагинация 50/100/200/500. Фильтр маркетплейса, поиск и селекты «Менеджер» / «Контент-менеджер» собраны в один тулбокс над таблицей и срабатывают **только** по кнопке «Применить» (или Enter в поле поиска); пока изменения не применены, рядом с кнопкой видно «не применено». Это общий контракт для всех таблиц Datagon, см. правило `.cursor/rules/datagon-table-filter-apply.mdc`.
+Поле `bundle_component_codes_known` — размер набора кодов-компонентов, отбираемых из `ms_entity_details`. `removed_by_bundle_filter` — сколько строк было отрезано серверным фильтром «исключить товары из комплектов» (полезно для отладки). Когда `exclude_bundle_components=0`, `bundle_component_codes_known` равно `0` и `removed_by_bundle_filter` равно `0`.
+
+Экран: `/exports-marketplaces-issues.html` (пункт меню **Маркетплейсы → Проблемы с товарами**, после «Яндекс Маркет»). UI: радио-фильтр (Все товары / Есть проблемы / Нет ни на одном / Нет на Ozon / Нет на Wildberries / Нет на Я.Маркет / Не совпадает НДС / Разные габариты), умный поиск по артикулу/наименованию МС/маркетплейсов, НДС, остаткам и ФИО менеджеров, сортировка по любой колонке кликом по заголовку (по умолчанию по «Код МС» asc), клиентская пагинация 50/100/200/500. По умолчанию включены **все** колонки (полный паспорт МС + 3 маркетплейсов); кнопка `«Столбцы по умолчанию»` в панели `🧩 Столбцы` возвращает именно это состояние «все включены» (ключ видимости в `localStorage` — `dg.mpu.colvisible.v5`, dg.mpu.colwidths.v2 для пиксельных ширин). Таблица **широкая** (`width: max-content`): горизонтальный скролл **внутри карточки** (`#dg-mpu-table-scroll-outer`, как `/my-products.html`), плавающая шапка под `app-header` — **JS на `thead#dg-mpu-thead`** (`translate3d`), не схема shop-страниц Ozon/WB/Я.М. Ширины в DOM задаются через `<colgroup>`; не задавать суммарно раздувающий `min-width` на каждую `td` в px. Контракт: `.cursor/rules/datagon-table-behavior-lock.mdc` (раздел «Проблемы с товарами»). Лишние колонки можно выключить в `🧩 Столбцы` — выбор сохранится в браузере. В режиме **«Все товары»** красная подсветка отсутствия товара на площадке — только у ячеек `*_code`; НДС (МС ↔ маркетплейс) и расхождение габаритов между площадками подсвечиваются на фильтрах **«Не совпадает НДС»** / **«Разные габариты»**, не в «все товары». На остальных фильтрах по отсутствию товара подсвечивается пара `(*_code, *_name)`. Колонки-ссылки `*_cabinet_url` / `*_buyer_url` рендерятся как «Открыть» (новая вкладка). Полное наименование товара МС, тип, статусы и переход в МойСклад / маркетплейсы доступны по клику на «Название МС» — открывается та же карточка, что на `/moysklad.html` (`GET /api/ms/detail/:uuid`). Фильтр маркетплейса, поиск и селекты «Менеджер» / «Контент-менеджер» собраны в один тулбокс над таблицей и срабатывают **только** по кнопке «Применить» (или Enter в поле поиска); пока изменения не применены, рядом с кнопкой видно «не применено». Это общий контракт для всех таблиц Datagon, см. правило `.cursor/rules/datagon-table-filter-apply.mdc`.
 
 Старый URL `/exports-marketplaces-unpublished.html` отвечает 301-редиректом на новый. Старый key специальностей `exports-marketplaces-unpublished` мигрируется в `exports-marketplaces-issues` при старте Node (см. `lib/datagonSpecialties.js#PAGE_KEY_RENAMES`).
+
+### GET `/api/exports/marketplaces/issues/snapshot-log`
+
+Журнал **автоснимков** проблемных товаров (тот же смысл, что фильтр **`scope=any`** + **`exclude_bundle_components=1`** на `GET /issues`): после **каждого успешного** завершения обновления маркетплейсов (`POST /api/exports/marketplaces/sync`, очередь автосинка `marketplaces` в `server.js`) сервер считает строки тем же пайплайном, что `/issues`, и добавляет запись в таблицу **`mp_issues_daily_snapshot`** (создаётся при первом снимке).
+
+Query:
+
+- `days` — глубина по `recorded_at` (UTC на сервере), 1…730, по умолчанию 90.
+- `limit` — максимум строк ответа, 1…500, по умолчанию 200.
+
+Ответ: `{ success: true, days, limit, count, rows[] }`. Элемент `rows[]`: **`stat_date`** — строка **`DD.MM.YYYY`** (день учёта по Москве, без сдвига UTC); **`recorded_at`** — строка **даты и времени по `Europe/Moscow`** с суффиксом `МСК` (не ISO UTC); `trigger_type` (`schedule` | `manual` | `manual_ui` | …); `schedule_slot_time` (для расписания — `HH:mm` из **`auto_sync_marketplaces_time`**); `scope` (всегда `any`); `exclude_bundle_components`; `total_count`; объекты **`by_manager`** и **`by_content_manager`**; `removed_by_bundle_filter`. Старые записи старше ~900 суток удаляются при каждом новом снимке (прунинг в `routes/exportsMarketplaces.js`).
+
+### POST `/api/exports/marketplaces/issues/snapshot-run`
+
+Добавить строку в журнал снимков **без** вызова API маркетплейсов: тот же расчёт, что `GET /issues` при `scope=any` и `exclude_bundle_components=1`, результат пишется в **`mp_issues_daily_snapshot`**.
+
+Body (JSON, опционально): `trigger_type` (по умолчанию `manual_ui`), `schedule_slot_time` (обычно пусто).
+
+Ответ: `{ success: true, trigger_type }`. Ошибка БД — `500` с `code: ISSUES_SNAPSHOT_RUN_FAILED`.
+
+## Exports / Dimensions (Габариты)
+
+Префикс: `/api/exports/dimensions`. Экран: `/exports-dimensions.html` (входит в подменю **Маркетплейсы** сразу после «Яндекс Маркет»).
+
+Назначение: реестр замеров габаритов товаров и комплектов МойСклад с фиксацией **кто** и **когда** замерял. Базовые поля (код, наименование, тип) берутся из `ms_export`. Замеры хранятся в отдельной таблице **`ms_dimensions_measurements`** и подмешиваются к строкам `ms_export` по полю `code`.
+
+Таблица создаётся при первом обращении к роуту:
+
+```sql
+CREATE TABLE IF NOT EXISTS ms_dimensions_measurements (
+    code VARCHAR(255) NOT NULL PRIMARY KEY,
+    measured_by_user_id INT NULL,
+    measured_by_name VARCHAR(255) NULL,
+    measured_at TIMESTAMP NULL,
+    dimensions_json LONGTEXT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_dim_meas_by_user (measured_by_user_id),
+    INDEX idx_dim_meas_at (measured_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+```
+
+Доступ к API проверяется по странице **`exports-dimensions`** (см. `lib/datagonPageRegistry.js`); страница, в свою очередь, наследует «скрытие» от родительской `exports-marketplaces` в матрице `page_modes` (как и Ozon / WB / Я.Маркет / «Проблемы с товарами»).
+
+### GET `/api/exports/dimensions/list`
+
+Список позиций МС с подмешанным замером. **Базовый фильтр всегда включён** и не настраивается через query: показываем **только складские позиции** (`mse.stock_position = 'Да'`), при этом «не перестали сотрудничать» (`COALESCE(mse.no_longer_cooperation, '') <> 'Да'`); **исключение** — если по поставщику прекращено сотрудничество, но `COALESCE(mse.stock, 0) > 0`, позиция **всё равно** включается.
+
+Параметры query (надстраиваются поверх базы):
+
+- `search` — мульти-токен (через пробел = AND) по `mse.code` и `mse.name`.
+- `type` — `all` (по умолчанию) / `товар` / `комплект`.
+- `scope` — `all` (по умолчанию) / `with` (только с замером) / `without` (только без замера).
+- `limit` — 1…500 (по умолчанию 100), `offset` — 0…1_000_000.
+- `sort_by` — `code` | `name` | `type` | `measured_by_name` | `measured_at` (по умолчанию `code`).
+- `sort_dir` — `asc` | `desc`.
+
+Ответ: `{ success: true, rows: [...], total, limit, offset, sort_by, sort_dir }`. Каждая строка содержит `code`, `name`, `type`, `uuid`, `is_archived` (bool), `measured_by_user_id` (`number|null`), `measured_by_name` (string), `measured_at` (ISO-строка или `''`).
+
+### POST `/api/exports/dimensions/measure`
+
+Создать/обновить замер по коду (на UI пока не задействовано; контракт сохранён, схему полей `dimensions` пользователь предоставит позже).
+
+Body (JSON):
+
+- `code` (обяз.) — код МС.
+- `dimensions` (опц., объект) — произвольные поля габаритов, сериализуются в `dimensions_json`. При отсутствии поля старое значение сохраняется (`COALESCE(VALUES(dimensions_json), dimensions_json)`).
+- `measured_by_name` (опц.) — если не указано, берётся `full_name` или `username` текущей сессии (`req.datagonActor`).
+- `measured_at` (опц., ISO-строка) — если не указано, берётся время сервера.
+
+Ответ: `{ success: true, code, measured_by_user_id, measured_by_name, measured_at }`.
+
+### DELETE `/api/exports/dimensions/measure/:code`
+
+Удалить замер по коду (откатывает «Кто замерял» / «Дата замера» в пустое значение).
+
+Ответ: `{ success: true, code }`.
 
 ## Exports / Huckster
 
@@ -780,9 +866,23 @@ Body (JSON): `email`, `password` (обязательны), опциональн�
 
 ### GET `/api/processes/overview`
 
-Сводка для экранов «Дашборд» / «Логи»: глобальный синк, МойСклад, авто-синки, discover, очередь `pages`, матчинг по `my_site_id`, метрики runtime и размер базы данных. Query: `my_site_id` (опционально, для блока матчинга). Размер базы считается через `information_schema.TABLES` и кэшируется на 5 минут.
+Сводка для экранов «Дашборд» / «Логи»: глобальный синк, МойСклад, авто-синки, discover, очередь `pages`, матчинг по `my_site_id`, метрики runtime и размер базы данных.
 
-В ответе поле **`moyskladPersistedLogs`**: массив `{ created_at, line }` — последние шаги синка МойСклада из таблицы **`dg_ms_sync_log`** (переживают рестарт Node; строки пишутся из `routes/moysklad.js` при каждом `addLog`).
+Параметры query:
+
+- `my_site_id` — опционально, фильтр блока матчинга;
+- `for_date` — опционально, **календарный день в МСК** (`YYYY-MM-DD`). По умолчанию — сегодня. Допустимые значения: последние **14 дней** включая сегодня. Значения за пределами окна молча прижимаются к сегодня.
+
+Поле `for_date` влияет на три блока:
+
+- **`moyskladPersistedLogs`** — все строки `dg_ms_sync_log` за выбранный день в МСК (упорядочены по `id ASC`). Реализация: `fetchMsSyncPersistedLogsForDate(db, forDate)` в `routes/moysklad.js`.
+- **`autoSyncRuns`** — записи `auto_sync_runs`, чей `started_at` приходится на выбранный день в МСК. Фронт группирует их по `task_type` (`myproducts`, `moysklad`, `marketplaces`, `huckster`, `db_size`) и показывает по разделам с понятными названиями.
+- **`matches`** — последняя задача `matching_jobs` для `my_site_id`, чей `started_at` приходится на выбранный день в МСК. Если задач за день не было — `matches.message` = «За выбранный день задач сопоставления не было».
+- **`moysklad.logs`** (in-memory `jobState.logs`, до 30 строк текущей сессии) — отдаются только за «сегодня»; для других дней массив пустой, так как память процесса не различает даты.
+
+Дополнительные поля ответа: `forDate` (фактически применённая дата), `forDateOptions` (массив из 14 допустимых дат, новейшая первая), `moscowToday`, `isToday`.
+
+Размер базы считается через `information_schema.TABLES` и кэшируется на 5 минут.
 
 ### GET `/api/processes/db-size`
 

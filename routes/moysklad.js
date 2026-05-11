@@ -384,7 +384,7 @@ function moyskladEntityKind(entity, fallbackKind = '') {
     return t === 'bundle' || fallbackKind === 'bundle' ? 'bundle' : 'product';
 }
 
-async function saveMoyskladEntityDetails(db, entities, source = 'sync') {
+async function saveMoyskladEntityDetails(db, entities, source = 'sync', onProgress = null) {
     const list = Array.isArray(entities) ? entities : [entities];
     const values = [];
     for (const entity of list) {
@@ -406,7 +406,12 @@ async function saveMoyskladEntityDetails(db, entities, source = 'sync') {
     if (!values.length) return 0;
     await ensureMsEntityDetailsTable(db);
     const chunkSize = 100;
-    for (let i = 0; i < values.length; i += chunkSize) {
+    const total = values.length;
+    /** Прогресс-лог каждые ~5% или ~50 батчей (что чаще), чтобы пользователь видел движение и не считал, что синк «завис». */
+    const progressEveryChunks = Math.max(1, Math.floor(total / chunkSize / 20));
+    let processed = 0;
+    let chunkIndex = 0;
+    for (let i = 0; i < total; i += chunkSize) {
         const chunk = values.slice(i, i + chunkSize);
         await db.query(
             `INSERT INTO ms_entity_details (uuid, code, kind, name, payload_json, source)
@@ -420,6 +425,13 @@ async function saveMoyskladEntityDetails(db, entities, source = 'sync') {
                 fetched_at = CURRENT_TIMESTAMP`,
             [chunk]
         );
+        processed += chunk.length;
+        chunkIndex += 1;
+        if (typeof onProgress === 'function' && (chunkIndex % progressEveryChunks === 0 || processed >= total)) {
+            try {
+                onProgress({ processed, total });
+            } catch (_) {}
+        }
     }
     return values.length;
 }
@@ -460,7 +472,13 @@ function formatMsDetailScalar(val) {
     if (typeof val === 'number') return String(val);
     if (typeof val === 'string') return val.trim();
     if (typeof val === 'object') {
-        if (val.name != null) return String(val.name);
+        if (val.name != null && String(val.name).trim()) return String(val.name).trim();
+        // Справочники МС (country, uom, …): expand не всегда даёт name — остаётся только meta
+        const meta = val.meta && typeof val.meta === 'object' ? val.meta : null;
+        if (meta && (meta.href || meta.uuidHref)) {
+            const ref = formatMsMetaRef(val);
+            if (ref) return ref;
+        }
         if (Array.isArray(val)) return val.map(formatMsDetailScalar).filter(Boolean).join(', ');
         if (val.sum != null && val.currency != null) return `${val.sum} ${val.currency}`;
         try {
@@ -555,11 +573,13 @@ function buildMoyskladDetailPayload(attrMetaRows, entity, kind) {
 
     if (entity.countryOfOrigin) {
         const c = entity.countryOfOrigin;
-        pushDetailRow(main, 'Страна происхождения', c.name || c);
+        const nm = String(c?.name || '').trim();
+        pushDetailRow(main, 'Страна происхождения', nm || c);
     }
     if (entity.country) {
         const c = entity.country;
-        pushDetailRow(main, 'Страна', c.name || c);
+        const nm = String(c?.name || '').trim();
+        pushDetailRow(main, 'Страна', nm || c);
     }
     if (entity.uom) {
         const u = entity.uom;
@@ -1211,7 +1231,16 @@ async function syncMsExport(db, config, settings = {}) {
     addLog('Сохранение полных карточек МойСклад...');
     jobState.message = 'Сохранение полных карточек МойСклад...';
     ensureNotCancelled();
-    const detailSaved = await saveMoyskladEntityDetails(db, all, 'sync');
+    let lastDetailLogPct = -1;
+    const detailSaved = await saveMoyskladEntityDetails(db, all, 'sync', ({ processed, total }) => {
+        jobState.message = `Сохранение полных карточек МойСклад: ${processed}/${total}`;
+        const pct = total > 0 ? Math.floor((processed / total) * 100) : 0;
+        /** В журнал — только на круглых % (5/10/.../100), чтобы не засорять 30-строчный буфер. */
+        if (pct >= lastDetailLogPct + 5 || processed >= total) {
+            lastDetailLogPct = pct;
+            addLog(`Сохранение полных карточек МойСклад: ${processed}/${total} (${pct}%)`);
+        }
+    });
 
     jobState.active = false;
     jobState.done = true;
@@ -1797,6 +1826,14 @@ function createMoyskladRouter(db, settings, config) {
                 const supplierName = msExportSupplier || (await resolveMsMetaNameByHref(headers, entity.supplier));
                 if (supplierName) entity.supplier.name = supplierName;
             }
+            if (entity?.country && !String(entity.country?.name || '').trim()) {
+                const countryName = await resolveMsMetaNameByHref(headers, entity.country);
+                if (countryName) entity.country.name = countryName;
+            }
+            if (entity?.countryOfOrigin && !String(entity.countryOfOrigin?.name || '').trim()) {
+                const cooName = await resolveMsMetaNameByHref(headers, entity.countryOfOrigin);
+                if (cooName) entity.countryOfOrigin.name = cooName;
+            }
             const attrMeta = await getMsProductAttributesMeta(headers);
             const { webHref, blocks } = buildMoyskladDetailPayload(attrMeta, entity, kind);
             return res.json({
@@ -1957,6 +1994,40 @@ createMoyskladRouter.fetchMsSyncPersistedLogs = async function fetchMsSyncPersis
         const [rows] = await db.query('SELECT created_at, line FROM dg_ms_sync_log ORDER BY id DESC LIMIT ?', [lim]);
         const list = rows || [];
         return list.slice().reverse();
+    } catch (_) {
+        return [];
+    }
+};
+
+/**
+ * Все строки журнала синка МС за конкретный календарный день в Москве.
+ * Используется страницей /processes.html (фильтр «За день»).
+ */
+createMoyskladRouter.fetchMsSyncPersistedLogsForDate = async function fetchMsSyncPersistedLogsForDate(db, moscowDate) {
+    if (!db) return [];
+    const d = String(moscowDate || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return [];
+    try {
+        await ensureMsSyncLogTable(db);
+        /** Сравниваем по календарной дате МСК независимо от session timezone MySQL. */
+        const [rows] = await db.query(
+            `SELECT created_at, line
+             FROM dg_ms_sync_log
+             WHERE created_at >= DATE_SUB(?, INTERVAL 1 DAY)
+               AND created_at < DATE_ADD(?, INTERVAL 2 DAY)
+             ORDER BY id ASC
+             LIMIT 5000`,
+            [d, d]
+        );
+        const list = Array.isArray(rows) ? rows : [];
+        return list.filter((r) => {
+            try {
+                const moscow = new Date(r.created_at).toLocaleDateString('en-CA', { timeZone: 'Europe/Moscow' });
+                return moscow === d;
+            } catch (_) {
+                return false;
+            }
+        });
     } catch (_) {
         return [];
     }

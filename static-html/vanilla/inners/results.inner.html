@@ -124,27 +124,52 @@
           </div>
 
           <div class="main-card mb-3 card">
-            <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
-              <div class="d-flex align-items-center">
-                <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
-                <span>Таблица результатов</span>
+            <div class="card-header d-flex align-items-center justify-content-between gap-3 flex-wrap" style="row-gap: 0.5rem">
+              <div class="d-flex align-items-center gap-3 flex-grow-1" style="min-width: 0">
+                <div class="d-flex align-items-center flex-shrink-0">
+                  <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
+                  <span>Таблица результатов</span>
+                </div>
+                <input
+                  type="search"
+                  class="form-control form-control-sm dg-res-table-search-mirror"
+                  id="dg-res-table-search-mirror"
+                  placeholder="Умный поиск (Enter — применить)"
+                  autocomplete="off"
+                  style="flex: 0 1 380px; min-width: 220px"
+                  data-dg-tooltip="Зеркало поля «Умный поиск» в карточке фильтров. Enter — применить, Esc — очистить."
+                />
               </div>
-              <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-res-table-toggle">Свернуть</button>
+              <div class="d-flex align-items-center gap-2 flex-shrink-0">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-res-columns-toggle-header" data-dg-tooltip="Открыть панель управления видимостью столбцов">🧩 Столбцы</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-res-widths-toggle-header" data-dg-tooltip="Ручная ширина каждой колонки в пикселях (или drag за правый край заголовка)">📏 Ширины</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-res-table-toggle">Свернуть</button>
+              </div>
             </div>
             <div class="card-body">
               <div id="dg-res-table-collapse-body">
-              <div class="datagon-columns-toolbox mb-2">
-                <div class="columns-top">
+              <div class="datagon-columns-toolbox mb-2 d-none" id="dg-res-toolbox-panels">
+                <!-- Оригинальные кнопки скрыты: управление перенесено в card-header
+                     (proxy → этот элемент), wrap-контейнеры оставлены, чтобы панели
+                     корректно открывались по нажатию `#dg-res-columns-toggle-header` /
+                     `#dg-res-widths-toggle-header`. -->
+                <div class="columns-top" style="display: none">
                   <button type="button" class="btn btn-sm" id="dg-res-columns-toggle">🧩 Столбцы</button>
-                  <div class="columns-title">Включение/выключение видимых столбцов:</div>
+                  <button type="button" class="btn btn-sm" id="dg-res-widths-toggle">📏 Ширины</button>
                 </div>
                 <div class="datagon-columns-panel" id="dg-res-columns-panel">
                   <div class="columns-actions mb-2">
                     <button type="button" class="btn btn-sm" id="dg-res-columns-all">Выделить все</button>
                     <button type="button" class="btn btn-sm" id="dg-res-columns-none">Снять все</button>
-                    <button type="button" class="btn btn-sm" id="dg-res-columns-default">По умолчанию</button>
+                    <button type="button" class="btn btn-sm" id="dg-res-columns-default">Столбцы по умолчанию</button>
                   </div>
                   <div id="dg-res-columns-list" class="columns-grid"></div>
+                </div>
+                <div class="datagon-columns-panel" id="dg-res-widths-panel">
+                  <div class="columns-actions mb-2">
+                    <button type="button" class="btn btn-sm" id="dg-res-widths-default">Ширины по умолчанию</button>
+                  </div>
+                  <div id="dg-res-widths-list" class="dg-ms-widths-grid"></div>
                 </div>
               </div>
               <div class="dg-res-table-scroll-outer" style="width:100%;max-width:100%;overflow-x:auto;overflow-y:visible;-webkit-overflow-scrolling:touch">

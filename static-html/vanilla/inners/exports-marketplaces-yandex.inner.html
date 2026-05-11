@@ -14,6 +14,8 @@
             </div>
           </div>
 
+          <!-- DG_MP_SHOP_FILTERS -->
+
           <div class="main-card mb-3 card">
             <div class="card-header d-flex align-items-center gap-2">
               <i class="header-icon pe-7s-download icon-gradient bg-strong-bliss me-2"></i>
@@ -33,16 +35,29 @@
           </div>
 
           <div class="main-card mb-3 card">
-            <div class="card-header d-flex align-items-center gap-2 flex-wrap">
-              <i class="header-icon pe-7s-graph2 icon-gradient bg-strong-bliss me-2"></i>
-              <span>Таблица Яндекс Маркет</span>
-              <div class="ms-auto d-flex align-items-center gap-2 flex-nowrap dg-mp-search-box">
-                <label class="small text-muted mb-0 flex-shrink-0" for="dg-mp-search">Поиск</label>
-                <input type="search" class="form-control form-control-sm dg-mp-search-input" id="dg-mp-search" placeholder="Артикул или наименование" autocomplete="off" />
-                <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0" id="dg-mp-search-clear" title="Очистить поиск">×</button>
+            <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+              <div class="d-flex align-items-center gap-3 flex-grow-1" style="min-width: 0">
+                <div class="d-flex align-items-center flex-shrink-0">
+                  <i class="header-icon pe-7s-graph2 icon-gradient bg-strong-bliss me-2"></i>
+                  <span>Таблица Яндекс Маркет</span>
+                </div>
+                <div class="dg-mp-search-box" style="flex: 0 1 380px; min-width: 220px">
+                  <div class="input-group input-group-sm">
+                    <span class="input-group-text bg-white text-muted px-2" aria-hidden="true">🔎</span>
+                    <input type="search" class="form-control dg-mp-search-input" id="dg-mp-search"
+                           placeholder="Умный поиск: артикул, наименование (Enter — применить)"
+                           autocomplete="off"
+                           data-dg-tooltip="Зеркало умного поиска из карточки «Фильтры и действия». Артикул и наименование (без регистра, мульти-токен через пробел = AND). Enter — применить, Esc — очистить." />
+                  </div>
+                </div>
+              </div>
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mp-toggle-cols-header" title="Управление видимостью колонок (открывает панель в теле карточки)">🧩 Столбцы</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mp-toggle-widths-header" title="Ручная ширина колонок в пикселях">📏 Ширины</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mp-table-toggle" title="Свернуть/развернуть тело карточки с таблицей">Свернуть</button>
               </div>
             </div>
-            <div class="card-body p-0">
+            <div class="card-body p-0" id="dg-mp-table-body">
               <div class="dg-mp-mkt-scroll">
                 <div class="table-responsive datagon-my-products-table-wrap">
                   <table class="table table-hover table-striped mb-0 datagon-my-products-table dg-mp-mkt-table" id="dg-mp-table-main">

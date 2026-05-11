@@ -233,6 +233,76 @@
         });
       }
 
+      // Снять заданные inline-ширины с конкретной колонки (для сброса по кнопке «Ширины по умолчанию»).
+      function clearProjColumnSizing(index) {
+        var headers = getHeaderCells();
+        var th = headers[index];
+        if (th) {
+          th.style.width = "";
+          th.style.minWidth = "";
+          th.style.maxWidth = "";
+        }
+        document.querySelectorAll("#dg-proj-tbody tr").forEach(function (tr) {
+          if (!tr.cells || !tr.cells[index]) return;
+          var td = tr.cells[index];
+          td.style.width = "";
+          td.style.minWidth = "";
+          td.style.maxWidth = "";
+        });
+      }
+
+      // Панель «📏 Ширины»: список «<лейбл колонки> <input number px>» по индексу колонки
+      // (projects, как my-products, работает с шириной по индексу — см. applyColumnWidthByIndex).
+      // Использует ту же связку (columnWidths + applyColumnWidthByIndex + userColWidthKey),
+      // что drag-резайзер на правом крае <th>, поэтому изменения мгновенно видны и сохраняются.
+      function renderProjWidthControls() {
+        var list = document.getElementById("dg-proj-widths-list");
+        if (!list) return;
+        list.innerHTML = "";
+        var headers = getHeaderCells();
+        headers.forEach(function (th, index) {
+          if (!th) return;
+          if (th.style.display === "none") return;
+          var label = (th.textContent || "").replace(/\s+/g, " ").trim() || ("Колонка " + (index + 1));
+          var current = Number(columnWidths[index] || 0);
+          if (!Number.isFinite(current) || current <= 0) {
+            var rect = th.getBoundingClientRect();
+            current = rect && rect.width ? Math.round(rect.width) : 120;
+          }
+          var wrap = document.createElement("label");
+          var span = document.createElement("span");
+          span.textContent = label;
+          span.style.flex = "1 1 auto";
+          span.style.overflow = "hidden";
+          span.style.textOverflow = "ellipsis";
+          span.style.whiteSpace = "nowrap";
+          var input = document.createElement("input");
+          input.type = "number";
+          input.className = "form-control form-control-sm";
+          input.min = "80";
+          input.max = "900";
+          input.step = "10";
+          input.value = String(current);
+          input.setAttribute("data-col-index", String(index));
+          input.addEventListener("change", function () {
+            var idx = parseInt(this.getAttribute("data-col-index"), 10);
+            var n = parseInt(this.value, 10);
+            if (!Number.isFinite(idx)) return;
+            if (!Number.isFinite(n)) {
+              this.value = String(columnWidths[idx] || 120);
+              return;
+            }
+            n = Math.max(80, Math.min(900, n));
+            applyColumnWidthByIndex(idx, n);
+            try { localStorage.setItem(userColWidthKey(), JSON.stringify(columnWidths || {})); } catch (e) {}
+            this.value = String(n);
+          });
+          wrap.appendChild(span);
+          wrap.appendChild(input);
+          list.appendChild(wrap);
+        });
+      }
+
       function onResizeMove(e) {
         if (!resizeState) return;
         var delta = e.clientX - resizeState.startX;
@@ -757,13 +827,59 @@
         }
         var toggle = document.getElementById("dg-proj-columns-toggle");
         var panel = document.getElementById("dg-proj-columns-panel");
+        var panelsWrap = document.getElementById("dg-proj-toolbox-panels");
         var btnAll = document.getElementById("dg-proj-columns-all");
         var btnNone = document.getElementById("dg-proj-columns-none");
         var btnDef = document.getElementById("dg-proj-columns-default");
+        var widthsToggle = document.getElementById("dg-proj-widths-toggle");
+        var widthsPanel = document.getElementById("dg-proj-widths-panel");
+        var widthsDefault = document.getElementById("dg-proj-widths-default");
+        function syncWrap() {
+          if (!panelsWrap) return;
+          var open = panel.classList.contains("open") || (widthsPanel && widthsPanel.classList.contains("open"));
+          panelsWrap.classList.toggle("d-none", !open);
+        }
         if (toggle && panel) {
-          toggle.addEventListener("click", function () {
+          toggle.addEventListener("click", function (e) {
+            e.preventDefault();
+            e.stopPropagation();
             panel.classList.toggle("open");
+            if (widthsPanel) widthsPanel.classList.remove("open");
+            syncWrap();
             renderColumnsPanel();
+          });
+        }
+        if (widthsToggle && widthsPanel) {
+          widthsToggle.addEventListener("click", function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            widthsPanel.classList.toggle("open");
+            panel.classList.remove("open");
+            if (widthsPanel.classList.contains("open")) renderProjWidthControls();
+            syncWrap();
+          });
+        }
+        document.addEventListener("click", function (e) {
+          if (!panel) return;
+          if (e.target.closest("#dg-proj-columns-panel")) return;
+          if (e.target.closest("#dg-proj-columns-toggle")) return;
+          if (e.target.closest("#dg-proj-widths-panel")) return;
+          if (e.target.closest("#dg-proj-widths-toggle")) return;
+          panel.classList.remove("open");
+          if (widthsPanel) widthsPanel.classList.remove("open");
+          syncWrap();
+        });
+
+        if (widthsDefault) {
+          widthsDefault.addEventListener("click", function () {
+            try {
+              Object.keys(columnWidths || {}).forEach(function (k) {
+                clearProjColumnSizing(Number(k));
+              });
+            } catch (e) {}
+            columnWidths = {};
+            try { localStorage.removeItem(userColWidthKey()); } catch (e) {}
+            renderProjWidthControls();
           });
         }
         if (btnAll) {
@@ -806,5 +922,72 @@
       initColumnResizeHandles();
       syncSortUrl();
       loadProjects();
+
+      // «Свернуть/Развернуть» для card-body карточки «Список проектов» — по эталону moysklad.
+      (function tableCardCollapse() {
+        var btn = document.getElementById("dg-proj-table-toggle");
+        var body = document.getElementById("dg-proj-table-body");
+        if (!btn || !body) return;
+        var STORAGE_KEY = "dg.projects.table-card.collapsed.v1";
+        function apply() {
+          var c = false;
+          try { c = localStorage.getItem(STORAGE_KEY) === "1"; } catch (e) {}
+          if (c) {
+            body.style.display = "none";
+            btn.textContent = "Развернуть";
+          } else {
+            body.style.display = "";
+            btn.textContent = "Свернуть";
+          }
+        }
+        apply();
+        btn.addEventListener("click", function () {
+          var hidden = body.style.display === "none";
+          body.style.display = hidden ? "" : "none";
+          btn.textContent = hidden ? "Свернуть" : "Развернуть";
+          try { localStorage.setItem(STORAGE_KEY, hidden ? "0" : "1"); } catch (e) {}
+        });
+      })();
+
+      // Зеркало умного поиска в card-header «Список проектов» — синхрон с #dg-proj-smart.
+      (function bindHeaderSearchMirror() {
+        var primary = document.getElementById("dg-proj-smart");
+        var mirror = document.getElementById("dg-proj-table-search-mirror");
+        if (!primary || !mirror) return;
+        var syncing = false;
+        function copy(from, to) {
+          if (syncing) return;
+          if (to.value === from.value) return;
+          syncing = true;
+          to.value = from.value;
+          to.dispatchEvent(new Event("input", { bubbles: true }));
+          syncing = false;
+        }
+        function apply() {
+          var btn = document.getElementById("dg-proj-apply");
+          if (btn) btn.click();
+        }
+        primary.addEventListener("input", function () { copy(primary, mirror); });
+        mirror.addEventListener("input", function () { copy(mirror, primary); });
+        function bindKeys(el) {
+          el.addEventListener("keydown", function (e) {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              apply();
+            } else if (e.key === "Escape") {
+              if (!el.value) return;
+              el.value = "";
+              copy(el, el === primary ? mirror : primary);
+              apply();
+            }
+          });
+          el.addEventListener("search", function () {
+            copy(el, el === primary ? mirror : primary);
+            apply();
+          });
+        }
+        bindKeys(mirror);
+        copy(primary, mirror);
+      })();
     })();
   </script>

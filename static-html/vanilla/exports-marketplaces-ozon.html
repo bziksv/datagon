@@ -66,6 +66,96 @@
       gap: 8px;
       flex-wrap: wrap;
     }
+    /* Полоса с дублирующими кнопками 🧩/📏 поверх таблицы скрыта на shop-страницах
+       (Ozon / Wildberries / Я.Маркет): единственный источник управления — кнопки
+       в card-header «Таблица <Shop>», которые проксируют клик на исходные
+       #dg-mp-toggle-cols / #dg-mp-toggle-widths (см. bindHeaderToolboxProxies в
+       exports-marketplaces-shop.scripts.html). Сами кнопки в DOM остаются, чтобы
+       программный .click() работал. ВНИМАНИЕ: на /exports-marketplaces-issues.html
+       полоса .dg-mp-toolbox-top тоже используется, но как контейнер для панелей
+       #dg-mpu-cols-panel / #dg-mpu-widths-panel, поэтому её скрывать НЕЛЬЗЯ. */
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-ozon"] .dg-mp-toolbox-top,
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-wildberries"] .dg-mp-toolbox-top,
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-yandex"] .dg-mp-toolbox-top {
+      display: none !important;
+    }
+    /* Без верхней полосы у toolbox-обёртки лишний внутренний padding не нужен —
+       когда ни одна панель не открыта, обёртка визуально не должна занимать
+       место поверх таблицы. */
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-ozon"] .dg-mp-toolbox:not(:has(.dg-mp-toolbox-panel.open)),
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-wildberries"] .dg-mp-toolbox:not(:has(.dg-mp-toolbox-panel.open)),
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-yandex"] .dg-mp-toolbox:not(:has(.dg-mp-toolbox-panel.open)) {
+      padding: 0;
+      margin: 0;
+      border: 0;
+      background: transparent;
+    }
+    /* /exports-marketplaces-issues.html: когда обе панели (.dg-mp-toolbox-panel) закрыты,
+       в toolbox только скрытые кнопки — убираем рамку/фон/внутренние отступы и верхний
+       margin utility (mt-3), чтобы не было пустой полосы над таблицей. При открытии любой
+       панели видим тот же bordered-блок, что и у shop-маркетплейсов. */
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] #dg-mpu-toolbox.dg-mp-toolbox:not(:has(.dg-mp-toolbox-panel.open)) {
+      padding: 0 !important;
+      margin-top: 0 !important;
+      margin-bottom: 0 !important;
+      border: 0 !important;
+      background: transparent !important;
+      box-shadow: none !important;
+    }
+    /* /exports-marketplaces-issues.html: wide-таблица как /my-products.html — flex min-width:0
+       до app-main__outer + внешний .dg-mp-table-scroll-outer (overflow-x:auto), внутри visible.
+       Не shop-схема (.dg-mp-mkt-scroll + sticky к viewport). Контракт: datagon-table-behavior-lock.mdc
+       (раздел «Проблемы с товарами»); JS плавающего thead — exports-marketplaces-issues.scripts.html. */
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .app-main__outer {
+      min-width: 0;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .app-main__inner {
+      min-width: 0;
+      max-width: 100%;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .app-main__inner .main-card.card {
+      min-width: 0;
+      max-width: 100%;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-table-scroll-outer {
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+      box-sizing: border-box;
+      overflow-x: auto;
+      overflow-y: visible;
+      -webkit-overflow-scrolling: touch;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"]
+      .dg-mp-table-scroll-outer
+      > .datagon-my-products-table-wrap.table-responsive {
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+      box-sizing: border-box;
+      overflow: visible !important;
+      max-height: none !important;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"]
+      .dg-mp-table-scroll-outer
+      > .datagon-my-products-table-wrap.table-responsive,
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"]
+      .dg-mp-table-scroll-outer
+      > .datagon-my-products-table-wrap.table-responsive
+      > table {
+      transform: none !important;
+      filter: none !important;
+      perspective: none !important;
+    }
+    /* Явно фиксируем группы строк таблицы (страховка после динамического colgroup). */
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] #dg-mp-table-main > thead {
+      display: table-header-group;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] #dg-mp-table-main > tbody {
+      display: table-row-group;
+    }
     /* Группа расширенных фильтров (исключить плакаты + менеджеры). */
     body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-filter-group {
       display: inline-flex;
@@ -211,11 +301,10 @@
       border-spacing: 0;
       table-layout: fixed;
     }
-    /* Плавающий заголовок таблицы — через native CSS sticky на <th> (как в moysklad,
-       где это основной механизм; см. moysklad.scripts.html, строка ~1060). Глобальная
-       CSS-переменная --dg-table-sticky-top равна высоте app-header и обновляется в
-       datagon-vanilla.js#initGlobalTableBaseline на resize / mutation. Это стабильнее
-       JS translate3d и не «съезжает» при позднем layout (шрифты, картинки). */
+    /* Плавающий заголовок: на Ozon/WB/Я.М. — native sticky на <th> (top: var(--dg-table-sticky-top)),
+       без внешнего overflow-x на цепочке к viewport. На /exports-marketplaces-issues.html — как
+       /my-products.html: внешний .dg-mp-table-scroll-outer + sticky th с top:0 + transform на
+       <thead> в exports-marketplaces-issues.scripts.html. #dg-mp-table-main вне markBaselineTables. */
     body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-mkt-table thead th {
       position: sticky;
       top: var(--dg-table-sticky-top, 60px);
@@ -253,10 +342,13 @@
         flex: 1 1 auto;
       }
     }
-    /* Сортируемые заголовки: курсор и стрелка-индикатор. */
+    /* Сортируемые заголовки: курсор и стрелка-индикатор.
+       user-select: text — чтобы можно было выделить и скопировать подпись колонки;
+       сортировка по клику отключится, если при клике есть текстовое выделение (см. scripts). */
     body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-mkt-table thead th.dg-mp-sortable {
       cursor: pointer;
-      user-select: none;
+      user-select: text;
+      -webkit-user-select: text;
     }
     body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-mkt-table thead th.dg-mp-sortable:hover {
       background: #eef1f5;
@@ -274,26 +366,70 @@
       box-shadow: inset 0 0 0 1px #f5b0b0;
       color: #b42318;
     }
-    /* «Проблемы с товарами»: на этой странице 10–11 широких колонок (МС + 3 маркетплейса × code/name),
-       и даже при дефолтных ширинах ~140–220px таблица заметно шире карточки на типовых ноутбуках.
-       Поэтому здесь сознательно ОТКАЗЫВАЕМСЯ от sticky-baseline маркетплейсов (overflow:visible на
-       обёртках) и возвращаем горизонтальный скролл внутри карточки: .dg-mp-mkt-scroll и
-       .table-responsive получают overflow-x:auto, таблица не «вылазит» за пределы карточки/экрана.
-       Sticky-th в этом случае прилипает к ближайшему scrolling-контейнеру (.table-responsive) —
-       top:0 даёт «липкую» строку при горизонтальном скролле, под app-header при вертикальном
-       скролле страницы заголовок не плывёт (это известный trade-off CSS-спеки overflow). Если
-       нужно меньше колонок и плавающую под app-header шапку — пользуйтесь «🧩 Столбцы» и скрывайте
-       колонки; меньшая таблица помещается в карточку, и тогда обёртку можно вернуть на overflow:visible. */
-    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-scroll,
-    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-scroll > .table-responsive {
-      overflow-x: auto !important;
-      overflow-y: visible !important;
-      max-height: none !important;
-      max-width: 100%;
+    /* НДС маркетплейса не совпадает с НДС МС (та же визуальная схема, что у dg-mpu-missing). */
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table tbody td.dg-mpu-vat-mismatch {
+      background: #fdecec;
+      box-shadow: inset 0 0 0 1px #f5b0b0;
+      color: #b42318;
     }
+    /* Разные габариты/вес между маркетплейсами (отдельно от НДС и «нет кода»). */
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table tbody td.dg-mpu-dims-mismatch {
+      background: #fff8e6;
+      box-shadow: inset 0 0 0 1px #e8d48b;
+      color: #7a5e00;
+    }
+    /* «Проблемы с товарами»: единая sticky-схема маркетплейсов
+       (overflow:visible на обёртках, sticky-<th> прилипает под app-header через
+       top: var(--dg-table-sticky-top)). По умолчанию включены ВСЕ колонки
+       (DEFAULT_HIDDEN_COLS = {} в exports-marketplaces-issues.scripts.html,
+       версия ключа localStorage v5). Кнопка «Столбцы по умолчанию» возвращает
+       состояние «все включены». Таблица при этом ШИРОКАЯ и выкатывается за
+       пределы карточки (страница получает горизонтальный скролл) — это
+       сознательный выбор: пользователь хотел видеть полный паспорт МС и трёх
+       маркетплейсов сразу. Если нужна компактная таблица, лишние колонки
+       выключаются через «🧩 Столбцы». */
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table thead th[data-col-key="ms_stock"],
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table tbody td[data-col-key="ms_stock"],
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table thead th[data-col-key$="_stock"],
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table tbody td[data-col-key$="_stock"],
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table thead th[data-col-key$="_length"],
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table tbody td[data-col-key$="_length"],
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table thead th[data-col-key$="_width"],
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table tbody td[data-col-key$="_width"],
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table thead th[data-col-key$="_height"],
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table tbody td[data-col-key$="_height"],
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table thead th[data-col-key$="_weight"],
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table tbody td[data-col-key$="_weight"],
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table thead th[data-col-key="ms_vat"],
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table tbody td[data-col-key="ms_vat"],
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table thead th[data-col-key$="_vat"],
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table tbody td[data-col-key$="_vat"] {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table thead th[data-col-key$="_cabinet_url"],
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table tbody td[data-col-key$="_cabinet_url"],
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table thead th[data-col-key$="_buyer_url"],
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table tbody td[data-col-key$="_buyer_url"] {
+      text-align: center;
+    }
+    /* «Проблемы»: компактнее эталона shop, но без nowrap (ломало визуальный порядок th/td
+       в части браузеров). Ограничение высоты — max-height + перенос, полный текст в title. */
     body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table thead th {
-      top: 0;
+      position: sticky !important;
+      top: 0 !important;
+      padding: 0.26rem 0.48rem 0.26rem 0.36rem;
       padding-right: 14px;
+      line-height: 1.18;
+      font-size: 0.74rem;
+      font-weight: 600;
+      white-space: normal;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+      max-height: 2.65em;
+      overflow: hidden;
+      vertical-align: middle;
+      z-index: 32;
     }
     body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mpu-resizer {
       position: absolute;
@@ -310,61 +446,26 @@
     body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mpu-resizer.dg-mpu-resizing {
       background: rgba(13, 110, 253, 0.35);
     }
-    /* Toolbox (управление видимостью + сброс ширин) на странице «Проблемы с товарами». */
-    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mpu-toolbox {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      flex-wrap: wrap;
-    }
-    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mpu-cols-panel {
-      position: absolute;
-      top: 100%;
-      left: 0;
-      right: auto;
-      margin-top: 4px;
-      min-width: 260px;
-      max-width: 320px;
-      background: #fff;
-      border: 1px solid #e6e9ee;
-      border-radius: 8px;
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
-      padding: 10px 12px;
-      z-index: 30;
-      display: none;
-    }
-    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mpu-cols-panel.open {
-      display: block;
-    }
-    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mpu-cols-grid {
+    /* Toolbox на странице «Проблемы»: та же схема, что у shop (Ozon/WB/Я.М.) —
+       `#dg-mpu-toolbox` колонкой, `.dg-mp-toolbox-panel` на всю ширину под скрытыми
+       кнопками (класс `.open` переключает display — см. общие правила `.dg-mp-toolbox-panel`). */
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] #dg-mpu-toolbox.dg-mp-toolbox {
       display: flex;
       flex-direction: column;
-      gap: 6px;
-      margin-top: 6px;
-      max-height: 320px;
-      overflow-y: auto;
+      align-items: stretch;
+      gap: 0;
     }
-    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] #dg-mpu-widths-panel .dg-mp-widths-grid {
-      grid-template-columns: 1fr;
-      max-height: 320px;
-      overflow-y: auto;
-      margin-top: 6px;
-    }
-    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] #dg-mpu-widths-panel .dg-mp-width-control {
-      justify-content: space-between;
-      width: 100%;
-    }
-    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mpu-cols-grid label {
-      display: inline-flex;
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] #dg-mpu-toolbox .dg-mp-toolbox-top {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
       align-items: center;
-      gap: 6px;
-      font-size: 12px;
-      color: #374151;
-      user-select: none;
-      margin: 0;
+      min-height: 0;
     }
-    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mpu-toolbox-wrap {
-      position: relative;
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] #dg-mpu-cols-panel .dg-mp-cols-grid,
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] #dg-mpu-widths-panel .dg-mp-widths-grid {
+      max-height: min(50vh, 360px);
+      overflow-y: auto;
     }
     body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-mkt-table tbody td {
       border-right: 1px solid #f3f5f8;
@@ -373,6 +474,10 @@
       overflow-wrap: anywhere;
       padding: 0.45rem 0.65rem;
       word-break: break-word;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table tbody td {
+      padding: 0.32rem 0.55rem;
+      vertical-align: top;
     }
     /* Default-ширины колонок задаются JS (state.colWidths), здесь только разрешаем перенос строк
        и убираем жёсткие max-width (иначе пользовательская ширина не применится). */
@@ -389,6 +494,44 @@
       body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-mkt-table tbody td {
         white-space: normal;
       }
+    }
+    /* Карточка МС по клику на наименование (как на /moysklad.html) */
+    .dg-ms-detail-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 2000;
+      background: rgba(15, 23, 42, 0.45);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0.75rem;
+      box-sizing: border-box;
+    }
+    .dg-ms-detail-panel {
+      width: 100%;
+      max-width: 920px;
+      max-height: 92vh;
+      overflow: hidden;
+    }
+    .dg-ms-detail-kv {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8rem;
+    }
+    .dg-ms-detail-kv th,
+    .dg-ms-detail-kv td {
+      border: 1px solid #e6e9ee;
+      padding: 0.35rem 0.5rem;
+      vertical-align: top;
+    }
+    .dg-ms-detail-kv th {
+      width: 32%;
+      background: #f8fafc;
+      font-weight: 600;
+      color: #334155;
+    }
+    .dg-ms-detail-kv td a {
+      word-break: break-all;
     }
   </style>
 
@@ -860,6 +1003,16 @@
                           <li class="metismenu-item">
                             <a
                               class="metismenu-link"
+                              data-nav="exports-dimensions"
+                              href="/exports-dimensions.html"
+                              title="Реестр замеров габаритов товаров МойСклад"
+                            >
+                              <i class="metismenu-icon pe-7s-scissors"></i>Габариты
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
                               data-nav="exports-marketplaces-issues"
                               href="/exports-marketplaces-issues.html"
                               title="Товары МойСклад с проблемами публикации на маркетплейсах"
@@ -871,7 +1024,6 @@
                       </li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="exports-huckster" href="/exports-huckster.html" title="Интеграция Huckster / e-teleport — матрица UID по магазинам"><i class="metismenu-icon pe-7s-cart"></i>Huckster</a></li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="exports-summary" href="/exports-summary.html" title="Сводка по менеджерам, подсветки НДС/габаритов, уведомления в чат"><i class="metismenu-icon pe-7s-note"></i>Сводка и синхронизация</a></li>
-                      <li class="metismenu-item"><a class="metismenu-link" data-nav="exports-dimensions" href="/exports-dimensions.html" title="Лист «Габариты»: проверки, сортировка, слияние в новые позиции"><i class="metismenu-icon pe-7s-scissors"></i>Габариты</a></li>
                     </ul>
                   </div>
                 </div>
@@ -900,6 +1052,89 @@
             </div>
           </div>
 
+                    <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+              <div class="d-flex align-items-center">
+                <i class="header-icon pe-7s-filter icon-gradient bg-happy-fisher me-2"></i>
+                <span>Фильтры и действия</span>
+              </div>
+              <div class="d-flex align-items-center gap-2">
+                <div class="dropdown">
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-secondary dg-vanilla-dropdown-toggle"
+                    style="line-height: 1; padding: 0.35rem 0.5rem"
+                    aria-expanded="false"
+                    aria-haspopup="true"
+                    id="dg-mp-shop-filter-blocks-btn"
+                    data-dg-tooltip="Какие поля фильтров показывать (сохраняется в браузере для текущего пользователя)"
+                  >
+                    <i class="pe-7s-config btn-icon-wrapper" style="font-size: 1.1rem" aria-hidden="true"></i>
+                  </button>
+                  <div
+                    class="dropdown-menu dropdown-menu-end rm-pointers p-0 dg-mp-shop-filter-blocks-dropdown"
+                    id="dg-mp-shop-filter-blocks-menu"
+                    style="width: min(420px, calc(100vw - 1.5rem))"
+                  >
+                    <div class="dropdown-menu-header mb-0">
+                      <div class="dropdown-menu-header-inner bg-happy-fisher">
+                        <div
+                          class="menu-header-image opacity-5"
+                          style="background-image: url('/assets/utils/images/dropdown-header/abstract2.jpg')"
+                        ></div>
+                        <div class="menu-header-content text-white px-3 py-2">
+                          <h5 class="menu-header-title mb-0">Поля фильтров</h5>
+                          <h6 class="menu-header-subtitle mb-0 opacity-8 fw-normal small">Скрыть/показать выбранные блоки</h6>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="dg-mp-shop-filter-blocks-scroll" style="max-height: calc(100vh - 10rem); overflow-y: auto; overflow-x: hidden">
+                      <div id="dg-mp-shop-filter-blocks-toggles" class="list-group list-group-flush"></div>
+                    </div>
+                  </div>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mp-shop-filters-toggle" data-dg-tooltip="Свернуть/развернуть тело карточки фильтров">Свернуть</button>
+              </div>
+            </div>
+            <div class="card-body" id="dg-mp-shop-filters-body">
+              <div class="row g-2 align-items-end">
+                <div class="col-md-6" data-dg-mp-shop-filter-field="smart">
+                  <label class="form-label" for="dg-mp-shop-smart">Умный поиск</label>
+                  <input type="text" class="form-control" id="dg-mp-shop-smart"
+                         placeholder="Артикул или наименование (Enter — применить)"
+                         autocomplete="off"
+                         data-dg-tooltip='Поиск по артикулу и наименованию (без регистра, мульти-токен через пробел = AND). Это primary-поле; зеркало — в шапке карточки таблицы. Enter — применить, Esc — очистить.' />
+                </div>
+                <div class="col-md-2" data-dg-mp-shop-filter-field="manager">
+                  <div id="dg-mp-shop-filter-block-manager">
+                    <label class="form-label" for="dg-mp-flt-manager">Менеджер</label>
+                    <select id="dg-mp-flt-manager" class="form-select form-select-sm"
+                            data-dg-tooltip="Точное совпадение менеджера. Пусто — все менеджеры."></select>
+                  </div>
+                </div>
+                <div class="col-md-2" data-dg-mp-shop-filter-field="content_manager">
+                  <div id="dg-mp-shop-filter-block-cmgr">
+                    <label class="form-label" for="dg-mp-flt-content_manager">Контент-менеджер</label>
+                    <select id="dg-mp-flt-content_manager" class="form-select form-select-sm"
+                            data-dg-tooltip="Точное совпадение контент-менеджера. Пусто — все."></select>
+                  </div>
+                </div>
+                <div class="col-md-2" data-dg-mp-shop-filter-field="exclude_posters">
+                  <div class="form-check mt-4">
+                    <input class="form-check-input" type="checkbox" id="dg-mp-flt-exclude-posters" />
+                    <label class="form-check-label" for="dg-mp-flt-exclude-posters"
+                           data-dg-tooltip="Скрыть строки, где в наименовании встречается слово «плакат».">Исключить плакаты</label>
+                  </div>
+                </div>
+              </div>
+              <div class="mt-3 d-flex flex-wrap gap-2" data-dg-mp-shop-filter-field="filter_actions">
+                <button type="button" class="btn btn-sm btn-primary" id="dg-mp-shop-apply" data-dg-tooltip="Применить умный поиск (или нажмите Enter в поле поиска)"><i class="pe-7s-search me-1"></i>Применить</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mp-shop-reset" data-dg-tooltip="Сбросить умный поиск и расширенные фильтры (Менеджер / Контент-менеджер / Исключить плакаты)"><i class="pe-7s-refresh me-1"></i>По умолчанию</button>
+              </div>
+            </div>
+          </div>
+
+
           <div class="main-card mb-3 card">
             <div class="card-header d-flex align-items-center gap-2">
               <i class="header-icon pe-7s-download icon-gradient bg-happy-fisher me-2"></i>
@@ -925,16 +1160,29 @@
           </div>
 
           <div class="main-card mb-3 card">
-            <div class="card-header d-flex align-items-center gap-2 flex-wrap">
-              <i class="header-icon pe-7s-graph2 icon-gradient bg-happy-fisher me-2"></i>
-              <span>Таблица Ozon</span>
-              <div class="ms-auto d-flex align-items-center gap-2 flex-nowrap dg-mp-search-box">
-                <label class="small text-muted mb-0 flex-shrink-0" for="dg-mp-search">Поиск</label>
-                <input type="search" class="form-control form-control-sm dg-mp-search-input" id="dg-mp-search" placeholder="Артикул или наименование" autocomplete="off" />
-                <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0" id="dg-mp-search-clear" title="Очистить поиск">×</button>
+            <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+              <div class="d-flex align-items-center gap-3 flex-grow-1" style="min-width: 0">
+                <div class="d-flex align-items-center flex-shrink-0">
+                  <i class="header-icon pe-7s-graph2 icon-gradient bg-happy-fisher me-2"></i>
+                  <span>Таблица Ozon</span>
+                </div>
+                <div class="dg-mp-search-box" style="flex: 0 1 380px; min-width: 220px">
+                  <div class="input-group input-group-sm">
+                    <span class="input-group-text bg-white text-muted px-2" aria-hidden="true">🔎</span>
+                    <input type="search" class="form-control dg-mp-search-input" id="dg-mp-search"
+                           placeholder="Умный поиск: артикул, наименование (Enter — применить)"
+                           autocomplete="off"
+                           data-dg-tooltip="Зеркало умного поиска из карточки «Фильтры и действия». Артикул и наименование (без регистра, мульти-токен через пробел = AND). Enter — применить, Esc — очистить." />
+                  </div>
+                </div>
+              </div>
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mp-toggle-cols-header" title="Управление видимостью колонок (открывает панель в теле карточки)">🧩 Столбцы</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mp-toggle-widths-header" title="Ручная ширина колонок в пикселях">📏 Ширины</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mp-table-toggle" title="Свернуть/развернуть тело карточки с таблицей">Свернуть</button>
               </div>
             </div>
-            <div class="card-body p-0">
+            <div class="card-body p-0" id="dg-mp-table-body">
               <div class="dg-mp-mkt-scroll">
                 <div class="table-responsive datagon-my-products-table-wrap">
                   <table class="table table-hover table-striped mb-0 datagon-my-products-table dg-mp-mkt-table" id="dg-mp-table-main">
@@ -1571,7 +1819,8 @@
         var ths = thead.querySelectorAll("th[data-col-key]");
         ths.forEach(function (th) {
           th.addEventListener("click", function (e) {
-            // Игнорируем клик внутри ручки ресайза, если она перекроет.
+            var sel = (window.getSelection && window.getSelection().toString() || "").trim();
+            if (sel.length) return;
             var k = th.getAttribute("data-col-key");
             if (k) setSort(k);
           });
@@ -1664,32 +1913,26 @@
         var toolbox = document.createElement("div");
         toolbox.id = "dg-mp-toolbox";
         toolbox.className = "dg-mp-toolbox mx-3 mt-3";
+        // Расширенные фильтры (Исключить плакаты / Менеджер / Контент-менеджер) переехали
+        // в карточку «Фильтры и действия» (общий fragment exports-marketplaces-shop-filters.fragment.html)
+        // — соответствие эталону /moysklad.html, см. .cursor/rules/datagon-list-page-baseline-moysklad.mdc.
+        // В toolbox таблицы остаются только кнопки 🧩 Столбцы / 📏 Ширины.
         toolbox.innerHTML =
           '<div class="dg-mp-toolbox-top">' +
           '<button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mp-toggle-cols">🧩 Столбцы</button>' +
           '<button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mp-toggle-widths">📏 Ширины</button>' +
-          '<div class="dg-mp-filter-group">' +
-            '<label class="dg-mp-filter-check"><input type="checkbox" id="dg-mp-flt-exclude-posters"> <span>Исключить плакаты</span></label>' +
-            '<label class="dg-mp-filter-sel"><span class="dg-mp-filter-lbl">Менеджер</span>' +
-              '<select id="dg-mp-flt-manager" class="form-select form-select-sm"></select>' +
-            '</label>' +
-            '<label class="dg-mp-filter-sel"><span class="dg-mp-filter-lbl">Контент-менеджер</span>' +
-              '<select id="dg-mp-flt-content_manager" class="form-select form-select-sm"></select>' +
-            '</label>' +
-            '<button type="button" class="btn btn-sm btn-link p-0 dg-mp-filter-reset" id="dg-mp-flt-reset" title="Сбросить расширенные фильтры">сбросить</button>' +
-          '</div>' +
           '</div>' +
           '<div class="dg-mp-toolbox-panel" id="dg-mp-cols-panel">' +
           '<div class="dg-mp-toolbox-actions">' +
           '<button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mp-cols-all">Выделить все</button>' +
           '<button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mp-cols-none">Снять все</button>' +
-          '<button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mp-cols-default">По умолчанию</button>' +
+          '<button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mp-cols-default" title="Восстановить состав видимых столбцов по умолчанию">Столбцы по умолчанию</button>' +
           '</div>' +
           '<div class="dg-mp-cols-grid" id="dg-mp-cols-grid"></div>' +
           '</div>' +
           '<div class="dg-mp-toolbox-panel" id="dg-mp-widths-panel">' +
           '<div class="dg-mp-toolbox-actions">' +
-          '<button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mp-widths-default">По умолчанию</button>' +
+          '<button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mp-widths-default" title="Сбросить ширины колонок к значениям по умолчанию">Ширины по умолчанию</button>' +
           '</div>' +
           '<div class="dg-mp-widths-grid" id="dg-mp-widths-grid"></div>' +
           '</div>';
@@ -1846,11 +2089,12 @@
         var hasContentMgr = state.headers.indexOf("content_manager") >= 0;
         var selMgr2 = document.getElementById("dg-mp-flt-manager");
         var selCm2 = document.getElementById("dg-mp-flt-content_manager");
-        var labelMgr = selMgr2 && selMgr2.parentElement;
-        var labelCm = selCm2 && selCm2.parentElement;
-        if (selMgr2 && labelMgr) {
+        // Новые wrapper'ы лежат в card-body карточки «Фильтры и действия» (см. fragment).
+        var blockMgr = document.getElementById("dg-mp-shop-filter-block-manager");
+        var blockCm = document.getElementById("dg-mp-shop-filter-block-cmgr");
+        if (selMgr2) {
           if (hasManager) {
-            labelMgr.style.display = "";
+            if (blockMgr) blockMgr.style.display = "";
             fillSelect(selMgr2, uniqueValuesFor("manager"), state.filters.manager, "Все менеджеры");
             if (selMgr2.value !== state.filters.manager) {
               // выбранное значение исчезло из набора (например, после refresh) — сбрасываем
@@ -1858,20 +2102,20 @@
               writeStr(FILTER_MANAGER_KEY, "");
             }
           } else {
-            labelMgr.style.display = "none";
+            if (blockMgr) blockMgr.style.display = "none";
             state.filters.manager = "";
           }
         }
-        if (selCm2 && labelCm) {
+        if (selCm2) {
           if (hasContentMgr) {
-            labelCm.style.display = "";
+            if (blockCm) blockCm.style.display = "";
             fillSelect(selCm2, uniqueValuesFor("content_manager"), state.filters.content_manager, "Все контент-менеджеры");
             if (selCm2.value !== state.filters.content_manager) {
               state.filters.content_manager = "";
               writeStr(FILTER_CONTENT_MGR_KEY, "");
             }
           } else {
-            labelCm.style.display = "none";
+            if (blockCm) blockCm.style.display = "none";
             state.filters.content_manager = "";
           }
         }
@@ -2176,8 +2420,8 @@
       }
 
       function bindControls() {
-        var refreshBtn = document.getElementById("dg-mp-refresh-market");
-        var snapshotBtn = document.getElementById("dg-mp-load-snapshot");
+      var refreshBtn = document.getElementById("dg-mp-refresh-market");
+      var snapshotBtn = document.getElementById("dg-mp-load-snapshot");
         var limitSel = document.getElementById("dg-mp-page-limit");
         var prevBtn = document.getElementById("dg-mp-page-prev");
         var nextBtn = document.getElementById("dg-mp-page-next");
@@ -2265,6 +2509,189 @@
       bindStickyTopVar();
       loadWbTokenBanner();
       loadSavedSnapshot();
+
+      (function bindTableCardCollapse() {
+        var btn = document.getElementById('dg-mp-table-toggle');
+        var body = document.getElementById('dg-mp-table-body');
+        if (!btn || !body) return;
+        var STORAGE_KEY = 'dg.mp-shop.table-card.collapsed.v1';
+        function apply() {
+          var c = false;
+          try { c = localStorage.getItem(STORAGE_KEY) === '1'; } catch (e) {}
+          if (c) {
+            body.style.display = 'none';
+            btn.textContent = 'Развернуть';
+          } else {
+            body.style.display = '';
+            btn.textContent = 'Свернуть';
+          }
+        }
+        apply();
+        btn.addEventListener('click', function () {
+          var hidden = body.style.display === 'none';
+          body.style.display = hidden ? '' : 'none';
+          btn.textContent = hidden ? 'Свернуть' : 'Развернуть';
+          try { localStorage.setItem(STORAGE_KEY, hidden ? '0' : '1'); } catch (e) {}
+          if (typeof syncStickyTopVar === 'function') syncStickyTopVar();
+        });
+      })();
+
+      // Прокси-кнопки в card-header «Таблица <Shop>»: клик прокидывается на исходные
+      // кнопки toolbox внутри card-body. Toolbox создаётся в ensureToolboxContainer
+      // лениво, поэтому ищем оригинал в момент клика, а не на init.
+      (function bindHeaderToolboxProxies() {
+        function proxy(headerId, originalId) {
+          var btn = document.getElementById(headerId);
+          if (!btn) return;
+          btn.addEventListener('click', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            var orig = document.getElementById(originalId);
+            if (orig) orig.click();
+          });
+        }
+        proxy('dg-mp-toggle-cols-header', 'dg-mp-toggle-cols');
+        proxy('dg-mp-toggle-widths-header', 'dg-mp-toggle-widths');
+      })();
+
+      // Карточка «Фильтры и действия» (общий fragment exports-marketplaces-shop-filters):
+      // collapse, шестерёнка с auto-discovery, primary-поле умного поиска (#dg-mp-shop-smart),
+      // двусторонний sync с #dg-mp-search в шапке таблицы (исходный обработчик search оставлен).
+      (function bindFiltersCardCollapse() {
+        var btn = document.getElementById('dg-mp-shop-filters-toggle');
+        var body = document.getElementById('dg-mp-shop-filters-body');
+        if (!btn || !body) return;
+        var STORAGE_KEY = 'dg.mp-shop.filters-card.collapsed.' + shop;
+        function apply() {
+          var c = false;
+          try { c = localStorage.getItem(STORAGE_KEY) === '1'; } catch (e) {}
+          if (c) {
+            body.style.display = 'none';
+            btn.textContent = 'Развернуть';
+          } else {
+            body.style.display = '';
+            btn.textContent = 'Свернуть';
+          }
+        }
+        apply();
+        btn.addEventListener('click', function () {
+          var hidden = body.style.display === 'none';
+          body.style.display = hidden ? '' : 'none';
+          btn.textContent = hidden ? 'Свернуть' : 'Развернуть';
+          try { localStorage.setItem(STORAGE_KEY, hidden ? '0' : '1'); } catch (e) {}
+          if (typeof syncStickyTopVar === 'function') syncStickyTopVar();
+        });
+      })();
+
+      (function bindFiltersFieldsVisibility() {
+        var FIELD_GROUPS = [
+          {
+            key: 'shop_filters_main',
+            title: 'Поиск',
+            items: [
+              { key: 'smart', title: 'Умный поиск', hint: 'Артикул и наименование (мульти-токен через пробел = AND)' },
+            ],
+          },
+          {
+            key: 'shop_filters_extra',
+            title: 'Расширенные фильтры',
+            items: [
+              { key: 'manager', title: 'Менеджер', hint: 'Точное совпадение менеджера. Пусто — все.' },
+              { key: 'content_manager', title: 'Контент-менеджер', hint: 'Точное совпадение контент-менеджера. Пусто — все.' },
+              { key: 'exclude_posters', title: 'Исключить плакаты', hint: 'Скрыть строки, где в наименовании встречается слово «плакат».' },
+            ],
+          },
+          {
+            key: 'shop_filters_actions',
+            title: 'Действия',
+            items: [
+              { key: 'filter_actions', title: 'Кнопки «Применить» / «По умолчанию»', hint: '' },
+            ],
+          },
+        ];
+        if (window.DatagonFilterFieldsVisibility && window.DatagonFilterFieldsVisibility.init) {
+          window.DatagonFilterFieldsVisibility.init({
+            storageKeyPrefix: 'datagon_mp_shop_filter_fields_v1.' + shop,
+            attr: 'data-dg-mp-shop-filter-field',
+            fieldGroups: FIELD_GROUPS,
+            togglesRootId: 'dg-mp-shop-filter-blocks-toggles',
+            idPrefix: 'dg-mp-shop-ff-',
+            exposeAs: 'DatagonMpShopFilterBlocks',
+          });
+        }
+      })();
+
+      (function bindShopSmartMirror() {
+        // primary в карточке фильтров, mirror — существующий #dg-mp-search в шапке таблицы.
+        var primary = document.getElementById('dg-mp-shop-smart');
+        var mirror = document.getElementById('dg-mp-search');
+        var applyBtn = document.getElementById('dg-mp-shop-apply');
+        var resetBtn = document.getElementById('dg-mp-shop-reset');
+        if (!primary || !mirror) return;
+        var syncing = false;
+        function copy(from, to) {
+          if (syncing) return;
+          if (to.value === from.value) return;
+          syncing = true;
+          to.value = from.value;
+          to.dispatchEvent(new Event('input', { bubbles: true }));
+          syncing = false;
+        }
+        function applySearch() {
+          // Триггерим основное поведение поиска, которое привязано к #dg-mp-search в bindControls().
+          mirror.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+        primary.addEventListener('input', function () { copy(primary, mirror); });
+        mirror.addEventListener('input', function () { copy(mirror, primary); });
+        primary.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            applySearch();
+          } else if (e.key === 'Escape') {
+            if (!primary.value) return;
+            primary.value = '';
+            copy(primary, mirror);
+            applySearch();
+          }
+        });
+        primary.addEventListener('search', function () {
+          copy(primary, mirror);
+          applySearch();
+        });
+        if (applyBtn) {
+          applyBtn.addEventListener('click', function (e) {
+            e.preventDefault();
+            applySearch();
+          });
+        }
+        if (resetBtn) {
+          resetBtn.addEventListener('click', function (e) {
+            e.preventDefault();
+            primary.value = '';
+            mirror.value = '';
+            // Сбрасываем и расширенные фильтры из карточки «Фильтры и действия»
+            // (Менеджер / Контент-менеджер / Исключить плакаты), как и старая
+            // ссылка «сбросить» в toolbox раньше — теперь это единая кнопка «По умолчанию».
+            var cbExcl2 = document.getElementById('dg-mp-flt-exclude-posters');
+            if (cbExcl2 && cbExcl2.checked) {
+              cbExcl2.checked = false;
+              cbExcl2.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+            var selMgr3 = document.getElementById('dg-mp-flt-manager');
+            if (selMgr3 && selMgr3.value) {
+              selMgr3.value = '';
+              selMgr3.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+            var selCm3 = document.getElementById('dg-mp-flt-content_manager');
+            if (selCm3 && selCm3.value) {
+              selCm3.value = '';
+              selCm3.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+            applySearch();
+          });
+        }
+        copy(mirror, primary);
+      })();
     })();
   </script>
 

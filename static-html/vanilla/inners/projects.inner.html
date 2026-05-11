@@ -158,23 +158,43 @@
           </div>
 
           <div class="main-card mb-3 card">
-            <div class="card-header d-flex align-items-center">
-              <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
-              <span>Список проектов</span>
-            </div>
-            <div class="card-body">
-              <div class="datagon-columns-toolbox mb-2">
-                <div class="columns-top">
-                  <button type="button" class="btn btn-sm" id="dg-proj-columns-toggle">🧩 Столбцы</button>
-                  <div class="columns-title">Включение/выключение видимых столбцов:</div>
+            <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+              <div class="d-flex align-items-center gap-3 flex-grow-1" style="min-width: 0">
+                <div class="d-flex align-items-center flex-shrink-0">
+                  <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
+                  <span>Список проектов</span>
                 </div>
+                <div class="dg-proj-header-search" style="flex: 0 1 380px; min-width: 220px">
+                  <div class="input-group input-group-sm">
+                    <span class="input-group-text bg-white text-muted px-2" aria-hidden="true">🔎</span>
+                    <input type="search" class="form-control" id="dg-proj-table-search-mirror"
+                           placeholder="Умный поиск (Enter — применить)"
+                           autocomplete="off"
+                           data-dg-tooltip='Зеркало основного поля «Умный поиск». Поддерживает ключи id:, name:. Enter — применить, Esc — очистить.' />
+                  </div>
+                </div>
+              </div>
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-proj-columns-toggle" title="Управление видимостью столбцов таблицы">🧩 Столбцы</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-proj-widths-toggle" title="Ручная ширина каждой колонки в пикселях (или drag за правый край заголовка)">📏 Ширины</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-proj-table-toggle" title="Свернуть/развернуть тело карточки с таблицей">Свернуть</button>
+              </div>
+            </div>
+            <div class="card-body" id="dg-proj-table-body">
+              <div class="datagon-columns-toolbox mb-2 d-none" id="dg-proj-toolbox-panels">
                 <div class="datagon-columns-panel" id="dg-proj-columns-panel">
                   <div class="columns-actions mb-2">
                     <button type="button" class="btn btn-sm" id="dg-proj-columns-all">Выделить все</button>
                     <button type="button" class="btn btn-sm" id="dg-proj-columns-none">Снять все</button>
-                    <button type="button" class="btn btn-sm" id="dg-proj-columns-default">По умолчанию</button>
+                    <button type="button" class="btn btn-sm" id="dg-proj-columns-default">Столбцы по умолчанию</button>
                   </div>
                   <div id="dg-proj-columns-list" class="columns-grid"></div>
+                </div>
+                <div class="datagon-columns-panel" id="dg-proj-widths-panel">
+                  <div class="columns-actions mb-2">
+                    <button type="button" class="btn btn-sm" id="dg-proj-widths-default">Ширины по умолчанию</button>
+                  </div>
+                  <div id="dg-proj-widths-list" class="dg-ms-widths-grid"></div>
                 </div>
               </div>
               <div class="table-responsive datagon-my-products-table-wrap">

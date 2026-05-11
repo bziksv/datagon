@@ -1,0 +1,81 @@
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+              <div class="d-flex align-items-center">
+                <i class="header-icon pe-7s-filter icon-gradient bg-happy-fisher me-2"></i>
+                <span>Фильтры и действия</span>
+              </div>
+              <div class="d-flex align-items-center gap-2">
+                <div class="dropdown">
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-secondary dg-vanilla-dropdown-toggle"
+                    style="line-height: 1; padding: 0.35rem 0.5rem"
+                    aria-expanded="false"
+                    aria-haspopup="true"
+                    id="dg-mp-shop-filter-blocks-btn"
+                    data-dg-tooltip="Какие поля фильтров показывать (сохраняется в браузере для текущего пользователя)"
+                  >
+                    <i class="pe-7s-config btn-icon-wrapper" style="font-size: 1.1rem" aria-hidden="true"></i>
+                  </button>
+                  <div
+                    class="dropdown-menu dropdown-menu-end rm-pointers p-0 dg-mp-shop-filter-blocks-dropdown"
+                    id="dg-mp-shop-filter-blocks-menu"
+                    style="width: min(420px, calc(100vw - 1.5rem))"
+                  >
+                    <div class="dropdown-menu-header mb-0">
+                      <div class="dropdown-menu-header-inner bg-happy-fisher">
+                        <div
+                          class="menu-header-image opacity-5"
+                          style="background-image: url('/assets/utils/images/dropdown-header/abstract2.jpg')"
+                        ></div>
+                        <div class="menu-header-content text-white px-3 py-2">
+                          <h5 class="menu-header-title mb-0">Поля фильтров</h5>
+                          <h6 class="menu-header-subtitle mb-0 opacity-8 fw-normal small">Скрыть/показать выбранные блоки</h6>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="dg-mp-shop-filter-blocks-scroll" style="max-height: calc(100vh - 10rem); overflow-y: auto; overflow-x: hidden">
+                      <div id="dg-mp-shop-filter-blocks-toggles" class="list-group list-group-flush"></div>
+                    </div>
+                  </div>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mp-shop-filters-toggle" data-dg-tooltip="Свернуть/развернуть тело карточки фильтров">Свернуть</button>
+              </div>
+            </div>
+            <div class="card-body" id="dg-mp-shop-filters-body">
+              <div class="row g-2 align-items-end">
+                <div class="col-md-6" data-dg-mp-shop-filter-field="smart">
+                  <label class="form-label" for="dg-mp-shop-smart">Умный поиск</label>
+                  <input type="text" class="form-control" id="dg-mp-shop-smart"
+                         placeholder="Артикул или наименование (Enter — применить)"
+                         autocomplete="off"
+                         data-dg-tooltip='Поиск по артикулу и наименованию (без регистра, мульти-токен через пробел = AND). Это primary-поле; зеркало — в шапке карточки таблицы. Enter — применить, Esc — очистить.' />
+                </div>
+                <div class="col-md-2" data-dg-mp-shop-filter-field="manager">
+                  <div id="dg-mp-shop-filter-block-manager">
+                    <label class="form-label" for="dg-mp-flt-manager">Менеджер</label>
+                    <select id="dg-mp-flt-manager" class="form-select form-select-sm"
+                            data-dg-tooltip="Точное совпадение менеджера. Пусто — все менеджеры."></select>
+                  </div>
+                </div>
+                <div class="col-md-2" data-dg-mp-shop-filter-field="content_manager">
+                  <div id="dg-mp-shop-filter-block-cmgr">
+                    <label class="form-label" for="dg-mp-flt-content_manager">Контент-менеджер</label>
+                    <select id="dg-mp-flt-content_manager" class="form-select form-select-sm"
+                            data-dg-tooltip="Точное совпадение контент-менеджера. Пусто — все."></select>
+                  </div>
+                </div>
+                <div class="col-md-2" data-dg-mp-shop-filter-field="exclude_posters">
+                  <div class="form-check mt-4">
+                    <input class="form-check-input" type="checkbox" id="dg-mp-flt-exclude-posters" />
+                    <label class="form-check-label" for="dg-mp-flt-exclude-posters"
+                           data-dg-tooltip="Скрыть строки, где в наименовании встречается слово «плакат».">Исключить плакаты</label>
+                  </div>
+                </div>
+              </div>
+              <div class="mt-3 d-flex flex-wrap gap-2" data-dg-mp-shop-filter-field="filter_actions">
+                <button type="button" class="btn btn-sm btn-primary" id="dg-mp-shop-apply" data-dg-tooltip="Применить умный поиск (или нажмите Enter в поле поиска)"><i class="pe-7s-search me-1"></i>Применить</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mp-shop-reset" data-dg-tooltip="Сбросить умный поиск и расширенные фильтры (Менеджер / Контент-менеджер / Исключить плакаты)"><i class="pe-7s-refresh me-1"></i>По умолчанию</button>
+              </div>
+            </div>
+          </div>

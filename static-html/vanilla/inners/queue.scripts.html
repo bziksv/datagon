@@ -255,6 +255,77 @@
           applyColumnWidthByIndex(idx, columnWidths[k]);
         });
       }
+
+      /** Снять заданные inline-ширины с колонки (сброс «Ширины по умолчанию»). */
+      function clearQueueColumnSizing(index) {
+        var headers = getHeaderCells();
+        var th = headers[index];
+        if (th) {
+          th.style.width = "";
+          th.style.minWidth = "";
+          th.style.maxWidth = "";
+        }
+        document.querySelectorAll("#dg-q-tbody tr").forEach(function (tr) {
+          if (!tr.cells || !tr.cells[index]) return;
+          var td = tr.cells[index];
+          td.style.width = "";
+          td.style.minWidth = "";
+          td.style.maxWidth = "";
+        });
+      }
+
+      // Панель «📏 Ширины»: список «лейбл → px» по индексу колонки (как drag-резайзер).
+      function renderQueueWidthControls() {
+        var list = document.getElementById("dg-q-widths-list");
+        if (!list) return;
+        list.innerHTML = "";
+        var headers = getHeaderCells();
+        headers.forEach(function (th, index) {
+          if (!th) return;
+          if (th.style.display === "none") return;
+          var label = String(th.getAttribute("data-q-label") || th.textContent || "").replace(/\s*[↑↓]\s*$/, "").trim();
+          if (!label) label = "Колонка " + (index + 1);
+          var current = Number(columnWidths[index] || 0);
+          if (!Number.isFinite(current) || current <= 0) {
+            var rect = th.getBoundingClientRect();
+            current = rect && rect.width ? Math.round(rect.width) : 120;
+          }
+          var wrap = document.createElement("label");
+          var span = document.createElement("span");
+          span.textContent = label;
+          span.style.flex = "1 1 auto";
+          span.style.overflow = "hidden";
+          span.style.textOverflow = "ellipsis";
+          span.style.whiteSpace = "nowrap";
+          var input = document.createElement("input");
+          input.type = "number";
+          input.className = "form-control form-control-sm";
+          input.min = "80";
+          input.max = "420";
+          input.step = "10";
+          input.value = String(current);
+          input.setAttribute("data-col-index", String(index));
+          input.addEventListener("change", function () {
+            var idx = parseInt(this.getAttribute("data-col-index"), 10);
+            var n = parseInt(this.value, 10);
+            if (!Number.isFinite(idx)) return;
+            if (!Number.isFinite(n)) {
+              this.value = String(columnWidths[idx] || 120);
+              return;
+            }
+            n = Math.max(80, Math.min(420, n));
+            applyColumnWidthByIndex(idx, n);
+            try { localStorage.setItem(userColWidthKey(), JSON.stringify(columnWidths || {})); } catch (e) {}
+            this.value = String(n);
+            scheduleQFloatingHeaderUpdate();
+            qRefreshFloatingAfterLayout();
+          });
+          wrap.appendChild(span);
+          wrap.appendChild(input);
+          list.appendChild(wrap);
+        });
+      }
+
       function onResizeMove(e) {
         if (!resizeState) return;
         var delta = e.clientX - resizeState.startX;
@@ -1346,6 +1417,80 @@
         navigator.clipboard.writeText(window.location.href).catch(function () {});
       });
 
+      // «Свернуть/Развернуть» для card-body карточки «Текущая очередь» — по эталону
+      // moysklad (см. tableCardCollapse в moysklad.scripts.html). Состояние сохраняется
+      // в localStorage. Заголовок карточки с поиском/кнопками остаётся видимым.
+      (function tableCardCollapse() {
+        var btn = document.getElementById("dg-q-table-toggle");
+        var body = document.getElementById("dg-q-table-body");
+        if (!btn || !body) return;
+        var STORAGE_KEY = "dg.queue.table-card.collapsed.v1";
+        function apply() {
+          var c = false;
+          try { c = localStorage.getItem(STORAGE_KEY) === "1"; } catch (e) {}
+          if (c) {
+            body.style.display = "none";
+            btn.textContent = "Развернуть";
+          } else {
+            body.style.display = "";
+            btn.textContent = "Свернуть";
+          }
+        }
+        apply();
+        btn.addEventListener("click", function () {
+          var hidden = body.style.display === "none";
+          body.style.display = hidden ? "" : "none";
+          btn.textContent = hidden ? "Свернуть" : "Развернуть";
+          try { localStorage.setItem(STORAGE_KEY, hidden ? "0" : "1"); } catch (e) {}
+        });
+      })();
+
+      // Зеркало умного поиска в шапке карточки «Текущая очередь» —
+      // двусторонняя синхронизация с #dg-q-f-search; Enter применяет (parseSmartSearch),
+      // Esc очищает оба поля и применяет (правило datagon-table-filter-apply.mdc).
+      (function bindHeaderSearchMirror() {
+        var primary = document.getElementById("dg-q-f-search");
+        var mirror = document.getElementById("dg-q-table-search-mirror");
+        if (!primary || !mirror) return;
+        var syncing = false;
+        function copy(from, to) {
+          if (syncing) return;
+          if (to.value === from.value) return;
+          syncing = true;
+          to.value = from.value;
+          to.dispatchEvent(new Event("input", { bubbles: true }));
+          syncing = false;
+        }
+        function apply() {
+          if (typeof parseSmartSearch === "function") parseSmartSearch();
+          else {
+            var btn = document.getElementById("queue-apply");
+            if (btn) btn.click();
+          }
+        }
+        primary.addEventListener("input", function () { copy(primary, mirror); });
+        mirror.addEventListener("input", function () { copy(mirror, primary); });
+        function bindKeys(el) {
+          el.addEventListener("keydown", function (e) {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              apply();
+            } else if (e.key === "Escape") {
+              if (!el.value) return;
+              el.value = "";
+              copy(el, el === primary ? mirror : primary);
+              apply();
+            }
+          });
+          el.addEventListener("search", function () {
+            copy(el, el === primary ? mirror : primary);
+            apply();
+          });
+        }
+        bindKeys(mirror);
+        copy(primary, mirror);
+      })();
+
       document.getElementById("dg-q-f-search").addEventListener("keydown", function (e) {
         if (e.key === "Enter") {
           e.preventDefault();
@@ -1531,13 +1676,60 @@
         columnWidths = cleaned;
         var toggle = document.getElementById("dg-q-columns-toggle");
         var panel = document.getElementById("dg-q-columns-panel");
+        var panelsWrap = document.getElementById("dg-q-toolbox-panels");
         var btnAll = document.getElementById("dg-q-columns-all");
         var btnNone = document.getElementById("dg-q-columns-none");
         var btnDef = document.getElementById("dg-q-columns-default");
+        var widthsToggle = document.getElementById("dg-q-widths-toggle");
+        var widthsPanel = document.getElementById("dg-q-widths-panel");
+        var widthsDefault = document.getElementById("dg-q-widths-default");
+        function syncWrap() {
+          if (!panelsWrap) return;
+          var open = panel.classList.contains("open") || (widthsPanel && widthsPanel.classList.contains("open"));
+          panelsWrap.classList.toggle("d-none", !open);
+        }
         if (toggle && panel) {
-          toggle.addEventListener("click", function () {
+          toggle.addEventListener("click", function (e) {
+            e.preventDefault();
+            e.stopPropagation();
             panel.classList.toggle("open");
+            if (widthsPanel) widthsPanel.classList.remove("open");
+            syncWrap();
             renderColumnsPanel();
+          });
+        }
+        if (widthsToggle && widthsPanel) {
+          widthsToggle.addEventListener("click", function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            widthsPanel.classList.toggle("open");
+            panel.classList.remove("open");
+            if (widthsPanel.classList.contains("open")) renderQueueWidthControls();
+            syncWrap();
+          });
+        }
+        document.addEventListener("click", function (e) {
+          if (!panel) return;
+          if (e.target.closest("#dg-q-columns-panel")) return;
+          if (e.target.closest("#dg-q-columns-toggle")) return;
+          if (e.target.closest("#dg-q-widths-panel")) return;
+          if (e.target.closest("#dg-q-widths-toggle")) return;
+          panel.classList.remove("open");
+          if (widthsPanel) widthsPanel.classList.remove("open");
+          syncWrap();
+        });
+        if (widthsDefault) {
+          widthsDefault.addEventListener("click", function () {
+            try {
+              Object.keys(columnWidths || {}).forEach(function (k) {
+                clearQueueColumnSizing(Number(k));
+              });
+            } catch (e) {}
+            columnWidths = {};
+            try { localStorage.removeItem(userColWidthKey()); } catch (e) {}
+            renderQueueWidthControls();
+            scheduleQFloatingHeaderUpdate();
+            qRefreshFloatingAfterLayout();
           });
         }
         if (btnAll) {

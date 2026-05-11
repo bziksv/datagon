@@ -66,6 +66,96 @@
       gap: 8px;
       flex-wrap: wrap;
     }
+    /* Полоса с дублирующими кнопками 🧩/📏 поверх таблицы скрыта на shop-страницах
+       (Ozon / Wildberries / Я.Маркет): единственный источник управления — кнопки
+       в card-header «Таблица <Shop>», которые проксируют клик на исходные
+       #dg-mp-toggle-cols / #dg-mp-toggle-widths (см. bindHeaderToolboxProxies в
+       exports-marketplaces-shop.scripts.html). Сами кнопки в DOM остаются, чтобы
+       программный .click() работал. ВНИМАНИЕ: на /exports-marketplaces-issues.html
+       полоса .dg-mp-toolbox-top тоже используется, но как контейнер для панелей
+       #dg-mpu-cols-panel / #dg-mpu-widths-panel, поэтому её скрывать НЕЛЬЗЯ. */
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-ozon"] .dg-mp-toolbox-top,
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-wildberries"] .dg-mp-toolbox-top,
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-yandex"] .dg-mp-toolbox-top {
+      display: none !important;
+    }
+    /* Без верхней полосы у toolbox-обёртки лишний внутренний padding не нужен —
+       когда ни одна панель не открыта, обёртка визуально не должна занимать
+       место поверх таблицы. */
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-ozon"] .dg-mp-toolbox:not(:has(.dg-mp-toolbox-panel.open)),
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-wildberries"] .dg-mp-toolbox:not(:has(.dg-mp-toolbox-panel.open)),
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-yandex"] .dg-mp-toolbox:not(:has(.dg-mp-toolbox-panel.open)) {
+      padding: 0;
+      margin: 0;
+      border: 0;
+      background: transparent;
+    }
+    /* /exports-marketplaces-issues.html: когда обе панели (.dg-mp-toolbox-panel) закрыты,
+       в toolbox только скрытые кнопки — убираем рамку/фон/внутренние отступы и верхний
+       margin utility (mt-3), чтобы не было пустой полосы над таблицей. При открытии любой
+       панели видим тот же bordered-блок, что и у shop-маркетплейсов. */
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] #dg-mpu-toolbox.dg-mp-toolbox:not(:has(.dg-mp-toolbox-panel.open)) {
+      padding: 0 !important;
+      margin-top: 0 !important;
+      margin-bottom: 0 !important;
+      border: 0 !important;
+      background: transparent !important;
+      box-shadow: none !important;
+    }
+    /* /exports-marketplaces-issues.html: wide-таблица как /my-products.html — flex min-width:0
+       до app-main__outer + внешний .dg-mp-table-scroll-outer (overflow-x:auto), внутри visible.
+       Не shop-схема (.dg-mp-mkt-scroll + sticky к viewport). Контракт: datagon-table-behavior-lock.mdc
+       (раздел «Проблемы с товарами»); JS плавающего thead — exports-marketplaces-issues.scripts.html. */
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .app-main__outer {
+      min-width: 0;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .app-main__inner {
+      min-width: 0;
+      max-width: 100%;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .app-main__inner .main-card.card {
+      min-width: 0;
+      max-width: 100%;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-table-scroll-outer {
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+      box-sizing: border-box;
+      overflow-x: auto;
+      overflow-y: visible;
+      -webkit-overflow-scrolling: touch;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"]
+      .dg-mp-table-scroll-outer
+      > .datagon-my-products-table-wrap.table-responsive {
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+      box-sizing: border-box;
+      overflow: visible !important;
+      max-height: none !important;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"]
+      .dg-mp-table-scroll-outer
+      > .datagon-my-products-table-wrap.table-responsive,
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"]
+      .dg-mp-table-scroll-outer
+      > .datagon-my-products-table-wrap.table-responsive
+      > table {
+      transform: none !important;
+      filter: none !important;
+      perspective: none !important;
+    }
+    /* Явно фиксируем группы строк таблицы (страховка после динамического colgroup). */
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] #dg-mp-table-main > thead {
+      display: table-header-group;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] #dg-mp-table-main > tbody {
+      display: table-row-group;
+    }
     /* Группа расширенных фильтров (исключить плакаты + менеджеры). */
     body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-filter-group {
       display: inline-flex;
@@ -211,11 +301,10 @@
       border-spacing: 0;
       table-layout: fixed;
     }
-    /* Плавающий заголовок таблицы — через native CSS sticky на <th> (как в moysklad,
-       где это основной механизм; см. moysklad.scripts.html, строка ~1060). Глобальная
-       CSS-переменная --dg-table-sticky-top равна высоте app-header и обновляется в
-       datagon-vanilla.js#initGlobalTableBaseline на resize / mutation. Это стабильнее
-       JS translate3d и не «съезжает» при позднем layout (шрифты, картинки). */
+    /* Плавающий заголовок: на Ozon/WB/Я.М. — native sticky на <th> (top: var(--dg-table-sticky-top)),
+       без внешнего overflow-x на цепочке к viewport. На /exports-marketplaces-issues.html — как
+       /my-products.html: внешний .dg-mp-table-scroll-outer + sticky th с top:0 + transform на
+       <thead> в exports-marketplaces-issues.scripts.html. #dg-mp-table-main вне markBaselineTables. */
     body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-mkt-table thead th {
       position: sticky;
       top: var(--dg-table-sticky-top, 60px);
@@ -253,10 +342,13 @@
         flex: 1 1 auto;
       }
     }
-    /* Сортируемые заголовки: курсор и стрелка-индикатор. */
+    /* Сортируемые заголовки: курсор и стрелка-индикатор.
+       user-select: text — чтобы можно было выделить и скопировать подпись колонки;
+       сортировка по клику отключится, если при клике есть текстовое выделение (см. scripts). */
     body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-mkt-table thead th.dg-mp-sortable {
       cursor: pointer;
-      user-select: none;
+      user-select: text;
+      -webkit-user-select: text;
     }
     body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-mkt-table thead th.dg-mp-sortable:hover {
       background: #eef1f5;
@@ -274,26 +366,70 @@
       box-shadow: inset 0 0 0 1px #f5b0b0;
       color: #b42318;
     }
-    /* «Проблемы с товарами»: на этой странице 10–11 широких колонок (МС + 3 маркетплейса × code/name),
-       и даже при дефолтных ширинах ~140–220px таблица заметно шире карточки на типовых ноутбуках.
-       Поэтому здесь сознательно ОТКАЗЫВАЕМСЯ от sticky-baseline маркетплейсов (overflow:visible на
-       обёртках) и возвращаем горизонтальный скролл внутри карточки: .dg-mp-mkt-scroll и
-       .table-responsive получают overflow-x:auto, таблица не «вылазит» за пределы карточки/экрана.
-       Sticky-th в этом случае прилипает к ближайшему scrolling-контейнеру (.table-responsive) —
-       top:0 даёт «липкую» строку при горизонтальном скролле, под app-header при вертикальном
-       скролле страницы заголовок не плывёт (это известный trade-off CSS-спеки overflow). Если
-       нужно меньше колонок и плавающую под app-header шапку — пользуйтесь «🧩 Столбцы» и скрывайте
-       колонки; меньшая таблица помещается в карточку, и тогда обёртку можно вернуть на overflow:visible. */
-    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-scroll,
-    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-scroll > .table-responsive {
-      overflow-x: auto !important;
-      overflow-y: visible !important;
-      max-height: none !important;
-      max-width: 100%;
+    /* НДС маркетплейса не совпадает с НДС МС (та же визуальная схема, что у dg-mpu-missing). */
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table tbody td.dg-mpu-vat-mismatch {
+      background: #fdecec;
+      box-shadow: inset 0 0 0 1px #f5b0b0;
+      color: #b42318;
     }
+    /* Разные габариты/вес между маркетплейсами (отдельно от НДС и «нет кода»). */
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table tbody td.dg-mpu-dims-mismatch {
+      background: #fff8e6;
+      box-shadow: inset 0 0 0 1px #e8d48b;
+      color: #7a5e00;
+    }
+    /* «Проблемы с товарами»: единая sticky-схема маркетплейсов
+       (overflow:visible на обёртках, sticky-<th> прилипает под app-header через
+       top: var(--dg-table-sticky-top)). По умолчанию включены ВСЕ колонки
+       (DEFAULT_HIDDEN_COLS = {} в exports-marketplaces-issues.scripts.html,
+       версия ключа localStorage v5). Кнопка «Столбцы по умолчанию» возвращает
+       состояние «все включены». Таблица при этом ШИРОКАЯ и выкатывается за
+       пределы карточки (страница получает горизонтальный скролл) — это
+       сознательный выбор: пользователь хотел видеть полный паспорт МС и трёх
+       маркетплейсов сразу. Если нужна компактная таблица, лишние колонки
+       выключаются через «🧩 Столбцы». */
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table thead th[data-col-key="ms_stock"],
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table tbody td[data-col-key="ms_stock"],
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table thead th[data-col-key$="_stock"],
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table tbody td[data-col-key$="_stock"],
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table thead th[data-col-key$="_length"],
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table tbody td[data-col-key$="_length"],
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table thead th[data-col-key$="_width"],
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table tbody td[data-col-key$="_width"],
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table thead th[data-col-key$="_height"],
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table tbody td[data-col-key$="_height"],
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table thead th[data-col-key$="_weight"],
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table tbody td[data-col-key$="_weight"],
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table thead th[data-col-key="ms_vat"],
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table tbody td[data-col-key="ms_vat"],
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table thead th[data-col-key$="_vat"],
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table tbody td[data-col-key$="_vat"] {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table thead th[data-col-key$="_cabinet_url"],
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table tbody td[data-col-key$="_cabinet_url"],
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table thead th[data-col-key$="_buyer_url"],
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table tbody td[data-col-key$="_buyer_url"] {
+      text-align: center;
+    }
+    /* «Проблемы»: компактнее эталона shop, но без nowrap (ломало визуальный порядок th/td
+       в части браузеров). Ограничение высоты — max-height + перенос, полный текст в title. */
     body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table thead th {
-      top: 0;
+      position: sticky !important;
+      top: 0 !important;
+      padding: 0.26rem 0.48rem 0.26rem 0.36rem;
       padding-right: 14px;
+      line-height: 1.18;
+      font-size: 0.74rem;
+      font-weight: 600;
+      white-space: normal;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+      max-height: 2.65em;
+      overflow: hidden;
+      vertical-align: middle;
+      z-index: 32;
     }
     body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mpu-resizer {
       position: absolute;
@@ -310,61 +446,26 @@
     body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mpu-resizer.dg-mpu-resizing {
       background: rgba(13, 110, 253, 0.35);
     }
-    /* Toolbox (управление видимостью + сброс ширин) на странице «Проблемы с товарами». */
-    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mpu-toolbox {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      flex-wrap: wrap;
-    }
-    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mpu-cols-panel {
-      position: absolute;
-      top: 100%;
-      left: 0;
-      right: auto;
-      margin-top: 4px;
-      min-width: 260px;
-      max-width: 320px;
-      background: #fff;
-      border: 1px solid #e6e9ee;
-      border-radius: 8px;
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
-      padding: 10px 12px;
-      z-index: 30;
-      display: none;
-    }
-    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mpu-cols-panel.open {
-      display: block;
-    }
-    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mpu-cols-grid {
+    /* Toolbox на странице «Проблемы»: та же схема, что у shop (Ozon/WB/Я.М.) —
+       `#dg-mpu-toolbox` колонкой, `.dg-mp-toolbox-panel` на всю ширину под скрытыми
+       кнопками (класс `.open` переключает display — см. общие правила `.dg-mp-toolbox-panel`). */
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] #dg-mpu-toolbox.dg-mp-toolbox {
       display: flex;
       flex-direction: column;
-      gap: 6px;
-      margin-top: 6px;
-      max-height: 320px;
-      overflow-y: auto;
+      align-items: stretch;
+      gap: 0;
     }
-    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] #dg-mpu-widths-panel .dg-mp-widths-grid {
-      grid-template-columns: 1fr;
-      max-height: 320px;
-      overflow-y: auto;
-      margin-top: 6px;
-    }
-    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] #dg-mpu-widths-panel .dg-mp-width-control {
-      justify-content: space-between;
-      width: 100%;
-    }
-    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mpu-cols-grid label {
-      display: inline-flex;
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] #dg-mpu-toolbox .dg-mp-toolbox-top {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
       align-items: center;
-      gap: 6px;
-      font-size: 12px;
-      color: #374151;
-      user-select: none;
-      margin: 0;
+      min-height: 0;
     }
-    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mpu-toolbox-wrap {
-      position: relative;
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] #dg-mpu-cols-panel .dg-mp-cols-grid,
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] #dg-mpu-widths-panel .dg-mp-widths-grid {
+      max-height: min(50vh, 360px);
+      overflow-y: auto;
     }
     body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-mkt-table tbody td {
       border-right: 1px solid #f3f5f8;
@@ -373,6 +474,10 @@
       overflow-wrap: anywhere;
       padding: 0.45rem 0.65rem;
       word-break: break-word;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table tbody td {
+      padding: 0.32rem 0.55rem;
+      vertical-align: top;
     }
     /* Default-ширины колонок задаются JS (state.colWidths), здесь только разрешаем перенос строк
        и убираем жёсткие max-width (иначе пользовательская ширина не применится). */
@@ -390,7 +495,266 @@
         white-space: normal;
       }
     }
+    /* Карточка МС по клику на наименование (как на /moysklad.html) */
+    .dg-ms-detail-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 2000;
+      background: rgba(15, 23, 42, 0.45);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0.75rem;
+      box-sizing: border-box;
+    }
+    .dg-ms-detail-panel {
+      width: 100%;
+      max-width: 920px;
+      max-height: 92vh;
+      overflow: hidden;
+    }
+    .dg-ms-detail-kv {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8rem;
+    }
+    .dg-ms-detail-kv th,
+    .dg-ms-detail-kv td {
+      border: 1px solid #e6e9ee;
+      padding: 0.35rem 0.5rem;
+      vertical-align: top;
+    }
+    .dg-ms-detail-kv th {
+      width: 32%;
+      background: #f8fafc;
+      font-weight: 600;
+      color: #334155;
+    }
+    .dg-ms-detail-kv td a {
+      word-break: break-all;
+    }
   </style>
+<style>
+  /* Журнал снимков + матрица «динамика по сотрудникам» (только /exports-marketplaces-issues.html) */
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-dynamics-wrap {
+    border: 1px solid #e2e6ea;
+    border-radius: 10px;
+    background: linear-gradient(180deg, #fbfcfe 0%, #f5f7fa 100%);
+    padding: 12px 14px;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-dynamics-table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin: 0 -4px;
+    padding: 0 4px 4px;
+    max-width: 100%;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-matrix {
+    width: max-content;
+    min-width: 100%;
+    margin: 0;
+    font-size: 0.8125rem;
+    border-collapse: separate;
+    border-spacing: 0;
+    background: #fff;
+    border: 1px solid #e6e9ee;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 1px 0 rgba(15, 23, 42, 0.06);
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-matrix thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: #f1f3f7;
+    color: #374151;
+    font-weight: 600;
+    text-align: center;
+    vertical-align: bottom;
+    padding: 8px 6px;
+    border-bottom: 2px solid #dee2e6;
+    border-right: 1px solid #e6e9ee;
+    white-space: nowrap;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-matrix thead th:first-child {
+    text-align: left;
+    left: 0;
+    z-index: 3;
+    min-width: 140px;
+    max-width: 220px;
+    box-shadow: 4px 0 8px -4px rgba(0, 0, 0, 0.08);
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-matrix tbody td {
+    padding: 6px 8px;
+    border-right: 1px solid #f0f2f5;
+    border-bottom: 1px solid #f0f2f5;
+    vertical-align: middle;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-matrix tbody td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    text-align: left;
+    font-weight: 500;
+    color: #1f2937;
+    background: #fff;
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    box-shadow: 4px 0 8px -4px rgba(0, 0, 0, 0.06);
+    border-right: 1px solid #e6e9ee;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues']
+    .dg-snap-matrix
+    tbody
+    tr:nth-child(even)
+    td:first-child {
+    background: #fafbfc;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues']
+    .dg-snap-matrix
+    tbody
+    tr:hover
+    td {
+    filter: brightness(0.985);
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-matrix .dg-snap-cell {
+    min-width: 3.25rem;
+    transition: background-color 0.15s ease;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-matrix .dg-snap-cell-muted {
+    color: #9ca3af;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-cell-val {
+    font-size: 0.9375rem;
+    font-weight: 600;
+    line-height: 1.2;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-matrix .dg-snap-cell-muted .dg-snap-cell-val {
+    font-weight: 500;
+    font-size: 0.8125rem;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-delta {
+    font-size: 0.65rem;
+    font-weight: 600;
+    line-height: 1.3;
+    margin-top: 2px;
+    letter-spacing: 0.02em;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-delta-up {
+    color: #b02a37;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-delta-down {
+    color: #1a7f4c;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-delta-flat {
+    color: #9ca3af;
+    font-weight: 500;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-meta-muted {
+    font-size: 0.75rem;
+    color: #6b7280;
+    line-height: 1.35;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-total-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 2.5rem;
+    padding: 0.35rem 0.65rem;
+    border-radius: 999px;
+    font-weight: 700;
+    font-size: 0.95rem;
+    font-variant-numeric: tabular-nums;
+    background: linear-gradient(135deg, #eef0ff 0%, #e8ebfa 100%);
+    color: #3730a3;
+    border: 1px solid rgba(84, 92, 216, 0.25);
+    box-shadow: 0 1px 2px rgba(84, 92, 216, 0.08);
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-bar-block {
+    margin-bottom: 6px;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-bar-block:last-child {
+    margin-bottom: 0;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-bar-label {
+    font-size: 0.7rem;
+    color: #4b5563;
+    line-height: 1.25;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin-bottom: 2px;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-bar-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-bar-track {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 8px;
+    border-radius: 999px;
+    background: #e9ecef;
+    overflow: hidden;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.06);
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-bar-fill {
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #6b7cff 0%, #545cd8 55%, #4338ca 100%);
+    min-width: 2px;
+    transition: width 0.2s ease;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-bar-num {
+    flex: 0 0 auto;
+    font-size: 0.75rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: #1f2937;
+    min-width: 1.5rem;
+    text-align: right;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-feed-table {
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 0.875rem;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-feed-table thead th {
+    background: #f1f3f7;
+    color: #374151;
+    font-weight: 600;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    border-bottom: 2px solid #dee2e6;
+    padding: 10px 12px;
+    vertical-align: middle;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-feed-table tbody tr {
+    transition: background-color 0.12s ease;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-feed-table tbody tr:nth-child(even) {
+    background: #fafbfc;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-feed-table tbody tr:hover {
+    background: #f0f4ff;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-feed-table tbody td {
+    padding: 12px 12px;
+    border-bottom: 1px solid #eef0f3;
+    vertical-align: top;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-feed-table tbody td:nth-child(2) {
+    vertical-align: middle;
+  }
+</style>
 
   <style>
     /* Один список сайдбара: «ArchitectUI меню» у нижнего края области навигации, без второго блока/ul */
@@ -860,6 +1224,16 @@
                           <li class="metismenu-item">
                             <a
                               class="metismenu-link"
+                              data-nav="exports-dimensions"
+                              href="/exports-dimensions.html"
+                              title="Реестр замеров габаритов товаров МойСклад"
+                            >
+                              <i class="metismenu-icon pe-7s-scissors"></i>Габариты
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
                               data-nav="exports-marketplaces-issues"
                               href="/exports-marketplaces-issues.html"
                               title="Товары МойСклад с проблемами публикации на маркетплейсах"
@@ -871,7 +1245,6 @@
                       </li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="exports-huckster" href="/exports-huckster.html" title="Интеграция Huckster / e-teleport — матрица UID по магазинам"><i class="metismenu-icon pe-7s-cart"></i>Huckster</a></li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="exports-summary" href="/exports-summary.html" title="Сводка по менеджерам, подсветки НДС/габаритов, уведомления в чат"><i class="metismenu-icon pe-7s-note"></i>Сводка и синхронизация</a></li>
-                      <li class="metismenu-item"><a class="metismenu-link" data-nav="exports-dimensions" href="/exports-dimensions.html" title="Лист «Габариты»: проверки, сортировка, слияние в новые позиции"><i class="metismenu-icon pe-7s-scissors"></i>Габариты</a></li>
                     </ul>
                   </div>
                 </div>
@@ -900,94 +1273,324 @@
             </div>
           </div>
 
-          <div class="main-card mb-3 card">
-            <div class="card-header d-flex align-items-center gap-2 flex-wrap">
-              <i class="header-icon pe-7s-filter icon-gradient bg-strong-bliss me-2"></i>
-              <span>Фильтр маркетплейса</span>
+          <div class="main-card mb-3 card dg-mp-issues-workflow-guide shadow-sm">
+            <div class="card-header bg-light d-flex align-items-center justify-content-between flex-wrap gap-2 py-2 px-3">
+              <div class="d-flex align-items-center gap-2 min-w-0 flex-wrap">
+                <span class="badge rounded-pill bg-primary px-2 py-1">Гайд</span>
+                <span class="fw-semibold text-body mb-0 small">Как пользоваться страницей «Проблемы с товарами»</span>
+              </div>
+              <button
+                type="button"
+                class="btn btn-sm btn-outline-primary d-inline-flex align-items-center gap-1"
+                id="dg-mp-issues-workflow-toggle"
+                aria-expanded="false"
+                aria-controls="dg-mp-issues-workflow-panel"
+              >
+                <i class="pe-7s-angle-down" id="dg-mp-issues-workflow-toggle-icon" style="font-size: 1.1rem" aria-hidden="true"></i>
+                <span id="dg-mp-issues-workflow-toggle-label">Развернуть</span>
+              </button>
             </div>
-            <div class="card-body">
-              <div class="btn-group flex-wrap" role="group" aria-label="Фильтр маркетплейса" id="dg-mpu-scope-group">
-                <input type="radio" class="btn-check" name="dg-mpu-scope" id="dg-mpu-scope-all" value="all" checked>
-                <label class="btn btn-outline-primary" for="dg-mpu-scope-all" title="Все товары МС по основному фильтру; красным подсвечены отсутствующие коды.">Все товары</label>
+            <div id="dg-mp-issues-workflow-panel" class="d-none card-body pt-3 border-top bg-white">
+              <p class="text-muted small mb-4 lh-base">
+                Список строится по товарам МойСклад (складская позиция, не «перестали сотрудничать») и по последним сохранённым снапшотам Ozon, Wildberries и Я.Маркета. Сначала убедитесь, что снапшоты актуальны, затем настройте фильтр и примените его; в таблице смотрите красные ячейки и при необходимости сузьте поиск.
+              </p>
+              <div class="alert alert-light border small mb-4 mb-md-3" role="note">
+                <div class="fw-semibold text-body mb-2">Что хранится в браузере</div>
+                <ol class="mb-0 ps-3 lh-lg text-body-secondary">
+                  <li class="mb-2">
+                    <strong class="text-body">Состояние гайда</strong> — развёрнутость панели и блоков шагов 1–3, ключи <code class="small">datagon_mp_issues_workflow_*</code> в <code class="small">localStorage</code>. На данные в МойСклад и снапшоты не влияет.
+                  </li>
+                  <li class="mb-2">
+                    <strong class="text-body">Фильтры и видимость полей</strong> — селекты менеджеров, scope, чекбокс «Исключить товары из комплектов» (<code class="small">dg.mpu.flt.excludeBundleComponents.v1</code>, дефолт включён), настройки шестерёнки «Поля фильтров» (<code class="small">datagon_mpu_filter_fields_v1</code>).
+                  </li>
+                  <li class="mb-0">
+                    <strong class="text-body">Таблица</strong> — какие колонки показаны и ширины в пикселях (<code class="small">dg.mpu.colvisible.v5</code>, <code class="small">dg.mpu.colwidths.v2</code>). По умолчанию включены <strong>все</strong> колонки — «Код МС», «Название МС», «Менеджер», «Контент-менеджер», «НДС МС», «Остаток по МС», «Синхронизация МС» и полный паспорт каждого маркетплейса (<em>код, название, НДС, остаток, длина / ширина / высота / вес, кабинет, покупателю, обновлено</em>). Кнопка <strong>«Столбцы по умолчанию»</strong> возвращает именно это состояние «все включены». Лишние колонки можно скрыть через <strong>🧩 Столбцы</strong>. Полное наименование МС и ссылки на маркетплейсы — по клику на «Название МС» (карточка МойСклад).
+                  </li>
+                </ol>
+              </div>
+              <div class="dg-mp-issues-workflow-step border rounded-2 mb-3 overflow-hidden">
+                <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 px-2 py-2 bg-light border-bottom">
+                  <div class="d-flex align-items-start gap-2 min-w-0">
+                    <span class="badge bg-success rounded-1 px-2 py-1 flex-shrink-0">Шаг 1</span>
+                    <h6 class="mb-0 text-body fw-semibold">Актуальные снапшоты маркетплейсов</h6>
+                  </div>
+                  <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0" id="dg-mp-issues-workflow-t1-toggle">Свернуть</button>
+                </div>
+                <div id="dg-mp-issues-workflow-t1-body" class="small text-body-secondary lh-lg px-2 pb-3 pt-2">
+                  <p class="mb-2">
+                    Откройте разделы <strong>Маркетплейсы → Ozon</strong>, <strong>Wildberries</strong>, <strong>Яндекс Маркет</strong> и при необходимости нажмите <strong>«Обновить из маркетплейса»</strong> или загрузите последнее сохранённое. Эта страница сравнивает коды МС с тем, что есть в <strong>последнем снапшоте</strong> каждого кабинета; без обновления список «проблем» может быть устаревшим.
+                  </p>
+                  <p class="mb-0">
+                    Ключи API задаются в <a href="/exports-marketplaces.html">Настройках маркетплейсов</a>.
+                  </p>
+                </div>
+              </div>
+              <div class="dg-mp-issues-workflow-step border rounded-2 mb-3 overflow-hidden">
+                <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 px-2 py-2 bg-light border-bottom">
+                  <div class="d-flex align-items-start gap-2 min-w-0">
+                    <span class="badge bg-info text-dark rounded-1 px-2 py-1 flex-shrink-0">Шаг 2</span>
+                    <h6 class="mb-0 text-body fw-semibold">Фильтры и действия</h6>
+                  </div>
+                  <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0" id="dg-mp-issues-workflow-t2-toggle">Свернуть</button>
+                </div>
+                <div id="dg-mp-issues-workflow-t2-body" class="small text-body-secondary lh-lg px-2 pb-3 pt-2">
+                  <p class="mb-2">
+                    Выберите <strong>фильтр маркетплейса</strong> (все товары / есть проблемы хотя бы на одном / нет ни на одном / нет на конкретном маркетплейсе / не совпадает НДС / разные габариты между маркетплейсами). При необходимости сузьте выбор селектами <strong>Менеджер</strong> и <strong>Контент-менеджер</strong>.
+                  </p>
+                  <p class="mb-2">
+                    Чекбокс <strong>«Исключить товары, по которым есть комплекты»</strong> (включён по умолчанию) скрывает товары, чей <code class="small">code</code> встречается в составе хотя бы одного комплекта (берётся из <code class="small">ms_entity_details</code>, <code class="small">kind=bundle</code>, поле <code class="small">payload_json.components.rows[].assortment.code</code>). Это исключает «ложные проблемы» по штучным товарам, которые отгружаются комплектом и не выкладываются на маркетплейс отдельно. Снимите галку, если хотите видеть полный список.
+                  </p>
+                  <p class="mb-0">
+                    Пока вы меняете поля, это <strong>черновик</strong>: таблица и счётчики обновятся только после <strong>Применить</strong> или <strong>Enter</strong> в поле умного поиска в шапке таблицы. Кнопка <strong>По умолчанию</strong> сбрасывает scope, менеджеров и поиск к начальному состоянию и снова включает «исключить товары из комплектов», после чего сразу применяет. Бейдж «не применено» напоминает, что на экране ещё старый набор фильтров.
+                  </p>
+                </div>
+              </div>
+              <div class="dg-mp-issues-workflow-step border rounded-2 mb-0 overflow-hidden">
+                <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 px-2 py-2 bg-light border-bottom">
+                  <div class="d-flex align-items-start gap-2 min-w-0">
+                    <span class="badge bg-warning text-dark rounded-1 px-2 py-1 flex-shrink-0">Шаг 3</span>
+                    <h6 class="mb-0 text-body fw-semibold">Таблица и подсветка</h6>
+                  </div>
+                  <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0" id="dg-mp-issues-workflow-t3-toggle">Свернуть</button>
+                </div>
+                <div id="dg-mp-issues-workflow-t3-body" class="small text-body-secondary lh-lg px-2 pb-3 pt-2">
+                  <p class="mb-2">
+                    <strong>Умный поиск</strong> в шапке карточки таблицы ищет по артикулам и наименованиям МС и маркетплейсов, а также по ФИО менеджеров (мульти-слова через пробел — как AND). <strong>Esc</strong> или крестик в поле очищают строку и сразу применяют фильтр.
+                  </p>
+                  <p class="mb-2">
+                    При фильтре <strong>«Все товары»</strong> красным подсвечиваются только ячейки <strong>кода</strong> маркетплейса (Ozon / Wildberries / Я.Маркет), если товар в снапшоте не найден. Несовпадение НДС (МС ↔ площадка) и расхождение габаритов между площадками подсвечиваются <strong>на соответствующих фильтрах</strong>, не в режиме «все товары». На остальных фильтрах при отсутствии товара подсвечивается пара <strong>код + название</strong> для этой площадки.
+                  </p>
+                  <p class="mb-0">
+                    Кнопки <strong>🧩 Столбцы</strong> и <strong>📏 Ширины</strong> в шапке таблицы открывают панели ниже. По умолчанию (и при клике на <strong>«Столбцы по умолчанию»</strong>) включены ВСЕ колонки: по МС — <em>Менеджер, Контент-менеджер, НДС, Остаток, Синхронизация</em>, по каждому маркетплейсу — <em>Код, Название, НДС, Остаток, Длина/Ширина/Высота (см), Вес (кг), Кабинет (ссылка на товар), Покупателю (ссылка на товар), Обновлено</em>. Широкая таблица — как на странице <strong>«Мои товары»</strong>: горизонтальный скролл внутри карточки, шапка «плывёт» под верхним меню. Сузить можно через <strong>🧩 Столбцы</strong> и <strong>📏 Ширины</strong> (сохраняется в браузере). Полное наименование МС и переход в МойСклад — по клику на «Название МС». Пагинация: стартовый размер страницы 100 строк.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
 
-                <input type="radio" class="btn-check" name="dg-mpu-scope" id="dg-mpu-scope-any" value="any">
-                <label class="btn btn-outline-primary" for="dg-mpu-scope-any" title="Только те, у кого хотя бы один из 3 маркетплейсов не нашёл товар">Есть проблемы (хотя бы где-то)</label>
+          <div class="main-card mb-3 card" id="dg-mp-issues-snapshot-card">
+            <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
+              <div class="d-flex align-items-center gap-2 min-w-0">
+                <i class="header-icon pe-7s-graph1 icon-gradient bg-happy-itmeo me-2"></i>
+                <span>Журнал снимков «есть проблемы»</span>
+              </div>
+              <div class="d-flex flex-wrap gap-2 align-items-center">
+                <button type="button" class="btn btn-sm btn-outline-primary" id="dg-mp-issues-snapshot-record">
+                  Записать снимок сейчас
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mp-issues-snapshot-refresh">Обновить список</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0" id="dg-mp-issues-snapshot-toggle">Свернуть</button>
+              </div>
+            </div>
+            <div class="card-body" id="dg-mp-issues-snapshot-body">
+              <p class="small text-muted mb-2">
+                <strong>Обновить список</strong> — только перечитать журнал с сервера (новых строк сам по себе не появится).
+                <strong>Записать снимок сейчас</strong> — добавить строку в журнал по текущим данным в БД (тот же смысл, что фильтр «Есть проблемы» и «исключить комплекты»), <em>без</em> запросов к API маркетплейсов.
+                После каждого <strong>успешного полного</strong> обновления маркетплейсов (кнопка «Обновить из маркетплейсов» в
+                <a href="/settings.html">настройках</a> или автосинк по расписанию) снимок тоже записывается автоматически.
+              </p>
+              <div id="dg-mp-issues-snapshot-msg" class="alert alert-secondary py-2 px-3 mb-2 d-none small" role="status"></div>
+              <div id="dg-mp-issues-snapshot-dynamics-wrap" class="dg-snap-dynamics-wrap mb-3 d-none">
+                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+                  <div class="fw-semibold text-body small mb-0">Динамика по сотрудникам</div>
+                  <div class="btn-group btn-group-sm" role="group" aria-label="Тип сотрудников для матрицы">
+                    <button type="button" class="btn btn-outline-secondary active" id="dg-snap-dyn-mgr">Менеджеры</button>
+                    <button type="button" class="btn btn-outline-secondary" id="dg-snap-dyn-cm">Контент</button>
+                  </div>
+                </div>
+                <p class="small text-muted mb-2 mb-md-0 d-none d-md-block" id="dg-mp-issues-snapshot-dyn-hint">
+                  Столбцы — снимки слева направо по времени (сначала более старые). Насыщенность фона — доля проблем у сотрудника в этом снимке относительно других в тот же день; под числом — изменение к предыдущему снимку (▲ рост, ▼ снижение).
+                </p>
+                <div id="dg-mp-issues-snapshot-dynamics" class="dg-snap-dynamics-table-wrap mt-2"></div>
+              </div>
+              <div class="table-responsive">
+                <table class="table dg-snap-feed-table mb-0">
+                  <thead>
+                    <tr>
+                      <th style="min-width: 200px">Когда и откуда</th>
+                      <th class="text-center" style="width: 100px">Всего</th>
+                      <th style="min-width: 260px">Менеджеры</th>
+                      <th style="min-width: 260px">Контент</th>
+                    </tr>
+                  </thead>
+                  <tbody id="dg-mp-issues-snapshot-tbody">
+                    <tr><td colspan="4" class="text-muted small py-3">Загрузка…</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
 
-                <input type="radio" class="btn-check" name="dg-mpu-scope" id="dg-mpu-scope-all3" value="all3">
-                <label class="btn btn-outline-primary" for="dg-mpu-scope-all3" title="Только те, что отсутствуют на всех 3 маркетплейсах сразу">Нет ни на одном</label>
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+              <div class="d-flex align-items-center">
+                <i class="header-icon pe-7s-filter icon-gradient bg-strong-bliss me-2"></i>
+                <span>Фильтры и действия</span>
+              </div>
+              <div class="d-flex align-items-center gap-2">
+                <div class="dropdown">
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-secondary dg-vanilla-dropdown-toggle"
+                    style="line-height: 1; padding: 0.35rem 0.5rem"
+                    aria-expanded="false"
+                    aria-haspopup="true"
+                    id="dg-mpu-filter-blocks-btn"
+                    data-dg-tooltip="Какие поля фильтров показывать (сохраняется в браузере для текущего пользователя)"
+                  >
+                    <i class="pe-7s-config btn-icon-wrapper" style="font-size: 1.1rem" aria-hidden="true"></i>
+                  </button>
+                  <div
+                    class="dropdown-menu dropdown-menu-end rm-pointers p-0 dg-mpu-filter-blocks-dropdown"
+                    id="dg-mpu-filter-blocks-menu"
+                    style="width: min(420px, calc(100vw - 1.5rem))"
+                  >
+                    <div class="dropdown-menu-header mb-0">
+                      <div class="dropdown-menu-header-inner bg-strong-bliss">
+                        <div
+                          class="menu-header-image opacity-5"
+                          style="background-image: url('/assets/utils/images/dropdown-header/abstract2.jpg')"
+                        ></div>
+                        <div class="menu-header-content text-white px-3 py-2">
+                          <h5 class="menu-header-title mb-0">Поля фильтров</h5>
+                          <h6 class="menu-header-subtitle mb-0 opacity-8 fw-normal small">Скрыть/показать выбранные блоки</h6>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="dg-mpu-filter-blocks-scroll" style="max-height: calc(100vh - 10rem); overflow-y: auto; overflow-x: hidden">
+                      <div id="dg-mpu-filter-blocks-toggles" class="list-group list-group-flush"></div>
+                    </div>
+                  </div>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mpu-scope-toggle" title="Свернуть/развернуть тело карточки фильтра">Свернуть</button>
+              </div>
+            </div>
+            <div class="card-body" id="dg-mpu-scope-body">
+              <div class="row g-3 align-items-end">
+                <div class="col-12" data-dg-mpu-filter-field="scope" data-dg-filter-field-title="Фильтр маркетплейса">
+                  <label class="form-label small mb-1" id="dg-mpu-scope-label">Фильтр маркетплейса</label>
+                  <div class="btn-group flex-wrap d-flex" role="group" aria-labelledby="dg-mpu-scope-label" id="dg-mpu-scope-group">
+                    <input type="radio" class="btn-check" name="dg-mpu-scope" id="dg-mpu-scope-all" value="all" checked>
+                    <label class="btn btn-outline-primary" for="dg-mpu-scope-all" title="Все товары МС по основному фильтру; красным подсвечены отсутствующие коды.">Все товары</label>
 
-                <input type="radio" class="btn-check" name="dg-mpu-scope" id="dg-mpu-scope-ozon" value="ozon">
-                <label class="btn btn-outline-primary" for="dg-mpu-scope-ozon">Нет на Ozon</label>
+                    <input type="radio" class="btn-check" name="dg-mpu-scope" id="dg-mpu-scope-any" value="any">
+                    <label class="btn btn-outline-primary" for="dg-mpu-scope-any" title="Только те, у кого хотя бы один из 3 маркетплейсов не нашёл товар">Есть проблемы (хотя бы где-то)</label>
 
-                <input type="radio" class="btn-check" name="dg-mpu-scope" id="dg-mpu-scope-wb" value="wb">
-                <label class="btn btn-outline-primary" for="dg-mpu-scope-wb">Нет на Wildberries</label>
+                    <input type="radio" class="btn-check" name="dg-mpu-scope" id="dg-mpu-scope-all3" value="all3">
+                    <label class="btn btn-outline-primary" for="dg-mpu-scope-all3" title="Только те, что отсутствуют на всех 3 маркетплейсах сразу">Нет ни на одном</label>
 
-                <input type="radio" class="btn-check" name="dg-mpu-scope" id="dg-mpu-scope-ym" value="ym">
-                <label class="btn btn-outline-primary" for="dg-mpu-scope-ym">Нет на Я.Маркет</label>
+                    <input type="radio" class="btn-check" name="dg-mpu-scope" id="dg-mpu-scope-ozon" value="ozon">
+                    <label class="btn btn-outline-primary" for="dg-mpu-scope-ozon">Нет на Ozon</label>
+
+                    <input type="radio" class="btn-check" name="dg-mpu-scope" id="dg-mpu-scope-wb" value="wb">
+                    <label class="btn btn-outline-primary" for="dg-mpu-scope-wb">Нет на Wildberries</label>
+
+                    <input type="radio" class="btn-check" name="dg-mpu-scope" id="dg-mpu-scope-ym" value="ym">
+                    <label class="btn btn-outline-primary" for="dg-mpu-scope-ym">Нет на Я.Маркет</label>
+
+                    <input type="radio" class="btn-check" name="dg-mpu-scope" id="dg-mpu-scope-vat-mismatch" value="vat_mismatch">
+                    <label class="btn btn-outline-primary" for="dg-mpu-scope-vat-mismatch" title="Товар найден в снапшоте маркетплейса, но нормализованный НДС МС не совпадает с НДС на этой площадке (WB «не указан» не сравнивается).">Не совпадает НДС</label>
+
+                    <input type="radio" class="btn-check" name="dg-mpu-scope" id="dg-mpu-scope-dims-mismatch" value="dims_mismatch">
+                    <label class="btn btn-outline-primary" for="dg-mpu-scope-dims-mismatch" title="Товар есть минимум на двух маркетплейсах, и по длине/ширине/высоте (см) или весу (кг) обе площадки отдают число, а значения расходятся (пусто с одной стороны не считается расхождением). С МойСклад не сравнивается — в выгрузке МС нет этих полей.">Разные габариты</label>
+                  </div>
+                </div>
+                <div class="col-md-4 col-sm-6" data-dg-mpu-filter-field="manager" data-dg-filter-field-title="Менеджер">
+                  <label class="form-label small mb-1" for="dg-mpu-flt-manager">Менеджер</label>
+                  <select class="form-select form-select-sm" id="dg-mpu-flt-manager">
+                    <option value="">— все —</option>
+                  </select>
+                </div>
+                <div class="col-md-4 col-sm-6" data-dg-mpu-filter-field="cmgr" data-dg-filter-field-title="Контент-менеджер">
+                  <label class="form-label small mb-1" for="dg-mpu-flt-cmgr">Контент-менеджер</label>
+                  <select class="form-select form-select-sm" id="dg-mpu-flt-cmgr">
+                    <option value="">— все —</option>
+                  </select>
+                </div>
+                <div class="col-12" data-dg-mpu-filter-field="exclude_bundle_components" data-dg-filter-field-title="Исключить товары, входящие в комплекты">
+                  <div class="form-check form-switch mb-0">
+                    <input class="form-check-input" type="checkbox" role="switch" id="dg-mpu-flt-exclude-bundle-components" checked>
+                    <label class="form-check-label small" for="dg-mpu-flt-exclude-bundle-components" data-dg-tooltip="Скрыть товары, которые встречаются как компонент в составе хотя бы одного комплекта (kind=bundle в ms_entity_details). По умолчанию включено.">
+                      Исключить товары, по которым есть комплекты
+                    </label>
+                  </div>
+                </div>
+              </div>
+              <div class="mt-3 d-flex flex-wrap gap-2 align-items-center" data-dg-mpu-filter-field="filter_actions" data-dg-filter-field-title="Кнопки «Применить» / «Сбросить»">
+                <button type="button" class="btn btn-sm btn-primary" id="dg-mpu-flt-apply" title="Применить фильтры и поиск (или нажмите Enter в поле поиска)"><i class="pe-7s-search me-1"></i>Применить</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mpu-flt-reset" title="Сбросить scope, поиск, менеджера и контент-менеджера"><i class="pe-7s-refresh me-1"></i>По умолчанию</button>
+                <span class="badge bg-warning text-dark d-none" id="dg-mpu-flt-dirty" title="Есть несохранённые изменения фильтров">не применено</span>
               </div>
               <div id="dg-mpu-msg" class="alert alert-secondary mt-3 mb-0 d-none" role="status"></div>
             </div>
           </div>
 
           <div class="main-card mb-3 card">
-            <div class="card-header d-flex align-items-center gap-2 flex-wrap">
-              <i class="header-icon pe-7s-graph2 icon-gradient bg-strong-bliss me-2"></i>
-              <span id="dg-mpu-table-title">Таблица — все товары</span>
-              <div class="ms-auto d-flex align-items-center gap-2 flex-nowrap dg-mp-search-box">
-                <label class="small text-muted mb-0 flex-shrink-0" for="dg-mp-search">Поиск</label>
-                <input type="search" class="form-control form-control-sm dg-mp-search-input" id="dg-mp-search" placeholder="Артикул или наименование" autocomplete="off" />
-                <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0" id="dg-mp-search-clear" title="Очистить поиск">×</button>
-              </div>
-            </div>
-            <div class="card-body p-0">
-              <div class="dg-mp-toolbox mx-3 mt-3" id="dg-mpu-toolbox">
-                <div class="dg-mp-toolbox-top">
-                  <div class="dg-mpu-toolbox-wrap">
-                    <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mpu-cols-toggle" title="Управление видимостью колонок">🧩 Столбцы</button>
-                    <div class="dg-mpu-cols-panel" id="dg-mpu-cols-panel">
-                      <div class="d-flex justify-content-between align-items-center">
-                        <strong class="small">Видимость колонок</strong>
-                        <button type="button" class="btn btn-link btn-sm p-0" id="dg-mpu-cols-reset" title="Сбросить видимость к дефолту">сбросить</button>
-                      </div>
-                      <div class="dg-mpu-cols-grid" id="dg-mpu-cols-grid"></div>
-                    </div>
-                  </div>
-                  <div class="dg-mpu-toolbox-wrap">
-                    <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mpu-widths-toggle" title="Ручная ширина каждой колонки в пикселях (или drag за правый край заголовка)">📏 Ширины</button>
-                    <div class="dg-mpu-cols-panel" id="dg-mpu-widths-panel">
-                      <div class="d-flex justify-content-between align-items-center">
-                        <strong class="small">Ширины колонок (px)</strong>
-                        <button type="button" class="btn btn-link btn-sm p-0" id="dg-mpu-widths-reset" title="Сбросить ширины к дефолту">по умолчанию</button>
-                      </div>
-                      <div class="dg-mp-widths-grid" id="dg-mpu-widths-grid"></div>
-                    </div>
-                  </div>
-                  <div class="dg-mp-filter-group" id="dg-mpu-filter-group">
-                    <span class="dg-mp-filter-lbl">Дополнительно:</span>
-                    <label class="dg-mp-filter-sel" for="dg-mpu-flt-manager">
-                      <span class="dg-mp-filter-lbl">Менеджер</span>
-                      <select class="form-select form-select-sm" id="dg-mpu-flt-manager">
-                        <option value="">— все —</option>
-                      </select>
-                    </label>
-                    <label class="dg-mp-filter-sel" for="dg-mpu-flt-cmgr">
-                      <span class="dg-mp-filter-lbl">Контент-менеджер</span>
-                      <select class="form-select form-select-sm" id="dg-mpu-flt-cmgr">
-                        <option value="">— все —</option>
-                      </select>
-                    </label>
-                  </div>
-                  <div class="dg-mp-filter-actions ms-auto d-flex align-items-center gap-2">
-                    <span class="badge bg-warning text-dark d-none" id="dg-mpu-flt-dirty" title="Есть несохранённые изменения фильтров">не применено</span>
-                    <button type="button" class="btn btn-sm btn-primary" id="dg-mpu-flt-apply" title="Применить фильтры и поиск (или нажмите Enter в поле поиска)">Применить</button>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mpu-flt-reset" title="Сбросить scope, поиск, менеджера и контент-менеджера">Сбросить</button>
+            <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+              <div class="d-flex align-items-center gap-3 flex-grow-1" style="min-width: 0">
+                <div class="d-flex align-items-center flex-shrink-0">
+                  <i class="header-icon pe-7s-graph2 icon-gradient bg-strong-bliss me-2"></i>
+                  <span id="dg-mpu-table-title">Таблица — все товары</span>
+                </div>
+                <div class="dg-ms-header-search" style="flex: 0 1 380px; min-width: 220px">
+                  <div class="input-group input-group-sm">
+                    <span class="input-group-text bg-white text-muted px-2" aria-hidden="true">🔎</span>
+                    <input type="search" class="form-control" id="dg-mp-search"
+                           placeholder="Умный поиск: артикул или наименование (Enter — применить)"
+                           autocomplete="off"
+                           data-dg-tooltip='Умный поиск по таблице: артикул и наименование. Enter — применить, Esc — очистить.' />
                   </div>
                 </div>
+                <!-- Скрытая кнопка очистки: оставлена для обратной совместимости со скриптом
+                     (см. inners/exports-marketplaces-issues.scripts.html — `elSearchClear`).
+                     Эталонное поведение очистки реализовано через нативный <input type="search">
+                     (системный «×» в браузере) и Esc в обработчике elSearch. -->
+                <button type="button" class="d-none" id="dg-mp-search-clear" aria-hidden="true"></button>
               </div>
-              <div class="dg-mp-mkt-scroll">
-                <div class="table-responsive datagon-my-products-table-wrap">
-                  <table class="table table-hover table-striped mb-0 datagon-my-products-table dg-mp-mkt-table" id="dg-mp-table-main">
-                    <thead>
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mpu-cols-toggle-header" title="Управление видимостью колонок (открывает панель в теле карточки)">🧩 Столбцы</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mpu-widths-toggle-header" title="Ручная ширина колонок в пикселях">📏 Ширины</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mpu-table-toggle" title="Свернуть/развернуть тело карточки с таблицей">Свернуть</button>
+              </div>
+            </div>
+            <div class="card-body p-0" id="dg-mpu-table-body">
+              <!-- Эталон как у shop-маркетплейсов: скрытые кнопки в .dg-mp-toolbox-top (прокси из card-header),
+                   панели — соседи `.dg-mp-toolbox-panel` на всю ширину toolbox (не absolute popover). -->
+              <div class="dg-mp-toolbox mx-3 mt-3" id="dg-mpu-toolbox">
+                <div class="dg-mp-toolbox-top">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mpu-cols-toggle" title="Управление видимостью колонок" style="display: none">🧩 Столбцы</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mpu-widths-toggle" title="Ручная ширина каждой колонки в пикселях (или drag за правый край заголовка)" style="display: none">📏 Ширины</button>
+                </div>
+                <div class="dg-mp-toolbox-panel" id="dg-mpu-cols-panel">
+                  <div class="dg-mp-toolbox-actions">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mpu-cols-reset" title="Сбросить видимость к дефолту">Столбцы по умолчанию</button>
+                  </div>
+                  <div class="dg-mp-cols-grid" id="dg-mpu-cols-grid"></div>
+                </div>
+                <div class="dg-mp-toolbox-panel" id="dg-mpu-widths-panel">
+                  <div class="dg-mp-toolbox-actions">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mpu-widths-reset" title="Сбросить ширины колонок к значениям по умолчанию">Ширины по умолчанию</button>
+                  </div>
+                  <div class="dg-mp-widths-grid" id="dg-mpu-widths-grid"></div>
+                </div>
+              </div>
+              <!-- Как /my-products.html: внешний горизонтальный скролл, внутри overflow:visible;
+                   «плавающая» шапка под app-header — transform на <thead> (issues.scripts), не native sticky к внешнему скроллу. -->
+              <div
+                id="dg-mpu-table-scroll-outer"
+                class="dg-mp-table-scroll-outer"
+                style="width: 100%; max-width: 100%; min-width: 0; overflow-x: auto; overflow-y: visible; -webkit-overflow-scrolling: touch"
+              >
+                <div
+                  class="table-responsive datagon-my-products-table-wrap"
+                  style="display: block; width: 100%; max-width: 100%; min-width: 0; overflow: visible; position: relative"
+                >
+                  <table
+                    class="table table-hover table-striped mb-0 datagon-my-products-table dg-mp-mkt-table"
+                    id="dg-mp-table-main"
+                    style="width: max-content; min-width: min(100%, 2200px); max-width: none; table-layout: fixed; border-collapse: collapse; border-spacing: 0"
+                  >
+                    <thead id="dg-mpu-thead">
                       <tr>
                         <th class="text-muted">Загрузка…</th>
                       </tr>
@@ -1015,6 +1618,25 @@
                   <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mp-page-prev">Назад</button>
                   <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mp-page-next">Вперед</button>
                 </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Карточка товара МойСклад (lazy по клику на «Название МС», как на /moysklad.html) -->
+          <div id="dg-ms-detail-overlay" class="dg-ms-detail-overlay" style="display: none" aria-hidden="true">
+            <div class="dg-ms-detail-panel card shadow-lg border-0">
+              <div class="card-header d-flex align-items-center justify-content-between gap-2">
+                <div class="fw-semibold text-truncate" id="dg-ms-detail-title">Карточка МойСклад</div>
+                <div class="d-flex align-items-center gap-2 flex-shrink-0">
+                  <a class="btn btn-sm btn-outline-primary d-none" id="dg-ms-detail-open-ms" href="#" target="_blank" rel="noopener noreferrer">Открыть в МойСклад</a>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-ms-detail-close" aria-label="Закрыть">Закрыть</button>
+                </div>
+              </div>
+              <div class="card-body" style="max-height: min(78vh, 720px); overflow-y: auto">
+                <p class="text-muted small mb-2" id="dg-ms-detail-hint">
+                  Данные карточки берутся из базы. Если записи ещё нет или она устарела, сервер делает запрос в API МойСклад и сохраняет ответ в базу.
+                </p>
+                <div id="dg-ms-detail-body" class="small"></div>
               </div>
             </div>
           </div>
@@ -1096,17 +1718,18 @@
         (function () {
             'use strict';
 
-            // ---- sticky-top для шапки таблицы ----
-            // Таблица «Проблемы с товарами» исключена из глобального markBaselineTables
-            // (см. правило datagon-table-behavior-lock.mdc). Высоту app-header выставляем сами,
-            // чтобы native CSS sticky на <th> прилипал под верхнее меню.
+            // ---- шапка таблицы: --dg-table-sticky-top (прочие стили) + как /my-products.html —
+            // transform на #dg-mpu-thead при вертикальном скролле; горизонтальный скролл —
+            // #dg-mpu-table-scroll-outer. Таблица вне markBaselineTables (datagon-table-behavior-lock).
             function syncStickyTopVar() {
                 try {
-                    var header = document.querySelector('.app-header.fixed-header') || document.querySelector('.app-header');
-                    var top = 60;
-                    if (header) {
-                        var rect = header.getBoundingClientRect();
-                        if (rect && rect.height > 0) top = Math.round(rect.height);
+                    var app = document.querySelector('.app-container');
+                    var header = document.querySelector('.app-header');
+                    var fixed = Boolean(app && app.classList && app.classList.contains('fixed-header'));
+                    var top = 0;
+                    if (fixed && header && header.getBoundingClientRect) {
+                        var r = header.getBoundingClientRect();
+                        top = r && r.height ? Math.round(r.height) : 60;
                     }
                     document.documentElement.style.setProperty('--dg-table-sticky-top', top + 'px');
                 } catch (_) {}
@@ -1121,13 +1744,325 @@
                 try {
                     var header = document.querySelector('.app-header');
                     if (header && typeof ResizeObserver !== 'undefined') {
-                        new ResizeObserver(syncStickyTopVar).observe(header);
+                        new ResizeObserver(function () {
+                            syncStickyTopVar();
+                        }).observe(header);
                     }
                 } catch (_) {}
             }
             bindStickyTopVar();
 
+            var MPU_FLOATING_HEADER_OFFSET_PX = 2;
+            var MPU_FLOATING_HEADER_START_EPS_PX = 3;
+            var mpuFloatingHeaderRaf = 0;
+            var mpuFloatingLastScrollTs = 0;
+
+            function getMpuStickyTopPx() {
+                var app = document.querySelector('.app-container');
+                var header = document.querySelector('.app-header');
+                var fixed = Boolean(app && app.classList && app.classList.contains('fixed-header'));
+                if (!fixed) return 0;
+                if (!header || !header.getBoundingClientRect) return 60;
+                var rect = header.getBoundingClientRect();
+                var h = rect && rect.height ? rect.height : 60;
+                return h > 0 ? h : 60;
+            }
+
+            function captureMpuTheadBaseTop() {
+                var thead = document.getElementById('dg-mpu-thead');
+                if (!thead) return;
+                thead.style.transform = '';
+                thead.style.position = '';
+                thead.style.zIndex = '';
+                thead.style.willChange = '';
+                thead.removeAttribute('data-dg-floating');
+                var rect = thead.getBoundingClientRect();
+                var absTop = (window.scrollY || window.pageYOffset || 0) + (rect && rect.top ? rect.top : 0);
+                thead.setAttribute('data-dg-base-top', String(absTop));
+            }
+
+            function updateMpuFloatingHeaderFallback() {
+                var thead = document.getElementById('dg-mpu-thead');
+                if (!thead) return;
+                var table = thead.closest('table');
+                if (!table || !table.getBoundingClientRect) return;
+                var row = thead.querySelector('tr');
+                if (!row) return;
+
+                var y = window.scrollY || window.pageYOffset || 0;
+                var headerTop = getMpuStickyTopPx();
+
+                var baseTopAbs = Number(thead.getAttribute('data-dg-base-top') || 0);
+                if (!Number.isFinite(baseTopAbs) || baseTopAbs <= 0) return;
+                var tableRect = table.getBoundingClientRect();
+                var tableBottom = tableRect.bottom + y;
+                var rowRect = row.getBoundingClientRect();
+                var rowHeight = rowRect && rowRect.height ? rowRect.height : 0;
+
+                var headerLine = y + headerTop;
+                var start = baseTopAbs + MPU_FLOATING_HEADER_START_EPS_PX;
+                var end = tableBottom - rowHeight;
+                if (headerLine <= start || headerLine >= end) {
+                    if (thead.style.transform) {
+                        thead.style.transform = '';
+                        thead.style.position = '';
+                        thead.style.zIndex = '';
+                        thead.style.willChange = '';
+                        thead.removeAttribute('data-dg-floating');
+                    }
+                    return;
+                }
+
+                var zoomAwareOffset = MPU_FLOATING_HEADER_OFFSET_PX;
+                var dpr = window.devicePixelRatio || 1;
+                if (Math.abs(dpr - 1) < 0.03) zoomAwareOffset = MPU_FLOATING_HEADER_OFFSET_PX - 3;
+                var shift = Math.max(0, headerLine - start - zoomAwareOffset);
+                var shiftPx = Number(shift.toFixed(3));
+                var nextTransform = 'translate3d(0,' + shiftPx + 'px,0)';
+                if (thead.style.transform !== nextTransform) {
+                    thead.style.transform = nextTransform;
+                    thead.style.position = 'relative';
+                    thead.style.zIndex = '40';
+                    thead.style.willChange = 'transform';
+                    thead.setAttribute('data-dg-floating', '1');
+                }
+            }
+
+            function mpuFloatingHeaderTick(ts) {
+                mpuFloatingHeaderRaf = 0;
+                updateMpuFloatingHeaderFallback();
+                if (ts - mpuFloatingLastScrollTs < 140) {
+                    mpuFloatingHeaderRaf = requestAnimationFrame(mpuFloatingHeaderTick);
+                }
+            }
+
+            function scheduleMpuFloatingHeaderUpdate() {
+                mpuFloatingLastScrollTs =
+                    typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
+                if (mpuFloatingHeaderRaf) return;
+                mpuFloatingHeaderRaf = requestAnimationFrame(mpuFloatingHeaderTick);
+            }
+
+            function onScrollMpuFloatingHeader() {
+                scheduleMpuFloatingHeaderUpdate();
+            }
+
+            function mpuRefreshFloatingAfterLayout() {
+                requestAnimationFrame(function () {
+                    captureMpuTheadBaseTop();
+                    scheduleMpuFloatingHeaderUpdate();
+                });
+            }
+
+            function mpuSyncLayoutAndFloating() {
+                if (typeof syncStickyTopVar === 'function') syncStickyTopVar();
+                mpuRefreshFloatingAfterLayout();
+            }
+
+            (function bindMpuIssuesFloatingScroll() {
+                window.addEventListener('scroll', onScrollMpuFloatingHeader, { passive: true });
+                window.addEventListener('resize', function () {
+                    mpuSyncLayoutAndFloating();
+                }, { passive: true });
+                var mainOuter = document.querySelector('.app-main__outer');
+                if (mainOuter && mainOuter.addEventListener) {
+                    mainOuter.addEventListener('scroll', onScrollMpuFloatingHeader, { passive: true });
+                }
+                var horiz = document.getElementById('dg-mpu-table-scroll-outer');
+                if (horiz && horiz.addEventListener) {
+                    horiz.addEventListener('scroll', onScrollMpuFloatingHeader, { passive: true });
+                }
+                if (document.fonts && document.fonts.ready && typeof document.fonts.ready.then === 'function') {
+                    document.fonts.ready.then(function () {
+                        mpuRefreshFloatingAfterLayout();
+                    }).catch(function () {});
+                }
+                window.addEventListener('load', function () {
+                    mpuRefreshFloatingAfterLayout();
+                }, { passive: true });
+            })();
+
+            /** Как на /moysklad.html: ссылка на карточку в веб-интерфейсе МС и kind для /api/ms/detail */
+            function msOpenInWebHref(uuid, typeMs) {
+                var u = String(uuid || '').trim();
+                if (!u) return '';
+                var t = String(typeMs || '').toLowerCase();
+                if (t.indexOf('комплект') >= 0) {
+                    return 'https://online.moysklad.ru/app/#bundle/edit?id=' + encodeURIComponent(u);
+                }
+                return 'https://online.moysklad.ru/app/#good/edit?id=' + encodeURIComponent(u);
+            }
+            function msKindQueryParam(typeMs) {
+                var t = String(typeMs || '').toLowerCase();
+                if (t.indexOf('комплект') >= 0) return 'bundle';
+                return 'product';
+            }
+            function closeMsDetailModal() {
+                var ov = document.getElementById('dg-ms-detail-overlay');
+                if (!ov) return;
+                ov.style.display = 'none';
+                ov.setAttribute('aria-hidden', 'true');
+            }
+            function trimLinkHref(raw) {
+                return String(raw || '').replace(/[)\].,;:!?]+$/g, '');
+            }
+            function isDangerousAutoLinkHref(href) {
+                var low = String(href || '').trim().toLowerCase();
+                return (
+                    low.indexOf('javascript:') === 0 ||
+                    low.indexOf('data:') === 0 ||
+                    low.indexOf('vbscript:') === 0
+                );
+            }
+            function appendTextWithAutoLinks(el, raw) {
+                var s = String(raw == null ? '' : raw);
+                el.textContent = '';
+                if (!s) return;
+                var re =
+                    /(https?:\/\/[^\s<>"'`]+)|(www\.[^\s<>"'`]+)|([a-z][a-z0-9+.-]*:\/\/[^\s<>"'`]+)|(mailto:[^\s<>"'`]+)|(tel:\+?[^\s<>"'`]+)/gi;
+                var last = 0;
+                var m;
+                while ((m = re.exec(s)) !== null) {
+                    if (m.index > last) {
+                        el.appendChild(document.createTextNode(s.slice(last, m.index)));
+                    }
+                    var full = m[0];
+                    var href = trimLinkHref(full);
+                    var display = href;
+                    if (!href) {
+                        last = m.index + full.length;
+                        continue;
+                    }
+                    if (/^www\./i.test(href)) {
+                        href = 'https://' + href;
+                    }
+                    if (href.length < 4 || isDangerousAutoLinkHref(href)) {
+                        el.appendChild(document.createTextNode(full));
+                        last = m.index + full.length;
+                        continue;
+                    }
+                    var a = document.createElement('a');
+                    a.href = href;
+                    a.className = 'text-break';
+                    a.textContent = display;
+                    var low = href.toLowerCase();
+                    if (
+                        low.indexOf('http:') === 0 ||
+                        low.indexOf('https:') === 0 ||
+                        low.indexOf('ftp:') === 0
+                    ) {
+                        a.target = '_blank';
+                        a.rel = 'noopener noreferrer';
+                    }
+                    el.appendChild(a);
+                    last = m.index + full.length;
+                }
+                if (last < s.length) {
+                    el.appendChild(document.createTextNode(s.slice(last)));
+                }
+            }
+            function renderMsDetailBlocks(blocks) {
+                var body = document.getElementById('dg-ms-detail-body');
+                if (!body) return;
+                body.innerHTML = '';
+                if (!blocks || !blocks.length) {
+                    body.textContent = 'Нет данных.';
+                    return;
+                }
+                blocks.forEach(function (blk) {
+                    if (blk.title) {
+                        var h = document.createElement('div');
+                        h.className = 'fw-semibold mb-2 mt-2';
+                        h.style.fontSize = '0.9rem';
+                        h.textContent = blk.title;
+                        body.appendChild(h);
+                    }
+                    var tbl = document.createElement('table');
+                    tbl.className = 'dg-ms-detail-kv mb-3';
+                    (blk.rows || []).forEach(function (row) {
+                        var tr = document.createElement('tr');
+                        var th = document.createElement('th');
+                        th.textContent = row.label || '';
+                        var td = document.createElement('td');
+                        td.style.whiteSpace = 'pre-wrap';
+                        td.style.wordBreak = 'break-word';
+                        appendTextWithAutoLinks(td, row.value == null ? '' : String(row.value));
+                        tr.appendChild(th);
+                        tr.appendChild(td);
+                        tbl.appendChild(tr);
+                    });
+                    body.appendChild(tbl);
+                });
+            }
+            function openMsDetailModal(uuid, code, nameText, typeMs) {
+                var u = String(uuid || '').trim();
+                var ov = document.getElementById('dg-ms-detail-overlay');
+                var titleEl = document.getElementById('dg-ms-detail-title');
+                var body = document.getElementById('dg-ms-detail-body');
+                var openMs = document.getElementById('dg-ms-detail-open-ms');
+                if (!ov || !titleEl || !body) return;
+                if (!u) return;
+                titleEl.textContent = nameText || 'Товар МойСклад';
+                body.innerHTML = '<p class="text-muted mb-0">Загрузка…</p>';
+                if (openMs) {
+                    openMs.classList.add('d-none');
+                    openMs.href = '#';
+                }
+                ov.style.display = 'flex';
+                ov.setAttribute('aria-hidden', 'false');
+                var q = '/api/ms/detail/' + encodeURIComponent(u) + '?kind=' + encodeURIComponent(msKindQueryParam(typeMs));
+                fetch(q, { credentials: 'same-origin' })
+                    .then(function (r) {
+                        return r.json().then(function (j) {
+                            return { ok: r.ok, st: r.status, j: j };
+                        });
+                    })
+                    .then(function (x) {
+                        if (!x.ok) {
+                            body.innerHTML =
+                                '<p class="text-danger mb-0">' +
+                                String(x.j && x.j.error ? x.j.error : 'Ошибка ' + x.st) +
+                                '</p>';
+                            return;
+                        }
+                        var j = x.j || {};
+                        if (openMs) {
+                            var hrefMs = j.webHref || msOpenInWebHref(u, typeMs);
+                            if (hrefMs) {
+                                openMs.href = hrefMs;
+                                openMs.classList.remove('d-none');
+                            }
+                        }
+                        renderMsDetailBlocks(j.blocks);
+                    })
+                    .catch(function () {
+                        body.innerHTML = '<p class="text-danger mb-0">Сеть недоступна</p>';
+                    });
+            }
+            function initMsDetailModal() {
+                var ov = document.getElementById('dg-ms-detail-overlay');
+                var closeBtn = document.getElementById('dg-ms-detail-close');
+                var panel = ov ? ov.querySelector('.dg-ms-detail-panel') : null;
+                if (closeBtn) closeBtn.addEventListener('click', closeMsDetailModal);
+                if (ov) {
+                    ov.addEventListener('click', function (e) {
+                        if (e.target === ov) closeMsDetailModal();
+                    });
+                }
+                if (panel) {
+                    panel.addEventListener('click', function (e) {
+                        e.stopPropagation();
+                    });
+                }
+                document.addEventListener('keydown', function (e) {
+                    if (e.key === 'Escape') closeMsDetailModal();
+                });
+            }
+            initMsDetailModal();
+
             var API_URL = '/api/exports/marketplaces/issues';
+            var SNAPSHOT_LOG_URL = '/api/exports/marketplaces/issues/snapshot-log';
+            var SNAPSHOT_RUN_URL = '/api/exports/marketplaces/issues/snapshot-run';
             var SCOPE_LABELS = {
                 all: 'все товары',
                 any: 'есть проблемы (хотя бы где-то)',
@@ -1135,6 +2070,8 @@
                 ozon: 'нет на Ozon',
                 wb: 'нет на Wildberries',
                 ym: 'нет на Я.Маркет',
+                vat_mismatch: 'не совпадает НДС (МС ↔ маркетплейс)',
+                dims_mismatch: 'разные габариты между маркетплейсами',
             };
             // Ключи, по которым работает «умный поиск»: артикул/наименование МС + маркетплейсов
             // + ФИО менеджеров. Если бэкенд вернёт строку без этих ключей — fallback на все
@@ -1142,10 +2079,11 @@
             // подстроке наименования с любого маркетплейса будет всегда, без отдельных полей.
             var SEARCH_KEYS = [
                 'code', 'name',
-                'ozon_code', 'ozon_name',
-                'wb_code', 'wb_name',
-                'ym_code', 'ym_name',
                 'manager', 'content_manager',
+                'ms_vat', 'ms_stock', 'synced_at',
+                'ozon_code', 'ozon_name', 'ozon_vat', 'ozon_stock', 'ozon_updated',
+                'wb_code', 'wb_name', 'wb_vat', 'wb_stock', 'wb_updated',
+                'ym_code', 'ym_name', 'ym_vat', 'ym_stock', 'ym_updated',
             ];
             // Колонки, которые нужно подсветить красным при пустом значении (и значит товара
             // нет на этом маркетплейсе). Подсветка делается по парам (code + name).
@@ -1155,32 +2093,87 @@
                 ['ym_code', 'ym_name'],
             ];
             // ---- Колонки: дефолтные ширины и видимость (сохраняем в localStorage) ----
-            var COLS_WIDTH_KEY = 'dg.mpu.colwidths.v1';
-            var COLS_VISIBLE_KEY = 'dg.mpu.colvisible.v1';
-            // ---- Дополнительные фильтры (Менеджер / Контент-менеджер): сохраняем в localStorage ----
+            // Bump COLS_VISIBLE_KEY до v5 после смены семантики дефолта: теперь по
+            // умолчанию (и при клике на «Столбцы по умолчанию») включены ВСЕ колонки,
+            // а не компактный набор (см. DEFAULT_HIDDEN_COLS — пустой объект ниже).
+            // Старые v4-настройки игнорируем, иначе у пользователей со скрытыми
+            // *_name/*_vat/dim/link/updated кнопка «Столбцы по умолчанию» не
+            // включала бы все колонки. COLS_WIDTH_KEY оставлен v2 — индивидуальные
+            // пиксельные значения сохраняются, новые получают дефолт из
+            // COL_WIDTH_DEFAULTS_BY_KEY. При большом числе включённых колонок
+            // таблица расширяется (по эталону маркетплейсов sticky-th прилипает под
+            // app-header через --dg-table-sticky-top, см. правило).
+            var COLS_WIDTH_KEY = 'dg.mpu.colwidths.v2';
+            var COLS_VISIBLE_KEY = 'dg.mpu.colvisible.v5';
+            // ---- Дополнительные фильтры (Менеджер / Контент-менеджер / «исключить товары
+            // из комплектов»): сохраняем в localStorage ----
+            // Чекбокс «исключить компоненты комплектов» хранится строкой ('1' / '0').
+            // Если ключа в storage нет — считаем, что фильтр включён по умолчанию (см.
+            // initialExcludeBundleComponents ниже). Это согласовано с серверным
+            // дефолтом /api/exports/marketplaces/issues?exclude_bundle_components=1.
             var FILTER_MANAGER_KEY = 'dg.mpu.flt.manager.v1';
             var FILTER_CONTENT_MGR_KEY = 'dg.mpu.flt.cmgr.v1';
+            var FILTER_EXCLUDE_BUNDLE_COMPONENTS_KEY = 'dg.mpu.flt.excludeBundleComponents.v1';
             var COL_MIN_WIDTH = 60;
             var COL_MAX_WIDTH = 800;
-            var DEFAULT_COL_WIDTH = 140;
+            var DEFAULT_COL_WIDTH = 120;
+            // Дефолтные ширины — компактные, чтобы видимые колонки без manager /
+            // content_manager / synced_at (скрыты по умолчанию) суммарно помещались
+            // в карточке на типовом ноутбуке (~960px) и работала единая
+            // sticky-схема под app-header (overflow:visible на .dg-mp-mkt-scroll).
             var COL_WIDTH_DEFAULTS_BY_KEY = {
-                code: 110,
-                name: 240,
-                manager: 130,
-                content_manager: 150,
-                synced_at_ms: 130,
-                ozon_code: 90,
-                ozon_name: 220,
-                wb_code: 90,
-                wb_name: 220,
-                ym_code: 90,
-                ym_name: 220,
+                code: 80,
+                name: 200,
+                ms_vat: 70,
+                manager: 110,
+                content_manager: 130,
+                synced_at: 110,
+                ms_stock: 88,
+
+                ozon_code: 70,
+                ozon_name: 160,
+                ozon_vat: 80,
+                ozon_stock: 80,
+                ozon_length: 80,
+                ozon_width: 80,
+                ozon_height: 80,
+                ozon_weight: 80,
+                ozon_cabinet_url: 90,
+                ozon_buyer_url: 95,
+                ozon_updated: 110,
+
+                wb_code: 70,
+                wb_name: 160,
+                wb_vat: 70,
+                wb_stock: 80,
+                wb_length: 80,
+                wb_width: 80,
+                wb_height: 80,
+                wb_weight: 80,
+                wb_cabinet_url: 90,
+                wb_buyer_url: 95,
+                wb_updated: 110,
+
+                ym_code: 70,
+                ym_name: 160,
+                ym_vat: 80,
+                ym_stock: 80,
+                ym_length: 80,
+                ym_width: 80,
+                ym_height: 80,
+                ym_weight: 80,
+                ym_cabinet_url: 90,
+                ym_buyer_url: 95,
+                ym_updated: 110,
             };
-            // Колонки, скрытые ПО УМОЛЧАНИЮ — чтобы таблица из коробки лучше помещалась
-            // (пользователь сам включит при необходимости через «🧩 Столбцы»).
-            var DEFAULT_HIDDEN_COLS = {
-                synced_at_ms: true,
-            };
+            // Колонки, скрытые ПО УМОЛЧАНИЮ. Сейчас пустой объект — это семантический
+            // дефолт «все колонки видны». Используется в isColVisible(k) и обнуляется
+            // кнопкой «Столбцы по умолчанию» (см. elColsReset ниже): пользователь
+            // ожидает, что дефолт включает ВСЕ колонки, чтобы быстро увидеть весь
+            // паспорт МС + 3 маркетплейсов. При желании можно скрыть конкретные
+            // ключи через `🧩 Столбцы` — выбор сохраняется в localStorage
+            // (COLS_VISIBLE_KEY).
+            var DEFAULT_HIDDEN_COLS = {};
 
             var elTable = document.getElementById('dg-mp-table-main');
             var elTitle = document.getElementById('dg-mpu-table-title');
@@ -1201,6 +2194,7 @@
             var elWidthsReset = document.getElementById('dg-mpu-widths-reset');
             var elFltManager = document.getElementById('dg-mpu-flt-manager');
             var elFltCmgr = document.getElementById('dg-mpu-flt-cmgr');
+            var elFltExcludeBundleComp = document.getElementById('dg-mpu-flt-exclude-bundle-components');
             var elFltReset = document.getElementById('dg-mpu-flt-reset');
             var elFltApply = document.getElementById('dg-mpu-flt-apply');
             var elFltDirty = document.getElementById('dg-mpu-flt-dirty');
@@ -1236,13 +2230,26 @@
             // pending.* — это «черновик» из инпутов до нажатия «Применить» (см. правило
             // .cursor/rules/datagon-table-filter-apply.mdc — фильтры/поиск/scope срабатывают
             // только после явного действия пользователя, чтобы не было моментальной нагрузки).
+            function readBoolWithDefault(key, defaultValue) {
+                var raw = readStr(key);
+                if (raw === '1' || raw === 'true') return true;
+                if (raw === '0' || raw === 'false') return false;
+                return !!defaultValue;
+            }
+            var initialExcludeBundleComponents = readBoolWithDefault(FILTER_EXCLUDE_BUNDLE_COMPONENTS_KEY, true);
             var initialFilters = {
                 manager: readStr(FILTER_MANAGER_KEY),
                 content_manager: readStr(FILTER_CONTENT_MGR_KEY),
+                exclude_bundle_components: initialExcludeBundleComponents,
             };
+            // Стартовое значение чекбокса синхронизируем с фактическим стейтом (а не
+            // только с разметкой `checked`, которая верна только при первом запуске).
+            if (elFltExcludeBundleComp) {
+                elFltExcludeBundleComp.checked = !!initialExcludeBundleComponents;
+            }
             var state = {
                 scope: 'all',
-                rowsAll: [],   // ответ API (после серверного фильтра по scope)
+                rowsAll: [],   // ответ API (после серверного фильтра по scope + bundle components)
                 rows: [],      // после расширенных фильтров и умного поиска
                 headers: [],
                 headerLabels: [],
@@ -1255,9 +2262,12 @@
                 colWidths: readJsonFromStorage(COLS_WIDTH_KEY) || {},
                 // Расширенные фильтры (применяются ДО умного поиска и сортировки):
                 // точное совпадение строк manager/content_manager (пусто = «все»).
+                // exclude_bundle_components — серверный фильтр (передаётся в URL),
+                // ниже в commitFilters() при изменении тригерится перезапрос.
                 filters: {
                     manager: initialFilters.manager,
                     content_manager: initialFilters.content_manager,
+                    exclude_bundle_components: !!initialFilters.exclude_bundle_components,
                 },
                 pending: {
                     scope: 'all',
@@ -1265,6 +2275,7 @@
                     filters: {
                         manager: initialFilters.manager,
                         content_manager: initialFilters.content_manager,
+                        exclude_bundle_components: !!initialFilters.exclude_bundle_components,
                     },
                 },
             };
@@ -1276,6 +2287,7 @@
                 var af = state.filters || {};
                 if (String(pf.manager || '') !== String(af.manager || '')) return true;
                 if (String(pf.content_manager || '') !== String(af.content_manager || '')) return true;
+                if (Boolean(pf.exclude_bundle_components) !== Boolean(af.exclude_bundle_components)) return true;
                 return false;
             }
             function refreshDirtyIndicator() {
@@ -1314,6 +2326,97 @@
 
             function isEmptyVal(v) {
                 return v == null || String(v).trim() === '';
+            }
+
+            // Сравнение НДС МС ↔ маркетплейс (паритет с routes/exportsMarketplaces.js:
+            // canonicalIssueVatMs / canonicalIssueVatMpAfterPrettify / issuesRowVatMismatch).
+            function canonicalIssueVatMs(raw) {
+                var s = String(raw == null ? '' : raw).trim().toLowerCase();
+                if (!s) return '';
+                if (/без\s*ндс|не\s*облагается|^0\b|^0\s*%/.test(s)) return '__0';
+                var m = s.match(/(\d+(?:\.\d+)?)\s*%?/);
+                if (m) return String(Math.round(parseFloat(m[1])));
+                return s.replace(/\s/g, '').replace(/%/g, '');
+            }
+            function canonicalIssueVatMpAfterPrettify(kind, prettyVal) {
+                var raw = String(prettyVal == null ? '' : prettyVal).trim();
+                var s = raw.toLowerCase();
+                if (!s) return kind === 'ozon' ? '__0' : '';
+                if (kind === 'ozon' && (s === 'без ндс' || s === 'безндс')) return '__0';
+                if (kind === 'wb' && (s === 'без ндс' || s === 'безндс')) return '__0';
+                if (kind === 'ym' && /без\s*ндс/.test(s)) return '__0';
+                var m = s.match(/^(\d+)/);
+                if (m) return m[1];
+                var m2 = /(\d+(?:\.\d+)?)/.exec(s);
+                if (m2) return String(Math.round(parseFloat(m2[1])));
+                return s.replace(/\s/g, '').replace(/%/g, '');
+            }
+            /** Подсветка ячейки *_vat: товар есть на площадке, WB «не указан» не сравниваем. */
+            function isVatCellMismatchMpVsMs(row, colKey) {
+                if (!row) return false;
+                var kind = colKey === 'ozon_vat' ? 'ozon' : colKey === 'wb_vat' ? 'wb' : colKey === 'ym_vat' ? 'ym' : '';
+                if (!kind) return false;
+                var codeKey = kind === 'ozon' ? 'ozon_code' : kind === 'wb' ? 'wb_code' : 'ym_code';
+                if (!row[codeKey]) return false;
+                var prettyVat = row[colKey];
+                if (kind === 'wb' && /не\s*указан/i.test(String(prettyVat || ''))) return false;
+                var ms = canonicalIssueVatMs(row.ms_vat);
+                var mp = canonicalIssueVatMpAfterPrettify(kind, prettyVat);
+                if (mp === '' && ms === '') return false;
+                return mp !== ms;
+            }
+            function isMsVatRowAnyMpMismatch(row) {
+                return (
+                    isVatCellMismatchMpVsMs(row, 'ozon_vat')
+                    || isVatCellMismatchMpVsMs(row, 'wb_vat')
+                    || isVatCellMismatchMpVsMs(row, 'ym_vat')
+                );
+            }
+
+            // Габариты/вес между маркетплейсами (паритет с routes/exportsMarketplaces.js:
+            // ISSUES_DIM_EPS, parseExportDimNumber, issuesDimTuple, issuesDimTuplesDiffer,
+            // issuesRowDimsMismatchAcrossMps).
+            var ISSUES_DIM_EPS = 0.02;
+            var DIM_SIZE_SUFFIXES = ['length', 'width', 'height', 'weight'];
+            function parseExportDimNumber(v) {
+                var s = String(v == null ? '' : v).trim().replace(/,/g, '.');
+                if (!s) return null;
+                var n = parseFloat(s);
+                return Number.isFinite(n) ? n : null;
+            }
+            function issuesDimTuple(row, prefix) {
+                return [
+                    parseExportDimNumber(row[prefix + '_length']),
+                    parseExportDimNumber(row[prefix + '_width']),
+                    parseExportDimNumber(row[prefix + '_height']),
+                    parseExportDimNumber(row[prefix + '_weight']),
+                ];
+            }
+            function dimSlotDiffers(a, b, idx) {
+                if (a[idx] == null || b[idx] == null) return false;
+                return Math.abs(a[idx] - b[idx]) > ISSUES_DIM_EPS;
+            }
+            /** Ключи колонок ozon_|wb_|ym_ + length|width|height|weight с расхождением между парой площадок. */
+            function dimsMismatchHighlightKeys(row) {
+                var out = Object.create(null);
+                if (!row) return out;
+                var pfxs = [];
+                if (row.ozon_code) pfxs.push('ozon');
+                if (row.wb_code) pfxs.push('wb');
+                if (row.ym_code) pfxs.push('ym');
+                if (pfxs.length < 2) return out;
+                for (var i = 0; i < pfxs.length; i++) {
+                    for (var j = i + 1; j < pfxs.length; j++) {
+                        var ta = issuesDimTuple(row, pfxs[i]);
+                        var tb = issuesDimTuple(row, pfxs[j]);
+                        for (var k = 0; k < 4; k++) {
+                            if (!dimSlotDiffers(ta, tb, k)) continue;
+                            out[pfxs[i] + '_' + DIM_SIZE_SUFFIXES[k]] = true;
+                            out[pfxs[j] + '_' + DIM_SIZE_SUFFIXES[k]] = true;
+                        }
+                    }
+                }
+                return out;
             }
 
             // ---- Расширенные фильтры (manager / content_manager) + умный поиск ----
@@ -1457,20 +2560,41 @@
                 if (Number.isFinite(w) && w >= COL_MIN_WIDTH && w <= COL_MAX_WIDTH) return w;
                 return defaultWidthForKey(k);
             }
-            function setWidthForKey(k, w) {
+            /** Ширина колонки — только `<col>` (как exports-marketplaces-shop.scripts.html).
+             * Не задаём width/minWidth/maxWidth на tbody td: сумма min-width по всем колонкам
+             * давала таблице intrinsic min шире viewport и ломала вписывание в 100% карточки.
+             * thead th не трогаем — иначе в связке position:sticky + overflow на th часть движков
+             * ломает порядок thead/tbody. */
+            function syncColWidthToDom(k, w) {
+                if (!elTable) return;
+                var esc = cssEscape(k);
+                var cg = elTable.querySelector(':scope > colgroup');
+                if (cg) {
+                    var col = cg.querySelector('col[data-col-key="' + esc + '"]');
+                    if (col) col.style.width = w + 'px';
+                }
+            }
+            function syncVisibleColumnWidthsToDom(headers) {
+                if (!headers || !elTable) return;
+                for (var i = 0; i < headers.length; i++) {
+                    var kk = headers[i];
+                    syncColWidthToDom(kk, widthForKey(kk));
+                }
+            }
+            /** @param {boolean} [skipPersist] — при drag не пишем localStorage на каждый mousemove */
+            function setWidthForKey(k, w, skipPersist) {
                 w = Math.max(COL_MIN_WIDTH, Math.min(COL_MAX_WIDTH, Math.round(w)));
                 state.colWidths[k] = w;
-                writeJsonToStorage(COLS_WIDTH_KEY, state.colWidths);
-                var cg = elTable.querySelector(':scope > colgroup');
-                if (!cg) return;
-                var col = cg.querySelector('col[data-col-key="' + cssEscape(k) + '"]');
-                if (col) col.style.width = w + 'px';
+                if (!skipPersist) writeJsonToStorage(COLS_WIDTH_KEY, state.colWidths);
+                syncColWidthToDom(k, w);
             }
             function cssEscape(s) {
                 if (window.CSS && CSS.escape) return CSS.escape(String(s || ''));
                 return String(s || '').replace(/[^a-zA-Z0-9_\-]/g, '\\$&');
             }
             function applyColgroup(headers) {
+                var theadEl = elTable.querySelector('thead');
+                if (!theadEl) return;
                 var existing = elTable.querySelector(':scope > colgroup');
                 if (existing) existing.remove();
                 var cg = document.createElement('colgroup');
@@ -1481,7 +2605,9 @@
                     col.style.width = widthForKey(k) + 'px';
                     cg.appendChild(col);
                 }
-                elTable.insertBefore(cg, elTable.firstChild);
+                /* Всегда сразу перед <thead>, не перед firstChild (там бывает #text от разметки —
+                   иначе в части движков ломается порядок thead/tbody и «шапка уезжает» под строку). */
+                elTable.insertBefore(cg, theadEl);
             }
             function attachResizers(thead, headers) {
                 var ths = thead.querySelectorAll('th[data-col-key]');
@@ -1508,18 +2634,25 @@
                 var startW = widthForKey(k);
                 grip.classList.add('dg-mpu-resizing');
                 document.body.style.cursor = 'col-resize';
+                document.body.style.userSelect = 'none';
                 function move(e) {
+                    if (e.cancelable) e.preventDefault();
                     var x = (e.touches && e.touches[0] ? e.touches[0].clientX : e.clientX);
                     var dx = x - startX;
-                    setWidthForKey(k, startW + dx);
+                    setWidthForKey(k, startW + dx, true);
                 }
                 function up() {
                     grip.classList.remove('dg-mpu-resizing');
                     document.body.style.cursor = '';
+                    document.body.style.userSelect = '';
+                    try {
+                        writeJsonToStorage(COLS_WIDTH_KEY, state.colWidths);
+                    } catch (_) {}
                     window.removeEventListener('mousemove', move);
                     window.removeEventListener('mouseup', up);
                     window.removeEventListener('touchmove', move);
                     window.removeEventListener('touchend', up);
+                    mpuRefreshFloatingAfterLayout();
                 }
                 window.addEventListener('mousemove', move);
                 window.addEventListener('mouseup', up);
@@ -1672,6 +2805,7 @@
                     if (elPageHint) elPageHint.textContent = 'Найдено: 0; страница 0/0; показано: 0';
                     if (elPagePrev) elPagePrev.disabled = true;
                     if (elPageNext) elPageNext.disabled = true;
+                    mpuRefreshFloatingAfterLayout();
                     return;
                 }
 
@@ -1700,6 +2834,8 @@
                 ths.forEach(function (th) {
                     th.addEventListener('click', function (ev) {
                         if (ev.target && ev.target.classList && ev.target.classList.contains('dg-mpu-resizer')) return;
+                        var sel = (window.getSelection && window.getSelection().toString() || '').trim();
+                        if (sel.length) return;
                         var k = th.getAttribute('data-col-key');
                         if (k) setSort(k);
                     });
@@ -1713,11 +2849,12 @@
                 });
                 attachResizers(thead, headers);
 
-                // ---- tbody с подсветкой пустых пар (маркетплейс не нашёл код) ----
+                // ---- tbody: подсветки зависят от scope ----
+                var scopeIsAll = String(state.scope || '') === 'all';
                 var html = '';
                 for (var r = 0; r < slice.length; r++) {
                     var row = slice[r];
-                    // Какие пары подсветить красным.
+                    // Пара (code+name) пустая = маркетплейс не нашёл товар.
                     var missingCols = {};
                     for (var p = 0; p < MISSING_PAIRS.length; p++) {
                         var pair = MISSING_PAIRS[p];
@@ -1726,16 +2863,78 @@
                             missingCols[pair[1]] = true;
                         }
                     }
+                    var dimMismatchCols = scopeIsAll ? {} : dimsMismatchHighlightKeys(row);
                     html += '<tr>';
                     for (var c = 0; c < headers.length; c++) {
                         var key = headers[c];
                         var val = row && row[key] != null ? row[key] : '';
-                        var cls = missingCols[key] ? ' class="dg-mpu-missing"' : '';
-                        html += '<td' + cls + ' data-col-key="' + escapeHtml(key) + '">' + escapeHtml(val) + '</td>';
+                        var tdClasses = [];
+                        if (missingCols[key]) {
+                            // «Все товары»: только колонки кода площадки (нет товара); name/vat/габариты — на других фильтрах.
+                            if (!scopeIsAll || key === 'ozon_code' || key === 'wb_code' || key === 'ym_code') {
+                                tdClasses.push('dg-mpu-missing');
+                            }
+                        }
+                        if (!scopeIsAll) {
+                            if (isVatCellMismatchMpVsMs(row, key) || (key === 'ms_vat' && isMsVatRowAnyMpMismatch(row))) {
+                                tdClasses.push('dg-mpu-vat-mismatch');
+                            }
+                            if (dimMismatchCols[key]) tdClasses.push('dg-mpu-dims-mismatch');
+                        }
+                        var cls = tdClasses.length ? ' class="' + tdClasses.join(' ') + '"' : '';
+                        var cellInner;
+                        if (key === 'name') {
+                            var uuid = String(row.uuid || '').trim();
+                            var typeMs = row.type || '';
+                            var codeStr = row.code || '';
+                            var valStr = val == null ? '' : String(val);
+                            if (uuid) {
+                                cellInner =
+                                    '<button type="button" class="btn btn-link p-0 text-start text-decoration-none text-body dg-mpu-ms-name" ' +
+                                    'style="white-space:normal;word-break:break-word;vertical-align:baseline;" ' +
+                                    'title="Карточка и все свойства из МойСклад" ' +
+                                    'data-ms-uuid="' + escapeHtml(uuid) + '" ' +
+                                    'data-ms-code="' + escapeHtml(codeStr) + '" ' +
+                                    'data-ms-type="' + escapeHtml(typeMs) + '">' +
+                                    escapeHtml(valStr) +
+                                    '</button>';
+                            } else {
+                                cellInner = escapeHtml(valStr);
+                            }
+                        } else if (key === 'ozon_cabinet_url' || key === 'wb_cabinet_url' || key === 'ym_cabinet_url' ||
+                                   key === 'ozon_buyer_url' || key === 'wb_buyer_url' || key === 'ym_buyer_url') {
+                            var rawUrl = val == null ? '' : String(val).trim();
+                            if (rawUrl && /^https?:\/\//i.test(rawUrl)) {
+                                cellInner =
+                                    '<a href="' + escapeHtml(rawUrl) + '" target="_blank" rel="noopener noreferrer" class="text-primary" ' +
+                                    'title="' + escapeHtml(rawUrl) + '">Открыть</a>';
+                            } else {
+                                cellInner = escapeHtml(rawUrl);
+                            }
+                        } else {
+                            cellInner = escapeHtml(val == null ? '' : String(val));
+                        }
+                        html += '<td' + cls + ' data-col-key="' + escapeHtml(key) + '">' + cellInner + '</td>';
                     }
                     html += '</tr>';
                 }
                 tbody.innerHTML = html;
+                syncVisibleColumnWidthsToDom(headers);
+                if (!tbody._dgMpuMsNameBound) {
+                    tbody._dgMpuMsNameBound = true;
+                    tbody.addEventListener('click', function (e) {
+                        var btn = e.target && e.target.closest ? e.target.closest('.dg-mpu-ms-name') : null;
+                        if (!btn || !tbody.contains(btn)) return;
+                        e.preventDefault();
+                        e.stopPropagation();
+                        openMsDetailModal(
+                            btn.getAttribute('data-ms-uuid'),
+                            btn.getAttribute('data-ms-code') || '',
+                            String(btn.textContent || '').trim(),
+                            btn.getAttribute('data-ms-type') || ''
+                        );
+                    });
+                }
 
                 if (elPageHint) {
                     var hasFilter = !!String(state.search || '').trim();
@@ -1745,6 +2944,9 @@
                 }
                 if (elPagePrev) elPagePrev.disabled = state.page <= 1;
                 if (elPageNext) elPageNext.disabled = state.page >= pageCount;
+                requestAnimationFrame(function () {
+                    mpuSyncLayoutAndFloating();
+                });
             }
 
             function setTitleByScope() {
@@ -1754,7 +2956,8 @@
 
             function load() {
                 setMsg('Загрузка…', 'info');
-                var url = API_URL + '?scope=' + encodeURIComponent(state.scope);
+                var url = API_URL + '?scope=' + encodeURIComponent(state.scope) +
+                    '&exclude_bundle_components=' + (state.filters.exclude_bundle_components ? '1' : '0');
                 fetch(url, { credentials: 'same-origin' })
                     .then(function (r) {
                         if (!r.ok) {
@@ -1807,15 +3010,22 @@
             //     фильтры) считаются «явным действием» и применяются сразу.
             function commitFilters() {
                 var scopeChanged = state.pending.scope !== state.scope;
+                var pendingExcludeBundle = !!(state.pending.filters && state.pending.filters.exclude_bundle_components);
+                var bundleChanged = pendingExcludeBundle !== !!state.filters.exclude_bundle_components;
                 state.scope = String(state.pending.scope || 'all');
                 state.search = String(state.pending.search || '');
                 state.filters.manager = String((state.pending.filters && state.pending.filters.manager) || '');
                 state.filters.content_manager = String((state.pending.filters && state.pending.filters.content_manager) || '');
+                state.filters.exclude_bundle_components = pendingExcludeBundle;
                 writeStr(FILTER_MANAGER_KEY, state.filters.manager);
                 writeStr(FILTER_CONTENT_MGR_KEY, state.filters.content_manager);
+                writeStr(FILTER_EXCLUDE_BUNDLE_COMPONENTS_KEY, state.filters.exclude_bundle_components ? '1' : '0');
                 setTitleByScope();
                 refreshDirtyIndicator();
-                if (scopeChanged) {
+                if (scopeChanged || bundleChanged) {
+                    // exclude_bundle_components — серверный фильтр, при его смене
+                    // нужно перезапросить /issues, иначе клиент не сможет «вернуть»
+                    // ранее отрезанные строки (их нет в state.rowsAll).
                     load();
                 } else {
                     applySearchFilter();
@@ -1829,9 +3039,11 @@
                 state.pending.search = '';
                 state.pending.filters.manager = '';
                 state.pending.filters.content_manager = '';
+                state.pending.filters.exclude_bundle_components = true;
                 if (elSearch) elSearch.value = '';
                 if (elFltManager) elFltManager.value = '';
                 if (elFltCmgr) elFltCmgr.value = '';
+                if (elFltExcludeBundleComp) elFltExcludeBundleComp.checked = true;
                 for (var i = 0; i < scopeInputs.length; i++) {
                     scopeInputs[i].checked = scopeInputs[i].value === 'all';
                 }
@@ -1911,6 +3123,12 @@
                     refreshDirtyIndicator();
                 });
             }
+            if (elFltExcludeBundleComp) {
+                elFltExcludeBundleComp.addEventListener('change', function () {
+                    state.pending.filters.exclude_bundle_components = !!elFltExcludeBundleComp.checked;
+                    refreshDirtyIndicator();
+                });
+            }
             if (elFltApply) {
                 elFltApply.addEventListener('click', function (e) {
                     e.preventDefault();
@@ -1924,9 +3142,529 @@
                 });
             }
 
+            var snapshotRowsCache = [];
+            var snapshotDynamicsKind = 'by_manager';
+
+            function getSortedPairs(obj) {
+                var pairs = [];
+                if (obj && typeof obj === 'object') {
+                    for (var k in obj) {
+                        if (Object.prototype.hasOwnProperty.call(obj, k)) pairs.push([k, obj[k]]);
+                    }
+                }
+                pairs.sort(function (a, b) {
+                    var d = (Number(b[1]) || 0) - (Number(a[1]) || 0);
+                    if (d !== 0) return d;
+                    return String(a[0]).localeCompare(String(b[0]), 'ru');
+                });
+                return pairs;
+            }
+
+            function renderBucketBars(obj, total, maxN) {
+                maxN = maxN || 7;
+                var pairs = getSortedPairs(obj);
+                if (!pairs.length) return '<span class="text-muted small">—</span>';
+                var t = Math.max(1, Number(total) || 0);
+                var html = '';
+                for (var i = 0; i < pairs.length && i < maxN; i++) {
+                    var label = pairs[i][0];
+                    var n = Number(pairs[i][1] || 0);
+                    var pct = Math.min(100, Math.round((n / t) * 1000) / 10);
+                    if (n > 0 && pct < 5) pct = 5;
+                    html +=
+                        '<div class="dg-snap-bar-block">' +
+                        '<div class="dg-snap-bar-label" title="' +
+                        escapeHtml(label) +
+                        '">' +
+                        escapeHtml(label) +
+                        '</div>' +
+                        '<div class="dg-snap-bar-row">' +
+                        '<div class="dg-snap-bar-track"><div class="dg-snap-bar-fill" style="width:' +
+                        pct +
+                        '%"></div></div>' +
+                        '<span class="dg-snap-bar-num">' +
+                        n +
+                        '</span>' +
+                        '</div></div>';
+                }
+                if (pairs.length > maxN) {
+                    html += '<div class="small text-muted mt-1">… +' + (pairs.length - maxN) + '</div>';
+                }
+                return html;
+            }
+
+            function shortSnapHeaderCell(r) {
+                var d = String(r.stat_date || '').trim() || '—';
+                var rec = String(r.recorded_at || '');
+                var timePart = '—';
+                var m = rec.match(/,\s*(\d{1,2}:\d{2})/);
+                if (m) timePart = m[1];
+                return (
+                    '<div class="lh-sm">' +
+                    escapeHtml(d) +
+                    '<br><span class="text-muted" style="font-size:0.65rem">' +
+                    escapeHtml(timePart) +
+                    '</span></div>'
+                );
+            }
+
+            function renderSnapshotDynamics(rows, bucketProp) {
+                var wrap = document.getElementById('dg-mp-issues-snapshot-dynamics-wrap');
+                var inner = document.getElementById('dg-mp-issues-snapshot-dynamics');
+                if (!wrap || !inner) return;
+                if (!rows || rows.length < 2) {
+                    wrap.classList.add('d-none');
+                    inner.innerHTML = '';
+                    return;
+                }
+                wrap.classList.remove('d-none');
+                var maxCols = 12;
+                var chron = rows.slice().reverse();
+                if (chron.length > maxCols) chron = chron.slice(-maxCols);
+                var keyScores = {};
+                var ci;
+                var cj;
+                var ri;
+                var k;
+                for (ci = 0; ci < chron.length; ci++) {
+                    var b = chron[ci][bucketProp];
+                    if (!b || typeof b !== 'object') continue;
+                    for (k in b) {
+                        if (!Object.prototype.hasOwnProperty.call(b, k)) continue;
+                        keyScores[k] = (keyScores[k] || 0) + Number(b[k] || 0);
+                    }
+                }
+                var names = Object.keys(keyScores);
+                names.sort(function (a, b) {
+                    return (keyScores[b] - keyScores[a]) || String(a).localeCompare(String(b), 'ru');
+                });
+                names = names.slice(0, 14);
+                if (!names.length) {
+                    inner.innerHTML = '<p class="text-muted small mb-0">Нет данных по сотрудникам в выбранных снимках.</p>';
+                    return;
+                }
+                var colMaxes = [];
+                for (cj = 0; cj < chron.length; cj++) {
+                    var mx = 0;
+                    for (ri = 0; ri < names.length; ri++) {
+                        var vv = Number((chron[cj][bucketProp] || {})[names[ri]] || 0);
+                        if (vv > mx) mx = vv;
+                    }
+                    colMaxes.push(mx);
+                }
+                var headHtml = '<tr><th>Сотрудник</th>';
+                for (var h = 0; h < chron.length; h++) {
+                    headHtml += '<th>' + shortSnapHeaderCell(chron[h]) + '</th>';
+                }
+                headHtml += '</tr>';
+                var bodyHtml = '';
+                for (ri = 0; ri < names.length; ri++) {
+                    var name = names[ri];
+                    bodyHtml += '<tr><td title="' + escapeHtml(name) + '">' + escapeHtml(name) + '</td>';
+                    for (cj = 0; cj < chron.length; cj++) {
+                        var v = Number((chron[cj][bucketProp] || {})[name] || 0);
+                        var cl = 'dg-snap-cell' + (v === 0 ? ' dg-snap-cell-muted' : '');
+                        var bg = '';
+                        var cm = colMaxes[cj] || 0;
+                        if (v > 0 && cm > 0) {
+                            var alpha = 0.1 + (v / cm) * 0.58;
+                            bg = ' style="background:rgba(220,53,69,' + alpha.toFixed(3) + ')"';
+                        }
+                        var deltaHtml = '';
+                        if (cj > 0) {
+                            var prevV = Number((chron[cj - 1][bucketProp] || {})[name] || 0);
+                            var dlt = v - prevV;
+                            if (dlt > 0) {
+                                deltaHtml =
+                                    '<div class="dg-snap-delta dg-snap-delta-up" title="к предыдущему снимку">▲ +' +
+                                    dlt +
+                                    '</div>';
+                            } else if (dlt < 0) {
+                                deltaHtml =
+                                    '<div class="dg-snap-delta dg-snap-delta-down" title="к предыдущему снимку">▼ ' +
+                                    Math.abs(dlt) +
+                                    '</div>';
+                            } else if (v !== 0 || prevV !== 0) {
+                                deltaHtml =
+                                    '<div class="dg-snap-delta dg-snap-delta-flat" title="к предыдущему снимку">0</div>';
+                            }
+                        }
+                        var valBlock =
+                            '<div class="dg-snap-cell-val">' +
+                            (v === 0 ? '—' : String(v)) +
+                            '</div>' +
+                            deltaHtml;
+                        bodyHtml += '<td class="' + cl + '"' + bg + '>' + valBlock + '</td>';
+                    }
+                    bodyHtml += '</tr>';
+                }
+                inner.innerHTML =
+                    '<table class="dg-snap-matrix"><thead>' + headHtml + '</thead><tbody>' + bodyHtml + '</tbody></table>';
+            }
+
+            function bindSnapshotDynamicsTabs() {
+                var bM = document.getElementById('dg-snap-dyn-mgr');
+                var bC = document.getElementById('dg-snap-dyn-cm');
+                function setActive(isMgr) {
+                    snapshotDynamicsKind = isMgr ? 'by_manager' : 'by_content_manager';
+                    if (bM && bC) {
+                        bM.classList.toggle('active', isMgr);
+                        bC.classList.toggle('active', !isMgr);
+                    }
+                    renderSnapshotDynamics(snapshotRowsCache, snapshotDynamicsKind);
+                }
+                if (bM && !bM._dgBound) {
+                    bM._dgBound = true;
+                    bM.addEventListener('click', function () {
+                        setActive(true);
+                    });
+                }
+                if (bC && !bC._dgBound) {
+                    bC._dgBound = true;
+                    bC.addEventListener('click', function () {
+                        setActive(false);
+                    });
+                }
+            }
+
+            function loadSnapshotLog() {
+                var tb = document.getElementById('dg-mp-issues-snapshot-tbody');
+                if (!tb) return;
+                tb.innerHTML = '<tr><td colspan="4" class="text-muted small py-3">Загрузка…</td></tr>';
+                fetch(SNAPSHOT_LOG_URL + '?days=120&limit=200', { credentials: 'same-origin' })
+                    .then(function (r) {
+                        return r.json().then(function (j) {
+                            return { ok: r.ok, j: j };
+                        });
+                    })
+                    .then(function (x) {
+                        if (!x.ok) {
+                            tb.innerHTML =
+                                '<tr><td colspan="4" class="text-danger small py-3">' +
+                                escapeHtml((x.j && x.j.error) || 'Ошибка загрузки журнала') +
+                                '</td></tr>';
+                            snapshotRowsCache = [];
+                            renderSnapshotDynamics([], 'by_manager');
+                            return;
+                        }
+                        var rows = (x.j && x.j.rows) || [];
+                        snapshotRowsCache = rows;
+                        bindSnapshotDynamicsTabs();
+                        renderSnapshotDynamics(rows, snapshotDynamicsKind);
+                        if (!rows.length) {
+                            tb.innerHTML =
+                                '<tr><td colspan="4" class="text-muted small py-3">Пока нет записей. Нажмите «Записать снимок сейчас» (пересчёт из БД) или выполните полное обновление маркетплейсов в настройках / по расписанию — тогда снимок добавится автоматически.</td></tr>';
+                            return;
+                        }
+                        var html = '';
+                        for (var i = 0; i < rows.length; i++) {
+                            var r = rows[i];
+                            var trig = String(r.trigger_type || '');
+                            var slot = String(r.schedule_slot_time || '').trim();
+                            var src =
+                                trig === 'schedule'
+                                    ? '<span class="badge rounded-pill bg-primary">Расписание</span>'
+                                    : trig === 'manual'
+                                      ? '<span class="badge rounded-pill bg-info text-dark">Синк МП</span>'
+                                      : trig === 'manual_ui'
+                                        ? '<span class="badge rounded-pill bg-secondary">С экрана</span>'
+                                        : '<span class="badge rounded-pill bg-light text-dark">' +
+                                          escapeHtml(trig) +
+                                          '</span>';
+                            var slotLine =
+                                slot && trig === 'schedule'
+                                    ? '<div class="dg-snap-meta-muted mt-1">Авто, слот <strong>' +
+                                      escapeHtml(slot) +
+                                      '</strong> МСК</div>'
+                                    : '';
+                            var total = Number(r.total_count || 0);
+                            html +=
+                                '<tr>' +
+                                '<td><div class="fw-semibold text-body">' +
+                                escapeHtml(String(r.recorded_at || '')) +
+                                '</div><div class="dg-snap-meta-muted mt-1">Дата учёта: ' +
+                                escapeHtml(String(r.stat_date || '—')) +
+                                '</div><div class="mt-2 d-flex flex-wrap gap-1 align-items-center">' +
+                                src +
+                                '</div>' +
+                                slotLine +
+                                '</td>' +
+                                '<td class="text-center align-middle">' +
+                                '<span class="dg-snap-total-pill">' +
+                                total +
+                                '</span></td>' +
+                                '<td>' +
+                                renderBucketBars(r.by_manager, total, 7) +
+                                '</td>' +
+                                '<td>' +
+                                renderBucketBars(r.by_content_manager, total, 7) +
+                                '</td>' +
+                                '</tr>';
+                        }
+                        tb.innerHTML = html;
+                    })
+                    .catch(function (e) {
+                        tb.innerHTML =
+                            '<tr><td colspan="4" class="text-danger small py-3">' +
+                            escapeHtml(e && e.message ? e.message : 'Сеть') +
+                            '</td></tr>';
+                        snapshotRowsCache = [];
+                        renderSnapshotDynamics([], 'by_manager');
+                    });
+            }
+
+            function setSnapshotMsg(text, kind) {
+                var msg = document.getElementById('dg-mp-issues-snapshot-msg');
+                if (!msg) return;
+                if (!text) {
+                    msg.classList.add('d-none');
+                    msg.textContent = '';
+                    msg.className = 'alert py-2 px-3 mb-2 small d-none';
+                    return;
+                }
+                msg.classList.remove('d-none');
+                msg.textContent = text;
+                msg.className =
+                    'alert py-2 px-3 mb-2 small ' +
+                    (kind === 'error'
+                        ? 'alert-danger'
+                        : kind === 'success'
+                          ? 'alert-success'
+                          : kind === 'info'
+                            ? 'alert-info'
+                            : 'alert-secondary');
+            }
+
+            function runSnapshotRecord() {
+                setSnapshotMsg('Записываем снимок…', 'info');
+                fetch(SNAPSHOT_RUN_URL, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ trigger_type: 'manual_ui' }),
+                })
+                    .then(function (r) {
+                        return r.json().then(function (j) {
+                            return { ok: r.ok, j: j };
+                        });
+                    })
+                    .then(function (x) {
+                        if (!x.ok) {
+                            setSnapshotMsg((x.j && x.j.error) || 'Не удалось записать снимок', 'error');
+                            return;
+                        }
+                        setSnapshotMsg('Снимок записан.', 'success');
+                        loadSnapshotLog();
+                    })
+                    .catch(function (e) {
+                        setSnapshotMsg(e && e.message ? e.message : 'Сеть', 'error');
+                    });
+            }
+
+            var elSnapRefresh = document.getElementById('dg-mp-issues-snapshot-refresh');
+            var elSnapRecord = document.getElementById('dg-mp-issues-snapshot-record');
+            if (elSnapRefresh) elSnapRefresh.addEventListener('click', function () {
+                setSnapshotMsg('');
+                loadSnapshotLog();
+            });
+            if (elSnapRecord) elSnapRecord.addEventListener('click', runSnapshotRecord);
+            loadSnapshotLog();
+
             setTitleByScope();
             refreshDirtyIndicator();
             load();
+
+            (function bindCardCollapse(btnId, bodyId, storageKey) {
+                var btn = document.getElementById(btnId);
+                var body = document.getElementById(bodyId);
+                if (!btn || !body) return;
+                function apply() {
+                    var c = false;
+                    try { c = localStorage.getItem(storageKey) === '1'; } catch (e) {}
+                    if (c) {
+                        body.style.display = 'none';
+                        btn.textContent = 'Развернуть';
+                    } else {
+                        body.style.display = '';
+                        btn.textContent = 'Свернуть';
+                    }
+                }
+                apply();
+                btn.addEventListener('click', function () {
+                    var hidden = body.style.display === 'none';
+                    body.style.display = hidden ? '' : 'none';
+                    btn.textContent = hidden ? 'Свернуть' : 'Развернуть';
+                    try { localStorage.setItem(storageKey, hidden ? '0' : '1'); } catch (e) {}
+                    mpuSyncLayoutAndFloating();
+                });
+            })('dg-mpu-scope-toggle', 'dg-mpu-scope-body', 'dg.mpu.scope-card.collapsed.v1');
+
+            (function bindCardCollapse(btnId, bodyId, storageKey) {
+                var btn = document.getElementById(btnId);
+                var body = document.getElementById(bodyId);
+                if (!btn || !body) return;
+                function apply() {
+                    var c = false;
+                    try { c = localStorage.getItem(storageKey) === '1'; } catch (e) {}
+                    if (c) {
+                        body.style.display = 'none';
+                        btn.textContent = 'Развернуть';
+                    } else {
+                        body.style.display = '';
+                        btn.textContent = 'Свернуть';
+                    }
+                }
+                apply();
+                btn.addEventListener('click', function () {
+                    var hidden = body.style.display === 'none';
+                    body.style.display = hidden ? '' : 'none';
+                    btn.textContent = hidden ? 'Свернуть' : 'Развернуть';
+                    try { localStorage.setItem(storageKey, hidden ? '0' : '1'); } catch (e) {}
+                    mpuSyncLayoutAndFloating();
+                });
+            })('dg-mpu-table-toggle', 'dg-mpu-table-body', 'dg.mpu.table-card.collapsed.v1');
+
+            // Прокси-кнопки в card-header «Таблица»: клик прокидывается на скрытые
+            // `#dg-mpu-cols-toggle` / `#dg-mpu-widths-toggle` в `.dg-mp-toolbox-top`.
+            // Панели — полноширинные `.dg-mp-toolbox-panel` внутри `#dg-mpu-toolbox` (эталон shop).
+            (function bindHeaderToolboxProxies() {
+                function proxy(headerId, originalId) {
+                    var btn = document.getElementById(headerId);
+                    var orig = document.getElementById(originalId);
+                    if (!btn || !orig) return;
+                    btn.addEventListener('click', function (e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        orig.click();
+                    });
+                }
+                proxy('dg-mpu-cols-toggle-header', 'dg-mpu-cols-toggle');
+                proxy('dg-mpu-widths-toggle-header', 'dg-mpu-widths-toggle');
+            })();
+
+            var MP_ISSUES_WORKFLOW_PANEL_OPEN_KEY = 'datagon_mp_issues_workflow_panel_open_v1';
+            var MP_ISSUES_WORKFLOW_TEXT_1_KEY = 'datagon_mp_issues_workflow_text1_collapsed_v1';
+            var MP_ISSUES_WORKFLOW_TEXT_2_KEY = 'datagon_mp_issues_workflow_text2_collapsed_v1';
+            var MP_ISSUES_WORKFLOW_TEXT_3_KEY = 'datagon_mp_issues_workflow_text3_collapsed_v1';
+
+            function bindMpIssuesPersistedSectionCollapse(storageKey, bodyId, btnId) {
+                var body = document.getElementById(bodyId);
+                var btn = document.getElementById(btnId);
+                if (!body || !btn) return;
+                function apply() {
+                    try {
+                        var collapsed = localStorage.getItem(storageKey) === '1';
+                        if (collapsed) {
+                            body.style.display = 'none';
+                            btn.textContent = 'Развернуть';
+                        } else {
+                            body.style.display = '';
+                            btn.textContent = 'Свернуть';
+                        }
+                    } catch (e) {}
+                    mpuSyncLayoutAndFloating();
+                }
+                apply();
+                btn.addEventListener('click', function () {
+                    var hidden = body.style.display === 'none';
+                    body.style.display = hidden ? '' : 'none';
+                    btn.textContent = hidden ? 'Свернуть' : 'Развернуть';
+                    try {
+                        localStorage.setItem(storageKey, hidden ? '0' : '1');
+                    } catch (e3) {}
+                    mpuSyncLayoutAndFloating();
+                });
+            }
+
+            (function initMpIssuesWorkflowGuide() {
+                var btn = document.getElementById('dg-mp-issues-workflow-toggle');
+                var panel = document.getElementById('dg-mp-issues-workflow-panel');
+                var label = document.getElementById('dg-mp-issues-workflow-toggle-label');
+                var icon = document.getElementById('dg-mp-issues-workflow-toggle-icon');
+                if (!btn || !panel) return;
+                function setOpen(open) {
+                    if (open) {
+                        panel.classList.remove('d-none');
+                        btn.setAttribute('aria-expanded', 'true');
+                        if (label) label.textContent = 'Свернуть';
+                        if (icon) {
+                            icon.className = 'pe-7s-angle-up';
+                            icon.style.fontSize = '1.1rem';
+                        }
+                    } else {
+                        panel.classList.add('d-none');
+                        btn.setAttribute('aria-expanded', 'false');
+                        if (label) label.textContent = 'Развернуть';
+                        if (icon) {
+                            icon.className = 'pe-7s-angle-down';
+                            icon.style.fontSize = '1.1rem';
+                        }
+                    }
+                    try {
+                        localStorage.setItem(MP_ISSUES_WORKFLOW_PANEL_OPEN_KEY, open ? '1' : '0');
+                    } catch (e) {}
+                    mpuSyncLayoutAndFloating();
+                }
+                try {
+                    setOpen(localStorage.getItem(MP_ISSUES_WORKFLOW_PANEL_OPEN_KEY) === '1');
+                } catch (e3) {
+                    setOpen(false);
+                }
+                btn.addEventListener('click', function () {
+                    setOpen(panel.classList.contains('d-none'));
+                });
+            })();
+
+            bindMpIssuesPersistedSectionCollapse(MP_ISSUES_WORKFLOW_TEXT_1_KEY, 'dg-mp-issues-workflow-t1-body', 'dg-mp-issues-workflow-t1-toggle');
+            bindMpIssuesPersistedSectionCollapse(MP_ISSUES_WORKFLOW_TEXT_2_KEY, 'dg-mp-issues-workflow-t2-body', 'dg-mp-issues-workflow-t2-toggle');
+            bindMpIssuesPersistedSectionCollapse(MP_ISSUES_WORKFLOW_TEXT_3_KEY, 'dg-mp-issues-workflow-t3-body', 'dg-mp-issues-workflow-t3-toggle');
+
+            var MP_ISSUES_SNAPSHOT_CARD_COLLAPSED_KEY = 'datagon_mp_issues_snapshot_card_collapsed_v1';
+            bindMpIssuesPersistedSectionCollapse(
+                MP_ISSUES_SNAPSHOT_CARD_COLLAPSED_KEY,
+                'dg-mp-issues-snapshot-body',
+                'dg-mp-issues-snapshot-toggle',
+            );
+
+            // Шестерёнка «Поля фильтров» для карточки «Фильтры и действия» —
+            // auto-discovery: достаточно атрибута data-dg-mpu-filter-field на блоке
+            // (см. правило datagon-list-page-baseline-moysklad.mdc и FieldFieldsVisibility).
+            (function bindFilterFieldsVisibility() {
+                var FIELD_GROUPS = [
+                    {
+                        key: 'scope_block',
+                        title: 'Фильтр маркетплейса',
+                        items: [
+                            { key: 'scope', title: 'Радио-кнопки выбора маркетплейса', hint: 'Все товары / Есть проблемы / Нет на одном из 3 / Нет на Ozon|WB|Я.Маркет / Не совпадает НДС / Разные габариты между МП' },
+                        ],
+                    },
+                    {
+                        key: 'extra_filters',
+                        title: 'Дополнительные фильтры',
+                        items: [
+                            { key: 'manager', title: 'Менеджер', hint: 'Селектор менеджера в карточке «Фильтры и действия»' },
+                            { key: 'cmgr', title: 'Контент-менеджер', hint: 'Селектор контент-менеджера в карточке «Фильтры и действия»' },
+                        ],
+                    },
+                    {
+                        key: 'filter_actions_block',
+                        title: 'Действия',
+                        items: [
+                            { key: 'filter_actions', title: 'Кнопки «Применить» / «По умолчанию»', hint: 'Если скрыть — применять можно только Enter в поле «Умный поиск»' },
+                        ],
+                    },
+                ];
+                if (window.DatagonFilterFieldsVisibility && window.DatagonFilterFieldsVisibility.init) {
+                    window.DatagonFilterFieldsVisibility.init({
+                        storageKeyPrefix: 'datagon_mpu_filter_fields_v1',
+                        attr: 'data-dg-mpu-filter-field',
+                        fieldGroups: FIELD_GROUPS,
+                        togglesRootId: 'dg-mpu-filter-blocks-toggles',
+                        idPrefix: 'dg-mpu-ff-',
+                        exposeAs: 'DatagonMpuFilterBlocks',
+                    });
+                }
+            })();
         })();
     </script>
 

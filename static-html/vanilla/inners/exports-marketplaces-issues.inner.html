@@ -14,94 +14,324 @@
             </div>
           </div>
 
-          <div class="main-card mb-3 card">
-            <div class="card-header d-flex align-items-center gap-2 flex-wrap">
-              <i class="header-icon pe-7s-filter icon-gradient bg-strong-bliss me-2"></i>
-              <span>Фильтр маркетплейса</span>
+          <div class="main-card mb-3 card dg-mp-issues-workflow-guide shadow-sm">
+            <div class="card-header bg-light d-flex align-items-center justify-content-between flex-wrap gap-2 py-2 px-3">
+              <div class="d-flex align-items-center gap-2 min-w-0 flex-wrap">
+                <span class="badge rounded-pill bg-primary px-2 py-1">Гайд</span>
+                <span class="fw-semibold text-body mb-0 small">Как пользоваться страницей «Проблемы с товарами»</span>
+              </div>
+              <button
+                type="button"
+                class="btn btn-sm btn-outline-primary d-inline-flex align-items-center gap-1"
+                id="dg-mp-issues-workflow-toggle"
+                aria-expanded="false"
+                aria-controls="dg-mp-issues-workflow-panel"
+              >
+                <i class="pe-7s-angle-down" id="dg-mp-issues-workflow-toggle-icon" style="font-size: 1.1rem" aria-hidden="true"></i>
+                <span id="dg-mp-issues-workflow-toggle-label">Развернуть</span>
+              </button>
             </div>
-            <div class="card-body">
-              <div class="btn-group flex-wrap" role="group" aria-label="Фильтр маркетплейса" id="dg-mpu-scope-group">
-                <input type="radio" class="btn-check" name="dg-mpu-scope" id="dg-mpu-scope-all" value="all" checked>
-                <label class="btn btn-outline-primary" for="dg-mpu-scope-all" title="Все товары МС по основному фильтру; красным подсвечены отсутствующие коды.">Все товары</label>
+            <div id="dg-mp-issues-workflow-panel" class="d-none card-body pt-3 border-top bg-white">
+              <p class="text-muted small mb-4 lh-base">
+                Список строится по товарам МойСклад (складская позиция, не «перестали сотрудничать») и по последним сохранённым снапшотам Ozon, Wildberries и Я.Маркета. Сначала убедитесь, что снапшоты актуальны, затем настройте фильтр и примените его; в таблице смотрите красные ячейки и при необходимости сузьте поиск.
+              </p>
+              <div class="alert alert-light border small mb-4 mb-md-3" role="note">
+                <div class="fw-semibold text-body mb-2">Что хранится в браузере</div>
+                <ol class="mb-0 ps-3 lh-lg text-body-secondary">
+                  <li class="mb-2">
+                    <strong class="text-body">Состояние гайда</strong> — развёрнутость панели и блоков шагов 1–3, ключи <code class="small">datagon_mp_issues_workflow_*</code> в <code class="small">localStorage</code>. На данные в МойСклад и снапшоты не влияет.
+                  </li>
+                  <li class="mb-2">
+                    <strong class="text-body">Фильтры и видимость полей</strong> — селекты менеджеров, scope, чекбокс «Исключить товары из комплектов» (<code class="small">dg.mpu.flt.excludeBundleComponents.v1</code>, дефолт включён), настройки шестерёнки «Поля фильтров» (<code class="small">datagon_mpu_filter_fields_v1</code>).
+                  </li>
+                  <li class="mb-0">
+                    <strong class="text-body">Таблица</strong> — какие колонки показаны и ширины в пикселях (<code class="small">dg.mpu.colvisible.v5</code>, <code class="small">dg.mpu.colwidths.v2</code>). По умолчанию включены <strong>все</strong> колонки — «Код МС», «Название МС», «Менеджер», «Контент-менеджер», «НДС МС», «Остаток по МС», «Синхронизация МС» и полный паспорт каждого маркетплейса (<em>код, название, НДС, остаток, длина / ширина / высота / вес, кабинет, покупателю, обновлено</em>). Кнопка <strong>«Столбцы по умолчанию»</strong> возвращает именно это состояние «все включены». Лишние колонки можно скрыть через <strong>🧩 Столбцы</strong>. Полное наименование МС и ссылки на маркетплейсы — по клику на «Название МС» (карточка МойСклад).
+                  </li>
+                </ol>
+              </div>
+              <div class="dg-mp-issues-workflow-step border rounded-2 mb-3 overflow-hidden">
+                <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 px-2 py-2 bg-light border-bottom">
+                  <div class="d-flex align-items-start gap-2 min-w-0">
+                    <span class="badge bg-success rounded-1 px-2 py-1 flex-shrink-0">Шаг 1</span>
+                    <h6 class="mb-0 text-body fw-semibold">Актуальные снапшоты маркетплейсов</h6>
+                  </div>
+                  <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0" id="dg-mp-issues-workflow-t1-toggle">Свернуть</button>
+                </div>
+                <div id="dg-mp-issues-workflow-t1-body" class="small text-body-secondary lh-lg px-2 pb-3 pt-2">
+                  <p class="mb-2">
+                    Откройте разделы <strong>Маркетплейсы → Ozon</strong>, <strong>Wildberries</strong>, <strong>Яндекс Маркет</strong> и при необходимости нажмите <strong>«Обновить из маркетплейса»</strong> или загрузите последнее сохранённое. Эта страница сравнивает коды МС с тем, что есть в <strong>последнем снапшоте</strong> каждого кабинета; без обновления список «проблем» может быть устаревшим.
+                  </p>
+                  <p class="mb-0">
+                    Ключи API задаются в <a href="/exports-marketplaces.html">Настройках маркетплейсов</a>.
+                  </p>
+                </div>
+              </div>
+              <div class="dg-mp-issues-workflow-step border rounded-2 mb-3 overflow-hidden">
+                <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 px-2 py-2 bg-light border-bottom">
+                  <div class="d-flex align-items-start gap-2 min-w-0">
+                    <span class="badge bg-info text-dark rounded-1 px-2 py-1 flex-shrink-0">Шаг 2</span>
+                    <h6 class="mb-0 text-body fw-semibold">Фильтры и действия</h6>
+                  </div>
+                  <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0" id="dg-mp-issues-workflow-t2-toggle">Свернуть</button>
+                </div>
+                <div id="dg-mp-issues-workflow-t2-body" class="small text-body-secondary lh-lg px-2 pb-3 pt-2">
+                  <p class="mb-2">
+                    Выберите <strong>фильтр маркетплейса</strong> (все товары / есть проблемы хотя бы на одном / нет ни на одном / нет на конкретном маркетплейсе / не совпадает НДС / разные габариты между маркетплейсами). При необходимости сузьте выбор селектами <strong>Менеджер</strong> и <strong>Контент-менеджер</strong>.
+                  </p>
+                  <p class="mb-2">
+                    Чекбокс <strong>«Исключить товары, по которым есть комплекты»</strong> (включён по умолчанию) скрывает товары, чей <code class="small">code</code> встречается в составе хотя бы одного комплекта (берётся из <code class="small">ms_entity_details</code>, <code class="small">kind=bundle</code>, поле <code class="small">payload_json.components.rows[].assortment.code</code>). Это исключает «ложные проблемы» по штучным товарам, которые отгружаются комплектом и не выкладываются на маркетплейс отдельно. Снимите галку, если хотите видеть полный список.
+                  </p>
+                  <p class="mb-0">
+                    Пока вы меняете поля, это <strong>черновик</strong>: таблица и счётчики обновятся только после <strong>Применить</strong> или <strong>Enter</strong> в поле умного поиска в шапке таблицы. Кнопка <strong>По умолчанию</strong> сбрасывает scope, менеджеров и поиск к начальному состоянию и снова включает «исключить товары из комплектов», после чего сразу применяет. Бейдж «не применено» напоминает, что на экране ещё старый набор фильтров.
+                  </p>
+                </div>
+              </div>
+              <div class="dg-mp-issues-workflow-step border rounded-2 mb-0 overflow-hidden">
+                <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 px-2 py-2 bg-light border-bottom">
+                  <div class="d-flex align-items-start gap-2 min-w-0">
+                    <span class="badge bg-warning text-dark rounded-1 px-2 py-1 flex-shrink-0">Шаг 3</span>
+                    <h6 class="mb-0 text-body fw-semibold">Таблица и подсветка</h6>
+                  </div>
+                  <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0" id="dg-mp-issues-workflow-t3-toggle">Свернуть</button>
+                </div>
+                <div id="dg-mp-issues-workflow-t3-body" class="small text-body-secondary lh-lg px-2 pb-3 pt-2">
+                  <p class="mb-2">
+                    <strong>Умный поиск</strong> в шапке карточки таблицы ищет по артикулам и наименованиям МС и маркетплейсов, а также по ФИО менеджеров (мульти-слова через пробел — как AND). <strong>Esc</strong> или крестик в поле очищают строку и сразу применяют фильтр.
+                  </p>
+                  <p class="mb-2">
+                    При фильтре <strong>«Все товары»</strong> красным подсвечиваются только ячейки <strong>кода</strong> маркетплейса (Ozon / Wildberries / Я.Маркет), если товар в снапшоте не найден. Несовпадение НДС (МС ↔ площадка) и расхождение габаритов между площадками подсвечиваются <strong>на соответствующих фильтрах</strong>, не в режиме «все товары». На остальных фильтрах при отсутствии товара подсвечивается пара <strong>код + название</strong> для этой площадки.
+                  </p>
+                  <p class="mb-0">
+                    Кнопки <strong>🧩 Столбцы</strong> и <strong>📏 Ширины</strong> в шапке таблицы открывают панели ниже. По умолчанию (и при клике на <strong>«Столбцы по умолчанию»</strong>) включены ВСЕ колонки: по МС — <em>Менеджер, Контент-менеджер, НДС, Остаток, Синхронизация</em>, по каждому маркетплейсу — <em>Код, Название, НДС, Остаток, Длина/Ширина/Высота (см), Вес (кг), Кабинет (ссылка на товар), Покупателю (ссылка на товар), Обновлено</em>. Широкая таблица — как на странице <strong>«Мои товары»</strong>: горизонтальный скролл внутри карточки, шапка «плывёт» под верхним меню. Сузить можно через <strong>🧩 Столбцы</strong> и <strong>📏 Ширины</strong> (сохраняется в браузере). Полное наименование МС и переход в МойСклад — по клику на «Название МС». Пагинация: стартовый размер страницы 100 строк.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
 
-                <input type="radio" class="btn-check" name="dg-mpu-scope" id="dg-mpu-scope-any" value="any">
-                <label class="btn btn-outline-primary" for="dg-mpu-scope-any" title="Только те, у кого хотя бы один из 3 маркетплейсов не нашёл товар">Есть проблемы (хотя бы где-то)</label>
+          <div class="main-card mb-3 card" id="dg-mp-issues-snapshot-card">
+            <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
+              <div class="d-flex align-items-center gap-2 min-w-0">
+                <i class="header-icon pe-7s-graph1 icon-gradient bg-happy-itmeo me-2"></i>
+                <span>Журнал снимков «есть проблемы»</span>
+              </div>
+              <div class="d-flex flex-wrap gap-2 align-items-center">
+                <button type="button" class="btn btn-sm btn-outline-primary" id="dg-mp-issues-snapshot-record">
+                  Записать снимок сейчас
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mp-issues-snapshot-refresh">Обновить список</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0" id="dg-mp-issues-snapshot-toggle">Свернуть</button>
+              </div>
+            </div>
+            <div class="card-body" id="dg-mp-issues-snapshot-body">
+              <p class="small text-muted mb-2">
+                <strong>Обновить список</strong> — только перечитать журнал с сервера (новых строк сам по себе не появится).
+                <strong>Записать снимок сейчас</strong> — добавить строку в журнал по текущим данным в БД (тот же смысл, что фильтр «Есть проблемы» и «исключить комплекты»), <em>без</em> запросов к API маркетплейсов.
+                После каждого <strong>успешного полного</strong> обновления маркетплейсов (кнопка «Обновить из маркетплейсов» в
+                <a href="/settings.html">настройках</a> или автосинк по расписанию) снимок тоже записывается автоматически.
+              </p>
+              <div id="dg-mp-issues-snapshot-msg" class="alert alert-secondary py-2 px-3 mb-2 d-none small" role="status"></div>
+              <div id="dg-mp-issues-snapshot-dynamics-wrap" class="dg-snap-dynamics-wrap mb-3 d-none">
+                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+                  <div class="fw-semibold text-body small mb-0">Динамика по сотрудникам</div>
+                  <div class="btn-group btn-group-sm" role="group" aria-label="Тип сотрудников для матрицы">
+                    <button type="button" class="btn btn-outline-secondary active" id="dg-snap-dyn-mgr">Менеджеры</button>
+                    <button type="button" class="btn btn-outline-secondary" id="dg-snap-dyn-cm">Контент</button>
+                  </div>
+                </div>
+                <p class="small text-muted mb-2 mb-md-0 d-none d-md-block" id="dg-mp-issues-snapshot-dyn-hint">
+                  Столбцы — снимки слева направо по времени (сначала более старые). Насыщенность фона — доля проблем у сотрудника в этом снимке относительно других в тот же день; под числом — изменение к предыдущему снимку (▲ рост, ▼ снижение).
+                </p>
+                <div id="dg-mp-issues-snapshot-dynamics" class="dg-snap-dynamics-table-wrap mt-2"></div>
+              </div>
+              <div class="table-responsive">
+                <table class="table dg-snap-feed-table mb-0">
+                  <thead>
+                    <tr>
+                      <th style="min-width: 200px">Когда и откуда</th>
+                      <th class="text-center" style="width: 100px">Всего</th>
+                      <th style="min-width: 260px">Менеджеры</th>
+                      <th style="min-width: 260px">Контент</th>
+                    </tr>
+                  </thead>
+                  <tbody id="dg-mp-issues-snapshot-tbody">
+                    <tr><td colspan="4" class="text-muted small py-3">Загрузка…</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
 
-                <input type="radio" class="btn-check" name="dg-mpu-scope" id="dg-mpu-scope-all3" value="all3">
-                <label class="btn btn-outline-primary" for="dg-mpu-scope-all3" title="Только те, что отсутствуют на всех 3 маркетплейсах сразу">Нет ни на одном</label>
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+              <div class="d-flex align-items-center">
+                <i class="header-icon pe-7s-filter icon-gradient bg-strong-bliss me-2"></i>
+                <span>Фильтры и действия</span>
+              </div>
+              <div class="d-flex align-items-center gap-2">
+                <div class="dropdown">
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-secondary dg-vanilla-dropdown-toggle"
+                    style="line-height: 1; padding: 0.35rem 0.5rem"
+                    aria-expanded="false"
+                    aria-haspopup="true"
+                    id="dg-mpu-filter-blocks-btn"
+                    data-dg-tooltip="Какие поля фильтров показывать (сохраняется в браузере для текущего пользователя)"
+                  >
+                    <i class="pe-7s-config btn-icon-wrapper" style="font-size: 1.1rem" aria-hidden="true"></i>
+                  </button>
+                  <div
+                    class="dropdown-menu dropdown-menu-end rm-pointers p-0 dg-mpu-filter-blocks-dropdown"
+                    id="dg-mpu-filter-blocks-menu"
+                    style="width: min(420px, calc(100vw - 1.5rem))"
+                  >
+                    <div class="dropdown-menu-header mb-0">
+                      <div class="dropdown-menu-header-inner bg-strong-bliss">
+                        <div
+                          class="menu-header-image opacity-5"
+                          style="background-image: url('/assets/utils/images/dropdown-header/abstract2.jpg')"
+                        ></div>
+                        <div class="menu-header-content text-white px-3 py-2">
+                          <h5 class="menu-header-title mb-0">Поля фильтров</h5>
+                          <h6 class="menu-header-subtitle mb-0 opacity-8 fw-normal small">Скрыть/показать выбранные блоки</h6>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="dg-mpu-filter-blocks-scroll" style="max-height: calc(100vh - 10rem); overflow-y: auto; overflow-x: hidden">
+                      <div id="dg-mpu-filter-blocks-toggles" class="list-group list-group-flush"></div>
+                    </div>
+                  </div>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mpu-scope-toggle" title="Свернуть/развернуть тело карточки фильтра">Свернуть</button>
+              </div>
+            </div>
+            <div class="card-body" id="dg-mpu-scope-body">
+              <div class="row g-3 align-items-end">
+                <div class="col-12" data-dg-mpu-filter-field="scope" data-dg-filter-field-title="Фильтр маркетплейса">
+                  <label class="form-label small mb-1" id="dg-mpu-scope-label">Фильтр маркетплейса</label>
+                  <div class="btn-group flex-wrap d-flex" role="group" aria-labelledby="dg-mpu-scope-label" id="dg-mpu-scope-group">
+                    <input type="radio" class="btn-check" name="dg-mpu-scope" id="dg-mpu-scope-all" value="all" checked>
+                    <label class="btn btn-outline-primary" for="dg-mpu-scope-all" title="Все товары МС по основному фильтру; красным подсвечены отсутствующие коды.">Все товары</label>
 
-                <input type="radio" class="btn-check" name="dg-mpu-scope" id="dg-mpu-scope-ozon" value="ozon">
-                <label class="btn btn-outline-primary" for="dg-mpu-scope-ozon">Нет на Ozon</label>
+                    <input type="radio" class="btn-check" name="dg-mpu-scope" id="dg-mpu-scope-any" value="any">
+                    <label class="btn btn-outline-primary" for="dg-mpu-scope-any" title="Только те, у кого хотя бы один из 3 маркетплейсов не нашёл товар">Есть проблемы (хотя бы где-то)</label>
 
-                <input type="radio" class="btn-check" name="dg-mpu-scope" id="dg-mpu-scope-wb" value="wb">
-                <label class="btn btn-outline-primary" for="dg-mpu-scope-wb">Нет на Wildberries</label>
+                    <input type="radio" class="btn-check" name="dg-mpu-scope" id="dg-mpu-scope-all3" value="all3">
+                    <label class="btn btn-outline-primary" for="dg-mpu-scope-all3" title="Только те, что отсутствуют на всех 3 маркетплейсах сразу">Нет ни на одном</label>
 
-                <input type="radio" class="btn-check" name="dg-mpu-scope" id="dg-mpu-scope-ym" value="ym">
-                <label class="btn btn-outline-primary" for="dg-mpu-scope-ym">Нет на Я.Маркет</label>
+                    <input type="radio" class="btn-check" name="dg-mpu-scope" id="dg-mpu-scope-ozon" value="ozon">
+                    <label class="btn btn-outline-primary" for="dg-mpu-scope-ozon">Нет на Ozon</label>
+
+                    <input type="radio" class="btn-check" name="dg-mpu-scope" id="dg-mpu-scope-wb" value="wb">
+                    <label class="btn btn-outline-primary" for="dg-mpu-scope-wb">Нет на Wildberries</label>
+
+                    <input type="radio" class="btn-check" name="dg-mpu-scope" id="dg-mpu-scope-ym" value="ym">
+                    <label class="btn btn-outline-primary" for="dg-mpu-scope-ym">Нет на Я.Маркет</label>
+
+                    <input type="radio" class="btn-check" name="dg-mpu-scope" id="dg-mpu-scope-vat-mismatch" value="vat_mismatch">
+                    <label class="btn btn-outline-primary" for="dg-mpu-scope-vat-mismatch" title="Товар найден в снапшоте маркетплейса, но нормализованный НДС МС не совпадает с НДС на этой площадке (WB «не указан» не сравнивается).">Не совпадает НДС</label>
+
+                    <input type="radio" class="btn-check" name="dg-mpu-scope" id="dg-mpu-scope-dims-mismatch" value="dims_mismatch">
+                    <label class="btn btn-outline-primary" for="dg-mpu-scope-dims-mismatch" title="Товар есть минимум на двух маркетплейсах, и по длине/ширине/высоте (см) или весу (кг) обе площадки отдают число, а значения расходятся (пусто с одной стороны не считается расхождением). С МойСклад не сравнивается — в выгрузке МС нет этих полей.">Разные габариты</label>
+                  </div>
+                </div>
+                <div class="col-md-4 col-sm-6" data-dg-mpu-filter-field="manager" data-dg-filter-field-title="Менеджер">
+                  <label class="form-label small mb-1" for="dg-mpu-flt-manager">Менеджер</label>
+                  <select class="form-select form-select-sm" id="dg-mpu-flt-manager">
+                    <option value="">— все —</option>
+                  </select>
+                </div>
+                <div class="col-md-4 col-sm-6" data-dg-mpu-filter-field="cmgr" data-dg-filter-field-title="Контент-менеджер">
+                  <label class="form-label small mb-1" for="dg-mpu-flt-cmgr">Контент-менеджер</label>
+                  <select class="form-select form-select-sm" id="dg-mpu-flt-cmgr">
+                    <option value="">— все —</option>
+                  </select>
+                </div>
+                <div class="col-12" data-dg-mpu-filter-field="exclude_bundle_components" data-dg-filter-field-title="Исключить товары, входящие в комплекты">
+                  <div class="form-check form-switch mb-0">
+                    <input class="form-check-input" type="checkbox" role="switch" id="dg-mpu-flt-exclude-bundle-components" checked>
+                    <label class="form-check-label small" for="dg-mpu-flt-exclude-bundle-components" data-dg-tooltip="Скрыть товары, которые встречаются как компонент в составе хотя бы одного комплекта (kind=bundle в ms_entity_details). По умолчанию включено.">
+                      Исключить товары, по которым есть комплекты
+                    </label>
+                  </div>
+                </div>
+              </div>
+              <div class="mt-3 d-flex flex-wrap gap-2 align-items-center" data-dg-mpu-filter-field="filter_actions" data-dg-filter-field-title="Кнопки «Применить» / «Сбросить»">
+                <button type="button" class="btn btn-sm btn-primary" id="dg-mpu-flt-apply" title="Применить фильтры и поиск (или нажмите Enter в поле поиска)"><i class="pe-7s-search me-1"></i>Применить</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mpu-flt-reset" title="Сбросить scope, поиск, менеджера и контент-менеджера"><i class="pe-7s-refresh me-1"></i>По умолчанию</button>
+                <span class="badge bg-warning text-dark d-none" id="dg-mpu-flt-dirty" title="Есть несохранённые изменения фильтров">не применено</span>
               </div>
               <div id="dg-mpu-msg" class="alert alert-secondary mt-3 mb-0 d-none" role="status"></div>
             </div>
           </div>
 
           <div class="main-card mb-3 card">
-            <div class="card-header d-flex align-items-center gap-2 flex-wrap">
-              <i class="header-icon pe-7s-graph2 icon-gradient bg-strong-bliss me-2"></i>
-              <span id="dg-mpu-table-title">Таблица — все товары</span>
-              <div class="ms-auto d-flex align-items-center gap-2 flex-nowrap dg-mp-search-box">
-                <label class="small text-muted mb-0 flex-shrink-0" for="dg-mp-search">Поиск</label>
-                <input type="search" class="form-control form-control-sm dg-mp-search-input" id="dg-mp-search" placeholder="Артикул или наименование" autocomplete="off" />
-                <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0" id="dg-mp-search-clear" title="Очистить поиск">×</button>
-              </div>
-            </div>
-            <div class="card-body p-0">
-              <div class="dg-mp-toolbox mx-3 mt-3" id="dg-mpu-toolbox">
-                <div class="dg-mp-toolbox-top">
-                  <div class="dg-mpu-toolbox-wrap">
-                    <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mpu-cols-toggle" title="Управление видимостью колонок">🧩 Столбцы</button>
-                    <div class="dg-mpu-cols-panel" id="dg-mpu-cols-panel">
-                      <div class="d-flex justify-content-between align-items-center">
-                        <strong class="small">Видимость колонок</strong>
-                        <button type="button" class="btn btn-link btn-sm p-0" id="dg-mpu-cols-reset" title="Сбросить видимость к дефолту">сбросить</button>
-                      </div>
-                      <div class="dg-mpu-cols-grid" id="dg-mpu-cols-grid"></div>
-                    </div>
-                  </div>
-                  <div class="dg-mpu-toolbox-wrap">
-                    <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mpu-widths-toggle" title="Ручная ширина каждой колонки в пикселях (или drag за правый край заголовка)">📏 Ширины</button>
-                    <div class="dg-mpu-cols-panel" id="dg-mpu-widths-panel">
-                      <div class="d-flex justify-content-between align-items-center">
-                        <strong class="small">Ширины колонок (px)</strong>
-                        <button type="button" class="btn btn-link btn-sm p-0" id="dg-mpu-widths-reset" title="Сбросить ширины к дефолту">по умолчанию</button>
-                      </div>
-                      <div class="dg-mp-widths-grid" id="dg-mpu-widths-grid"></div>
-                    </div>
-                  </div>
-                  <div class="dg-mp-filter-group" id="dg-mpu-filter-group">
-                    <span class="dg-mp-filter-lbl">Дополнительно:</span>
-                    <label class="dg-mp-filter-sel" for="dg-mpu-flt-manager">
-                      <span class="dg-mp-filter-lbl">Менеджер</span>
-                      <select class="form-select form-select-sm" id="dg-mpu-flt-manager">
-                        <option value="">— все —</option>
-                      </select>
-                    </label>
-                    <label class="dg-mp-filter-sel" for="dg-mpu-flt-cmgr">
-                      <span class="dg-mp-filter-lbl">Контент-менеджер</span>
-                      <select class="form-select form-select-sm" id="dg-mpu-flt-cmgr">
-                        <option value="">— все —</option>
-                      </select>
-                    </label>
-                  </div>
-                  <div class="dg-mp-filter-actions ms-auto d-flex align-items-center gap-2">
-                    <span class="badge bg-warning text-dark d-none" id="dg-mpu-flt-dirty" title="Есть несохранённые изменения фильтров">не применено</span>
-                    <button type="button" class="btn btn-sm btn-primary" id="dg-mpu-flt-apply" title="Применить фильтры и поиск (или нажмите Enter в поле поиска)">Применить</button>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mpu-flt-reset" title="Сбросить scope, поиск, менеджера и контент-менеджера">Сбросить</button>
+            <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+              <div class="d-flex align-items-center gap-3 flex-grow-1" style="min-width: 0">
+                <div class="d-flex align-items-center flex-shrink-0">
+                  <i class="header-icon pe-7s-graph2 icon-gradient bg-strong-bliss me-2"></i>
+                  <span id="dg-mpu-table-title">Таблица — все товары</span>
+                </div>
+                <div class="dg-ms-header-search" style="flex: 0 1 380px; min-width: 220px">
+                  <div class="input-group input-group-sm">
+                    <span class="input-group-text bg-white text-muted px-2" aria-hidden="true">🔎</span>
+                    <input type="search" class="form-control" id="dg-mp-search"
+                           placeholder="Умный поиск: артикул или наименование (Enter — применить)"
+                           autocomplete="off"
+                           data-dg-tooltip='Умный поиск по таблице: артикул и наименование. Enter — применить, Esc — очистить.' />
                   </div>
                 </div>
+                <!-- Скрытая кнопка очистки: оставлена для обратной совместимости со скриптом
+                     (см. inners/exports-marketplaces-issues.scripts.html — `elSearchClear`).
+                     Эталонное поведение очистки реализовано через нативный <input type="search">
+                     (системный «×» в браузере) и Esc в обработчике elSearch. -->
+                <button type="button" class="d-none" id="dg-mp-search-clear" aria-hidden="true"></button>
               </div>
-              <div class="dg-mp-mkt-scroll">
-                <div class="table-responsive datagon-my-products-table-wrap">
-                  <table class="table table-hover table-striped mb-0 datagon-my-products-table dg-mp-mkt-table" id="dg-mp-table-main">
-                    <thead>
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mpu-cols-toggle-header" title="Управление видимостью колонок (открывает панель в теле карточки)">🧩 Столбцы</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mpu-widths-toggle-header" title="Ручная ширина колонок в пикселях">📏 Ширины</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mpu-table-toggle" title="Свернуть/развернуть тело карточки с таблицей">Свернуть</button>
+              </div>
+            </div>
+            <div class="card-body p-0" id="dg-mpu-table-body">
+              <!-- Эталон как у shop-маркетплейсов: скрытые кнопки в .dg-mp-toolbox-top (прокси из card-header),
+                   панели — соседи `.dg-mp-toolbox-panel` на всю ширину toolbox (не absolute popover). -->
+              <div class="dg-mp-toolbox mx-3 mt-3" id="dg-mpu-toolbox">
+                <div class="dg-mp-toolbox-top">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mpu-cols-toggle" title="Управление видимостью колонок" style="display: none">🧩 Столбцы</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mpu-widths-toggle" title="Ручная ширина каждой колонки в пикселях (или drag за правый край заголовка)" style="display: none">📏 Ширины</button>
+                </div>
+                <div class="dg-mp-toolbox-panel" id="dg-mpu-cols-panel">
+                  <div class="dg-mp-toolbox-actions">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mpu-cols-reset" title="Сбросить видимость к дефолту">Столбцы по умолчанию</button>
+                  </div>
+                  <div class="dg-mp-cols-grid" id="dg-mpu-cols-grid"></div>
+                </div>
+                <div class="dg-mp-toolbox-panel" id="dg-mpu-widths-panel">
+                  <div class="dg-mp-toolbox-actions">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mpu-widths-reset" title="Сбросить ширины колонок к значениям по умолчанию">Ширины по умолчанию</button>
+                  </div>
+                  <div class="dg-mp-widths-grid" id="dg-mpu-widths-grid"></div>
+                </div>
+              </div>
+              <!-- Как /my-products.html: внешний горизонтальный скролл, внутри overflow:visible;
+                   «плавающая» шапка под app-header — transform на <thead> (issues.scripts), не native sticky к внешнему скроллу. -->
+              <div
+                id="dg-mpu-table-scroll-outer"
+                class="dg-mp-table-scroll-outer"
+                style="width: 100%; max-width: 100%; min-width: 0; overflow-x: auto; overflow-y: visible; -webkit-overflow-scrolling: touch"
+              >
+                <div
+                  class="table-responsive datagon-my-products-table-wrap"
+                  style="display: block; width: 100%; max-width: 100%; min-width: 0; overflow: visible; position: relative"
+                >
+                  <table
+                    class="table table-hover table-striped mb-0 datagon-my-products-table dg-mp-mkt-table"
+                    id="dg-mp-table-main"
+                    style="width: max-content; min-width: min(100%, 2200px); max-width: none; table-layout: fixed; border-collapse: collapse; border-spacing: 0"
+                  >
+                    <thead id="dg-mpu-thead">
                       <tr>
                         <th class="text-muted">Загрузка…</th>
                       </tr>
@@ -129,6 +359,25 @@
                   <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mp-page-prev">Назад</button>
                   <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mp-page-next">Вперед</button>
                 </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Карточка товара МойСклад (lazy по клику на «Название МС», как на /moysklad.html) -->
+          <div id="dg-ms-detail-overlay" class="dg-ms-detail-overlay" style="display: none" aria-hidden="true">
+            <div class="dg-ms-detail-panel card shadow-lg border-0">
+              <div class="card-header d-flex align-items-center justify-content-between gap-2">
+                <div class="fw-semibold text-truncate" id="dg-ms-detail-title">Карточка МойСклад</div>
+                <div class="d-flex align-items-center gap-2 flex-shrink-0">
+                  <a class="btn btn-sm btn-outline-primary d-none" id="dg-ms-detail-open-ms" href="#" target="_blank" rel="noopener noreferrer">Открыть в МойСклад</a>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-ms-detail-close" aria-label="Закрыть">Закрыть</button>
+                </div>
+              </div>
+              <div class="card-body" style="max-height: min(78vh, 720px); overflow-y: auto">
+                <p class="text-muted small mb-2" id="dg-ms-detail-hint">
+                  Данные карточки берутся из базы. Если записи ещё нет или она устарела, сервер делает запрос в API МойСклад и сохраняет ответ в базу.
+                </p>
+                <div id="dg-ms-detail-body" class="small"></div>
               </div>
             </div>
           </div>

@@ -25,6 +25,7 @@ function assemble() {
         read(path.join(vanillaDir, 'inners/exports-suite.head.html')) +
         read(path.join(vanillaDir, 'inners/exports-marketplaces.head.html'));
     const mpShopScripts = read(path.join(vanillaDir, 'inners/exports-marketplaces-shop.scripts.html'));
+    const mpShopFiltersFragment = read(path.join(vanillaDir, 'inners/exports-marketplaces-shop-filters.fragment.html'));
     const pages = [
         {
             out: 'dashboard.html',
@@ -208,7 +209,11 @@ function assemble() {
             BODY_ATTRS:
                 'class="datagon-vanilla-body" data-dg-active-nav="exports-marketplaces-ozon" data-dg-mp-shop="ozon"',
             EXTRA_HEAD: mpExtraHead,
-            MAIN_INNER: read(path.join(vanillaDir, 'inners/exports-marketplaces-ozon.inner.html')),
+            // Карточка «Фильтры и действия» (общий fragment) подставляется на место
+            // плейсхолдера <!-- DG_MP_SHOP_FILTERS --> сразу ПОСЛЕ заголовка страницы,
+            // см. .cursor/rules/datagon-list-page-baseline-moysklad.mdc.
+            MAIN_INNER: read(path.join(vanillaDir, 'inners/exports-marketplaces-ozon.inner.html'))
+                .replace('<!-- DG_MP_SHOP_FILTERS -->', mpShopFiltersFragment),
             PAGE_SCRIPTS: mpShopScripts,
         },
         {
@@ -217,7 +222,8 @@ function assemble() {
             BODY_ATTRS:
                 'class="datagon-vanilla-body" data-dg-active-nav="exports-marketplaces-wildberries" data-dg-mp-shop="wildberries"',
             EXTRA_HEAD: mpExtraHead,
-            MAIN_INNER: read(path.join(vanillaDir, 'inners/exports-marketplaces-wildberries.inner.html')),
+            MAIN_INNER: read(path.join(vanillaDir, 'inners/exports-marketplaces-wildberries.inner.html'))
+                .replace('<!-- DG_MP_SHOP_FILTERS -->', mpShopFiltersFragment),
             PAGE_SCRIPTS: mpShopScripts,
         },
         {
@@ -226,7 +232,8 @@ function assemble() {
             BODY_ATTRS:
                 'class="datagon-vanilla-body" data-dg-active-nav="exports-marketplaces-yandex" data-dg-mp-shop="yandex"',
             EXTRA_HEAD: mpExtraHead,
-            MAIN_INNER: read(path.join(vanillaDir, 'inners/exports-marketplaces-yandex.inner.html')),
+            MAIN_INNER: read(path.join(vanillaDir, 'inners/exports-marketplaces-yandex.inner.html'))
+                .replace('<!-- DG_MP_SHOP_FILTERS -->', mpShopFiltersFragment),
             PAGE_SCRIPTS: mpShopScripts,
         },
         {
@@ -234,7 +241,9 @@ function assemble() {
             PAGE_TITLE: 'Маркетплейсы — Проблемы с товарами — Датагон',
             BODY_ATTRS:
                 'class="datagon-vanilla-body" data-dg-active-nav="exports-marketplaces-issues"',
-            EXTRA_HEAD: mpExtraHead,
+            EXTRA_HEAD:
+                mpExtraHead +
+                read(path.join(vanillaDir, 'inners/exports-marketplaces-issues.head.html')),
             MAIN_INNER: read(path.join(vanillaDir, 'inners/exports-marketplaces-issues.inner.html')),
             PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/exports-marketplaces-issues.scripts.html')),
         },
@@ -258,11 +267,13 @@ function assemble() {
         },
         {
             out: 'exports-dimensions.html',
-            PAGE_TITLE: 'Габариты — Датагон',
+            PAGE_TITLE: 'Маркетплейсы — Габариты — Датагон',
             BODY_ATTRS: 'class="datagon-vanilla-body" data-dg-active-nav="exports-dimensions"',
-            EXTRA_HEAD: read(path.join(vanillaDir, 'inners/exports-suite.head.html')),
+            EXTRA_HEAD:
+                read(path.join(vanillaDir, 'inners/exports-suite.head.html')) +
+                read(path.join(vanillaDir, 'inners/exports-dimensions.head.html')),
             MAIN_INNER: read(path.join(vanillaDir, 'inners/exports-dimensions.inner.html')),
-            PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/exports-suite.scripts.html')),
+            PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/exports-dimensions.scripts.html')),
         },
     ];
 

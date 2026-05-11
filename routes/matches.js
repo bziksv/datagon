@@ -449,6 +449,23 @@ module.exports = (db, settings) => {
                 await db.query(ddl);
             } catch (_) {}
         }
+        const manualArchiveExtraCols = [
+            { name: 'archived_by', ddl: 'ALTER TABLE match_manual_archive ADD COLUMN archived_by VARCHAR(100) NULL' }
+        ];
+        for (const c of manualArchiveExtraCols) {
+            try {
+                const [rows] = await db.query(
+                    `SELECT 1
+                     FROM information_schema.columns
+                     WHERE table_schema = DATABASE()
+                       AND table_name = 'match_manual_archive'
+                       AND column_name = ?
+                     LIMIT 1`,
+                    [c.name]
+                );
+                if (!rows.length) await db.query(c.ddl);
+            } catch (_) {}
+        }
         matchLaneTablesReady = true;
     }
 
@@ -2514,7 +2531,7 @@ module.exports = (db, settings) => {
         try {
             await ensureMatchLaneTables();
             let q = `
-                SELECT a.id, a.my_site_id, a.competitor_site_id, a.my_product_id, a.competitor_sku, a.competitor_name, a.note, a.created_at,
+                SELECT a.id, a.my_site_id, a.competitor_site_id, a.my_product_id, a.competitor_sku, a.competitor_name, a.note, a.archived_by, a.created_at,
                        mp.sku AS mp_sku, mp.name AS mp_name,
                        pr.name AS comp_project_name, pr.domain AS comp_domain
                 FROM match_manual_archive a
@@ -2772,6 +2789,7 @@ module.exports = (db, settings) => {
         if (!Number.isFinite(exclusionId) || exclusionId < 1) return res.status(400).json({ error: 'exclusion_id обязателен' });
         try {
             await ensureMatchLaneTables();
+            const actor = await resolveActorDisplayName(req);
             const [rows] = await db.query(
                 `SELECT id, my_site_id, competitor_site_id, my_product_id FROM match_exclusion WHERE id = ? LIMIT 1`,
                 [exclusionId]
@@ -2779,9 +2797,17 @@ module.exports = (db, settings) => {
             if (!rows.length) return res.status(404).json({ error: 'Строка очереди не найдена' });
             const e0 = rows[0];
             await db.query(
-                `INSERT INTO match_manual_archive (my_site_id, competitor_site_id, my_product_id, competitor_sku, competitor_name, note)
-                 VALUES (?, ?, ?, ?, ?, ?)`,
-                [e0.my_site_id, e0.competitor_site_id, e0.my_product_id, competitorSku || null, competitorName || null, note || null]
+                `INSERT INTO match_manual_archive (my_site_id, competitor_site_id, my_product_id, competitor_sku, competitor_name, note, archived_by)
+                 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                [
+                    e0.my_site_id,
+                    e0.competitor_site_id,
+                    e0.my_product_id,
+                    competitorSku || null,
+                    competitorName || null,
+                    note || null,
+                    actor || null
+                ]
             );
             await db.query('DELETE FROM match_exclusion WHERE id = ?', [exclusionId]);
             await appendMatchProductLog(db, {
@@ -2790,7 +2816,7 @@ module.exports = (db, settings) => {
                 competitor_site_id: e0.competitor_site_id,
                 event: 'manual_archived',
                 message: 'После ручного сопоставления отказ — в архив',
-                detail: { note: note || null, competitor_sku: competitorSku, competitor_name: competitorName }
+                detail: { note: note || null, competitor_sku: competitorSku, competitor_name: competitorName, archived_by: actor || null }
             });
             return res.json({ success: true });
         } catch (e) {

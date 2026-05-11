@@ -964,5 +964,96 @@
       syncSortUrl();
       loadMySites();
       loadSiteStats();
+
+      // «Свернуть/Развернуть» для card-body «Фильтры и действия» — по эталону moysklad.
+      (function bindCardCollapse(btnId, bodyId, storageKey) {
+        var btn = document.getElementById(btnId);
+        var body = document.getElementById(bodyId);
+        if (!btn || !body) return;
+        function apply() {
+          var c = false;
+          try { c = localStorage.getItem(storageKey) === "1"; } catch (e) {}
+          if (c) {
+            body.style.display = "none";
+            btn.textContent = "Развернуть";
+          } else {
+            body.style.display = "";
+            btn.textContent = "Свернуть";
+          }
+        }
+        apply();
+        btn.addEventListener("click", function () {
+          var hidden = body.style.display === "none";
+          body.style.display = hidden ? "" : "none";
+          btn.textContent = hidden ? "Свернуть" : "Развернуть";
+          try { localStorage.setItem(storageKey, hidden ? "0" : "1"); } catch (e) {}
+        });
+      })("dg-msites-filters-toggle", "dg-msites-filters-body", "datagon_my_sites_filters_collapsed_v1");
+
+      // «Свернуть/Развернуть» для card-body «Список сайтов».
+      (function bindCardCollapse(btnId, bodyId, storageKey) {
+        var btn = document.getElementById(btnId);
+        var body = document.getElementById(bodyId);
+        if (!btn || !body) return;
+        function apply() {
+          var c = false;
+          try { c = localStorage.getItem(storageKey) === "1"; } catch (e) {}
+          if (c) {
+            body.style.display = "none";
+            btn.textContent = "Развернуть";
+          } else {
+            body.style.display = "";
+            btn.textContent = "Свернуть";
+          }
+        }
+        apply();
+        btn.addEventListener("click", function () {
+          var hidden = body.style.display === "none";
+          body.style.display = hidden ? "" : "none";
+          btn.textContent = hidden ? "Свернуть" : "Развернуть";
+          try { localStorage.setItem(storageKey, hidden ? "0" : "1"); } catch (e) {}
+        });
+      })("dg-msites-table-toggle", "dg-msites-table-body", "dg.my-sites.table-card.collapsed.v1");
+
+      // Зеркало умного поиска в шапке карточки «Список сайтов» — синхрон с #ms-smart.
+      (function bindHeaderSearchMirror() {
+        var primary = document.getElementById("ms-smart");
+        var mirror = document.getElementById("dg-msites-table-search-mirror");
+        if (!primary || !mirror) return;
+        var syncing = false;
+        function copy(from, to) {
+          if (syncing) return;
+          if (to.value === from.value) return;
+          syncing = true;
+          to.value = from.value;
+          to.dispatchEvent(new Event("input", { bubbles: true }));
+          syncing = false;
+        }
+        function apply() {
+          var btn = document.getElementById("ms-filters-apply");
+          if (btn) btn.click();
+        }
+        primary.addEventListener("input", function () { copy(primary, mirror); });
+        mirror.addEventListener("input", function () { copy(mirror, primary); });
+        function bindKeys(el) {
+          el.addEventListener("keydown", function (e) {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              apply();
+            } else if (e.key === "Escape") {
+              if (!el.value) return;
+              el.value = "";
+              copy(el, el === primary ? mirror : primary);
+              apply();
+            }
+          });
+          el.addEventListener("search", function () {
+            copy(el, el === primary ? mirror : primary);
+            apply();
+          });
+        }
+        bindKeys(mirror);
+        copy(primary, mirror);
+      })();
     })();
   </script>

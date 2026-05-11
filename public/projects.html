@@ -51,6 +51,24 @@
       color: #374151;
       user-select: none;
     }
+    .datagon-columns-toolbox .dg-ms-widths-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 6px 10px;
+    }
+    .datagon-columns-toolbox .dg-ms-widths-grid label {
+      display: inline-flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 12px;
+      color: #374151;
+      margin: 0;
+    }
+    .datagon-columns-toolbox .dg-ms-widths-grid input[type="number"] {
+      width: 88px;
+      flex: 0 0 auto;
+    }
     #dg-proj-main-table {
       border-collapse: collapse !important;
       border-spacing: 0 !important;
@@ -567,6 +585,16 @@
                           <li class="metismenu-item">
                             <a
                               class="metismenu-link"
+                              data-nav="exports-dimensions"
+                              href="/exports-dimensions.html"
+                              title="Реестр замеров габаритов товаров МойСклад"
+                            >
+                              <i class="metismenu-icon pe-7s-scissors"></i>Габариты
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
                               data-nav="exports-marketplaces-issues"
                               href="/exports-marketplaces-issues.html"
                               title="Товары МойСклад с проблемами публикации на маркетплейсах"
@@ -578,7 +606,6 @@
                       </li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="exports-huckster" href="/exports-huckster.html" title="Интеграция Huckster / e-teleport — матрица UID по магазинам"><i class="metismenu-icon pe-7s-cart"></i>Huckster</a></li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="exports-summary" href="/exports-summary.html" title="Сводка по менеджерам, подсветки НДС/габаритов, уведомления в чат"><i class="metismenu-icon pe-7s-note"></i>Сводка и синхронизация</a></li>
-                      <li class="metismenu-item"><a class="metismenu-link" data-nav="exports-dimensions" href="/exports-dimensions.html" title="Лист «Габариты»: проверки, сортировка, слияние в новые позиции"><i class="metismenu-icon pe-7s-scissors"></i>Габариты</a></li>
                     </ul>
                   </div>
                 </div>
@@ -751,23 +778,43 @@
           </div>
 
           <div class="main-card mb-3 card">
-            <div class="card-header d-flex align-items-center">
-              <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
-              <span>Список проектов</span>
-            </div>
-            <div class="card-body">
-              <div class="datagon-columns-toolbox mb-2">
-                <div class="columns-top">
-                  <button type="button" class="btn btn-sm" id="dg-proj-columns-toggle">🧩 Столбцы</button>
-                  <div class="columns-title">Включение/выключение видимых столбцов:</div>
+            <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+              <div class="d-flex align-items-center gap-3 flex-grow-1" style="min-width: 0">
+                <div class="d-flex align-items-center flex-shrink-0">
+                  <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
+                  <span>Список проектов</span>
                 </div>
+                <div class="dg-proj-header-search" style="flex: 0 1 380px; min-width: 220px">
+                  <div class="input-group input-group-sm">
+                    <span class="input-group-text bg-white text-muted px-2" aria-hidden="true">🔎</span>
+                    <input type="search" class="form-control" id="dg-proj-table-search-mirror"
+                           placeholder="Умный поиск (Enter — применить)"
+                           autocomplete="off"
+                           data-dg-tooltip='Зеркало основного поля «Умный поиск». Поддерживает ключи id:, name:. Enter — применить, Esc — очистить.' />
+                  </div>
+                </div>
+              </div>
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-proj-columns-toggle" title="Управление видимостью столбцов таблицы">🧩 Столбцы</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-proj-widths-toggle" title="Ручная ширина каждой колонки в пикселях (или drag за правый край заголовка)">📏 Ширины</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-proj-table-toggle" title="Свернуть/развернуть тело карточки с таблицей">Свернуть</button>
+              </div>
+            </div>
+            <div class="card-body" id="dg-proj-table-body">
+              <div class="datagon-columns-toolbox mb-2 d-none" id="dg-proj-toolbox-panels">
                 <div class="datagon-columns-panel" id="dg-proj-columns-panel">
                   <div class="columns-actions mb-2">
                     <button type="button" class="btn btn-sm" id="dg-proj-columns-all">Выделить все</button>
                     <button type="button" class="btn btn-sm" id="dg-proj-columns-none">Снять все</button>
-                    <button type="button" class="btn btn-sm" id="dg-proj-columns-default">По умолчанию</button>
+                    <button type="button" class="btn btn-sm" id="dg-proj-columns-default">Столбцы по умолчанию</button>
                   </div>
                   <div id="dg-proj-columns-list" class="columns-grid"></div>
+                </div>
+                <div class="datagon-columns-panel" id="dg-proj-widths-panel">
+                  <div class="columns-actions mb-2">
+                    <button type="button" class="btn btn-sm" id="dg-proj-widths-default">Ширины по умолчанию</button>
+                  </div>
+                  <div id="dg-proj-widths-list" class="dg-ms-widths-grid"></div>
                 </div>
               </div>
               <div class="table-responsive datagon-my-products-table-wrap">
@@ -1142,6 +1189,76 @@
           var idx = Number(k);
           if (!Number.isFinite(idx)) return;
           applyColumnWidthByIndex(idx, columnWidths[k]);
+        });
+      }
+
+      // Снять заданные inline-ширины с конкретной колонки (для сброса по кнопке «Ширины по умолчанию»).
+      function clearProjColumnSizing(index) {
+        var headers = getHeaderCells();
+        var th = headers[index];
+        if (th) {
+          th.style.width = "";
+          th.style.minWidth = "";
+          th.style.maxWidth = "";
+        }
+        document.querySelectorAll("#dg-proj-tbody tr").forEach(function (tr) {
+          if (!tr.cells || !tr.cells[index]) return;
+          var td = tr.cells[index];
+          td.style.width = "";
+          td.style.minWidth = "";
+          td.style.maxWidth = "";
+        });
+      }
+
+      // Панель «📏 Ширины»: список «<лейбл колонки> <input number px>» по индексу колонки
+      // (projects, как my-products, работает с шириной по индексу — см. applyColumnWidthByIndex).
+      // Использует ту же связку (columnWidths + applyColumnWidthByIndex + userColWidthKey),
+      // что drag-резайзер на правом крае <th>, поэтому изменения мгновенно видны и сохраняются.
+      function renderProjWidthControls() {
+        var list = document.getElementById("dg-proj-widths-list");
+        if (!list) return;
+        list.innerHTML = "";
+        var headers = getHeaderCells();
+        headers.forEach(function (th, index) {
+          if (!th) return;
+          if (th.style.display === "none") return;
+          var label = (th.textContent || "").replace(/\s+/g, " ").trim() || ("Колонка " + (index + 1));
+          var current = Number(columnWidths[index] || 0);
+          if (!Number.isFinite(current) || current <= 0) {
+            var rect = th.getBoundingClientRect();
+            current = rect && rect.width ? Math.round(rect.width) : 120;
+          }
+          var wrap = document.createElement("label");
+          var span = document.createElement("span");
+          span.textContent = label;
+          span.style.flex = "1 1 auto";
+          span.style.overflow = "hidden";
+          span.style.textOverflow = "ellipsis";
+          span.style.whiteSpace = "nowrap";
+          var input = document.createElement("input");
+          input.type = "number";
+          input.className = "form-control form-control-sm";
+          input.min = "80";
+          input.max = "900";
+          input.step = "10";
+          input.value = String(current);
+          input.setAttribute("data-col-index", String(index));
+          input.addEventListener("change", function () {
+            var idx = parseInt(this.getAttribute("data-col-index"), 10);
+            var n = parseInt(this.value, 10);
+            if (!Number.isFinite(idx)) return;
+            if (!Number.isFinite(n)) {
+              this.value = String(columnWidths[idx] || 120);
+              return;
+            }
+            n = Math.max(80, Math.min(900, n));
+            applyColumnWidthByIndex(idx, n);
+            try { localStorage.setItem(userColWidthKey(), JSON.stringify(columnWidths || {})); } catch (e) {}
+            this.value = String(n);
+          });
+          wrap.appendChild(span);
+          wrap.appendChild(input);
+          list.appendChild(wrap);
         });
       }
 
@@ -1669,13 +1786,59 @@
         }
         var toggle = document.getElementById("dg-proj-columns-toggle");
         var panel = document.getElementById("dg-proj-columns-panel");
+        var panelsWrap = document.getElementById("dg-proj-toolbox-panels");
         var btnAll = document.getElementById("dg-proj-columns-all");
         var btnNone = document.getElementById("dg-proj-columns-none");
         var btnDef = document.getElementById("dg-proj-columns-default");
+        var widthsToggle = document.getElementById("dg-proj-widths-toggle");
+        var widthsPanel = document.getElementById("dg-proj-widths-panel");
+        var widthsDefault = document.getElementById("dg-proj-widths-default");
+        function syncWrap() {
+          if (!panelsWrap) return;
+          var open = panel.classList.contains("open") || (widthsPanel && widthsPanel.classList.contains("open"));
+          panelsWrap.classList.toggle("d-none", !open);
+        }
         if (toggle && panel) {
-          toggle.addEventListener("click", function () {
+          toggle.addEventListener("click", function (e) {
+            e.preventDefault();
+            e.stopPropagation();
             panel.classList.toggle("open");
+            if (widthsPanel) widthsPanel.classList.remove("open");
+            syncWrap();
             renderColumnsPanel();
+          });
+        }
+        if (widthsToggle && widthsPanel) {
+          widthsToggle.addEventListener("click", function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            widthsPanel.classList.toggle("open");
+            panel.classList.remove("open");
+            if (widthsPanel.classList.contains("open")) renderProjWidthControls();
+            syncWrap();
+          });
+        }
+        document.addEventListener("click", function (e) {
+          if (!panel) return;
+          if (e.target.closest("#dg-proj-columns-panel")) return;
+          if (e.target.closest("#dg-proj-columns-toggle")) return;
+          if (e.target.closest("#dg-proj-widths-panel")) return;
+          if (e.target.closest("#dg-proj-widths-toggle")) return;
+          panel.classList.remove("open");
+          if (widthsPanel) widthsPanel.classList.remove("open");
+          syncWrap();
+        });
+
+        if (widthsDefault) {
+          widthsDefault.addEventListener("click", function () {
+            try {
+              Object.keys(columnWidths || {}).forEach(function (k) {
+                clearProjColumnSizing(Number(k));
+              });
+            } catch (e) {}
+            columnWidths = {};
+            try { localStorage.removeItem(userColWidthKey()); } catch (e) {}
+            renderProjWidthControls();
           });
         }
         if (btnAll) {
@@ -1718,6 +1881,73 @@
       initColumnResizeHandles();
       syncSortUrl();
       loadProjects();
+
+      // «Свернуть/Развернуть» для card-body карточки «Список проектов» — по эталону moysklad.
+      (function tableCardCollapse() {
+        var btn = document.getElementById("dg-proj-table-toggle");
+        var body = document.getElementById("dg-proj-table-body");
+        if (!btn || !body) return;
+        var STORAGE_KEY = "dg.projects.table-card.collapsed.v1";
+        function apply() {
+          var c = false;
+          try { c = localStorage.getItem(STORAGE_KEY) === "1"; } catch (e) {}
+          if (c) {
+            body.style.display = "none";
+            btn.textContent = "Развернуть";
+          } else {
+            body.style.display = "";
+            btn.textContent = "Свернуть";
+          }
+        }
+        apply();
+        btn.addEventListener("click", function () {
+          var hidden = body.style.display === "none";
+          body.style.display = hidden ? "" : "none";
+          btn.textContent = hidden ? "Свернуть" : "Развернуть";
+          try { localStorage.setItem(STORAGE_KEY, hidden ? "0" : "1"); } catch (e) {}
+        });
+      })();
+
+      // Зеркало умного поиска в card-header «Список проектов» — синхрон с #dg-proj-smart.
+      (function bindHeaderSearchMirror() {
+        var primary = document.getElementById("dg-proj-smart");
+        var mirror = document.getElementById("dg-proj-table-search-mirror");
+        if (!primary || !mirror) return;
+        var syncing = false;
+        function copy(from, to) {
+          if (syncing) return;
+          if (to.value === from.value) return;
+          syncing = true;
+          to.value = from.value;
+          to.dispatchEvent(new Event("input", { bubbles: true }));
+          syncing = false;
+        }
+        function apply() {
+          var btn = document.getElementById("dg-proj-apply");
+          if (btn) btn.click();
+        }
+        primary.addEventListener("input", function () { copy(primary, mirror); });
+        mirror.addEventListener("input", function () { copy(mirror, primary); });
+        function bindKeys(el) {
+          el.addEventListener("keydown", function (e) {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              apply();
+            } else if (e.key === "Escape") {
+              if (!el.value) return;
+              el.value = "";
+              copy(el, el === primary ? mirror : primary);
+              apply();
+            }
+          });
+          el.addEventListener("search", function () {
+            copy(el, el === primary ? mirror : primary);
+            apply();
+          });
+        }
+        bindKeys(mirror);
+        copy(primary, mirror);
+      })();
     })();
   </script>
 

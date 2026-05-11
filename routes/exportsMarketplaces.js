@@ -20,6 +20,160 @@ const MARKETPLACE_EXTERNAL_KEY = {
 };
 
 /**
+ * Кэш набора `code` товаров, которые входят как компонент хотя бы в один комплект
+ * (kind=bundle в `ms_entity_details`, поле `payload_json.components.rows[].assortment.code`).
+ *
+ * Используется фильтром «Исключить товары, входящие в комплекты» страницы
+ * `/exports-marketplaces-issues.html` (см. router.get('/issues')). Полное чтение
+ * payload всех bundle-сущностей дорогое (десятки/сотни KB на запись), поэтому
+ * результат запоминается на TTL и невалидируется по нему. На практике состав
+ * комплектов меняется только во время «Синхронизации МС» — между ними дешёвый
+ * хит из памяти; при появлении нового комплекта пользователь увидит обновлённый
+ * фильтр после истечения TTL (или ручного дёрга `/issues` после паузы).
+ */
+const BUNDLE_COMPONENT_CODES_TTL_MS = 5 * 60 * 1000;
+let bundleComponentCodesCache = null; // { at: epochMs, codes: Set<string> }
+let bundleComponentCodesPromise = null;
+
+async function loadBundleComponentCodesUncached(db) {
+    const out = new Set();
+    if (!db || typeof db.query !== 'function') return out;
+
+    // ВАЖНО: читаем bundle-сущности **порционно** и тащим из MySQL ровно
+    // массив кодов компонентов через `JSON_EXTRACT(... '$.components.rows[*].assortment.code')`,
+    // а не весь `payload_json` и даже не весь `$.components.rows` (полный
+    // assortment одного компонента — это nested meta/attributes/images, легко
+    // десятки KB на один component). Полный payload одного комплекта в МойСклад
+    // может весить сотни KB; при нескольких тысячах комплектов SELECT * приводил
+    // к Node OOM (FATAL ERROR: Reached heap limit Allocation failed).
+    //
+    // Чанки + GC-yield между ними + узкий JSON_EXTRACT дают стабильную память
+    // на любом каталоге и быстрый response.
+    const CHUNK_SIZE = 500;
+    const HARD_CAP_ROWS = 200000; // защитный потолок (на случай аномалии в БД)
+    let offset = 0;
+    let processed = 0;
+    // Если узкий JSON_EXTRACT не сработал на первой итерации (старая MySQL,
+    // нет поддержки [*] wildcard) — фолбек на «достать $.components.rows и
+    // распарсить в JS», тоже чанками.
+    let useNarrowExtract = true;
+
+    try {
+        while (processed < HARD_CAP_ROWS) {
+            let chunk;
+            if (useNarrowExtract) {
+                try {
+                    const [rows] = await db.query(
+                        `SELECT
+                             JSON_EXTRACT(
+                                 payload_json,
+                                 '$.components.rows[*].assortment.code'
+                             ) AS codes_json
+                         FROM ms_entity_details
+                         WHERE kind = 'bundle'
+                           AND payload_json IS NOT NULL
+                         ORDER BY uuid
+                         LIMIT ? OFFSET ?`,
+                        [CHUNK_SIZE, offset]
+                    );
+                    chunk = (rows || []).map((r) => ({ codes_raw: r.codes_json }));
+                } catch (eNarrow) {
+                    console.warn(
+                        '[exports/marketplaces] bundle codes: narrow JSON_EXTRACT failed, fallback to components.rows scan:',
+                        eNarrow && eNarrow.message ? eNarrow.message : eNarrow
+                    );
+                    useNarrowExtract = false;
+                    continue; // повторно зайдём с тем же offset, но широким SELECT
+                }
+            } else {
+                const [rows] = await db.query(
+                    `SELECT
+                         JSON_EXTRACT(payload_json, '$.components.rows') AS components_json
+                     FROM ms_entity_details
+                     WHERE kind = 'bundle'
+                       AND payload_json IS NOT NULL
+                     ORDER BY uuid
+                     LIMIT ? OFFSET ?`,
+                    [CHUNK_SIZE, offset]
+                );
+                chunk = (rows || []).map((r) => ({ components_raw: r.components_json }));
+            }
+            if (!chunk.length) break;
+
+            for (const row of chunk) {
+                if (useNarrowExtract) {
+                    // codes_raw — это JSON-массив строк (или single value),
+                    // например ["28543","36490"] или null.
+                    const raw = row.codes_raw;
+                    if (raw == null) continue;
+                    let codes = null;
+                    try {
+                        if (typeof raw === 'string') codes = JSON.parse(raw);
+                        else if (Array.isArray(raw)) codes = raw;
+                        else if (typeof raw === 'object') codes = [raw];
+                    } catch (_) { codes = null; }
+                    if (codes == null) continue;
+                    if (!Array.isArray(codes)) codes = [codes];
+                    for (const v of codes) {
+                        if (v == null) continue;
+                        const s = String(v).trim();
+                        if (s) out.add(s);
+                    }
+                } else {
+                    // Фолбек: components_raw — это массив объектов component.
+                    const raw = row.components_raw;
+                    if (raw == null) continue;
+                    let compRows = null;
+                    try {
+                        if (typeof raw === 'string') compRows = JSON.parse(raw);
+                        else if (Array.isArray(raw)) compRows = raw;
+                        else if (typeof raw === 'object') compRows = raw;
+                    } catch (_) { compRows = null; }
+                    if (!Array.isArray(compRows)) continue;
+                    for (const c of compRows) {
+                        const a = c && c.assortment ? c.assortment : null;
+                        if (!a) continue;
+                        const code = String(
+                            a.code != null ? a.code : a.article != null ? a.article : ''
+                        ).trim();
+                        if (code) out.add(code);
+                    }
+                }
+            }
+
+            processed += chunk.length;
+            offset += chunk.length;
+            if (chunk.length < CHUNK_SIZE) break;
+            // Уступаем event loop — даём GC время освободить временные объекты
+            // от JSON.parse предыдущего чанка перед следующим SELECT.
+            await new Promise((resolve) => setImmediate(resolve));
+        }
+    } catch (e) {
+        console.warn('[exports/marketplaces] bundle component codes load failed:', e && e.message ? e.message : e);
+    }
+
+    return out;
+}
+
+async function getBundleComponentCodesCached(db) {
+    const now = Date.now();
+    if (bundleComponentCodesCache && (now - bundleComponentCodesCache.at) < BUNDLE_COMPONENT_CODES_TTL_MS) {
+        return bundleComponentCodesCache.codes;
+    }
+    if (bundleComponentCodesPromise) return bundleComponentCodesPromise;
+    bundleComponentCodesPromise = (async () => {
+        try {
+            const codes = await loadBundleComponentCodesUncached(db);
+            bundleComponentCodesCache = { at: Date.now(), codes };
+            return codes;
+        } finally {
+            bundleComponentCodesPromise = null;
+        }
+    })();
+    return bundleComponentCodesPromise;
+}
+
+/**
  * Подтягивает ms_export.manager / content_manager по коду = артикул маркетплейса
  * (offer_id для Ozon / vendor_code для WB / shop_sku для Я.Маркет).
  * Не падает при недоступной БД — просто оставляет поля пустыми.
@@ -644,7 +798,7 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
         return { persisted, count: rows.length, updatedAt };
     }
 
-    async function triggerRefreshMarkets(kindRaw = 'all') {
+    async function triggerRefreshMarkets(kindRaw = 'all', autoMeta = {}) {
         const kind = String(kindRaw || 'all').trim().toLowerCase();
         const kinds = kind === 'all' ? ['ozon', 'wb', 'ym'] : [normalizeShopKind(kind)];
         if (!kinds[0]) return { started: false, reason: 'bad_shop' };
@@ -672,6 +826,18 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
             syncState.active = false;
             syncState.finishedAt = new Date().toISOString();
             syncState.message = 'Обновление маркетплейсов завершено';
+            try {
+                const m = autoMeta && typeof autoMeta === 'object' ? autoMeta : {};
+                await appendMarketplaceIssuesSnapshot(db, appSettings, {
+                    triggerType: String(m.triggerType || 'manual').slice(0, 24),
+                    scheduleSlotTime: String(m.scheduleSlotTime || '').slice(0, 8),
+                });
+            } catch (eSnap) {
+                console.error(
+                    '[exports/marketplaces] issues snapshot after sync failed:',
+                    eSnap && eSnap.stack ? eSnap.stack : eSnap
+                );
+            }
             return { started: true };
         } catch (e) {
             syncState.active = false;
@@ -802,6 +968,346 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
         }
     });
 
+    const ISSUES_DIM_EPS = 0.02;
+
+    /** Календарная дата (МСК) для снимка проблем маркетплейсов — YYYY-MM-DD */
+    function moscowStatDateYmd() {
+        return new Intl.DateTimeFormat('sv-SE', {
+            timeZone: 'Europe/Moscow',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+        }).format(new Date());
+    }
+
+    /** Колонка DATE (день учёта по МСК) → DD.MM.YYYY без сдвига из-за UTC в Node. */
+    function formatSnapshotStatDateDisplay(raw) {
+        if (raw == null || raw === '') return '';
+        const head = String(raw).split('T')[0].split(' ')[0].trim();
+        const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(head);
+        if (m) return `${m[3]}.${m[2]}.${m[1]}`;
+        if (raw instanceof Date) {
+            const s = new Intl.DateTimeFormat('sv-SE', {
+                timeZone: 'Europe/Moscow',
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+            }).format(raw);
+            const parts = s.split('-');
+            if (parts.length === 3) return `${parts[2]}.${parts[1]}.${parts[0]}`;
+        }
+        return head;
+    }
+
+    /** TIMESTAMP из БД (часто как UTC в Node) → строка даты/времени по Москве. */
+    function formatSnapshotRecordedAtMskDisplay(raw) {
+        if (raw == null || raw === '') return '';
+        const d = raw instanceof Date ? raw : new Date(raw);
+        if (Number.isNaN(d.getTime())) return String(raw);
+        const s = new Intl.DateTimeFormat('ru-RU', {
+            timeZone: 'Europe/Moscow',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false,
+        }).format(d);
+        return `${String(s).replace(/\//g, '.')} МСК`;
+    }
+
+    let mpIssuesSnapshotTableReady = false;
+    async function ensureMpIssuesSnapshotTable(dbConn) {
+        if (!dbConn || typeof dbConn.query !== 'function') return;
+        if (mpIssuesSnapshotTableReady) return;
+        await dbConn.query(`
+            CREATE TABLE IF NOT EXISTS mp_issues_daily_snapshot (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                stat_date DATE NOT NULL COMMENT 'Календарный день (МСК)',
+                recorded_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                trigger_type VARCHAR(24) NOT NULL DEFAULT 'manual',
+                schedule_slot_time VARCHAR(8) NOT NULL DEFAULT '' COMMENT 'HH:mm из настроек автосинка маркетплейсов (если trigger=schedule)',
+                scope VARCHAR(32) NOT NULL DEFAULT 'any',
+                exclude_bundle_components TINYINT(1) NOT NULL DEFAULT 1,
+                total_count INT NOT NULL DEFAULT 0,
+                by_manager_json LONGTEXT NOT NULL,
+                by_content_manager_json LONGTEXT NOT NULL,
+                removed_by_bundle_filter INT NOT NULL DEFAULT 0,
+                INDEX idx_mpids_stat_date (stat_date),
+                INDEX idx_mpids_recorded (recorded_at)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        `);
+        try {
+            await dbConn.query(
+                'ALTER TABLE mp_issues_daily_snapshot MODIFY by_manager_json LONGTEXT NOT NULL'
+            );
+            await dbConn.query(
+                'ALTER TABLE mp_issues_daily_snapshot MODIFY by_content_manager_json LONGTEXT NOT NULL'
+            );
+        } catch (_) {
+            /* таблицы могло не быть в старых инсталляциях; колонки уже LONGTEXT */
+        }
+        mpIssuesSnapshotTableReady = true;
+    }
+
+    /** Счётчики по полю строки /issues (пустое → «(не указано)»). */
+    function bucketFieldCounts(rows, fieldKey) {
+        const m = new Map();
+        for (const r of rows || []) {
+            const raw = r && r[fieldKey] != null ? String(r[fieldKey]).trim() : '';
+            const k = raw || '(не указано)';
+            m.set(k, (m.get(k) || 0) + 1);
+        }
+        const out = {};
+        const keys = Array.from(m.keys()).sort((a, b) => {
+            const ca = m.get(b) - m.get(a);
+            if (ca !== 0) return ca;
+            return String(a).localeCompare(String(b), 'ru');
+        });
+        for (const k of keys) out[k] = m.get(k);
+        return out;
+    }
+
+    function parseExportDimNumber(v) {
+        const s = String(v == null ? '' : v).trim().replace(',', '.');
+        if (!s) return null;
+        const n = parseFloat(s);
+        return Number.isFinite(n) ? n : null;
+    }
+
+    /** Кортеж габаритов из строки /issues (после SELECT). prefix: ozon|wb|ym */
+    function issuesDimTuple(row, prefix) {
+        return [
+            parseExportDimNumber(row[`${prefix}_length`]),
+            parseExportDimNumber(row[`${prefix}_width`]),
+            parseExportDimNumber(row[`${prefix}_height`]),
+            parseExportDimNumber(row[`${prefix}_weight`]),
+        ];
+    }
+
+    /** Слот считается «расходящимся» только если обе стороны — числа и |a−b| > eps.
+     * «Число vs пусто» не расхождение (иначе в UI подсвечивается почти вся сетка габаритов). */
+    function issuesDimTuplesDiffer(a, b) {
+        for (let i = 0; i < 4; i += 1) {
+            if (a[i] == null || b[i] == null) continue;
+            if (Math.abs(a[i] - b[i]) > ISSUES_DIM_EPS) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Расхождение габаритов между маркетплейсами: товар есть минимум на двух площадках,
+     * и по хотя бы одной оси (длина/ширина/высота/вес) обе отдают число и оно расходится
+     * с допуском ISSUES_DIM_EPS. В `ms_export` нет отдельных полей см/кг для сравнения с МС.
+     */
+    function issuesRowDimsMismatchAcrossMps(row) {
+        const keys = [];
+        if (row.ozon_code) keys.push('ozon');
+        if (row.wb_code) keys.push('wb');
+        if (row.ym_code) keys.push('ym');
+        if (keys.length < 2) return false;
+        for (let i = 0; i < keys.length; i += 1) {
+            for (let j = i + 1; j < keys.length; j += 1) {
+                if (issuesDimTuplesDiffer(issuesDimTuple(row, keys[i]), issuesDimTuple(row, keys[j]))) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /** НДС МС → сравнимая метка (сырое значение из ms_export.vat). */
+    function canonicalIssueVatMs(raw) {
+        const s = String(raw == null ? '' : raw).trim().toLowerCase();
+        if (!s) return '';
+        if (/без\s*ндс|не\s*облагается|^0\b|^0\s*%/.test(s)) return '__0';
+        const m = s.match(/(\d+(?:\.\d+)?)\s*%?/);
+        if (m) return String(Math.round(parseFloat(m[1])));
+        return s.replace(/\s/g, '').replace('%', '');
+    }
+
+    /** НДС маркетплейса после prettifyMarketplaceVat в /issues. */
+    function canonicalIssueVatMpAfterPrettify(kind, prettyVal) {
+        const raw = String(prettyVal == null ? '' : prettyVal).trim();
+        const s = raw.toLowerCase();
+        if (!s) return kind === 'ozon' ? '__0' : '';
+        if (kind === 'ozon' && (s === 'без ндс' || s === 'безндс')) return '__0';
+        if (kind === 'wb' && (s === 'без ндс' || s === 'безндс')) return '__0';
+        if (kind === 'ym' && /без\s*ндс/.test(s)) return '__0';
+        const m = s.match(/^(\d+)/);
+        if (m) return m[1];
+        const m2 = /(\d+(?:\.\d+)?)/.exec(s);
+        if (m2) return String(Math.round(parseFloat(m2[1])));
+        return s.replace(/\s/g, '').replace('%', '');
+    }
+
+    /** Хотя бы на одной площадке с товаром НДС после нормализации ≠ НДС МС (WB «не указан» пропускаем). */
+    function issuesRowVatMismatch(row) {
+        const ms = canonicalIssueVatMs(row.ms_vat);
+        const oneDiff = (kind, code, prettyVat) => {
+            if (!code) return false;
+            if (kind === 'wb' && /не\s*указан/i.test(String(prettyVat || ''))) return false;
+            const mp = canonicalIssueVatMpAfterPrettify(kind, prettyVat);
+            if (mp === '' && ms === '') return false;
+            return mp !== ms;
+        };
+        return (
+            oneDiff('ozon', row.ozon_code, row.ozon_vat)
+            || oneDiff('wb', row.wb_code, row.wb_vat)
+            || oneDiff('ym', row.ym_code, row.ym_vat)
+        );
+    }
+
+    /**
+     * Общая выборка строк для `/issues` и для ежедневного снимка (после синка маркетплейсов).
+     * `scope` — уже нормализованный ключ (all|any|all3|ozon|wb|ym|vat_mismatch|dims_mismatch).
+     */
+    async function loadIssuesRowsCore(dbConn, { scope, maxItems, excludeBundleComponents }) {
+        const baseSelect = `
+                SELECT
+                    m.code           AS code,
+                    m.name           AS name,
+                    m.uuid           AS uuid,
+                    m.type           AS type,
+                    m.vat            AS ms_vat,
+                    m.manager        AS manager,
+                    m.content_manager AS content_manager,
+                    DATE_FORMAT(m.synced_at, '%d.%m.%Y %H:%i') AS synced_at,
+                    m.stock          AS ms_stock,
+
+                    ozon.external_id AS ozon_code,
+                    ozon.name        AS ozon_name,
+                    ozon.vat         AS ozon_vat,
+                    ozon.stock       AS ozon_stock,
+                    ozon.length_cm   AS ozon_length,
+                    ozon.width_cm    AS ozon_width,
+                    ozon.height_cm   AS ozon_height,
+                    ozon.weight_kg   AS ozon_weight,
+                    ozon.cabinet_url AS ozon_cabinet_url,
+                    ozon.buyer_url   AS ozon_buyer_url,
+                    COALESCE(NULLIF(ozon.updated_label, ''), DATE_FORMAT(ozon.updated_at, '%d.%m.%Y %H:%i')) AS ozon_updated,
+
+                    wb.external_id   AS wb_code,
+                    wb.name          AS wb_name,
+                    wb.vat           AS wb_vat,
+                    wb.stock         AS wb_stock,
+                    wb.length_cm     AS wb_length,
+                    wb.width_cm      AS wb_width,
+                    wb.height_cm     AS wb_height,
+                    wb.weight_kg     AS wb_weight,
+                    wb.cabinet_url   AS wb_cabinet_url,
+                    wb.buyer_url     AS wb_buyer_url,
+                    COALESCE(NULLIF(wb.updated_label, ''), DATE_FORMAT(wb.updated_at, '%d.%m.%Y %H:%i')) AS wb_updated,
+
+                    ym.external_id   AS ym_code,
+                    ym.name          AS ym_name,
+                    ym.vat           AS ym_vat,
+                    ym.stock         AS ym_stock,
+                    ym.length_cm     AS ym_length,
+                    ym.width_cm      AS ym_width,
+                    ym.height_cm     AS ym_height,
+                    ym.weight_kg     AS ym_weight,
+                    ym.cabinet_url   AS ym_cabinet_url,
+                    ym.buyer_url     AS ym_buyer_url,
+                    COALESCE(NULLIF(ym.updated_label, ''), DATE_FORMAT(ym.updated_at, '%d.%m.%Y %H:%i')) AS ym_updated
+                FROM ms_export m
+                LEFT JOIN marketplace_export_rows ozon
+                    ON ozon.marketplace = 'ozon' AND ozon.external_id = m.code
+                LEFT JOIN marketplace_export_rows wb
+                    ON wb.marketplace = 'wildberries' AND wb.external_id = m.code
+                LEFT JOIN marketplace_export_rows ym
+                    ON ym.marketplace = 'yandex_market' AND ym.external_id = m.code
+            `;
+        const baseWhere = `WHERE m.stock_position = 'Да' AND m.no_longer_cooperation = 'Нет'`;
+        let scopeWhere = '';
+        if (scope === 'ozon') scopeWhere = ' AND ozon.external_id IS NULL';
+        else if (scope === 'wb') scopeWhere = ' AND wb.external_id IS NULL';
+        else if (scope === 'ym') scopeWhere = ' AND ym.external_id IS NULL';
+        else if (scope === 'all3') {
+            scopeWhere = ' AND ozon.external_id IS NULL AND wb.external_id IS NULL AND ym.external_id IS NULL';
+        } else if (scope === 'any') {
+            scopeWhere = ' AND (ozon.external_id IS NULL OR wb.external_id IS NULL OR ym.external_id IS NULL)';
+        }
+
+        const sql = `${baseSelect}\n${baseWhere}${scopeWhere}\nORDER BY m.code\nLIMIT ?`;
+        let [rows] = await dbConn.query(sql, [maxItems]);
+
+        let bundleComponentCodes = null;
+        let removedByBundleFilter = 0;
+        if (excludeBundleComponents) {
+            bundleComponentCodes = await getBundleComponentCodesCached(dbConn);
+            if (bundleComponentCodes && bundleComponentCodes.size) {
+                const before = rows.length;
+                rows = rows.filter((r) => {
+                    const code = String(r && r.code != null ? r.code : '').trim();
+                    return !code || !bundleComponentCodes.has(code);
+                });
+                removedByBundleFilter = before - rows.length;
+            }
+        }
+
+        for (const r of rows || []) {
+            if (Object.prototype.hasOwnProperty.call(r, 'ozon_vat')) {
+                r.ozon_vat = prettifyMarketplaceVat('ozon', r.ozon_vat);
+            }
+            if (Object.prototype.hasOwnProperty.call(r, 'wb_vat')) {
+                r.wb_vat = prettifyMarketplaceVat('wb', r.wb_vat);
+            }
+            if (Object.prototype.hasOwnProperty.call(r, 'ym_vat')) {
+                r.ym_vat = prettifyMarketplaceVat('ym', r.ym_vat);
+            }
+        }
+
+        if (scope === 'vat_mismatch') {
+            rows = (rows || []).filter((r) => issuesRowVatMismatch(r));
+        } else if (scope === 'dims_mismatch') {
+            rows = (rows || []).filter((r) => issuesRowDimsMismatchAcrossMps(r));
+        }
+
+        return {
+            rows: rows || [],
+            removedByBundleFilter,
+            bundleComponentCodesKnown: bundleComponentCodes ? bundleComponentCodes.size : 0,
+            excludeBundleComponents: Boolean(excludeBundleComponents),
+        };
+    }
+
+    async function appendMarketplaceIssuesSnapshot(dbConn, _appSets, meta) {
+        if (!dbConn || typeof dbConn.query !== 'function') return;
+        await ensureMpIssuesSnapshotTable(dbConn);
+        const { rows, removedByBundleFilter } = await loadIssuesRowsCore(dbConn, {
+            scope: 'any',
+            maxItems: 100000,
+            excludeBundleComponents: true,
+        });
+        const byManager = bucketFieldCounts(rows, 'manager');
+        const byCm = bucketFieldCounts(rows, 'content_manager');
+        const statDate = moscowStatDateYmd();
+        const triggerType = String((meta && meta.triggerType) || 'manual').slice(0, 24);
+        const scheduleSlotTime = String((meta && meta.scheduleSlotTime) || '').slice(0, 8);
+        const mgrJson = JSON.stringify(byManager);
+        const cmJson = JSON.stringify(byCm);
+        const [ins] = await dbConn.query(
+            `INSERT INTO mp_issues_daily_snapshot (
+                stat_date, trigger_type, schedule_slot_time, scope, exclude_bundle_components,
+                total_count, by_manager_json, by_content_manager_json, removed_by_bundle_filter
+            ) VALUES (?, ?, ?, 'any', 1, ?, ?, ?, ?)`,
+            [statDate, triggerType, scheduleSlotTime, rows.length, mgrJson, cmJson, removedByBundleFilter]
+        );
+        const snapId = Number(ins && ins.insertId ? ins.insertId : 0);
+        console.info(
+            `[exports/marketplaces] issues snapshot saved id=${snapId} stat_date=${statDate} total=${rows.length} trigger=${triggerType}`
+        );
+        try {
+            await dbConn.query(
+                'DELETE FROM mp_issues_daily_snapshot WHERE recorded_at < DATE_SUB(UTC_TIMESTAMP(), INTERVAL 900 DAY)'
+            );
+        } catch (_) {
+            /* ignore prune */
+        }
+    }
+
     /**
      * Проблемы с товарами (бывш. «Неопубликованные»).
      *
@@ -817,6 +1323,9 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
      *   any            — у кого хотя бы один из 3 маркетплейсов не нашёл товар.
      *   all3           — нет ни на одном из 3 маркетплейсов.
      *   ozon|wb|ym     — нет на конкретном маркетплейсе.
+     *   vat_mismatch   — товар есть на маркетплейсе, но нормализованный НДС МС ≠ НДС этой площадки.
+     *   dims_mismatch  — товар есть минимум на двух площадках; по оси L/W/H/вес обе отдают число и оно расходится (число vs пусто — нет).
+     *                    (в ms_export нет полей длины/ширины для сравнения с МС.)
      */
     router.get('/issues', async (req, res) => {
         try {
@@ -836,6 +1345,10 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
                 yandex: 'ym',
                 'yandex-market': 'ym',
                 yandex_market: 'ym',
+                vat_mismatch: 'vat_mismatch',
+                'vat-mismatch': 'vat_mismatch',
+                dims_mismatch: 'dims_mismatch',
+                'dims-mismatch': 'dims_mismatch',
             };
             const scope = scopeAliases[scopeRaw];
             if (!scope) {
@@ -848,6 +1361,8 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
                 ozon: 'нет на Ozon',
                 wb: 'нет на Wildberries',
                 ym: 'нет на Я.Маркет',
+                vat_mismatch: 'не совпадает НДС (МС ↔ маркетплейс)',
+                dims_mismatch: 'разные габариты между маркетплейсами',
             };
 
             const maxItemsRaw = parseInt(req.query.max_items, 10);
@@ -855,47 +1370,42 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
                 ? Math.min(maxItemsRaw, 100000)
                 : 50000;
 
-            const baseSelect = `
-                SELECT
-                    m.code           AS code,
-                    m.name           AS name,
-                    m.manager        AS manager,
-                    m.content_manager AS content_manager,
-                    DATE_FORMAT(m.synced_at, '%d.%m.%Y %H:%i') AS synced_at,
-                    ozon.external_id AS ozon_code,
-                    ozon.name        AS ozon_name,
-                    wb.external_id   AS wb_code,
-                    wb.name          AS wb_name,
-                    ym.external_id   AS ym_code,
-                    ym.name          AS ym_name
-                FROM ms_export m
-                LEFT JOIN marketplace_export_rows ozon
-                    ON ozon.marketplace = 'ozon' AND ozon.external_id = m.code
-                LEFT JOIN marketplace_export_rows wb
-                    ON wb.marketplace = 'wildberries' AND wb.external_id = m.code
-                LEFT JOIN marketplace_export_rows ym
-                    ON ym.marketplace = 'yandex_market' AND ym.external_id = m.code
-            `;
-            // Основной WHERE: складская позиция = Да и перестали сотрудничать = Нет.
-            const baseWhere = `WHERE m.stock_position = 'Да' AND m.no_longer_cooperation = 'Нет'`;
-            // Дополнительный WHERE для scope-фильтра (NULL означает «нет в снапшоте маркетплейса»).
-            let scopeWhere = '';
-            if (scope === 'ozon') scopeWhere = ' AND ozon.external_id IS NULL';
-            else if (scope === 'wb') scopeWhere = ' AND wb.external_id IS NULL';
-            else if (scope === 'ym') scopeWhere = ' AND ym.external_id IS NULL';
-            else if (scope === 'all3') scopeWhere = ' AND ozon.external_id IS NULL AND wb.external_id IS NULL AND ym.external_id IS NULL';
-            else if (scope === 'any') scopeWhere = ' AND (ozon.external_id IS NULL OR wb.external_id IS NULL OR ym.external_id IS NULL)';
+            const ebcRaw = String(req.query.exclude_bundle_components == null ? '' : req.query.exclude_bundle_components).trim().toLowerCase();
+            const FALSE_TOKENS = new Set(['0', 'false', 'no', 'off']);
+            const excludeBundleComponents = !FALSE_TOKENS.has(ebcRaw);
 
-            const sql = `${baseSelect}\n${baseWhere}${scopeWhere}\nORDER BY m.code\nLIMIT ?`;
-            const [rows] = await db.query(sql, [maxItems]);
+            const {
+                rows,
+                removedByBundleFilter,
+                bundleComponentCodesKnown,
+                excludeBundleComponents: ebcApplied,
+            } = await loadIssuesRowsCore(db, { scope, maxItems, excludeBundleComponents });
 
             const headers = [
-                'code', 'name', 'manager', 'content_manager', 'synced_at',
-                'ozon_code', 'ozon_name', 'wb_code', 'wb_name', 'ym_code', 'ym_name',
+                'code', 'name',
+                'manager', 'content_manager', 'ms_vat', 'ms_stock', 'synced_at',
+                'ozon_code', 'ozon_name', 'ozon_vat', 'ozon_stock',
+                'ozon_length', 'ozon_width', 'ozon_height', 'ozon_weight',
+                'ozon_cabinet_url', 'ozon_buyer_url', 'ozon_updated',
+                'wb_code', 'wb_name', 'wb_vat', 'wb_stock',
+                'wb_length', 'wb_width', 'wb_height', 'wb_weight',
+                'wb_cabinet_url', 'wb_buyer_url', 'wb_updated',
+                'ym_code', 'ym_name', 'ym_vat', 'ym_stock',
+                'ym_length', 'ym_width', 'ym_height', 'ym_weight',
+                'ym_cabinet_url', 'ym_buyer_url', 'ym_updated',
             ];
             const headerLabels = [
-                'Код МС', 'Название МС', 'Менеджер', 'Контент-менеджер', 'Синхронизация МС',
-                'Код Ozon', 'Название Ozon', 'Код Wildberries', 'Название Wildberries', 'Код Я.Маркет', 'Название Я.Маркет',
+                'Код МС', 'Название МС',
+                'Менеджер', 'Контент-менеджер', 'НДС МС', 'Остаток по МС', 'Синхронизация МС',
+                'Код Ozon', 'Название Ozon', 'НДС Ozon', 'Остаток Ozon',
+                'Длина (см) Ozon', 'Ширина (см) Ozon', 'Высота (см) Ozon', 'Вес (кг) Ozon',
+                'Кабинет Ozon', 'Покупателю Ozon', 'Обновлено Ozon',
+                'Код Wildberries', 'Название Wildberries', 'НДС WB', 'Остаток WB',
+                'Длина (см) WB', 'Ширина (см) WB', 'Высота (см) WB', 'Вес (кг) WB',
+                'Кабинет WB', 'Покупателю WB', 'Обновлено WB',
+                'Код Я.Маркет', 'Название Я.Маркет', 'НДС Я.Маркет', 'Остаток Я.Маркет',
+                'Длина (см) Я.Маркет', 'Ширина (см) Я.Маркет', 'Высота (см) Я.Маркет', 'Вес (кг) Я.Маркет',
+                'Кабинет Я.Маркет', 'Покупателю Я.Маркет', 'Обновлено Я.Маркет',
             ];
             return res.json({
                 scope,
@@ -904,10 +1414,109 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
                 headers,
                 headerLabels,
                 rows,
+                exclude_bundle_components: ebcApplied,
+                bundle_component_codes_known: bundleComponentCodesKnown,
+                removed_by_bundle_filter: removedByBundleFilter,
             });
         } catch (e) {
             console.error('[exports/marketplaces] issues failed:', e && e.stack ? e.stack : e);
             return res.status(500).json({ error: e.message || String(e), code: 'ISSUES_FAILED' });
+        }
+    });
+
+    /**
+     * Журнал автоснимков «проблемы (scope=any), исключить комплекты» после синхронизации маркетплейсов.
+     * Query: days (1–730, default 90), limit (1–500, default 200).
+     */
+    router.get('/issues/snapshot-log', async (req, res) => {
+        try {
+            if (!db || typeof db.query !== 'function') {
+                return res.status(500).json({ error: 'БД недоступна', code: 'NO_DB' });
+            }
+            await ensureMpIssuesSnapshotTable(db);
+            const daysRaw = parseInt(req.query.days, 10);
+            const days = Math.min(730, Math.max(1, Number.isFinite(daysRaw) ? daysRaw : 90));
+            const limRaw = parseInt(req.query.limit, 10);
+            const limit = Math.min(500, Math.max(1, Number.isFinite(limRaw) ? limRaw : 200));
+            const [dbRows] = await db.query(
+                `SELECT id, stat_date, recorded_at, trigger_type, schedule_slot_time, scope,
+                        exclude_bundle_components, total_count, by_manager_json, by_content_manager_json,
+                        removed_by_bundle_filter
+                 FROM mp_issues_daily_snapshot
+                 WHERE recorded_at >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL ? DAY)
+                 ORDER BY recorded_at DESC, id DESC
+                 LIMIT ?`,
+                [days, limit]
+            );
+            const rows = (dbRows || []).map((r) => {
+                let byManager = r.by_manager_json;
+                let byCm = r.by_content_manager_json;
+                if (Buffer.isBuffer(byManager)) {
+                    try {
+                        byManager = JSON.parse(byManager.toString('utf8'));
+                    } catch (_) {
+                        byManager = {};
+                    }
+                }
+                if (Buffer.isBuffer(byCm)) {
+                    try {
+                        byCm = JSON.parse(byCm.toString('utf8'));
+                    } catch (_) {
+                        byCm = {};
+                    }
+                }
+                if (typeof byManager === 'string') {
+                    try {
+                        byManager = JSON.parse(byManager);
+                    } catch (_) {
+                        byManager = {};
+                    }
+                }
+                if (typeof byCm === 'string') {
+                    try {
+                        byCm = JSON.parse(byCm);
+                    } catch (_) {
+                        byCm = {};
+                    }
+                }
+                return {
+                    id: r.id,
+                    stat_date: formatSnapshotStatDateDisplay(r.stat_date),
+                    recorded_at: formatSnapshotRecordedAtMskDisplay(r.recorded_at),
+                    trigger_type: r.trigger_type,
+                    schedule_slot_time: r.schedule_slot_time,
+                    scope: r.scope,
+                    exclude_bundle_components: Number(r.exclude_bundle_components) === 1,
+                    total_count: Number(r.total_count || 0),
+                    by_manager: byManager && typeof byManager === 'object' ? byManager : {},
+                    by_content_manager: byCm && typeof byCm === 'object' ? byCm : {},
+                    removed_by_bundle_filter: Number(r.removed_by_bundle_filter || 0),
+                };
+            });
+            return res.json({ success: true, days, limit, count: rows.length, rows });
+        } catch (e) {
+            console.error('[exports/marketplaces] issues snapshot-log failed:', e && e.stack ? e.stack : e);
+            return res.status(500).json({ error: e.message || String(e), code: 'ISSUES_SNAPSHOT_LOG_FAILED' });
+        }
+    });
+
+    /**
+     * Записать снимок «есть проблемы + исключить комплекты» из текущих данных БД (без запросов к API маркетплейсов).
+     * Удобно, если журнал пустой, а полный синк давно не запускали.
+     */
+    router.post('/issues/snapshot-run', async (req, res) => {
+        try {
+            if (!db || typeof db.query !== 'function') {
+                return res.status(500).json({ error: 'БД недоступна', code: 'NO_DB' });
+            }
+            const body = req.body && typeof req.body === 'object' ? req.body : {};
+            const triggerType = String(body.trigger_type || 'manual_ui').trim().slice(0, 24) || 'manual_ui';
+            const scheduleSlotTime = String(body.schedule_slot_time || '').trim().slice(0, 8);
+            await appendMarketplaceIssuesSnapshot(db, appSettings, { triggerType, scheduleSlotTime });
+            return res.json({ success: true, trigger_type: triggerType });
+        } catch (e) {
+            console.error('[exports/marketplaces] issues snapshot-run failed:', e && e.stack ? e.stack : e);
+            return res.status(500).json({ error: e.message || String(e), code: 'ISSUES_SNAPSHOT_RUN_FAILED' });
         }
     });
 

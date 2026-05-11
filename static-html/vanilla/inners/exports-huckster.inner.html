@@ -80,7 +80,43 @@
                 <i class="header-icon pe-7s-refresh icon-gradient bg-happy-fisher me-2"></i>
                 <span>Обновление Huckster</span>
               </div>
-              <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-huckster-update-toggle">Свернуть</button>
+              <div class="d-flex align-items-center gap-2">
+                <div class="dropdown">
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-secondary dg-vanilla-dropdown-toggle"
+                    style="line-height: 1; padding: 0.35rem 0.5rem"
+                    aria-expanded="false"
+                    aria-haspopup="true"
+                    id="dg-huckster-filter-blocks-btn"
+                    data-dg-tooltip="Какие поля фильтров показывать (сохраняется в браузере для текущего пользователя)"
+                  >
+                    <i class="pe-7s-config btn-icon-wrapper" style="font-size: 1.1rem" aria-hidden="true"></i>
+                  </button>
+                  <div
+                    class="dropdown-menu dropdown-menu-end rm-pointers p-0 dg-huckster-filter-blocks-dropdown"
+                    id="dg-huckster-filter-blocks-menu"
+                    style="width: min(420px, calc(100vw - 1.5rem))"
+                  >
+                    <div class="dropdown-menu-header mb-0">
+                      <div class="dropdown-menu-header-inner bg-happy-fisher">
+                        <div
+                          class="menu-header-image opacity-5"
+                          style="background-image: url('/assets/utils/images/dropdown-header/abstract2.jpg')"
+                        ></div>
+                        <div class="menu-header-content text-white px-3 py-2">
+                          <h5 class="menu-header-title mb-0">Поля фильтров</h5>
+                          <h6 class="menu-header-subtitle mb-0 opacity-8 fw-normal small">Скрыть/показать выбранные блоки</h6>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="dg-huckster-filter-blocks-scroll" style="max-height: calc(100vh - 10rem); overflow-y: auto; overflow-x: hidden">
+                      <div id="dg-huckster-filter-blocks-toggles" class="list-group list-group-flush"></div>
+                    </div>
+                  </div>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-huckster-update-toggle">Свернуть</button>
+              </div>
             </div>
             <div class="card-body">
               <div id="dg-huckster-update-body">
@@ -122,13 +158,13 @@
               <div class="dg-huckster-bridge-filters border rounded bg-light p-2 mb-3">
                 <div class="small text-muted fw-semibold mb-2">Фильтры Huckster Export / RRC</div>
                 <div class="row g-2 align-items-end">
-                  <div class="col-md-2">
+                  <div class="col-md-2" data-dg-huckster-filter-field="manager" data-dg-filter-field-title="Менеджер">
                     <label class="form-label small mb-1" for="dg-huckster-filter-manager">Менеджер</label>
                     <select class="form-select form-select-sm" id="dg-huckster-filter-manager">
                       <option value="">Все</option>
                     </select>
                   </div>
-                  <div class="col-md-2">
+                  <div class="col-md-2" data-dg-huckster-filter-field="ozon" data-dg-filter-field-title="Ozon">
                     <label class="form-label small mb-1" for="dg-huckster-filter-ozon">Ozon</label>
                     <select class="form-select form-select-sm" id="dg-huckster-filter-ozon">
                       <option value="">Все</option>
@@ -136,7 +172,7 @@
                       <option value="bad">Репрайсер ВЫКЛЮЧЕН</option>
                     </select>
                   </div>
-                  <div class="col-md-2">
+                  <div class="col-md-2" data-dg-huckster-filter-field="wb" data-dg-filter-field-title="WB">
                     <label class="form-label small mb-1" for="dg-huckster-filter-wb">WB</label>
                     <select class="form-select form-select-sm" id="dg-huckster-filter-wb">
                       <option value="">Все</option>
@@ -144,7 +180,7 @@
                       <option value="bad">Репрайсер ВЫКЛЮЧЕН</option>
                     </select>
                   </div>
-                  <div class="col-md-2">
+                  <div class="col-md-2" data-dg-huckster-filter-field="yandex" data-dg-filter-field-title="Яндекс Маркет">
                     <label class="form-label small mb-1" for="dg-huckster-filter-yandex">ЯМ</label>
                     <select class="form-select form-select-sm" id="dg-huckster-filter-yandex">
                       <option value="">Все</option>
@@ -152,7 +188,7 @@
                       <option value="bad">Репрайсер ВЫКЛЮЧЕН</option>
                     </select>
                   </div>
-                  <div class="col-md-2">
+                  <div class="col-md-2" data-dg-huckster-filter-field="models" data-dg-filter-field-title="Модели (расхождения)">
                     <label class="form-label small mb-1" for="dg-huckster-filter-models">Модели</label>
                     <select class="form-select form-select-sm" id="dg-huckster-filter-models">
                       <option value="">Все</option>
@@ -160,8 +196,9 @@
                       <option value="diff">Расхождения ЕСТЬ</option>
                     </select>
                   </div>
-                  <div class="col-md-2">
-                    <button type="button" class="btn btn-sm btn-outline-secondary w-100" id="dg-huckster-filter-reset">Сбросить фильтры</button>
+                  <div class="col-md-2" data-dg-huckster-filter-field="filter_reset" data-dg-filter-field-title="Кнопка «По умолчанию»">
+                    <label class="form-label small mb-1">&nbsp;</label>
+                    <button type="button" class="btn btn-sm btn-outline-secondary w-100" id="dg-huckster-filter-reset" title="Сбросить все фильтры выгрузки Huckster (Менеджер / Ozon / WB / ЯМ / Модели) к значениям по умолчанию"><i class="pe-7s-refresh me-1"></i>По умолчанию</button>
                   </div>
                 </div>
                 <div class="row g-2 mt-2 pt-2 border-top">
@@ -230,12 +267,15 @@
                     Не найдено
                   </label>
                 </div>
-                <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0" id="dg-huckster-matrix-export-toggle">Свернуть</button>
+                <div class="dg-huckster-matrix-actions">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-huckster-widths-toggle-1" data-dg-tooltip="Открыть/скрыть панель ручной настройки ширины колонок (UID, Наименование, Менеджер, Цена, Статус, Модели и др.)">📏 Ширины</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-huckster-matrix-export-toggle">Свернуть</button>
+                </div>
               </div>
             </div>
             <div id="dg-huckster-matrix-export-body">
               <div class="card-body p-0">
-                <div class="dg-huckster-colwidth-strip">
+                <div class="dg-huckster-colwidth-strip d-none" id="dg-huckster-widths-panel-1">
                   <div class="dg-huckster-colwidth-wrap" title="Ширина колонок UID и «Наименование …» в обеих матрицах; сохраняется в браузере для пользователя.">
                     <span class="small text-muted text-nowrap">Ширина, px:</span>
                     <div class="dg-huckster-width-control">
@@ -364,12 +404,15 @@
                     Не найдено
                   </label>
                 </div>
-                <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0" id="dg-huckster-matrix-rrc-toggle">Свернуть</button>
+                <div class="dg-huckster-matrix-actions">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-huckster-widths-toggle-2" data-dg-tooltip="Открыть/скрыть панель ручной настройки ширины колонок (UID, Наименование, Менеджер, Цена, Статус, Модели и др.)">📏 Ширины</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-huckster-matrix-rrc-toggle">Свернуть</button>
+                </div>
               </div>
             </div>
             <div id="dg-huckster-matrix-rrc-body">
               <div class="card-body p-0">
-                <div class="dg-huckster-colwidth-strip">
+                <div class="dg-huckster-colwidth-strip d-none" id="dg-huckster-widths-panel-2">
                   <div class="dg-huckster-colwidth-wrap" title="Те же ширины колонок UID и «Наименование …», что и в матрице набора 1.">
                     <span class="small text-muted text-nowrap">Ширина, px:</span>
                     <div class="dg-huckster-width-control">
@@ -481,12 +524,15 @@
                 <span class="small text-muted dg-huckster-matrix-count ms-1 flex-shrink-0" id="dg-huckster-matrix-count-lost"></span>
               </div>
               <div class="dg-huckster-matrix-toolbar">
-                <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0" id="dg-huckster-matrix-lost-toggle">Свернуть</button>
+                <div class="dg-huckster-matrix-actions">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-huckster-widths-toggle-lost" data-dg-tooltip="Открыть/скрыть панель ручной настройки ширины колонок (UID, Наименование, Менеджер, Статус и др.)">📏 Ширины</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-huckster-matrix-lost-toggle">Свернуть</button>
+                </div>
               </div>
             </div>
             <div id="dg-huckster-matrix-lost-body">
               <div class="card-body p-0">
-              <div class="dg-huckster-colwidth-strip">
+              <div class="dg-huckster-colwidth-strip d-none" id="dg-huckster-widths-panel-lost">
                 <div class="dg-huckster-colwidth-wrap" title="Те же ширины колонок, что и в наборе 1.">
                   <span class="small text-muted text-nowrap">Ширина, px:</span>
                   <div class="dg-huckster-width-control">
@@ -3266,6 +3312,73 @@
               initHucksterMatrixColWidthControls();
               restoreMatrixSearchInputs();
               restoreHucksterPaginationControls();
+
+              // Эталонная popup-панель «📏 Ширины» в card-header каждой матрицы
+              // (см. .cursor/rules/datagon-list-page-baseline-moysklad.mdc — баритон таблицы:
+              // тяжёлые управляющие панели не должны постоянно занимать место в card-body,
+              // открываются по запросу из card-header). Состояние сохраняется per-user.
+              (function bindHucksterMatrixWidthsPanels() {
+                var STORAGE_PREFIX = "datagon_huckster_matrix_widths_panel_open_v1.";
+                function userKey(which) {
+                  var u = "guest";
+                  try {
+                    u = String(window.localStorage.getItem("currentUser") || "guest").trim() || "guest";
+                  } catch (e0) {}
+                  return STORAGE_PREFIX + which + "." + u.replace(/[^\w.-]+/g, "_");
+                }
+                function bindOne(which) {
+                  var btn = document.getElementById("dg-huckster-widths-toggle-" + which);
+                  var panel = document.getElementById("dg-huckster-widths-panel-" + which);
+                  if (!btn || !panel) return;
+                  var key = userKey(which);
+                  var startOpen = false;
+                  try { startOpen = window.localStorage.getItem(key) === "1"; } catch (e) {}
+                  if (startOpen) panel.classList.remove("d-none");
+                  btn.setAttribute("aria-expanded", startOpen ? "true" : "false");
+                  btn.addEventListener("click", function () {
+                    var open = panel.classList.toggle("d-none");
+                    var nowOpen = !open;
+                    btn.setAttribute("aria-expanded", nowOpen ? "true" : "false");
+                    try { window.localStorage.setItem(key, nowOpen ? "1" : "0"); } catch (e) {}
+                  });
+                }
+                bindOne("1");
+                bindOne("2");
+                bindOne("lost");
+              })();
+
+              (function bindHucksterFilterFieldsVisibility() {
+                var FIELD_GROUPS = [
+                  {
+                    key: 'huckster_filters_main',
+                    title: 'Фильтры Huckster Export / RRC',
+                    items: [
+                      { key: 'manager', title: 'Менеджер', hint: 'Селектор менеджера' },
+                      { key: 'ozon', title: 'Ozon', hint: 'Состояние репрайсера на Ozon' },
+                      { key: 'wb', title: 'Wildberries', hint: 'Состояние репрайсера на WB' },
+                      { key: 'yandex', title: 'Яндекс Маркет', hint: 'Состояние репрайсера на ЯМ' },
+                      { key: 'models', title: 'Модели (расхождения)', hint: 'Расхождения назначения Unit-моделей' },
+                    ],
+                  },
+                  {
+                    key: 'huckster_filters_actions',
+                    title: 'Действия',
+                    items: [
+                      { key: 'filter_reset', title: 'Кнопка «По умолчанию»', hint: 'Сбросить все фильтры выгрузки Huckster' },
+                    ],
+                  },
+                ];
+                if (window.DatagonFilterFieldsVisibility && window.DatagonFilterFieldsVisibility.init) {
+                  window.DatagonFilterFieldsVisibility.init({
+                    storageKeyPrefix: 'datagon_huckster_filter_fields_v1',
+                    attr: 'data-dg-huckster-filter-field',
+                    fieldGroups: FIELD_GROUPS,
+                    togglesRootId: 'dg-huckster-filter-blocks-toggles',
+                    idPrefix: 'dg-huckster-ff-',
+                    exposeAs: 'DatagonHucksterFilterBlocks',
+                  });
+                }
+              })();
 
               var filt1 = document.getElementById("dg-huckster-filter-notfound-1");
               if (filt1) filt1.addEventListener("change", function () {

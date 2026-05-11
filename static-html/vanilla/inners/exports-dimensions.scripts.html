@@ -1,0 +1,432 @@
+  <script>
+    (function () {
+      var LIST_URL = '/api/exports/dimensions/list';
+      var STORAGE_KEY = 'datagon_dimensions_filters_v1';
+      var FILTERS_COLLAPSED_KEY = 'datagon_dimensions_filters_collapsed_v1';
+      var TABLE_COLLAPSED_KEY = 'datagon_dimensions_table_collapsed_v1';
+
+      var DEFAULT_FILTERS = {
+        search: '',
+        type: 'all',
+        scope: 'all',
+        limit: 100,
+      };
+
+      var state = {
+        applied: cloneFilters(DEFAULT_FILTERS),
+        pending: cloneFilters(DEFAULT_FILTERS),
+        sortBy: 'code',
+        sortDir: 'asc',
+        offset: 0,
+        total: 0,
+        loading: false,
+        rows: [],
+        lastError: '',
+      };
+
+      function cloneFilters(src) {
+        return {
+          search: String((src && src.search) || ''),
+          type: String((src && src.type) || 'all'),
+          scope: String((src && src.scope) || 'all'),
+          limit: Number((src && src.limit) || 100) || 100,
+        };
+      }
+
+      function loadSavedFilters() {
+        try {
+          var raw = localStorage.getItem(STORAGE_KEY);
+          if (!raw) return null;
+          var v = JSON.parse(raw);
+          if (!v || typeof v !== 'object') return null;
+          return cloneFilters(v);
+        } catch (e) {
+          return null;
+        }
+      }
+
+      function persistFilters() {
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(state.applied));
+        } catch (e) {}
+      }
+
+      function escapeHtml(s) {
+        return String(s == null ? '' : s)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
+      function applyFormFromState(s) {
+        var elSearch = document.getElementById('dg-dim-f-search');
+        var elType = document.getElementById('dg-dim-f-type');
+        var elScope = document.getElementById('dg-dim-f-scope');
+        var elLimit = document.getElementById('dg-dim-f-limit');
+        var elMirror = document.getElementById('dg-dim-table-search-mirror');
+        if (elSearch) elSearch.value = s.search;
+        if (elType) elType.value = s.type;
+        if (elScope) elScope.value = s.scope;
+        if (elLimit) elLimit.value = String(s.limit);
+        if (elMirror) elMirror.value = s.search;
+      }
+
+      function readFormToPending() {
+        var elSearch = document.getElementById('dg-dim-f-search');
+        var elType = document.getElementById('dg-dim-f-type');
+        var elScope = document.getElementById('dg-dim-f-scope');
+        var elLimit = document.getElementById('dg-dim-f-limit');
+        state.pending.search = elSearch ? String(elSearch.value || '').trim() : '';
+        state.pending.type = elType ? String(elType.value || 'all') : 'all';
+        state.pending.scope = elScope ? String(elScope.value || 'all') : 'all';
+        var limNum = Number((elLimit && elLimit.value) || 100);
+        state.pending.limit = Number.isFinite(limNum) && limNum > 0 ? limNum : 100;
+      }
+
+      function setStatusHint(msg, kind) {
+        var el = document.getElementById('dg-dim-status-hint');
+        if (!el) return;
+        el.classList.remove('text-danger', 'text-success', 'text-muted');
+        if (kind === 'error') el.classList.add('text-danger');
+        else if (kind === 'success') el.classList.add('text-success');
+        else el.classList.add('text-muted');
+        el.textContent = String(msg || '');
+      }
+
+      function formatDateTimeMsk(value) {
+        if (!value) return '';
+        var d;
+        try {
+          d = new Date(value);
+        } catch (e) {
+          return String(value);
+        }
+        if (!d || isNaN(d.getTime())) return String(value);
+        try {
+          return d.toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' });
+        } catch (e) {
+          return d.toISOString();
+        }
+      }
+
+      function commitFilters() {
+        readFormToPending();
+        state.applied = cloneFilters(state.pending);
+        state.offset = 0;
+        persistFilters();
+        loadList();
+      }
+
+      function resetFilters() {
+        state.pending = cloneFilters(DEFAULT_FILTERS);
+        state.applied = cloneFilters(DEFAULT_FILTERS);
+        state.offset = 0;
+        try {
+          localStorage.removeItem(STORAGE_KEY);
+        } catch (e) {}
+        applyFormFromState(state.applied);
+        loadList();
+      }
+
+      function renderTable() {
+        var tbody = document.getElementById('dg-dim-tbody');
+        if (!tbody) return;
+        if (state.loading) {
+          tbody.innerHTML = '<tr><td colspan="4" class="text-muted small py-3 text-center">Загрузка…</td></tr>';
+          return;
+        }
+        if (state.lastError) {
+          tbody.innerHTML =
+            '<tr><td colspan="4" class="text-danger small py-3 text-center">' +
+            escapeHtml(state.lastError) +
+            '</td></tr>';
+          return;
+        }
+        if (!Array.isArray(state.rows) || state.rows.length === 0) {
+          tbody.innerHTML =
+            '<tr><td colspan="4" class="text-muted small py-4 text-center">Пока ничего не найдено. Попробуйте изменить фильтры.</td></tr>';
+          return;
+        }
+        var html = '';
+        for (var i = 0; i < state.rows.length; i++) {
+          var r = state.rows[i] || {};
+          var code = escapeHtml(r.code);
+          var typeRaw = String(r.type || '').toLowerCase();
+          var typeBadge =
+            typeRaw === 'комплект'
+              ? '<span class="dg-dim-type-badge dg-dim-type-bundle" title="Комплект">КПЛ</span>'
+              : typeRaw === 'товар'
+                ? ''
+                : typeRaw
+                  ? '<span class="dg-dim-type-badge" title="' + escapeHtml(r.type) + '">' + escapeHtml(r.type) + '</span>'
+                  : '';
+          var nameHtml = r.name
+            ? escapeHtml(r.name)
+            : '<span class="dg-dim-empty">— без наименования —</span>';
+          var measuredBy = String(r.measured_by_name || '').trim();
+          var measuredAt = String(r.measured_at || '').trim();
+          var measuredByCell = measuredBy
+            ? '<span class="dg-dim-status-yes">' + escapeHtml(measuredBy) + '</span>'
+            : '<span class="dg-dim-status-no">— не замерен —</span>';
+          var measuredAtCell = measuredAt
+            ? escapeHtml(formatDateTimeMsk(measuredAt))
+            : '<span class="dg-dim-empty">—</span>';
+          html +=
+            '<tr data-dg-code="' +
+            code +
+            '">' +
+            '<td class="dg-dim-code">' +
+            code +
+            typeBadge +
+            '</td>' +
+            '<td class="dg-dim-cell-name" title="' +
+            escapeHtml(r.name || '') +
+            '">' +
+            nameHtml +
+            '</td>' +
+            '<td>' +
+            measuredByCell +
+            '</td>' +
+            '<td>' +
+            measuredAtCell +
+            '</td>' +
+            '</tr>';
+        }
+        tbody.innerHTML = html;
+      }
+
+      function renderPagination() {
+        var hint = document.getElementById('dg-dim-page-hint');
+        var btnPrev = document.getElementById('dg-dim-page-prev');
+        var btnNext = document.getElementById('dg-dim-page-next');
+        var lim = Math.max(1, Number(state.applied.limit || 100));
+        var page = Math.floor(state.offset / lim) + 1;
+        var pages = Math.max(1, Math.ceil((state.total || 0) / lim));
+        if (hint) {
+          hint.textContent =
+            'Найдено: ' +
+            (state.total || 0) +
+            '; страница ' +
+            page +
+            '/' +
+            pages +
+            '; показано: ' +
+            (state.rows ? state.rows.length : 0);
+        }
+        if (btnPrev) btnPrev.disabled = state.offset <= 0;
+        if (btnNext) btnNext.disabled = state.offset + lim >= (state.total || 0);
+      }
+
+      function loadList() {
+        state.loading = true;
+        state.lastError = '';
+        renderTable();
+        var qs = new URLSearchParams();
+        qs.set('search', state.applied.search);
+        qs.set('type', state.applied.type);
+        qs.set('scope', state.applied.scope);
+        qs.set('limit', String(state.applied.limit));
+        qs.set('offset', String(state.offset));
+        qs.set('sort_by', state.sortBy);
+        qs.set('sort_dir', state.sortDir);
+        fetch(LIST_URL + '?' + qs.toString(), { credentials: 'same-origin' })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { ok: r.ok, j: j };
+            });
+          })
+          .then(function (x) {
+            state.loading = false;
+            if (!x.ok || !x.j || x.j.success === false) {
+              state.rows = [];
+              state.total = 0;
+              state.lastError = (x.j && x.j.error) || 'Ошибка загрузки списка';
+            } else {
+              state.rows = Array.isArray(x.j.rows) ? x.j.rows : [];
+              state.total = Number(x.j.total || 0) || 0;
+            }
+            renderTable();
+            renderPagination();
+            setStatusHint(
+              state.lastError
+                ? 'Ошибка: ' + state.lastError
+                : 'Готово. Записей всего: ' + (state.total || 0) + '.',
+              state.lastError ? 'error' : 'success',
+            );
+          })
+          .catch(function (e) {
+            state.loading = false;
+            state.lastError = (e && e.message) || 'Сеть';
+            state.rows = [];
+            state.total = 0;
+            renderTable();
+            renderPagination();
+            setStatusHint('Сетевая ошибка: ' + state.lastError, 'error');
+          });
+      }
+
+      function bindHeaderSearchMirror() {
+        var elSearch = document.getElementById('dg-dim-f-search');
+        var elMirror = document.getElementById('dg-dim-table-search-mirror');
+        if (!elSearch || !elMirror) return;
+        var syncing = false;
+        elSearch.addEventListener('input', function () {
+          if (syncing) return;
+          syncing = true;
+          elMirror.value = elSearch.value;
+          syncing = false;
+        });
+        elMirror.addEventListener('input', function () {
+          if (syncing) return;
+          syncing = true;
+          elSearch.value = elMirror.value;
+          syncing = false;
+        });
+        function handleEnterCommit(ev) {
+          if (ev.key !== 'Enter') return;
+          ev.preventDefault();
+          commitFilters();
+        }
+        elSearch.addEventListener('keydown', handleEnterCommit);
+        elMirror.addEventListener('keydown', handleEnterCommit);
+        elMirror.addEventListener('search', function () {
+          state.pending.search = elMirror.value;
+          state.applied.search = elMirror.value;
+          if (elSearch) elSearch.value = elMirror.value;
+          state.offset = 0;
+          persistFilters();
+          loadList();
+        });
+      }
+
+      function bindCardCollapse(storageKey, bodyId, btnId) {
+        var body = document.getElementById(bodyId);
+        var btn = document.getElementById(btnId);
+        if (!body || !btn) return;
+        function apply() {
+          var collapsed = false;
+          try {
+            collapsed = localStorage.getItem(storageKey) === '1';
+          } catch (e) {}
+          body.style.display = collapsed ? 'none' : '';
+          btn.textContent = collapsed ? 'Развернуть' : 'Свернуть';
+        }
+        apply();
+        btn.addEventListener('click', function () {
+          var hidden = body.style.display === 'none';
+          body.style.display = hidden ? '' : 'none';
+          btn.textContent = hidden ? 'Свернуть' : 'Развернуть';
+          try {
+            localStorage.setItem(storageKey, hidden ? '0' : '1');
+          } catch (e) {}
+        });
+      }
+
+      function bindSort() {
+        var thead = document.querySelector('#dg-dim-table thead');
+        if (!thead) return;
+        thead.addEventListener('click', function (ev) {
+          var sel = window.getSelection ? window.getSelection() : null;
+          if (sel && String(sel.toString() || '').trim().length > 0) return;
+          var th = ev.target && ev.target.closest('th');
+          if (!th) return;
+          var key = th.getAttribute('data-dg-sort');
+          if (!key) return;
+          if (state.sortBy === key) {
+            state.sortDir = state.sortDir === 'asc' ? 'desc' : 'asc';
+          } else {
+            state.sortBy = key;
+            state.sortDir = 'asc';
+          }
+          state.offset = 0;
+          loadList();
+        });
+      }
+
+      function bindEvents() {
+        var elApply = document.getElementById('dg-dim-apply');
+        var elReset = document.getElementById('dg-dim-reset');
+        var elRefresh = document.getElementById('dg-dim-refresh');
+        var elPrev = document.getElementById('dg-dim-page-prev');
+        var elNext = document.getElementById('dg-dim-page-next');
+        if (elApply) elApply.addEventListener('click', function (ev) { ev.preventDefault(); commitFilters(); });
+        if (elReset) elReset.addEventListener('click', function (ev) { ev.preventDefault(); resetFilters(); });
+        if (elRefresh) elRefresh.addEventListener('click', function (ev) { ev.preventDefault(); loadList(); });
+        if (elPrev)
+          elPrev.addEventListener('click', function () {
+            var lim = Math.max(1, Number(state.applied.limit || 100));
+            state.offset = Math.max(0, state.offset - lim);
+            loadList();
+          });
+        if (elNext)
+          elNext.addEventListener('click', function () {
+            var lim = Math.max(1, Number(state.applied.limit || 100));
+            state.offset = state.offset + lim;
+            loadList();
+          });
+        var elType = document.getElementById('dg-dim-f-type');
+        var elScope = document.getElementById('dg-dim-f-scope');
+        var elLimit = document.getElementById('dg-dim-f-limit');
+        [elType, elScope, elLimit].forEach(function (el) {
+          if (!el) return;
+          el.addEventListener('change', function () {
+            readFormToPending();
+          });
+        });
+      }
+
+      /* Плавающий заголовок: native CSS sticky на каждом <th> (см. exports-dimensions.head.html).
+         Здесь только синхронизируем CSS-переменную --dg-table-sticky-top с высотой
+         .app-header (fixed-header). Без этого заголовки могут «съезжать», т.к. наша таблица
+         помечена в shouldSkipGlobalTableBaseline и глобальный datagon-vanilla.js
+         переменную для неё не выставляет. Эталон — shop-маркетплейсы. */
+      function syncStickyTopVar() {
+        var app = document.querySelector('.app-container');
+        var header = document.querySelector('.app-header');
+        var fixed = Boolean(app && app.classList && app.classList.contains('fixed-header'));
+        var top = 0;
+        if (fixed && header && header.getBoundingClientRect) {
+          var r = header.getBoundingClientRect();
+          top = r && r.height ? Math.round(r.height) : 60;
+        }
+        document.documentElement.style.setProperty('--dg-table-sticky-top', top + 'px');
+      }
+      function bindStickyTopVar() {
+        syncStickyTopVar();
+        window.addEventListener('resize', syncStickyTopVar);
+        var hdr = document.querySelector('.app-header');
+        if (hdr && window.ResizeObserver) {
+          try {
+            var ro = new ResizeObserver(function () { syncStickyTopVar(); });
+            ro.observe(hdr);
+          } catch (e) {}
+        }
+        if (document.fonts && document.fonts.ready && typeof document.fonts.ready.then === 'function') {
+          document.fonts.ready.then(function () { syncStickyTopVar(); });
+        }
+        window.addEventListener('load', function () { syncStickyTopVar(); });
+      }
+
+      function init() {
+        var saved = loadSavedFilters();
+        if (saved) state.applied = cloneFilters(saved);
+        state.pending = cloneFilters(state.applied);
+        applyFormFromState(state.applied);
+        bindEvents();
+        bindHeaderSearchMirror();
+        bindSort();
+        bindCardCollapse(FILTERS_COLLAPSED_KEY, 'dg-dim-filters-body', 'dg-dim-filters-toggle');
+        bindCardCollapse(TABLE_COLLAPSED_KEY, 'dg-dim-table-body', 'dg-dim-table-toggle');
+        bindStickyTopVar();
+        loadList();
+      }
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+      } else {
+        init();
+      }
+    })();
+  </script>

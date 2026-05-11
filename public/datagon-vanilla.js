@@ -1488,7 +1488,7 @@
     if (!t || !t.closest) return;
     if (t.closest(".dg-vanilla-footer-popover")) return;
     if (t.closest(".dg-vanilla-footer-toggle")) return;
-    if (t.closest(".app-main__outer, .app-main__inner, .table-responsive, .datagon-my-products-table-wrap")) {
+    if (t.closest(".app-main__outer, .app-main__inner, .table-responsive, .datagon-my-products-table-wrap, .dg-mp-table-scroll-outer")) {
       closeAllDropdowns();
       stopFooterPopoverScrollWatcher();
     }
@@ -1498,6 +1498,7 @@
     ".app-main",
     ".table-responsive",
     ".datagon-my-products-table-wrap",
+    ".dg-mp-table-scroll-outer",
   ].forEach(function (sel) {
     document.querySelectorAll(sel).forEach(function (el) {
       if (el && el.addEventListener) {
@@ -1585,7 +1586,9 @@
       id === "dg-huckster-set1-table" ||
       id === "dg-huckster-set2-table" ||
       /** Маркетплейсы (Ozon/WB/Я.Маркет): свои стили в exports-marketplaces.head.html; глобальный baseline ломает шапку/колонки. */
-      id === "dg-mp-table-main"
+      id === "dg-mp-table-main" ||
+      /** Маркетплейсы → Габариты: свои стили в exports-dimensions.head.html + локальный JS sticky-top. */
+      id === "dg-dim-table"
     )
       return true;
     return false;

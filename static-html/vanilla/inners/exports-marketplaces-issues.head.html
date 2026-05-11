@@ -1,0 +1,221 @@
+<style>
+  /* Журнал снимков + матрица «динамика по сотрудникам» (только /exports-marketplaces-issues.html) */
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-dynamics-wrap {
+    border: 1px solid #e2e6ea;
+    border-radius: 10px;
+    background: linear-gradient(180deg, #fbfcfe 0%, #f5f7fa 100%);
+    padding: 12px 14px;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-dynamics-table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin: 0 -4px;
+    padding: 0 4px 4px;
+    max-width: 100%;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-matrix {
+    width: max-content;
+    min-width: 100%;
+    margin: 0;
+    font-size: 0.8125rem;
+    border-collapse: separate;
+    border-spacing: 0;
+    background: #fff;
+    border: 1px solid #e6e9ee;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 1px 0 rgba(15, 23, 42, 0.06);
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-matrix thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: #f1f3f7;
+    color: #374151;
+    font-weight: 600;
+    text-align: center;
+    vertical-align: bottom;
+    padding: 8px 6px;
+    border-bottom: 2px solid #dee2e6;
+    border-right: 1px solid #e6e9ee;
+    white-space: nowrap;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-matrix thead th:first-child {
+    text-align: left;
+    left: 0;
+    z-index: 3;
+    min-width: 140px;
+    max-width: 220px;
+    box-shadow: 4px 0 8px -4px rgba(0, 0, 0, 0.08);
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-matrix tbody td {
+    padding: 6px 8px;
+    border-right: 1px solid #f0f2f5;
+    border-bottom: 1px solid #f0f2f5;
+    vertical-align: middle;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-matrix tbody td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    text-align: left;
+    font-weight: 500;
+    color: #1f2937;
+    background: #fff;
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    box-shadow: 4px 0 8px -4px rgba(0, 0, 0, 0.06);
+    border-right: 1px solid #e6e9ee;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues']
+    .dg-snap-matrix
+    tbody
+    tr:nth-child(even)
+    td:first-child {
+    background: #fafbfc;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues']
+    .dg-snap-matrix
+    tbody
+    tr:hover
+    td {
+    filter: brightness(0.985);
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-matrix .dg-snap-cell {
+    min-width: 3.25rem;
+    transition: background-color 0.15s ease;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-matrix .dg-snap-cell-muted {
+    color: #9ca3af;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-cell-val {
+    font-size: 0.9375rem;
+    font-weight: 600;
+    line-height: 1.2;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-matrix .dg-snap-cell-muted .dg-snap-cell-val {
+    font-weight: 500;
+    font-size: 0.8125rem;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-delta {
+    font-size: 0.65rem;
+    font-weight: 600;
+    line-height: 1.3;
+    margin-top: 2px;
+    letter-spacing: 0.02em;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-delta-up {
+    color: #b02a37;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-delta-down {
+    color: #1a7f4c;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-delta-flat {
+    color: #9ca3af;
+    font-weight: 500;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-meta-muted {
+    font-size: 0.75rem;
+    color: #6b7280;
+    line-height: 1.35;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-total-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 2.5rem;
+    padding: 0.35rem 0.65rem;
+    border-radius: 999px;
+    font-weight: 700;
+    font-size: 0.95rem;
+    font-variant-numeric: tabular-nums;
+    background: linear-gradient(135deg, #eef0ff 0%, #e8ebfa 100%);
+    color: #3730a3;
+    border: 1px solid rgba(84, 92, 216, 0.25);
+    box-shadow: 0 1px 2px rgba(84, 92, 216, 0.08);
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-bar-block {
+    margin-bottom: 6px;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-bar-block:last-child {
+    margin-bottom: 0;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-bar-label {
+    font-size: 0.7rem;
+    color: #4b5563;
+    line-height: 1.25;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin-bottom: 2px;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-bar-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-bar-track {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 8px;
+    border-radius: 999px;
+    background: #e9ecef;
+    overflow: hidden;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.06);
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-bar-fill {
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #6b7cff 0%, #545cd8 55%, #4338ca 100%);
+    min-width: 2px;
+    transition: width 0.2s ease;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-bar-num {
+    flex: 0 0 auto;
+    font-size: 0.75rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: #1f2937;
+    min-width: 1.5rem;
+    text-align: right;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-feed-table {
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 0.875rem;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-feed-table thead th {
+    background: #f1f3f7;
+    color: #374151;
+    font-weight: 600;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    border-bottom: 2px solid #dee2e6;
+    padding: 10px 12px;
+    vertical-align: middle;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-feed-table tbody tr {
+    transition: background-color 0.12s ease;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-feed-table tbody tr:nth-child(even) {
+    background: #fafbfc;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-feed-table tbody tr:hover {
+    background: #f0f4ff;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-feed-table tbody td {
+    padding: 12px 12px;
+    border-bottom: 1px solid #eef0f3;
+    vertical-align: top;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav='exports-marketplaces-issues'] .dg-snap-feed-table tbody td:nth-child(2) {
+    vertical-align: middle;
+  }
+</style>

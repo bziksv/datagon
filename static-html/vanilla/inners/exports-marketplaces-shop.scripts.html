@@ -526,7 +526,8 @@
         var ths = thead.querySelectorAll("th[data-col-key]");
         ths.forEach(function (th) {
           th.addEventListener("click", function (e) {
-            // Игнорируем клик внутри ручки ресайза, если она перекроет.
+            var sel = (window.getSelection && window.getSelection().toString() || "").trim();
+            if (sel.length) return;
             var k = th.getAttribute("data-col-key");
             if (k) setSort(k);
           });
@@ -619,32 +620,26 @@
         var toolbox = document.createElement("div");
         toolbox.id = "dg-mp-toolbox";
         toolbox.className = "dg-mp-toolbox mx-3 mt-3";
+        // Расширенные фильтры (Исключить плакаты / Менеджер / Контент-менеджер) переехали
+        // в карточку «Фильтры и действия» (общий fragment exports-marketplaces-shop-filters.fragment.html)
+        // — соответствие эталону /moysklad.html, см. .cursor/rules/datagon-list-page-baseline-moysklad.mdc.
+        // В toolbox таблицы остаются только кнопки 🧩 Столбцы / 📏 Ширины.
         toolbox.innerHTML =
           '<div class="dg-mp-toolbox-top">' +
           '<button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mp-toggle-cols">🧩 Столбцы</button>' +
           '<button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mp-toggle-widths">📏 Ширины</button>' +
-          '<div class="dg-mp-filter-group">' +
-            '<label class="dg-mp-filter-check"><input type="checkbox" id="dg-mp-flt-exclude-posters"> <span>Исключить плакаты</span></label>' +
-            '<label class="dg-mp-filter-sel"><span class="dg-mp-filter-lbl">Менеджер</span>' +
-              '<select id="dg-mp-flt-manager" class="form-select form-select-sm"></select>' +
-            '</label>' +
-            '<label class="dg-mp-filter-sel"><span class="dg-mp-filter-lbl">Контент-менеджер</span>' +
-              '<select id="dg-mp-flt-content_manager" class="form-select form-select-sm"></select>' +
-            '</label>' +
-            '<button type="button" class="btn btn-sm btn-link p-0 dg-mp-filter-reset" id="dg-mp-flt-reset" title="Сбросить расширенные фильтры">сбросить</button>' +
-          '</div>' +
           '</div>' +
           '<div class="dg-mp-toolbox-panel" id="dg-mp-cols-panel">' +
           '<div class="dg-mp-toolbox-actions">' +
           '<button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mp-cols-all">Выделить все</button>' +
           '<button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mp-cols-none">Снять все</button>' +
-          '<button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mp-cols-default">По умолчанию</button>' +
+          '<button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mp-cols-default" title="Восстановить состав видимых столбцов по умолчанию">Столбцы по умолчанию</button>' +
           '</div>' +
           '<div class="dg-mp-cols-grid" id="dg-mp-cols-grid"></div>' +
           '</div>' +
           '<div class="dg-mp-toolbox-panel" id="dg-mp-widths-panel">' +
           '<div class="dg-mp-toolbox-actions">' +
-          '<button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mp-widths-default">По умолчанию</button>' +
+          '<button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mp-widths-default" title="Сбросить ширины колонок к значениям по умолчанию">Ширины по умолчанию</button>' +
           '</div>' +
           '<div class="dg-mp-widths-grid" id="dg-mp-widths-grid"></div>' +
           '</div>';
@@ -801,11 +796,12 @@
         var hasContentMgr = state.headers.indexOf("content_manager") >= 0;
         var selMgr2 = document.getElementById("dg-mp-flt-manager");
         var selCm2 = document.getElementById("dg-mp-flt-content_manager");
-        var labelMgr = selMgr2 && selMgr2.parentElement;
-        var labelCm = selCm2 && selCm2.parentElement;
-        if (selMgr2 && labelMgr) {
+        // Новые wrapper'ы лежат в card-body карточки «Фильтры и действия» (см. fragment).
+        var blockMgr = document.getElementById("dg-mp-shop-filter-block-manager");
+        var blockCm = document.getElementById("dg-mp-shop-filter-block-cmgr");
+        if (selMgr2) {
           if (hasManager) {
-            labelMgr.style.display = "";
+            if (blockMgr) blockMgr.style.display = "";
             fillSelect(selMgr2, uniqueValuesFor("manager"), state.filters.manager, "Все менеджеры");
             if (selMgr2.value !== state.filters.manager) {
               // выбранное значение исчезло из набора (например, после refresh) — сбрасываем
@@ -813,20 +809,20 @@
               writeStr(FILTER_MANAGER_KEY, "");
             }
           } else {
-            labelMgr.style.display = "none";
+            if (blockMgr) blockMgr.style.display = "none";
             state.filters.manager = "";
           }
         }
-        if (selCm2 && labelCm) {
+        if (selCm2) {
           if (hasContentMgr) {
-            labelCm.style.display = "";
+            if (blockCm) blockCm.style.display = "";
             fillSelect(selCm2, uniqueValuesFor("content_manager"), state.filters.content_manager, "Все контент-менеджеры");
             if (selCm2.value !== state.filters.content_manager) {
               state.filters.content_manager = "";
               writeStr(FILTER_CONTENT_MGR_KEY, "");
             }
           } else {
-            labelCm.style.display = "none";
+            if (blockCm) blockCm.style.display = "none";
             state.filters.content_manager = "";
           }
         }
@@ -1131,8 +1127,8 @@
       }
 
       function bindControls() {
-        var refreshBtn = document.getElementById("dg-mp-refresh-market");
-        var snapshotBtn = document.getElementById("dg-mp-load-snapshot");
+      var refreshBtn = document.getElementById("dg-mp-refresh-market");
+      var snapshotBtn = document.getElementById("dg-mp-load-snapshot");
         var limitSel = document.getElementById("dg-mp-page-limit");
         var prevBtn = document.getElementById("dg-mp-page-prev");
         var nextBtn = document.getElementById("dg-mp-page-next");
@@ -1220,5 +1216,188 @@
       bindStickyTopVar();
       loadWbTokenBanner();
       loadSavedSnapshot();
+
+      (function bindTableCardCollapse() {
+        var btn = document.getElementById('dg-mp-table-toggle');
+        var body = document.getElementById('dg-mp-table-body');
+        if (!btn || !body) return;
+        var STORAGE_KEY = 'dg.mp-shop.table-card.collapsed.v1';
+        function apply() {
+          var c = false;
+          try { c = localStorage.getItem(STORAGE_KEY) === '1'; } catch (e) {}
+          if (c) {
+            body.style.display = 'none';
+            btn.textContent = 'Развернуть';
+          } else {
+            body.style.display = '';
+            btn.textContent = 'Свернуть';
+          }
+        }
+        apply();
+        btn.addEventListener('click', function () {
+          var hidden = body.style.display === 'none';
+          body.style.display = hidden ? '' : 'none';
+          btn.textContent = hidden ? 'Свернуть' : 'Развернуть';
+          try { localStorage.setItem(STORAGE_KEY, hidden ? '0' : '1'); } catch (e) {}
+          if (typeof syncStickyTopVar === 'function') syncStickyTopVar();
+        });
+      })();
+
+      // Прокси-кнопки в card-header «Таблица <Shop>»: клик прокидывается на исходные
+      // кнопки toolbox внутри card-body. Toolbox создаётся в ensureToolboxContainer
+      // лениво, поэтому ищем оригинал в момент клика, а не на init.
+      (function bindHeaderToolboxProxies() {
+        function proxy(headerId, originalId) {
+          var btn = document.getElementById(headerId);
+          if (!btn) return;
+          btn.addEventListener('click', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            var orig = document.getElementById(originalId);
+            if (orig) orig.click();
+          });
+        }
+        proxy('dg-mp-toggle-cols-header', 'dg-mp-toggle-cols');
+        proxy('dg-mp-toggle-widths-header', 'dg-mp-toggle-widths');
+      })();
+
+      // Карточка «Фильтры и действия» (общий fragment exports-marketplaces-shop-filters):
+      // collapse, шестерёнка с auto-discovery, primary-поле умного поиска (#dg-mp-shop-smart),
+      // двусторонний sync с #dg-mp-search в шапке таблицы (исходный обработчик search оставлен).
+      (function bindFiltersCardCollapse() {
+        var btn = document.getElementById('dg-mp-shop-filters-toggle');
+        var body = document.getElementById('dg-mp-shop-filters-body');
+        if (!btn || !body) return;
+        var STORAGE_KEY = 'dg.mp-shop.filters-card.collapsed.' + shop;
+        function apply() {
+          var c = false;
+          try { c = localStorage.getItem(STORAGE_KEY) === '1'; } catch (e) {}
+          if (c) {
+            body.style.display = 'none';
+            btn.textContent = 'Развернуть';
+          } else {
+            body.style.display = '';
+            btn.textContent = 'Свернуть';
+          }
+        }
+        apply();
+        btn.addEventListener('click', function () {
+          var hidden = body.style.display === 'none';
+          body.style.display = hidden ? '' : 'none';
+          btn.textContent = hidden ? 'Свернуть' : 'Развернуть';
+          try { localStorage.setItem(STORAGE_KEY, hidden ? '0' : '1'); } catch (e) {}
+          if (typeof syncStickyTopVar === 'function') syncStickyTopVar();
+        });
+      })();
+
+      (function bindFiltersFieldsVisibility() {
+        var FIELD_GROUPS = [
+          {
+            key: 'shop_filters_main',
+            title: 'Поиск',
+            items: [
+              { key: 'smart', title: 'Умный поиск', hint: 'Артикул и наименование (мульти-токен через пробел = AND)' },
+            ],
+          },
+          {
+            key: 'shop_filters_extra',
+            title: 'Расширенные фильтры',
+            items: [
+              { key: 'manager', title: 'Менеджер', hint: 'Точное совпадение менеджера. Пусто — все.' },
+              { key: 'content_manager', title: 'Контент-менеджер', hint: 'Точное совпадение контент-менеджера. Пусто — все.' },
+              { key: 'exclude_posters', title: 'Исключить плакаты', hint: 'Скрыть строки, где в наименовании встречается слово «плакат».' },
+            ],
+          },
+          {
+            key: 'shop_filters_actions',
+            title: 'Действия',
+            items: [
+              { key: 'filter_actions', title: 'Кнопки «Применить» / «По умолчанию»', hint: '' },
+            ],
+          },
+        ];
+        if (window.DatagonFilterFieldsVisibility && window.DatagonFilterFieldsVisibility.init) {
+          window.DatagonFilterFieldsVisibility.init({
+            storageKeyPrefix: 'datagon_mp_shop_filter_fields_v1.' + shop,
+            attr: 'data-dg-mp-shop-filter-field',
+            fieldGroups: FIELD_GROUPS,
+            togglesRootId: 'dg-mp-shop-filter-blocks-toggles',
+            idPrefix: 'dg-mp-shop-ff-',
+            exposeAs: 'DatagonMpShopFilterBlocks',
+          });
+        }
+      })();
+
+      (function bindShopSmartMirror() {
+        // primary в карточке фильтров, mirror — существующий #dg-mp-search в шапке таблицы.
+        var primary = document.getElementById('dg-mp-shop-smart');
+        var mirror = document.getElementById('dg-mp-search');
+        var applyBtn = document.getElementById('dg-mp-shop-apply');
+        var resetBtn = document.getElementById('dg-mp-shop-reset');
+        if (!primary || !mirror) return;
+        var syncing = false;
+        function copy(from, to) {
+          if (syncing) return;
+          if (to.value === from.value) return;
+          syncing = true;
+          to.value = from.value;
+          to.dispatchEvent(new Event('input', { bubbles: true }));
+          syncing = false;
+        }
+        function applySearch() {
+          // Триггерим основное поведение поиска, которое привязано к #dg-mp-search в bindControls().
+          mirror.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+        primary.addEventListener('input', function () { copy(primary, mirror); });
+        mirror.addEventListener('input', function () { copy(mirror, primary); });
+        primary.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            applySearch();
+          } else if (e.key === 'Escape') {
+            if (!primary.value) return;
+            primary.value = '';
+            copy(primary, mirror);
+            applySearch();
+          }
+        });
+        primary.addEventListener('search', function () {
+          copy(primary, mirror);
+          applySearch();
+        });
+        if (applyBtn) {
+          applyBtn.addEventListener('click', function (e) {
+            e.preventDefault();
+            applySearch();
+          });
+        }
+        if (resetBtn) {
+          resetBtn.addEventListener('click', function (e) {
+            e.preventDefault();
+            primary.value = '';
+            mirror.value = '';
+            // Сбрасываем и расширенные фильтры из карточки «Фильтры и действия»
+            // (Менеджер / Контент-менеджер / Исключить плакаты), как и старая
+            // ссылка «сбросить» в toolbox раньше — теперь это единая кнопка «По умолчанию».
+            var cbExcl2 = document.getElementById('dg-mp-flt-exclude-posters');
+            if (cbExcl2 && cbExcl2.checked) {
+              cbExcl2.checked = false;
+              cbExcl2.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+            var selMgr3 = document.getElementById('dg-mp-flt-manager');
+            if (selMgr3 && selMgr3.value) {
+              selMgr3.value = '';
+              selMgr3.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+            var selCm3 = document.getElementById('dg-mp-flt-content_manager');
+            if (selCm3 && selCm3.value) {
+              selCm3.value = '';
+              selCm3.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+            applySearch();
+          });
+        }
+        copy(mirror, primary);
+      })();
     })();
   </script>

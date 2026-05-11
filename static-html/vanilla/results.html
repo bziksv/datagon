@@ -92,6 +92,24 @@
       color: #374151;
       user-select: none;
     }
+    .datagon-columns-toolbox .dg-ms-widths-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 6px 10px;
+    }
+    .datagon-columns-toolbox .dg-ms-widths-grid label {
+      display: inline-flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 12px;
+      color: #374151;
+      margin: 0;
+    }
+    .datagon-columns-toolbox .dg-ms-widths-grid input[type="number"] {
+      width: 88px;
+      flex: 0 0 auto;
+    }
 
     body.datagon-vanilla-body[data-dg-active-nav="results"] #dg-res-main-table.dg-res-table {
       font-size: 0.8rem;
@@ -611,6 +629,16 @@
                           <li class="metismenu-item">
                             <a
                               class="metismenu-link"
+                              data-nav="exports-dimensions"
+                              href="/exports-dimensions.html"
+                              title="Реестр замеров габаритов товаров МойСклад"
+                            >
+                              <i class="metismenu-icon pe-7s-scissors"></i>Габариты
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
                               data-nav="exports-marketplaces-issues"
                               href="/exports-marketplaces-issues.html"
                               title="Товары МойСклад с проблемами публикации на маркетплейсах"
@@ -622,7 +650,6 @@
                       </li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="exports-huckster" href="/exports-huckster.html" title="Интеграция Huckster / e-teleport — матрица UID по магазинам"><i class="metismenu-icon pe-7s-cart"></i>Huckster</a></li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="exports-summary" href="/exports-summary.html" title="Сводка по менеджерам, подсветки НДС/габаритов, уведомления в чат"><i class="metismenu-icon pe-7s-note"></i>Сводка и синхронизация</a></li>
-                      <li class="metismenu-item"><a class="metismenu-link" data-nav="exports-dimensions" href="/exports-dimensions.html" title="Лист «Габариты»: проверки, сортировка, слияние в новые позиции"><i class="metismenu-icon pe-7s-scissors"></i>Габариты</a></li>
                     </ul>
                   </div>
                 </div>
@@ -761,27 +788,52 @@
           </div>
 
           <div class="main-card mb-3 card">
-            <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
-              <div class="d-flex align-items-center">
-                <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
-                <span>Таблица результатов</span>
+            <div class="card-header d-flex align-items-center justify-content-between gap-3 flex-wrap" style="row-gap: 0.5rem">
+              <div class="d-flex align-items-center gap-3 flex-grow-1" style="min-width: 0">
+                <div class="d-flex align-items-center flex-shrink-0">
+                  <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
+                  <span>Таблица результатов</span>
+                </div>
+                <input
+                  type="search"
+                  class="form-control form-control-sm dg-res-table-search-mirror"
+                  id="dg-res-table-search-mirror"
+                  placeholder="Умный поиск (Enter — применить)"
+                  autocomplete="off"
+                  style="flex: 0 1 380px; min-width: 220px"
+                  data-dg-tooltip="Зеркало поля «Умный поиск» в карточке фильтров. Enter — применить, Esc — очистить."
+                />
               </div>
-              <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-res-table-toggle">Свернуть</button>
+              <div class="d-flex align-items-center gap-2 flex-shrink-0">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-res-columns-toggle-header" data-dg-tooltip="Открыть панель управления видимостью столбцов">🧩 Столбцы</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-res-widths-toggle-header" data-dg-tooltip="Ручная ширина каждой колонки в пикселях (или drag за правый край заголовка)">📏 Ширины</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-res-table-toggle">Свернуть</button>
+              </div>
             </div>
             <div class="card-body">
               <div id="dg-res-table-collapse-body">
-              <div class="datagon-columns-toolbox mb-2">
-                <div class="columns-top">
+              <div class="datagon-columns-toolbox mb-2 d-none" id="dg-res-toolbox-panels">
+                <!-- Оригинальные кнопки скрыты: управление перенесено в card-header
+                     (proxy → этот элемент), wrap-контейнеры оставлены, чтобы панели
+                     корректно открывались по нажатию `#dg-res-columns-toggle-header` /
+                     `#dg-res-widths-toggle-header`. -->
+                <div class="columns-top" style="display: none">
                   <button type="button" class="btn btn-sm" id="dg-res-columns-toggle">🧩 Столбцы</button>
-                  <div class="columns-title">Включение/выключение видимых столбцов:</div>
+                  <button type="button" class="btn btn-sm" id="dg-res-widths-toggle">📏 Ширины</button>
                 </div>
                 <div class="datagon-columns-panel" id="dg-res-columns-panel">
                   <div class="columns-actions mb-2">
                     <button type="button" class="btn btn-sm" id="dg-res-columns-all">Выделить все</button>
                     <button type="button" class="btn btn-sm" id="dg-res-columns-none">Снять все</button>
-                    <button type="button" class="btn btn-sm" id="dg-res-columns-default">По умолчанию</button>
+                    <button type="button" class="btn btn-sm" id="dg-res-columns-default">Столбцы по умолчанию</button>
                   </div>
                   <div id="dg-res-columns-list" class="columns-grid"></div>
+                </div>
+                <div class="datagon-columns-panel" id="dg-res-widths-panel">
+                  <div class="columns-actions mb-2">
+                    <button type="button" class="btn btn-sm" id="dg-res-widths-default">Ширины по умолчанию</button>
+                  </div>
+                  <div id="dg-res-widths-list" class="dg-ms-widths-grid"></div>
                 </div>
               </div>
               <div class="dg-res-table-scroll-outer" style="width:100%;max-width:100%;overflow-x:auto;overflow-y:visible;-webkit-overflow-scrolling:touch">
@@ -1654,6 +1706,90 @@
         });
       }
 
+      // Снять inline-ширины с конкретной колонки (нужно для сброса «Ширины по умолчанию»).
+      function clearResColumnSizing(idx) {
+        var headers = getHeaderCells();
+        var th = headers[idx];
+        if (th) {
+          th.style.width = "";
+          th.style.minWidth = "";
+          th.style.maxWidth = "";
+        }
+        var tbody = document.getElementById("dg-res-tbody");
+        if (!tbody) return;
+        Array.prototype.forEach.call(tbody.rows || [], function (tr) {
+          if (!tr.cells || !tr.cells[idx]) return;
+          var cell = tr.cells[idx];
+          if (cell.colSpan > 1) return;
+          cell.style.boxSizing = "";
+          cell.style.width = "";
+          cell.style.minWidth = "";
+          cell.style.maxWidth = "";
+        });
+      }
+
+      // Панель «📏 Ширины»: список «<лейбл колонки> <input number px>» по индексу
+      // (results, как my-products/projects/queue, работает с ширинами по индексу — см.
+      // applyColumnWidthByIndex). Использует ту же связку (columnWidths +
+      // applyColumnWidthByIndex + userColWidthKey), что и drag-резайзер на правом крае
+      // <th> (initColumnResizeHandles), поэтому изменения видны и сохраняются.
+      function renderResultsWidthControls() {
+        var list = document.getElementById("dg-res-widths-list");
+        if (!list) return;
+        list.innerHTML = "";
+        var headers = getHeaderCells();
+        headers.forEach(function (th, idx) {
+          if (!th) return;
+          // Скрытые колонки (visibility:collapse через colgroup) — не показываем.
+          if (visibleCols[idx] === false) return;
+          var label = th.getAttribute("data-res-col-label") || "";
+          if (!label) {
+            label = String(th.textContent || "")
+              .replace(/\s*[↑↓]\s*$/g, "")
+              .trim();
+          }
+          if (!label) label = "Колонка " + (idx + 1);
+          var current = Number(columnWidths[idx] || 0);
+          if (!Number.isFinite(current) || current <= 0) {
+            var rect = th.getBoundingClientRect();
+            current = rect && rect.width ? Math.round(rect.width) : 120;
+          }
+          var wrap = document.createElement("label");
+          var span = document.createElement("span");
+          span.textContent = label;
+          span.style.flex = "1 1 auto";
+          span.style.overflow = "hidden";
+          span.style.textOverflow = "ellipsis";
+          span.style.whiteSpace = "nowrap";
+          var input = document.createElement("input");
+          input.type = "number";
+          input.className = "form-control form-control-sm";
+          input.min = "80";
+          input.max = "900";
+          input.step = "10";
+          input.value = String(current);
+          input.setAttribute("data-col-index", String(idx));
+          input.addEventListener("change", function () {
+            var i = parseInt(this.getAttribute("data-col-index"), 10);
+            var n = parseInt(this.value, 10);
+            if (!Number.isFinite(i)) return;
+            if (!Number.isFinite(n)) {
+              this.value = String(columnWidths[i] || 120);
+              return;
+            }
+            n = Math.max(80, Math.min(900, n));
+            applyColumnWidthByIndex(i, n);
+            try { localStorage.setItem(userColWidthKey(), JSON.stringify(columnWidths || {})); } catch (e) {}
+            this.value = String(n);
+            scheduleResultsFloatingHeaderUpdate();
+            resRefreshFloatingAfterLayout();
+          });
+          wrap.appendChild(span);
+          wrap.appendChild(input);
+          list.appendChild(wrap);
+        });
+      }
+
       function onResizeMoveResults(e) {
         if (!resizeState) return;
         var delta = e.clientX - resizeState.startX;
@@ -1769,11 +1905,46 @@
         var allBtn = document.getElementById("dg-res-columns-all");
         var noneBtn = document.getElementById("dg-res-columns-none");
         var defBtn = document.getElementById("dg-res-columns-default");
+        var widthsPanel = document.getElementById("dg-res-widths-panel");
+        var widthsToggle = document.getElementById("dg-res-widths-toggle");
+        var widthsDefault = document.getElementById("dg-res-widths-default");
+        var panelsWrap = document.getElementById("dg-res-toolbox-panels");
+        function syncWrap() {
+          if (!panelsWrap) return;
+          var open = (panel && panel.classList.contains("open")) || (widthsPanel && widthsPanel.classList.contains("open"));
+          panelsWrap.classList.toggle("d-none", !open);
+        }
         if (toggle && panel) {
-          toggle.addEventListener("click", function () {
+          toggle.addEventListener("click", function (e) {
+            e.preventDefault();
+            e.stopPropagation();
             panel.classList.toggle("open");
+            if (widthsPanel) widthsPanel.classList.remove("open");
+            syncWrap();
           });
         }
+        if (widthsToggle && widthsPanel) {
+          widthsToggle.addEventListener("click", function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            widthsPanel.classList.toggle("open");
+            if (panel) panel.classList.remove("open");
+            if (widthsPanel.classList.contains("open")) renderResultsWidthControls();
+            syncWrap();
+          });
+        }
+        document.addEventListener("click", function (e) {
+          if (!panel && !widthsPanel) return;
+          if (e.target.closest("#dg-res-columns-panel")) return;
+          if (e.target.closest("#dg-res-columns-toggle")) return;
+          if (e.target.closest("#dg-res-columns-toggle-header")) return;
+          if (e.target.closest("#dg-res-widths-panel")) return;
+          if (e.target.closest("#dg-res-widths-toggle")) return;
+          if (e.target.closest("#dg-res-widths-toggle-header")) return;
+          if (panel) panel.classList.remove("open");
+          if (widthsPanel) widthsPanel.classList.remove("open");
+          syncWrap();
+        });
         if (allBtn) {
           allBtn.addEventListener("click", function () {
             visibleCols = getHeaderCells().map(function () { return true; });
@@ -1799,6 +1970,20 @@
             applyVisibleColumns();
             renderColumnsPanel();
             initColumnResizeHandles();
+          });
+        }
+        if (widthsDefault) {
+          widthsDefault.addEventListener("click", function () {
+            try {
+              Object.keys(columnWidths || {}).forEach(function (k) {
+                clearResColumnSizing(Number(k));
+              });
+            } catch (e4) {}
+            columnWidths = {};
+            try { localStorage.removeItem(userColWidthKey()); } catch (e5) {}
+            renderResultsWidthControls();
+            scheduleResultsFloatingHeaderUpdate();
+            resRefreshFloatingAfterLayout();
           });
         }
         renderColumnsPanel();
@@ -2115,6 +2300,62 @@
           } catch (e) {}
           resRefreshFloatingAfterLayout();
         });
+      })();
+
+      // Прокси-кнопки 🧩 Столбцы / 📏 Ширины в card-header «Таблица результатов»: клик
+      // прокидывается на исходные кнопки в toolbox внутри card-body (initColumnsPanel
+      // подвешивает на них toggle('open') + syncWrap). Это соответствует эталону
+      // /moysklad.html (см. .cursor/rules/datagon-list-page-baseline-moysklad.mdc):
+      // переключатели в шапке + панели остаются в card-body, чтобы не ломать позиционирование.
+      (function bindHeaderToolboxProxies() {
+        function proxy(headerId, originalId) {
+          var headerBtn = document.getElementById(headerId);
+          var origBtn = document.getElementById(originalId);
+          if (!headerBtn || !origBtn) return;
+          headerBtn.addEventListener("click", function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            origBtn.click();
+          });
+        }
+        proxy("dg-res-columns-toggle-header", "dg-res-columns-toggle");
+        proxy("dg-res-widths-toggle-header", "dg-res-widths-toggle");
+      })();
+
+      // Mirror-поле умного поиска в card-header таблицы. Двусторонний sync с
+      // primary-полем #dg-res-f-search в карточке «Фильтры и действия». Enter — применить
+      // (прокидываем через keydown в основной обработчик), Esc — очистить.
+      (function bindHeaderSearchMirror() {
+        var primary = document.getElementById("dg-res-f-search");
+        var mirror = document.getElementById("dg-res-table-search-mirror");
+        if (!primary || !mirror) return;
+        var syncing = false;
+        function copy(from, to) {
+          if (syncing) return;
+          if (to.value === from.value) return;
+          syncing = true;
+          to.value = from.value;
+          to.dispatchEvent(new Event("input", { bubbles: true }));
+          syncing = false;
+        }
+        primary.addEventListener("input", function () { copy(primary, mirror); });
+        mirror.addEventListener("input", function () { copy(mirror, primary); });
+        mirror.addEventListener("keydown", function (e) {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            primary.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+          } else if (e.key === "Escape") {
+            if (!mirror.value) return;
+            mirror.value = "";
+            copy(mirror, primary);
+            primary.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+          }
+        });
+        mirror.addEventListener("search", function () {
+          copy(mirror, primary);
+          primary.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+        });
+        copy(primary, mirror);
       })();
 
       window.addEventListener("scroll", onScrollResultsFloatingHeader, { passive: true });

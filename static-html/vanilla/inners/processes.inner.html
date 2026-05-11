@@ -246,6 +246,30 @@
             </div>
           </div>
 
+          <div class="main-card mb-3 card" id="dg-proc-date-card">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+              <div class="d-flex align-items-center">
+                <i class="header-icon pe-7s-date icon-gradient bg-happy-fisher me-2"> </i>
+                <span>За день (МСК)</span>
+              </div>
+              <div class="small text-muted" id="dg-proc-date-hint">
+                Влияет на три блока ниже: «Синхронизация МойСклад» (архив шагов), «Автосинхронизация по расписанию», «Сопоставление товаров». Хранится 14 дней.
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="row g-2 align-items-end">
+                <div class="col-md-4">
+                  <label class="form-label mb-1" for="dg-proc-for-date">Дата</label>
+                  <input type="date" class="form-control form-control-sm" id="dg-proc-for-date" autocomplete="off" />
+                </div>
+                <div class="col-md-8">
+                  <label class="form-label mb-1">Быстрый выбор</label>
+                  <div class="d-flex flex-wrap gap-1" id="dg-proc-date-chips" role="group" aria-label="Быстрый выбор даты"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div class="main-card mb-3 card">
             <div class="card-header d-flex align-items-center">
               <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
@@ -259,10 +283,11 @@
           </div>
 
           <div class="main-card mb-3 card">
-            <div class="card-header d-flex align-items-center justify-content-between gap-2">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
               <div class="d-flex align-items-center">
                 <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
                 <span>Синхронизация МойСклад</span>
+                <span class="ms-2 small text-muted" id="dg-proc-ms-day-hint"></span>
               </div>
               <button type="button" class="btn btn-warning btn-sm" id="dg-proc-ms-stop">⏹ Остановить</button>
             </div>
@@ -270,28 +295,28 @@
               <div><b>Статус:</b> <span id="dg-proc-ms-status">—</span></div>
               <div><b>Сообщение:</b> <span id="dg-proc-ms-msg">—</span></div>
               <div><b>Прогресс:</b> <span id="dg-proc-ms-prog">0/0</span></div>
-              <div class="small text-muted mt-2 mb-1">Текущая сессия (память процесса, до 30 строк):</div>
+              <div class="small text-muted mt-2 mb-1" id="dg-proc-ms-logs-title">Текущая сессия (память процесса, до 30 строк):</div>
               <div class="small text-muted mt-1" id="dg-proc-ms-logs"></div>
-              <div class="small text-muted mt-2 mb-1">Архив шагов синка в БД (последние 50, переживают рестарт):</div>
+              <div class="small text-muted mt-2 mb-1" id="dg-proc-ms-plogs-title">Архив шагов синка в БД за выбранный день:</div>
               <div class="small text-muted font-monospace" id="dg-proc-ms-plogs" style="white-space: pre-wrap; word-break: break-word"></div>
             </div>
           </div>
 
           <div class="main-card mb-3 card">
-            <div class="card-header d-flex align-items-center">
-              <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
-              <span>Автосинхронизация по расписанию</span>
+            <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+              <div class="d-flex align-items-center">
+                <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
+                <span>Автосинхронизация по расписанию</span>
+                <span class="ms-2 small text-muted" id="dg-proc-as-day-hint"></span>
+              </div>
             </div>
             <div class="card-body">
-              <div><b>Сейчас (МСК):</b> <span id="dg-proc-as-now">— —</span></div>
-              <div><b>Продукты:</b> <span id="dg-proc-as-my">—</span></div>
-              <div><b>МойСклад:</b> <span id="dg-proc-as-msk">—</span></div>
-              <div><b>Исполнитель:</b> <span id="dg-proc-as-runner">—</span></div>
-              <div><b>Очередь задач:</b> <span id="dg-proc-as-queue">—</span></div>
-              <div class="small text-muted mt-2">
-                <div><b>Последние автозапуски:</b></div>
-                <div id="dg-proc-as-runs"></div>
+              <div class="row g-2 mb-3 small">
+                <div class="col-md-6"><b>Сейчас (МСК):</b> <span id="dg-proc-as-now">— —</span></div>
+                <div class="col-md-6"><b>Исполнитель:</b> <span id="dg-proc-as-runner">—</span></div>
+                <div class="col-12"><b>Очередь задач:</b> <span id="dg-proc-as-queue">—</span></div>
               </div>
+              <div id="dg-proc-as-sections" class="dg-proc-as-sections"></div>
             </div>
           </div>
 
@@ -322,18 +347,21 @@
           </div>
 
           <div class="main-card mb-3 card">
-            <div class="card-header d-flex align-items-center">
-              <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
-              <span>Сопоставление товаров</span>
+            <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+              <div class="d-flex align-items-center">
+                <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
+                <span>Сопоставление товаров</span>
+                <span class="ms-2 small text-muted" id="dg-proc-m-day-hint"></span>
+              </div>
             </div>
             <div class="card-body">
               <div><b>Статус:</b> <span id="dg-proc-m-status">—</span></div>
               <div><b>Сообщение:</b> <span id="dg-proc-m-msg">—</span></div>
               <div><b>Прогресс:</b> <span id="dg-proc-m-prog">0/0</span>, найдено: <span id="dg-proc-m-found">0</span></div>
-              <div><b>SKU:</b> <span id="dg-proc-m-sku">0</span> | <b>Name:</b> <span id="dg-proc-m-name">0</span></div>
+              <div><b>SKU:</b> <span id="dg-proc-m-sku">0</span> | <b>По названию:</b> <span id="dg-proc-m-name">0</span></div>
               <div class="mt-3"><b>Этапы (алгоритмы):</b></div>
               <div class="small text-muted" id="dg-proc-m-phases"></div>
-              <div class="small text-muted mt-2"><b>Журнал:</b></div>
+              <div class="small text-muted mt-2"><b>Журнал задачи:</b></div>
               <div class="small text-muted" id="dg-proc-m-logs"></div>
             </div>
           </div>

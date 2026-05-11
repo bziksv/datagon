@@ -6,7 +6,76 @@
   <title>Активность и процессы — Датагон</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <link rel="stylesheet" href="/static/css/main.989b22a9.css" />
-    <!-- Логи и процессы: стили из ARCHITECTUI_MAIN_CSS -->
+    <!-- Логи и процессы: стили из ARCHITECTUI_MAIN_CSS + локальные правки -->
+  <style>
+    /* Карточка «За день» — чипы быстрого выбора */
+    body.datagon-vanilla-body[data-dg-active-nav='processes'] #dg-proc-date-card .btn.dg-proc-date-chip {
+      padding: 0.15rem 0.55rem;
+      font-size: 0.78rem;
+      line-height: 1.2;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='processes'] #dg-proc-date-card .btn.dg-proc-date-chip.active {
+      background: #3f6ad8;
+      border-color: #3f6ad8;
+      color: #fff;
+    }
+
+    /* Автосинхронизация: разделы по task_type */
+    body.datagon-vanilla-body[data-dg-active-nav='processes'] .dg-proc-as-sections {
+      display: flex;
+      flex-direction: column;
+      gap: 0.85rem;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='processes'] .dg-proc-as-section {
+      border: 1px solid #eef1f6;
+      border-radius: 0.5rem;
+      padding: 0.65rem 0.85rem;
+      background: #fafbfd;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='processes'] .dg-proc-as-section-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 0.35rem;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='processes'] .dg-proc-as-section-title {
+      font-weight: 600;
+      font-size: 0.95rem;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='processes'] .dg-proc-as-section-meta {
+      color: #6c757d;
+      font-size: 0.78rem;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='processes'] .dg-proc-as-section-runs {
+      font-size: 0.82rem;
+      color: #495057;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='processes'] .dg-proc-as-section-runs .dg-proc-as-run {
+      padding: 0.2rem 0;
+      border-top: 1px dashed #e9ecef;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      align-items: baseline;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='processes'] .dg-proc-as-section-runs .dg-proc-as-run:first-child {
+      border-top: none;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='processes'] .dg-proc-as-run-time {
+      font-variant-numeric: tabular-nums;
+      color: #6c757d;
+      min-width: 7rem;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='processes'] .dg-proc-as-run-status .badge {
+      font-size: 0.7rem;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='processes'] .dg-proc-as-section-empty {
+      color: #adb5bd;
+      font-style: italic;
+      font-size: 0.82rem;
+    }
+  </style>
 
   <style>
     /* Один список сайдбара: «ArchitectUI меню» у нижнего края области навигации, без второго блока/ul */
@@ -476,6 +545,16 @@
                           <li class="metismenu-item">
                             <a
                               class="metismenu-link"
+                              data-nav="exports-dimensions"
+                              href="/exports-dimensions.html"
+                              title="Реестр замеров габаритов товаров МойСклад"
+                            >
+                              <i class="metismenu-icon pe-7s-scissors"></i>Габариты
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
                               data-nav="exports-marketplaces-issues"
                               href="/exports-marketplaces-issues.html"
                               title="Товары МойСклад с проблемами публикации на маркетплейсах"
@@ -487,7 +566,6 @@
                       </li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="exports-huckster" href="/exports-huckster.html" title="Интеграция Huckster / e-teleport — матрица UID по магазинам"><i class="metismenu-icon pe-7s-cart"></i>Huckster</a></li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="exports-summary" href="/exports-summary.html" title="Сводка по менеджерам, подсветки НДС/габаритов, уведомления в чат"><i class="metismenu-icon pe-7s-note"></i>Сводка и синхронизация</a></li>
-                      <li class="metismenu-item"><a class="metismenu-link" data-nav="exports-dimensions" href="/exports-dimensions.html" title="Лист «Габариты»: проверки, сортировка, слияние в новые позиции"><i class="metismenu-icon pe-7s-scissors"></i>Габариты</a></li>
                     </ul>
                   </div>
                 </div>
@@ -748,6 +826,30 @@
             </div>
           </div>
 
+          <div class="main-card mb-3 card" id="dg-proc-date-card">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+              <div class="d-flex align-items-center">
+                <i class="header-icon pe-7s-date icon-gradient bg-happy-fisher me-2"> </i>
+                <span>За день (МСК)</span>
+              </div>
+              <div class="small text-muted" id="dg-proc-date-hint">
+                Влияет на три блока ниже: «Синхронизация МойСклад» (архив шагов), «Автосинхронизация по расписанию», «Сопоставление товаров». Хранится 14 дней.
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="row g-2 align-items-end">
+                <div class="col-md-4">
+                  <label class="form-label mb-1" for="dg-proc-for-date">Дата</label>
+                  <input type="date" class="form-control form-control-sm" id="dg-proc-for-date" autocomplete="off" />
+                </div>
+                <div class="col-md-8">
+                  <label class="form-label mb-1">Быстрый выбор</label>
+                  <div class="d-flex flex-wrap gap-1" id="dg-proc-date-chips" role="group" aria-label="Быстрый выбор даты"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div class="main-card mb-3 card">
             <div class="card-header d-flex align-items-center">
               <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
@@ -761,10 +863,11 @@
           </div>
 
           <div class="main-card mb-3 card">
-            <div class="card-header d-flex align-items-center justify-content-between gap-2">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
               <div class="d-flex align-items-center">
                 <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
                 <span>Синхронизация МойСклад</span>
+                <span class="ms-2 small text-muted" id="dg-proc-ms-day-hint"></span>
               </div>
               <button type="button" class="btn btn-warning btn-sm" id="dg-proc-ms-stop">⏹ Остановить</button>
             </div>
@@ -772,28 +875,28 @@
               <div><b>Статус:</b> <span id="dg-proc-ms-status">—</span></div>
               <div><b>Сообщение:</b> <span id="dg-proc-ms-msg">—</span></div>
               <div><b>Прогресс:</b> <span id="dg-proc-ms-prog">0/0</span></div>
-              <div class="small text-muted mt-2 mb-1">Текущая сессия (память процесса, до 30 строк):</div>
+              <div class="small text-muted mt-2 mb-1" id="dg-proc-ms-logs-title">Текущая сессия (память процесса, до 30 строк):</div>
               <div class="small text-muted mt-1" id="dg-proc-ms-logs"></div>
-              <div class="small text-muted mt-2 mb-1">Архив шагов синка в БД (последние 50, переживают рестарт):</div>
+              <div class="small text-muted mt-2 mb-1" id="dg-proc-ms-plogs-title">Архив шагов синка в БД за выбранный день:</div>
               <div class="small text-muted font-monospace" id="dg-proc-ms-plogs" style="white-space: pre-wrap; word-break: break-word"></div>
             </div>
           </div>
 
           <div class="main-card mb-3 card">
-            <div class="card-header d-flex align-items-center">
-              <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
-              <span>Автосинхронизация по расписанию</span>
+            <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+              <div class="d-flex align-items-center">
+                <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
+                <span>Автосинхронизация по расписанию</span>
+                <span class="ms-2 small text-muted" id="dg-proc-as-day-hint"></span>
+              </div>
             </div>
             <div class="card-body">
-              <div><b>Сейчас (МСК):</b> <span id="dg-proc-as-now">— —</span></div>
-              <div><b>Продукты:</b> <span id="dg-proc-as-my">—</span></div>
-              <div><b>МойСклад:</b> <span id="dg-proc-as-msk">—</span></div>
-              <div><b>Исполнитель:</b> <span id="dg-proc-as-runner">—</span></div>
-              <div><b>Очередь задач:</b> <span id="dg-proc-as-queue">—</span></div>
-              <div class="small text-muted mt-2">
-                <div><b>Последние автозапуски:</b></div>
-                <div id="dg-proc-as-runs"></div>
+              <div class="row g-2 mb-3 small">
+                <div class="col-md-6"><b>Сейчас (МСК):</b> <span id="dg-proc-as-now">— —</span></div>
+                <div class="col-md-6"><b>Исполнитель:</b> <span id="dg-proc-as-runner">—</span></div>
+                <div class="col-12"><b>Очередь задач:</b> <span id="dg-proc-as-queue">—</span></div>
               </div>
+              <div id="dg-proc-as-sections" class="dg-proc-as-sections"></div>
             </div>
           </div>
 
@@ -824,18 +927,21 @@
           </div>
 
           <div class="main-card mb-3 card">
-            <div class="card-header d-flex align-items-center">
-              <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
-              <span>Сопоставление товаров</span>
+            <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+              <div class="d-flex align-items-center">
+                <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
+                <span>Сопоставление товаров</span>
+                <span class="ms-2 small text-muted" id="dg-proc-m-day-hint"></span>
+              </div>
             </div>
             <div class="card-body">
               <div><b>Статус:</b> <span id="dg-proc-m-status">—</span></div>
               <div><b>Сообщение:</b> <span id="dg-proc-m-msg">—</span></div>
               <div><b>Прогресс:</b> <span id="dg-proc-m-prog">0/0</span>, найдено: <span id="dg-proc-m-found">0</span></div>
-              <div><b>SKU:</b> <span id="dg-proc-m-sku">0</span> | <b>Name:</b> <span id="dg-proc-m-name">0</span></div>
+              <div><b>SKU:</b> <span id="dg-proc-m-sku">0</span> | <b>По названию:</b> <span id="dg-proc-m-name">0</span></div>
               <div class="mt-3"><b>Этапы (алгоритмы):</b></div>
               <div class="small text-muted" id="dg-proc-m-phases"></div>
-              <div class="small text-muted mt-2"><b>Журнал:</b></div>
+              <div class="small text-muted mt-2"><b>Журнал задачи:</b></div>
               <div class="small text-muted" id="dg-proc-m-logs"></div>
             </div>
           </div>
@@ -923,6 +1029,56 @@
       var pollTimer = null;
       var processesPrefsMerged = false;
 
+      /**
+       * Дата «За день» (МСК, формат YYYY-MM-DD). По умолчанию — сегодня по МСК.
+       * Не персистится: каждое открытие страницы — сегодня.
+       */
+      var FOR_DATE_WINDOW_DAYS = 14;
+      var forDate = moscowTodayDate();
+      var forDateOptions = computeForDateOptions();
+
+      function moscowTodayDate() {
+        try {
+          return new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Moscow" });
+        } catch (_) {
+          return new Date().toISOString().slice(0, 10);
+        }
+      }
+
+      function computeForDateOptions() {
+        var out = [];
+        var today = moscowTodayDate();
+        var anchor = new Date(today + "T12:00:00+03:00").getTime();
+        for (var i = 0; i < FOR_DATE_WINDOW_DAYS; i += 1) {
+          out.push(
+            new Date(anchor - i * 86400000).toLocaleDateString("en-CA", { timeZone: "Europe/Moscow" })
+          );
+        }
+        return out;
+      }
+
+      function moscowDayLabel(date) {
+        if (!date) return "—";
+        var today = moscowTodayDate();
+        var anchor = new Date(today + "T12:00:00+03:00").getTime();
+        var target = new Date(date + "T12:00:00+03:00").getTime();
+        var diff = Math.round((anchor - target) / 86400000);
+        if (diff === 0) return "сегодня";
+        if (diff === 1) return "вчера";
+        if (diff === 2) return "позавчера";
+        if (diff > 0 && diff < 7) return diff + " дн. назад";
+        try {
+          return new Date(date + "T12:00:00+03:00").toLocaleDateString("ru-RU", {
+            timeZone: "Europe/Moscow",
+            day: "2-digit",
+            month: "short",
+            weekday: "short",
+          });
+        } catch (_) {
+          return date;
+        }
+      }
+
       function fmtNum(v) {
         return Number(v || 0).toLocaleString("ru-RU");
       }
@@ -931,6 +1087,16 @@
         var d = new Date(v);
         if (isNaN(d.getTime())) return String(v);
         return d.toLocaleDateString("ru-RU") + " " + d.toLocaleTimeString("ru-RU");
+      }
+      function fmtTimeMsk(v) {
+        if (!v) return "—";
+        var d = new Date(v);
+        if (isNaN(d.getTime())) return String(v);
+        try {
+          return d.toLocaleTimeString("ru-RU", { timeZone: "Europe/Moscow", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+        } catch (_) {
+          return d.toLocaleTimeString("ru-RU");
+        }
       }
 
       function fmtDurationMs(ms) {
@@ -1313,6 +1479,112 @@
           sel.value = String(prefs.site_id);
       }
 
+      /**
+       * Метаданные разделов автосинхронизации: порядок и человеко-читаемые названия,
+       * чтобы лента не сливалась в «всё в перемешку», как было раньше.
+       */
+      var AS_TASK_SECTIONS = [
+        { key: "myproducts", title: "Мои товары", subtitle: "Импорт из CMS магазинов", cfgEnabled: "myproducts_enabled", cfgTime: "myproducts_time" },
+        { key: "moysklad", title: "МойСклад", subtitle: "Карточки и остатки МС", cfgEnabled: "moysklad_enabled", cfgTime: "moysklad_time" },
+        { key: "marketplaces", title: "Маркетплейсы", subtitle: "Ozon · WB · Я.Маркет", cfgEnabled: "marketplaces_enabled", cfgTime: "marketplaces_time" },
+        { key: "huckster", title: "Калькуляция Huckster", subtitle: "Расчёт цен по правилам", cfgEnabled: "huckster_enabled", cfgTime: "huckster_time" },
+        { key: "db_size", title: "Размер БД", subtitle: "Снимок размеров таблиц", cfgEnabled: "db_size_enabled", cfgTime: "db_size_time" },
+      ];
+
+      function statusBadgeHtml(status) {
+        var s = String(status || "").trim().toLowerCase();
+        if (s === "completed") return '<span class="badge bg-success">Завершено</span>';
+        if (s === "running") return '<span class="badge bg-primary">Выполняется</span>';
+        if (s === "failed") return '<span class="badge bg-danger">Ошибка</span>';
+        if (s === "interrupted") return '<span class="badge bg-warning text-dark">Прервано</span>';
+        if (s === "skipped") return '<span class="badge bg-secondary">Пропущено</span>';
+        if (s) return '<span class="badge bg-light text-dark border">' + escapeText(s) + '</span>';
+        return '<span class="badge bg-light text-dark border">—</span>';
+      }
+
+      function triggerBadgeHtml(trig) {
+        var t = String(trig || "").trim().toLowerCase();
+        if (t === "schedule") return '<span class="badge rounded-pill bg-info text-dark">по расписанию</span>';
+        if (t === "manual") return '<span class="badge rounded-pill bg-secondary">вручную</span>';
+        if (t === "manual_ui" || t === "manual_api") return '<span class="badge rounded-pill bg-secondary">вручную</span>';
+        if (t) return '<span class="badge rounded-pill bg-light text-dark border">' + escapeText(t) + '</span>';
+        return "";
+      }
+
+      function escapeText(s) {
+        return String(s == null ? "" : s)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+
+      function renderAutoSyncSections(cfg, runs, isToday) {
+        var root = document.getElementById("dg-proc-as-sections");
+        if (!root) return;
+        root.replaceChildren();
+        /** Группируем строки auto_sync_runs по task_type, чтобы каждый раздел отрисовать отдельно. */
+        var byTask = Object.create(null);
+        (Array.isArray(runs) ? runs : []).forEach(function (r) {
+          var k = String(r.task_type || "").toLowerCase();
+          if (!k) return;
+          if (!byTask[k]) byTask[k] = [];
+          byTask[k].push(r);
+        });
+        AS_TASK_SECTIONS.forEach(function (sec) {
+          var block = document.createElement("div");
+          block.className = "dg-proc-as-section";
+          var enabled = Boolean(cfg && cfg[sec.cfgEnabled]);
+          var time = cfg && cfg[sec.cfgTime] ? cfg[sec.cfgTime] : "—";
+          var head = document.createElement("div");
+          head.className = "dg-proc-as-section-head";
+          var titleHtml =
+            '<span class="dg-proc-as-section-title">' + escapeText(sec.title) + '</span>' +
+            (sec.subtitle ? '<span class="dg-proc-as-section-meta">' + escapeText(sec.subtitle) + '</span>' : "") +
+            (enabled
+              ? '<span class="badge bg-success-subtle text-success border border-success-subtle">по расписанию вкл.</span>'
+              : '<span class="badge bg-light text-dark border">по расписанию выкл.</span>') +
+            '<span class="dg-proc-as-section-meta">старт по МСК: <b>' + escapeText(time) + '</b></span>';
+          head.innerHTML = titleHtml;
+          block.appendChild(head);
+
+          var list = byTask[sec.key] || [];
+          var runsBox = document.createElement("div");
+          runsBox.className = "dg-proc-as-section-runs";
+          if (!list.length) {
+            var empty = document.createElement("div");
+            empty.className = "dg-proc-as-section-empty";
+            empty.textContent = isToday
+              ? "За сегодня запусков ещё не было"
+              : "За выбранный день запусков не было";
+            runsBox.appendChild(empty);
+          } else {
+            list.forEach(function (r) {
+              var row = document.createElement("div");
+              row.className = "dg-proc-as-run";
+              var dur = "";
+              if (r.started_at && r.finished_at) {
+                var ms = new Date(r.finished_at).getTime() - new Date(r.started_at).getTime();
+                if (isFinite(ms) && ms >= 0) {
+                  if (ms < 60000) dur = Math.round(ms / 1000) + " с";
+                  else if (ms < 3600000) dur = Math.round(ms / 60000) + " мин";
+                  else dur = Math.floor(ms / 3600000) + " ч " + Math.round((ms % 3600000) / 60000) + " мин";
+                }
+              }
+              var start = r.started_at ? fmtTimeMsk(r.started_at) : "—";
+              var finish = r.finished_at ? fmtTimeMsk(r.finished_at) : "ещё идёт";
+              row.innerHTML =
+                '<span class="dg-proc-as-run-time">' + escapeText(start) + " → " + escapeText(finish) + (dur ? " · " + escapeText(dur) : "") + '</span>' +
+                '<span class="dg-proc-as-run-status">' + statusBadgeHtml(r.status) + " " + triggerBadgeHtml(r.trigger_type) + '</span>' +
+                (r.message ? '<span class="text-muted">' + escapeText(String(r.message).slice(0, 240)) + '</span>' : "");
+              runsBox.appendChild(row);
+            });
+          }
+          block.appendChild(runsBox);
+          root.appendChild(block);
+        });
+      }
+
       function renderFromOverview() {
         if (!overview) return;
         var needle = logNeedle();
@@ -1322,12 +1594,29 @@
         document.getElementById("dg-proc-gs-prog").textContent =
           fmtNum(globalSync.processed) + "/" + fmtNum(globalSync.total);
 
+        var isTodayResp = overview.isToday !== false; // back-compat: считаем сегодня по умолчанию
         var moysklad = overview.moysklad || {};
         var msStatus = moysklad.active ? "В процессе" : moysklad.done ? "Завершен" : "Ожидание";
         document.getElementById("dg-proc-ms-status").textContent = msStatus;
         document.getElementById("dg-proc-ms-msg").textContent = moysklad.message || "-";
         document.getElementById("dg-proc-ms-prog").textContent =
           fmtNum(moysklad.processed) + "/" + fmtNum(moysklad.total);
+
+        var msDayHint = document.getElementById("dg-proc-ms-day-hint");
+        if (msDayHint) {
+          msDayHint.textContent = "за " + moscowDayLabel(overview.forDate || moscowTodayDate());
+        }
+        var msLogsTitle = document.getElementById("dg-proc-ms-logs-title");
+        if (msLogsTitle) {
+          msLogsTitle.textContent = isTodayResp
+            ? "Текущая сессия (память процесса, до 30 строк):"
+            : "Текущая сессия (доступна только для «сегодня»):";
+        }
+        var msPlogsTitle = document.getElementById("dg-proc-ms-plogs-title");
+        if (msPlogsTitle) {
+          msPlogsTitle.textContent = "Архив шагов синка в БД за " + moscowDayLabel(overview.forDate || moscowTodayDate()) + ":";
+        }
+
         var msLogs = document.getElementById("dg-proc-ms-logs");
         msLogs.replaceChildren();
         (Array.isArray(moysklad.logs) ? moysklad.logs : [])
@@ -1340,6 +1629,12 @@
             d.textContent = "• " + line;
             msLogs.appendChild(d);
           });
+        if (!isTodayResp && !msLogs.children.length) {
+          var d0 = document.createElement("div");
+          d0.className = "text-muted fst-italic";
+          d0.textContent = "Текущая сессия процесса показывается только за сегодня. В архив шагов ниже попадают строки из БД.";
+          msLogs.appendChild(d0);
+        }
 
         var msPlogs = document.getElementById("dg-proc-ms-plogs");
         if (msPlogs) {
@@ -1354,10 +1649,14 @@
               })
             : plRaw;
           if (!pl.length) {
-            msPlogs.textContent = nLow ? "(нет совпадений в архиве)" : "(пока пусто — после следующего синка появятся строки)";
+            msPlogs.textContent = nLow
+              ? "(нет совпадений по фильтру за выбранный день)"
+              : (isTodayResp
+                  ? "(за сегодня в архиве пока пусто — после следующего синка появятся строки)"
+                  : "(за выбранный день записей в архиве нет)");
           } else {
             pl.forEach(function (row) {
-              var t = row.created_at != null ? fmtDateTime(row.created_at) : "—";
+              var t = row.created_at != null ? fmtTimeMsk(row.created_at) : "—";
               var line = String(row.line || "");
               var d = document.createElement("div");
               d.textContent = "• " + t + "  " + line;
@@ -1370,44 +1669,23 @@
         var cfg = autoSync.config || {};
         document.getElementById("dg-proc-as-now").textContent =
           (autoSync.now_moscow_date || "-") + " " + (autoSync.now_moscow_time || "-");
-        document.getElementById("dg-proc-as-my").textContent =
-          (cfg.myproducts_enabled ? "включено" : "выключено") + " (" + (cfg.myproducts_time || "-") + ")";
-        document.getElementById("dg-proc-as-msk").textContent =
-          (cfg.moysklad_enabled ? "включено" : "выключено") + " (" + (cfg.moysklad_time || "-") + ")";
         document.getElementById("dg-proc-as-runner").textContent = autoSync.runner_active
           ? "выполняется"
           : "ожидание";
         var q = Array.isArray(autoSync.queue) ? autoSync.queue : [];
         document.getElementById("dg-proc-as-queue").textContent = q.length ? q.join(" → ") : "пусто";
+        var asDayHint = document.getElementById("dg-proc-as-day-hint");
+        if (asDayHint) {
+          asDayHint.textContent = "запуски за " + moscowDayLabel(overview.forDate || moscowTodayDate());
+        }
 
-        var runsEl = document.getElementById("dg-proc-as-runs");
-        runsEl.replaceChildren();
-        var autoSyncRuns = Array.isArray(overview.autoSyncRuns) ? overview.autoSyncRuns : [];
-        var filteredRuns = autoSyncRuns.filter(function (r) {
+        var autoSyncRunsAll = Array.isArray(overview.autoSyncRuns) ? overview.autoSyncRuns : [];
+        var filteredRuns = autoSyncRunsAll.filter(function (r) {
           if (!needle) return true;
           var hay = (String(r.task_type || "") + " " + String(r.status || "") + " " + String(r.message || "")).toLowerCase();
           return hay.indexOf(needle) !== -1;
         });
-        if (filteredRuns.length) {
-          filteredRuns.forEach(function (r) {
-            var d = document.createElement("div");
-            d.textContent =
-              "• " +
-              (r.task_type || "-") +
-              " — " +
-              (r.status || "-") +
-              " | старт: " +
-              fmtDateTime(r.started_at) +
-              " | финиш: " +
-              fmtDateTime(r.finished_at) +
-              (r.message ? " | " + r.message : "");
-            runsEl.appendChild(d);
-          });
-        } else {
-          var empty = document.createElement("div");
-          empty.textContent = "История автозапусков пока пуста";
-          runsEl.appendChild(empty);
-        }
+        renderAutoSyncSections(cfg, filteredRuns, isTodayResp);
 
         var discEl = document.getElementById("dg-proc-discovery");
         discEl.replaceChildren();
@@ -1460,6 +1738,10 @@
         var mStat = matches.active ? "В процессе" : matches.status || "Ожидание";
         document.getElementById("dg-proc-m-status").textContent = mStat;
         document.getElementById("dg-proc-m-msg").textContent = matches.message || "-";
+        var mDayHint = document.getElementById("dg-proc-m-day-hint");
+        if (mDayHint) {
+          mDayHint.textContent = "за " + moscowDayLabel(overview.forDate || moscowTodayDate());
+        }
         document.getElementById("dg-proc-m-prog").textContent =
           fmtNum(matches.processed) + "/" + fmtNum(matches.total);
         document.getElementById("dg-proc-m-found").textContent = fmtNum(matches.found);
@@ -1573,8 +1855,12 @@
             : getSelectedSiteId();
         loading = true;
         if (!overview) setBootLoad(true);
-        var qs = selected ? "?my_site_id=" + encodeURIComponent(selected) : "";
-        fetch("/api/processes/overview" + qs, { credentials: "same-origin" })
+        var params = new URLSearchParams();
+        if (selected) params.set("my_site_id", String(selected));
+        if (forDate) params.set("for_date", String(forDate));
+        var qs = params.toString();
+        var url = "/api/processes/overview" + (qs ? "?" + qs : "");
+        fetch(url, { credentials: "same-origin" })
           .then(function (r) {
             return r.json().then(function (j) {
               return { r: r, j: j };
@@ -1583,12 +1869,24 @@
           .then(function (x) {
             if (!x.r.ok) throw new Error(x.j.error || "Не удалось загрузить сводку процессов");
             overview = x.j;
+            /** Сервер может откорректировать дату (если за пределами окна) — синхронизируем UI. */
+            if (overview.forDate && overview.forDate !== forDate) {
+              forDate = overview.forDate;
+              syncForDateUi();
+            }
+            if (Array.isArray(overview.forDateOptions) && overview.forDateOptions.length) {
+              forDateOptions = overview.forDateOptions.slice();
+              renderForDateChips();
+            }
             applySiteFromResponse(x.j);
             if (!processesPrefsMerged) {
               mergeProcessesPrefsFromStorage();
               processesPrefsMerged = true;
             }
             renderFromOverview();
+            /** Поллинг имеет смысл только за «сегодня»; для прошлых дней останавливаем. */
+            if (overview.isToday === false) stopPoll();
+            else if (!pollTimer) startPoll();
             showErr("");
           })
           .catch(function (e) {
@@ -1641,6 +1939,74 @@
         if (overview) renderFromOverview();
       });
       document.getElementById("dg-proc-ms-stop").addEventListener("click", stopMsSync);
+
+      function renderForDateChips() {
+        var box = document.getElementById("dg-proc-date-chips");
+        if (!box) return;
+        box.replaceChildren();
+        var today = moscowTodayDate();
+        forDateOptions.forEach(function (d, i) {
+          var btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "btn btn-sm btn-outline-secondary dg-proc-date-chip";
+          if (d === forDate) btn.classList.add("active");
+          var label;
+          if (d === today) label = "Сегодня";
+          else if (i === 1) label = "Вчера";
+          else label = "−" + i;
+          btn.textContent = label;
+          btn.title = d;
+          btn.setAttribute("data-date", d);
+          btn.addEventListener("click", function () {
+            if (forDate === d) return;
+            forDate = d;
+            syncForDateUi();
+            loadOverview();
+          });
+          box.appendChild(btn);
+        });
+      }
+
+      function syncForDateUi() {
+        var input = document.getElementById("dg-proc-for-date");
+        if (input) {
+          if (forDateOptions.length) {
+            input.max = forDateOptions[0];
+            input.min = forDateOptions[forDateOptions.length - 1];
+          }
+          if (input.value !== forDate) input.value = forDate;
+        }
+        var box = document.getElementById("dg-proc-date-chips");
+        if (box) {
+          [].forEach.call(box.querySelectorAll(".dg-proc-date-chip"), function (b) {
+            b.classList.toggle("active", b.getAttribute("data-date") === forDate);
+          });
+        }
+      }
+
+      (function bindForDate() {
+        var input = document.getElementById("dg-proc-for-date");
+        if (!input) return;
+        syncForDateUi();
+        renderForDateChips();
+        input.addEventListener("change", function () {
+          var v = String(input.value || "").trim();
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+            input.value = forDate;
+            return;
+          }
+          /** Если ввели дату вне 14-дневного окна — мягко прижимаем к ближайшей допустимой. */
+          if (forDateOptions.length && (v > forDateOptions[0] || v < forDateOptions[forDateOptions.length - 1])) {
+            if (v > forDateOptions[0]) v = forDateOptions[0];
+            else v = forDateOptions[forDateOptions.length - 1];
+            input.value = v;
+          }
+          if (v === forDate) return;
+          forDate = v;
+          syncForDateUi();
+          loadOverview();
+        });
+      })();
 
       (function processesFilterFieldVisibility() {
         var FIELD_GROUPS = [

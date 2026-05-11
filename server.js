@@ -935,7 +935,14 @@ async function processAutoSyncQueue() {
                 console.log('[AUTO SYNC] Queue start: marketplaces');
                 await startAutoSyncRun('marketplaces', triggerType);
                 if (typeof exportsMarketplacesRouterFactory.triggerSync === 'function') {
-                    const startRes = await exportsMarketplacesRouterFactory.triggerSync('all');
+                    const slot =
+                        triggerType === 'schedule'
+                            ? String(appSettings.auto_sync_marketplaces_time || '05:00').slice(0, 5)
+                            : '';
+                    const startRes = await exportsMarketplacesRouterFactory.triggerSync('all', {
+                        triggerType,
+                        scheduleSlotTime: slot,
+                    });
                     if (startRes && startRes.started === false && startRes.reason !== 'already_running') {
                         throw new Error(startRes.error || startRes.reason || 'Не удалось запустить обновление маркетплейсов');
                     }
@@ -1152,6 +1159,7 @@ initDB().then(() => {
     });
     app.use('/api/settings', require('./routes/settings')(db, appSettings));
     app.use('/api/exports/marketplaces', exportsMarketplacesRouterFactory(db, appSettings));
+    app.use('/api/exports/dimensions', require('./routes/dimensions')(db, appSettings));
     app.use('/api/exports/huckster', exportsHucksterRouterFactory(db, appSettings));
     app.use('/api/projects', require('./routes/projects')(db, appSettings));
     pagesRouter = pagesRouterFactory(db, appSettings);
@@ -1192,6 +1200,37 @@ initDB().then(() => {
             const selectedSiteIdRaw = req.query.my_site_id;
             const selectedSiteId = selectedSiteIdRaw ? parseInt(selectedSiteIdRaw, 10) : null;
 
+            /**
+             * «За день» — выбор календарной даты в МСК.
+             * По умолчанию — сегодня. Ограничиваем 14 днями назад (история процессов).
+             */
+            const PROCESSES_DATE_WINDOW_DAYS = 14;
+            const moscowToday = getMoscowNowParts().date; // YYYY-MM-DD по МСК
+            const moscowDateOf = (ts) => {
+                if (!ts) return '';
+                try {
+                    return new Date(ts).toLocaleDateString('en-CA', { timeZone: 'Europe/Moscow' });
+                } catch (_) {
+                    return '';
+                }
+            };
+            const isMoscowDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || ''));
+            const requestedForDateRaw = String(req.query.for_date || '').trim();
+            /** Список допустимых дат: сегодня и 14 дней назад. */
+            const forDateOptions = [];
+            {
+                const todayMs = new Date(`${moscowToday}T12:00:00+03:00`).getTime();
+                for (let i = 0; i < PROCESSES_DATE_WINDOW_DAYS; i += 1) {
+                    const d = new Date(todayMs - i * 86400000)
+                        .toLocaleDateString('en-CA', { timeZone: 'Europe/Moscow' });
+                    forDateOptions.push(d);
+                }
+            }
+            const forDate = isMoscowDate(requestedForDateRaw) && forDateOptions.includes(requestedForDateRaw)
+                ? requestedForDateRaw
+                : moscowToday;
+            const isToday = forDate === moscowToday;
+
             const globalSync = {
                 active: Boolean(syncState.active),
                 processed: Number(syncState.processed || 0),
@@ -1199,9 +1238,17 @@ initDB().then(() => {
                 message: syncState.message || ''
             };
 
-            const moysklad = typeof moyskladRouterFactory.getJobState === 'function'
+            const moyskladState = typeof moyskladRouterFactory.getJobState === 'function'
                 ? moyskladRouterFactory.getJobState()
                 : { active: false, done: false, processed: 0, total: 0, message: 'Недоступно', logs: [], updatedAt: null };
+            /**
+             * Текущая сессия в памяти процесса релевантна только когда выбран сегодняшний день
+             * (она про текущий процесс, дату не различает). На других днях — отдаём пустой набор,
+             * чтобы фронт не показывал не относящиеся к выбранному дню строки.
+             */
+            const moysklad = isToday
+                ? moyskladState
+                : { ...moyskladState, logs: [] };
             const mskNow = getMoscowNowParts();
             const autoSync = {
                 now_moscow_time: mskNow.time,
@@ -1227,13 +1274,22 @@ initDB().then(() => {
             let autoSyncRuns = [];
             try {
                 await ensureAutoSyncRunsTable();
-                const [runs] = await db.query(`
-                    SELECT id, task_type, trigger_type, started_at, finished_at, status, message
-                    FROM auto_sync_runs
-                    ORDER BY id DESC
-                    LIMIT 20
-                `);
-                autoSyncRuns = runs;
+                /**
+                 * Берём окно с запасом по UTC, чтобы поймать запуски, чей московский календарный день
+                 * совпадает с выбранным forDate, независимо от session timezone MySQL.
+                 */
+                const [runs] = await db.query(
+                    `SELECT id, task_type, trigger_type, started_at, finished_at, status, message
+                     FROM auto_sync_runs
+                     WHERE started_at >= DATE_SUB(?, INTERVAL 1 DAY)
+                       AND started_at < DATE_ADD(?, INTERVAL 2 DAY)
+                     ORDER BY id DESC
+                     LIMIT 500`,
+                    [forDate, forDate]
+                );
+                autoSyncRuns = (Array.isArray(runs) ? runs : []).filter(
+                    (r) => moscowDateOf(r.started_at) === forDate
+                );
             } catch (_) {}
 
             const [queueRows] = await db.query('SELECT status, COUNT(*) AS cnt FROM pages GROUP BY status');
@@ -1271,12 +1327,25 @@ initDB().then(() => {
             };
 
             if (effectiveSiteId) {
+                /**
+                 * Берём последнюю задачу сопоставления для сайта, чей старт пришёлся на выбранный
+                 * день в МСК. Окно по started_at — с запасом ±1 день, чтобы не зависеть от
+                 * session timezone MySQL.
+                 */
                 const [jobs] = await db.query(
-                    'SELECT * FROM matching_jobs WHERE my_site_id = ? ORDER BY id DESC LIMIT 1',
-                    [effectiveSiteId]
+                    `SELECT * FROM matching_jobs
+                     WHERE my_site_id = ?
+                       AND started_at >= DATE_SUB(?, INTERVAL 1 DAY)
+                       AND started_at < DATE_ADD(?, INTERVAL 2 DAY)
+                     ORDER BY id DESC
+                     LIMIT 20`,
+                    [effectiveSiteId, forDate, forDate]
                 );
-                if (jobs.length) {
-                    const job = jobs[0];
+                const jobsOfDay = (Array.isArray(jobs) ? jobs : []).filter(
+                    (j) => moscowDateOf(j.started_at) === forDate
+                );
+                if (jobsOfDay.length) {
+                    const job = jobsOfDay[0];
                     const [logs] = await db.query(
                         'SELECT message, created_at FROM matching_job_logs WHERE job_id = ? ORDER BY id DESC LIMIT 20',
                         [job.id]
@@ -1306,6 +1375,10 @@ initDB().then(() => {
                         }),
                         canRetry: job.status === 'failed' || job.status === 'completed'
                     };
+                } else {
+                    matches.message = isToday
+                        ? 'Сегодня задач сопоставления ещё не было'
+                        : 'За выбранный день задач сопоставления не было';
                 }
             }
 
@@ -1317,7 +1390,13 @@ initDB().then(() => {
             }
 
             let moyskladPersistedLogs = [];
-            if (typeof moyskladRouterFactory.fetchMsSyncPersistedLogs === 'function') {
+            if (typeof moyskladRouterFactory.fetchMsSyncPersistedLogsForDate === 'function') {
+                try {
+                    moyskladPersistedLogs = await moyskladRouterFactory.fetchMsSyncPersistedLogsForDate(db, forDate);
+                } catch (_) {
+                    moyskladPersistedLogs = [];
+                }
+            } else if (typeof moyskladRouterFactory.fetchMsSyncPersistedLogs === 'function') {
                 try {
                     moyskladPersistedLogs = await moyskladRouterFactory.fetchMsSyncPersistedLogs(db, 50);
                 } catch (_) {
@@ -1327,6 +1406,10 @@ initDB().then(() => {
 
             return res.json({
                 refreshedAt: new Date().toISOString(),
+                forDate,
+                forDateOptions,
+                moscowToday,
+                isToday,
                 globalSync,
                 moysklad,
                 moyskladPersistedLogs,

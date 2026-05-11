@@ -582,6 +582,59 @@
         });
       }
 
+      // Панель «📏 Ширины»: список «<лейбл колонки> <input number px>» по индексу колонки
+      // (my-products работает с шириной по индексу, а не по ключу — см. applyColumnWidthByIndex).
+      // Использует ту же связку (columnWidths + applyColumnWidthByIndex + userColWidthKey),
+      // что drag-резайзер на правом крае <th>, поэтому изменения мгновенно видны и сохраняются.
+      function renderMpWidthControls() {
+        var list = document.getElementById("dg-mp-widths-list");
+        if (!list) return;
+        list.innerHTML = "";
+        var headers = getHeaderCells();
+        headers.forEach(function (th, index) {
+          if (!th) return;
+          if (th.style.display === "none") return; // скрытые колонки в списке не показываем
+          var label = (th.textContent || "").replace(/\s+/g, " ").trim() || ("Колонка " + (index + 1));
+          var current = Number(columnWidths[index] || 0);
+          if (!Number.isFinite(current) || current <= 0) {
+            var rect = th.getBoundingClientRect();
+            current = rect && rect.width ? Math.round(rect.width) : 120;
+          }
+          var wrap = document.createElement("label");
+          var span = document.createElement("span");
+          span.textContent = label;
+          span.style.flex = "1 1 auto";
+          span.style.overflow = "hidden";
+          span.style.textOverflow = "ellipsis";
+          span.style.whiteSpace = "nowrap";
+          var input = document.createElement("input");
+          input.type = "number";
+          input.className = "form-control form-control-sm";
+          input.min = "80";
+          input.max = "900";
+          input.step = "10";
+          input.value = String(current);
+          input.setAttribute("data-col-index", String(index));
+          input.addEventListener("change", function () {
+            var idx = parseInt(this.getAttribute("data-col-index"), 10);
+            var n = parseInt(this.value, 10);
+            if (!Number.isFinite(idx)) return;
+            if (!Number.isFinite(n)) {
+              this.value = String(columnWidths[idx] || 120);
+              return;
+            }
+            n = Math.max(80, Math.min(900, n));
+            applyColumnWidthByIndex(idx, n);
+            try { localStorage.setItem(userColWidthKey(), JSON.stringify(columnWidths || {})); } catch (e) {}
+            this.value = String(n);
+            scheduleMpFloatingHeaderUpdate();
+          });
+          wrap.appendChild(span);
+          wrap.appendChild(input);
+          list.appendChild(wrap);
+        });
+      }
+
       function onResizeMove(e) {
         if (!resizeState) return;
         var delta = e.clientX - resizeState.startX;
@@ -1610,13 +1663,60 @@
         } catch (e) {}
         var toggle = document.getElementById("dg-mp-columns-toggle");
         var panel = document.getElementById("dg-mp-columns-panel");
+        var panelsWrap = document.getElementById("dg-mp-toolbox-panels");
         var btnAll = document.getElementById("dg-mp-columns-all");
         var btnNone = document.getElementById("dg-mp-columns-none");
         var btnDef = document.getElementById("dg-mp-columns-default");
+        var widthsToggle = document.getElementById("dg-mp-widths-toggle");
+        var widthsPanel = document.getElementById("dg-mp-widths-panel");
+        var widthsDefault = document.getElementById("dg-mp-widths-default");
+        function syncWrap() {
+          if (!panelsWrap) return;
+          var open = panel.classList.contains("open") || (widthsPanel && widthsPanel.classList.contains("open"));
+          panelsWrap.classList.toggle("d-none", !open);
+        }
         if (toggle && panel) {
-          toggle.addEventListener("click", function () {
+          toggle.addEventListener("click", function (e) {
+            e.preventDefault();
+            e.stopPropagation();
             panel.classList.toggle("open");
+            if (widthsPanel) widthsPanel.classList.remove("open");
+            syncWrap();
             renderColumnsPanel();
+          });
+        }
+        if (widthsToggle && widthsPanel) {
+          widthsToggle.addEventListener("click", function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            widthsPanel.classList.toggle("open");
+            panel.classList.remove("open");
+            if (widthsPanel.classList.contains("open")) renderMpWidthControls();
+            syncWrap();
+          });
+        }
+        document.addEventListener("click", function (e) {
+          if (!panel) return;
+          if (e.target.closest("#dg-mp-columns-panel")) return;
+          if (e.target.closest("#dg-mp-columns-toggle")) return;
+          if (e.target.closest("#dg-mp-widths-panel")) return;
+          if (e.target.closest("#dg-mp-widths-toggle")) return;
+          panel.classList.remove("open");
+          if (widthsPanel) widthsPanel.classList.remove("open");
+          syncWrap();
+        });
+
+        if (widthsDefault) {
+          widthsDefault.addEventListener("click", function () {
+            try {
+              Object.keys(columnWidths || {}).forEach(function (k) {
+                clearColumnIndexSizing(Number(k));
+              });
+            } catch (e) {}
+            columnWidths = {};
+            try { localStorage.removeItem(userColWidthKey()); } catch (e) {}
+            renderMpWidthControls();
+            scheduleMpFloatingHeaderUpdate();
           });
         }
         if (btnAll) {
@@ -1773,6 +1873,74 @@
           } catch (e) {}
           mpRefreshFloatingAfterLayout();
         });
+      })();
+
+      // «Свернуть/Развернуть» для card-body «Таблица товаров» — по эталону moysklad.
+      (function tableCardCollapse() {
+        var btn = document.getElementById("dg-mp-table-toggle");
+        var body = document.getElementById("dg-mp-table-body");
+        if (!btn || !body) return;
+        var STORAGE_KEY = "dg.my-products.table-card.collapsed.v1";
+        function apply() {
+          var c = false;
+          try { c = localStorage.getItem(STORAGE_KEY) === "1"; } catch (e) {}
+          if (c) {
+            body.style.display = "none";
+            btn.textContent = "Развернуть";
+          } else {
+            body.style.display = "";
+            btn.textContent = "Свернуть";
+          }
+        }
+        apply();
+        btn.addEventListener("click", function () {
+          var hidden = body.style.display === "none";
+          body.style.display = hidden ? "" : "none";
+          btn.textContent = hidden ? "Свернуть" : "Развернуть";
+          try { localStorage.setItem(STORAGE_KEY, hidden ? "0" : "1"); } catch (e) {}
+          if (typeof mpRefreshFloatingAfterLayout === "function") mpRefreshFloatingAfterLayout();
+        });
+      })();
+
+      // Зеркало умного поиска в card-header «Таблица товаров» — синхрон с #mp-f-smart.
+      (function bindHeaderSearchMirror() {
+        var primary = document.getElementById("mp-f-smart");
+        var mirror = document.getElementById("dg-mp-table-search-mirror");
+        if (!primary || !mirror) return;
+        var syncing = false;
+        function copy(from, to) {
+          if (syncing) return;
+          if (to.value === from.value) return;
+          syncing = true;
+          to.value = from.value;
+          to.dispatchEvent(new Event("input", { bubbles: true }));
+          syncing = false;
+        }
+        function apply() {
+          var btn = document.getElementById("btn-apply");
+          if (btn) btn.click();
+        }
+        primary.addEventListener("input", function () { copy(primary, mirror); });
+        mirror.addEventListener("input", function () { copy(mirror, primary); });
+        function bindKeys(el) {
+          el.addEventListener("keydown", function (e) {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              apply();
+            } else if (e.key === "Escape") {
+              if (!el.value) return;
+              el.value = "";
+              copy(el, el === primary ? mirror : primary);
+              apply();
+            }
+          });
+          el.addEventListener("search", function () {
+            copy(el, el === primary ? mirror : primary);
+            apply();
+          });
+        }
+        bindKeys(mirror);
+        copy(primary, mirror);
       })();
 
       (async function init() {

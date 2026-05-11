@@ -8,6 +8,39 @@
   <link rel="stylesheet" href="/static/css/main.989b22a9.css" />
     <!-- Сопоставление: таблицы в паритете с «Мои товары» / moysklad (внешний горизонтальный скролл, wrap overflow visible, сетка #e6e9ee / #f3f5f8, sticky thead). -->
   <style>
+    /* Toolbox-обёртка для панели «📏 Ширины» в card-header «Совпадения» (эталон moysklad). */
+    body[data-dg-active-nav="matches"] .datagon-columns-toolbox {
+      padding: 4px 0;
+    }
+    body[data-dg-active-nav="matches"] .datagon-columns-panel {
+      margin-top: 8px;
+      border-top: 1px dashed #d1d5db;
+      padding-top: 8px;
+      display: none;
+    }
+    body[data-dg-active-nav="matches"] .datagon-columns-panel.open {
+      display: block;
+    }
+    body[data-dg-active-nav="matches"] .datagon-columns-toolbox .dg-ms-widths-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 6px 10px;
+    }
+    body[data-dg-active-nav="matches"] .datagon-columns-toolbox .dg-ms-widths-grid label {
+      display: inline-flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 12px;
+      color: #374151;
+      margin: 0;
+    }
+    body[data-dg-active-nav="matches"] .datagon-columns-toolbox .dg-ms-widths-grid input[type="number"] {
+      width: 88px;
+      flex: 0 0 auto;
+    }
+  </style>
+  <style>
     body.datagon-vanilla-body[data-dg-active-nav="matches"] .app-main__inner,
     body[data-dg-active-nav="matches"] .app-main__inner {
       min-width: 0;
@@ -729,6 +762,16 @@
                           <li class="metismenu-item">
                             <a
                               class="metismenu-link"
+                              data-nav="exports-dimensions"
+                              href="/exports-dimensions.html"
+                              title="Реестр замеров габаритов товаров МойСклад"
+                            >
+                              <i class="metismenu-icon pe-7s-scissors"></i>Габариты
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
                               data-nav="exports-marketplaces-issues"
                               href="/exports-marketplaces-issues.html"
                               title="Товары МойСклад с проблемами публикации на маркетплейсах"
@@ -740,7 +783,6 @@
                       </li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="exports-huckster" href="/exports-huckster.html" title="Интеграция Huckster / e-teleport — матрица UID по магазинам"><i class="metismenu-icon pe-7s-cart"></i>Huckster</a></li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="exports-summary" href="/exports-summary.html" title="Сводка по менеджерам, подсветки НДС/габаритов, уведомления в чат"><i class="metismenu-icon pe-7s-note"></i>Сводка и синхронизация</a></li>
-                      <li class="metismenu-item"><a class="metismenu-link" data-nav="exports-dimensions" href="/exports-dimensions.html" title="Лист «Габариты»: проверки, сортировка, слияние в новые позиции"><i class="metismenu-icon pe-7s-scissors"></i>Габариты</a></li>
                     </ul>
                   </div>
                 </div>
@@ -905,18 +947,6 @@
                 <span class="badge bg-light text-muted border ms-2 d-none d-md-inline">Шаг 1</span>
               </div>
               <div class="d-flex align-items-center gap-2 ms-auto flex-shrink-0">
-                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-matches-step1-toggle">Свернуть</button>
-                <button
-                  type="button"
-                  class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1"
-                  id="dg-matches-filter-logic-toggle"
-                  aria-expanded="false"
-                  aria-controls="dg-matches-filter-logic"
-                  data-dg-tooltip="Справка: режим сопоставления и умный поиск"
-                >
-                  <i class="pe-7s-help1 btn-icon-wrapper" style="font-size: 1rem" aria-hidden="true"></i>
-                  <span class="d-none d-sm-inline">Логика фильтра</span>
-                </button>
                 <div class="dropdown">
                 <button
                   type="button"
@@ -951,6 +981,18 @@
                   </div>
                 </div>
                 </div>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1"
+                  id="dg-matches-filter-logic-toggle"
+                  aria-expanded="false"
+                  aria-controls="dg-matches-filter-logic"
+                  data-dg-tooltip="Справка: режим сопоставления и умный поиск"
+                >
+                  <i class="pe-7s-help1 btn-icon-wrapper" style="font-size: 1rem" aria-hidden="true"></i>
+                  <span class="d-none d-sm-inline">Логика фильтра</span>
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-matches-step1-toggle">Свернуть</button>
               </div>
             </div>
             <div class="card-body">
@@ -1147,15 +1189,26 @@
           </div>
 
           <div class="main-card mb-3 card">
-            <div class="card-header d-flex align-items-center justify-content-between gap-2">
-              <div class="d-flex align-items-center">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+              <div class="d-flex align-items-center flex-shrink-0">
                 <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
                 <span>Мои товары для ручного запуска</span>
               </div>
-              <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-matches-my-products-toggle">Свернуть</button>
+              <div class="d-flex align-items-center gap-2 flex-shrink-0">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-matches-my-widths-toggle" data-dg-tooltip="Ручная ширина каждой колонки в пикселях (или drag за правый край заголовка)">📏 Ширины</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-matches-my-products-toggle">Свернуть</button>
+              </div>
             </div>
             <div class="card-body">
               <div id="dg-matches-my-products-body">
+              <div class="datagon-columns-toolbox mb-2 d-none" id="dg-matches-my-toolbox-panels">
+                <div class="datagon-columns-panel" id="dg-matches-my-widths-panel">
+                  <div class="columns-actions mb-2">
+                    <button type="button" class="btn btn-sm" id="dg-matches-my-widths-default" data-dg-tooltip="Сбросить ширины колонок к значениям по умолчанию.">Ширины по умолчанию</button>
+                  </div>
+                  <div id="dg-matches-my-widths-list" class="dg-ms-widths-grid"></div>
+                </div>
+              </div>
               <div class="dg-matches-my-table-scroll-outer" style="width:100%;max-width:100%;overflow-x:auto;overflow-y:visible;-webkit-overflow-scrolling:touch">
                 <div class="table-responsive datagon-my-products-table-wrap" style="display:block;width:100%;max-width:100%;min-width:0;overflow:visible;position:relative">
                   <table id="dg-matches-my-main-table" class="table table-hover table-striped mb-0 datagon-my-products-table dg-ms-table dg-matches-my-table" style="width:max-content;min-width:100%;max-width:none;table-layout:fixed;border-collapse:collapse;border-spacing:0" data-dg-sticky="1">
@@ -1197,13 +1250,23 @@
 
           <div class="main-card mb-3 card">
             <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
-              <div class="d-flex align-items-center">
-                <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
-                <span>Совпадения</span>
-                <span class="badge bg-light text-muted border ms-2 d-none d-md-inline">Шаг 2</span>
+              <div class="d-flex align-items-center gap-3 flex-grow-1" style="min-width: 0">
+                <div class="d-flex align-items-center flex-shrink-0">
+                  <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
+                  <span>Совпадения</span>
+                  <span class="badge bg-light text-muted border ms-2 d-none d-md-inline">Шаг 2</span>
+                </div>
+                <div class="dg-matches-header-search" style="flex: 0 1 380px; min-width: 220px">
+                  <div class="input-group input-group-sm">
+                    <span class="input-group-text bg-white text-muted px-2" aria-hidden="true">🔎</span>
+                    <input type="search" class="form-control" id="dg-matches-table-search-mirror"
+                           placeholder="Умный фильтр (Enter — применить)"
+                           autocomplete="off"
+                           data-dg-tooltip='Зеркало основного «Умного фильтра по списку»: статус, тип, SKU, название, кто подтвердил. Enter — применить, Esc — очистить.' />
+                  </div>
+                </div>
               </div>
-              <div class="d-flex align-items-center gap-2 ms-auto flex-shrink-0">
-              <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-matches-step2-toggle">Свернуть</button>
+              <div class="d-flex align-items-center gap-2 flex-shrink-0">
               <div class="dropdown">
                 <button
                   type="button"
@@ -1238,10 +1301,20 @@
                   </div>
                 </div>
               </div>
+              <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-matches-widths-toggle" data-dg-tooltip="Ручная ширина каждой колонки в пикселях (или drag за правый край заголовка)">📏 Ширины</button>
+              <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-matches-step2-toggle">Свернуть</button>
               </div>
             </div>
             <div class="card-body">
               <div id="dg-matches-step2-body">
+              <div class="datagon-columns-toolbox mb-2 d-none" id="dg-matches-toolbox-panels">
+                <div class="datagon-columns-panel" id="dg-matches-widths-panel">
+                  <div class="columns-actions mb-2">
+                    <button type="button" class="btn btn-sm" id="dg-matches-widths-default" data-dg-tooltip="Сбросить ширины колонок к значениям по умолчанию.">Ширины по умолчанию</button>
+                  </div>
+                  <div id="dg-matches-widths-list" class="dg-ms-widths-grid"></div>
+                </div>
+              </div>
               <p class="small text-muted mb-2">
                 Ниже — только просмотр и фильтры списка совпадений. Режим «Параметры запуска» и «Мой сайт (запуск)» на состав строк в таблице не влияют.
                 Новый прогон сопоставления <strong>не стирает</strong> ожидающие результаты другого режима (например, после прогона по названию по-прежнему видны строки «По SKU» при фильтре «Все» или «По SKU»), кроме режима
@@ -1279,7 +1352,7 @@
                     </select>
                   </div>
                   <div class="col-12 col-sm-6 col-xl-2" data-dg-matches-list-field="limit">
-                    <label class="form-label mb-1 small text-uppercase text-muted" style="letter-spacing: 0.04em" for="dg-matches-limit">Лимит</label>
+                    <label class="form-label mb-1 small text-uppercase text-muted" style="letter-spacing: 0.04em" for="dg-matches-limit">Лимит списка</label>
                     <select class="form-select" id="dg-matches-limit">
                       <option value="50">50</option>
                       <option value="100" selected>100</option>
@@ -1443,11 +1516,11 @@
               </div>
               <div class="row g-2 align-items-end mb-2">
                 <div class="col-12 col-sm-6 col-md-4 col-lg-3">
-                  <label class="form-label mb-0 small text-uppercase text-muted" for="dg-manual-queue-limit">Лимит</label>
+                  <label class="form-label mb-0 small text-uppercase text-muted" for="dg-manual-queue-limit">Лимит очереди</label>
                   <select
                     class="form-select form-select-sm"
                     id="dg-manual-queue-limit"
-                    title="Сколько строк очереди загружать за раз (как «Лимит» в блоке «Совпадения»; на сервере до 300)"
+                    title="Сколько строк очереди ручного запуска загружать за раз (на сервере до 300). Отдельно от «Лимит списка» в блоке «Совпадения»."
                   >
                     <option value="50">50</option>
                     <option value="100" selected>100</option>
@@ -1544,12 +1617,13 @@
                       <th>Наш товар</th>
                       <th>SKU / название конк. (на момент отказа)</th>
                       <th>Заметка</th>
+                      <th style="width: 200px" title="Пользователь и момент времени, когда строка была перенесена в архив (нажата кнопка «В архив» в блоке ручного сопоставления).">Кто и когда перенёс в архив</th>
                       <th style="width: 120px">Действие</th>
                     </tr>
                   </thead>
                   <tbody id="dg-manual-archive-tbody">
                     <tr>
-                      <td colspan="5" class="text-muted small">Пусто.</td>
+                      <td colspan="6" class="text-muted small">Пусто.</td>
                     </tr>
                   </tbody>
                 </table>
@@ -2275,6 +2349,88 @@
         syncMatchesMyTableLayoutWidth();
       }
 
+      function clearMatchesMyColumnSizing(index) {
+        var col = document.querySelector("#dg-matches-my-main-table col.dg-matches-my-col-" + index);
+        if (col) col.style.width = "";
+        var headRow = document.getElementById("dg-matches-my-thead-row");
+        if (headRow && headRow.cells && headRow.cells[index]) {
+          var th = headRow.cells[index];
+          th.style.width = "";
+          th.style.minWidth = "";
+          th.style.maxWidth = "";
+        }
+        var tb = document.getElementById("dg-matches-my-products-tbody");
+        if (tb) {
+          Array.prototype.forEach.call(tb.rows || [], function (tr) {
+            if (!tr.cells || !tr.cells[index] || tr.cells[index].colSpan > 1) return;
+            var c = tr.cells[index];
+            c.style.width = "";
+            c.style.minWidth = "";
+            c.style.maxWidth = "";
+          });
+        }
+      }
+
+      var MATCHES_MY_COL_LABELS = [
+        "Выбор",
+        "ID / КОД",
+        "Артикул (SKU)",
+        "Название",
+        "Цена",
+        "Валюта",
+        "Обновлён",
+      ];
+      function renderMatchesMyWidthControls() {
+        var list = document.getElementById("dg-matches-my-widths-list");
+        if (!list) return;
+        list.innerHTML = "";
+        for (var i = 0; i < MATCHES_MY_COL_COUNT; i++) {
+          (function (idx) {
+            var label = MATCHES_MY_COL_LABELS[idx] || "Колонка " + (idx + 1);
+            var curStored = Number(matchesMyColWidths[idx] || 0);
+            var defW = MATCHES_MY_COL_DEFAULTS[idx] || 120;
+            var current =
+              Number.isFinite(curStored) && curStored > 0 ? curStored : defW;
+            var minW = idx === 0 ? 36 : 60;
+            var maxW = idx === 0 ? 80 : 900;
+            var wrap = document.createElement("label");
+            var span = document.createElement("span");
+            span.textContent = label;
+            span.style.flex = "1 1 auto";
+            span.style.overflow = "hidden";
+            span.style.textOverflow = "ellipsis";
+            span.style.whiteSpace = "nowrap";
+            var input = document.createElement("input");
+            input.type = "number";
+            input.className = "form-control form-control-sm";
+            input.min = String(minW);
+            input.max = String(maxW);
+            input.step = idx === 0 ? "1" : "10";
+            input.value = String(current);
+            input.setAttribute("data-my-col-index", String(idx));
+            input.addEventListener("change", function () {
+              var i2 = parseInt(this.getAttribute("data-my-col-index"), 10);
+              var n = parseInt(this.value, 10);
+              if (!Number.isFinite(i2)) return;
+              if (!Number.isFinite(n)) {
+                this.value = String(
+                  matchesMyColWidths[i2] != null ? matchesMyColWidths[i2] : MATCHES_MY_COL_DEFAULTS[i2],
+                );
+                return;
+              }
+              applyMatchesMyColumnWidth(i2, n);
+              try {
+                localStorage.setItem(userMatchesMyColWidthKey(), JSON.stringify(matchesMyColWidths || {}));
+              } catch (e) {}
+              this.value = String(matchesMyColWidths[i2] || MATCHES_MY_COL_DEFAULTS[i2]);
+            });
+            wrap.appendChild(span);
+            wrap.appendChild(input);
+            list.appendChild(wrap);
+          })(i);
+        }
+      }
+
       function applyStoredMatchesMyColWidths() {
         try {
           var raw = localStorage.getItem(userMatchesMyColWidthKey());
@@ -2302,6 +2458,10 @@
         try {
           localStorage.setItem(userMatchesMyColWidthKey(), JSON.stringify(matchesMyColWidths || {}));
         } catch (e) {}
+        try {
+          var wp = document.getElementById("dg-matches-my-widths-panel");
+          if (wp && wp.classList.contains("open")) renderMatchesMyWidthControls();
+        } catch (e2) {}
       }
 
       function ensureMatchesMyResizeGlobals() {
@@ -2803,6 +2963,77 @@
           if (matchesColWidths[i] != null) applyMatchesColumnWidth(i, matchesColWidths[i]);
         }
         syncMatchesTableLayoutWidth();
+      }
+
+      // Снять inline-ширины с конкретной колонки (нужно для сброса «Ширины по умолчанию»).
+      function clearMatchesColumnSizing(index) {
+        var col = document.querySelector("#dg-matches-list-table col.dg-matches-col-" + index);
+        if (col) col.style.width = "";
+        var headRow = document.querySelector("#dg-matches-list-table thead tr");
+        if (headRow && headRow.cells && headRow.cells[index]) {
+          var th = headRow.cells[index];
+          th.style.width = "";
+          th.style.minWidth = "";
+          th.style.maxWidth = "";
+        }
+        var tb = document.getElementById("dg-matches-tbody");
+        if (tb) {
+          Array.prototype.forEach.call(tb.rows || [], function (tr) {
+            if (!tr.cells || !tr.cells[index] || tr.cells[index].colSpan > 1) return;
+            var c = tr.cells[index];
+            c.style.width = "";
+            c.style.minWidth = "";
+            c.style.maxWidth = "";
+          });
+        }
+      }
+
+      // Панель «📏 Ширины» для таблицы «Совпадения»: 6 строк по индексу колонки
+      // (Статус / Тип / Схожесть / Мой товар / Конкурент / Действия). Та же связка
+      // с drag-резайзером (initMatchesColumnResizeHandles) и persisted matchesColWidths.
+      var MATCHES_COL_LABELS = ["Статус", "Тип", "Схожесть", "Мой товар", "Конкурент", "Действия"];
+      function renderMatchesWidthControls() {
+        var list = document.getElementById("dg-matches-widths-list");
+        if (!list) return;
+        list.innerHTML = "";
+        for (var i = 0; i < 6; i++) {
+          (function (idx) {
+            var label = MATCHES_COL_LABELS[idx] || ("Колонка " + (idx + 1));
+            var current = Number(matchesColWidths[idx] || 0);
+            if (!Number.isFinite(current) || current <= 0) current = MATCHES_COL_DEFAULTS[idx] || 120;
+            var wrap = document.createElement("label");
+            var span = document.createElement("span");
+            span.textContent = label;
+            span.style.flex = "1 1 auto";
+            span.style.overflow = "hidden";
+            span.style.textOverflow = "ellipsis";
+            span.style.whiteSpace = "nowrap";
+            var input = document.createElement("input");
+            input.type = "number";
+            input.className = "form-control form-control-sm";
+            input.min = "60";
+            input.max = "900";
+            input.step = "10";
+            input.value = String(current);
+            input.setAttribute("data-col-index", String(idx));
+            input.addEventListener("change", function () {
+              var i2 = parseInt(this.getAttribute("data-col-index"), 10);
+              var n = parseInt(this.value, 10);
+              if (!Number.isFinite(i2)) return;
+              if (!Number.isFinite(n)) {
+                this.value = String(matchesColWidths[i2] || MATCHES_COL_DEFAULTS[i2] || 120);
+                return;
+              }
+              n = Math.max(60, Math.min(900, n));
+              applyMatchesColumnWidth(i2, n);
+              try { localStorage.setItem(userMatchesColWidthKey(), JSON.stringify(matchesColWidths || {})); } catch (e) {}
+              this.value = String(n);
+            });
+            wrap.appendChild(span);
+            wrap.appendChild(input);
+            list.appendChild(wrap);
+          })(i);
+        }
       }
 
       function onMatchesResizeMove(e) {
@@ -3563,6 +3794,97 @@
 
       bindMatchesPersistedSectionCollapse(MATCHES_STEP_LAUNCH_COLLAPSE_KEY, "dg-matches-step1-body", "dg-matches-step1-toggle");
       bindMatchesPersistedSectionCollapse(MATCHES_STEP_LIST_COLLAPSE_KEY, "dg-matches-step2-body", "dg-matches-step2-toggle");
+
+      // Панель «📏 Ширины» в card-header «Совпадения»: открывает/закрывает
+      // обёртку #dg-matches-toolbox-panels (с классом d-none) и прорисовывает
+      // список «лейбл → input(px)» по каждой из 6 колонок таблицы.
+      (function bindMatchesWidthsPanel() {
+        var btn = document.getElementById("dg-matches-widths-toggle");
+        var panel = document.getElementById("dg-matches-widths-panel");
+        var wrap = document.getElementById("dg-matches-toolbox-panels");
+        var defBtn = document.getElementById("dg-matches-widths-default");
+        if (!btn || !panel || !wrap) return;
+        function syncWrap() {
+          wrap.classList.toggle("d-none", !panel.classList.contains("open"));
+        }
+        btn.addEventListener("click", function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          panel.classList.toggle("open");
+          if (panel.classList.contains("open")) renderMatchesWidthControls();
+          syncWrap();
+        });
+        document.addEventListener("click", function (e) {
+          if (e.target.closest("#dg-matches-widths-panel")) return;
+          if (e.target.closest("#dg-matches-widths-toggle")) return;
+          if (!panel.classList.contains("open")) return;
+          panel.classList.remove("open");
+          syncWrap();
+        });
+        if (defBtn) {
+          defBtn.addEventListener("click", function () {
+            try {
+              for (var i = 0; i < 6; i++) clearMatchesColumnSizing(i);
+            } catch (e) {}
+            matchesColWidths = {};
+            try { localStorage.removeItem(userMatchesColWidthKey()); } catch (e2) {}
+            // Применить дефолты заново, чтобы syncMatchesTableLayoutWidth() пересчитал общую ширину.
+            for (var j = 0; j < 6; j++) applyMatchesColumnWidth(j, MATCHES_COL_DEFAULTS[j]);
+            // Пользовательские ширины НЕ хранятся (стали = дефолтам, без записи), затем стираем «занулённые»
+            // ключи и считаем, что все колонки в дефолте.
+            matchesColWidths = {};
+            try { localStorage.removeItem(userMatchesColWidthKey()); } catch (e3) {}
+            renderMatchesWidthControls();
+          });
+        }
+      })();
+
+      // Панель «📏 Ширины» для таблицы «Мои товары для ручного запуска»: 7 колонок,
+      // те же persisted matchesMyColWidths и drag на заголовке (initMatchesMyColumnResizeHandles).
+      (function bindMatchesMyWidthsPanel() {
+        var btn = document.getElementById("dg-matches-my-widths-toggle");
+        var panel = document.getElementById("dg-matches-my-widths-panel");
+        var wrap = document.getElementById("dg-matches-my-toolbox-panels");
+        var defBtn = document.getElementById("dg-matches-my-widths-default");
+        if (!btn || !panel || !wrap) return;
+        function syncWrap() {
+          wrap.classList.toggle("d-none", !panel.classList.contains("open"));
+        }
+        btn.addEventListener("click", function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          panel.classList.toggle("open");
+          if (panel.classList.contains("open")) renderMatchesMyWidthControls();
+          syncWrap();
+        });
+        document.addEventListener("click", function (e) {
+          if (e.target.closest("#dg-matches-my-widths-panel")) return;
+          if (e.target.closest("#dg-matches-my-widths-toggle")) return;
+          if (!panel.classList.contains("open")) return;
+          panel.classList.remove("open");
+          syncWrap();
+        });
+        if (defBtn) {
+          defBtn.addEventListener("click", function () {
+            try {
+              for (var i = 0; i < MATCHES_MY_COL_COUNT; i++) clearMatchesMyColumnSizing(i);
+            } catch (e0) {}
+            matchesMyColWidths = {};
+            try {
+              localStorage.removeItem(userMatchesMyColWidthKey());
+            } catch (e1) {}
+            for (var j = 0; j < MATCHES_MY_COL_COUNT; j++) {
+              applyMatchesMyColumnWidth(j, MATCHES_MY_COL_DEFAULTS[j]);
+            }
+            matchesMyColWidths = {};
+            try {
+              localStorage.removeItem(userMatchesMyColWidthKey());
+            } catch (e2) {}
+            renderMatchesMyWidthControls();
+          });
+        }
+      })();
+
       bindMatchesPersistedSectionCollapse(MATCHES_STEP_MANUAL_COLLAPSE_KEY, "dg-matches-step3-body", "dg-matches-step3-toggle");
       bindMatchesPersistedSectionCollapse(MATCHES_STEP_ARCHIVE_COLLAPSE_KEY, "dg-matches-step4-body", "dg-matches-step4-toggle");
 
@@ -3837,7 +4159,7 @@
               { key: "list_competitor", title: "Конкурент (список)", hint: "Фильтр по project_id конкурента на сервере." },
               { key: "smart", title: "Умный фильтр", hint: "" },
               { key: "status", title: "Статус", hint: "" },
-              { key: "limit", title: "Лимит", hint: "" },
+              { key: "limit", title: "Лимит списка", hint: "Сколько строк показывать в карточке «Совпадения» (отдельно от «Лимит очереди» в ручном запуске)" },
               { key: "tf_my_sku", title: "Мой SKU", hint: "" },
               { key: "tf_comp_sku", title: "SKU конк.", hint: "" },
               {
@@ -4747,7 +5069,7 @@
           if (!listSiteId()) {
             var tr0 = document.createElement("tr");
             var td0 = document.createElement("td");
-            td0.colSpan = 5;
+            td0.colSpan = 6;
             td0.className = "text-muted small";
             td0.textContent = "Выберите «Мой сайт (список)».";
             tr0.appendChild(td0);
@@ -4757,7 +5079,7 @@
           if (!rows || !rows.length) {
             var tr1 = document.createElement("tr");
             var td1 = document.createElement("td");
-            td1.colSpan = 5;
+            td1.colSpan = 6;
             td1.className = "text-muted small";
             td1.textContent = "Архив пуст.";
             tr1.appendChild(td1);
@@ -4790,6 +5112,19 @@
             tdN.className = "small text-muted";
             tdN.textContent = row.note || "—";
             tr.appendChild(tdN);
+            var tdBy = document.createElement("td");
+            tdBy.className = "small text-muted";
+            var byHtml = "";
+            if (row.archived_by) {
+              byHtml += "<div class=\"text-body\">" + String(row.archived_by) + "</div>";
+            } else {
+              byHtml += "<div class=\"text-body\">—</div>";
+            }
+            if (row.created_at) {
+              byHtml += "<div class=\"text-muted small\">" + formatDateTime(row.created_at) + "</div>";
+            }
+            tdBy.innerHTML = byHtml;
+            tr.appendChild(tdBy);
             var tdA = document.createElement("td");
             var bDel = document.createElement("button");
             bDel.type = "button";
@@ -5112,6 +5447,49 @@
           };
         }
         bindManual();
+      })();
+
+      // Зеркало умного поиска в card-header «Совпадения» — двусторонняя синхронизация
+      // с #dg-matches-smart-filter; Enter — кликает «Применить» (#dg-matches-filters-apply),
+      // Esc — очищает оба поля и применяет (правило datagon-table-filter-apply.mdc).
+      (function bindHeaderSearchMirror() {
+        var primary = document.getElementById("dg-matches-smart-filter");
+        var mirror = document.getElementById("dg-matches-table-search-mirror");
+        if (!primary || !mirror) return;
+        var syncing = false;
+        function copy(from, to) {
+          if (syncing) return;
+          if (to.value === from.value) return;
+          syncing = true;
+          to.value = from.value;
+          to.dispatchEvent(new Event("input", { bubbles: true }));
+          syncing = false;
+        }
+        function apply() {
+          var btn = document.getElementById("dg-matches-filters-apply");
+          if (btn) btn.click();
+        }
+        primary.addEventListener("input", function () { copy(primary, mirror); });
+        mirror.addEventListener("input", function () { copy(mirror, primary); });
+        function bindKeys(el) {
+          el.addEventListener("keydown", function (e) {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              apply();
+            } else if (e.key === "Escape") {
+              if (!el.value) return;
+              el.value = "";
+              copy(el, el === primary ? mirror : primary);
+              apply();
+            }
+          });
+          el.addEventListener("search", function () {
+            copy(el, el === primary ? mirror : primary);
+            apply();
+          });
+        }
+        bindKeys(mirror);
+        copy(primary, mirror);
       })();
     })();
   </script>
