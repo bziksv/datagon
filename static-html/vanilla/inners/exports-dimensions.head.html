@@ -1,9 +1,11 @@
   <style>
-    /* Эталон поведения таблицы для /exports-dimensions.html.
-       Контракты: datagon-table-behavior-lock.mdc, datagon-list-page-baseline-moysklad.mdc.
-       Схема — как Ozon/WB/Я.Маркет (shop): обёртки без overflow-кадра + native sticky на <th>
-       с top: var(--dg-table-sticky-top, 60px). На странице нет горизонтального скролла
-       внутри карточки: таблица узкая (4 колонки), table-layout: fixed + min-width на th. */
+    /* /exports-dimensions.html — wide-таблица (10 колонок).
+       Используем ветку «Мои товары / Проблемы с товарами» из
+       datagon-table-behavior-lock.mdc: внешний `.dg-dim-table-scroll-outer`
+       с overflow-x: auto держит горизонтальный скролл внутри карточки;
+       внутренний `.table-responsive` — overflow: visible !important,
+       чтобы sticky-paritet с my-products работал. Плавающий <thead>
+       сдвигается через translate3d в exports-dimensions.scripts.html. */
     body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .app-main__outer,
     body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .app-main__inner {
       min-width: 0;
@@ -14,18 +16,16 @@
       min-width: 0;
       max-width: 100%;
     }
-    /* Обёртки без overflow: иначе CSS sticky на <th> прицепится к scrolling-контейнеру
-       и заголовки уедут вверх вместе с прокруткой карточки (см. рулу
-       datagon-table-behavior-lock.mdc — раздел маркетплейсы shop). */
-    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-scroll {
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-table-scroll-outer {
       width: 100%;
       max-width: 100%;
       min-width: 0;
       box-sizing: border-box;
-      overflow: visible !important;
+      overflow-x: auto;
+      overflow-y: visible;
     }
     body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions']
-      .dg-dim-scroll
+      .dg-dim-table-scroll-outer
       > .table-responsive {
       width: 100%;
       max-width: 100%;
@@ -35,18 +35,18 @@
       max-height: none !important;
     }
     body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions']
-      .dg-dim-scroll
+      .dg-dim-table-scroll-outer
       > .table-responsive,
     body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions']
-      .dg-dim-scroll
+      .dg-dim-table-scroll-outer
       > .table-responsive
       > table {
-      transform: none !important;
       filter: none !important;
       perspective: none !important;
     }
     body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-table {
-      width: 100%;
+      width: max-content;
+      min-width: 100%;
       max-width: none;
       border-collapse: collapse;
       border-spacing: 0;
@@ -55,12 +55,12 @@
       line-height: 1.25;
       font-variant-numeric: tabular-nums;
     }
-    /* Плавающий заголовок: native sticky на каждом <th>, top — высота app-header
-       через CSS-переменную --dg-table-sticky-top (выставляется JS в
-       exports-dimensions.scripts.html). Это эталон shop-маркетплейсов. */
+    /* Базовая sticky на <th> страховкой — реальное «плавание» делает JS на `thead`.
+       Без этого `top: 0` thead будет приклеен к внутреннему scrollport
+       при горизонтальном скролле; высоту app-header нагоняет JS через translate3d. */
     body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-table thead th {
       position: sticky;
-      top: var(--dg-table-sticky-top, 60px);
+      top: 0;
       z-index: 25;
       background: #f8f9fa;
       color: #374151;
@@ -99,6 +99,21 @@
     body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-table tbody td.dg-dim-cell-name {
       white-space: normal;
       word-break: break-word;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-table tbody td.dg-dim-cell-num {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-table tbody td.dg-dim-cell-packing {
+      white-space: normal;
+      word-break: break-word;
+    }
+    /* Ячейки, которым разрешён перенос текста (Кто замерял / Дата замера) —
+       позволяет сужать колонки и переносить значение в две строки. */
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-table tbody td.dg-dim-cell-wrap {
+      white-space: normal;
+      word-break: break-word;
+      line-height: 1.2;
     }
     body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-table tbody tr:nth-child(even) td {
       background: #fafbfc;
@@ -150,5 +165,502 @@
     }
     body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-status-hint:empty {
       display: none !important;
+    }
+
+    /* Toolbox «🧩 Столбцы» / «📏 Ширины» — паритет с moysklad.head.html */
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .datagon-columns-toolbox {
+      margin: 0 0 10px 0;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      background: #fafbfc;
+      padding: 8px;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .datagon-columns-toolbox .btn {
+      border-color: #d1d5db !important;
+      box-shadow: none !important;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .datagon-columns-panel {
+      margin-top: 8px;
+      border-top: 1px dashed #d1d5db;
+      padding-top: 8px;
+      display: none;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .datagon-columns-panel.open {
+      display: block;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .datagon-columns-panel .columns-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 6px 10px;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .datagon-columns-panel .columns-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .datagon-columns-panel label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: #374151;
+      user-select: none;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .datagon-columns-toolbox .dg-dim-widths-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 6px 10px;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .datagon-columns-toolbox .dg-dim-widths-grid label {
+      display: inline-flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 12px;
+      color: #374151;
+      margin: 0;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .datagon-columns-toolbox .dg-dim-widths-grid input[type='number'] {
+      width: 88px;
+      flex: 0 0 auto;
+    }
+
+    /* === Редактируемые ячейки замера ============================================ */
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-cell-edit {
+      padding: 0.15rem 0.25rem;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-input {
+      width: 100%;
+      max-width: 100%;
+      border: 1px solid transparent;
+      background: transparent;
+      padding: 2px 4px;
+      font: inherit;
+      color: inherit;
+      border-radius: 4px;
+      transition: border-color 80ms, background-color 80ms;
+      box-sizing: border-box;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-input[type='number'] {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      -moz-appearance: textfield;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-input[type='number']::-webkit-outer-spin-button,
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-input[type='number']::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-input:hover {
+      border-color: #d1d5db;
+      background: #fff;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-input:focus {
+      border-color: #6c8bff;
+      background: #fff;
+      outline: 0;
+      box-shadow: 0 0 0 2px rgba(108, 139, 255, 0.16);
+    }
+    /* Источник значения: визуально подсвечиваем «откуда взялось». */
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-input[data-source='override'] {
+      color: #14532d;
+      font-weight: 500;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-input[data-source='ms'] {
+      color: #1e40af;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-input[data-source='parsed'] {
+      color: #b45309;
+      font-style: italic;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-input[data-source='disabled'] {
+      background: repeating-linear-gradient(135deg, #f3f4f6 0 6px, #fafbfc 6px 12px);
+      color: #9ca3af;
+      cursor: not-allowed;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-input[data-saving='1'] {
+      border-color: #f59e0b;
+      background: #fffbeb;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-input[data-saved='ok'] {
+      border-color: #10b981;
+      background: #ecfdf5;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-input[data-saved='err'] {
+      border-color: #dc2626;
+      background: #fef2f2;
+    }
+    /* dirty = пользователь набрал значение в инпуте, но ещё не был blur/Enter (saveCell
+       не выполнен). Используется чтобы видеть «несохранённые» правки и собирать их при
+       нажатии кнопки «↗ В МС» (per-row или «всё на странице»). */
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-input[data-dirty='1'] {
+      border-color: #f59e0b !important;
+      background: #fff7ed !important;
+      box-shadow: inset 2px 0 0 #f59e0b;
+    }
+    /* <select> для «Тип упаковки» — выглядит как обычный текстовый input, но с каретом. */
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] select.dg-dim-input {
+      padding-right: 18px;
+      -webkit-appearance: none;
+      -moz-appearance: none;
+      appearance: none;
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'></polyline></svg>");
+      background-repeat: no-repeat;
+      background-position: right 2px center;
+      background-size: 12px 12px;
+      cursor: pointer;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] select.dg-dim-input[data-source='disabled'] {
+      cursor: not-allowed;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-source-badge {
+      display: inline-block;
+      font-size: 9px;
+      line-height: 1;
+      padding: 2px 4px;
+      border-radius: 4px;
+      margin-left: 4px;
+      vertical-align: middle;
+      letter-spacing: 0.02em;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-source-badge.src-override {
+      background: #dcfce7;
+      color: #14532d;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-source-badge.src-ms {
+      background: #dbeafe;
+      color: #1e40af;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-source-badge.src-parsed {
+      background: #fef3c7;
+      color: #92400e;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-cell-name .dg-dim-log-btn {
+      background: transparent;
+      border: 1px solid transparent;
+      padding: 0 4px;
+      font-size: 11px;
+      line-height: 1;
+      color: #4b5563;
+      cursor: pointer;
+      border-radius: 4px;
+      margin-left: 6px;
+      vertical-align: middle;
+      white-space: nowrap;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-cell-name .dg-dim-log-btn:hover {
+      background: #eef2ff;
+      border-color: #c7d2fe;
+      color: #3730a3;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-cell-name .dg-dim-log-btn:focus {
+      outline: 2px solid #6c8bff;
+      outline-offset: 1px;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-cell-name .dg-dim-sync-btn {
+      background: #ecfdf5;
+      border: 1px solid #a7f3d0;
+      padding: 0 6px;
+      font-size: 11px;
+      line-height: 1.6;
+      color: #047857;
+      cursor: pointer;
+      border-radius: 4px;
+      margin-left: 6px;
+      vertical-align: middle;
+      white-space: nowrap;
+      transition: background-color 80ms, border-color 80ms, color 80ms;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-cell-name .dg-dim-sync-btn:hover {
+      background: #d1fae5;
+      border-color: #6ee7b7;
+      color: #065f46;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-cell-name .dg-dim-sync-btn:focus {
+      outline: 2px solid #10b981;
+      outline-offset: 1px;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-cell-name .dg-dim-sync-btn[data-dg-empty='1'] {
+      background: #f9fafb;
+      border-color: #e5e7eb;
+      color: #9ca3af;
+      cursor: not-allowed;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-cell-name .dg-dim-sync-btn[data-state='pending'] {
+      background: #fef3c7;
+      border-color: #fcd34d;
+      color: #92400e;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-cell-name .dg-dim-sync-btn[data-state='ok'] {
+      background: #bbf7d0;
+      border-color: #4ade80;
+      color: #065f46;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-cell-name .dg-dim-sync-btn[data-state='err'] {
+      background: #fee2e2;
+      border-color: #fca5a5;
+      color: #991b1b;
+    }
+    /* Глобальная кнопка балк-синка — состояния pending/ok/err. */
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] #dg-dim-sync-all-db[data-state='pending'] {
+      background: #fef3c7;
+      border-color: #fcd34d;
+      color: #92400e;
+      pointer-events: none;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] #dg-dim-sync-all-db[data-state='ok'] {
+      background: #ecfdf5;
+      border-color: #6ee7b7;
+      color: #047857;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] #dg-dim-sync-all-db[data-state='err'] {
+      background: #fef2f2;
+      border-color: #fca5a5;
+      color: #991b1b;
+    }
+
+    /* === Модальный оверлей «Лог замера» ========================================= */
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-log-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 1080;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-log-overlay .dg-dim-log-backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.55);
+      backdrop-filter: blur(2px);
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-log-overlay .dg-dim-log-panel {
+      position: relative;
+      width: min(900px, 100%);
+      max-height: calc(100vh - 48px);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-log-body {
+      overflow: auto;
+      max-height: calc(100vh - 48px - 60px);
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-log-body table {
+      width: 100%;
+      margin: 0;
+      border-collapse: collapse;
+      font-size: 0.8rem;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-log-body thead th {
+      position: sticky;
+      top: 0;
+      background: #f8f9fa;
+      border-bottom: 1px solid #dee2e6;
+      padding: 0.4rem 0.65rem;
+      font-weight: 600;
+      color: #374151;
+      text-align: left;
+      z-index: 1;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-log-body tbody td {
+      border-bottom: 1px solid #f3f4f6;
+      padding: 0.4rem 0.65rem;
+      vertical-align: top;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-log-body tbody tr:nth-child(even) td {
+      background: #fafbfc;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-log-old,
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-log-new {
+      font-variant-numeric: tabular-nums;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-log-old {
+      color: #9ca3af;
+      text-decoration: line-through;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-log-arrow {
+      color: #6b7280;
+      margin: 0 6px;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-log-new {
+      color: #14532d;
+      font-weight: 500;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-log-action {
+      display: inline-block;
+      font-size: 10px;
+      padding: 1px 6px;
+      border-radius: 4px;
+      background: #e5e7eb;
+      color: #374151;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-log-action.action-set {
+      background: #dbeafe;
+      color: #1e40af;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-log-action.action-delete {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-log-action.action-sync_ms {
+      background: #dcfce7;
+      color: #166534;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-log-action.action-sync_ms_skip {
+      background: #fef3c7;
+      color: #92400e;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-log-pager {
+      background: #fafbfc;
+      position: sticky;
+      bottom: 0;
+      z-index: 2;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-log-revert-btn {
+      white-space: nowrap;
+      font-size: 11px;
+      padding: 1px 8px;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-history-wrap {
+      max-height: 60vh;
+      overflow: auto;
+      border: 1px solid #e9ecef;
+      border-radius: 4px;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-history-table thead th {
+      position: sticky;
+      top: 0;
+      background: #f8f9fa;
+      z-index: 2;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-history-table td {
+      font-size: 12px;
+      vertical-align: top;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-history-table .dg-dim-history-code {
+      font-family: SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 11px;
+      color: #6c757d;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-history-table .dg-dim-history-name {
+      max-width: 320px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-history-table .dg-dim-history-name:hover {
+      text-overflow: clip;
+      overflow: visible;
+      white-space: normal;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-history-table .dg-dim-history-old {
+      color: #b91c1c;
+      text-decoration: line-through;
+      text-decoration-thickness: 1px;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-history-table .dg-dim-history-new {
+      color: #14532d;
+      font-weight: 500;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-history-table .dg-dim-history-note {
+      font-size: 11px;
+      color: #6b7280;
+      margin-top: 2px;
+    }
+    .dg-dim-cell-tip {
+      position: absolute;
+      z-index: 10000;
+      max-width: 360px;
+      min-width: 220px;
+      background: #ffffff;
+      color: #1f2937;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      padding: 8px 10px;
+      box-shadow: 0 6px 18px rgba(15, 23, 42, 0.12);
+      font-size: 11px;
+      line-height: 1.35;
+    }
+    .dg-dim-cell-tip .dg-dim-cell-tip-title {
+      font-weight: 600;
+      font-size: 11px;
+      color: #374151;
+      margin-bottom: 6px;
+    }
+    .dg-dim-cell-tip .dg-dim-cell-tip-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    .dg-dim-cell-tip .dg-dim-cell-tip-list li {
+      padding: 4px 0;
+      border-top: 1px solid #f3f4f6;
+    }
+    .dg-dim-cell-tip .dg-dim-cell-tip-list li:first-child {
+      border-top: 0;
+      padding-top: 0;
+    }
+    .dg-dim-cell-tip .dg-dim-cell-tip-row1 {
+      color: #6b7280;
+      font-size: 10px;
+      margin-bottom: 2px;
+    }
+    .dg-dim-cell-tip .dg-dim-cell-tip-row2 {
+      color: #1f2937;
+    }
+    .dg-dim-cell-tip .dg-dim-cell-tip-field {
+      color: #4b5563;
+      font-weight: 600;
+    }
+    .dg-dim-cell-tip .dg-dim-cell-tip-old {
+      color: #b91c1c;
+      text-decoration: line-through;
+      text-decoration-thickness: 1px;
+    }
+    .dg-dim-cell-tip .dg-dim-cell-tip-new {
+      color: #14532d;
+      font-weight: 600;
+    }
+    .dg-dim-cell-tip .dg-dim-cell-tip-empty,
+    .dg-dim-cell-tip .dg-dim-cell-tip-loading,
+    .dg-dim-cell-tip .dg-dim-cell-tip-err {
+      color: #6b7280;
+      font-style: italic;
+    }
+    .dg-dim-cell-tip .dg-dim-cell-tip-err {
+      color: #b91c1c;
+    }
+    .dg-dim-cell-tip .dg-dim-log-action {
+      font-size: 9px;
+      padding: 0 4px;
+      border-radius: 3px;
+      background: #e5e7eb;
+      color: #374151;
+    }
+    .dg-dim-cell-tip .dg-dim-log-action.action-set { background: #dbeafe; color: #1e40af; }
+    .dg-dim-cell-tip .dg-dim-log-action.action-delete { background: #fee2e2; color: #991b1b; }
+    .dg-dim-cell-tip .dg-dim-log-action.action-sync_ms { background: #dcfce7; color: #166534; }
+    .dg-dim-cell-tip .dg-dim-log-action.action-sync_ms_skip { background: #fef3c7; color: #92400e; }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-tip-measured-by {
+      cursor: help;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-cell-stock {
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-stock-pos {
+      color: #14532d;
+      font-weight: 500;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-stock-zero {
+      color: #6b7280;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-stock-neg {
+      color: #b91c1c;
+      font-weight: 500;
     }
   </style>

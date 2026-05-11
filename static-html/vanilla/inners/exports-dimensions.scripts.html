@@ -4,6 +4,8 @@
       var STORAGE_KEY = 'datagon_dimensions_filters_v1';
       var FILTERS_COLLAPSED_KEY = 'datagon_dimensions_filters_collapsed_v1';
       var TABLE_COLLAPSED_KEY = 'datagon_dimensions_table_collapsed_v1';
+      var VISIBLE_COLS_KEY = 'datagon_dimensions_visible_cols_v2';
+      var COL_WIDTHS_KEY = 'datagon_dimensions_col_widths_v2';
 
       var DEFAULT_FILTERS = {
         search: '',
@@ -130,71 +132,615 @@
         loadList();
       }
 
+      /**
+       * Единый источник правды для колонок таблицы «Габариты» (moysklad baseline:
+       * `datagon-list-page-baseline-moysklad.mdc`). Один массив используется в
+       * 4 местах одновременно — `<colgroup>`, `<thead>`, `<tbody>`, панели
+       * «🧩 Столбцы» / «📏 Ширины». Запрещено держать отдельный массив для
+       * видимости столбцов и отдельный — для ширин.
+       *   key       — стабильный ключ для localStorage.
+       *   label     — подпись в шапке и в обоих toolbox-панелях.
+       *   width     — ширина по умолчанию (px). Сейчас же — минимальная.
+       *   minW      — нижняя граница в панели «Ширины».
+       *   sortable  — клик по `<th>` переключает сортировку (используется `sortKey || key`).
+       *   render    — фабрика HTML ячейки для строки данных.
+       *   isNumeric — табличная вёрстка чисел (tabular-nums, выравнивание по правому краю).
+       */
+      /**
+       * Источник значения колонки замера для строки. Приоритет:
+       *   1. override   — пользовательская правка (`measurement[key]`).
+       *   2. ms         — атрибут МС (`dimensions_ms[key]` для числовых).
+       *   3. parsed     — выведено из «Тип упаковки» (см. dimensions_parsed).
+       *   4. empty      — нет источника.
+       *
+       * Возвращает `{ value, source }`, где `value` — Number|String|null.
+       * Для строки `packing_type` источник всегда либо `override`, либо `ms`.
+       */
+      function resolveCellSource(row, key) {
+        var measurement = row && row.measurement;
+        if (measurement && measurement[key] != null && String(measurement[key]).trim() !== '') {
+          return { value: measurement[key], source: 'override' };
+        }
+        var dims = row && row.dimensions_ms;
+        if (dims && dims[key] != null && String(dims[key]).trim() !== '') {
+          var raw = String(dims[key]).trim();
+          /** Для числовых полей пытаемся достать число из МС-строки (там часто «30» или «30,5»). */
+          if (key !== 'packing_type') {
+            var n = Number(raw.replace(',', '.'));
+            if (Number.isFinite(n)) return { value: n, source: 'ms' };
+          } else {
+            return { value: raw, source: 'ms' };
+          }
+        }
+        var parsed = row && row.dimensions_parsed;
+        if (parsed && parsed[key] != null) {
+          return { value: parsed[key], source: 'parsed' };
+        }
+        return { value: null, source: 'empty' };
+      }
+
+      /**
+       * Для упаковки-«пакета» «Высота — коробка» бессмысленна (и наоборот). Возвращает
+       * `true`, если поле логически НЕприменимо для текущего вида упаковки.
+       *   bag         → height_box_cm disabled
+       *   box         → height_bag_cm disabled
+       *   custom_box  → height_bag_cm disabled (своя коробка)
+       *   unknown/empty → ничего не блокируем
+       */
+      function isFieldDisabledForPacking(row, key) {
+        var parsed = row && row.dimensions_parsed;
+        var kind = parsed && parsed.kind ? String(parsed.kind) : 'unknown';
+        if (kind === 'bag' && key === 'height_box_cm') return true;
+        if ((kind === 'box' || kind === 'custom_box') && key === 'height_bag_cm') return true;
+        return false;
+      }
+
+      function formatNumericForInput(v) {
+        if (v == null || v === '') return '';
+        var n = Number(v);
+        if (!Number.isFinite(n)) return String(v);
+        /** Без хвостовых нулей: 30 → "30", 30.5 → "30.5". */
+        return String(Math.round(n * 1000) / 1000);
+      }
+
+      /** Справочник «Тип упаковки» (customentity из МС). Загружается через
+       *  GET /api/exports/dimensions/packing-types и попадает в `<select>` ячеек. */
+      var packingTypes = [];
+      var packingTypesLoadedAt = 0;
+
+      function loadPackingTypes(force) {
+        var url = '/api/exports/dimensions/packing-types' + (force ? '?refresh=1' : '');
+        return fetch(url, { credentials: 'same-origin' })
+          .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+          .then(function (x) {
+            if (x.ok && x.j && x.j.success !== false && Array.isArray(x.j.rows)) {
+              packingTypes = x.j.rows;
+              packingTypesLoadedAt = Date.now();
+              return packingTypes;
+            }
+            throw new Error((x.j && x.j.error) || 'Ошибка загрузки справочника');
+          });
+      }
+
+      function renderEditableCell(row, col) {
+        var key = col.key;
+        var disabled = isFieldDisabledForPacking(row, key);
+        var resolved = disabled ? { value: null, source: 'empty' } : resolveCellSource(row, key);
+        var isNumber = col.isNumeric === true || key === 'weight_kg';
+        var attrs = '';
+        attrs += ' data-dg-code="' + escapeHtml(row.code) + '"';
+        attrs += ' data-dg-field="' + escapeHtml(key) + '"';
+        attrs += ' data-source="' + (disabled ? 'disabled' : resolved.source) + '"';
+        if (disabled) attrs += ' disabled title="Это поле не применимо для текущего «Типа упаковки»"';
+        var displayVal = '';
+        if (!disabled && resolved.value != null) {
+          displayVal = isNumber ? formatNumericForInput(resolved.value) : String(resolved.value);
+        }
+        /** Специальный рендер для packing_type: <select> из справочника МС. */
+        if (key === 'packing_type') {
+          var sel = '<select class="dg-dim-input"' + attrs + '>';
+          sel += '<option value=""></option>';
+          var seen = {};
+          var current = String(displayVal || '').trim();
+          for (var i = 0; i < packingTypes.length; i++) {
+            var t = packingTypes[i] || {};
+            var name = String(t.name || '').trim();
+            if (!name) continue;
+            seen[name] = true;
+            sel += '<option value="' + escapeHtml(name) + '"' +
+              (name === current ? ' selected' : '') + '>' + escapeHtml(name) + '</option>';
+          }
+          /** Если текущее значение есть, но в справочнике его нет — добавим как
+           *  «грязный» вариант (не из справочника), чтобы пользователь видел реальное. */
+          if (current && !seen[current]) {
+            sel += '<option value="' + escapeHtml(current) + '" selected>' +
+              escapeHtml(current) + ' (не из справочника)</option>';
+          }
+          sel += '</select>';
+          return sel;
+        }
+        var inputType = isNumber ? 'number' : 'text';
+        var stepAttr = isNumber ? (key === 'weight_kg' ? ' step="0.001" min="0"' : ' step="0.1" min="0"') : '';
+        var placeholder = disabled
+          ? '— не применимо —'
+          : (resolved.source === 'empty' ? '—' : '');
+        return '<input class="dg-dim-input" type="' + inputType + '"' + stepAttr +
+          ' value="' + escapeHtml(displayVal) + '" placeholder="' + escapeHtml(placeholder) + '"' + attrs + ' />';
+      }
+
+      /** Cell для атрибутов МС у которых нет user-override (старый display-only fallback). */
+      function fmtCellMs(row, col) {
+        var dims = row && row.dimensions_ms;
+        var raw = dims && typeof dims === 'object' ? dims[col.key] : null;
+        var has = raw != null && String(raw).trim() !== '';
+        return has ? escapeHtml(String(raw).trim()) : '<span class="dg-dim-empty">—</span>';
+      }
+
+      var DIM_COLS = [
+        {
+          key: 'code',
+          label: 'Код',
+          width: 140,
+          minW: 90,
+          sortable: true,
+          isNumeric: false,
+          cellClass: 'dg-dim-code',
+          render: function (r) {
+            var code = escapeHtml(r.code);
+            var typeRaw = String(r.type || '').toLowerCase();
+            var typeBadge = '';
+            if (typeRaw === 'комплект') {
+              typeBadge = '<span class="dg-dim-type-badge dg-dim-type-bundle" title="Комплект">КПЛ</span>';
+            } else if (typeRaw && typeRaw !== 'товар') {
+              typeBadge = '<span class="dg-dim-type-badge" title="' + escapeHtml(r.type) + '">' + escapeHtml(r.type) + '</span>';
+            }
+            return code + typeBadge;
+          },
+        },
+        {
+          key: 'name',
+          label: 'Наименование',
+          width: 360,
+          minW: 180,
+          sortable: true,
+          isNumeric: false,
+          cellClass: 'dg-dim-cell-name',
+          cellAttr: function (r) {
+            return r && r.name ? ' title="' + escapeHtml(r.name) + '"' : '';
+          },
+          render: function (r) {
+            var nameHtml = r.name
+              ? escapeHtml(r.name)
+              : '<span class="dg-dim-empty">— без наименования —</span>';
+            /** Кнопка «🕘 Лог» рядом с именем: открывает overlay с историей изменений. */
+            var logBtn = '<button type="button" class="dg-dim-log-btn" data-dg-log-code="' +
+              escapeHtml(r.code) + '" data-dg-log-name="' + escapeHtml(r.name || r.code || '') +
+              '" title="История замеров и изменений по этой позиции">🕘 Лог</button>';
+            /** Кнопка «↗ В МС» — отправляет user-override габаритов обратно в МойСклад
+             *  (POST /api/exports/dimensions/sync-ms). Отображается только если есть
+             *  хоть один override; иначе будет показываться как disabled. */
+            var hasOverride = r.measurement && (
+              r.measurement.length_cm != null ||
+              r.measurement.width_cm != null ||
+              r.measurement.height_box_cm != null ||
+              r.measurement.height_bag_cm != null ||
+              r.measurement.weight_kg != null
+            );
+            var syncBtn = '<button type="button" class="dg-dim-sync-btn" data-dg-sync-code="' +
+              escapeHtml(r.code) + '" data-dg-sync-name="' + escapeHtml(r.name || r.code || '') +
+              '"' + (hasOverride ? '' : ' data-dg-empty="1"') +
+              ' title="' + (hasOverride
+                ? 'Отправить отредактированные габариты обратно в МойСклад для этой позиции'
+                : 'Нет правок — отправлять в МойСклад нечего') + '">↗ В МС</button>';
+            return nameHtml + logBtn + syncBtn;
+          },
+        },
+        {
+          key: 'stock',
+          label: 'Остаток МС',
+          width: 100,
+          minW: 70,
+          sortable: true,
+          isNumeric: true,
+          cellClass: 'dg-dim-cell-stock text-end',
+          render: function (r) {
+            if (r.stock == null) return '<span class="dg-dim-empty">—</span>';
+            var n = Number(r.stock);
+            if (!Number.isFinite(n)) return '<span class="dg-dim-empty">—</span>';
+            var cls = n > 0 ? 'dg-dim-stock-pos' : n < 0 ? 'dg-dim-stock-neg' : 'dg-dim-stock-zero';
+            return '<span class="' + cls + '">' + formatNumericForInput(n) + '</span>';
+          },
+        },
+        {
+          key: 'measured_by',
+          label: '!! Кто замерял',
+          width: 150,
+          minW: 100,
+          sortable: true,
+          sortKey: 'measured_by_name',
+          isNumeric: false,
+          cellClass: 'dg-dim-cell-wrap',
+          render: function (r) {
+            var measuredBy = String(r.measured_by_name || '').trim();
+            var attrs = ' class="dg-dim-tip-measured-by ' +
+              (measuredBy ? 'dg-dim-status-yes' : 'dg-dim-status-no') + '"' +
+              ' data-dg-tip-code="' + escapeHtml(r.code || '') + '"';
+            return '<span' + attrs + '>' +
+              (measuredBy ? escapeHtml(measuredBy) : '— не замерен —') +
+              '</span>';
+          },
+        },
+        {
+          key: 'measured_at',
+          label: 'Дата замера',
+          width: 110,
+          minW: 80,
+          sortable: true,
+          isNumeric: false,
+          cellClass: 'dg-dim-cell-wrap',
+          render: function (r) {
+            var measuredAt = String(r.measured_at || '').trim();
+            return measuredAt
+              ? escapeHtml(formatDateTimeMsk(measuredAt))
+              : '<span class="dg-dim-empty">—</span>';
+          },
+        },
+        {
+          key: 'packing_type',
+          label: 'Тип упаковки',
+          width: 200,
+          minW: 120,
+          isNumeric: false,
+          cellClass: 'dg-dim-cell-edit dg-dim-cell-packing',
+          msAttr: '!!Тип УПАКОВКИ',
+          render: renderEditableCell,
+        },
+        {
+          key: 'length_cm',
+          label: 'Длина (см)',
+          width: 96,
+          minW: 70,
+          isNumeric: true,
+          cellClass: 'dg-dim-cell-edit dg-dim-cell-num',
+          msAttr: '!!Длина (см) КОРОБКА/Пакет станд. уп.',
+          render: renderEditableCell,
+        },
+        {
+          key: 'width_cm',
+          label: 'Ширина (см)',
+          width: 96,
+          minW: 70,
+          isNumeric: true,
+          cellClass: 'dg-dim-cell-edit dg-dim-cell-num',
+          msAttr: '!!Ширина (см) КОРОБКА/Пакет станд. уп.',
+          render: renderEditableCell,
+        },
+        {
+          key: 'height_box_cm',
+          label: 'Высота — коробка (см)',
+          width: 130,
+          minW: 90,
+          isNumeric: true,
+          cellClass: 'dg-dim-cell-edit dg-dim-cell-num',
+          msAttr: '!!Высота (см) КОРОБКА станд. уп.',
+          render: renderEditableCell,
+        },
+        {
+          key: 'height_bag_cm',
+          label: 'Высота — пакет (см)',
+          width: 130,
+          minW: 90,
+          isNumeric: true,
+          cellClass: 'dg-dim-cell-edit dg-dim-cell-num',
+          msAttr: '!!Высота (см) Пакет!',
+          render: renderEditableCell,
+        },
+        {
+          key: 'weight_kg',
+          label: 'Вес (кг)',
+          width: 96,
+          minW: 70,
+          isNumeric: true,
+          cellClass: 'dg-dim-cell-edit dg-dim-cell-num',
+          msAttr: '!!Вес (кг)',
+          render: renderEditableCell,
+        },
+      ];
+
+      /** Все ключи в порядке колонок — для удобного дефолта/нормализации. */
+      var DIM_COL_KEYS = DIM_COLS.map(function (c) { return c.key; });
+
+      function defaultVisibleCols() {
+        return new Set(DIM_COL_KEYS);
+      }
+
+      function loadVisibleCols() {
+        try {
+          var raw = localStorage.getItem(VISIBLE_COLS_KEY);
+          if (!raw) return defaultVisibleCols();
+          var arr = JSON.parse(raw);
+          if (!Array.isArray(arr) || arr.length === 0) return defaultVisibleCols();
+          var allowed = arr.filter(function (k) { return DIM_COL_KEYS.indexOf(k) !== -1; });
+          if (allowed.length === 0) return defaultVisibleCols();
+          return new Set(allowed);
+        } catch (e) {
+          return defaultVisibleCols();
+        }
+      }
+
+      function saveVisibleCols() {
+        try {
+          var arr = DIM_COL_KEYS.filter(function (k) { return visibleCols.has(k); });
+          localStorage.setItem(VISIBLE_COLS_KEY, JSON.stringify(arr));
+        } catch (e) {}
+      }
+
+      function loadColumnWidths() {
+        try {
+          var raw = localStorage.getItem(COL_WIDTHS_KEY);
+          if (!raw) return {};
+          var obj = JSON.parse(raw);
+          if (!obj || typeof obj !== 'object') return {};
+          var out = {};
+          DIM_COLS.forEach(function (c) {
+            var v = Number(obj[c.key]);
+            if (Number.isFinite(v) && v > 0) out[c.key] = v;
+          });
+          return out;
+        } catch (e) {
+          return {};
+        }
+      }
+
+      function saveColumnWidths() {
+        try {
+          localStorage.setItem(COL_WIDTHS_KEY, JSON.stringify(columnWidths));
+        } catch (e) {}
+      }
+
+      var visibleCols = defaultVisibleCols();
+      var columnWidths = {};
+
+      function getColWidth(col) {
+        var override = Number(columnWidths[col.key]);
+        if (Number.isFinite(override) && override > 0) return Math.max(override, col.minW || 40);
+        return col.width || 120;
+      }
+
+      function getVisibleColsList() {
+        return DIM_COLS.filter(function (c) { return visibleCols.has(c.key); });
+      }
+
+      function visibleColCount() {
+        return Math.max(1, getVisibleColsList().length);
+      }
+
+      function buildColgroup() {
+        var cg = document.getElementById('dg-dim-colgroup');
+        if (!cg) return;
+        var html = '';
+        var cols = getVisibleColsList();
+        for (var i = 0; i < cols.length; i++) {
+          html += '<col style="width:' + getColWidth(cols[i]) + 'px" />';
+        }
+        cg.innerHTML = html;
+        applyTableMinWidth();
+      }
+
+      function applyTableMinWidth() {
+        var table = document.getElementById('dg-dim-table');
+        if (!table) return;
+        var cols = getVisibleColsList();
+        var sum = 0;
+        for (var i = 0; i < cols.length; i++) sum += getColWidth(cols[i]);
+        table.style.minWidth = (sum > 0 ? sum : 1200) + 'px';
+      }
+
+      function buildThead() {
+        var thead = document.getElementById('dg-dim-thead');
+        if (!thead) return;
+        var cols = getVisibleColsList();
+        var tr = '<tr>';
+        for (var i = 0; i < cols.length; i++) {
+          var c = cols[i];
+          var attrs = ' data-dg-col-key="' + c.key + '"';
+          var cls = c.sortable ? ' class="dg-dim-sortable"' : '';
+          if (c.sortable) attrs += ' data-dg-sort="' + (c.sortKey || c.key) + '"';
+          var titleAttr = c.msAttr ? ' title="Атрибут МойСклад: ' + escapeHtml(c.msAttr) + '"' : '';
+          tr += '<th' + cls + attrs + titleAttr + '>' + escapeHtml(c.label) + '</th>';
+        }
+        tr += '</tr>';
+        thead.innerHTML = tr;
+      }
+
       function renderTable() {
         var tbody = document.getElementById('dg-dim-tbody');
         if (!tbody) return;
+        var colN = visibleColCount();
         if (state.loading) {
-          tbody.innerHTML = '<tr><td colspan="4" class="text-muted small py-3 text-center">Загрузка…</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="' + colN + '" class="text-muted small py-3 text-center">Загрузка…</td></tr>';
           return;
         }
         if (state.lastError) {
           tbody.innerHTML =
-            '<tr><td colspan="4" class="text-danger small py-3 text-center">' +
+            '<tr><td colspan="' + colN + '" class="text-danger small py-3 text-center">' +
             escapeHtml(state.lastError) +
             '</td></tr>';
           return;
         }
         if (!Array.isArray(state.rows) || state.rows.length === 0) {
           tbody.innerHTML =
-            '<tr><td colspan="4" class="text-muted small py-4 text-center">Пока ничего не найдено. Попробуйте изменить фильтры.</td></tr>';
+            '<tr><td colspan="' + colN + '" class="text-muted small py-4 text-center">Пока ничего не найдено. Попробуйте изменить фильтры.</td></tr>';
           return;
         }
+        var cols = getVisibleColsList();
         var html = '';
         for (var i = 0; i < state.rows.length; i++) {
           var r = state.rows[i] || {};
-          var code = escapeHtml(r.code);
-          var typeRaw = String(r.type || '').toLowerCase();
-          var typeBadge =
-            typeRaw === 'комплект'
-              ? '<span class="dg-dim-type-badge dg-dim-type-bundle" title="Комплект">КПЛ</span>'
-              : typeRaw === 'товар'
-                ? ''
-                : typeRaw
-                  ? '<span class="dg-dim-type-badge" title="' + escapeHtml(r.type) + '">' + escapeHtml(r.type) + '</span>'
-                  : '';
-          var nameHtml = r.name
-            ? escapeHtml(r.name)
-            : '<span class="dg-dim-empty">— без наименования —</span>';
-          var measuredBy = String(r.measured_by_name || '').trim();
-          var measuredAt = String(r.measured_at || '').trim();
-          var measuredByCell = measuredBy
-            ? '<span class="dg-dim-status-yes">' + escapeHtml(measuredBy) + '</span>'
-            : '<span class="dg-dim-status-no">— не замерен —</span>';
-          var measuredAtCell = measuredAt
-            ? escapeHtml(formatDateTimeMsk(measuredAt))
-            : '<span class="dg-dim-empty">—</span>';
-          html +=
-            '<tr data-dg-code="' +
-            code +
-            '">' +
-            '<td class="dg-dim-code">' +
-            code +
-            typeBadge +
-            '</td>' +
-            '<td class="dg-dim-cell-name" title="' +
-            escapeHtml(r.name || '') +
-            '">' +
-            nameHtml +
-            '</td>' +
-            '<td>' +
-            measuredByCell +
-            '</td>' +
-            '<td>' +
-            measuredAtCell +
-            '</td>' +
-            '</tr>';
+          var rowHtml = '<tr data-dg-code="' + escapeHtml(r.code) + '">';
+          for (var j = 0; j < cols.length; j++) {
+            var c = cols[j];
+            var cls = c.cellClass ? ' class="' + c.cellClass + '"' : '';
+            var extra = typeof c.cellAttr === 'function' ? c.cellAttr(r, c) : '';
+            var content = '';
+            try {
+              content = c.render ? c.render(r, c) : escapeHtml(r[c.key] != null ? r[c.key] : '');
+            } catch (e) {
+              content = '<span class="dg-dim-empty">—</span>';
+            }
+            rowHtml += '<td' + cls + extra + '>' + content + '</td>';
+          }
+          rowHtml += '</tr>';
+          html += rowHtml;
         }
         tbody.innerHTML = html;
+        scheduleFloatingHeaderUpdate();
+      }
+
+      function renderColumnControls() {
+        var list = document.getElementById('dg-dim-columns-list');
+        if (!list) return;
+        list.innerHTML = '';
+        DIM_COLS.forEach(function (c) {
+          var wrap = document.createElement('label');
+          wrap.className = 'form-check d-flex align-items-center gap-2 mb-0';
+          var cb = document.createElement('input');
+          cb.type = 'checkbox';
+          cb.className = 'form-check-input m-0';
+          cb.checked = visibleCols.has(c.key);
+          cb.addEventListener('change', function () {
+            if (cb.checked) {
+              visibleCols.add(c.key);
+            } else {
+              if (visibleCols.size <= 1) {
+                cb.checked = true;
+                return;
+              }
+              visibleCols.delete(c.key);
+            }
+            saveVisibleCols();
+            buildColgroup();
+            buildThead();
+            renderTable();
+            dimRefreshFloatingAfterLayout();
+          });
+          var text = document.createElement('span');
+          text.textContent = c.label;
+          wrap.appendChild(cb);
+          wrap.appendChild(text);
+          list.appendChild(wrap);
+        });
+      }
+
+      function renderWidthControls() {
+        var list = document.getElementById('dg-dim-widths-list');
+        if (!list) return;
+        list.innerHTML = '';
+        DIM_COLS.forEach(function (c) {
+          var wrap = document.createElement('label');
+          var span = document.createElement('span');
+          span.textContent = c.label;
+          span.style.flex = '1 1 auto';
+          span.style.overflow = 'hidden';
+          span.style.textOverflow = 'ellipsis';
+          var input = document.createElement('input');
+          input.type = 'number';
+          input.min = String(c.minW || 40);
+          input.step = '5';
+          input.value = String(getColWidth(c));
+          input.addEventListener('change', function () {
+            var v = Number(input.value);
+            if (!Number.isFinite(v) || v <= 0) {
+              delete columnWidths[c.key];
+            } else {
+              columnWidths[c.key] = Math.max(v, c.minW || 40);
+              input.value = String(columnWidths[c.key]);
+            }
+            saveColumnWidths();
+            buildColgroup();
+            dimRefreshFloatingAfterLayout();
+          });
+          wrap.appendChild(span);
+          wrap.appendChild(input);
+          list.appendChild(wrap);
+        });
+      }
+
+      function bindColumnsToolbox() {
+        var toggleCols = document.getElementById('dg-dim-columns-toggle');
+        var toggleW = document.getElementById('dg-dim-widths-toggle');
+        var panelCols = document.getElementById('dg-dim-columns-panel');
+        var panelW = document.getElementById('dg-dim-widths-panel');
+        var wrap = document.getElementById('dg-dim-toolbox-panels');
+        if (!toggleCols || !panelCols || !wrap) return;
+        function syncWrap() {
+          var open = panelCols.classList.contains('open') || (panelW && panelW.classList.contains('open'));
+          wrap.classList.toggle('d-none', !open);
+        }
+        toggleCols.addEventListener('click', function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          panelCols.classList.toggle('open');
+          if (panelW) panelW.classList.remove('open');
+          syncWrap();
+        });
+        if (toggleW && panelW) {
+          toggleW.addEventListener('click', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            panelW.classList.toggle('open');
+            panelCols.classList.remove('open');
+            if (panelW.classList.contains('open')) renderWidthControls();
+            syncWrap();
+          });
+        }
+        var allBtn = document.getElementById('dg-dim-columns-all');
+        var noneBtn = document.getElementById('dg-dim-columns-none');
+        var defBtn = document.getElementById('dg-dim-columns-default');
+        if (allBtn) allBtn.addEventListener('click', function () {
+          visibleCols = new Set(DIM_COL_KEYS);
+          saveVisibleCols();
+          renderColumnControls();
+          buildColgroup();
+          buildThead();
+          renderTable();
+          dimRefreshFloatingAfterLayout();
+        });
+        if (noneBtn) noneBtn.addEventListener('click', function () {
+          visibleCols = new Set([DIM_COL_KEYS[0]]);
+          saveVisibleCols();
+          renderColumnControls();
+          buildColgroup();
+          buildThead();
+          renderTable();
+          dimRefreshFloatingAfterLayout();
+        });
+        if (defBtn) defBtn.addEventListener('click', function () {
+          visibleCols = defaultVisibleCols();
+          saveVisibleCols();
+          renderColumnControls();
+          buildColgroup();
+          buildThead();
+          renderTable();
+          dimRefreshFloatingAfterLayout();
+        });
+        var defWBtn = document.getElementById('dg-dim-widths-default');
+        if (defWBtn) defWBtn.addEventListener('click', function () {
+          columnWidths = {};
+          saveColumnWidths();
+          renderWidthControls();
+          buildColgroup();
+          dimRefreshFloatingAfterLayout();
+        });
+        document.addEventListener('click', function (e) {
+          if (e.target.closest('#dg-dim-columns-panel')) return;
+          if (e.target.closest('#dg-dim-columns-toggle')) return;
+          if (e.target.closest('#dg-dim-widths-panel')) return;
+          if (e.target.closest('#dg-dim-widths-toggle')) return;
+          panelCols.classList.remove('open');
+          if (panelW) panelW.classList.remove('open');
+          syncWrap();
+        });
       }
 
       function renderPagination() {
@@ -255,6 +801,7 @@
                 : 'Готово. Записей всего: ' + (state.total || 0) + '.',
               state.lastError ? 'error' : 'success',
             );
+            dimRefreshFloatingAfterLayout();
           })
           .catch(function (e) {
             state.loading = false;
@@ -264,6 +811,7 @@
             renderTable();
             renderPagination();
             setStatusHint('Сетевая ошибка: ' + state.lastError, 'error');
+            dimRefreshFloatingAfterLayout();
           });
       }
 
@@ -321,6 +869,915 @@
           try {
             localStorage.setItem(storageKey, hidden ? '0' : '1');
           } catch (e) {}
+          /** Сворачивание/разворачивание меняет вертикальную раскладку — переснимаем baseTop. */
+          dimRefreshFloatingAfterLayout();
+        });
+      }
+
+      /**
+       * Найти строку state.rows по `code` (используется при auto-save из ячейки,
+       * чтобы локально обновить state без перезагрузки таблицы).
+       */
+      function findRowByCode(code) {
+        if (!Array.isArray(state.rows)) return null;
+        for (var i = 0; i < state.rows.length; i++) {
+          if (state.rows[i] && String(state.rows[i].code) === String(code)) return state.rows[i];
+        }
+        return null;
+      }
+
+      /**
+       * Сохранить значение одного поля габаритов через POST /api/exports/dimensions/measure.
+       * Меняем визуальное состояние input'а (saving / saved / err), обновляем локальный
+       * state.rows[*].measurement, чтобы повторное редактирование сразу видело override.
+       * Сервер сам пишет строку в `ms_dimensions_log`.
+       */
+      function saveCell(input) {
+        if (!input || input.disabled) return;
+        var code = input.getAttribute('data-dg-code') || '';
+        var field = input.getAttribute('data-dg-field') || '';
+        if (!code || !field) return;
+        var raw = input.value;
+        var isNumber = input.type === 'number';
+        var normalized = raw;
+        if (raw == null || String(raw).trim() === '') {
+          normalized = null;
+        } else if (isNumber) {
+          var num = Number(String(raw).replace(',', '.'));
+          if (!Number.isFinite(num) || num < 0) {
+            flashCellState(input, 'err');
+            return;
+          }
+          normalized = num;
+        } else {
+          normalized = String(raw).trim();
+        }
+
+        /** Не дёргаем сервер, если значение совпадает с уже применённым override. */
+        var row = findRowByCode(code);
+        var prevVal = row && row.measurement && row.measurement[field] != null
+          ? row.measurement[field]
+          : null;
+        if (isNumber) {
+          if ((normalized == null && prevVal == null) ||
+              (normalized != null && prevVal != null && Math.abs(Number(normalized) - Number(prevVal)) < 1e-6)) {
+            return;
+          }
+        } else if (String(normalized || '') === String(prevVal || '')) {
+          return;
+        }
+
+        flashCellState(input, 'saving');
+        var body = { code: code, field: field, value: normalized };
+        fetch('/api/exports/dimensions/measure', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { ok: r.ok, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.ok || !x.j || x.j.success === false) {
+              flashCellState(input, 'err');
+              setStatusHint('Ошибка сохранения: ' + ((x.j && x.j.error) || 'неизвестно'), 'error');
+              return;
+            }
+            /** Обновляем локальное состояние строки, чтобы при повторном редактировании
+             *  resolveCellSource() сразу видела override и не подсовывала parsed/ms. */
+            if (row) {
+              if (!row.measurement) row.measurement = {};
+              if (x.j.measurement && typeof x.j.measurement === 'object') {
+                row.measurement = x.j.measurement;
+              } else {
+                row.measurement[field] = normalized;
+              }
+              if (x.j.measured_by_name) row.measured_by_name = String(x.j.measured_by_name);
+              if (x.j.measured_at) row.measured_at = String(x.j.measured_at);
+              if (x.j.measured_by_user_id != null) row.measured_by_user_id = Number(x.j.measured_by_user_id);
+              /** Перерисовать пару связанных ячеек: «кто/когда замерял» + статус строки.
+               *  Полный re-render таблицы не нужен — это «дёргает» позицию каретки фокуса. */
+              repaintMeasuredCells(code);
+            }
+            input.setAttribute('data-source', 'override');
+            input.removeAttribute('data-dirty');
+            flashCellState(input, 'ok');
+            invalidateTipCache(code, field);
+            setStatusHint('Сохранено: ' + field + (normalized != null ? ' = ' + normalized : ' (очищено)') +
+              (x.j.changed_fields && x.j.changed_fields.length === 0 ? ' (без изменений)' : ''), 'success');
+          })
+          .catch(function (e) {
+            flashCellState(input, 'err');
+            setStatusHint('Сетевая ошибка при сохранении: ' + ((e && e.message) || e), 'error');
+          });
+      }
+
+      function flashCellState(input, kind) {
+        if (!input) return;
+        input.removeAttribute('data-saving');
+        input.removeAttribute('data-saved');
+        if (kind === 'saving') {
+          input.setAttribute('data-saving', '1');
+          return;
+        }
+        if (kind === 'ok') {
+          input.setAttribute('data-saved', 'ok');
+        } else if (kind === 'err') {
+          input.setAttribute('data-saved', 'err');
+        }
+        setTimeout(function () {
+          input.removeAttribute('data-saved');
+        }, 1400);
+      }
+
+      /**
+       * Перерисовать ячейки «Наименование», «Кто замерял» и «Дата замера» для `code`.
+       * Имя — чтобы пересчитать состояние кнопки «↗ В МС» (`data-dg-empty`) после
+       * первого user-override. Остальные ячейки трогать не нужно — они уже редактируемы
+       * и переоформление сбросит фокус.
+       */
+      function repaintMeasuredCells(code) {
+        var row = findRowByCode(code);
+        if (!row) return;
+        var tbody = document.getElementById('dg-dim-tbody');
+        if (!tbody) return;
+        var tr = tbody.querySelector('tr[data-dg-code="' + cssEscape(String(row.code)) + '"]');
+        if (!tr) return;
+        var cols = getVisibleColsList();
+        for (var i = 0; i < cols.length; i++) {
+          var c = cols[i];
+          if (c.key !== 'measured_by' && c.key !== 'measured_at' && c.key !== 'name') continue;
+          var td = tr.children[i];
+          if (!td) continue;
+          try {
+            td.innerHTML = c.render ? c.render(row, c) : '';
+          } catch (e) {
+            /** не критично, просто оставим как есть */
+          }
+        }
+      }
+
+      function cssEscape(s) {
+        if (window.CSS && typeof window.CSS.escape === 'function') return window.CSS.escape(s);
+        return String(s).replace(/[^a-zA-Z0-9_-]/g, function (ch) {
+          return '\\' + ch.charCodeAt(0).toString(16) + ' ';
+        });
+      }
+
+      /**
+       * Сравнить текущее значение input/select с тем, что лежит в row.measurement[field]
+       * (т. е. с тем, что уже подтверждено как override в БД). Если значение отличается —
+       * пометить инпут как «грязный» (data-dirty=1), иначе снять метку. Это нужно для:
+       *   • визуальной подсветки несохранённых правок,
+       *   • сбора всех таких значений при клике «↗ В МС» и «↗ В МС: всё».
+       */
+      function markDirtyState(input) {
+        if (!input || !input.classList || !input.classList.contains('dg-dim-input')) return;
+        if (input.disabled) {
+          input.removeAttribute('data-dirty');
+          return;
+        }
+        var code = input.getAttribute('data-dg-code') || '';
+        var field = input.getAttribute('data-dg-field') || '';
+        if (!code || !field) return;
+        var row = findRowByCode(code);
+        if (!row) return;
+        var isNumber = input.type === 'number';
+        var raw = input.value;
+        var cur;
+        if (raw == null || String(raw).trim() === '') cur = null;
+        else if (isNumber) {
+          var n = Number(String(raw).replace(',', '.'));
+          cur = Number.isFinite(n) ? n : null;
+        } else {
+          cur = String(raw).trim();
+        }
+        var dbVal = row.measurement && row.measurement[field] != null ? row.measurement[field] : null;
+        var equal;
+        if (isNumber) {
+          equal = (cur == null && dbVal == null) ||
+                  (cur != null && dbVal != null && Math.abs(Number(cur) - Number(dbVal)) < 1e-6);
+        } else {
+          equal = String(cur || '') === String(dbVal == null ? '' : dbVal);
+        }
+        if (equal) input.removeAttribute('data-dirty');
+        else input.setAttribute('data-dirty', '1');
+      }
+
+      /**
+       * Собрать ТЕКУЩИЕ значения всех инпутов ряда (включая невыбраненные, ещё не
+       * сохранённые правки). Возвращает объект measurement пригодный для отправки
+       * на /sync-ms или /measure.
+       *   • disabled-инпуты пропускаются (поле «не применимо для упаковки»).
+       *   • Пустая строка → null (стираем override).
+       *   • Невалидные числа → НЕ включаются в результат, чтобы не затереть БД мусором.
+       */
+      function gatherRowInputValues(code) {
+        var out = {};
+        if (!code) return out;
+        var tbody = document.getElementById('dg-dim-tbody');
+        if (!tbody) return out;
+        var tr = tbody.querySelector('tr[data-dg-code="' + cssEscape(String(code)) + '"]');
+        if (!tr) return out;
+        var inputs = tr.querySelectorAll('.dg-dim-input');
+        for (var i = 0; i < inputs.length; i++) {
+          var input = inputs[i];
+          if (input.disabled) continue;
+          var field = input.getAttribute('data-dg-field') || '';
+          if (!field) continue;
+          var raw = input.value;
+          if (raw == null || String(raw).trim() === '') {
+            out[field] = null;
+            continue;
+          }
+          if (input.type === 'number') {
+            var n = Number(String(raw).replace(',', '.'));
+            if (Number.isFinite(n) && n >= 0) out[field] = n;
+          } else {
+            out[field] = String(raw).trim();
+          }
+        }
+        return out;
+      }
+
+      /** Проверка: есть ли в ряду хоть один dirty-инпут? */
+      function rowHasDirty(code) {
+        if (!code) return false;
+        var tbody = document.getElementById('dg-dim-tbody');
+        if (!tbody) return false;
+        var tr = tbody.querySelector('tr[data-dg-code="' + cssEscape(String(code)) + '"]');
+        if (!tr) return false;
+        return Boolean(tr.querySelector('.dg-dim-input[data-dirty="1"]'));
+      }
+
+      function bindCellEditors() {
+        var tbody = document.getElementById('dg-dim-tbody');
+        if (!tbody) return;
+        tbody.addEventListener('change', function (ev) {
+          var t = ev.target;
+          if (!t || !t.classList || !t.classList.contains('dg-dim-input')) return;
+          saveCell(t);
+        });
+        /** input-event — для немедленной dirty-подсветки в процессе набора. */
+        tbody.addEventListener('input', function (ev) {
+          var t = ev.target;
+          if (!t || !t.classList || !t.classList.contains('dg-dim-input')) return;
+          markDirtyState(t);
+        });
+        tbody.addEventListener('keydown', function (ev) {
+          var t = ev.target;
+          if (!t || !t.classList || !t.classList.contains('dg-dim-input')) return;
+          if (ev.key === 'Enter') {
+            ev.preventDefault();
+            t.blur();
+          } else if (ev.key === 'Escape') {
+            ev.preventDefault();
+            /** Откатить к текущему отображаемому значению по source. */
+            var code = t.getAttribute('data-dg-code') || '';
+            var field = t.getAttribute('data-dg-field') || '';
+            var row = findRowByCode(code);
+            if (row && field) {
+              var resolved = resolveCellSource(row, field);
+              t.value = resolved.value == null ? '' : formatNumericForInput(resolved.value);
+              t.setAttribute('data-source', resolved.source);
+              t.removeAttribute('data-dirty');
+            }
+            t.blur();
+          }
+        });
+      }
+
+      /* ====================== Модалка «Лог замера» ============================== */
+
+      /**
+       * Состояние модалки `🕘 Лог`. Используется для пагинации и для того, чтобы
+       * после отката (`POST /log/revert`) перезагрузить ту же страницу журнала.
+       */
+      var logModalState = {
+        code: '',
+        name: '',
+        offset: 0,
+        limit: 100,
+        total: 0,
+      };
+      var MEASUREMENT_FIELD_KEYS = ['length_cm', 'width_cm', 'height_box_cm', 'height_bag_cm', 'weight_kg', 'packing_type'];
+      var FIELD_LABELS = {
+        length_cm: 'Длина (см)',
+        width_cm: 'Ширина (см)',
+        height_box_cm: 'Высота — коробка (см)',
+        height_bag_cm: 'Высота — пакет (см)',
+        weight_kg: 'Вес (кг)',
+        packing_type: 'Тип упаковки',
+      };
+      /**
+       * Человеко-читаемые подписи для значений `ms_dimensions_log.action`.
+       * Технические имена сохраняем как `title` (всплывающая подсказка) — удобно при
+       * отладке/сверке с API, но в таблицах журнала пользователь видит понятные слова.
+       */
+      var ACTION_LABELS = {
+        set: 'Правка',
+        sync_ms: 'Отправлено в МС',
+        sync_ms_skip: 'МС пропустил',
+        delete: 'Удаление замера',
+      };
+      function actionLabel(action) {
+        var key = String(action || 'set');
+        return ACTION_LABELS[key] || key;
+      }
+
+      function openLogFor(code, name) {
+        var overlay = document.getElementById('dg-dim-log-overlay');
+        var titleEl = document.getElementById('dg-dim-log-title');
+        var subEl = document.getElementById('dg-dim-log-subtitle');
+        var body = document.getElementById('dg-dim-log-body');
+        if (!overlay || !body) return;
+        logModalState.code = String(code || '');
+        logModalState.name = String(name || '');
+        logModalState.offset = 0;
+        logModalState.limit = 100;
+        logModalState.total = 0;
+        overlay.dataset.dgCode = logModalState.code;
+        if (titleEl) titleEl.textContent = 'Лог замера';
+        if (subEl) subEl.textContent = (name ? name + ' · ' : '') + 'код: ' + String(code || '—');
+        body.innerHTML = '<div class="text-muted small text-center py-4">Загрузка журнала…</div>';
+        overlay.style.display = '';
+        overlay.setAttribute('aria-hidden', 'false');
+        loadLogFor(logModalState.code, { offset: 0, limit: logModalState.limit });
+      }
+
+      function closeLog() {
+        var overlay = document.getElementById('dg-dim-log-overlay');
+        if (!overlay) return;
+        overlay.style.display = 'none';
+        overlay.setAttribute('aria-hidden', 'true');
+        delete overlay.dataset.dgCode;
+        logModalState.code = '';
+        logModalState.name = '';
+        logModalState.offset = 0;
+        logModalState.total = 0;
+      }
+
+      function loadLogFor(code, opts) {
+        var body = document.getElementById('dg-dim-log-body');
+        if (!body || !code) return;
+        var o = opts && typeof opts === 'object' ? opts : {};
+        var offset = Math.max(0, Number.isFinite(Number(o.offset)) ? Number(o.offset) : 0);
+        var limit = Math.max(1, Number.isFinite(Number(o.limit)) ? Number(o.limit) : 100);
+        var qs = new URLSearchParams({ code: String(code), limit: String(limit), offset: String(offset) });
+        body.innerHTML = '<div class="text-muted small text-center py-4">Загрузка журнала…</div>';
+        fetch('/api/exports/dimensions/log?' + qs.toString(), { credentials: 'same-origin' })
+          .then(function (r) {
+            return r.json().then(function (j) { return { ok: r.ok, j: j }; });
+          })
+          .then(function (x) {
+            if (!x.ok || !x.j || x.j.success === false) {
+              body.innerHTML = '<div class="text-danger small text-center py-4">' +
+                escapeHtml((x.j && x.j.error) || 'Ошибка загрузки журнала') + '</div>';
+              return;
+            }
+            logModalState.code = String(code);
+            logModalState.offset = Number(x.j.offset || 0);
+            logModalState.limit = Number(x.j.limit || limit);
+            logModalState.total = Number(x.j.total || 0);
+            renderLogRows(body, x.j.rows || [], {
+              total: logModalState.total,
+              limit: logModalState.limit,
+              offset: logModalState.offset,
+            });
+          })
+          .catch(function (e) {
+            body.innerHTML = '<div class="text-danger small text-center py-4">Сетевая ошибка: ' +
+              escapeHtml((e && e.message) || String(e)) + '</div>';
+          });
+      }
+
+      function renderLogRows(container, rows, meta) {
+        var total = meta && Number(meta.total) > 0 ? Number(meta.total) : 0;
+        var limit = meta && Number(meta.limit) > 0 ? Number(meta.limit) : 100;
+        var offset = meta && Number(meta.offset) >= 0 ? Number(meta.offset) : 0;
+        if (!Array.isArray(rows) || rows.length === 0) {
+          var emptyHtml = '<div class="text-muted small text-center py-4">';
+          if (total === 0) {
+            emptyHtml += 'Журнал пуст: по этой позиции ещё не было изменений.';
+          } else {
+            emptyHtml += 'Пустая страница (offset=' + offset + ').';
+          }
+          emptyHtml += '</div>';
+          if (total > 0) emptyHtml += renderLogPager(total, limit, offset);
+          container.innerHTML = emptyHtml;
+          return;
+        }
+        var html = '<table><thead><tr>' +
+          '<th style="width: 16%">Когда (МСК)</th>' +
+          '<th style="width: 20%">Кто</th>' +
+          '<th style="width: 11%">Действие</th>' +
+          '<th style="width: 18%">Поле</th>' +
+          '<th>Было → стало</th>' +
+          '<th style="width: 110px">↻</th>' +
+          '</tr></thead><tbody>';
+        for (var i = 0; i < rows.length; i++) {
+          var r = rows[i] || {};
+          var actionRaw = String(r.action || 'set');
+          var actionCls = 'action-' + actionRaw;
+          var who = r.changed_by_name || ('user#' + (r.changed_by_user_id || '—'));
+          var oldVal = r.old_value == null ? '<span class="text-muted">∅</span>' : '<span class="dg-dim-log-old">' + escapeHtml(r.old_value) + '</span>';
+          var newVal = r.new_value == null ? '<span class="text-muted">∅</span>' : '<span class="dg-dim-log-new">' + escapeHtml(r.new_value) + '</span>';
+          var canRevert = r.action === 'set' && MEASUREMENT_FIELD_KEYS.indexOf(String(r.field || '')) !== -1;
+          var revertCell = '';
+          if (canRevert) {
+            var hint = r.old_value == null
+              ? 'Очистить поле (вернуть к пусто)'
+              : 'Вернуть значение «' + (r.old_value) + '»';
+            revertCell = '<button type="button" class="btn btn-sm btn-outline-warning dg-dim-log-revert-btn" ' +
+              'data-dg-log-id="' + Number(r.id || 0) + '" ' +
+              'data-dg-field="' + escapeHtml(r.field || '') + '" ' +
+              'data-dg-old="' + escapeHtml(r.old_value == null ? '' : r.old_value) + '" ' +
+              'title="' + escapeHtml(hint) + '">⤴ Откатить</button>';
+          }
+          var noteSuffix = r.note ? '<div class="text-muted small mt-1">' + escapeHtml(r.note) + '</div>' : '';
+          html += '<tr>' +
+            '<td>' + escapeHtml(formatDateTimeMsk(r.changed_at)) + '</td>' +
+            '<td>' + escapeHtml(who) + '</td>' +
+            '<td><span class="dg-dim-log-action ' + actionCls + '" title="' + escapeHtml(actionRaw) + '">' + escapeHtml(actionLabel(actionRaw)) + '</span></td>' +
+            '<td>' + escapeHtml(r.field_label || r.field) + '</td>' +
+            '<td>' + oldVal + '<span class="dg-dim-log-arrow">→</span>' + newVal + noteSuffix + '</td>' +
+            '<td class="text-end">' + revertCell + '</td>' +
+            '</tr>';
+        }
+        html += '</tbody></table>';
+        html += renderLogPager(total, limit, offset);
+        container.innerHTML = html;
+      }
+
+      function renderLogPager(total, limit, offset) {
+        var pages = total > 0 ? Math.max(1, Math.ceil(total / limit)) : 1;
+        var current = Math.floor(offset / limit) + 1;
+        var prevDisabled = offset <= 0 ? ' disabled' : '';
+        var nextDisabled = (offset + limit) >= total ? ' disabled' : '';
+        var shown = Math.min(limit, Math.max(0, total - offset));
+        return '<div class="dg-dim-log-pager d-flex align-items-center justify-content-between gap-2 px-3 py-2 border-top">' +
+          '<div class="text-muted small">Найдено: ' + total + '; страница ' + current + '/' + pages + '; показано: ' + shown + '</div>' +
+          '<div class="d-flex align-items-center gap-2">' +
+          '<button type="button" class="btn btn-sm btn-outline-secondary dg-dim-log-prev"' + prevDisabled + '>Назад</button>' +
+          '<button type="button" class="btn btn-sm btn-outline-secondary dg-dim-log-next"' + nextDisabled + '>Вперёд</button>' +
+          '</div></div>';
+      }
+
+      /**
+       * Откат правки по `id` строки журнала. После успешного ответа сервера обновляем
+       * локальный `row.measurement[field]` и DOM-инпут, чтобы пользователь сразу
+       * увидел эффект без перезагрузки страницы. Затем перечитываем модалку с того же
+       * offset, чтобы новая `set`-запись с пометкой «revert from log_id=N» появилась
+       * сверху.
+       */
+      function revertLogEntry(btn) {
+        if (!btn || btn.disabled) return;
+        var logId = Number(btn.getAttribute('data-dg-log-id') || 0);
+        var field = String(btn.getAttribute('data-dg-field') || '');
+        var oldRaw = btn.getAttribute('data-dg-old');
+        if (!logId || !field) return;
+        var oldDisplay = oldRaw == null || oldRaw === '' ? '«пусто»' : '«' + oldRaw + '»';
+        if (!window.confirm('Откатить поле «' + (FIELD_LABELS[field] || field) + '» к ' + oldDisplay + '?')) return;
+        btn.disabled = true;
+        var origText = btn.textContent;
+        btn.textContent = '⏳…';
+        fetch('/api/exports/dimensions/log/revert', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ log_id: logId }),
+        })
+          .then(function (r) {
+            return r.json().then(function (j) { return { ok: r.ok, j: j }; });
+          })
+          .then(function (x) {
+            if (!x.ok || !x.j || x.j.success === false) {
+              setStatusHint('Откат не выполнен: ' + ((x.j && x.j.error) || 'неизвестная ошибка'), 'error');
+              btn.disabled = false;
+              btn.textContent = origText;
+              return;
+            }
+            var code = String(x.j.code || logModalState.code || '');
+            applyRevertResultToUi(code, x.j.field, x.j.reverted_to, x.j.measured_by_name, x.j.measured_at, x.j.measurement);
+            setStatusHint('Откат «' + (FIELD_LABELS[field] || field) + '» применён', 'success');
+            loadLogFor(logModalState.code, { offset: logModalState.offset, limit: logModalState.limit });
+          })
+          .catch(function (e) {
+            setStatusHint('Сетевая ошибка отката: ' + ((e && e.message) || String(e)), 'error');
+            btn.disabled = false;
+            btn.textContent = origText;
+          });
+      }
+
+      /**
+       * Применить результат `POST /log/revert` к основной таблице: обновить
+       * `row.measurement[field]`, переписать значение DOM-инпута, обновить data-source
+       * и перекрасить «кто/когда замерял».
+       */
+      function applyRevertResultToUi(code, field, value, measuredByName, measuredAt, measurement) {
+        if (!code || !field) return;
+        var row = findRowByCode(code);
+        if (!row) return;
+        if (!row.measurement) row.measurement = {};
+        if (measurement && typeof measurement === 'object') {
+          for (var k in measurement) {
+            if (Object.prototype.hasOwnProperty.call(measurement, k)) {
+              row.measurement[k] = measurement[k];
+            }
+          }
+        } else {
+          row.measurement[field] = value;
+        }
+        if (measuredByName) row.measured_by_name = String(measuredByName);
+        if (measuredAt) row.measured_at = String(measuredAt);
+        var tbody = document.getElementById('dg-dim-tbody');
+        if (tbody) {
+          var tr = tbody.querySelector('tr[data-dg-code="' + cssEscape(String(code)) + '"]');
+          if (tr) {
+            var input = tr.querySelector('.dg-dim-input[data-dg-field="' + cssEscape(field) + '"]');
+            if (input) {
+              var newVal = row.measurement[field];
+              if (input.tagName === 'SELECT') {
+                input.value = newVal == null ? '' : String(newVal);
+              } else {
+                input.value = newVal == null ? '' : formatNumericForInput(newVal);
+              }
+              if (newVal == null) {
+                var resolved = resolveCellSource(row, field);
+                input.setAttribute('data-source', resolved.source);
+              } else {
+                input.setAttribute('data-source', 'override');
+              }
+              input.removeAttribute('data-dirty');
+            }
+          }
+        }
+        repaintMeasuredCells(code);
+        invalidateTipCache(code);
+      }
+
+      /* ====================== Sync с МойСклад ================================== */
+
+      /**
+       * Отправить ТЕКУЩИЕ значения всех инпутов ряда в МойСклад. Перед отправкой
+       * фронт собирает значения каждого input/select напрямую из DOM (включая ещё
+       * НЕ сохранённые правки, которые не успели пройти blur/Enter), а сервер
+       * сначала persist'ит их в БД (с журналом и автором), а затем PUT'ит в МС.
+       * Это устраняет баг «отправилось только одно поле, а остальные остались
+       * красными»: теперь шлём всё, что пользователь успел набрать.
+       */
+      function syncRowToMs(btn) {
+        if (!btn || btn.disabled) return;
+        var code = btn.getAttribute('data-dg-sync-code') || '';
+        var name = btn.getAttribute('data-dg-sync-name') || '';
+        if (!code) return;
+        var measurement = gatherRowInputValues(code);
+        /** Считаем, что отправлять есть что, если в собранных значениях есть хоть
+         *  одно не-null поле ИЛИ в БД уже лежит override. */
+        var hasAny = false;
+        for (var k in measurement) {
+          if (Object.prototype.hasOwnProperty.call(measurement, k) && measurement[k] != null && String(measurement[k]).trim() !== '') {
+            hasAny = true; break;
+          }
+        }
+        if (!hasAny && btn.getAttribute('data-dg-empty') === '1') {
+          setStatusHint('У позиции «' + (name || code) + '» нет значений — синхронизировать с МС нечего.', 'error');
+          return;
+        }
+        btn.disabled = true;
+        btn.setAttribute('data-state', 'pending');
+        var prevText = btn.textContent;
+        btn.textContent = '⏳ В МС…';
+        setStatusHint('Отправка габаритов в МойСклад: ' + (name || code) + '…', 'success');
+        return fetch('/api/exports/dimensions/sync-ms', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code: code, measurement: measurement }),
+        })
+          .then(function (r) {
+            return r.json().then(function (j) { return { ok: r.ok, status: r.status, j: j }; });
+          })
+          .then(function (x) {
+            btn.disabled = false;
+            btn.textContent = prevText;
+            if (!x.ok || !x.j || x.j.success === false) {
+              btn.setAttribute('data-state', 'err');
+              setTimeout(function () { btn.removeAttribute('data-state'); }, 2200);
+              var detail = (x.j && x.j.error) || ('HTTP ' + x.status);
+              var skippedNote = x.j && Array.isArray(x.j.skipped) && x.j.skipped.length
+                ? ' Пропущено: ' + x.j.skipped.map(function (s) { return s.field + '(' + s.reason + ')'; }).join(', ') + '.'
+                : '';
+              setStatusHint('Ошибка отправки в МС: ' + detail + skippedNote, 'error');
+              return { ok: false, code: code };
+            }
+            btn.setAttribute('data-state', 'ok');
+            setTimeout(function () { btn.removeAttribute('data-state'); }, 1800);
+            var sent = (x.j.sent_fields || []).join(', ') || '—';
+            var skipped = Array.isArray(x.j.skipped) && x.j.skipped.length
+              ? '; пропущено: ' + x.j.skipped.map(function (s) { return s.field + '(' + s.reason + ')'; }).join(', ')
+              : '';
+            var entity = x.j.entity_kind === 'bundle' ? 'комплект' : 'товар';
+            setStatusHint('✓ Отправлено в МС (' + entity + '): ' + sent + skipped + '.', 'success');
+            /** После успешного sync — обновим локальный state и DOM. */
+            applySyncResultToUi(code, measurement, (x.j && x.j.persisted_fields) || []);
+            return { ok: true, code: code, sent: x.j.sent_fields || [] };
+          })
+          .catch(function (e) {
+            btn.disabled = false;
+            btn.textContent = prevText;
+            btn.setAttribute('data-state', 'err');
+            setTimeout(function () { btn.removeAttribute('data-state'); }, 2200);
+            setStatusHint('Сетевая ошибка при отправке в МС: ' + ((e && e.message) || e), 'error');
+            return { ok: false, code: code };
+          });
+      }
+
+      /**
+       * После успешного sync применяем persisted_fields к локальному state.rows и DOM:
+       *  - обновляем row.measurement[field],
+       *  - перекрашиваем инпуты в override, снимаем data-dirty,
+       *  - repaint «Кто/Когда замерял» и кнопок «🕘 Лог»/«↗ В МС».
+       * Если ряда нет в state.rows (например, он на другой странице) — просто пропускаем.
+       */
+      function applySyncResultToUi(code, measurement, persistedFields) {
+        var row = findRowByCode(code);
+        if (!row) return;
+        if (!row.measurement) row.measurement = {};
+        if (Array.isArray(persistedFields) && measurement) {
+          for (var p = 0; p < persistedFields.length; p++) {
+            var pf = persistedFields[p];
+            if (Object.prototype.hasOwnProperty.call(measurement, pf)) {
+              row.measurement[pf] = measurement[pf];
+            }
+          }
+        }
+        var tbody = document.getElementById('dg-dim-tbody');
+        if (tbody) {
+          var tr = tbody.querySelector('tr[data-dg-code="' + cssEscape(String(code)) + '"]');
+          if (tr) {
+            var inputs = tr.querySelectorAll('.dg-dim-input');
+            for (var j2 = 0; j2 < inputs.length; j2++) {
+              var inp = inputs[j2];
+              var fld = inp.getAttribute('data-dg-field');
+              if (fld && row.measurement[fld] != null) inp.setAttribute('data-source', 'override');
+              inp.removeAttribute('data-dirty');
+            }
+          }
+        }
+        repaintMeasuredCells(code);
+        invalidateTipCache(code);
+      }
+
+      /**
+       * Универсальный балк-исполнитель: принимает массив `tasks = [{code, name, measurement?}]`
+       * (если `measurement` отсутствует — sync-ms возьмёт значения из БД), последовательно
+       * шлёт `POST /sync-ms` с прогрессом в кнопке `progressBtn` и статус-баннер.
+       * Возвращает Promise. Используется кнопкой «↗ В МС: все правки».
+       */
+      function runBulkSync(tasks, progressBtn, opts) {
+        opts = opts || {};
+        return new Promise(function (resolve) {
+          if (!Array.isArray(tasks) || tasks.length === 0) {
+            resolve({ ok: 0, err: 0, total: 0 });
+            return;
+          }
+          var origText = progressBtn ? progressBtn.textContent : '';
+          if (progressBtn) {
+            progressBtn.disabled = true;
+            progressBtn.setAttribute('data-state', 'pending');
+          }
+          var okCount = 0, errCount = 0;
+          var modeLabel = opts.label || 'Балк-синк';
+          function next(i) {
+            if (i >= tasks.length) {
+              if (progressBtn) {
+                progressBtn.disabled = false;
+                progressBtn.textContent = origText;
+                progressBtn.setAttribute('data-state', errCount === 0 ? 'ok' : 'err');
+                setTimeout(function () { progressBtn.removeAttribute('data-state'); }, 3000);
+              }
+              setStatusHint(modeLabel + ' завершён: ✓ ' + okCount + (errCount ? ', × ' + errCount : '') +
+                ' из ' + tasks.length + '.', errCount ? 'error' : 'success');
+              resolve({ ok: okCount, err: errCount, total: tasks.length });
+              return;
+            }
+            var t = tasks[i];
+            if (progressBtn) progressBtn.textContent = '⏳ ' + (i + 1) + '/' + tasks.length;
+            setStatusHint(modeLabel + ' ' + (i + 1) + '/' + tasks.length + ': ' +
+              (t.name || t.code) + '…', 'success');
+            var body = { code: t.code };
+            if (t.measurement && typeof t.measurement === 'object') body.measurement = t.measurement;
+            fetch('/api/exports/dimensions/sync-ms', {
+              method: 'POST',
+              credentials: 'same-origin',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(body),
+            })
+              .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+              .then(function (x) {
+                if (x.ok && x.j && x.j.success !== false) {
+                  okCount++;
+                  applySyncResultToUi(t.code, t.measurement || {}, x.j.persisted_fields || []);
+                } else {
+                  errCount++;
+                }
+              })
+              .catch(function () { errCount++; })
+              .then(function () { setTimeout(function () { next(i + 1); }, 60); });
+          }
+          next(0);
+        });
+      }
+
+      /** Собирает задачи балка из видимых state.rows (с inline-measurement из инпутов). */
+      function collectCurrentPageTasks() {
+        var tasks = [];
+        var rows = Array.isArray(state.rows) ? state.rows : [];
+        for (var i = 0; i < rows.length; i++) {
+          var r = rows[i] || {};
+          var code = String(r.code || '');
+          if (!code) continue;
+          var m = gatherRowInputValues(code);
+          var hasAny = false;
+          for (var k in m) {
+            if (Object.prototype.hasOwnProperty.call(m, k) && m[k] != null && String(m[k]).trim() !== '') {
+              hasAny = true; break;
+            }
+          }
+          if (hasAny) tasks.push({ code: code, measurement: m, name: String(r.name || '') });
+        }
+        return tasks;
+      }
+
+      /**
+       * «↗ В МС: все правки (все страницы)». Алгоритм:
+       *  1. Собрать задачи текущей страницы (inline-measurement из DOM).
+       *  2. GET /pending-sync?exclude=<коды_текущей_страницы> — получить все остальные
+       *     позиции с override в БД.
+       *  3. Объединить, спросить confirm у пользователя, прогнать через runBulkSync.
+       * Для задач из БД (без inline) сервер возьмёт значения сам.
+       */
+      function syncAllDbToMs() {
+        var btn = document.getElementById('dg-dim-sync-all-db');
+        if (!btn || btn.disabled) return;
+        var currentTasks = collectCurrentPageTasks();
+        var currentCodes = currentTasks.map(function (t) { return t.code; });
+        btn.disabled = true;
+        var origText = btn.textContent;
+        btn.textContent = '⏳ Опрос БД…';
+        var url = '/api/exports/dimensions/pending-sync' +
+          (currentCodes.length > 0 ? '?exclude=' + encodeURIComponent(currentCodes.join(',')) : '');
+        fetch(url, { credentials: 'same-origin' })
+          .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+          .then(function (x) {
+            btn.textContent = origText;
+            btn.disabled = false;
+            if (!x.ok || !x.j || x.j.success === false) {
+              setStatusHint('Не удалось получить список позиций с правками: ' +
+                ((x.j && x.j.error) || 'неизвестно'), 'error');
+              return;
+            }
+            var dbRows = Array.isArray(x.j.rows) ? x.j.rows : [];
+            /** Отбрасываем позиции без uuid — sync-ms по ним всё равно вернёт 503/404. */
+            var dbTasks = dbRows
+              .filter(function (r) { return r && r.has_uuid && r.code; })
+              .map(function (r) { return { code: r.code, name: r.name || '' }; });
+            var allTasks = currentTasks.concat(dbTasks);
+            if (allTasks.length === 0) {
+              setStatusHint('Позиций с правками не найдено — отправлять нечего.', 'error');
+              return;
+            }
+            var msg = 'Найдено позиций с правками: ' + allTasks.length + '\n' +
+              '  • на этой странице (с DOM-правками): ' + currentTasks.length + '\n' +
+              '  • на других страницах (из БД): ' + dbTasks.length + '\n\n' +
+              'Отправить ВСЕ в МойСклад?\n\nДля позиций текущей страницы сервер сначала сохранит inline-значения в БД, для остальных — возьмёт уже сохранённый override.';
+            if (!window.confirm(msg)) return;
+            runBulkSync(allTasks, btn, { label: 'Балк-синк (все правки)' });
+          })
+          .catch(function (e) {
+            btn.disabled = false;
+            btn.textContent = origText;
+            setStatusHint('Сетевая ошибка при опросе БД: ' + ((e && e.message) || e), 'error');
+          });
+      }
+
+      function bindSyncAllButton() {
+        var btnDb = document.getElementById('dg-dim-sync-all-db');
+        if (btnDb) btnDb.addEventListener('click', function (ev) {
+          ev.preventDefault();
+          syncAllDbToMs();
+        });
+      }
+
+      function bindPackingTypesRefresh() {
+        var btn = document.getElementById('dg-dim-packing-refresh');
+        if (!btn) return;
+        btn.addEventListener('click', function (ev) {
+          ev.preventDefault();
+          btn.disabled = true;
+          var orig = btn.textContent;
+          btn.textContent = '⏳ Импорт…';
+          loadPackingTypes(true)
+            .then(function (rows) {
+              setStatusHint('Справочник «Тип упаковки» обновлён из МС: ' + (rows && rows.length ? rows.length : 0) + ' значений.', 'success');
+              /** Перерендерим только ячейки packing_type, чтобы новые опции попали в <select>. */
+              var tbody = document.getElementById('dg-dim-tbody');
+              if (tbody) {
+                var selects = tbody.querySelectorAll('.dg-dim-input[data-dg-field="packing_type"]');
+                for (var i = 0; i < selects.length; i++) {
+                  var sel = selects[i];
+                  var code = sel.getAttribute('data-dg-code');
+                  var row = findRowByCode(code);
+                  if (!row) continue;
+                  var col = null;
+                  for (var j = 0; j < DIM_COLS.length; j++) {
+                    if (DIM_COLS[j].key === 'packing_type') { col = DIM_COLS[j]; break; }
+                  }
+                  if (!col) continue;
+                  var td = sel.closest('td');
+                  if (td) td.innerHTML = col.render(row, col);
+                }
+              }
+            })
+            .catch(function (e) {
+              setStatusHint('Не удалось обновить справочник «Тип упаковки»: ' + ((e && e.message) || e), 'error');
+            })
+            .then(function () {
+              btn.disabled = false;
+              btn.textContent = orig;
+            });
+        });
+      }
+
+      function bindLogModal() {
+        var tbody = document.getElementById('dg-dim-tbody');
+        if (tbody) {
+          tbody.addEventListener('click', function (ev) {
+            var syncBtn = ev.target && ev.target.closest && ev.target.closest('.dg-dim-sync-btn');
+            if (syncBtn) {
+              ev.preventDefault();
+              ev.stopPropagation();
+              syncRowToMs(syncBtn);
+              return;
+            }
+            var btn = ev.target && ev.target.closest && ev.target.closest('.dg-dim-log-btn');
+            if (!btn) return;
+            ev.preventDefault();
+            ev.stopPropagation();
+            var code = btn.getAttribute('data-dg-log-code') || '';
+            var name = btn.getAttribute('data-dg-log-name') || '';
+            openLogFor(code, name);
+          });
+        }
+        var closeBtn = document.getElementById('dg-dim-log-close');
+        if (closeBtn) closeBtn.addEventListener('click', closeLog);
+        var refreshBtn = document.getElementById('dg-dim-log-refresh');
+        if (refreshBtn) refreshBtn.addEventListener('click', function () {
+          var overlay = document.getElementById('dg-dim-log-overlay');
+          var code = overlay && overlay.dataset ? overlay.dataset.dgCode : '';
+          if (code) loadLogFor(code, { offset: logModalState.offset, limit: logModalState.limit });
+        });
+        var backdrop = document.getElementById('dg-dim-log-backdrop');
+        if (backdrop) backdrop.addEventListener('click', closeLog);
+        var logBody = document.getElementById('dg-dim-log-body');
+        if (logBody) {
+          logBody.addEventListener('click', function (ev) {
+            var prev = ev.target && ev.target.closest && ev.target.closest('.dg-dim-log-prev');
+            if (prev) {
+              ev.preventDefault();
+              ev.stopPropagation();
+              if (prev.disabled) return;
+              var newOffset = Math.max(0, (logModalState.offset || 0) - (logModalState.limit || 100));
+              loadLogFor(logModalState.code, { offset: newOffset, limit: logModalState.limit });
+              return;
+            }
+            var next = ev.target && ev.target.closest && ev.target.closest('.dg-dim-log-next');
+            if (next) {
+              ev.preventDefault();
+              ev.stopPropagation();
+              if (next.disabled) return;
+              var newOffsetNext = (logModalState.offset || 0) + (logModalState.limit || 100);
+              if (newOffsetNext >= (logModalState.total || 0)) return;
+              loadLogFor(logModalState.code, { offset: newOffsetNext, limit: logModalState.limit });
+              return;
+            }
+            var revertBtn = ev.target && ev.target.closest && ev.target.closest('.dg-dim-log-revert-btn');
+            if (revertBtn) {
+              ev.preventDefault();
+              ev.stopPropagation();
+              revertLogEntry(revertBtn);
+            }
+          });
+        }
+        document.addEventListener('keydown', function (ev) {
+          if (ev.key === 'Escape') {
+            var overlay = document.getElementById('dg-dim-log-overlay');
+            if (overlay && overlay.style.display !== 'none') closeLog();
+          }
         });
       }
 
@@ -377,36 +1834,575 @@
         });
       }
 
-      /* Плавающий заголовок: native CSS sticky на каждом <th> (см. exports-dimensions.head.html).
-         Здесь только синхронизируем CSS-переменную --dg-table-sticky-top с высотой
-         .app-header (fixed-header). Без этого заголовки могут «съезжать», т.к. наша таблица
-         помечена в shouldSkipGlobalTableBaseline и глобальный datagon-vanilla.js
-         переменную для неё не выставляет. Эталон — shop-маркетплейсы. */
-      function syncStickyTopVar() {
+      /**
+       * Плавающий заголовок таблицы: ветка «Мои товары / Проблемы с товарами»
+       * (datagon-table-behavior-lock.mdc). Внешний .dg-dim-table-scroll-outer ловит
+       * горизонтальный скролл; вертикальный sticky-th невозможен (это сделало бы
+       * thead приклеенным к scrollport контейнера). Поэтому считаем смещение
+       * вручную и применяем translate3d к #dg-dim-thead с поправкой на высоту
+       * .app-header. Paritet с my-products.scripts.html.
+       */
+      var FLOATING_HEADER_OFFSET_PX = 2;
+      var FLOATING_HEADER_START_EPS_PX = 3;
+      var dimFloatingHeaderRaf = 0;
+      var dimFloatingLastScrollTs = 0;
+
+      function getDimStickyTopPx() {
         var app = document.querySelector('.app-container');
         var header = document.querySelector('.app-header');
         var fixed = Boolean(app && app.classList && app.classList.contains('fixed-header'));
-        var top = 0;
-        if (fixed && header && header.getBoundingClientRect) {
-          var r = header.getBoundingClientRect();
-          top = r && r.height ? Math.round(r.height) : 60;
-        }
-        document.documentElement.style.setProperty('--dg-table-sticky-top', top + 'px');
+        if (!fixed) return 0;
+        if (!header || !header.getBoundingClientRect) return 60;
+        var rect = header.getBoundingClientRect();
+        var h = rect && rect.height ? rect.height : 60;
+        return h > 0 ? h : 60;
       }
+
+      function captureDimTheadBaseTop() {
+        var thead = document.getElementById('dg-dim-thead');
+        if (!thead) return;
+        thead.style.transform = '';
+        thead.style.position = '';
+        thead.style.zIndex = '';
+        thead.style.willChange = '';
+        thead.removeAttribute('data-dg-floating');
+        var rect = thead.getBoundingClientRect();
+        var absTop = (window.scrollY || window.pageYOffset || 0) + (rect && rect.top ? rect.top : 0);
+        thead.setAttribute('data-dg-base-top', String(absTop));
+      }
+
+      function updateDimFloatingHeader() {
+        var thead = document.getElementById('dg-dim-thead');
+        if (!thead) return;
+        var table = thead.closest('table');
+        if (!table || !table.getBoundingClientRect) return;
+        var row = thead.querySelector('tr');
+        if (!row) return;
+
+        var y = window.scrollY || window.pageYOffset || 0;
+        var headerTop = getDimStickyTopPx();
+
+        var baseTopAbs = Number(thead.getAttribute('data-dg-base-top') || 0);
+        if (!Number.isFinite(baseTopAbs) || baseTopAbs <= 0) return;
+        var tableRect = table.getBoundingClientRect();
+        var tableBottom = tableRect.bottom + y;
+        var rowRect = row.getBoundingClientRect();
+        var rowHeight = rowRect && rowRect.height ? rowRect.height : 0;
+
+        var headerLine = y + headerTop;
+        var start = baseTopAbs + FLOATING_HEADER_START_EPS_PX;
+        var end = tableBottom - rowHeight;
+        if (headerLine <= start || headerLine >= end) {
+          if (thead.style.transform) {
+            thead.style.transform = '';
+            thead.style.position = '';
+            thead.style.zIndex = '';
+            thead.style.willChange = '';
+            thead.removeAttribute('data-dg-floating');
+          }
+          return;
+        }
+
+        var zoomAwareOffset = FLOATING_HEADER_OFFSET_PX;
+        var dpr = window.devicePixelRatio || 1;
+        if (Math.abs(dpr - 1) < 0.03) zoomAwareOffset = FLOATING_HEADER_OFFSET_PX - 3;
+        var shift = Math.max(0, headerLine - start - zoomAwareOffset);
+        var shiftPx = Number(shift.toFixed(3));
+        var nextTransform = 'translate3d(0,' + shiftPx + 'px,0)';
+        if (thead.style.transform !== nextTransform) {
+          thead.style.transform = nextTransform;
+          thead.style.position = 'relative';
+          thead.style.zIndex = '25';
+          thead.style.willChange = 'transform';
+          thead.setAttribute('data-dg-floating', '1');
+        }
+      }
+
+      function dimFloatingHeaderTick(ts) {
+        dimFloatingHeaderRaf = 0;
+        updateDimFloatingHeader();
+        if (ts - dimFloatingLastScrollTs < 140) {
+          dimFloatingHeaderRaf = requestAnimationFrame(dimFloatingHeaderTick);
+        }
+      }
+
+      function scheduleFloatingHeaderUpdate() {
+        dimFloatingLastScrollTs = performance.now();
+        if (dimFloatingHeaderRaf) return;
+        dimFloatingHeaderRaf = requestAnimationFrame(dimFloatingHeaderTick);
+      }
+
+      function dimRefreshFloatingAfterLayout() {
+        requestAnimationFrame(function () {
+          captureDimTheadBaseTop();
+          scheduleFloatingHeaderUpdate();
+        });
+      }
+
       function bindStickyTopVar() {
-        syncStickyTopVar();
-        window.addEventListener('resize', syncStickyTopVar);
+        /** CSS-переменная больше не нужна (sticky-th — fallback на top: 0),
+            но мы её обновляем для согласованности с темой и на случай других CSS-правок. */
+        function syncCssVar() {
+          var top = getDimStickyTopPx();
+          document.documentElement.style.setProperty('--dg-table-sticky-top', top + 'px');
+        }
+        syncCssVar();
+        window.addEventListener('resize', function () {
+          syncCssVar();
+          dimRefreshFloatingAfterLayout();
+        });
         var hdr = document.querySelector('.app-header');
         if (hdr && window.ResizeObserver) {
           try {
-            var ro = new ResizeObserver(function () { syncStickyTopVar(); });
+            var ro = new ResizeObserver(function () {
+              syncCssVar();
+              dimRefreshFloatingAfterLayout();
+            });
             ro.observe(hdr);
           } catch (e) {}
         }
         if (document.fonts && document.fonts.ready && typeof document.fonts.ready.then === 'function') {
-          document.fonts.ready.then(function () { syncStickyTopVar(); });
+          document.fonts.ready.then(function () {
+            syncCssVar();
+            dimRefreshFloatingAfterLayout();
+          });
         }
-        window.addEventListener('load', function () { syncStickyTopVar(); });
+        window.addEventListener('load', function () {
+          syncCssVar();
+          dimRefreshFloatingAfterLayout();
+        });
+        /** Слушатели скролла на всех релевантных контейнерах (paritet с my-products). */
+        window.addEventListener('scroll', scheduleFloatingHeaderUpdate, { passive: true });
+        var appOuter = document.querySelector('.app-main__outer');
+        if (appOuter) appOuter.addEventListener('scroll', scheduleFloatingHeaderUpdate, { passive: true });
+        var outer = document.getElementById('dg-dim-table-scroll-outer');
+        if (outer) outer.addEventListener('scroll', scheduleFloatingHeaderUpdate, { passive: true });
+        captureDimTheadBaseTop();
+      }
+
+      /* ====================== Tooltip «3 последних правки» ===================== */
+
+      /**
+       * Мини-tooltip, который появляется при наведении на ячейку «Кто замерял» или
+       * на любой инпут редактируемого поля габаритов. Источник: GET /log с лимитом 3.
+       *   - На «Кто замерял»: 3 последних правки **по позиции** (любого поля).
+       *   - На инпутах: 3 последних правки **именно этого поля** (field=...).
+       *
+       * Кэш на 60s в `tipCache`, чтобы не дёргать сервер при быстром hover.
+       * Не использует глобальный datagon-tooltip — это локальный custom popup,
+       * специфичный для журнала ms_dimensions_log.
+       */
+      var tipCache = {};
+      var TIP_CACHE_TTL_MS = 60000;
+      var tipEl = null;
+      var tipShowTimer = null;
+      var tipHideTimer = null;
+      var tipCurrentTarget = null;
+
+      function ensureTipEl() {
+        if (tipEl) return tipEl;
+        tipEl = document.createElement('div');
+        tipEl.className = 'dg-dim-cell-tip';
+        tipEl.setAttribute('role', 'tooltip');
+        tipEl.style.display = 'none';
+        document.body.appendChild(tipEl);
+        tipEl.addEventListener('mouseenter', cancelHideTip);
+        tipEl.addEventListener('mouseleave', scheduleHideTip);
+        return tipEl;
+      }
+
+      function positionTip(target) {
+        if (!tipEl || !target) return;
+        var r = target.getBoundingClientRect();
+        tipEl.style.maxWidth = '360px';
+        tipEl.style.left = '-9999px';
+        tipEl.style.top = '-9999px';
+        tipEl.style.display = '';
+        var tipRect = tipEl.getBoundingClientRect();
+        var top = r.bottom + 6 + window.scrollY;
+        var left = r.left + window.scrollX;
+        var maxLeft = window.scrollX + document.documentElement.clientWidth - tipRect.width - 8;
+        if (left > maxLeft) left = Math.max(window.scrollX + 8, maxLeft);
+        tipEl.style.left = left + 'px';
+        tipEl.style.top = top + 'px';
+      }
+
+      function renderTipContent(rows, field) {
+        if (!rows || rows.length === 0) {
+          return '<div class="dg-dim-cell-tip-empty">' +
+            (field ? 'Это поле ещё не правили.' : 'История по позиции пуста.') +
+            '</div>';
+        }
+        var title = field
+          ? 'Последние правки поля «' + escapeHtml(rows[0].field_label || FIELD_LABELS[field] || field) + '»'
+          : 'Последние правки по позиции';
+        var out = '<div class="dg-dim-cell-tip-title">' + title + '</div><ul class="dg-dim-cell-tip-list">';
+        for (var i = 0; i < rows.length; i++) {
+          var r = rows[i] || {};
+          var fld = field ? '' : '<span class="dg-dim-cell-tip-field">' + escapeHtml(r.field_label || r.field) + ':</span> ';
+          var oldV = r.old_value == null ? '∅' : escapeHtml(r.old_value);
+          var newV = r.new_value == null ? '∅' : escapeHtml(r.new_value);
+          var who = r.changed_by_name || ('user#' + (r.changed_by_user_id || '—'));
+          var actRaw = String(r.action || 'set');
+          var actCls = 'action-' + actRaw;
+          out += '<li>' +
+            '<div class="dg-dim-cell-tip-row1"><span class="dg-dim-cell-tip-when">' + escapeHtml(formatDateTimeMsk(r.changed_at)) + '</span>' +
+            ' · <span class="dg-dim-cell-tip-who">' + escapeHtml(who) + '</span>' +
+            ' · <span class="dg-dim-log-action ' + actCls + '" title="' + escapeHtml(actRaw) + '">' + escapeHtml(actionLabel(actRaw)) + '</span></div>' +
+            '<div class="dg-dim-cell-tip-row2">' + fld +
+            '<span class="dg-dim-cell-tip-old">' + oldV + '</span> → ' +
+            '<span class="dg-dim-cell-tip-new">' + newV + '</span></div>' +
+            '</li>';
+        }
+        out += '</ul>';
+        return out;
+      }
+
+      function showTipFor(target) {
+        if (!target) return;
+        var code = target.getAttribute('data-dg-code') || target.getAttribute('data-dg-tip-code') || '';
+        var field = target.getAttribute('data-dg-field') || target.getAttribute('data-dg-tip-field') || '';
+        if (!code) return;
+        ensureTipEl();
+        var cacheKey = code + '/' + (field || '*');
+        var now = Date.now();
+        var cached = tipCache[cacheKey];
+        if (cached && now - cached.ts < TIP_CACHE_TTL_MS) {
+          tipEl.innerHTML = renderTipContent(cached.rows, field);
+          positionTip(target);
+          return;
+        }
+        tipEl.innerHTML = '<div class="dg-dim-cell-tip-loading">Загрузка истории…</div>';
+        positionTip(target);
+        var qs = new URLSearchParams({ code: String(code), limit: '3' });
+        if (field) qs.set('field', field);
+        fetch('/api/exports/dimensions/log?' + qs.toString(), { credentials: 'same-origin' })
+          .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+          .then(function (x) {
+            if (!x.ok || !x.j || x.j.success === false) {
+              if (tipCurrentTarget === target) {
+                tipEl.innerHTML = '<div class="dg-dim-cell-tip-err">' +
+                  escapeHtml((x.j && x.j.error) || 'Не удалось загрузить') + '</div>';
+              }
+              return;
+            }
+            var rows = (x.j.rows || []).slice(0, 3);
+            tipCache[cacheKey] = { ts: Date.now(), rows: rows };
+            if (tipCurrentTarget === target) {
+              tipEl.innerHTML = renderTipContent(rows, field);
+              positionTip(target);
+            }
+          })
+          .catch(function (e) {
+            if (tipCurrentTarget === target) {
+              tipEl.innerHTML = '<div class="dg-dim-cell-tip-err">Сетевая ошибка</div>';
+            }
+          });
+      }
+
+      function scheduleShowTip(target) {
+        cancelShowTip();
+        tipCurrentTarget = target;
+        tipShowTimer = setTimeout(function () { showTipFor(target); }, 350);
+      }
+
+      function scheduleHideTip() {
+        cancelHideTip();
+        tipHideTimer = setTimeout(function () {
+          if (tipEl) tipEl.style.display = 'none';
+          tipCurrentTarget = null;
+        }, 150);
+      }
+
+      function cancelShowTip() {
+        if (tipShowTimer) { clearTimeout(tipShowTimer); tipShowTimer = null; }
+      }
+      function cancelHideTip() {
+        if (tipHideTimer) { clearTimeout(tipHideTimer); tipHideTimer = null; }
+      }
+
+      function tipTargetFromEvent(target) {
+        if (!target || !target.closest) return null;
+        var inp = target.closest('.dg-dim-input[data-dg-code][data-dg-field]');
+        if (inp) return inp;
+        var span = target.closest('.dg-dim-tip-measured-by[data-dg-tip-code]');
+        if (span) return span;
+        return null;
+      }
+
+      /**
+       * Сбросить кэш tooltip по конкретной позиции/полю. Вызывается после
+       * успешного сохранения значения или отката — чтобы при следующем hover
+       * пользователь увидел актуальную тройку.
+       */
+      function invalidateTipCache(code, field) {
+        if (!code) return;
+        try {
+          if (field) {
+            delete tipCache[code + '/' + field];
+            delete tipCache[code + '/*'];
+          } else {
+            for (var k in tipCache) {
+              if (Object.prototype.hasOwnProperty.call(tipCache, k) && k.indexOf(code + '/') === 0) {
+                delete tipCache[k];
+              }
+            }
+          }
+        } catch (e) {}
+      }
+      window.__dgDimInvalidateTip = invalidateTipCache;
+
+      function bindCellTooltips() {
+        var tbody = document.getElementById('dg-dim-tbody');
+        if (!tbody) return;
+        tbody.addEventListener('mouseover', function (ev) {
+          var t = tipTargetFromEvent(ev.target);
+          if (!t) return;
+          cancelHideTip();
+          if (tipCurrentTarget === t) return;
+          scheduleShowTip(t);
+        });
+        tbody.addEventListener('mouseout', function (ev) {
+          var t = tipTargetFromEvent(ev.target);
+          if (!t) return;
+          var related = ev.relatedTarget;
+          if (related && tipEl && tipEl.contains(related)) return;
+          if (related && tipTargetFromEvent(related) === t) return;
+          cancelShowTip();
+          scheduleHideTip();
+        });
+        function dismissOnScroll() {
+          cancelShowTip();
+          if (tipEl && tipEl.style.display !== 'none') {
+            tipEl.style.display = 'none';
+            tipCurrentTarget = null;
+          }
+        }
+        window.addEventListener('scroll', dismissOnScroll, { passive: true, capture: true });
+        var appOuter = document.querySelector('.app-main__outer');
+        if (appOuter) appOuter.addEventListener('scroll', dismissOnScroll, { passive: true });
+        var outer = document.getElementById('dg-dim-table-scroll-outer');
+        if (outer) outer.addEventListener('scroll', dismissOnScroll, { passive: true });
+      }
+
+      /* ====================== Карточка «История изменений» ===================== */
+
+      var HISTORY_COLLAPSED_KEY = 'dg.dim.history-card.collapsed.v1';
+      var historyState = {
+        offset: 0,
+        limit: 100,
+        total: 0,
+        loaded: false,
+        loading: false,
+        lastFilters: null,
+      };
+
+      function getHistoryFilters() {
+        function val(id) {
+          var el = document.getElementById(id);
+          return el ? String(el.value || '').trim() : '';
+        }
+        var lim = Number(val('dg-dim-h-limit')) || 100;
+        return {
+          search: val('dg-dim-h-search'),
+          action: val('dg-dim-h-action'),
+          field: val('dg-dim-h-field'),
+          who: val('dg-dim-h-who'),
+          from: val('dg-dim-h-from'),
+          to: val('dg-dim-h-to'),
+          limit: Math.max(1, Math.min(500, lim)),
+        };
+      }
+
+      function loadHistory(opts) {
+        var tbody = document.getElementById('dg-dim-history-tbody');
+        var hint = document.getElementById('dg-dim-history-hint');
+        var summary = document.getElementById('dg-dim-history-summary');
+        if (!tbody) return Promise.resolve();
+        var o = opts && typeof opts === 'object' ? opts : {};
+        var filters = getHistoryFilters();
+        var offset = Math.max(0, Number.isFinite(Number(o.offset)) ? Number(o.offset) : 0);
+        historyState.lastFilters = filters;
+        historyState.limit = filters.limit;
+        historyState.loading = true;
+        tbody.innerHTML = '<tr><td colspan="6" class="text-muted small py-3 text-center">Загрузка журнала…</td></tr>';
+        if (hint) hint.textContent = '—';
+        var qs = new URLSearchParams();
+        if (filters.search) qs.set('search', filters.search);
+        if (filters.action) qs.set('action', filters.action);
+        if (filters.field) qs.set('field', filters.field);
+        if (filters.who) qs.set('who', filters.who);
+        if (filters.from) qs.set('from', filters.from);
+        if (filters.to) qs.set('to', filters.to);
+        qs.set('limit', String(filters.limit));
+        qs.set('offset', String(offset));
+        return fetch('/api/exports/dimensions/log/global?' + qs.toString(), { credentials: 'same-origin' })
+          .then(function (r) {
+            return r.json().then(function (j) { return { ok: r.ok, j: j }; });
+          })
+          .then(function (x) {
+            historyState.loading = false;
+            if (!x.ok || !x.j || x.j.success === false) {
+              tbody.innerHTML = '<tr><td colspan="6" class="text-danger small py-3 text-center">' +
+                escapeHtml((x.j && x.j.error) || 'Ошибка загрузки журнала') + '</td></tr>';
+              if (hint) hint.textContent = '—';
+              if (summary) summary.textContent = '';
+              return;
+            }
+            historyState.total = Number(x.j.total || 0);
+            historyState.limit = Number(x.j.limit || filters.limit);
+            historyState.offset = Number(x.j.offset || offset);
+            historyState.loaded = true;
+            renderHistoryRows(x.j.rows || []);
+            updateHistoryHint();
+            if (summary) {
+              var any = !!(filters.search || filters.action || filters.field || filters.who || filters.from || filters.to);
+              summary.textContent = '(' + historyState.total + (any ? ' под фильтр' : ' всего') + ')';
+            }
+          })
+          .catch(function (e) {
+            historyState.loading = false;
+            tbody.innerHTML = '<tr><td colspan="6" class="text-danger small py-3 text-center">Сетевая ошибка: ' +
+              escapeHtml((e && e.message) || String(e)) + '</td></tr>';
+            if (hint) hint.textContent = '—';
+          });
+      }
+
+      function renderHistoryRows(rows) {
+        var tbody = document.getElementById('dg-dim-history-tbody');
+        if (!tbody) return;
+        if (!Array.isArray(rows) || rows.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="6" class="text-muted small py-3 text-center">Нет записей под текущие фильтры.</td></tr>';
+          return;
+        }
+        var out = '';
+        for (var i = 0; i < rows.length; i++) {
+          var r = rows[i] || {};
+          var actionRaw = String(r.action || 'set');
+          var actionCls = 'action-' + actionRaw;
+          var who = r.changed_by_name || ('user#' + (r.changed_by_user_id || '—'));
+          var oldVal = r.old_value == null ? '<span class="text-muted">∅</span>' : '<span class="dg-dim-history-old">' + escapeHtml(r.old_value) + '</span>';
+          var newVal = r.new_value == null ? '<span class="text-muted">∅</span>' : '<span class="dg-dim-history-new">' + escapeHtml(r.new_value) + '</span>';
+          var noteSuffix = r.note ? '<div class="dg-dim-history-note">' + escapeHtml(r.note) + '</div>' : '';
+          var nameTitle = r.name ? escapeHtml(r.name) : '';
+          out += '<tr>' +
+            '<td>' + escapeHtml(formatDateTimeMsk(r.changed_at)) + '</td>' +
+            '<td><div class="dg-dim-history-name" title="' + nameTitle + '">' +
+              (r.name ? escapeHtml(r.name) : '<span class="text-muted">—</span>') +
+              '</div><div class="dg-dim-history-code">' + escapeHtml(r.code || '') +
+              (r.type ? ' · ' + escapeHtml(r.type) : '') + '</div></td>' +
+            '<td>' + escapeHtml(who) + '</td>' +
+            '<td><span class="dg-dim-log-action ' + actionCls + '" title="' + escapeHtml(actionRaw) + '">' + escapeHtml(actionLabel(actionRaw)) + '</span></td>' +
+            '<td>' + escapeHtml(r.field_label || r.field || '') + '</td>' +
+            '<td>' + oldVal + '<span class="dg-dim-log-arrow">→</span>' + newVal + noteSuffix + '</td>' +
+            '</tr>';
+        }
+        tbody.innerHTML = out;
+      }
+
+      function updateHistoryHint() {
+        var hint = document.getElementById('dg-dim-history-hint');
+        var prev = document.getElementById('dg-dim-history-prev');
+        var next = document.getElementById('dg-dim-history-next');
+        if (!hint) return;
+        var total = historyState.total || 0;
+        var limit = historyState.limit || 100;
+        var offset = historyState.offset || 0;
+        var pages = total > 0 ? Math.max(1, Math.ceil(total / limit)) : 1;
+        var current = Math.floor(offset / limit) + 1;
+        var shown = Math.min(limit, Math.max(0, total - offset));
+        hint.textContent = 'Найдено: ' + total + '; страница ' + current + '/' + pages + '; показано: ' + shown;
+        if (prev) prev.disabled = offset <= 0;
+        if (next) next.disabled = (offset + limit) >= total;
+      }
+
+      function resetHistoryFilters() {
+        ['dg-dim-h-search', 'dg-dim-h-action', 'dg-dim-h-field', 'dg-dim-h-who', 'dg-dim-h-from', 'dg-dim-h-to'].forEach(function (id) {
+          var el = document.getElementById(id);
+          if (el) el.value = '';
+        });
+        var lim = document.getElementById('dg-dim-h-limit');
+        if (lim) lim.value = '100';
+      }
+
+      function bindHistoryCard() {
+        var body = document.getElementById('dg-dim-history-body');
+        var toggle = document.getElementById('dg-dim-history-toggle');
+        if (!body || !toggle) return;
+
+        function applyCollapsed(collapsed) {
+          if (collapsed) {
+            body.classList.add('d-none');
+            toggle.textContent = 'Развернуть';
+          } else {
+            body.classList.remove('d-none');
+            toggle.textContent = 'Свернуть';
+          }
+        }
+
+        var initialCollapsed = true;
+        try {
+          var v = localStorage.getItem(HISTORY_COLLAPSED_KEY);
+          if (v === '0') initialCollapsed = false;
+        } catch (e) {}
+        applyCollapsed(initialCollapsed);
+        if (!initialCollapsed && !historyState.loaded) {
+          loadHistory({ offset: 0 });
+        }
+
+        toggle.addEventListener('click', function () {
+          var nowCollapsed = !body.classList.contains('d-none');
+          applyCollapsed(nowCollapsed);
+          try {
+            localStorage.setItem(HISTORY_COLLAPSED_KEY, nowCollapsed ? '1' : '0');
+          } catch (e) {}
+          if (!nowCollapsed && !historyState.loaded) {
+            loadHistory({ offset: 0 });
+          }
+          dimRefreshFloatingAfterLayout();
+        });
+
+        var apply = document.getElementById('dg-dim-h-apply');
+        if (apply) apply.addEventListener('click', function () { loadHistory({ offset: 0 }); });
+        var reset = document.getElementById('dg-dim-h-reset');
+        if (reset) reset.addEventListener('click', function () {
+          resetHistoryFilters();
+          loadHistory({ offset: 0 });
+        });
+        var refresh = document.getElementById('dg-dim-history-refresh');
+        if (refresh) refresh.addEventListener('click', function () {
+          if (body.classList.contains('d-none')) {
+            applyCollapsed(false);
+            try { localStorage.setItem(HISTORY_COLLAPSED_KEY, '0'); } catch (e) {}
+          }
+          loadHistory({ offset: historyState.offset || 0 });
+        });
+        var prev = document.getElementById('dg-dim-history-prev');
+        if (prev) prev.addEventListener('click', function () {
+          if (prev.disabled) return;
+          var newOffset = Math.max(0, (historyState.offset || 0) - (historyState.limit || 100));
+          loadHistory({ offset: newOffset });
+        });
+        var next = document.getElementById('dg-dim-history-next');
+        if (next) next.addEventListener('click', function () {
+          if (next.disabled) return;
+          var newOffset = (historyState.offset || 0) + (historyState.limit || 100);
+          if (newOffset >= (historyState.total || 0)) return;
+          loadHistory({ offset: newOffset });
+        });
+        var lim = document.getElementById('dg-dim-h-limit');
+        if (lim) lim.addEventListener('change', function () { loadHistory({ offset: 0 }); });
+
+        ['dg-dim-h-search', 'dg-dim-h-who'].forEach(function (id) {
+          var el = document.getElementById(id);
+          if (!el) return;
+          el.addEventListener('keydown', function (ev) {
+            if (ev.key === 'Enter') {
+              ev.preventDefault();
+              loadHistory({ offset: 0 });
+            }
+          });
+        });
       }
 
       function init() {
@@ -414,12 +2410,47 @@
         if (saved) state.applied = cloneFilters(saved);
         state.pending = cloneFilters(state.applied);
         applyFormFromState(state.applied);
+
+        visibleCols = loadVisibleCols();
+        columnWidths = loadColumnWidths();
+        buildColgroup();
+        buildThead();
+        renderColumnControls();
+
         bindEvents();
         bindHeaderSearchMirror();
         bindSort();
+        bindCellEditors();
+        bindLogModal();
+        bindColumnsToolbox();
+        bindSyncAllButton();
+        bindPackingTypesRefresh();
         bindCardCollapse(FILTERS_COLLAPSED_KEY, 'dg-dim-filters-body', 'dg-dim-filters-toggle');
         bindCardCollapse(TABLE_COLLAPSED_KEY, 'dg-dim-table-body', 'dg-dim-table-toggle');
+        bindHistoryCard();
+        bindCellTooltips();
         bindStickyTopVar();
+        /** Подгружаем справочник «Тип упаковки» параллельно загрузке списка; если он
+         *  успеет — packing_type-ячейки сразу будут <select>; иначе перерисуем после. */
+        loadPackingTypes(false)
+          .then(function () {
+            /** Если таблица уже отрендерилась без опций — пересоберём только packing_type. */
+            var tbody = document.getElementById('dg-dim-tbody');
+            if (!tbody) return;
+            var selects = tbody.querySelectorAll('select.dg-dim-input[data-dg-field="packing_type"], input.dg-dim-input[data-dg-field="packing_type"]');
+            if (selects.length === 0) return;
+            var col = null;
+            for (var i = 0; i < DIM_COLS.length; i++) { if (DIM_COLS[i].key === 'packing_type') { col = DIM_COLS[i]; break; } }
+            if (!col) return;
+            for (var s = 0; s < selects.length; s++) {
+              var code = selects[s].getAttribute('data-dg-code');
+              var row = findRowByCode(code);
+              if (!row) continue;
+              var td = selects[s].closest('td');
+              if (td) td.innerHTML = col.render(row, col);
+            }
+          })
+          .catch(function () { /** ignore — справочник можно подтянуть кнопкой «🔄 Тип упаковки» позже */ });
         loadList();
       }
 

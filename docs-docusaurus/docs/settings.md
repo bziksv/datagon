@@ -42,6 +42,7 @@ description: Глобальные параметры парсинга, синх�
 | `sync_batch_size` / `sync_delay_ms` | Нагрузка на внешние БД при синке «Мои сайты». |
 | `sync_mode` | Политика запуска синка (как интерпретирует сервер — см. код). |
 | `log_retention_days` / `results_retention_days` | Срок хранения логов и строк `prices`. |
+| `ms_dimensions_log_retention_days` | Срок хранения записей журнала замеров габаритов `ms_dimensions_log` (по умолчанию **180 дней**). Автоочистка работает раз в 12 часов плюс при старте сервера — `cleanupDimensionsLogByRetentionDays()` в `server.js`. UI-управление: блок «Журнал замеров габаритов» в карточке «Логи сервера» (`/settings.html`), inline-feedback `runSaveWithInlineFeedback` с `sectionId='dim-log'`; рядом — кнопки «Обновить статистику» (вызывает `GET /api/exports/dimensions/log/stats`) и «Очистить сейчас» (вызывает `POST /api/exports/dimensions/log/cleanup` с текущим значением поля retention). |
 | `ms_sync_page_limit` / `ms_sync_delay_ms` | Пакеты и паузы при обходе выгрузки МС. |
 | `auto_sync_myproducts_*` / `auto_sync_moysklad_*` / `auto_sync_marketplaces_*` / `auto_sync_huckster_*` / `auto_sync_db_size_*` | Расписание фоновых задач по московскому времени (если включено), включая ежедневный пересчёт размера БД для дашборда. |
 | `auth_session_ttl_days` / `auth_session_user_limit` | Длительность сессии и лимит одновременных сессий на пользователя. |

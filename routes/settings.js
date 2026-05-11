@@ -82,7 +82,7 @@ module.exports = (db, appSettings) => {
     
     router.post('/', async (req, res) => {
         const {
-            default_limit, parse_batch_size, page_delay_ms, sync_batch_size, sync_delay_ms, sync_mode, log_retention_days, results_retention_days,
+            default_limit, parse_batch_size, page_delay_ms, sync_batch_size, sync_delay_ms, sync_mode, log_retention_days, results_retention_days, ms_dimensions_log_retention_days,
             ms_sync_page_limit, ms_sync_delay_ms,
             auto_sync_myproducts_enabled, auto_sync_myproducts_time,
             auto_sync_moysklad_enabled, auto_sync_moysklad_time,
@@ -106,6 +106,7 @@ module.exports = (db, appSettings) => {
             if (ms_sync_delay_ms !== undefined) queries.push(['ms_sync_delay_ms', Number(ms_sync_delay_ms || 0)]);
             if (log_retention_days !== undefined) queries.push(['log_retention_days', Number(log_retention_days || 7)]);
             if (results_retention_days !== undefined) queries.push(['results_retention_days', Number(results_retention_days || 120)]);
+            if (ms_dimensions_log_retention_days !== undefined) queries.push(['ms_dimensions_log_retention_days', Number(ms_dimensions_log_retention_days || 180)]);
             if (auto_sync_myproducts_enabled !== undefined) queries.push(['auto_sync_myproducts_enabled', auto_sync_myproducts_enabled ? 1 : 0]);
             if (auto_sync_myproducts_time !== undefined) queries.push(['auto_sync_myproducts_time', auto_sync_myproducts_time || '03:00']);
             if (auto_sync_moysklad_enabled !== undefined) queries.push(['auto_sync_moysklad_enabled', auto_sync_moysklad_enabled ? 1 : 0]);
@@ -169,6 +170,7 @@ module.exports = (db, appSettings) => {
             if(sync_mode) appSettings.sync_mode = sync_mode;
             if(log_retention_days !== undefined) appSettings.log_retention_days = parseInt(log_retention_days);
             if(results_retention_days !== undefined) appSettings.results_retention_days = parseInt(results_retention_days);
+            if(ms_dimensions_log_retention_days !== undefined) appSettings.ms_dimensions_log_retention_days = parseInt(ms_dimensions_log_retention_days);
             if(auto_sync_myproducts_enabled !== undefined) appSettings.auto_sync_myproducts_enabled = auto_sync_myproducts_enabled ? 1 : 0;
             if(auto_sync_myproducts_time !== undefined) appSettings.auto_sync_myproducts_time = auto_sync_myproducts_time || '03:00';
             if(auto_sync_moysklad_enabled !== undefined) appSettings.auto_sync_moysklad_enabled = auto_sync_moysklad_enabled ? 1 : 0;

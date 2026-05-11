@@ -65,6 +65,7 @@
         auto_sync_db_size_enabled: 1,
         auto_sync_db_size_time: "02:00",
         log_retention_days: 7,
+        ms_dimensions_log_retention_days: 180,
         ozon_client_id: "",
         ozon_api_key: "",
         wb_api_key: "",
@@ -200,6 +201,7 @@
         document.getElementById("dg-set-auto_db_size_en").checked = Number(merged.auto_sync_db_size_enabled) === 1;
         set("dg-set-auto_db_size_time", merged.auto_sync_db_size_time || "02:00");
         set("dg-set-log_retention_days", merged.log_retention_days);
+        set("dg-set-ms_dimensions_log_retention_days", merged.ms_dimensions_log_retention_days);
         set("dg-set-ozon_client_id", merged.ozon_client_id || "");
         set("dg-set-ozon_api_key", merged.ozon_api_key || "");
         set("dg-set-wb_api_key", merged.wb_api_key || "");
@@ -1151,6 +1153,104 @@
           });
       }
 
+      /**
+       * Статистика журнала замеров габаритов `ms_dimensions_log` для блока
+       * «Журнал замеров габаритов» в карточке «Логи сервера»: всего строк,
+       * самая старая/свежая запись, разбивка по action и сколько будет
+       * удалено по текущему retention.
+       */
+      function loadDimLogStats() {
+        var box = document.getElementById("dg-set-dim-log-info");
+        if (box) box.textContent = "Статистика журнала: загрузка…";
+        return dgKeepScroll(
+          fetch("/api/exports/dimensions/log/stats", { credentials: "same-origin" })
+            .then(function (r) { return r.json().then(function (j) { return { r: r, j: j }; }); })
+            .then(function (x) {
+              if (!box) return;
+              box.replaceChildren();
+              if (!x.r.ok || !x.j || x.j.success === false) {
+                box.textContent = "Ошибка статистики журнала: " + ((x.j && x.j.error) || "неизвестно");
+                return;
+              }
+              var j = x.j;
+              var act = j.by_action || {};
+              var actStr = ["set", "sync_ms", "delete"]
+                .filter(function (k) { return act[k] != null; })
+                .map(function (k) { return k + "=" + (act[k] || 0); })
+                .join(", ");
+              var oldestStr = j.oldest_at
+                ? new Date(j.oldest_at).toLocaleString("ru-RU", { timeZone: "Europe/Moscow" })
+                : "—";
+              var newestStr = j.newest_at
+                ? new Date(j.newest_at).toLocaleString("ru-RU", { timeZone: "Europe/Moscow" })
+                : "—";
+              var d1 = document.createElement("div");
+              d1.textContent = "Всего записей: " + (j.total || 0) + (actStr ? " (" + actStr + ")" : "");
+              var d2 = document.createElement("div");
+              d2.textContent = "Самая старая: " + oldestStr + " · самая свежая: " + newestStr;
+              var d3 = document.createElement("div");
+              d3.textContent = "Текущий retention: " + (j.retention_days || 0) +
+                " дней · по нему будет удалено сейчас: " + (j.older_than_retention || 0);
+              box.appendChild(d1);
+              box.appendChild(d2);
+              box.appendChild(d3);
+            })
+            .catch(function (e) {
+              if (!box) return;
+              box.replaceChildren();
+              box.textContent = "Сетевая ошибка статистики журнала: " + ((e && e.message) || e);
+            })
+        );
+      }
+
+      /**
+       * Сохранить retention журнала замеров через единую утилиту inline-feedback
+       * (`datagon-settings-save-feedback.mdc`). После успешного сохранения сразу
+       * обновляем статистику — пользователь видит «по новому retention удалится X».
+       */
+      function saveDimLogRetention() {
+        var days = getNum("dg-set-ms_dimensions_log_retention_days", 180);
+        if (!Number.isFinite(days) || days < 1) {
+          days = 180;
+          var el = document.getElementById("dg-set-ms_dimensions_log_retention_days");
+          if (el) el.value = "180";
+        }
+        runSaveWithInlineFeedback({
+          sectionId: "dim-log",
+          payload: { ms_dimensions_log_retention_days: days },
+          okText: "Retention журнала замеров сохранён",
+          verifyKeys: ["ms_dimensions_log_retention_days"],
+        }).then(function () { loadDimLogStats(); }).catch(function () { /** баннер уже показан утилитой */ });
+      }
+
+      /**
+       * Принудительная очистка прямо сейчас (без ожидания cron). Использует ТЕКУЩЕЕ
+       * значение поля «Хранить журнал замеров (дней)» — даже если оно ещё не сохранено,
+       * чтобы пользователь мог попробовать другое значение и нажать «Очистить сейчас»
+       * для предпросмотра.
+       */
+      function cleanupDimLogNow() {
+        var days = getNum("dg-set-ms_dimensions_log_retention_days", 180);
+        if (!window.confirm("Удалить из журнала замеров записи старше " + days + " дней?")) return;
+        fetch("/api/exports/dimensions/log/cleanup", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ days: days }),
+        })
+          .then(function (r) { return r.json().then(function (j) { return { r: r, j: j }; }); })
+          .then(function (x) {
+            if (!x.r.ok || !x.j || x.j.success === false) {
+              throw new Error((x.j && x.j.error) || "Не удалось очистить журнал");
+            }
+            alert("Удалено записей: " + (x.j.deleted || 0));
+            loadDimLogStats();
+          })
+          .catch(function (e) {
+            alert((e && e.message) || "Ошибка очистки журнала");
+          });
+      }
+
       function createUser() {
         if (!canManageUsers()) return alert("Недостаточно прав");
         var full_name = getStr("dg-set-new-fullname").trim();
@@ -1419,6 +1519,9 @@
       document.getElementById("dg-set-auto_db_size_run").addEventListener("click", function () { runAutoSyncNow("db_size", "Размер БД"); });
       document.getElementById("dg-set-btn-logs-refresh").addEventListener("click", loadLogsInfo);
       document.getElementById("dg-set-btn-logs-clear").addEventListener("click", clearLogsNow);
+      document.getElementById("dg-set-btn-save-dim-log").addEventListener("click", saveDimLogRetention);
+      document.getElementById("dg-set-btn-dim-log-refresh").addEventListener("click", loadDimLogStats);
+      document.getElementById("dg-set-btn-dim-log-cleanup").addEventListener("click", cleanupDimLogNow);
       document.getElementById("dg-set-pw-toggle").addEventListener("click", function () {
         showPasswordChange = !showPasswordChange;
         document.getElementById("dg-set-pw-new").type = showPasswordChange ? "text" : "password";
@@ -1458,6 +1561,7 @@
       document.getElementById("dg-set-pw-username").readOnly = !isAdmin();
       loadSettings();
       loadLogsInfo();
+      loadDimLogStats();
       loadUsers();
       window.addEventListener("datagon-profile-loaded", function () {
         applyUserFieldDisabled();

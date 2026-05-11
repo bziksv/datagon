@@ -680,9 +680,9 @@ Body (JSON, опционально): `trigger_type` (по умолчанию `ma
 
 Префикс: `/api/exports/dimensions`. Экран: `/exports-dimensions.html` (входит в подменю **Маркетплейсы** сразу после «Яндекс Маркет»).
 
-Назначение: реестр замеров габаритов товаров и комплектов МойСклад с фиксацией **кто** и **когда** замерял. Базовые поля (код, наименование, тип) берутся из `ms_export`. Замеры хранятся в отдельной таблице **`ms_dimensions_measurements`** и подмешиваются к строкам `ms_export` по полю `code`.
+Назначение: реестр замеров габаритов товаров и комплектов МойСклад с фиксацией **кто** и **когда** замерял. Базовые поля (код, наименование, тип) берутся из `ms_export`. Замеры хранятся в отдельной таблице **`ms_dimensions_measurements`** и подмешиваются к строкам `ms_export` по полю `code`. История изменений по каждой позиции ведётся в **`ms_dimensions_log`** (см. ниже).
 
-Таблица создаётся при первом обращении к роуту:
+Таблица замеров (создаётся и доращивается миграцией при первом обращении к роуту):
 
 ```sql
 CREATE TABLE IF NOT EXISTS ms_dimensions_measurements (
@@ -690,11 +690,37 @@ CREATE TABLE IF NOT EXISTS ms_dimensions_measurements (
     measured_by_user_id INT NULL,
     measured_by_name VARCHAR(255) NULL,
     measured_at TIMESTAMP NULL,
+    length_cm DECIMAL(10,2) NULL,
+    width_cm DECIMAL(10,2) NULL,
+    height_box_cm DECIMAL(10,2) NULL,
+    height_bag_cm DECIMAL(10,2) NULL,
+    weight_kg DECIMAL(10,3) NULL,
+    packing_type VARCHAR(255) NULL,
     dimensions_json LONGTEXT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_dim_meas_by_user (measured_by_user_id),
     INDEX idx_dim_meas_at (measured_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+```
+
+Журнал изменений (одна строка = одно изменение поля одного товара):
+
+```sql
+CREATE TABLE IF NOT EXISTS ms_dimensions_log (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    code VARCHAR(255) NOT NULL,
+    field VARCHAR(64) NOT NULL,           -- length_cm | width_cm | height_box_cm | height_bag_cm | weight_kg | packing_type | *
+    old_value VARCHAR(255) NULL,
+    new_value VARCHAR(255) NULL,
+    action VARCHAR(32) NOT NULL DEFAULT 'set',  -- 'set' | 'delete'
+    changed_by_user_id INT NULL,
+    changed_by_name VARCHAR(255) NULL,
+    note VARCHAR(500) NULL,
+    changed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_dim_log_code (code, changed_at),
+    INDEX idx_dim_log_user (changed_by_user_id),
+    INDEX idx_dim_log_field (field)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 ```
 
@@ -710,27 +736,314 @@ CREATE TABLE IF NOT EXISTS ms_dimensions_measurements (
 - `type` — `all` (по умолчанию) / `товар` / `комплект`.
 - `scope` — `all` (по умолчанию) / `with` (только с замером) / `without` (только без замера).
 - `limit` — 1…500 (по умолчанию 100), `offset` — 0…1_000_000.
-- `sort_by` — `code` | `name` | `type` | `measured_by_name` | `measured_at` (по умолчанию `code`).
+- `sort_by` — `code` | `name` | `type` | `stock` | `measured_by_name` | `measured_at` (по умолчанию `code`).
 - `sort_dir` — `asc` | `desc`.
 
-Ответ: `{ success: true, rows: [...], total, limit, offset, sort_by, sort_dir }`. Каждая строка содержит `code`, `name`, `type`, `uuid`, `is_archived` (bool), `measured_by_user_id` (`number|null`), `measured_by_name` (string), `measured_at` (ISO-строка или `''`).
+Ответ: `{ success: true, rows: [...], total, limit, offset, sort_by, sort_dir, dimension_attrs }`. Каждая строка содержит `code`, `name`, `type`, `uuid`, `stock` (`Number|null` — актуальный остаток из `ms_export.stock`), `is_archived` (bool), `measured_by_user_id` (`number|null`), `measured_by_name` (string), `measured_at` (ISO-строка или `''`), а также **`dimensions_ms`** — объект с **6 атрибутами МойСклада**, парсимыми на лету из `ms_entity_details.payload_json` для строк текущей страницы (без расширения `ms_export`):
+
+| Поле в API | Атрибут МойСклада | Описание |
+|---|---|---|
+| `packing_type` | `!!Тип УПАКОВКИ` | Тип упаковки (строка справочника МС) |
+| `length_cm` | `!!Длина (см) КОРОБКА/Пакет станд. уп.` | Длина |
+| `width_cm` | `!!Ширина (см) КОРОБКА/Пакет станд. уп.` | Ширина |
+| `height_box_cm` | `!!Высота (см) КОРОБКА станд. уп.` | Высота — коробка |
+| `height_bag_cm` | `!!Высота (см) Пакет!` | Высота — пакет |
+| `weight_kg` | `!!Вес (кг)` | Вес |
+
+Значения возвращаются «как есть» из МС (строки; для справочника — `value.name`). Если атрибута нет у позиции — пустая строка. Поле `dimension_attrs` в корне ответа отдаёт ту же таблицу `[{ key, label, attr }]` — для UI как источник истины подписей. Имена этих атрибутов также добавлены в `MS_ATTRS` в `routes/moysklad.js`, чтобы они гарантированно попадали в метаданные МС при синхронизации (на ширину `ms_export` это пока не влияет — расширение схемы можно сделать позже отдельной задачей).
+
+В дополнение к `dimensions_ms` ответ содержит:
+
+- **`measurement`** — пользовательский override из `ms_dimensions_measurements` (или `null`, если ещё не сохранялся). Поля: `length_cm`, `width_cm`, `height_box_cm`, `height_bag_cm`, `weight_kg` (числа `Number|null`), `packing_type` (`String|null`).
+- **`dimensions_parsed`** — результат **парсера «Тип упаковки»**: `{ kind, length_cm, width_cm, height_box_cm, height_bag_cm }`. Поле `kind`:
+  - `box` — «Гофрокороб 30*20*15» → `length=30, width=20, height_box=15`.
+  - `bag` — «Курьерский пакет 15*22» → `length=15, width=22`; «Высота — коробка» **не определена** (UI должен заблокировать редактирование `height_box_cm` и просить пользователя заполнить `height_bag_cm` руками).
+  - `custom_box` — «Своя упаковка» → ничего не парсим; пользователь сам вводит `length_cm`, `width_cm`, `height_box_cm`.
+  - `unknown` — нет ключевых слов «короб/гофр/пакет/своя»; пытаемся как «box», если есть 3 числа.
+  - `empty` — пустой текст.
+
+Парсер понимает разделители `*`, `x`, `х` (кириллица), `×`, `/`; распознаёт запятую как десятичный разделитель (`30,5`).
+
+UI поверх этих данных вычисляет «эффективное» значение каждой ячейки замера в порядке приоритета: **override → MS-атрибут → parsed → пусто**.
 
 ### POST `/api/exports/dimensions/measure`
 
-Создать/обновить замер по коду (на UI пока не задействовано; контракт сохранён, схему полей `dimensions` пользователь предоставит позже).
+Сохранить один или несколько полей замера. Каждое реальное изменение фиксируется отдельной строкой в `ms_dimensions_log` (поле `changed_by_user_id` = ID активной сессии).
 
 Body (JSON):
 
 - `code` (обяз.) — код МС.
-- `dimensions` (опц., объект) — произвольные поля габаритов, сериализуются в `dimensions_json`. При отсутствии поля старое значение сохраняется (`COALESCE(VALUES(dimensions_json), dimensions_json)`).
-- `measured_by_name` (опц.) — если не указано, берётся `full_name` или `username` текущей сессии (`req.datagonActor`).
-- `measured_at` (опц., ISO-строка) — если не указано, берётся время сервера.
+- `field` (опц.) + `value` (опц.) — одно поле + значение.
+- `fields` (опц., объект) — словарь `{ field: value, ... }` для пакетного сохранения нескольких полей.
+- `measured_by_name`, `measured_at` (опц.) — переопределить автора и время; по умолчанию берётся текущая сессия и `NOW()`.
+- `note` (опц.) — комментарий (записывается в `ms_dimensions_log.note`).
 
-Ответ: `{ success: true, code, measured_by_user_id, measured_by_name, measured_at }`.
+Допустимые поля: `length_cm`, `width_cm`, `height_box_cm`, `height_bag_cm`, `weight_kg` (`DECIMAL`), `packing_type` (`String`). Пустое значение (`null`, `""`) очищает поле.
+
+Ответ:
+
+```json
+{
+  "success": true,
+  "code": "00-00067881",
+  "changed_fields": [
+    { "field": "length_cm", "old": null, "new": 30 }
+  ],
+  "measurement": { "length_cm": 30, "width_cm": null, ... },
+  "measured_by_user_id": 1,
+  "measured_by_name": "Stanislav Vasilenko",
+  "measured_at": "2026-05-11T10:14:25.000Z"
+}
+```
+
+### GET `/api/exports/dimensions/log`
+
+История изменений по конкретной позиции с пагинацией. Используется модалкой `🕘 Лог` на `/exports-dimensions.html`, а также tooltip-ом «3 последних правки» при наведении на ячейки (там через `?field=...&limit=3`).
+
+Параметры:
+
+- `code` (обяз.) — код позиции.
+- `field` (опц.) — фильтр по одному полю (`length_cm`, `width_cm`, `height_box_cm`, `height_bag_cm`, `weight_kg`, `packing_type`). Без него возвращаются все записи по `code`.
+- `limit` (опц., 1..500) — размер страницы, дефолт 100.
+- `offset` (опц., ≥ 0) — смещение для пагинации, дефолт 0.
+
+Ответ:
+
+```json
+{
+  "success": true,
+  "code": "10148",
+  "rows": [
+    {
+      "id": 245,
+      "code": "10148",
+      "field": "length_cm",
+      "field_label": "Длина (см)",
+      "old_value": "30",
+      "new_value": "31",
+      "action": "set",
+      "changed_by_user_id": 7,
+      "changed_by_name": "Иванов И.И.",
+      "note": null,
+      "changed_at": "2026-05-11T13:24:00.000Z"
+    }
+  ],
+  "total": 642,
+  "limit": 100,
+  "offset": 0
+}
+```
+
+Сортировка: `id DESC` (свежие сверху).
+
+### GET `/api/exports/dimensions/log/global`
+
+Глобальный журнал всех изменений габаритов — по всем позициям. Используется карточкой «История изменений» на `/exports-dimensions.html` (свёрнута по умолчанию, разворачивается по кнопке «Развернуть» в шапке карточки).
+
+Параметры (все опциональные, комбинируются по AND):
+
+- `search` — подстрока по `code` ИЛИ `ms_export.name` (через `LIKE %x%`).
+- `action` — `set`, `sync_ms`, `sync_ms_skip`, `delete`.
+- `field` — конкретное поле габаритов (см. список выше).
+- `who` — подстрока по `changed_by_name`.
+- `from`, `to` — диапазон по `changed_at`. Принимаются как `YYYY-MM-DD` (для `from` берётся 00:00, для `to` — 23:59), так и полные ISO-строки.
+- `limit` (1..500, дефолт 100), `offset` (≥ 0, дефолт 0).
+
+Ответ — как в `/log`, но в каждой строке дополнительно `name` и `type` товара/комплекта из `ms_export` (`LEFT JOIN ms_export USING(code)`). При отсутствии позиции в `ms_export` (например, она была удалена) — `name=''`, `type=''`.
+
+```json
+{
+  "success": true,
+  "rows": [
+    {
+      "id": 245, "code": "10148",
+      "name": "Шприц-укол…", "type": "Товар",
+      "field": "length_cm", "field_label": "Длина (см)",
+      "old_value": "30", "new_value": "31",
+      "action": "set",
+      "changed_by_name": "Иванов И.И.",
+      "note": "revert from log_id=120",
+      "changed_at": "2026-05-11T13:24:00.000Z"
+    }
+  ],
+  "total": 24560,
+  "limit": 100,
+  "offset": 0
+}
+```
+
+### POST `/api/exports/dimensions/log/revert`
+
+Откатить ОДНУ запись `set` из журнала. Восстанавливает значение поля в `old_value` через тот же `persistMeasurementFields`, что и обычное `POST /measure` — то есть в журнал добавляется НОВАЯ `set`-запись (с автором отката, текущим временем и `note: 'revert from log_id=N'`). Сам факт отката тоже становится аудируемым.
+
+Body (JSON):
+
+- `log_id` (обяз.) — ID строки `ms_dimensions_log` с `action='set'` и `field` из списка габаритов.
+
+Ограничения:
+
+- `action` исходной записи должен быть `set` (иначе `400 «Откат поддержан только для записей с action="set"»`).
+- `field` должен быть из `MEASUREMENT_FIELDS` (`length_cm`, …, `packing_type`).
+- Если `old_value` был `NULL` (то есть исходная запись очистила поле «из значения → пусто»), откат вернёт поле в `NULL` (и `note` будет `'revert from log_id=N (clear)'`).
+
+Ответ:
+
+```json
+{
+  "success": true,
+  "code": "10148",
+  "field": "length_cm",
+  "reverted_to": 30,
+  "persisted_fields": ["length_cm"],
+  "measurement": { "length_cm": 30, "width_cm": 20, "height_box_cm": 15, "height_bag_cm": null, "weight_kg": 1.2, "packing_type": "Гофкороб 30*20*15" },
+  "measured_by_name": "Иванов И.И.",
+  "measured_at": "2026-05-11T14:32:00.000Z",
+  "changed": true
+}
+```
+
+`changed: false` означает, что значение уже совпадало с `old_value` (откат не понадобился — никаких записей в журнал не добавлено).
+
+### GET `/api/exports/dimensions/parse-packing`
+
+Сухой запуск парсера. Принимает `?text=...`, возвращает `{ success: true, parsed: { kind, length_cm, width_cm, height_box_cm, height_bag_cm } }` — без записи в БД. Удобно для интеграционных тестов.
+
+### GET `/api/exports/dimensions/log/stats`
+
+Статистика журнала `ms_dimensions_log` для блока «Журнал замеров габаритов» в `/settings.html` («Логи сервера»). Не принимает параметров.
+
+Ответ:
+
+```json
+{
+  "success": true,
+  "total": 1234,
+  "oldest_at": "2025-11-13T08:24:00.000Z",
+  "newest_at": "2026-05-11T13:24:00.000Z",
+  "by_action": { "set": 480, "sync_ms": 754, "delete": 0 },
+  "retention_days": 180,
+  "older_than_retention": 12
+}
+```
+
+- `older_than_retention` — сколько строк будет удалено при ближайшей автоочистке (или сейчас при `POST /log/cleanup` с текущим `retention_days`).
+- `retention_days` берётся из `app_settings.ms_dimensions_log_retention_days`.
+
+### POST `/api/exports/dimensions/log/cleanup`
+
+Ручная очистка журнала старше N дней. Используется кнопкой «Очистить сейчас» в `/settings.html`.
+
+Body (JSON, опционально):
+
+- `days` — retention в днях. Если не передан или невалиден — берётся `app_settings.ms_dimensions_log_retention_days` (по умолчанию 180).
+
+Ответ: `{ success: true, deleted: 12, days: 180 }`.
+
+Автоочистка по тому же retention выполняется автоматически: при старте сервера и каждые 12 часов (`cleanupDimensionsLogByRetentionDays()` в `server.js`). Удаляются ВСЕ типы записей (`set`, `delete`, `sync_ms`) старше N дней.
+
+### GET `/api/exports/dimensions/pending-sync`
+
+Вернуть все позиции с user-override в `ms_dimensions_measurements` (хотя бы одно из полей `length_cm`/`width_cm`/`height_box_cm`/`height_bag_cm`/`weight_kg`/`packing_type` не пустое). Используется UI для балк-кнопки «↗ В МС: все правки (все стр.)» — она джоинит этот список с inline-правками текущей страницы.
+
+- `?exclude=code1,code2,...` (опц.) — исключить указанные коды (UI передаёт коды текущей страницы, чтобы балк ушёл только по «остальным», а текущая страница обработалась с DOM-правками).
+
+Сортировка: `measured_at DESC, code ASC` (свежие правки первыми).
+
+Ответ:
+
+```json
+{
+  "success": true,
+  "total": 142,
+  "excluded": 100,
+  "rows": [
+    {
+      "code": "10148",
+      "name": "Шприц-укол …",
+      "type": "Товар",
+      "has_uuid": true,
+      "measured_by_name": "Иванов И.И.",
+      "measured_at": "2026-05-11T14:24:00.000Z",
+      "fields": {
+        "length_cm": true,
+        "width_cm": true,
+        "height_box_cm": false,
+        "height_bag_cm": true,
+        "weight_kg": true,
+        "packing_type": true
+      }
+    }
+  ]
+}
+```
+
+`has_uuid: false` означает, что позиция есть в `ms_dimensions_measurements`, но больше не существует в `ms_export` (удалена/не синкается из МС) — UI такие позиции в балк не включает (sync-ms по ним вернёт 503/404).
+
+### GET `/api/exports/dimensions/packing-types`
+
+Импорт справочника «Тип упаковки» (`customentity` «!!Тип УПАКОВКИ») из МойСклад. Используется UI для рендера `<select>` в ячейке `packing_type` и для маппинга «имя → `meta.href`» при `POST /sync-ms`. Кэш — **1 час**.
+
+- `?refresh=1` — форсированный обход кэша (повторный импорт).
+
+Ответ: `{ success: true, rows: [{ id, name, href }, ...], source_url, refreshed_at, cache_age_ms }`.
+
+При проблемах с метаданными МС — `503` с `code: 'NO_TOKEN' | 'ATTR_NOT_FOUND' | 'NOT_CUSTOM_ENTITY' | 'FETCH_FAILED'`.
+
+### POST `/api/exports/dimensions/sync-ms`
+
+Отправить пользовательский override габаритов (`ms_dimensions_measurements`) обратно в **МойСклад** через `PUT /entity/{kind}/{uuid}`. Сущность определяется автоматически по `ms_export.type` (`'Товар' → product`, `'Комплект' → bundle`). Метаданные атрибутов МС кэшируются на 1 час (паритет с `routes/moysklad.js`).
+
+Body (JSON):
+
+- `code` (обяз.) — код МС.
+- `fields` (опц., массив строк) — whitelist: синкать только эти поля; по умолчанию — все непустые поля override.
+- `measurement` (опц., объект) — **inline-значения** прямо из формы (UI: текущие значения всех `<input>`/`<select>` ряда). Если передан — сервер **сначала persist'ит** эти значения в `ms_dimensions_measurements` (с записью в `ms_dimensions_log`, действием `set` и автором `req.datagonActor`), а только потом PUT'ит обновлённое состояние в МС. Это решает кейс «пользователь набрал значение в ячейке, но не нажал Enter/blur» — отправится и оно тоже. Используется кнопками «↗ В МС» (per-row) и «↗ В МС: всё на странице» (балк) в `/exports-dimensions.html`.
+
+Маппинг полей → атрибуты МС:
+
+| Поле API | Атрибут МойСклад | Тип в МС |
+|---|---|---|
+| `length_cm` | `!!Длина (см) КОРОБКА/Пакет станд. уп.` | double |
+| `width_cm` | `!!Ширина (см) КОРОБКА/Пакет станд. уп.` | double |
+| `height_box_cm` | `!!Высота (см) КОРОБКА станд. уп.` | double |
+| `height_bag_cm` | `!!Высота (см) Пакет!` | double |
+| `weight_kg` | `!!Вес (кг)` | double |
+| `packing_type` | `!!Тип УПАКОВКИ` | **customentity** |
+
+**`packing_type`** теперь поддерживается: сервер находит элемент справочника по имени (см. `/packing-types`) и собирает значение атрибута в формате `{ meta: { href, type: 'customentity', mediaType }, name }`. Если имя не найдено в справочнике — попадает в `skipped[]` с `reason: 'customentity_value_not_in_dict'` (нужно сначала вызвать `GET /packing-types?refresh=1` для повторного импорта или поправить написание).
+
+Поведение:
+
+1. (Опц.) Если в body есть `measurement` — `persistMeasurementFields()` пишет журнал и UPSERT'ит строки в `ms_dimensions_measurements`. Возвращает список реально изменившихся полей (`persisted_fields`).
+2. Читаем актуальный override-замер из БД.
+3. Получаем metadata атрибутов сущности (`/entity/{product|bundle}/metadata/attributes`).
+4. Если в `measurement` есть `packing_type` — параллельно подгружается кэш справочника (для маппинга имени → `href`).
+5. Формируем `attributes[]` с `meta.href` и приводим значения к типу атрибута. Атрибуты, которых нет в метаданных МС, попадают в `skipped[]` с `reason: 'attribute_not_in_ms_metadata'`.
+6. Делаем `PUT /entity/{kind}/{uuid}` с `{ attributes: [...] }`.
+7. На успех — для каждого отправленного поля пишем строку в `ms_dimensions_log` с `action='sync_ms'`, `new_value` = отправленное значение, `note = 'sync_ms entity=product http=200'`.
+
+Ответ:
+
+```json
+{
+  "success": true,
+  "code": "00-00067881",
+  "uuid": "9d0a2c...",
+  "type": "Товар",
+  "entity_kind": "product",
+  "sent_fields": ["length_cm", "width_cm", "height_box_cm", "weight_kg", "packing_type"],
+  "skipped": [],
+  "persisted_fields": ["length_cm", "width_cm"],
+  "ms_updated_at": "2026-05-11 13:24:00.000",
+  "http_status": null
+}
+```
+
+При ошибке MS API ответ: `{ success: false, error: 'MS API 400: ...', http_status: 400, sent_fields, skipped, persisted_fields }`. При отсутствии `MS_TOKEN`/`uuid` — `503` с `code_error: 'NO_TOKEN' | 'NO_UUID'` (включая `persisted_fields`, если успели сохранить inline-`measurement` в БД до фейла).
 
 ### DELETE `/api/exports/dimensions/measure/:code`
 
-Удалить замер по коду (откатывает «Кто замерял» / «Дата замера» в пустое значение).
+Удалить замер по коду (откатывает «Кто замерял» / «Дата замера» в пустое значение и все габариты обнуляются). Действие фиксируется в `ms_dimensions_log` строкой `action='delete'`.
 
 Ответ: `{ success: true, code }`.
 
@@ -875,7 +1188,7 @@ Body (JSON): `email`, `password` (обязательны), опциональн�
 
 Поле `for_date` влияет на три блока:
 
-- **`moyskladPersistedLogs`** — все строки `dg_ms_sync_log` за выбранный день в МСК (упорядочены по `id ASC`). Реализация: `fetchMsSyncPersistedLogsForDate(db, forDate)` в `routes/moysklad.js`.
+- **`moyskladPersistedLogs`** — все строки `dg_ms_sync_log` за выбранный день в МСК. Упорядочены по `id DESC` — самые свежие шаги синхронизации идут **первыми**, чтобы UI не заставлял пользователя листать журнал вниз. Реализация: `fetchMsSyncPersistedLogsForDate(db, forDate)` в `routes/moysklad.js`.
 - **`autoSyncRuns`** — записи `auto_sync_runs`, чей `started_at` приходится на выбранный день в МСК. Фронт группирует их по `task_type` (`myproducts`, `moysklad`, `marketplaces`, `huckster`, `db_size`) и показывает по разделам с понятными названиями.
 - **`matches`** — последняя задача `matching_jobs` для `my_site_id`, чей `started_at` приходится на выбранный день в МСК. Если задач за день не было — `matches.message` = «За выбранный день задач сопоставления не было».
 - **`moysklad.logs`** (in-memory `jobState.logs`, до 30 строк текущей сессии) — отдаются только за «сегодня»; для других дней массив пустой, так как память процесса не различает даты.

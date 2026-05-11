@@ -22,6 +22,13 @@ const MS_ATTRS = [
     'Поставщик 2',
     'Менеджер поддерживающий товар',
     'Ответственный контент-менджер',
+    /** Габариты (для /exports-dimensions.html). Парсятся из ms_entity_details.payload_json. */
+    '!!Тип УПАКОВКИ',
+    '!!Длина (см) КОРОБКА/Пакет станд. уп.',
+    '!!Ширина (см) КОРОБКА/Пакет станд. уп.',
+    '!!Высота (см) КОРОБКА станд. уп.',
+    '!!Высота (см) Пакет!',
+    '!!Вес (кг)',
 ];
 
 const jobState = {
@@ -2009,13 +2016,17 @@ createMoyskladRouter.fetchMsSyncPersistedLogsForDate = async function fetchMsSyn
     if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return [];
     try {
         await ensureMsSyncLogTable(db);
-        /** Сравниваем по календарной дате МСК независимо от session timezone MySQL. */
+        /**
+         * Сравниваем по календарной дате МСК независимо от session timezone MySQL.
+         * Сортировка DESC: новые шаги — сверху на UI (не заставляем пользователя
+         * листать вниз каждый раз, когда открывает «Логи»).
+         */
         const [rows] = await db.query(
             `SELECT created_at, line
              FROM dg_ms_sync_log
              WHERE created_at >= DATE_SUB(?, INTERVAL 1 DAY)
                AND created_at < DATE_ADD(?, INTERVAL 2 DAY)
-             ORDER BY id ASC
+             ORDER BY id DESC
              LIMIT 5000`,
             [d, d]
         );

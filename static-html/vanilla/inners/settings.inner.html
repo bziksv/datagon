@@ -491,6 +491,41 @@
                   Очистить логи сейчас
                 </button>
               </div>
+
+              <!--
+                Журнал замеров габаритов (`ms_dimensions_log`).
+                Этот блок — отдельный inline-feedback контракт (`runSaveWithInlineFeedback`),
+                чтобы автономно сохранять `ms_dimensions_log_retention_days` без зависимостей
+                от формы парсера. См. `datagon-settings-save-feedback.mdc`.
+              -->
+              <hr class="my-4" />
+              <h6 class="mb-2">Журнал замеров габаритов</h6>
+              <p class="small text-muted mb-2">
+                Журнал хранит историю изменений габаритов товаров/комплектов МойСклад
+                (страница <a href="/exports-dimensions.html">Габариты</a>): кто, что и
+                когда менял в ячейках, и какие значения отправлялись в МС. Автоочистка
+                удаляет записи старше указанного числа дней — раз в 12 часов плюс при
+                старте сервера. По умолчанию <strong>180 дней</strong>.
+              </p>
+              <div class="row g-2 align-items-end">
+                <div class="col-md-4">
+                  <label class="form-label" for="dg-set-ms_dimensions_log_retention_days">Хранить журнал замеров (дней)</label>
+                  <input type="number" class="form-control" id="dg-set-ms_dimensions_log_retention_days" min="1" step="1" />
+                </div>
+              </div>
+              <div class="small text-muted mt-2" id="dg-set-dim-log-info">Статистика журнала: загрузка…</div>
+              <div class="mt-3 d-flex gap-2 flex-wrap">
+                <button type="button" class="btn btn-primary" id="dg-set-btn-save-dim-log" data-dg-activity-label="Сохранить retention журнала замеров">
+                  Сохранить
+                </button>
+                <button type="button" class="btn btn-info" id="dg-set-btn-dim-log-refresh" data-dg-activity-label="Обновить статистику журнала замеров">
+                  Обновить статистику
+                </button>
+                <button type="button" class="btn btn-warning" id="dg-set-btn-dim-log-cleanup" data-dg-activity-label="Очистить журнал замеров сейчас">
+                  Очистить сейчас
+                </button>
+              </div>
+              <div id="dg-set-dim-log-save-msg" class="alert mt-3 mb-0 d-none" role="status"></div>
             </div>
           </div>
 
