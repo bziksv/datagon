@@ -968,6 +968,11 @@
             invalidateTipCache(code, field);
             setStatusHint('Сохранено: ' + field + (normalized != null ? ' = ' + normalized : ' (очищено)') +
               (x.j.changed_fields && x.j.changed_fields.length === 0 ? ' (без изменений)' : ''), 'success');
+            // При ручной смене типа упаковки — авто-заливка длины/ширины/высоты
+            // в соседние ячейки этой же строки (без перетирания override и МС-значений).
+            if (field === 'packing_type') {
+              refreshParsedAfterPackingChange(code);
+            }
           })
           .catch(function (e) {
             flashCellState(input, 'err');
@@ -1025,6 +1030,59 @@
         return String(s).replace(/[^a-zA-Z0-9_-]/g, function (ch) {
           return '\\' + ch.charCodeAt(0).toString(16) + ' ';
         });
+      }
+
+      /**
+       * После того как у строки изменился `packing_type` — пересчитать локальный
+       * `row.dimensions_parsed` через серверный парсер `/api/exports/dimensions/parse-packing`
+       * и перерисовать соседние ячейки длины/ширины/высоты в этой же строке.
+       *
+       * Поведение целевых ячеек (см. resolveCellSource):
+       *   • если у ячейки есть пользовательский override → значение НЕ трогается;
+       *   • если override нет, но есть значение из МС → значение НЕ трогается
+       *     (МС-замер для конкретного товара важнее «дефолта» из имени упаковки);
+       *   • если ни override, ни МС-значения нет → подставляется новое parsed-значение
+       *     (для «Гофкороб 30*20*15» — длина=30, ширина=20, высота-коробка=15;
+       *     для «курьерский пакет 15*22» — длина=15, ширина=22; «своя упаковка» —
+       *     ничего не парсим).
+       *
+       * Также пересчитывается `disabled`-состояние полей (см. isFieldDisabledForPacking):
+       *   • bag → height_box_cm заблокирован;
+       *   • box / custom_box → height_bag_cm заблокирован;
+       *
+       * `<select>` packing_type сама не перерисовывается — фокус и значение,
+       * которое только что выбрал пользователь, остаются нетронутыми.
+       *
+       * Без этой функции авто-подстановка размеров работала ТОЛЬКО при первом
+       * импорте списка из МС (там parsed считается на сервере), а ручная смена
+       * типа упаковки в `<select>` оставляла соседние ячейки с прежними значениями.
+       */
+      function refreshParsedAfterPackingChange(code) {
+        var row = findRowByCode(code);
+        if (!row) return;
+        var packing = (row.measurement && row.measurement.packing_type)
+          || (row.dimensions_ms && row.dimensions_ms.packing_type) || '';
+        var url = '/api/exports/dimensions/parse-packing?text=' + encodeURIComponent(String(packing));
+        fetch(url, { credentials: 'same-origin' })
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (j) {
+            if (!j || !j.success) return;
+            row.dimensions_parsed = j.parsed || null;
+            var tbody = document.getElementById('dg-dim-tbody');
+            if (!tbody) return;
+            var tr = tbody.querySelector('tr[data-dg-code="' + cssEscape(String(code)) + '"]');
+            if (!tr) return;
+            var cols = getVisibleColsList();
+            var keys = { length_cm: true, width_cm: true, height_box_cm: true, height_bag_cm: true };
+            for (var i = 0; i < cols.length; i++) {
+              if (!keys[cols[i].key]) continue;
+              var td = tr.children[i];
+              if (!td) continue;
+              try { td.innerHTML = cols[i].render ? cols[i].render(row, cols[i]) : ''; }
+              catch (_) { /** ignore: ячейка останется как есть */ }
+            }
+          })
+          .catch(function () { /** tolerable: значения соседних ячеек просто не пересчитаются */ });
       }
 
       /**
@@ -1417,6 +1475,10 @@
         }
         repaintMeasuredCells(code);
         invalidateTipCache(code);
+        // Если откатили `packing_type` — пересчитать parsed-дефолты соседних ячеек.
+        if (field === 'packing_type') {
+          refreshParsedAfterPackingChange(code);
+        }
       }
 
       /* ====================== Sync с МойСклад ================================== */
@@ -1530,6 +1592,9 @@
         }
         repaintMeasuredCells(code);
         invalidateTipCache(code);
+        if (Array.isArray(persistedFields) && persistedFields.indexOf('packing_type') >= 0) {
+          refreshParsedAfterPackingChange(code);
+        }
       }
 
       /**
