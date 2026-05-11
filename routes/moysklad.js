@@ -1226,14 +1226,45 @@ async function syncMsExport(db, config, settings = {}) {
     ensureNotCancelled();
     await db.query('TRUNCATE TABLE ms_export');
     if (exportRows.length > 0) {
-        ensureNotCancelled();
-        await db.query(`
+        // Батчированная вставка. Раньше шла одной командой `INSERT ... VALUES ?`
+        // на все ~60k строк × 23 колонки — в реальной выгрузке это формирует SQL
+        // в десятки/сотни МБ (длинные `name`, `price_comment`, `packing_*` и т.п.)
+        // и упирается либо в `max_allowed_packet` MySQL (по умолчанию 64–256 МБ),
+        // либо в OOM Node при формировании буфера. На боевом стенде Node после
+        // этого молча уходил, pm2/systemd рестартовал процесс, в журнале синка
+        // оставался последний `Этап 6/6: сохранение в ms_export`, а UI после
+        // рестарта показывал `jobState = {active:false, message:'Ожидание',
+        // total:0, processed:0}` — внешне «зависание на час».
+        //
+        // chunk=2000 даёт ≈150–250 КБ payload на запрос — безопасно даже при
+        // самом строгом `max_allowed_packet` и не дёргает OOM. Прогресс-лог
+        // ставим каждые 5 чанков (≈10k строк) и обязательно — на последнем,
+        // чтобы пользователь видел движение. `setImmediate` между чанками
+        // освобождает event-loop, чтобы /api/moysklad/sync/status и /cancel
+        // продолжали отвечать во время сохранения.
+        const exportChunkSize = 2000;
+        const totalRowsToInsert = exportRows.length;
+        const insertSql = `
             INSERT INTO ms_export (
                 code, name, manager, content_manager, uuid, type, stock_position, no_longer_cooperation,
                 price_comment, vat, vat_on_product, supplier, supplier2, automation_price,
                 packing_standard, packing_own_box, packing_weight, sale_price, buy_price, stock, stock_days, is_archived, updated_label
             ) VALUES ?
-        `, [exportRows]);
+        `;
+        let insertedRows = 0;
+        let chunkIdx = 0;
+        for (let i = 0; i < totalRowsToInsert; i += exportChunkSize) {
+            ensureNotCancelled();
+            const chunk = exportRows.slice(i, i + exportChunkSize);
+            await db.query(insertSql, [chunk]);
+            insertedRows += chunk.length;
+            chunkIdx += 1;
+            jobState.message = `Сохранение в ms_export: ${insertedRows}/${totalRowsToInsert}`;
+            if (chunkIdx % 5 === 0 || insertedRows >= totalRowsToInsert) {
+                addLog(`Сохранено в ms_export: ${insertedRows}/${totalRowsToInsert}`);
+            }
+            await new Promise((resolve) => setImmediate(resolve));
+        }
     }
     addLog('Сохранение полных карточек МойСклад...');
     jobState.message = 'Сохранение полных карточек МойСклад...';

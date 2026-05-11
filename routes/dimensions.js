@@ -1442,3 +1442,8 @@ function createDimensionsRouter(db, appSettings = {}) {
 }
 
 module.exports = createDimensionsRouter;
+/** Экспорт `ensureSchema` нужен, чтобы другие роуты, которые делают
+ * `LEFT JOIN ms_dimensions_measurements` (например, `routes/exportsMarketplaces.js`
+ * для `/api/exports/marketplaces/issues`), могли гарантировать наличие таблицы
+ * на чистом стенде до первого HTTP-запроса. */
+module.exports.ensureSchema = ensureSchema;

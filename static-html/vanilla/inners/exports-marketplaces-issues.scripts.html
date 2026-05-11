@@ -365,6 +365,7 @@
                 'code', 'name',
                 'manager', 'content_manager',
                 'ms_vat', 'ms_stock', 'synced_at',
+                'ms_length', 'ms_width', 'ms_height_box', 'ms_height_bag', 'ms_weight',
                 'ozon_code', 'ozon_name', 'ozon_vat', 'ozon_stock', 'ozon_updated',
                 'wb_code', 'wb_name', 'wb_vat', 'wb_stock', 'wb_updated',
                 'ym_code', 'ym_name', 'ym_vat', 'ym_stock', 'ym_updated',
@@ -390,14 +391,38 @@
             var COLS_WIDTH_KEY = 'dg.mpu.colwidths.v2';
             var COLS_VISIBLE_KEY = 'dg.mpu.colvisible.v5';
             // ---- Дополнительные фильтры (Менеджер / Контент-менеджер / «исключить товары
-            // из комплектов»): сохраняем в localStorage ----
+            // из комплектов» / «умное скрытие столбцов»): сохраняем в localStorage ----
             // Чекбокс «исключить компоненты комплектов» хранится строкой ('1' / '0').
             // Если ключа в storage нет — считаем, что фильтр включён по умолчанию (см.
             // initialExcludeBundleComponents ниже). Это согласовано с серверным
             // дефолтом /api/exports/marketplaces/issues?exclude_bundle_components=1.
+            // «Умное скрытие столбцов» — клиентский фильтр видимости (см.
+            // SMART_COLS_BY_SCOPE и visibleHeaders ниже): по умолчанию включён, на
+            // «проблемных» scope (ozon/wb/ym/vat_mismatch/dims_mismatch) оставляет в
+            // таблице только базовые колонки МС + колонки, относящиеся к проблеме.
             var FILTER_MANAGER_KEY = 'dg.mpu.flt.manager.v1';
             var FILTER_CONTENT_MGR_KEY = 'dg.mpu.flt.cmgr.v1';
             var FILTER_EXCLUDE_BUNDLE_COMPONENTS_KEY = 'dg.mpu.flt.excludeBundleComponents.v1';
+            var FILTER_SMART_COLUMNS_KEY = 'dg.mpu.flt.smartColumns.v1';
+            // Базовый «паспорт МС» — эти колонки остаются всегда, когда smart-режим
+            // активен. Меняется только набор колонок маркетплейсов (см. ниже).
+            var SMART_COLS_BASE_MS = ['code', 'name', 'manager', 'content_manager', 'ms_vat', 'ms_stock', 'synced_at'];
+            // Маппинг scope → дополнительные колонки маркетплейсов, которые нужно
+            // оставить в таблице. Scope, которого нет в маппинге (all / any / all3),
+            // smart-режимом не затрагивается — на нём показываются обычные колонки
+            // по выбору пользователя в `🧩 Столбцы`.
+            var SMART_COLS_BY_SCOPE = {
+                ozon: ['ozon_code', 'ozon_name'],
+                wb: ['wb_code', 'wb_name'],
+                ym: ['ym_code', 'ym_name'],
+                vat_mismatch: ['ozon_vat', 'wb_vat', 'ym_vat'],
+                dims_mismatch: [
+                    'ms_length', 'ms_width', 'ms_height_box', 'ms_height_bag', 'ms_weight',
+                    'ozon_length', 'ozon_width', 'ozon_height', 'ozon_weight',
+                    'wb_length', 'wb_width', 'wb_height', 'wb_weight',
+                    'ym_length', 'ym_width', 'ym_height', 'ym_weight',
+                ],
+            };
             var COL_MIN_WIDTH = 60;
             var COL_MAX_WIDTH = 800;
             var DEFAULT_COL_WIDTH = 120;
@@ -413,6 +438,11 @@
                 content_manager: 130,
                 synced_at: 110,
                 ms_stock: 88,
+                ms_length: 84,
+                ms_width: 84,
+                ms_height_box: 130,
+                ms_height_bag: 120,
+                ms_weight: 80,
 
                 ozon_code: 70,
                 ozon_name: 160,
@@ -479,9 +509,11 @@
             var elFltManager = document.getElementById('dg-mpu-flt-manager');
             var elFltCmgr = document.getElementById('dg-mpu-flt-cmgr');
             var elFltExcludeBundleComp = document.getElementById('dg-mpu-flt-exclude-bundle-components');
+            var elFltSmartCols = document.getElementById('dg-mpu-flt-smart-columns');
             var elFltReset = document.getElementById('dg-mpu-flt-reset');
             var elFltApply = document.getElementById('dg-mpu-flt-apply');
             var elFltDirty = document.getElementById('dg-mpu-flt-dirty');
+            var elColsSmartNote = document.getElementById('dg-mpu-cols-smart-note');
             var scopeInputs = document.querySelectorAll('input[name="dg-mpu-scope"]');
 
             function readStr(key) {
@@ -521,15 +553,20 @@
                 return !!defaultValue;
             }
             var initialExcludeBundleComponents = readBoolWithDefault(FILTER_EXCLUDE_BUNDLE_COMPONENTS_KEY, true);
+            var initialSmartColumns = readBoolWithDefault(FILTER_SMART_COLUMNS_KEY, true);
             var initialFilters = {
                 manager: readStr(FILTER_MANAGER_KEY),
                 content_manager: readStr(FILTER_CONTENT_MGR_KEY),
                 exclude_bundle_components: initialExcludeBundleComponents,
+                smart_columns: initialSmartColumns,
             };
             // Стартовое значение чекбокса синхронизируем с фактическим стейтом (а не
             // только с разметкой `checked`, которая верна только при первом запуске).
             if (elFltExcludeBundleComp) {
                 elFltExcludeBundleComp.checked = !!initialExcludeBundleComponents;
+            }
+            if (elFltSmartCols) {
+                elFltSmartCols.checked = !!initialSmartColumns;
             }
             var state = {
                 scope: 'all',
@@ -548,10 +585,15 @@
                 // точное совпадение строк manager/content_manager (пусто = «все»).
                 // exclude_bundle_components — серверный фильтр (передаётся в URL),
                 // ниже в commitFilters() при изменении тригерится перезапрос.
+                // smart_columns — клиентский фильтр видимости колонок (см.
+                // visibleHeaders + isSmartColumnsActive ниже): на «проблемных» scope
+                // оставляет только базовые колонки МС и колонки, относящиеся к
+                // выбранной проблеме. На прочих scope — без эффекта.
                 filters: {
                     manager: initialFilters.manager,
                     content_manager: initialFilters.content_manager,
                     exclude_bundle_components: !!initialFilters.exclude_bundle_components,
+                    smart_columns: !!initialFilters.smart_columns,
                 },
                 pending: {
                     scope: 'all',
@@ -560,6 +602,7 @@
                         manager: initialFilters.manager,
                         content_manager: initialFilters.content_manager,
                         exclude_bundle_components: !!initialFilters.exclude_bundle_components,
+                        smart_columns: !!initialFilters.smart_columns,
                     },
                 },
             };
@@ -572,6 +615,7 @@
                 if (String(pf.manager || '') !== String(af.manager || '')) return true;
                 if (String(pf.content_manager || '') !== String(af.content_manager || '')) return true;
                 if (Boolean(pf.exclude_bundle_components) !== Boolean(af.exclude_bundle_components)) return true;
+                if (Boolean(pf.smart_columns) !== Boolean(af.smart_columns)) return true;
                 return false;
             }
             function refreshDirtyIndicator() {
@@ -657,11 +701,23 @@
                 );
             }
 
-            // Габариты/вес между маркетплейсами (паритет с routes/exportsMarketplaces.js:
-            // ISSUES_DIM_EPS, parseExportDimNumber, issuesDimTuple, issuesDimTuplesDiffer,
-            // issuesRowDimsMismatchAcrossMps).
+            // Габариты/вес. Паритет с routes/exportsMarketplaces.js:
+            // ISSUES_DIM_EPS, parseExportDimNumber, issuesRowHasMsDims,
+            // issuesRowDimsMismatchVsMs, issuesRowDimsMismatchAcrossMps,
+            // issuesRowDimsMismatch.
             var ISSUES_DIM_EPS = 0.02;
             var DIM_SIZE_SUFFIXES = ['length', 'width', 'height', 'weight'];
+            // Карта «ключ колонки → слот габарита» для hover-cross подсветки в строке.
+            // У МС высота двойная (коробка/пакет) — оба варианта мапятся в slot=`height`,
+            // чтобы при наведении на «Высота Ozon/WB/ЯМ» подсвечивались ОБЕ высоты МС.
+            var DIM_KEY_TO_SLOT = {
+                ms_length: 'length', ms_width: 'width',
+                ms_height_box: 'height', ms_height_bag: 'height',
+                ms_weight: 'weight',
+                ozon_length: 'length', ozon_width: 'width', ozon_height: 'height', ozon_weight: 'weight',
+                wb_length: 'length', wb_width: 'width', wb_height: 'height', wb_weight: 'weight',
+                ym_length: 'length', ym_width: 'width', ym_height: 'height', ym_weight: 'weight',
+            };
             function parseExportDimNumber(v) {
                 var s = String(v == null ? '' : v).trim().replace(/,/g, '.');
                 if (!s) return null;
@@ -680,27 +736,134 @@
                 if (a[idx] == null || b[idx] == null) return false;
                 return Math.abs(a[idx] - b[idx]) > ISSUES_DIM_EPS;
             }
-            /** Ключи колонок ozon_|wb_|ym_ + length|width|height|weight с расхождением между парой площадок. */
-            function dimsMismatchHighlightKeys(row) {
+            function issuesRowHasMsDims(row) {
+                if (!row) return false;
+                return (
+                    parseExportDimNumber(row.ms_length) != null
+                    || parseExportDimNumber(row.ms_width) != null
+                    || parseExportDimNumber(row.ms_height_box) != null
+                    || parseExportDimNumber(row.ms_height_bag) != null
+                    || parseExportDimNumber(row.ms_weight) != null
+                );
+            }
+            /** Подсветка расхождений vs МС: для length/width/weight — одно МС-значение
+             * против каждого маркетплейса; для высоты у МС возможны коробка и пакет —
+             * маркетплейсная высота расхождением считается, только если не совпала
+             * НИ с одной из непустых высот МС. Ячейки маркетплейса с расхождением
+             * подсвечиваются вместе с соответствующей ячейкой МС, чтобы пользователь
+             * видел, с каким эталоном сверка не прошла. */
+            function dimsMismatchHighlightKeysVsMs(row) {
                 var out = Object.create(null);
-                if (!row) return out;
-                var pfxs = [];
-                if (row.ozon_code) pfxs.push('ozon');
-                if (row.wb_code) pfxs.push('wb');
-                if (row.ym_code) pfxs.push('ym');
-                if (pfxs.length < 2) return out;
-                for (var i = 0; i < pfxs.length; i++) {
-                    for (var j = i + 1; j < pfxs.length; j++) {
-                        var ta = issuesDimTuple(row, pfxs[i]);
-                        var tb = issuesDimTuple(row, pfxs[j]);
-                        for (var k = 0; k < 4; k++) {
-                            if (!dimSlotDiffers(ta, tb, k)) continue;
-                            out[pfxs[i] + '_' + DIM_SIZE_SUFFIXES[k]] = true;
-                            out[pfxs[j] + '_' + DIM_SIZE_SUFFIXES[k]] = true;
+                var msL = parseExportDimNumber(row.ms_length);
+                var msW = parseExportDimNumber(row.ms_width);
+                var msHbox = parseExportDimNumber(row.ms_height_box);
+                var msHbag = parseExportDimNumber(row.ms_height_bag);
+                var msWeight = parseExportDimNumber(row.ms_weight);
+                var prefixes = ['ozon', 'wb', 'ym'];
+                for (var p = 0; p < prefixes.length; p++) {
+                    var pfx = prefixes[p];
+                    if (!row[pfx + '_code']) continue;
+                    var mpL = parseExportDimNumber(row[pfx + '_length']);
+                    var mpW = parseExportDimNumber(row[pfx + '_width']);
+                    var mpH = parseExportDimNumber(row[pfx + '_height']);
+                    var mpWeight = parseExportDimNumber(row[pfx + '_weight']);
+                    if (msL != null && mpL != null && Math.abs(msL - mpL) > ISSUES_DIM_EPS) {
+                        out[pfx + '_length'] = true;
+                        out.ms_length = true;
+                    }
+                    if (msW != null && mpW != null && Math.abs(msW - mpW) > ISSUES_DIM_EPS) {
+                        out[pfx + '_width'] = true;
+                        out.ms_width = true;
+                    }
+                    if (msWeight != null && mpWeight != null && Math.abs(msWeight - mpWeight) > ISSUES_DIM_EPS) {
+                        out[pfx + '_weight'] = true;
+                        out.ms_weight = true;
+                    }
+                    if (mpH != null && (msHbox != null || msHbag != null)) {
+                        var matchBox = msHbox != null && Math.abs(mpH - msHbox) <= ISSUES_DIM_EPS;
+                        var matchBag = msHbag != null && Math.abs(mpH - msHbag) <= ISSUES_DIM_EPS;
+                        if (!matchBox && !matchBag) {
+                            out[pfx + '_height'] = true;
+                            if (msHbox != null) out.ms_height_box = true;
+                            if (msHbag != null) out.ms_height_bag = true;
                         }
                     }
                 }
                 return out;
+            }
+            /** Fallback: расхождения только между маркетплейсами (если у МС нет данных).
+             *
+             * Подсветка идёт «от большинства»: для каждого слота
+             * (`length` / `width` / `height` / `weight`) собираем значения от тех
+             * маркетплейсов, у которых вообще есть строка (`*_code` не пустой) и
+             * значение определено, группируем их по эквивалентности с допуском
+             * `ISSUES_DIM_EPS`, после чего:
+             *
+             *   - все значения равны → не подсвечиваем ничего;
+             *   - есть **единственная** самая большая группа → подсвечиваем тех,
+             *     кто **вне** этой группы (так и было задано: 50 / 20 / 50 →
+             *     красным становится только WB, потому что 50 — мажоритарное);
+             *   - уникального большинства нет (3 разных значения; или ровно 2
+             *     маркетплейса с разными значениями) → подсвечиваем всех, у кого
+             *     значение определено.
+             *
+             * Маркетплейсы с пустым значением слота не подсвечиваются как
+             * «расхождение» (нет данных — нечем сравнивать).
+             */
+            function dimsMismatchHighlightKeysAcrossMps(row) {
+                var out = Object.create(null);
+                var prefixes = [];
+                if (row.ozon_code) prefixes.push('ozon');
+                if (row.wb_code) prefixes.push('wb');
+                if (row.ym_code) prefixes.push('ym');
+                if (prefixes.length < 2) return out;
+                for (var k = 0; k < DIM_SIZE_SUFFIXES.length; k++) {
+                    var slot = DIM_SIZE_SUFFIXES[k];
+                    var entries = [];
+                    for (var p = 0; p < prefixes.length; p++) {
+                        var v = parseExportDimNumber(row[prefixes[p] + '_' + slot]);
+                        if (v != null) entries.push({ pfx: prefixes[p], val: v });
+                    }
+                    if (entries.length < 2) continue;
+                    // Группируем по эквивалентности (с допуском ISSUES_DIM_EPS).
+                    var groups = [];
+                    for (var e = 0; e < entries.length; e++) {
+                        var ent = entries[e];
+                        var matched = false;
+                        for (var g = 0; g < groups.length; g++) {
+                            if (Math.abs(groups[g].val - ent.val) <= ISSUES_DIM_EPS) {
+                                groups[g].members.push(ent.pfx);
+                                matched = true;
+                                break;
+                            }
+                        }
+                        if (!matched) groups.push({ val: ent.val, members: [ent.pfx] });
+                    }
+                    if (groups.length < 2) continue;
+                    var maxSize = 0;
+                    for (var g2 = 0; g2 < groups.length; g2++) {
+                        if (groups[g2].members.length > maxSize) maxSize = groups[g2].members.length;
+                    }
+                    var maxCount = 0;
+                    for (var g3 = 0; g3 < groups.length; g3++) {
+                        if (groups[g3].members.length === maxSize) maxCount++;
+                    }
+                    var hasUniqueMajority = maxCount === 1;
+                    for (var g4 = 0; g4 < groups.length; g4++) {
+                        if (hasUniqueMajority && groups[g4].members.length === maxSize) continue;
+                        for (var m = 0; m < groups[g4].members.length; m++) {
+                            out[groups[g4].members[m] + '_' + slot] = true;
+                        }
+                    }
+                }
+                return out;
+            }
+            /** Ключи колонок с подсвечиваемым расхождением. При наличии измерений МС
+             * сверка идёт МС ↔ маркетплейсы; иначе — между маркетплейсами (старая логика). */
+            function dimsMismatchHighlightKeys(row) {
+                if (!row) return Object.create(null);
+                if (issuesRowHasMsDims(row)) return dimsMismatchHighlightKeysVsMs(row);
+                return dimsMismatchHighlightKeysAcrossMps(row);
             }
 
             // ---- Расширенные фильтры (manager / content_manager) + умный поиск ----
@@ -834,7 +997,21 @@
                 state.visible[k] = !!on;
                 writeJsonToStorage(COLS_VISIBLE_KEY, state.visible);
             }
+            // Smart-режим активен только если ползунок включён И текущий применённый
+            // scope перечислен в SMART_COLS_BY_SCOPE. На прочих scope (all / any /
+            // all3) ползунок не влияет — пользователь видит свои колонки из
+            // `🧩 Столбцы` и DEFAULT_HIDDEN_COLS.
+            function isSmartColumnsActive() {
+                if (!state.filters || !state.filters.smart_columns) return false;
+                return Object.prototype.hasOwnProperty.call(SMART_COLS_BY_SCOPE, String(state.scope || ''));
+            }
             function visibleHeaders() {
+                if (isSmartColumnsActive()) {
+                    var allowed = SMART_COLS_BASE_MS.concat(SMART_COLS_BY_SCOPE[state.scope] || []);
+                    var allowedSet = {};
+                    for (var i = 0; i < allowed.length; i++) allowedSet[allowed[i]] = true;
+                    return state.headers.filter(function (k) { return !!allowedSet[k]; });
+                }
                 return state.headers.filter(isColVisible);
             }
 
@@ -947,6 +1124,10 @@
             // ---- Toolbox: панель видимости столбцов ----
             function rebuildColsPanel() {
                 if (!elColsGrid) return;
+                var smartActive = isSmartColumnsActive();
+                if (elColsSmartNote) {
+                    elColsSmartNote.classList.toggle('d-none', !smartActive);
+                }
                 elColsGrid.innerHTML = '';
                 for (var i = 0; i < state.headers.length; i++) {
                     var k = state.headers[i];
@@ -955,6 +1136,7 @@
                     var cb = document.createElement('input');
                     cb.type = 'checkbox';
                     cb.checked = isColVisible(k);
+                    cb.disabled = smartActive;
                     cb.setAttribute('data-col-key', k);
                     cb.addEventListener('change', function () {
                         setColVisible(this.getAttribute('data-col-key'), this.checked);
@@ -962,6 +1144,7 @@
                     });
                     lab.appendChild(cb);
                     lab.appendChild(document.createTextNode(' ' + label));
+                    if (smartActive) lab.classList.add('text-muted');
                     elColsGrid.appendChild(lab);
                 }
             }
@@ -1160,7 +1343,15 @@
                             }
                         }
                         if (!scopeIsAll) {
-                            if (isVatCellMismatchMpVsMs(row, key) || (key === 'ms_vat' && isMsVatRowAnyMpMismatch(row))) {
+                            // НДС МС подсвечиваем мягким жёлтым (это справочное значение МС;
+                            // фактическая ошибка — на стороне маркетплейса). Ячейки
+                            // маркетплейсных НДС (ozon_vat / wb_vat / ym_vat) остаются
+                            // красными, как у `dg-mpu-missing`.
+                            if (key === 'ms_vat') {
+                                if (isMsVatRowAnyMpMismatch(row)) {
+                                    tdClasses.push('dg-mpu-vat-mismatch-ms');
+                                }
+                            } else if (isVatCellMismatchMpVsMs(row, key)) {
                                 tdClasses.push('dg-mpu-vat-mismatch');
                             }
                             if (dimMismatchCols[key]) tdClasses.push('dg-mpu-dims-mismatch');
@@ -1198,7 +1389,9 @@
                         } else {
                             cellInner = escapeHtml(val == null ? '' : String(val));
                         }
-                        html += '<td' + cls + ' data-col-key="' + escapeHtml(key) + '">' + cellInner + '</td>';
+                        var dimSlot = DIM_KEY_TO_SLOT[key];
+                        var dimAttr = dimSlot ? ' data-dg-mpu-dim-slot="' + dimSlot + '"' : '';
+                        html += '<td' + cls + ' data-col-key="' + escapeHtml(key) + '"' + dimAttr + '>' + cellInner + '</td>';
                     }
                     html += '</tr>';
                 }
@@ -1217,6 +1410,46 @@
                             String(btn.textContent || '').trim(),
                             btn.getAttribute('data-ms-type') || ''
                         );
+                    });
+                }
+                // Hover-cross по слоту габарита: при наведении на ячейку
+                // length/width/height/weight подсвечиваем все ячейки того же слота
+                // в этой же строке (МС + 3 маркетплейса). Делегируем mouseover/mouseout
+                // на tbody, чтобы при перерисовке innerHTML связь не разрывалась.
+                if (!tbody._dgMpuDimHoverBound) {
+                    tbody._dgMpuDimHoverBound = true;
+                    var clearDimHover = function (tr) {
+                        if (!tr) return;
+                        var hot = tr.querySelectorAll('td.dg-mpu-dim-hover');
+                        for (var i = 0; i < hot.length; i++) hot[i].classList.remove('dg-mpu-dim-hover');
+                    };
+                    tbody.addEventListener('mouseover', function (e) {
+                        var td = e.target && e.target.closest ? e.target.closest('td[data-dg-mpu-dim-slot]') : null;
+                        if (!td || !tbody.contains(td)) return;
+                        var slot = td.getAttribute('data-dg-mpu-dim-slot');
+                        var tr = td.parentElement;
+                        if (!slot || !tr) return;
+                        // Если уже подсвечен этот же слот — не дёргать DOM.
+                        if (td.classList.contains('dg-mpu-dim-hover')) return;
+                        clearDimHover(tr);
+                        var cells = tr.querySelectorAll('td[data-dg-mpu-dim-slot="' + slot + '"]');
+                        for (var i = 0; i < cells.length; i++) cells[i].classList.add('dg-mpu-dim-hover');
+                    });
+                    tbody.addEventListener('mouseout', function (e) {
+                        var td = e.target && e.target.closest ? e.target.closest('td[data-dg-mpu-dim-slot]') : null;
+                        if (!td || !tbody.contains(td)) return;
+                        // Если курсор уходит на ячейку того же слота в той же строке —
+                        // подсветка остаётся (mouseover её обновит/сохранит).
+                        var related = e.relatedTarget;
+                        var relatedTd = related && related.closest
+                            ? related.closest('td[data-dg-mpu-dim-slot]')
+                            : null;
+                        if (relatedTd
+                            && relatedTd.parentElement === td.parentElement
+                            && relatedTd.getAttribute('data-dg-mpu-dim-slot') === td.getAttribute('data-dg-mpu-dim-slot')) {
+                            return;
+                        }
+                        clearDimHover(td.parentElement);
                     });
                 }
 
@@ -1296,14 +1529,17 @@
                 var scopeChanged = state.pending.scope !== state.scope;
                 var pendingExcludeBundle = !!(state.pending.filters && state.pending.filters.exclude_bundle_components);
                 var bundleChanged = pendingExcludeBundle !== !!state.filters.exclude_bundle_components;
+                var pendingSmartCols = !!(state.pending.filters && state.pending.filters.smart_columns);
                 state.scope = String(state.pending.scope || 'all');
                 state.search = String(state.pending.search || '');
                 state.filters.manager = String((state.pending.filters && state.pending.filters.manager) || '');
                 state.filters.content_manager = String((state.pending.filters && state.pending.filters.content_manager) || '');
                 state.filters.exclude_bundle_components = pendingExcludeBundle;
+                state.filters.smart_columns = pendingSmartCols;
                 writeStr(FILTER_MANAGER_KEY, state.filters.manager);
                 writeStr(FILTER_CONTENT_MGR_KEY, state.filters.content_manager);
                 writeStr(FILTER_EXCLUDE_BUNDLE_COMPONENTS_KEY, state.filters.exclude_bundle_components ? '1' : '0');
+                writeStr(FILTER_SMART_COLUMNS_KEY, state.filters.smart_columns ? '1' : '0');
                 setTitleByScope();
                 refreshDirtyIndicator();
                 if (scopeChanged || bundleChanged) {
@@ -1315,6 +1551,10 @@
                     applySearchFilter();
                     applySort();
                     state.page = 1;
+                    // Smart-режим может изменить набор видимых колонок без перезапроса —
+                    // обновляем панель `🧩 Столбцы` (disabled-чекбоксы / заметка) перед
+                    // ререндером таблицы, чтобы UI был согласован.
+                    rebuildColsPanel();
                     renderTable();
                 }
             }
@@ -1324,10 +1564,12 @@
                 state.pending.filters.manager = '';
                 state.pending.filters.content_manager = '';
                 state.pending.filters.exclude_bundle_components = true;
+                state.pending.filters.smart_columns = true;
                 if (elSearch) elSearch.value = '';
                 if (elFltManager) elFltManager.value = '';
                 if (elFltCmgr) elFltCmgr.value = '';
                 if (elFltExcludeBundleComp) elFltExcludeBundleComp.checked = true;
+                if (elFltSmartCols) elFltSmartCols.checked = true;
                 for (var i = 0; i < scopeInputs.length; i++) {
                     scopeInputs[i].checked = scopeInputs[i].value === 'all';
                 }
@@ -1410,6 +1652,12 @@
             if (elFltExcludeBundleComp) {
                 elFltExcludeBundleComp.addEventListener('change', function () {
                     state.pending.filters.exclude_bundle_components = !!elFltExcludeBundleComp.checked;
+                    refreshDirtyIndicator();
+                });
+            }
+            if (elFltSmartCols) {
+                elFltSmartCols.addEventListener('change', function () {
+                    state.pending.filters.smart_columns = !!elFltSmartCols.checked;
                     refreshDirtyIndicator();
                 });
             }

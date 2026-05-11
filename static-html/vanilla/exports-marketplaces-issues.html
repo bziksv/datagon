@@ -372,11 +372,32 @@
       box-shadow: inset 0 0 0 1px #f5b0b0;
       color: #b42318;
     }
+    /* НДС МС: справочное значение, фактическая ошибка — на стороне маркетплейса.
+       Подсвечиваем мягким жёлтым (та же палитра, что у dg-mpu-dims-mismatch),
+       чтобы не вводить в заблуждение, что «ошибка в МС». */
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table tbody td.dg-mpu-vat-mismatch-ms {
+      background: #fff8e6;
+      box-shadow: inset 0 0 0 1px #e8d48b;
+      color: #7a5e00;
+    }
     /* Разные габариты/вес между маркетплейсами (отдельно от НДС и «нет кода»). */
     body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table tbody td.dg-mpu-dims-mismatch {
       background: #fff8e6;
       box-shadow: inset 0 0 0 1px #e8d48b;
       color: #7a5e00;
+    }
+    /* Hover-cross по слоту габарита: при наведении мышью на любую ячейку
+       length / width / height / weight (МС или маркетплейс) подсвечиваются ВСЕ
+       ячейки того же слота в этой строке — пара/тройка/четвёрка соседей. У МС
+       высота двойная (коробка + пакет): обе подсвечиваются вместе с маркетплейсной
+       высотой. Используем `outline` (а не background/box-shadow), чтобы не
+       перебивать уже существующие фоны .dg-mpu-dims-mismatch / .dg-mpu-missing /
+       .dg-mpu-vat-mismatch-ms. */
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table tbody td.dg-mpu-dim-hover {
+      outline: 2px solid #3f6ad8;
+      outline-offset: -2px;
+      position: relative;
+      z-index: 2;
     }
     /* «Проблемы с товарами»: единая sticky-схема маркетплейсов
        (overflow:visible на обёртках, sticky-<th> прилипает под app-header через
@@ -1181,16 +1202,10 @@
                           <i class="metismenu-state-icon pe-7s-angle-down" aria-hidden="true"></i>
                         </a>
                         <ul class="metismenu-container dg-vanilla-mp-submenu">
-                          <li class="metismenu-item">
-                            <a
-                              class="metismenu-link"
-                              data-nav="exports-marketplaces"
-                              href="/exports-marketplaces.html"
-                              title="Ключи API и справка"
-                            >
-                              <i class="metismenu-icon pe-7s-config"></i>Настройки
-                            </a>
-                          </li>
+                          <!-- Подпункт «Настройки» (data-nav="exports-marketplaces", /exports-marketplaces.html)
+                               скрыт из меню по запросу: ключи API маркетплейсов задаются в /settings.html;
+                               страница остаётся доступной по прямому URL и через ссылки из гайдов
+                               (например, на /exports-marketplaces-issues.html). -->
                           <li class="metismenu-item">
                             <a
                               class="metismenu-link"
@@ -1301,10 +1316,10 @@
                     <strong class="text-body">Состояние гайда</strong> — развёрнутость панели и блоков шагов 1–3, ключи <code class="small">datagon_mp_issues_workflow_*</code> в <code class="small">localStorage</code>. На данные в МойСклад и снапшоты не влияет.
                   </li>
                   <li class="mb-2">
-                    <strong class="text-body">Фильтры и видимость полей</strong> — селекты менеджеров, scope, чекбокс «Исключить товары из комплектов» (<code class="small">dg.mpu.flt.excludeBundleComponents.v1</code>, дефолт включён), настройки шестерёнки «Поля фильтров» (<code class="small">datagon_mpu_filter_fields_v1</code>).
+                    <strong class="text-body">Фильтры и видимость полей</strong> — селекты менеджеров, scope, чекбокс «Исключить товары из комплектов» (<code class="small">dg.mpu.flt.excludeBundleComponents.v1</code>, дефолт включён), ползунок «Умное скрытие столбцов под выбранный фильтр» (<code class="small">dg.mpu.flt.smartColumns.v1</code>, дефолт включён), настройки шестерёнки «Поля фильтров» (<code class="small">datagon_mpu_filter_fields_v1</code>).
                   </li>
                   <li class="mb-0">
-                    <strong class="text-body">Таблица</strong> — какие колонки показаны и ширины в пикселях (<code class="small">dg.mpu.colvisible.v5</code>, <code class="small">dg.mpu.colwidths.v2</code>). По умолчанию включены <strong>все</strong> колонки — «Код МС», «Название МС», «Менеджер», «Контент-менеджер», «НДС МС», «Остаток по МС», «Синхронизация МС» и полный паспорт каждого маркетплейса (<em>код, название, НДС, остаток, длина / ширина / высота / вес, кабинет, покупателю, обновлено</em>). Кнопка <strong>«Столбцы по умолчанию»</strong> возвращает именно это состояние «все включены». Лишние колонки можно скрыть через <strong>🧩 Столбцы</strong>. Полное наименование МС и ссылки на маркетплейсы — по клику на «Название МС» (карточка МойСклад).
+                    <strong class="text-body">Таблица</strong> — какие колонки показаны и ширины в пикселях (<code class="small">dg.mpu.colvisible.v5</code>, <code class="small">dg.mpu.colwidths.v2</code>). По умолчанию включены <strong>все</strong> колонки — «Код МС», «Название МС», «Менеджер», «Контент-менеджер», «НДС МС», «Остаток по МС», габариты МС (<em>Длина, Ширина, Высота — коробка, Высота — пакет (см), Вес (кг)</em> — из <code class="small">ms_dimensions_measurements</code>, страница <a href="/exports-dimensions.html">Габариты</a>), «Синхронизация МС» и полный паспорт каждого маркетплейса (<em>код, название, НДС, остаток, длина / ширина / высота / вес, кабинет, покупателю, обновлено</em>). Кнопка <strong>«Столбцы по умолчанию»</strong> возвращает именно это состояние «все включены». Лишние колонки можно скрыть через <strong>🧩 Столбцы</strong>. Полное наименование МС и ссылки на маркетплейсы — по клику на «Название МС» (карточка МойСклад).
                   </li>
                 </ol>
               </div>
@@ -1335,13 +1350,16 @@
                 </div>
                 <div id="dg-mp-issues-workflow-t2-body" class="small text-body-secondary lh-lg px-2 pb-3 pt-2">
                   <p class="mb-2">
-                    Выберите <strong>фильтр маркетплейса</strong> (все товары / есть проблемы хотя бы на одном / нет ни на одном / нет на конкретном маркетплейсе / не совпадает НДС / разные габариты между маркетплейсами). При необходимости сузьте выбор селектами <strong>Менеджер</strong> и <strong>Контент-менеджер</strong>.
+                    Выберите <strong>фильтр маркетплейса</strong> (все товары / есть проблемы хотя бы на одном / нет ни на одном / нет на конкретном маркетплейсе / не совпадает НДС / разные габариты — со сверкой с МС, когда есть замеры в реестре <a href="/exports-dimensions.html">Габариты</a>, иначе между маркетплейсами). При необходимости сузьте выбор селектами <strong>Менеджер</strong> и <strong>Контент-менеджер</strong>.
                   </p>
                   <p class="mb-2">
                     Чекбокс <strong>«Исключить товары, по которым есть комплекты»</strong> (включён по умолчанию) скрывает товары, чей <code class="small">code</code> встречается в составе хотя бы одного комплекта (берётся из <code class="small">ms_entity_details</code>, <code class="small">kind=bundle</code>, поле <code class="small">payload_json.components.rows[].assortment.code</code>). Это исключает «ложные проблемы» по штучным товарам, которые отгружаются комплектом и не выкладываются на маркетплейс отдельно. Снимите галку, если хотите видеть полный список.
                   </p>
+                  <p class="mb-2">
+                    Ползунок <strong>«Умное скрытие столбцов под выбранный фильтр»</strong> (включён по умолчанию) при <strong>Применить</strong> на фильтрах <em>Нет на Ozon</em> / <em>Нет на Wildberries</em> / <em>Нет на Я.Маркет</em> / <em>Не совпадает НДС</em> / <em>Разные габариты</em> оставляет в таблице только базовые колонки МойСклад (<em>Код, Название, Менеджер, Контент-менеджер, НДС, Остаток, Синхронизация</em>) и колонки, относящиеся к проблеме: на «нет на &lt;маркетплейс&gt;» — пара <em>Код / Название</em> этой площадки; на «не совпадает НДС» — все три <em>НДС</em> маркетплейсов; на «разные габариты» — длина / ширина / высота / вес по всем трём площадкам. На фильтрах <em>Все товары</em>, <em>Есть проблемы</em>, <em>Нет ни на одном</em> ползунок ничего не меняет — отображаются столбцы по выбору в <strong>🧩 Столбцы</strong>. Выключите ползунок, чтобы вернуть полный набор и выбирать видимость вручную.
+                  </p>
                   <p class="mb-0">
-                    Пока вы меняете поля, это <strong>черновик</strong>: таблица и счётчики обновятся только после <strong>Применить</strong> или <strong>Enter</strong> в поле умного поиска в шапке таблицы. Кнопка <strong>По умолчанию</strong> сбрасывает scope, менеджеров и поиск к начальному состоянию и снова включает «исключить товары из комплектов», после чего сразу применяет. Бейдж «не применено» напоминает, что на экране ещё старый набор фильтров.
+                    Пока вы меняете поля, это <strong>черновик</strong>: таблица и счётчики обновятся только после <strong>Применить</strong> или <strong>Enter</strong> в поле умного поиска в шапке таблицы. Кнопка <strong>По умолчанию</strong> сбрасывает scope, менеджеров и поиск к начальному состоянию и снова включает «исключить товары из комплектов» и «умное скрытие столбцов», после чего сразу применяет. Бейдж «не применено» напоминает, что на экране ещё старый набор фильтров.
                   </p>
                 </div>
               </div>
@@ -1358,7 +1376,13 @@
                     <strong>Умный поиск</strong> в шапке карточки таблицы ищет по артикулам и наименованиям МС и маркетплейсов, а также по ФИО менеджеров (мульти-слова через пробел — как AND). <strong>Esc</strong> или крестик в поле очищают строку и сразу применяют фильтр.
                   </p>
                   <p class="mb-2">
-                    При фильтре <strong>«Все товары»</strong> красным подсвечиваются только ячейки <strong>кода</strong> маркетплейса (Ozon / Wildberries / Я.Маркет), если товар в снапшоте не найден. Несовпадение НДС (МС ↔ площадка) и расхождение габаритов между площадками подсвечиваются <strong>на соответствующих фильтрах</strong>, не в режиме «все товары». На остальных фильтрах при отсутствии товара подсвечивается пара <strong>код + название</strong> для этой площадки.
+                    При фильтре <strong>«Все товары»</strong> красным подсвечиваются только ячейки <strong>кода</strong> маркетплейса (Ozon / Wildberries / Я.Маркет), если товар в снапшоте не найден. Несовпадение НДС (МС ↔ площадка) и расхождение габаритов подсвечиваются <strong>на соответствующих фильтрах</strong>, не в режиме «все товары». На остальных фильтрах при отсутствии товара подсвечивается пара <strong>код + название</strong> для этой площадки. На фильтре <strong>«Не совпадает НДС»</strong> ячейки <em>НДС маркетплейсов</em> с расхождением подсвечиваются <strong>красным</strong>, а <em>НДС МС</em> — <strong>мягким жёлтым</strong>: это справочное значение со стороны МС, фактическая ошибка — на маркетплейсе.
+                  </p>
+                  <p class="mb-2">
+                    На фильтре <strong>«Разные габариты»</strong>, если у товара заполнены замеры МС в реестре <a href="/exports-dimensions.html">Габариты</a> (хотя бы одно значение из «Длина», «Ширина», «Высота — коробка», «Высота — пакет», «Вес»), сверка идёт <strong>МС ↔ маркетплейсы</strong>: ячейка маркетплейса и соответствующая ячейка МС подсвечиваются, когда числа расходятся (допуск 0,02). Высота МС двойная (коробка / пакет): высота маркетплейса считается совпавшей, если совпала <strong>хотя бы с одной</strong> из непустых высот МС. Если у строки в МС <strong>нет ни одного</strong> измерения — fallback «между маркетплейсами»: для каждой оси (длина / ширина / высота / вес) собираются значения всех маркетплейсов, у которых есть карточка по товару, и подсвечиваются <strong>отклонения от большинства</strong>. Например, при <em>50 / 20 / 50</em> по ширине красным становится только колонка с «20» — две другие совпадают и принимаются за эталон. Если уникального большинства нет (три разных значения, либо ровно две площадки и значения разные) — подсвечиваются все, у кого значение определено; пустые ячейки расхождением не считаются.
+                  </p>
+                  <p class="mb-2">
+                    <strong>Подсветка по слоту габарита при наведении.</strong> Когда вы наводите мышь на любую ячейку <em>длины</em> / <em>ширины</em> / <em>высоты</em> / <em>веса</em> (МС или маркетплейс), все ячейки этого же слота в текущей строке получают синюю обводку — так не нужно «бегать глазами» по таблице, чтобы сравнить, например, ширину Ozon с шириной Wildberries и Я.Маркет. У МС высота двойная (коробка и пакет): обе подсвечиваются вместе с маркетплейсной высотой.
                   </p>
                   <p class="mb-0">
                     Кнопки <strong>🧩 Столбцы</strong> и <strong>📏 Ширины</strong> в шапке таблицы открывают панели ниже. По умолчанию (и при клике на <strong>«Столбцы по умолчанию»</strong>) включены ВСЕ колонки: по МС — <em>Менеджер, Контент-менеджер, НДС, Остаток, Синхронизация</em>, по каждому маркетплейсу — <em>Код, Название, НДС, Остаток, Длина/Ширина/Высота (см), Вес (кг), Кабинет (ссылка на товар), Покупателю (ссылка на товар), Обновлено</em>. Широкая таблица — как на странице <strong>«Мои товары»</strong>: горизонтальный скролл внутри карточки, шапка «плывёт» под верхним меню. Сузить можно через <strong>🧩 Столбцы</strong> и <strong>📏 Ширины</strong> (сохраняется в браузере). Полное наименование МС и переход в МойСклад — по клику на «Название МС». Пагинация: стартовый размер страницы 100 строк.
@@ -1492,7 +1516,7 @@
                     <label class="btn btn-outline-primary" for="dg-mpu-scope-vat-mismatch" title="Товар найден в снапшоте маркетплейса, но нормализованный НДС МС не совпадает с НДС на этой площадке (WB «не указан» не сравнивается).">Не совпадает НДС</label>
 
                     <input type="radio" class="btn-check" name="dg-mpu-scope" id="dg-mpu-scope-dims-mismatch" value="dims_mismatch">
-                    <label class="btn btn-outline-primary" for="dg-mpu-scope-dims-mismatch" title="Товар есть минимум на двух маркетплейсах, и по длине/ширине/высоте (см) или весу (кг) обе площадки отдают число, а значения расходятся (пусто с одной стороны не считается расхождением). С МойСклад не сравнивается — в выгрузке МС нет этих полей.">Разные габариты</label>
+                    <label class="btn btn-outline-primary" for="dg-mpu-scope-dims-mismatch" title="Расхождение по длине/ширине/высоте/весу. Если у товара есть замеры МС в реестре «Габариты» — сверка идёт МС ↔ маркетплейсы (высота МС двойная: коробка/пакет, совпадение хотя бы с одной = ОК). Иначе fallback — между маркетплейсами: подсветка по большинству (50/20/50 → красным только «20»); если уникального большинства нет (3 разных значения или ровно 2 площадки с разными значениями) — подсвечиваются все определённые. Пусто с одной стороны расхождением не считается. Допуск 0,02.">Разные габариты</label>
                   </div>
                 </div>
                 <div class="col-md-4 col-sm-6" data-dg-mpu-filter-field="manager" data-dg-filter-field-title="Менеджер">
@@ -1512,6 +1536,14 @@
                     <input class="form-check-input" type="checkbox" role="switch" id="dg-mpu-flt-exclude-bundle-components" checked>
                     <label class="form-check-label small" for="dg-mpu-flt-exclude-bundle-components" data-dg-tooltip="Скрыть товары, которые встречаются как компонент в составе хотя бы одного комплекта (kind=bundle в ms_entity_details). По умолчанию включено.">
                       Исключить товары, по которым есть комплекты
+                    </label>
+                  </div>
+                </div>
+                <div class="col-12" data-dg-mpu-filter-field="smart_columns" data-dg-filter-field-title="Умное скрытие столбцов под выбранный фильтр">
+                  <div class="form-check form-switch mb-0">
+                    <input class="form-check-input" type="checkbox" role="switch" id="dg-mpu-flt-smart-columns" checked>
+                    <label class="form-check-label small" for="dg-mpu-flt-smart-columns" data-dg-tooltip="Когда включено и выбран «Нет на Ozon/Wildberries/Я.Маркет», «Не совпадает НДС» или «Разные габариты» — в таблице остаются только базовые колонки МойСклад (Код, Название, Менеджер, Контент-менеджер, НДС, Остаток, Синхронизация) и колонки, относящиеся к выбранной проблеме. На фильтрах «Все товары», «Есть проблемы», «Нет ни на одном» ползунок ничего не меняет. По умолчанию включено.">
+                      Умное скрытие столбцов под выбранный фильтр
                     </label>
                   </div>
                 </div>
@@ -1564,6 +1596,9 @@
                 <div class="dg-mp-toolbox-panel" id="dg-mpu-cols-panel">
                   <div class="dg-mp-toolbox-actions">
                     <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mpu-cols-reset" title="Сбросить видимость к дефолту">Столбцы по умолчанию</button>
+                  </div>
+                  <div id="dg-mpu-cols-smart-note" class="alert alert-info py-2 px-3 mb-2 mx-2 small d-none" role="status">
+                    Включено «Умное скрытие столбцов» — для выбранного фильтра показаны только базовые колонки МС и колонки, относящиеся к проблеме. Чтобы выбирать колонки вручную, отключите ползунок в фильтре.
                   </div>
                   <div class="dg-mp-cols-grid" id="dg-mpu-cols-grid"></div>
                 </div>
@@ -2081,6 +2116,7 @@
                 'code', 'name',
                 'manager', 'content_manager',
                 'ms_vat', 'ms_stock', 'synced_at',
+                'ms_length', 'ms_width', 'ms_height_box', 'ms_height_bag', 'ms_weight',
                 'ozon_code', 'ozon_name', 'ozon_vat', 'ozon_stock', 'ozon_updated',
                 'wb_code', 'wb_name', 'wb_vat', 'wb_stock', 'wb_updated',
                 'ym_code', 'ym_name', 'ym_vat', 'ym_stock', 'ym_updated',
@@ -2106,14 +2142,38 @@
             var COLS_WIDTH_KEY = 'dg.mpu.colwidths.v2';
             var COLS_VISIBLE_KEY = 'dg.mpu.colvisible.v5';
             // ---- Дополнительные фильтры (Менеджер / Контент-менеджер / «исключить товары
-            // из комплектов»): сохраняем в localStorage ----
+            // из комплектов» / «умное скрытие столбцов»): сохраняем в localStorage ----
             // Чекбокс «исключить компоненты комплектов» хранится строкой ('1' / '0').
             // Если ключа в storage нет — считаем, что фильтр включён по умолчанию (см.
             // initialExcludeBundleComponents ниже). Это согласовано с серверным
             // дефолтом /api/exports/marketplaces/issues?exclude_bundle_components=1.
+            // «Умное скрытие столбцов» — клиентский фильтр видимости (см.
+            // SMART_COLS_BY_SCOPE и visibleHeaders ниже): по умолчанию включён, на
+            // «проблемных» scope (ozon/wb/ym/vat_mismatch/dims_mismatch) оставляет в
+            // таблице только базовые колонки МС + колонки, относящиеся к проблеме.
             var FILTER_MANAGER_KEY = 'dg.mpu.flt.manager.v1';
             var FILTER_CONTENT_MGR_KEY = 'dg.mpu.flt.cmgr.v1';
             var FILTER_EXCLUDE_BUNDLE_COMPONENTS_KEY = 'dg.mpu.flt.excludeBundleComponents.v1';
+            var FILTER_SMART_COLUMNS_KEY = 'dg.mpu.flt.smartColumns.v1';
+            // Базовый «паспорт МС» — эти колонки остаются всегда, когда smart-режим
+            // активен. Меняется только набор колонок маркетплейсов (см. ниже).
+            var SMART_COLS_BASE_MS = ['code', 'name', 'manager', 'content_manager', 'ms_vat', 'ms_stock', 'synced_at'];
+            // Маппинг scope → дополнительные колонки маркетплейсов, которые нужно
+            // оставить в таблице. Scope, которого нет в маппинге (all / any / all3),
+            // smart-режимом не затрагивается — на нём показываются обычные колонки
+            // по выбору пользователя в `🧩 Столбцы`.
+            var SMART_COLS_BY_SCOPE = {
+                ozon: ['ozon_code', 'ozon_name'],
+                wb: ['wb_code', 'wb_name'],
+                ym: ['ym_code', 'ym_name'],
+                vat_mismatch: ['ozon_vat', 'wb_vat', 'ym_vat'],
+                dims_mismatch: [
+                    'ms_length', 'ms_width', 'ms_height_box', 'ms_height_bag', 'ms_weight',
+                    'ozon_length', 'ozon_width', 'ozon_height', 'ozon_weight',
+                    'wb_length', 'wb_width', 'wb_height', 'wb_weight',
+                    'ym_length', 'ym_width', 'ym_height', 'ym_weight',
+                ],
+            };
             var COL_MIN_WIDTH = 60;
             var COL_MAX_WIDTH = 800;
             var DEFAULT_COL_WIDTH = 120;
@@ -2129,6 +2189,11 @@
                 content_manager: 130,
                 synced_at: 110,
                 ms_stock: 88,
+                ms_length: 84,
+                ms_width: 84,
+                ms_height_box: 130,
+                ms_height_bag: 120,
+                ms_weight: 80,
 
                 ozon_code: 70,
                 ozon_name: 160,
@@ -2195,9 +2260,11 @@
             var elFltManager = document.getElementById('dg-mpu-flt-manager');
             var elFltCmgr = document.getElementById('dg-mpu-flt-cmgr');
             var elFltExcludeBundleComp = document.getElementById('dg-mpu-flt-exclude-bundle-components');
+            var elFltSmartCols = document.getElementById('dg-mpu-flt-smart-columns');
             var elFltReset = document.getElementById('dg-mpu-flt-reset');
             var elFltApply = document.getElementById('dg-mpu-flt-apply');
             var elFltDirty = document.getElementById('dg-mpu-flt-dirty');
+            var elColsSmartNote = document.getElementById('dg-mpu-cols-smart-note');
             var scopeInputs = document.querySelectorAll('input[name="dg-mpu-scope"]');
 
             function readStr(key) {
@@ -2237,15 +2304,20 @@
                 return !!defaultValue;
             }
             var initialExcludeBundleComponents = readBoolWithDefault(FILTER_EXCLUDE_BUNDLE_COMPONENTS_KEY, true);
+            var initialSmartColumns = readBoolWithDefault(FILTER_SMART_COLUMNS_KEY, true);
             var initialFilters = {
                 manager: readStr(FILTER_MANAGER_KEY),
                 content_manager: readStr(FILTER_CONTENT_MGR_KEY),
                 exclude_bundle_components: initialExcludeBundleComponents,
+                smart_columns: initialSmartColumns,
             };
             // Стартовое значение чекбокса синхронизируем с фактическим стейтом (а не
             // только с разметкой `checked`, которая верна только при первом запуске).
             if (elFltExcludeBundleComp) {
                 elFltExcludeBundleComp.checked = !!initialExcludeBundleComponents;
+            }
+            if (elFltSmartCols) {
+                elFltSmartCols.checked = !!initialSmartColumns;
             }
             var state = {
                 scope: 'all',
@@ -2264,10 +2336,15 @@
                 // точное совпадение строк manager/content_manager (пусто = «все»).
                 // exclude_bundle_components — серверный фильтр (передаётся в URL),
                 // ниже в commitFilters() при изменении тригерится перезапрос.
+                // smart_columns — клиентский фильтр видимости колонок (см.
+                // visibleHeaders + isSmartColumnsActive ниже): на «проблемных» scope
+                // оставляет только базовые колонки МС и колонки, относящиеся к
+                // выбранной проблеме. На прочих scope — без эффекта.
                 filters: {
                     manager: initialFilters.manager,
                     content_manager: initialFilters.content_manager,
                     exclude_bundle_components: !!initialFilters.exclude_bundle_components,
+                    smart_columns: !!initialFilters.smart_columns,
                 },
                 pending: {
                     scope: 'all',
@@ -2276,6 +2353,7 @@
                         manager: initialFilters.manager,
                         content_manager: initialFilters.content_manager,
                         exclude_bundle_components: !!initialFilters.exclude_bundle_components,
+                        smart_columns: !!initialFilters.smart_columns,
                     },
                 },
             };
@@ -2288,6 +2366,7 @@
                 if (String(pf.manager || '') !== String(af.manager || '')) return true;
                 if (String(pf.content_manager || '') !== String(af.content_manager || '')) return true;
                 if (Boolean(pf.exclude_bundle_components) !== Boolean(af.exclude_bundle_components)) return true;
+                if (Boolean(pf.smart_columns) !== Boolean(af.smart_columns)) return true;
                 return false;
             }
             function refreshDirtyIndicator() {
@@ -2373,11 +2452,23 @@
                 );
             }
 
-            // Габариты/вес между маркетплейсами (паритет с routes/exportsMarketplaces.js:
-            // ISSUES_DIM_EPS, parseExportDimNumber, issuesDimTuple, issuesDimTuplesDiffer,
-            // issuesRowDimsMismatchAcrossMps).
+            // Габариты/вес. Паритет с routes/exportsMarketplaces.js:
+            // ISSUES_DIM_EPS, parseExportDimNumber, issuesRowHasMsDims,
+            // issuesRowDimsMismatchVsMs, issuesRowDimsMismatchAcrossMps,
+            // issuesRowDimsMismatch.
             var ISSUES_DIM_EPS = 0.02;
             var DIM_SIZE_SUFFIXES = ['length', 'width', 'height', 'weight'];
+            // Карта «ключ колонки → слот габарита» для hover-cross подсветки в строке.
+            // У МС высота двойная (коробка/пакет) — оба варианта мапятся в slot=`height`,
+            // чтобы при наведении на «Высота Ozon/WB/ЯМ» подсвечивались ОБЕ высоты МС.
+            var DIM_KEY_TO_SLOT = {
+                ms_length: 'length', ms_width: 'width',
+                ms_height_box: 'height', ms_height_bag: 'height',
+                ms_weight: 'weight',
+                ozon_length: 'length', ozon_width: 'width', ozon_height: 'height', ozon_weight: 'weight',
+                wb_length: 'length', wb_width: 'width', wb_height: 'height', wb_weight: 'weight',
+                ym_length: 'length', ym_width: 'width', ym_height: 'height', ym_weight: 'weight',
+            };
             function parseExportDimNumber(v) {
                 var s = String(v == null ? '' : v).trim().replace(/,/g, '.');
                 if (!s) return null;
@@ -2396,27 +2487,134 @@
                 if (a[idx] == null || b[idx] == null) return false;
                 return Math.abs(a[idx] - b[idx]) > ISSUES_DIM_EPS;
             }
-            /** Ключи колонок ozon_|wb_|ym_ + length|width|height|weight с расхождением между парой площадок. */
-            function dimsMismatchHighlightKeys(row) {
+            function issuesRowHasMsDims(row) {
+                if (!row) return false;
+                return (
+                    parseExportDimNumber(row.ms_length) != null
+                    || parseExportDimNumber(row.ms_width) != null
+                    || parseExportDimNumber(row.ms_height_box) != null
+                    || parseExportDimNumber(row.ms_height_bag) != null
+                    || parseExportDimNumber(row.ms_weight) != null
+                );
+            }
+            /** Подсветка расхождений vs МС: для length/width/weight — одно МС-значение
+             * против каждого маркетплейса; для высоты у МС возможны коробка и пакет —
+             * маркетплейсная высота расхождением считается, только если не совпала
+             * НИ с одной из непустых высот МС. Ячейки маркетплейса с расхождением
+             * подсвечиваются вместе с соответствующей ячейкой МС, чтобы пользователь
+             * видел, с каким эталоном сверка не прошла. */
+            function dimsMismatchHighlightKeysVsMs(row) {
                 var out = Object.create(null);
-                if (!row) return out;
-                var pfxs = [];
-                if (row.ozon_code) pfxs.push('ozon');
-                if (row.wb_code) pfxs.push('wb');
-                if (row.ym_code) pfxs.push('ym');
-                if (pfxs.length < 2) return out;
-                for (var i = 0; i < pfxs.length; i++) {
-                    for (var j = i + 1; j < pfxs.length; j++) {
-                        var ta = issuesDimTuple(row, pfxs[i]);
-                        var tb = issuesDimTuple(row, pfxs[j]);
-                        for (var k = 0; k < 4; k++) {
-                            if (!dimSlotDiffers(ta, tb, k)) continue;
-                            out[pfxs[i] + '_' + DIM_SIZE_SUFFIXES[k]] = true;
-                            out[pfxs[j] + '_' + DIM_SIZE_SUFFIXES[k]] = true;
+                var msL = parseExportDimNumber(row.ms_length);
+                var msW = parseExportDimNumber(row.ms_width);
+                var msHbox = parseExportDimNumber(row.ms_height_box);
+                var msHbag = parseExportDimNumber(row.ms_height_bag);
+                var msWeight = parseExportDimNumber(row.ms_weight);
+                var prefixes = ['ozon', 'wb', 'ym'];
+                for (var p = 0; p < prefixes.length; p++) {
+                    var pfx = prefixes[p];
+                    if (!row[pfx + '_code']) continue;
+                    var mpL = parseExportDimNumber(row[pfx + '_length']);
+                    var mpW = parseExportDimNumber(row[pfx + '_width']);
+                    var mpH = parseExportDimNumber(row[pfx + '_height']);
+                    var mpWeight = parseExportDimNumber(row[pfx + '_weight']);
+                    if (msL != null && mpL != null && Math.abs(msL - mpL) > ISSUES_DIM_EPS) {
+                        out[pfx + '_length'] = true;
+                        out.ms_length = true;
+                    }
+                    if (msW != null && mpW != null && Math.abs(msW - mpW) > ISSUES_DIM_EPS) {
+                        out[pfx + '_width'] = true;
+                        out.ms_width = true;
+                    }
+                    if (msWeight != null && mpWeight != null && Math.abs(msWeight - mpWeight) > ISSUES_DIM_EPS) {
+                        out[pfx + '_weight'] = true;
+                        out.ms_weight = true;
+                    }
+                    if (mpH != null && (msHbox != null || msHbag != null)) {
+                        var matchBox = msHbox != null && Math.abs(mpH - msHbox) <= ISSUES_DIM_EPS;
+                        var matchBag = msHbag != null && Math.abs(mpH - msHbag) <= ISSUES_DIM_EPS;
+                        if (!matchBox && !matchBag) {
+                            out[pfx + '_height'] = true;
+                            if (msHbox != null) out.ms_height_box = true;
+                            if (msHbag != null) out.ms_height_bag = true;
                         }
                     }
                 }
                 return out;
+            }
+            /** Fallback: расхождения только между маркетплейсами (если у МС нет данных).
+             *
+             * Подсветка идёт «от большинства»: для каждого слота
+             * (`length` / `width` / `height` / `weight`) собираем значения от тех
+             * маркетплейсов, у которых вообще есть строка (`*_code` не пустой) и
+             * значение определено, группируем их по эквивалентности с допуском
+             * `ISSUES_DIM_EPS`, после чего:
+             *
+             *   - все значения равны → не подсвечиваем ничего;
+             *   - есть **единственная** самая большая группа → подсвечиваем тех,
+             *     кто **вне** этой группы (так и было задано: 50 / 20 / 50 →
+             *     красным становится только WB, потому что 50 — мажоритарное);
+             *   - уникального большинства нет (3 разных значения; или ровно 2
+             *     маркетплейса с разными значениями) → подсвечиваем всех, у кого
+             *     значение определено.
+             *
+             * Маркетплейсы с пустым значением слота не подсвечиваются как
+             * «расхождение» (нет данных — нечем сравнивать).
+             */
+            function dimsMismatchHighlightKeysAcrossMps(row) {
+                var out = Object.create(null);
+                var prefixes = [];
+                if (row.ozon_code) prefixes.push('ozon');
+                if (row.wb_code) prefixes.push('wb');
+                if (row.ym_code) prefixes.push('ym');
+                if (prefixes.length < 2) return out;
+                for (var k = 0; k < DIM_SIZE_SUFFIXES.length; k++) {
+                    var slot = DIM_SIZE_SUFFIXES[k];
+                    var entries = [];
+                    for (var p = 0; p < prefixes.length; p++) {
+                        var v = parseExportDimNumber(row[prefixes[p] + '_' + slot]);
+                        if (v != null) entries.push({ pfx: prefixes[p], val: v });
+                    }
+                    if (entries.length < 2) continue;
+                    // Группируем по эквивалентности (с допуском ISSUES_DIM_EPS).
+                    var groups = [];
+                    for (var e = 0; e < entries.length; e++) {
+                        var ent = entries[e];
+                        var matched = false;
+                        for (var g = 0; g < groups.length; g++) {
+                            if (Math.abs(groups[g].val - ent.val) <= ISSUES_DIM_EPS) {
+                                groups[g].members.push(ent.pfx);
+                                matched = true;
+                                break;
+                            }
+                        }
+                        if (!matched) groups.push({ val: ent.val, members: [ent.pfx] });
+                    }
+                    if (groups.length < 2) continue;
+                    var maxSize = 0;
+                    for (var g2 = 0; g2 < groups.length; g2++) {
+                        if (groups[g2].members.length > maxSize) maxSize = groups[g2].members.length;
+                    }
+                    var maxCount = 0;
+                    for (var g3 = 0; g3 < groups.length; g3++) {
+                        if (groups[g3].members.length === maxSize) maxCount++;
+                    }
+                    var hasUniqueMajority = maxCount === 1;
+                    for (var g4 = 0; g4 < groups.length; g4++) {
+                        if (hasUniqueMajority && groups[g4].members.length === maxSize) continue;
+                        for (var m = 0; m < groups[g4].members.length; m++) {
+                            out[groups[g4].members[m] + '_' + slot] = true;
+                        }
+                    }
+                }
+                return out;
+            }
+            /** Ключи колонок с подсвечиваемым расхождением. При наличии измерений МС
+             * сверка идёт МС ↔ маркетплейсы; иначе — между маркетплейсами (старая логика). */
+            function dimsMismatchHighlightKeys(row) {
+                if (!row) return Object.create(null);
+                if (issuesRowHasMsDims(row)) return dimsMismatchHighlightKeysVsMs(row);
+                return dimsMismatchHighlightKeysAcrossMps(row);
             }
 
             // ---- Расширенные фильтры (manager / content_manager) + умный поиск ----
@@ -2550,7 +2748,21 @@
                 state.visible[k] = !!on;
                 writeJsonToStorage(COLS_VISIBLE_KEY, state.visible);
             }
+            // Smart-режим активен только если ползунок включён И текущий применённый
+            // scope перечислен в SMART_COLS_BY_SCOPE. На прочих scope (all / any /
+            // all3) ползунок не влияет — пользователь видит свои колонки из
+            // `🧩 Столбцы` и DEFAULT_HIDDEN_COLS.
+            function isSmartColumnsActive() {
+                if (!state.filters || !state.filters.smart_columns) return false;
+                return Object.prototype.hasOwnProperty.call(SMART_COLS_BY_SCOPE, String(state.scope || ''));
+            }
             function visibleHeaders() {
+                if (isSmartColumnsActive()) {
+                    var allowed = SMART_COLS_BASE_MS.concat(SMART_COLS_BY_SCOPE[state.scope] || []);
+                    var allowedSet = {};
+                    for (var i = 0; i < allowed.length; i++) allowedSet[allowed[i]] = true;
+                    return state.headers.filter(function (k) { return !!allowedSet[k]; });
+                }
                 return state.headers.filter(isColVisible);
             }
 
@@ -2663,6 +2875,10 @@
             // ---- Toolbox: панель видимости столбцов ----
             function rebuildColsPanel() {
                 if (!elColsGrid) return;
+                var smartActive = isSmartColumnsActive();
+                if (elColsSmartNote) {
+                    elColsSmartNote.classList.toggle('d-none', !smartActive);
+                }
                 elColsGrid.innerHTML = '';
                 for (var i = 0; i < state.headers.length; i++) {
                     var k = state.headers[i];
@@ -2671,6 +2887,7 @@
                     var cb = document.createElement('input');
                     cb.type = 'checkbox';
                     cb.checked = isColVisible(k);
+                    cb.disabled = smartActive;
                     cb.setAttribute('data-col-key', k);
                     cb.addEventListener('change', function () {
                         setColVisible(this.getAttribute('data-col-key'), this.checked);
@@ -2678,6 +2895,7 @@
                     });
                     lab.appendChild(cb);
                     lab.appendChild(document.createTextNode(' ' + label));
+                    if (smartActive) lab.classList.add('text-muted');
                     elColsGrid.appendChild(lab);
                 }
             }
@@ -2876,7 +3094,15 @@
                             }
                         }
                         if (!scopeIsAll) {
-                            if (isVatCellMismatchMpVsMs(row, key) || (key === 'ms_vat' && isMsVatRowAnyMpMismatch(row))) {
+                            // НДС МС подсвечиваем мягким жёлтым (это справочное значение МС;
+                            // фактическая ошибка — на стороне маркетплейса). Ячейки
+                            // маркетплейсных НДС (ozon_vat / wb_vat / ym_vat) остаются
+                            // красными, как у `dg-mpu-missing`.
+                            if (key === 'ms_vat') {
+                                if (isMsVatRowAnyMpMismatch(row)) {
+                                    tdClasses.push('dg-mpu-vat-mismatch-ms');
+                                }
+                            } else if (isVatCellMismatchMpVsMs(row, key)) {
                                 tdClasses.push('dg-mpu-vat-mismatch');
                             }
                             if (dimMismatchCols[key]) tdClasses.push('dg-mpu-dims-mismatch');
@@ -2914,7 +3140,9 @@
                         } else {
                             cellInner = escapeHtml(val == null ? '' : String(val));
                         }
-                        html += '<td' + cls + ' data-col-key="' + escapeHtml(key) + '">' + cellInner + '</td>';
+                        var dimSlot = DIM_KEY_TO_SLOT[key];
+                        var dimAttr = dimSlot ? ' data-dg-mpu-dim-slot="' + dimSlot + '"' : '';
+                        html += '<td' + cls + ' data-col-key="' + escapeHtml(key) + '"' + dimAttr + '>' + cellInner + '</td>';
                     }
                     html += '</tr>';
                 }
@@ -2933,6 +3161,46 @@
                             String(btn.textContent || '').trim(),
                             btn.getAttribute('data-ms-type') || ''
                         );
+                    });
+                }
+                // Hover-cross по слоту габарита: при наведении на ячейку
+                // length/width/height/weight подсвечиваем все ячейки того же слота
+                // в этой же строке (МС + 3 маркетплейса). Делегируем mouseover/mouseout
+                // на tbody, чтобы при перерисовке innerHTML связь не разрывалась.
+                if (!tbody._dgMpuDimHoverBound) {
+                    tbody._dgMpuDimHoverBound = true;
+                    var clearDimHover = function (tr) {
+                        if (!tr) return;
+                        var hot = tr.querySelectorAll('td.dg-mpu-dim-hover');
+                        for (var i = 0; i < hot.length; i++) hot[i].classList.remove('dg-mpu-dim-hover');
+                    };
+                    tbody.addEventListener('mouseover', function (e) {
+                        var td = e.target && e.target.closest ? e.target.closest('td[data-dg-mpu-dim-slot]') : null;
+                        if (!td || !tbody.contains(td)) return;
+                        var slot = td.getAttribute('data-dg-mpu-dim-slot');
+                        var tr = td.parentElement;
+                        if (!slot || !tr) return;
+                        // Если уже подсвечен этот же слот — не дёргать DOM.
+                        if (td.classList.contains('dg-mpu-dim-hover')) return;
+                        clearDimHover(tr);
+                        var cells = tr.querySelectorAll('td[data-dg-mpu-dim-slot="' + slot + '"]');
+                        for (var i = 0; i < cells.length; i++) cells[i].classList.add('dg-mpu-dim-hover');
+                    });
+                    tbody.addEventListener('mouseout', function (e) {
+                        var td = e.target && e.target.closest ? e.target.closest('td[data-dg-mpu-dim-slot]') : null;
+                        if (!td || !tbody.contains(td)) return;
+                        // Если курсор уходит на ячейку того же слота в той же строке —
+                        // подсветка остаётся (mouseover её обновит/сохранит).
+                        var related = e.relatedTarget;
+                        var relatedTd = related && related.closest
+                            ? related.closest('td[data-dg-mpu-dim-slot]')
+                            : null;
+                        if (relatedTd
+                            && relatedTd.parentElement === td.parentElement
+                            && relatedTd.getAttribute('data-dg-mpu-dim-slot') === td.getAttribute('data-dg-mpu-dim-slot')) {
+                            return;
+                        }
+                        clearDimHover(td.parentElement);
                     });
                 }
 
@@ -3012,14 +3280,17 @@
                 var scopeChanged = state.pending.scope !== state.scope;
                 var pendingExcludeBundle = !!(state.pending.filters && state.pending.filters.exclude_bundle_components);
                 var bundleChanged = pendingExcludeBundle !== !!state.filters.exclude_bundle_components;
+                var pendingSmartCols = !!(state.pending.filters && state.pending.filters.smart_columns);
                 state.scope = String(state.pending.scope || 'all');
                 state.search = String(state.pending.search || '');
                 state.filters.manager = String((state.pending.filters && state.pending.filters.manager) || '');
                 state.filters.content_manager = String((state.pending.filters && state.pending.filters.content_manager) || '');
                 state.filters.exclude_bundle_components = pendingExcludeBundle;
+                state.filters.smart_columns = pendingSmartCols;
                 writeStr(FILTER_MANAGER_KEY, state.filters.manager);
                 writeStr(FILTER_CONTENT_MGR_KEY, state.filters.content_manager);
                 writeStr(FILTER_EXCLUDE_BUNDLE_COMPONENTS_KEY, state.filters.exclude_bundle_components ? '1' : '0');
+                writeStr(FILTER_SMART_COLUMNS_KEY, state.filters.smart_columns ? '1' : '0');
                 setTitleByScope();
                 refreshDirtyIndicator();
                 if (scopeChanged || bundleChanged) {
@@ -3031,6 +3302,10 @@
                     applySearchFilter();
                     applySort();
                     state.page = 1;
+                    // Smart-режим может изменить набор видимых колонок без перезапроса —
+                    // обновляем панель `🧩 Столбцы` (disabled-чекбоксы / заметка) перед
+                    // ререндером таблицы, чтобы UI был согласован.
+                    rebuildColsPanel();
                     renderTable();
                 }
             }
@@ -3040,10 +3315,12 @@
                 state.pending.filters.manager = '';
                 state.pending.filters.content_manager = '';
                 state.pending.filters.exclude_bundle_components = true;
+                state.pending.filters.smart_columns = true;
                 if (elSearch) elSearch.value = '';
                 if (elFltManager) elFltManager.value = '';
                 if (elFltCmgr) elFltCmgr.value = '';
                 if (elFltExcludeBundleComp) elFltExcludeBundleComp.checked = true;
+                if (elFltSmartCols) elFltSmartCols.checked = true;
                 for (var i = 0; i < scopeInputs.length; i++) {
                     scopeInputs[i].checked = scopeInputs[i].value === 'all';
                 }
@@ -3126,6 +3403,12 @@
             if (elFltExcludeBundleComp) {
                 elFltExcludeBundleComp.addEventListener('change', function () {
                     state.pending.filters.exclude_bundle_components = !!elFltExcludeBundleComp.checked;
+                    refreshDirtyIndicator();
+                });
+            }
+            if (elFltSmartCols) {
+                elFltSmartCols.addEventListener('change', function () {
+                    state.pending.filters.smart_columns = !!elFltSmartCols.checked;
                     refreshDirtyIndicator();
                 });
             }

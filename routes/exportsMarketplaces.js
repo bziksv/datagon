@@ -319,6 +319,23 @@ function resetSyncState() {
 
 module.exports = function exportsMarketplacesRouter(db, appSettings) {
     const router = express.Router();
+    // На чистом стенде LEFT JOIN ms_dimensions_measurements в `/issues` падает,
+    // если таблица ещё не создана. ensureSchema идемпотентен (CREATE TABLE IF NOT EXISTS),
+    // запускаем его в фоне при инициализации этого роутера, чтобы не зависеть
+    // от порядка mount'a с `/api/exports/dimensions` в server.js.
+    try {
+        const { ensureSchema: ensureDimensionsSchema } = require('./dimensions');
+        if (typeof ensureDimensionsSchema === 'function') {
+            ensureDimensionsSchema(db).catch((e) => {
+                console.error(
+                    '[exports/marketplaces] ensure ms_dimensions_measurements schema:',
+                    e && e.message
+                );
+            });
+        }
+    } catch (eEnsure) {
+        console.error('[exports/marketplaces] cannot import dimensions ensureSchema:', eEnsure && eEnsure.message);
+    }
     /**
      * Порядок ключей в этих объектах ВАЖЕН: на ответе snapshot и CSV колонки
      * выкладываются в том же порядке (см. handleSnapshot — Object.keys(titles)).
@@ -1096,10 +1113,53 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
         return false;
     }
 
+    /** Есть ли у МС хотя бы одно числовое значение габарита/веса (источник —
+     * ms_dimensions_measurements, см. /issues SELECT). */
+    function issuesRowHasMsDims(row) {
+        return (
+            parseExportDimNumber(row.ms_length) != null
+            || parseExportDimNumber(row.ms_width) != null
+            || parseExportDimNumber(row.ms_height_box) != null
+            || parseExportDimNumber(row.ms_height_bag) != null
+            || parseExportDimNumber(row.ms_weight) != null
+        );
+    }
+
+    /** Есть ли расхождение МС ↔ маркетплейс по любой оси (длина/ширина/высота/вес).
+     * - length/width/weight: одна МС-величина против каждого маркетплейса.
+     * - height: у МС возможны две высоты (коробка / пакет); маркетплейсная высота
+     *   считается совпавшей, если совпала хотя бы с одной из непустых МС-высот.
+     * Сравнение вообще не делается, если со стороны МС или маркетплейса нет числа. */
+    function issuesRowDimsMismatchVsMs(row) {
+        const msL = parseExportDimNumber(row.ms_length);
+        const msW = parseExportDimNumber(row.ms_width);
+        const msHbox = parseExportDimNumber(row.ms_height_box);
+        const msHbag = parseExportDimNumber(row.ms_height_bag);
+        const msWeight = parseExportDimNumber(row.ms_weight);
+        const prefixes = ['ozon', 'wb', 'ym'];
+        for (const p of prefixes) {
+            if (!row[`${p}_code`]) continue;
+            const mpL = parseExportDimNumber(row[`${p}_length`]);
+            const mpW = parseExportDimNumber(row[`${p}_width`]);
+            const mpH = parseExportDimNumber(row[`${p}_height`]);
+            const mpWeight = parseExportDimNumber(row[`${p}_weight`]);
+            if (msL != null && mpL != null && Math.abs(msL - mpL) > ISSUES_DIM_EPS) return true;
+            if (msW != null && mpW != null && Math.abs(msW - mpW) > ISSUES_DIM_EPS) return true;
+            if (msWeight != null && mpWeight != null && Math.abs(msWeight - mpWeight) > ISSUES_DIM_EPS) return true;
+            if (mpH != null && (msHbox != null || msHbag != null)) {
+                const matchBox = msHbox != null && Math.abs(mpH - msHbox) <= ISSUES_DIM_EPS;
+                const matchBag = msHbag != null && Math.abs(mpH - msHbag) <= ISSUES_DIM_EPS;
+                if (!matchBox && !matchBag) return true;
+            }
+        }
+        return false;
+    }
+
     /**
      * Расхождение габаритов между маркетплейсами: товар есть минимум на двух площадках,
      * и по хотя бы одной оси (длина/ширина/высота/вес) обе отдают число и оно расходится
-     * с допуском ISSUES_DIM_EPS. В `ms_export` нет отдельных полей см/кг для сравнения с МС.
+     * с допуском ISSUES_DIM_EPS. Используется как fallback, если у МС нет ни одного
+     * измерения в `ms_dimensions_measurements`.
      */
     function issuesRowDimsMismatchAcrossMps(row) {
         const keys = [];
@@ -1115,6 +1175,13 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
             }
         }
         return false;
+    }
+
+    /** Расхождение габаритов с учётом МС: при наличии измерений МС сверяемся с ними,
+     * иначе — старая логика «между маркетплейсами». */
+    function issuesRowDimsMismatch(row) {
+        if (issuesRowHasMsDims(row)) return issuesRowDimsMismatchVsMs(row);
+        return issuesRowDimsMismatchAcrossMps(row);
     }
 
     /** НДС МС → сравнимая метка (сырое значение из ms_export.vat). */
@@ -1176,6 +1243,12 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
                     DATE_FORMAT(m.synced_at, '%d.%m.%Y %H:%i') AS synced_at,
                     m.stock          AS ms_stock,
 
+                    md.length_cm     AS ms_length,
+                    md.width_cm      AS ms_width,
+                    md.height_box_cm AS ms_height_box,
+                    md.height_bag_cm AS ms_height_bag,
+                    md.weight_kg     AS ms_weight,
+
                     ozon.external_id AS ozon_code,
                     ozon.name        AS ozon_name,
                     ozon.vat         AS ozon_vat,
@@ -1212,6 +1285,8 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
                     ym.buyer_url     AS ym_buyer_url,
                     COALESCE(NULLIF(ym.updated_label, ''), DATE_FORMAT(ym.updated_at, '%d.%m.%Y %H:%i')) AS ym_updated
                 FROM ms_export m
+                LEFT JOIN ms_dimensions_measurements md
+                    ON md.code = m.code
                 LEFT JOIN marketplace_export_rows ozon
                     ON ozon.marketplace = 'ozon' AND ozon.external_id = m.code
                 LEFT JOIN marketplace_export_rows wb
@@ -1247,6 +1322,21 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
             }
         }
 
+        // Габариты МС в БД хранятся как DECIMAL(10,2) / DECIMAL(10,3) — MySQL отдаёт
+        // их строками "31.00" / "1.000". В UI достаточно одного знака после точки
+        // (см. таблицу /exports-marketplaces-issues.html). Округляем и форматируем
+        // здесь, чтобы и API-контракт, и любая интеграция получали короткие
+        // строки "31.0" / "1.0" / "0.0", а не сырые DECIMAL.
+        const MS_DIM_KEYS = ['ms_length', 'ms_width', 'ms_height_box', 'ms_height_bag', 'ms_weight'];
+        const formatMsDimValue = (v) => {
+            if (v == null) return null;
+            const s = String(v).trim();
+            if (!s) return null;
+            const n = parseFloat(s.replace(',', '.'));
+            if (!Number.isFinite(n)) return v;
+            return n.toFixed(1);
+        };
+
         for (const r of rows || []) {
             if (Object.prototype.hasOwnProperty.call(r, 'ozon_vat')) {
                 r.ozon_vat = prettifyMarketplaceVat('ozon', r.ozon_vat);
@@ -1257,12 +1347,21 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
             if (Object.prototype.hasOwnProperty.call(r, 'ym_vat')) {
                 r.ym_vat = prettifyMarketplaceVat('ym', r.ym_vat);
             }
+            for (const k of MS_DIM_KEYS) {
+                if (Object.prototype.hasOwnProperty.call(r, k)) {
+                    r[k] = formatMsDimValue(r[k]);
+                }
+            }
         }
 
         if (scope === 'vat_mismatch') {
             rows = (rows || []).filter((r) => issuesRowVatMismatch(r));
         } else if (scope === 'dims_mismatch') {
-            rows = (rows || []).filter((r) => issuesRowDimsMismatchAcrossMps(r));
+            // При наличии измерений в `ms_dimensions_measurements` сверяемся с МС
+            // (с учётом двойной высоты МС: коробка ИЛИ пакет). Иначе — старая
+            // логика «между маркетплейсами», чтобы не терять строки, у которых
+            // ещё нет данных МС.
+            rows = (rows || []).filter((r) => issuesRowDimsMismatch(r));
         }
 
         return {
@@ -1324,8 +1423,15 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
      *   all3           — нет ни на одном из 3 маркетплейсов.
      *   ozon|wb|ym     — нет на конкретном маркетплейсе.
      *   vat_mismatch   — товар есть на маркетплейсе, но нормализованный НДС МС ≠ НДС этой площадки.
-     *   dims_mismatch  — товар есть минимум на двух площадках; по оси L/W/H/вес обе отдают число и оно расходится (число vs пусто — нет).
-     *                    (в ms_export нет полей длины/ширины для сравнения с МС.)
+     *   dims_mismatch  — расхождение габаритов (длина/ширина/высота/вес).
+     *                    Если для строки есть измерения МС в `ms_dimensions_measurements`
+     *                    (хотя бы одно числовое значение из length_cm/width_cm/
+     *                    height_box_cm/height_bag_cm/weight_kg), сверка идёт МС ↔
+     *                    маркетплейсы (высота МС двойная: совпадение высоты площадки
+     *                    хотя бы с коробкой ИЛИ с пакетом считаем match). Если
+     *                    измерений МС нет — fallback на старую логику «между
+     *                    маркетплейсами»: товар есть минимум на двух площадках, по
+     *                    оси L/W/H/вес обе отдают число и оно расходится.
      */
     router.get('/issues', async (req, res) => {
         try {
@@ -1383,7 +1489,9 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
 
             const headers = [
                 'code', 'name',
-                'manager', 'content_manager', 'ms_vat', 'ms_stock', 'synced_at',
+                'manager', 'content_manager', 'ms_vat', 'ms_stock',
+                'ms_length', 'ms_width', 'ms_height_box', 'ms_height_bag', 'ms_weight',
+                'synced_at',
                 'ozon_code', 'ozon_name', 'ozon_vat', 'ozon_stock',
                 'ozon_length', 'ozon_width', 'ozon_height', 'ozon_weight',
                 'ozon_cabinet_url', 'ozon_buyer_url', 'ozon_updated',
@@ -1396,7 +1504,9 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
             ];
             const headerLabels = [
                 'Код МС', 'Название МС',
-                'Менеджер', 'Контент-менеджер', 'НДС МС', 'Остаток по МС', 'Синхронизация МС',
+                'Менеджер', 'Контент-менеджер', 'НДС МС', 'Остаток по МС',
+                'Длина (см) МС', 'Ширина (см) МС', 'Высота — коробка (см) МС', 'Высота — пакет (см) МС', 'Вес (кг) МС',
+                'Синхронизация МС',
                 'Код Ozon', 'Название Ozon', 'НДС Ozon', 'Остаток Ozon',
                 'Длина (см) Ozon', 'Ширина (см) Ozon', 'Высота (см) Ozon', 'Вес (кг) Ozon',
                 'Кабинет Ozon', 'Покупателю Ozon', 'Обновлено Ozon',

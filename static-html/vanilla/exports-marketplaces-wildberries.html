@@ -372,11 +372,32 @@
       box-shadow: inset 0 0 0 1px #f5b0b0;
       color: #b42318;
     }
+    /* НДС МС: справочное значение, фактическая ошибка — на стороне маркетплейса.
+       Подсвечиваем мягким жёлтым (та же палитра, что у dg-mpu-dims-mismatch),
+       чтобы не вводить в заблуждение, что «ошибка в МС». */
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table tbody td.dg-mpu-vat-mismatch-ms {
+      background: #fff8e6;
+      box-shadow: inset 0 0 0 1px #e8d48b;
+      color: #7a5e00;
+    }
     /* Разные габариты/вес между маркетплейсами (отдельно от НДС и «нет кода»). */
     body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table tbody td.dg-mpu-dims-mismatch {
       background: #fff8e6;
       box-shadow: inset 0 0 0 1px #e8d48b;
       color: #7a5e00;
+    }
+    /* Hover-cross по слоту габарита: при наведении мышью на любую ячейку
+       length / width / height / weight (МС или маркетплейс) подсвечиваются ВСЕ
+       ячейки того же слота в этой строке — пара/тройка/четвёрка соседей. У МС
+       высота двойная (коробка + пакет): обе подсвечиваются вместе с маркетплейсной
+       высотой. Используем `outline` (а не background/box-shadow), чтобы не
+       перебивать уже существующие фоны .dg-mpu-dims-mismatch / .dg-mpu-missing /
+       .dg-mpu-vat-mismatch-ms. */
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table tbody td.dg-mpu-dim-hover {
+      outline: 2px solid #3f6ad8;
+      outline-offset: -2px;
+      position: relative;
+      z-index: 2;
     }
     /* «Проблемы с товарами»: единая sticky-схема маркетплейсов
        (overflow:visible на обёртках, sticky-<th> прилипает под app-header через
@@ -960,16 +981,10 @@
                           <i class="metismenu-state-icon pe-7s-angle-down" aria-hidden="true"></i>
                         </a>
                         <ul class="metismenu-container dg-vanilla-mp-submenu">
-                          <li class="metismenu-item">
-                            <a
-                              class="metismenu-link"
-                              data-nav="exports-marketplaces"
-                              href="/exports-marketplaces.html"
-                              title="Ключи API и справка"
-                            >
-                              <i class="metismenu-icon pe-7s-config"></i>Настройки
-                            </a>
-                          </li>
+                          <!-- Подпункт «Настройки» (data-nav="exports-marketplaces", /exports-marketplaces.html)
+                               скрыт из меню по запросу: ключи API маркетплейсов задаются в /settings.html;
+                               страница остаётся доступной по прямому URL и через ссылки из гайдов
+                               (например, на /exports-marketplaces-issues.html). -->
                           <li class="metismenu-item">
                             <a
                               class="metismenu-link"
