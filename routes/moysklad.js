@@ -392,9 +392,60 @@ function moyskladEntityKind(entity, fallbackKind = '') {
 }
 
 async function saveMoyskladEntityDetails(db, entities, source = 'sync', onProgress = null) {
+    // Потоковая запись `ms_entity_details`. Раньше функция шла в два прохода:
+    // (1) `JSON.stringify(entity)` для ВСЕХ сущностей сразу → массив `values[]`
+    // на ~57k записей лежал в памяти целиком (≈ 280 МБ – 1 ГБ только под
+    // payload_json), параллельно в `syncMsExport` ещё жили `all` и `exportRows`,
+    // суммарный пик 1.5–2 ГБ → OOM на боевом стенде, pm2/systemd рестартует Node
+    // и UI видит свежий jobState = «Ожидание / 0/0», а в архиве синка обрывается
+    // прямо после последнего батча `Сохранено в ms_export: N/N` без следующего
+    // лога «Сохранение полных карточек МойСклад...». (2) Только потом — батчи в БД.
+    //
+    // Теперь — один проход с inline-батчингом: буфер растёт только до chunkSize,
+    // тут же флашится, обнуляется. Пик памяти падает до единиц МБ.
+    // `setImmediate`-yield между батчами освобождает event-loop, чтобы /status,
+    // /stop и другие маршруты отвечали без задержки во время сохранения.
     const list = Array.isArray(entities) ? entities : [entities];
-    const values = [];
+    if (!list.length) return 0;
+    await ensureMsEntityDetailsTable(db);
+    const chunkSize = 100;
+    const safeSource = String(source || 'sync').slice(0, 32);
+    const insertSql = `INSERT INTO ms_entity_details (uuid, code, kind, name, payload_json, source)
+        VALUES ?
+        ON DUPLICATE KEY UPDATE
+           code = VALUES(code),
+           kind = VALUES(kind),
+           name = VALUES(name),
+           payload_json = VALUES(payload_json),
+           source = VALUES(source),
+           fetched_at = CURRENT_TIMESTAMP`;
+    // `total` оцениваем по входному списку (включая возможные пустые/без uuid).
+    // Прогресс-лог: каждые ~5% или ~50 батчей (что чаще). На старте — сразу
+    // `processed=0`, чтобы UI/архив зафиксировали момент входа в этот этап.
+    const total = list.length;
+    const expectedChunks = Math.max(1, Math.ceil(total / chunkSize));
+    const progressEveryChunks = Math.max(1, Math.floor(expectedChunks / 20));
+    if (typeof onProgress === 'function') {
+        try { onProgress({ processed: 0, total }); } catch (_) {}
+    }
+    let buffer = [];
+    let processed = 0;
+    let saved = 0;
+    let chunkIndex = 0;
+    const flush = async () => {
+        if (!buffer.length) return;
+        await db.query(insertSql, [buffer]);
+        saved += buffer.length;
+        buffer = [];
+        chunkIndex += 1;
+        if (typeof onProgress === 'function'
+            && (chunkIndex % progressEveryChunks === 0 || processed >= total)) {
+            try { onProgress({ processed, total }); } catch (_) {}
+        }
+        await new Promise((resolve) => setImmediate(resolve));
+    };
     for (const entity of list) {
+        processed += 1;
         if (!entity || typeof entity !== 'object') continue;
         const uuid = moyskladEntityUuid(entity);
         if (!uuid) continue;
@@ -408,39 +459,16 @@ async function saveMoyskladEntityDetails(db, entities, source = 'sync', onProgre
             payload = '';
         }
         if (!payload) continue;
-        values.push([uuid, code, kind, name, payload, String(source || 'sync').slice(0, 32)]);
-    }
-    if (!values.length) return 0;
-    await ensureMsEntityDetailsTable(db);
-    const chunkSize = 100;
-    const total = values.length;
-    /** Прогресс-лог каждые ~5% или ~50 батчей (что чаще), чтобы пользователь видел движение и не считал, что синк «завис». */
-    const progressEveryChunks = Math.max(1, Math.floor(total / chunkSize / 20));
-    let processed = 0;
-    let chunkIndex = 0;
-    for (let i = 0; i < total; i += chunkSize) {
-        const chunk = values.slice(i, i + chunkSize);
-        await db.query(
-            `INSERT INTO ms_entity_details (uuid, code, kind, name, payload_json, source)
-             VALUES ?
-             ON DUPLICATE KEY UPDATE
-                code = VALUES(code),
-                kind = VALUES(kind),
-                name = VALUES(name),
-                payload_json = VALUES(payload_json),
-                source = VALUES(source),
-                fetched_at = CURRENT_TIMESTAMP`,
-            [chunk]
-        );
-        processed += chunk.length;
-        chunkIndex += 1;
-        if (typeof onProgress === 'function' && (chunkIndex % progressEveryChunks === 0 || processed >= total)) {
-            try {
-                onProgress({ processed, total });
-            } catch (_) {}
+        buffer.push([uuid, code, kind, name, payload, safeSource]);
+        if (buffer.length >= chunkSize) {
+            await flush();
         }
     }
-    return values.length;
+    await flush();
+    if (typeof onProgress === 'function') {
+        try { onProgress({ processed: total, total }); } catch (_) {}
+    }
+    return saved;
 }
 
 async function loadMoyskladEntityDetail(db, uuid) {
@@ -1265,7 +1293,16 @@ async function syncMsExport(db, config, settings = {}) {
             }
             await new Promise((resolve) => setImmediate(resolve));
         }
+        // Снимаем пик памяти перед `saveMoyskladEntityDetails`: `exportRows`
+        // больше не нужен (уже в БД), а `all` ниже будет потоково обработан в
+        // `saveMoyskladEntityDetails`. Без этого пик `all` (57k сущностей с
+        // полными МС-карточками) + `exportRows` (~50–100 МБ) суммарно подбирался
+        // под лимит heap Node, и сборка `payload_json` ловила OOM.
+        // `length` уже зафиксирован в `totalRowsToInsert` — используем его дальше.
     }
+    const exportRowsSavedCount = exportRows.length;
+    exportRows.length = 0;
+
     addLog('Сохранение полных карточек МойСклад...');
     jobState.message = 'Сохранение полных карточек МойСклад...';
     ensureNotCancelled();
@@ -1283,7 +1320,7 @@ async function syncMsExport(db, config, settings = {}) {
     jobState.active = false;
     jobState.done = true;
     jobState.cancelRequested = false;
-    jobState.message = `Готово. Записей: ${exportRows.length}; карточек: ${detailSaved}`;
+    jobState.message = `Готово. Записей: ${exportRowsSavedCount}; карточек: ${detailSaved}`;
     addLog(jobState.message);
 }
 
