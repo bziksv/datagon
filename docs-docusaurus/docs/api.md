@@ -1026,11 +1026,12 @@ Body (JSON):
 
 1. (Опц.) Если в body есть `measurement` — `persistMeasurementFields()` пишет журнал и UPSERT'ит строки в `ms_dimensions_measurements`. Возвращает список реально изменившихся полей (`persisted_fields`).
 2. Читаем актуальный override-замер из БД.
-3. Получаем metadata атрибутов сущности (`/entity/{product|bundle}/metadata/attributes`).
-4. Если в `measurement` есть `packing_type` — параллельно подгружается кэш справочника (для маппинга имени → `href`).
-5. Формируем `attributes[]` с `meta.href` и приводим значения к типу атрибута. Атрибуты, которых нет в метаданных МС, попадают в `skipped[]` с `reason: 'attribute_not_in_ms_metadata'`.
-6. Делаем `PUT /entity/{kind}/{uuid}` с `{ attributes: [...] }`.
-7. На успех — для каждого отправленного поля пишем строку в `ms_dimensions_log` с `action='sync_ms'`, `new_value` = отправленное значение, `note = 'sync_ms entity=product http=200'`.
+3. **Авто-заливка parsed-defaults из имени упаковки** (паритет с UI). Если у позиции есть override `packing_type` (например, «Гофкороб 40*30*20»), но НЕТ override `length_cm` / `width_cm` / `height_box_cm`, — сервер сам берёт значения, разобранные из имени упаковки (`parsePackingDims`), и подмешивает их в `measurement` перед PUT в МС. Эти parsed-defaults дополнительно persist'ятся в БД с записью в `ms_dimensions_log` (`action='set'`, `note='sync_ms (auto-persist parsed)'`) и попадают в `persisted_fields` ответа. Поведение по `kind`: `box`/`unknown`→`length`+`width`+`height_box`; `bag`→`length`+`width` (`height_bag` — только ручной ввод); `custom_box`/`empty` — ничего не подтягиваем. Если у пользователя есть свои значения для этих полей (override уже не пустой), parsed-defaults их **не** перетирают. Это устраняет старое поведение балк-«↗ В МС: все правки», когда для позиций со введённым только `packing_type`+`weight_kg` в МС улетали лишь эти два поля, а размеры оставались пустыми, хотя UI показывал их как ghost-default из имени упаковки.
+4. Получаем metadata атрибутов сущности (`/entity/{product|bundle}/metadata/attributes`).
+5. Если в `measurement` есть `packing_type` — параллельно подгружается кэш справочника (для маппинга имени → `href`).
+6. Формируем `attributes[]` с `meta.href` и приводим значения к типу атрибута. Атрибуты, которых нет в метаданных МС, попадают в `skipped[]` с `reason: 'attribute_not_in_ms_metadata'`.
+7. Делаем `PUT /entity/{kind}/{uuid}` с `{ attributes: [...] }`.
+8. На успех — для каждого отправленного поля пишем строку в `ms_dimensions_log` с `action='sync_ms'`, `new_value` = отправленное значение, `note = 'sync_ms entity=product http=200'`.
 
 Ответ:
 

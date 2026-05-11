@@ -1037,6 +1037,60 @@ function createDimensionsRouter(db, appSettings = {}) {
                 packing_type: r.packing_type,
             }) || {};
 
+            /**
+             * Авто-заливка parsed-defaults из имени упаковки (паритет с UI).
+             * Если у позиции в БД есть override `packing_type` (явно указан тип
+             * упаковки), но НЕТ override длины/ширины/высоты-коробки — берём
+             * значения, разобранные из имени упаковки (`parsePackingDims`), и
+             * добавляем их в `measurement` для пуша в МС. Дополнительно эти
+             * parsed-defaults persist'ятся в БД (с записью в журнал
+             * `set` / note='sync_ms (auto-persist parsed)'), чтобы UI и
+             * последующие синки видели их как обычный override.
+             *
+             * Зачем: до этого балк-«↗ В МС: все правки» из БД для позиций,
+             * где пользователь успел ввести только packing_type/weight, в
+             * МС улетали именно эти два поля, а длина/ширина/высота-коробка
+             * оставались пустыми, хотя визуально UI показывал их как ghost-
+             * default (40/30/20 для «Гофкороб 40*30*20»). Теперь поведение
+             * балк-синка соответствует ожиданию пользователя: «если я указал
+             * тип упаковки — в МС уйдёт полный набор размеров».
+             *
+             * Поведение по `kind`:
+             *   • box / unknown→box → подтягиваем length/width/height_box;
+             *   • bag → подтягиваем length/width (height_bag — ввод вручную);
+             *   • custom_box / empty → ничего не подтягиваем.
+             *
+             * Если у пользователя есть свои осознанные значения, отличающиеся
+             * от parsed (он явно вводил руками), они уже лежат в БД как override
+             * и parsed-defaults их НЕ перетирают.
+             */
+            const parsedDefaults = parsePackingDims(fullMeasurement.packing_type);
+            const parsedAutofillKeys = ['length_cm', 'width_cm', 'height_box_cm'];
+            const parsedToPersist = {};
+            for (const k of parsedAutofillKeys) {
+                if (fullMeasurement[k] == null && parsedDefaults && parsedDefaults[k] != null) {
+                    fullMeasurement[k] = parsedDefaults[k];
+                    parsedToPersist[k] = parsedDefaults[k];
+                }
+            }
+            if (Object.keys(parsedToPersist).length > 0) {
+                try {
+                    const parsedPersisted = await persistMeasurementFields(db, {
+                        code,
+                        incoming: parsedToPersist,
+                        measuredByName: actorName,
+                        measuredByUserId: actorId,
+                        measuredAt: new Date(),
+                        note: 'sync_ms (auto-persist parsed)',
+                    });
+                    for (const c of (parsedPersisted.changedFields || [])) {
+                        if (persistedFields.indexOf(c.field) < 0) persistedFields.push(c.field);
+                    }
+                } catch (_) {
+                    /** не валим синк, в МС всё равно отправим parsed-default */
+                }
+            }
+
             /** Опциональный whitelist `fields[]` — синкаем только указанное подмножество. */
             let measurement = fullMeasurement;
             if (Array.isArray(body.fields) && body.fields.length > 0) {
