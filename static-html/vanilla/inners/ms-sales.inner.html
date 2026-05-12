@@ -1,0 +1,207 @@
+<!-- @inject inner -->
+<div class="app-page-title">
+  <div class="page-title-wrapper">
+    <div class="page-title-heading">
+      <div class="page-title-icon">
+        <i class="pe-7s-cash icon-gradient bg-mean-fruit"></i>
+      </div>
+      <div>
+        Продажи МС — отгрузки
+        <div class="page-title-subheading">
+          Тянем <code>entity/demand</code> из МС API за выбранный период (по умолчанию — 30 дней).
+          Каждая отгрузка хранится в <code>ms_demand</code>, позиции — в <code>ms_demand_position</code>
+          с двусторонней связью с <code>ms_export</code> (по <code>uuid</code> ассортимента, для
+          вариантов — через родительский <code>product</code>).
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================== Карточка фильтров ============================== -->
+
+<div class="main-card mb-3 card">
+  <div class="card-header d-flex align-items-center justify-content-between gap-2">
+    <div class="d-flex align-items-center">
+      <i class="header-icon pe-7s-filter icon-gradient bg-plum-plate me-2"></i>
+      <span>Фильтры и действия</span>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+      <div class="dropdown">
+        <button
+          type="button"
+          class="btn btn-sm btn-outline-secondary dg-vanilla-dropdown-toggle"
+          style="line-height: 1; padding: 0.35rem 0.5rem"
+          aria-expanded="false"
+          aria-haspopup="true"
+          id="dg-mss-filter-blocks-btn"
+          data-dg-tooltip="Какие поля фильтров показывать (сохраняется в браузере для текущего пользователя)"
+        >
+          <i class="pe-7s-config btn-icon-wrapper" style="font-size: 1.1rem" aria-hidden="true"></i>
+        </button>
+        <div
+          class="dropdown-menu dropdown-menu-end rm-pointers p-0 dg-mss-filter-blocks-dropdown"
+          id="dg-mss-filter-blocks-menu"
+          style="width: min(420px, calc(100vw - 1.5rem))"
+        >
+          <div class="dropdown-menu-header mb-0">
+            <div class="dropdown-menu-header-inner bg-tempting-azure">
+              <div
+                class="menu-header-image opacity-5"
+                style="background-image: url('/assets/utils/images/dropdown-header/abstract2.jpg')"
+              ></div>
+              <div class="menu-header-content text-white px-3 py-2">
+                <h5 class="menu-header-title mb-0">Поля фильтров</h5>
+                <h6 class="menu-header-subtitle mb-0 opacity-8 fw-normal small">По группам: переключатели справа</h6>
+              </div>
+            </div>
+          </div>
+          <div class="dg-mss-filter-blocks-scroll" style="max-height: calc(100vh - 10rem); overflow-y: auto; overflow-x: hidden">
+            <div id="dg-mss-filter-blocks-toggles" class="list-group list-group-flush"></div>
+          </div>
+        </div>
+      </div>
+      <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mss-filters-toggle">Свернуть</button>
+    </div>
+  </div>
+  <div class="card-body">
+    <div id="dg-mss-filters-body">
+      <div class="row g-2 align-items-end">
+        <div class="col-md-4" data-dg-mss-filter-field="mss_search">
+          <label class="form-label" for="dg-mss-search">Умный поиск</label>
+          <input type="search" id="dg-mss-search" class="form-control"
+                 placeholder="Номер отгрузки, контрагент, склад…" autocomplete="off"
+                 data-dg-tooltip="Ищет по номеру документа, контрагенту, складу. Enter — применить, Esc — очистить." />
+        </div>
+        <div class="col-md-2" data-dg-mss-filter-field="mss_days">
+          <label class="form-label" for="dg-mss-days">За период</label>
+          <select id="dg-mss-days" class="form-select">
+            <option value="7">7 дней</option>
+            <option value="14">14 дней</option>
+            <option value="30" selected>30 дней</option>
+            <option value="60">60 дней</option>
+            <option value="90">90 дней</option>
+            <option value="180">180 дней</option>
+            <option value="365">365 дней</option>
+          </select>
+        </div>
+        <div class="col-md-3" data-dg-mss-filter-field="mss_store">
+          <label class="form-label" for="dg-mss-store">Склад</label>
+          <select id="dg-mss-store" class="form-select">
+            <option value="">Все склады</option>
+          </select>
+        </div>
+        <div class="col-md-3" data-dg-mss-filter-field="mss_agent">
+          <label class="form-label" for="dg-mss-agent">Контрагент</label>
+          <select id="dg-mss-agent" class="form-select">
+            <option value="">Все контрагенты</option>
+          </select>
+        </div>
+      </div>
+      <div class="row g-2 align-items-end mt-1">
+        <div class="col-md-3" data-dg-mss-filter-field="mss_applicable">
+          <label class="form-label" for="dg-mss-applicable">Проведённые</label>
+          <select id="dg-mss-applicable" class="form-select">
+            <option value="1" selected>Только проведённые</option>
+            <option value="">Все</option>
+            <option value="0">Только непроведённые</option>
+          </select>
+        </div>
+        <div class="col-md-2" data-dg-mss-filter-field="mss_page_size">
+          <label class="form-label" for="dg-mss-page-size">На странице</label>
+          <select id="dg-mss-page-size" class="form-select">
+            <option value="50">50</option>
+            <option value="100" selected>100</option>
+            <option value="200">200</option>
+            <option value="500">500</option>
+          </select>
+        </div>
+      </div>
+      <div class="mt-3 d-flex flex-wrap gap-2" data-dg-mss-filter-field="mss_filter_actions">
+        <button id="dg-mss-apply" type="button" class="btn btn-sm btn-primary"
+                data-dg-tooltip="Применить фильтры и обновить список (Enter в умном поиске тоже применяет).">
+          <i class="pe-7s-search me-1"></i>Применить
+        </button>
+        <button id="dg-mss-reset" type="button" class="btn btn-sm btn-outline-secondary"
+                data-dg-tooltip="Сбросить фильтры к значениям по умолчанию.">
+          <i class="pe-7s-refresh me-1"></i>По умолчанию
+        </button>
+        <button id="dg-mss-sync" type="button" class="btn btn-sm btn-outline-success"
+                data-dg-tooltip="Запустить синхронизацию entity/demand из МС за выбранный период.">
+          <i class="pe-7s-refresh-2 me-1"></i>Синхронизировать с МС
+        </button>
+        <button id="dg-mss-cancel" type="button" class="btn btn-sm btn-outline-warning d-none">
+          <i class="pe-7s-close-circle me-1"></i>Остановить
+        </button>
+        <button id="dg-mss-reresolve" type="button" class="btn btn-sm btn-outline-info"
+                data-dg-tooltip="Перепривязать позиции к ms_export (полезно после полного синка МойСклад).">
+          <i class="pe-7s-link me-1"></i>Перепривязать к товарам
+        </button>
+      </div>
+      <div id="dg-mss-sync-status" class="dg-mss-sync-status d-none mt-3" role="status"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================== Карточка таблицы ============================== -->
+
+<div class="main-card mb-3 card">
+  <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+    <div class="d-flex align-items-center gap-3 flex-grow-1" style="min-width: 0;">
+      <div class="d-flex align-items-center flex-shrink-0">
+        <i class="header-icon pe-7s-cash icon-gradient bg-grow-early me-2"></i>
+        <span>Продажи МС</span>
+      </div>
+      <div class="dg-mss-header-search" style="flex: 0 1 380px; min-width: 220px;">
+        <div class="input-group input-group-sm">
+          <span class="input-group-text bg-white text-muted px-2" aria-hidden="true">🔎</span>
+          <input type="search" id="dg-mss-table-search-mirror" class="form-control"
+                 placeholder="Умный поиск: номер, контрагент, склад (Enter — применить)"
+                 autocomplete="off"
+                 data-dg-tooltip="Зеркало умного поиска. Enter — применить, Esc — очистить." />
+        </div>
+      </div>
+      <div class="dg-mss-status-line text-muted small" id="dg-mss-status">—</div>
+    </div>
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+      <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mss-columns-toggle"
+              title="Управление видимостью столбцов таблицы">🧩 Столбцы</button>
+      <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mss-widths-toggle"
+              title="Ручная ширина каждой колонки в пикселях">📏 Ширины</button>
+      <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mss-table-toggle"
+              title="Свернуть/развернуть тело карточки с таблицей">Свернуть</button>
+    </div>
+  </div>
+  <div class="card-body" id="dg-mss-table-body">
+    <div class="datagon-columns-toolbox mb-2 d-none" id="dg-mss-toolbox-panels">
+      <div class="datagon-columns-panel" id="dg-mss-columns-panel">
+        <div class="columns-actions mb-2">
+          <button type="button" class="btn btn-sm" id="dg-mss-columns-all">Выделить все</button>
+          <button type="button" class="btn btn-sm" id="dg-mss-columns-none">Снять все</button>
+          <button type="button" class="btn btn-sm" id="dg-mss-columns-default">По умолчанию</button>
+        </div>
+        <div id="dg-mss-columns-list" class="columns-grid"></div>
+      </div>
+      <div class="datagon-columns-panel" id="dg-mss-widths-panel">
+        <div class="columns-actions mb-2">
+          <button type="button" class="btn btn-sm" id="dg-mss-widths-default">По умолчанию</button>
+        </div>
+        <div id="dg-mss-widths-list" class="dg-mss-widths-grid"></div>
+      </div>
+    </div>
+    <table class="dg-mss-table" id="dg-mss-table">
+      <thead id="dg-mss-thead"></thead>
+      <tbody id="dg-mss-tbody"></tbody>
+    </table>
+    <div class="dg-mss-empty d-none" id="dg-mss-empty-msg">
+      Нет данных. Нажмите «Синхронизировать с МС», чтобы загрузить отгрузки за выбранный период.
+    </div>
+    <div class="dg-mss-pagination">
+      <div class="dg-mss-status-line"><span id="dg-mss-pagination-status">—</span></div>
+      <div class="ms-auto d-flex gap-2">
+        <button id="dg-mss-page-prev" class="btn btn-sm btn-outline-secondary" type="button">Назад</button>
+        <button id="dg-mss-page-next" class="btn btn-sm btn-outline-secondary" type="button">Вперёд</button>
+      </div>
+    </div>
+  </div>
+</div>

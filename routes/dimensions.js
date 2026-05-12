@@ -455,15 +455,23 @@ function detectEntityKind(type) {
 /**
  * Кэш метаданных атрибутов для сущности product/bundle (1 час). На один и тот же
  * MS_TOKEN метаданные стабильны — повторно дёргать MS на каждый sync смысла нет.
+ *
+ * Важно: у `bundle` (комплекта) в MS API НЕТ собственного эндпоинта
+ * `/entity/bundle/metadata/attributes` — он возвращает 404 «Неопознанный путь».
+ * Комплекты делят набор пользовательских атрибутов с товарами (см. ответ
+ * `/entity/bundle/{uuid}` → `meta.metadataHref = .../entity/product/metadata`).
+ * Поэтому запрашиваем и кэшируем метаданные один раз под ключом `product`, а
+ * для входного `entityKind === 'bundle'` нормализуемся к нему.
  */
 async function fetchMsAttributesMeta(entityKind, headers) {
-    const cached = msAttrMetaCache.get(entityKind);
+    const cacheKey = entityKind === 'bundle' ? 'product' : entityKind;
+    const cached = msAttrMetaCache.get(cacheKey);
     const now = Date.now();
     if (cached && now - cached.ts < MS_ATTR_META_TTL_MS) return cached.rows;
-    const url = MS_BASE_URL + '/entity/' + entityKind + '/metadata/attributes';
+    const url = MS_BASE_URL + '/entity/' + cacheKey + '/metadata/attributes';
     const resp = await axios.get(url, { headers, timeout: 30000 });
     const rows = (resp && resp.data && Array.isArray(resp.data.rows)) ? resp.data.rows : [];
-    msAttrMetaCache.set(entityKind, { ts: now, rows });
+    msAttrMetaCache.set(cacheKey, { ts: now, rows });
     return rows;
 }
 
@@ -666,7 +674,24 @@ async function pushMeasurementToMs(uuid, type, measurement) {
         Accept: 'application/json;charset=utf-8',
     };
     const entityKind = detectEntityKind(type);
-    const attrsMeta = await fetchMsAttributesMeta(entityKind, headers);
+    let attrsMeta;
+    try {
+        attrsMeta = await fetchMsAttributesMeta(entityKind, headers);
+    } catch (e) {
+        /** Любая ошибка получения метаданных атрибутов МС (404, 401, network…)
+         *  превращается в нормальный отказ синка с понятным текстом, а не
+         *  голым axios-сообщением "Request failed with status code …". */
+        const httpStatus = e && e.response && e.response.status ? Number(e.response.status) : 0;
+        return {
+            ok: false,
+            entity_kind: entityKind,
+            sent_fields: [],
+            skipped: [],
+            error: 'MS API ' + (httpStatus || 'NETWORK') + ' (метаданные атрибутов): ' +
+                (e && e.message ? e.message : 'unknown'),
+            http_status: httpStatus,
+        };
+    }
     /** Если в measurement есть packing_type — подгружаем справочник МС для поиска href. */
     if (measurement && measurement.packing_type != null && String(measurement.packing_type).trim() !== '') {
         try {

@@ -1,0 +1,160 @@
+<!-- @inject body -->
+<div class="app-main__inner" data-dg-page="lagerplus">
+  <div class="app-page-title">
+    <div class="page-title-wrapper">
+      <div class="page-title-heading">
+        <div class="page-title-icon">
+          <i class="pe-7s-cart icon-gradient bg-mean-fruit"></i>
+        </div>
+        <div>
+          Lagerplus — Закупки <span class="text-muted small">(v0)</span>
+          <div class="page-title-subheading">
+            Закупочный модуль для товаров МойСклад. Адаптация фич из
+            <a href="https://github.com/neeil1990/store" target="_blank" rel="noopener">neeil1990/store</a>
+            (suppliers / out-of-stock / shipper) под Datagon. v0 — read-only список
+            с фильтрами «дефицит / нулевые» и неснижаемым остатком МС.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Карточка «Фильтры и действия» (паттерн /moysklad.html) -->
+  <div class="main-card mb-3 card">
+    <div class="card-header d-flex justify-content-between gap-2 flex-wrap">
+      <div class="d-flex align-items-center gap-2">
+        <i class="header-icon pe-7s-filter icon-gradient bg-plum-plate"></i>
+        <span>Фильтры и действия</span>
+      </div>
+      <div class="btn-actions-pane-right d-flex gap-2">
+        <button id="dg-lp-filters-toggle" class="btn btn-sm btn-outline-secondary" type="button">Свернуть</button>
+      </div>
+    </div>
+    <div class="card-body" id="dg-lp-filters-body">
+      <div class="row gy-2 gx-3">
+        <div class="col-md-4" data-dg-lp-filter-field="search">
+          <label class="form-label small text-muted mb-1">Умный поиск</label>
+          <input
+            type="search"
+            id="dg-lp-search"
+            class="form-control form-control-sm"
+            placeholder="код, название, поставщик…"
+            autocomplete="off"
+          />
+        </div>
+        <div class="col-md-2" data-dg-lp-filter-field="type">
+          <label class="form-label small text-muted mb-1">Тип</label>
+          <select id="dg-lp-type" class="form-control form-control-sm">
+            <option value="all">Все</option>
+            <option value="Товар">Товар</option>
+            <option value="Комплект">Комплект</option>
+          </select>
+        </div>
+        <div class="col-md-3" data-dg-lp-filter-field="scope">
+          <label class="form-label small text-muted mb-1">Состояние</label>
+          <select id="dg-lp-scope" class="form-control form-control-sm">
+            <option value="all">Все товары</option>
+            <option value="deficit" selected>Дефицит (остаток &lt; норматив)</option>
+            <option value="zero">Нулевые (остаток ≤ 0)</option>
+          </select>
+        </div>
+        <div class="col-md-2" data-dg-lp-filter-field="page_size">
+          <label class="form-label small text-muted mb-1">На странице</label>
+          <select id="dg-lp-page-size" class="form-control form-control-sm">
+            <option value="50">50</option>
+            <option value="100" selected>100</option>
+            <option value="200">200</option>
+            <option value="500">500</option>
+          </select>
+        </div>
+      </div>
+      <div class="mt-3 d-flex gap-2 flex-wrap">
+        <button id="dg-lp-apply" class="btn btn-primary" type="button">Применить</button>
+        <button id="dg-lp-reset" class="btn btn-outline-secondary" type="button">По умолчанию</button>
+      </div>
+      <p class="small text-muted mt-2 mb-0">
+        Эффективный норматив = <code>min_stock_lager</code> (override Lager
+        поверх МС-значения), иначе <code>ms_export.min_stock</code>
+        (нативное <code>product.minimumBalance</code> из МС).
+        Колонка «Норматив (Lager)» — редактируемая (Tab/Enter — сохранить,
+        Esc — отменить). Кнопка «↗» в строке отправляет норматив этой
+        позиции в МС, балк-кнопки в шапке — отправляют все правки сразу.
+        Для <code>Комплектов</code> отправка в МС не выполняется (в
+        МС-схеме <code>bundle</code> поле <code>minimumBalance</code>
+        не задано).
+      </p>
+    </div>
+  </div>
+
+  <!-- Карточка таблицы «Lagerplus / Закупки» -->
+  <div class="main-card mb-3 card">
+    <div class="card-header d-flex justify-content-between gap-2 flex-wrap">
+      <div class="d-flex align-items-center gap-3 flex-grow-1" style="min-width: 0;">
+        <div class="d-flex align-items-center gap-2 flex-shrink-0">
+          <i class="header-icon pe-7s-cart icon-gradient bg-night-fade"></i>
+          <span>Lagerplus — Закупки</span>
+        </div>
+        <div class="dg-lp-header-search" style="flex: 0 1 380px; min-width: 220px;">
+          <div class="input-group input-group-sm">
+            <span class="input-group-text">🔎</span>
+            <input
+              type="search"
+              id="dg-lp-table-search-mirror"
+              class="form-control"
+              placeholder="Поиск по таблице…"
+              autocomplete="off"
+            />
+          </div>
+        </div>
+      </div>
+      <div class="btn-actions-pane-right d-flex gap-2 flex-wrap">
+        <button
+          id="dg-lp-bulk-sync-page"
+          class="btn btn-sm btn-outline-primary"
+          type="button"
+          title="Отправить в МС всех позиций с этой страницы, у которых есть Lager-норматив"
+        >↗ В МС: страница</button>
+        <button
+          id="dg-lp-bulk-sync-all"
+          class="btn btn-sm btn-outline-primary"
+          type="button"
+          title="Отправить в МС ВСЕ позиции с Lager-нормативом из БД (игнорируя фильтры)"
+        >↗ В МС: все правки</button>
+        <button id="dg-lp-table-toggle" class="btn btn-sm btn-outline-secondary" type="button">Свернуть</button>
+      </div>
+    </div>
+    <div class="card-body" id="dg-lp-table-body">
+      <div class="dg-lp-table-wrap">
+        <table class="dg-lp-table">
+          <thead>
+            <tr>
+              <th data-sort="code">Код МС</th>
+              <th data-sort="name">Название МС</th>
+              <th data-sort="manager">Менеджер</th>
+              <th data-sort="content_manager">Контент-менеджер</th>
+              <th data-sort="supplier">Поставщик</th>
+              <th data-sort="type">Тип</th>
+              <th data-sort="min_stock_ms" class="dg-lp-num">Норматив (МС)</th>
+              <th data-sort="min_stock_lager" class="dg-lp-num" title="Override поверх МС: то значение, которое отправится в МС по «↗»">Норматив (Lager)</th>
+              <th class="dg-lp-num" title="Push в МС: отправляет minimumBalance в МС API">↗ В МС</th>
+              <th data-sort="stock" class="dg-lp-num">Остаток</th>
+              <th data-sort="delta_lager" class="dg-lp-num">Дефицит/Излишек</th>
+              <th data-sort="stock_days" class="dg-lp-num">Дней на складе</th>
+            </tr>
+          </thead>
+          <tbody id="dg-lp-tbody"></tbody>
+        </table>
+      </div>
+      <div class="dg-lp-empty d-none" id="dg-lp-empty-msg">Нет товаров под текущие фильтры.</div>
+      <div id="dg-lp-bulk-status" class="dg-lp-bulk-status d-none" role="status"></div>
+
+      <div class="dg-lp-pagination">
+        <span class="dg-lp-status-line" id="dg-lp-status">Найдено: 0; страница 0/0; показано: 0</span>
+        <div class="ms-auto d-flex gap-2">
+          <button id="dg-lp-page-prev" class="btn btn-sm btn-outline-secondary" type="button" disabled>Назад</button>
+          <button id="dg-lp-page-next" class="btn btn-sm btn-outline-secondary" type="button" disabled>Вперёд</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

@@ -188,14 +188,6 @@ function assemble() {
             PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/index.scripts.html')),
         },
         {
-            out: 'exports-ms.html',
-            PAGE_TITLE: 'Выгрузки МС — Датагон',
-            BODY_ATTRS: 'class="datagon-vanilla-body" data-dg-active-nav="exports-ms"',
-            EXTRA_HEAD: read(path.join(vanillaDir, 'inners/exports-suite.head.html')),
-            MAIN_INNER: read(path.join(vanillaDir, 'inners/exports-ms.inner.html')),
-            PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/exports-suite.scripts.html')),
-        },
-        {
             out: 'exports-marketplaces.html',
             PAGE_TITLE: 'Маркетплейсы — Настройки — Датагон',
             BODY_ATTRS: 'class="datagon-vanilla-body" data-dg-active-nav="exports-marketplaces"',
@@ -258,14 +250,6 @@ function assemble() {
             PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/exports-suite.scripts.html')),
         },
         {
-            out: 'exports-summary.html',
-            PAGE_TITLE: 'Сводка и синхронизация — Датагон',
-            BODY_ATTRS: 'class="datagon-vanilla-body" data-dg-active-nav="exports-summary"',
-            EXTRA_HEAD: read(path.join(vanillaDir, 'inners/exports-suite.head.html')),
-            MAIN_INNER: read(path.join(vanillaDir, 'inners/exports-summary.inner.html')),
-            PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/exports-suite.scripts.html')),
-        },
-        {
             out: 'exports-dimensions.html',
             PAGE_TITLE: 'Маркетплейсы — Габариты — Датагон',
             BODY_ATTRS: 'class="datagon-vanilla-body" data-dg-active-nav="exports-dimensions"',
@@ -274,6 +258,28 @@ function assemble() {
                 read(path.join(vanillaDir, 'inners/exports-dimensions.head.html')),
             MAIN_INNER: read(path.join(vanillaDir, 'inners/exports-dimensions.inner.html')),
             PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/exports-dimensions.scripts.html')),
+        },
+        {
+            // Lagerplus — закупочный модуль (стороннее «вкрапление», см.
+            // routes/lagerplus.js, docs api.md). Не зависит от других
+            // exports-*-страниц, отдельные head/inner/scripts.
+            out: 'lagerplus.html',
+            PAGE_TITLE: 'Lagerplus — Закупки — Датагон',
+            BODY_ATTRS: 'class="datagon-vanilla-body" data-dg-active-nav="lagerplus"',
+            EXTRA_HEAD: read(path.join(vanillaDir, 'inners/lagerplus.head.html')),
+            MAIN_INNER: read(path.join(vanillaDir, 'inners/lagerplus.inner.html')),
+            PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/lagerplus.scripts.html')),
+        },
+        {
+            // MS Sales — отдельная страница «Продажи МС»: тянет entity/demand
+            // из МС API, хранит документы и позиции локально с привязкой к
+            // ms_export. См. routes/msSales.js, docs api.md (раздел «Продажи МС»).
+            out: 'ms-sales.html',
+            PAGE_TITLE: 'Продажи МС — Датагон',
+            BODY_ATTRS: 'class="datagon-vanilla-body" data-dg-active-nav="ms-sales"',
+            EXTRA_HEAD: read(path.join(vanillaDir, 'inners/ms-sales.head.html')),
+            MAIN_INNER: read(path.join(vanillaDir, 'inners/ms-sales.inner.html')),
+            PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/ms-sales.scripts.html')),
         },
     ];
 

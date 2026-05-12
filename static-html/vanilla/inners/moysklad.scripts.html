@@ -8,6 +8,7 @@
         ["type", "Тип"],
         ["stock_position", "Склад. поз."],
         ["no_longer_cooperation", "Перестали сотруднич."],
+        ["min_stock", "Неснижаемый остаток"],
         ["stock", "Остаток"],
         ["stock_days", "Дней на складе"],
         ["price_comment", "Проработка цены / коммент"],
@@ -24,12 +25,13 @@
       ];
       var SORTABLE_FIELDS = [
         "code", "name", "manager", "content_manager", "type", "stock_position", "no_longer_cooperation",
-        "stock", "stock_days", "price_comment", "vat", "vat_on_product", "buy_price", "supplier", "supplier2",
-        "automation_price", "packing_standard", "packing_own_box", "packing_weight", "is_archived", "updated_label",
+        "min_stock", "stock", "stock_days", "price_comment", "vat", "vat_on_product", "buy_price",
+        "supplier", "supplier2", "automation_price", "packing_standard", "packing_own_box",
+        "packing_weight", "is_archived", "updated_label",
       ];
       var SORTABLE = new Set(SORTABLE_FIELDS);
       var COLUMN_CENTER_KEYS = new Set([
-        "code", "stock_position", "no_longer_cooperation", "stock", "stock_days", "vat", "vat_on_product",
+        "code", "stock_position", "no_longer_cooperation", "min_stock", "stock", "stock_days", "vat", "vat_on_product",
         "buy_price", "automation_price", "packing_weight",
       ]);
       var STICKY_LEFT_KEYS = [];
@@ -42,6 +44,7 @@
         type: 110,
         stock_position: 95,
         no_longer_cooperation: 95,
+        min_stock: 110,
         stock: 110,
         stock_days: 110,
         price_comment: 220,
@@ -1013,6 +1016,14 @@
         }
         var v = r[key];
         if (key === "stock") {
+          return numericInner(key, document.createTextNode(fmtNum(v)));
+        }
+        if (key === "min_stock") {
+          // Для Комплектов в МС поле minimumBalance не задано — выводим прочерк,
+          // чтобы пользователь отличал «не задан норматив» от честного 0.
+          if (v == null || v === "") {
+            return numericInner(key, document.createTextNode("—"));
+          }
           return numericInner(key, document.createTextNode(fmtNum(v)));
         }
         var out = document.createElement("span");

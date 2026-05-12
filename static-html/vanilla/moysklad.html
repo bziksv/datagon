@@ -557,7 +557,6 @@
                           <i class="metismenu-icon pe-7s-plugin"></i>ArchitectUI
                         </a>
                       </li>
-                      <li class="metismenu-item"><a class="metismenu-link" data-nav="exports-ms" href="/exports-ms.html" title="Перенос сценариев Google Sheets: карточки МС, остатки, комплекты"><i class="metismenu-icon pe-7s-cloud-download"></i>Выгрузки МС</a></li>
                       <li class="metismenu-item">
                         <a
                           href="#"
@@ -606,6 +605,16 @@
                           <li class="metismenu-item">
                             <a
                               class="metismenu-link"
+                              data-nav="exports-huckster"
+                              href="/exports-huckster.html"
+                              title="Интеграция Huckster / e-teleport — матрица UID по магазинам"
+                            >
+                              <i class="metismenu-icon pe-7s-cart"></i>Huckster
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
                               data-nav="exports-dimensions"
                               href="/exports-dimensions.html"
                               title="Реестр замеров габаритов товаров МойСклад"
@@ -625,8 +634,8 @@
                           </li>
                         </ul>
                       </li>
-                      <li class="metismenu-item"><a class="metismenu-link" data-nav="exports-huckster" href="/exports-huckster.html" title="Интеграция Huckster / e-teleport — матрица UID по магазинам"><i class="metismenu-icon pe-7s-cart"></i>Huckster</a></li>
-                      <li class="metismenu-item"><a class="metismenu-link" data-nav="exports-summary" href="/exports-summary.html" title="Сводка по менеджерам, подсветки НДС/габаритов, уведомления в чат"><i class="metismenu-icon pe-7s-note"></i>Сводка и синхронизация</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="ms-sales" href="/ms-sales.html" title="Продажи МС: отгрузки entity/demand, позиции с привязкой к товарам ms_export"><i class="metismenu-icon pe-7s-cash"></i>Продажи МС</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="lagerplus" href="/lagerplus.html" title="Lagerplus — закупочный модуль (адаптация фич neeil1990/store)"><i class="metismenu-icon pe-7s-cart"></i>Lagerplus — Закупки</a></li>
                     </ul>
                   </div>
                 </div>
@@ -1026,6 +1035,7 @@
         ["type", "Тип"],
         ["stock_position", "Склад. поз."],
         ["no_longer_cooperation", "Перестали сотруднич."],
+        ["min_stock", "Неснижаемый остаток"],
         ["stock", "Остаток"],
         ["stock_days", "Дней на складе"],
         ["price_comment", "Проработка цены / коммент"],
@@ -1042,12 +1052,13 @@
       ];
       var SORTABLE_FIELDS = [
         "code", "name", "manager", "content_manager", "type", "stock_position", "no_longer_cooperation",
-        "stock", "stock_days", "price_comment", "vat", "vat_on_product", "buy_price", "supplier", "supplier2",
-        "automation_price", "packing_standard", "packing_own_box", "packing_weight", "is_archived", "updated_label",
+        "min_stock", "stock", "stock_days", "price_comment", "vat", "vat_on_product", "buy_price",
+        "supplier", "supplier2", "automation_price", "packing_standard", "packing_own_box",
+        "packing_weight", "is_archived", "updated_label",
       ];
       var SORTABLE = new Set(SORTABLE_FIELDS);
       var COLUMN_CENTER_KEYS = new Set([
-        "code", "stock_position", "no_longer_cooperation", "stock", "stock_days", "vat", "vat_on_product",
+        "code", "stock_position", "no_longer_cooperation", "min_stock", "stock", "stock_days", "vat", "vat_on_product",
         "buy_price", "automation_price", "packing_weight",
       ]);
       var STICKY_LEFT_KEYS = [];
@@ -1060,6 +1071,7 @@
         type: 110,
         stock_position: 95,
         no_longer_cooperation: 95,
+        min_stock: 110,
         stock: 110,
         stock_days: 110,
         price_comment: 220,
@@ -2031,6 +2043,14 @@
         }
         var v = r[key];
         if (key === "stock") {
+          return numericInner(key, document.createTextNode(fmtNum(v)));
+        }
+        if (key === "min_stock") {
+          // Для Комплектов в МС поле minimumBalance не задано — выводим прочерк,
+          // чтобы пользователь отличал «не задан норматив» от честного 0.
+          if (v == null || v === "") {
+            return numericInner(key, document.createTextNode("—"));
+          }
           return numericInner(key, document.createTextNode(fmtNum(v)));
         }
         var out = document.createElement("span");

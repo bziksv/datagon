@@ -701,6 +701,29 @@ async function ensureMsArchivedColumn(db) {
     msArchivedColumnReady = true;
 }
 
+let msMinStockColumnReady = false;
+/**
+ * Миграция `ms_export.min_stock` — нативное поле «Неснижаемый остаток» из МС
+ * (`product.minimumBalance`). Добавляется по аналогии с `ensureMsArchivedColumn`,
+ * чтобы новые правки могли пользоваться этой колонкой без ручного `ALTER TABLE`
+ * на боевом. Тип DECIMAL(15,3) — паритет со `stock` (тоже DECIMAL у нас).
+ * Для `Комплектов` (`bundle`) минимальный остаток в МС не задаётся — пишем `NULL`.
+ */
+async function ensureMsMinStockColumn(db) {
+    if (msMinStockColumnReady) return;
+    const [rows] = await db.query(`
+        SELECT COUNT(*) AS cnt
+        FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'ms_export'
+          AND COLUMN_NAME = 'min_stock'
+    `);
+    if (!rows[0]?.cnt) {
+        await db.query('ALTER TABLE ms_export ADD COLUMN min_stock DECIMAL(15,3) NULL DEFAULT NULL');
+    }
+    msMinStockColumnReady = true;
+}
+
 function buildExportFilters(query, whereSql, whereParams) {
     const {
         search = '',
@@ -1021,6 +1044,7 @@ async function resolveAssortmentCode(assortment, headers, assortmentCodeCache) {
 
 async function syncMsExport(db, config, settings = {}) {
     await ensureMsArchivedColumn(db);
+    await ensureMsMinStockColumn(db);
     const token = getToken(config);
     if (!token) throw new Error('MS_TOKEN не задан (env MS_TOKEN или config.msToken)');
     const headers = { Authorization: `Bearer ${token}` };
@@ -1212,6 +1236,20 @@ async function syncMsExport(db, config, settings = {}) {
         const vatOnProductRaw = getAttrValue(item, attrsMap, 'НДС на товаре или комплекте');
         const vatOnProduct = vatOnProductRaw === 0 || vatOnProductRaw === '0' ? 'без НДС' : String(vatOnProductRaw || '');
 
+        /**
+         * Неснижаемый остаток — нативное поле МС API `product.minimumBalance`
+         * (число, в основной единице измерения). У `Комплектов` поле в МС не
+         * задаётся — оставляем `NULL`, чтобы UI не путал «нет норматива» и
+         * «норматив = 0». Если `minimumBalance` пришёл, но не числовой
+         * (например, пустая строка) — тоже `NULL`, чтобы не «затирать»
+         * корректный 0 шумом.
+         */
+        let minStockValue = null;
+        if (type !== 'Комплект' && item && Object.prototype.hasOwnProperty.call(item, 'minimumBalance')) {
+            const mb = Number(item.minimumBalance);
+            if (Number.isFinite(mb)) minStockValue = mb;
+        }
+
         exportRows.push([
             code,
             item.name || '',
@@ -1232,6 +1270,7 @@ async function syncMsExport(db, config, settings = {}) {
             String(getAttrValue(item, attrsMap, '!-Вес товара с учетом коробки/пакета') || ''),
             salePrice,
             buyPrice,
+            minStockValue,
             stock,
             String(stockDays),
             toBinaryFlag(item.archived),
@@ -1276,7 +1315,7 @@ async function syncMsExport(db, config, settings = {}) {
             INSERT INTO ms_export (
                 code, name, manager, content_manager, uuid, type, stock_position, no_longer_cooperation,
                 price_comment, vat, vat_on_product, supplier, supplier2, automation_price,
-                packing_standard, packing_own_box, packing_weight, sale_price, buy_price, stock, stock_days, is_archived, updated_label
+                packing_standard, packing_own_box, packing_weight, sale_price, buy_price, min_stock, stock, stock_days, is_archived, updated_label
             ) VALUES ?
         `;
         let insertedRows = 0;
@@ -1327,6 +1366,7 @@ async function syncMsExport(db, config, settings = {}) {
 function createMoyskladRouter(db, settings, config) {
     moyskladSyncLogDb = db;
     ensureMsArchivedColumn(db).catch(() => {});
+    ensureMsMinStockColumn(db).catch(() => {});
     ensureMsEntityDetailsTable(db).catch(() => {});
     async function triggerMsSyncNow() {
         if (jobState.active) return { started: false, reason: 'already_running' };
@@ -1980,7 +2020,7 @@ function createMoyskladRouter(db, settings, config) {
             const o = Math.max(0, parseInt(offset, 10) || 0);
             const allowedSortFields = new Set([
                 'code', 'name', 'manager', 'content_manager', 'type',
-                'stock_position', 'no_longer_cooperation', 'stock', 'stock_days',
+                'stock_position', 'no_longer_cooperation', 'min_stock', 'stock', 'stock_days',
                 'price_comment', 'vat', 'vat_on_product', 'buy_price', 'sale_price',
                 'supplier', 'supplier2', 'automation_price',
                 'packing_standard', 'packing_own_box', 'packing_weight', 'updated_label'

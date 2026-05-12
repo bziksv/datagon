@@ -1192,6 +1192,19 @@ initDB().then(() => {
     app.use('/api/exports/dimensions', require('./routes/dimensions')(db, appSettings));
     app.use('/api/exports/huckster', exportsHucksterRouterFactory(db, appSettings));
     app.use('/api/projects', require('./routes/projects')(db, appSettings));
+    {
+        // Lagerplus — закупочный модуль (стороннее «вкрапление» поверх ms_export, не меняет
+        // существующий /moysklad.html). См. routes/lagerplus.js и docs api.md (раздел Lagerplus).
+        const { createLagerplusRouter } = require('./routes/lagerplus');
+        app.use('/api/lagerplus', createLagerplusRouter(db, appSettings));
+    }
+    {
+        // MS Sales — отдельная страница «Продажи МС»: тянет entity/demand из МС API,
+        // хранит документы и позиции локально, резолвит позиции до ms_export.uuid/code.
+        // См. routes/msSales.js и docs api.md (раздел «Продажи МС»).
+        const { createMsSalesRouter } = require('./routes/msSales');
+        app.use('/api/ms-sales', createMsSalesRouter(db, appSettings));
+    }
     pagesRouter = pagesRouterFactory(db, appSettings);
     app.use('/api/pages', pagesRouter);
 

@@ -1,0 +1,229 @@
+<!-- @inject head -->
+<style>
+  /**
+   * MS Sales — соответствие baseline `moysklad`:
+   *   • sticky thead → top: var(--dg-mss-sticky-top, 0)
+   *     (значение выставляет syncStickyTopVar() в ms-sales.scripts.html
+   *      по реальной высоте `.app-header.fixed-header`).
+   *   • НЕ ставим overflow-x/y на обёртки — таблица помещается без скролла,
+   *     любой `overflow: auto` на родителе ломает sticky на <th>
+   *     (см. правило datagon-table-behavior-lock.mdc).
+   *   • Кнопки «🧩 Столбцы» / «📏 Ширины» в card-header и панели
+   *     `.datagon-columns-toolbox` / `.datagon-columns-panel` — стили общие
+   *     с moysklad (определены в теме); локально дополняем grid-сеткой ширин.
+   */
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: auto;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-table thead th {
+    position: sticky;
+    top: var(--dg-mss-sticky-top, 0);
+    z-index: 25;
+    background: #f8f9fa;
+    border-bottom: 1px solid #e6e9ee;
+    border-right: 1px solid #e6e9ee;
+    padding: 8px 10px;
+    font-weight: 600;
+    font-size: 0.85rem;
+    text-align: left;
+    white-space: nowrap;
+    user-select: text;
+    -webkit-user-select: text;
+    cursor: pointer;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-table thead th[data-sort]::after {
+    content: '';
+    margin-left: 4px;
+    color: #adb5bd;
+    font-weight: 400;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-table thead th[data-sort-active="asc"]::after { content: ' ▲'; color: #495057; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-table thead th[data-sort-active="desc"]::after { content: ' ▼'; color: #495057; }
+
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-table tbody td {
+    border-bottom: 1px solid #f3f5f8;
+    border-right: 1px solid #f3f5f8;
+    padding: 6px 10px;
+    font-size: 0.85rem;
+    vertical-align: middle;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-table tbody tr:hover {
+    background: #f7f9fc;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-row-toggle {
+    cursor: pointer;
+    user-select: none;
+    color: #3f6ad8;
+    font-weight: 600;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-positions-row > td {
+    background: #fcfcfd;
+    padding: 0;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-positions-inner {
+    padding: 12px 16px;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-positions-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: auto;
+    font-size: 0.83rem;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-positions-table th,
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-positions-table td {
+    border-bottom: 1px solid #ebedf2;
+    padding: 5px 8px;
+    text-align: left;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-positions-table th {
+    background: #f1f3f5;
+    font-weight: 600;
+  }
+
+  /* Бейджи привязки позиции к ms_export */
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-link-badge {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-left: 6px;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-link-resolved { background: #e6f6ed; color: #1f7a48; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-link-unresolved { background: #fde6ec; color: #a01737; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-link-bundle { background: #eef4ff; color: #2c4ba0; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-link-variant { background: #fff7d6; color: #8a6d00; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-link-service,
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-link-unknown { background: #f1f3f5; color: #495057; }
+
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-not-applicable {
+    color: #adb5bd;
+    text-decoration: line-through;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-pagination {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-top: 12px;
+    font-size: 0.85rem;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-empty {
+    padding: 24px;
+    text-align: center;
+    color: #6c757d;
+    font-size: 0.9rem;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-sync-status {
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    line-height: 1.45;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-sync-status.dg-mss-sync-info { background: #eef4ff; color: #2c4ba0; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-sync-status.dg-mss-sync-ok { background: #e6f6ed; color: #1f7a48; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-sync-status.dg-mss-sync-warn { background: #fff7d6; color: #8a6d00; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-sync-status.dg-mss-sync-err { background: #fde6ec; color: #a01737; }
+
+  /* Карточка с деталями отгрузки в раскрывающейся строке */
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-demand-card {
+    background: #fff;
+    border: 1px solid #e6e9ee;
+    border-radius: 6px;
+    padding: 12px 14px;
+    margin-bottom: 12px;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-demand-card-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    flex-wrap: wrap;
+    border-bottom: 1px solid #f1f3f5;
+    padding-bottom: 8px;
+    margin-bottom: 8px;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-demand-card-title { font-size: 0.95rem; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-demand-card-status {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-doc-link {
+    font-size: 0.8rem;
+    color: #3f6ad8;
+    text-decoration: none;
+    margin-left: 4px;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-doc-link:hover { text-decoration: underline; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    line-height: 1.4;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-badge-ok { background: #e6f6ed; color: #1f7a48; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-badge-warn { background: #fff7d6; color: #8a6d00; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-badge-info { background: #eef4ff; color: #2c4ba0; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-badge-muted { background: #f1f3f5; color: #495057; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-dl {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 4px 16px;
+    font-size: 0.83rem;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-dl-row {
+    display: flex;
+    gap: 8px;
+    padding: 3px 0;
+    border-bottom: 1px dashed #f1f3f5;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-dl-label {
+    color: #6c757d;
+    flex: 0 0 130px;
+    white-space: nowrap;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-dl-value {
+    flex: 1 1 auto;
+    color: #212529;
+    word-break: break-word;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-attrs {
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid #f1f3f5;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-attrs-title {
+    font-size: 0.78rem;
+    color: #6c757d;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 6px;
+  }
+
+  /* Сетка панели «📏 Ширины» — соответствие визуальному эталону moysklad. */
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-widths-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 6px 12px;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-widths-grid label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 0;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-widths-grid input[type="number"] {
+    flex: 0 0 90px;
+  }
+</style>

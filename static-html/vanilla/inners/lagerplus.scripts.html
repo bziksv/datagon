@@ -1,0 +1,772 @@
+<!-- @inject scripts -->
+<script>
+/**
+ * Lagerplus v1 — клиентская логика «отдельного вкрапления» закупочного
+ * модуля. Не зависит от React. См. routes/lagerplus.js.
+ *
+ * Контракты:
+ *   • datagon-table-filter-apply.mdc — два слоя state (`applied` /
+ *     `pending`), серверный fetch только по «Применить» (либо Enter
+ *     в поле поиска).
+ *   • datagon-list-page-baseline-moysklad.mdc — две карточки, поиск-
+ *     зеркало, «Свернуть» для card-body.
+ *   • datagon-table-behavior-lock.mdc — пагинация по 100 по умолчанию,
+ *     формат «Найдено: N; страница X/Y; показано: K», sticky-th через
+ *     CSS `position: sticky`.
+ *
+ * v1 добавляет:
+ *   • Редактируемая колонка «Норматив (Lager)» (input). Save on blur /
+ *     Enter; Esc — отмена с откатом значения; ghost-default = МС-значение.
+ *   • Per-row кнопка «↗» — POST /sync-ms для одной позиции.
+ *   • Балк-кнопки «↗ В МС: страница» / «↗ В МС: все правки» в шапке.
+ *   • После успешного save или sync — локальное обновление delta_lager
+ *     и подсветки строки без полного re-fetch.
+ */
+(function () {
+  'use strict';
+
+  if (window.__dgLagerplusBooted) return;
+  window.__dgLagerplusBooted = true;
+
+  var STORAGE_KEY = 'datagon_lagerplus_filters_v1';
+  var FILTERS_COLLAPSED_KEY = 'datagon_lagerplus_filters_collapsed_v1';
+  var TABLE_COLLAPSED_KEY = 'datagon_lagerplus_table_collapsed_v1';
+
+  var DEFAULTS = Object.freeze({
+    search: '',
+    type: 'all',
+    scope: 'deficit',
+    pageSize: 100,
+    sortBy: 'code',
+    sortDir: 'asc',
+    page: 1,
+  });
+
+  var state = {
+    applied: Object.assign({}, DEFAULTS),
+    pending: Object.assign({}, DEFAULTS),
+    total: 0,
+    rows: [],
+    loading: false,
+    /** Индекс строк по code для локальных update'ов после save / sync. */
+    rowsByCode: Object.create(null),
+  };
+
+  function $(id) { return document.getElementById(id); }
+
+  function fmtNum(v) {
+    if (v == null || v === '') return '';
+    var n = Number(v);
+    if (!Number.isFinite(n)) return String(v);
+    return n % 1 === 0 ? n.toFixed(0) : n.toFixed(2);
+  }
+
+  function escapeHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c];
+    });
+  }
+
+  function escapeAttr(s) { return escapeHtml(s); }
+
+  /** Преобразование raw input value → number/null/INVALID. */
+  function parseInputValue(raw) {
+    if (raw == null) return null;
+    var s = String(raw).replace(',', '.').trim();
+    if (s === '') return null;
+    var n = Number(s);
+    if (!Number.isFinite(n)) return undefined; /** sentinel: невалидно */
+    if (n < 0) return undefined;
+    return n;
+  }
+
+  function loadFromStorage() {
+    try {
+      var raw = window.localStorage.getItem(STORAGE_KEY);
+      if (!raw) return null;
+      var obj = JSON.parse(raw);
+      if (obj && typeof obj === 'object') return obj;
+    } catch (_) { /** мусор в localStorage — игнорируем */ }
+    return null;
+  }
+
+  function saveToStorage(snapshot) {
+    try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot)); }
+    catch (_) { /** quota exceeded — не критично */ }
+  }
+
+  function applyToForm(snapshot) {
+    var s = Object.assign({}, DEFAULTS, snapshot || {});
+    if ($('dg-lp-search')) $('dg-lp-search').value = s.search;
+    if ($('dg-lp-type')) $('dg-lp-type').value = s.type;
+    if ($('dg-lp-scope')) $('dg-lp-scope').value = s.scope;
+    if ($('dg-lp-page-size')) $('dg-lp-page-size').value = String(s.pageSize);
+    if ($('dg-lp-table-search-mirror')) $('dg-lp-table-search-mirror').value = s.search;
+  }
+
+  function readFromForm() {
+    return {
+      search: ($('dg-lp-search') && $('dg-lp-search').value || '').trim(),
+      type: $('dg-lp-type') ? $('dg-lp-type').value : DEFAULTS.type,
+      scope: $('dg-lp-scope') ? $('dg-lp-scope').value : DEFAULTS.scope,
+      pageSize: parseInt(($('dg-lp-page-size') && $('dg-lp-page-size').value) || DEFAULTS.pageSize, 10) || DEFAULTS.pageSize,
+      sortBy: state.pending.sortBy,
+      sortDir: state.pending.sortDir,
+      page: state.pending.page,
+    };
+  }
+
+  function commitFilters(opts) {
+    state.pending = readFromForm();
+    if (!opts || opts.resetPage !== false) state.pending.page = 1;
+    state.applied = Object.assign({}, state.pending);
+    saveToStorage({
+      search: state.applied.search,
+      type: state.applied.type,
+      scope: state.applied.scope,
+      pageSize: state.applied.pageSize,
+      sortBy: state.applied.sortBy,
+      sortDir: state.applied.sortDir,
+    });
+    fetchList();
+  }
+
+  function resetFilters() {
+    state.pending = Object.assign({}, DEFAULTS);
+    state.applied = Object.assign({}, DEFAULTS);
+    applyToForm(DEFAULTS);
+    saveToStorage(DEFAULTS);
+    fetchList();
+  }
+
+  function buildQuery() {
+    var a = state.applied;
+    var offset = Math.max(0, (a.page - 1) * a.pageSize);
+    var qs = new URLSearchParams();
+    qs.set('limit', String(a.pageSize));
+    qs.set('offset', String(offset));
+    if (a.search) qs.set('search', a.search);
+    if (a.type && a.type !== 'all') qs.set('type', a.type);
+    if (a.scope && a.scope !== 'all') qs.set('scope', a.scope);
+    qs.set('sort_by', a.sortBy);
+    qs.set('sort_dir', a.sortDir);
+    return qs.toString();
+  }
+
+  function fetchList() {
+    if (state.loading) return;
+    state.loading = true;
+    var url = '/api/lagerplus/list?' + buildQuery();
+    fetch(url, { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+      .then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      })
+      .then(function (data) {
+        if (!data || !data.success) throw new Error((data && data.error) || 'Ошибка загрузки');
+        state.total = Number(data.total || 0);
+        state.rows = Array.isArray(data.rows) ? data.rows : [];
+        state.rowsByCode = Object.create(null);
+        for (var i = 0; i < state.rows.length; i++) {
+          state.rowsByCode[state.rows[i].code] = state.rows[i];
+        }
+        renderTable();
+        renderStatus();
+        renderSortIndicators();
+      })
+      .catch(function (err) {
+        console.error('[lagerplus] fetch:', err);
+        state.rows = [];
+        state.rowsByCode = Object.create(null);
+        state.total = 0;
+        renderTable();
+        renderStatus();
+        var emptyMsg = $('dg-lp-empty-msg');
+        if (emptyMsg) {
+          emptyMsg.textContent = 'Не удалось загрузить список: ' + (err && err.message ? err.message : 'неизвестная ошибка');
+          emptyMsg.classList.remove('d-none');
+        }
+      })
+      .then(function () { state.loading = false; });
+  }
+
+  /**
+   * Эффективный норматив для UI = override Lager, иначе МС, иначе null.
+   * Использует совершенно ту же формулу, что сервер в SQL:
+   *   COALESCE(min_stock_lager, min_stock_ms, NULL)
+   */
+  function effectiveMin(row) {
+    if (row.min_stock_lager != null) return row.min_stock_lager;
+    if (row.min_stock_ms != null) return row.min_stock_ms;
+    return null;
+  }
+
+  function calcDelta(row) {
+    var m = effectiveMin(row);
+    if (m == null) return null;
+    return Number(row.stock || 0) - Number(m);
+  }
+
+  function renderInputCell(row) {
+    var hasOverride = row.min_stock_lager != null;
+    var displayValue = hasOverride ? fmtNum(row.min_stock_lager) : '';
+    var ghostClass = hasOverride ? '' : ' dg-lp-input-ghost';
+    var msHint = row.min_stock_ms != null ? fmtNum(row.min_stock_ms) : '';
+    /** Подсказка в placeholder: показывает МС-значение как ghost-default. */
+    var placeholder = hasOverride ? '' : (msHint || 'не задан');
+    var titleParts = [];
+    if (hasOverride && row.lager_set_by_name) titleParts.push('Установил: ' + row.lager_set_by_name);
+    if (hasOverride && row.lager_set_at) {
+      try {
+        var d = new Date(row.lager_set_at);
+        if (!isNaN(d.getTime())) titleParts.push('Когда: ' + d.toLocaleString('ru-RU'));
+      } catch (_) { /** ignore */ }
+    }
+    titleParts.push('Tab/Enter — сохранить; Esc — отменить; пусто — удалить override');
+    var title = titleParts.join('\n');
+
+    return '<input type="text" inputmode="decimal" class="dg-lp-input' + ghostClass +
+      '" data-dg-lp-input="value_lager" data-original="' + escapeAttr(displayValue) +
+      '" value="' + escapeAttr(displayValue) +
+      '" placeholder="' + escapeAttr(placeholder) +
+      '" title="' + escapeAttr(title) + '" autocomplete="off" />';
+  }
+
+  function renderRowSyncBtn(row) {
+    var t = String(row.type || '').toLowerCase();
+    var isBundle = t === 'комплект' || t === 'bundle';
+    var hasOverride = row.min_stock_lager != null;
+    if (isBundle) {
+      return '<button type="button" class="dg-lp-row-sync" disabled title="Комплекты не поддерживают minimumBalance">—</button>';
+    }
+    if (!hasOverride) {
+      return '<button type="button" class="dg-lp-row-sync" disabled title="Введите Норматив (Lager) и нажмите ↗">↗</button>';
+    }
+    return '<button type="button" class="dg-lp-row-sync" data-dg-lp-row-sync="1" title="Отправить minimumBalance = ' +
+      fmtNum(row.min_stock_lager) + ' в МС">↗</button>';
+  }
+
+  function renderTable() {
+    var tbody = $('dg-lp-tbody');
+    var emptyMsg = $('dg-lp-empty-msg');
+    if (!tbody) return;
+    if (!state.rows.length) {
+      tbody.innerHTML = '';
+      if (emptyMsg) {
+        emptyMsg.textContent = 'Нет товаров под текущие фильтры.';
+        emptyMsg.classList.remove('d-none');
+      }
+      return;
+    }
+    if (emptyMsg) emptyMsg.classList.add('d-none');
+
+    var html = '';
+    for (var i = 0; i < state.rows.length; i++) {
+      var r = state.rows[i];
+      var delta = calcDelta(r);
+      var deficit = delta != null && delta < 0;
+      var deltaClass = deficit ? 'dg-lp-num dg-lp-num-deficit' : 'dg-lp-num';
+      var deltaText = delta == null ? '—' : fmtNum(delta);
+      var trClass = deficit ? 'dg-lp-deficit' : '';
+      html += '<tr class="' + trClass + '" data-code="' + escapeAttr(r.code) + '">'
+        + '<td>' + escapeHtml(r.code) + '</td>'
+        + '<td>' + escapeHtml(r.name) + '</td>'
+        + '<td>' + escapeHtml(r.manager) + '</td>'
+        + '<td>' + escapeHtml(r.content_manager) + '</td>'
+        + '<td>' + escapeHtml(r.supplier) + '</td>'
+        + '<td>' + escapeHtml(r.type) + '</td>'
+        + '<td class="dg-lp-num">' + (r.min_stock_ms == null ? '—' : escapeHtml(fmtNum(r.min_stock_ms))) + '</td>'
+        + '<td class="dg-lp-num">' + renderInputCell(r) + '</td>'
+        + '<td class="dg-lp-num">' + renderRowSyncBtn(r) + '</td>'
+        + '<td class="dg-lp-num">' + escapeHtml(fmtNum(r.stock)) + '</td>'
+        + '<td class="' + deltaClass + '">' + deltaText + '</td>'
+        + '<td class="dg-lp-num">' + escapeHtml(r.stock_days || '') + '</td>'
+        + '</tr>';
+    }
+    tbody.innerHTML = html;
+  }
+
+  /**
+   * Локально перерисовываем одну строку (без полного re-fetch). Применяется
+   * после успешного POST /measure или /sync-ms — обновляет только нужные
+   * клетки: input override, ↗-кнопку, дельту, класс deficit на tr.
+   */
+  function rerenderRow(code) {
+    var row = state.rowsByCode[code];
+    if (!row) return;
+    var tbody = $('dg-lp-tbody');
+    if (!tbody) return;
+    var sel = 'tr[data-code="' + (window.CSS && CSS.escape ? CSS.escape(code) : code.replace(/"/g, '\\"')) + '"]';
+    var tr = tbody.querySelector(sel);
+    if (!tr) return;
+
+    /** Колонки: 0=code 1=name 2=manager 3=content 4=supplier 5=type
+     *  6=min_stock_ms 7=lager-input 8=row-sync 9=stock 10=delta 11=stock_days
+     */
+    if (tr.children[6]) {
+      tr.children[6].textContent = row.min_stock_ms == null ? '—' : fmtNum(row.min_stock_ms);
+    }
+    if (tr.children[7]) {
+      tr.children[7].innerHTML = renderInputCell(row);
+    }
+    if (tr.children[8]) {
+      tr.children[8].innerHTML = renderRowSyncBtn(row);
+    }
+    var delta = calcDelta(row);
+    var deficit = delta != null && delta < 0;
+    if (tr.children[10]) {
+      tr.children[10].textContent = delta == null ? '—' : fmtNum(delta);
+      tr.children[10].className = deficit ? 'dg-lp-num dg-lp-num-deficit' : 'dg-lp-num';
+    }
+    tr.classList.toggle('dg-lp-deficit', deficit);
+  }
+
+  function renderStatus() {
+    var line = $('dg-lp-status');
+    if (!line) return;
+    var a = state.applied;
+    var totalPages = Math.max(1, Math.ceil(state.total / a.pageSize));
+    var page = Math.min(a.page, totalPages);
+    line.textContent = 'Найдено: ' + state.total + '; страница ' + page + '/' + totalPages
+      + '; показано: ' + state.rows.length;
+    var prev = $('dg-lp-page-prev');
+    var next = $('dg-lp-page-next');
+    if (prev) prev.disabled = page <= 1;
+    if (next) next.disabled = page >= totalPages;
+  }
+
+  function renderSortIndicators() {
+    var ths = document.querySelectorAll('.dg-lp-table thead th[data-sort]');
+    for (var i = 0; i < ths.length; i++) {
+      var th = ths[i];
+      var key = th.getAttribute('data-sort');
+      var base = th.textContent.replace(/\s*[▲▼]$/, '').trim();
+      th.textContent = (key === state.applied.sortBy)
+        ? (base + (state.applied.sortDir === 'asc' ? ' ▲' : ' ▼'))
+        : base;
+    }
+  }
+
+  function bindHeaderSearchMirror() {
+    var top = $('dg-lp-search');
+    var mirror = $('dg-lp-table-search-mirror');
+    if (!top || !mirror) return;
+    var syncing = false;
+    function copy(from, to) {
+      if (syncing) return;
+      syncing = true;
+      try { to.value = from.value; }
+      finally { syncing = false; }
+    }
+    top.addEventListener('input', function () { copy(top, mirror); });
+    mirror.addEventListener('input', function () { copy(mirror, top); });
+
+    function onEnter(e) {
+      if (e.key === 'Enter') { e.preventDefault(); commitFilters(); }
+      else if (e.key === 'Escape') {
+        e.preventDefault();
+        top.value = '';
+        mirror.value = '';
+        commitFilters();
+      }
+    }
+    top.addEventListener('keydown', onEnter);
+    mirror.addEventListener('keydown', onEnter);
+  }
+
+  function bindFiltersToggle() {
+    var btn = $('dg-lp-filters-toggle');
+    var body = $('dg-lp-filters-body');
+    if (!btn || !body) return;
+    var collapsed = false;
+    try { collapsed = window.localStorage.getItem(FILTERS_COLLAPSED_KEY) === '1'; } catch (_) {}
+    function apply() {
+      body.style.display = collapsed ? 'none' : '';
+      btn.textContent = collapsed ? 'Развернуть' : 'Свернуть';
+    }
+    apply();
+    btn.addEventListener('click', function () {
+      collapsed = !collapsed;
+      try { window.localStorage.setItem(FILTERS_COLLAPSED_KEY, collapsed ? '1' : '0'); } catch (_) {}
+      apply();
+    });
+  }
+
+  function bindTableToggle() {
+    var btn = $('dg-lp-table-toggle');
+    var body = $('dg-lp-table-body');
+    if (!btn || !body) return;
+    var collapsed = false;
+    try { collapsed = window.localStorage.getItem(TABLE_COLLAPSED_KEY) === '1'; } catch (_) {}
+    function apply() {
+      body.style.display = collapsed ? 'none' : '';
+      btn.textContent = collapsed ? 'Развернуть' : 'Свернуть';
+    }
+    apply();
+    btn.addEventListener('click', function () {
+      collapsed = !collapsed;
+      try { window.localStorage.setItem(TABLE_COLLAPSED_KEY, collapsed ? '1' : '0'); } catch (_) {}
+      apply();
+    });
+  }
+
+  function bindSortHandlers() {
+    var ths = document.querySelectorAll('.dg-lp-table thead th[data-sort]');
+    for (var i = 0; i < ths.length; i++) {
+      ths[i].addEventListener('click', function (e) {
+        var sel = window.getSelection && window.getSelection();
+        if (sel && String(sel.toString()).trim().length > 0) return;
+        /** Игнорируем клики по input/button внутри th (на всякий случай). */
+        if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON')) return;
+        var key = this.getAttribute('data-sort');
+        if (state.applied.sortBy === key) {
+          state.applied.sortDir = state.applied.sortDir === 'asc' ? 'desc' : 'asc';
+        } else {
+          state.applied.sortBy = key;
+          state.applied.sortDir = 'asc';
+        }
+        state.pending.sortBy = state.applied.sortBy;
+        state.pending.sortDir = state.applied.sortDir;
+        state.applied.page = 1;
+        state.pending.page = 1;
+        fetchList();
+      });
+    }
+  }
+
+  function bindPagination() {
+    var prev = $('dg-lp-page-prev');
+    var next = $('dg-lp-page-next');
+    if (prev) prev.addEventListener('click', function () {
+      if (state.applied.page > 1) {
+        state.applied.page -= 1;
+        state.pending.page = state.applied.page;
+        fetchList();
+      }
+    });
+    if (next) next.addEventListener('click', function () {
+      var totalPages = Math.max(1, Math.ceil(state.total / state.applied.pageSize));
+      if (state.applied.page < totalPages) {
+        state.applied.page += 1;
+        state.pending.page = state.applied.page;
+        fetchList();
+      }
+    });
+  }
+
+  function bindControls() {
+    if ($('dg-lp-apply')) $('dg-lp-apply').addEventListener('click', function () { commitFilters(); });
+    if ($('dg-lp-reset')) $('dg-lp-reset').addEventListener('click', function () { resetFilters(); });
+  }
+
+  /* ============================ Save on blur / Enter ============================ */
+
+  function findRowFromInput(input) {
+    var tr = input.closest('tr[data-code]');
+    if (!tr) return null;
+    var code = tr.getAttribute('data-code');
+    return state.rowsByCode[code] || null;
+  }
+
+  function setBulkStatus(kind, html) {
+    var el = $('dg-lp-bulk-status');
+    if (!el) return;
+    el.className = 'dg-lp-bulk-status dg-lp-bulk-' + kind;
+    el.innerHTML = html;
+    el.classList.remove('d-none');
+  }
+  function clearBulkStatus() {
+    var el = $('dg-lp-bulk-status');
+    if (!el) return;
+    el.className = 'dg-lp-bulk-status d-none';
+    el.innerHTML = '';
+  }
+
+  /**
+   * Сохранить значение из input → POST /api/lagerplus/measure.
+   * Возвращает Promise<boolean> — true если save прошёл успешно.
+   */
+  function saveInputValue(input) {
+    var row = findRowFromInput(input);
+    if (!row) return Promise.resolve(false);
+    var raw = input.value;
+    var parsed = parseInputValue(raw);
+    if (parsed === undefined) {
+      input.setAttribute('data-dirty', '1');
+      input.style.borderColor = '#d92550';
+      return Promise.resolve(false);
+    }
+    /** Если значение не изменилось — ничего не делаем. */
+    var current = row.min_stock_lager;
+    if ((parsed == null && current == null) || (parsed != null && current != null && parsed === current)) {
+      input.removeAttribute('data-dirty');
+      input.setAttribute('data-original', String(input.value || ''));
+      return Promise.resolve(true);
+    }
+
+    input.setAttribute('data-saving', '1');
+    var body = { code: row.code, fields: { value_lager: parsed } };
+    return fetch('/api/lagerplus/measure', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(body),
+    })
+      .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })
+      .then(function (out) {
+        input.removeAttribute('data-saving');
+        if (!out.ok || !out.data || !out.data.success) {
+          throw new Error((out.data && out.data.error) || ('HTTP ' + (out.ok ? '?' : 'fail')));
+        }
+        var ovr = out.data.override;
+        row.min_stock_lager = ovr ? ovr.value_lager : null;
+        row.lager_set_by_name = ovr ? (ovr.set_by_name || '') : '';
+        row.lager_set_at = ovr ? (ovr.set_at || '') : '';
+        rerenderRow(row.code);
+        return true;
+      })
+      .catch(function (err) {
+        input.removeAttribute('data-saving');
+        input.setAttribute('data-dirty', '1');
+        input.style.borderColor = '#d92550';
+        setBulkStatus('err', 'Не удалось сохранить норматив для <code>' + escapeHtml(row.code) +
+          '</code>: ' + escapeHtml(err && err.message ? err.message : 'ошибка'));
+        return false;
+      });
+  }
+
+  /**
+   * Push → МС: POST /api/lagerplus/sync-ms { code }.
+   * Возвращает Promise<{ok, message}>.
+   */
+  function syncOneToMs(code) {
+    return fetch('/api/lagerplus/sync-ms', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ code: code }),
+    })
+      .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })
+      .then(function (out) {
+        if (!out.ok) throw new Error((out.data && out.data.error) || 'HTTP error');
+        return out.data;
+      });
+  }
+
+  function bindTbodyEvents() {
+    var tbody = $('dg-lp-tbody');
+    if (!tbody) return;
+
+    /** Save on blur. */
+    tbody.addEventListener('focusout', function (e) {
+      var t = e.target;
+      if (!t || !t.classList || !t.classList.contains('dg-lp-input')) return;
+      saveInputValue(t);
+    });
+
+    /** Enter / Esc / Tab. */
+    tbody.addEventListener('keydown', function (e) {
+      var t = e.target;
+      if (!t || !t.classList || !t.classList.contains('dg-lp-input')) return;
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        t.blur();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        var orig = t.getAttribute('data-original') || '';
+        t.value = orig;
+        t.removeAttribute('data-dirty');
+        t.style.borderColor = '';
+        t.blur();
+      } else {
+        t.setAttribute('data-dirty', '1');
+        t.style.borderColor = '';
+      }
+    });
+
+    tbody.addEventListener('input', function (e) {
+      var t = e.target;
+      if (!t || !t.classList || !t.classList.contains('dg-lp-input')) return;
+      var orig = t.getAttribute('data-original') || '';
+      if (String(t.value) !== orig) t.setAttribute('data-dirty', '1');
+      else t.removeAttribute('data-dirty');
+      t.style.borderColor = '';
+    });
+
+    /** Per-row sync-button. */
+    tbody.addEventListener('click', function (e) {
+      var btn = e.target && e.target.closest && e.target.closest('button.dg-lp-row-sync');
+      if (!btn || btn.disabled) return;
+      if (!btn.getAttribute('data-dg-lp-row-sync')) return;
+      var tr = btn.closest('tr[data-code]');
+      if (!tr) return;
+      var code = tr.getAttribute('data-code');
+      var row = state.rowsByCode[code];
+      if (!row) return;
+
+      /** Если в input строки лежит ещё несохранённое значение — сначала сохранить. */
+      var input = tr.querySelector('.dg-lp-input[data-dg-lp-input="value_lager"]');
+      var savePromise = (input && input.getAttribute('data-dirty') === '1')
+        ? saveInputValue(input)
+        : Promise.resolve(true);
+
+      btn.disabled = true;
+      btn.textContent = '…';
+      btn.classList.remove('dg-lp-row-sync-ok', 'dg-lp-row-sync-err');
+
+      savePromise
+        .then(function (savedOk) {
+          if (!savedOk) throw new Error('Не удалось сохранить значение перед отправкой');
+          return syncOneToMs(code);
+        })
+        .then(function (data) {
+          var first = (data && Array.isArray(data.results) && data.results[0]) || null;
+          if (data && data.success && first && first.ok) {
+            btn.classList.add('dg-lp-row-sync-ok');
+            btn.textContent = '✓';
+            setBulkStatus('ok', 'Отправлено в МС: <code>' + escapeHtml(code) + '</code> = ' +
+              (first.sent_value != null ? fmtNum(first.sent_value) : '—'));
+            window.setTimeout(function () { rerenderRow(code); }, 800);
+          } else {
+            var err = (first && first.error) || (data && data.error) || 'неизвестная ошибка';
+            btn.classList.add('dg-lp-row-sync-err');
+            btn.textContent = '✕';
+            setBulkStatus('err', 'Не удалось отправить <code>' + escapeHtml(code) + '</code> в МС: ' +
+              escapeHtml(err));
+            window.setTimeout(function () { rerenderRow(code); }, 1500);
+          }
+        })
+        .catch(function (err) {
+          btn.classList.add('dg-lp-row-sync-err');
+          btn.textContent = '✕';
+          setBulkStatus('err', 'Ошибка push: ' + escapeHtml(err && err.message ? err.message : 'unknown'));
+          window.setTimeout(function () { rerenderRow(code); }, 1500);
+        });
+    });
+  }
+
+  /* =============================== Bulk sync =============================== */
+
+  /**
+   * Балк-синк: «↗ В МС: страница» — отправляет все позиции с текущей страницы,
+   * у которых есть value_lager (и type === 'Товар'). Перед запросом —
+   * сохраняет все «грязные» input'ы.
+   */
+  function bulkSyncPage() {
+    var dirtyInputs = document.querySelectorAll('#dg-lp-tbody .dg-lp-input[data-dirty="1"]');
+    var saves = [];
+    for (var i = 0; i < dirtyInputs.length; i++) saves.push(saveInputValue(dirtyInputs[i]));
+    return Promise.all(saves).then(function () {
+      var codes = [];
+      for (var j = 0; j < state.rows.length; j++) {
+        var r = state.rows[j];
+        if (r.min_stock_lager != null && String(r.type).toLowerCase() !== 'комплект'
+            && String(r.type).toLowerCase() !== 'bundle') {
+          codes.push(r.code);
+        }
+      }
+      if (codes.length === 0) {
+        setBulkStatus('warn', 'На этой странице нет позиций с Lager-нормативом и типом «Товар» — отправлять нечего.');
+        return null;
+      }
+      if (!window.confirm('Отправить в МойСклад minimumBalance для ' + codes.length +
+          ' позиций с этой страницы?\n\nКомплекты исключаются автоматически (МС API не поддерживает minimumBalance для bundle).')) {
+        return null;
+      }
+      setBulkStatus('info', 'Отправляем ' + codes.length + ' позиций в МС…');
+      return fetch('/api/lagerplus/sync-ms', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ codes: codes }),
+      });
+    })
+      .then(function (resp) {
+        if (!resp) return;
+        return resp.json().then(function (data) {
+          renderBulkResult(data);
+          fetchList();
+        });
+      })
+      .catch(function (err) {
+        setBulkStatus('err', 'Ошибка балк-синка: ' + escapeHtml(err && err.message ? err.message : 'unknown'));
+      });
+  }
+
+  /**
+   * Балк-синк: «↗ В МС: все правки» — все позиции с override в БД,
+   * игнорируя текущие фильтры (ровно как в /exports-dimensions.html).
+   */
+  function bulkSyncAll() {
+    if (!window.confirm('Отправить в МойСклад minimumBalance для ВСЕХ позиций с Lager-нормативом из БД?\n\n' +
+        '⚠ Внимание: операция игнорирует текущие фильтры/поиск на странице — отправляются все товары с override.\n' +
+        'Комплекты исключаются автоматически.')) {
+      return;
+    }
+    setBulkStatus('info', 'Отправляем все позиции с Lager-нормативом в МС…');
+    fetch('/api/lagerplus/sync-ms', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ all: true }),
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        renderBulkResult(data);
+        fetchList();
+      })
+      .catch(function (err) {
+        setBulkStatus('err', 'Ошибка балк-синка: ' + escapeHtml(err && err.message ? err.message : 'unknown'));
+      });
+  }
+
+  function renderBulkResult(data) {
+    if (!data) return setBulkStatus('err', 'Пустой ответ от сервера');
+    if (data.error && !Array.isArray(data.results)) {
+      return setBulkStatus('err', 'Ошибка: ' + escapeHtml(String(data.error)));
+    }
+    var ok = Number(data.ok_count || 0);
+    var fail = Number(data.fail_count || 0);
+    var total = Number(data.total || (ok + fail));
+    var lines = ['Отправлено в МС: <b>' + ok + '</b> / ' + total + '. Ошибок: <b>' + fail + '</b>.'];
+    if (fail > 0) {
+      var failExamples = (data.results || []).filter(function (x) { return !x.ok; }).slice(0, 5);
+      lines.push('Примеры ошибок:');
+      lines.push('<ul style="margin: 4px 0 0 18px;">' +
+        failExamples.map(function (x) {
+          return '<li><code>' + escapeHtml(x.code) + '</code>: ' + escapeHtml(x.error || x.skipped || 'n/a') + '</li>';
+        }).join('') + '</ul>');
+    }
+    setBulkStatus(fail > 0 ? (ok > 0 ? 'warn' : 'err') : 'ok', lines.join('<br />'));
+  }
+
+  function bindBulkButtons() {
+    var page = $('dg-lp-bulk-sync-page');
+    var all = $('dg-lp-bulk-sync-all');
+    if (page) page.addEventListener('click', function () { bulkSyncPage(); });
+    if (all) all.addEventListener('click', function () { bulkSyncAll(); });
+  }
+
+  function init() {
+    var snap = loadFromStorage() || DEFAULTS;
+    state.applied = Object.assign({}, DEFAULTS, snap);
+    state.pending = Object.assign({}, state.applied);
+    applyToForm(state.applied);
+    bindControls();
+    bindFiltersToggle();
+    bindTableToggle();
+    bindHeaderSearchMirror();
+    bindSortHandlers();
+    bindPagination();
+    bindTbodyEvents();
+    bindBulkButtons();
+    fetchList();
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
+</script>

@@ -1,0 +1,764 @@
+<!-- @inject scripts -->
+<script>
+/**
+ * MS Sales — клиент для /ms-sales.html. Не зависит от React.
+ * См. routes/msSales.js. Контракты:
+ *   • datagon-list-page-baseline-moysklad.mdc — две карточки, поиск-зеркало,
+ *     «Свернуть» card-body.
+ *   • datagon-table-filter-apply.mdc — два слоя state (applied/pending),
+ *     серверный fetch только по «Применить» / Enter.
+ *   • datagon-table-behavior-lock.mdc — пагинация по 100 по умолчанию,
+ *     формат «Найдено: N; страница X/Y; показано: K».
+ */
+(function () {
+  'use strict';
+
+  if (window.__dgMsSalesBooted) return;
+  window.__dgMsSalesBooted = true;
+
+  var STORAGE_KEY = 'datagon_ms_sales_filters_v1';
+  var FILTERS_COLLAPSED_KEY = 'datagon_ms_sales_filters_collapsed_v1';
+  var TABLE_COLLAPSED_KEY = 'datagon_ms_sales_table_collapsed_v1';
+
+  var DEFAULTS = Object.freeze({
+    search: '',
+    days: 30,
+    storeUuid: '',
+    agentUuid: '',
+    applicable: '1',
+    pageSize: 100,
+    sortBy: 'moment',
+    sortDir: 'desc',
+    page: 1,
+  });
+
+  var state = {
+    applied: Object.assign({}, DEFAULTS),
+    pending: Object.assign({}, DEFAULTS),
+    total: 0,
+    rows: [],
+    expandedDemand: null,
+    positionsCache: Object.create(null),
+    loading: false,
+    syncTimer: null,
+  };
+
+  function $(id) { return document.getElementById(id); }
+
+  function fmtMoney(v) {
+    if (v == null) return '';
+    var n = Number(v);
+    if (!Number.isFinite(n)) return String(v);
+    return n.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  function fmtQty(v) {
+    if (v == null || v === '') return '';
+    var n = Number(v);
+    if (!Number.isFinite(n)) return String(v);
+    return n % 1 === 0 ? n.toFixed(0) : n.toFixed(3).replace(/\.?0+$/, '');
+  }
+
+  function fmtDateTime(iso) {
+    if (!iso) return '';
+    try {
+      var d = new Date(iso);
+      if (isNaN(d.getTime())) return '';
+      return d.toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit',
+        hour: '2-digit', minute: '2-digit' });
+    } catch (_) { return String(iso); }
+  }
+
+  function escapeHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c];
+    });
+  }
+
+  function escapeAttr(s) { return escapeHtml(s); }
+
+  /* ============================ State / form ============================ */
+
+  function loadFromStorage() {
+    try {
+      var raw = window.localStorage.getItem(STORAGE_KEY);
+      if (!raw) return null;
+      var obj = JSON.parse(raw);
+      if (obj && typeof obj === 'object') return obj;
+    } catch (_) { /** ignore */ }
+    return null;
+  }
+
+  function saveToStorage(snap) {
+    try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify(snap)); }
+    catch (_) { /** ignore */ }
+  }
+
+  function applyToForm(s) {
+    s = Object.assign({}, DEFAULTS, s || {});
+    if ($('dg-mss-search')) $('dg-mss-search').value = s.search;
+    if ($('dg-mss-days')) $('dg-mss-days').value = String(s.days);
+    if ($('dg-mss-store')) $('dg-mss-store').value = s.storeUuid;
+    if ($('dg-mss-agent')) $('dg-mss-agent').value = s.agentUuid;
+    if ($('dg-mss-applicable')) $('dg-mss-applicable').value = s.applicable;
+    if ($('dg-mss-page-size')) $('dg-mss-page-size').value = String(s.pageSize);
+    if ($('dg-mss-table-search-mirror')) $('dg-mss-table-search-mirror').value = s.search;
+  }
+
+  function readFromForm() {
+    return {
+      search: ($('dg-mss-search') && $('dg-mss-search').value || '').trim(),
+      days: parseInt($('dg-mss-days') ? $('dg-mss-days').value : DEFAULTS.days, 10) || DEFAULTS.days,
+      storeUuid: $('dg-mss-store') ? $('dg-mss-store').value : '',
+      agentUuid: $('dg-mss-agent') ? $('dg-mss-agent').value : '',
+      applicable: $('dg-mss-applicable') ? $('dg-mss-applicable').value : DEFAULTS.applicable,
+      pageSize: parseInt($('dg-mss-page-size') ? $('dg-mss-page-size').value : DEFAULTS.pageSize, 10) || DEFAULTS.pageSize,
+      sortBy: state.pending.sortBy,
+      sortDir: state.pending.sortDir,
+      page: state.pending.page,
+    };
+  }
+
+  function commitFilters(opts) {
+    state.pending = readFromForm();
+    if (!opts || opts.resetPage !== false) state.pending.page = 1;
+    state.applied = Object.assign({}, state.pending);
+    saveToStorage({
+      search: state.applied.search, days: state.applied.days,
+      storeUuid: state.applied.storeUuid, agentUuid: state.applied.agentUuid,
+      applicable: state.applied.applicable, pageSize: state.applied.pageSize,
+      sortBy: state.applied.sortBy, sortDir: state.applied.sortDir,
+    });
+    fetchList();
+    fetchFilters();
+  }
+
+  function resetFilters() {
+    state.pending = Object.assign({}, DEFAULTS);
+    state.applied = Object.assign({}, DEFAULTS);
+    applyToForm(DEFAULTS);
+    saveToStorage(DEFAULTS);
+    fetchList();
+    fetchFilters();
+  }
+
+  /* ============================ Fetch list / filters ============================ */
+
+  function buildQuery() {
+    var a = state.applied;
+    var qs = new URLSearchParams();
+    var offset = Math.max(0, (a.page - 1) * a.pageSize);
+    qs.set('limit', String(a.pageSize));
+    qs.set('offset', String(offset));
+    qs.set('days', String(a.days));
+    if (a.search) qs.set('search', a.search);
+    if (a.storeUuid) qs.set('store_uuid', a.storeUuid);
+    if (a.agentUuid) qs.set('agent_uuid', a.agentUuid);
+    if (a.applicable === '0' || a.applicable === '1') qs.set('applicable', a.applicable);
+    qs.set('sort_by', a.sortBy);
+    qs.set('sort_dir', a.sortDir);
+    return qs.toString();
+  }
+
+  function fetchList() {
+    if (state.loading) return;
+    state.loading = true;
+    fetch('/api/ms-sales/list?' + buildQuery(), {
+      credentials: 'same-origin',
+      headers: { Accept: 'application/json' },
+    })
+      .then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      })
+      .then(function (data) {
+        if (!data || !data.success) throw new Error((data && data.error) || 'Ошибка загрузки');
+        state.total = Number(data.total || 0);
+        state.rows = Array.isArray(data.rows) ? data.rows : [];
+        state.expandedDemand = null;
+        state.positionsCache = Object.create(null);
+        renderTable();
+        renderStatus();
+        renderSortIndicators();
+      })
+      .catch(function (err) {
+        state.rows = [];
+        state.total = 0;
+        renderTable();
+        renderStatus();
+        var emptyMsg = $('dg-mss-empty-msg');
+        if (emptyMsg) {
+          emptyMsg.textContent = 'Не удалось загрузить список: ' + (err && err.message ? err.message : 'неизвестная ошибка');
+          emptyMsg.classList.remove('d-none');
+        }
+      })
+      .then(function () { state.loading = false; });
+  }
+
+  function fetchFilters() {
+    var qs = new URLSearchParams();
+    qs.set('days', String(state.applied.days));
+    fetch('/api/ms-sales/filters?' + qs.toString(), {
+      credentials: 'same-origin',
+      headers: { Accept: 'application/json' },
+    })
+      .then(function (r) { return r.ok ? r.json() : { success: false }; })
+      .then(function (data) {
+        if (!data || !data.success) return;
+        var sel = $('dg-mss-store');
+        if (sel) {
+          var keep = state.applied.storeUuid;
+          sel.innerHTML = '<option value="">Все склады</option>' +
+            (data.stores || []).map(function (s) {
+              return '<option value="' + escapeAttr(s.uuid) + '">' + escapeHtml(s.name || '—') +
+                ' (' + (s.count || 0) + ')</option>';
+            }).join('');
+          if (keep) sel.value = keep;
+        }
+        var aSel = $('dg-mss-agent');
+        if (aSel) {
+          var keepA = state.applied.agentUuid;
+          aSel.innerHTML = '<option value="">Все контрагенты</option>' +
+            (data.agents || []).map(function (a) {
+              return '<option value="' + escapeAttr(a.uuid) + '">' + escapeHtml(a.name || '—') +
+                ' (' + (a.count || 0) + ')</option>';
+            }).join('');
+          if (keepA) aSel.value = keepA;
+        }
+      })
+      .catch(function () { /** ignore */ });
+  }
+
+  /* ============================ Render ============================ */
+
+  function renderTable() {
+    var tbody = $('dg-mss-tbody');
+    var empty = $('dg-mss-empty-msg');
+    if (!tbody) return;
+    if (!state.rows.length) {
+      tbody.innerHTML = '';
+      if (empty) empty.classList.remove('d-none');
+      return;
+    }
+    if (empty) empty.classList.add('d-none');
+
+    var html = '';
+    for (var i = 0; i < state.rows.length; i++) {
+      var r = state.rows[i];
+      var trClass = r.applicable ? '' : 'dg-mss-not-applicable';
+      html += '<tr class="' + trClass + '" data-uuid="' + escapeAttr(r.uuid) + '">'
+        + '<td><span class="dg-mss-row-toggle" data-dg-mss-toggle="1" title="Показать позиции">▶</span></td>'
+        + '<td>' + escapeHtml(fmtDateTime(r.moment)) + '</td>'
+        + '<td>' + escapeHtml(r.doc_name) + (r.applicable ? '' : ' <span class="badge bg-secondary">черновик</span>') + '</td>'
+        + '<td>' + escapeHtml(r.agent_name || '—') + '</td>'
+        + '<td>' + escapeHtml(r.store_name || '—') + '</td>'
+        + '<td>' + escapeHtml(r.organization_name || '') + '</td>'
+        + '<td class="dg-mss-num">' + (r.positions_count || 0) + '</td>'
+        + '<td class="dg-mss-num">' + escapeHtml(fmtMoney(r.sum)) + '</td>'
+        + '</tr>';
+    }
+    tbody.innerHTML = html;
+  }
+
+  function linkBadge(p) {
+    var kind = String(p.assortment_kind || 'unknown').toLowerCase();
+    if (p.ms_export_resolved && p.ms_export_code) {
+      var label = 'товар';
+      if (kind === 'bundle') label = 'комплект';
+      else if (kind === 'variant') label = 'вариант';
+      return '<span class="dg-mss-link-badge dg-mss-link-resolved" title="Привязан к ms_export.code = ' +
+        escapeAttr(p.ms_export_code) + '">' + escapeHtml(label) + ' • ' + escapeHtml(p.ms_export_code) + '</span>';
+    }
+    if (kind === 'bundle') {
+      return '<span class="dg-mss-link-badge dg-mss-link-bundle" title="Комплект, не найден в ms_export">комплект (нет в ms_export)</span>';
+    }
+    if (kind === 'variant') {
+      return '<span class="dg-mss-link-badge dg-mss-link-variant" title="Вариант товара, родительский product не найден в ms_export">вариант (нет резолва)</span>';
+    }
+    if (kind === 'service') {
+      return '<span class="dg-mss-link-badge dg-mss-link-service">услуга</span>';
+    }
+    return '<span class="dg-mss-link-badge dg-mss-link-unresolved">не привязано</span>';
+  }
+
+  /**
+   * Карточка «Детали отгрузки» — соответствие полям карточки документа в МС:
+   * Организация / Склад / Контрагент / Договор / Проект / Канал продаж /
+   * Адрес доставки / Комментарий / Валюта / НДС / Оплачено / Ответственный /
+   * Отдел / Статус / даты создания/изменения / кастомные атрибуты (включая
+   * «Номер отправления с озона», «Идентификатор чека»).
+   */
+  function buildAddressLine(addr) {
+    if (!addr || typeof addr !== 'object') return '';
+    var parts = [];
+    if (addr.postalCode) parts.push(String(addr.postalCode));
+    if (addr.country && addr.country.name) parts.push(String(addr.country.name));
+    if (addr.region && addr.region.name) parts.push(String(addr.region.name));
+    if (addr.city) parts.push(String(addr.city));
+    if (addr.street) parts.push('ул. ' + String(addr.street));
+    if (addr.house) parts.push('д. ' + String(addr.house));
+    if (addr.apartment) parts.push('кв./офис ' + String(addr.apartment));
+    if (addr.addInfo) parts.push(String(addr.addInfo));
+    return parts.join(', ');
+  }
+
+  function dl(label, value, isHtml) {
+    if (value == null || value === '' || value === false) return '';
+    return '<div class="dg-mss-dl-row">'
+      + '<div class="dg-mss-dl-label">' + escapeHtml(label) + '</div>'
+      + '<div class="dg-mss-dl-value">' + (isHtml ? value : escapeHtml(String(value))) + '</div>'
+      + '</div>';
+  }
+
+  function renderDemandHeader(demand) {
+    if (!demand) return '';
+    var d = demand;
+    var statusBadges = '';
+    if (d.applicable) {
+      statusBadges += '<span class="dg-mss-badge dg-mss-badge-ok">Проведено</span>';
+    } else {
+      statusBadges += '<span class="dg-mss-badge dg-mss-badge-muted">Не проведено</span>';
+    }
+    if (d.state_name) {
+      statusBadges += '<span class="dg-mss-badge dg-mss-badge-info">' + escapeHtml(d.state_name) + '</span>';
+    }
+    var sumNum = Number(d.sum || 0);
+    var payedNum = Number(d.payed_sum || 0);
+    if (sumNum > 0) {
+      if (payedNum >= sumNum - 0.005) {
+        statusBadges += '<span class="dg-mss-badge dg-mss-badge-ok">Оплачено</span>';
+      } else if (payedNum > 0) {
+        statusBadges += '<span class="dg-mss-badge dg-mss-badge-warn">Частично оплачено: '
+          + fmtMoney(payedNum) + ' / ' + fmtMoney(sumNum) + ' ₽</span>';
+      } else {
+        statusBadges += '<span class="dg-mss-badge dg-mss-badge-warn">Не оплачено</span>';
+      }
+    }
+
+    var addrLine = d.shipment_address || buildAddressLine(d.shipment_address_full);
+    var currencyLine = '';
+    if (d.currency_name || d.currency_iso_code) {
+      currencyLine = (d.currency_name || '') +
+        (d.currency_iso_code ? ' (' + d.currency_iso_code + ')' : '');
+      if (d.currency_rate && Number(d.currency_rate) !== 1) {
+        currencyLine += ' • курс ' + d.currency_rate;
+      }
+    }
+    var vatLine = '';
+    if (d.vat_enabled === true) {
+      vatLine = (d.vat_included ? 'НДС включён' : 'НДС сверху');
+      if (d.vat_sum != null) vatLine += ' • сумма НДС: ' + fmtMoney(d.vat_sum) + ' ₽';
+    } else if (d.vat_enabled === false) {
+      vatLine = 'Без НДС';
+    }
+
+    var attrsHtml = '';
+    if (Array.isArray(d.attributes) && d.attributes.length) {
+      attrsHtml = '<div class="dg-mss-attrs">' +
+        '<div class="dg-mss-attrs-title">Дополнительные поля документа</div>' +
+        d.attributes.map(function (a) {
+          return '<div class="dg-mss-dl-row">'
+            + '<div class="dg-mss-dl-label">' + escapeHtml(a.name || '') + '</div>'
+            + '<div class="dg-mss-dl-value">' + escapeHtml(a.value || '') + '</div>'
+            + '</div>';
+        }).join('') +
+        '</div>';
+    }
+
+    var docLink = '';
+    if (d.uuid) {
+      docLink = '<a href="https://online.moysklad.ru/app/#demand/edit?id=' + escapeAttr(d.uuid) +
+        '" target="_blank" rel="noopener" class="dg-mss-doc-link">↗ Открыть в МС</a>';
+    }
+
+    return '<div class="dg-mss-demand-card">'
+      + '<div class="dg-mss-demand-card-head">'
+      + '<div class="dg-mss-demand-card-title">'
+      + '<b>Отгрузка №' + escapeHtml(d.doc_name || '') + '</b>'
+      + ' от ' + escapeHtml(fmtDateTime(d.moment))
+      + '</div>'
+      + '<div class="dg-mss-demand-card-status">' + statusBadges + ' ' + docLink + '</div>'
+      + '</div>'
+      + '<div class="dg-mss-dl">'
+      + dl('Организация', d.organization_name)
+      + dl('Контрагент', d.agent_name)
+      + dl('Склад', d.store_name)
+      + dl('Сумма', fmtMoney(sumNum) + ' ₽')
+      + dl('Договор', d.contract_name)
+      + dl('Проект', d.project_name)
+      + dl('Канал продаж', d.sales_channel_name)
+      + dl('Ответственный', d.owner_name)
+      + dl('Отдел', d.group_name)
+      + dl('Валюта', currencyLine)
+      + dl('НДС', vatLine)
+      + dl('Адрес доставки', addrLine)
+      + dl('Комментарий', d.description)
+      + dl('Внешний код', d.external_code)
+      + dl('Код документа', d.code)
+      + dl('Sync ID', d.sync_id)
+      + dl('Создан в МС', fmtDateTime(d.ms_created))
+      + dl('Изменён в МС', fmtDateTime(d.ms_updated))
+      + '</div>'
+      + attrsHtml
+      + '</div>';
+  }
+
+  function renderPositionsRow(demand, positions) {
+    var rowsHtml = (positions || []).map(function (p, idx) {
+      var nameDisplay = p.ms_export_resolved && p.ms_export_name ? p.ms_export_name : p.name_at_moment;
+      var codeDisplay = p.ms_export_resolved && p.ms_export_code ? p.ms_export_code
+        : (p.code_at_moment || '—');
+      return '<tr>'
+        + '<td>' + (idx + 1) + '</td>'
+        + '<td>' + escapeHtml(codeDisplay) + '</td>'
+        + '<td>' + escapeHtml(nameDisplay) + linkBadge(p) + '</td>'
+        + '<td class="dg-mss-num">' + escapeHtml(fmtQty(p.quantity)) + '</td>'
+        + '<td class="dg-mss-num">' + escapeHtml(fmtMoney(p.price)) + '</td>'
+        + '<td class="dg-mss-num">' + (p.discount ? p.discount + '%' : '') + '</td>'
+        + '<td class="dg-mss-num">' + escapeHtml(fmtMoney(p.sum)) + '</td>'
+        + '<td>' + (p.ms_export_stock != null ? fmtQty(p.ms_export_stock) : '—') + '</td>'
+        + '</tr>';
+    }).join('');
+    return '<div class="dg-mss-positions-inner">'
+      + renderDemandHeader(demand)
+      + '<div class="mb-2 text-muted">Позиций: <b>' + (positions ? positions.length : 0) + '</b></div>'
+      + '<table class="dg-mss-positions-table">'
+      + '<thead><tr>'
+      + '<th>#</th><th>Код МС</th><th>Название (привязка)</th>'
+      + '<th class="dg-mss-num">Кол-во</th>'
+      + '<th class="dg-mss-num">Цена (₽)</th>'
+      + '<th class="dg-mss-num">Скидка</th>'
+      + '<th class="dg-mss-num">Сумма (₽)</th>'
+      + '<th>Текущ. остаток</th>'
+      + '</tr></thead>'
+      + '<tbody>' + (rowsHtml || '<tr><td colspan="8" class="dg-mss-empty">Нет позиций</td></tr>') + '</tbody>'
+      + '</table></div>';
+  }
+
+  function togglePositions(uuid, tr) {
+    var tbody = $('dg-mss-tbody');
+    if (!tbody) return;
+
+    if (state.expandedDemand === uuid) {
+      var existing = tbody.querySelector('tr[data-positions-of="' + (window.CSS && CSS.escape ? CSS.escape(uuid) : uuid) + '"]');
+      if (existing) existing.remove();
+      var caret = tr.querySelector('[data-dg-mss-toggle]');
+      if (caret) caret.textContent = '▶';
+      state.expandedDemand = null;
+      return;
+    }
+
+    var prev = tbody.querySelector('tr.dg-mss-positions-row');
+    if (prev) prev.remove();
+    tbody.querySelectorAll('[data-dg-mss-toggle]').forEach(function (el) { el.textContent = '▶'; });
+
+    state.expandedDemand = uuid;
+    var caret = tr.querySelector('[data-dg-mss-toggle]');
+    if (caret) caret.textContent = '▼';
+
+    var insert = document.createElement('tr');
+    insert.className = 'dg-mss-positions-row';
+    insert.setAttribute('data-positions-of', uuid);
+    insert.innerHTML = '<td colspan="8"><div class="dg-mss-positions-inner text-muted">Загрузка позиций…</div></td>';
+    tr.parentNode.insertBefore(insert, tr.nextSibling);
+
+    var cached = state.positionsCache[uuid];
+    if (cached) {
+      insert.innerHTML = '<td colspan="8">' + renderPositionsRow(cached.demand, cached.rows) + '</td>';
+      return;
+    }
+
+    fetch('/api/ms-sales/' + encodeURIComponent(uuid) + '/positions', {
+      credentials: 'same-origin',
+      headers: { Accept: 'application/json' },
+    })
+      .then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      })
+      .then(function (data) {
+        if (!data || !data.success) throw new Error((data && data.error) || 'Ошибка позиций');
+        state.positionsCache[uuid] = { demand: data.demand, rows: data.rows || [] };
+        insert.innerHTML = '<td colspan="8">' + renderPositionsRow(data.demand, data.rows || []) + '</td>';
+      })
+      .catch(function (err) {
+        insert.innerHTML = '<td colspan="8"><div class="dg-mss-positions-inner text-danger">' +
+          'Не удалось загрузить позиции: ' + escapeHtml((err && err.message) || 'unknown') + '</div></td>';
+      });
+  }
+
+  function renderStatus() {
+    var line = $('dg-mss-pagination-status');
+    if (!line) return;
+    var a = state.applied;
+    var totalPages = Math.max(1, Math.ceil(state.total / a.pageSize));
+    var page = Math.min(a.page, totalPages);
+    line.textContent = 'Найдено: ' + state.total + '; страница ' + page + '/' + totalPages
+      + '; показано: ' + state.rows.length;
+    var prev = $('dg-mss-page-prev');
+    var next = $('dg-mss-page-next');
+    if (prev) prev.disabled = page <= 1;
+    if (next) next.disabled = page >= totalPages;
+
+    var headerStatus = $('dg-mss-status');
+    if (headerStatus) {
+      var sumAll = state.rows.reduce(function (acc, r) { return acc + Number(r.sum || 0); }, 0);
+      headerStatus.textContent = 'на странице — отгрузок: ' + state.rows.length +
+        ', сумма: ' + fmtMoney(sumAll) + ' ₽';
+    }
+  }
+
+  function renderSortIndicators() {
+    var ths = document.querySelectorAll('.dg-mss-table thead th[data-sort]');
+    for (var i = 0; i < ths.length; i++) {
+      var th = ths[i];
+      var key = th.getAttribute('data-sort');
+      var base = th.textContent.replace(/\s*[▲▼]$/, '').trim();
+      th.textContent = (key === state.applied.sortBy)
+        ? (base + (state.applied.sortDir === 'asc' ? ' ▲' : ' ▼'))
+        : base;
+    }
+  }
+
+  /* ============================ Sync (background job) ============================ */
+
+  function setSyncStatus(kind, html) {
+    var el = $('dg-mss-sync-status');
+    if (!el) return;
+    el.className = 'dg-mss-sync-status dg-mss-sync-' + kind;
+    el.innerHTML = html;
+    el.classList.remove('d-none');
+  }
+
+  function startSyncPolling() {
+    if (state.syncTimer) return;
+    state.syncTimer = window.setInterval(function () {
+      fetch('/api/ms-sales/sync-status', {
+        credentials: 'same-origin',
+        headers: { Accept: 'application/json' },
+      })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (data) {
+          if (!data || !data.success) return;
+          var s = data.status || {};
+          if (s.active) {
+            $('dg-mss-cancel') && $('dg-mss-cancel').classList.remove('d-none');
+            $('dg-mss-sync') && ($('dg-mss-sync').disabled = true);
+            var pct = s.total_demands > 0
+              ? Math.round((s.fetched_demands / s.total_demands) * 100)
+              : 0;
+            setSyncStatus('info',
+              '<b>Синхронизация:</b> ' + escapeHtml(s.message || '') +
+              ' <span class="ms-2">' + pct + '%</span>'
+              + (s.cancel_requested ? ' <span class="ms-2">⏳ останавливается…</span>' : ''));
+          } else {
+            stopSyncPolling();
+            $('dg-mss-cancel') && $('dg-mss-cancel').classList.add('d-none');
+            $('dg-mss-sync') && ($('dg-mss-sync').disabled = false);
+            var kind = s.last_error ? 'err' : (s.unresolved_positions > 0 ? 'warn' : 'ok');
+            setSyncStatus(kind,
+              '<b>Готово.</b> Отгрузок: ' + (s.fetched_demands || 0) + '/' + (s.total_demands || 0) +
+              ', позиций сохранено: ' + (s.saved_positions || 0) +
+              ', резолв в ms_export: ' + (s.resolved_positions || 0) +
+              ', не привязано: ' + (s.unresolved_positions || 0) +
+              (s.last_error ? '<br />Последняя ошибка: ' + escapeHtml(s.last_error) : ''));
+            fetchList();
+            fetchFilters();
+          }
+        })
+        .catch(function () { /** ignore */ });
+    }, 1500);
+  }
+  function stopSyncPolling() {
+    if (state.syncTimer) { window.clearInterval(state.syncTimer); state.syncTimer = null; }
+  }
+
+  function startSync() {
+    var days = parseInt($('dg-mss-days').value, 10) || 30;
+    if (!window.confirm('Запустить синхронизацию entity/demand из МС за последние ' + days +
+        ' дней?\n\nЗависит от объёма: для крупного склада может занять несколько минут. Можно остановить кнопкой ⏹.')) {
+      return;
+    }
+    setSyncStatus('info', '<b>Запуск…</b>');
+    fetch('/api/ms-sales/sync', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ days: days }),
+    })
+      .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
+      .then(function (out) {
+        if (!out.ok || !out.data || !out.data.success) {
+          throw new Error((out.data && out.data.error) || 'HTTP error');
+        }
+        startSyncPolling();
+      })
+      .catch(function (err) {
+        setSyncStatus('err', '<b>Ошибка запуска:</b> ' + escapeHtml(err && err.message ? err.message : 'unknown'));
+      });
+  }
+
+  function cancelSync() {
+    fetch('/api/ms-sales/sync-cancel', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: '{}',
+    })
+      .then(function () { /** дальше polling сам перерисует */ })
+      .catch(function () { /** ignore */ });
+  }
+
+  function reresolve() {
+    if (!window.confirm('Перепривязать все непривязанные позиции к ms_export по uuid? Полезно после полного синка МойСклад.')) return;
+    setSyncStatus('info', '<b>Реrezolve…</b>');
+    fetch('/api/ms-sales/reresolve', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: '{}',
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (!data || !data.success) throw new Error((data && data.error) || 'unknown');
+        var kind = data.unresolved > 0 ? 'warn' : 'ok';
+        setSyncStatus(kind,
+          '<b>Готово.</b> Привязано позиций: ' + (data.affected || 0) +
+          ', осталось без привязки: ' + (data.unresolved || 0));
+        fetchList();
+      })
+      .catch(function (err) {
+        setSyncStatus('err', '<b>Ошибка:</b> ' + escapeHtml(err && err.message ? err.message : 'unknown'));
+      });
+  }
+
+  /* ============================ Bindings ============================ */
+
+  function bindHeaderSearchMirror() {
+    var top = $('dg-mss-search');
+    var mirror = $('dg-mss-table-search-mirror');
+    if (!top || !mirror) return;
+    var syncing = false;
+    function copy(from, to) {
+      if (syncing) return;
+      syncing = true;
+      try { to.value = from.value; }
+      finally { syncing = false; }
+    }
+    top.addEventListener('input', function () { copy(top, mirror); });
+    mirror.addEventListener('input', function () { copy(mirror, top); });
+    function onEnter(e) {
+      if (e.key === 'Enter') { e.preventDefault(); commitFilters(); }
+      else if (e.key === 'Escape') { e.preventDefault(); top.value = ''; mirror.value = ''; commitFilters(); }
+    }
+    top.addEventListener('keydown', onEnter);
+    mirror.addEventListener('keydown', onEnter);
+  }
+
+  function bindCollapse(btnId, bodyId, key) {
+    var btn = $(btnId);
+    var body = $(bodyId);
+    if (!btn || !body) return;
+    var collapsed = false;
+    try { collapsed = window.localStorage.getItem(key) === '1'; } catch (_) {}
+    function apply() {
+      body.style.display = collapsed ? 'none' : '';
+      btn.textContent = collapsed ? 'Развернуть' : 'Свернуть';
+    }
+    apply();
+    btn.addEventListener('click', function () {
+      collapsed = !collapsed;
+      try { window.localStorage.setItem(key, collapsed ? '1' : '0'); } catch (_) {}
+      apply();
+    });
+  }
+
+  function bindSortHandlers() {
+    var ths = document.querySelectorAll('.dg-mss-table thead th[data-sort]');
+    for (var i = 0; i < ths.length; i++) {
+      ths[i].addEventListener('click', function (e) {
+        var sel = window.getSelection && window.getSelection();
+        if (sel && String(sel.toString()).trim().length > 0) return;
+        if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON')) return;
+        var key = this.getAttribute('data-sort');
+        if (state.applied.sortBy === key) {
+          state.applied.sortDir = state.applied.sortDir === 'asc' ? 'desc' : 'asc';
+        } else {
+          state.applied.sortBy = key;
+          state.applied.sortDir = 'asc';
+        }
+        state.pending.sortBy = state.applied.sortBy;
+        state.pending.sortDir = state.applied.sortDir;
+        state.applied.page = 1;
+        state.pending.page = 1;
+        fetchList();
+      });
+    }
+  }
+
+  function bindPagination() {
+    if ($('dg-mss-page-prev')) $('dg-mss-page-prev').addEventListener('click', function () {
+      if (state.applied.page > 1) {
+        state.applied.page -= 1;
+        state.pending.page = state.applied.page;
+        fetchList();
+      }
+    });
+    if ($('dg-mss-page-next')) $('dg-mss-page-next').addEventListener('click', function () {
+      var totalPages = Math.max(1, Math.ceil(state.total / state.applied.pageSize));
+      if (state.applied.page < totalPages) {
+        state.applied.page += 1;
+        state.pending.page = state.applied.page;
+        fetchList();
+      }
+    });
+  }
+
+  function bindControls() {
+    if ($('dg-mss-apply')) $('dg-mss-apply').addEventListener('click', function () { commitFilters(); });
+    if ($('dg-mss-reset')) $('dg-mss-reset').addEventListener('click', function () { resetFilters(); });
+    if ($('dg-mss-sync')) $('dg-mss-sync').addEventListener('click', startSync);
+    if ($('dg-mss-cancel')) $('dg-mss-cancel').addEventListener('click', cancelSync);
+    if ($('dg-mss-reresolve')) $('dg-mss-reresolve').addEventListener('click', reresolve);
+  }
+
+  function bindTbody() {
+    var tbody = $('dg-mss-tbody');
+    if (!tbody) return;
+    tbody.addEventListener('click', function (e) {
+      var caret = e.target && e.target.closest && e.target.closest('[data-dg-mss-toggle]');
+      if (!caret) return;
+      var tr = caret.closest('tr[data-uuid]');
+      if (!tr) return;
+      var uuid = tr.getAttribute('data-uuid');
+      togglePositions(uuid, tr);
+    });
+  }
+
+  function init() {
+    var snap = loadFromStorage() || DEFAULTS;
+    state.applied = Object.assign({}, DEFAULTS, snap);
+    state.pending = Object.assign({}, state.applied);
+    applyToForm(state.applied);
+    bindControls();
+    bindCollapse('dg-mss-filters-toggle', 'dg-mss-filters-body', FILTERS_COLLAPSED_KEY);
+    bindCollapse('dg-mss-table-toggle', 'dg-mss-table-body', TABLE_COLLAPSED_KEY);
+    bindHeaderSearchMirror();
+    bindSortHandlers();
+    bindPagination();
+    bindTbody();
+    fetchList();
+    fetchFilters();
+    /** Если синк уже идёт (например, после рефреша страницы) — подхватим polling. */
+    fetch('/api/ms-sales/sync-status', { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) {
+        if (data && data.success && data.status && data.status.active) startSyncPolling();
+      })
+      .catch(function () { /** ignore */ });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
+</script>
