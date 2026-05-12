@@ -741,6 +741,342 @@ async function pushMeasurementToMs(uuid, type, measurement) {
     }
 }
 
+/**
+ * Внутренний синк одной позиции (`code`) в МС.
+ *
+ * Извлечён из обработчика `POST /sync-ms` — единая точка для:
+ *   • route-обработчика (с inline-`measurement` от UI и аутентифицированным актором);
+ *   • планируемого балк-синка `runScheduledSyncMs()` (без inline, актор=`Авто-синхронизация (расписание)`).
+ *
+ * Алгоритм совпадает с прежним route-handler'ом:
+ *   1) опционально persist'им inline `measurement` (если передан в opts);
+ *   2) читаем актуальный snapshot из БД (`ms_export` + `ms_dimensions_measurements`);
+ *   3) auto-fill parsed-defaults из `packing_type` (см. parsePackingDims) и persist'им их;
+ *   4) формируем payload через buildMsAttributesPayload + pushMeasurementToMs;
+ *   5) на успех пишем по строке в `ms_dimensions_log` за каждое отправленное поле.
+ *
+ * Возвращает плоский объект (как старый route), чтобы вызывающие могли его сериализовать
+ * в HTTP-ответ или агрегировать счётчики прогресса.
+ */
+async function syncCodeToMs(db, code, options) {
+    const opts = options || {};
+    const cleanCode = String(code || '').trim();
+    if (!cleanCode) {
+        return { success: false, code: cleanCode, error: 'Не указан code', http_code: 400 };
+    }
+    const actorId = opts.actorId != null ? Number(opts.actorId) : null;
+    const actorName = opts.actorName != null ? String(opts.actorName) : null;
+    const inlineMeasurement = opts.measurement && typeof opts.measurement === 'object' ? opts.measurement : null;
+    const persistNoteSuffix = opts.persistNoteSuffix
+        ? String(opts.persistNoteSuffix).slice(0, 200)
+        : '';
+
+    let persistedFields = [];
+    if (inlineMeasurement) {
+        const incoming = {};
+        for (const k of Object.keys(MEASUREMENT_FIELDS)) {
+            if (Object.prototype.hasOwnProperty.call(inlineMeasurement, k)) {
+                incoming[k] = inlineMeasurement[k];
+            }
+        }
+        if (Object.keys(incoming).length > 0) {
+            const persisted = await persistMeasurementFields(db, {
+                code: cleanCode,
+                incoming,
+                measuredByName: actorName,
+                measuredByUserId: actorId,
+                measuredAt: new Date(),
+                note: 'sync_ms (auto-persist before push)' + (persistNoteSuffix ? ' ' + persistNoteSuffix : ''),
+            });
+            persistedFields = (persisted.changedFields || []).map((c) => c.field);
+        }
+    }
+
+    const [rows] = await db.query(
+        `SELECT mse.uuid AS uuid, mse.type AS type, mse.name AS name,
+                mdm.length_cm, mdm.width_cm, mdm.height_box_cm, mdm.height_bag_cm,
+                mdm.weight_kg, mdm.packing_type
+         FROM ms_export mse
+         LEFT JOIN ms_dimensions_measurements mdm ON mdm.code = mse.code
+         WHERE mse.code = ?
+         LIMIT 1`,
+        [cleanCode],
+    );
+    const r = (Array.isArray(rows) && rows[0]) || null;
+    if (!r) {
+        return {
+            success: false,
+            code: cleanCode,
+            error: 'Позиция не найдена в ms_export',
+            http_code: 404,
+            persisted_fields: persistedFields,
+        };
+    }
+
+    const uuid = String(r.uuid || '').trim();
+    const type = String(r.type || '').trim();
+    const fullMeasurement = rowToMeasurement({
+        length_cm: r.length_cm,
+        width_cm: r.width_cm,
+        height_box_cm: r.height_box_cm,
+        height_bag_cm: r.height_bag_cm,
+        weight_kg: r.weight_kg,
+        packing_type: r.packing_type,
+    }) || {};
+
+    const parsedDefaults = parsePackingDims(fullMeasurement.packing_type);
+    const parsedAutofillKeys = ['length_cm', 'width_cm', 'height_box_cm'];
+    const parsedToPersist = {};
+    for (const k of parsedAutofillKeys) {
+        if (fullMeasurement[k] == null && parsedDefaults && parsedDefaults[k] != null) {
+            fullMeasurement[k] = parsedDefaults[k];
+            parsedToPersist[k] = parsedDefaults[k];
+        }
+    }
+    if (Object.keys(parsedToPersist).length > 0) {
+        try {
+            const parsedPersisted = await persistMeasurementFields(db, {
+                code: cleanCode,
+                incoming: parsedToPersist,
+                measuredByName: actorName,
+                measuredByUserId: actorId,
+                measuredAt: new Date(),
+                note: 'sync_ms (auto-persist parsed)' + (persistNoteSuffix ? ' ' + persistNoteSuffix : ''),
+            });
+            for (const c of (parsedPersisted.changedFields || [])) {
+                if (persistedFields.indexOf(c.field) < 0) persistedFields.push(c.field);
+            }
+        } catch (_) {
+            /** не валим синк, в МС всё равно отправим parsed-default */
+        }
+    }
+
+    let measurement = fullMeasurement;
+    if (Array.isArray(opts.fields) && opts.fields.length > 0) {
+        measurement = {};
+        for (const k of opts.fields) {
+            if (Object.prototype.hasOwnProperty.call(fullMeasurement, k)) {
+                measurement[k] = fullMeasurement[k];
+            }
+        }
+    }
+
+    let result;
+    try {
+        result = await pushMeasurementToMs(uuid, type, measurement);
+    } catch (e) {
+        return {
+            success: false,
+            code: cleanCode,
+            uuid,
+            type,
+            error: e && e.message ? e.message : 'Ошибка отправки в МС',
+            code_error: e && e.code ? String(e.code) : 'PUSH_FAILED',
+            http_code: 503,
+            persisted_fields: persistedFields,
+        };
+    }
+
+    if (result.ok && Array.isArray(result.sent_fields) && result.sent_fields.length > 0) {
+        const note = 'sync_ms entity=' + result.entity_kind + ' http=' + (result.ms_status || 200)
+            + (persistNoteSuffix ? ' ' + persistNoteSuffix : '');
+        for (const f of result.sent_fields) {
+            const v = measurement[f];
+            await db.query(
+                `INSERT INTO ms_dimensions_log
+                    (code, field, old_value, new_value, action, changed_by_user_id, changed_by_name, note)
+                 VALUES (?, ?, NULL, ?, 'sync_ms', ?, ?, ?)`,
+                [cleanCode, f, v != null ? String(v) : null, actorId, actorName, note],
+            );
+        }
+    }
+
+    return {
+        success: !!result.ok,
+        code: cleanCode,
+        uuid,
+        type,
+        entity_kind: result.entity_kind,
+        sent_fields: result.sent_fields || [],
+        skipped: result.skipped || [],
+        persisted_fields: persistedFields,
+        error: result.ok ? undefined : (result.error || 'Не удалось обновить позицию в МС'),
+        http_status: result.http_status || null,
+        ms_updated_at: result.ms_updated_at || null,
+    };
+}
+
+/* ============================ Scheduled bulk sync ============================ */
+
+/**
+ * In-memory state балк-синка по расписанию (или ручного запуска через
+ * `/api/settings/auto-sync-run` task=`dimensions`). Один экземпляр на процесс —
+ * идёт строго последовательно, повторный запуск возвращает `started=false`
+ * с `reason='already_running'` (паритет с huckster/marketplaces).
+ *
+ * Содержимое потребляется server.js (`processAutoSyncQueue`) для выставления
+ * honest-статуса в `auto_sync_runs` и фронтом /processes.html для показа
+ * прогресса. Поля прозрачные: `processed/total/ok/err/skipped_no_uuid` +
+ * краткий `last_message` с именем последней позиции.
+ */
+const dimensionsScheduledState = {
+    active: false,
+    started_at: null,
+    finished_at: null,
+    total: 0,
+    processed: 0,
+    ok: 0,
+    err: 0,
+    skipped_no_uuid: 0,
+    last_code: '',
+    last_name: '',
+    last_status: '',
+    last_message: '',
+    error: null,
+    summary: null,
+};
+
+function snapshotScheduledState() {
+    return {
+        active: dimensionsScheduledState.active,
+        started_at: dimensionsScheduledState.started_at,
+        finished_at: dimensionsScheduledState.finished_at,
+        total: dimensionsScheduledState.total,
+        processed: dimensionsScheduledState.processed,
+        ok: dimensionsScheduledState.ok,
+        err: dimensionsScheduledState.err,
+        skipped_no_uuid: dimensionsScheduledState.skipped_no_uuid,
+        last_code: dimensionsScheduledState.last_code,
+        last_name: dimensionsScheduledState.last_name,
+        last_status: dimensionsScheduledState.last_status,
+        last_message: dimensionsScheduledState.last_message,
+        error: dimensionsScheduledState.error,
+        summary: dimensionsScheduledState.summary,
+    };
+}
+
+/**
+ * Запустить балк-синк всех `ms_dimensions_measurements` с override → МС.
+ * Возвращает Promise, который резолвится после завершения (включая `error`-кейсы).
+ * Параметры:
+ *   • `db` — пул mysql2/promise;
+ *   • `triggerType` — для `note` в логе и `summary` (`'schedule' | 'manual'`).
+ *
+ * Поведение:
+ *   1) Сбрасываем state (active=true), читаем все коды с override и uuid.
+ *   2) Для каждого вызываем `syncCodeToMs(db, code, { actorName, persistNoteSuffix })`.
+ *   3) После каждой позиции обновляем state.* (ok/err/skipped_no_uuid/last_*).
+ *   4) Между запросами 60ms задержка — паритет с UI bulk runner (не «душим» MS API).
+ *   5) В конце ставим `active=false`, формируем `summary`.
+ */
+async function runScheduledDimensionsSyncMs(db, triggerType) {
+    if (dimensionsScheduledState.active) {
+        return { started: false, reason: 'already_running' };
+    }
+    dimensionsScheduledState.active = true;
+    dimensionsScheduledState.started_at = new Date();
+    dimensionsScheduledState.finished_at = null;
+    dimensionsScheduledState.total = 0;
+    dimensionsScheduledState.processed = 0;
+    dimensionsScheduledState.ok = 0;
+    dimensionsScheduledState.err = 0;
+    dimensionsScheduledState.skipped_no_uuid = 0;
+    dimensionsScheduledState.last_code = '';
+    dimensionsScheduledState.last_name = '';
+    dimensionsScheduledState.last_status = '';
+    dimensionsScheduledState.last_message = '';
+    dimensionsScheduledState.error = null;
+    dimensionsScheduledState.summary = null;
+
+    const trigger = String(triggerType || 'schedule').trim() || 'schedule';
+    const actorName = trigger === 'schedule'
+        ? 'Авто-синхронизация (расписание)'
+        : 'Авто-синхронизация (вручную)';
+    const persistNoteSuffix = '(' + trigger + ')';
+
+    try {
+        await ensureSchema(db);
+        const [rows] = await db.query(
+            `SELECT mdm.code, mse.uuid, mse.name, mse.type
+             FROM ms_dimensions_measurements mdm
+             LEFT JOIN ms_export mse ON mse.code = mdm.code
+             WHERE (
+                 mdm.length_cm IS NOT NULL OR
+                 mdm.width_cm IS NOT NULL OR
+                 mdm.height_box_cm IS NOT NULL OR
+                 mdm.height_bag_cm IS NOT NULL OR
+                 mdm.weight_kg IS NOT NULL OR
+                 (mdm.packing_type IS NOT NULL AND mdm.packing_type <> '')
+             )
+             ORDER BY mdm.measured_at DESC, mdm.code ASC`,
+        );
+        const tasks = (Array.isArray(rows) ? rows : []).map((r) => ({
+            code: String(r.code || ''),
+            uuid: r.uuid ? String(r.uuid).trim() : '',
+            name: r.name != null ? String(r.name) : '',
+            type: r.type != null ? String(r.type) : '',
+        })).filter((t) => t.code);
+        dimensionsScheduledState.total = tasks.length;
+
+        for (let i = 0; i < tasks.length; i++) {
+            const t = tasks[i];
+            dimensionsScheduledState.last_code = t.code;
+            dimensionsScheduledState.last_name = t.name;
+            if (!t.uuid) {
+                dimensionsScheduledState.skipped_no_uuid++;
+                dimensionsScheduledState.processed++;
+                dimensionsScheduledState.last_status = 'skip_no_uuid';
+                dimensionsScheduledState.last_message =
+                    'Пропуск: нет uuid в ms_export (позиция удалена/не синкается из МС)';
+                continue;
+            }
+            try {
+                const r = await syncCodeToMs(db, t.code, {
+                    actorId: null,
+                    actorName,
+                    persistNoteSuffix,
+                });
+                if (r && r.success) {
+                    dimensionsScheduledState.ok++;
+                    dimensionsScheduledState.last_status = 'ok';
+                    const sent = (r.sent_fields || []).join(', ') || '—';
+                    dimensionsScheduledState.last_message = '✓ В МС: ' + sent;
+                } else {
+                    dimensionsScheduledState.err++;
+                    dimensionsScheduledState.last_status = 'err';
+                    dimensionsScheduledState.last_message = (r && r.error) || 'Не удалось обновить позицию в МС';
+                }
+            } catch (e) {
+                dimensionsScheduledState.err++;
+                dimensionsScheduledState.last_status = 'err';
+                dimensionsScheduledState.last_message = (e && e.message) || String(e);
+            }
+            dimensionsScheduledState.processed++;
+            await new Promise((resolve) => setTimeout(resolve, 60));
+        }
+
+        dimensionsScheduledState.summary =
+            'Всего: ' + dimensionsScheduledState.total +
+            '; ✓ ' + dimensionsScheduledState.ok +
+            '; × ' + dimensionsScheduledState.err +
+            '; пропущено (без uuid): ' + dimensionsScheduledState.skipped_no_uuid;
+        return {
+            started: true,
+            ...snapshotScheduledState(),
+        };
+    } catch (e) {
+        dimensionsScheduledState.error = e && e.message ? e.message : String(e);
+        dimensionsScheduledState.summary =
+            'Ошибка: ' + dimensionsScheduledState.error +
+            ' (обработано ' + dimensionsScheduledState.processed +
+            ' из ' + dimensionsScheduledState.total + ')';
+        return { started: true, error: dimensionsScheduledState.error, ...snapshotScheduledState() };
+    } finally {
+        dimensionsScheduledState.active = false;
+        dimensionsScheduledState.finished_at = new Date();
+    }
+}
+
 function createDimensionsRouter(db, appSettings = {}) {
     const router = express.Router();
     ensureSchema(db).catch((e) => {
@@ -1009,164 +1345,23 @@ function createDimensionsRouter(db, appSettings = {}) {
             if (!code) return res.status(400).json({ success: false, error: 'Не указан code' });
 
             /**
-             * Если фронт передал inline `measurement` (объект с текущими значениями
-             * инпутов в строке) — persist'им его в БД ДО отправки в МС. Это даёт
-             * сценарий «отправить всё, что я ввёл прямо сейчас» из любой ячейки даже
-             * без предварительного blur/Enter, и при этом фиксирует автора в журнале.
+             * Все ветки логики (inline-persist, parsed-defaults, push, log) вынесены
+             * в общую функцию syncCodeToMs() — она же используется планировщиком
+             * `runScheduledDimensionsSyncMs` для авто-выгрузки в 21:00 МСК.
              */
             const actor = req.datagonActor || null;
             const actorId = actor && actor.id != null ? Number(actor.id) : null;
             const actorName = actorDisplayName(actor) || null;
-            let persistedFields = [];
-            if (body.measurement && typeof body.measurement === 'object') {
-                const incoming = {};
-                for (const k of Object.keys(MEASUREMENT_FIELDS)) {
-                    if (Object.prototype.hasOwnProperty.call(body.measurement, k)) {
-                        incoming[k] = body.measurement[k];
-                    }
-                }
-                if (Object.keys(incoming).length > 0) {
-                    const persisted = await persistMeasurementFields(db, {
-                        code,
-                        incoming,
-                        measuredByName: actorName,
-                        measuredByUserId: actorId,
-                        measuredAt: new Date(),
-                        note: 'sync_ms (auto-persist before push)',
-                    });
-                    persistedFields = (persisted.changedFields || []).map((c) => c.field);
-                }
-            }
-
-            const [rows] = await db.query(
-                `SELECT mse.uuid AS uuid, mse.type AS type, mse.name AS name,
-                        mdm.length_cm, mdm.width_cm, mdm.height_box_cm, mdm.height_bag_cm,
-                        mdm.weight_kg, mdm.packing_type
-                 FROM ms_export mse
-                 LEFT JOIN ms_dimensions_measurements mdm ON mdm.code = mse.code
-                 WHERE mse.code = ?
-                 LIMIT 1`,
-                [code],
-            );
-            const r = (Array.isArray(rows) && rows[0]) || null;
-            if (!r) return res.status(404).json({ success: false, error: 'Позиция не найдена в ms_export' });
-
-            const uuid = String(r.uuid || '').trim();
-            const type = String(r.type || '').trim();
-            const fullMeasurement = rowToMeasurement({
-                length_cm: r.length_cm,
-                width_cm: r.width_cm,
-                height_box_cm: r.height_box_cm,
-                height_bag_cm: r.height_bag_cm,
-                weight_kg: r.weight_kg,
-                packing_type: r.packing_type,
-            }) || {};
-
-            /**
-             * Авто-заливка parsed-defaults из имени упаковки (паритет с UI).
-             * Если у позиции в БД есть override `packing_type` (явно указан тип
-             * упаковки), но НЕТ override длины/ширины/высоты-коробки — берём
-             * значения, разобранные из имени упаковки (`parsePackingDims`), и
-             * добавляем их в `measurement` для пуша в МС. Дополнительно эти
-             * parsed-defaults persist'ятся в БД (с записью в журнал
-             * `set` / note='sync_ms (auto-persist parsed)'), чтобы UI и
-             * последующие синки видели их как обычный override.
-             *
-             * Зачем: до этого балк-«↗ В МС: все правки» из БД для позиций,
-             * где пользователь успел ввести только packing_type/weight, в
-             * МС улетали именно эти два поля, а длина/ширина/высота-коробка
-             * оставались пустыми, хотя визуально UI показывал их как ghost-
-             * default (40/30/20 для «Гофкороб 40*30*20»). Теперь поведение
-             * балк-синка соответствует ожиданию пользователя: «если я указал
-             * тип упаковки — в МС уйдёт полный набор размеров».
-             *
-             * Поведение по `kind`:
-             *   • box / unknown→box → подтягиваем length/width/height_box;
-             *   • bag → подтягиваем length/width (height_bag — ввод вручную);
-             *   • custom_box / empty → ничего не подтягиваем.
-             *
-             * Если у пользователя есть свои осознанные значения, отличающиеся
-             * от parsed (он явно вводил руками), они уже лежат в БД как override
-             * и parsed-defaults их НЕ перетирают.
-             */
-            const parsedDefaults = parsePackingDims(fullMeasurement.packing_type);
-            const parsedAutofillKeys = ['length_cm', 'width_cm', 'height_box_cm'];
-            const parsedToPersist = {};
-            for (const k of parsedAutofillKeys) {
-                if (fullMeasurement[k] == null && parsedDefaults && parsedDefaults[k] != null) {
-                    fullMeasurement[k] = parsedDefaults[k];
-                    parsedToPersist[k] = parsedDefaults[k];
-                }
-            }
-            if (Object.keys(parsedToPersist).length > 0) {
-                try {
-                    const parsedPersisted = await persistMeasurementFields(db, {
-                        code,
-                        incoming: parsedToPersist,
-                        measuredByName: actorName,
-                        measuredByUserId: actorId,
-                        measuredAt: new Date(),
-                        note: 'sync_ms (auto-persist parsed)',
-                    });
-                    for (const c of (parsedPersisted.changedFields || [])) {
-                        if (persistedFields.indexOf(c.field) < 0) persistedFields.push(c.field);
-                    }
-                } catch (_) {
-                    /** не валим синк, в МС всё равно отправим parsed-default */
-                }
-            }
-
-            /** Опциональный whitelist `fields[]` — синкаем только указанное подмножество. */
-            let measurement = fullMeasurement;
-            if (Array.isArray(body.fields) && body.fields.length > 0) {
-                measurement = {};
-                for (const k of body.fields) {
-                    if (Object.prototype.hasOwnProperty.call(fullMeasurement, k)) {
-                        measurement[k] = fullMeasurement[k];
-                    }
-                }
-            }
-
-            let result;
-            try {
-                result = await pushMeasurementToMs(uuid, type, measurement);
-            } catch (e) {
-                return res.status(503).json({
-                    success: false,
-                    code,
-                    error: e && e.message ? e.message : 'Ошибка отправки в МС',
-                    code_error: e && e.code ? String(e.code) : 'PUSH_FAILED',
-                    persisted_fields: persistedFields,
-                });
-            }
-
-            if (result.ok && Array.isArray(result.sent_fields) && result.sent_fields.length > 0) {
-                /** Лог: одна строка на каждое отправленное поле — удобно фильтровать по полю. */
-                const note = 'sync_ms entity=' + result.entity_kind + ' http=' + (result.ms_status || 200);
-                for (const f of result.sent_fields) {
-                    const v = measurement[f];
-                    await db.query(
-                        `INSERT INTO ms_dimensions_log
-                            (code, field, old_value, new_value, action, changed_by_user_id, changed_by_name, note)
-                         VALUES (?, ?, NULL, ?, 'sync_ms', ?, ?, ?)`,
-                        [code, f, v != null ? String(v) : null, actorId, actorName, note],
-                    );
-                }
-            }
-
-            return res.json({
-                success: !!result.ok,
-                code,
-                uuid,
-                type,
-                entity_kind: result.entity_kind,
-                sent_fields: result.sent_fields || [],
-                skipped: result.skipped || [],
-                persisted_fields: persistedFields,
-                error: result.ok ? undefined : (result.error || 'Не удалось обновить позицию в МС'),
-                http_status: result.http_status || null,
-                ms_updated_at: result.ms_updated_at || null,
+            const r = await syncCodeToMs(db, code, {
+                actorId,
+                actorName,
+                measurement: (body && typeof body.measurement === 'object') ? body.measurement : null,
+                fields: Array.isArray(body.fields) ? body.fields : null,
             });
+            if (r.http_code && r.http_code >= 400) {
+                return res.status(r.http_code).json(r);
+            }
+            return res.json(r);
         } catch (e) {
             return res.status(500).json({ success: false, error: e.message || 'Ошибка синхронизации с МС' });
         }
@@ -1577,3 +1772,17 @@ module.exports = createDimensionsRouter;
  * для `/api/exports/marketplaces/issues`), могли гарантировать наличие таблицы
  * на чистом стенде до первого HTTP-запроса. */
 module.exports.ensureSchema = ensureSchema;
+
+/**
+ * Хук авто-синхронизации в server.js (`processAutoSyncQueue` task='dimensions'):
+ * запустить балк-выгрузку всех override габаритов в МС. Не зависит от создания
+ * router'а — можно дернуть из любого места процесса.
+ */
+module.exports.runScheduledSyncMs = function triggerScheduledDimensionsSync(db, triggerType) {
+    return runScheduledDimensionsSyncMs(db, triggerType);
+};
+
+/** Снимок состояния балк-синка: для honest-статуса auto_sync_runs + UI processes. */
+module.exports.getScheduledSyncState = function getScheduledDimensionsSyncState() {
+    return snapshotScheduledState();
+};

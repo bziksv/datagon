@@ -1,0 +1,174 @@
+  <style>
+    /* Карточка товара (детальная страница, не списочная). Дизайн: тема ArchitectUI,
+       плоские card.main-card, две колонки key/value, мелкие таблицы для логов и продаж. */
+    .dg-prod-page { font-size: 0.85rem; line-height: 1.4; }
+    .dg-prod-page .main-card { margin-bottom: 1rem; }
+    .dg-prod-page .card-header h5 { margin: 0; font-size: 14px; font-weight: 600; }
+    .dg-prod-page .card-header .text-muted { font-size: 12px; }
+    .dg-prod-page .dg-kv-grid {
+      display: grid;
+      grid-template-columns: minmax(160px, 220px) 1fr;
+      column-gap: 12px;
+      row-gap: 4px;
+      align-items: start;
+    }
+    .dg-prod-page .dg-kv-grid .dg-kv-key {
+      color: #6b7280;
+      font-size: 12px;
+      padding-top: 2px;
+      white-space: normal;
+      word-break: break-word;
+    }
+    .dg-prod-page .dg-kv-grid .dg-kv-val {
+      color: #111827;
+      font-size: 13px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .dg-prod-page .dg-kv-grid .dg-kv-val.is-numeric {
+      font-variant-numeric: tabular-nums;
+    }
+    .dg-prod-page .dg-section-title {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: #6b7280;
+      margin: 8px 0 4px;
+    }
+    .dg-prod-page .table.dg-prod-mini {
+      font-size: 12px;
+      margin-bottom: 0;
+      font-variant-numeric: tabular-nums;
+    }
+    .dg-prod-page .table.dg-prod-mini th {
+      background: #f5f7fb;
+      color: #374151;
+      font-weight: 600;
+      border-right: 1px solid #e6e9ee;
+      vertical-align: middle;
+    }
+    .dg-prod-page .table.dg-prod-mini td {
+      border-right: 1px solid #f3f5f8;
+      vertical-align: top;
+    }
+    .dg-prod-page .badge.bg-archive { background: #dc3545 !important; color: #fff; }
+    .dg-prod-page .badge.bg-info-soft { background: #e7f1ff !important; color: #0b5ed7; }
+    .dg-prod-page .dg-prices-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 8px;
+    }
+    .dg-prod-page .dg-prices-grid .dg-price-card {
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 8px 10px;
+      background: #fafbfc;
+    }
+    .dg-prod-page .dg-prices-grid .dg-price-card .dg-price-name {
+      color: #6b7280;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    .dg-prod-page .dg-prices-grid .dg-price-card .dg-price-value {
+      font-size: 16px;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      color: #111827;
+    }
+    .dg-prod-page .dg-stock-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 8px;
+    }
+    .dg-prod-page .dg-stock-grid .dg-stock-card {
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 8px 10px;
+      background: #ffffff;
+    }
+    .dg-prod-page .dg-stock-grid .dg-stock-card .dg-stock-name {
+      color: #6b7280;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    .dg-prod-page .dg-stock-grid .dg-stock-card .dg-stock-value {
+      font-size: 18px;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      color: #111827;
+    }
+    .dg-prod-page .dg-stock-grid .dg-stock-card.is-warn { background: #fff8e6; border-color: #f5d18a; }
+    .dg-prod-page .dg-stock-grid .dg-stock-card.is-bad { background: #fde7e7; border-color: #f1aeb0; }
+    .dg-prod-page .dg-attr-table { font-size: 12px; }
+    .dg-prod-page .dg-attr-table th { width: 240px; color: #6b7280; font-weight: 500; }
+    .dg-prod-page .dg-sales-aggregates {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+      gap: 6px;
+    }
+    .dg-prod-page .dg-sales-aggregates .dg-sales-card {
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      padding: 6px 8px;
+      background: #f7faff;
+      text-align: center;
+    }
+    .dg-prod-page .dg-sales-aggregates .dg-sales-card .dg-sales-window {
+      font-size: 10px;
+      color: #6b7280;
+      text-transform: uppercase;
+    }
+    .dg-prod-page .dg-sales-aggregates .dg-sales-card .dg-sales-qty {
+      font-size: 14px;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      color: #0b5ed7;
+    }
+    .dg-prod-page .dg-sales-aggregates .dg-sales-card .dg-sales-meta {
+      font-size: 10px;
+      color: #6b7280;
+      font-variant-numeric: tabular-nums;
+    }
+    .dg-prod-page .dg-prod-status {
+      display: none;
+      margin: 0 0 12px 0;
+      padding: 8px 12px;
+      border-radius: 6px;
+    }
+    .dg-prod-page .dg-prod-status.is-loading { display: block; background: #f0f3f7; color: #374151; }
+    .dg-prod-page .dg-prod-status.is-error { display: block; background: #fde7e7; color: #842029; }
+    .dg-prod-page .dg-prod-empty {
+      padding: 12px;
+      color: #6b7280;
+      font-size: 12px;
+      background: #fafbfc;
+      border: 1px dashed #d1d5db;
+      border-radius: 6px;
+    }
+    .dg-prod-page .dg-prod-link-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+      font-size: 12px;
+    }
+    .dg-prod-page .dg-prod-link-row a { color: #0b5ed7; }
+    .dg-prod-page .dg-prod-link-row code {
+      background: #f1f3f5;
+      color: #495057;
+      padding: 1px 4px;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    .dg-prod-page .dg-prod-formula-placeholder {
+      padding: 16px;
+      background: #f7fafc;
+      border: 1px dashed #cbd5e1;
+      border-radius: 6px;
+      color: #475569;
+      font-size: 13px;
+    }
+    .dg-prod-page .dg-zero-empty { color: #6b7280; font-size: 12px; padding: 8px 0; }
+  </style>

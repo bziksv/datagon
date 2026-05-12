@@ -107,6 +107,20 @@
     color: #adb5bd;
     text-decoration: line-through;
   }
+  /**
+   * Soft-delete: документ удалён в МойСклад, но локально сохранён для истории.
+   * Подсветка строки — по аналогии с moysklad (`tr.table-danger`), но сюда не
+   * попадает Bootstrap-каскад (`.dg-mss-table` без класса `.table`), поэтому
+   * красим явно. `:hover` чуть темнее, чтобы понятно выделялась строка под
+   * курсором, не теряя контекст «удалена».
+   */
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-table tbody tr.dg-mss-deleted-row > td {
+    background: #fbe2e4;
+    color: #7a1e2a;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-table tbody tr.dg-mss-deleted-row:hover > td {
+    background: #f4cdd1;
+  }
   body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-pagination {
     display: flex;
     align-items: center;

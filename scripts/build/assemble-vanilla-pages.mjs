@@ -52,6 +52,24 @@ function assemble() {
             PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/moysklad.scripts.html')),
         },
         {
+            out: 'purchase.html',
+            PAGE_TITLE: 'Закупки — Датагон',
+            BODY_ATTRS: 'class="datagon-vanilla-body" data-dg-active-nav="purchase"',
+            EXTRA_HEAD: read(path.join(vanillaDir, 'inners/purchase.head.html')),
+            MAIN_INNER: read(path.join(vanillaDir, 'inners/purchase.inner.html')),
+            PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/purchase.scripts.html')),
+        },
+        {
+            // Карточка товара /product.html?code=XXX — открывается из «Закупки» в новом окне.
+            // Не входит в основное меню (data-dg-active-nav="product" нужен только для подсветки).
+            out: 'product.html',
+            PAGE_TITLE: 'Карточка товара — Датагон',
+            BODY_ATTRS: 'class="datagon-vanilla-body" data-dg-active-nav="product"',
+            EXTRA_HEAD: read(path.join(vanillaDir, 'inners/product.head.html')),
+            MAIN_INNER: read(path.join(vanillaDir, 'inners/product.inner.html')),
+            PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/product.scripts.html')),
+        },
+        {
             out: 'my-products.html',
             PAGE_TITLE: 'Мои товары — Датагон',
             BODY_ATTRS: 'class="datagon-vanilla-body" data-dg-active-nav="my-products"',
@@ -258,17 +276,6 @@ function assemble() {
                 read(path.join(vanillaDir, 'inners/exports-dimensions.head.html')),
             MAIN_INNER: read(path.join(vanillaDir, 'inners/exports-dimensions.inner.html')),
             PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/exports-dimensions.scripts.html')),
-        },
-        {
-            // Lagerplus — закупочный модуль (стороннее «вкрапление», см.
-            // routes/lagerplus.js, docs api.md). Не зависит от других
-            // exports-*-страниц, отдельные head/inner/scripts.
-            out: 'lagerplus.html',
-            PAGE_TITLE: 'Lagerplus — Закупки — Датагон',
-            BODY_ATTRS: 'class="datagon-vanilla-body" data-dg-active-nav="lagerplus"',
-            EXTRA_HEAD: read(path.join(vanillaDir, 'inners/lagerplus.head.html')),
-            MAIN_INNER: read(path.join(vanillaDir, 'inners/lagerplus.inner.html')),
-            PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/lagerplus.scripts.html')),
         },
         {
             // MS Sales — отдельная страница «Продажи МС»: тянет entity/demand

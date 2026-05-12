@@ -263,6 +263,282 @@
           });
       }
 
+      var DISK_FOLDER_PALETTE = [
+        "bg-primary",
+        "bg-info",
+        "bg-success",
+        "bg-warning",
+        "bg-danger",
+        "bg-secondary",
+        "bg-dark",
+        "bg-arielle-smile",
+        "bg-plum-plate",
+        "bg-night-fade",
+        "bg-malibu-beach",
+        "bg-ripe-malin"
+      ];
+      var DISK_COLLAPSE_KEY = "datagon_dashboard_disk_collapsed_v1";
+
+      function setDiskError(message) {
+        var el = document.getElementById("dg-disk-error");
+        if (!el) return;
+        if (!message) {
+          el.style.display = "none";
+          el.textContent = "";
+          return;
+        }
+        el.style.display = "";
+        el.textContent = "Ошибка: " + message;
+      }
+
+      function clearDiskUsageUI() {
+        var ids = [
+          "dg-disk-project-size",
+          "dg-disk-project-files",
+          "dg-disk-fs-used",
+          "dg-disk-fs-used-pct",
+          "dg-disk-fs-free",
+          "dg-disk-fs-free-pct",
+          "dg-disk-folder-count",
+          "dg-disk-scan-meta",
+          "dg-disk-project-path",
+          "dg-disk-meta",
+          "dg-disk-legend-project",
+          "dg-disk-legend-other",
+          "dg-disk-legend-free",
+          "dg-disk-folders-hint"
+        ];
+        ids.forEach(function (id) {
+          var el = document.getElementById(id);
+          if (el) el.textContent = "—";
+        });
+      }
+
+      function renderDiskUsage(diskUsage) {
+        if (!diskUsage) {
+          clearDiskUsageUI();
+          setDiskError("Нет данных");
+          return;
+        }
+        if (diskUsage.error) {
+          clearDiskUsageUI();
+          setDiskError(diskUsage.error);
+          return;
+        }
+        setDiskError(null);
+
+        var projectBytes = Number(diskUsage.projectSizeBytes || 0);
+        var projectFiles = Number(diskUsage.projectFileCount || 0);
+        var folders = Array.isArray(diskUsage.folders) ? diskUsage.folders.slice() : [];
+        var fs = diskUsage.fileSystem || {};
+
+        var projSizeEl = document.getElementById("dg-disk-project-size");
+        if (projSizeEl) projSizeEl.textContent = fmtBytes(projectBytes);
+        var projFilesEl = document.getElementById("dg-disk-project-files");
+        if (projFilesEl) projFilesEl.textContent = num(projectFiles) + " файлов · " + num(folders.length) + " папок";
+
+        var pathEl = document.getElementById("dg-disk-project-path");
+        if (pathEl) pathEl.textContent = diskUsage.projectPath || "—";
+
+        var metaEl = document.getElementById("dg-disk-meta");
+        if (metaEl) {
+          var parts = [
+            "обновлено: " + fmtDate(diskUsage.scannedAt),
+            (diskUsage.cached ? "из кэша" : "свежий расчёт")
+          ];
+          if (Number(diskUsage.scanDurationMs || 0) > 0) {
+            parts.push("скан: " + Math.round(Number(diskUsage.scanDurationMs)) + " мс");
+          }
+          metaEl.textContent = parts.join(" · ");
+        }
+
+        var scanMetaEl = document.getElementById("dg-disk-scan-meta");
+        if (scanMetaEl) {
+          scanMetaEl.textContent = "скан: " + (Number(diskUsage.scanDurationMs || 0) > 0
+            ? Math.round(Number(diskUsage.scanDurationMs)) + " мс"
+            : "—");
+        }
+        var folderCountEl = document.getElementById("dg-disk-folder-count");
+        if (folderCountEl) folderCountEl.textContent = num(folders.length);
+
+        var fsUsedEl = document.getElementById("dg-disk-fs-used");
+        var fsUsedPctEl = document.getElementById("dg-disk-fs-used-pct");
+        var fsFreeEl = document.getElementById("dg-disk-fs-free");
+        var fsFreePctEl = document.getElementById("dg-disk-fs-free-pct");
+        var bar = document.getElementById("dg-disk-fs-bar");
+        var legendProj = document.getElementById("dg-disk-legend-project");
+        var legendOther = document.getElementById("dg-disk-legend-other");
+        var legendFree = document.getElementById("dg-disk-legend-free");
+
+        if (fs && !fs.error && Number(fs.sizeBytes || 0) > 0) {
+          var total = Number(fs.sizeBytes || 0);
+          var used = Number(fs.usedBytes || 0);
+          var free = Number(fs.freeBytes || 0);
+          var projShare = Math.min(used, projectBytes);
+          var otherShare = Math.max(0, used - projShare);
+          var pProj = total > 0 ? (projShare / total) * 100 : 0;
+          var pOther = total > 0 ? (otherShare / total) * 100 : 0;
+          var pFree = total > 0 ? (free / total) * 100 : 0;
+
+          if (fsUsedEl) fsUsedEl.textContent = fmtBytes(used);
+          if (fsUsedPctEl)
+            fsUsedPctEl.textContent =
+              "из " + fmtBytes(total) + " (" + Number(fs.usedPercent || (total ? (used / total) * 100 : 0)).toFixed(1) + "%)";
+          if (fsFreeEl) fsFreeEl.textContent = fmtBytes(free);
+          if (fsFreePctEl)
+            fsFreePctEl.textContent = total > 0 ? (100 - Number(fs.usedPercent || 0)).toFixed(1) + " %" : "— %";
+
+          if (bar) {
+            var segs = bar.querySelectorAll(".dg-disk-fs-seg");
+            if (segs[0]) segs[0].style.width = pProj.toFixed(2) + "%";
+            if (segs[1]) segs[1].style.width = pOther.toFixed(2) + "%";
+            if (segs[2]) segs[2].style.width = pFree.toFixed(2) + "%";
+          }
+          if (legendProj) legendProj.textContent = fmtBytes(projShare) + " (" + pProj.toFixed(1) + "%)";
+          if (legendOther) legendOther.textContent = fmtBytes(otherShare) + " (" + pOther.toFixed(1) + "%)";
+          if (legendFree) legendFree.textContent = fmtBytes(free) + " (" + pFree.toFixed(1) + "%)";
+        } else {
+          if (fsUsedEl) fsUsedEl.textContent = "—";
+          if (fsUsedPctEl) fsUsedPctEl.textContent = fs && fs.error ? fs.error : "недоступно";
+          if (fsFreeEl) fsFreeEl.textContent = "—";
+          if (fsFreePctEl) fsFreePctEl.textContent = "—";
+          if (bar) {
+            var segs2 = bar.querySelectorAll(".dg-disk-fs-seg");
+            if (segs2[0]) segs2[0].style.width = "0%";
+            if (segs2[1]) segs2[1].style.width = "0%";
+            if (segs2[2]) segs2[2].style.width = "100%";
+          }
+          if (legendProj) legendProj.textContent = fmtBytes(projectBytes);
+          if (legendOther) legendOther.textContent = "—";
+          if (legendFree) legendFree.textContent = "—";
+        }
+
+        var maxFolderBytes = folders.reduce(function (acc, f) {
+          return Math.max(acc, Number(f.sizeBytes || 0));
+        }, 0);
+        var mount = document.getElementById("dg-disk-folders-mount");
+        var hint = document.getElementById("dg-disk-folders-hint");
+        if (hint) {
+          hint.textContent = num(folders.length) + " папок · сумма: " + fmtBytes(projectBytes);
+        }
+        if (mount) {
+          mount.replaceChildren();
+          if (folders.length === 0) {
+            var empty = document.createElement("div");
+            empty.className = "text-muted";
+            empty.textContent = "Папок не найдено";
+            mount.appendChild(empty);
+          } else {
+            folders.forEach(function (f, idx) {
+              var sizeBytes = Number(f.sizeBytes || 0);
+              var pctOfProject = projectBytes > 0 ? (sizeBytes / projectBytes) * 100 : 0;
+              var pctOfMax = maxFolderBytes > 0 ? (sizeBytes / maxFolderBytes) * 100 : 0;
+              var color = DISK_FOLDER_PALETTE[idx % DISK_FOLDER_PALETTE.length];
+
+              var row = document.createElement("div");
+              row.className = "dg-disk-folder-row";
+
+              var nameCell = document.createElement("div");
+              nameCell.className = "dg-disk-folder-name";
+              var nameSpan = document.createElement("span");
+              nameSpan.className = "name-text";
+              nameSpan.textContent = f.name || "—";
+              nameSpan.title = f.name || "";
+              nameCell.appendChild(nameSpan);
+              if (f.isHidden) {
+                var hiddenBadge = document.createElement("span");
+                hiddenBadge.className = "badge bg-light text-muted border";
+                hiddenBadge.textContent = "скрытая";
+                nameCell.appendChild(hiddenBadge);
+              }
+              if (Number(f.errorCount || 0) > 0) {
+                var errBadge = document.createElement("span");
+                errBadge.className = "badge bg-warning text-dark";
+                errBadge.title = "Часть файлов не удалось прочитать (нет доступа)";
+                errBadge.textContent = "нет доступа: " + num(f.errorCount);
+                nameCell.appendChild(errBadge);
+              }
+
+              var sizeCell = document.createElement("div");
+              sizeCell.className = "dg-disk-folder-size";
+              var sizeStrong = document.createElement("strong");
+              sizeStrong.textContent = fmtBytes(sizeBytes);
+              sizeCell.appendChild(sizeStrong);
+              var filesSpan = document.createElement("div");
+              filesSpan.className = "dg-disk-folder-files";
+              filesSpan.textContent = num(f.fileCount || 0) + " файлов";
+              sizeCell.appendChild(filesSpan);
+
+              var pctCell = document.createElement("div");
+              pctCell.className = "dg-disk-folder-percent";
+              pctCell.textContent = pctOfProject.toFixed(1) + " %";
+
+              var barCell = document.createElement("div");
+              barCell.className = "dg-disk-folder-bar";
+              var barFill = document.createElement("span");
+              barFill.className = color;
+              barFill.style.width = Math.max(0.5, pctOfMax).toFixed(2) + "%";
+              barFill.title = fmtBytes(sizeBytes) + " — " + pctOfProject.toFixed(1) + " % проекта";
+              barCell.appendChild(barFill);
+
+              row.appendChild(nameCell);
+              row.appendChild(sizeCell);
+              row.appendChild(pctCell);
+              row.appendChild(barCell);
+              mount.appendChild(row);
+            });
+          }
+        }
+      }
+
+      function loadDiskUsage(forceRefresh) {
+        var metaEl = document.getElementById("dg-disk-meta");
+        var hint = document.getElementById("dg-disk-folders-hint");
+        var btn = document.getElementById("dg-disk-refresh");
+        var url = "/api/processes/disk-usage" + (forceRefresh ? "?refresh=1" : "");
+        if (btn) btn.disabled = true;
+        if (metaEl) metaEl.textContent = forceRefresh ? "Пересчитываем разбивку..." : (metaEl.textContent || "загрузка...");
+        if (hint) hint.textContent = "загрузка...";
+        return fetch(url, { credentials: "same-origin" })
+          .then(function (r) {
+            return parseJsonResponse(r, "Не удалось получить разбивку диска");
+          })
+          .then(function (x) {
+            if (!x.ok || !x.j.success) throw new Error(x.j.error || "Не удалось получить разбивку диска");
+            renderDiskUsage(x.j.diskUsage);
+          })
+          .catch(function (e) {
+            setDiskError(e.message || String(e));
+            if (hint) hint.textContent = "—";
+          })
+          .finally(function () {
+            if (btn) btn.disabled = false;
+          });
+      }
+
+      function initDiskCollapse() {
+        var card = document.getElementById("dg-disk-card");
+        var body = document.getElementById("dg-disk-body");
+        var btn = document.getElementById("dg-disk-toggle");
+        if (!card || !body || !btn) return;
+        var apply = function (collapsed) {
+          body.style.display = collapsed ? "none" : "";
+          btn.textContent = collapsed ? "Развернуть" : "Свернуть";
+        };
+        var initial = false;
+        try {
+          initial = window.localStorage && window.localStorage.getItem(DISK_COLLAPSE_KEY) === "1";
+        } catch (_) {}
+        apply(initial);
+        btn.addEventListener("click", function () {
+          var nextCollapsed = body.style.display !== "none" ? true : false;
+          apply(nextCollapsed);
+          try {
+            if (window.localStorage) window.localStorage.setItem(DISK_COLLAPSE_KEY, nextCollapsed ? "1" : "0");
+          } catch (_) {}
+        });
+      }
+
       document.getElementById("dashboard-sync-all").addEventListener("click", function () {
         fetch("/api/sync-all-start", { method: "POST", credentials: "same-origin" })
           .then(function (r) {
@@ -281,10 +557,20 @@
 
       document.getElementById("dashboard-refresh").addEventListener("click", function () {
         loadDashboard();
+        loadDiskUsage(false);
       });
       document.getElementById("dashboard-db-size-refresh").addEventListener("click", refreshDatabaseSize);
 
+      var diskRefreshBtn = document.getElementById("dg-disk-refresh");
+      if (diskRefreshBtn) {
+        diskRefreshBtn.addEventListener("click", function () {
+          loadDiskUsage(true);
+        });
+      }
+      initDiskCollapse();
+
       loadDashboard();
+      loadDiskUsage(false);
       pollTimer = setInterval(loadDashboard, 15000);
     })();
   </script>

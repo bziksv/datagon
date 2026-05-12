@@ -1,0 +1,1379 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, shrink-to-fit=no" />
+  <title>Карточка товара — Датагон</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="stylesheet" href="/static/css/main.989b22a9.css" />
+    <style>
+    /* Карточка товара (детальная страница, не списочная). Дизайн: тема ArchitectUI,
+       плоские card.main-card, две колонки key/value, мелкие таблицы для логов и продаж. */
+    .dg-prod-page { font-size: 0.85rem; line-height: 1.4; }
+    .dg-prod-page .main-card { margin-bottom: 1rem; }
+    .dg-prod-page .card-header h5 { margin: 0; font-size: 14px; font-weight: 600; }
+    .dg-prod-page .card-header .text-muted { font-size: 12px; }
+    .dg-prod-page .dg-kv-grid {
+      display: grid;
+      grid-template-columns: minmax(160px, 220px) 1fr;
+      column-gap: 12px;
+      row-gap: 4px;
+      align-items: start;
+    }
+    .dg-prod-page .dg-kv-grid .dg-kv-key {
+      color: #6b7280;
+      font-size: 12px;
+      padding-top: 2px;
+      white-space: normal;
+      word-break: break-word;
+    }
+    .dg-prod-page .dg-kv-grid .dg-kv-val {
+      color: #111827;
+      font-size: 13px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .dg-prod-page .dg-kv-grid .dg-kv-val.is-numeric {
+      font-variant-numeric: tabular-nums;
+    }
+    .dg-prod-page .dg-section-title {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: #6b7280;
+      margin: 8px 0 4px;
+    }
+    .dg-prod-page .table.dg-prod-mini {
+      font-size: 12px;
+      margin-bottom: 0;
+      font-variant-numeric: tabular-nums;
+    }
+    .dg-prod-page .table.dg-prod-mini th {
+      background: #f5f7fb;
+      color: #374151;
+      font-weight: 600;
+      border-right: 1px solid #e6e9ee;
+      vertical-align: middle;
+    }
+    .dg-prod-page .table.dg-prod-mini td {
+      border-right: 1px solid #f3f5f8;
+      vertical-align: top;
+    }
+    .dg-prod-page .badge.bg-archive { background: #dc3545 !important; color: #fff; }
+    .dg-prod-page .badge.bg-info-soft { background: #e7f1ff !important; color: #0b5ed7; }
+    .dg-prod-page .dg-prices-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 8px;
+    }
+    .dg-prod-page .dg-prices-grid .dg-price-card {
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 8px 10px;
+      background: #fafbfc;
+    }
+    .dg-prod-page .dg-prices-grid .dg-price-card .dg-price-name {
+      color: #6b7280;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    .dg-prod-page .dg-prices-grid .dg-price-card .dg-price-value {
+      font-size: 16px;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      color: #111827;
+    }
+    .dg-prod-page .dg-stock-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 8px;
+    }
+    .dg-prod-page .dg-stock-grid .dg-stock-card {
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 8px 10px;
+      background: #ffffff;
+    }
+    .dg-prod-page .dg-stock-grid .dg-stock-card .dg-stock-name {
+      color: #6b7280;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    .dg-prod-page .dg-stock-grid .dg-stock-card .dg-stock-value {
+      font-size: 18px;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      color: #111827;
+    }
+    .dg-prod-page .dg-stock-grid .dg-stock-card.is-warn { background: #fff8e6; border-color: #f5d18a; }
+    .dg-prod-page .dg-stock-grid .dg-stock-card.is-bad { background: #fde7e7; border-color: #f1aeb0; }
+    .dg-prod-page .dg-attr-table { font-size: 12px; }
+    .dg-prod-page .dg-attr-table th { width: 240px; color: #6b7280; font-weight: 500; }
+    .dg-prod-page .dg-sales-aggregates {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+      gap: 6px;
+    }
+    .dg-prod-page .dg-sales-aggregates .dg-sales-card {
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      padding: 6px 8px;
+      background: #f7faff;
+      text-align: center;
+    }
+    .dg-prod-page .dg-sales-aggregates .dg-sales-card .dg-sales-window {
+      font-size: 10px;
+      color: #6b7280;
+      text-transform: uppercase;
+    }
+    .dg-prod-page .dg-sales-aggregates .dg-sales-card .dg-sales-qty {
+      font-size: 14px;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      color: #0b5ed7;
+    }
+    .dg-prod-page .dg-sales-aggregates .dg-sales-card .dg-sales-meta {
+      font-size: 10px;
+      color: #6b7280;
+      font-variant-numeric: tabular-nums;
+    }
+    .dg-prod-page .dg-prod-status {
+      display: none;
+      margin: 0 0 12px 0;
+      padding: 8px 12px;
+      border-radius: 6px;
+    }
+    .dg-prod-page .dg-prod-status.is-loading { display: block; background: #f0f3f7; color: #374151; }
+    .dg-prod-page .dg-prod-status.is-error { display: block; background: #fde7e7; color: #842029; }
+    .dg-prod-page .dg-prod-empty {
+      padding: 12px;
+      color: #6b7280;
+      font-size: 12px;
+      background: #fafbfc;
+      border: 1px dashed #d1d5db;
+      border-radius: 6px;
+    }
+    .dg-prod-page .dg-prod-link-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+      font-size: 12px;
+    }
+    .dg-prod-page .dg-prod-link-row a { color: #0b5ed7; }
+    .dg-prod-page .dg-prod-link-row code {
+      background: #f1f3f5;
+      color: #495057;
+      padding: 1px 4px;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    .dg-prod-page .dg-prod-formula-placeholder {
+      padding: 16px;
+      background: #f7fafc;
+      border: 1px dashed #cbd5e1;
+      border-radius: 6px;
+      color: #475569;
+      font-size: 13px;
+    }
+    .dg-prod-page .dg-zero-empty { color: #6b7280; font-size: 12px; padding: 8px 0; }
+  </style>
+
+  <style>
+    /* Один список сайдбара: «ArchitectUI меню» у нижнего края области навигации, без второго блока/ul */
+    .dg-sidebar-nav-scroll {
+      display: flex;
+      flex-direction: column;
+    }
+    .dg-sidebar-nav-measure {
+      flex: 1 1 auto;
+      min-height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+    .dg-sidebar-nav-measure .datagon-nav-shell,
+    .dg-sidebar-nav-measure .vertical-nav-menu {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    /* Только корневой список меню: иначе вложенный ul.metismenu-container (под «Маркетплейсы» и т.п.)
+       получает min-height:100% + flex и растягивается на всю колонку — вертикальная линия темы залезает на соседние пункты. */
+    .dg-sidebar-nav-measure .vertical-nav-menu > .metismenu-container {
+      display: flex;
+      flex-direction: column;
+      flex: 1 1 auto;
+      min-height: 100%;
+      margin-bottom: 0;
+    }
+    /*
+      Подменю «Маркетплейсы»: ArchitectUI скрывает .metismenu-icon у подпунктов и даёт малый padding.
+      Не трогаем узкую полоску без hover — большой padding раздувает li и смещает «left:50%» у всех иконок колонки.
+      При развороте по hover из closed-sidebar класс closed-sidebar не снимается — нужен отдельный селектор с .app-sidebar:hover.
+    */
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon {
+      display: block !important;
+    }
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link {
+      padding-left: 3.4375rem !important;
+      position: relative;
+      /* Длинные подписи подпунктов («Проблемы с товарами», «Яндекс Маркет»)
+         не должны обрезаться ellipsis: разрешаем перенос на 2 строки и
+         выравниваем иконку по верхней строке. */
+      white-space: normal !important;
+      line-height: 1.25;
+      align-items: flex-start;
+      padding-top: 0.45rem !important;
+      padding-bottom: 0.45rem !important;
+      padding-right: 0.5rem !important;
+      min-height: 2rem;
+      height: auto !important;
+    }
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon {
+      top: 0.55rem !important;
+    }
+    .dg-sidebar-architect-item {
+      margin-top: auto;
+    }
+    .dg-sidebar-architect-item .metismenu-link {
+      border-top: 1px solid rgba(0, 0, 0, 0.07);
+      padding-top: 0.65rem;
+    }
+    /* Пункты сайдбара с доступом как у журнала активности (admin / право на пользователей) */
+    .dg-sidebar-nav-restricted .metismenu-link {
+      display: inline-flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.15rem 0.35rem;
+    }
+    .dg-sidebar-nav-restricted .dg-nav-restricted-icon {
+      font-size: 0.7rem;
+      opacity: 0.72;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+    @media (max-width: 991.98px) {
+      /* На мобильном layout не должен наследовать desktop-сдвиг fixed/closed sidebar. */
+      .datagon-vanilla-shell .app-main__outer {
+        margin-left: 0 !important;
+      }
+      .datagon-vanilla-shell .app-footer {
+        left: 0 !important;
+        width: 100% !important;
+      }
+      .datagon-vanilla-shell .app-footer .app-footer__inner {
+        margin-left: 0 !important;
+      }
+      /* На телефонах слой мобильного меню должен перекрывать фиксированный футер. */
+      .datagon-vanilla-shell .sidebar-mobile-overlay {
+        z-index: 1090;
+      }
+      .datagon-vanilla-shell .app-sidebar {
+        z-index: 1100;
+      }
+      .datagon-vanilla-shell .app-footer {
+        z-index: 1080;
+      }
+      .datagon-vanilla-shell.sidebar-mobile-open .app-footer {
+        pointer-events: none;
+        opacity: 0.25;
+      }
+    }
+  </style>
+</head>
+<body class="datagon-vanilla-body" data-dg-active-nav="product">
+  <div class="app-container app-theme-white datagon-shell datagon-vanilla-shell fixed-header fixed-sidebar fixed-footer">
+    <div class="app-header header-shadow">
+      <div class="app-header__logo">
+        <button type="button" class="logo-src datagon-brand" onclick="location.href='/dashboard.html'" title="Открыть дашборд" style="border:0;background:transparent;padding:0;cursor:pointer">Датагон</button>
+        <div class="header__pane ms-auto">
+          <div>
+            <button type="button" class="hamburger hamburger--slider dg-toggle-sidebar" aria-label="Свернуть боковую панель" title="Свернуть боковую панель">
+              <span class="hamburger-box"><span class="hamburger-inner"></span></span>
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="app-header__mobile-menu">
+        <div>
+          <button type="button" class="hamburger hamburger--slider dg-toggle-mobile-sidebar" aria-label="Открыть меню">
+            <span class="hamburger-box"><span class="hamburger-inner"></span></span>
+          </button>
+        </div>
+      </div>
+      <div class="app-header__menu">
+        <span>
+          <button type="button" class="btn btn-primary btn-sm btn-icon btn-icon-only dg-toggle-header-small" aria-label="Доп. меню шапки">
+            <div class="btn-icon-wrapper">
+              <i class="pe-7s-more" style="font-size:1.1rem;line-height:1"></i>
+            </div>
+          </button>
+        </span>
+      </div>
+      <div class="app-header__content">
+        <div class="app-header-left">
+          <div class="search-wrapper">
+            <div class="input-holder">
+              <input type="text" class="search-input" placeholder="Type to search" autocomplete="off" />
+              <button type="button" class="search-icon dg-vanilla-search-docs" aria-label="Открыть документацию" title="Документация">
+                <span></span>
+              </button>
+            </div>
+            <button type="button" class="btn-close dg-vanilla-search-close" aria-label="Закрыть поиск"></button>
+          </div>
+        </div>
+        <div class="app-header-right">
+          <div class="ui-theme-settings ui-theme-settings--header">
+            <button type="button" class="btn btn-link btn-open-options btn-open-options--header" id="TooltipDemoVanilla" aria-label="Параметры темы" title="Параметры темы (полная версия в React-панели)">
+              <i class="pe-7s-config" style="font-size:1.35rem;color:#3f6ad8;line-height:1"></i>
+            </button>
+            <div class="theme-settings__inner">
+              <div class="theme-settings__options-wrapper">
+                <h3 class="themeoptions-heading">Параметры макета</h3>
+                <div class="list-group">
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Фиксированная шапка</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-fixed-header" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Тень шапки</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-header-shadow" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Фиксированный сайдбар</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-fixed-sidebar" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Тень сайдбара</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-sidebar-shadow" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Фиксированный футер</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-fixed-footer" checked><span class="slider round"></span></label>
+                  </div>
+                </div>
+
+                <h3 class="themeoptions-heading">Параметры заголовка страницы</h3>
+                <div class="list-group">
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Иконка заголовка</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-title-icon" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Подзаголовок страницы</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-title-subheading" checked><span class="slider round"></span></label>
+                  </div>
+                </div>
+
+                <h3 class="themeoptions-heading">Цветовые схемы</h3>
+                <div class="list-group">
+                  <div class="list-group-item">
+                    <h5 class="mb-2">Цветовая схема макета</h5>
+                    <div class="theme-settings-swatches">
+                      <div class="swatch-holder-lg active dg-theme-color-scheme" data-color-scheme="white" style="background:#fff;border:1px solid #dee2e6"></div>
+                      <div class="swatch-holder-lg dg-theme-color-scheme" data-color-scheme="gray" style="background:#868e96"></div>
+                    </div>
+                  </div>
+                </div>
+
+                <h3 class="themeoptions-heading">Параметры сайдбара</h3>
+                <div class="list-group">
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Фоновое изображение сайдбара</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-sidebar-bg-image"><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item">
+                    <h5 class="mb-2">Цвета сайдбара</h5>
+                    <div class="theme-settings-swatches">
+                      <div class="swatch-holder bg-primary dg-theme-sidebar-color" data-color-class="bg-primary"></div><div class="swatch-holder bg-danger dg-theme-sidebar-color" data-color-class="bg-danger"></div><div class="swatch-holder bg-warning dg-theme-sidebar-color" data-color-class="bg-warning"></div><div class="swatch-holder bg-success dg-theme-sidebar-color" data-color-class="bg-success"></div>
+                      <div class="swatch-holder bg-info dg-theme-sidebar-color" data-color-class="bg-info"></div><div class="swatch-holder bg-secondary dg-theme-sidebar-color" data-color-class="bg-secondary"></div><div class="swatch-holder bg-dark dg-theme-sidebar-color" data-color-class="bg-dark"></div><div class="swatch-holder dg-theme-sidebar-color" data-color-class="bg-plum-plate" style="background:#667eea"></div>
+                      <div class="swatch-holder dg-theme-sidebar-color" data-color-class="bg-arielle-smile" style="background:#16d9e3"></div><div class="swatch-holder dg-theme-sidebar-color" data-color-class="bg-ripe-malin" style="background:#f093fb"></div><div class="swatch-holder dg-theme-sidebar-color" data-color-class="bg-night-fade" style="background:#a18cd1"></div><div class="swatch-holder dg-theme-sidebar-color" data-color-class="bg-malibu-beach" style="background:#4facfe"></div>
+                    </div>
+                  </div>
+                </div>
+
+                <h3 class="themeoptions-heading">Параметры шапки</h3>
+                <div class="list-group">
+                  <div class="list-group-item">
+                    <h5 class="mb-2">Цвета шапки</h5>
+                    <div class="theme-settings-swatches">
+                      <div class="swatch-holder bg-primary dg-theme-header-color" data-color-class="bg-primary"></div><div class="swatch-holder bg-danger dg-theme-header-color" data-color-class="bg-danger"></div><div class="swatch-holder bg-warning dg-theme-header-color" data-color-class="bg-warning"></div><div class="swatch-holder bg-success dg-theme-header-color" data-color-class="bg-success"></div>
+                      <div class="swatch-holder bg-info dg-theme-header-color" data-color-class="bg-info"></div><div class="swatch-holder bg-secondary dg-theme-header-color" data-color-class="bg-secondary"></div><div class="swatch-holder bg-dark dg-theme-header-color" data-color-class="bg-dark"></div><div class="swatch-holder dg-theme-header-color" data-color-class="bg-plum-plate" style="background:#667eea"></div>
+                    </div>
+                  </div>
+                </div>
+                <div class="p-2">
+                  <a href="/settings.html" class="btn btn-sm btn-outline-primary w-100">Настройки</a>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="header-dots">
+            <div class="dropdown">
+              <button type="button" class="btn btn-link p-0 me-2 dg-vanilla-dropdown-toggle" style="line-height:0" aria-expanded="false" aria-haspopup="true">
+                <div class="icon-wrapper icon-wrapper-alt rounded-circle">
+                  <div class="icon-wrapper-bg bg-success"></div>
+                  <i class="pe-7s-graph2" style="font-size:23px;color:#3ac47d"></i>
+                </div>
+              </button>
+              <div class="dropdown-menu dropdown-menu-xl rm-pointers p-0" style="min-width: 320px">
+                <div class="dropdown-menu-header">
+                  <div class="dropdown-menu-header-inner bg-premium-dark">
+                    <div class="menu-header-image" style="background-image:url('/assets/utils/images/dropdown-header/abstract4.jpg')"></div>
+                    <div class="menu-header-content text-white">
+                      <h5 class="menu-header-title">Вы в сети</h5>
+                      <h6 class="menu-header-subtitle">Онлайн за окно из настроек</h6>
+                    </div>
+                  </div>
+                </div>
+                <div class="widget-chart">
+                  <div class="widget-chart-content">
+                    <div class="icon-wrapper rounded-circle">
+                      <div class="icon-wrapper-bg opacity-9 bg-focus"></div>
+                      <i class="lnr-users text-white"></i>
+                    </div>
+                    <div class="widget-numbers d-flex flex-column align-items-center text-center" id="dg-vanilla-online-users-wrap">
+                      <span id="dg-vanilla-online-users">—</span>
+                      <span class="opacity-9 fw-normal" style="font-size: 0.72rem; line-height: 1.25; margin-top: 0.15rem" id="dg-vanilla-online-users-unit"></span>
+                    </div>
+                    <div class="widget-subheading pt-2 small text-muted" id="dg-vanilla-online-users-role"></div>
+                    <div class="text-center small px-2 pt-1 pb-1">
+                      <a href="/settings.html#dg-settings-online-presence" class="text-decoration-none">Окно минут</a>
+                    </div>
+                    <div class="widget-description text-muted small px-2 mt-1 mb-0" id="dg-vanilla-online-users-sessions" style="line-height: 1.35"></div>
+                    <div class="widget-description text-muted mt-2 mb-0">
+                      <span class="pe-1 small" id="dg-vanilla-online-users-note"></span>
+                    </div>
+                  </div>
+                  <div class="widget-chart-wrapper">
+                    <div style="height:40px;opacity:.35;background:linear-gradient(90deg,#f7b924 0%,#f7b92455 100%);border-radius:2px;"></div>
+                  </div>
+                </div>
+                <div class="nav-item-divider mt-0"></div>
+                <div class="nav-item-btn text-center pb-3 mb-2">
+                  <button type="button" class="btn btn-sm btn-shine btn-wide btn-pill btn-warning" id="dg-vanilla-online-users-refresh">
+                    <i class="pe-7s-refresh me-2"></i>Обновить
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="header-btn-lg pe-0">
+            <div class="widget-content p-0">
+              <div class="widget-content-wrapper">
+                <div class="widget-content-left d-flex align-items-center gap-1 pe-2">
+                  <span
+                    class="rounded-circle d-inline-flex align-items-center justify-content-center flex-shrink-0 bg-light text-secondary border"
+                    style="width: 42px; height: 42px; border-color: #e2e8f0"
+                    role="img"
+                    aria-label="Профиль"
+                  >
+                    <i class="pe-7s-user" style="font-size: 1.2rem; line-height: 1; opacity: 0.85" aria-hidden="true"></i>
+                  </span>
+                  <button type="button" class="btn btn-link p-0 dg-vanilla-logout d-inline-flex align-items-center justify-content-center text-danger" title="Выйти" aria-label="Выйти из профиля" style="min-width:34px;min-height:34px;line-height:1;border-radius:50%">
+                    <i class="lnr-exit" style="font-size:1.2rem"></i>
+                  </button>
+                </div>
+                <div class="widget-content-left ms-2 header-user-info">
+                  <div class="widget-heading" id="dg-vanilla-user-display-inline">Пользователь</div>
+                  <div class="widget-subheading" id="dg-vanilla-user-role-inline">Пользователь</div>
+                </div>
+                <div class="widget-content-right header-user-info ms-3">
+                  <button type="button" class="btn btn-shadow p-1 btn-sm btn-info" id="Tooltip-1" title="Click for notifications">
+                    <i class="pe-7s-date text-white" style="font-size:20px;line-height:1"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="app-main">
+      <div class="sidebar-mobile-overlay"></div>
+      <div class="app-sidebar sidebar-shadow">
+        <div class="d-flex flex-column h-100 min-h-0">
+          <div class="app-header__logo">
+            <button type="button" class="logo-src datagon-brand" onclick="location.href='/dashboard.html'" title="Открыть дашборд" style="border:0;background:transparent;padding:0;cursor:pointer">Датагон</button>
+            <div class="header__pane ms-auto">
+              <div>
+                <button type="button" class="hamburger hamburger--slider dg-toggle-sidebar" aria-label="Свернуть боковую панель" title="Свернуть боковую панель">
+                  <span class="hamburger-box"><span class="hamburger-inner"></span></span>
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="app-header__mobile-menu">
+            <div>
+              <button type="button" class="hamburger hamburger--slider dg-toggle-mobile-sidebar" aria-label="Открыть меню">
+                <span class="hamburger-box"><span class="hamburger-inner"></span></span>
+              </button>
+            </div>
+          </div>
+          <div class="app-header__menu">
+            <span>
+              <button type="button" class="btn btn-primary btn-sm btn-icon btn-icon-only dg-toggle-header-small" aria-label="Доп. меню шапки">
+                <div class="btn-icon-wrapper">
+                  <i class="pe-7s-more" style="font-size:1.1rem;line-height:1"></i>
+                </div>
+              </button>
+            </span>
+          </div>
+          <div class="custom-scrollbar dg-sidebar-nav-wrap d-flex flex-column min-h-0" style="flex:1 1 0%;min-height:0;max-height:calc(100vh - 80px);overflow-x:hidden">
+            <div class="app-sidebar__inner dg-sidebar-nav-scroll flex-grow-1 min-h-0" style="overflow-y:auto;overflow-x:hidden">
+              <div class="dg-sidebar-nav-measure">
+                <div class="datagon-nav-shell">
+                  <div class="vertical-nav-menu" style="pointer-events:auto;z-index:999;position:relative">
+                    <ul class="metismenu-container">
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="dashboard" href="/dashboard.html"><i class="metismenu-icon pe-7s-rocket"></i>Дашборд</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="my-sites" href="/my-sites.html"><i class="metismenu-icon pe-7s-global"></i>Мои сайты</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="my-products" href="/my-products.html"><i class="metismenu-icon pe-7s-box2"></i>Мои товары (сайты)</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="moysklad" href="/moysklad.html"><i class="metismenu-icon pe-7s-shopbag"></i>МойСклад</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="projects" href="/projects.html"><i class="metismenu-icon pe-7s-portfolio"></i>Конкуренты</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="queue" href="/queue.html"><i class="metismenu-icon pe-7s-network"></i>Очередь</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="results" href="/results.html"><i class="metismenu-icon pe-7s-note2"></i>Результаты</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="matches" href="/matches.html"><i class="metismenu-icon pe-7s-link"></i>Сопоставление</a></li>
+                      <li class="metismenu-item dg-sidebar-nav-restricted" data-dg-nav-restricted="activity">
+                        <a
+                          class="metismenu-link"
+                          data-nav="processes"
+                          href="/processes.html"
+                          title="Активность и процессы (доступ ограничен: администратор или право управления пользователями)"
+                        >
+                          <i class="metismenu-icon pe-7s-timer"></i>Активность
+                          <i
+                            class="pe-7s-lock dg-nav-restricted-icon"
+                            aria-hidden="true"
+                            title="Пункт меню с ограниченным доступом"
+                          ></i>
+                        </a>
+                      </li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="settings" href="/settings.html"><i class="metismenu-icon pe-7s-config"></i>Настройки</a></li>
+                      <li class="metismenu-item dg-sidebar-architect-item">
+                        <a
+                          class="metismenu-link"
+                          data-nav="architectui-demo"
+                          href="/ref/react-demo-index.html"
+                          title="Каталог разделов React-шаблона ArchitectUI"
+                        >
+                          <i class="metismenu-icon pe-7s-plugin"></i>ArchitectUI
+                        </a>
+                      </li>
+                      <li class="metismenu-item">
+                        <a
+                          href="#"
+                          class="metismenu-link dg-vanilla-submenu-toggle"
+                          aria-expanded="false"
+                          title="Интеграции маркетплейсов: ключи и диагностика выгрузок"
+                        >
+                          <i class="metismenu-icon pe-7s-graph3"></i>Маркетплейсы
+                          <i class="metismenu-state-icon pe-7s-angle-down" aria-hidden="true"></i>
+                        </a>
+                        <ul class="metismenu-container dg-vanilla-mp-submenu">
+                          <!-- Подпункт «Настройки» (data-nav="exports-marketplaces", /exports-marketplaces.html)
+                               скрыт из меню по запросу: ключи API маркетплейсов задаются в /settings.html;
+                               страница остаётся доступной по прямому URL и через ссылки из гайдов
+                               (например, на /exports-marketplaces-issues.html). -->
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-ozon"
+                              href="/exports-marketplaces-ozon.html"
+                              title="Таблица и выгрузка Ozon"
+                            >
+                              <i class="metismenu-icon pe-7s-graph2"></i>Ozon
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-wildberries"
+                              href="/exports-marketplaces-wildberries.html"
+                              title="Таблица и выгрузка Wildberries"
+                            >
+                              <i class="metismenu-icon pe-7s-graph2"></i>Wildberries
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-yandex"
+                              href="/exports-marketplaces-yandex.html"
+                              title="Таблица и выгрузка Яндекс Маркет"
+                            >
+                              <i class="metismenu-icon pe-7s-graph2"></i>Яндекс Маркет
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-huckster"
+                              href="/exports-huckster.html"
+                              title="Интеграция Huckster / e-teleport — матрица UID по магазинам"
+                            >
+                              <i class="metismenu-icon pe-7s-cart"></i>Huckster
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-dimensions"
+                              href="/exports-dimensions.html"
+                              title="Реестр замеров габаритов товаров МойСклад"
+                            >
+                              <i class="metismenu-icon pe-7s-scissors"></i>Габариты
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-issues"
+                              href="/exports-marketplaces-issues.html"
+                              title="Товары МойСклад с проблемами публикации на маркетплейсах"
+                            >
+                              <i class="metismenu-icon pe-7s-attention"></i>Проблемы с товарами
+                            </a>
+                          </li>
+                        </ul>
+                      </li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="ms-sales" href="/ms-sales.html" title="Продажи МС: отгрузки entity/demand, позиции с привязкой к товарам ms_export"><i class="metismenu-icon pe-7s-cash"></i>Продажи МС</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="purchase" href="/purchase.html" title="Закупки: планирование, неснижаемые остатки, кратность"><i class="metismenu-icon pe-7s-cart"></i>Закупки</a></li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="app-sidebar-bg opacity-06"></div>
+        </div>
+      </div>
+
+      <div class="app-main__outer">
+        <div class="app-main__inner">
+  <div class="app-page-title dg-prod-page">
+    <div class="page-title-wrapper">
+      <div class="page-title-heading">
+        <div class="page-title-icon">
+          <i class="pe-7s-id icon-gradient bg-mean-fruit"></i>
+        </div>
+        <div>
+          <span id="dg-prod-title">Карточка товара</span>
+          <div class="page-title-subheading" id="dg-prod-subtitle">
+            Подробные данные из МойСклад: атрибуты, цены, остатки, продажи и фиксация нулевых остатков.
+          </div>
+        </div>
+      </div>
+      <div class="page-title-actions">
+        <a href="/purchase.html" class="btn btn-sm btn-outline-secondary me-2">К списку «Закупки»</a>
+        <a id="dg-prod-ms-link" class="btn btn-sm btn-outline-primary" target="_blank" rel="noopener" href="#" style="display:none;">Открыть в МойСклад</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="dg-prod-page">
+    <div id="dg-prod-status" class="dg-prod-status">Загрузка...</div>
+
+    <!-- 1. Основные данные из МС -->
+    <div class="main-card mb-3 card">
+      <div class="card-header d-flex justify-content-between gap-2 flex-wrap">
+        <div class="d-flex align-items-center gap-2">
+          <i class="header-icon pe-7s-info icon-gradient bg-tempting-azure me-1"></i>
+          <h5>Данные из МойСклад</h5>
+        </div>
+        <span class="text-muted" id="dg-prod-synced-at"></span>
+      </div>
+      <div class="card-body">
+        <div class="dg-prod-link-row mb-2" id="dg-prod-link-row"></div>
+        <div class="dg-kv-grid" id="dg-prod-main-kv"></div>
+      </div>
+    </div>
+
+    <!-- 1.1 Атрибуты (полный список из МС) -->
+    <div class="main-card mb-3 card">
+      <div class="card-header d-flex justify-content-between gap-2 flex-wrap">
+        <div class="d-flex align-items-center gap-2">
+          <i class="header-icon pe-7s-note2 icon-gradient bg-tempting-azure me-1"></i>
+          <h5>Атрибуты МС</h5>
+        </div>
+        <span class="text-muted" id="dg-prod-attrs-meta"></span>
+      </div>
+      <div class="card-body">
+        <div id="dg-prod-attrs"></div>
+      </div>
+    </div>
+
+    <!-- 2. Цены -->
+    <div class="main-card mb-3 card">
+      <div class="card-header d-flex align-items-center gap-2">
+        <i class="header-icon pe-7s-cash icon-gradient bg-mean-fruit me-1"></i>
+        <h5>Цены из МойСклад</h5>
+      </div>
+      <div class="card-body">
+        <div class="dg-prices-grid" id="dg-prod-prices"></div>
+      </div>
+    </div>
+
+    <!-- 3. Остатки и ожидания (+ override-блок) -->
+    <div class="main-card mb-3 card">
+      <div class="card-header d-flex justify-content-between gap-2 flex-wrap">
+        <div class="d-flex align-items-center gap-2">
+          <i class="header-icon pe-7s-box1 icon-gradient bg-mean-fruit me-1"></i>
+          <h5>Остатки и ожидания</h5>
+        </div>
+        <a href="/purchase.html" class="text-muted small">Редактировать override-поля</a>
+      </div>
+      <div class="card-body">
+        <div class="dg-stock-grid mb-3" id="dg-prod-stock"></div>
+        <div class="dg-section-title">Override-поля «Закупки» (только просмотр)</div>
+        <div class="dg-kv-grid" id="dg-prod-override"></div>
+      </div>
+    </div>
+
+    <!-- 4. Фиксация нулевых остатков по складам -->
+    <div class="main-card mb-3 card">
+      <div class="card-header d-flex justify-content-between gap-2 flex-wrap">
+        <div class="d-flex align-items-center gap-2">
+          <i class="header-icon pe-7s-clock icon-gradient bg-mean-fruit me-1"></i>
+          <h5>Нулевые остатки по складам</h5>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+          <select id="dg-prod-zero-days" class="form-select form-select-sm" style="width:auto;">
+            <option value="30">30 дней</option>
+            <option value="60">60 дней</option>
+            <option value="90" selected>90 дней</option>
+            <option value="180">180 дней</option>
+            <option value="365">365 дней</option>
+          </select>
+          <button id="dg-prod-zero-fix" class="btn btn-sm btn-outline-warning" type="button">Зафиксировать нулевой остаток сейчас</button>
+        </div>
+      </div>
+      <div class="card-body">
+        <p class="text-muted small mb-2" id="dg-prod-zero-note">
+          Сейчас фиксация общая по товару. Разбивка по складам появится после расширения синка `report/stock/bystore`.
+        </p>
+        <div id="dg-prod-zero-result" class="dg-prod-status" style="display:none;"></div>
+        <div id="dg-prod-zero-table-wrap"></div>
+      </div>
+    </div>
+
+    <!-- 5. Продажи -->
+    <div class="main-card mb-3 card">
+      <div class="card-header d-flex justify-content-between gap-2 flex-wrap">
+        <div class="d-flex align-items-center gap-2">
+          <i class="header-icon pe-7s-graph2 icon-gradient bg-tempting-azure me-1"></i>
+          <h5>Продажи товара</h5>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+          <span class="text-muted small">Источник: <a href="/ms-sales.html">/ms-sales.html</a></span>
+          <a id="dg-prod-sales-link" href="#" class="btn btn-sm btn-outline-primary">Открыть в «Продажи МС»</a>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="dg-section-title">Агрегаты по окнам (количество)</div>
+        <div class="dg-sales-aggregates mb-3" id="dg-prod-sales-aggs"></div>
+        <div class="dg-section-title">Последние отгрузки</div>
+        <div id="dg-prod-sales-recent-wrap"></div>
+      </div>
+    </div>
+
+    <!-- 6. Формула продаж — заглушка -->
+    <div class="main-card mb-3 card">
+      <div class="card-header d-flex align-items-center gap-2">
+        <i class="header-icon pe-7s-calculator icon-gradient bg-mean-fruit me-1"></i>
+        <h5>Формула продаж</h5>
+      </div>
+      <div class="card-body">
+        <div class="dg-prod-formula-placeholder">
+          Формула продаж будет добавлена позже — конкретные коэффициенты и алгоритм пользователь предоставит отдельно.
+          Заготовлено место для компонент: средние продажи (3/5/7/15/30/60/90/180/365 дн.),
+          доля «нулевых» дней, кратность и неснижаемый остаток Датагон.
+        </div>
+      </div>
+    </div>
+  </div>
+
+        </div>
+
+        <div class="app-footer">
+          <div class="app-footer__inner">
+            <div class="app-footer-left">
+              <div class="footer-dots">
+                <a href="#" class="dot-btn-wrapper dg-vanilla-footer-toggle" id="PopoverFooter-1" aria-expanded="false" aria-haspopup="true">
+                  <i class="dot-btn-icon lnr-bullhorn icon-gradient bg-mean-fruit"></i>
+                  <div class="badge badge-dot badge-abs badge-dot-sm bg-danger">Notifications</div>
+                </a>
+                <div class="dots-separator"></div>
+                <a href="#" class="dot-btn-wrapper dg-vanilla-footer-toggle" id="PopoverFooter-3" aria-expanded="false" aria-haspopup="true">
+                  <i class="dot-btn-icon lnr-pie-chart icon-gradient bg-love-kiss"></i>
+                  <div class="badge badge-dot badge-abs badge-dot-sm bg-warning">Notifications</div>
+                </a>
+                <div class="dropdown-menu popover-custom popover-custom-xl rm-pointers p-0 dg-vanilla-footer-popover" data-footer-popover="PopoverFooter-1" style="min-width:420px">
+                  <div class="dropdown-menu-header mb-0">
+                    <div class="dropdown-menu-header-inner bg-strong-bliss">
+                      <div class="menu-header-image opacity-1" style="background-image:url('./assets/utils/images/dropdown-header/city2.jpg')"></div>
+                      <div class="menu-header-content text-white">
+                        <h5 class="menu-header-title">Notifications</h5>
+                        <h6 class="menu-header-subtitle">You have <b class="text-warning">21</b> unread messages</h6>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="card-tabs-animated card-tabs-animated-inner">
+                    <ul class="nav nav-justified">
+                      <li class="nav-item"><a href="#" class="nav-link active">Messages</a></li>
+                      <li class="nav-item"><a href="#" class="nav-link">Events</a></li>
+                      <li class="nav-item"><a href="#" class="nav-link">Errors</a></li>
+                    </ul>
+                    <div class="p-3">
+                      <div class="text-muted small">Chat, timeline and system tabs in React version.</div>
+                    </div>
+                  </div>
+                  <div class="nav-item-btn text-center pt-3 pb-3">
+                    <button type="button" class="btn btn-shadow btn-wide btn-pill btn-dark">
+                      <span class="badge badge-dot badge-dot-lg bg-warning badge-pulse me-2"></span>
+                      View All Messages
+                    </button>
+                  </div>
+                </div>
+                <div class="dropdown-menu popover-custom popover-custom-lg rm-pointers p-0 dg-vanilla-footer-popover" data-footer-popover="PopoverFooter-3" style="min-width:380px">
+                  <div class="dropdown-menu-header">
+                    <div class="dropdown-menu-header-inner bg-malibu-beach">
+                      <div class="menu-header-image opacity-2" style="background-image:url('./assets/utils/images/dropdown-header/city2.jpg')"></div>
+                      <div class="menu-header-content text-white">
+                        <div class="avatar-icon-wrapper btn-hover-shine mb-3 avatar-icon-xl">
+                          <div class="avatar-icon rounded">
+                            <img src="./assets/utils/images/avatars/2.jpg" alt="Avatar 6" />
+                          </div>
+                        </div>
+                        <h5 class="menu-header-title">Fancy Statistics</h5>
+                        <h6 class="menu-header-subtitle">Just an example of a slider with some chart widgets inside.</h6>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="p-2">
+                    <div class="card no-shadow widget-chart widget-chart2 text-start p-2 m-1">
+                      <div class="widget-title opacity-6 text-muted text-uppercase">New accounts since 2018</div>
+                      <div class="widget-numbers text-success">78<small class="opacity-5 ps-1">%</small></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/datagon-vanilla.js"></script>
+    <script>
+    (function () {
+      // Карточка товара /product.html?code=XXX. Один агрегатный fetch /api/product/:code,
+      // отрисовка 6 блоков. Дополнительно: лог нулевых остатков с обновлением окна
+      // и ручной фиксацией. Никакой бизнес-логики формулы — только заготовка.
+
+      var statusEl = document.getElementById("dg-prod-status");
+      var titleEl = document.getElementById("dg-prod-title");
+      var subtitleEl = document.getElementById("dg-prod-subtitle");
+      var msLink = document.getElementById("dg-prod-ms-link");
+      var syncedAtEl = document.getElementById("dg-prod-synced-at");
+      var linkRow = document.getElementById("dg-prod-link-row");
+      var mainKv = document.getElementById("dg-prod-main-kv");
+      var attrsBox = document.getElementById("dg-prod-attrs");
+      var attrsMeta = document.getElementById("dg-prod-attrs-meta");
+      var pricesBox = document.getElementById("dg-prod-prices");
+      var stockBox = document.getElementById("dg-prod-stock");
+      var overrideBox = document.getElementById("dg-prod-override");
+      var zeroDaysSel = document.getElementById("dg-prod-zero-days");
+      var zeroFixBtn = document.getElementById("dg-prod-zero-fix");
+      var zeroResultEl = document.getElementById("dg-prod-zero-result");
+      var zeroTableWrap = document.getElementById("dg-prod-zero-table-wrap");
+      var salesLink = document.getElementById("dg-prod-sales-link");
+      var salesAggs = document.getElementById("dg-prod-sales-aggs");
+      var salesRecentWrap = document.getElementById("dg-prod-sales-recent-wrap");
+
+      function getCode() {
+        var p = new URLSearchParams(window.location.search);
+        var c = String(p.get("code") || "").trim();
+        return c;
+      }
+
+      function setStatus(kind, text) {
+        if (!statusEl) return;
+        statusEl.className = "dg-prod-status";
+        if (!kind || !text) { statusEl.style.display = "none"; statusEl.textContent = ""; return; }
+        statusEl.classList.add(kind === "error" ? "is-error" : "is-loading");
+        statusEl.textContent = text;
+        statusEl.style.display = "";
+      }
+
+      function fmtNum(n) {
+        var x = Number(n);
+        return Number.isFinite(x) ? x.toLocaleString("ru-RU") : "0";
+      }
+      function fmtFloat(n, frac) {
+        var x = Number(n);
+        if (!Number.isFinite(x)) return "0";
+        return x.toLocaleString("ru-RU", { minimumFractionDigits: frac || 0, maximumFractionDigits: frac || 2 });
+      }
+      function fmtMoney(n, currency) {
+        var x = Number(n);
+        if (!Number.isFinite(x)) return "—";
+        var sign = (currency === "RUB" || !currency) ? " ₽" : (" " + currency);
+        return x.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + sign;
+      }
+      function fmtDate(iso) {
+        if (!iso) return "—";
+        var d = new Date(iso);
+        if (Number.isNaN(d.getTime())) return String(iso);
+        return d.toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" });
+      }
+      function fmtDateOnly(iso) {
+        if (!iso) return "—";
+        var d = new Date(iso);
+        if (Number.isNaN(d.getTime())) return String(iso);
+        return d.toLocaleDateString("ru-RU");
+      }
+      function escapeText(v) {
+        return v == null ? "" : String(v);
+      }
+
+      function pushKv(grid, key, value, opts) {
+        var v = value;
+        if (v == null || v === "" || v === "—") return;
+        var k = document.createElement("div");
+        k.className = "dg-kv-key";
+        k.textContent = key;
+        var val = document.createElement("div");
+        val.className = "dg-kv-val" + (opts && opts.numeric ? " is-numeric" : "");
+        if (opts && opts.html) val.innerHTML = String(v);
+        else val.textContent = String(v);
+        grid.appendChild(k);
+        grid.appendChild(val);
+      }
+
+      function renderMain(ms) {
+        mainKv.innerHTML = "";
+
+        // header bar
+        var head = document.createElement("h3");
+        head.style.fontSize = "16px";
+        head.style.margin = "0 0 4px 0";
+        head.style.display = "flex";
+        head.style.alignItems = "center";
+        head.style.flexWrap = "wrap";
+        head.style.gap = "6px";
+        if (Number(ms.is_archived) === 1) {
+          var bArch = document.createElement("span");
+          bArch.className = "badge bg-archive";
+          bArch.textContent = "Архив";
+          head.appendChild(bArch);
+        }
+        if (ms.type) {
+          var bType = document.createElement("span");
+          bType.className = "badge bg-info-soft";
+          bType.textContent = ms.type;
+          head.appendChild(bType);
+        }
+        var nameSpan = document.createElement("span");
+        nameSpan.textContent = ms.name || "—";
+        head.appendChild(nameSpan);
+        titleEl.textContent = (ms.code ? ("Код " + ms.code + " — ") : "") + (ms.name || "Карточка товара");
+
+        var subParts = [];
+        if (ms.code) subParts.push("Код: " + ms.code);
+        if (ms.article) subParts.push("Артикул: " + ms.article);
+        if (ms.uuid) subParts.push("UUID: " + ms.uuid);
+        subtitleEl.textContent = subParts.join("  ·  ") || "—";
+
+        if (ms.web_href) {
+          msLink.href = ms.web_href;
+          msLink.style.display = "";
+        }
+
+        if (linkRow) {
+          linkRow.innerHTML = "";
+          if (ms.code) {
+            var c = document.createElement("span");
+            c.innerHTML = "Код: <code>" + escapeText(ms.code) + "</code>";
+            linkRow.appendChild(c);
+          }
+          if (ms.uuid) {
+            var u = document.createElement("span");
+            u.innerHTML = "UUID: <code>" + escapeText(ms.uuid) + "</code>";
+            linkRow.appendChild(u);
+          }
+          if (ms.web_href) {
+            var a = document.createElement("a");
+            a.href = ms.web_href;
+            a.target = "_blank"; a.rel = "noopener";
+            a.textContent = "Открыть в МойСклад →";
+            linkRow.appendChild(a);
+          }
+        }
+
+        if (syncedAtEl) {
+          syncedAtEl.textContent = ms.synced_at ? ("Синхронизировано: " + fmtDate(ms.synced_at)) : "";
+        }
+
+        pushKv(mainKv, "Код", ms.code);
+        pushKv(mainKv, "Артикул", ms.article);
+        pushKv(mainKv, "UUID", ms.uuid);
+        pushKv(mainKv, "Тип", ms.type);
+        pushKv(mainKv, "Архивный", Number(ms.is_archived) === 1 ? "Да" : "Нет");
+        pushKv(mainKv, "Складская позиция", ms.stock_position);
+        pushKv(mainKv, "Поставщик", ms.supplier_label || ms.supplier);
+        if (ms.supplier && ms.supplier2 && ms.supplier !== ms.supplier2) {
+          pushKv(mainKv, "Поставщик 1", ms.supplier);
+          pushKv(mainKv, "Поставщик 2", ms.supplier2);
+        }
+        pushKv(mainKv, "Менеджер", ms.manager);
+        pushKv(mainKv, "Контент-менеджер", ms.content_manager);
+        pushKv(mainKv, "НДС", ms.vat);
+        pushKv(mainKv, "НДС на товар", ms.vat_on_product);
+        pushKv(mainKv, "Упаковка стандарт", ms.packing_standard);
+        pushKv(mainKv, "Упаковка своя коробка", ms.packing_own_box);
+        pushKv(mainKv, "Вес упаковки", ms.packing_weight);
+        pushKv(mainKv, "Прекращено сотрудничество", ms.no_longer_cooperation);
+        if (ms.barcodes && ms.barcodes.length) {
+          pushKv(mainKv, "Штрихкоды", ms.barcodes.join(", "));
+        }
+        if (ms.packagings && ms.packagings.length) {
+          var lines = ms.packagings.map(function (pk) {
+            var head = pk.name || "Упаковка";
+            var qty = pk.quantity != null ? (" × " + fmtNum(pk.quantity)) : "";
+            var bcs = pk.barcodes && pk.barcodes.length ? (" [" + pk.barcodes.join(", ") + "]") : "";
+            return head + qty + bcs;
+          });
+          pushKv(mainKv, "Упаковки", lines.join("\n"));
+        }
+        if (ms.description) pushKv(mainKv, "Описание", ms.description);
+        if (ms.images && ms.images.length) {
+          pushKv(mainKv, "Изображения (URL)", ms.images.slice(0, 6).join("\n"));
+        }
+      }
+
+      function renderAttrs(attrs) {
+        attrsBox.innerHTML = "";
+        if (!attrs || !attrs.length) {
+          attrsMeta.textContent = "(нет атрибутов в payload МС)";
+          var empty = document.createElement("div");
+          empty.className = "dg-prod-empty";
+          empty.textContent = "Атрибуты для этого товара не сохранены в `ms_entity_details`. Откройте товар в МС или дождитесь следующего синка.";
+          attrsBox.appendChild(empty);
+          return;
+        }
+        attrsMeta.textContent = "Всего: " + attrs.length;
+        var t = document.createElement("table");
+        t.className = "table table-striped table-sm dg-prod-mini dg-attr-table";
+        var th = document.createElement("thead");
+        th.innerHTML = "<tr><th>Атрибут</th><th>Значение</th><th style=\"width:120px\">Тип</th></tr>";
+        t.appendChild(th);
+        var tb = document.createElement("tbody");
+        attrs.forEach(function (a) {
+          var tr = document.createElement("tr");
+          var c1 = document.createElement("td"); c1.textContent = a.name || "";
+          var c2 = document.createElement("td"); c2.textContent = a.value == null ? "" : String(a.value);
+          var c3 = document.createElement("td"); c3.textContent = a.type || ""; c3.className = "text-muted";
+          tr.appendChild(c1); tr.appendChild(c2); tr.appendChild(c3);
+          tb.appendChild(tr);
+        });
+        t.appendChild(tb);
+        attrsBox.appendChild(t);
+      }
+
+      function renderPrices(prices) {
+        pricesBox.innerHTML = "";
+        if (!prices || !prices.length) {
+          var empty = document.createElement("div");
+          empty.className = "dg-prod-empty";
+          empty.textContent = "Цены не найдены ни в payload МС, ни в `ms_export.buy_price`.";
+          pricesBox.appendChild(empty);
+          return;
+        }
+        prices.forEach(function (p) {
+          var card = document.createElement("div");
+          card.className = "dg-price-card";
+          var nm = document.createElement("div");
+          nm.className = "dg-price-name";
+          nm.textContent = p.name + (p.kind && p.kind !== "sale" ? "" : "");
+          var val = document.createElement("div");
+          val.className = "dg-price-value";
+          val.textContent = fmtMoney(p.value, p.currency);
+          card.appendChild(nm);
+          card.appendChild(val);
+          pricesBox.appendChild(card);
+        });
+      }
+
+      function renderStock(stock) {
+        stockBox.innerHTML = "";
+        if (!stock) {
+          var empty = document.createElement("div");
+          empty.className = "dg-prod-empty";
+          empty.textContent = "Остатки не найдены.";
+          stockBox.appendChild(empty);
+          return;
+        }
+        var cards = [
+          { label: "Остаток", value: fmtFloat(stock.stock || 0, 2), bad: Number(stock.stock || 0) <= 0 },
+          { label: "Резерв", value: stock.reserve == null ? "—" : fmtFloat(stock.reserve, 2) },
+          { label: "В пути", value: stock.in_transit == null ? "—" : fmtFloat(stock.in_transit, 2) },
+          { label: "Неснижаемый остаток (МС)", value: stock.min_stock == null ? "—" : fmtFloat(stock.min_stock, 2) }
+        ];
+        cards.forEach(function (c) {
+          var card = document.createElement("div");
+          card.className = "dg-stock-card" + (c.bad ? " is-bad" : "");
+          var nm = document.createElement("div"); nm.className = "dg-stock-name"; nm.textContent = c.label;
+          var v = document.createElement("div"); v.className = "dg-stock-value"; v.textContent = c.value;
+          card.appendChild(nm); card.appendChild(v);
+          stockBox.appendChild(card);
+        });
+      }
+
+      function renderOverride(over) {
+        overrideBox.innerHTML = "";
+        var rows = [
+          ["Нес.остаток Датагон", over ? over.min_stock_dg : null],
+          ["Кратность товара", over ? over.multiplicity : null],
+          ["Мин.Остаток сч.как", over ? over.min_stock_calc_as : null],
+          ["Предлагаемый нес.ост.", over ? over.proposed_min_stock : null],
+          ["Кол-во в упаковке (override)", over ? over.pack_qty_manual : null]
+        ];
+        var any = false;
+        rows.forEach(function (kv) {
+          if (kv[1] == null) return;
+          any = true;
+          pushKv(overrideBox, kv[0], fmtFloat(kv[1], 3), { numeric: true });
+        });
+        if (over && over.note) pushKv(overrideBox, "Заметка", over.note);
+        if (over && over.updated_at) pushKv(overrideBox, "Обновлено", fmtDate(over.updated_at));
+        if (!any && (!over || !over.note)) {
+          var empty = document.createElement("div");
+          empty.className = "dg-prod-empty";
+          empty.style.gridColumn = "1 / -1";
+          empty.textContent = "Override-полей нет — заполняются на странице «Закупки» (/purchase.html).";
+          overrideBox.appendChild(empty);
+        }
+      }
+
+      function renderSales(sales, code) {
+        salesAggs.innerHTML = "";
+        var aggs = sales && sales.aggregates ? sales.aggregates : {};
+        var keys = ["d3", "d5", "d7", "d15", "d30", "d60", "d90", "d180", "d365"];
+        keys.forEach(function (k) {
+          var a = aggs[k] || { days: Number(k.slice(1)), sum_qty: 0, sum_amount: 0, positions: 0, avg_per_day: 0 };
+          var card = document.createElement("div");
+          card.className = "dg-sales-card";
+          var win = document.createElement("div"); win.className = "dg-sales-window"; win.textContent = a.days + " дн.";
+          var qty = document.createElement("div"); qty.className = "dg-sales-qty"; qty.textContent = fmtFloat(a.sum_qty, 2);
+          var meta = document.createElement("div"); meta.className = "dg-sales-meta";
+          meta.textContent = "ср/день: " + fmtFloat(a.avg_per_day, 3) + " · " + fmtMoney(a.sum_amount, "RUB");
+          card.appendChild(win); card.appendChild(qty); card.appendChild(meta);
+          salesAggs.appendChild(card);
+        });
+
+        salesRecentWrap.innerHTML = "";
+        var rows = sales && Array.isArray(sales.recent) ? sales.recent : [];
+        if (!rows.length) {
+          var empty = document.createElement("div");
+          empty.className = "dg-prod-empty";
+          empty.textContent = "Нет отгрузок за выбранный период (" + (sales && sales.recent_days ? sales.recent_days : 365) + " дн.).";
+          salesRecentWrap.appendChild(empty);
+          return;
+        }
+        var t = document.createElement("table");
+        t.className = "table table-sm table-striped dg-prod-mini";
+        t.innerHTML =
+          "<thead><tr>" +
+            "<th>Документ</th>" +
+            "<th>Дата</th>" +
+            "<th>Контрагент</th>" +
+            "<th>Склад</th>" +
+            "<th class=\"text-end\">Кол-во</th>" +
+            "<th class=\"text-end\">Цена</th>" +
+            "<th class=\"text-end\">Сумма</th>" +
+          "</tr></thead>";
+        var tb = document.createElement("tbody");
+        rows.forEach(function (r) {
+          var tr = document.createElement("tr");
+          if (!r.applicable) tr.style.color = "#9aa1ad";
+          var c1 = document.createElement("td"); c1.textContent = r.doc_name || "";
+          var c2 = document.createElement("td"); c2.textContent = fmtDate(r.moment);
+          var c3 = document.createElement("td"); c3.textContent = r.agent_name || "";
+          var c4 = document.createElement("td"); c4.textContent = r.store_name || "";
+          var c5 = document.createElement("td"); c5.className = "text-end"; c5.textContent = fmtFloat(r.quantity, 2);
+          var c6 = document.createElement("td"); c6.className = "text-end"; c6.textContent = fmtMoney(r.price, "RUB");
+          var c7 = document.createElement("td"); c7.className = "text-end"; c7.textContent = fmtMoney(r.sum, "RUB");
+          tr.appendChild(c1); tr.appendChild(c2); tr.appendChild(c3); tr.appendChild(c4); tr.appendChild(c5); tr.appendChild(c6); tr.appendChild(c7);
+          tb.appendChild(tr);
+        });
+        t.appendChild(tb);
+        salesRecentWrap.appendChild(t);
+
+        if (salesLink && code) {
+          salesLink.href = "/ms-sales.html?search=" + encodeURIComponent(code);
+        }
+      }
+
+      function renderZeroLog(rows) {
+        zeroTableWrap.innerHTML = "";
+        if (!rows || !rows.length) {
+          var d = document.createElement("div");
+          d.className = "dg-zero-empty";
+          d.textContent = "За выбранный период нет зафиксированных нулевых остатков. Нажмите «Зафиксировать нулевой остаток сейчас», чтобы добавить запись на сегодня.";
+          zeroTableWrap.appendChild(d);
+          return;
+        }
+        var t = document.createElement("table");
+        t.className = "table table-sm table-striped dg-prod-mini";
+        t.innerHTML =
+          "<thead><tr>" +
+            "<th>Дата</th>" +
+            "<th>Склад</th>" +
+            "<th class=\"text-end\">Остаток на момент фиксации</th>" +
+            "<th>Источник</th>" +
+            "<th>Создано</th>" +
+          "</tr></thead>";
+        var tb = document.createElement("tbody");
+        rows.forEach(function (r) {
+          var tr = document.createElement("tr");
+          var c1 = document.createElement("td"); c1.textContent = fmtDateOnly(r.ts_date);
+          var c2 = document.createElement("td");
+          c2.textContent = r.store_name ? r.store_name : (r.store_uuid === "__total__" ? "Все склады (общая фиксация)" : r.store_uuid);
+          var c3 = document.createElement("td"); c3.className = "text-end";
+          c3.textContent = r.total_stock == null ? "—" : fmtFloat(r.total_stock, 3);
+          var c4 = document.createElement("td"); c4.textContent = r.source || "manual";
+          var c5 = document.createElement("td"); c5.textContent = fmtDate(r.created_at);
+          tr.appendChild(c1); tr.appendChild(c2); tr.appendChild(c3); tr.appendChild(c4); tr.appendChild(c5);
+          tb.appendChild(tr);
+        });
+        t.appendChild(tb);
+        zeroTableWrap.appendChild(t);
+      }
+
+      function renderAll(payload) {
+        renderMain(payload.ms || {});
+        renderAttrs(payload.ms ? payload.ms.attributes : []);
+        renderPrices(payload.prices);
+        renderStock(payload.stock);
+        renderOverride(payload.override);
+        renderSales(payload.sales, payload.code);
+        renderZeroLog(payload.zero_stock ? payload.zero_stock.rows : []);
+      }
+
+      function loadCard() {
+        var code = getCode();
+        if (!code) {
+          setStatus("error", "Не указан параметр ?code= в URL. Откройте карточку из «Закупки» (/purchase.html).");
+          return;
+        }
+        setStatus("loading", "Загрузка карточки товара…");
+        var zd = Number(zeroDaysSel && zeroDaysSel.value || 90);
+        fetch("/api/product/" + encodeURIComponent(code) + "?zero_days=" + zd, { credentials: "same-origin" })
+          .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+          .then(function (x) {
+            if (!x.ok || !x.j || x.j.success === false) {
+              throw new Error((x.j && x.j.error) || ("HTTP " + (x.ok ? "?" : "ошибка")));
+            }
+            setStatus(null);
+            renderAll(x.j);
+          })
+          .catch(function (e) {
+            setStatus("error", "Ошибка загрузки: " + (e && e.message ? e.message : e));
+          });
+      }
+
+      function reloadZeroLog() {
+        var code = getCode();
+        if (!code) return;
+        var zd = Number(zeroDaysSel && zeroDaysSel.value || 90);
+        fetch("/api/product/" + encodeURIComponent(code) + "/zero-stock-log?days=" + zd, { credentials: "same-origin" })
+          .then(function (r) { return r.json(); })
+          .then(function (j) {
+            if (!j || j.success === false) throw new Error((j && j.error) || "Ошибка");
+            renderZeroLog(j.rows || []);
+          })
+          .catch(function (e) {
+            zeroResultEl.style.display = "";
+            zeroResultEl.className = "dg-prod-status is-error";
+            zeroResultEl.textContent = "Ошибка обновления лога: " + (e && e.message ? e.message : e);
+          });
+      }
+
+      function fixZeroNow() {
+        var code = getCode();
+        if (!code) return;
+        zeroFixBtn.disabled = true;
+        zeroResultEl.style.display = "";
+        zeroResultEl.className = "dg-prod-status is-loading";
+        zeroResultEl.textContent = "Фиксируем нулевой остаток…";
+        fetch("/api/product/" + encodeURIComponent(code) + "/zero-stock-log", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({})
+        })
+          .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+          .then(function (x) {
+            zeroFixBtn.disabled = false;
+            if (!x.ok || !x.j || x.j.success === false) {
+              zeroResultEl.className = "dg-prod-status is-error";
+              zeroResultEl.textContent = "Не удалось зафиксировать: " + ((x.j && x.j.error) || "ошибка");
+              return;
+            }
+            zeroResultEl.className = "dg-prod-status is-loading";
+            var s = x.j.stored || {};
+            zeroResultEl.textContent = "OK. Запись от " + (s.ts_date ? fmtDateOnly(s.ts_date) : "сегодня") + ", остаток на момент фиксации: " + (s.total_stock == null ? "—" : fmtFloat(s.total_stock, 3));
+            reloadZeroLog();
+          })
+          .catch(function (e) {
+            zeroFixBtn.disabled = false;
+            zeroResultEl.className = "dg-prod-status is-error";
+            zeroResultEl.textContent = "Сеть недоступна: " + (e && e.message ? e.message : e);
+          });
+      }
+
+      if (zeroFixBtn) zeroFixBtn.addEventListener("click", fixZeroNow);
+      if (zeroDaysSel) zeroDaysSel.addEventListener("change", reloadZeroLog);
+
+      loadCard();
+    })();
+  </script>
+
+</body>
+</html>

@@ -1,0 +1,474 @@
+  <script>
+    (function () {
+      // Карточка товара /product.html?code=XXX. Один агрегатный fetch /api/product/:code,
+      // отрисовка 6 блоков. Дополнительно: лог нулевых остатков с обновлением окна
+      // и ручной фиксацией. Никакой бизнес-логики формулы — только заготовка.
+
+      var statusEl = document.getElementById("dg-prod-status");
+      var titleEl = document.getElementById("dg-prod-title");
+      var subtitleEl = document.getElementById("dg-prod-subtitle");
+      var msLink = document.getElementById("dg-prod-ms-link");
+      var syncedAtEl = document.getElementById("dg-prod-synced-at");
+      var linkRow = document.getElementById("dg-prod-link-row");
+      var mainKv = document.getElementById("dg-prod-main-kv");
+      var attrsBox = document.getElementById("dg-prod-attrs");
+      var attrsMeta = document.getElementById("dg-prod-attrs-meta");
+      var pricesBox = document.getElementById("dg-prod-prices");
+      var stockBox = document.getElementById("dg-prod-stock");
+      var overrideBox = document.getElementById("dg-prod-override");
+      var zeroDaysSel = document.getElementById("dg-prod-zero-days");
+      var zeroFixBtn = document.getElementById("dg-prod-zero-fix");
+      var zeroResultEl = document.getElementById("dg-prod-zero-result");
+      var zeroTableWrap = document.getElementById("dg-prod-zero-table-wrap");
+      var salesLink = document.getElementById("dg-prod-sales-link");
+      var salesAggs = document.getElementById("dg-prod-sales-aggs");
+      var salesRecentWrap = document.getElementById("dg-prod-sales-recent-wrap");
+
+      function getCode() {
+        var p = new URLSearchParams(window.location.search);
+        var c = String(p.get("code") || "").trim();
+        return c;
+      }
+
+      function setStatus(kind, text) {
+        if (!statusEl) return;
+        statusEl.className = "dg-prod-status";
+        if (!kind || !text) { statusEl.style.display = "none"; statusEl.textContent = ""; return; }
+        statusEl.classList.add(kind === "error" ? "is-error" : "is-loading");
+        statusEl.textContent = text;
+        statusEl.style.display = "";
+      }
+
+      function fmtNum(n) {
+        var x = Number(n);
+        return Number.isFinite(x) ? x.toLocaleString("ru-RU") : "0";
+      }
+      function fmtFloat(n, frac) {
+        var x = Number(n);
+        if (!Number.isFinite(x)) return "0";
+        return x.toLocaleString("ru-RU", { minimumFractionDigits: frac || 0, maximumFractionDigits: frac || 2 });
+      }
+      function fmtMoney(n, currency) {
+        var x = Number(n);
+        if (!Number.isFinite(x)) return "—";
+        var sign = (currency === "RUB" || !currency) ? " ₽" : (" " + currency);
+        return x.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + sign;
+      }
+      function fmtDate(iso) {
+        if (!iso) return "—";
+        var d = new Date(iso);
+        if (Number.isNaN(d.getTime())) return String(iso);
+        return d.toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" });
+      }
+      function fmtDateOnly(iso) {
+        if (!iso) return "—";
+        var d = new Date(iso);
+        if (Number.isNaN(d.getTime())) return String(iso);
+        return d.toLocaleDateString("ru-RU");
+      }
+      function escapeText(v) {
+        return v == null ? "" : String(v);
+      }
+
+      function pushKv(grid, key, value, opts) {
+        var v = value;
+        if (v == null || v === "" || v === "—") return;
+        var k = document.createElement("div");
+        k.className = "dg-kv-key";
+        k.textContent = key;
+        var val = document.createElement("div");
+        val.className = "dg-kv-val" + (opts && opts.numeric ? " is-numeric" : "");
+        if (opts && opts.html) val.innerHTML = String(v);
+        else val.textContent = String(v);
+        grid.appendChild(k);
+        grid.appendChild(val);
+      }
+
+      function renderMain(ms) {
+        mainKv.innerHTML = "";
+
+        // header bar
+        var head = document.createElement("h3");
+        head.style.fontSize = "16px";
+        head.style.margin = "0 0 4px 0";
+        head.style.display = "flex";
+        head.style.alignItems = "center";
+        head.style.flexWrap = "wrap";
+        head.style.gap = "6px";
+        if (Number(ms.is_archived) === 1) {
+          var bArch = document.createElement("span");
+          bArch.className = "badge bg-archive";
+          bArch.textContent = "Архив";
+          head.appendChild(bArch);
+        }
+        if (ms.type) {
+          var bType = document.createElement("span");
+          bType.className = "badge bg-info-soft";
+          bType.textContent = ms.type;
+          head.appendChild(bType);
+        }
+        var nameSpan = document.createElement("span");
+        nameSpan.textContent = ms.name || "—";
+        head.appendChild(nameSpan);
+        titleEl.textContent = (ms.code ? ("Код " + ms.code + " — ") : "") + (ms.name || "Карточка товара");
+
+        var subParts = [];
+        if (ms.code) subParts.push("Код: " + ms.code);
+        if (ms.article) subParts.push("Артикул: " + ms.article);
+        if (ms.uuid) subParts.push("UUID: " + ms.uuid);
+        subtitleEl.textContent = subParts.join("  ·  ") || "—";
+
+        if (ms.web_href) {
+          msLink.href = ms.web_href;
+          msLink.style.display = "";
+        }
+
+        if (linkRow) {
+          linkRow.innerHTML = "";
+          if (ms.code) {
+            var c = document.createElement("span");
+            c.innerHTML = "Код: <code>" + escapeText(ms.code) + "</code>";
+            linkRow.appendChild(c);
+          }
+          if (ms.uuid) {
+            var u = document.createElement("span");
+            u.innerHTML = "UUID: <code>" + escapeText(ms.uuid) + "</code>";
+            linkRow.appendChild(u);
+          }
+          if (ms.web_href) {
+            var a = document.createElement("a");
+            a.href = ms.web_href;
+            a.target = "_blank"; a.rel = "noopener";
+            a.textContent = "Открыть в МойСклад →";
+            linkRow.appendChild(a);
+          }
+        }
+
+        if (syncedAtEl) {
+          syncedAtEl.textContent = ms.synced_at ? ("Синхронизировано: " + fmtDate(ms.synced_at)) : "";
+        }
+
+        pushKv(mainKv, "Код", ms.code);
+        pushKv(mainKv, "Артикул", ms.article);
+        pushKv(mainKv, "UUID", ms.uuid);
+        pushKv(mainKv, "Тип", ms.type);
+        pushKv(mainKv, "Архивный", Number(ms.is_archived) === 1 ? "Да" : "Нет");
+        pushKv(mainKv, "Складская позиция", ms.stock_position);
+        pushKv(mainKv, "Поставщик", ms.supplier_label || ms.supplier);
+        if (ms.supplier && ms.supplier2 && ms.supplier !== ms.supplier2) {
+          pushKv(mainKv, "Поставщик 1", ms.supplier);
+          pushKv(mainKv, "Поставщик 2", ms.supplier2);
+        }
+        pushKv(mainKv, "Менеджер", ms.manager);
+        pushKv(mainKv, "Контент-менеджер", ms.content_manager);
+        pushKv(mainKv, "НДС", ms.vat);
+        pushKv(mainKv, "НДС на товар", ms.vat_on_product);
+        pushKv(mainKv, "Упаковка стандарт", ms.packing_standard);
+        pushKv(mainKv, "Упаковка своя коробка", ms.packing_own_box);
+        pushKv(mainKv, "Вес упаковки", ms.packing_weight);
+        pushKv(mainKv, "Прекращено сотрудничество", ms.no_longer_cooperation);
+        if (ms.barcodes && ms.barcodes.length) {
+          pushKv(mainKv, "Штрихкоды", ms.barcodes.join(", "));
+        }
+        if (ms.packagings && ms.packagings.length) {
+          var lines = ms.packagings.map(function (pk) {
+            var head = pk.name || "Упаковка";
+            var qty = pk.quantity != null ? (" × " + fmtNum(pk.quantity)) : "";
+            var bcs = pk.barcodes && pk.barcodes.length ? (" [" + pk.barcodes.join(", ") + "]") : "";
+            return head + qty + bcs;
+          });
+          pushKv(mainKv, "Упаковки", lines.join("\n"));
+        }
+        if (ms.description) pushKv(mainKv, "Описание", ms.description);
+        if (ms.images && ms.images.length) {
+          pushKv(mainKv, "Изображения (URL)", ms.images.slice(0, 6).join("\n"));
+        }
+      }
+
+      function renderAttrs(attrs) {
+        attrsBox.innerHTML = "";
+        if (!attrs || !attrs.length) {
+          attrsMeta.textContent = "(нет атрибутов в payload МС)";
+          var empty = document.createElement("div");
+          empty.className = "dg-prod-empty";
+          empty.textContent = "Атрибуты для этого товара не сохранены в `ms_entity_details`. Откройте товар в МС или дождитесь следующего синка.";
+          attrsBox.appendChild(empty);
+          return;
+        }
+        attrsMeta.textContent = "Всего: " + attrs.length;
+        var t = document.createElement("table");
+        t.className = "table table-striped table-sm dg-prod-mini dg-attr-table";
+        var th = document.createElement("thead");
+        th.innerHTML = "<tr><th>Атрибут</th><th>Значение</th><th style=\"width:120px\">Тип</th></tr>";
+        t.appendChild(th);
+        var tb = document.createElement("tbody");
+        attrs.forEach(function (a) {
+          var tr = document.createElement("tr");
+          var c1 = document.createElement("td"); c1.textContent = a.name || "";
+          var c2 = document.createElement("td"); c2.textContent = a.value == null ? "" : String(a.value);
+          var c3 = document.createElement("td"); c3.textContent = a.type || ""; c3.className = "text-muted";
+          tr.appendChild(c1); tr.appendChild(c2); tr.appendChild(c3);
+          tb.appendChild(tr);
+        });
+        t.appendChild(tb);
+        attrsBox.appendChild(t);
+      }
+
+      function renderPrices(prices) {
+        pricesBox.innerHTML = "";
+        if (!prices || !prices.length) {
+          var empty = document.createElement("div");
+          empty.className = "dg-prod-empty";
+          empty.textContent = "Цены не найдены ни в payload МС, ни в `ms_export.buy_price`.";
+          pricesBox.appendChild(empty);
+          return;
+        }
+        prices.forEach(function (p) {
+          var card = document.createElement("div");
+          card.className = "dg-price-card";
+          var nm = document.createElement("div");
+          nm.className = "dg-price-name";
+          nm.textContent = p.name + (p.kind && p.kind !== "sale" ? "" : "");
+          var val = document.createElement("div");
+          val.className = "dg-price-value";
+          val.textContent = fmtMoney(p.value, p.currency);
+          card.appendChild(nm);
+          card.appendChild(val);
+          pricesBox.appendChild(card);
+        });
+      }
+
+      function renderStock(stock) {
+        stockBox.innerHTML = "";
+        if (!stock) {
+          var empty = document.createElement("div");
+          empty.className = "dg-prod-empty";
+          empty.textContent = "Остатки не найдены.";
+          stockBox.appendChild(empty);
+          return;
+        }
+        var cards = [
+          { label: "Остаток", value: fmtFloat(stock.stock || 0, 2), bad: Number(stock.stock || 0) <= 0 },
+          { label: "Резерв", value: stock.reserve == null ? "—" : fmtFloat(stock.reserve, 2) },
+          { label: "В пути", value: stock.in_transit == null ? "—" : fmtFloat(stock.in_transit, 2) },
+          { label: "Неснижаемый остаток (МС)", value: stock.min_stock == null ? "—" : fmtFloat(stock.min_stock, 2) }
+        ];
+        cards.forEach(function (c) {
+          var card = document.createElement("div");
+          card.className = "dg-stock-card" + (c.bad ? " is-bad" : "");
+          var nm = document.createElement("div"); nm.className = "dg-stock-name"; nm.textContent = c.label;
+          var v = document.createElement("div"); v.className = "dg-stock-value"; v.textContent = c.value;
+          card.appendChild(nm); card.appendChild(v);
+          stockBox.appendChild(card);
+        });
+      }
+
+      function renderOverride(over) {
+        overrideBox.innerHTML = "";
+        var rows = [
+          ["Нес.остаток Датагон", over ? over.min_stock_dg : null],
+          ["Кратность товара", over ? over.multiplicity : null],
+          ["Мин.Остаток сч.как", over ? over.min_stock_calc_as : null],
+          ["Предлагаемый нес.ост.", over ? over.proposed_min_stock : null],
+          ["Кол-во в упаковке (override)", over ? over.pack_qty_manual : null]
+        ];
+        var any = false;
+        rows.forEach(function (kv) {
+          if (kv[1] == null) return;
+          any = true;
+          pushKv(overrideBox, kv[0], fmtFloat(kv[1], 3), { numeric: true });
+        });
+        if (over && over.note) pushKv(overrideBox, "Заметка", over.note);
+        if (over && over.updated_at) pushKv(overrideBox, "Обновлено", fmtDate(over.updated_at));
+        if (!any && (!over || !over.note)) {
+          var empty = document.createElement("div");
+          empty.className = "dg-prod-empty";
+          empty.style.gridColumn = "1 / -1";
+          empty.textContent = "Override-полей нет — заполняются на странице «Закупки» (/purchase.html).";
+          overrideBox.appendChild(empty);
+        }
+      }
+
+      function renderSales(sales, code) {
+        salesAggs.innerHTML = "";
+        var aggs = sales && sales.aggregates ? sales.aggregates : {};
+        var keys = ["d3", "d5", "d7", "d15", "d30", "d60", "d90", "d180", "d365"];
+        keys.forEach(function (k) {
+          var a = aggs[k] || { days: Number(k.slice(1)), sum_qty: 0, sum_amount: 0, positions: 0, avg_per_day: 0 };
+          var card = document.createElement("div");
+          card.className = "dg-sales-card";
+          var win = document.createElement("div"); win.className = "dg-sales-window"; win.textContent = a.days + " дн.";
+          var qty = document.createElement("div"); qty.className = "dg-sales-qty"; qty.textContent = fmtFloat(a.sum_qty, 2);
+          var meta = document.createElement("div"); meta.className = "dg-sales-meta";
+          meta.textContent = "ср/день: " + fmtFloat(a.avg_per_day, 3) + " · " + fmtMoney(a.sum_amount, "RUB");
+          card.appendChild(win); card.appendChild(qty); card.appendChild(meta);
+          salesAggs.appendChild(card);
+        });
+
+        salesRecentWrap.innerHTML = "";
+        var rows = sales && Array.isArray(sales.recent) ? sales.recent : [];
+        if (!rows.length) {
+          var empty = document.createElement("div");
+          empty.className = "dg-prod-empty";
+          empty.textContent = "Нет отгрузок за выбранный период (" + (sales && sales.recent_days ? sales.recent_days : 365) + " дн.).";
+          salesRecentWrap.appendChild(empty);
+          return;
+        }
+        var t = document.createElement("table");
+        t.className = "table table-sm table-striped dg-prod-mini";
+        t.innerHTML =
+          "<thead><tr>" +
+            "<th>Документ</th>" +
+            "<th>Дата</th>" +
+            "<th>Контрагент</th>" +
+            "<th>Склад</th>" +
+            "<th class=\"text-end\">Кол-во</th>" +
+            "<th class=\"text-end\">Цена</th>" +
+            "<th class=\"text-end\">Сумма</th>" +
+          "</tr></thead>";
+        var tb = document.createElement("tbody");
+        rows.forEach(function (r) {
+          var tr = document.createElement("tr");
+          if (!r.applicable) tr.style.color = "#9aa1ad";
+          var c1 = document.createElement("td"); c1.textContent = r.doc_name || "";
+          var c2 = document.createElement("td"); c2.textContent = fmtDate(r.moment);
+          var c3 = document.createElement("td"); c3.textContent = r.agent_name || "";
+          var c4 = document.createElement("td"); c4.textContent = r.store_name || "";
+          var c5 = document.createElement("td"); c5.className = "text-end"; c5.textContent = fmtFloat(r.quantity, 2);
+          var c6 = document.createElement("td"); c6.className = "text-end"; c6.textContent = fmtMoney(r.price, "RUB");
+          var c7 = document.createElement("td"); c7.className = "text-end"; c7.textContent = fmtMoney(r.sum, "RUB");
+          tr.appendChild(c1); tr.appendChild(c2); tr.appendChild(c3); tr.appendChild(c4); tr.appendChild(c5); tr.appendChild(c6); tr.appendChild(c7);
+          tb.appendChild(tr);
+        });
+        t.appendChild(tb);
+        salesRecentWrap.appendChild(t);
+
+        if (salesLink && code) {
+          salesLink.href = "/ms-sales.html?search=" + encodeURIComponent(code);
+        }
+      }
+
+      function renderZeroLog(rows) {
+        zeroTableWrap.innerHTML = "";
+        if (!rows || !rows.length) {
+          var d = document.createElement("div");
+          d.className = "dg-zero-empty";
+          d.textContent = "За выбранный период нет зафиксированных нулевых остатков. Нажмите «Зафиксировать нулевой остаток сейчас», чтобы добавить запись на сегодня.";
+          zeroTableWrap.appendChild(d);
+          return;
+        }
+        var t = document.createElement("table");
+        t.className = "table table-sm table-striped dg-prod-mini";
+        t.innerHTML =
+          "<thead><tr>" +
+            "<th>Дата</th>" +
+            "<th>Склад</th>" +
+            "<th class=\"text-end\">Остаток на момент фиксации</th>" +
+            "<th>Источник</th>" +
+            "<th>Создано</th>" +
+          "</tr></thead>";
+        var tb = document.createElement("tbody");
+        rows.forEach(function (r) {
+          var tr = document.createElement("tr");
+          var c1 = document.createElement("td"); c1.textContent = fmtDateOnly(r.ts_date);
+          var c2 = document.createElement("td");
+          c2.textContent = r.store_name ? r.store_name : (r.store_uuid === "__total__" ? "Все склады (общая фиксация)" : r.store_uuid);
+          var c3 = document.createElement("td"); c3.className = "text-end";
+          c3.textContent = r.total_stock == null ? "—" : fmtFloat(r.total_stock, 3);
+          var c4 = document.createElement("td"); c4.textContent = r.source || "manual";
+          var c5 = document.createElement("td"); c5.textContent = fmtDate(r.created_at);
+          tr.appendChild(c1); tr.appendChild(c2); tr.appendChild(c3); tr.appendChild(c4); tr.appendChild(c5);
+          tb.appendChild(tr);
+        });
+        t.appendChild(tb);
+        zeroTableWrap.appendChild(t);
+      }
+
+      function renderAll(payload) {
+        renderMain(payload.ms || {});
+        renderAttrs(payload.ms ? payload.ms.attributes : []);
+        renderPrices(payload.prices);
+        renderStock(payload.stock);
+        renderOverride(payload.override);
+        renderSales(payload.sales, payload.code);
+        renderZeroLog(payload.zero_stock ? payload.zero_stock.rows : []);
+      }
+
+      function loadCard() {
+        var code = getCode();
+        if (!code) {
+          setStatus("error", "Не указан параметр ?code= в URL. Откройте карточку из «Закупки» (/purchase.html).");
+          return;
+        }
+        setStatus("loading", "Загрузка карточки товара…");
+        var zd = Number(zeroDaysSel && zeroDaysSel.value || 90);
+        fetch("/api/product/" + encodeURIComponent(code) + "?zero_days=" + zd, { credentials: "same-origin" })
+          .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+          .then(function (x) {
+            if (!x.ok || !x.j || x.j.success === false) {
+              throw new Error((x.j && x.j.error) || ("HTTP " + (x.ok ? "?" : "ошибка")));
+            }
+            setStatus(null);
+            renderAll(x.j);
+          })
+          .catch(function (e) {
+            setStatus("error", "Ошибка загрузки: " + (e && e.message ? e.message : e));
+          });
+      }
+
+      function reloadZeroLog() {
+        var code = getCode();
+        if (!code) return;
+        var zd = Number(zeroDaysSel && zeroDaysSel.value || 90);
+        fetch("/api/product/" + encodeURIComponent(code) + "/zero-stock-log?days=" + zd, { credentials: "same-origin" })
+          .then(function (r) { return r.json(); })
+          .then(function (j) {
+            if (!j || j.success === false) throw new Error((j && j.error) || "Ошибка");
+            renderZeroLog(j.rows || []);
+          })
+          .catch(function (e) {
+            zeroResultEl.style.display = "";
+            zeroResultEl.className = "dg-prod-status is-error";
+            zeroResultEl.textContent = "Ошибка обновления лога: " + (e && e.message ? e.message : e);
+          });
+      }
+
+      function fixZeroNow() {
+        var code = getCode();
+        if (!code) return;
+        zeroFixBtn.disabled = true;
+        zeroResultEl.style.display = "";
+        zeroResultEl.className = "dg-prod-status is-loading";
+        zeroResultEl.textContent = "Фиксируем нулевой остаток…";
+        fetch("/api/product/" + encodeURIComponent(code) + "/zero-stock-log", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({})
+        })
+          .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+          .then(function (x) {
+            zeroFixBtn.disabled = false;
+            if (!x.ok || !x.j || x.j.success === false) {
+              zeroResultEl.className = "dg-prod-status is-error";
+              zeroResultEl.textContent = "Не удалось зафиксировать: " + ((x.j && x.j.error) || "ошибка");
+              return;
+            }
+            zeroResultEl.className = "dg-prod-status is-loading";
+            var s = x.j.stored || {};
+            zeroResultEl.textContent = "OK. Запись от " + (s.ts_date ? fmtDateOnly(s.ts_date) : "сегодня") + ", остаток на момент фиксации: " + (s.total_stock == null ? "—" : fmtFloat(s.total_stock, 3));
+            reloadZeroLog();
+          })
+          .catch(function (e) {
+            zeroFixBtn.disabled = false;
+            zeroResultEl.className = "dg-prod-status is-error";
+            zeroResultEl.textContent = "Сеть недоступна: " + (e && e.message ? e.message : e);
+          });
+      }
+
+      if (zeroFixBtn) zeroFixBtn.addEventListener("click", fixZeroNow);
+      if (zeroDaysSel) zeroDaysSel.addEventListener("change", reloadZeroLog);
+
+      loadCard();
+    })();
+  </script>

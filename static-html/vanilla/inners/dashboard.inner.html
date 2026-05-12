@@ -43,6 +43,215 @@
             </div>
           </div>
 
+          <style>
+            .dg-disk-stat-tile {
+              border: 1px solid #eef0f4;
+              border-radius: 0.5rem;
+              padding: 0.85rem 1rem;
+              background: #fbfcfe;
+              height: 100%;
+            }
+            .dg-disk-stat-label {
+              font-size: 0.78rem;
+              color: #6c757d;
+              text-transform: uppercase;
+              letter-spacing: 0.04em;
+              margin-bottom: 0.2rem;
+            }
+            .dg-disk-stat-value {
+              font-weight: 600;
+              font-size: 1.15rem;
+              line-height: 1.2;
+              color: #212529;
+              word-break: break-word;
+            }
+            .dg-disk-stat-sub {
+              color: #6c757d;
+              font-size: 0.78rem;
+              margin-top: 0.2rem;
+            }
+            .dg-disk-fs-bar {
+              height: 0.85rem;
+              border-radius: 0.5rem;
+              overflow: hidden;
+              background: #eef0f4;
+              display: flex;
+            }
+            .dg-disk-fs-seg {
+              height: 100%;
+              transition: width 0.4s ease;
+            }
+            .dg-disk-fs-seg + .dg-disk-fs-seg {
+              border-left: 1px solid rgba(255, 255, 255, 0.6);
+            }
+            .dg-disk-fs-legend {
+              display: flex;
+              flex-wrap: wrap;
+              gap: 0.75rem 1.25rem;
+              font-size: 0.85rem;
+              color: #6c757d;
+              margin-top: 0.5rem;
+            }
+            .dg-disk-fs-legend .legend-dot {
+              display: inline-block;
+              width: 0.65rem;
+              height: 0.65rem;
+              border-radius: 50%;
+              margin-right: 0.4rem;
+              vertical-align: middle;
+            }
+            .dg-disk-folder-list {
+              display: flex;
+              flex-direction: column;
+              gap: 0.55rem;
+            }
+            .dg-disk-folder-row {
+              display: grid;
+              grid-template-columns: minmax(140px, 1.4fr) minmax(100px, 0.9fr) minmax(70px, 0.5fr) 2.4fr;
+              align-items: center;
+              gap: 0.75rem;
+              padding: 0.45rem 0.65rem;
+              border-radius: 0.45rem;
+              background: #fbfcfe;
+              border: 1px solid #eef0f4;
+            }
+            .dg-disk-folder-row:hover {
+              background: #f4f6fb;
+            }
+            .dg-disk-folder-name {
+              font-weight: 600;
+              color: #212529;
+              display: flex;
+              align-items: center;
+              gap: 0.4rem;
+              min-width: 0;
+            }
+            .dg-disk-folder-name .name-text {
+              overflow: hidden;
+              text-overflow: ellipsis;
+              white-space: nowrap;
+            }
+            .dg-disk-folder-name .badge {
+              flex-shrink: 0;
+            }
+            .dg-disk-folder-size {
+              font-variant-numeric: tabular-nums;
+              color: #495057;
+            }
+            .dg-disk-folder-percent {
+              font-variant-numeric: tabular-nums;
+              color: #6c757d;
+              font-size: 0.85rem;
+              text-align: right;
+            }
+            .dg-disk-folder-bar {
+              height: 0.55rem;
+              border-radius: 0.5rem;
+              background: #eef0f4;
+              overflow: hidden;
+            }
+            .dg-disk-folder-bar > span {
+              display: block;
+              height: 100%;
+              border-radius: 0.5rem;
+              transition: width 0.4s ease;
+              min-width: 2px;
+            }
+            .dg-disk-folder-files {
+              color: #adb5bd;
+              font-size: 0.78rem;
+              font-weight: 400;
+            }
+            @media (max-width: 767.98px) {
+              .dg-disk-folder-row {
+                grid-template-columns: 1fr 1fr;
+                grid-template-areas:
+                  "name size"
+                  "bar bar"
+                  "percent percent";
+              }
+              .dg-disk-folder-row > .dg-disk-folder-name { grid-area: name; }
+              .dg-disk-folder-row > .dg-disk-folder-size { grid-area: size; text-align: right; }
+              .dg-disk-folder-row > .dg-disk-folder-percent { grid-area: percent; text-align: left; }
+              .dg-disk-folder-row > .dg-disk-folder-bar { grid-area: bar; }
+            }
+          </style>
+
+          <div class="main-card mb-3 card" id="dg-disk-card">
+            <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+              <div class="d-flex align-items-center">
+                <i class="header-icon pe-7s-server icon-gradient bg-mean-fruit me-2"> </i>
+                <span>Дисковое пространство</span>
+              </div>
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <span class="text-muted small d-none d-md-inline" id="dg-disk-meta">—</span>
+                <button type="button" class="btn btn-sm btn-outline-primary" id="dg-disk-refresh" data-dg-activity-label="Пересчитать использование диска">
+                  <i class="pe-7s-refresh me-1"></i>Пересчитать
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-disk-toggle">Свернуть</button>
+              </div>
+            </div>
+            <div class="card-body" id="dg-disk-body">
+              <div class="row g-3 mb-3">
+                <div class="col-md-3 col-sm-6">
+                  <div class="dg-disk-stat-tile">
+                    <div class="dg-disk-stat-label">Размер проекта</div>
+                    <div class="dg-disk-stat-value" id="dg-disk-project-size">—</div>
+                    <div class="dg-disk-stat-sub" id="dg-disk-project-files">— файлов</div>
+                  </div>
+                </div>
+                <div class="col-md-3 col-sm-6">
+                  <div class="dg-disk-stat-tile">
+                    <div class="dg-disk-stat-label">Занято на диске</div>
+                    <div class="dg-disk-stat-value" id="dg-disk-fs-used">—</div>
+                    <div class="dg-disk-stat-sub" id="dg-disk-fs-used-pct">из —</div>
+                  </div>
+                </div>
+                <div class="col-md-3 col-sm-6">
+                  <div class="dg-disk-stat-tile">
+                    <div class="dg-disk-stat-label">Свободно</div>
+                    <div class="dg-disk-stat-value text-success" id="dg-disk-fs-free">—</div>
+                    <div class="dg-disk-stat-sub" id="dg-disk-fs-free-pct">— %</div>
+                  </div>
+                </div>
+                <div class="col-md-3 col-sm-6">
+                  <div class="dg-disk-stat-tile">
+                    <div class="dg-disk-stat-label">Каталогов</div>
+                    <div class="dg-disk-stat-value" id="dg-disk-folder-count">—</div>
+                    <div class="dg-disk-stat-sub" id="dg-disk-scan-meta">скан: —</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="mb-2 small text-muted">
+                <i class="pe-7s-folder me-1"></i>Корень: <code id="dg-disk-project-path" style="color:#495057">—</code>
+              </div>
+
+              <div class="mb-3">
+                <div class="dg-disk-fs-bar" id="dg-disk-fs-bar" role="img" aria-label="Использование диска">
+                  <div class="dg-disk-fs-seg bg-primary" data-seg="project" style="width:0%"></div>
+                  <div class="dg-disk-fs-seg bg-secondary" data-seg="other" style="width:0%"></div>
+                  <div class="dg-disk-fs-seg bg-success" data-seg="free" style="width:100%"></div>
+                </div>
+                <div class="dg-disk-fs-legend">
+                  <span><span class="legend-dot bg-primary"></span>Проект: <b id="dg-disk-legend-project">—</b></span>
+                  <span><span class="legend-dot bg-secondary"></span>Другие данные: <b id="dg-disk-legend-other">—</b></span>
+                  <span><span class="legend-dot bg-success"></span>Свободно: <b id="dg-disk-legend-free">—</b></span>
+                </div>
+              </div>
+
+              <div class="d-flex align-items-center justify-content-between mb-2">
+                <h6 class="mb-0">Разбивка по папкам проекта</h6>
+                <span class="text-muted small" id="dg-disk-folders-hint">—</span>
+              </div>
+              <div class="dg-disk-folder-list" id="dg-disk-folders-mount">
+                <div class="text-muted">Загрузка разбивки...</div>
+              </div>
+
+              <p class="text-muted small mb-0 mt-3" id="dg-disk-error" style="display:none"></p>
+            </div>
+          </div>
+
           <div class="main-card mb-3 card">
             <div class="card-header d-flex align-items-center justify-content-between gap-2">
               <div class="d-flex align-items-center">

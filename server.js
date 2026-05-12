@@ -98,14 +98,40 @@ let appSettings = {
     auto_sync_huckster_enabled: 0,
     auto_sync_huckster_time: '06:00',
     auto_sync_db_size_enabled: 1,
-    auto_sync_db_size_time: '02:00'
+    auto_sync_db_size_time: '02:00',
+    /** Авто-выгрузка пользовательских override габаритов в МойСклад
+     *  (страница /exports-dimensions.html → балк «↗ В МС: все правки»).
+     *  По умолчанию отключено, время 21:00 МСК. См. routes/dimensions.js
+     *  → runScheduledSyncMs (читает все ms_dimensions_measurements с
+     *  override+uuid и шлёт PUT в /entity/{product|bundle}/{uuid}).
+     */
+    auto_sync_dimensions_enabled: 0,
+    auto_sync_dimensions_time: '21:00',
+    /** Авто-синхронизация продаж МС (entity/demand → ms_demand / ms_demand_position).
+     *  По умолчанию выключена. `auto_sync_mssales_days` — окно периода в днях
+     *  (от 1 до 5*365); 90 дней — баланс «3 квартала истории / приемлемая
+     *  длительность». См. routes/msSales.js → runDemandSync. */
+    auto_sync_mssales_enabled: 0,
+    auto_sync_mssales_time: '07:30',
+    auto_sync_mssales_days: 90
 };
 let syncState = { active: false, processed: 0, total: 0, message: '' };
 const moyskladRouterFactory = require('./routes/moysklad');
+const purchaseRouterFactory = require('./routes/purchase');
+const productRouterFactory = require('./routes/product');
 const pagesRouterFactory = require('./routes/pages');
 const matchesRouterFactory = require('./routes/matches');
 const exportsMarketplacesRouterFactory = require('./routes/exportsMarketplaces');
 const exportsHucksterRouterFactory = require('./routes/exportsHuckster');
+/** Прямой импорт модуля габаритов: нужен для processAutoSyncQueue (task='dimensions')
+ *  ещё до того, как app.use('/api/exports/dimensions', ...) создаст router. См.
+ *  module.exports.runScheduledSyncMs / getScheduledSyncState. */
+const dimensionsRouterFactory = require('./routes/dimensions');
+/** MS Sales: программный триггер автосинхронизации (entity/demand → ms_demand).
+ *  Прямой импорт нужен здесь же, чтобы processAutoSyncQueue / scheduler могли
+ *  стартовать синк без зависимости от Express-роутера. См. module.exports.triggerSync /
+ *  getSyncState в routes/msSales.js. */
+const msSalesModule = require('./routes/msSales');
 let pagesRouter = null;
 let matchesRouter = null;
 const autoSyncLastRunByTask = new Map();
@@ -119,6 +145,12 @@ let sourceIdentityIndexesReady = false;
 // Держим кэш коротким, чтобы виджет "Размер БД" на дашборде обновлялся заметно чаще.
 const DB_SIZE_CACHE_TTL_MS = 5 * 60 * 1000;
 let dbSizeCache = null;
+// Виджет "Дисковое пространство" на дашборде: рекурсивный обход дерева тяжёлый,
+// держим отдельный TTL и одно общее ин-флайт обещание, чтобы параллельные клики
+// "Обновить" не запускали несколько сканов сразу.
+const DISK_USAGE_CACHE_TTL_MS = 5 * 60 * 1000;
+let diskUsageCache = null;
+let diskUsageInFlight = null;
 
 async function ensureSourceEnabledColumn() {
     if (sourceEnabledColumnReady) return;
@@ -258,7 +290,12 @@ async function initDB() {
             ['auto_sync_huckster_enabled','0'],
             ['auto_sync_huckster_time','06:00'],
             ['auto_sync_db_size_enabled','1'],
-            ['auto_sync_db_size_time','02:00']
+            ['auto_sync_db_size_time','02:00'],
+            ['auto_sync_dimensions_enabled','0'],
+            ['auto_sync_dimensions_time','21:00'],
+            ['auto_sync_mssales_enabled','0'],
+            ['auto_sync_mssales_time','07:30'],
+            ['auto_sync_mssales_days','90']
         ];
         for (const [k, v] of defaults) await db.query('INSERT IGNORE INTO app_settings (setting_key, setting_value) VALUES (?, ?)', [k, v]);
 
@@ -818,6 +855,181 @@ async function getDatabaseSizeMetrics(forceRefresh = false) {
     return { ...data, cached: false };
 }
 
+/**
+ * Рекурсивный подсчёт размера каталога без shell-зависимостей (du недоступен в
+ * контейнерах / на ограниченных стендах). Возвращает { sizeBytes, fileCount,
+ * dirCount, errorCount }. Защищён от:
+ *  - циклов через симлинки (используем lstat и не идём в symlinks);
+ *  - permission denied (увеличиваем errorCount, не падаем);
+ *  - параллельной нагрузки (батч по 16 элементов через Promise.all).
+ */
+async function measureDirectorySizeRecursive(dirPath) {
+    let sizeBytes = 0;
+    let fileCount = 0;
+    let dirCount = 0;
+    let errorCount = 0;
+    const stack = [dirPath];
+    while (stack.length) {
+        const current = stack.pop();
+        let entries;
+        try {
+            entries = await fs.readdir(current, { withFileTypes: true });
+        } catch (_) {
+            errorCount += 1;
+            continue;
+        }
+        const BATCH = 16;
+        for (let i = 0; i < entries.length; i += BATCH) {
+            const slice = entries.slice(i, i + BATCH);
+            await Promise.all(slice.map(async (entry) => {
+                const full = path.join(current, entry.name);
+                try {
+                    const st = await fs.lstat(full);
+                    if (st.isSymbolicLink()) return;
+                    if (st.isDirectory()) {
+                        dirCount += 1;
+                        stack.push(full);
+                        return;
+                    }
+                    if (st.isFile()) {
+                        fileCount += 1;
+                        sizeBytes += Number(st.size || 0);
+                    }
+                } catch (_) {
+                    errorCount += 1;
+                }
+            }));
+        }
+    }
+    return { sizeBytes, fileCount, dirCount, errorCount };
+}
+
+/**
+ * Информация о файловой системе для каталога: общий/использованный/свободный
+ * объём. Использует fs.statfs (Node ≥ 18.15). Если функция недоступна или
+ * вернула ошибку — возвращает { error }.
+ */
+async function getFileSystemUsageForPath(targetPath) {
+    try {
+        if (typeof fs.statfs !== 'function') {
+            return { error: 'fs.statfs не поддерживается этой версией Node' };
+        }
+        const st = await fs.statfs(targetPath);
+        const blockSize = Number(st.bsize || 0);
+        const total = Number(st.blocks || 0) * blockSize;
+        const free = Number(st.bavail || 0) * blockSize;
+        const reserved = Number(st.bfree || 0) * blockSize - free;
+        const used = total - free - Math.max(0, reserved);
+        return {
+            sizeBytes: total,
+            freeBytes: free,
+            usedBytes: Math.max(0, used),
+            usedPercent: total > 0 ? Number(((Math.max(0, used) / total) * 100).toFixed(1)) : 0
+        };
+    } catch (e) {
+        return { error: e.message || 'Не удалось получить размер диска' };
+    }
+}
+
+async function computeDiskUsageMetrics() {
+    const projectRoot = path.resolve(__dirname);
+    const startedAt = Date.now();
+    let entries = [];
+    try {
+        entries = await fs.readdir(projectRoot, { withFileTypes: true });
+    } catch (e) {
+        return {
+            projectPath: projectRoot,
+            error: e.message || 'Не удалось прочитать корень проекта'
+        };
+    }
+
+    const folderEntries = [];
+    let rootFilesBytes = 0;
+    let rootFilesCount = 0;
+    for (const entry of entries) {
+        if (entry.isSymbolicLink()) continue;
+        const full = path.join(projectRoot, entry.name);
+        if (entry.isDirectory()) {
+            folderEntries.push({ name: entry.name, full, isHidden: entry.name.startsWith('.') });
+        } else if (entry.isFile()) {
+            try {
+                const st = await fs.lstat(full);
+                rootFilesBytes += Number(st.size || 0);
+                rootFilesCount += 1;
+            } catch (_) {}
+        }
+    }
+
+    // Параллельный обход верхнеуровневых каталогов с ограничением concurrency,
+    // чтобы не задушить FS на стенде. CONC=4 — компромисс между скоростью и нагрузкой.
+    const CONC = 4;
+    const folderResults = new Array(folderEntries.length);
+    let cursor = 0;
+    async function worker() {
+        while (true) {
+            const idx = cursor;
+            cursor += 1;
+            if (idx >= folderEntries.length) return;
+            const f = folderEntries[idx];
+            const measured = await measureDirectorySizeRecursive(f.full);
+            folderResults[idx] = {
+                name: f.name,
+                isHidden: f.isHidden,
+                sizeBytes: measured.sizeBytes,
+                fileCount: measured.fileCount,
+                dirCount: measured.dirCount,
+                errorCount: measured.errorCount
+            };
+        }
+    }
+    await Promise.all(Array.from({ length: Math.min(CONC, folderEntries.length || 1) }, worker));
+
+    const folders = folderResults.filter(Boolean);
+    folders.sort((a, b) => Number(b.sizeBytes || 0) - Number(a.sizeBytes || 0));
+
+    let totalBytes = rootFilesBytes;
+    let totalFiles = rootFilesCount;
+    for (const f of folders) {
+        totalBytes += Number(f.sizeBytes || 0);
+        totalFiles += Number(f.fileCount || 0);
+    }
+
+    const fileSystem = await getFileSystemUsageForPath(projectRoot);
+    const finishedAt = Date.now();
+
+    return {
+        projectPath: projectRoot,
+        projectSizeBytes: totalBytes,
+        projectFileCount: totalFiles,
+        rootFilesBytes,
+        rootFilesCount,
+        folders,
+        fileSystem,
+        scanDurationMs: finishedAt - startedAt,
+        scannedAt: new Date(finishedAt).toISOString(),
+        ttlSec: Math.floor(DISK_USAGE_CACHE_TTL_MS / 1000)
+    };
+}
+
+async function getDiskUsageMetrics(forceRefresh = false) {
+    const now = Date.now();
+    if (!forceRefresh && diskUsageCache && now - Number(diskUsageCache.cachedAtMs || 0) < DISK_USAGE_CACHE_TTL_MS) {
+        return { ...diskUsageCache.data, cached: true };
+    }
+    if (diskUsageInFlight) return diskUsageInFlight;
+    diskUsageInFlight = (async () => {
+        try {
+            const data = await computeDiskUsageMetrics();
+            diskUsageCache = { cachedAtMs: Date.now(), data };
+            return { ...data, cached: false };
+        } finally {
+            diskUsageInFlight = null;
+        }
+    })();
+    return diskUsageInFlight;
+}
+
 function enqueueAutoSyncTask(taskType, triggerType = 'schedule') {
     if (!taskType) return;
     const type = String(taskType || '').trim();
@@ -938,7 +1150,18 @@ async function processAutoSyncQueue() {
                 console.log('[AUTO SYNC] Queue start: db_size');
                 await startAutoSyncRun('db_size', triggerType);
                 await getDatabaseSizeMetrics(true);
-                await finishAutoSyncRun('db_size', 'completed', 'Размер БД пересчитан');
+                let diskSummary = '';
+                try {
+                    const disk = await getDiskUsageMetrics(true);
+                    if (disk && !disk.error) {
+                        diskSummary = `, диск проекта: ${(Number(disk.projectSizeBytes || 0) / (1024 * 1024)).toFixed(1)} МБ (${Array.isArray(disk.folders) ? disk.folders.length : 0} папок)`;
+                    } else if (disk && disk.error) {
+                        diskSummary = `, диск: ошибка (${disk.error})`;
+                    }
+                } catch (e) {
+                    diskSummary = `, диск: ошибка (${e && e.message ? e.message : e})`;
+                }
+                await finishAutoSyncRun('db_size', 'completed', `Размер БД пересчитан${diskSummary}`);
                 console.log('[AUTO SYNC] Queue done: db_size');
             } else if (task === 'myproducts') {
                 console.log('[AUTO SYNC] Queue start: myproducts');
@@ -1031,6 +1254,105 @@ async function processAutoSyncQueue() {
                 }
                 await finishAutoSyncRun('huckster', status, message);
                 console.log(`[AUTO SYNC] Queue done: huckster — ${status} (${message})`);
+            } else if (task === 'dimensions') {
+                console.log('[AUTO SYNC] Queue start: dimensions');
+                await startAutoSyncRun('dimensions', triggerType);
+                if (typeof dimensionsRouterFactory.runScheduledSyncMs === 'function') {
+                    /**
+                     * runScheduledSyncMs() — в-process балк-«↗ В МС: все правки»:
+                     * читает все ms_dimensions_measurements с override+uuid и
+                     * шлёт PUT в /entity/{product|bundle}/{uuid}. Прогресс
+                     * виден в getScheduledSyncState() — UI processes.html
+                     * подхватывает его как обычный auto_sync раздел.
+                     */
+                    let runResult;
+                    try {
+                        runResult = await dimensionsRouterFactory.runScheduledSyncMs(db, triggerType);
+                    } catch (e) {
+                        runResult = { started: true, error: e && e.message ? e.message : String(e) };
+                    }
+                    const finalState =
+                        typeof dimensionsRouterFactory.getScheduledSyncState === 'function'
+                            ? dimensionsRouterFactory.getScheduledSyncState()
+                            : { ok: 0, err: 0, total: 0, summary: '', error: null };
+                    let status = 'failed';
+                    let message;
+                    if (runResult && runResult.started === false && runResult.reason === 'already_running') {
+                        status = 'skipped';
+                        message = 'Авто-выгрузка габаритов уже выполняется (пропуск)';
+                    } else if (finalState.error) {
+                        message = (finalState.summary || ('Ошибка: ' + finalState.error)).slice(0, 480);
+                    } else if (Number(finalState.total || 0) === 0) {
+                        status = 'completed';
+                        message = 'Нет позиций с правками — выгружать нечего';
+                    } else if (Number(finalState.err || 0) === 0) {
+                        status = 'completed';
+                        message = (finalState.summary || '').slice(0, 480);
+                    } else {
+                        /** Часть позиций отвалилась — фиксируем как failed, чтобы
+                         *  было видно красным в /processes.html. Детали — в
+                         *  ms_dimensions_log (action='sync_ms') и last_message. */
+                        message = (finalState.summary || '').slice(0, 480);
+                    }
+                    await finishAutoSyncRun('dimensions', status, message);
+                    console.log(`[AUTO SYNC] Queue done: dimensions — ${status} (${message})`);
+                } else {
+                    await finishAutoSyncRun(
+                        'dimensions',
+                        'failed',
+                        'routes/dimensions.js не экспортирует runScheduledSyncMs (обновите код)'
+                    );
+                }
+            } else if (task === 'mssales') {
+                console.log('[AUTO SYNC] Queue start: mssales');
+                await startAutoSyncRun('mssales', triggerType);
+                /** Окно периода берём из настроек; defaults — 90 дней.
+                 *  triggerSync проверит уже идущий синк (already_running) и наличие MS_TOKEN. */
+                const days = Math.max(1, Math.min(365 * 5, Number(appSettings.auto_sync_mssales_days || 90)));
+                let startRes = { started: false };
+                if (typeof msSalesModule.triggerSync === 'function') {
+                    try {
+                        startRes = await msSalesModule.triggerSync(db, { days });
+                    } catch (e) {
+                        startRes = { started: false, error: e && e.message ? e.message : String(e) };
+                    }
+                }
+                if (startRes && startRes.started === false && startRes.reason !== 'already_running') {
+                    await finishAutoSyncRun('mssales', 'failed',
+                        startRes.error || startRes.reason || 'Не удалось запустить синхронизацию продаж МС');
+                    console.log('[AUTO SYNC] Queue done: mssales — failed (start)');
+                } else {
+                    /** Ждём завершения; таймаут — 12 часов, как у остальных. */
+                    const done = await waitUntil(() => {
+                        const s = typeof msSalesModule.getSyncState === 'function'
+                            ? msSalesModule.getSyncState()
+                            : { active: false };
+                        return !s.active;
+                    }, 12 * 60 * 60 * 1000, 1000);
+                    const finalState = typeof msSalesModule.getSyncState === 'function'
+                        ? msSalesModule.getSyncState()
+                        : { active: false };
+                    let status = 'failed';
+                    let message;
+                    if (!done) {
+                        message = 'Таймаут ожидания (12 ч)';
+                    } else if (finalState.last_error) {
+                        message = ('Ошибка: ' + finalState.last_error).slice(0, 480);
+                    } else {
+                        status = 'completed';
+                        message = (
+                            'Окно ' + days + ' дн.: отгрузок ' + (finalState.fetched_demands || 0) +
+                            '/' + (finalState.total_demands || 0) +
+                            ', позиций ' + (finalState.saved_positions || 0) +
+                            ' (резолв ' + (finalState.resolved_positions || 0) +
+                            ', не привязано ' + (finalState.unresolved_positions || 0) +
+                            ', помечено удалёнными ' + (finalState.deleted_demands || 0) +
+                            ', воскрешено ' + (finalState.restored_demands || 0) + ')'
+                        ).slice(0, 480);
+                    }
+                    await finishAutoSyncRun('mssales', status, message);
+                    console.log('[AUTO SYNC] Queue done: mssales — ' + status + ' (' + message + ')');
+                }
             }
         }
     } catch (e) {
@@ -1049,6 +1371,12 @@ async function processAutoSyncQueue() {
         }
         if (autoSyncRunIds.has('db_size')) {
             await finishAutoSyncRun('db_size', 'failed', e.message || 'Ошибка очереди');
+        }
+        if (autoSyncRunIds.has('dimensions')) {
+            await finishAutoSyncRun('dimensions', 'failed', e.message || 'Ошибка очереди');
+        }
+        if (autoSyncRunIds.has('mssales')) {
+            await finishAutoSyncRun('mssales', 'failed', e.message || 'Ошибка очереди');
         }
     } finally {
         autoSyncRunnerActive = false;
@@ -1084,6 +1412,16 @@ function startAutoSyncScheduler() {
                     type: 'db_size',
                     enabled: Number(appSettings.auto_sync_db_size_enabled ?? 1) === 1,
                     time: String(appSettings.auto_sync_db_size_time || '02:00').slice(0, 5)
+                },
+                {
+                    type: 'dimensions',
+                    enabled: Number(appSettings.auto_sync_dimensions_enabled || 0) === 1,
+                    time: String(appSettings.auto_sync_dimensions_time || '21:00').slice(0, 5)
+                },
+                {
+                    type: 'mssales',
+                    enabled: Number(appSettings.auto_sync_mssales_enabled || 0) === 1,
+                    time: String(appSettings.auto_sync_mssales_time || '07:30').slice(0, 5)
                 }
             ];
             for (const t of tasks) {
@@ -1170,7 +1508,8 @@ initDB().then(() => {
     app.post('/api/settings/auto-sync-run', async (req, res) => {
         try {
             const task = String(req.body?.task || '').trim();
-            const allowed = new Set(['myproducts', 'moysklad', 'marketplaces', 'huckster', 'db_size']);
+            const { getAutoSyncTaskKeys } = require('./lib/datagonAutoSyncRegistry');
+            const allowed = new Set(getAutoSyncTaskKeys());
             if (!allowed.has(task)) {
                 return res.status(400).json({ success: false, error: 'Некорректный тип автосинхронизации' });
             }
@@ -1192,12 +1531,6 @@ initDB().then(() => {
     app.use('/api/exports/dimensions', require('./routes/dimensions')(db, appSettings));
     app.use('/api/exports/huckster', exportsHucksterRouterFactory(db, appSettings));
     app.use('/api/projects', require('./routes/projects')(db, appSettings));
-    {
-        // Lagerplus — закупочный модуль (стороннее «вкрапление» поверх ms_export, не меняет
-        // существующий /moysklad.html). См. routes/lagerplus.js и docs api.md (раздел Lagerplus).
-        const { createLagerplusRouter } = require('./routes/lagerplus');
-        app.use('/api/lagerplus', createLagerplusRouter(db, appSettings));
-    }
     {
         // MS Sales — отдельная страница «Продажи МС»: тянет entity/demand из МС API,
         // хранит документы и позиции локально, резолвит позиции до ms_export.uuid/code.
@@ -1235,6 +1568,24 @@ initDB().then(() => {
             return res.json({ success: true, databaseSize });
         } catch (e) {
             return res.status(500).json({ success: false, error: e.message || 'Не удалось получить размер базы данных' });
+        }
+    });
+
+    /**
+     * Используется виджетом "Дисковое пространство" на дашборде:
+     *  - размер диска (df-эквивалент через fs.statfs);
+     *  - суммарный размер проекта;
+     *  - разбивка по верхнеуровневым каталогам (включая .git, node_modules, vendor)
+     *    с количеством файлов и долей в %.
+     * Кэш 5 минут (см. DISK_USAGE_CACHE_TTL_MS); ?refresh=1 пересчитывает.
+     */
+    app.get('/api/processes/disk-usage', async (req, res) => {
+        try {
+            const forceRefresh = String(req.query.refresh || '') === '1';
+            const diskUsage = await getDiskUsageMetrics(forceRefresh);
+            return res.json({ success: true, diskUsage });
+        } catch (e) {
+            return res.status(500).json({ success: false, error: e.message || 'Не удалось получить разбивку диска' });
         }
     });
 
@@ -1293,11 +1644,22 @@ initDB().then(() => {
                 ? moyskladState
                 : { ...moyskladState, logs: [] };
             const mskNow = getMoscowNowParts();
+            /**
+             * Поле `sections` строится из единого реестра задач
+             * `lib/datagonAutoSyncRegistry.js` и используется фронтом
+             * `processes.scripts.html` → `renderAutoSyncSections`. Это
+             * исключает рассинхрон между набором задач на /settings.html
+             * и набором карточек на /processes.html: при добавлении новой
+             * задачи в реестр она автоматически появится в обоих местах.
+             * Поле `config` оставлено для обратной совместимости (legacy-фронт).
+             */
+            const { buildAutoSyncSectionsSnapshot } = require('./lib/datagonAutoSyncRegistry');
             const autoSync = {
                 now_moscow_time: mskNow.time,
                 now_moscow_date: mskNow.date,
                 queue: [...autoSyncQueue],
                 runner_active: Boolean(autoSyncRunnerActive),
+                sections: buildAutoSyncSectionsSnapshot(appSettings),
                 config: {
                     myproducts_enabled: Number(appSettings.auto_sync_myproducts_enabled || 0) === 1,
                     myproducts_time: String(appSettings.auto_sync_myproducts_time || '03:00'),
@@ -1308,7 +1670,12 @@ initDB().then(() => {
                     huckster_enabled: Number(appSettings.auto_sync_huckster_enabled || 0) === 1,
                     huckster_time: String(appSettings.auto_sync_huckster_time || '06:00'),
                     db_size_enabled: Number(appSettings.auto_sync_db_size_enabled ?? 1) === 1,
-                    db_size_time: String(appSettings.auto_sync_db_size_time || '02:00')
+                    db_size_time: String(appSettings.auto_sync_db_size_time || '02:00'),
+                    dimensions_enabled: Number(appSettings.auto_sync_dimensions_enabled || 0) === 1,
+                    dimensions_time: String(appSettings.auto_sync_dimensions_time || '21:00'),
+                    mssales_enabled: Number(appSettings.auto_sync_mssales_enabled || 0) === 1,
+                    mssales_time: String(appSettings.auto_sync_mssales_time || '07:30'),
+                    mssales_days: Number(appSettings.auto_sync_mssales_days || 90)
                 }
             };
             const discovery = (typeof pagesRouter?.getDiscoveryJobsSnapshot === 'function')
@@ -1488,6 +1855,8 @@ initDB().then(() => {
         }
     });
     app.use('/api/ms', moyskladRouterFactory(db, appSettings, config));
+    app.use('/api/purchase', purchaseRouterFactory(db, appSettings));
+    app.use('/api/product', productRouterFactory(db, appSettings));
     
     // Алиас для совместимости, если фронт стучится сюда
     app.use('/api/parse', pagesRouter);
@@ -1510,6 +1879,8 @@ initDB().then(() => {
     app.get('/my-sites', redirectToDatagonHtml('my-sites.html'));
     app.get('/my-products', redirectToDatagonHtml('my-products.html'));
     app.get('/moysklad', redirectToDatagonHtml('moysklad.html'));
+    app.get('/purchase', redirectToDatagonHtml('purchase.html'));
+    app.get('/product', redirectToDatagonHtml('product.html'));
     app.get('/matches', redirectToDatagonHtml('matches.html'));
     app.get('/matching', redirectToDatagonHtml('matches.html'));
     app.get('/queue', redirectToDatagonHtml('queue.html'));

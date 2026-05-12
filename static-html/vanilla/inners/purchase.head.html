@@ -1,0 +1,102 @@
+  <style>
+    /* Закупки: эталон таблицы — moysklad. Те же контракты:
+       - sticky `<th>` с прокруткой `thead` под `app-header`,
+       - вертикальные разделители как в `dg-mp-table`,
+       - выделяемые подписи колонок (user-select: text). */
+    .dg-pu-table { font-size: 0.8rem; line-height: 1.25; font-variant-numeric: tabular-nums; }
+    .dg-pu-table thead th {
+      position: sticky !important;
+      top: 0 !important;
+      z-index: 20 !important;
+      background: #ffffff !important;
+      border-right: 1px solid #e6e9ee !important;
+      text-align: center;
+      user-select: text;
+      -webkit-user-select: text;
+    }
+    .dg-pu-table tbody td { border-right: 1px solid #f3f5f8; }
+    .datagon-my-products-table-wrap.table-responsive {
+      overflow: visible !important;
+      max-height: none !important;
+    }
+    .datagon-my-products-table-wrap.table-responsive,
+    .datagon-my-products-table-wrap.table-responsive > table {
+      transform: none !important;
+      filter: none !important;
+      perspective: none !important;
+    }
+    .datagon-columns-toolbox {
+      margin: 0 0 10px 0;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      background: #fafbfc;
+      padding: 8px;
+    }
+    .dg-pu-header-search { min-width: 0; }
+    .dg-pu-header-search .input-group-text {
+      border-color: #d1d5db;
+      font-size: 14px;
+      padding-left: 8px;
+      padding-right: 4px;
+    }
+    .dg-pu-header-search .form-control { font-size: 13px; }
+    .datagon-columns-panel { margin-top: 8px; border-top: 1px dashed #d1d5db; padding-top: 8px; display: none; }
+    .datagon-columns-panel.open { display: block; }
+    .datagon-columns-panel .columns-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 6px 10px;
+    }
+    .datagon-columns-toolbox .dg-pu-widths-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 6px 10px;
+    }
+    .datagon-columns-toolbox .dg-pu-widths-grid label {
+      display: inline-flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 12px;
+      color: #374151;
+      margin: 0;
+    }
+    .datagon-columns-toolbox .dg-pu-widths-grid input[type="number"] {
+      width: 88px;
+      flex: 0 0 auto;
+    }
+    .datagon-columns-panel label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: #374151;
+      user-select: none;
+    }
+    /* Редактируемые ячейки overrides: компактный input number, без выпадающего фокуса. */
+    .dg-pu-edit-input {
+      width: 100%;
+      box-sizing: border-box;
+      font-size: 12px;
+      padding: 2px 4px;
+      border: 1px solid #d1d5db;
+      border-radius: 4px;
+      background: #fffefb;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+    .dg-pu-edit-input:focus {
+      outline: none;
+      border-color: #6c8eef;
+      box-shadow: 0 0 0 2px rgba(108, 142, 239, 0.18);
+    }
+    .dg-pu-edit-input.is-saving { background: #fff8e6; }
+    .dg-pu-edit-input.is-saved { background: #e8f7ee; }
+    .dg-pu-edit-input.is-error { background: #fde7e7; border-color: #d9534f; }
+    /* «Пустые» суточные колонки — серый фон в шапке, пустые `td`. */
+    .dg-pu-future-th { color: #6b7280; background: #f5f7fb !important; }
+    .dg-pu-future-td { background: #fbfcfe; }
+    /* Ссылка-«Код» открывает карточку товара /product.html?code=… в новой вкладке. */
+    .dg-pu-code-link { color: #0b5ed7; text-decoration: none; font-weight: 500; }
+    .dg-pu-code-link:hover { text-decoration: underline; }
+  </style>

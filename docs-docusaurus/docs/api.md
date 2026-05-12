@@ -32,7 +32,8 @@ description: Справочник REST-эндпоинтов p.datagon.ru (осн
 | МойСклад, `ms_export` | [MoySklad](#moysklad) |
 | Выгрузки Ozon / WB / Я.Маркет | [Exports / marketplaces](#exports--marketplaces) |
 | Продажи МС (отгрузки) | [Продажи МС](#продажи-мс) |
-| Закупочный модуль (адаптация Lagerplus) | [Lagerplus (закупочный модуль)](#lagerplus-закупочный-модуль) |
+| Закупки (планирование, overrides) | [Закупки](#закупки) |
+| Карточка товара (детальная страница) | [Карточка товара](#карточка-товара) |
 | Массовый синк источников | [Глобальная синхронизация (server.js)](#глобальная-синхронизация-serverjs) |
 | Сводка фоновых задач (логи в UI) | [Обзор процессов](#обзор-процессов) |
 | События активности в UI | [Активность](#активность) |
@@ -66,8 +67,9 @@ description: Справочник REST-эндпоинтов p.datagon.ru (осн
 - `/api/ms` -> `routes/moysklad.js`
 - `/api/exports/marketplaces` -> `routes/exportsMarketplaces.js`
 - `/api/exports/dimensions` -> `routes/dimensions.js`
-- `/api/lagerplus` -> `routes/lagerplus.js` (модуль закупок «Lagerplus», адаптация фич [neeil1990/store](https://github.com/neeil1990/store): suppliers / out-of-stock / shipper)
 - `/api/ms-sales` -> `routes/msSales.js` (Продажи МС: отгрузки `entity/demand` + позиции с привязкой к `ms_export`)
+- `/api/purchase` -> `routes/purchase.js` (Закупки: планирование закупок поверх `ms_export` + overrides в `dg_purchase_overrides`)
+- `/api/product` -> `routes/product.js` (Карточка товара: агрегатные данные `ms_export` + `ms_entity_details` + продажи + лог нулевых остатков `dg_product_zero_stock_log`)
 - `/api/activity` -> `routes/activity.js`
 - `GET /api/processes/overview`, `POST /api/sync-all-start`, `POST /api/sync-site-start`, `GET /api/sync-status` -> `server.js`
 
@@ -142,12 +144,14 @@ Body (пример):
 - **`auto_sync_marketplaces_enabled`** / **`auto_sync_marketplaces_time`** — ежедневное обновление снапшотов маркетплейсов (МСК, `HH:MM`).
 - **`auto_sync_huckster_enabled`** / **`auto_sync_huckster_time`** — ежедневное обновление матриц Huckster (МСК); учётные данные — из `app_settings` или `HUCKSTER_EMAIL` / `HUCKSTER_PASSWORD`.
 - **`auto_sync_db_size_enabled`** / **`auto_sync_db_size_time`** — ежедневный пересчёт кэша размера БД для дашборда (МСК, `HH:MM`).
+- **`auto_sync_dimensions_enabled`** / **`auto_sync_dimensions_time`** — ежедневная **выгрузка пользовательских габаритов** (`ms_dimensions_measurements`) в МойСклад (МСК, `HH:MM`, по умолчанию `21:00`). Серверный аналог кнопки «↗ В МС: все правки (все страницы)» на `/exports-dimensions.html`: для каждой позиции с override и валидным `uuid` в `ms_export` отправляет `PUT /entity/{product|bundle}/{uuid}` через `routes/dimensions.js → runScheduledSyncMs`. Каждое отправленное поле фиксируется в `ms_dimensions_log` как `action='sync_ms'` с `note='sync_ms entity=… http=… (schedule)'`. Прогресс и summary видны на `/processes.html` (раздел «Габариты МС») и в `auto_sync_runs.message` (`Всего: N; ✓ ok; × err; пропущено (без uuid): K`).
+- **`auto_sync_mssales_enabled`** / **`auto_sync_mssales_time`** / **`auto_sync_mssales_days`** — ежедневный **импорт продаж МС** (`entity/demand` → `ms_demand` / `ms_demand_position`) для `/ms-sales.html` (МСК, `HH:MM`, по умолчанию `07:30`). Окно периода — `auto_sync_mssales_days` (1..1825 дней, default **90**), валидируется бэком `routes/settings.js`. Серверный путь — `routes/msSales.js → triggerSync(db, { days })` (то же тело, что у `POST /api/ms-sales/sync`); планировщик ждёт окончания через `getSyncState()`, как для `marketplaces`/`huckster`. Запись в `auto_sync_runs` (`task_type='mssales'`, `message` — окно дней + метрики из `jobState`: `fetched_demands/total_demands`, `saved_positions`, резолв, `deleted_demands` (soft-delete для отгрузок, удалённых в МС за тот же период), `restored_demands`). На тестовых данных синк за 7 дней / 1319 отгрузок занимает ~8 минут, на 90 дней оценочно 1.5–2 часа.
 
 ### POST `/api/settings/auto-sync-run`
 
 Принудительно поставить одну задачу автосинхронизации в общую очередь расписания, не дожидаясь времени запуска. Используется кнопками «Запустить сейчас» в `settings.html`.
 
-Body: `{ "task": "myproducts" | "moysklad" | "marketplaces" | "huckster" | "db_size" }`. Запись в `auto_sync_runs` создаётся с `trigger_type = "manual"`.
+Body: `{ "task": "myproducts" | "moysklad" | "marketplaces" | "huckster" | "db_size" | "dimensions" | "mssales" }`. Whitelist допустимых значений берётся из единого реестра `lib/datagonAutoSyncRegistry.js → getAutoSyncTaskKeys()` (см. правило `datagon-auto-sync-registry.mdc`); чтобы добавить задачу — расширьте `AUTO_SYNC_TASKS` в реестре. Запись в `auto_sync_runs` создаётся с `trigger_type = "manual"`. Для `dimensions` запускается тот же балк-синк, что и по расписанию (см. описание `auto_sync_dimensions_*` выше), но с `actor='Авто-синхронизация (вручную)'` в журнале. Для `mssales` — тот же `triggerSync(db, { days })` с `days = appSettings.auto_sync_mssales_days` (см. ниже).
 
 ### POST `/api/settings/fetch-proxy`
 
@@ -1060,6 +1064,8 @@ Body (JSON):
 
 При ошибке MS API ответ: `{ success: false, error: 'MS API 400: ...', http_status: 400, sent_fields, skipped, persisted_fields }`. При отсутствии `MS_TOKEN`/`uuid` — `503` с `code_error: 'NO_TOKEN' | 'NO_UUID'` (включая `persisted_fields`, если успели сохранить inline-`measurement` в БД до фейла).
 
+**Балк по расписанию.** Тот же `syncCodeToMs(...)` вызывается из `runScheduledSyncMs(db, triggerType)` (`module.exports.runScheduledSyncMs` в `routes/dimensions.js`) — это серверный балк-синк всех позиций с override габаритов, без UI и без передачи `measurement` от клиента. Включается в `/settings.html` → «Автосинхронизация по расписанию» → «Габариты МС: время выгрузки (МСК)» (`auto_sync_dimensions_enabled` / `auto_sync_dimensions_time`, по умолчанию `21:00`). Логи: `auto_sync_runs` (тип задачи `dimensions`, `trigger_type = schedule|manual`) + `ms_dimensions_log` (по строке за каждое реально отправленное поле, `action='sync_ms'`, `changed_by_name='Авто-синхронизация (расписание|вручную)'`). Состояние «в процессе» доступно через `module.exports.getScheduledSyncState()` (потребляется `processAutoSyncQueue` для honest-статуса в `auto_sync_runs.message`).
+
 ### DELETE `/api/exports/dimensions/measure/:code`
 
 Удалить замер по коду (откатывает «Кто замерял» / «Дата замера» в пустое значение и все габариты обнуляются). Действие фиксируется в `ms_dimensions_log` строкой `action='delete'`.
@@ -1218,19 +1224,23 @@ Body (JSON): `email`, `password` (обязательны), опциональн�
 Список отгрузок с пагинацией. Query:
 
 - `days` — глубина периода в днях, default 30 (max 5 лет).
-- `search` — подстрока по `doc_name` / `agent_name` / `store_name`.
+- `search` — **умный поиск по товарам в позициях отгрузки**: подстрока по `ms_demand_position.ms_export_code`, `code_at_moment`, `name_at_moment` и `ms_export.name` (для резолвленных позиций). Реализован через `EXISTS`, чтобы не дублировать строки в выдаче.
+- `doc_name` — фильтр по номеру документа (`ms_demand.doc_name`). По умолчанию подстрока (`LIKE '%X%'`); если в значении есть `%` или `_` — используется как готовый LIKE-паттерн.
 - `store_uuid` — фильтр по складу.
 - `agent_uuid` — фильтр по контрагенту.
+- `project_uuid` — фильтр по проекту (`ms_demand.project_uuid`).
 - `applicable` — `1` (по умолчанию: только проведённые) | `0` (только черновики) | пусто (все).
+- `deleted` — `0` (по умолчанию: только активные, без soft-deleted) | `1` (только помеченные удалёнными в МС) | `all` (без фильтра по `deleted_at`).
+- `linked` — `all` (по умолчанию, без фильтра по привязке) | `1` (только отгрузки, у которых **все** позиции привязаны к `ms_export`) | `0` (только отгрузки, у которых **есть** хотя бы одна не привязанная позиция, бейдж «не привязано» в UI). Реализован через `EXISTS / NOT EXISTS` по `ms_demand_position.ms_export_resolved`, опирается на индекс `idx_resolved`.
 - `limit` (1..500, default 100) / `offset` (default 0).
 - `sort_by` — `moment|doc_name|agent|store|positions_count|sum`. Default `moment`.
 - `sort_dir` — `asc|desc`. Default `desc`.
 
-Ответ: `{ success, total, limit, offset, days, rows: [{ uuid, doc_name, moment, applicable, agent_uuid, agent_name, store_uuid, store_name, organization_name, positions_count, sum, fetched_at }] }`. `sum` — в рублях (с двумя знаками после запятой).
+Ответ: `{ success, total, limit, offset, days, rows: [{ uuid, doc_name, moment, applicable, agent_uuid, agent_name, store_uuid, store_name, organization_name, project_uuid, project_name, positions_count, sum, fetched_at, deleted_at }] }`. `sum` — в рублях (с двумя знаками после запятой). `deleted_at` — ISO-строка момента, когда синк не нашёл документ в МС за тот же период (см. поведение `/sync` ниже), либо `null` для активных.
 
 ### GET `/api/ms-sales/filters?days=30`
 
-Справочники для UI: `{ success, stores: [...], agents: [...] }`. Каждый элемент — `{ uuid, name, count }` (количество отгрузок за указанный период).
+Справочники для UI: `{ success, stores: [...], agents: [...], projects: [...] }`. Каждый элемент — `{ uuid, name, count }` (количество отгрузок за указанный период). `projects` — список проектов (`ms_demand.project_uuid` / `project_name`), отсортирован по `count DESC, name`.
 
 ### GET `/api/ms-sales/:uuid/positions`
 
@@ -1252,17 +1262,25 @@ Body (JSON): `email`, `password` (обязательны), опциональн�
 
 ### GET `/api/ms-sales/by-product/:code?days=30&limit=100&offset=0`
 
-Все отгрузки за период, в которых участвовал конкретный `code` из `ms_export`. Возвращает `{ success, code, days, positions, sum_qty, sum_amount, rows: [...] }`. Используется в карточке товара (тонкая ссылка из Lagerplus / других страниц): «Этот товар отгружали 12 раз за 30 дней, всего 38 шт. на сумму 124 500 ₽».
+Все отгрузки за период, в которых участвовал конкретный `code` из `ms_export`. Возвращает `{ success, code, days, positions, sum_qty, sum_amount, rows: [...] }`. Используется в карточке товара (тонкая ссылка из других страниц): «Этот товар отгружали 12 раз за 30 дней, всего 38 шт. на сумму 124 500 ₽».
 
 ### GET `/api/ms-sales/aggregates?days=30&only_resolved=1&limit=1000&offset=0`
 
-Суммарные продажи по товарам за период (`SUM(quantity)`, `SUM(sum_minor)`, `COUNT(positions)`). По умолчанию `only_resolved=1` — учитываются только позиции с привязкой к `ms_export`. Этот эндпоинт станет источником данных для расчётной формулы Lagerplus (`suggested_min_stock`) — в будущей итерации.
+Суммарные продажи по товарам за период (`SUM(quantity)`, `SUM(sum_minor)`, `COUNT(positions)`). По умолчанию `only_resolved=1` — учитываются только позиции с привязкой к `ms_export`. Этот эндпоинт станет источником данных для расчётных формул закупок (`suggested_min_stock`) — в будущей итерации.
 
 ### POST `/api/ms-sales/sync`
 
-Запускает фоновую синхронизацию. Body: `{ days?: 30 }` (default 30, max 5 лет). Возвращает `409` если уже идёт другая синхронизация. Использует тот же `MS_TOKEN` (env / `config.msToken`), что и `routes/dimensions.js`; при отсутствии токена — `503`.
+Запускает фоновую синхронизацию. Body: `{ days?: 30, fresh?: false }` (default `days=30` max 5 лет, `fresh=false`). Возвращает `409` если уже идёт другая синхронизация. Использует тот же `MS_TOKEN` (env / `config.msToken`), что и `routes/dimensions.js`; при отсутствии токена — `503`.
+
+**Auto-resume и `fresh=true`.** По умолчанию (`fresh=false`) перед запросами к МС API синк делает разведку по БД: `SELECT COUNT(*) AS cnt, MIN(moment) AS minM FROM ms_demand WHERE moment BETWEEN momentFrom AND momentTo AND deleted_at IS NULL`. Если `cnt > 0` и `minM` ощутимо позже, чем `momentFrom` (порог — 5 минут), синк переходит в **resume-режим**: `momentTo := minM + 5 минут запаса` (UPSERT защищает пограничные документы), `momentFrom` остаётся прежним. В выдаче МС остаётся только «хвост» периода — синк добивает его и завершается. Это сильно ускоряет повторный запуск после сетевого таймаута/прерывания: не надо заново тянуть 44 тыс. уже сохранённых отгрузок. `fresh=true` принудительно отключает auto-resume — синк проходит весь период от `NOW()` до начала, перезаписывая уже сохранённые отгрузки. UI `/ms-sales.html` показывает два разных триггера: «Синхронизировать с МС» (`fresh=false`) и «Полный синк с нуля» (`fresh=true`).
+
+**Soft-delete на resume-проходе пропускается.** В resume-режиме мы видим только хвост периода, поэтому сравнивать `seenUuids` против всей выдачи `ms_demand` за окно нельзя — это пометило бы все свежие документы как удалённые в МС. Sync-status payload содержит `resume_mode: true` и `resume_from_moment` (ISO-дата), `existing_count_at_start` (сколько отгрузок за окно периода было в БД до прогона).
+
+**Резилиентность сетевых ошибок.** Запросы к МС API (`fetchDemandsPage`) идут через retry-обёртку с экспоненциальным backoff (4 попытки: `0/2/5/12` сек). На 3-й и 4-й попытках `limit` автоматически уменьшается (100 → 50 → 25), чтобы дать МС API шанс отдать страницу быстрее на больших offset'ах, где часто ловили `timeout of 60000ms exceeded`. Транзиентные ошибки (network/timeout, 408, 429, 5xx) ретраятся, фатальные (4xx кроме 408/429) пробрасываются как `last_error`. При исчерпании попыток главный цикл мягко прерывается (не `throw`), сохранённые отгрузки остаются в БД; повторный запуск синка идемпотентен — auto-resume подхватит ровно с места разрыва.
 
 Под капотом — `GET /entity/demand` с расширенным `expand=agent,store,organization,project,contract,salesChannel,owner,group,state,rate.currency,positions.assortment,positions.assortment.product` и фильтром по `moment`, страницами по 100, дросселем 250 мс. Кастомные атрибуты документа (`attributes[]` — «Номер отправления с озона», «Идентификатор чека», и т. п.) приходят прямо в payload без expand и сохраняются в `ms_demand.attributes_json`. Полный raw payload документа (минус `positions`) сохраняется в `ms_demand.payload_json` — для последующего локального backfill, если в схему добавятся новые поля. Если `expand` не подтянул `positions.rows` — догружаются отдельным запросом `/entity/demand/{id}/positions`. Документы upsert'ятся (по `uuid`), позиции пересохраняются заново для каждого документа (DELETE + bulk INSERT по 500).
+
+**Soft-delete (отгрузки, удалённые в МС).** МС API в `entity/demand` не возвращает удалённые документы. Чтобы наша БД не накапливала «фантомные» продажи, после каждого успешного прохода синка (`cancelRequested=false` И нет фатальных ошибок батчей И в выдаче что-то было) в окне `momentFrom..momentTo` сравниваются `ms_demand.uuid` против фактически увиденных в этом проходе UUID. Документам, которых нет в выдаче, ставится `ms_demand.deleted_at = NOW()`. Сами строки и связанные `ms_demand_position` **не удаляются** — они нужны для истории продаж и агрегатов. UPSERT в `persistDemand` сбрасывает `deleted_at = NULL`, поэтому если документ снова появился в МС — он автоматически «воскресает». В UI такие отгрузки помечены бейджем «Удалена из МС», подсвечены красным (`tr.dg-mss-deleted-row`) и по умолчанию скрыты фильтром `Удалённые в МС = Только активные`. Метрики прохода: `deleted_demands` (помечено в этот раз), `restored_demands` (вернулось из soft-delete) — попадают в `/api/ms-sales/sync-status`.
 
 ### POST `/api/ms-sales/sync-cancel`
 
@@ -1270,7 +1288,7 @@ Body (JSON): `email`, `password` (обязательны), опциональн�
 
 ### GET `/api/ms-sales/sync-status`
 
-Статус job-а: `{ success, status: { active, cancel_requested, started_at, finished_at, days, fetched_demands, total_demands, saved_positions, resolved_positions, unresolved_positions, message, errors[], last_error } }`. UI поллит каждые 1.5 с пока `active=true`.
+Статус job-а: `{ success, status: { active, cancel_requested, started_at, finished_at, days, fetched_demands, total_demands, saved_positions, resolved_positions, unresolved_positions, deleted_demands, restored_demands, message, errors[], last_error, resume_mode, resume_from_moment, existing_count_at_start } }`. UI поллит каждые 1.5 с пока `active=true`. `deleted_demands` / `restored_demands` см. раздел про soft-delete выше. `resume_mode` / `resume_from_moment` / `existing_count_at_start` — поля auto-resume (см. описание `POST /api/ms-sales/sync`): в resume-режиме `total_demands` означает размер только «хвоста» периода, а не полное число отгрузок (полное ≈ `existing_count_at_start + fetched_demands`).
 
 ### POST `/api/ms-sales/reresolve`
 
@@ -1279,149 +1297,8 @@ Body (JSON): `email`, `password` (обязательны), опциональн�
 ### Совместимость
 
 - В матрице доступа (`lib/datagonPageRegistry.js`) — `pageKey: 'ms-sales'`, `htmlFile: 'ms-sales.html'`, `navSlug: 'ms-sales'`. API-префикс `/ms-sales` подчиняется тому же режиму (`hidden` / `view` / `full`); в режиме `view` POST-эндпоинты (`/sync`, `/sync-cancel`, `/reresolve`) автоматически блокируются.
-- Меню: пункт «Продажи МС» в подменю «Маркетплейсы» между «Сводка и синхронизация» и «Lagerplus».
+- Меню: пункт «Продажи МС» в подменю «Маркетплейсы» — последний пункт после «Сводка и синхронизация».
 - Фронтенд: `static-html/vanilla/inners/ms-sales.{head,inner,scripts}.html` — две карточки (фильтры + таблица отгрузок с разворачивающимися позициями), поиск-зеркало в шапке таблицы.
-
-## Lagerplus (закупочный модуль)
-
-Адаптация фич из репозитория [neeil1990/store](https://github.com/neeil1990/store) (Laravel-приложение «Lagerplus»: маршруты `suppliers`, `products/out-of-stock`, `shipper`) под стек Datagon. Это **отдельное «вкрапление»** поверх таблицы `ms_export`: ничего из существующего поведения `/moysklad.html` и других экранов не меняет, всё read/write идёт через собственные эндпоинты `/api/lagerplus/*` и собственные таблицы.
-
-**Версия v1** (текущая) — read + write-override + push-в-МС:
-- read-only список товаров с фильтрами «дефицит / нулевые / все», эффективный норматив = `COALESCE(min_stock_lager, ms_export.min_stock)`;
-- редактируемая колонка `min_stock_lager` (override Lager поверх МС-значения), сохраняется в `dg_min_stock_overrides` с журналом в `dg_min_stock_log`;
-- кнопка «↗ В МС» (поштучно и балком: «↗ В МС: страница» / «↗ В МС: все правки») отправляет норматив в МС через `PUT /entity/product/{uuid}` с **нативным** полем `minimumBalance`. Для `Комплектов` push не выполняется (МС-схема `bundle` не содержит `minimumBalance`).
-
-В следующих итерациях:
-- v2 — отдельная страница `/suppliers.html` (нормализованный справочник поставщиков из МС);
-- v3 — отдельная страница `/shipper.html` (закупочный профиль 1:1 с поставщиком, балк-операции `bulkUpdate(field)` и `bulkUpdateWarehouse[]`);
-- v4 — cron-история `dg_stock_snapshots` + `dg_sales_daily` и колонки `stock_zero_*`/`sell_*` (требует ежедневный снимок остатков и `entity/demand` из МС), плюс расчётный `suggested_min_stock`.
-
-### Таблицы
-
-- `dg_min_stock_overrides (code PRIMARY KEY, value_lager DECIMAL(15,3) NOT NULL, multiplicity, min_balance_counted_as, comment, set_by_user_id, set_by_name, set_at, updated_at)` — пользовательский «неснижаемый остаток (Lager)» поверх МС-значения.
-- `dg_min_stock_log (id, code, field, old_value, new_value, action, changed_by_user_id, changed_by_name, note, changed_at)` — журнал правок (паттерн как у `ms_dimensions_log`). Значения `action`: `set` (UPSERT override), `delete` (override удалён), `sync_ms` (значение успешно отправлено в МС), `sync_ms (auto-persist before push)` (auto-persist inline-значения перед push).
-
-### GET `/api/lagerplus/list`
-
-Список товаров с эффективным «нормативом» = `COALESCE(min_stock_lager, ms_export.min_stock, 0)` и расчётом `delta_lager = stock - effective_min` (отрицательное число — дефицит).
-
-Query:
-- `search` — подстрока по `code` / `name` / `supplier`.
-- `type` — `all` (по умолчанию) | `Товар` | `Комплект`.
-- `scope` — `all` | `deficit` (остаток < эффективного норматива; норматив должен быть задан) | `zero` (остаток ≤ 0). По умолчанию `deficit`.
-- `limit` (1..500, default 100) / `offset` (default 0).
-- `sort_by` — одно из `code|name|manager|content_manager|supplier|type|stock|stock_days|min_stock_ms|min_stock_lager|delta_lager`. Default `code`.
-- `sort_dir` — `asc`/`desc`.
-
-Базовый WHERE (всегда применяется):
-- `is_archived = 0`
-- `stock_position = 'Да'`
-- `no_longer_cooperation = 'Нет'` (отсев товаров, с которыми МС-менеджер прекратил сотрудничество).
-
-Ответ:
-```json
-{
-  "success": true,
-  "total": 412,
-  "limit": 100,
-  "offset": 0,
-  "rows": [
-    {
-      "code": "5123-KOMPLECT-7",
-      "name": "Аппарат Лазмик - ЛОР Стандарт",
-      "manager": "Иван Петров",
-      "content_manager": "Анна Смирнова",
-      "supplier": "ООО Поставщик",
-      "supplier2": "",
-      "type": "Комплект",
-      "stock": 0,
-      "stock_days": "120",
-      "uuid": "abcd-...",
-      "min_stock_ms": 5,
-      "min_stock_lager": null,
-      "multiplicity": null,
-      "min_balance_counted_as": null,
-      "lager_comment": "",
-      "lager_set_by_name": "",
-      "lager_set_at": "",
-      "delta_lager": -5,
-      "suggested_min_stock": null
-    }
-  ]
-}
-```
-
-`suggested_min_stock` всегда `null` в v1 — расчётная формула предложения норматива (`salesFormula['minimumBalance']` в [ProductsController::outOfStockNew](https://github.com/neeil1990/store/blob/main/app/Http/Controllers/ProductsController.php)) требует cron-инфраструктуры и появится в v4.
-
-### POST `/api/lagerplus/measure`
-
-UPSERT override в `dg_min_stock_overrides` с записью в журнал `dg_min_stock_log`. Семантика идентична `POST /api/exports/dimensions/measure`:
-- поле, переданное в `fields` — UPSERT'ится (даже если `null` или пустая строка → удаляет override этого поля);
-- поле, отсутствующее в `fields` — НЕ трогается;
-- если после UPSERT'а ВСЕ override-числа равны `null` — строка удаляется целиком.
-
-Body (один из вариантов):
-```json
-{ "code": "10148", "fields": { "value_lager": 2 }, "note": "manual" }
-```
-или legacy single-field:
-```json
-{ "code": "10148", "field": "value_lager", "value": 2 }
-```
-
-Допустимые поля: `value_lager`, `multiplicity`, `min_balance_counted_as`, `comment`. Ответ:
-```json
-{ "success": true, "code": "10148",
-  "changed_fields": [{ "field": "value_lager", "old": null, "new": 2, "action": "set" }],
-  "override": {
-    "value_lager": 2, "multiplicity": null, "min_balance_counted_as": null,
-    "comment": "", "set_by_user_id": 1, "set_by_name": "Админ",
-    "set_at": "2026-05-12T03:10:00.000Z"
-  }
-}
-```
-
-### DELETE `/api/lagerplus/measure/:code`
-
-Удалить override полностью (вернуть позицию к МС-нормативу). Ответ: `{ "success": true, "code": "...", "deleted": true|false }` (`deleted: false`, если override не было).
-
-### POST `/api/lagerplus/sync-ms`
-
-Push override → МС через `PUT /entity/product/{uuid}` с нативным полем `minimumBalance`. **Для `Комплектов` push не выполняется** (`skipped: 'bundle'` в результате — МС-схема `bundle` не содержит поле `minimumBalance`).
-
-Body (один из вариантов):
-- `{ "code": "10148", "fields": { "value_lager": 2 }, "note": "..." }` — синк одной позиции; если передан `fields`, сначала делает UPSERT (auto-persist before push), потом отправляет в МС значение `value_lager` из БД.
-- `{ "codes": ["10148", "26774"] }` — балк-вариант; каждая позиция обрабатывается последовательно с дросселем 300 мс между запросами.
-- `{ "all": true }` — все товары с `value_lager IS NOT NULL` и `type = 'Товар'`. Кнопка «↗ В МС: все правки» в UI.
-
-Ответ:
-```json
-{
-  "success": true,
-  "ok_count": 1,
-  "fail_count": 0,
-  "total": 1,
-  "results": [{
-    "code": "10148", "name": "...", "ok": true,
-    "ms_status": 200, "ms_updated_at": "2026-05-12 06:11:34.123", "sent_value": 2
-  }]
-}
-```
-
-При ошибках МС API в элементе `results[]` будут `{ ok: false, error, http_status, sent_value }`. При `skipped: 'bundle'` / `'no-uuid'` / `'no-override'` — `ok: false` без `http_status`.
-
-После успешного push в `dg_min_stock_log` пишется строка с `action='sync_ms'` и фиксацией автора. Это даёт audit-trail «когда какая правка ушла в МС».
-
-### GET `/api/lagerplus/log?code=...&limit=&offset=`
-
-Журнал правок по конкретному товару (для tooltip и истории), формат — как у `ms_dimensions_log`.
-
-### Совместимость с другими модулями
-
-- Опирается на колонку `ms_export.min_stock` (см. раздел «MoySklad»). Полностью использует уже существующий синк МС, отдельной фоновой задачи не запускает.
-- В матрице доступа (`lib/datagonPageRegistry.js`) — `pageKey: 'lagerplus'`, `htmlFile: 'lagerplus.html'`, `navSlug: 'lagerplus'`. API-префикс `/lagerplus` подчиняется тому же режиму (`hidden` / `view` / `full`); UI write-операций становится недоступен в режиме `view`, потому что POST/DELETE автоматически блокируются согласно `API_PREFIX_RULES`.
-- Push в МС использует тот же `MS_TOKEN` (env / `config.msToken`), что и `routes/dimensions.js`. Если токен не задан — `POST /sync-ms` возвращает 503 `"MS_TOKEN не задан"`.
-- Фронтенд: `static-html/vanilla/inners/lagerplus.{head,inner,scripts}.html`, ссылка из меню «Маркетплейсы» (рядом с «Сводка и синхронизация»).
 
 ## Глобальная синхронизация (server.js)
 
@@ -1451,7 +1328,8 @@ Body (один из вариантов):
 Поле `for_date` влияет на три блока:
 
 - **`moyskladPersistedLogs`** — все строки `dg_ms_sync_log` за выбранный день в МСК. Упорядочены по `id DESC` — самые свежие шаги синхронизации идут **первыми**, чтобы UI не заставлял пользователя листать журнал вниз. Реализация: `fetchMsSyncPersistedLogsForDate(db, forDate)` в `routes/moysklad.js`.
-- **`autoSyncRuns`** — записи `auto_sync_runs`, чей `started_at` приходится на выбранный день в МСК. Фронт группирует их по `task_type` (`myproducts`, `moysklad`, `marketplaces`, `huckster`, `db_size`) и показывает по разделам с понятными названиями.
+- **`autoSyncRuns`** — записи `auto_sync_runs`, чей `started_at` приходится на выбранный день в МСК. Фронт группирует их по `task_type` и рисует по секциям из `autoSync.sections` (см. ниже). Чтобы добавить новую секцию — добавляйте задачу в `lib/datagonAutoSyncRegistry.js → AUTO_SYNC_TASKS` (правило `datagon-auto-sync-registry.mdc`).
+- **`autoSync.sections`** — массив `{ key, title, subtitle, enabled, time, extras: [{ key, label, value }] }`, построен `buildAutoSyncSectionsSnapshot(appSettings)` из `lib/datagonAutoSyncRegistry.js`. Используется фронтом `processes.scripts.html` (`renderAutoSyncSections`), чтобы держать набор задач в `/settings.html` ↔ `/processes.html` синхронным без ручной правки UI при добавлении новой автосинки. Поле `autoSync.config` оставлено для обратной совместимости (legacy фронт без `sections`).
 - **`matches`** — последняя задача `matching_jobs` для `my_site_id`, чей `started_at` приходится на выбранный день в МСК. Если задач за день не было — `matches.message` = «За выбранный день задач сопоставления не было».
 - **`moysklad.logs`** (in-memory `jobState.logs`, до 30 строк текущей сессии) — отдаются только за «сегодня»; для других дней массив пустой, так как память процесса не различает даты.
 
@@ -1462,6 +1340,233 @@ Body (один из вариантов):
 ### GET `/api/processes/db-size`
 
 Размер текущей MySQL-базы: общий объём, данные, индексы, число таблиц, время расчёта и признак кэша. Без параметров отдаёт суточный кэш; `?refresh=1` принудительно пересчитывает показатель для кнопки «Обновить размер БД» на дашборде.
+
+### GET `/api/processes/disk-usage`
+
+Используется виджетом «Дисковое пространство» на дашборде (`/dashboard.html`). Принудительный пересчёт также выполняется в составе ежедневной фоновой задачи `db_size` (галка «Размер БД и диска» в `/settings.html` → раздел «Авто-синхронизация»; одна задача `auto_sync_runs.task_type = 'db_size'` обновляет и размер БД, и разбивку диска). Возвращает:
+
+- `projectPath` — абсолютный путь к корню проекта (`__dirname` сервера);
+- `projectSizeBytes`, `projectFileCount`, `rootFilesBytes`, `rootFilesCount` — суммарный размер всех каталогов проекта, общее число файлов и размер/количество файлов в самом корне;
+- `folders` — массив верхнеуровневых каталогов (включая `.git`, `node_modules`, `vendor`, `docs-docusaurus` и т.д.), отсортированный по убыванию размера. Каждый элемент: `{ name, isHidden, sizeBytes, fileCount, dirCount, errorCount }`. `errorCount` показывает, сколько файлов не удалось прочитать (нет доступа) — отражается badge «нет доступа: N» на UI;
+- `fileSystem` — объём ФС, в которой лежит проект, через `fs.statfs`: `{ sizeBytes, freeBytes, usedBytes, usedPercent }` (или `{ error }`, если `fs.statfs` недоступен в текущей версии Node);
+- `scanDurationMs`, `scannedAt`, `ttlSec`, `cached` — диагностика и признак кэша.
+
+Кэш — 5 минут (`DISK_USAGE_CACHE_TTL_MS` в `server.js`); параллельные запросы дедуплицируются через общее `in-flight` обещание. `?refresh=1` принудительно пересчитывает разбивку. Обход дерева использует `fs.readdir` + `fs.lstat`, не следует по симлинкам и устойчив к `EACCES`.
+
+## Закупки
+
+Отдельная страница `/purchase.html` и роутер `routes/purchase.js`. Источник истины базовых полей — `ms_export` (синк МойСклад). Дополнительные **редактируемые поля** (Неснижаемый остаток Датагон, Кратность товара, Мин.Остаток сч.как, Предлагаемый нес.остаток, Кол-во в упаковке вручную) хранятся в отдельной таблице `dg_purchase_overrides`, чтобы синк МС не затирал ручные значения и схема `ms_export` оставалась стабильной.
+
+Сырые поля (`article`, `packagings`) подмешиваются к строкам из `ms_entity_details.payload_json` (raw карточка из МС API).
+
+### Таблица `dg_purchase_overrides`
+
+```sql
+CREATE TABLE dg_purchase_overrides (
+  code VARCHAR(255) NOT NULL PRIMARY KEY,
+  min_stock_dg DECIMAL(15,3) NULL,
+  multiplicity DECIMAL(15,3) NULL,
+  min_stock_calc_as DECIMAL(15,3) NULL,
+  proposed_min_stock DECIMAL(15,3) NULL,
+  pack_qty_manual DECIMAL(15,3) NULL,
+  note VARCHAR(500) NULL,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+```
+
+Связь с `ms_export` — по `code` (то есть по коду товара МС, как в остальных интеграциях Datagon).
+
+### GET `/api/purchase`
+
+Список товаров для планирования закупок. **Фильтр по умолчанию (как в ТЗ страницы):**
+
+- `is_archived = 0` (только активные);
+- `stock_position = 'да'` (только складская позиция);
+- `type` ≠ комплект (исключаем комплекты).
+
+Query:
+
+- `search` — подстрока по `code`, `name`, `supplier`, `supplier2` (case-insensitive).
+- `supplier` — отдельный фильтр по поставщику (`supplier` ИЛИ `supplier2`, case-insensitive).
+- `archived` — `active` (default) | `archived` | `all`.
+- `stock_position` — `yes` (default) | `no` | `all`.
+- `include_bundles` — `0` (default, исключить комплекты) | `1` (включить).
+- `only_stock` — `1` чтобы оставить только `stock > 0`.
+- `limit` (default 100, max 1000), `offset`.
+- `sort_by` — `code` (default), `article`, `name`, `supplier`, `buy_price`, `min_stock`, `automation_price`, `proposed_min_stock`, `min_stock_dg`, `multiplicity`, `min_stock_calc_as`, `stock`, `is_archived`.
+- `sort_dir` — `asc` (default) | `desc`.
+
+Ответ:
+
+```json
+{
+  "success": true,
+  "total": 1234,
+  "limit": 100,
+  "offset": 0,
+  "sort_by": "code",
+  "sort_dir": "asc",
+  "data": [
+    {
+      "code": "00-12345", "article": "AB-001",
+      "name": "Радиатор Х", "is_archived": 0, "type": "Товар", "uuid": "…",
+      "supplier": "Вектор", "supplier2": "Вектор", "supplier_label": "Вектор",
+      "buy_price": "12 345,67 ₽",
+      "min_stock": "10.000",
+      "automation_price": "Авто",
+      "proposed_min_stock": null,
+      "min_stock_dg": "5.000",
+      "multiplicity": "10.000",
+      "min_stock_calc_as": null,
+      "pack_qty": 6, "pack_qty_auto": 6, "pack_qty_manual": null,
+      "stock": 42,
+      "in_transit": "",
+      "no_longer_cooperation": "", "stock_position": "Да",
+      "override_updated_at": "2026-05-12 19:01:23"
+    }
+  ]
+}
+```
+
+Колонки `supplier_label`:
+
+- если `supplier == supplier2` (case-insensitive, без учёта пробелов) — выводится один раз;
+- если различаются — `supplier1/supplier2`;
+- если задан только один — он один и выводится.
+
+Колонка `pack_qty` — если есть `pack_qty_manual` (override), он имеет приоритет; иначе — авто-подсчёт по первому `packagings[].quantity > 0` из `ms_entity_details.payload_json`.
+
+### POST `/api/purchase/override`
+
+Сохранить одно редактируемое значение для одного товара. Body (JSON):
+
+```json
+{ "code": "00-12345", "field": "min_stock_dg", "value": "5,5" }
+```
+
+`field` ограничен whitelist'ом: `min_stock_dg` | `multiplicity` | `min_stock_calc_as` | `proposed_min_stock` | `pack_qty_manual`. Значения парсятся гибко (запятая = точка, пробелы игнорируются). Передача `value: ""` (или `null`) очищает поле в overrides (NULL).
+
+Ответ при успехе содержит `stored` — текущее состояние строки `dg_purchase_overrides` для этого `code`, что позволяет UI **верифицировать** реальное значение в БД (по правилу `datagon-settings-save-feedback.mdc`).
+
+### Заметки
+
+- Доступ контролируется через `lib/datagonPageRegistry.js` (`pageKey: 'purchase'`, prefix `/purchase`).
+- Изменение списка/фильтров/сортировки на UI — только по кнопке «Применить» / Enter (правило `datagon-table-filter-apply.mdc`); отдельные ячейки overrides сохраняются точечно по событию `change` (одиночное действие пользователя).
+
+## Карточка товара
+
+Детальная страница товара `/product.html?code=XXX` (открывается из «Закупки» в новом окне). Бэкенд агрегирует данные из `ms_export`, `ms_entity_details` (полный JSON-payload), `ms_demand`/`ms_demand_position` (продажи) и `dg_product_zero_stock_log` (лог нулевых остатков).
+
+### Схема `dg_product_zero_stock_log`
+
+Создаётся автоматически при первом обращении (`ensureZeroStockSchema`). Хранит факты «товар отсутствовал на складе на дату». Сейчас поддерживается общая фиксация по товару (`store_uuid='__total__'`); поле зарезервировано под пo-складскую разбивку после расширения синка `report/stock/bystore`.
+
+```sql
+CREATE TABLE IF NOT EXISTS dg_product_zero_stock_log (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  code VARCHAR(255) NOT NULL,
+  store_uuid VARCHAR(255) NOT NULL DEFAULT '__total__',
+  store_name VARCHAR(255) NULL,
+  ts_date DATE NOT NULL,
+  total_stock DECIMAL(15,3) NULL,
+  source VARCHAR(40) NOT NULL DEFAULT 'manual',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uniq_zero_code_store_date (code, store_uuid, ts_date),
+  INDEX idx_zero_code_date (code, ts_date)
+);
+```
+
+### GET `/api/product/:code`
+
+Агрегатный read-only ответ для рендера карточки.
+
+Query:
+
+- `recent_limit` — сколько последних отгрузок отдавать (default 30, max 500).
+- `recent_days` — окно для последних отгрузок (default 365, max 1825).
+- `zero_days` — окно для лога нулевых остатков (default 90, max 1825).
+
+Ответ (сжатая структура):
+
+```json
+{
+  "success": true,
+  "code": "10148",
+  "ms": {
+    "code": "10148", "uuid": "…", "article": "AB-001", "name": "Радиатор Х",
+    "type": "Товар", "is_archived": 0,
+    "supplier": "Вектор", "supplier2": "Вектор", "supplier_label": "Вектор",
+    "stock_position": "Да", "manager": "…", "vat": "20%",
+    "buy_price": "12 345,67 ₽", "min_stock": 10, "stock": 42,
+    "synced_at": "2026-05-12T17:00:00.000Z",
+    "web_href": "https://online.moysklad.ru/app/#good/edit?id=…",
+    "attributes": [{ "name": "Бренд", "value": "Acme", "type": "string" }],
+    "packagings": [{ "name": "Коробка", "quantity": 6, "barcodes": ["…"] }],
+    "barcodes": ["EAN13: 4607000000000"],
+    "images": ["https://…"]
+  },
+  "override": {
+    "code": "10148", "min_stock_dg": 5, "multiplicity": 10,
+    "min_stock_calc_as": null, "proposed_min_stock": null,
+    "pack_qty_manual": null, "note": null, "updated_at": "…"
+  },
+  "prices": [
+    { "kind": "buy", "name": "Закупочная цена", "value": 123.45, "currency": "RUB" },
+    { "kind": "sale", "name": "Розница", "value": 199.0, "currency": "RUB" }
+  ],
+  "stock": { "stock": 42, "reserve": null, "in_transit": null, "min_stock": 10 },
+  "sales": {
+    "aggregates": {
+      "d3":   { "days": 3,   "sum_qty": 0, "sum_amount": 0,   "positions": 0, "avg_per_day": 0 },
+      "d365": { "days": 365, "sum_qty": 152, "sum_amount": 30000, "positions": 47, "avg_per_day": 0.416 }
+    },
+    "recent": [
+      { "demand_uuid": "…", "doc_name": "О-001", "moment": "…", "applicable": true,
+        "agent_name": "Иван И.", "store_name": "Основной склад", "position_uuid": "…",
+        "assortment_kind": "product", "quantity": 1, "price": 199, "sum": 199 }
+    ],
+    "recent_days": 365, "recent_limit": 30
+  },
+  "zero_stock": {
+    "days": 90,
+    "rows": [
+      { "id": 1, "store_uuid": "__total__", "store_name": null,
+        "ts_date": "2026-05-12", "total_stock": 0, "source": "manual",
+        "created_at": "2026-05-12T19:00:00.000Z" }
+    ],
+    "note": "Сейчас фиксация общая по товару. Разбивка по складам появится после расширения синка report/stock/bystore."
+  },
+  "formula": { "placeholder": true, "description": "Формула продаж будет добавлена позже (TBD)." }
+}
+```
+
+Возвращает `404`, если в `ms_export` нет товара с указанным `code`.
+
+### GET `/api/product/:code/zero-stock-log`
+
+Отдельная точка для перерисовки таблицы лога без полной перезагрузки карточки.
+
+Query: `days` (default 90, max 1825).
+
+Ответ: `{ success, code, days, rows: [...] }` (структура `rows` идентична `zero_stock.rows` выше).
+
+### POST `/api/product/:code/zero-stock-log`
+
+Зафиксировать «нулевой остаток» вручную (используется кнопкой «Зафиксировать нулевой остаток сейчас»). Body (JSON):
+
+```json
+{ "store_uuid": "__total__", "store_name": null, "ts_date": "2026-05-12", "force": "0" }
+```
+
+Все поля опциональны. По умолчанию фиксируется на сегодня (`CURDATE()`) с `store_uuid='__total__'`. Без `force: 1` запрос отвергается, если `ms_export.stock > 0` (защита от ложных фиксаций). Идемпотентен: `INSERT … ON DUPLICATE KEY UPDATE` по уникальному ключу `(code, store_uuid, ts_date)`.
+
+Ответ при успехе содержит `stored` — текущая строка лога для верификации (по правилу `datagon-settings-save-feedback.mdc`).
+
+### Заметки
+
+- Доступ контролируется через `lib/datagonPageRegistry.js` — `/api/product/*` использует `pageKey: 'purchase'` (карточка товара доступна там же, где доступны «Закупки»). HTML `/product.html` наследует доступ от `purchase` (см. `isHtmlLeafAccessHidden`).
+- Карточка открывается из таблицы «Закупки» (`/purchase.html`) — клик по «Коду» открывает `/product.html?code=XXX` в новой вкладке.
+- Перезапуск Node обязателен после изменений в `routes/product.js` / `lib/datagonPageRegistry.js` / `server.js` (`datagon-node-restart-lock.mdc`).
 
 ## Активность
 

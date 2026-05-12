@@ -64,6 +64,11 @@
         auto_sync_huckster_time: "06:00",
         auto_sync_db_size_enabled: 1,
         auto_sync_db_size_time: "02:00",
+        auto_sync_dimensions_enabled: 0,
+        auto_sync_dimensions_time: "21:00",
+        auto_sync_mssales_enabled: 0,
+        auto_sync_mssales_time: "07:30",
+        auto_sync_mssales_days: 90,
         log_retention_days: 7,
         ms_dimensions_log_retention_days: 180,
         ozon_client_id: "",
@@ -200,6 +205,12 @@
         set("dg-set-auto_huckster_time", merged.auto_sync_huckster_time || "06:00");
         document.getElementById("dg-set-auto_db_size_en").checked = Number(merged.auto_sync_db_size_enabled) === 1;
         set("dg-set-auto_db_size_time", merged.auto_sync_db_size_time || "02:00");
+        document.getElementById("dg-set-auto_dim_en").checked = Number(merged.auto_sync_dimensions_enabled) === 1;
+        set("dg-set-auto_dim_time", merged.auto_sync_dimensions_time || "21:00");
+        var mssalesEn = document.getElementById("dg-set-auto_mssales_en");
+        if (mssalesEn) mssalesEn.checked = Number(merged.auto_sync_mssales_enabled) === 1;
+        set("dg-set-auto_mssales_time", merged.auto_sync_mssales_time || "07:30");
+        set("dg-set-auto_mssales_days", String(Number(merged.auto_sync_mssales_days || 90)));
         set("dg-set-log_retention_days", merged.log_retention_days);
         set("dg-set-ms_dimensions_log_retention_days", merged.ms_dimensions_log_retention_days);
         set("dg-set-ozon_client_id", merged.ozon_client_id || "");
@@ -1051,12 +1062,17 @@
           auto_sync_huckster_time: getStr("dg-set-auto_huckster_time") || "06:00",
           auto_sync_db_size_enabled: document.getElementById("dg-set-auto_db_size_en").checked,
           auto_sync_db_size_time: getStr("dg-set-auto_db_size_time") || "02:00",
+          auto_sync_dimensions_enabled: document.getElementById("dg-set-auto_dim_en").checked,
+          auto_sync_dimensions_time: getStr("dg-set-auto_dim_time") || "21:00",
+          auto_sync_mssales_enabled: document.getElementById("dg-set-auto_mssales_en") ? document.getElementById("dg-set-auto_mssales_en").checked : false,
+          auto_sync_mssales_time: getStr("dg-set-auto_mssales_time") || "07:30",
+          auto_sync_mssales_days: getNum("dg-set-auto_mssales_days", 90),
         };
         runSaveWithInlineFeedback({
           sectionId: "auto",
           payload: payload,
           okText: "Расписание автосинхронизации сохранено",
-          verifyKeys: ["auto_sync_myproducts_time", "auto_sync_moysklad_time", "auto_sync_marketplaces_time", "auto_sync_huckster_time", "auto_sync_db_size_time"],
+          verifyKeys: ["auto_sync_myproducts_time", "auto_sync_moysklad_time", "auto_sync_marketplaces_time", "auto_sync_huckster_time", "auto_sync_db_size_time", "auto_sync_dimensions_time", "auto_sync_mssales_time", "auto_sync_mssales_days"],
         });
       }
 
@@ -1516,7 +1532,10 @@
       document.getElementById("dg-set-auto_ms_run").addEventListener("click", function () { runAutoSyncNow("moysklad", "МойСклад"); });
       document.getElementById("dg-set-auto_market_run").addEventListener("click", function () { runAutoSyncNow("marketplaces", "Маркетплейсы"); });
       document.getElementById("dg-set-auto_huckster_run").addEventListener("click", function () { runAutoSyncNow("huckster", "Huckster"); });
-      document.getElementById("dg-set-auto_db_size_run").addEventListener("click", function () { runAutoSyncNow("db_size", "Размер БД"); });
+      document.getElementById("dg-set-auto_db_size_run").addEventListener("click", function () { runAutoSyncNow("db_size", "Размер БД и диска"); });
+      document.getElementById("dg-set-auto_dim_run").addEventListener("click", function () { runAutoSyncNow("dimensions", "Габариты МС"); });
+      var mssalesRunBtn = document.getElementById("dg-set-auto_mssales_run");
+      if (mssalesRunBtn) mssalesRunBtn.addEventListener("click", function () { runAutoSyncNow("mssales", "Продажи МС"); });
       document.getElementById("dg-set-btn-logs-refresh").addEventListener("click", loadLogsInfo);
       document.getElementById("dg-set-btn-logs-clear").addEventListener("click", clearLogsNow);
       document.getElementById("dg-set-btn-save-dim-log").addEventListener("click", saveDimLogRetention);

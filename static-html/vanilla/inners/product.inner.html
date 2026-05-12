@@ -1,0 +1,141 @@
+  <div class="app-page-title dg-prod-page">
+    <div class="page-title-wrapper">
+      <div class="page-title-heading">
+        <div class="page-title-icon">
+          <i class="pe-7s-id icon-gradient bg-mean-fruit"></i>
+        </div>
+        <div>
+          <span id="dg-prod-title">Карточка товара</span>
+          <div class="page-title-subheading" id="dg-prod-subtitle">
+            Подробные данные из МойСклад: атрибуты, цены, остатки, продажи и фиксация нулевых остатков.
+          </div>
+        </div>
+      </div>
+      <div class="page-title-actions">
+        <a href="/purchase.html" class="btn btn-sm btn-outline-secondary me-2">К списку «Закупки»</a>
+        <a id="dg-prod-ms-link" class="btn btn-sm btn-outline-primary" target="_blank" rel="noopener" href="#" style="display:none;">Открыть в МойСклад</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="dg-prod-page">
+    <div id="dg-prod-status" class="dg-prod-status">Загрузка...</div>
+
+    <!-- 1. Основные данные из МС -->
+    <div class="main-card mb-3 card">
+      <div class="card-header d-flex justify-content-between gap-2 flex-wrap">
+        <div class="d-flex align-items-center gap-2">
+          <i class="header-icon pe-7s-info icon-gradient bg-tempting-azure me-1"></i>
+          <h5>Данные из МойСклад</h5>
+        </div>
+        <span class="text-muted" id="dg-prod-synced-at"></span>
+      </div>
+      <div class="card-body">
+        <div class="dg-prod-link-row mb-2" id="dg-prod-link-row"></div>
+        <div class="dg-kv-grid" id="dg-prod-main-kv"></div>
+      </div>
+    </div>
+
+    <!-- 1.1 Атрибуты (полный список из МС) -->
+    <div class="main-card mb-3 card">
+      <div class="card-header d-flex justify-content-between gap-2 flex-wrap">
+        <div class="d-flex align-items-center gap-2">
+          <i class="header-icon pe-7s-note2 icon-gradient bg-tempting-azure me-1"></i>
+          <h5>Атрибуты МС</h5>
+        </div>
+        <span class="text-muted" id="dg-prod-attrs-meta"></span>
+      </div>
+      <div class="card-body">
+        <div id="dg-prod-attrs"></div>
+      </div>
+    </div>
+
+    <!-- 2. Цены -->
+    <div class="main-card mb-3 card">
+      <div class="card-header d-flex align-items-center gap-2">
+        <i class="header-icon pe-7s-cash icon-gradient bg-mean-fruit me-1"></i>
+        <h5>Цены из МойСклад</h5>
+      </div>
+      <div class="card-body">
+        <div class="dg-prices-grid" id="dg-prod-prices"></div>
+      </div>
+    </div>
+
+    <!-- 3. Остатки и ожидания (+ override-блок) -->
+    <div class="main-card mb-3 card">
+      <div class="card-header d-flex justify-content-between gap-2 flex-wrap">
+        <div class="d-flex align-items-center gap-2">
+          <i class="header-icon pe-7s-box1 icon-gradient bg-mean-fruit me-1"></i>
+          <h5>Остатки и ожидания</h5>
+        </div>
+        <a href="/purchase.html" class="text-muted small">Редактировать override-поля</a>
+      </div>
+      <div class="card-body">
+        <div class="dg-stock-grid mb-3" id="dg-prod-stock"></div>
+        <div class="dg-section-title">Override-поля «Закупки» (только просмотр)</div>
+        <div class="dg-kv-grid" id="dg-prod-override"></div>
+      </div>
+    </div>
+
+    <!-- 4. Фиксация нулевых остатков по складам -->
+    <div class="main-card mb-3 card">
+      <div class="card-header d-flex justify-content-between gap-2 flex-wrap">
+        <div class="d-flex align-items-center gap-2">
+          <i class="header-icon pe-7s-clock icon-gradient bg-mean-fruit me-1"></i>
+          <h5>Нулевые остатки по складам</h5>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+          <select id="dg-prod-zero-days" class="form-select form-select-sm" style="width:auto;">
+            <option value="30">30 дней</option>
+            <option value="60">60 дней</option>
+            <option value="90" selected>90 дней</option>
+            <option value="180">180 дней</option>
+            <option value="365">365 дней</option>
+          </select>
+          <button id="dg-prod-zero-fix" class="btn btn-sm btn-outline-warning" type="button">Зафиксировать нулевой остаток сейчас</button>
+        </div>
+      </div>
+      <div class="card-body">
+        <p class="text-muted small mb-2" id="dg-prod-zero-note">
+          Сейчас фиксация общая по товару. Разбивка по складам появится после расширения синка `report/stock/bystore`.
+        </p>
+        <div id="dg-prod-zero-result" class="dg-prod-status" style="display:none;"></div>
+        <div id="dg-prod-zero-table-wrap"></div>
+      </div>
+    </div>
+
+    <!-- 5. Продажи -->
+    <div class="main-card mb-3 card">
+      <div class="card-header d-flex justify-content-between gap-2 flex-wrap">
+        <div class="d-flex align-items-center gap-2">
+          <i class="header-icon pe-7s-graph2 icon-gradient bg-tempting-azure me-1"></i>
+          <h5>Продажи товара</h5>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+          <span class="text-muted small">Источник: <a href="/ms-sales.html">/ms-sales.html</a></span>
+          <a id="dg-prod-sales-link" href="#" class="btn btn-sm btn-outline-primary">Открыть в «Продажи МС»</a>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="dg-section-title">Агрегаты по окнам (количество)</div>
+        <div class="dg-sales-aggregates mb-3" id="dg-prod-sales-aggs"></div>
+        <div class="dg-section-title">Последние отгрузки</div>
+        <div id="dg-prod-sales-recent-wrap"></div>
+      </div>
+    </div>
+
+    <!-- 6. Формула продаж — заглушка -->
+    <div class="main-card mb-3 card">
+      <div class="card-header d-flex align-items-center gap-2">
+        <i class="header-icon pe-7s-calculator icon-gradient bg-mean-fruit me-1"></i>
+        <h5>Формула продаж</h5>
+      </div>
+      <div class="card-body">
+        <div class="dg-prod-formula-placeholder">
+          Формула продаж будет добавлена позже — конкретные коэффициенты и алгоритм пользователь предоставит отдельно.
+          Заготовлено место для компонент: средние продажи (3/5/7/15/30/60/90/180/365 дн.),
+          доля «нулевых» дней, кратность и неснижаемый остаток Датагон.
+        </div>
+      </div>
+    </div>
+  </div>

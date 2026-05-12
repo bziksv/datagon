@@ -9,14 +9,17 @@
   <!-- @inject head -->
 <style>
   /**
-   * MS Sales — стили только для своей вкладки. Визуальный язык наследуем
-   * из ArchitectUI (`public/static/css/main.*.css`); локально — sticky-th,
-   * стили раскрытия позиций, бейджи привязки к товару.
+   * MS Sales — соответствие baseline `moysklad`:
+   *   • sticky thead → top: var(--dg-mss-sticky-top, 0)
+   *     (значение выставляет syncStickyTopVar() в ms-sales.scripts.html
+   *      по реальной высоте `.app-header.fixed-header`).
+   *   • НЕ ставим overflow-x/y на обёртки — таблица помещается без скролла,
+   *     любой `overflow: auto` на родителе ломает sticky на <th>
+   *     (см. правило datagon-table-behavior-lock.mdc).
+   *   • Кнопки «🧩 Столбцы» / «📏 Ширины» в card-header и панели
+   *     `.datagon-columns-toolbox` / `.datagon-columns-panel` — стили общие
+   *     с moysklad (определены в теме); локально дополняем grid-сеткой ширин.
    */
-  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-table-wrap {
-    overflow-x: auto;
-    overflow-y: visible;
-  }
   body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-table {
     width: 100%;
     border-collapse: collapse;
@@ -24,7 +27,7 @@
   }
   body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-table thead th {
     position: sticky;
-    top: var(--dg-table-sticky-top, 60px);
+    top: var(--dg-mss-sticky-top, 0);
     z-index: 25;
     background: #f8f9fa;
     border-bottom: 1px solid #e6e9ee;
@@ -38,6 +41,15 @@
     -webkit-user-select: text;
     cursor: pointer;
   }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-table thead th[data-sort]::after {
+    content: '';
+    margin-left: 4px;
+    color: #adb5bd;
+    font-weight: 400;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-table thead th[data-sort-active="asc"]::after { content: ' ▲'; color: #495057; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-table thead th[data-sort-active="desc"]::after { content: ' ▼'; color: #495057; }
+
   body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-table tbody td {
     border-bottom: 1px solid #f3f5f8;
     border-right: 1px solid #f3f5f8;
@@ -82,6 +94,8 @@
     background: #f1f3f5;
     font-weight: 600;
   }
+
+  /* Бейджи привязки позиции к ms_export */
   body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-link-badge {
     display: inline-block;
     padding: 1px 6px;
@@ -90,30 +104,30 @@
     font-weight: 600;
     margin-left: 6px;
   }
-  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-link-resolved {
-    background: #e6f6ed;
-    color: #1f7a48;
-  }
-  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-link-unresolved {
-    background: #fde6ec;
-    color: #a01737;
-  }
-  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-link-bundle {
-    background: #eef4ff;
-    color: #2c4ba0;
-  }
-  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-link-variant {
-    background: #fff7d6;
-    color: #8a6d00;
-  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-link-resolved { background: #e6f6ed; color: #1f7a48; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-link-unresolved { background: #fde6ec; color: #a01737; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-link-bundle { background: #eef4ff; color: #2c4ba0; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-link-variant { background: #fff7d6; color: #8a6d00; }
   body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-link-service,
-  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-link-unknown {
-    background: #f1f3f5;
-    color: #495057;
-  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-link-unknown { background: #f1f3f5; color: #495057; }
+
   body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-not-applicable {
     color: #adb5bd;
     text-decoration: line-through;
+  }
+  /**
+   * Soft-delete: документ удалён в МойСклад, но локально сохранён для истории.
+   * Подсветка строки — по аналогии с moysklad (`tr.table-danger`), но сюда не
+   * попадает Bootstrap-каскад (`.dg-mss-table` без класса `.table`), поэтому
+   * красим явно. `:hover` чуть темнее, чтобы понятно выделялась строка под
+   * курсором, не теряя контекст «удалена».
+   */
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-table tbody tr.dg-mss-deleted-row > td {
+    background: #fbe2e4;
+    color: #7a1e2a;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-table tbody tr.dg-mss-deleted-row:hover > td {
+    background: #f4cdd1;
   }
   body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-pagination {
     display: flex;
@@ -130,28 +144,15 @@
     font-size: 0.9rem;
   }
   body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-sync-status {
-    margin-top: 10px;
     padding: 8px 12px;
     border-radius: 4px;
     font-size: 0.85rem;
     line-height: 1.45;
   }
-  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-sync-status.dg-mss-sync-info {
-    background: #eef4ff;
-    color: #2c4ba0;
-  }
-  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-sync-status.dg-mss-sync-ok {
-    background: #e6f6ed;
-    color: #1f7a48;
-  }
-  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-sync-status.dg-mss-sync-warn {
-    background: #fff7d6;
-    color: #8a6d00;
-  }
-  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-sync-status.dg-mss-sync-err {
-    background: #fde6ec;
-    color: #a01737;
-  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-sync-status.dg-mss-sync-info { background: #eef4ff; color: #2c4ba0; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-sync-status.dg-mss-sync-ok { background: #e6f6ed; color: #1f7a48; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-sync-status.dg-mss-sync-warn { background: #fff7d6; color: #8a6d00; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-sync-status.dg-mss-sync-err { background: #fde6ec; color: #a01737; }
 
   /* Карточка с деталями отгрузки в раскрывающейся строке */
   body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-demand-card {
@@ -171,9 +172,7 @@
     padding-bottom: 8px;
     margin-bottom: 8px;
   }
-  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-demand-card-title {
-    font-size: 0.95rem;
-  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-demand-card-title { font-size: 0.95rem; }
   body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-demand-card-status {
     display: flex;
     gap: 6px;
@@ -199,7 +198,6 @@
   body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-badge-warn { background: #fff7d6; color: #8a6d00; }
   body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-badge-info { background: #eef4ff; color: #2c4ba0; }
   body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-badge-muted { background: #f1f3f5; color: #495057; }
-
   body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-dl {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -233,6 +231,22 @@
     text-transform: uppercase;
     letter-spacing: 0.04em;
     margin-bottom: 6px;
+  }
+
+  /* Сетка панели «📏 Ширины» — соответствие визуальному эталону moysklad. */
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-widths-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 6px 12px;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-widths-grid label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 0;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-sales"] .dg-mss-widths-grid input[type="number"] {
+    flex: 0 0 90px;
   }
 </style>
 
@@ -727,7 +741,7 @@
                         </ul>
                       </li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="ms-sales" href="/ms-sales.html" title="Продажи МС: отгрузки entity/demand, позиции с привязкой к товарам ms_export"><i class="metismenu-icon pe-7s-cash"></i>Продажи МС</a></li>
-                      <li class="metismenu-item"><a class="metismenu-link" data-nav="lagerplus" href="/lagerplus.html" title="Lagerplus — закупочный модуль (адаптация фич neeil1990/store)"><i class="metismenu-icon pe-7s-cart"></i>Lagerplus — Закупки</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="purchase" href="/purchase.html" title="Закупки: планирование, неснижаемые остатки, кратность"><i class="metismenu-icon pe-7s-cart"></i>Закупки</a></li>
                     </ul>
                   </div>
                 </div>
@@ -763,125 +777,214 @@
 <!-- ============================== Карточка фильтров ============================== -->
 
 <div class="main-card mb-3 card">
-  <div class="card-header">
-    <div class="d-flex align-items-center gap-2 flex-wrap">
-      <i class="header-icon pe-7s-filter icon-gradient bg-plum-plate"></i>
-      Фильтры и действия
+  <div class="card-header d-flex align-items-center justify-content-between gap-2">
+    <div class="d-flex align-items-center">
+      <i class="header-icon pe-7s-filter icon-gradient bg-plum-plate me-2"></i>
+      <span>Фильтры и действия</span>
     </div>
-    <div class="btn-actions-pane-right d-flex gap-2 flex-wrap">
-      <button id="dg-mss-filters-toggle" class="btn btn-sm btn-outline-secondary" type="button">Свернуть</button>
+    <div class="d-flex align-items-center gap-2">
+      <div class="dropdown">
+        <button
+          type="button"
+          class="btn btn-sm btn-outline-secondary dg-vanilla-dropdown-toggle"
+          style="line-height: 1; padding: 0.35rem 0.5rem"
+          aria-expanded="false"
+          aria-haspopup="true"
+          id="dg-mss-filter-blocks-btn"
+          data-dg-tooltip="Какие поля фильтров показывать (сохраняется в браузере для текущего пользователя)"
+        >
+          <i class="pe-7s-config btn-icon-wrapper" style="font-size: 1.1rem" aria-hidden="true"></i>
+        </button>
+        <div
+          class="dropdown-menu dropdown-menu-end rm-pointers p-0 dg-mss-filter-blocks-dropdown"
+          id="dg-mss-filter-blocks-menu"
+          style="width: min(420px, calc(100vw - 1.5rem))"
+        >
+          <div class="dropdown-menu-header mb-0">
+            <div class="dropdown-menu-header-inner bg-tempting-azure">
+              <div
+                class="menu-header-image opacity-5"
+                style="background-image: url('/assets/utils/images/dropdown-header/abstract2.jpg')"
+              ></div>
+              <div class="menu-header-content text-white px-3 py-2">
+                <h5 class="menu-header-title mb-0">Поля фильтров</h5>
+                <h6 class="menu-header-subtitle mb-0 opacity-8 fw-normal small">По группам: переключатели справа</h6>
+              </div>
+            </div>
+          </div>
+          <div class="dg-mss-filter-blocks-scroll" style="max-height: calc(100vh - 10rem); overflow-y: auto; overflow-x: hidden">
+            <div id="dg-mss-filter-blocks-toggles" class="list-group list-group-flush"></div>
+          </div>
+        </div>
+      </div>
+      <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mss-filters-toggle">Свернуть</button>
     </div>
   </div>
-  <div class="card-body" id="dg-mss-filters-body">
-    <div class="row g-3 mb-3">
-      <div class="col-md-4">
-        <label class="form-label">Поиск</label>
-        <input type="search" id="dg-mss-search" class="form-control form-control-sm"
-               placeholder="Номер отгрузки, контрагент, склад…" autocomplete="off" />
+  <div class="card-body">
+    <div id="dg-mss-filters-body">
+      <div class="row g-2 align-items-end">
+        <div class="col-md-4" data-dg-mss-filter-field="mss_search">
+          <label class="form-label" for="dg-mss-search">Умный поиск</label>
+          <input type="search" id="dg-mss-search" class="form-control"
+                 placeholder="Код или наименование товара…" autocomplete="off"
+                 data-dg-tooltip="Ищет по коду и наименованию товара в позициях отгрузки (резолв ms_export + срез на момент продажи). Enter — применить, Esc — очистить." />
+        </div>
+        <div class="col-md-2" data-dg-mss-filter-field="mss_days">
+          <label class="form-label" for="dg-mss-days">За период</label>
+          <select id="dg-mss-days" class="form-select">
+            <option value="7">7 дней</option>
+            <option value="14">14 дней</option>
+            <option value="30" selected>30 дней</option>
+            <option value="60">60 дней</option>
+            <option value="90">90 дней</option>
+            <option value="180">180 дней</option>
+            <option value="365">365 дней</option>
+          </select>
+        </div>
+        <div class="col-md-3" data-dg-mss-filter-field="mss_store">
+          <label class="form-label" for="dg-mss-store">Склад</label>
+          <select id="dg-mss-store" class="form-select">
+            <option value="">Все склады</option>
+          </select>
+        </div>
+        <div class="col-md-3" data-dg-mss-filter-field="mss_agent">
+          <label class="form-label" for="dg-mss-agent">Контрагент</label>
+          <select id="dg-mss-agent" class="form-select">
+            <option value="">Все контрагенты</option>
+          </select>
+        </div>
       </div>
-      <div class="col-md-2">
-        <label class="form-label">За период</label>
-        <select id="dg-mss-days" class="form-select form-select-sm">
-          <option value="7">7 дней</option>
-          <option value="14">14 дней</option>
-          <option value="30" selected>30 дней</option>
-          <option value="60">60 дней</option>
-          <option value="90">90 дней</option>
-          <option value="180">180 дней</option>
-          <option value="365">365 дней</option>
-        </select>
+      <div class="row g-2 align-items-end mt-1">
+        <div class="col-md-2" data-dg-mss-filter-field="mss_doc">
+          <label class="form-label" for="dg-mss-doc">Номер</label>
+          <input type="search" id="dg-mss-doc" class="form-control"
+                 placeholder="Напр. 00037" autocomplete="off"
+                 data-dg-tooltip="Фильтр по номеру отгрузки. Точное совпадение или подстрока (например, «0003» найдёт «00037»). Enter — применить, Esc — очистить." />
+        </div>
+        <div class="col-md-2" data-dg-mss-filter-field="mss_project">
+          <label class="form-label" for="dg-mss-project">Проект</label>
+          <select id="dg-mss-project" class="form-select">
+            <option value="">Все проекты</option>
+          </select>
+        </div>
+        <div class="col-md-3" data-dg-mss-filter-field="mss_applicable">
+          <label class="form-label" for="dg-mss-applicable">Проведённые</label>
+          <select id="dg-mss-applicable" class="form-select">
+            <option value="1" selected>Только проведённые</option>
+            <option value="">Все</option>
+            <option value="0">Только непроведённые</option>
+          </select>
+        </div>
+        <div class="col-md-3" data-dg-mss-filter-field="mss_deleted">
+          <label class="form-label" for="dg-mss-deleted">Удалённые в МС</label>
+          <select id="dg-mss-deleted" class="form-select"
+                  data-dg-tooltip="Soft-delete: документ есть у нас, но его нет в МС за тот же период (после успешного синка). Hard-delete не делаем — позиции и история сохраняются.">
+            <option value="0" selected>Только активные</option>
+            <option value="1">Только удалённые</option>
+            <option value="all">Все</option>
+          </select>
+        </div>
+        <div class="col-md-3" data-dg-mss-filter-field="mss_linked">
+          <label class="form-label" for="dg-mss-linked">Привязка к товарам</label>
+          <select id="dg-mss-linked" class="form-select"
+                  data-dg-tooltip="Привязка позиций отгрузки к нашим товарам ms_export. «Не привязано» — позиции, у которых ms_export_resolved=0 (товар удалён в МС, переименован, variant без product, услуга и т.п.). После полного синка МС нажмите «Перепривязать к товарам», чтобы переподнять связи.">
+            <option value="all" selected>Все</option>
+            <option value="1">Только привязанные</option>
+            <option value="0">Только с не привязанными</option>
+          </select>
+        </div>
+        <div class="col-md-2" data-dg-mss-filter-field="mss_page_size">
+          <label class="form-label" for="dg-mss-page-size">На странице</label>
+          <select id="dg-mss-page-size" class="form-select">
+            <option value="50">50</option>
+            <option value="100" selected>100</option>
+            <option value="200">200</option>
+            <option value="500">500</option>
+          </select>
+        </div>
       </div>
-      <div class="col-md-3">
-        <label class="form-label">Склад</label>
-        <select id="dg-mss-store" class="form-select form-select-sm">
-          <option value="">Все склады</option>
-        </select>
+      <div class="mt-3 d-flex flex-wrap gap-2" data-dg-mss-filter-field="mss_filter_actions">
+        <button id="dg-mss-apply" type="button" class="btn btn-sm btn-primary"
+                data-dg-tooltip="Применить фильтры и обновить список (Enter в умном поиске тоже применяет).">
+          <i class="pe-7s-search me-1"></i>Применить
+        </button>
+        <button id="dg-mss-reset" type="button" class="btn btn-sm btn-outline-secondary"
+                data-dg-tooltip="Сбросить фильтры к значениям по умолчанию.">
+          <i class="pe-7s-refresh me-1"></i>По умолчанию
+        </button>
+        <button id="dg-mss-sync" type="button" class="btn btn-sm btn-outline-success"
+                data-dg-tooltip="Запустить синхронизацию entity/demand из МС за выбранный период. Если в БД уже есть отгрузки за этот период (и прошлый прогон был прерван), синк автоматически продолжит с места разрыва — добьёт хвост периода без полного перепрогона.">
+          <i class="pe-7s-refresh-2 me-1"></i>Синхронизировать с МС
+        </button>
+        <button id="dg-mss-sync-fresh" type="button" class="btn btn-sm btn-outline-danger"
+                data-dg-tooltip="Полный синк с нуля: отключает auto-resume и проходит весь период от NOW() до начала. Все уже сохранённые отгрузки за период будут перезаписаны (UPSERT, дубликатов не будет), плюс выполнится сверка soft-delete. Дольше обычного «Синхронизировать с МС», нужен только если данные «протухли» или вы хотите пересобрать период целиком.">
+          <i class="pe-7s-refresh me-1"></i>Полный синк с нуля
+        </button>
+        <button id="dg-mss-cancel" type="button" class="btn btn-sm btn-outline-warning d-none">
+          <i class="pe-7s-close-circle me-1"></i>Остановить
+        </button>
+        <button id="dg-mss-reresolve" type="button" class="btn btn-sm btn-outline-info"
+                data-dg-tooltip="Перепривязать позиции к ms_export (полезно после полного синка МойСклад).">
+          <i class="pe-7s-link me-1"></i>Перепривязать к товарам
+        </button>
       </div>
-      <div class="col-md-3">
-        <label class="form-label">Контрагент</label>
-        <select id="dg-mss-agent" class="form-select form-select-sm">
-          <option value="">Все контрагенты</option>
-        </select>
-      </div>
+      <div id="dg-mss-sync-status" class="dg-mss-sync-status d-none mt-3" role="status"></div>
     </div>
-    <div class="row g-3 mb-3">
-      <div class="col-md-3">
-        <label class="form-label">Проведённые</label>
-        <select id="dg-mss-applicable" class="form-select form-select-sm">
-          <option value="1" selected>Только проведённые</option>
-          <option value="">Все</option>
-          <option value="0">Только непроведённые</option>
-        </select>
-      </div>
-      <div class="col-md-2">
-        <label class="form-label">На странице</label>
-        <select id="dg-mss-page-size" class="form-select form-select-sm">
-          <option value="50">50</option>
-          <option value="100" selected>100</option>
-          <option value="200">200</option>
-          <option value="500">500</option>
-        </select>
-      </div>
-    </div>
-    <div class="d-flex gap-2 flex-wrap">
-      <button id="dg-mss-apply" type="button" class="btn btn-primary">Применить</button>
-      <button id="dg-mss-reset" type="button" class="btn btn-outline-secondary">По умолчанию</button>
-      <span class="vr mx-1"></span>
-      <button id="dg-mss-sync" type="button" class="btn btn-outline-success" title="Запустить синхронизацию entity/demand из МС за выбранный период">
-        🔄 Синхронизировать с МС
-      </button>
-      <button id="dg-mss-cancel" type="button" class="btn btn-outline-danger d-none">⏹ Остановить</button>
-      <button id="dg-mss-reresolve" type="button" class="btn btn-outline-secondary"
-              title="Перепривязать позиции к ms_export (полезно после полного синка МойСклад)">
-        🔗 Перепривязать к товарам
-      </button>
-    </div>
-    <div id="dg-mss-sync-status" class="dg-mss-sync-status d-none" role="status"></div>
   </div>
 </div>
 
 <!-- ============================== Карточка таблицы ============================== -->
 
 <div class="main-card mb-3 card">
-  <div class="card-header d-flex justify-content-between gap-2 flex-wrap">
+  <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
     <div class="d-flex align-items-center gap-3 flex-grow-1" style="min-width: 0;">
-      <div class="d-flex align-items-center" style="flex-shrink: 0;">
-        <i class="header-icon pe-7s-cash icon-gradient bg-grow-early"></i>
-        <span class="ms-2">Продажи МС</span>
+      <div class="d-flex align-items-center flex-shrink-0">
+        <i class="header-icon pe-7s-cash icon-gradient bg-grow-early me-2"></i>
+        <span>Продажи МС</span>
       </div>
       <div class="dg-mss-header-search" style="flex: 0 1 380px; min-width: 220px;">
         <div class="input-group input-group-sm">
-          <span class="input-group-text">🔎</span>
+          <span class="input-group-text bg-white text-muted px-2" aria-hidden="true">🔎</span>
           <input type="search" id="dg-mss-table-search-mirror" class="form-control"
-                 placeholder="Зеркало умного поиска…" autocomplete="off" />
+                 placeholder="Умный поиск: код или наименование товара (Enter — применить)"
+                 autocomplete="off"
+                 data-dg-tooltip="Зеркало умного поиска. Enter — применить, Esc — очистить." />
         </div>
       </div>
       <div class="dg-mss-status-line text-muted small" id="dg-mss-status">—</div>
     </div>
-    <div class="btn-actions-pane-right d-flex gap-2 flex-wrap">
-      <button id="dg-mss-table-toggle" class="btn btn-sm btn-outline-secondary" type="button">Свернуть</button>
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+      <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mss-columns-toggle"
+              title="Управление видимостью столбцов таблицы">🧩 Столбцы</button>
+      <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mss-widths-toggle"
+              title="Ручная ширина каждой колонки в пикселях">📏 Ширины</button>
+      <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mss-table-toggle"
+              title="Свернуть/развернуть тело карточки с таблицей">Свернуть</button>
     </div>
   </div>
   <div class="card-body" id="dg-mss-table-body">
-    <div class="dg-mss-table-wrap">
-      <table class="dg-mss-table">
-        <thead>
-          <tr>
-            <th style="width: 30px;"></th>
-            <th data-sort="moment">Дата</th>
-            <th data-sort="doc_name">Номер</th>
-            <th data-sort="agent">Контрагент</th>
-            <th data-sort="store">Склад</th>
-            <th>Организация</th>
-            <th data-sort="positions_count" class="dg-mss-num">Позиций</th>
-            <th data-sort="sum" class="dg-mss-num">Сумма (₽)</th>
-          </tr>
-        </thead>
-        <tbody id="dg-mss-tbody"></tbody>
-      </table>
+    <div class="datagon-columns-toolbox mb-2 d-none" id="dg-mss-toolbox-panels">
+      <div class="datagon-columns-panel" id="dg-mss-columns-panel">
+        <div class="columns-actions mb-2">
+          <button type="button" class="btn btn-sm" id="dg-mss-columns-all">Выделить все</button>
+          <button type="button" class="btn btn-sm" id="dg-mss-columns-none">Снять все</button>
+          <button type="button" class="btn btn-sm" id="dg-mss-columns-default">По умолчанию</button>
+        </div>
+        <div id="dg-mss-columns-list" class="columns-grid"></div>
+      </div>
+      <div class="datagon-columns-panel" id="dg-mss-widths-panel">
+        <div class="columns-actions mb-2">
+          <button type="button" class="btn btn-sm" id="dg-mss-widths-default">По умолчанию</button>
+        </div>
+        <div id="dg-mss-widths-list" class="dg-mss-widths-grid"></div>
+      </div>
     </div>
+    <table class="dg-mss-table" id="dg-mss-table">
+      <thead id="dg-mss-thead"></thead>
+      <tbody id="dg-mss-tbody"></tbody>
+    </table>
     <div class="dg-mss-empty d-none" id="dg-mss-empty-msg">
-      Нет данных. Нажмите «🔄 Синхронизировать с МС», чтобы загрузить отгрузки за выбранный период.
+      Нет данных. Нажмите «Синхронизировать с МС», чтобы загрузить отгрузки за выбранный период.
     </div>
     <div class="dg-mss-pagination">
       <div class="dg-mss-status-line"><span id="dg-mss-pagination-status">—</span></div>
@@ -969,36 +1072,81 @@
   <!-- @inject scripts -->
 <script>
 /**
- * MS Sales — клиент для /ms-sales.html. Не зависит от React.
- * См. routes/msSales.js. Контракты:
- *   • datagon-list-page-baseline-moysklad.mdc — две карточки, поиск-зеркало,
- *     «Свернуть» card-body.
- *   • datagon-table-filter-apply.mdc — два слоя state (applied/pending),
- *     серверный fetch только по «Применить» / Enter.
- *   • datagon-table-behavior-lock.mdc — пагинация по 100 по умолчанию,
- *     формат «Найдено: N; страница X/Y; показано: K».
+ * MS Sales — соответствует baseline moysklad:
+ *   • один источник истины MSS_COLS (для thead, tbody, панелей `🧩 Столбцы`
+ *     и `📏 Ширины`);
+ *   • видимость и ширины — отдельные ключи в localStorage;
+ *   • панели колонок и ширин в `.datagon-columns-toolbox` под card-header,
+ *     открываются по кнопкам справа в card-header;
+ *   • поиск-зеркало в card-header — двусторонний sync с #dg-mss-search;
+ *   • sticky `<th>` под `.app-header` через локальную переменную
+ *     `--dg-mss-sticky-top`, без overflow на обёртках;
+ *   • Применить — единственный способ запустить fetch (datagon-table-filter-apply.mdc);
+ *   • DatagonFilterFieldsVisibility — шестерёнка с auto-discovery полей.
  */
 (function () {
   'use strict';
-
   if (window.__dgMsSalesBooted) return;
   window.__dgMsSalesBooted = true;
 
-  var STORAGE_KEY = 'datagon_ms_sales_filters_v1';
+  /* ============================ Константы / ключи ============================ */
+
+  var STORAGE_FILTERS = 'datagon_ms_sales_filters_v1';
   var FILTERS_COLLAPSED_KEY = 'datagon_ms_sales_filters_collapsed_v1';
-  var TABLE_COLLAPSED_KEY = 'datagon_ms_sales_table_collapsed_v1';
+  var TABLE_COLLAPSED_KEY = 'dg.ms-sales.table-card.collapsed.v1';
+  var VISIBLE_COLS_KEY = 'dg.ms-sales.visible-cols.v1';
+  var COL_WIDTHS_KEY = 'dg.ms-sales.col-widths.v1';
 
   var DEFAULTS = Object.freeze({
-    search: '',
-    days: 30,
-    storeUuid: '',
-    agentUuid: '',
-    applicable: '1',
-    pageSize: 100,
-    sortBy: 'moment',
-    sortDir: 'desc',
-    page: 1,
+    search: '', docName: '', days: 30, storeUuid: '', agentUuid: '', projectUuid: '',
+    applicable: '1', deleted: '0', linked: 'all',
+    pageSize: 100, sortBy: 'moment', sortDir: 'desc', page: 1
   });
+
+  /**
+   * MSS_COLS — единственный источник истины для:
+   *   • <thead> (buildThead);
+   *   • <tbody> (renderTable);
+   *   • панели «🧩 Столбцы» (renderColumnControls);
+   *   • панели «📏 Ширины» (renderWidthControls).
+   *
+   * Поля:
+   *   key       — ключ колонки (для localStorage и сортировки);
+   *   label     — подпись в шапке;
+   *   render    — fn(row) → HTML/строка для <td>;
+   *   sort      — серверный sort_by (если null — несортируемая);
+   *   align     — 'left' | 'right' (numeric);
+   *   minWidth  — минимальная ширина при ручной настройке (px);
+   *   defWidth  — стартовая ширина (px) для панели «Ширины».
+   */
+  var MSS_COLS = [
+    { key: 'expander', label: '', render: function () {
+        return '<span class="dg-mss-row-toggle" data-dg-mss-toggle="1" title="Показать позиции">▶</span>';
+      }, sort: null, align: 'left', minWidth: 28, defWidth: 30 },
+    { key: 'moment', label: 'Дата', render: function (r) { return escapeHtml(fmtDateTime(r.moment)); },
+      sort: 'moment', align: 'left', minWidth: 110, defWidth: 130 },
+    { key: 'doc_name', label: 'Номер', render: function (r) {
+        var html = escapeHtml(r.doc_name);
+        if (!r.applicable) html += ' <span class="badge bg-secondary">черновик</span>';
+        if (r.deleted_at) {
+          var title = 'Удалена в МойСклад. Локально сохранена для истории. Помечено: ' +
+            escapeAttr(fmtDateTime(r.deleted_at));
+          html += ' <span class="badge bg-danger" title="' + title + '">Удалена из МС</span>';
+        }
+        return html;
+      }, sort: 'doc_name', align: 'left', minWidth: 120, defWidth: 160 },
+    { key: 'agent', label: 'Контрагент', render: function (r) { return escapeHtml(r.agent_name || '—'); },
+      sort: 'agent', align: 'left', minWidth: 160, defWidth: 240 },
+    { key: 'store', label: 'Склад', render: function (r) { return escapeHtml(r.store_name || '—'); },
+      sort: 'store', align: 'left', minWidth: 120, defWidth: 160 },
+    { key: 'organization', label: 'Организация', render: function (r) { return escapeHtml(r.organization_name || ''); },
+      sort: null, align: 'left', minWidth: 140, defWidth: 200 },
+    { key: 'positions_count', label: 'Позиций', render: function (r) { return Number(r.positions_count || 0); },
+      sort: 'positions_count', align: 'right', minWidth: 70, defWidth: 90 },
+    { key: 'sum', label: 'Сумма (₽)', render: function (r) { return escapeHtml(fmtMoney(r.sum)); },
+      sort: 'sum', align: 'right', minWidth: 100, defWidth: 130 }
+  ];
+  var DEFAULT_VISIBLE_KEYS = MSS_COLS.map(function (c) { return c.key; });
 
   var state = {
     applied: Object.assign({}, DEFAULTS),
@@ -1009,6 +1157,8 @@
     positionsCache: Object.create(null),
     loading: false,
     syncTimer: null,
+    visibleCols: new Set(DEFAULT_VISIBLE_KEYS),
+    columnWidths: {}
   };
 
   function $(id) { return document.getElementById(id); }
@@ -1019,14 +1169,12 @@
     if (!Number.isFinite(n)) return String(v);
     return n.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
-
   function fmtQty(v) {
     if (v == null || v === '') return '';
     var n = Number(v);
     if (!Number.isFinite(n)) return String(v);
     return n % 1 === 0 ? n.toFixed(0) : n.toFixed(3).replace(/\.?0+$/, '');
   }
-
   function fmtDateTime(iso) {
     if (!iso) return '';
     try {
@@ -1036,39 +1184,73 @@
         hour: '2-digit', minute: '2-digit' });
     } catch (_) { return String(iso); }
   }
-
   function escapeHtml(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
       return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c];
     });
   }
-
   function escapeAttr(s) { return escapeHtml(s); }
+
+  /* ============================ Sticky-top var ============================ */
+
+  /**
+   * Выставляет --dg-mss-sticky-top в реальную высоту `.app-header.fixed-header`.
+   * Иначе sticky-th прилипает к 0/60px и шапка визуально «смещена ниже» под
+   * фиксированным app-header. Аналог `updateStickyTopVar()` в moysklad.scripts.html
+   * и `syncStickyTopVar()` в exports-marketplaces-shop.scripts.html.
+   */
+  function syncStickyTopVar() {
+    var top = 0;
+    var app = document.querySelector('.app-container');
+    var header = document.querySelector('.app-header');
+    var fixed = Boolean(app && app.classList && app.classList.contains('fixed-header'));
+    if (fixed && header && header.getBoundingClientRect) {
+      var rect = header.getBoundingClientRect();
+      top = rect && rect.height ? Math.round(rect.height) : 60;
+    }
+    document.documentElement.style.setProperty('--dg-mss-sticky-top', top + 'px');
+  }
+  function bindStickyTopVar() {
+    syncStickyTopVar();
+    window.addEventListener('resize', syncStickyTopVar);
+    if (typeof ResizeObserver === 'function') {
+      var header = document.querySelector('.app-header');
+      if (header) {
+        try { new ResizeObserver(syncStickyTopVar).observe(header); } catch (_) {}
+      }
+    }
+    if (document.fonts && document.fonts.ready && document.fonts.ready.then) {
+      document.fonts.ready.then(syncStickyTopVar).catch(function () {});
+    }
+    window.addEventListener('load', syncStickyTopVar);
+  }
 
   /* ============================ State / form ============================ */
 
   function loadFromStorage() {
     try {
-      var raw = window.localStorage.getItem(STORAGE_KEY);
+      var raw = window.localStorage.getItem(STORAGE_FILTERS);
       if (!raw) return null;
       var obj = JSON.parse(raw);
       if (obj && typeof obj === 'object') return obj;
-    } catch (_) { /** ignore */ }
+    } catch (_) {}
     return null;
   }
-
   function saveToStorage(snap) {
-    try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify(snap)); }
-    catch (_) { /** ignore */ }
+    try { window.localStorage.setItem(STORAGE_FILTERS, JSON.stringify(snap)); } catch (_) {}
   }
 
   function applyToForm(s) {
     s = Object.assign({}, DEFAULTS, s || {});
     if ($('dg-mss-search')) $('dg-mss-search').value = s.search;
+    if ($('dg-mss-doc')) $('dg-mss-doc').value = s.docName;
     if ($('dg-mss-days')) $('dg-mss-days').value = String(s.days);
     if ($('dg-mss-store')) $('dg-mss-store').value = s.storeUuid;
     if ($('dg-mss-agent')) $('dg-mss-agent').value = s.agentUuid;
+    if ($('dg-mss-project')) $('dg-mss-project').value = s.projectUuid;
     if ($('dg-mss-applicable')) $('dg-mss-applicable').value = s.applicable;
+    if ($('dg-mss-deleted')) $('dg-mss-deleted').value = s.deleted;
+    if ($('dg-mss-linked')) $('dg-mss-linked').value = s.linked;
     if ($('dg-mss-page-size')) $('dg-mss-page-size').value = String(s.pageSize);
     if ($('dg-mss-table-search-mirror')) $('dg-mss-table-search-mirror').value = s.search;
   }
@@ -1076,14 +1258,18 @@
   function readFromForm() {
     return {
       search: ($('dg-mss-search') && $('dg-mss-search').value || '').trim(),
+      docName: ($('dg-mss-doc') && $('dg-mss-doc').value || '').trim(),
       days: parseInt($('dg-mss-days') ? $('dg-mss-days').value : DEFAULTS.days, 10) || DEFAULTS.days,
       storeUuid: $('dg-mss-store') ? $('dg-mss-store').value : '',
       agentUuid: $('dg-mss-agent') ? $('dg-mss-agent').value : '',
+      projectUuid: $('dg-mss-project') ? $('dg-mss-project').value : '',
       applicable: $('dg-mss-applicable') ? $('dg-mss-applicable').value : DEFAULTS.applicable,
+      deleted: $('dg-mss-deleted') ? $('dg-mss-deleted').value : DEFAULTS.deleted,
+      linked: $('dg-mss-linked') ? $('dg-mss-linked').value : DEFAULTS.linked,
       pageSize: parseInt($('dg-mss-page-size') ? $('dg-mss-page-size').value : DEFAULTS.pageSize, 10) || DEFAULTS.pageSize,
       sortBy: state.pending.sortBy,
       sortDir: state.pending.sortDir,
-      page: state.pending.page,
+      page: state.pending.page
     };
   }
 
@@ -1092,10 +1278,13 @@
     if (!opts || opts.resetPage !== false) state.pending.page = 1;
     state.applied = Object.assign({}, state.pending);
     saveToStorage({
-      search: state.applied.search, days: state.applied.days,
+      search: state.applied.search, docName: state.applied.docName, days: state.applied.days,
       storeUuid: state.applied.storeUuid, agentUuid: state.applied.agentUuid,
-      applicable: state.applied.applicable, pageSize: state.applied.pageSize,
-      sortBy: state.applied.sortBy, sortDir: state.applied.sortDir,
+      projectUuid: state.applied.projectUuid,
+      applicable: state.applied.applicable, deleted: state.applied.deleted,
+      linked: state.applied.linked,
+      pageSize: state.applied.pageSize,
+      sortBy: state.applied.sortBy, sortDir: state.applied.sortDir
     });
     fetchList();
     fetchFilters();
@@ -1110,6 +1299,92 @@
     fetchFilters();
   }
 
+  /* ============================ Visible cols / widths ============================ */
+
+  function loadVisibleCols() {
+    try {
+      var raw = window.localStorage.getItem(VISIBLE_COLS_KEY);
+      if (!raw) return null;
+      var arr = JSON.parse(raw);
+      if (Array.isArray(arr) && arr.length) {
+        var allowed = new Set(MSS_COLS.map(function (c) { return c.key; }));
+        return arr.filter(function (k) { return allowed.has(k); });
+      }
+    } catch (_) {}
+    return null;
+  }
+  function saveVisibleCols() {
+    try {
+      window.localStorage.setItem(VISIBLE_COLS_KEY, JSON.stringify(Array.from(state.visibleCols)));
+    } catch (_) {}
+  }
+  function loadWidths() {
+    try {
+      var raw = window.localStorage.getItem(COL_WIDTHS_KEY);
+      if (raw) {
+        var obj = JSON.parse(raw);
+        if (obj && typeof obj === 'object') return obj;
+      }
+    } catch (_) {}
+    return {};
+  }
+  function saveWidths() {
+    try { window.localStorage.setItem(COL_WIDTHS_KEY, JSON.stringify(state.columnWidths || {})); } catch (_) {}
+  }
+  function getColMin(key) {
+    for (var i = 0; i < MSS_COLS.length; i++) if (MSS_COLS[i].key === key) return MSS_COLS[i].minWidth || 60;
+    return 60;
+  }
+  function getColDef(key) {
+    for (var i = 0; i < MSS_COLS.length; i++) if (MSS_COLS[i].key === key) return MSS_COLS[i].defWidth || MSS_COLS[i].minWidth || 100;
+    return 100;
+  }
+
+  function applyColumnWidths() {
+    var thead = $('dg-mss-thead');
+    var tbody = $('dg-mss-tbody');
+    if (!thead) return;
+    var visibleKeys = visibleColsArray();
+    var headRow = thead.rows && thead.rows[0];
+    if (!headRow) return;
+    visibleKeys.forEach(function (key, idx) {
+      var th = headRow.cells[idx];
+      if (!th) return;
+      var w = state.columnWidths[key];
+      if (w && Number.isFinite(Number(w))) {
+        var px = Math.max(getColMin(key), Math.min(700, Number(w))) + 'px';
+        th.style.minWidth = px;
+        th.style.width = px;
+      } else {
+        th.style.minWidth = '';
+        th.style.width = '';
+      }
+    });
+    if (tbody) {
+      Array.prototype.forEach.call(tbody.rows, function (tr) {
+        if (!tr.cells || tr.classList.contains('dg-mss-positions-row')) return;
+        visibleKeys.forEach(function (key, idx) {
+          var td = tr.cells[idx];
+          if (!td) return;
+          var w = state.columnWidths[key];
+          if (w && Number.isFinite(Number(w))) {
+            var px = Math.max(getColMin(key), Math.min(700, Number(w))) + 'px';
+            td.style.minWidth = px;
+            td.style.width = px;
+          } else {
+            td.style.minWidth = '';
+            td.style.width = '';
+          }
+        });
+      });
+    }
+  }
+
+  function visibleColsArray() {
+    return MSS_COLS.map(function (c) { return c.key; }).filter(function (k) { return state.visibleCols.has(k); });
+  }
+  function visibleColsCount() { return visibleColsArray().length; }
+
   /* ============================ Fetch list / filters ============================ */
 
   function buildQuery() {
@@ -1120,9 +1395,13 @@
     qs.set('offset', String(offset));
     qs.set('days', String(a.days));
     if (a.search) qs.set('search', a.search);
+    if (a.docName) qs.set('doc_name', a.docName);
     if (a.storeUuid) qs.set('store_uuid', a.storeUuid);
     if (a.agentUuid) qs.set('agent_uuid', a.agentUuid);
+    if (a.projectUuid) qs.set('project_uuid', a.projectUuid);
     if (a.applicable === '0' || a.applicable === '1') qs.set('applicable', a.applicable);
+    if (a.deleted === '1' || a.deleted === 'all') qs.set('deleted', a.deleted);
+    if (a.linked === '1' || a.linked === '0') qs.set('linked', a.linked);
     qs.set('sort_by', a.sortBy);
     qs.set('sort_dir', a.sortDir);
     return qs.toString();
@@ -1133,7 +1412,7 @@
     state.loading = true;
     fetch('/api/ms-sales/list?' + buildQuery(), {
       credentials: 'same-origin',
-      headers: { Accept: 'application/json' },
+      headers: { Accept: 'application/json' }
     })
       .then(function (r) {
         if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -1168,7 +1447,7 @@
     qs.set('days', String(state.applied.days));
     fetch('/api/ms-sales/filters?' + qs.toString(), {
       credentials: 'same-origin',
-      headers: { Accept: 'application/json' },
+      headers: { Accept: 'application/json' }
     })
       .then(function (r) { return r.ok ? r.json() : { success: false }; })
       .then(function (data) {
@@ -1193,11 +1472,41 @@
             }).join('');
           if (keepA) aSel.value = keepA;
         }
+        var pSel = $('dg-mss-project');
+        if (pSel) {
+          var keepP = state.applied.projectUuid;
+          pSel.innerHTML = '<option value="">Все проекты</option>' +
+            (data.projects || []).map(function (p) {
+              return '<option value="' + escapeAttr(p.uuid) + '">' + escapeHtml(p.name || '—') +
+                ' (' + (p.count || 0) + ')</option>';
+            }).join('');
+          if (keepP) pSel.value = keepP;
+        }
       })
-      .catch(function () { /** ignore */ });
+      .catch(function () {});
   }
 
-  /* ============================ Render ============================ */
+  /* ============================ Render: thead / tbody ============================ */
+
+  function buildThead() {
+    var thead = $('dg-mss-thead');
+    if (!thead) return;
+    var keys = visibleColsArray();
+    var html = '<tr>';
+    keys.forEach(function (key) {
+      var col = null;
+      for (var i = 0; i < MSS_COLS.length; i++) if (MSS_COLS[i].key === key) { col = MSS_COLS[i]; break; }
+      if (!col) return;
+      var attrs = '';
+      if (col.sort) attrs += ' data-sort="' + escapeAttr(col.sort) + '"';
+      if (col.align === 'right') attrs += ' class="dg-mss-num"';
+      html += '<th' + attrs + '>' + escapeHtml(col.label) + '</th>';
+    });
+    html += '</tr>';
+    thead.innerHTML = html;
+    renderSortIndicators();
+    applyColumnWidths();
+  }
 
   function renderTable() {
     var tbody = $('dg-mss-tbody');
@@ -1210,23 +1519,69 @@
     }
     if (empty) empty.classList.add('d-none');
 
+    var keys = visibleColsArray();
+    var cols = keys.map(function (k) {
+      for (var i = 0; i < MSS_COLS.length; i++) if (MSS_COLS[i].key === k) return MSS_COLS[i];
+      return null;
+    }).filter(Boolean);
+
     var html = '';
     for (var i = 0; i < state.rows.length; i++) {
       var r = state.rows[i];
-      var trClass = r.applicable ? '' : 'dg-mss-not-applicable';
-      html += '<tr class="' + trClass + '" data-uuid="' + escapeAttr(r.uuid) + '">'
-        + '<td><span class="dg-mss-row-toggle" data-dg-mss-toggle="1" title="Показать позиции">▶</span></td>'
-        + '<td>' + escapeHtml(fmtDateTime(r.moment)) + '</td>'
-        + '<td>' + escapeHtml(r.doc_name) + (r.applicable ? '' : ' <span class="badge bg-secondary">черновик</span>') + '</td>'
-        + '<td>' + escapeHtml(r.agent_name || '—') + '</td>'
-        + '<td>' + escapeHtml(r.store_name || '—') + '</td>'
-        + '<td>' + escapeHtml(r.organization_name || '') + '</td>'
-        + '<td class="dg-mss-num">' + (r.positions_count || 0) + '</td>'
-        + '<td class="dg-mss-num">' + escapeHtml(fmtMoney(r.sum)) + '</td>'
-        + '</tr>';
+      var classes = [];
+      if (!r.applicable) classes.push('dg-mss-not-applicable');
+      if (r.deleted_at) classes.push('table-danger', 'dg-mss-deleted-row');
+      var trClass = classes.join(' ');
+      html += '<tr class="' + trClass + '" data-uuid="' + escapeAttr(r.uuid) + '">';
+      for (var j = 0; j < cols.length; j++) {
+        var col = cols[j];
+        var content;
+        try { content = col.render(r); } catch (_e) { content = ''; }
+        if (content == null) content = '';
+        var td = '<td';
+        if (col.align === 'right') td += ' class="dg-mss-num"';
+        td += '>' + content + '</td>';
+        html += td;
+      }
+      html += '</tr>';
     }
     tbody.innerHTML = html;
+    applyColumnWidths();
   }
+
+  function renderSortIndicators() {
+    var ths = document.querySelectorAll('#dg-mss-thead th[data-sort]');
+    for (var i = 0; i < ths.length; i++) {
+      var th = ths[i];
+      var key = th.getAttribute('data-sort');
+      th.removeAttribute('data-sort-active');
+      if (key === state.applied.sortBy) {
+        th.setAttribute('data-sort-active', state.applied.sortDir === 'asc' ? 'asc' : 'desc');
+      }
+    }
+  }
+
+  function renderStatus() {
+    var line = $('dg-mss-pagination-status');
+    if (!line) return;
+    var a = state.applied;
+    var totalPages = Math.max(1, Math.ceil(state.total / a.pageSize));
+    var page = Math.min(a.page, totalPages);
+    line.textContent = 'Найдено: ' + state.total + '; страница ' + page + '/' + totalPages
+      + '; показано: ' + state.rows.length;
+    var prev = $('dg-mss-page-prev');
+    var next = $('dg-mss-page-next');
+    if (prev) prev.disabled = page <= 1;
+    if (next) next.disabled = page >= totalPages;
+    var headerStatus = $('dg-mss-status');
+    if (headerStatus) {
+      var sumAll = state.rows.reduce(function (acc, r) { return acc + Number(r.sum || 0); }, 0);
+      headerStatus.textContent = 'на странице — отгрузок: ' + state.rows.length +
+        ', сумма: ' + fmtMoney(sumAll) + ' ₽';
+    }
+  }
+
+  /* ============================ Positions row (expand) ============================ */
 
   function linkBadge(p) {
     var kind = String(p.assortment_kind || 'unknown').toLowerCase();
@@ -1237,25 +1592,12 @@
       return '<span class="dg-mss-link-badge dg-mss-link-resolved" title="Привязан к ms_export.code = ' +
         escapeAttr(p.ms_export_code) + '">' + escapeHtml(label) + ' • ' + escapeHtml(p.ms_export_code) + '</span>';
     }
-    if (kind === 'bundle') {
-      return '<span class="dg-mss-link-badge dg-mss-link-bundle" title="Комплект, не найден в ms_export">комплект (нет в ms_export)</span>';
-    }
-    if (kind === 'variant') {
-      return '<span class="dg-mss-link-badge dg-mss-link-variant" title="Вариант товара, родительский product не найден в ms_export">вариант (нет резолва)</span>';
-    }
-    if (kind === 'service') {
-      return '<span class="dg-mss-link-badge dg-mss-link-service">услуга</span>';
-    }
+    if (kind === 'bundle') return '<span class="dg-mss-link-badge dg-mss-link-bundle" title="Комплект, не найден в ms_export">комплект (нет в ms_export)</span>';
+    if (kind === 'variant') return '<span class="dg-mss-link-badge dg-mss-link-variant" title="Вариант товара, родительский product не найден в ms_export">вариант (нет резолва)</span>';
+    if (kind === 'service') return '<span class="dg-mss-link-badge dg-mss-link-service">услуга</span>';
     return '<span class="dg-mss-link-badge dg-mss-link-unresolved">не привязано</span>';
   }
 
-  /**
-   * Карточка «Детали отгрузки» — соответствие полям карточки документа в МС:
-   * Организация / Склад / Контрагент / Договор / Проект / Канал продаж /
-   * Адрес доставки / Комментарий / Валюта / НДС / Оплачено / Ответственный /
-   * Отдел / Статус / даты создания/изменения / кастомные атрибуты (включая
-   * «Номер отправления с озона», «Идентификатор чека»).
-   */
   function buildAddressLine(addr) {
     if (!addr || typeof addr !== 'object') return '';
     var parts = [];
@@ -1269,56 +1611,39 @@
     if (addr.addInfo) parts.push(String(addr.addInfo));
     return parts.join(', ');
   }
-
-  function dl(label, value, isHtml) {
+  function dl(label, value) {
     if (value == null || value === '' || value === false) return '';
     return '<div class="dg-mss-dl-row">'
       + '<div class="dg-mss-dl-label">' + escapeHtml(label) + '</div>'
-      + '<div class="dg-mss-dl-value">' + (isHtml ? value : escapeHtml(String(value))) + '</div>'
+      + '<div class="dg-mss-dl-value">' + escapeHtml(String(value)) + '</div>'
       + '</div>';
   }
 
-  function renderDemandHeader(demand) {
-    if (!demand) return '';
-    var d = demand;
+  function renderDemandHeader(d) {
+    if (!d) return '';
     var statusBadges = '';
-    if (d.applicable) {
-      statusBadges += '<span class="dg-mss-badge dg-mss-badge-ok">Проведено</span>';
-    } else {
-      statusBadges += '<span class="dg-mss-badge dg-mss-badge-muted">Не проведено</span>';
-    }
-    if (d.state_name) {
-      statusBadges += '<span class="dg-mss-badge dg-mss-badge-info">' + escapeHtml(d.state_name) + '</span>';
-    }
+    statusBadges += d.applicable
+      ? '<span class="dg-mss-badge dg-mss-badge-ok">Проведено</span>'
+      : '<span class="dg-mss-badge dg-mss-badge-muted">Не проведено</span>';
+    if (d.state_name) statusBadges += '<span class="dg-mss-badge dg-mss-badge-info">' + escapeHtml(d.state_name) + '</span>';
     var sumNum = Number(d.sum || 0);
     var payedNum = Number(d.payed_sum || 0);
     if (sumNum > 0) {
-      if (payedNum >= sumNum - 0.005) {
-        statusBadges += '<span class="dg-mss-badge dg-mss-badge-ok">Оплачено</span>';
-      } else if (payedNum > 0) {
-        statusBadges += '<span class="dg-mss-badge dg-mss-badge-warn">Частично оплачено: '
-          + fmtMoney(payedNum) + ' / ' + fmtMoney(sumNum) + ' ₽</span>';
-      } else {
-        statusBadges += '<span class="dg-mss-badge dg-mss-badge-warn">Не оплачено</span>';
-      }
+      if (payedNum >= sumNum - 0.005) statusBadges += '<span class="dg-mss-badge dg-mss-badge-ok">Оплачено</span>';
+      else if (payedNum > 0) statusBadges += '<span class="dg-mss-badge dg-mss-badge-warn">Частично оплачено: ' + fmtMoney(payedNum) + ' / ' + fmtMoney(sumNum) + ' ₽</span>';
+      else statusBadges += '<span class="dg-mss-badge dg-mss-badge-warn">Не оплачено</span>';
     }
-
     var addrLine = d.shipment_address || buildAddressLine(d.shipment_address_full);
     var currencyLine = '';
     if (d.currency_name || d.currency_iso_code) {
-      currencyLine = (d.currency_name || '') +
-        (d.currency_iso_code ? ' (' + d.currency_iso_code + ')' : '');
-      if (d.currency_rate && Number(d.currency_rate) !== 1) {
-        currencyLine += ' • курс ' + d.currency_rate;
-      }
+      currencyLine = (d.currency_name || '') + (d.currency_iso_code ? ' (' + d.currency_iso_code + ')' : '');
+      if (d.currency_rate && Number(d.currency_rate) !== 1) currencyLine += ' • курс ' + d.currency_rate;
     }
     var vatLine = '';
     if (d.vat_enabled === true) {
       vatLine = (d.vat_included ? 'НДС включён' : 'НДС сверху');
       if (d.vat_sum != null) vatLine += ' • сумма НДС: ' + fmtMoney(d.vat_sum) + ' ₽';
-    } else if (d.vat_enabled === false) {
-      vatLine = 'Без НДС';
-    }
+    } else if (d.vat_enabled === false) vatLine = 'Без НДС';
 
     var attrsHtml = '';
     if (Array.isArray(d.attributes) && d.attributes.length) {
@@ -1329,53 +1654,33 @@
             + '<div class="dg-mss-dl-label">' + escapeHtml(a.name || '') + '</div>'
             + '<div class="dg-mss-dl-value">' + escapeHtml(a.value || '') + '</div>'
             + '</div>';
-        }).join('') +
-        '</div>';
+        }).join('') + '</div>';
     }
-
-    var docLink = '';
-    if (d.uuid) {
-      docLink = '<a href="https://online.moysklad.ru/app/#demand/edit?id=' + escapeAttr(d.uuid) +
-        '" target="_blank" rel="noopener" class="dg-mss-doc-link">↗ Открыть в МС</a>';
-    }
+    var docLink = d.uuid ? ('<a href="https://online.moysklad.ru/app/#demand/edit?id=' + escapeAttr(d.uuid) +
+      '" target="_blank" rel="noopener" class="dg-mss-doc-link">↗ Открыть в МС</a>') : '';
 
     return '<div class="dg-mss-demand-card">'
       + '<div class="dg-mss-demand-card-head">'
-      + '<div class="dg-mss-demand-card-title">'
-      + '<b>Отгрузка №' + escapeHtml(d.doc_name || '') + '</b>'
-      + ' от ' + escapeHtml(fmtDateTime(d.moment))
-      + '</div>'
+      + '<div class="dg-mss-demand-card-title"><b>Отгрузка №' + escapeHtml(d.doc_name || '') + '</b> от '
+      + escapeHtml(fmtDateTime(d.moment)) + '</div>'
       + '<div class="dg-mss-demand-card-status">' + statusBadges + ' ' + docLink + '</div>'
       + '</div>'
       + '<div class="dg-mss-dl">'
-      + dl('Организация', d.organization_name)
-      + dl('Контрагент', d.agent_name)
-      + dl('Склад', d.store_name)
+      + dl('Организация', d.organization_name) + dl('Контрагент', d.agent_name) + dl('Склад', d.store_name)
       + dl('Сумма', fmtMoney(sumNum) + ' ₽')
-      + dl('Договор', d.contract_name)
-      + dl('Проект', d.project_name)
-      + dl('Канал продаж', d.sales_channel_name)
-      + dl('Ответственный', d.owner_name)
-      + dl('Отдел', d.group_name)
-      + dl('Валюта', currencyLine)
-      + dl('НДС', vatLine)
-      + dl('Адрес доставки', addrLine)
-      + dl('Комментарий', d.description)
-      + dl('Внешний код', d.external_code)
-      + dl('Код документа', d.code)
-      + dl('Sync ID', d.sync_id)
-      + dl('Создан в МС', fmtDateTime(d.ms_created))
-      + dl('Изменён в МС', fmtDateTime(d.ms_updated))
-      + '</div>'
-      + attrsHtml
-      + '</div>';
+      + dl('Договор', d.contract_name) + dl('Проект', d.project_name) + dl('Канал продаж', d.sales_channel_name)
+      + dl('Ответственный', d.owner_name) + dl('Отдел', d.group_name)
+      + dl('Валюта', currencyLine) + dl('НДС', vatLine)
+      + dl('Адрес доставки', addrLine) + dl('Комментарий', d.description)
+      + dl('Внешний код', d.external_code) + dl('Код документа', d.code) + dl('Sync ID', d.sync_id)
+      + dl('Создан в МС', fmtDateTime(d.ms_created)) + dl('Изменён в МС', fmtDateTime(d.ms_updated))
+      + '</div>' + attrsHtml + '</div>';
   }
 
   function renderPositionsRow(demand, positions) {
     var rowsHtml = (positions || []).map(function (p, idx) {
       var nameDisplay = p.ms_export_resolved && p.ms_export_name ? p.ms_export_name : p.name_at_moment;
-      var codeDisplay = p.ms_export_resolved && p.ms_export_code ? p.ms_export_code
-        : (p.code_at_moment || '—');
+      var codeDisplay = p.ms_export_resolved && p.ms_export_code ? p.ms_export_code : (p.code_at_moment || '—');
       return '<tr>'
         + '<td>' + (idx + 1) + '</td>'
         + '<td>' + escapeHtml(codeDisplay) + '</td>'
@@ -1393,12 +1698,9 @@
       + '<table class="dg-mss-positions-table">'
       + '<thead><tr>'
       + '<th>#</th><th>Код МС</th><th>Название (привязка)</th>'
-      + '<th class="dg-mss-num">Кол-во</th>'
-      + '<th class="dg-mss-num">Цена (₽)</th>'
-      + '<th class="dg-mss-num">Скидка</th>'
-      + '<th class="dg-mss-num">Сумма (₽)</th>'
-      + '<th>Текущ. остаток</th>'
-      + '</tr></thead>'
+      + '<th class="dg-mss-num">Кол-во</th><th class="dg-mss-num">Цена (₽)</th>'
+      + '<th class="dg-mss-num">Скидка</th><th class="dg-mss-num">Сумма (₽)</th>'
+      + '<th>Текущ. остаток</th></tr></thead>'
       + '<tbody>' + (rowsHtml || '<tr><td colspan="8" class="dg-mss-empty">Нет позиций</td></tr>') + '</tbody>'
       + '</table></div>';
   }
@@ -1406,20 +1708,18 @@
   function togglePositions(uuid, tr) {
     var tbody = $('dg-mss-tbody');
     if (!tbody) return;
-
+    var colspan = visibleColsCount();
     if (state.expandedDemand === uuid) {
-      var existing = tbody.querySelector('tr[data-positions-of="' + (window.CSS && CSS.escape ? CSS.escape(uuid) : uuid) + '"]');
+      var existing = tbody.querySelector('tr.dg-mss-positions-row');
       if (existing) existing.remove();
-      var caret = tr.querySelector('[data-dg-mss-toggle]');
-      if (caret) caret.textContent = '▶';
+      var caret0 = tr.querySelector('[data-dg-mss-toggle]');
+      if (caret0) caret0.textContent = '▶';
       state.expandedDemand = null;
       return;
     }
-
     var prev = tbody.querySelector('tr.dg-mss-positions-row');
     if (prev) prev.remove();
     tbody.querySelectorAll('[data-dg-mss-toggle]').forEach(function (el) { el.textContent = '▶'; });
-
     state.expandedDemand = uuid;
     var caret = tr.querySelector('[data-dg-mss-toggle]');
     if (caret) caret.textContent = '▼';
@@ -1427,65 +1727,96 @@
     var insert = document.createElement('tr');
     insert.className = 'dg-mss-positions-row';
     insert.setAttribute('data-positions-of', uuid);
-    insert.innerHTML = '<td colspan="8"><div class="dg-mss-positions-inner text-muted">Загрузка позиций…</div></td>';
+    insert.innerHTML = '<td colspan="' + colspan + '"><div class="dg-mss-positions-inner text-muted">Загрузка позиций…</div></td>';
     tr.parentNode.insertBefore(insert, tr.nextSibling);
 
     var cached = state.positionsCache[uuid];
     if (cached) {
-      insert.innerHTML = '<td colspan="8">' + renderPositionsRow(cached.demand, cached.rows) + '</td>';
+      insert.innerHTML = '<td colspan="' + colspan + '">' + renderPositionsRow(cached.demand, cached.rows) + '</td>';
       return;
     }
-
     fetch('/api/ms-sales/' + encodeURIComponent(uuid) + '/positions', {
-      credentials: 'same-origin',
-      headers: { Accept: 'application/json' },
+      credentials: 'same-origin', headers: { Accept: 'application/json' }
     })
-      .then(function (r) {
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        return r.json();
-      })
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
       .then(function (data) {
         if (!data || !data.success) throw new Error((data && data.error) || 'Ошибка позиций');
         state.positionsCache[uuid] = { demand: data.demand, rows: data.rows || [] };
-        insert.innerHTML = '<td colspan="8">' + renderPositionsRow(data.demand, data.rows || []) + '</td>';
+        insert.innerHTML = '<td colspan="' + colspan + '">' + renderPositionsRow(data.demand, data.rows || []) + '</td>';
       })
       .catch(function (err) {
-        insert.innerHTML = '<td colspan="8"><div class="dg-mss-positions-inner text-danger">' +
+        insert.innerHTML = '<td colspan="' + colspan + '"><div class="dg-mss-positions-inner text-danger">' +
           'Не удалось загрузить позиции: ' + escapeHtml((err && err.message) || 'unknown') + '</div></td>';
       });
   }
 
-  function renderStatus() {
-    var line = $('dg-mss-pagination-status');
-    if (!line) return;
-    var a = state.applied;
-    var totalPages = Math.max(1, Math.ceil(state.total / a.pageSize));
-    var page = Math.min(a.page, totalPages);
-    line.textContent = 'Найдено: ' + state.total + '; страница ' + page + '/' + totalPages
-      + '; показано: ' + state.rows.length;
-    var prev = $('dg-mss-page-prev');
-    var next = $('dg-mss-page-next');
-    if (prev) prev.disabled = page <= 1;
-    if (next) next.disabled = page >= totalPages;
+  /* ============================ Columns / widths panels ============================ */
 
-    var headerStatus = $('dg-mss-status');
-    if (headerStatus) {
-      var sumAll = state.rows.reduce(function (acc, r) { return acc + Number(r.sum || 0); }, 0);
-      headerStatus.textContent = 'на странице — отгрузок: ' + state.rows.length +
-        ', сумма: ' + fmtMoney(sumAll) + ' ₽';
-    }
+  function renderColumnControls() {
+    var list = $('dg-mss-columns-list');
+    if (!list) return;
+    list.innerHTML = '';
+    MSS_COLS.forEach(function (col) {
+      if (col.key === 'expander') return;
+      var wrap = document.createElement('label');
+      var cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = state.visibleCols.has(col.key);
+      cb.setAttribute('data-col-key', col.key);
+      cb.addEventListener('change', function () {
+        var key = this.getAttribute('data-col-key');
+        if (this.checked) state.visibleCols.add(key);
+        else if (visibleColsCount() > 2) state.visibleCols.delete(key);
+        else this.checked = true;
+        saveVisibleCols();
+        buildThead();
+        renderTable();
+      });
+      var span = document.createElement('span');
+      span.textContent = ' ' + col.label;
+      wrap.appendChild(cb);
+      wrap.appendChild(span);
+      list.appendChild(wrap);
+    });
   }
 
-  function renderSortIndicators() {
-    var ths = document.querySelectorAll('.dg-mss-table thead th[data-sort]');
-    for (var i = 0; i < ths.length; i++) {
-      var th = ths[i];
-      var key = th.getAttribute('data-sort');
-      var base = th.textContent.replace(/\s*[▲▼]$/, '').trim();
-      th.textContent = (key === state.applied.sortBy)
-        ? (base + (state.applied.sortDir === 'asc' ? ' ▲' : ' ▼'))
-        : base;
-    }
+  function renderWidthControls() {
+    var list = $('dg-mss-widths-list');
+    if (!list) return;
+    list.innerHTML = '';
+    MSS_COLS.forEach(function (col) {
+      if (col.key === 'expander') return;
+      var current = Number(state.columnWidths[col.key] || 0);
+      if (!Number.isFinite(current) || current <= 0) current = getColDef(col.key);
+      var wrap = document.createElement('label');
+      var span = document.createElement('span');
+      span.textContent = col.label;
+      span.style.flex = '1 1 auto';
+      span.style.overflow = 'hidden';
+      span.style.textOverflow = 'ellipsis';
+      span.style.whiteSpace = 'nowrap';
+      var input = document.createElement('input');
+      input.type = 'number';
+      input.className = 'form-control form-control-sm';
+      input.min = String(getColMin(col.key));
+      input.max = '700';
+      input.step = '10';
+      input.value = String(current);
+      input.setAttribute('data-col-key', col.key);
+      input.addEventListener('change', function () {
+        var k = this.getAttribute('data-col-key');
+        var n = parseInt(this.value, 10);
+        if (!Number.isFinite(n)) { this.value = String(state.columnWidths[k] || getColDef(k)); return; }
+        n = Math.max(getColMin(k), Math.min(700, n));
+        state.columnWidths[k] = n;
+        saveWidths();
+        applyColumnWidths();
+        this.value = String(n);
+      });
+      wrap.appendChild(span);
+      wrap.appendChild(input);
+      list.appendChild(wrap);
+    });
   }
 
   /* ============================ Sync (background job) ============================ */
@@ -1493,7 +1824,7 @@
   function setSyncStatus(kind, html) {
     var el = $('dg-mss-sync-status');
     if (!el) return;
-    el.className = 'dg-mss-sync-status dg-mss-sync-' + kind;
+    el.className = 'dg-mss-sync-status dg-mss-sync-' + kind + ' mt-3';
     el.innerHTML = html;
     el.classList.remove('d-none');
   }
@@ -1502,8 +1833,7 @@
     if (state.syncTimer) return;
     state.syncTimer = window.setInterval(function () {
       fetch('/api/ms-sales/sync-status', {
-        credentials: 'same-origin',
-        headers: { Accept: 'application/json' },
+        credentials: 'same-origin', headers: { Accept: 'application/json' }
       })
         .then(function (r) { return r.ok ? r.json() : null; })
         .then(function (data) {
@@ -1512,83 +1842,149 @@
           if (s.active) {
             $('dg-mss-cancel') && $('dg-mss-cancel').classList.remove('d-none');
             $('dg-mss-sync') && ($('dg-mss-sync').disabled = true);
-            var pct = s.total_demands > 0
-              ? Math.round((s.fetched_demands / s.total_demands) * 100)
-              : 0;
+            $('dg-mss-sync-fresh') && ($('dg-mss-sync-fresh').disabled = true);
+            var pct = s.total_demands > 0 ? Math.round((s.fetched_demands / s.total_demands) * 100) : 0;
+            /**
+             * Resume-режим: показываем «Продолжаем с DD.MM.YYYY» и сколько
+             * уже было в БД до этого прогона. Так понятно, что синк не
+             * проходит весь период с нуля, а добивает хвост.
+             */
+            var resumeBadge = '';
+            if (s.resume_mode) {
+              var resumeWhen = s.resume_from_moment ? fmtDateTime(s.resume_from_moment) : '—';
+              resumeBadge = ' <span class="badge bg-info ms-2" title="Auto-resume: продолжаем с момента, до которого дошёл прошлый прогон. До этого в БД уже было ' +
+                escapeAttr(String(s.existing_count_at_start || 0)) +
+                ' отгрузок за период.">Resume с ' + escapeHtml(resumeWhen) + '</span>';
+            }
             setSyncStatus('info',
-              '<b>Синхронизация:</b> ' + escapeHtml(s.message || '') +
+              '<b>Синхронизация' + (s.resume_mode ? ' (resume)' : '') + ':</b> ' + escapeHtml(s.message || '') +
               ' <span class="ms-2">' + pct + '%</span>'
+              + resumeBadge
               + (s.cancel_requested ? ' <span class="ms-2">⏳ останавливается…</span>' : ''));
           } else {
             stopSyncPolling();
             $('dg-mss-cancel') && $('dg-mss-cancel').classList.add('d-none');
             $('dg-mss-sync') && ($('dg-mss-sync').disabled = false);
-            var kind = s.last_error ? 'err' : (s.unresolved_positions > 0 ? 'warn' : 'ok');
+            $('dg-mss-sync-fresh') && ($('dg-mss-sync-fresh').disabled = false);
+            /**
+             * Три исхода (см. buildFinalMessage в routes/msSales.js):
+             *   • last_error + fetched < total  → прервано на ошибке (err);
+             *   • last_error без неполноты      → завершено с ошибками (err);
+             *   • есть «не привязано»           → warn;
+             *   • иначе                          → ok.
+             *
+             * Раньше всегда писали «Готово.» — пользователь видел красную
+             * плашку с «Готово.» и непонимал, почему счётчик меньше total.
+             */
+            var hasError = !!s.last_error;
+            var hasTotal = Number(s.total_demands || 0) > 0;
+            var stoppedEarly = hasError && hasTotal && Number(s.fetched_demands || 0) < Number(s.total_demands || 0);
+            var kind = hasError ? 'err' : (s.unresolved_positions > 0 ? 'warn' : 'ok');
+            var title;
+            if (stoppedEarly) title = 'Прервано на ошибке.';
+            else if (hasError) title = 'Завершено с ошибками.';
+            else title = 'Готово.';
+            var hint = stoppedEarly
+              ? '<div class="mt-2 small text-muted">Уже сохранённые отгрузки и позиции остались в БД. ' +
+                'Нажмите «Синхронизировать с МС» ещё раз — auto-resume подхватит ровно с места разрыва ' +
+                '(MIN(moment) уже сохранённых − 5 минут запаса, UPSERT защищает от дублей). ' +
+                'Если нужно перепрогнать период с нуля — «Полный синк с нуля».</div>'
+              : '';
+            /**
+             * Resume-режим в финальном баннере: явно различаем, что в этом
+             * прогоне `total_demands` — это размер «хвоста», а не всего
+             * периода. Считаем суммарно с тем, что было до прогона
+             * (`existing_count_at_start`).
+             */
+            var resumePrefix = '';
+            if (s.resume_mode) {
+              var existing = Number(s.existing_count_at_start || 0);
+              var addedNow = Number(s.fetched_demands || 0);
+              var resumeFrom = s.resume_from_moment ? fmtDateTime(s.resume_from_moment) : '—';
+              resumePrefix = '<span class="badge bg-info me-2" title="Auto-resume: продолжали с MIN(moment) − 5 мин = ' +
+                escapeAttr(resumeFrom) + '">Resume</span>' +
+                'Было в БД до прогона: ' + existing + '; доскачано: ' + addedNow +
+                '; итого ≈ ' + (existing + addedNow) + '. ';
+            }
             setSyncStatus(kind,
-              '<b>Готово.</b> Отгрузок: ' + (s.fetched_demands || 0) + '/' + (s.total_demands || 0) +
+              '<b>' + title + '</b> ' + resumePrefix +
+              'Отгрузок за прогон: ' + (s.fetched_demands || 0) + '/' + (s.total_demands || 0) +
               ', позиций сохранено: ' + (s.saved_positions || 0) +
               ', резолв в ms_export: ' + (s.resolved_positions || 0) +
               ', не привязано: ' + (s.unresolved_positions || 0) +
-              (s.last_error ? '<br />Последняя ошибка: ' + escapeHtml(s.last_error) : ''));
+              ', помечено удалёнными: ' + (s.deleted_demands || 0) +
+              (s.resume_mode ? ' <span class="text-muted small">(soft-delete пропущен на resume)</span>' : '') +
+              ', воскрешено: ' + (s.restored_demands || 0) +
+              (s.last_error ? '<br />Последняя ошибка: ' + escapeHtml(s.last_error) : '') +
+              hint);
             fetchList();
             fetchFilters();
           }
         })
-        .catch(function () { /** ignore */ });
+        .catch(function () {});
     }, 1500);
   }
   function stopSyncPolling() {
     if (state.syncTimer) { window.clearInterval(state.syncTimer); state.syncTimer = null; }
   }
-
-  function startSync() {
+  /**
+   * Запуск синка. `fresh = true` → полный синк с нуля (отключает auto-resume
+   * на бэкенде). `fresh = false / undefined` → обычный запуск: если в БД уже
+   * есть отгрузки за период, бэкенд автоматически продолжит «с места
+   * разрыва» (от MIN(moment) уже сохранённых − 5 минут запаса), а не
+   * перепрогонит весь период с нуля.
+   */
+  function startSync(opts) {
+    var fresh = !!(opts && opts.fresh);
     var days = parseInt($('dg-mss-days').value, 10) || 30;
-    if (!window.confirm('Запустить синхронизацию entity/demand из МС за последние ' + days +
-        ' дней?\n\nЗависит от объёма: для крупного склада может занять несколько минут. Можно остановить кнопкой ⏹.')) {
-      return;
+    var question;
+    if (fresh) {
+      question = 'Полный синк с нуля за последние ' + days + ' дней?\n\n' +
+        'Отключает auto-resume: тянет ВЕСЬ период от NOW() до начала, ' +
+        'перезаписывая уже сохранённые отгрузки. UPSERT защищает от дублей, ' +
+        'но времени уйдёт заметно больше, чем у обычного запуска.\n\n' +
+        'Нужно, если данные «протухли» или хотите принудительно пересобрать ' +
+        'период и выполнить soft-delete сверку. Остановить можно кнопкой «Остановить».';
+    } else {
+      question = 'Запустить синхронизацию entity/demand из МС за последние ' + days + ' дней?\n\n' +
+        'Если в БД уже есть отгрузки за этот период (и прошлый прогон был прерван), ' +
+        'синк автоматически продолжит с места разрыва — добьёт хвост периода без ' +
+        'полного перепрогона. Можно остановить кнопкой «Остановить».';
     }
-    setSyncStatus('info', '<b>Запуск…</b>');
+    if (!window.confirm(question)) return;
+    setSyncStatus('info', '<b>' + (fresh ? 'Запуск полного синка…' : 'Запуск…') + '</b>');
     fetch('/api/ms-sales/sync', {
       method: 'POST', credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({ days: days }),
+      body: JSON.stringify({ days: days, fresh: fresh })
     })
       .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
       .then(function (out) {
-        if (!out.ok || !out.data || !out.data.success) {
-          throw new Error((out.data && out.data.error) || 'HTTP error');
-        }
+        if (!out.ok || !out.data || !out.data.success) throw new Error((out.data && out.data.error) || 'HTTP error');
         startSyncPolling();
       })
       .catch(function (err) {
         setSyncStatus('err', '<b>Ошибка запуска:</b> ' + escapeHtml(err && err.message ? err.message : 'unknown'));
       });
   }
-
   function cancelSync() {
     fetch('/api/ms-sales/sync-cancel', {
       method: 'POST', credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: '{}',
-    })
-      .then(function () { /** дальше polling сам перерисует */ })
-      .catch(function () { /** ignore */ });
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: '{}'
+    }).catch(function () {});
   }
-
   function reresolve() {
     if (!window.confirm('Перепривязать все непривязанные позиции к ms_export по uuid? Полезно после полного синка МойСклад.')) return;
-    setSyncStatus('info', '<b>Реrezolve…</b>');
+    setSyncStatus('info', '<b>Перепривязка…</b>');
     fetch('/api/ms-sales/reresolve', {
       method: 'POST', credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: '{}',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: '{}'
     })
       .then(function (r) { return r.json(); })
       .then(function (data) {
         if (!data || !data.success) throw new Error((data && data.error) || 'unknown');
         var kind = data.unresolved > 0 ? 'warn' : 'ok';
-        setSyncStatus(kind,
-          '<b>Готово.</b> Привязано позиций: ' + (data.affected || 0) +
+        setSyncStatus(kind, '<b>Готово.</b> Привязано позиций: ' + (data.affected || 0) +
           ', осталось без привязки: ' + (data.unresolved || 0));
         fetchList();
       })
@@ -1607,8 +2003,7 @@
     function copy(from, to) {
       if (syncing) return;
       syncing = true;
-      try { to.value = from.value; }
-      finally { syncing = false; }
+      try { to.value = from.value; } finally { syncing = false; }
     }
     top.addEventListener('input', function () { copy(top, mirror); });
     mirror.addEventListener('input', function () { copy(mirror, top); });
@@ -1638,27 +2033,90 @@
     });
   }
 
-  function bindSortHandlers() {
-    var ths = document.querySelectorAll('.dg-mss-table thead th[data-sort]');
-    for (var i = 0; i < ths.length; i++) {
-      ths[i].addEventListener('click', function (e) {
-        var sel = window.getSelection && window.getSelection();
-        if (sel && String(sel.toString()).trim().length > 0) return;
-        if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON')) return;
-        var key = this.getAttribute('data-sort');
-        if (state.applied.sortBy === key) {
-          state.applied.sortDir = state.applied.sortDir === 'asc' ? 'desc' : 'asc';
-        } else {
-          state.applied.sortBy = key;
-          state.applied.sortDir = 'asc';
-        }
-        state.pending.sortBy = state.applied.sortBy;
-        state.pending.sortDir = state.applied.sortDir;
-        state.applied.page = 1;
-        state.pending.page = 1;
-        fetchList();
+  function bindColumnPanels() {
+    var colsToggle = $('dg-mss-columns-toggle');
+    var widthsToggle = $('dg-mss-widths-toggle');
+    var colsPanel = $('dg-mss-columns-panel');
+    var widthsPanel = $('dg-mss-widths-panel');
+    var wrap = $('dg-mss-toolbox-panels');
+    function syncWrap() {
+      if (!wrap) return;
+      var open = (colsPanel && colsPanel.classList.contains('open')) ||
+                 (widthsPanel && widthsPanel.classList.contains('open'));
+      wrap.classList.toggle('d-none', !open);
+    }
+    if (colsToggle && colsPanel) {
+      colsToggle.addEventListener('click', function (e) {
+        e.preventDefault(); e.stopPropagation();
+        colsPanel.classList.toggle('open');
+        if (widthsPanel) widthsPanel.classList.remove('open');
+        if (colsPanel.classList.contains('open')) renderColumnControls();
+        syncWrap();
       });
     }
+    if (widthsToggle && widthsPanel) {
+      widthsToggle.addEventListener('click', function (e) {
+        e.preventDefault(); e.stopPropagation();
+        widthsPanel.classList.toggle('open');
+        if (colsPanel) colsPanel.classList.remove('open');
+        if (widthsPanel.classList.contains('open')) renderWidthControls();
+        syncWrap();
+      });
+    }
+    document.addEventListener('click', function (e) {
+      if (!colsPanel && !widthsPanel) return;
+      if (e.target.closest('#dg-mss-columns-panel')) return;
+      if (e.target.closest('#dg-mss-columns-toggle')) return;
+      if (e.target.closest('#dg-mss-widths-panel')) return;
+      if (e.target.closest('#dg-mss-widths-toggle')) return;
+      if (colsPanel) colsPanel.classList.remove('open');
+      if (widthsPanel) widthsPanel.classList.remove('open');
+      syncWrap();
+    });
+
+    var allBtn = $('dg-mss-columns-all');
+    var noneBtn = $('dg-mss-columns-none');
+    var defBtn = $('dg-mss-columns-default');
+    var widthsDef = $('dg-mss-widths-default');
+    if (allBtn) allBtn.addEventListener('click', function () {
+      state.visibleCols = new Set(MSS_COLS.map(function (c) { return c.key; }));
+      saveVisibleCols(); renderColumnControls(); buildThead(); renderTable();
+    });
+    if (noneBtn) noneBtn.addEventListener('click', function () {
+      state.visibleCols = new Set(['expander', 'doc_name']);
+      saveVisibleCols(); renderColumnControls(); buildThead(); renderTable();
+    });
+    if (defBtn) defBtn.addEventListener('click', function () {
+      state.visibleCols = new Set(DEFAULT_VISIBLE_KEYS);
+      saveVisibleCols(); renderColumnControls(); buildThead(); renderTable();
+    });
+    if (widthsDef) widthsDef.addEventListener('click', function () {
+      state.columnWidths = {};
+      saveWidths(); applyColumnWidths(); renderWidthControls();
+    });
+  }
+
+  function bindSortHandlers() {
+    var thead = $('dg-mss-thead');
+    if (!thead) return;
+    thead.addEventListener('click', function (e) {
+      var th = e.target && e.target.closest && e.target.closest('th[data-sort]');
+      if (!th) return;
+      var sel = window.getSelection && window.getSelection();
+      if (sel && String(sel.toString()).trim().length > 0) return;
+      var key = th.getAttribute('data-sort');
+      if (state.applied.sortBy === key) {
+        state.applied.sortDir = state.applied.sortDir === 'asc' ? 'desc' : 'asc';
+      } else {
+        state.applied.sortBy = key;
+        state.applied.sortDir = 'asc';
+      }
+      state.pending.sortBy = state.applied.sortBy;
+      state.pending.sortDir = state.applied.sortDir;
+      state.applied.page = 1;
+      state.pending.page = 1;
+      fetchList();
+    });
   }
 
   function bindPagination() {
@@ -1682,9 +2140,18 @@
   function bindControls() {
     if ($('dg-mss-apply')) $('dg-mss-apply').addEventListener('click', function () { commitFilters(); });
     if ($('dg-mss-reset')) $('dg-mss-reset').addEventListener('click', function () { resetFilters(); });
-    if ($('dg-mss-sync')) $('dg-mss-sync').addEventListener('click', startSync);
+    if ($('dg-mss-sync')) $('dg-mss-sync').addEventListener('click', function () { startSync({ fresh: false }); });
+    if ($('dg-mss-sync-fresh')) $('dg-mss-sync-fresh').addEventListener('click', function () { startSync({ fresh: true }); });
     if ($('dg-mss-cancel')) $('dg-mss-cancel').addEventListener('click', cancelSync);
     if ($('dg-mss-reresolve')) $('dg-mss-reresolve').addEventListener('click', reresolve);
+    /** Enter — применить, Esc — очистить и применить (как у умного поиска). */
+    var doc = $('dg-mss-doc');
+    if (doc) {
+      doc.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); commitFilters(); }
+        else if (e.key === 'Escape') { e.preventDefault(); doc.value = ''; commitFilters(); }
+      });
+    }
   }
 
   function bindTbody() {
@@ -1695,15 +2162,52 @@
       if (!caret) return;
       var tr = caret.closest('tr[data-uuid]');
       if (!tr) return;
-      var uuid = tr.getAttribute('data-uuid');
-      togglePositions(uuid, tr);
+      togglePositions(tr.getAttribute('data-uuid'), tr);
     });
   }
+
+  /* ============================ Filter fields visibility ============================ */
+
+  function initFilterFieldsVisibility() {
+    if (!window.DatagonFilterFieldsVisibility ||
+        typeof window.DatagonFilterFieldsVisibility.init !== 'function') return;
+    window.DatagonFilterFieldsVisibility.init({
+      storageKeyPrefix: 'datagon_ms_sales_filter_blocks_v1',
+      attr: 'data-dg-mss-filter-field',
+      togglesRootId: 'dg-mss-filter-blocks-toggles',
+      fieldGroups: [
+        { title: 'Поиск и период', items: [
+          { key: 'mss_search', title: 'Умный поиск' },
+          { key: 'mss_doc', title: 'Номер' },
+          { key: 'mss_days', title: 'За период' },
+          { key: 'mss_page_size', title: 'На странице' }
+        ]},
+        { title: 'Фильтры списка', items: [
+          { key: 'mss_store', title: 'Склад' },
+          { key: 'mss_agent', title: 'Контрагент' },
+          { key: 'mss_project', title: 'Проект' },
+          { key: 'mss_applicable', title: 'Проведённые' },
+          { key: 'mss_deleted', title: 'Удалённые в МС' }
+        ]},
+        { title: 'Действия', items: [
+          { key: 'mss_filter_actions', title: 'Кнопки действий' }
+        ]}
+      ]
+    });
+  }
+
+  /* ============================ Init ============================ */
 
   function init() {
     var snap = loadFromStorage() || DEFAULTS;
     state.applied = Object.assign({}, DEFAULTS, snap);
     state.pending = Object.assign({}, state.applied);
+    var savedVis = loadVisibleCols();
+    state.visibleCols = new Set(savedVis && savedVis.length ? savedVis : DEFAULT_VISIBLE_KEYS);
+    /** expander всегда виден — иначе негде нажимать «развернуть позиции». */
+    state.visibleCols.add('expander');
+    state.columnWidths = loadWidths();
+
     applyToForm(state.applied);
     bindControls();
     bindCollapse('dg-mss-filters-toggle', 'dg-mss-filters-body', FILTERS_COLLAPSED_KEY);
@@ -1712,15 +2216,21 @@
     bindSortHandlers();
     bindPagination();
     bindTbody();
+    bindColumnPanels();
+    initFilterFieldsVisibility();
+    bindStickyTopVar();
+
+    buildThead();
     fetchList();
     fetchFilters();
+
     /** Если синк уже идёт (например, после рефреша страницы) — подхватим polling. */
     fetch('/api/ms-sales/sync-status', { credentials: 'same-origin', headers: { Accept: 'application/json' } })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (data) {
         if (data && data.success && data.status && data.status.active) startSyncPolling();
       })
-      .catch(function () { /** ignore */ });
+      .catch(function () {});
   }
 
   if (document.readyState === 'loading') {

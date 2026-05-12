@@ -1,0 +1,179 @@
+          <div class="app-page-title">
+            <div class="page-title-wrapper">
+              <div class="page-title-heading">
+                <div class="page-title-icon">
+                  <i class="pe-7s-cart icon-gradient bg-plum-plate"> </i>
+                </div>
+                <div>
+                  Закупки
+                  <div class="page-title-subheading">
+                    Планирование закупок: только активные складские позиции МойСклад (без комплектов).
+                    Можно вручную задавать неснижаемый остаток Датагон, кратность и минимальный остаток счёт-как.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2">
+              <div class="d-flex align-items-center">
+                <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
+                <span>Фильтры и действия</span>
+              </div>
+              <div class="d-flex align-items-center gap-2">
+                <div class="dropdown">
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-secondary dg-vanilla-dropdown-toggle"
+                    style="line-height: 1; padding: 0.35rem 0.5rem"
+                    aria-expanded="false"
+                    aria-haspopup="true"
+                    id="dg-pu-filter-blocks-btn"
+                    data-dg-tooltip="Какие поля фильтров показывать (сохраняется в браузере для текущего пользователя)"
+                  >
+                    <i class="pe-7s-config btn-icon-wrapper" style="font-size: 1.1rem" aria-hidden="true"></i>
+                  </button>
+                  <div
+                    class="dropdown-menu dropdown-menu-end rm-pointers p-0"
+                    id="dg-pu-filter-blocks-menu"
+                    style="width: min(420px, calc(100vw - 1.5rem))"
+                  >
+                    <div class="dropdown-menu-header mb-0">
+                      <div class="dropdown-menu-header-inner bg-tempting-azure">
+                        <div
+                          class="menu-header-image opacity-5"
+                          style="background-image: url('/assets/utils/images/dropdown-header/abstract2.jpg')"
+                        ></div>
+                        <div class="menu-header-content text-white px-3 py-2">
+                          <h5 class="menu-header-title mb-0">Поля фильтров</h5>
+                          <h6 class="menu-header-subtitle mb-0 opacity-8 fw-normal small">По группам: переключатели справа</h6>
+                        </div>
+                      </div>
+                    </div>
+                    <div style="max-height: calc(100vh - 10rem); overflow-y: auto; overflow-x: hidden">
+                      <div id="dg-pu-filter-blocks-toggles" class="list-group list-group-flush"></div>
+                    </div>
+                  </div>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-pu-filters-toggle">Свернуть</button>
+              </div>
+            </div>
+            <div class="card-body">
+              <div id="dg-pu-filters-body">
+              <div class="row g-2 align-items-end">
+                <div class="col-md-4" data-dg-pu-filter-field="pu_smart">
+                  <label class="form-label" for="pu-f-search">Умный поиск</label>
+                  <input type="text" class="form-control" id="pu-f-search" placeholder="Код, артикул, наименование или поставщик" autocomplete="off"
+                         data-dg-tooltip="Ищет по полям: код, наименование, поставщик 1/2. Enter — применить." />
+                </div>
+                <div class="col-md-3" data-dg-pu-filter-field="pu_supplier">
+                  <label class="form-label" for="pu-f-supplier">Поставщик</label>
+                  <input type="text" class="form-control" id="pu-f-supplier" autocomplete="off" />
+                </div>
+                <div class="col-md-2" data-dg-pu-filter-field="pu_archived">
+                  <label class="form-label" for="pu-f-archived">Архивные</label>
+                  <select class="form-select" id="pu-f-archived">
+                    <option value="active" selected>Только активные</option>
+                    <option value="archived">Только архив</option>
+                    <option value="all">Все</option>
+                  </select>
+                </div>
+                <div class="col-md-2" data-dg-pu-filter-field="pu_stock_position">
+                  <label class="form-label" for="pu-f-stock_position">Складская позиция</label>
+                  <select class="form-select" id="pu-f-stock_position">
+                    <option value="yes" selected>Только Да</option>
+                    <option value="no">Только Нет</option>
+                    <option value="all">Все</option>
+                  </select>
+                </div>
+                <div class="col-md-1" data-dg-pu-filter-field="pu_limit">
+                  <label class="form-label" for="pu-f-limit">На странице</label>
+                  <select class="form-select" id="pu-f-limit">
+                    <option value="50">50</option>
+                    <option value="100" selected>100</option>
+                    <option value="200">200</option>
+                    <option value="500">500</option>
+                  </select>
+                </div>
+              </div>
+              <div class="mt-3 d-flex flex-wrap gap-3" data-dg-pu-filter-field="pu_filter_checks">
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" id="pu-only-stock" />
+                  <label class="form-check-label" for="pu-only-stock">Только с остатком &gt; 0</label>
+                </div>
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" id="pu-include-bundles" />
+                  <label class="form-check-label" for="pu-include-bundles" data-dg-tooltip="По умолчанию комплекты исключены, как требует ТЗ закупок">Включить комплекты</label>
+                </div>
+              </div>
+              <div class="mt-3 d-flex flex-wrap gap-2" data-dg-pu-filter-field="pu_filter_actions">
+                <button type="button" class="btn btn-sm btn-primary" id="purchase-apply" data-dg-tooltip="Применить фильтры и обновить таблицу"><i class="pe-7s-search me-1"></i>Применить</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="purchase-reset" data-dg-tooltip="Сбросить фильтры к значениям по умолчанию"><i class="pe-7s-refresh me-1"></i>По умолчанию</button>
+                <button type="button" class="btn btn-sm btn-outline-primary" id="purchase-refresh"><i class="pe-7s-refresh me-1"></i>Обновить</button>
+                <button type="button" class="btn btn-sm btn-outline-dark" id="purchase-copy-link"><i class="pe-7s-link me-1"></i>Скопировать ссылку</button>
+              </div>
+              </div>
+            </div>
+          </div>
+
+          <p class="text-muted small mb-2 text-danger" id="dg-pu-status" style="display:none"></p>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+              <div class="d-flex align-items-center gap-3 flex-grow-1" style="min-width: 0">
+                <div class="d-flex align-items-center flex-shrink-0">
+                  <i class="header-icon pe-7s-cart icon-gradient bg-happy-fisher me-2"> </i>
+                  <span>Закупки</span>
+                </div>
+                <div class="dg-pu-header-search" style="flex: 0 1 380px; min-width: 220px">
+                  <div class="input-group input-group-sm">
+                    <span class="input-group-text bg-white text-muted px-2" aria-hidden="true">🔎</span>
+                    <input type="search" class="form-control" id="dg-pu-table-search-mirror"
+                           placeholder="Умный поиск (Enter — применить)"
+                           autocomplete="off"
+                           data-dg-tooltip="Зеркало умного поиска. Enter — применить, Esc — очистить." />
+                  </div>
+                </div>
+              </div>
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-pu-columns-toggle" title="Управление видимостью столбцов">🧩 Столбцы</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-pu-widths-toggle" title="Ручная ширина каждой колонки">📏 Ширины</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-pu-table-toggle" title="Свернуть/развернуть тело карточки">Свернуть</button>
+              </div>
+            </div>
+            <div class="card-body" id="dg-pu-table-body">
+              <div class="datagon-columns-toolbox mb-2 d-none" id="dg-pu-toolbox-panels">
+                <div class="datagon-columns-panel" id="dg-pu-columns-panel">
+                  <div class="columns-actions mb-2">
+                    <button type="button" class="btn btn-sm" id="dg-pu-columns-all">Выделить все</button>
+                    <button type="button" class="btn btn-sm" id="dg-pu-columns-none">Снять все</button>
+                    <button type="button" class="btn btn-sm" id="dg-pu-columns-default">По умолчанию</button>
+                  </div>
+                  <div id="dg-pu-columns-list" class="columns-grid"></div>
+                </div>
+                <div class="datagon-columns-panel" id="dg-pu-widths-panel">
+                  <div class="columns-actions mb-2">
+                    <button type="button" class="btn btn-sm" id="dg-pu-widths-default">По умолчанию</button>
+                  </div>
+                  <div id="dg-pu-widths-list" class="dg-pu-widths-grid"></div>
+                </div>
+              </div>
+              <div style="width:100%;max-width:100%;overflow-x:auto;overflow-y:visible;-webkit-overflow-scrolling:touch">
+                <div class="table-responsive datagon-my-products-table-wrap" style="display:block;width:100%;max-width:100%;min-width:0;overflow:visible;position:relative">
+                  <table class="table table-hover table-striped mb-0 datagon-my-products-table dg-pu-table" style="width:max-content;min-width:2400px;max-width:none;table-layout:fixed;border-collapse:collapse;border-spacing:0">
+                    <thead id="dg-pu-thead"></thead>
+                    <tbody id="dg-pu-tbody"></tbody>
+                  </table>
+                </div>
+              </div>
+              <div class="mt-3 d-flex justify-content-between align-items-center">
+                <div class="text-muted" id="dg-pu-footer-left">Всего: 0</div>
+                <div class="btn-group" role="group" aria-label="Страницы закупок">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="pu-btn-prev">Назад</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="pu-btn-next">Вперед</button>
+                </div>
+              </div>
+              <p class="text-muted mb-0 mt-2" id="dg-pu-table-hint">—</p>
+            </div>
+          </div>

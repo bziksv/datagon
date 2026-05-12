@@ -499,7 +499,7 @@
                         </ul>
                       </li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="ms-sales" href="/ms-sales.html" title="Продажи МС: отгрузки entity/demand, позиции с привязкой к товарам ms_export"><i class="metismenu-icon pe-7s-cash"></i>Продажи МС</a></li>
-                      <li class="metismenu-item"><a class="metismenu-link" data-nav="lagerplus" href="/lagerplus.html" title="Lagerplus — закупочный модуль (адаптация фич neeil1990/store)"><i class="metismenu-icon pe-7s-cart"></i>Lagerplus — Закупки</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="purchase" href="/purchase.html" title="Закупки: планирование, неснижаемые остатки, кратность"><i class="metismenu-icon pe-7s-cart"></i>Закупки</a></li>
                     </ul>
                   </div>
                 </div>
@@ -554,6 +554,215 @@
               <button type="button" class="btn btn-outline-primary" id="dashboard-db-size-refresh" data-dg-activity-label="Обновить размер базы данных">
                 <i class="pe-7s-refresh me-1"></i>Обновить размер БД
               </button>
+            </div>
+          </div>
+
+          <style>
+            .dg-disk-stat-tile {
+              border: 1px solid #eef0f4;
+              border-radius: 0.5rem;
+              padding: 0.85rem 1rem;
+              background: #fbfcfe;
+              height: 100%;
+            }
+            .dg-disk-stat-label {
+              font-size: 0.78rem;
+              color: #6c757d;
+              text-transform: uppercase;
+              letter-spacing: 0.04em;
+              margin-bottom: 0.2rem;
+            }
+            .dg-disk-stat-value {
+              font-weight: 600;
+              font-size: 1.15rem;
+              line-height: 1.2;
+              color: #212529;
+              word-break: break-word;
+            }
+            .dg-disk-stat-sub {
+              color: #6c757d;
+              font-size: 0.78rem;
+              margin-top: 0.2rem;
+            }
+            .dg-disk-fs-bar {
+              height: 0.85rem;
+              border-radius: 0.5rem;
+              overflow: hidden;
+              background: #eef0f4;
+              display: flex;
+            }
+            .dg-disk-fs-seg {
+              height: 100%;
+              transition: width 0.4s ease;
+            }
+            .dg-disk-fs-seg + .dg-disk-fs-seg {
+              border-left: 1px solid rgba(255, 255, 255, 0.6);
+            }
+            .dg-disk-fs-legend {
+              display: flex;
+              flex-wrap: wrap;
+              gap: 0.75rem 1.25rem;
+              font-size: 0.85rem;
+              color: #6c757d;
+              margin-top: 0.5rem;
+            }
+            .dg-disk-fs-legend .legend-dot {
+              display: inline-block;
+              width: 0.65rem;
+              height: 0.65rem;
+              border-radius: 50%;
+              margin-right: 0.4rem;
+              vertical-align: middle;
+            }
+            .dg-disk-folder-list {
+              display: flex;
+              flex-direction: column;
+              gap: 0.55rem;
+            }
+            .dg-disk-folder-row {
+              display: grid;
+              grid-template-columns: minmax(140px, 1.4fr) minmax(100px, 0.9fr) minmax(70px, 0.5fr) 2.4fr;
+              align-items: center;
+              gap: 0.75rem;
+              padding: 0.45rem 0.65rem;
+              border-radius: 0.45rem;
+              background: #fbfcfe;
+              border: 1px solid #eef0f4;
+            }
+            .dg-disk-folder-row:hover {
+              background: #f4f6fb;
+            }
+            .dg-disk-folder-name {
+              font-weight: 600;
+              color: #212529;
+              display: flex;
+              align-items: center;
+              gap: 0.4rem;
+              min-width: 0;
+            }
+            .dg-disk-folder-name .name-text {
+              overflow: hidden;
+              text-overflow: ellipsis;
+              white-space: nowrap;
+            }
+            .dg-disk-folder-name .badge {
+              flex-shrink: 0;
+            }
+            .dg-disk-folder-size {
+              font-variant-numeric: tabular-nums;
+              color: #495057;
+            }
+            .dg-disk-folder-percent {
+              font-variant-numeric: tabular-nums;
+              color: #6c757d;
+              font-size: 0.85rem;
+              text-align: right;
+            }
+            .dg-disk-folder-bar {
+              height: 0.55rem;
+              border-radius: 0.5rem;
+              background: #eef0f4;
+              overflow: hidden;
+            }
+            .dg-disk-folder-bar > span {
+              display: block;
+              height: 100%;
+              border-radius: 0.5rem;
+              transition: width 0.4s ease;
+              min-width: 2px;
+            }
+            .dg-disk-folder-files {
+              color: #adb5bd;
+              font-size: 0.78rem;
+              font-weight: 400;
+            }
+            @media (max-width: 767.98px) {
+              .dg-disk-folder-row {
+                grid-template-columns: 1fr 1fr;
+                grid-template-areas:
+                  "name size"
+                  "bar bar"
+                  "percent percent";
+              }
+              .dg-disk-folder-row > .dg-disk-folder-name { grid-area: name; }
+              .dg-disk-folder-row > .dg-disk-folder-size { grid-area: size; text-align: right; }
+              .dg-disk-folder-row > .dg-disk-folder-percent { grid-area: percent; text-align: left; }
+              .dg-disk-folder-row > .dg-disk-folder-bar { grid-area: bar; }
+            }
+          </style>
+
+          <div class="main-card mb-3 card" id="dg-disk-card">
+            <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+              <div class="d-flex align-items-center">
+                <i class="header-icon pe-7s-server icon-gradient bg-mean-fruit me-2"> </i>
+                <span>Дисковое пространство</span>
+              </div>
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <span class="text-muted small d-none d-md-inline" id="dg-disk-meta">—</span>
+                <button type="button" class="btn btn-sm btn-outline-primary" id="dg-disk-refresh" data-dg-activity-label="Пересчитать использование диска">
+                  <i class="pe-7s-refresh me-1"></i>Пересчитать
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-disk-toggle">Свернуть</button>
+              </div>
+            </div>
+            <div class="card-body" id="dg-disk-body">
+              <div class="row g-3 mb-3">
+                <div class="col-md-3 col-sm-6">
+                  <div class="dg-disk-stat-tile">
+                    <div class="dg-disk-stat-label">Размер проекта</div>
+                    <div class="dg-disk-stat-value" id="dg-disk-project-size">—</div>
+                    <div class="dg-disk-stat-sub" id="dg-disk-project-files">— файлов</div>
+                  </div>
+                </div>
+                <div class="col-md-3 col-sm-6">
+                  <div class="dg-disk-stat-tile">
+                    <div class="dg-disk-stat-label">Занято на диске</div>
+                    <div class="dg-disk-stat-value" id="dg-disk-fs-used">—</div>
+                    <div class="dg-disk-stat-sub" id="dg-disk-fs-used-pct">из —</div>
+                  </div>
+                </div>
+                <div class="col-md-3 col-sm-6">
+                  <div class="dg-disk-stat-tile">
+                    <div class="dg-disk-stat-label">Свободно</div>
+                    <div class="dg-disk-stat-value text-success" id="dg-disk-fs-free">—</div>
+                    <div class="dg-disk-stat-sub" id="dg-disk-fs-free-pct">— %</div>
+                  </div>
+                </div>
+                <div class="col-md-3 col-sm-6">
+                  <div class="dg-disk-stat-tile">
+                    <div class="dg-disk-stat-label">Каталогов</div>
+                    <div class="dg-disk-stat-value" id="dg-disk-folder-count">—</div>
+                    <div class="dg-disk-stat-sub" id="dg-disk-scan-meta">скан: —</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="mb-2 small text-muted">
+                <i class="pe-7s-folder me-1"></i>Корень: <code id="dg-disk-project-path" style="color:#495057">—</code>
+              </div>
+
+              <div class="mb-3">
+                <div class="dg-disk-fs-bar" id="dg-disk-fs-bar" role="img" aria-label="Использование диска">
+                  <div class="dg-disk-fs-seg bg-primary" data-seg="project" style="width:0%"></div>
+                  <div class="dg-disk-fs-seg bg-secondary" data-seg="other" style="width:0%"></div>
+                  <div class="dg-disk-fs-seg bg-success" data-seg="free" style="width:100%"></div>
+                </div>
+                <div class="dg-disk-fs-legend">
+                  <span><span class="legend-dot bg-primary"></span>Проект: <b id="dg-disk-legend-project">—</b></span>
+                  <span><span class="legend-dot bg-secondary"></span>Другие данные: <b id="dg-disk-legend-other">—</b></span>
+                  <span><span class="legend-dot bg-success"></span>Свободно: <b id="dg-disk-legend-free">—</b></span>
+                </div>
+              </div>
+
+              <div class="d-flex align-items-center justify-content-between mb-2">
+                <h6 class="mb-0">Разбивка по папкам проекта</h6>
+                <span class="text-muted small" id="dg-disk-folders-hint">—</span>
+              </div>
+              <div class="dg-disk-folder-list" id="dg-disk-folders-mount">
+                <div class="text-muted">Загрузка разбивки...</div>
+              </div>
+
+              <p class="text-muted small mb-0 mt-3" id="dg-disk-error" style="display:none"></p>
             </div>
           </div>
 
@@ -1054,6 +1263,282 @@
           });
       }
 
+      var DISK_FOLDER_PALETTE = [
+        "bg-primary",
+        "bg-info",
+        "bg-success",
+        "bg-warning",
+        "bg-danger",
+        "bg-secondary",
+        "bg-dark",
+        "bg-arielle-smile",
+        "bg-plum-plate",
+        "bg-night-fade",
+        "bg-malibu-beach",
+        "bg-ripe-malin"
+      ];
+      var DISK_COLLAPSE_KEY = "datagon_dashboard_disk_collapsed_v1";
+
+      function setDiskError(message) {
+        var el = document.getElementById("dg-disk-error");
+        if (!el) return;
+        if (!message) {
+          el.style.display = "none";
+          el.textContent = "";
+          return;
+        }
+        el.style.display = "";
+        el.textContent = "Ошибка: " + message;
+      }
+
+      function clearDiskUsageUI() {
+        var ids = [
+          "dg-disk-project-size",
+          "dg-disk-project-files",
+          "dg-disk-fs-used",
+          "dg-disk-fs-used-pct",
+          "dg-disk-fs-free",
+          "dg-disk-fs-free-pct",
+          "dg-disk-folder-count",
+          "dg-disk-scan-meta",
+          "dg-disk-project-path",
+          "dg-disk-meta",
+          "dg-disk-legend-project",
+          "dg-disk-legend-other",
+          "dg-disk-legend-free",
+          "dg-disk-folders-hint"
+        ];
+        ids.forEach(function (id) {
+          var el = document.getElementById(id);
+          if (el) el.textContent = "—";
+        });
+      }
+
+      function renderDiskUsage(diskUsage) {
+        if (!diskUsage) {
+          clearDiskUsageUI();
+          setDiskError("Нет данных");
+          return;
+        }
+        if (diskUsage.error) {
+          clearDiskUsageUI();
+          setDiskError(diskUsage.error);
+          return;
+        }
+        setDiskError(null);
+
+        var projectBytes = Number(diskUsage.projectSizeBytes || 0);
+        var projectFiles = Number(diskUsage.projectFileCount || 0);
+        var folders = Array.isArray(diskUsage.folders) ? diskUsage.folders.slice() : [];
+        var fs = diskUsage.fileSystem || {};
+
+        var projSizeEl = document.getElementById("dg-disk-project-size");
+        if (projSizeEl) projSizeEl.textContent = fmtBytes(projectBytes);
+        var projFilesEl = document.getElementById("dg-disk-project-files");
+        if (projFilesEl) projFilesEl.textContent = num(projectFiles) + " файлов · " + num(folders.length) + " папок";
+
+        var pathEl = document.getElementById("dg-disk-project-path");
+        if (pathEl) pathEl.textContent = diskUsage.projectPath || "—";
+
+        var metaEl = document.getElementById("dg-disk-meta");
+        if (metaEl) {
+          var parts = [
+            "обновлено: " + fmtDate(diskUsage.scannedAt),
+            (diskUsage.cached ? "из кэша" : "свежий расчёт")
+          ];
+          if (Number(diskUsage.scanDurationMs || 0) > 0) {
+            parts.push("скан: " + Math.round(Number(diskUsage.scanDurationMs)) + " мс");
+          }
+          metaEl.textContent = parts.join(" · ");
+        }
+
+        var scanMetaEl = document.getElementById("dg-disk-scan-meta");
+        if (scanMetaEl) {
+          scanMetaEl.textContent = "скан: " + (Number(diskUsage.scanDurationMs || 0) > 0
+            ? Math.round(Number(diskUsage.scanDurationMs)) + " мс"
+            : "—");
+        }
+        var folderCountEl = document.getElementById("dg-disk-folder-count");
+        if (folderCountEl) folderCountEl.textContent = num(folders.length);
+
+        var fsUsedEl = document.getElementById("dg-disk-fs-used");
+        var fsUsedPctEl = document.getElementById("dg-disk-fs-used-pct");
+        var fsFreeEl = document.getElementById("dg-disk-fs-free");
+        var fsFreePctEl = document.getElementById("dg-disk-fs-free-pct");
+        var bar = document.getElementById("dg-disk-fs-bar");
+        var legendProj = document.getElementById("dg-disk-legend-project");
+        var legendOther = document.getElementById("dg-disk-legend-other");
+        var legendFree = document.getElementById("dg-disk-legend-free");
+
+        if (fs && !fs.error && Number(fs.sizeBytes || 0) > 0) {
+          var total = Number(fs.sizeBytes || 0);
+          var used = Number(fs.usedBytes || 0);
+          var free = Number(fs.freeBytes || 0);
+          var projShare = Math.min(used, projectBytes);
+          var otherShare = Math.max(0, used - projShare);
+          var pProj = total > 0 ? (projShare / total) * 100 : 0;
+          var pOther = total > 0 ? (otherShare / total) * 100 : 0;
+          var pFree = total > 0 ? (free / total) * 100 : 0;
+
+          if (fsUsedEl) fsUsedEl.textContent = fmtBytes(used);
+          if (fsUsedPctEl)
+            fsUsedPctEl.textContent =
+              "из " + fmtBytes(total) + " (" + Number(fs.usedPercent || (total ? (used / total) * 100 : 0)).toFixed(1) + "%)";
+          if (fsFreeEl) fsFreeEl.textContent = fmtBytes(free);
+          if (fsFreePctEl)
+            fsFreePctEl.textContent = total > 0 ? (100 - Number(fs.usedPercent || 0)).toFixed(1) + " %" : "— %";
+
+          if (bar) {
+            var segs = bar.querySelectorAll(".dg-disk-fs-seg");
+            if (segs[0]) segs[0].style.width = pProj.toFixed(2) + "%";
+            if (segs[1]) segs[1].style.width = pOther.toFixed(2) + "%";
+            if (segs[2]) segs[2].style.width = pFree.toFixed(2) + "%";
+          }
+          if (legendProj) legendProj.textContent = fmtBytes(projShare) + " (" + pProj.toFixed(1) + "%)";
+          if (legendOther) legendOther.textContent = fmtBytes(otherShare) + " (" + pOther.toFixed(1) + "%)";
+          if (legendFree) legendFree.textContent = fmtBytes(free) + " (" + pFree.toFixed(1) + "%)";
+        } else {
+          if (fsUsedEl) fsUsedEl.textContent = "—";
+          if (fsUsedPctEl) fsUsedPctEl.textContent = fs && fs.error ? fs.error : "недоступно";
+          if (fsFreeEl) fsFreeEl.textContent = "—";
+          if (fsFreePctEl) fsFreePctEl.textContent = "—";
+          if (bar) {
+            var segs2 = bar.querySelectorAll(".dg-disk-fs-seg");
+            if (segs2[0]) segs2[0].style.width = "0%";
+            if (segs2[1]) segs2[1].style.width = "0%";
+            if (segs2[2]) segs2[2].style.width = "100%";
+          }
+          if (legendProj) legendProj.textContent = fmtBytes(projectBytes);
+          if (legendOther) legendOther.textContent = "—";
+          if (legendFree) legendFree.textContent = "—";
+        }
+
+        var maxFolderBytes = folders.reduce(function (acc, f) {
+          return Math.max(acc, Number(f.sizeBytes || 0));
+        }, 0);
+        var mount = document.getElementById("dg-disk-folders-mount");
+        var hint = document.getElementById("dg-disk-folders-hint");
+        if (hint) {
+          hint.textContent = num(folders.length) + " папок · сумма: " + fmtBytes(projectBytes);
+        }
+        if (mount) {
+          mount.replaceChildren();
+          if (folders.length === 0) {
+            var empty = document.createElement("div");
+            empty.className = "text-muted";
+            empty.textContent = "Папок не найдено";
+            mount.appendChild(empty);
+          } else {
+            folders.forEach(function (f, idx) {
+              var sizeBytes = Number(f.sizeBytes || 0);
+              var pctOfProject = projectBytes > 0 ? (sizeBytes / projectBytes) * 100 : 0;
+              var pctOfMax = maxFolderBytes > 0 ? (sizeBytes / maxFolderBytes) * 100 : 0;
+              var color = DISK_FOLDER_PALETTE[idx % DISK_FOLDER_PALETTE.length];
+
+              var row = document.createElement("div");
+              row.className = "dg-disk-folder-row";
+
+              var nameCell = document.createElement("div");
+              nameCell.className = "dg-disk-folder-name";
+              var nameSpan = document.createElement("span");
+              nameSpan.className = "name-text";
+              nameSpan.textContent = f.name || "—";
+              nameSpan.title = f.name || "";
+              nameCell.appendChild(nameSpan);
+              if (f.isHidden) {
+                var hiddenBadge = document.createElement("span");
+                hiddenBadge.className = "badge bg-light text-muted border";
+                hiddenBadge.textContent = "скрытая";
+                nameCell.appendChild(hiddenBadge);
+              }
+              if (Number(f.errorCount || 0) > 0) {
+                var errBadge = document.createElement("span");
+                errBadge.className = "badge bg-warning text-dark";
+                errBadge.title = "Часть файлов не удалось прочитать (нет доступа)";
+                errBadge.textContent = "нет доступа: " + num(f.errorCount);
+                nameCell.appendChild(errBadge);
+              }
+
+              var sizeCell = document.createElement("div");
+              sizeCell.className = "dg-disk-folder-size";
+              var sizeStrong = document.createElement("strong");
+              sizeStrong.textContent = fmtBytes(sizeBytes);
+              sizeCell.appendChild(sizeStrong);
+              var filesSpan = document.createElement("div");
+              filesSpan.className = "dg-disk-folder-files";
+              filesSpan.textContent = num(f.fileCount || 0) + " файлов";
+              sizeCell.appendChild(filesSpan);
+
+              var pctCell = document.createElement("div");
+              pctCell.className = "dg-disk-folder-percent";
+              pctCell.textContent = pctOfProject.toFixed(1) + " %";
+
+              var barCell = document.createElement("div");
+              barCell.className = "dg-disk-folder-bar";
+              var barFill = document.createElement("span");
+              barFill.className = color;
+              barFill.style.width = Math.max(0.5, pctOfMax).toFixed(2) + "%";
+              barFill.title = fmtBytes(sizeBytes) + " — " + pctOfProject.toFixed(1) + " % проекта";
+              barCell.appendChild(barFill);
+
+              row.appendChild(nameCell);
+              row.appendChild(sizeCell);
+              row.appendChild(pctCell);
+              row.appendChild(barCell);
+              mount.appendChild(row);
+            });
+          }
+        }
+      }
+
+      function loadDiskUsage(forceRefresh) {
+        var metaEl = document.getElementById("dg-disk-meta");
+        var hint = document.getElementById("dg-disk-folders-hint");
+        var btn = document.getElementById("dg-disk-refresh");
+        var url = "/api/processes/disk-usage" + (forceRefresh ? "?refresh=1" : "");
+        if (btn) btn.disabled = true;
+        if (metaEl) metaEl.textContent = forceRefresh ? "Пересчитываем разбивку..." : (metaEl.textContent || "загрузка...");
+        if (hint) hint.textContent = "загрузка...";
+        return fetch(url, { credentials: "same-origin" })
+          .then(function (r) {
+            return parseJsonResponse(r, "Не удалось получить разбивку диска");
+          })
+          .then(function (x) {
+            if (!x.ok || !x.j.success) throw new Error(x.j.error || "Не удалось получить разбивку диска");
+            renderDiskUsage(x.j.diskUsage);
+          })
+          .catch(function (e) {
+            setDiskError(e.message || String(e));
+            if (hint) hint.textContent = "—";
+          })
+          .finally(function () {
+            if (btn) btn.disabled = false;
+          });
+      }
+
+      function initDiskCollapse() {
+        var card = document.getElementById("dg-disk-card");
+        var body = document.getElementById("dg-disk-body");
+        var btn = document.getElementById("dg-disk-toggle");
+        if (!card || !body || !btn) return;
+        var apply = function (collapsed) {
+          body.style.display = collapsed ? "none" : "";
+          btn.textContent = collapsed ? "Развернуть" : "Свернуть";
+        };
+        var initial = false;
+        try {
+          initial = window.localStorage && window.localStorage.getItem(DISK_COLLAPSE_KEY) === "1";
+        } catch (_) {}
+        apply(initial);
+        btn.addEventListener("click", function () {
+          var nextCollapsed = body.style.display !== "none" ? true : false;
+          apply(nextCollapsed);
+          try {
+            if (window.localStorage) window.localStorage.setItem(DISK_COLLAPSE_KEY, nextCollapsed ? "1" : "0");
+          } catch (_) {}
+        });
+      }
+
       document.getElementById("dashboard-sync-all").addEventListener("click", function () {
         fetch("/api/sync-all-start", { method: "POST", credentials: "same-origin" })
           .then(function (r) {
@@ -1072,10 +1557,20 @@
 
       document.getElementById("dashboard-refresh").addEventListener("click", function () {
         loadDashboard();
+        loadDiskUsage(false);
       });
       document.getElementById("dashboard-db-size-refresh").addEventListener("click", refreshDatabaseSize);
 
+      var diskRefreshBtn = document.getElementById("dg-disk-refresh");
+      if (diskRefreshBtn) {
+        diskRefreshBtn.addEventListener("click", function () {
+          loadDiskUsage(true);
+        });
+      }
+      initDiskCollapse();
+
       loadDashboard();
+      loadDiskUsage(false);
       pollTimer = setInterval(loadDashboard, 15000);
     })();
   </script>

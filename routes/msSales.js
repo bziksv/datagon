@@ -163,6 +163,14 @@ async function ensureSchema(db) {
          *  хранятся отдельно в ms_demand_position). Нужен для backfill новых
          *  полей без повторного запроса в МС API. */
         ['payload_json', 'JSON NULL'],
+        /**
+         * Soft-delete метка. Заполняется в `runDemandSync` после успешного
+         * прохода: если документа нет в выдаче МС за тот же период, ставим
+         * `deleted_at = NOW()`. При следующем синке (документ вернулся) UPSERT
+         * сбрасывает её в NULL — это «воскрешение». Hard-delete не делаем,
+         * чтобы сохранить позиции/историю продаж.
+         */
+        ['deleted_at', 'TIMESTAMP NULL DEFAULT NULL'],
     ];
     const [existingCols] = await db.query('SHOW COLUMNS FROM ms_demand');
     const existingNames = new Set((existingCols || []).map((r) => String(r.Field)));
@@ -177,6 +185,14 @@ async function ensureSchema(db) {
     /** Индекс на owner — для будущих фильтров «по ответственному». */
     try {
         await db.query('CREATE INDEX idx_owner ON ms_demand (owner_uuid)');
+    } catch (e) {
+        if (!/Duplicate key name/i.test(e && e.message ? e.message : '')) {
+            /** ignore */
+        }
+    }
+    /** Индекс на deleted_at — для фильтра «Удалённые». */
+    try {
+        await db.query('CREATE INDEX idx_deleted_at ON ms_demand (deleted_at)');
     } catch (e) {
         if (!/Duplicate key name/i.test(e && e.message ? e.message : '')) {
             /** ignore */
@@ -260,9 +276,35 @@ const jobState = {
     saved_positions: 0,
     resolved_positions: 0,
     unresolved_positions: 0,
+    deleted_demands: 0,
+    restored_demands: 0,
     message: 'Ожидание',
     errors: [],
     last_error: null,
+    /**
+     * Resume-режим: при старте `runDemandSync` (без `options.fresh`) мы смотрим,
+     * есть ли в БД сохранённые отгрузки за это окно периода и докуда мы дошли
+     * в прошлом проходе. Если есть «хвост» (MIN(moment) явно позже, чем
+     * `momentFrom`), сужаем `momentTo` до этой точки + 5 минут запаса и идём
+     * добивать прошлое. UPSERT по uuid защищает от дублей на границе.
+     *
+     * resume_mode               — true, если этот прогон стартовал как resume
+     *                              (не «полный с нуля»);
+     * resume_from_moment        — ISO дата, с которой реально стартует
+     *                              запрос к МС API (это и есть «дошли до этой
+     *                              даты в прошлом проходе» + запас);
+     * existing_count_at_start   — сколько отгрузок уже было в БД за это окно
+     *                              периода до запуска (для UI «дополнительно
+     *                              скачано: X, итого: existing+X»).
+     *
+     * Soft-delete пасс пропускается при `resume_mode === true`, потому что мы
+     * видим только хвост и не можем считать «всё свежее, чего нет в seenUuids,
+     * — удалённым». Полная сверка с soft-delete выполняется только при
+     * `fresh = true` (или когда resume-режим не сработал — пустая БД).
+     */
+    resume_mode: false,
+    resume_from_moment: null,
+    existing_count_at_start: 0,
 };
 
 function resetJobState(days) {
@@ -276,9 +318,14 @@ function resetJobState(days) {
     jobState.saved_positions = 0;
     jobState.resolved_positions = 0;
     jobState.unresolved_positions = 0;
+    jobState.deleted_demands = 0;
+    jobState.restored_demands = 0;
     jobState.message = 'Стартует синхронизация…';
     jobState.errors = [];
     jobState.last_error = null;
+    jobState.resume_mode = false;
+    jobState.resume_from_moment = null;
+    jobState.existing_count_at_start = 0;
 }
 
 function jobStateToPayload() {
@@ -293,15 +340,64 @@ function jobStateToPayload() {
         saved_positions: jobState.saved_positions,
         resolved_positions: jobState.resolved_positions,
         unresolved_positions: jobState.unresolved_positions,
+        deleted_demands: jobState.deleted_demands,
+        restored_demands: jobState.restored_demands,
         message: jobState.message,
         errors: jobState.errors.slice(-20),
         last_error: jobState.last_error,
+        resume_mode: jobState.resume_mode,
+        resume_from_moment: jobState.resume_from_moment,
+        existing_count_at_start: jobState.existing_count_at_start,
     };
 }
 
 function logJobError(msg) {
     jobState.errors.push({ at: new Date().toISOString(), msg: String(msg || '') });
     jobState.last_error = String(msg || '');
+}
+
+/**
+ * Композит финального сообщения синка. Различает три исхода:
+ *   • Остановлено пользователем — `cancelRequested` + есть `last_error`
+ *     не делаем (пользовательская остановка приоритетнее);
+ *   • Прервано на ошибке — `last_error` присутствует
+ *     (transient timeout, сеть, 5xx — после исчерпанных ретраев);
+ *   • Готово — всё прошло до конца без фатальных ошибок.
+ *
+ * Раньше при ошибке UI всё равно показывал «Готово.» и пользователю было
+ * непонятно, почему `fetched < total`. Теперь префикс честно отражает
+ * исход; повтор запуска идемпотентен (UPSERT по uuid + тот же период),
+ * поэтому в случае прерывания можно просто нажать «Синхронизировать с
+ * МС» ещё раз и подхватить с того же места.
+ */
+function buildFinalMessage() {
+    const stats =
+        ' отгрузок, ' + jobState.saved_positions + ' позиций (' +
+        jobState.resolved_positions + ' резолв, ' + jobState.unresolved_positions + ' не привязано' +
+        ', помечено удалёнными: ' + jobState.deleted_demands +
+        ', воскрешено: ' + jobState.restored_demands + ')';
+    let prefix;
+    if (jobState.cancelRequested) {
+        prefix = 'Остановлено пользователем: ' + jobState.fetched_demands + '/' + jobState.total_demands;
+    } else if (jobState.last_error) {
+        prefix = 'Прервано на ошибке: ' + jobState.fetched_demands + '/' + jobState.total_demands;
+    } else {
+        prefix = 'Готово: ' + jobState.fetched_demands + '/' + jobState.total_demands;
+    }
+    /**
+     * В resume-режиме `total_demands` — это размер только «хвоста», а не
+     * полное число отгрузок за период. Дописываем явное упоминание, что
+     * это resume и сколько уже было в БД, чтобы пользователю не казалось,
+     * будто синк увидел только X документов из реального полного периода.
+     */
+    if (jobState.resume_mode) {
+        prefix = '[Resume] ' + prefix + stats +
+            '. До этого прогона в БД за период уже было ' + jobState.existing_count_at_start +
+            ' отгрузок (доскачано ' + jobState.fetched_demands + ', итого ≈ ' +
+            (jobState.existing_count_at_start + jobState.fetched_demands) + ')';
+        return prefix;
+    }
+    return prefix + stats;
 }
 
 /* ============================ MS API: список и позиции ===================== */
@@ -342,16 +438,135 @@ async function fetchDemandsPage(headers, momentFrom, momentTo, offset, limit) {
     params.set('offset', String(offset));
 
     const url = MS_BASE_URL + '/entity/demand?' + params.toString();
-    const resp = await axios.get(url, { headers, timeout: 60000 });
+    /**
+     * timeout 90s — у МС API на больших offset'ах (~40k+) одиночные ответы
+     * с тяжёлым expand стабильно бывают по 30-60s. 60s регулярно вызывал
+     * фоновые сбои синка (см. fetchDemandsPageResilient — там также retry).
+     */
+    const resp = await axios.get(url, { headers, timeout: 90000 });
     return resp && resp.data ? resp.data : { rows: [], meta: { size: 0 } };
+}
+
+/**
+ * Классификация ошибки axios как «транзиентной» (повторение имеет смысл):
+ *   • без HTTP-статуса (timeout, ECONNRESET, ECONNREFUSED, EAI_AGAIN, …);
+ *   • статус 408 / 429 (rate-limit) / 5xx — серверные/сетевые сбои.
+ * 4xx-ошибки (кроме 408/429) и 401 — фатальные (битый токен, неверный
+ * запрос); ретраить нет смысла, throw поднимется выше как `last_error`.
+ */
+function isTransientAxiosError(err) {
+    if (!err) return false;
+    const status = err.response && err.response.status;
+    if (!status) return true;
+    if (status === 408 || status === 429) return true;
+    return status >= 500 && status < 600;
+}
+
+/**
+ * Резилиентная обёртка над `fetchDemandsPage`: повторяет запрос при
+ * транзиентных ошибках (network/timeout, 5xx, 429). При исчерпании
+ * стандартных попыток уменьшает `limit` (100 → 50 → 25), чтобы дать МС
+ * API шанс отдать страницу быстрее на больших `offset`'ах (где раньше
+ * стабильно ловили `timeout of 60000ms exceeded`).
+ *
+ * Возвращает `{ data, limit }` — фактический `limit` может отличаться от
+ * запрошенного, если пришлось уменьшать страницу. Внешний цикл должен
+ * использовать его (а не константу `PAGE`) для check'а «последняя ли это
+ * страница»: `rows.length < usedLimit` ⇒ нет смысла продолжать.
+ *
+ * Если получен `jobState.cancelRequested` во время ожидания между
+ * попытками — выбрасывает Error с `code === 'CANCELLED'`, чтобы внешний
+ * код мог отличить отмену от настоящей ошибки и не помечать как фейл.
+ *
+ * Важно: ретраи здесь НЕ пишутся в `jobState.errors` (только в
+ * `jobState.message` и в `console.warn`). Это сознательно — иначе одна
+ * сетевая моргалка с успешным ретраем заблокирует soft-delete пасс в
+ * конце синка (см. условие `jobState.errors.length === 0`).
+ */
+async function fetchDemandsPageResilient(headers, momentFrom, momentTo, offset, limit) {
+    const STEPS = [
+        { delay: 0, limit: limit },
+        { delay: 2000, limit: limit },
+        { delay: 5000, limit: Math.max(25, Math.floor(limit / 2)) },
+        { delay: 12000, limit: Math.max(25, Math.floor(limit / 4)) },
+    ];
+    let lastErr = null;
+    for (let i = 0; i < STEPS.length; i++) {
+        if (jobState.cancelRequested) {
+            const e = new Error('Остановлено пользователем');
+            e.code = 'CANCELLED';
+            throw e;
+        }
+        if (STEPS[i].delay > 0) {
+            jobState.message = 'Сетевая ошибка МС API: повтор ' + (i + 1) + '/' + STEPS.length +
+                ' для offset=' + offset + ' limit=' + STEPS[i].limit +
+                ' через ' + Math.round(STEPS[i].delay / 1000) + ' c…';
+            await new Promise((r) => setTimeout(r, STEPS[i].delay));
+            if (jobState.cancelRequested) {
+                const e = new Error('Остановлено пользователем');
+                e.code = 'CANCELLED';
+                throw e;
+            }
+        }
+        try {
+            const data = await fetchDemandsPage(headers, momentFrom, momentTo, offset, STEPS[i].limit);
+            return { data, limit: STEPS[i].limit };
+        } catch (e) {
+            lastErr = e;
+            if (!isTransientAxiosError(e)) throw e;
+            console.warn('[ms-sales] retry ' + (i + 1) + '/' + STEPS.length +
+                ' offset=' + offset + ' limit=' + STEPS[i].limit +
+                ': ' + ((e && e.message) || 'unknown'));
+        }
+    }
+    throw lastErr || new Error('fetchDemandsPage: исчерпаны попытки');
 }
 
 async function fetchDemandPositions(headers, demandUuid) {
     /** Fallback: если в expand-результате positions.rows не оказалось — отдельный запрос. */
     const url = MS_BASE_URL + '/entity/demand/' + encodeURIComponent(demandUuid) +
         '/positions?expand=assortment,assortment.product&limit=1000';
-    const resp = await axios.get(url, { headers, timeout: 60000 });
+    const resp = await axios.get(url, { headers, timeout: 90000 });
     return resp && resp.data && Array.isArray(resp.data.rows) ? resp.data.rows : [];
+}
+
+/**
+ * Резилиентная обёртка для `fetchDemandPositions`: 2 ретрая (всего 3
+ * попытки) на транзиентных ошибках. В отличие от `fetchDemandsPageResilient`
+ * не меняет размер выборки (это уже /positions конкретного документа,
+ * там обычно мало строк).
+ *
+ * Ретраи логируются в `console.warn`, в `jobState.errors` не попадают —
+ * единичные сбои `/positions` (≤ десятки документов из тысяч) не должны
+ * блокировать soft-delete пасс.
+ */
+async function fetchDemandPositionsResilient(headers, demandUuid) {
+    const STEPS = [0, 2000, 5000];
+    let lastErr = null;
+    for (let i = 0; i < STEPS.length; i++) {
+        if (jobState.cancelRequested) {
+            const e = new Error('Остановлено пользователем');
+            e.code = 'CANCELLED';
+            throw e;
+        }
+        if (STEPS[i] > 0) {
+            await new Promise((r) => setTimeout(r, STEPS[i]));
+            if (jobState.cancelRequested) {
+                const e = new Error('Остановлено пользователем');
+                e.code = 'CANCELLED';
+                throw e;
+            }
+        }
+        try {
+            return await fetchDemandPositions(headers, demandUuid);
+        } catch (e) {
+            lastErr = e;
+            if (!isTransientAxiosError(e)) throw e;
+            console.warn('[ms-sales] positions retry ' + (i + 1) + '/' + STEPS.length +
+                ' uuid=' + demandUuid + ': ' + ((e && e.message) || 'unknown'));
+        }
+    }
+    throw lastErr || new Error('fetchDemandPositions: исчерпаны попытки');
 }
 
 /* =========================== Сохранение в БД =========================== */
@@ -529,7 +744,8 @@ async function persistDemand(db, doc) {
             printed = VALUES(printed),
             published = VALUES(published),
             attributes_json = VALUES(attributes_json),
-            payload_json = VALUES(payload_json)`,
+            payload_json = VALUES(payload_json),
+            deleted_at = NULL`,
         [
             uuid,
             String(doc.name || '').slice(0, 64),
@@ -669,13 +885,14 @@ async function persistPositions(db, demandUuid, positions, resolvedMap) {
 
 /* =========================== Главная функция синка ========================== */
 
-async function runDemandSync(db, days) {
+async function runDemandSync(db, days, options = {}) {
     const headers = getMsHeaders();
     if (!headers) {
         const e = new Error('MS_TOKEN не задан (env MS_TOKEN или config.msToken)');
         e.code = 'NO_TOKEN';
         throw e;
     }
+    const fresh = options && options.fresh === true;
     const now = new Date();
     const from = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
     const fmt = (d) => {
@@ -684,13 +901,99 @@ async function runDemandSync(db, days) {
             pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
     };
     const momentFrom = fmt(from);
-    const momentTo = fmt(now);
+    let momentTo = fmt(now);
+    /**
+     * Полный `momentTo` от NOW() — нужен для soft-delete пасса и для снимка
+     * `previouslyDeleted` (мы всё ещё работаем над тем же логическим окном
+     * периода). Не подменяем его на resume‑узкое окно.
+     */
+    const momentToFull = momentTo;
 
-    jobState.message = 'Запрашиваем отгрузки за ' + momentFrom + ' — ' + momentTo;
+    /**
+     * Auto-resume: если в БД уже есть отгрузки за это окно периода, и
+     * самая старая из них (`minMoment`) ощутимо позже, чем `momentFrom`
+     * — значит прошлый прогон не успел добить хвост. Сужаем `momentTo`
+     * до `minMoment + 5 минут запаса` и идём только за хвостом. UPSERT по
+     * uuid защищает пограничные документы от дублей.
+     *
+     * Триггер «есть пробел»: `minMoment > momentFrom + 5 минут` (5 минут
+     * — тот же запас, что и в `resume_from_moment`; меньшая разница
+     * означает «мы фактически дошли до начала периода» — полный синк).
+     *
+     * Отключается флагом `fresh = true` (отдельная кнопка «Полный синк
+     * с нуля» в UI).
+     */
+    if (!fresh) {
+        try {
+            const [stat] = await db.query(
+                `SELECT COUNT(*) AS cnt, MIN(moment) AS minM
+                   FROM ms_demand
+                  WHERE moment BETWEEN ? AND ?
+                    AND deleted_at IS NULL`,
+                [momentFrom, momentToFull],
+            );
+            const stRow = (stat && stat[0]) || {};
+            const cnt = Number(stRow.cnt || 0);
+            const minM = stRow.minM ? new Date(stRow.minM) : null;
+            jobState.existing_count_at_start = cnt;
+            if (cnt > 0 && minM && !Number.isNaN(minM.getTime())) {
+                const minMomentMs = minM.getTime();
+                const fromMs = from.getTime();
+                /** 5 минут зазора в обе стороны — порог «есть пробел». */
+                const GAP_THRESHOLD_MS = 5 * 60 * 1000;
+                if (minMomentMs - fromMs > GAP_THRESHOLD_MS) {
+                    /** Запас 5 минут вверх по moment, чтобы пересеклось с
+                     *  пограничными документами и UPSERT их освежил. */
+                    const resumeBoundary = new Date(minMomentMs + GAP_THRESHOLD_MS);
+                    momentTo = fmt(resumeBoundary);
+                    jobState.resume_mode = true;
+                    jobState.resume_from_moment = momentTo;
+                    jobState.message =
+                        'Resume: продолжаем добивать хвост периода. Уже синкнуто ' + cnt +
+                        ' отгрузок (самая старая — ' + fmt(minM) + '). Тянем ' +
+                        momentFrom + ' — ' + momentTo + '.';
+                }
+            }
+        } catch (e) {
+            console.warn('[ms-sales] resume-probe failed:', e && e.message);
+        }
+    }
+
+    if (!jobState.resume_mode) {
+        jobState.message = 'Запрашиваем отгрузки за ' + momentFrom + ' — ' + momentTo;
+    }
+
+    /**
+     * Снимок «ранее помеченных удалёнными» — берём по ПОЛНОМУ окну
+     * `[momentFrom, momentToFull]`, а не по resume-узкому, чтобы
+     * «воскрешения» из свежей части тоже учитывались, если случился
+     * полный прогон.
+     */
+    const previouslyDeleted = new Set();
+    try {
+        const [rows] = await db.query(
+            `SELECT uuid FROM ms_demand
+              WHERE deleted_at IS NOT NULL
+                AND moment BETWEEN ? AND ?`,
+            [momentFrom, momentToFull],
+        );
+        for (const r of rows) previouslyDeleted.add(String(r.uuid).toLowerCase());
+    } catch (_e) { /* not fatal */ }
+
+    /** UUID документов, которые мы реально получили из МС в этом проходе. */
+    const seenUuids = new Set();
 
     const PAGE = 100;
     let offset = 0;
     let totalSize = null;
+    /**
+     * Флаг «синк прерван транзиентной ошибкой» — выставляется внешним
+     * catch для пагинационного цикла, когда `fetchDemandsPageResilient`
+     * исчерпала все retry-попытки. Используется ниже, чтобы пропустить
+     * soft-delete пасс (мы не получили полную картину периода) и оставить
+     * `last_error` пользователю.
+     */
+    let abortedOnNetwork = false;
 
     while (true) {
         if (jobState.cancelRequested) {
@@ -698,16 +1001,33 @@ async function runDemandSync(db, days) {
             break;
         }
         let page;
+        let usedLimit = PAGE;
         try {
-            page = await fetchDemandsPage(headers, momentFrom, momentTo, offset, PAGE);
+            const result = await fetchDemandsPageResilient(headers, momentFrom, momentTo, offset, PAGE);
+            page = result.data;
+            usedLimit = result.limit;
         } catch (e) {
+            if (e && e.code === 'CANCELLED') {
+                jobState.message = 'Остановлено пользователем';
+                break;
+            }
             const status = e && e.response && e.response.status;
             const msErr = e && e.response && e.response.data
                 && Array.isArray(e.response.data.errors) && e.response.data.errors[0]
                 && (e.response.data.errors[0].error || e.response.data.errors[0].message);
             const msg = 'MS API ' + (status || 'NETWORK') + ': ' + (msErr || (e && e.message) || 'unknown');
             logJobError(msg);
-            throw new Error(msg);
+            /**
+             * Не делаем throw: мягко выходим из цикла, чтобы вызывающий
+             * `.then` корректно подвёл итог («Прервано на ошибке…»).
+             * Уже сохранённые отгрузки и позиции остаются в БД — повторный
+             * запуск синка идемпотентен (UPSERT по uuid + тот же период),
+             * подхватит ровно с того места.
+             */
+            jobState.message = 'Прервано на отгрузке ' + jobState.fetched_demands + '/' +
+                (jobState.total_demands || '?') + ' (offset=' + offset + '): ' + msg;
+            abortedOnNetwork = true;
+            break;
         }
         const rows = Array.isArray(page.rows) ? page.rows : [];
         if (totalSize === null) {
@@ -746,7 +1066,7 @@ async function runDemandSync(db, days) {
                         ? Number(doc.positions.meta.size || 0) : 0;
                     if (positionsMetaSize > 0) {
                         try {
-                            positions = await fetchDemandPositions(headers, demandUuid);
+                            positions = await fetchDemandPositionsResilient(headers, demandUuid);
                             /** Догружаем резолв для новых позиций, если в карте их ещё нет. */
                             const extra = [];
                             for (const p of positions) {
@@ -776,6 +1096,7 @@ async function runDemandSync(db, days) {
                 jobState.saved_positions += r.saved;
                 jobState.resolved_positions += r.resolved;
                 jobState.unresolved_positions += r.unresolved;
+                seenUuids.add(demandUuid);
             } catch (e) {
                 logJobError('demand ' + (doc && doc.id) + ': ' + ((e && e.message) || 'err'));
             }
@@ -788,10 +1109,76 @@ async function runDemandSync(db, days) {
 
         offset += rows.length;
         if (totalSize != null && offset >= totalSize) break;
-        if (rows.length < PAGE) break;
+        /**
+         * Лимит мог быть уменьшен retry-логикой (см. fetchDemandsPageResilient).
+         * Сравниваем с `usedLimit`, а не с константой `PAGE`, иначе при
+         * fallback на limit=50 мы бы ошибочно посчитали страницу последней.
+         */
+        if (rows.length < usedLimit) break;
 
         /** Дроссель 250 мс — у МС API лимит ~5 RPS на токен. */
         await new Promise((r) => setTimeout(r, 250));
+    }
+
+    /**
+     * Soft-delete: если синк прошёл до конца без отмены и без фатальных
+     * ошибок батчей — для документов в окне `momentFrom..momentToFull`,
+     * которых нет в `seenUuids`, ставим `deleted_at = NOW()`.
+     *
+     * Защита от ложных удалений: пропускаем шаг, если
+     *   • был cancel;
+     *   • `seenUuids` пуст (вообще ничего не пришло — скорее всего сеть);
+     *   • есть фатальные ошибки батчей (`errors > 0`);
+     *   • это resume-режим (`resume_mode === true`) — в этом проходе мы
+     *     видим только хвост, свежую часть периода не запрашивали; если
+     *     пометить «не виденных» удалёнными, мы ошибочно сотрём в МС всё
+     *     свежее, что лежит в БД с прошлого прогона.
+     *
+     * Локальные ошибки конкретных документов не учитываем — они уже
+     * приведут к разнице в seenUuids естественным образом.
+     */
+    if (!jobState.cancelRequested &&
+        !jobState.resume_mode &&
+        jobState.errors.length === 0 &&
+        seenUuids.size > 0) {
+        let conn = null;
+        try {
+            jobState.message = 'Сверка удалённых отгрузок…';
+            /**
+             * TEMPORARY TABLE действительна только в рамках одного соединения,
+             * поэтому захватываем его из пула отдельно — иначе INSERT/UPDATE
+             * могут прийти на разные коннекты пула и таблица будет «не видна».
+             */
+            conn = await db.getConnection();
+            await conn.query('CREATE TEMPORARY TABLE _ms_seen (uuid VARCHAR(36) PRIMARY KEY) ENGINE=Memory');
+            const uuids = Array.from(seenUuids);
+            const BATCH = 1000;
+            for (let i = 0; i < uuids.length; i += BATCH) {
+                const slice = uuids.slice(i, i + BATCH);
+                const placeholders = slice.map(() => '(?)').join(',');
+                await conn.query('INSERT IGNORE INTO _ms_seen (uuid) VALUES ' + placeholders, slice);
+            }
+            const [delResult] = await conn.query(
+                `UPDATE ms_demand d
+            LEFT JOIN _ms_seen s ON s.uuid = d.uuid
+                   SET d.deleted_at = NOW()
+                 WHERE d.moment BETWEEN ? AND ?
+                   AND s.uuid IS NULL
+                   AND d.deleted_at IS NULL`,
+                [momentFrom, momentToFull],
+            );
+            jobState.deleted_demands = delResult && delResult.affectedRows ? delResult.affectedRows : 0;
+            try { await conn.query('DROP TEMPORARY TABLE IF EXISTS _ms_seen'); } catch (_e) { /* ignore */ }
+
+            /** «Воскрешённые» = пересечение seenUuids с снапшотом до синка. */
+            let restored = 0;
+            for (const u of seenUuids) if (previouslyDeleted.has(u)) restored++;
+            jobState.restored_demands = restored;
+        } catch (e) {
+            logJobError('soft-delete pass: ' + ((e && e.message) || 'err'));
+        } finally {
+            if (conn) { try { conn.release(); } catch (_e) { /* ignore */ } }
+        }
     }
 
     return jobStateToPayload();
@@ -813,9 +1200,28 @@ function createMsSalesRouter(db, appSettings = {}) {
             const offset = clampInt(req.query.offset, 0, 5_000_000, 0);
             const days = clampInt(req.query.days, 1, 365 * 5, 30);
             const search = String(req.query.search || '').trim();
+            const docName = String(req.query.doc_name || '').trim();
             const storeUuid = String(req.query.store_uuid || '').trim();
             const agentUuid = String(req.query.agent_uuid || '').trim();
+            const projectUuid = String(req.query.project_uuid || '').trim();
             const applicable = String(req.query.applicable || '').trim();
+            /**
+             * deleted: '0' (default) — только активные (не помечены удалёнными);
+             *          '1' — только удалённые в МС; 'all' — все вместе.
+             */
+            const deleted = String(req.query.deleted || '0').trim();
+            /**
+             * linked: 'all' (default) — без фильтра по привязке позиций;
+             *        '1'  — только отгрузки, в которых ВСЕ позиции привязаны
+             *               к ms_export (нет ни одной p.ms_export_resolved=0);
+             *        '0'  — только отгрузки, в которых ЕСТЬ хотя бы одна
+             *               не привязанная позиция (бейдж «не привязано» в UI).
+             *
+             * Реализация через EXISTS / NOT EXISTS, чтобы не дублировать
+             * строки документов и не ломать пагинацию (см. умный поиск выше).
+             * Опирается на индекс idx_resolved (ms_demand_position.ms_export_resolved).
+             */
+            const linked = String(req.query.linked || 'all').trim();
             const sortBy = String(req.query.sort_by || 'moment');
             const sortDir = String(req.query.sort_dir || 'desc').toLowerCase() === 'asc' ? 'ASC' : 'DESC';
 
@@ -832,22 +1238,71 @@ function createMsSalesRouter(db, appSettings = {}) {
             const wheres = ['d.moment >= (NOW() - INTERVAL ? DAY)'];
             const params = [days];
             if (search) {
-                wheres.push('(d.doc_name LIKE ? OR d.agent_name LIKE ? OR d.store_name LIKE ?)');
+                /**
+                 * Умный поиск по товарам в позициях отгрузки: код (резолвленный
+                 * `ms_export_code` или срез `code_at_moment` на момент продажи),
+                 * наименование (срез `name_at_moment` или актуальное `ms_export.name`).
+                 *
+                 * EXISTS вместо JOIN — чтобы COUNT(*) и список оставались по
+                 * документам без дублирования и не ломали пагинацию.
+                 * Производительность: индексы `idx_demand` и `idx_ms_export_code`
+                 * на `ms_demand_position` уже есть; LIKE по name_at_moment —
+                 * full-scan позиций конкретного документа (≤ нескольких десятков
+                 * строк), поэтому в рамках текущих объёмов приемлемо.
+                 */
+                wheres.push(
+                    'EXISTS (SELECT 1 FROM ms_demand_position p ' +
+                    'LEFT JOIN ms_export e ON e.code = p.ms_export_code ' +
+                    'WHERE p.demand_uuid = d.uuid AND (' +
+                    'p.ms_export_code LIKE ? OR p.code_at_moment LIKE ? ' +
+                    'OR p.name_at_moment LIKE ? OR e.name LIKE ?))'
+                );
                 const needle = '%' + search + '%';
-                params.push(needle, needle, needle);
+                params.push(needle, needle, needle, needle);
+            }
+            if (docName) {
+                /**
+                 * Фильтр по номеру документа: точное `=` если строка похожа на
+                 * полный номер (без `%` / `_`), иначе LIKE-подстрока. Так и
+                 * пользователь может вбить «00012» и получить точное попадание,
+                 * и «0001» как префикс/подстроку — без отдельного UI-переключателя.
+                 */
+                if (/[%_]/.test(docName)) {
+                    wheres.push('d.doc_name LIKE ?');
+                    params.push(docName);
+                } else {
+                    wheres.push('d.doc_name LIKE ?');
+                    params.push('%' + docName + '%');
+                }
             }
             if (storeUuid) { wheres.push('d.store_uuid = ?'); params.push(storeUuid.toLowerCase()); }
             if (agentUuid) { wheres.push('d.agent_uuid = ?'); params.push(agentUuid.toLowerCase()); }
+            if (projectUuid) { wheres.push('d.project_uuid = ?'); params.push(projectUuid.toLowerCase()); }
             if (applicable === '1') wheres.push('d.applicable = 1');
             else if (applicable === '0') wheres.push('d.applicable = 0');
+            if (deleted === '1') wheres.push('d.deleted_at IS NOT NULL');
+            else if (deleted !== 'all') wheres.push('d.deleted_at IS NULL');
+
+            if (linked === '0') {
+                wheres.push(
+                    'EXISTS (SELECT 1 FROM ms_demand_position p ' +
+                    'WHERE p.demand_uuid = d.uuid AND p.ms_export_resolved = 0)'
+                );
+            } else if (linked === '1') {
+                wheres.push(
+                    'NOT EXISTS (SELECT 1 FROM ms_demand_position p ' +
+                    'WHERE p.demand_uuid = d.uuid AND p.ms_export_resolved = 0)'
+                );
+            }
 
             const whereSql = ' WHERE ' + wheres.join(' AND ');
 
             const [rows] = await db.query(
                 `SELECT d.uuid, d.doc_name, d.moment, d.applicable,
                         d.agent_uuid, d.agent_name, d.store_uuid, d.store_name,
-                        d.organization_name, d.positions_count, d.sum_minor,
-                        d.fetched_at
+                        d.organization_name, d.project_uuid, d.project_name,
+                        d.positions_count, d.sum_minor,
+                        d.fetched_at, d.deleted_at
                    FROM ms_demand d
                    ${whereSql}
                    ORDER BY ${sortField} ${sortDir}, d.uuid ASC
@@ -873,9 +1328,12 @@ function createMsSalesRouter(db, appSettings = {}) {
                     store_uuid: r.store_uuid ? String(r.store_uuid) : '',
                     store_name: r.store_name ? String(r.store_name) : '',
                     organization_name: r.organization_name ? String(r.organization_name) : '',
+                    project_uuid: r.project_uuid ? String(r.project_uuid) : '',
+                    project_name: r.project_name ? String(r.project_name) : '',
                     positions_count: Number(r.positions_count || 0),
                     sum: Number(r.sum_minor || 0) / 100,
                     fetched_at: r.fetched_at ? new Date(r.fetched_at).toISOString() : null,
+                    deleted_at: r.deleted_at ? new Date(r.deleted_at).toISOString() : null,
                 })),
             });
         } catch (e) {
@@ -906,10 +1364,19 @@ function createMsSalesRouter(db, appSettings = {}) {
                   LIMIT 500`,
                 [days],
             );
+            const [projects] = await db.query(
+                `SELECT project_uuid AS uuid, project_name AS name, COUNT(*) AS cnt
+                   FROM ms_demand
+                  WHERE moment >= (NOW() - INTERVAL ? DAY) AND project_uuid IS NOT NULL
+                  GROUP BY project_uuid, project_name
+                  ORDER BY cnt DESC, name`,
+                [days],
+            );
             res.json({
                 success: true,
                 stores: stores.map((r) => ({ uuid: String(r.uuid), name: String(r.name || ''), count: Number(r.cnt || 0) })),
                 agents: agents.map((r) => ({ uuid: String(r.uuid), name: String(r.name || ''), count: Number(r.cnt || 0) })),
+                projects: projects.map((r) => ({ uuid: String(r.uuid), name: String(r.name || ''), count: Number(r.cnt || 0) })),
             });
         } catch (e) {
             res.status(500).json({ success: false, error: e && e.message ? e.message : 'Ошибка' });
@@ -934,7 +1401,8 @@ function createMsSalesRouter(db, appSettings = {}) {
                         shipment_address, shipment_address_full,
                         currency_uuid, currency_name, currency_iso_code, currency_rate,
                         vat_enabled, vat_included, vat_sum_minor, payed_sum_minor,
-                        external_code, sync_id, code, printed, published, attributes_json
+                        external_code, sync_id, code, printed, published, attributes_json,
+                        deleted_at
                    FROM ms_demand WHERE uuid = ?`,
                 [uuid],
             );
@@ -1011,6 +1479,7 @@ function createMsSalesRouter(db, appSettings = {}) {
                     printed: !!doc.printed,
                     published: !!doc.published,
                     attributes: Array.isArray(attrs) ? attrs : [],
+                    deleted_at: doc.deleted_at ? new Date(doc.deleted_at).toISOString() : null,
                 },
                 rows: (posRows || []).map((r) => ({
                     position_uuid: String(r.position_uuid),
@@ -1098,7 +1567,7 @@ function createMsSalesRouter(db, appSettings = {}) {
     });
 
     /** GET /api/ms-sales/aggregates?days=30 — агрегаты по товарам за период.
-     *  Используется для будущих формул (Lagerplus / суженные лимиты). */
+     *  Используется для будущих формул (закупки / суженные лимиты). */
     router.get('/aggregates', async (req, res) => {
         try {
             await ensureSchema(db);
@@ -1146,7 +1615,20 @@ function createMsSalesRouter(db, appSettings = {}) {
         }
     });
 
-    /** POST /api/ms-sales/sync — фоновая синхронизация. Body: { days?: 30 }. */
+    /**
+     * POST /api/ms-sales/sync — фоновая синхронизация.
+     *
+     * Body:
+     *   • `days?: number` (1..365*5, default 30) — окно периода `NOW()-days..NOW()`;
+     *   • `fresh?: boolean` (default false) — если true, отключает auto-resume:
+     *     синк всегда стартует с `momentTo = NOW()` и проходит весь период с нуля
+     *     (UPSERT перезаписывает уже сохранённые отгрузки, soft-delete пасс
+     *     выполняется по полному окну). По умолчанию (без `fresh`) включается
+     *     auto-resume: если в БД уже есть отгрузки за это окно, синк добивает
+     *     только «хвост» от `MIN(moment) + 5 минут запаса` и старее
+     *     (см. `runDemandSync` для деталей). Это сильно ускоряет повторный
+     *     запуск после сетевого таймаута / прерывания.
+     */
     router.post('/sync', async (req, res) => {
         if (jobState.active) {
             return res.status(409).json({
@@ -1163,26 +1645,25 @@ function createMsSalesRouter(db, appSettings = {}) {
             });
         }
         const days = clampInt(req.body && req.body.days, 1, 365 * 5, 30);
+        const fresh = !!(req.body && req.body.fresh === true);
         resetJobState(days);
 
         /** Запускаем в фоне, не блокируем HTTP-ответ. */
         ensureSchema(db)
-            .then(() => runDemandSync(db, days))
-            .then((payload) => {
+            .then(() => runDemandSync(db, days, { fresh }))
+            .then(() => {
                 jobState.active = false;
                 jobState.finished_at = new Date();
-                jobState.message = 'Готово: ' + jobState.fetched_demands + '/' + jobState.total_demands +
-                    ' отгрузок, ' + jobState.saved_positions + ' позиций (' +
-                    jobState.resolved_positions + ' резолв, ' + jobState.unresolved_positions + ' не привязано)';
+                jobState.message = buildFinalMessage();
             })
             .catch((e) => {
                 jobState.active = false;
                 jobState.finished_at = new Date();
-                jobState.message = 'Ошибка: ' + (e && e.message ? e.message : 'unknown');
                 logJobError((e && e.message) || 'unknown');
+                jobState.message = 'Ошибка: ' + (e && e.message ? e.message : 'unknown');
             });
 
-        return res.json({ success: true, started: true, status: jobStateToPayload() });
+        return res.json({ success: true, started: true, fresh, status: jobStateToPayload() });
     });
 
     /** POST /api/ms-sales/sync-cancel — мягкая остановка. */
@@ -1226,4 +1707,55 @@ function createMsSalesRouter(db, appSettings = {}) {
     return router;
 }
 
-module.exports = { createMsSalesRouter, ensureSchema };
+/**
+ * Программный триггер синка из планировщика автосинхронизации (server.js).
+ * Совпадает по семантике с `POST /api/ms-sales/sync`, но:
+ *   • не зависит от Express-роутера (не нужен ни req, ни res);
+ *   • возвращает Promise, который резолвится сразу после успешного старта
+ *     (чтобы вызывающий мог использовать `getSyncState()` как индикатор
+ *     завершения, как сделано для `marketplaces` и `huckster`).
+ *
+ * Поведение:
+ *   • если синк уже идёт — вернёт `{ started: false, reason: 'already_running' }`;
+ *   • если нет MS_TOKEN — `{ started: false, reason: 'missing_creds', error: '…' }`;
+ *   • при успешном старте — `{ started: true }`, сам синк гоняется в фоне
+ *     (как и в HTTP-варианте, чтобы не держать вызывающий контекст).
+ */
+function triggerSync(db, options = {}) {
+    const days = clampInt(options.days, 1, 365 * 5, 90);
+    const fresh = !!(options && options.fresh === true);
+    if (jobState.active) {
+        return Promise.resolve({ started: false, reason: 'already_running', status: jobStateToPayload() });
+    }
+    const headers = getMsHeaders();
+    if (!headers) {
+        return Promise.resolve({
+            started: false,
+            reason: 'missing_creds',
+            error: 'MS_TOKEN не задан (env MS_TOKEN или config.msToken)',
+        });
+    }
+    resetJobState(days);
+    /** Фоновый запуск: автосинхронизация ждёт через polling getSyncState(). */
+    ensureSchema(db)
+        .then(() => runDemandSync(db, days, { fresh }))
+        .then(() => {
+            jobState.active = false;
+            jobState.finished_at = new Date();
+            jobState.message = buildFinalMessage();
+        })
+        .catch((e) => {
+            jobState.active = false;
+            jobState.finished_at = new Date();
+            logJobError((e && e.message) || 'unknown');
+            jobState.message = 'Ошибка: ' + (e && e.message ? e.message : 'unknown');
+        });
+    return Promise.resolve({ started: true, days, fresh, status: jobStateToPayload() });
+}
+
+/** Снапшот состояния фонового job-а (тот же payload, что и в /sync-status). */
+function getSyncState() {
+    return jobStateToPayload();
+}
+
+module.exports = { createMsSalesRouter, ensureSchema, triggerSync, getSyncState };

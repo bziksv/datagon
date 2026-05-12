@@ -403,26 +403,40 @@
             <div class="card-body">
               <div class="row g-2">
                 <div class="col-md-6">
-                  <label class="form-label">Продукты: время запуска (МСК)</label>
+                  <label class="form-label">Мои товары: импорт каталога из CMS (МСК)</label>
                   <div class="d-flex gap-2 align-items-center">
                     <input type="checkbox" id="dg-set-auto_my_en" />
                     <span>Включить</span>
                     <input type="time" class="form-control" id="dg-set-auto_my_time" style="max-width:140px" />
-                    <button type="button" class="btn btn-outline-primary btn-sm" id="dg-set-auto_my_run" data-dg-activity-label="Принудительно запустить автосинхронизацию продуктов">
+                    <button type="button" class="btn btn-outline-primary btn-sm" id="dg-set-auto_my_run" data-dg-activity-label="Принудительно запустить импорт «Моих товаров» из CMS">
                       Запустить сейчас
                     </button>
                   </div>
+                  <p class="small text-muted mb-0 mt-1">
+                    Ежедневный импорт каталога ваших магазинов (Bitrix / Webasyst) в локальную таблицу
+                    <code>my_products</code> (страница <a href="/my-products.html">«Мои товары»</a>):
+                    обходит все источники из <a href="/my-sites.html">«Мои сайты»</a>, обновляет SKU, цену
+                    и остаток, помечает отсутствующие в источнике как <code>is_active=0</code>. Прогресс
+                    и статус — на <a href="/processes.html">«Логи фоновых процессов»</a> (раздел «Мои товары»).
+                  </p>
                 </div>
                 <div class="col-md-6">
-                  <label class="form-label">МойСклад: время запуска (МСК)</label>
+                  <label class="form-label">МойСклад: загрузка номенклатуры и остатков (МСК)</label>
                   <div class="d-flex gap-2 align-items-center">
                     <input type="checkbox" id="dg-set-auto_ms_en" />
                     <span>Включить</span>
                     <input type="time" class="form-control" id="dg-set-auto_ms_time" style="max-width:140px" />
-                    <button type="button" class="btn btn-outline-primary btn-sm" id="dg-set-auto_ms_run" data-dg-activity-label="Принудительно запустить автосинхронизацию МойСклад">
+                    <button type="button" class="btn btn-outline-primary btn-sm" id="dg-set-auto_ms_run" data-dg-activity-label="Принудительно запустить загрузку номенклатуры и остатков из МойСклад">
                       Запустить сейчас
                     </button>
                   </div>
+                  <p class="small text-muted mb-0 mt-1">
+                    Ежедневный обход API МойСклад: тянет товары и комплекты в локальную таблицу
+                    <code>ms_export</code> для страницы <a href="/moysklad.html">«МойСклад»</a> (карточки,
+                    остатки, поставщики, цены, теги). Скорость и пакетирование — поля
+                    <em>«Лимит страницы»</em> и <em>«Задержка»</em> ниже в настройках МС. Прогресс
+                    и статус — на <a href="/processes.html">«Логи фоновых процессов»</a> (раздел «МойСклад»).
+                  </p>
                 </div>
                 <div class="col-md-6">
                   <label class="form-label">Маркетплейсы: время запуска (МСК)</label>
@@ -440,26 +454,104 @@
                   </p>
                 </div>
                 <div class="col-md-6">
-                  <label class="form-label">Huckster (e-teleport): время запуска (МСК)</label>
+                  <label class="form-label">Huckster (e-teleport): расчёт цен по правилам (МСК)</label>
                   <div class="d-flex gap-2 align-items-center">
                     <input type="checkbox" id="dg-set-auto_huckster_en" />
                     <span>Включить</span>
                     <input type="time" class="form-control" id="dg-set-auto_huckster_time" style="max-width:140px" />
-                    <button type="button" class="btn btn-outline-primary btn-sm" id="dg-set-auto_huckster_run" data-dg-activity-label="Принудительно запустить автосинхронизацию Huckster">
+                    <button type="button" class="btn btn-outline-primary btn-sm" id="dg-set-auto_huckster_run" data-dg-activity-label="Принудительно запустить расчёт цен Huckster">
                       Запустить сейчас
                     </button>
                   </div>
+                  <p class="small text-muted mb-0 mt-1">
+                    Ежедневная авторизация в e-teleport (Huckster) под учёткой из настроек ниже
+                    (<em>email / password</em>) и обход магазинов из «Набор магазинов 1» / «Набор 2».
+                    Сервис строит матрицы рекомендованных цен (<em>Витрина</em> и <em>РРЦ</em>) для
+                    страницы <a href="/exports-huckster.html">«Huckster (РРЦ калькулятор)»</a>:
+                    скачивает товары, считает по правилам и сохраняет снапшот в БД (журнал —
+                    <code>logs/huckster-sync.log</code>). Прогресс и статус — на
+                    <a href="/processes.html">«Логи фоновых процессов»</a> (раздел «Калькуляция Huckster»).
+                  </p>
                 </div>
                 <div class="col-md-6">
-                  <label class="form-label">Размер БД: время обновления (МСК)</label>
+                  <label class="form-label">Размер БД и диска: пересчёт метрик для дашборда (МСК)</label>
                   <div class="d-flex gap-2 align-items-center">
                     <input type="checkbox" id="dg-set-auto_db_size_en" />
                     <span>Включить</span>
                     <input type="time" class="form-control" id="dg-set-auto_db_size_time" style="max-width:140px" />
-                    <button type="button" class="btn btn-outline-primary btn-sm" id="dg-set-auto_db_size_run" data-dg-activity-label="Принудительно обновить размер БД">
+                    <button type="button" class="btn btn-outline-primary btn-sm" id="dg-set-auto_db_size_run" data-dg-activity-label="Принудительно обновить размер БД и диска">
                       Запустить сейчас
                     </button>
                   </div>
+                  <p class="small text-muted mb-0 mt-1">
+                    Ежедневный пересчёт <strong>двух</strong> метрик дашборда одной задачей:
+                    <br />
+                    1) <strong>Размер БД</strong> по
+                    <code>information_schema.TABLES</code> (суммарный объём, данные, индексы, число
+                    таблиц рабочей БД <code>p_datagon_ru</code>) — эндпоинт
+                    <code>GET /api/processes/db-size</code>, виджет «Размер базы данных».
+                    <br />
+                    2) <strong>Дисковое пространство</strong>: рекурсивный обход корня проекта
+                    (`node_modules`, `vendor`, `.git`, `docs-docusaurus` и т.д.) с разбивкой по папкам и
+                    объёмом ФС через <code>fs.statfs</code> — эндпоинт
+                    <code>GET /api/processes/disk-usage</code>, карточка «Дисковое пространство».
+                    <br />
+                    Оба результата кэшируются на сервере (TTL ~5 мин); галка управляет их единым
+                    ежедневным пересчётом. Прогресс и статус — на
+                    <a href="/processes.html">«Логи фоновых процессов»</a> (раздел «Размер БД и диска»).
+                  </p>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label">Габариты МС: время выгрузки (МСК)</label>
+                  <div class="d-flex gap-2 align-items-center">
+                    <input type="checkbox" id="dg-set-auto_dim_en" />
+                    <span>Включить</span>
+                    <input type="time" class="form-control" id="dg-set-auto_dim_time" style="max-width:140px" />
+                    <button type="button" class="btn btn-outline-primary btn-sm" id="dg-set-auto_dim_run" data-dg-activity-label="Принудительно выгрузить габариты в МойСклад">
+                      Запустить сейчас
+                    </button>
+                  </div>
+                  <p class="small text-muted mb-0 mt-1">
+                    Аналог кнопки «↗ В МС: все правки» на странице
+                    <a href="/exports-dimensions.html">«Габариты»</a>: для всех позиций с пользовательским
+                    замером и заполненным <code>uuid</code> в <code>ms_export</code> отправляет PUT в
+                    <code>/entity/{product|bundle}/{uuid}</code>. Журнал — таблица
+                    <code>ms_dimensions_log</code> (action <code>sync_ms</code>); прогресс и статус — на
+                    <a href="/processes.html">«Логи фоновых процессов»</a> (раздел «Габариты МС»).
+                  </p>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label">Продажи МС: импорт <code>entity/demand</code> (МСК)</label>
+                  <div class="d-flex gap-2 align-items-center flex-wrap">
+                    <input type="checkbox" id="dg-set-auto_mssales_en" />
+                    <span>Включить</span>
+                    <input type="time" class="form-control" id="dg-set-auto_mssales_time" style="max-width:140px" />
+                    <label for="dg-set-auto_mssales_days" class="form-label mb-0 ms-2">За период:</label>
+                    <select class="form-select" id="dg-set-auto_mssales_days" style="max-width:130px">
+                      <option value="7">7 дней</option>
+                      <option value="14">14 дней</option>
+                      <option value="30">30 дней</option>
+                      <option value="60">60 дней</option>
+                      <option value="90" selected>90 дней</option>
+                      <option value="180">180 дней</option>
+                      <option value="365">365 дней</option>
+                    </select>
+                    <button type="button" class="btn btn-outline-primary btn-sm" id="dg-set-auto_mssales_run" data-dg-activity-label="Принудительно запустить импорт продаж МС">
+                      Запустить сейчас
+                    </button>
+                  </div>
+                  <p class="small text-muted mb-0 mt-1">
+                    Тянет отгрузки <code>entity/demand</code> из МойСклад API за выбранное окно
+                    (по умолчанию 90 дней). UPSERT в <code>ms_demand</code>, позиции — в
+                    <code>ms_demand_position</code>, резолв до товаров <code>ms_export</code>.
+                    Soft-delete для отгрузок, удалённых в МС за тот же период (см.
+                    <a href="/ms-sales.html">«Продажи МС»</a>, фильтр «Удалённые в МС»).
+                    Длительность зависит от объёма: на тестовых данных ~8 минут на ~1300 отгрузок
+                    за 7 дней; для 90 дней оценочно 1.5–2 часа. Прогресс и финальный статус — на
+                    <a href="/processes.html">«Логи фоновых процессов»</a> (раздел
+                    «Продажи МС»). Можно остановить кнопкой «Остановить» прямо в карточке
+                    <a href="/ms-sales.html">«Продажи МС»</a>.
+                  </p>
                 </div>
               </div>
               <div class="mt-3">

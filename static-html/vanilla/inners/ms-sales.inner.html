@@ -70,8 +70,8 @@
         <div class="col-md-4" data-dg-mss-filter-field="mss_search">
           <label class="form-label" for="dg-mss-search">Умный поиск</label>
           <input type="search" id="dg-mss-search" class="form-control"
-                 placeholder="Номер отгрузки, контрагент, склад…" autocomplete="off"
-                 data-dg-tooltip="Ищет по номеру документа, контрагенту, складу. Enter — применить, Esc — очистить." />
+                 placeholder="Код или наименование товара…" autocomplete="off"
+                 data-dg-tooltip="Ищет по коду и наименованию товара в позициях отгрузки (резолв ms_export + срез на момент продажи). Enter — применить, Esc — очистить." />
         </div>
         <div class="col-md-2" data-dg-mss-filter-field="mss_days">
           <label class="form-label" for="dg-mss-days">За период</label>
@@ -99,12 +99,42 @@
         </div>
       </div>
       <div class="row g-2 align-items-end mt-1">
+        <div class="col-md-2" data-dg-mss-filter-field="mss_doc">
+          <label class="form-label" for="dg-mss-doc">Номер</label>
+          <input type="search" id="dg-mss-doc" class="form-control"
+                 placeholder="Напр. 00037" autocomplete="off"
+                 data-dg-tooltip="Фильтр по номеру отгрузки. Точное совпадение или подстрока (например, «0003» найдёт «00037»). Enter — применить, Esc — очистить." />
+        </div>
+        <div class="col-md-2" data-dg-mss-filter-field="mss_project">
+          <label class="form-label" for="dg-mss-project">Проект</label>
+          <select id="dg-mss-project" class="form-select">
+            <option value="">Все проекты</option>
+          </select>
+        </div>
         <div class="col-md-3" data-dg-mss-filter-field="mss_applicable">
           <label class="form-label" for="dg-mss-applicable">Проведённые</label>
           <select id="dg-mss-applicable" class="form-select">
             <option value="1" selected>Только проведённые</option>
             <option value="">Все</option>
             <option value="0">Только непроведённые</option>
+          </select>
+        </div>
+        <div class="col-md-3" data-dg-mss-filter-field="mss_deleted">
+          <label class="form-label" for="dg-mss-deleted">Удалённые в МС</label>
+          <select id="dg-mss-deleted" class="form-select"
+                  data-dg-tooltip="Soft-delete: документ есть у нас, но его нет в МС за тот же период (после успешного синка). Hard-delete не делаем — позиции и история сохраняются.">
+            <option value="0" selected>Только активные</option>
+            <option value="1">Только удалённые</option>
+            <option value="all">Все</option>
+          </select>
+        </div>
+        <div class="col-md-3" data-dg-mss-filter-field="mss_linked">
+          <label class="form-label" for="dg-mss-linked">Привязка к товарам</label>
+          <select id="dg-mss-linked" class="form-select"
+                  data-dg-tooltip="Привязка позиций отгрузки к нашим товарам ms_export. «Не привязано» — позиции, у которых ms_export_resolved=0 (товар удалён в МС, переименован, variant без product, услуга и т.п.). После полного синка МС нажмите «Перепривязать к товарам», чтобы переподнять связи.">
+            <option value="all" selected>Все</option>
+            <option value="1">Только привязанные</option>
+            <option value="0">Только с не привязанными</option>
           </select>
         </div>
         <div class="col-md-2" data-dg-mss-filter-field="mss_page_size">
@@ -127,8 +157,12 @@
           <i class="pe-7s-refresh me-1"></i>По умолчанию
         </button>
         <button id="dg-mss-sync" type="button" class="btn btn-sm btn-outline-success"
-                data-dg-tooltip="Запустить синхронизацию entity/demand из МС за выбранный период.">
+                data-dg-tooltip="Запустить синхронизацию entity/demand из МС за выбранный период. Если в БД уже есть отгрузки за этот период (и прошлый прогон был прерван), синк автоматически продолжит с места разрыва — добьёт хвост периода без полного перепрогона.">
           <i class="pe-7s-refresh-2 me-1"></i>Синхронизировать с МС
+        </button>
+        <button id="dg-mss-sync-fresh" type="button" class="btn btn-sm btn-outline-danger"
+                data-dg-tooltip="Полный синк с нуля: отключает auto-resume и проходит весь период от NOW() до начала. Все уже сохранённые отгрузки за период будут перезаписаны (UPSERT, дубликатов не будет), плюс выполнится сверка soft-delete. Дольше обычного «Синхронизировать с МС», нужен только если данные «протухли» или вы хотите пересобрать период целиком.">
+          <i class="pe-7s-refresh me-1"></i>Полный синк с нуля
         </button>
         <button id="dg-mss-cancel" type="button" class="btn btn-sm btn-outline-warning d-none">
           <i class="pe-7s-close-circle me-1"></i>Остановить
@@ -156,7 +190,7 @@
         <div class="input-group input-group-sm">
           <span class="input-group-text bg-white text-muted px-2" aria-hidden="true">🔎</span>
           <input type="search" id="dg-mss-table-search-mirror" class="form-control"
-                 placeholder="Умный поиск: номер, контрагент, склад (Enter — применить)"
+                 placeholder="Умный поиск: код или наименование товара (Enter — применить)"
                  autocomplete="off"
                  data-dg-tooltip="Зеркало умного поиска. Enter — применить, Esc — очистить." />
         </div>

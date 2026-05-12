@@ -568,7 +568,7 @@
                         </ul>
                       </li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="ms-sales" href="/ms-sales.html" title="Продажи МС: отгрузки entity/demand, позиции с привязкой к товарам ms_export"><i class="metismenu-icon pe-7s-cash"></i>Продажи МС</a></li>
-                      <li class="metismenu-item"><a class="metismenu-link" data-nav="lagerplus" href="/lagerplus.html" title="Lagerplus — закупочный модуль (адаптация фич neeil1990/store)"><i class="metismenu-icon pe-7s-cart"></i>Lagerplus — Закупки</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="purchase" href="/purchase.html" title="Закупки: планирование, неснижаемые остатки, кратность"><i class="metismenu-icon pe-7s-cart"></i>Закупки</a></li>
                     </ul>
                   </div>
                 </div>
@@ -1483,16 +1483,53 @@
       }
 
       /**
-       * Метаданные разделов автосинхронизации: порядок и человеко-читаемые названия,
-       * чтобы лента не сливалась в «всё в перемешку», как было раньше.
+       * Fallback-метаданные разделов автосинхронизации (порядок и подписи) на случай,
+       * если бэкенд не вернул `autoSync.sections` (старый сервер без
+       * `lib/datagonAutoSyncRegistry.js`). Основной источник истины — единый реестр
+       * на бэкенде; см. `datagon-auto-sync-registry.mdc`.
        */
       var AS_TASK_SECTIONS = [
         { key: "myproducts", title: "Мои товары", subtitle: "Импорт из CMS магазинов", cfgEnabled: "myproducts_enabled", cfgTime: "myproducts_time" },
         { key: "moysklad", title: "МойСклад", subtitle: "Карточки и остатки МС", cfgEnabled: "moysklad_enabled", cfgTime: "moysklad_time" },
         { key: "marketplaces", title: "Маркетплейсы", subtitle: "Ozon · WB · Я.Маркет", cfgEnabled: "marketplaces_enabled", cfgTime: "marketplaces_time" },
         { key: "huckster", title: "Калькуляция Huckster", subtitle: "Расчёт цен по правилам", cfgEnabled: "huckster_enabled", cfgTime: "huckster_time" },
-        { key: "db_size", title: "Размер БД", subtitle: "Снимок размеров таблиц", cfgEnabled: "db_size_enabled", cfgTime: "db_size_time" },
+        { key: "db_size", title: "Размер БД и диска", subtitle: "Снимок размеров таблиц БД и разбивка диска по папкам проекта", cfgEnabled: "db_size_enabled", cfgTime: "db_size_time" },
+        { key: "dimensions", title: "Габариты МС", subtitle: "Выгрузка пользовательских замеров в МойСклад", cfgEnabled: "dimensions_enabled", cfgTime: "dimensions_time" },
+        { key: "mssales", title: "Продажи МС", subtitle: "Импорт entity/demand → ms_demand / ms_demand_position", cfgEnabled: "mssales_enabled", cfgTime: "mssales_time" },
       ];
+
+      /**
+       * Привести `autoSync.sections` (новый бэкенд) к виду секции для рендера.
+       * Если бэкенд не вернул `sections`, собираем секции из старого `cfg`
+       * по hardcoded `AS_TASK_SECTIONS` (back-compat).
+       */
+      function resolveAutoSyncSections(autoSync) {
+        var as = autoSync || {};
+        var sections = Array.isArray(as.sections) ? as.sections : null;
+        if (sections && sections.length) {
+          return sections.map(function (s) {
+            return {
+              key: String(s.key || ""),
+              title: String(s.title || s.key || ""),
+              subtitle: s.subtitle ? String(s.subtitle) : "",
+              enabled: Boolean(s.enabled),
+              time: s.time != null ? String(s.time) : "—",
+              extras: Array.isArray(s.extras) ? s.extras : []
+            };
+          });
+        }
+        var cfg = as.config || {};
+        return AS_TASK_SECTIONS.map(function (sec) {
+          return {
+            key: sec.key,
+            title: sec.title,
+            subtitle: sec.subtitle || "",
+            enabled: Boolean(cfg[sec.cfgEnabled]),
+            time: cfg[sec.cfgTime] ? String(cfg[sec.cfgTime]) : "—",
+            extras: []
+          };
+        });
+      }
 
       function statusBadgeHtml(status) {
         var s = String(status || "").trim().toLowerCase();
@@ -1522,7 +1559,7 @@
           .replace(/"/g, "&quot;");
       }
 
-      function renderAutoSyncSections(cfg, runs, isToday) {
+      function renderAutoSyncSections(sections, runs, isToday) {
         var root = document.getElementById("dg-proc-as-sections");
         if (!root) return;
         root.replaceChildren();
@@ -1534,20 +1571,31 @@
           if (!byTask[k]) byTask[k] = [];
           byTask[k].push(r);
         });
-        AS_TASK_SECTIONS.forEach(function (sec) {
+        var secs = Array.isArray(sections) ? sections : [];
+        secs.forEach(function (sec) {
           var block = document.createElement("div");
           block.className = "dg-proc-as-section";
-          var enabled = Boolean(cfg && cfg[sec.cfgEnabled]);
-          var time = cfg && cfg[sec.cfgTime] ? cfg[sec.cfgTime] : "—";
+          var enabled = Boolean(sec.enabled);
+          var time = sec.time != null ? String(sec.time) : "—";
           var head = document.createElement("div");
           head.className = "dg-proc-as-section-head";
+          var extrasHtml = "";
+          if (Array.isArray(sec.extras) && sec.extras.length) {
+            extrasHtml = sec.extras
+              .map(function (e) {
+                return '<span class="dg-proc-as-section-meta">' + escapeText(String(e.label || e.key || "")) +
+                  ': <b>' + escapeText(String(e.value != null ? e.value : "—")) + '</b></span>';
+              })
+              .join("");
+          }
           var titleHtml =
             '<span class="dg-proc-as-section-title">' + escapeText(sec.title) + '</span>' +
             (sec.subtitle ? '<span class="dg-proc-as-section-meta">' + escapeText(sec.subtitle) + '</span>' : "") +
             (enabled
               ? '<span class="badge bg-success-subtle text-success border border-success-subtle">по расписанию вкл.</span>'
               : '<span class="badge bg-light text-dark border">по расписанию выкл.</span>') +
-            '<span class="dg-proc-as-section-meta">старт по МСК: <b>' + escapeText(time) + '</b></span>';
+            '<span class="dg-proc-as-section-meta">старт по МСК: <b>' + escapeText(time) + '</b></span>' +
+            extrasHtml;
           head.innerHTML = titleHtml;
           block.appendChild(head);
 
@@ -1688,7 +1736,7 @@
           var hay = (String(r.task_type || "") + " " + String(r.status || "") + " " + String(r.message || "")).toLowerCase();
           return hay.indexOf(needle) !== -1;
         });
-        renderAutoSyncSections(cfg, filteredRuns, isTodayResp);
+        renderAutoSyncSections(resolveAutoSyncSections(autoSync), filteredRuns, isTodayResp);
 
         var discEl = document.getElementById("dg-proc-discovery");
         discEl.replaceChildren();
