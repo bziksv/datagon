@@ -1560,6 +1560,94 @@
           .replace(/"/g, "&quot;");
       }
 
+      function resolveAutoSyncLiveByTask(autoSync) {
+        var out = Object.create(null);
+        var tl = autoSync && autoSync.tasks_live;
+        if (tl && typeof tl === "object") {
+          for (var k in tl) {
+            if (Object.prototype.hasOwnProperty.call(tl, k)) out[k] = tl[k];
+          }
+        }
+        if (!out.dimensions && autoSync && autoSync.dimensions_live && typeof autoSync.dimensions_live === "object") {
+          out.dimensions = autoSync.dimensions_live;
+        }
+        return out;
+      }
+
+      /** Вторая строка под `auto_sync_runs.message` — из `autoSync.tasks_live` (сервер). */
+      function formatAutoSyncLiveLine(secKey, lv) {
+        if (!lv) return "";
+        if (secKey === "dimensions") {
+          if (lv.pending) return "Сейчас: " + String(lv.message || "Запуск…");
+          if (!lv.active) return "";
+          return (
+            "Сейчас в процессе: " +
+            fmtNum(lv.processed) +
+            "/" +
+            fmtNum(lv.total) +
+            " · ✓ " +
+            fmtNum(lv.ok) +
+            " · × " +
+            fmtNum(lv.err) +
+            " · без uuid " +
+            fmtNum(lv.skipped_no_uuid || 0) +
+            (lv.last_code ? " · код " + String(lv.last_code).slice(0, 40) : "") +
+            (lv.last_message ? " — " + String(lv.last_message).slice(0, 140) : "")
+          );
+        }
+        if (lv.pending) return "Сейчас: " + String(lv.message || "Запуск…");
+        if (secKey === "myproducts" || secKey === "moysklad") {
+          var line = "Сейчас: ";
+          if (Number(lv.total) > 0 || Number(lv.processed) > 0) {
+            line += fmtNum(lv.processed) + "/" + fmtNum(lv.total) + " · ";
+          }
+          line += String(lv.message || "").slice(0, 220);
+          return line;
+        }
+        if (secKey === "marketplaces") {
+          var m = String(lv.message || "").slice(0, 140);
+          var p = lv.per_market_summary ? String(lv.per_market_summary).slice(0, 240) : "";
+          return ("Сейчас: " + m + (p ? " · " + p : "")).trim();
+        }
+        if (secKey === "huckster") {
+          var h = "Сейчас: " + String(lv.message || "").slice(0, 180);
+          if (lv.stop_requested) h += " · запрошена остановка";
+          var prog = lv.progress;
+          if (prog && typeof prog === "object") {
+            var ds = Number(prog.done_shops || 0);
+            var ts = Number(prog.total_shops || 0);
+            if (ts > 0 || ds > 0) h += " · магазины " + fmtNum(ds) + "/" + fmtNum(ts);
+            if (prog.current_shop_name) h += " · " + String(prog.current_shop_name).slice(0, 40);
+          }
+          return h;
+        }
+        if (secKey === "db_size") {
+          return "Сейчас: " + String(lv.message || "Пересчёт…");
+        }
+        if (secKey === "mssales" || secKey === "mssales_full") {
+          var mode = secKey === "mssales_full" ? "полный (fresh)" : "инкрементальный";
+          var fd = fmtNum(lv.fetched_demands || 0);
+          var td = fmtNum(lv.total_demands || 0);
+          var sp = fmtNum(lv.saved_positions || 0);
+          var days = Number(lv.days || 0);
+          var daysStr = days ? " · окно " + days + " дн." : "";
+          var tail = String(lv.message || "").slice(0, 160);
+          return (
+            "Сейчас (" +
+              mode +
+              "): отгрузок " +
+              fd +
+              "/" +
+              td +
+              " · позиций " +
+              sp +
+              daysStr +
+              (tail ? " — " + tail : "")
+          );
+        }
+        return "";
+      }
+
       function renderAutoSyncSections(sections, runs, isToday, liveByTask) {
         liveByTask = liveByTask || {};
         var root = document.getElementById("dg-proc-as-sections");
@@ -1628,30 +1716,10 @@
               var finish = r.finished_at ? fmtTimeMsk(r.finished_at) : "ещё идёт";
               var msgParts = [];
               if (r.message) msgParts.push(escapeText(String(r.message).slice(0, 240)));
-              var lv = liveByTask.dimensions;
-              if (
-                sec.key === "dimensions" &&
-                lv &&
-                lv.active &&
-                String(r.status || "").toLowerCase() === "running"
-              ) {
-                msgParts.push(
-                  escapeText(
-                    "Сейчас в процессе: " +
-                      fmtNum(lv.processed) +
-                      "/" +
-                      fmtNum(lv.total) +
-                      " · ✓ " +
-                      fmtNum(lv.ok) +
-                      " · × " +
-                      fmtNum(lv.err) +
-                      " · без uuid " +
-                      fmtNum(lv.skipped_no_uuid || 0) +
-                      (lv.last_code ? " · код " + String(lv.last_code).slice(0, 40) : "") +
-                      (lv.last_message ? " — " + String(lv.last_message).slice(0, 140) : "")
-                  )
-                );
-              }
+              var lv = liveByTask[sec.key];
+              var liveLine =
+                String(r.status || "").toLowerCase() === "running" && lv ? formatAutoSyncLiveLine(sec.key, lv) : "";
+              if (liveLine) msgParts.push(escapeText(liveLine));
               var msgHtml = msgParts.length
                 ? '<div class="text-muted small mt-1" style="white-space:normal;word-break:break-word">' +
                     msgParts.join("<br/>") +
@@ -1769,9 +1837,7 @@
           var hay = (String(r.task_type || "") + " " + String(r.status || "") + " " + String(r.message || "")).toLowerCase();
           return hay.indexOf(needle) !== -1;
         });
-        var dl = autoSync.dimensions_live;
-        var liveByTask = {};
-        if (dl && typeof dl === "object") liveByTask.dimensions = dl;
+        var liveByTask = resolveAutoSyncLiveByTask(autoSync);
         renderAutoSyncSections(resolveAutoSyncSections(autoSync), filteredRuns, isTodayResp, liveByTask);
 
         var discEl = document.getElementById("dg-proc-discovery");

@@ -68,18 +68,22 @@
       font-size: 12px;
       color: #374151;
       margin: 0;
+      user-select: text;
+      -webkit-user-select: text;
     }
     .datagon-columns-toolbox .dg-pu-widths-grid input[type="number"] {
       width: 88px;
       flex: 0 0 auto;
     }
-    .datagon-columns-panel label {
+    /* user-select:none только у чекбоксов «Столбцы»; панель «Ширины» — подписи копируемы */
+    #dg-pu-columns-panel.datagon-columns-panel label {
       display: inline-flex;
       align-items: center;
       gap: 6px;
       font-size: 12px;
       color: #374151;
       user-select: none;
+      -webkit-user-select: none;
     }
     /* Редактируемые ячейки overrides: компактный input number, без выпадающего фокуса. */
     .dg-pu-edit-input {
@@ -624,7 +628,7 @@
                   <div class="page-title-subheading">
                     По умолчанию в списке только неархивные позиции МойСклад со складской позицией «Да» и без комплектов.
                     Остальное — фильтрами (архив, складская позиция, комплекты, только с остатком, поиск, поставщик).
-                    К выгрузке МС добавляются сохранённые вами поля закупок (неснижаемый Датагон, кратность, мин. «считать как», предлагаемый вручную).
+                    К выгрузке МС добавляются сохранённые вами поля закупок (неснижаемый Датагон, кратность, мин. остаток «считать как 0»).
                   </div>
                 </div>
               </div>
@@ -728,6 +732,9 @@
                 <button type="button" class="btn btn-sm btn-outline-secondary" id="purchase-reset" data-dg-tooltip="Сбросить фильтры к значениям по умолчанию"><i class="pe-7s-refresh me-1"></i>По умолчанию</button>
                 <button type="button" class="btn btn-sm btn-outline-primary" id="purchase-refresh"><i class="pe-7s-refresh me-1"></i>Обновить</button>
                 <button type="button" class="btn btn-sm btn-outline-dark" id="purchase-copy-link"><i class="pe-7s-link me-1"></i>Скопировать ссылку</button>
+                <input type="file" id="dg-pu-import-file" accept=".csv,text/csv,text/plain" class="d-none" aria-hidden="true" />
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-pu-import-btn" data-dg-tooltip="UTF-8 CSV (Excel: разделитель ; или ,). Колонки: Код и поля Нес.остаток Датагон / Кратность / Мин. остаток сч.как 0. Пустая ячейка — очистить значение в БД."><i class="pe-7s-upload me-1"></i>Импорт CSV…</button>
+                <button type="button" class="btn btn-sm btn-link py-0 align-baseline" id="dg-pu-import-template" data-dg-tooltip="Скачать пример строки заголовков (Excel RU)">Шаблон CSV</button>
               </div>
               </div>
             </div>
@@ -884,10 +891,9 @@
         ["min_stock", "Неснижаемый остаток", { center: true }],
         ["formula_proposed_min_stock", "Предлагаемый нес.ост.", { center: true }],
         ["automation_price", "Автоматизация цены", { center: true }],
-        ["proposed_min_stock", "Предлаг. (закупки)", { center: true }],
         ["min_stock_dg", "Нес.остаток Датагон", { center: true, editable: true }],
         ["multiplicity", "Кратность товара", { center: true, editable: true }],
-        ["min_stock_calc_as", "Мин.Остаток сч.как", { center: true, editable: true }],
+        ["min_stock_calc_as", "Мин.Остаток сч.как 0", { center: true, editable: true }],
         ["pack_qty", "Кол-во в упаковке", { center: true }],
         ["stock", "Остаток", { center: true }],
         ["in_transit", "Ожидание", { center: true }],
@@ -913,7 +919,7 @@
 
       var SORTABLE = new Set([
         "code", "article", "name", "supplier", "buy_price",
-        "min_stock", "formula_proposed_min_stock", "automation_price", "proposed_min_stock",
+        "min_stock", "formula_proposed_min_stock", "automation_price",
         "min_stock_dg", "multiplicity", "min_stock_calc_as",
         "stock", "is_archived", "in_transit",
         "d_3", "d_5", "d_7", "d_15a", "d_15b", "d_30a", "d_30b",
@@ -927,7 +933,7 @@
       var COL_MIN = {
         code: 90, article: 110, name: 320, supplier_label: 220,
         buy_price: 110, min_stock: 110, formula_proposed_min_stock: 120, automation_price: 130,
-        proposed_min_stock: 130, min_stock_dg: 130, multiplicity: 110,
+        min_stock_dg: 130, multiplicity: 110,
         min_stock_calc_as: 130, pack_qty: 110, stock: 100, in_transit: 100,
         d_3: 72, d_5: 72, d_7: 72, d_15a: 76, d_15b: 76, d_30a: 76, d_30b: 76,
         d_60a: 76, d_60b: 76, d_90a: 76, d_90b: 76, d_180a: 80, d_180b: 80, d_365a: 80, d_365b: 80,
@@ -1250,7 +1256,7 @@
           var fp = document.createElement("span");
           fp.setAttribute(
             "data-dg-tooltip",
-            "Расчёт «Формула продаж» (как на карточке товара): те же окна и настройки app_settings; не путать с колонкой «Предлаг. (закупки)» — сохранённое override в dg_purchase_overrides."
+            "Расчёт «Формула продаж» (как на карточке товара): те же окна и настройки app_settings; при заданном в БД override proposed_min_stock он участвует в расчёте как опорный неснижаемый."
           );
           var fpn = r.formula_proposed_min_stock;
           fp.textContent = fpn != null && fpn !== "" && Number.isFinite(Number(fpn)) ? fmtNum(fpn) : "—";
@@ -1532,7 +1538,7 @@
       }
 
       function setApplyResetDisabled(dis) {
-        ["purchase-apply", "purchase-reset", "purchase-refresh"].forEach(function (id) {
+        ["purchase-apply", "purchase-reset", "purchase-refresh", "dg-pu-import-btn"].forEach(function (id) {
           var b = document.getElementById(id);
           if (b) b.disabled = dis;
         });
@@ -1583,8 +1589,6 @@
         sortBy = "code";
         sortDir = "asc";
         page = 1;
-        columnWidths = {};
-        try { localStorage.removeItem(userColWidthKey()); } catch (e) {}
         buildThead();
         try { window.history.replaceState(null, "", window.location.pathname); } catch (e) {}
       }
@@ -1608,6 +1612,88 @@
       document.getElementById("purchase-copy-link").addEventListener("click", function () {
         navigator.clipboard.writeText(window.location.href).catch(function () {});
       });
+      (function bindPurchaseCsvImport() {
+        var fileInput = document.getElementById("dg-pu-import-file");
+        var btn = document.getElementById("dg-pu-import-btn");
+        var tpl = document.getElementById("dg-pu-import-template");
+        if (!fileInput || !btn) return;
+        function showStatus(msg, isError) {
+          var ds = document.getElementById("dg-pu-status");
+          if (!ds) return;
+          ds.style.display = "";
+          ds.textContent = msg;
+          ds.classList.toggle("text-danger", !!isError);
+          ds.classList.toggle("text-success", !isError);
+        }
+        tpl && tpl.addEventListener("click", function () {
+          var bom = "\uFEFF";
+          var header = "Код;Нес.остаток Датагон;Кратность товара;Мин.Остаток сч.как 0\r\n";
+          var blob = new Blob([bom + header], { type: "text/csv;charset=utf-8" });
+          var a = document.createElement("a");
+          a.href = URL.createObjectURL(blob);
+          a.download = "datagon-purchase-import-template.csv";
+          a.click();
+          setTimeout(function () { URL.revokeObjectURL(a.href); }, 2000);
+        });
+        btn.addEventListener("click", function () {
+          if (btn.disabled) return;
+          fileInput.value = "";
+          fileInput.click();
+        });
+        fileInput.addEventListener("change", function () {
+          var f = fileInput.files && fileInput.files[0];
+          if (!f) return;
+          var reader = new FileReader();
+          reader.onload = function () {
+            var text = String(reader.result || "");
+            setApplyResetDisabled(true);
+            fetch("/api/purchase/overrides-import", {
+              method: "POST",
+              credentials: "same-origin",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ csv: text }),
+            })
+              .then(function (r) {
+                return r.text().then(function (t) {
+                  var j = {};
+                  try { j = t ? JSON.parse(t) : {}; } catch (e) { j = { error: t || "Ошибка сервера" }; }
+                  return { ok: r.ok, j: j };
+                });
+              })
+              .then(function (x) {
+                setApplyResetDisabled(false);
+                fileInput.value = "";
+                if (!x.j || x.j.success === false) {
+                  showStatus("Импорт: " + (x.j && x.j.error ? x.j.error : "ошибка"), true);
+                  return;
+                }
+                var j = x.j;
+                var parts = [
+                  "Импорт выполнен: обновлено строк " + (j.rows_upserted != null ? j.rows_upserted : 0),
+                  "прочитано из файла " + (j.rows_read != null ? j.rows_read : 0),
+                ];
+                if (j.skipped_unknown_code > 0) {
+                  parts.push("пропущено (нет кода в ms_export): " + j.skipped_unknown_code);
+                  if (j.unknown_codes_sample && j.unknown_codes_sample.length) {
+                    parts.push("примеры: " + j.unknown_codes_sample.join(", "));
+                  }
+                }
+                showStatus(parts.join(". ") + ".", false);
+                loadData();
+              })
+              .catch(function (e) {
+                setApplyResetDisabled(false);
+                fileInput.value = "";
+                showStatus("Импорт: " + (e && e.message ? e.message : e), true);
+              });
+          };
+          reader.onerror = function () {
+            setApplyResetDisabled(false);
+            showStatus("Не удалось прочитать файл", true);
+          };
+          reader.readAsText(f, "UTF-8");
+        });
+      })();
       document.getElementById("pu-btn-prev").addEventListener("click", function () {
         if (page > 1) { page -= 1; loadData(); }
       });

@@ -1116,9 +1116,9 @@
       <div class="card-body" id="dg-prod-zero-body">
         <p class="text-muted small mb-2" id="dg-prod-zero-note" style="display:none;"></p>
         <div id="dg-prod-zero-result" class="dg-prod-status" style="display:none;"></div>
-        <div class="dg-section-title">Сводка по окнам (импорт из Excel)</div>
+        <div class="dg-section-title">Сводка по периодам (импорт из Excel)</div>
         <p class="text-muted small mb-2">
-          Как агрегаты продаж по фиксированным окнам — здесь одна строка на дату среза: сколько календарных дней без товара в окнах 30…365 дней до этой даты. Это <strong>не</strong> построчный лог ниже и <strong>не</strong> подставляется в него автоматически. Загрузка: <a href="/docs/api#карточка-товара">справка API</a>, метод <code>POST /api/product/zero-stock-windows-import</code>.
+          Как агрегаты по фиксированным периодам — здесь одна строка на дату среза: сколько календарных дней без товара в интервалах 30…365 дней до этой даты. Это <strong>не</strong> построчный лог ниже и <strong>не</strong> подставляется в него автоматически. Загрузка: <a href="/docs/api#карточка-товара">справка API</a>, метод <code>POST /api/product/zero-stock-windows-import</code>.
         </p>
         <div id="dg-prod-zero-win-import-wrap" class="mb-3"></div>
         <div class="dg-section-title mt-1">Лог по дням</div>
@@ -1151,7 +1151,7 @@
       </div>
       <div class="card-body" id="dg-prod-sales-body">
         <p class="text-muted small mb-2" id="dg-prod-sales-note"></p>
-        <div class="dg-section-title">Агрегаты по окнам (количество)</div>
+        <div class="dg-section-title">Продажи за период (количество)</div>
         <div class="dg-sales-aggregates mb-3" id="dg-prod-sales-aggs"></div>
 
         <div class="border rounded p-3 mb-3 bg-light" id="dg-prod-sales-period-toolbar">
@@ -1241,7 +1241,7 @@
             type="button"
             class="btn btn-link btn-sm text-muted p-0"
             aria-label="Справка: как считается формула"
-            data-dg-tooltip="Предлагаемый неснижаемый (Датагон) считается на сервере по настройкам «Формула продаж / закупки». Сначала сумма продаж за окно (проведённые отгрузки, прямые + через комплекты), затем × коэффициент пополнения. Дальше по ситуации: редкий по средним, режим экономии, минимум для дорогих по цене с «маркет» в названии, ограничение скачка от текущего неснижаемого. На карточке: крупный итог и разбор **«Формула этапами»** (шаблон и числа). Числа для проверки также есть в JSON ответа в `formula.inputs`."
+            data-dg-tooltip="Предлагаемый неснижаемый (Датагон) считается на сервере по настройкам «Формула продаж / закупки». Сначала сумма продаж за период (проведённые отгрузки, прямые + через комплекты), затем × коэффициент пополнения. Дальше по ситуации: редкий по средним, режим экономии, минимум для дорогих по цене с «маркет» в названии, ограничение скачка от текущего неснижаемого. На карточке: крупный итог и разбор **«Формула этапами»** (шаблон и числа). Числа для проверки также есть в JSON ответа в `formula.inputs`."
           >
             <i class="pe-7s-help1" style="font-size: 1.15rem" aria-hidden="true"></i>
           </button>
@@ -1766,7 +1766,7 @@
         var rows = [
           ["Нес.остаток Датагон", over ? over.min_stock_dg : null],
           ["Кратность товара", over ? over.multiplicity : null],
-          ["Мин.Остаток сч.как", over ? over.min_stock_calc_as : null],
+          ["Мин.Остаток сч.как 0", over ? over.min_stock_calc_as : null],
           ["Предлагаемый нес.ост.", over ? over.proposed_min_stock : null],
           ["Кол-во в упаковке (override)", over ? over.pack_qty_manual : null]
         ];
@@ -2360,7 +2360,7 @@
         if (sw && sw.mode === "range" && sw.sales_from && sw.sales_to) {
           prelude.textContent = "Календарный период: " + formatYmdRu(sw.sales_from) + " — " + formatYmdRu(sw.sales_to) + " (" + (sales.recent_days || "") + " дн.)";
         } else {
-          prelude.textContent = "Скользящее окно: последние " + (sales.recent_days || 365) + " дн. от сегодня";
+          prelude.textContent = "Скользящий период: последние " + (sales.recent_days || 365) + " дн. от сегодня";
         }
         salesPeriodSummary.appendChild(prelude);
 
@@ -2546,7 +2546,7 @@
           summary.textContent =
             "За последние " +
             days +
-            " дн. записей нет: в это окно не попал ни один день, когда одновременно выполнялись условия автолога (остаток ≤ 0, складская позиция «Да», не архив), либо после включения лога ещё не было успешного синка МС. Добавить день вручную можно кнопкой «Записать вручную за сегодня» в шапке блока.";
+            " дн. записей нет: в этот период не попал ни один день, когда одновременно выполнялись условия автолога (остаток ≤ 0, складская позиция «Да», не архив), либо после включения лога ещё не было успешного синка МС. Добавить день вручную можно кнопкой «Записать вручную за сегодня» в шапке блока.";
         }
         zeroTableWrap.appendChild(summary);
 
@@ -2585,7 +2585,7 @@
         if (!win || !win.reference_date) {
           var empty = document.createElement("p");
           empty.className = "text-muted small mb-0";
-          empty.textContent = "Сводки по окнам из Excel для этого кода пока не загружали.";
+          empty.textContent = "Сводки по периодам из Excel для этого кода пока не загружали.";
           zeroWinImportWrap.appendChild(empty);
           return;
         }
@@ -2631,6 +2631,7 @@
         }
       }
 
+      function renderFormulaEquationStages(wrap, stages) {
         if (!wrap || !Array.isArray(stages) || !stages.length) return;
         var h = document.createElement("div");
         h.className = "dg-section-title mt-3 mb-2";

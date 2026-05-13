@@ -1069,6 +1069,11 @@
               <span>Автосинхронизация по расписанию</span>
             </div>
             <div class="card-body">
+              <p class="small text-muted mb-2">
+                Кнопки «Запустить сейчас» отправляют задачу на сервер (очередь + один воркер). Результат последнего нажатия — в плашке ниже; ход выполнения — на странице
+                <a href="/processes.html">«Логи фоновых процессов»</a>.
+              </p>
+              <div id="dg-set-auto-run-msg" class="alert mb-3 d-none" role="status"></div>
               <div class="row g-2">
                 <div class="col-md-6">
                   <label class="form-label">Мои товары: импорт каталога из CMS (МСК)</label>
@@ -2712,9 +2717,72 @@
         });
       }
 
-      function runAutoSyncNow(task, label) {
+      var autoSyncRunRequestInFlight = Object.create(null);
+      var AUTO_RUN_TASK_LABELS = {
+        myproducts: "Мои товары",
+        moysklad: "МойСклад (ms_export)",
+        marketplaces: "Маркетплейсы",
+        huckster: "Huckster",
+        db_size: "Размер БД и диска",
+        dimensions: "Габариты МС",
+        mssales: "Продажи МС",
+        mssales_full: "Продажи МС (полный)",
+      };
+      function escAutoRunHtml(s) {
+        return String(s || "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/"/g, "&quot;");
+      }
+      function formatAutoSyncQueueForUi(queue) {
+        if (!Array.isArray(queue) || !queue.length) return "пусто (ваша задача может начаться сразу, если воркер был свободен).";
+        return queue
+          .map(function (t) {
+            var k = String(t || "").trim();
+            return escAutoRunHtml(AUTO_RUN_TASK_LABELS[k] || k);
+          })
+          .join(" → ");
+      }
+      function showAutoSyncRunBanner(kind, htmlBody) {
+        var el = document.getElementById("dg-set-auto-run-msg");
+        if (!el) return;
+        el.classList.remove("d-none", "alert-success", "alert-warning", "alert-danger", "alert-info");
+        var cls =
+          kind === "ok"
+            ? "alert-success"
+            : kind === "warn"
+              ? "alert-warning"
+              : kind === "err"
+                ? "alert-danger"
+                : "alert-info";
+        el.classList.add(cls);
+        el.innerHTML = htmlBody;
+        try {
+          el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        } catch (_) {}
+      }
+      function runAutoSyncNow(task, label, btnId) {
+        if (autoSyncRunRequestInFlight[task]) {
+          showAutoSyncRunBanner(
+            "warn",
+            "<strong>Подождите</strong><div class=\"small mt-1\">По этой задаче запрос к серверу уже выполняется — дождитесь ответа, не нажимайте повторно.</div>"
+          );
+          return;
+        }
+        autoSyncRunRequestInFlight[task] = true;
         var hint = document.getElementById("dg-set-auto-sync-force-hint");
-        if (hint) hint.textContent = "Ставим в очередь: " + label + "...";
+        var btn = btnId ? document.getElementById(btnId) : null;
+        var prevBtnHtml = btn ? btn.innerHTML : "";
+        if (btn) {
+          btn.disabled = true;
+          btn.setAttribute("aria-busy", "true");
+          btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Запрос…';
+        }
+        if (hint) hint.textContent = "Запрос к серверу: " + label + "…";
+        showAutoSyncRunBanner(
+          "info",
+          "<strong>Отправляем на сервер…</strong><div class=\"small mt-1\">" + escAutoRunHtml(label) + "</div>"
+        );
         fetch("/api/settings/auto-sync-run", {
           method: "POST",
           credentials: "same-origin",
@@ -2727,28 +2795,75 @@
             });
           })
           .then(function (x) {
-            if (!x.r.ok || !x.j.success) throw new Error((x.j && x.j.error) || "Не удалось запустить автосинхронизацию");
+            if (!x.r.ok || !x.j.success) {
+              throw new Error((x.j && x.j.error) || "Не удалось запустить автосинхронизацию");
+            }
             var j = x.j || {};
+            var timeStr = new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+            var workerLine =
+              j.runner_active === true
+                ? "Воркер автосинка сейчас <strong>занят</strong> (выполняется какая‑то задача)."
+                : "Воркер автосинка сейчас <strong>свободен</strong>.";
+            var queueLine = "Очередь после ответа сервера: " + formatAutoSyncQueueForUi(j.queue) + "";
+            var procLink =
+              ' <a href="/processes.html">Открыть «Логи фоновых процессов»</a> — там статус и прогресс.';
             if (j.queued === false) {
               var why =
                 j.skip_reason === "already_running"
-                  ? "эта задача уже выполняется (смотрите журнал на «Процессы» после завершения)."
+                  ? "эта задача <strong>уже выполняется</strong> (новый запуск не поставлен). Смотрите журнал на «Процессы»."
                   : j.skip_reason === "already_queued"
-                    ? "задача уже в очереди автосинка — дождитесь старта."
-                    : (j.skip_reason ? "причина: " + j.skip_reason : "не поставлено в очередь.");
-              var msg2 = label + ": " + why;
-              if (hint) hint.textContent = msg2;
-              alert(msg2);
+                    ? "такая задача <strong>уже в очереди</strong> — повторно не добавляли."
+                    : j.skip_reason
+                      ? "не поставлено в очередь: <code>" + escAutoRunHtml(j.skip_reason) + "</code>."
+                      : "сервер не поставил задачу в очередь (причина не указана).";
+              if (hint) hint.textContent = label + ": " + String(j.skip_reason || "не в очереди");
+              showAutoSyncRunBanner(
+                "warn",
+                "<strong>" +
+                  escAutoRunHtml(label) +
+                  " — без повторного запуска</strong><div class=\"small mt-1\">" +
+                  why +
+                  "</div><div class=\"small mt-1\">" +
+                  workerLine +
+                  " " +
+                  queueLine +
+                  procLink +
+                  "</div><div class=\"small text-muted mt-1\">Ответ сервера: " +
+                  escAutoRunHtml(timeStr) +
+                  "</div>"
+              );
               return;
             }
-            var msg = label + " поставлено в очередь автосинхронизации.";
-            if (hint) hint.textContent = msg;
-            alert(msg);
+            if (hint) hint.textContent = label + ": поставлено в очередь (" + timeStr + ").";
+            showAutoSyncRunBanner(
+              "ok",
+              "<strong>" +
+                escAutoRunHtml(label) +
+                " — принято</strong><div class=\"small mt-1\">Задача добавлена в очередь автосинхронизации. Если очередь была пуста и воркер свободен — выполнение могло начаться сразу после этого ответа.</div><div class=\"small mt-1\">" +
+                workerLine +
+                " " +
+                queueLine +
+                procLink +
+                "</div><div class=\"small text-muted mt-1\">Ответ сервера: " +
+                escAutoRunHtml(timeStr) +
+                "</div>"
+            );
           })
           .catch(function (e) {
             var msg = e.message || "Ошибка запуска автосинхронизации";
             if (hint) hint.textContent = "Ошибка: " + msg;
-            alert(msg);
+            showAutoSyncRunBanner(
+              "err",
+              "<strong>Ошибка запуска</strong><div class=\"small mt-1\">" + escAutoRunHtml(msg) + "</div>"
+            );
+          })
+          .finally(function () {
+            autoSyncRunRequestInFlight[task] = false;
+            if (btn) {
+              btn.disabled = false;
+              btn.removeAttribute("aria-busy");
+              btn.innerHTML = prevBtnHtml;
+            }
           });
       }
 
@@ -3179,16 +3294,16 @@
       document.getElementById("dg-set-btn-save-marketplaces").addEventListener("click", saveMarketplacesSettings);
       document.getElementById("dg-set-btn-sync-marketplaces-now").addEventListener("click", syncMarketplacesNow);
       document.getElementById("dg-set-btn-save-auto").addEventListener("click", saveAutoSync);
-      document.getElementById("dg-set-auto_my_run").addEventListener("click", function () { runAutoSyncNow("myproducts", "Продукты"); });
-      document.getElementById("dg-set-auto_ms_run").addEventListener("click", function () { runAutoSyncNow("moysklad", "МойСклад: ms_export"); });
-      document.getElementById("dg-set-auto_market_run").addEventListener("click", function () { runAutoSyncNow("marketplaces", "Маркетплейсы"); });
-      document.getElementById("dg-set-auto_huckster_run").addEventListener("click", function () { runAutoSyncNow("huckster", "Huckster"); });
-      document.getElementById("dg-set-auto_db_size_run").addEventListener("click", function () { runAutoSyncNow("db_size", "Размер БД и диска"); });
-      document.getElementById("dg-set-auto_dim_run").addEventListener("click", function () { runAutoSyncNow("dimensions", "Габариты МС"); });
+      document.getElementById("dg-set-auto_my_run").addEventListener("click", function () { runAutoSyncNow("myproducts", "Мои товары", "dg-set-auto_my_run"); });
+      document.getElementById("dg-set-auto_ms_run").addEventListener("click", function () { runAutoSyncNow("moysklad", "МойСклад (ms_export)", "dg-set-auto_ms_run"); });
+      document.getElementById("dg-set-auto_market_run").addEventListener("click", function () { runAutoSyncNow("marketplaces", "Маркетплейсы", "dg-set-auto_market_run"); });
+      document.getElementById("dg-set-auto_huckster_run").addEventListener("click", function () { runAutoSyncNow("huckster", "Huckster", "dg-set-auto_huckster_run"); });
+      document.getElementById("dg-set-auto_db_size_run").addEventListener("click", function () { runAutoSyncNow("db_size", "Размер БД и диска", "dg-set-auto_db_size_run"); });
+      document.getElementById("dg-set-auto_dim_run").addEventListener("click", function () { runAutoSyncNow("dimensions", "Габариты МС", "dg-set-auto_dim_run"); });
       var mssalesRunBtn = document.getElementById("dg-set-auto_mssales_run");
-      if (mssalesRunBtn) mssalesRunBtn.addEventListener("click", function () { runAutoSyncNow("mssales", "Продажи МС"); });
+      if (mssalesRunBtn) mssalesRunBtn.addEventListener("click", function () { runAutoSyncNow("mssales", "Продажи МС", "dg-set-auto_mssales_run"); });
       var mssalesFullRunBtn = document.getElementById("dg-set-auto_mssales_full_run");
-      if (mssalesFullRunBtn) mssalesFullRunBtn.addEventListener("click", function () { runAutoSyncNow("mssales_full", "Продажи МС (полный)"); });
+      if (mssalesFullRunBtn) mssalesFullRunBtn.addEventListener("click", function () { runAutoSyncNow("mssales_full", "Продажи МС (полный)", "dg-set-auto_mssales_full_run"); });
       document.getElementById("dg-set-btn-logs-refresh").addEventListener("click", loadLogsInfo);
       document.getElementById("dg-set-btn-logs-clear").addEventListener("click", clearLogsNow);
       document.getElementById("dg-set-btn-save-dim-log").addEventListener("click", saveDimLogRetention);

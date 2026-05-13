@@ -1553,7 +1553,7 @@
       ".datagon-columns-panel{margin-top:8px;border-top:1px dashed #d1d5db;padding-top:8px;display:none;}",
       ".datagon-columns-panel.open{display:block;}",
       ".datagon-columns-panel .columns-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:6px 10px;}",
-      ".datagon-columns-panel label{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#374151;user-select:none;}",
+      ".datagon-columns-panel .columns-grid label{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#374151;user-select:none;}",
     ].join("");
     document.head.appendChild(style);
   }

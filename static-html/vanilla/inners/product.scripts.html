@@ -430,7 +430,7 @@
         var rows = [
           ["Нес.остаток Датагон", over ? over.min_stock_dg : null],
           ["Кратность товара", over ? over.multiplicity : null],
-          ["Мин.Остаток сч.как", over ? over.min_stock_calc_as : null],
+          ["Мин.Остаток сч.как 0", over ? over.min_stock_calc_as : null],
           ["Предлагаемый нес.ост.", over ? over.proposed_min_stock : null],
           ["Кол-во в упаковке (override)", over ? over.pack_qty_manual : null]
         ];
@@ -1024,7 +1024,7 @@
         if (sw && sw.mode === "range" && sw.sales_from && sw.sales_to) {
           prelude.textContent = "Календарный период: " + formatYmdRu(sw.sales_from) + " — " + formatYmdRu(sw.sales_to) + " (" + (sales.recent_days || "") + " дн.)";
         } else {
-          prelude.textContent = "Скользящее окно: последние " + (sales.recent_days || 365) + " дн. от сегодня";
+          prelude.textContent = "Скользящий период: последние " + (sales.recent_days || 365) + " дн. от сегодня";
         }
         salesPeriodSummary.appendChild(prelude);
 
@@ -1210,7 +1210,7 @@
           summary.textContent =
             "За последние " +
             days +
-            " дн. записей нет: в это окно не попал ни один день, когда одновременно выполнялись условия автолога (остаток ≤ 0, складская позиция «Да», не архив), либо после включения лога ещё не было успешного синка МС. Добавить день вручную можно кнопкой «Записать вручную за сегодня» в шапке блока.";
+            " дн. записей нет: в этот период не попал ни один день, когда одновременно выполнялись условия автолога (остаток ≤ 0, складская позиция «Да», не архив), либо после включения лога ещё не было успешного синка МС. Добавить день вручную можно кнопкой «Записать вручную за сегодня» в шапке блока.";
         }
         zeroTableWrap.appendChild(summary);
 
@@ -1249,7 +1249,7 @@
         if (!win || !win.reference_date) {
           var empty = document.createElement("p");
           empty.className = "text-muted small mb-0";
-          empty.textContent = "Сводки по окнам из Excel для этого кода пока не загружали.";
+          empty.textContent = "Сводки по периодам из Excel для этого кода пока не загружали.";
           zeroWinImportWrap.appendChild(empty);
           return;
         }
@@ -1295,6 +1295,7 @@
         }
       }
 
+      function renderFormulaEquationStages(wrap, stages) {
         if (!wrap || !Array.isArray(stages) || !stages.length) return;
         var h = document.createElement("div");
         h.className = "dg-section-title mt-3 mb-2";

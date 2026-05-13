@@ -1095,6 +1095,124 @@ function enqueueAutoSyncTask(taskType, triggerType = 'schedule') {
     return { ok: true };
 }
 
+/**
+ * Живые снимки автосинка для `/api/processes/overview` (карточки «Автосинхронизация»).
+ * Включаем только типы, у которых сейчас есть незавершённая строка `auto_sync_runs`
+ * (`autoSyncRunIds`), чтобы не путать с ручными синками с тех же модулей.
+ */
+function buildAutoSyncTasksLiveForOverview() {
+    const out = {};
+    const hasRun = (t) => autoSyncRunIds.has(t);
+
+    if (hasRun('myproducts')) {
+        if (syncState.active) {
+            out.myproducts = {
+                active: true,
+                processed: Number(syncState.processed || 0),
+                total: Number(syncState.total || 0),
+                message: String(syncState.message || ''),
+            };
+        } else {
+            out.myproducts = { active: true, pending: true, message: 'Ожидание старта импорта «Мои товары»…' };
+        }
+    }
+
+    if (hasRun('moysklad')) {
+        const st = typeof moyskladRouterFactory.getJobState === 'function' ? moyskladRouterFactory.getJobState() : null;
+        if (st && st.active) {
+            out.moysklad = {
+                active: true,
+                processed: Number(st.processed || 0),
+                total: Number(st.total || 0),
+                message: String(st.message || ''),
+            };
+        } else {
+            out.moysklad = { active: true, pending: true, message: 'Ожидание старта выгрузки МС…' };
+        }
+    }
+
+    if (hasRun('marketplaces')) {
+        const st =
+            typeof exportsMarketplacesRouterFactory.getSyncState === 'function'
+                ? exportsMarketplacesRouterFactory.getSyncState()
+                : null;
+        if (st && st.active) {
+            const pm = st.perMarket || {};
+            const per_market_summary = ['ozon', 'wb', 'ym']
+                .map((k) => {
+                    const x = pm[k] || {};
+                    const label = k === 'wb' ? 'WB' : k === 'ym' ? 'Я.Маркет' : 'Ozon';
+                    let s = `${label}: ${x.status || '—'}`;
+                    if (Number(x.count) > 0) s += ` ${Number(x.count)}`;
+                    if (x.error) s += ' (!)';
+                    return s;
+                })
+                .join(' · ');
+            out.marketplaces = {
+                active: true,
+                message: String(st.message || ''),
+                per_market_summary,
+            };
+        } else {
+            out.marketplaces = { active: true, pending: true, message: 'Ожидание обновления маркетплейсов…' };
+        }
+    }
+
+    if (hasRun('huckster')) {
+        const st =
+            typeof exportsHucksterRouterFactory.getSyncState === 'function'
+                ? exportsHucksterRouterFactory.getSyncState()
+                : null;
+        if (st && st.active) {
+            out.huckster = {
+                active: true,
+                message: String(st.status_text || ''),
+                stop_requested: !!st.stop_requested,
+                progress: st.progress && typeof st.progress === 'object' ? st.progress : null,
+            };
+        } else {
+            out.huckster = { active: true, pending: true, message: 'Ожидание расчёта Huckster…' };
+        }
+    }
+
+    if (hasRun('db_size')) {
+        out.db_size = { active: true, pending: true, message: 'Пересчёт размера БД и дерева диска…' };
+    }
+
+    if (hasRun('dimensions') && typeof dimensionsRouterFactory.getScheduledSyncState === 'function') {
+        out.dimensions = dimensionsRouterFactory.getScheduledSyncState();
+    }
+
+    function msSalesLiveOrPending() {
+        const st = typeof msSalesModule.getSyncState === 'function' ? msSalesModule.getSyncState() : null;
+        if (st && st.active) {
+            return {
+                active: true,
+                fetched_demands: Number(st.fetched_demands || 0),
+                total_demands: Number(st.total_demands || 0),
+                saved_positions: Number(st.saved_positions || 0),
+                resolved_positions: Number(st.resolved_positions || 0),
+                unresolved_positions: Number(st.unresolved_positions || 0),
+                deleted_demands: Number(st.deleted_demands || 0),
+                restored_demands: Number(st.restored_demands || 0),
+                message: String(st.message || ''),
+                days: Number(st.days || 0),
+                resume_mode: !!st.resume_mode,
+            };
+        }
+        return { active: true, pending: true, message: 'Ожидание старта импорта продаж МС…' };
+    }
+
+    if (hasRun('mssales')) {
+        out.mssales = msSalesLiveOrPending();
+    }
+    if (hasRun('mssales_full')) {
+        out.mssales_full = msSalesLiveOrPending();
+    }
+
+    return out;
+}
+
 async function ensureAutoSyncRunsTable() {
     await db.query(`
         CREATE TABLE IF NOT EXISTS auto_sync_runs (
@@ -1797,11 +1915,8 @@ initDB().then(() => {
                 queue: [...autoSyncQueue],
                 runner_active: Boolean(autoSyncRunnerActive),
                 sections: buildAutoSyncSectionsSnapshot(appSettings),
-                /** Живой прогресс балка габаритов (память процесса), пока `active=true`. */
-                dimensions_live:
-                    typeof dimensionsRouterFactory.getScheduledSyncState === 'function'
-                        ? dimensionsRouterFactory.getScheduledSyncState()
-                        : null,
+                /** Живой прогресс текущих задач автосинка (только при открытой строке auto_sync_runs). */
+                tasks_live: buildAutoSyncTasksLiveForOverview(),
                 config: {
                     myproducts_enabled: Number(appSettings.auto_sync_myproducts_enabled || 0) === 1,
                     myproducts_time: String(appSettings.auto_sync_myproducts_time || '03:00'),

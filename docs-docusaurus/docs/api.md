@@ -68,7 +68,7 @@ description: Справочник REST-эндпоинтов p.datagon.ru (осн
 - `/api/exports/marketplaces` -> `routes/exportsMarketplaces.js`
 - `/api/exports/dimensions` -> `routes/dimensions.js`
 - `/api/ms-sales` -> `routes/msSales.js` (Продажи МС: отгрузки `entity/demand` + позиции с привязкой к `ms_export`)
-- `/api/purchase` -> `routes/purchase.js` (Закупки: планирование закупок поверх `ms_export` + overrides в `dg_purchase_overrides`)
+- `/api/purchase` -> `routes/purchase.js` (Закупки: `GET` список, `POST /override`, `POST /overrides-import` CSV для трёх полей overrides)
 - `/api/product` -> `routes/product.js` (Карточка товара: `ms_export` + `ms_entity_details` + продажи + `dg_bundle_components`; лог нулевых остатков — пакетно после синка МС в `ms_export`, см. `syncZeroStockLogAfterMoyskladExport` в `routes/moysklad.js`)
 - `/api/activity` -> `routes/activity.js`
 - `GET /api/processes/overview`, `POST /api/sync-all-start`, `POST /api/sync-site-start`, `GET /api/sync-status` -> `server.js`
@@ -155,7 +155,7 @@ Body (пример):
 
 Body: `{ "task": "myproducts" | "moysklad" | "marketplaces" | "huckster" | "db_size" | "dimensions" | "mssales" | "mssales_full" }`. Whitelist допустимых значений берётся из единого реестра `lib/datagonAutoSyncRegistry.js → getAutoSyncTaskKeys()` (см. правило `datagon-auto-sync-registry.mdc`); чтобы добавить задачу — расширьте `AUTO_SYNC_TASKS` в реестре. Запись в `auto_sync_runs` создаётся с `trigger_type = "manual"`. Для `dimensions` запускается тот же балк-синк, что и по расписанию (см. описание `auto_sync_dimensions_*` выше), но с `actor='Авто-синхронизация (вручную)'` в журнале. Для `mssales` — тот же `triggerSync(db, { days })` с `days = appSettings.auto_sync_mssales_days` (см. ниже). Для **`mssales_full`** — `triggerSync(db, { days: appSettings.auto_sync_mssales_full_days, fresh: true })`.
 
-Ответ `{ "success": true, "queued": true|false, "skip_reason": null|"already_running"|"already_queued"|"invalid_task", "task", "queue", "runner_active" }`. Поле **`queued: false`** означает, что задача **не** добавлена в очередь (дубликат или такой тип уже выполняется); в этом случае в **`skip_reason`** — причина. Успешная постановка не гарантирует мгновенный старт: если в этот момент уже крутится **другая** задача очереди, исполнение отложится до её завершения (сервер сам вызовет обработчик снова).
+Ответ `{ "success": true, "queued": true|false, "skip_reason": null|"already_running"|"already_queued"|"invalid_task", "task", "queue", "runner_active" }`. Поле **`queued: false`** означает, что задача **не** добавлена в очередь (дубликат или такой тип уже выполняется); в этом случае в **`skip_reason`** — причина. Успешная постановка не гарантирует мгновенный старт: если в этот момент уже крутится **другая** задача очереди, исполнение отложится до её завершения (сервер сам вызовет обработчик снова). На `/settings.html` тот же ответ показывается **плашкой** в карточке «Автосинхронизация по расписанию» (текст очереди, занятость воркера, время ответа), чтобы не гадать, «уехало» ли нажатие.
 
 ### POST `/api/settings/fetch-proxy`
 
@@ -1334,7 +1334,7 @@ Body (JSON): `email`, `password` (обязательны), опциональн�
 - **`moyskladPersistedLogs`** — все строки `dg_ms_sync_log` за выбранный день в МСК. Упорядочены по `id DESC` — самые свежие шаги синхронизации идут **первыми**, чтобы UI не заставлял пользователя листать журнал вниз. Реализация: `fetchMsSyncPersistedLogsForDate(db, forDate)` в `routes/moysklad.js`.
 - **`autoSyncRuns`** — записи `auto_sync_runs`, чей `started_at` приходится на выбранный день в МСК. Фронт группирует их по `task_type` и рисует по секциям из `autoSync.sections` (см. ниже). Чтобы добавить новую секцию — добавляйте задачу в `lib/datagonAutoSyncRegistry.js → AUTO_SYNC_TASKS` (правило `datagon-auto-sync-registry.mdc`).
 - **`autoSync.sections`** — массив `{ key, title, subtitle, enabled, time, extras: [{ key, label, value }] }`, построен `buildAutoSyncSectionsSnapshot(appSettings)` из `lib/datagonAutoSyncRegistry.js`. Используется фронтом `processes.scripts.html` (`renderAutoSyncSections`), чтобы держать набор задач в `/settings.html` ↔ `/processes.html` синхронным без ручной правки UI при добавлении новой автосинки. Поле `autoSync.config` оставлено для обратной совместимости (legacy фронт без `sections`).
-- **`autoSync.dimensions_live`** — снимок in-memory прогресса балк-выгрузки габаритов в МС (`routes/dimensions.js` → `getScheduledSyncState`), пока `active: true`: `processed`, `total`, `ok`, `err`, `skipped_no_uuid`, `last_code`, `last_message` и т.д. Фронт подмешивает его к строке `auto_sync_runs` со статусом `running` для задачи `dimensions`, чтобы не казалось, что процесс «завис» на «Запуск задачи».
+- **`autoSync.tasks_live`** — объект «по ключу задачи» (`myproducts`, `moysklad`, `marketplaces`, `huckster`, `db_size`, `dimensions`, `mssales`, `mssales_full`): снимок **только** для типов, у которых в этот момент есть незавершённая строка `auto_sync_runs` в памяти сервера (`autoSyncRunIds`), чтобы не путать с ручными синками. Поля зависят от задачи: для **`dimensions`** — тот же payload, что `getScheduledSyncState()` в `routes/dimensions.js` (`processed`, `total`, `ok`, `err`, …); для **`myproducts`** / **`moysklad`** — `processed`/`total`/`message` из глобального `syncState` и `getJobState()`; для **`marketplaces`** — `message` + сводка по Ozon/WB/Я.Маркет; для **`huckster`** — `status_text`, `progress` (магазины), `stop_requested`; для **`db_size`** — текстовая стадия пересчёта; для **`mssales`** / **`mssales_full`** — метрики из `routes/msSales.js → getSyncState()` (отгрузки, позиции, `days`, `message`). Фронт `/processes.html` подмешивает строку «Сейчас: …» к записи со статусом `running`.
 - **`matches`** — последняя задача `matching_jobs` для `my_site_id`, чей `started_at` приходится на выбранный день в МСК. Если задач за день не было — `matches.message` = «За выбранный день задач сопоставления не было».
 - **`moysklad.logs`** (in-memory `jobState.logs`, до 30 строк текущей сессии) — отдаются только за «сегодня»; для других дней массив пустой, так как память процесса не различает даты.
 
@@ -1360,7 +1360,7 @@ Body (JSON): `email`, `password` (обязательны), опциональн�
 
 ## Закупки
 
-Отдельная страница `/purchase.html` и роутер `routes/purchase.js`. Источник истины базовых полей — `ms_export` (синк МойСклад). Дополнительные **редактируемые поля** (Неснижаемый остаток Датагон, Кратность товара, Мин.Остаток сч.как, поле `proposed_min_stock` в закупках, Кол-во в упаковке вручную) хранятся в отдельной таблице `dg_purchase_overrides`, чтобы синк МС не затирал ручные значения и схема `ms_export` оставалась стабильной. В списке `GET /api/purchase` дополнительно отдаётся **`formula_proposed_min_stock`** — расчёт «Формула продаж» (как на карточке товара), не путать с `proposed_min_stock` из overrides. Для окон **3 / 5 / 7 / 15 / 30 / 60 / 90 / 180 / 365** дней — поля **`d_3`, `d_5`, … `d_365a`**: сумма проданного количества (шт) за скользящие календарные дни (прямые отгрузки по коду + эквивалент через комплекты, для строк-комплектов только прямые). Поля **`d_15b`, `d_30b`, … `d_365b`** — число **разных календарных дат** с нулевым остатком в `dg_product_zero_stock_log` за последние N дн. (как на карточке товара). Поле **`in_transit`** — «в пути» из `payload_json.inTransit`, если есть.
+Отдельная страница `/purchase.html` и роутер `routes/purchase.js`. Источник истины базовых полей — `ms_export` (синк МойСклад). Дополнительные **редактируемые поля** (Неснижаемый остаток Датагон, Кратность товара, Мин. остаток сч.как 0, поле `proposed_min_stock` в закупках, Кол-во в упаковке вручную) хранятся в отдельной таблице `dg_purchase_overrides`, чтобы синк МС не затирал ручные значения и схема `ms_export` оставалась стабильной. В списке `GET /api/purchase` дополнительно отдаётся **`formula_proposed_min_stock`** — расчёт «Формула продаж» (как на карточке товара), не путать с `proposed_min_stock` из overrides. Для окон **3 / 5 / 7 / 15 / 30 / 60 / 90 / 180 / 365** дней — поля **`d_3`, `d_5`, … `d_365a`**: сумма проданного количества (шт) за скользящие календарные дни (прямые отгрузки по коду + эквивалент через комплекты, для строк-комплектов только прямые). Поля **`d_15b`, `d_30b`, … `d_365b`** — число **разных календарных дат** с нулевым остатком в `dg_product_zero_stock_log` за последние N дн. (как на карточке товара). Поле **`in_transit`** — «в пути» из `payload_json.inTransit`, если есть.
 
 Сырые поля (`article`, `packagings`, `inTransit`) подмешиваются к строкам из `ms_entity_details.payload_json` (raw карточка из МС API).
 
@@ -1403,7 +1403,7 @@ Query:
 - `sort_by` — `code` (default), `article`, `name`, `supplier`, `buy_price`, `min_stock`, **`formula_proposed_min_stock`**, `automation_price`, `proposed_min_stock`, `min_stock_dg`, `multiplicity`, `min_stock_calc_as`, `stock`, `is_archived`, **`in_transit`**, **`d_3`**, **`d_5`**, **`d_7`**, **`d_15a`**, **`d_15b`**, **`d_30a`**, **`d_30b`**, **`d_60a`**, **`d_60b`**, **`d_90a`**, **`d_90b`**, **`d_180a`**, **`d_180b`**, **`d_365a`**, **`d_365b`**.
 - `sort_dir` — `asc` (default) | `desc`.
 
-Для **`sort_by`** из перечисленных **вычисляемых** полей (`formula_proposed_min_stock`, `in_transit`, все `d_*`) порядок строк на **текущей странице** (`limit`/`offset`) пересчитывается в памяти после расчёта метрик (глобальный порядок по всему каталогу без отдельного запроса не гарантируется).
+Для **`sort_by`** из перечисленных **вычисляемых** полей (`formula_proposed_min_stock`, `in_transit`, все `d_*`) сервер подтягивает **весь** отфильтрованный набор (без SQL `LIMIT`/`OFFSET`), считает метрики, **сортирует в памяти по всему набору**, затем применяет `limit`/`offset` к ответу. Для остальных `sort_by` сортировка и пагинация выполняются в SQL (быстрее на больших выборках).
 
 Ответ:
 
@@ -1459,6 +1459,21 @@ Query:
 `field` ограничен whitelist'ом: `min_stock_dg` | `multiplicity` | `min_stock_calc_as` | `proposed_min_stock` | `pack_qty_manual`. Значения парсятся гибко (запятая = точка, пробелы игнорируются). Передача `value: ""` (или `null`) очищает поле в overrides (NULL).
 
 Ответ при успехе содержит `stored` — текущее состояние строки `dg_purchase_overrides` для этого `code`, что позволяет UI **верифицировать** реальное значение в БД (по правилу `datagon-settings-save-feedback.mdc`).
+
+### POST `/api/purchase/overrides-import`
+
+Пакетное обновление **`min_stock_dg`**, **`multiplicity`**, **`min_stock_calc_as`** из CSV (тело JSON, до ~12 МБ):
+
+```json
+{ "csv": "Код;Нес.остаток Датагон;Кратность товара;Мин.Остаток сч.как 0\n00-1;10;2;0\n" }
+```
+
+- Первая строка — заголовки. Разделитель **`;`** или **`,`** выбирается по большинству в первой строке.
+- Обязательна колонка **кода** товара (`code`, `Код`, `артикул`, …). Должна присутствовать **хотя бы одна** из колонок трёх полей (русские подписи как в UI, в т.ч. **`Мин.Остаток сч.как 0`** для `min_stock_calc_as`).
+- Пустая ячейка, `-` или `—` — записать **NULL** в соответствующее поле override для этой строки.
+- Строки с кодом, которого **нет** в `ms_export`, пропускаются (счётчик `skipped_unknown_code`, примеры в `unknown_codes_sample`).
+
+Ответ при успехе: `{ "success": true, "rows_read", "rows_upserted", "skipped_unknown_code", "unknown_codes_sample" }`. Ошибки разбора CSV — `400` с текстом, начинающимся с `CSV:` или `Слишком`.
 
 ### Заметки
 
@@ -1643,7 +1658,7 @@ Query:
           "id": "avg_daily",
           "order": 1,
           "title": "Этап 1. Средние продажи",
-          "template": "Продажи за окно ÷ дней в окне (W)",
+          "template": "Продажи за период ÷ дней в периоде (W)",
           "values": "36 ÷ 90 = 0.4 шт/день",
           "note": "…"
         }

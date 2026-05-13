@@ -8,7 +8,7 @@
  *   • Дополнительные сырые поля (артикул, packagings, в пути / inTransit) —
  *     из `ms_entity_details.payload_json` (JSON ответа entity/product|bundle).
  *   • Редактируемые значения (Неснижаемый остаток Датагон / Кратность товара /
- *     Мин.Остаток сч.как / Предлагаемый нес.остаток) хранятся в отдельной
+ *     Мин.Остаток сч.как 0 / Предлагаемый нес.остаток) хранятся в отдельной
  *     таблице `dg_purchase_overrides` (PK = code), чтобы синк МС не затирал
  *     их и схема ms_export не разрасталась.
  *   • Фильтр по умолчанию (по требованию пользователя):
@@ -20,7 +20,10 @@
  *   GET    /api/purchase            — список товаров с overrides и raw-полями; для каждой строки
  *                            дополнительно считается `formula_proposed_min_stock` (как на карточке товара),
  *                            а также «снимок» продаж за 3…365 дн. (`d_*a`) и дней отсутствия (`d_*b`) для 15/30/60/90/180/365.
+ *                            Сортировка по вычисляемым полям (`d_*`, `formula_proposed_min_stock`, `in_transit`) выполняется
+ *                            по всему отфильтрованному набору, затем применяется `limit`/`offset`.
  *   POST   /api/purchase/override   — сохранить одно значение (code + field + value).
+ *   POST   /api/purchase/overrides-import — пакетный импорт CSV для min_stock_dg / multiplicity / min_stock_calc_as.
  *
  * См. правила:
  *   .cursor/rules/datagon-list-page-baseline-moysklad.mdc
@@ -105,7 +108,175 @@ function parseFlexibleNumber(raw) {
     return Number.isFinite(n) ? n : null;
 }
 
-/** Безопасный парс payload_json одной строки ms_entity_details. */
+/** Только эти поля допускает импорт CSV (см. POST /overrides-import). */
+const PURCHASE_IMPORT_OVERRIDE_FIELDS = ['min_stock_dg', 'multiplicity', 'min_stock_calc_as'];
+
+const PURCHASE_IMPORT_MAX_ROWS = 25000;
+
+function splitPurchaseCsvLine(line, delim) {
+    return String(line || '')
+        .split(delim)
+        .map((s) => s.trim().replace(/^"|"$/g, '').trim());
+}
+
+/**
+ * Сопоставление заголовка колонки CSV с полем overrides.
+ * Поддерживаются русские подписи как в UI и вариант «Мин.Остаток сч.как 0» (Excel).
+ */
+function purchaseImportHeaderToField(raw) {
+    const t = String(raw || '')
+        .replace(/^\uFEFF/, '')
+        .trim()
+        .replace(/^"|"$/g, '')
+        .trim();
+    if (!t) return null;
+    const lower = t.toLowerCase().replace(/ё/g, 'е');
+    const compact = lower.replace(/[\s._-]/g, '');
+    if (['code', 'код', 'кодмс', 'sku', 'артикул'].includes(compact)) return 'code';
+    if (compact === 'minstockdg' || compact === 'min_stock_dg') return 'min_stock_dg';
+    if (lower.includes('неснижаемый') && lower.includes('датагон')) return 'min_stock_dg';
+    if (lower.includes('нес') && lower.includes('остаток') && lower.includes('датагон')) return 'min_stock_dg';
+    if (compact === 'multiplicity') return 'multiplicity';
+    if (lower.includes('кратность')) return 'multiplicity';
+    if (compact === 'minstockcalcas' || compact === 'min_stock_calc_as') return 'min_stock_calc_as';
+    if (lower.includes('мин') && lower.includes('остаток') && lower.includes('сч') && lower.includes('как')) {
+        return 'min_stock_calc_as';
+    }
+    return null;
+}
+
+function parsePurchaseOverridesImportCsv(text) {
+    const raw = String(text || '').replace(/^\uFEFF/, '').trim();
+    if (!raw) throw new Error('CSV: передайте непустую строку');
+    const lines = raw
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter(Boolean);
+    if (lines.length < 2) throw new Error('CSV: нужна строка заголовка и минимум одна строка данных');
+    const first = lines[0];
+    const semi = first.split(';').length;
+    const comma = first.split(',').length;
+    const delim = semi > comma ? ';' : ',';
+    const headerCells = splitPurchaseCsvLine(first, delim);
+    const idx = { code: -1, min_stock_dg: -1, multiplicity: -1, min_stock_calc_as: -1 };
+    headerCells.forEach((cell, i) => {
+        const f = purchaseImportHeaderToField(cell);
+        if (!f || f === 'code') {
+            if (f === 'code' && idx.code < 0) idx.code = i;
+            return;
+        }
+        if (idx[f] < 0) idx[f] = i;
+    });
+    if (idx.code < 0) throw new Error('CSV: в первой строке нужна колонка кода (code, Код, …)');
+    const hasAnyField = PURCHASE_IMPORT_OVERRIDE_FIELDS.some((k) => idx[k] >= 0);
+    if (!hasAnyField) {
+        throw new Error(
+            'CSV: нужна хотя бы одна колонка из: Нес.остаток Датагон / Кратность товара / Мин.Остаток сч.как (или «…сч.как 0»)',
+        );
+    }
+    const rows = [];
+    for (let li = 1; li < lines.length; li += 1) {
+        const cells = splitPurchaseCsvLine(lines[li], delim);
+        if (cells.length <= idx.code) continue;
+        const code = String(cells[idx.code] || '').trim();
+        if (!code) continue;
+        const patch = { code };
+        for (const field of PURCHASE_IMPORT_OVERRIDE_FIELDS) {
+            const ci = idx[field];
+            if (ci < 0) continue;
+            const cellRaw = cells[ci] != null ? String(cells[ci]).trim() : '';
+            if (!cellRaw || cellRaw === '-' || cellRaw === '—') {
+                patch[field] = null;
+                continue;
+            }
+            const num = parseFlexibleNumber(cellRaw);
+            if (num == null) {
+                throw new Error(`CSV: строка ${li + 1}, код «${code}», поле ${field}: не число «${cellRaw.slice(0, 40)}»`);
+            }
+            patch[field] = num;
+        }
+        rows.push(patch);
+    }
+    if (!rows.length) throw new Error('CSV: нет ни одной строки с непустым кодом');
+    if (rows.length > PURCHASE_IMPORT_MAX_ROWS) {
+        throw new Error(`Слишком много строк (${rows.length}), максимум ${PURCHASE_IMPORT_MAX_ROWS}`);
+    }
+    return { idx, rows };
+}
+
+async function loadMsExportCodesSet(db, codes) {
+    const out = new Set();
+    const chunk = 800;
+    for (let i = 0; i < codes.length; i += chunk) {
+        const part = codes.slice(i, i + chunk);
+        const ph = part.map(() => '?').join(',');
+        const [r] = await db.query(`SELECT code FROM ms_export WHERE code IN (${ph})`, part);
+        for (const row of r || []) out.add(String(row.code || '').trim());
+    }
+    return out;
+}
+
+async function loadExistingOverridesMap(db, codes) {
+    const map = new Map();
+    if (!codes.length) return map;
+    const chunk = 800;
+    for (let i = 0; i < codes.length; i += chunk) {
+        const part = codes.slice(i, i + chunk);
+        const ph = part.map(() => '?').join(',');
+        const [r] = await db.query(
+            `SELECT code, min_stock_dg, multiplicity, min_stock_calc_as FROM dg_purchase_overrides WHERE code IN (${ph})`,
+            part,
+        );
+        for (const row of r || []) {
+            map.set(String(row.code || '').trim(), {
+                min_stock_dg: row.min_stock_dg != null ? Number(row.min_stock_dg) : null,
+                multiplicity: row.multiplicity != null ? Number(row.multiplicity) : null,
+                min_stock_calc_as: row.min_stock_calc_as != null ? Number(row.min_stock_calc_as) : null,
+            });
+        }
+    }
+    return map;
+}
+
+async function applyPurchaseOverridesImportRows(db, patches, colIdx) {
+    const codes = [...new Set(patches.map((p) => p.code))];
+    const validCodes = await loadMsExportCodesSet(db, codes);
+    const existing = await loadExistingOverridesMap(db, codes);
+    let upserted = 0;
+    let skipped_unknown = 0;
+    const unknownSample = [];
+    const mergeKeys = PURCHASE_IMPORT_OVERRIDE_FIELDS.filter((k) => colIdx[k] >= 0);
+
+    for (const p of patches) {
+        if (!validCodes.has(p.code)) {
+            skipped_unknown += 1;
+            if (unknownSample.length < 15) unknownSample.push(p.code);
+            continue;
+        }
+        const prev = existing.get(p.code) || {
+            min_stock_dg: null,
+            multiplicity: null,
+            min_stock_calc_as: null,
+        };
+        const next = { ...prev };
+        for (const k of mergeKeys) {
+            if (Object.prototype.hasOwnProperty.call(p, k)) next[k] = p[k];
+        }
+        await db.query(
+            `INSERT INTO dg_purchase_overrides (code, min_stock_dg, multiplicity, min_stock_calc_as)
+             VALUES (?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE
+                min_stock_dg = VALUES(min_stock_dg),
+                multiplicity = VALUES(multiplicity),
+                min_stock_calc_as = VALUES(min_stock_calc_as)`,
+            [p.code, next.min_stock_dg, next.multiplicity, next.min_stock_calc_as],
+        );
+        existing.set(p.code, next);
+        upserted += 1;
+    }
+    return { upserted, skipped_unknown, unknownSample };
+}
+
 function parsePayloadSafe(raw) {
     if (!raw) return null;
     try {
@@ -158,7 +329,7 @@ function safeMsCodeForLike(code) {
 /** Окна «снимка» для таблицы закупок: продажи (шт), совмещены с карточкой товара (`SALES_WINDOWS` в product). */
 const PU_SNAPSHOT_SALES_DAYS = [3, 5, 7, 15, 30, 60, 90, 180, 365];
 
-/** Сортировка по вычисляемым полям — после enrich, только в пределах текущей страницы (как `formula_proposed_min_stock`). */
+/** Сортировка по вычисляемым полям — после enrich по всему отфильтрованному набору, затем пагинация slice. */
 const PURCHASE_POST_SORT_KEYS = new Set([
     'formula_proposed_min_stock',
     'in_transit',
@@ -391,6 +562,10 @@ async function enrichPurchaseRowsWithFormula(db, appSettings, sqlRows, data) {
     const absenceMap = new Map(absenceRows.map((row) => [String(row.code), Number(row.distinct_days || 0)]));
     const econMap = new Map(econRows.map((row) => [String(row.code), Number(row.distinct_days || 0)]));
 
+    const rowByCode = new Map(
+        (sqlRows || []).map((row) => [String(row.code || '').trim(), row]).filter(([k]) => k),
+    );
+
     function sumWindowQty(codeStr, isBundleRow, w) {
         const k = `w${w}`;
         const dr = dirWinMap.get(codeStr);
@@ -403,7 +578,8 @@ async function enrichPurchaseRowsWithFormula(db, appSettings, sqlRows, data) {
 
     for (let i = 0; i < data.length; i += 1) {
         const d = data[i];
-        const r = sqlRows[i];
+        const codeKey = String(d.code || '').trim();
+        const r = rowByCode.get(codeKey) || null;
         const code = String(d.code || '');
         const isBundle = isMsBundleType(d.type);
         let sumQty = directMap.get(code) || 0;
@@ -412,7 +588,7 @@ async function enrichPurchaseRowsWithFormula(db, appSettings, sqlRows, data) {
         const absenceDistinct = absenceMap.get(code) || 0;
         const econDistinct = econMap.get(code) || 0;
 
-        const payload = parsePayloadSafe(r.payload_json);
+        const payload = parsePayloadSafe(r ? r.payload_json : null);
         const marketPriceRub = marketPriceRubFromPayload(payload);
 
         const multRaw = d.multiplicity != null ? Number(d.multiplicity) : 0;
@@ -523,7 +699,7 @@ function createPurchaseRouter(db, appSettings) {
                 LEFT JOIN ms_entity_details med ON med.uuid = mse.uuid
             `;
 
-            const listSql = `
+            const listSelectBody = `
                 SELECT
                     mse.code, mse.name, mse.supplier, mse.supplier2, mse.uuid, mse.type,
                     mse.is_archived, mse.stock_position, mse.no_longer_cooperation,
@@ -533,15 +709,20 @@ function createPurchaseRouter(db, appSettings) {
                     po.proposed_min_stock, po.pack_qty_manual, po.updated_at AS override_updated_at,
                     med.payload_json
                 ${baseFromJoin}
-                WHERE ${whereSql}
+                WHERE ${whereSql}`;
+
+            const needPostSort = PURCHASE_POST_SORT_KEYS.has(sortKey);
+            const listSqlPaged = `${listSelectBody}
                 ORDER BY ${orderExpr} ${sortDir}, mse.id ASC
-                LIMIT ? OFFSET ?
-            `;
+                LIMIT ? OFFSET ?`;
+            const listSqlFull = `${listSelectBody}
+                ORDER BY mse.id ASC`;
+
             const countSql = `SELECT COUNT(*) AS cnt ${baseFromJoin} WHERE ${whereSql}`;
 
             const [[rows], [countRow]] = await Promise.all([
-                db.query(listSql, [...params, limit, offset]),
-                db.query(countSql, params)
+                needPostSort ? db.query(listSqlFull, params) : db.query(listSqlPaged, [...params, limit, offset]),
+                db.query(countSql, params),
             ]);
 
             const data = rows.map((r) => {
@@ -596,9 +777,11 @@ function createPurchaseRouter(db, appSettings) {
 
             await enrichPurchaseRowsWithFormula(db, appSettings || {}, rows, data);
 
-            if (PURCHASE_POST_SORT_KEYS.has(sortKey)) {
+            let responseData = data;
+            if (needPostSort) {
                 const desc = String(req.query.sort_dir || 'asc').toLowerCase() === 'desc';
                 sortPurchaseDataByKey(data, sortKey, desc);
+                responseData = data.slice(offset, offset + limit);
             }
 
             res.json({
@@ -608,7 +791,7 @@ function createPurchaseRouter(db, appSettings) {
                 offset,
                 sort_by: sortKey,
                 sort_dir: sortDir.toLowerCase(),
-                data
+                data: responseData,
             });
         } catch (err) {
             console.error('[purchase][list] error:', err);
@@ -649,6 +832,40 @@ function createPurchaseRouter(db, appSettings) {
         } catch (err) {
             console.error('[purchase][override] error:', err);
             res.status(500).json({ success: false, error: err && err.message ? err.message : 'Внутренняя ошибка' });
+        }
+    });
+
+    /**
+     * POST /api/purchase/overrides-import
+     * Body: { "csv": "…" } — UTF-8, первая строка заголовки, разделитель `;` или `,`.
+     * Колонки: код товара (code|Код|…) и любое сочетание из
+     * Нес.остаток Датагон / Кратность товара / Мин.Остаток сч.как (в т.ч. заголовок «…сч.как 0»).
+     * Пустая ячейка или «—» — записать NULL в override для этой колонки.
+     * Строки с кодом, которого нет в ms_export, пропускаются (счётчик в ответе).
+     */
+    router.post('/overrides-import', express.json({ limit: '12mb' }), async (req, res) => {
+        try {
+            await ensureSchema(db);
+            const csv = req.body && typeof req.body.csv === 'string' ? req.body.csv : '';
+            if (!String(csv).trim()) {
+                return res.status(400).json({ success: false, error: 'Передайте в JSON поле csv (строка UTF-8)' });
+            }
+            const parsed = parsePurchaseOverridesImportCsv(csv);
+            const result = await applyPurchaseOverridesImportRows(db, parsed.rows, parsed.idx);
+            res.json({
+                success: true,
+                rows_read: parsed.rows.length,
+                rows_upserted: result.upserted,
+                skipped_unknown_code: result.skipped_unknown,
+                unknown_codes_sample: result.unknownSample,
+            });
+        } catch (err) {
+            const msg = err && err.message ? err.message : String(err);
+            if (msg && (msg.startsWith('CSV:') || msg.startsWith('Слишком'))) {
+                return res.status(400).json({ success: false, error: msg });
+            }
+            console.error('[purchase][overrides-import] error:', err);
+            res.status(500).json({ success: false, error: msg || 'Внутренняя ошибка' });
         }
     });
 

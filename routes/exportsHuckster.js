@@ -1299,6 +1299,13 @@ function createExportsHucksterRouter(_db, appSettings) {
         // чтобы помечать запись auto_sync_runs honestly:
         //   completed — только если result.success === true и snapshot_saved_at не null;
         //   failed    — если есть error (auth/repricer/snapshot_save/HUCKSTER_STOPPED).
+        // `progress` / `stop_requested` — для /api/processes/overview → tasks_live.huckster.
+        let progressCopy = null;
+        try {
+            progressCopy = syncState.progress ? JSON.parse(JSON.stringify(syncState.progress)) : null;
+        } catch (_) {
+            progressCopy = syncState.progress || null;
+        }
         return {
             active: syncState.active,
             started_at: syncState.started_at,
@@ -1307,6 +1314,8 @@ function createExportsHucksterRouter(_db, appSettings) {
             error: syncState.error,
             result_success: !!(syncState.result && syncState.result.success),
             snapshot_saved_at: syncState.snapshot_saved_at,
+            stop_requested: !!syncState.stop_requested,
+            progress: progressCopy,
         };
     };
 
