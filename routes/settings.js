@@ -20,6 +20,22 @@ function normalizeAutoSyncWeekdaysCsv(raw) {
 }
 
 module.exports = (db, appSettings) => {
+    async function ensureAutoSyncRunsTableLocal() {
+        await db.query(`
+            CREATE TABLE IF NOT EXISTS auto_sync_runs (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                task_type VARCHAR(30) NOT NULL,
+                trigger_type VARCHAR(20) NOT NULL DEFAULT 'schedule',
+                started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                finished_at TIMESTAMP NULL,
+                status VARCHAR(20) NOT NULL DEFAULT 'running',
+                message TEXT,
+                INDEX idx_asr_started (started_at),
+                INDEX idx_asr_task (task_type, started_at)
+            )
+        `);
+    }
+
     router.get('/', async (req, res) => res.json(appSettings));
 
     router.post('/fetch-proxy', async (req, res) => {
@@ -98,7 +114,7 @@ module.exports = (db, appSettings) => {
     
     router.post('/', async (req, res) => {
         const {
-            default_limit, parse_batch_size, page_delay_ms, sync_batch_size, sync_delay_ms, sync_mode, log_retention_days, results_retention_days, ms_dimensions_log_retention_days,
+            default_limit, parse_batch_size, page_delay_ms, sync_batch_size, sync_delay_ms, sync_mode, log_retention_days, results_retention_days, ms_dimensions_log_retention_days, auto_sync_runs_retention_days,
             ms_sync_page_limit, ms_sync_delay_ms,
             auto_sync_myproducts_enabled, auto_sync_myproducts_time,
             auto_sync_moysklad_enabled, auto_sync_moysklad_time,
@@ -131,6 +147,7 @@ module.exports = (db, appSettings) => {
             if (log_retention_days !== undefined) queries.push(['log_retention_days', Number(log_retention_days || 7)]);
             if (results_retention_days !== undefined) queries.push(['results_retention_days', Number(results_retention_days || 120)]);
             if (ms_dimensions_log_retention_days !== undefined) queries.push(['ms_dimensions_log_retention_days', Number(ms_dimensions_log_retention_days || 180)]);
+            if (auto_sync_runs_retention_days !== undefined) queries.push(['auto_sync_runs_retention_days', Number(auto_sync_runs_retention_days || 180)]);
             if (auto_sync_myproducts_enabled !== undefined) queries.push(['auto_sync_myproducts_enabled', auto_sync_myproducts_enabled ? 1 : 0]);
             if (auto_sync_myproducts_time !== undefined) queries.push(['auto_sync_myproducts_time', auto_sync_myproducts_time || '03:00']);
             if (auto_sync_moysklad_enabled !== undefined) queries.push(['auto_sync_moysklad_enabled', auto_sync_moysklad_enabled ? 1 : 0]);
@@ -279,6 +296,7 @@ module.exports = (db, appSettings) => {
             if(log_retention_days !== undefined) appSettings.log_retention_days = parseInt(log_retention_days);
             if(results_retention_days !== undefined) appSettings.results_retention_days = parseInt(results_retention_days);
             if(ms_dimensions_log_retention_days !== undefined) appSettings.ms_dimensions_log_retention_days = parseInt(ms_dimensions_log_retention_days);
+            if(auto_sync_runs_retention_days !== undefined) appSettings.auto_sync_runs_retention_days = parseInt(auto_sync_runs_retention_days);
             if(auto_sync_myproducts_enabled !== undefined) appSettings.auto_sync_myproducts_enabled = auto_sync_myproducts_enabled ? 1 : 0;
             if(auto_sync_myproducts_time !== undefined) appSettings.auto_sync_myproducts_time = auto_sync_myproducts_time || '03:00';
             if(auto_sync_moysklad_enabled !== undefined) appSettings.auto_sync_moysklad_enabled = auto_sync_moysklad_enabled ? 1 : 0;
@@ -372,6 +390,82 @@ module.exports = (db, appSettings) => {
 
             res.json({ success: true });
         } catch (e) { res.status(500).json({ error: e.message }); }
+    });
+
+    router.get('/auto-sync-runs/stats', async (_req, res) => {
+        try {
+            await ensureAutoSyncRunsTableLocal();
+            const retention = Number(appSettings.auto_sync_runs_retention_days || 180);
+            const [totRows] = await db.query(
+                `SELECT COUNT(*) AS total,
+                        MIN(started_at) AS oldest_started,
+                        MAX(started_at) AS newest_started,
+                        COALESCE(SUM(CASE WHEN finished_at IS NULL THEN 1 ELSE 0 END), 0) AS open_runs
+                 FROM auto_sync_runs`
+            );
+            const tot = (totRows && totRows[0]) || {};
+            const [taskRows] = await db.query(
+                `SELECT task_type, COUNT(*) AS n FROM auto_sync_runs GROUP BY task_type ORDER BY task_type`
+            );
+            const byTask = {};
+            (taskRows || []).forEach((r) => {
+                byTask[String(r.task_type || '')] = Number(r.n || 0);
+            });
+            let olderThanRetention = 0;
+            if (retention > 0) {
+                const [oldRows] = await db.query(
+                    `SELECT COUNT(*) AS n FROM auto_sync_runs
+                     WHERE finished_at IS NOT NULL
+                       AND finished_at < (NOW() - INTERVAL ? DAY)`,
+                    [retention]
+                );
+                olderThanRetention = Number((oldRows && oldRows[0] && oldRows[0].n) || 0);
+            }
+            return res.json({
+                success: true,
+                total: Number(tot.total || 0),
+                oldest_started_at: tot.oldest_started ? new Date(tot.oldest_started).toISOString() : null,
+                newest_started_at: tot.newest_started ? new Date(tot.newest_started).toISOString() : null,
+                open_running: Number(tot.open_runs || 0),
+                by_task: byTask,
+                retention_days: retention,
+                older_than_retention: olderThanRetention,
+            });
+        } catch (e) {
+            return res.status(500).json({
+                success: false,
+                error: e && e.message ? e.message : 'Не удалось получить статистику auto_sync_runs',
+            });
+        }
+    });
+
+    router.post('/auto-sync-runs/cleanup', async (req, res) => {
+        try {
+            await ensureAutoSyncRunsTableLocal();
+            const body = req.body || {};
+            const reqDays = body.days != null ? Number(body.days) : null;
+            const defaultDays = Number(appSettings.auto_sync_runs_retention_days || 180);
+            const days = Number.isFinite(reqDays) && reqDays > 0 ? Math.floor(reqDays) : defaultDays;
+            if (days <= 0) {
+                return res.status(400).json({ success: false, error: 'Некорректный retention (days <= 0)' });
+            }
+            const [r] = await db.query(
+                `DELETE FROM auto_sync_runs
+                 WHERE finished_at IS NOT NULL
+                   AND finished_at < (NOW() - INTERVAL ? DAY)`,
+                [days]
+            );
+            return res.json({
+                success: true,
+                deleted: Number((r && r.affectedRows) || 0),
+                days,
+            });
+        } catch (e) {
+            return res.status(500).json({
+                success: false,
+                error: e && e.message ? e.message : 'Не удалось очистить auto_sync_runs',
+            });
+        }
     });
 
     router.get('/logs-info', async (_req, res) => {

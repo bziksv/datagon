@@ -5,18 +5,21 @@ const datagonSpecialties = require('../lib/datagonSpecialties');
 module.exports = (db) => {
     const router = express.Router();
 
-    async function requireAdmin(req, res, next) {
+    /** Admin — всё; пользователь с can_manage_users — только чтение (нужно для формы создания пользователя на /settings.html). */
+    async function requireSpecialtiesAccess(req, res, next) {
         try {
             const actor = req.datagonActor;
             if (!actor) return res.status(401).json({ error: 'Не авторизован' });
-            if (actor.username !== 'admin') return res.status(403).json({ error: 'Только admin' });
-            return next();
+            if (actor.username === 'admin') return next();
+            const read = req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS';
+            if (read && actor.can_manage_users === true) return next();
+            return res.status(403).json({ error: 'Только admin' });
         } catch (e) {
             return res.status(500).json({ error: e.message });
         }
     }
 
-    router.use(requireAdmin);
+    router.use(requireSpecialtiesAccess);
 
     router.get('/', async (_req, res) => {
         try {

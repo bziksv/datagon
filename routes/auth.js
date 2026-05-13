@@ -353,8 +353,8 @@ module.exports = (db, appSettings = {}) => {
 
     router.get('/users', async (_req, res) => {
         try {
-            const isAdmin = await isAdminActor(_req);
-            if (!isAdmin) return res.status(403).json({ error: 'Только admin может просматривать пользователей' });
+            const canList = (await isAdminActor(_req)) || (await canManageUsersActor(_req));
+            if (!canList) return res.status(403).json({ error: 'Недостаточно прав для просмотра списка пользователей' });
             await ensureAuthSchema();
             const presenceMin = Math.max(1, Math.min(24 * 60, Number(appSettings?.auth_online_presence_minutes ?? 15)));
             const [rows] = await db.query(

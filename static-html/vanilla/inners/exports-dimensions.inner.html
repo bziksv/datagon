@@ -63,20 +63,22 @@
                   </select>
                 </div>
                 <div class="col-12" data-dg-dim-filter-field="problem_profile" data-dg-filter-field-title="Проблемные товары">
-                  <label class="form-label small mb-1" id="dg-dim-problem-label">Проблемные товары</label>
-                  <div class="btn-group flex-wrap d-flex" role="group" aria-labelledby="dg-dim-problem-label" id="dg-dim-problem-group">
-                    <input type="radio" class="btn-check" name="dg-dim-problem-profile" id="dg-dim-problem-off" value="" checked />
-                    <label class="btn btn-outline-primary" for="dg-dim-problem-off" title="Все складские позиции по выбранным фильтрам">Выключено</label>
-                    <input type="radio" class="btn-check" name="dg-dim-problem-profile" id="dg-dim-problem-stock" value="stock_missing" />
-                    <label
-                      class="btn btn-outline-primary"
-                      for="dg-dim-problem-stock"
-                      title="Остаток по МС больше нуля, но для текущего типа упаковки не заполнены обязательные поля замера — ячейки подсвечиваются."
-                      >Остаток есть — не заполнены нужные поля</label>
+                  <label class="form-label small mb-1">Проблемные товары</label>
+                  <div class="form-check form-switch mb-0 dg-dim-problem-switch">
+                    <input
+                      class="form-check-input"
+                      type="checkbox"
+                      role="switch"
+                      id="dg-dim-problem-stock-switch"
+                      autocomplete="off"
+                    />
+                    <label class="form-check-label small" for="dg-dim-problem-stock-switch" data-dg-tooltip="Выключено — обычный реестр по поиску, типу и замеру. Включено — только складские позиции с остатком в МС &gt; 0, где для типа упаковки не заполнены обязательные поля габаритов (ячейки подсветятся).">
+                      Остаток в МС &gt; 0, замер неполный
+                    </label>
                   </div>
                   <p class="form-text text-muted mb-0 small mt-1">
-                    Сверка с маркетплейсами (коды, НДС, габариты в снапшотах) — на странице
-                    <a href="/exports-marketplaces-issues.html">«Проблемы с товарами»</a>; здесь только реестр замеров.
+                    Сверка с маркетплейсами — на
+                    <a href="/exports-marketplaces-issues.html">«Проблемах с товарами»</a>; здесь реестр замеров МС.
                   </p>
                 </div>
               </div>

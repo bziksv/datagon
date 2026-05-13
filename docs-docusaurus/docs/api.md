@@ -96,13 +96,13 @@ Body:
 
 ### Прочие маршруты `routes/auth.js`
 
-Используются панелью и админкой (после входа): `GET /api/auth/me`, `GET /api/auth/sessions-overview`, `POST /api/auth/sync-session-cookie`, `POST /api/auth/logout`, CRUD пользователей (`GET/POST /api/auth/users`, `PUT/DELETE /api/auth/users/:id`, `PUT /api/auth/users/:id/permissions`, `POST /api/auth/users/:id/revoke-sessions`). Детали полей — в коде роутера.
+Используются панелью и админкой (после входа): `GET /api/auth/me`, `GET /api/auth/sessions-overview`, `POST /api/auth/sync-session-cookie`, `POST /api/auth/logout`, CRUD пользователей (`GET/POST /api/auth/users`, `PUT/DELETE /api/auth/users/:id`, `PUT /api/auth/users/:id/permissions`, `POST /api/auth/users/:id/revoke-sessions`). **`GET /api/auth/users`** (список с сессиями) доступен **admin** и пользователям с флагом **`can_manage_users`** (остальные операции по пользователям по-прежнему в основном только admin — см. код `routes/auth.js`). Детали полей — в коде роутера.
 
 Ответы `GET /api/auth/me` и `POST /api/auth/login` (успех) дополнительно содержат: `specialty_id`, `specialty_name`, `page_modes` — объект «ключ раздела» → `hidden` | `view` | `full` (см. `lib/datagonPageRegistry.js`). При создании/редактировании пользователя можно передать `specialty_id` в теле `POST /api/auth/users` и `PUT /api/auth/users/:id`.
 
-### Специальности и матрица доступа (только `admin`)
+### Специальности и матрица доступа
 
-Все под `/api/specialties/*` требуют роль **admin**.
+Запись (`POST`, `PUT`, `DELETE`, сохранение матрицы) — только **admin**. Чтение `GET /api/specialties` и `GET /api/specialties/pages` также разрешено пользователю с **`can_manage_users`** (форма нового пользователя на `/settings.html` при скрытой странице «Настройки» в матрице).
 
 - `GET /api/specialties` — список специальностей (с числом привязанных пользователей).
 - `POST /api/specialties` — создать; body: `{ "name": "..." }`.
@@ -148,6 +148,35 @@ Body (пример):
 - **`auto_sync_mssales_enabled`** / **`auto_sync_mssales_time`** / **`auto_sync_mssales_days`** / **`auto_sync_mssales_weekdays`** — **импорт продаж МС** (`entity/demand` → `ms_demand` / `ms_demand_position`) для `/ms-sales.html` (МСК, `HH:MM`, по умолчанию `07:30`). Окно периода — `auto_sync_mssales_days` (1..1825 дней, default **90**). **`auto_sync_mssales_weekdays`** — дни недели по календарю **МСК**: строка CSV, числа **1=пн … 7=вс**; пустая строка, значение **`1,2,3,4,5,6,7`** или все семь галочек в UI — запуск **каждый** календарный день (в БД «все дни» нормализуется в явную семёрку, чтобы снятие одного дня не схлопывалось обратно в «все дни»). Серверный путь — `routes/msSales.js → triggerSync(db, { days })` (без `fresh`). Планировщик в `server.js` сравнивает текущий день недели в МСК с этим множеством и только тогда ставит задачу в очередь (вместе с совпадением `HH:MM`). Запись в `auto_sync_runs` (`task_type='mssales'`, `message` — метрики как раньше).
 - **`auto_sync_mssales_full_enabled`** / **`auto_sync_mssales_full_time`** / **`auto_sync_mssales_full_days`** / **`auto_sync_mssales_full_weekdays`** — отдельное расписание **полного** синка продаж МС: `triggerSync(db, { days, fresh: true })` (аналог «Полный синк с нуля» на `/ms-sales.html`). Окно по умолчанию **730** дней; дни недели — тот же формат CSV (**по умолчанию только `7`** — воскресенье). `task_type='mssales_full'` в `auto_sync_runs`. Не планируйте на то же `HH:MM`, что обычный `mssales`, если оба включены: один активный job `ms-sales` в памяти.
 - **`sales_formula_replenishment_coef`**, **`sales_formula_sales_window_days`**, **`sales_formula_absence_analysis_days`**, **`sales_formula_rare_base_qty`**, **`sales_formula_rare_avg_max`**, **`sales_formula_expensive_rare_threshold_rub`**, **`sales_formula_expensive_rare_min_qty`**, **`sales_formula_max_change_coef`**, **`sales_formula_incomplete_pack_pct`**, **`sales_formula_economy_enabled`**, **`sales_formula_economy_absence_window_days`**, **`sales_formula_economy_max_absence_pct`**, **`sales_formula_economy_target_cover_days`** — **формула продаж** на карточке товара (`GET /api/product/:code` → объект `formula`). Логика в `lib/datagonSalesFormula.js`; UI — карточка «Формула продаж / закупки» в `/settings.html`.
+- **`auto_sync_runs_retention_days`** — срок хранения строк в **`auto_sync_runs`** (журнал запусков автосинхронизации на `/processes.html`, кнопка «Лог»; по умолчанию **180**). Автоочистка в `server.js` удаляет только записи с непустым `finished_at` старше N дней (при старте и каждые 12 ч). UI: карточка **«Журнал запусков автосинхронизации»** на `/settings.html` (`GET /api/settings/auto-sync-runs/stats`, `POST /api/settings/auto-sync-runs/cleanup`).
+
+### GET `/api/settings/auto-sync-runs/stats`
+
+Статистика таблицы **`auto_sync_runs`** для карточки «Журнал запусков автосинхронизации» на `/settings.html`.
+
+Ответ (пример):
+
+```json
+{
+  "success": true,
+  "total": 420,
+  "oldest_started_at": "2025-11-13T08:24:00.000Z",
+  "newest_started_at": "2026-05-13T20:40:00.000Z",
+  "open_running": 0,
+  "by_task": { "dimensions": 120, "myproducts": 80 },
+  "retention_days": 180,
+  "older_than_retention": 12
+}
+```
+
+- **`open_running`** — число строк без `finished_at` (активные или забытые `running`; в обычном режиме после завершения задачи должно быть 0).
+- **`older_than_retention`** — сколько **завершённых** записей (`finished_at` не `NULL`) старше текущего retention будет удалено при следующей автоочистке или по кнопке «Очистить сейчас».
+
+### POST `/api/settings/auto-sync-runs/cleanup`
+
+Удалить из **`auto_sync_runs`** завершённые строки с `finished_at` старше `days` дней. Body (JSON, опционально): `{ "days": 180 }`. Если `days` не передан или невалиден — берётся `app_settings.auto_sync_runs_retention_days`. Строки без `finished_at` **не** удаляются.
+
+Ответ: `{ "success": true, "deleted": 12, "days": 180 }`.
 
 ### POST `/api/settings/auto-sync-run`
 
@@ -285,8 +314,10 @@ Body (пример):
 
 Query:
 - `project_id`
-- `limit`
+- `limit` — максимум **1500** строк на запрос (сверху зажимается на сервере; раньше до 25000 можно было положить Node по памяти).
 - `offset`
+
+Кэш ответа в памяти процесса используется только при `limit` ≤ **400** (и `limit=0` для count-only).
 
 ### POST `/api/results/clear`
 Очистить результаты (все или по `project_id`).
@@ -755,13 +786,13 @@ CREATE TABLE IF NOT EXISTS ms_dimensions_log (
 - `search` — мульти-токен (через пробел = AND) по `mse.code` и `mse.name`.
 - `type` — `all` (по умолчанию) / `товар` / `комплект`.
 - `measure_scope` — `all` (по умолчанию) / `with` (только с замером) / `without` (только без замера). Обратная совместимость: то же значение можно передать как устаревший `scope`, если это не ключ маркетплейсного пресета.
-- `mp_scope` — на экране **«Габариты»** всегда используется `all` (фильтры по снапшотам маркетплейсов — на странице «Проблемы с товарами»). В HTTP-API параметр по-прежнему принимается для совместимости и интеграций: `all` (по умолчанию), `any`, `all3`, `ozon`, `wb`, `ym`, `vat_mismatch`, `dims_mismatch`. Для `vat_mismatch` и `dims_mismatch` выборка ограничивается первыми **50000** строками каталога (после базовых фильтров), затем фильтрация выполняется в Node; в ответе `post_filtered: true`, `post_filter_cap`. Чтобы не исчерпывать память Node из‑за тяжёлого `payload_json` у каждой позиции, эти режимы (и `problem_profile=stock_missing`) читают результат запроса **потоком** по одной строке, а не одним массивом на весь лимит.
-- `problem_profile` — если `stock_missing`, показываются только позиции с **остатком > 0**, у которых для текущего типа упаковки не заполнено хотя бы одно обязательное поле замера (аналогично подсветке на «Проблемах с товарами»); поле `problem_cells` в строке — какие ключи замера подсвечивать. Взаимоисключающе с `mp_scope` ≠ `all` на UI: при активном профиле маркетплейсный пресет сбрасывается в `all`. Обработка в пределах `post_filter_cap` — так же потоком, как для `vat_mismatch` / `dims_mismatch`.
+- `mp_scope` — на экране **«Габариты»** всегда используется `all` (фильтры по снапшотам маркетплейсов — на странице «Проблемы с товарами»). В HTTP-API параметр по-прежнему принимается для совместимости и интеграций: `all` (по умолчанию), `any`, `all3`, `ozon`, `wb`, `ym`, `vat_mismatch`, `dims_mismatch`. Для `vat_mismatch` и `dims_mismatch` выборка ограничивается первыми **50000** строками каталога (после базовых фильтров), затем фильтрация выполняется в Node; в ответе `post_filtered: true`, `post_filter_cap`. Чтобы не держать в памяти сразу все строки с тяжёлым `payload_json`, эти режимы (и `problem_profile=stock_missing`) читают БД **чанками** `LIMIT/OFFSET` и сразу отбрасывают неподходящие строки. Совпадения после пост-фильтра накапливаются в RAM не более **`post_filter_match_cap`** (сейчас 4000); при превышении — `post_filter_truncated: true` (остальные в каталоге не попали в `total` этого ответа).
+- `problem_profile` — если `stock_missing`, показываются только позиции с **остатком > 0**, у которых для текущего типа упаковки не заполнено хотя бы одно обязательное поле замера (аналогично подсветке на «Проблемах с товарами»); поле `problem_cells` в строке — какие ключи замера подсвечивать. Взаимоисключающе с `mp_scope` ≠ `all` на UI: при активном профиле маркетплейсный пресет сбрасывается в `all`. Обработка в пределах `post_filter_cap` — тем же чанкованным обходом, что для `vat_mismatch` / `dims_mismatch`.
 - `limit` — 1…500 (по умолчанию 100), `offset` — 0…1_000_000.
 - `sort_by` — `code` | `name` | `type` | `stock` | `measured_by_name` | `measured_at` (по умолчанию `code`).
 - `sort_dir` — `asc` | `desc`.
 
-Ответ: `{ success: true, rows: [...], total, limit, offset, sort_by, sort_dir, mp_scope, problem_profile, post_filtered?, post_filter_cap?, dimension_attrs }`.
+Ответ: `{ success: true, rows: [...], total, limit, offset, sort_by, sort_dir, mp_scope, problem_profile, post_filtered?, post_filter_cap?, post_filter_match_cap?, post_filter_truncated?, dimension_attrs }`.
 
 | Поле в API | Атрибут МойСклада | Описание |
 |---|---|---|

@@ -124,7 +124,10 @@
       word-break: break-word;
       line-height: 1.2;
     }
-    /* Режим «Проблемные товары»: не заполнены нужные поля при ненулевом остатке
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-problem-switch .form-check-input {
+      cursor: pointer;
+    }
+    /* Режим «Проблемные товары»: незаполненные обязательные поля при остатке > 0
        (паритет с подсветкой dg-mpu-missing на exports-marketplaces-issues). */
     body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-table tbody td.dg-dim-cell-problem {
       background: #fdecec !important;
@@ -1256,20 +1259,22 @@
                   </select>
                 </div>
                 <div class="col-12" data-dg-dim-filter-field="problem_profile" data-dg-filter-field-title="Проблемные товары">
-                  <label class="form-label small mb-1" id="dg-dim-problem-label">Проблемные товары</label>
-                  <div class="btn-group flex-wrap d-flex" role="group" aria-labelledby="dg-dim-problem-label" id="dg-dim-problem-group">
-                    <input type="radio" class="btn-check" name="dg-dim-problem-profile" id="dg-dim-problem-off" value="" checked />
-                    <label class="btn btn-outline-primary" for="dg-dim-problem-off" title="Все складские позиции по выбранным фильтрам">Выключено</label>
-                    <input type="radio" class="btn-check" name="dg-dim-problem-profile" id="dg-dim-problem-stock" value="stock_missing" />
-                    <label
-                      class="btn btn-outline-primary"
-                      for="dg-dim-problem-stock"
-                      title="Остаток по МС больше нуля, но для текущего типа упаковки не заполнены обязательные поля замера — ячейки подсвечиваются."
-                      >Остаток есть — не заполнены нужные поля</label>
+                  <label class="form-label small mb-1">Проблемные товары</label>
+                  <div class="form-check form-switch mb-0 dg-dim-problem-switch">
+                    <input
+                      class="form-check-input"
+                      type="checkbox"
+                      role="switch"
+                      id="dg-dim-problem-stock-switch"
+                      autocomplete="off"
+                    />
+                    <label class="form-check-label small" for="dg-dim-problem-stock-switch" data-dg-tooltip="Выключено — обычный реестр по поиску, типу и замеру. Включено — только складские позиции с остатком в МС &gt; 0, где для типа упаковки не заполнены обязательные поля габаритов (ячейки подсветятся).">
+                      Остаток в МС &gt; 0, замер неполный
+                    </label>
                   </div>
                   <p class="form-text text-muted mb-0 small mt-1">
-                    Сверка с маркетплейсами (коды, НДС, габариты в снапшотах) — на странице
-                    <a href="/exports-marketplaces-issues.html">«Проблемы с товарами»</a>; здесь только реестр замеров.
+                    Сверка с маркетплейсами — на
+                    <a href="/exports-marketplaces-issues.html">«Проблемах с товарами»</a>; здесь реестр замеров МС.
                   </p>
                 </div>
               </div>
@@ -1646,6 +1651,8 @@
         pending: cloneFilters(DEFAULT_FILTERS),
         lastPostFiltered: false,
         lastPostFilterCap: 0,
+        lastPostFilterTruncated: false,
+        lastPostFilterMatchCap: 0,
         sortBy: 'code',
         sortDir: 'asc',
         offset: 0,
@@ -1699,20 +1706,11 @@
           .replace(/'/g, '&#39;');
       }
 
-      function syncProblemRadiosFromFilters(f) {
+      function syncProblemSwitchFromFilters(f) {
         f = f || {};
         var prob = String(f.problem_profile || '').trim();
-        var prOff = document.getElementById('dg-dim-problem-off');
-        var prStock = document.getElementById('dg-dim-problem-stock');
-        if (prOff && prStock) {
-          if (prob === 'stock_missing') {
-            prStock.checked = true;
-            prOff.checked = false;
-          } else {
-            prOff.checked = true;
-            prStock.checked = false;
-          }
-        }
+        var sw = document.getElementById('dg-dim-problem-stock-switch');
+        if (sw) sw.checked = prob === 'stock_missing';
       }
 
       function applyFormFromState(s) {
@@ -1726,7 +1724,7 @@
         if (elMeasure) elMeasure.value = s.measure_scope || 'all';
         if (elLimit) elLimit.value = String(s.limit);
         if (elMirror) elMirror.value = s.search;
-        syncProblemRadiosFromFilters(s);
+        syncProblemSwitchFromFilters(s);
       }
 
       function readFormToPending() {
@@ -1737,12 +1735,12 @@
         state.pending.search = elSearch ? String(elSearch.value || '').trim() : '';
         state.pending.type = elType ? String(elType.value || 'all') : 'all';
         state.pending.measure_scope = elMeasure ? String(elMeasure.value || 'all') : 'all';
-        var probEl = document.querySelector('input[name="dg-dim-problem-profile"]:checked');
-        state.pending.problem_profile = probEl ? String(probEl.value || '').trim() : '';
+        var swProb = document.getElementById('dg-dim-problem-stock-switch');
+        state.pending.problem_profile = swProb && swProb.checked ? 'stock_missing' : '';
         state.pending.mp_scope = 'all';
         var limNum = Number((elLimit && elLimit.value) || 100);
         state.pending.limit = Number.isFinite(limNum) && limNum > 0 ? limNum : 100;
-        syncProblemRadiosFromFilters(state.pending);
+        syncProblemSwitchFromFilters(state.pending);
       }
 
       function setStatusHint(msg, kind) {
@@ -2453,12 +2451,16 @@
               state.total = 0;
               state.lastPostFiltered = false;
               state.lastPostFilterCap = 0;
+              state.lastPostFilterTruncated = false;
+              state.lastPostFilterMatchCap = 0;
               state.lastError = (x.j && x.j.error) || 'Ошибка загрузки списка';
             } else {
               state.rows = Array.isArray(x.j.rows) ? x.j.rows : [];
               state.total = Number(x.j.total || 0) || 0;
               state.lastPostFiltered = !!x.j.post_filtered;
               state.lastPostFilterCap = Number(x.j.post_filter_cap || 0) || 0;
+              state.lastPostFilterTruncated = !!x.j.post_filter_truncated;
+              state.lastPostFilterMatchCap = Number(x.j.post_filter_match_cap || 0) || 0;
             }
             renderTable();
             renderPagination();
@@ -2468,6 +2470,12 @@
                 ' Фильтр применён к первым ' +
                 state.lastPostFilterCap +
                 ' строкам каталога (сортировка — по всему отфильтрованному набору).';
+            }
+            if (state.lastPostFilterTruncated && state.lastPostFilterMatchCap) {
+              capNote +=
+                ' Показано не более ' +
+                state.lastPostFilterMatchCap +
+                ' совпадений в памяти — сузьте поиск или тип, чтобы обработать каталог частями.';
             }
             setStatusHint(
               state.lastError
@@ -2484,6 +2492,8 @@
             state.total = 0;
             state.lastPostFiltered = false;
             state.lastPostFilterCap = 0;
+            state.lastPostFilterTruncated = false;
+            state.lastPostFilterMatchCap = 0;
             renderTable();
             renderPagination();
             setStatusHint('Сетевая ошибка: ' + state.lastError, 'error');
@@ -3680,11 +3690,12 @@
             readFormToPending();
           });
         });
-        document.querySelectorAll('input[name="dg-dim-problem-profile"]').forEach(function (inp) {
-          inp.addEventListener('change', function () {
+        var swProb = document.getElementById('dg-dim-problem-stock-switch');
+        if (swProb) {
+          swProb.addEventListener('change', function () {
             readFormToPending();
           });
-        });
+        }
       }
 
       /**

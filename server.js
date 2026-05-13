@@ -275,7 +275,7 @@ async function initDB() {
         await db.query(`CREATE TABLE IF NOT EXISTS app_settings (setting_key VARCHAR(50) PRIMARY KEY, setting_value TEXT)`);
         const defaults = [
             ['default_limit','100'],['parse_batch_size','50'],['page_delay_ms','0'],
-            ['sync_batch_size','500'],['sync_delay_ms','2000'],['sync_mode','always'],['log_retention_days','7'],['results_retention_days','120'],['ms_dimensions_log_retention_days','180'],
+            ['sync_batch_size','500'],['sync_delay_ms','2000'],['sync_mode','always'],['log_retention_days','7'],['results_retention_days','120'],['ms_dimensions_log_retention_days','180'],['auto_sync_runs_retention_days','180'],
             ['ms_sync_page_limit','1000'],['ms_sync_delay_ms','0'],
             ['auto_sync_myproducts_enabled','0'],['auto_sync_myproducts_time','03:00'],
             ['auto_sync_moysklad_enabled','0'],['auto_sync_moysklad_time','04:00'],
@@ -821,6 +821,34 @@ async function cleanupDimensionsLogByRetentionDays(days) {
     } catch (e) {
         if (e && e.code === 'ER_NO_SUCH_TABLE') return 0;
         console.warn('[DIM-LOG CLEANUP] failed:', e?.message || e);
+        throw e;
+    }
+}
+
+/**
+ * Автоочистка таблицы `auto_sync_runs` (журнал запусков автосинхронизации: /processes.html, кнопка «Лог»)
+ * по `app_settings.auto_sync_runs_retention_days` (по умолчанию 180). Удаляются только строки с
+ * непустым `finished_at` старше N дней (активные `running` без финиша не трогаем).
+ */
+async function cleanupAutoSyncRunsByRetentionDays(days) {
+    const retentionDays = Number(days) || 180;
+    if (retentionDays <= 0) return 0;
+    try {
+        await ensureAutoSyncRunsTable();
+        const [r] = await db.query(
+            `DELETE FROM auto_sync_runs
+             WHERE finished_at IS NOT NULL
+               AND finished_at < (NOW() - INTERVAL ? DAY)`,
+            [retentionDays]
+        );
+        const deleted = Number(r?.affectedRows || 0);
+        if (deleted > 0) {
+            console.log(`[AUTO-SYNC-RUNS CLEANUP] Deleted ${deleted} rows older than ${retentionDays} days`);
+        }
+        return deleted;
+    } catch (e) {
+        if (e && e.code === 'ER_NO_SUCH_TABLE') return 0;
+        console.warn('[AUTO-SYNC-RUNS CLEANUP] failed:', e?.message || e);
         throw e;
     }
 }
@@ -2290,10 +2318,12 @@ initDB().then(() => {
     cleanupLogsByRetentionDays(appSettings.log_retention_days).catch(() => {});
     cleanupResultsByRetentionDays(appSettings.results_retention_days).catch(() => {});
     cleanupDimensionsLogByRetentionDays(appSettings.ms_dimensions_log_retention_days).catch(() => {});
+    cleanupAutoSyncRunsByRetentionDays(appSettings.auto_sync_runs_retention_days).catch(() => {});
     setInterval(() => {
         cleanupLogsByRetentionDays(appSettings.log_retention_days).catch(() => {});
         cleanupResultsByRetentionDays(appSettings.results_retention_days).catch(() => {});
         cleanupDimensionsLogByRetentionDays(appSettings.ms_dimensions_log_retention_days).catch(() => {});
+        cleanupAutoSyncRunsByRetentionDays(appSettings.auto_sync_runs_retention_days).catch(() => {});
     }, 12 * 60 * 60 * 1000);
     closeStaleAutoSyncRunsOnStartup()
         .catch((e) => console.warn('[AUTO SYNC]', e.message || e))

@@ -125,6 +125,8 @@
             </div>
           </div>
 
+          <div id="dg-set-full-settings-body">
+
           <div class="main-card mb-3 card" id="dg-set-spec-admin-card" style="display: none">
             <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
               <div class="d-flex align-items-center">
@@ -776,6 +778,43 @@
           <div class="main-card mb-3 card">
             <div class="card-header d-flex align-items-center">
               <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
+              <span>Журнал запусков автосинхронизации</span>
+            </div>
+            <div class="card-body">
+              <p class="small text-muted mb-2">
+                Таблица <code>auto_sync_runs</code>: каждый запуск задач из расписания или кнопки «Запустить сейчас»
+                (Мои товары, МойСклад, маркетплейсы, Huckster, размер БД, габариты МС, продажи МС и т.д.). На странице
+                <a href="/processes.html">Процессы</a> это строки с кнопкой <strong>«Лог»</strong> (полный текст в поле
+                <code>message</code>). Это <strong>не</strong> журнал габаритов <code>ms_dimensions_log</code> — у габаритов
+                отдельная карточка ниже. Автоочистка удаляет только <strong>завершённые</strong> записи
+                (<code>finished_at</code> не пустой) старше указанного числа дней — раз в 12 часов и при старте сервера.
+                Активный <code>running</code> без финиша не удаляется. По умолчанию <strong>180 дней</strong>.
+              </p>
+              <div class="row g-2 align-items-end">
+                <div class="col-md-4">
+                  <label class="form-label" for="dg-set-auto_sync_runs_retention_days">Срок хранения записей (дней)</label>
+                  <input type="number" class="form-control" id="dg-set-auto_sync_runs_retention_days" min="1" step="1" />
+                </div>
+              </div>
+              <div class="small text-muted mt-2" id="dg-set-asr-log-info">Статистика auto_sync_runs: загрузка…</div>
+              <div class="mt-3 d-flex gap-2 flex-wrap">
+                <button type="button" class="btn btn-primary" id="dg-set-btn-save-asr-log" data-dg-activity-label="Сохранить срок хранения auto_sync_runs">
+                  Сохранить
+                </button>
+                <button type="button" class="btn btn-info" id="dg-set-btn-asr-log-refresh" data-dg-activity-label="Обновить статистику auto_sync_runs">
+                  Обновить статистику
+                </button>
+                <button type="button" class="btn btn-warning" id="dg-set-btn-asr-log-cleanup" data-dg-activity-label="Очистить auto_sync_runs по сроку">
+                  Очистить сейчас
+                </button>
+              </div>
+              <div id="dg-set-asr-log-save-msg" class="alert mt-3 mb-0 d-none" role="status"></div>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center">
+              <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
               <span>Журнал изменений габаритов</span>
             </div>
             <div class="card-body">
@@ -838,5 +877,7 @@
               </div>
               <p class="text-muted mb-0 mt-2 small">Минимальная длина: 15 символов</p>
             </div>
+          </div>
+
           </div>
           </div>

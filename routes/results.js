@@ -3,6 +3,10 @@ const router = express.Router();
 
 /** In-memory кэш списка результатов (как MY_PRODUCTS_CACHE в routes/myproducts.js). */
 const RESULTS_LIST_CACHE_TTL_MS = 120000;
+/** Верхняя граница limit в API (раньше 25000 → OOM при большом prices + url TEXT). */
+const RESULTS_LIST_MAX_LIMIT = 1500;
+/** Кэшируем только «страничные» запросы; большие limit не кладём в Map. */
+const RESULTS_LIST_CACHE_MAX_LIMIT = 400;
 const resultsListResponseCache = new Map();
 
 function resultsListCacheKey(query, effectiveLimit, effectiveOffset) {
@@ -222,8 +226,9 @@ module.exports = (db, settings) => {
                 const parsed = parseInt(String(limit), 10);
                 l = Number.isFinite(parsed) && parsed >= 0 ? parsed : (parseInt(String(settings.default_limit || '100'), 10) || 100);
             }
-            l = Math.min(l, 25000);
+            if (l > 0) l = Math.min(l, RESULTS_LIST_MAX_LIMIT);
             const o = parseInt(offset, 10) || 0;
+            const allowResultsListCache = l === 0 || l <= RESULTS_LIST_CACHE_MAX_LIMIT;
 
             const listCacheKey = resultsListCacheKey(req.query, l, o);
             const cachedList = resultsListResponseCache.get(listCacheKey);
@@ -304,8 +309,10 @@ module.exports = (db, settings) => {
                 }
                 const [cntRows] = await db.query(qcOnly, pcOnly);
                 const payloadCount = { rows: [], total: Number(cntRows[0]?.total) || 0 };
-                resultsListResponseCache.set(listCacheKey, { ts: Date.now(), payload: payloadCount });
-                pruneResultsListCache();
+                if (allowResultsListCache) {
+                    resultsListResponseCache.set(listCacheKey, { ts: Date.now(), payload: payloadCount });
+                    pruneResultsListCache();
+                }
                 res.json({
                     ...payloadCount,
                     cache: { source: 'fresh', age_ms: 0, ttl_ms: RESULTS_LIST_CACHE_TTL_MS },
@@ -469,8 +476,10 @@ module.exports = (db, settings) => {
             const total = Number(countPacket[0][0]?.total) || 0;
 
             const payloadRows = { rows, total };
-            resultsListResponseCache.set(listCacheKey, { ts: Date.now(), payload: payloadRows });
-            pruneResultsListCache();
+            if (allowResultsListCache) {
+                resultsListResponseCache.set(listCacheKey, { ts: Date.now(), payload: payloadRows });
+                pruneResultsListCache();
+            }
             res.json({
                 ...payloadRows,
                 cache: { source: 'fresh', age_ms: 0, ttl_ms: RESULTS_LIST_CACHE_TTL_MS },

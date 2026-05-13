@@ -26,6 +26,11 @@ const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 500;
 /** Сколько строк максимум сканируем из БД для пост-фильтрации (НДС/габариты МП / «проблемные»). */
 const DIM_LIST_POST_FILTER_CAP = 50000;
+/**
+ * Максимум совпадений после пост-фильтра в памяти (сортировка + total). Без лимита десятки тысяч
+ * разобранных `payload_json` раздувают heap Node до OOM (~4GB).
+ */
+const DIM_POST_FILTER_MAX_MATCHED = 4000;
 
 const MP_JOIN_SQL = `
                 LEFT JOIN marketplace_export_rows dg_dim_ozon
@@ -235,78 +240,53 @@ function compareDimensionOutRows(a, b, sortBy, sortDir) {
 }
 
 /**
- * Пост-фильтр по строкам с тяжёлым `payload_json`: одним `db.query` + 50k строк
- * держит все LONGTEXT в памяти → OOM на больших каталогах. Берём отдельное
- * соединение из пула и mysql2 streaming (`result`), обрабатываем по одной строке.
+ * Пост-фильтр по строкам с тяжёлым `payload_json`: один `pool.query` на 50k строк
+ * тянет все LONGTEXT в память → риск OOM. Читаем чанками `LIMIT/OFFSET` через promise-pool
+ * (у mysql2/promise `connection.query()` без колбэка возвращает Promise, а не stream — `.on` недоступен).
+ * Возвращает `{ rows, truncated }` — `truncated`, если достигнут лимит совпадений в памяти (есть ещё в БД).
  */
-function collectPostFilteredDimensionRowsStream(db, sql, sqlParams, ctx) {
+async function collectPostFilteredDimensionRowsChunked(db, selectForCap, fromForCap, whereFull, baseParams, ctx) {
     const { problemStock, postFilter, mpScope } = ctx;
     const matched = [];
-    return new Promise((resolve, reject) => {
-        let conn;
-        let finished = false;
-        const releaseConn = () => {
-            if (!conn) return;
+    const CHUNK = 400;
+    const maxScan = DIM_LIST_POST_FILTER_CAP;
+    const baseSql = `${selectForCap}\n                 ${fromForCap}\n                 ${whereFull}\n                 ORDER BY mse.code ASC`;
+    let offset = 0;
+    while (offset < maxScan) {
+        const take = Math.min(CHUNK, maxScan - offset);
+        const sql = `${baseSql}\n                 LIMIT ? OFFSET ?`;
+        const [rows] = await db.query(sql, baseParams.concat([take, offset]));
+        if (!rows || rows.length === 0) break;
+        for (let i = 0; i < rows.length; i += 1) {
+            const row = rows[i];
+            const out = mapDimensionListRow(row);
             try {
-                conn.release();
-            } catch (_) {
-                /* noop */
+                row.payload_json = null;
+            } catch (_) {}
+            if (problemStock) {
+                const cells = computeProblemCellsForRow(out);
+                if (cells) {
+                    out.problem_cells = cells;
+                    matched.push(out);
+                }
+            } else if (postFilter) {
+                const ir = mapSqlRowToIssueFilterShape(row);
+                mpIssuesRowFilters.formatIssueRowMsDims(ir);
+                mpIssuesRowFilters.preprocessIssueRowVatPretty(ir);
+                const keep =
+                    mpScope === 'vat_mismatch'
+                        ? mpIssuesRowFilters.issuesRowVatMismatch(ir)
+                        : mpIssuesRowFilters.issuesRowDimsMismatch(ir);
+                if (keep) matched.push(out);
             }
-            conn = null;
-        };
-        const done = (err) => {
-            if (finished) return;
-            finished = true;
-            releaseConn();
-            if (err) reject(err);
-            else resolve(matched);
-        };
-        db.getConnection()
-            .then((c) => {
-                conn = c;
-                const q = conn.query(sql, sqlParams);
-                q.on('error', (e) => done(e));
-                q.on('result', (row) => {
-                    if (finished) return;
-                    conn.pause();
-                    try {
-                        const out = mapDimensionListRow(row);
-                        if (problemStock) {
-                            const cells = computeProblemCellsForRow(out);
-                            if (cells) {
-                                out.problem_cells = cells;
-                                matched.push(out);
-                            }
-                        } else if (postFilter) {
-                            const ir = mapSqlRowToIssueFilterShape(row);
-                            mpIssuesRowFilters.formatIssueRowMsDims(ir);
-                            mpIssuesRowFilters.preprocessIssueRowVatPretty(ir);
-                            const keep =
-                                mpScope === 'vat_mismatch'
-                                    ? mpIssuesRowFilters.issuesRowVatMismatch(ir)
-                                    : mpIssuesRowFilters.issuesRowDimsMismatch(ir);
-                            if (keep) matched.push(out);
-                        }
-                    } catch (e) {
-                        try {
-                            conn.resume();
-                        } catch (_) {
-                            /* noop */
-                        }
-                        try {
-                            if (typeof q.destroy === 'function') q.destroy();
-                        } catch (_) {
-                            /* noop */
-                        }
-                        done(e);
-                        return;
-                    }
-                    conn.resume();
-                });
-                q.on('end', () => done(null));
-            })
-            .catch((e) => done(e));
-    });
+            if (matched.length >= DIM_POST_FILTER_MAX_MATCHED) {
+                return { rows: matched, truncated: true };
+            }
+        }
+        offset += rows.length;
+        if (rows.length < take) break;
+    }
+    return { rows: matched, truncated: false };
 }
 
 const ALLOWED_SORT = {
@@ -1547,11 +1527,12 @@ function createDimensionsRouter(db, appSettings = {}) {
             /** Пост-фильтр: vat_mismatch / dims_mismatch / «проблемные товары». */
             const fromForCap = postFilter ? `${fromCore}${MP_JOIN_SQL}` : fromCore;
             const selectForCap = postFilter ? `${selectNarrow}${selectWideDims}${selectMp}` : selectNarrow;
-            const sqlCap = `${selectForCap}\n                 ${fromForCap}\n                 ${whereFull}\n                 ORDER BY mse.code ASC\n                 LIMIT ?`;
-            const outOnly = await collectPostFilteredDimensionRowsStream(
+            const { rows: outOnly, truncated: postFilterMemoryTruncated } = await collectPostFilteredDimensionRowsChunked(
                 db,
-                sqlCap,
-                baseParams.concat([DIM_LIST_POST_FILTER_CAP]),
+                selectForCap,
+                fromForCap,
+                whereFull,
+                baseParams,
                 { problemStock, postFilter, mpScope },
             );
 
@@ -1571,6 +1552,8 @@ function createDimensionsRouter(db, appSettings = {}) {
                 problem_profile: problemProfile || null,
                 post_filtered: true,
                 post_filter_cap: DIM_LIST_POST_FILTER_CAP,
+                post_filter_match_cap: DIM_POST_FILTER_MAX_MATCHED,
+                post_filter_truncated: postFilterMemoryTruncated,
                 dimension_attrs: DIMENSION_ATTRS.map((d) => ({ key: d.key, label: d.label, attr: d.attr })),
             });
         } catch (e) {

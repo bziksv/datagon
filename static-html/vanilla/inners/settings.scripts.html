@@ -75,6 +75,7 @@
         auto_sync_mssales_full_days: 730,
         auto_sync_mssales_full_weekdays: "7",
         ms_dimensions_log_retention_days: 180,
+        auto_sync_runs_retention_days: 180,
         ozon_client_id: "",
         ozon_api_key: "",
         wb_api_key: "",
@@ -150,6 +151,44 @@
       }
       function canManageUsers() {
         return isAdmin() || window.localStorage.getItem("canManageUsers") === "true";
+      }
+
+      function readDatagonPageModesV1() {
+        try {
+          var raw = window.localStorage.getItem("datagonPageModesV1");
+          if (!raw) return {};
+          var j = JSON.parse(raw);
+          return j && typeof j === "object" ? j : {};
+        } catch (e) {
+          return {};
+        }
+      }
+
+      /**
+       * Раздел «Настройки» в матрице = hidden, но пользователь с can_manage_users может открыть
+       * /settings.html (см. isHtmlLeafAccessHiddenForActor). Тогда показываем только карточку «Пользователи».
+       */
+      function isSettingsUsersManagerShell() {
+        if (isAdmin()) return false;
+        if (!canManageUsers()) return false;
+        var m = String(readDatagonPageModesV1().settings || "")
+          .trim()
+          .toLowerCase();
+        return m === "hidden";
+      }
+
+      function applySettingsUsersManagerShell() {
+        var shell = isSettingsUsersManagerShell();
+        var body = document.getElementById("dg-set-full-settings-body");
+        if (body) body.classList.toggle("d-none", shell);
+        var sub = document.querySelector(".datagon-settings-page .page-title-subheading");
+        if (!sub) return;
+        if (shell) {
+          sub.textContent =
+            "Режим менеджера пользователей: создание учётных записей и просмотр списка. Глобальные параметры приложения недоступны.";
+        } else {
+          sub.textContent = "Управление параметрами парсинга, синхронизаций, безопасностью и пользователями.";
+        }
       }
 
       function authHeaders(withJson) {
@@ -292,6 +331,7 @@
         set("dg-set-auto_mssales_full_days", String(Number(merged.auto_sync_mssales_full_days || 730)));
         applyAutoSyncWeekdayChecks("dg-set-auto_mssales_full_wd", merged.auto_sync_mssales_full_weekdays);
         set("dg-set-ms_dimensions_log_retention_days", merged.ms_dimensions_log_retention_days);
+        set("dg-set-auto_sync_runs_retention_days", merged.auto_sync_runs_retention_days);
         set("dg-set-ozon_client_id", merged.ozon_client_id || "");
         set("dg-set-ozon_api_key", merged.ozon_api_key || "");
         set("dg-set-wb_api_key", merged.wb_api_key || "");
@@ -364,6 +404,11 @@
       function updateUsersHint() {
         var h = document.getElementById("dg-set-users-hint");
         if (!h) return;
+        if (isSettingsUsersManagerShell()) {
+          h.textContent =
+            "Вы можете создавать пользователей и видеть список. Редактирование записей, смена специальности, права «создавать пользователей», завершение сессий, удаление и «войти как» — только у admin.";
+          return;
+        }
         if (!isAdmin()) {
           h.textContent = "Список пользователей доступен только admin";
           return;
@@ -424,6 +469,24 @@
       }
 
       function loadSpecialtiesAdmin() {
+        if (isSettingsUsersManagerShell()) {
+          return fetch("/api/specialties", { credentials: "same-origin", headers: authHeaders(false) })
+            .then(function (r) {
+              return r.json().then(function (j) {
+                return { r: r, j: j };
+              });
+            })
+            .then(function (x) {
+              specList = x.r.ok && Array.isArray(x.j.data) ? x.j.data : [];
+              fillSpecialtySelects();
+              renderUsers();
+            })
+            .catch(function () {
+              specList = [];
+              fillSpecialtySelects();
+              renderUsers();
+            });
+        }
         if (!isAdmin()) {
           specList = [];
           fillSpecialtySelects();
@@ -657,15 +720,16 @@
       function applyUserFieldDisabled() {
         var adm = isAdmin();
         var can = canManageUsers();
+        var umiShell = isSettingsUsersManagerShell();
         syncSpecAdminVisibility();
         ["dg-set-users-search", "dg-set-users-filter-can", "dg-set-users-sess-min", "dg-set-users-sess-max"].forEach(function (id) {
-          document.getElementById(id).disabled = !adm;
+          document.getElementById(id).disabled = !adm && !umiShell;
         });
         ["dg-set-new-fullname", "dg-set-new-username", "dg-set-new-specialty", "dg-set-new-password", "dg-set-new-pw-toggle", "dg-set-new-pw-copy", "dg-set-btn-random-new-pw", "dg-set-btn-add-user"].forEach(function (id) {
           var node = document.getElementById(id);
           if (node) node.disabled = !can;
         });
-        document.getElementById("dg-set-btn-refresh-users").disabled = !adm;
+        document.getElementById("dg-set-btn-refresh-users").disabled = !adm && !umiShell;
         ["dg-set-spec-new-name", "dg-set-spec-add", "dg-set-spec-matrix-id", "dg-set-spec-matrix-load", "dg-set-spec-matrix-save"].forEach(function (id) {
           var node = document.getElementById(id);
           if (node) node.disabled = !adm;
@@ -674,6 +738,7 @@
       }
 
       function loadSettings() {
+        if (isSettingsUsersManagerShell()) return Promise.resolve();
         return dgKeepScroll(
           fetch("/api/settings", { credentials: "same-origin" })
             .then(function (r) {
@@ -818,8 +883,9 @@
           var cb = document.createElement("input");
           cb.type = "checkbox";
           cb.checked = u.username === "admin" || Number(u.can_manage_users || 0) === 1;
-          cb.disabled = u.username === "admin";
+          cb.disabled = u.username === "admin" || !isAdmin();
           cb.addEventListener("change", function () {
+            if (!isAdmin()) return;
             updatePermission(u, cb.checked);
           });
           var spm = document.createElement("span");
@@ -857,48 +923,53 @@
           tr.appendChild(tdLast);
           var tdAct = document.createElement("td");
           tdAct.className = "text-nowrap datagon-users-row-actions";
-          var bLogin = document.createElement("button");
-          bLogin.type = "button";
-          bLogin.className = "btn btn-info btn-sm me-1 mb-1";
-          bLogin.setAttribute("data-dg-no-activity", "1");
-          bLogin.textContent = "Войти как";
-          bLogin.addEventListener("click", function () {
-            loginAsUser(u.username);
-          });
-          var bEdit = document.createElement("button");
-          bEdit.type = "button";
-          bEdit.className = "btn btn-secondary btn-sm me-1 mb-1";
-          bEdit.setAttribute("data-dg-no-activity", "1");
-          bEdit.textContent = "Редактировать";
-          bEdit.addEventListener("click", function () {
-            openEditUser({ id: u.id, username: u.username, full_name: u.full_name || "" });
-          });
-          var bRev = document.createElement("button");
-          bRev.type = "button";
-          bRev.className = "btn btn-warning btn-sm me-1 mb-1";
-          bRev.setAttribute("data-dg-no-activity", "1");
-          bRev.textContent = "Сбросить сессии";
-          bRev.addEventListener("click", function () {
-            revokeSessions(u);
-          });
-          tdAct.appendChild(bLogin);
-          tdAct.appendChild(bEdit);
-          tdAct.appendChild(bRev);
-          if (u.username !== "admin") {
-            var bDel = document.createElement("button");
-            bDel.type = "button";
-            bDel.className = "btn btn-danger btn-sm mb-1";
-            bDel.setAttribute("data-dg-no-activity", "1");
-            bDel.textContent = "Удалить";
-            bDel.addEventListener("click", function () {
-              deleteUser(u);
+          if (isAdmin()) {
+            var bLogin = document.createElement("button");
+            bLogin.type = "button";
+            bLogin.className = "btn btn-info btn-sm me-1 mb-1";
+            bLogin.setAttribute("data-dg-no-activity", "1");
+            bLogin.textContent = "Войти как";
+            bLogin.addEventListener("click", function () {
+              loginAsUser(u.username);
             });
-            tdAct.appendChild(bDel);
+            var bEdit = document.createElement("button");
+            bEdit.type = "button";
+            bEdit.className = "btn btn-secondary btn-sm me-1 mb-1";
+            bEdit.setAttribute("data-dg-no-activity", "1");
+            bEdit.textContent = "Редактировать";
+            bEdit.addEventListener("click", function () {
+              openEditUser({ id: u.id, username: u.username, full_name: u.full_name || "" });
+            });
+            var bRev = document.createElement("button");
+            bRev.type = "button";
+            bRev.className = "btn btn-warning btn-sm me-1 mb-1";
+            bRev.setAttribute("data-dg-no-activity", "1");
+            bRev.textContent = "Сбросить сессии";
+            bRev.addEventListener("click", function () {
+              revokeSessions(u);
+            });
+            tdAct.appendChild(bLogin);
+            tdAct.appendChild(bEdit);
+            tdAct.appendChild(bRev);
+            if (u.username !== "admin") {
+              var bDel = document.createElement("button");
+              bDel.type = "button";
+              bDel.className = "btn btn-danger btn-sm mb-1";
+              bDel.setAttribute("data-dg-no-activity", "1");
+              bDel.textContent = "Удалить";
+              bDel.addEventListener("click", function () {
+                deleteUser(u);
+              });
+              tdAct.appendChild(bDel);
+            } else {
+              var spx = document.createElement("span");
+              spx.className = "small text-muted";
+              spx.textContent = "Удаление отключено";
+              tdAct.appendChild(spx);
+            }
           } else {
-            var spx = document.createElement("span");
-            spx.className = "small text-muted";
-            spx.textContent = "Удаление отключено";
-            tdAct.appendChild(spx);
+            tdAct.className += " text-muted small";
+            tdAct.textContent = "—";
           }
           tr.appendChild(tdAct);
           tbody.appendChild(tr);
@@ -1433,6 +1504,88 @@
           });
       }
 
+      function loadAsrStats() {
+        var box = document.getElementById("dg-set-asr-log-info");
+        if (box) box.textContent = "Статистика auto_sync_runs: загрузка…";
+        return dgKeepScroll(
+          fetch("/api/settings/auto-sync-runs/stats", { credentials: "same-origin" })
+            .then(function (r) { return r.json().then(function (j) { return { r: r, j: j }; }); })
+            .then(function (x) {
+              if (!box) return;
+              box.replaceChildren();
+              if (!x.r.ok || !x.j || x.j.success === false) {
+                box.textContent = "Ошибка статистики auto_sync_runs: " + ((x.j && x.j.error) || "неизвестно");
+                return;
+              }
+              var j = x.j;
+              var bt = j.by_task || {};
+              var taskKeys = Object.keys(bt).sort();
+              var taskStr = taskKeys.map(function (k) { return k + "=" + (bt[k] || 0); }).join(", ");
+              var oldestStr = j.oldest_started_at
+                ? new Date(j.oldest_started_at).toLocaleString("ru-RU", { timeZone: "Europe/Moscow" })
+                : "—";
+              var newestStr = j.newest_started_at
+                ? new Date(j.newest_started_at).toLocaleString("ru-RU", { timeZone: "Europe/Moscow" })
+                : "—";
+              var d1 = document.createElement("div");
+              d1.textContent = "Всего записей: " + (j.total || 0) + (taskStr ? " (" + taskStr + ")" : "");
+              var d2 = document.createElement("div");
+              d2.textContent = "Самый старый старт: " + oldestStr + " · самый свежий старт: " + newestStr;
+              var d3 = document.createElement("div");
+              d3.textContent = "Сейчас без финиша (running): " + (j.open_running || 0);
+              var d4 = document.createElement("div");
+              d4.textContent = "Текущий retention: " + (j.retention_days || 0) +
+                " дней · по нему будет удалено сейчас: " + (j.older_than_retention || 0);
+              box.appendChild(d1);
+              box.appendChild(d2);
+              box.appendChild(d3);
+              box.appendChild(d4);
+            })
+            .catch(function (e) {
+              if (!box) return;
+              box.replaceChildren();
+              box.textContent = "Сетевая ошибка статистики auto_sync_runs: " + ((e && e.message) || e);
+            })
+        );
+      }
+
+      function saveAsrRetention() {
+        var days = getNum("dg-set-auto_sync_runs_retention_days", 180);
+        if (!Number.isFinite(days) || days < 1) {
+          days = 180;
+          var el = document.getElementById("dg-set-auto_sync_runs_retention_days");
+          if (el) el.value = "180";
+        }
+        runSaveWithInlineFeedback({
+          sectionId: "asr-log",
+          payload: { auto_sync_runs_retention_days: days },
+          okText: "Срок хранения журнала автосинхронизации сохранён",
+          verifyKeys: ["auto_sync_runs_retention_days"],
+        }).then(function () { loadAsrStats(); }).catch(function () { /** баннер уже показан утилитой */ });
+      }
+
+      function cleanupAsrNow() {
+        var days = getNum("dg-set-auto_sync_runs_retention_days", 180);
+        if (!window.confirm("Удалить из auto_sync_runs завершённые записи старше " + days + " дней? (running не трогаем)")) return;
+        fetch("/api/settings/auto-sync-runs/cleanup", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ days: days }),
+        })
+          .then(function (r) { return r.json().then(function (j) { return { r: r, j: j }; }); })
+          .then(function (x) {
+            if (!x.r.ok || !x.j || x.j.success === false) {
+              throw new Error((x.j && x.j.error) || "Не удалось очистить auto_sync_runs");
+            }
+            alert("Удалено записей: " + (x.j.deleted || 0));
+            loadAsrStats();
+          })
+          .catch(function (e) {
+            alert((e && e.message) || "Ошибка очистки auto_sync_runs");
+          });
+      }
+
       /**
        * Статистика таблицы `ms_dimensions_log` (на UI — «Журнал изменений габаритов») для карточки
        * с тем же названием на /settings.html: всего строк,
@@ -1804,6 +1957,9 @@
       if (mssalesRunBtn) mssalesRunBtn.addEventListener("click", function () { runAutoSyncNow("mssales", "Продажи МС", "dg-set-auto_mssales_run"); });
       var mssalesFullRunBtn = document.getElementById("dg-set-auto_mssales_full_run");
       if (mssalesFullRunBtn) mssalesFullRunBtn.addEventListener("click", function () { runAutoSyncNow("mssales_full", "Продажи МС (полный)", "dg-set-auto_mssales_full_run"); });
+      document.getElementById("dg-set-btn-save-asr-log").addEventListener("click", saveAsrRetention);
+      document.getElementById("dg-set-btn-asr-log-refresh").addEventListener("click", loadAsrStats);
+      document.getElementById("dg-set-btn-asr-log-cleanup").addEventListener("click", cleanupAsrNow);
       document.getElementById("dg-set-btn-save-dim-log").addEventListener("click", saveDimLogRetention);
       document.getElementById("dg-set-btn-dim-log-refresh").addEventListener("click", loadDimLogStats);
       document.getElementById("dg-set-btn-dim-log-cleanup").addEventListener("click", cleanupDimLogNow);
@@ -1844,13 +2000,22 @@
 
       set("dg-set-pw-username", isAdmin() ? "admin" : currentUser() || "");
       document.getElementById("dg-set-pw-username").readOnly = !isAdmin();
-      loadSettings();
-      loadDimLogStats();
+      applySettingsUsersManagerShell();
+      applyUserFieldDisabled();
+      if (!isSettingsUsersManagerShell()) {
+        loadSettings();
+        loadAsrStats();
+        loadDimLogStats();
+      }
       loadUsers();
       window.addEventListener("datagon-profile-loaded", function () {
+        applySettingsUsersManagerShell();
         applyUserFieldDisabled();
         set("dg-set-pw-username", isAdmin() ? "admin" : currentUser() || "");
         document.getElementById("dg-set-pw-username").readOnly = !isAdmin();
+        if (!isSettingsUsersManagerShell()) {
+          loadSettings();
+        }
         loadUsers();
       });
     })();
