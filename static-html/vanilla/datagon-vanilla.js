@@ -756,15 +756,18 @@
     }
   }
 
-  /** Режим доступа к пункту меню: дочерние страницы маркетплейсов наследуют «exports-marketplaces», если у них нет своей записи; при скрытом родителе всё скрыто. */
+  /** Режим доступа к пункту меню: дочерние страницы маркетплейсов наследуют «exports-marketplaces», если нет своей записи; скрытый родитель гасит детей только пока у ребёнка нет явного full/view. */
   function datagonEffectivePageMode(pm, navKey) {
     if (pm == null) return "full";
     var nk = String(navKey || "").trim();
     var mpChild =
       nk === "exports-marketplaces-ozon" ||
       nk === "exports-marketplaces-wildberries" ||
-      nk === "exports-marketplaces-yandex";
+      nk === "exports-marketplaces-yandex" ||
+      nk === "exports-marketplaces-issues" ||
+      nk === "exports-dimensions";
     var parentMode = pm["exports-marketplaces"];
+    if (mpChild && (pm[nk] === "full" || pm[nk] === "view")) return String(pm[nk]);
     if (parentMode === "hidden" && (nk === "exports-marketplaces" || mpChild)) return "hidden";
     if (mpChild) {
       var own = pm[nk];
