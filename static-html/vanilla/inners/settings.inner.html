@@ -421,21 +421,24 @@
                   </p>
                 </div>
                 <div class="col-md-6">
-                  <label class="form-label">МойСклад: загрузка номенклатуры и остатков (МСК)</label>
+                  <label class="form-label">МойСклад: выгрузка ms_export + журнал нулевых остатков (МСК)</label>
                   <div class="d-flex gap-2 align-items-center">
                     <input type="checkbox" id="dg-set-auto_ms_en" />
                     <span>Включить</span>
                     <input type="time" class="form-control" id="dg-set-auto_ms_time" style="max-width:140px" />
-                    <button type="button" class="btn btn-outline-primary btn-sm" id="dg-set-auto_ms_run" data-dg-activity-label="Принудительно запустить загрузку номенклатуры и остатков из МойСклад">
+                    <button type="button" class="btn btn-outline-primary btn-sm" id="dg-set-auto_ms_run" data-dg-activity-label="Принудительно запустить выгрузку МойСклад в ms_export (и обновление журнала нулевых остатков)">
                       Запустить сейчас
                     </button>
                   </div>
                   <p class="small text-muted mb-0 mt-1">
-                    Ежедневный обход API МойСклад: тянет товары и комплекты в локальную таблицу
-                    <code>ms_export</code> для страницы <a href="/moysklad.html">«МойСклад»</a> (карточки,
-                    остатки, поставщики, цены, теги). Скорость и пакетирование — поля
-                    <em>«Лимит страницы»</em> и <em>«Задержка»</em> ниже в настройках МС. Прогресс
-                    и статус — на <a href="/processes.html">«Логи фоновых процессов»</a> (раздел «МойСклад»).
+                    Полная выгрузка из API МС в таблицу <code>ms_export</code> для <a href="/moysklad.html">«МойСклад»</a>
+                    (номенклатура, остатки, неснижаемый остаток из карточки МС, атрибуты для карточек в БД). Это
+                    <strong>не</strong> импорт отгрузок — отгрузки делают «Продажи МС» (<code>mssales</code>).
+                    После успешного сохранения <code>ms_export</code> одним запросом обновляется
+                    <code>dg_product_zero_stock_log</code> за сегодня: складская позиция «Да», не архив, остаток ≤ 0
+                    (ручная фиксация за тот же день не перезаписывается). Скорость обхода — поля
+                    <em>«Лимит страницы»</em> и <em>«Задержка»</em> ниже в настройках МС. Прогресс и статус —
+                    на <a href="/processes.html">«Логи фоновых процессов»</a> (секция «МойСклад: ms_export (МСК)»).
                   </p>
                 </div>
                 <div class="col-md-6">
@@ -540,6 +543,19 @@
                       Запустить сейчас
                     </button>
                   </div>
+                  <div class="mt-2">
+                    <div class="form-label small text-muted mb-1">Дни недели (МСК)</div>
+                    <div class="d-flex flex-wrap gap-2 align-items-center">
+                      <label class="form-check form-check-inline mb-0 small"><input type="checkbox" class="form-check-input" id="dg-set-auto_mssales_wd_1" /> пн</label>
+                      <label class="form-check form-check-inline mb-0 small"><input type="checkbox" class="form-check-input" id="dg-set-auto_mssales_wd_2" /> вт</label>
+                      <label class="form-check form-check-inline mb-0 small"><input type="checkbox" class="form-check-input" id="dg-set-auto_mssales_wd_3" /> ср</label>
+                      <label class="form-check form-check-inline mb-0 small"><input type="checkbox" class="form-check-input" id="dg-set-auto_mssales_wd_4" /> чт</label>
+                      <label class="form-check form-check-inline mb-0 small"><input type="checkbox" class="form-check-input" id="dg-set-auto_mssales_wd_5" /> пт</label>
+                      <label class="form-check form-check-inline mb-0 small"><input type="checkbox" class="form-check-input" id="dg-set-auto_mssales_wd_6" /> сб</label>
+                      <label class="form-check form-check-inline mb-0 small"><input type="checkbox" class="form-check-input" id="dg-set-auto_mssales_wd_7" /> вс</label>
+                    </div>
+                    <div class="text-muted" style="font-size: 11px;">Пусто в БД или все семь галочек — каждый день. Явное «1…7» в БД тоже означает каждый день (чтобы снятие одного дня не схлопывалось обратно в «все»).</div>
+                  </div>
                   <p class="small text-muted mb-0 mt-1">
                     Тянет отгрузки <code>entity/demand</code> из МойСклад API за выбранное окно
                     (по умолчанию 90 дней). UPSERT в <code>ms_demand</code>, позиции — в
@@ -550,7 +566,46 @@
                     за 7 дней; для 90 дней оценочно 1.5–2 часа. Прогресс и финальный статус — на
                     <a href="/processes.html">«Логи фоновых процессов»</a> (раздел
                     «Продажи МС»). Можно остановить кнопкой «Остановить» прямо в карточке
-                    <a href="/ms-sales.html">«Продажи МС»</a>.
+                    <a href="/ms-sales.html">«Продажи МС»</a>. По расписанию — обычный инкрементальный режим
+                    (без <code>fresh</code>), отдельно см. «полный синк» справа.
+                  </p>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label">Продажи МС: <strong>полный</strong> импорт (<code>fresh</code>, МСК)</label>
+                  <div class="d-flex gap-2 align-items-center flex-wrap">
+                    <input type="checkbox" id="dg-set-auto_mssales_full_en" />
+                    <span>Включить</span>
+                    <input type="time" class="form-control" id="dg-set-auto_mssales_full_time" style="max-width:140px" />
+                    <label for="dg-set-auto_mssales_full_days" class="form-label mb-0 ms-2">За период:</label>
+                    <select class="form-select" id="dg-set-auto_mssales_full_days" style="max-width:130px">
+                      <option value="90">90 дней</option>
+                      <option value="180">180 дней</option>
+                      <option value="365">365 дней</option>
+                      <option value="730" selected>730 дней</option>
+                      <option value="1095">1095 дней</option>
+                      <option value="1825">1825 дней</option>
+                    </select>
+                    <button type="button" class="btn btn-outline-primary btn-sm" id="dg-set-auto_mssales_full_run" data-dg-activity-label="Принудительно запустить полный импорт продаж МС">
+                      Запустить сейчас
+                    </button>
+                  </div>
+                  <div class="mt-2">
+                    <div class="form-label small text-muted mb-1">Дни недели (МСК)</div>
+                    <div class="d-flex flex-wrap gap-2 align-items-center">
+                      <label class="form-check form-check-inline mb-0 small"><input type="checkbox" class="form-check-input" id="dg-set-auto_mssales_full_wd_1" /> пн</label>
+                      <label class="form-check form-check-inline mb-0 small"><input type="checkbox" class="form-check-input" id="dg-set-auto_mssales_full_wd_2" /> вт</label>
+                      <label class="form-check form-check-inline mb-0 small"><input type="checkbox" class="form-check-input" id="dg-set-auto_mssales_full_wd_3" /> ср</label>
+                      <label class="form-check form-check-inline mb-0 small"><input type="checkbox" class="form-check-input" id="dg-set-auto_mssales_full_wd_4" /> чт</label>
+                      <label class="form-check form-check-inline mb-0 small"><input type="checkbox" class="form-check-input" id="dg-set-auto_mssales_full_wd_5" /> пт</label>
+                      <label class="form-check form-check-inline mb-0 small"><input type="checkbox" class="form-check-input" id="dg-set-auto_mssales_full_wd_6" /> сб</label>
+                      <label class="form-check form-check-inline mb-0 small"><input type="checkbox" class="form-check-input" id="dg-set-auto_mssales_full_wd_7" /> вс</label>
+                    </div>
+                    <div class="text-muted" style="font-size: 11px;">Тот же job, что «Полный синк с нуля» на странице продаж МС: полное окно, без resume, с полной сверкой soft-delete. По умолчанию только вс — удобно раз в неделю на длинном окне.</div>
+                  </div>
+                  <p class="small text-muted mb-0 mt-1">
+                    Не включайте на то же время, что и обычный импорт слева: один процесс <code>ms-sales</code> в памяти —
+                    второй старт получит <code>already_running</code>. Задача в очереди автосинка —
+                    <code>mssales_full</code> (журнал на <a href="/processes.html">processes</a>).
                   </p>
                 </div>
               </div>

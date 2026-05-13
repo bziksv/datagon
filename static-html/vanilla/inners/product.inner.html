@@ -97,9 +97,12 @@
       </div>
       <div class="card-body">
         <p class="text-muted small mb-2" id="dg-prod-zero-note">
-          Сейчас фиксация общая по товару. Разбивка по складам появится после расширения синка `report/stock/bystore`.
+          После синка МойСклад в лог за сегодня автоматически попадают позиции со <strong>складской позицией «Да»</strong>, <strong>не в архиве</strong> и с <strong>остатком ≤ 0</strong> (источник «После синка МС»). Ручная кнопка не затирается за тот же день. Разбивка по складам — после расширения синка <code>report/stock/bystore</code>.
         </p>
         <div id="dg-prod-zero-result" class="dg-prod-status" style="display:none;"></div>
+        <div class="dg-section-title mt-3">Сводка по окнам (импорт из Excel)</div>
+        <p class="text-muted small mb-2">Агрегаты «сколько дней с нулём» за последние 30 / 60 / 90 / 180 / 365 календарных дней на дату среза. Не подменяет построчный лог ниже — хранится отдельно. Загрузка: <code>POST /api/product/zero-stock-windows-import</code> (см. <a href="/docs/api#карточка-товара">справку API</a>).</p>
+        <div id="dg-prod-zero-win-import-wrap" class="mb-3"></div>
         <div id="dg-prod-zero-table-wrap"></div>
       </div>
     </div>
@@ -117,8 +120,82 @@
         </div>
       </div>
       <div class="card-body">
+        <p class="text-muted small mb-2" id="dg-prod-sales-note"></p>
         <div class="dg-section-title">Агрегаты по окнам (количество)</div>
         <div class="dg-sales-aggregates mb-3" id="dg-prod-sales-aggs"></div>
+
+        <div class="border rounded p-3 mb-3 bg-light" id="dg-prod-sales-period-toolbar">
+          <div class="dg-section-title mb-2">Период продаж</div>
+          <p class="text-muted small mb-2 mb-md-3">Графики, детализация комплектов и «Последние отгрузки». Учитываются только <strong>проведённые</strong> документы отгрузки (как в МС).</p>
+          <div class="row g-2 align-items-end">
+            <div class="col-6 col-md-auto">
+              <label for="dg-prod-sales-from" class="form-label small text-muted mb-0">С даты</label>
+              <input type="date" id="dg-prod-sales-from" class="form-control form-control-sm" autocomplete="off">
+            </div>
+            <div class="col-6 col-md-auto">
+              <label for="dg-prod-sales-to" class="form-label small text-muted mb-0">По дату</label>
+              <input type="date" id="dg-prod-sales-to" class="form-control form-control-sm" autocomplete="off">
+            </div>
+            <div class="col-12 col-lg">
+              <div class="form-label small text-muted mb-0">Быстро</div>
+              <div class="btn-group btn-group-sm flex-wrap" role="group" aria-label="Пресеты периода">
+                <button type="button" class="btn btn-outline-secondary" data-dg-sales-preset="30">30 дн.</button>
+                <button type="button" class="btn btn-outline-secondary" data-dg-sales-preset="90">90 дн.</button>
+                <button type="button" class="btn btn-outline-secondary" data-dg-sales-preset="180">180 дн.</button>
+                <button type="button" class="btn btn-outline-secondary" data-dg-sales-preset="365">365 дн.</button>
+                <button type="button" class="btn btn-outline-secondary" data-dg-sales-preset="730">2 года</button>
+              </div>
+            </div>
+            <div class="col-12 col-md-auto">
+              <button type="button" id="dg-prod-sales-apply" class="btn btn-sm btn-primary">Применить</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="row g-3 mb-3">
+          <div class="col-12 col-xl-7">
+            <div class="dg-chart-card">
+              <div class="dg-chart-header">
+                <div class="d-flex flex-wrap align-items-baseline gap-2 mb-0">
+                  <div class="dg-section-title mb-0">Продажи по месяцам</div>
+                  <span class="text-muted small" id="dg-prod-monthly-hint"></span>
+                </div>
+                <div class="dg-chart-tabs btn-group btn-group-sm" role="group" aria-label="Тип данных">
+                  <button type="button" class="btn btn-outline-primary active" data-dg-monthly-mode="qty">Количество</button>
+                  <button type="button" class="btn btn-outline-primary" data-dg-monthly-mode="amount">Сумма ₽</button>
+                </div>
+              </div>
+              <div class="dg-chart-canvas-wrap">
+                <canvas id="dg-prod-monthly-chart" height="220"></canvas>
+              </div>
+              <div class="dg-chart-empty d-none" id="dg-prod-monthly-empty">Нет продаж за выбранный период.</div>
+            </div>
+          </div>
+          <div class="col-12 col-xl-5">
+            <div class="dg-chart-card">
+              <div class="dg-chart-header">
+                <div class="dg-section-title mb-0">Распределение продаж</div>
+                <div class="dg-chart-tabs btn-group btn-group-sm" role="group" aria-label="Разрез">
+                  <button type="button" class="btn btn-outline-primary active" data-dg-breakdown="agent">По контрагентам</button>
+                  <button type="button" class="btn btn-outline-primary" data-dg-breakdown="store">По складам</button>
+                </div>
+              </div>
+              <div class="dg-chart-canvas-wrap dg-chart-doughnut">
+                <canvas id="dg-prod-breakdown-chart" height="220"></canvas>
+              </div>
+              <div class="dg-chart-empty d-none" id="dg-prod-breakdown-empty">Нет данных в выбранном разрезе.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="border-start border-3 border-primary ps-3 py-2 mb-3" id="dg-prod-sales-period-summary-wrap">
+          <div class="small text-muted mb-1">Итого за выбранный период (прямые по коду vs комплекты)</div>
+          <div id="dg-prod-sales-period-summary" class="small"></div>
+        </div>
+
+        <div class="dg-section-title">Продажи через комплекты (детализация)</div>
+        <div id="dg-prod-via-bundles-wrap" class="mb-3"></div>
+
         <div class="dg-section-title">Последние отгрузки</div>
         <div id="dg-prod-sales-recent-wrap"></div>
       </div>

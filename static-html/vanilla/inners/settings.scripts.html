@@ -69,6 +69,11 @@
         auto_sync_mssales_enabled: 0,
         auto_sync_mssales_time: "07:30",
         auto_sync_mssales_days: 90,
+        auto_sync_mssales_weekdays: "",
+        auto_sync_mssales_full_enabled: 0,
+        auto_sync_mssales_full_time: "03:15",
+        auto_sync_mssales_full_days: 730,
+        auto_sync_mssales_full_weekdays: "7",
         log_retention_days: 7,
         ms_dimensions_log_retention_days: 180,
         ozon_client_id: "",
@@ -159,6 +164,57 @@
         return String(document.getElementById(id).value || "");
       }
 
+      /** prefix: "dg-set-auto_mssales_wd" → ids …_wd_1 …_wd_7. Пустой csv в БД — все дни (legacy); явное `1,2,3,4,5,6,7` — тоже все дни (после сохранения не схлопывать в пусто). */
+      function applyAutoSyncWeekdayChecks(prefix, csv) {
+        var set = Object.create(null);
+        var s = String(csv == null ? "" : csv).trim();
+        if (!s || s === "1,2,3,4,5,6,7") {
+          for (var a = 1; a <= 7; a++) set[a] = true;
+        } else {
+          s.split(/[,;\s]+/).forEach(function (p) {
+            var n = parseInt(String(p).trim(), 10);
+            if (n >= 1 && n <= 7) set[n] = true;
+          });
+        }
+        for (var d = 1; d <= 7; d++) {
+          var el = document.getElementById(prefix + "_" + d);
+          if (el) el.checked = !!set[d];
+        }
+      }
+
+      function collectAutoSyncWeekdayCsv(prefix) {
+        var out = [];
+        for (var d = 1; d <= 7; d++) {
+          var el = document.getElementById(prefix + "_" + d);
+          if (el && el.checked) out.push(d);
+        }
+        if (out.length === 7) return "1,2,3,4,5,6,7";
+        if (out.length === 0) return "";
+        return out
+          .slice()
+          .sort(function (a, b) {
+            return a - b;
+          })
+          .join(",");
+      }
+
+      /** Сравнение сохранённых дней недели: пусто и `1,2,3,4,5,6,7` — одно и то же («каждый день»). */
+      function weekdaysCsvCanonicalForVerify(v) {
+        var set = Object.create(null);
+        var s = String(v == null ? "" : v).trim();
+        if (!s) return "__ALL__";
+        s.split(/[,;\s]+/).forEach(function (p) {
+          var n = parseInt(String(p).trim(), 10);
+          if (n >= 1 && n <= 7) set[n] = true;
+        });
+        var keys = [];
+        for (var d = 1; d <= 7; d++) {
+          if (set[d]) keys.push(d);
+        }
+        if (keys.length === 0 || keys.length === 7) return "__ALL__";
+        return keys.join(",");
+      }
+
       function formatUserDateTime(value) {
         if (value == null || value === "") return "—";
         var d = value instanceof Date ? value : new Date(value);
@@ -211,6 +267,12 @@
         if (mssalesEn) mssalesEn.checked = Number(merged.auto_sync_mssales_enabled) === 1;
         set("dg-set-auto_mssales_time", merged.auto_sync_mssales_time || "07:30");
         set("dg-set-auto_mssales_days", String(Number(merged.auto_sync_mssales_days || 90)));
+        applyAutoSyncWeekdayChecks("dg-set-auto_mssales_wd", merged.auto_sync_mssales_weekdays);
+        var mssalesFullEn = document.getElementById("dg-set-auto_mssales_full_en");
+        if (mssalesFullEn) mssalesFullEn.checked = Number(merged.auto_sync_mssales_full_enabled) === 1;
+        set("dg-set-auto_mssales_full_time", merged.auto_sync_mssales_full_time || "03:15");
+        set("dg-set-auto_mssales_full_days", String(Number(merged.auto_sync_mssales_full_days || 730)));
+        applyAutoSyncWeekdayChecks("dg-set-auto_mssales_full_wd", merged.auto_sync_mssales_full_weekdays);
         set("dg-set-log_retention_days", merged.log_retention_days);
         set("dg-set-ms_dimensions_log_retention_days", merged.ms_dimensions_log_retention_days);
         set("dg-set-ozon_client_id", merged.ozon_client_id || "");
@@ -886,6 +948,9 @@
           var sentDisplay = mask ? maskValue(sent) : (sent === "" ? "<em>пусто</em>" : "<code>" + String(sent) + "</code>");
           var gotDisplay = mask ? maskValue(got) : (got === "" || got == null ? "<em>пусто</em>" : "<code>" + String(got) + "</code>");
           var same = String(sent || "") === String(got || "");
+          if (!same && /_weekdays$/.test(String(k || ""))) {
+            same = weekdaysCsvCanonicalForVerify(sent) === weekdaysCsvCanonicalForVerify(got);
+          }
           if (!same) anyMismatch = true;
           lines.push("• <strong>" + k + ":</strong> в БД " + gotDisplay + (same ? "" : " (вы отправили " + sentDisplay + ")"));
         });
@@ -1067,12 +1132,32 @@
           auto_sync_mssales_enabled: document.getElementById("dg-set-auto_mssales_en") ? document.getElementById("dg-set-auto_mssales_en").checked : false,
           auto_sync_mssales_time: getStr("dg-set-auto_mssales_time") || "07:30",
           auto_sync_mssales_days: getNum("dg-set-auto_mssales_days", 90),
+          auto_sync_mssales_weekdays: collectAutoSyncWeekdayCsv("dg-set-auto_mssales_wd"),
+          auto_sync_mssales_full_enabled: document.getElementById("dg-set-auto_mssales_full_en")
+            ? document.getElementById("dg-set-auto_mssales_full_en").checked
+            : false,
+          auto_sync_mssales_full_time: getStr("dg-set-auto_mssales_full_time") || "03:15",
+          auto_sync_mssales_full_days: getNum("dg-set-auto_mssales_full_days", 730),
+          auto_sync_mssales_full_weekdays: collectAutoSyncWeekdayCsv("dg-set-auto_mssales_full_wd"),
         };
         runSaveWithInlineFeedback({
           sectionId: "auto",
           payload: payload,
           okText: "Расписание автосинхронизации сохранено",
-          verifyKeys: ["auto_sync_myproducts_time", "auto_sync_moysklad_time", "auto_sync_marketplaces_time", "auto_sync_huckster_time", "auto_sync_db_size_time", "auto_sync_dimensions_time", "auto_sync_mssales_time", "auto_sync_mssales_days"],
+          verifyKeys: [
+            "auto_sync_myproducts_time",
+            "auto_sync_moysklad_time",
+            "auto_sync_marketplaces_time",
+            "auto_sync_huckster_time",
+            "auto_sync_db_size_time",
+            "auto_sync_dimensions_time",
+            "auto_sync_mssales_time",
+            "auto_sync_mssales_days",
+            "auto_sync_mssales_weekdays",
+            "auto_sync_mssales_full_time",
+            "auto_sync_mssales_full_days",
+            "auto_sync_mssales_full_weekdays",
+          ],
         });
       }
 
@@ -1529,13 +1614,15 @@
       document.getElementById("dg-set-btn-sync-marketplaces-now").addEventListener("click", syncMarketplacesNow);
       document.getElementById("dg-set-btn-save-auto").addEventListener("click", saveAutoSync);
       document.getElementById("dg-set-auto_my_run").addEventListener("click", function () { runAutoSyncNow("myproducts", "Продукты"); });
-      document.getElementById("dg-set-auto_ms_run").addEventListener("click", function () { runAutoSyncNow("moysklad", "МойСклад"); });
+      document.getElementById("dg-set-auto_ms_run").addEventListener("click", function () { runAutoSyncNow("moysklad", "МойСклад: ms_export"); });
       document.getElementById("dg-set-auto_market_run").addEventListener("click", function () { runAutoSyncNow("marketplaces", "Маркетплейсы"); });
       document.getElementById("dg-set-auto_huckster_run").addEventListener("click", function () { runAutoSyncNow("huckster", "Huckster"); });
       document.getElementById("dg-set-auto_db_size_run").addEventListener("click", function () { runAutoSyncNow("db_size", "Размер БД и диска"); });
       document.getElementById("dg-set-auto_dim_run").addEventListener("click", function () { runAutoSyncNow("dimensions", "Габариты МС"); });
       var mssalesRunBtn = document.getElementById("dg-set-auto_mssales_run");
       if (mssalesRunBtn) mssalesRunBtn.addEventListener("click", function () { runAutoSyncNow("mssales", "Продажи МС"); });
+      var mssalesFullRunBtn = document.getElementById("dg-set-auto_mssales_full_run");
+      if (mssalesFullRunBtn) mssalesFullRunBtn.addEventListener("click", function () { runAutoSyncNow("mssales_full", "Продажи МС (полный)"); });
       document.getElementById("dg-set-btn-logs-refresh").addEventListener("click", loadLogsInfo);
       document.getElementById("dg-set-btn-logs-clear").addEventListener("click", clearLogsNow);
       document.getElementById("dg-set-btn-save-dim-log").addEventListener("click", saveDimLogRetention);

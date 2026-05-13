@@ -3,6 +3,22 @@ const fs = require('fs/promises');
 const path = require('path');
 const router = express.Router();
 
+/** Пн=1…Вс=7; пустая строка — «каждый день» (legacy). Ровно семь дней храним как `1,2,3,4,5,6,7`, не как пусто — иначе после сохранения UI снова рисует «все дни» и «вс» «возвращается». */
+function normalizeAutoSyncWeekdaysCsv(raw) {
+    const s = String(raw ?? '').trim();
+    if (!s) return '';
+    const set = new Set();
+    for (const part of s.split(/[,;\s]+/)) {
+        const n = parseInt(String(part).trim(), 10);
+        if (n >= 1 && n <= 7) set.add(n);
+    }
+    if (set.size === 0) return '';
+    if (set.size === 7) return '1,2,3,4,5,6,7';
+    return Array.from(set)
+        .sort((a, b) => a - b)
+        .join(',');
+}
+
 module.exports = (db, appSettings) => {
     router.get('/', async (req, res) => res.json(appSettings));
 
@@ -90,7 +106,8 @@ module.exports = (db, appSettings) => {
             auto_sync_huckster_enabled, auto_sync_huckster_time,
             auto_sync_db_size_enabled, auto_sync_db_size_time,
             auto_sync_dimensions_enabled, auto_sync_dimensions_time,
-            auto_sync_mssales_enabled, auto_sync_mssales_time, auto_sync_mssales_days,
+            auto_sync_mssales_enabled, auto_sync_mssales_time, auto_sync_mssales_days, auto_sync_mssales_weekdays,
+            auto_sync_mssales_full_enabled, auto_sync_mssales_full_time, auto_sync_mssales_full_days, auto_sync_mssales_full_weekdays,
             discover_max_sitemaps, discover_max_urls, discover_crawl_max_pages, discover_request_delay_ms,
             auth_session_ttl_days, auth_session_user_limit, auth_online_presence_minutes,
             fetch_proxy_enabled, fetch_proxy_list,
@@ -127,6 +144,22 @@ module.exports = (db, appSettings) => {
                 /** Окно периода 1..1825 (5 лет) дней — как `clampInt` в /sync. */
                 const v = Math.max(1, Math.min(365 * 5, Number(auto_sync_mssales_days || 90)));
                 queries.push(['auto_sync_mssales_days', String(v)]);
+            }
+            if (auto_sync_mssales_weekdays !== undefined) {
+                queries.push(['auto_sync_mssales_weekdays', normalizeAutoSyncWeekdaysCsv(auto_sync_mssales_weekdays)]);
+            }
+            if (auto_sync_mssales_full_enabled !== undefined) {
+                queries.push(['auto_sync_mssales_full_enabled', auto_sync_mssales_full_enabled ? 1 : 0]);
+            }
+            if (auto_sync_mssales_full_time !== undefined) {
+                queries.push(['auto_sync_mssales_full_time', auto_sync_mssales_full_time || '03:15']);
+            }
+            if (auto_sync_mssales_full_days !== undefined) {
+                const vf = Math.max(1, Math.min(365 * 5, Number(auto_sync_mssales_full_days || 730)));
+                queries.push(['auto_sync_mssales_full_days', String(vf)]);
+            }
+            if (auto_sync_mssales_full_weekdays !== undefined) {
+                queries.push(['auto_sync_mssales_full_weekdays', normalizeAutoSyncWeekdaysCsv(auto_sync_mssales_full_weekdays)]);
             }
             if (discover_max_sitemaps !== undefined) queries.push(['discover_max_sitemaps', Math.max(10, Number(discover_max_sitemaps || 200))]);
             if (discover_max_urls !== undefined) queries.push(['discover_max_urls', Math.max(100, Number(discover_max_urls || 50000))]);
@@ -197,6 +230,11 @@ module.exports = (db, appSettings) => {
             if(auto_sync_mssales_enabled !== undefined) appSettings.auto_sync_mssales_enabled = auto_sync_mssales_enabled ? 1 : 0;
             if(auto_sync_mssales_time !== undefined) appSettings.auto_sync_mssales_time = auto_sync_mssales_time || '07:30';
             if(auto_sync_mssales_days !== undefined) appSettings.auto_sync_mssales_days = Math.max(1, Math.min(365 * 5, Number(auto_sync_mssales_days || 90)));
+            if(auto_sync_mssales_weekdays !== undefined) appSettings.auto_sync_mssales_weekdays = normalizeAutoSyncWeekdaysCsv(auto_sync_mssales_weekdays);
+            if(auto_sync_mssales_full_enabled !== undefined) appSettings.auto_sync_mssales_full_enabled = auto_sync_mssales_full_enabled ? 1 : 0;
+            if(auto_sync_mssales_full_time !== undefined) appSettings.auto_sync_mssales_full_time = auto_sync_mssales_full_time || '03:15';
+            if(auto_sync_mssales_full_days !== undefined) appSettings.auto_sync_mssales_full_days = Math.max(1, Math.min(365 * 5, Number(auto_sync_mssales_full_days || 730)));
+            if(auto_sync_mssales_full_weekdays !== undefined) appSettings.auto_sync_mssales_full_weekdays = normalizeAutoSyncWeekdaysCsv(auto_sync_mssales_full_weekdays);
             if(discover_max_sitemaps !== undefined) appSettings.discover_max_sitemaps = Math.max(10, Number(discover_max_sitemaps || 200));
             if(discover_max_urls !== undefined) appSettings.discover_max_urls = Math.max(100, Number(discover_max_urls || 50000));
             if(discover_crawl_max_pages !== undefined) appSettings.discover_crawl_max_pages = Math.max(10, Number(discover_crawl_max_pages || 500));

@@ -1,5 +1,6 @@
 const express = require('express');
 const axios = require('axios');
+const { syncZeroStockLogAfterMoyskladExport } = require('./product');
 
 const router = express.Router();
 
@@ -1338,6 +1339,14 @@ async function syncMsExport(db, config, settings = {}) {
         // полными МС-карточками) + `exportRows` (~50–100 МБ) суммарно подбирался
         // под лимит heap Node, и сборка `payload_json` ловила OOM.
         // `length` уже зафиксирован в `totalRowsToInsert` — используем его дальше.
+    }
+    try {
+        const { scanned } = await syncZeroStockLogAfterMoyskladExport(db);
+        addLog(
+            `Нулевые остатки (лог за сегодня): склад.поз.=Да, не архив, stock≤0 — кандидатов ${scanned}, upsert выполнен (source=moysklad_sync; manual за день не перезаписываем).`,
+        );
+    } catch (e) {
+        addLog(`Нулевые остатки: не удалось обновить лог — ${e && e.message ? e.message : String(e)}`);
     }
     const exportRowsSavedCount = exportRows.length;
     exportRows.length = 0;

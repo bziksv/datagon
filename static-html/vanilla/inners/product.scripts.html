@@ -19,10 +19,101 @@
       var zeroDaysSel = document.getElementById("dg-prod-zero-days");
       var zeroFixBtn = document.getElementById("dg-prod-zero-fix");
       var zeroResultEl = document.getElementById("dg-prod-zero-result");
+      var zeroWinImportWrap = document.getElementById("dg-prod-zero-win-import-wrap");
       var zeroTableWrap = document.getElementById("dg-prod-zero-table-wrap");
       var salesLink = document.getElementById("dg-prod-sales-link");
       var salesAggs = document.getElementById("dg-prod-sales-aggs");
+      var salesNoteEl = document.getElementById("dg-prod-sales-note");
+      var viaBundlesWrap = document.getElementById("dg-prod-via-bundles-wrap");
       var salesRecentWrap = document.getElementById("dg-prod-sales-recent-wrap");
+      var salesPeriodSummary = document.getElementById("dg-prod-sales-period-summary");
+      var salesApplyBtn = document.getElementById("dg-prod-sales-apply");
+
+      function toYMD(d) {
+        var y = d.getFullYear();
+        var m = String(d.getMonth() + 1).padStart(2, "0");
+        var day = String(d.getDate()).padStart(2, "0");
+        return y + "-" + m + "-" + day;
+      }
+
+      function formatYmdRu(ymd) {
+        if (!ymd || String(ymd).length < 10) return ymd || "—";
+        var s = String(ymd).slice(0, 10);
+        var p = s.split("-");
+        if (p.length !== 3) return s;
+        return p[2] + "." + p[1] + "." + p[0];
+      }
+
+      function setSalesRangeLastDays(days) {
+        var n = Math.min(1825, Math.max(1, parseInt(days, 10) || 365));
+        var to = new Date();
+        var from = new Date(to.getTime());
+        from.setDate(from.getDate() - (n - 1));
+        var fe = document.getElementById("dg-prod-sales-from");
+        var te = document.getElementById("dg-prod-sales-to");
+        if (fe) fe.value = toYMD(from);
+        if (te) te.value = toYMD(to);
+      }
+
+      function buildProductSalesQuery() {
+        var fe = document.getElementById("dg-prod-sales-from");
+        var te = document.getElementById("dg-prod-sales-to");
+        if (!fe || !te || !fe.value || !te.value) return "";
+        if (fe.value > te.value) return "";
+        return "&sales_from=" + encodeURIComponent(fe.value) + "&sales_to=" + encodeURIComponent(te.value);
+      }
+
+      function initSalesDateInputs() {
+        var fe = document.getElementById("dg-prod-sales-from");
+        var te = document.getElementById("dg-prod-sales-to");
+        if (!fe || !te) return;
+        var p = new URLSearchParams(window.location.search);
+        var sf = (p.get("sales_from") || "").trim();
+        var st = (p.get("sales_to") || "").trim();
+        if (/^\d{4}-\d{2}-\d{2}$/.test(sf) && /^\d{4}-\d{2}-\d{2}$/.test(st) && sf <= st) {
+          fe.value = sf;
+          te.value = st;
+          return;
+        }
+        var ronly = parseInt(p.get("recent_days") || "", 10);
+        if (Number.isFinite(ronly) && ronly >= 1 && ronly <= 1825) {
+          setSalesRangeLastDays(ronly);
+          return;
+        }
+        try {
+          var raw = localStorage.getItem("datagon_product_sales_range_v1");
+          if (raw) {
+            var o = JSON.parse(raw);
+            if (o && o.from && o.to && o.from <= o.to) {
+              fe.value = String(o.from).slice(0, 10);
+              te.value = String(o.to).slice(0, 10);
+              return;
+            }
+          }
+        } catch (e) {}
+        try {
+          var legacy = localStorage.getItem("datagon_product_sales_period_v1");
+          if (legacy) {
+            var ld = parseInt(legacy, 10);
+            if (Number.isFinite(ld) && ld >= 1) {
+              setSalesRangeLastDays(Math.min(1825, ld));
+              return;
+            }
+          }
+        } catch (e2) {}
+        setSalesRangeLastDays(365);
+      }
+
+      function syncSalesDatesFromResponse(sales) {
+        var fe = document.getElementById("dg-prod-sales-from");
+        var te = document.getElementById("dg-prod-sales-to");
+        if (!fe || !te || !sales || !sales.sales_window) return;
+        var sw = sales.sales_window;
+        if (sw.mode === "range" && sw.sales_from && sw.sales_to) {
+          fe.value = String(sw.sales_from).slice(0, 10);
+          te.value = String(sw.sales_to).slice(0, 10);
+        }
+      }
 
       function getCode() {
         var p = new URLSearchParams(window.location.search);
@@ -70,6 +161,51 @@
         return v == null ? "" : String(v);
       }
 
+      /** Для карточки товара: булевы и строки "true"/"false" → «Да»/«Нет». */
+      function fmtScalarForUi(v) {
+        if (v == null) return "";
+        if (typeof v === "boolean") return v ? "Да" : "Нет";
+        if (typeof v === "string") {
+          var t = v.trim().toLowerCase();
+          if (t === "true") return "Да";
+          if (t === "false") return "Нет";
+        }
+        return v;
+      }
+
+      // Превращает строку в DocumentFragment, оборачивая URL/email в <a target="_blank">.
+      // Пути типа /my-products.html?... и //example.com/... тоже считаются ссылками.
+      // Безопасно (никаких innerHTML с пользовательским текстом).
+      var URL_RE = /((?:https?:\/\/|\/\/)[^\s<>"']+|\/[a-zA-Z][\w\-/.]*\.html(?:\?[^\s<>"']*)?|[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,})/g;
+      function linkifyTo(container, text) {
+        var s = String(text == null ? "" : text);
+        if (!s) return;
+        var lastIndex = 0;
+        URL_RE.lastIndex = 0;
+        var m;
+        while ((m = URL_RE.exec(s)) !== null) {
+          if (m.index > lastIndex) {
+            container.appendChild(document.createTextNode(s.slice(lastIndex, m.index)));
+          }
+          var raw = m[0];
+          var a = document.createElement("a");
+          var isEmail = raw.indexOf("@") >= 0 && raw.indexOf("/") < 0;
+          a.href = isEmail ? ("mailto:" + raw) : raw;
+          if (!isEmail) {
+            a.target = "_blank";
+            a.rel = "noopener noreferrer";
+          }
+          a.textContent = raw;
+          a.className = "dg-prod-link";
+          a.title = raw;
+          container.appendChild(a);
+          lastIndex = m.index + raw.length;
+        }
+        if (lastIndex < s.length) {
+          container.appendChild(document.createTextNode(s.slice(lastIndex)));
+        }
+      }
+
       function pushKv(grid, key, value, opts) {
         var v = value;
         if (v == null || v === "" || v === "—") return;
@@ -79,7 +215,8 @@
         var val = document.createElement("div");
         val.className = "dg-kv-val" + (opts && opts.numeric ? " is-numeric" : "");
         if (opts && opts.html) val.innerHTML = String(v);
-        else val.textContent = String(v);
+        else if (opts && opts.node) val.appendChild(v);
+        else linkifyTo(val, fmtScalarForUi(v));
         grid.appendChild(k);
         grid.appendChild(val);
       }
@@ -154,7 +291,18 @@
         pushKv(mainKv, "Тип", ms.type);
         pushKv(mainKv, "Архивный", Number(ms.is_archived) === 1 ? "Да" : "Нет");
         pushKv(mainKv, "Складская позиция", ms.stock_position);
-        pushKv(mainKv, "Поставщик", ms.supplier_label || ms.supplier);
+        if (ms.supplier_label || ms.supplier) {
+          var supVal = document.createElement("span");
+          var supText = ms.supplier_label || ms.supplier;
+          var supLink = document.createElement("a");
+          supLink.href = "/purchase.html?supplier=" + encodeURIComponent(ms.supplier || ms.supplier_label || "");
+          supLink.target = "_blank"; supLink.rel = "noopener";
+          supLink.textContent = supText;
+          supLink.className = "dg-prod-link";
+          supLink.title = "Открыть «Закупки» с фильтром по этому поставщику";
+          supVal.appendChild(supLink);
+          pushKv(mainKv, "Поставщик", supVal, { node: true });
+        }
         if (ms.supplier && ms.supplier2 && ms.supplier !== ms.supplier2) {
           pushKv(mainKv, "Поставщик 1", ms.supplier);
           pushKv(mainKv, "Поставщик 2", ms.supplier2);
@@ -181,7 +329,19 @@
         }
         if (ms.description) pushKv(mainKv, "Описание", ms.description);
         if (ms.images && ms.images.length) {
-          pushKv(mainKv, "Изображения (URL)", ms.images.slice(0, 6).join("\n"));
+          var imgWrap = document.createElement("div");
+          imgWrap.className = "dg-prod-images";
+          ms.images.slice(0, 12).forEach(function (url) {
+            var a = document.createElement("a");
+            a.href = url; a.target = "_blank"; a.rel = "noopener";
+            a.title = url;
+            var img = document.createElement("img");
+            img.src = url; img.alt = "preview";
+            img.loading = "lazy";
+            a.appendChild(img);
+            imgWrap.appendChild(a);
+          });
+          pushKv(mainKv, "Изображения (" + ms.images.length + ")", imgWrap, { node: true });
         }
       }
 
@@ -205,7 +365,8 @@
         attrs.forEach(function (a) {
           var tr = document.createElement("tr");
           var c1 = document.createElement("td"); c1.textContent = a.name || "";
-          var c2 = document.createElement("td"); c2.textContent = a.value == null ? "" : String(a.value);
+          var c2 = document.createElement("td");
+          linkifyTo(c2, fmtScalarForUi(a.value));
           var c3 = document.createElement("td"); c3.textContent = a.type || ""; c3.className = "text-muted";
           tr.appendChild(c1); tr.appendChild(c2); tr.appendChild(c3);
           tb.appendChild(tr);
@@ -289,8 +450,656 @@
         }
       }
 
+      // Chart.js загружаем лениво один раз с jsdelivr. Не блокирует HTML/основной fetch.
+      var chartJsPromise = null;
+      function loadChartJs() {
+        if (window.Chart && typeof window.Chart === "function") return Promise.resolve(window.Chart);
+        if (chartJsPromise) return chartJsPromise;
+        chartJsPromise = new Promise(function (resolve, reject) {
+          var s = document.createElement("script");
+          s.src = "https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js";
+          s.async = true;
+          s.onload = function () { resolve(window.Chart); };
+          s.onerror = function () { reject(new Error("Не удалось загрузить Chart.js с jsdelivr")); };
+          document.head.appendChild(s);
+        });
+        return chartJsPromise;
+      }
+
+      var monthlyChart = null;
+      var breakdownChart = null;
+      var lastSales = null;
+      var monthlyMode = "qty";
+      var breakdownMode = "agent";
+      /** Пагинация / фильтр «Последние отгрузки» (синхронизируется с GET /api/product/.../recent-shipments). */
+      var recentShipState = { page: 1, pageSize: 100, via: "all", bundleCode: "" };
+
+      function recentSalesQuerySuffix() {
+        return (
+          "&recent_page=" +
+          encodeURIComponent(String(recentShipState.page)) +
+          "&recent_page_size=" +
+          encodeURIComponent(String(recentShipState.pageSize)) +
+          "&recent_via=" +
+          encodeURIComponent(recentShipState.via || "all") +
+          (recentShipState.via === "bundle" && recentShipState.bundleCode
+            ? "&recent_bundle_code=" + encodeURIComponent(recentShipState.bundleCode)
+            : "")
+        );
+      }
+
+      function syncRecentMetaFromSales(s) {
+        if (!s) return;
+        if (s.recent_page != null) recentShipState.page = Math.max(1, Number(s.recent_page) || 1);
+        if (s.recent_page_size != null) recentShipState.pageSize = Math.min(200, Math.max(10, Number(s.recent_page_size) || 100));
+        var rv = s.recent_via != null ? String(s.recent_via) : "all";
+        if (rv === "bundle") {
+          recentShipState.via = "bundle";
+          recentShipState.bundleCode = s.recent_bundle_code ? String(s.recent_bundle_code) : "";
+        } else {
+          recentShipState.via = rv === "direct" ? "direct" : "all";
+          recentShipState.bundleCode = "";
+        }
+      }
+
+      function readRecentFormIntoState() {
+        var viaEl = document.getElementById("dg-prod-recent-via");
+        var psEl = document.getElementById("dg-prod-recent-ps");
+        var bEl = document.getElementById("dg-prod-recent-bundle");
+        if (viaEl) recentShipState.via = viaEl.value || "all";
+        if (psEl) recentShipState.pageSize = Math.min(200, Math.max(10, parseInt(psEl.value, 10) || 100));
+        if (recentShipState.via === "bundle" && bEl) {
+          recentShipState.bundleCode = String(bEl.value || "").trim();
+        } else {
+          recentShipState.bundleCode = "";
+        }
+      }
+
+      function fetchRecentShipmentsOnly() {
+        var code = getCode();
+        if (!code || !salesRecentWrap) return;
+        readRecentFormIntoState();
+        var sq = buildProductSalesQuery();
+        var base = sq && sq.charAt(0) === "&" ? sq.slice(1) : sq;
+        if (!base) base = "recent_days=365";
+        var url = "/api/product/" + encodeURIComponent(code) + "/recent-shipments?" + base + recentSalesQuerySuffix();
+        fetch(url, { credentials: "same-origin" })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { ok: r.ok, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.ok || !x.j || x.j.success === false) {
+              throw new Error((x.j && x.j.error) || ("HTTP " + (x.ok ? "?" : "ошибка")));
+            }
+            if (lastSales) {
+              lastSales.recent = x.j.rows || [];
+              lastSales.recent_total = Number(x.j.recent_total || 0);
+              lastSales.recent_page = x.j.recent_page;
+              lastSales.recent_page_size = x.j.recent_page_size;
+              lastSales.recent_total_pages = x.j.recent_total_pages;
+              lastSales.recent_via = x.j.recent_via;
+              lastSales.recent_bundle_code = x.j.recent_bundle_code || "";
+              if (Array.isArray(x.j.bundle_codes)) lastSales.recent_bundle_codes = x.j.bundle_codes;
+            }
+            syncRecentMetaFromSales(lastSales);
+            renderRecentShipmentsSection(lastSales, code);
+          })
+          .catch(function (e) {
+            var msg = e && e.message ? e.message : String(e);
+            var prev = salesRecentWrap.querySelector("#dg-prod-recent-fetch-err");
+            if (prev) prev.remove();
+            var err = document.createElement("div");
+            err.id = "dg-prod-recent-fetch-err";
+            err.className = "alert alert-danger py-2 small mb-0 mt-2";
+            err.textContent = "Не удалось обновить отгрузки: " + msg;
+            salesRecentWrap.appendChild(err);
+          });
+      }
+
+      function appendRecentShipmentRow(tb, r) {
+        var tr = document.createElement("tr");
+        var c1 = document.createElement("td"); c1.textContent = r.doc_name || "";
+        var c2 = document.createElement("td"); c2.textContent = fmtDate(r.moment);
+        var c3 = document.createElement("td"); c3.textContent = r.agent_name || "";
+        var c4 = document.createElement("td"); c4.textContent = r.store_name || "";
+        var cVia = document.createElement("td");
+        if (r.via === "bundle" && r.bundle_code) {
+          var ab = document.createElement("a");
+          ab.href = "/product.html?code=" + encodeURIComponent(r.bundle_code);
+          ab.target = "_blank"; ab.rel = "noopener";
+          ab.className = "dg-prod-link";
+          ab.textContent = r.bundle_code;
+          var nm = (r.bundle_name || "").trim();
+          var bq = r.bundle_qty != null ? Number(r.bundle_qty) : NaN;
+          var qpb = r.qty_per_bundle != null ? Number(r.qty_per_bundle) : NaN;
+          var eq = r.quantity != null ? Number(r.quantity) : NaN;
+          ab.title =
+            (nm ? nm + " · " : "") +
+            "комплектов " + (isFinite(bq) ? fmtFloat(bq, 2) : "—") +
+            " × " + (isFinite(qpb) ? fmtFloat(qpb, 4) : "—") + " шт/компл." +
+            (isFinite(eq) ? " → экв. " + fmtFloat(eq, 2) + " шт." : "");
+          cVia.appendChild(ab);
+        } else {
+          cVia.className = "text-muted";
+          cVia.textContent = "Прямая";
+        }
+        var c5 = document.createElement("td"); c5.className = "text-end"; c5.textContent = fmtFloat(r.quantity, 2);
+        var c6 = document.createElement("td"); c6.className = "text-end"; c6.textContent = fmtMoney(r.price, "RUB");
+        var c7 = document.createElement("td"); c7.className = "text-end"; c7.textContent = fmtMoney(r.sum, "RUB");
+        tr.appendChild(c1); tr.appendChild(c2); tr.appendChild(c3); tr.appendChild(c4); tr.appendChild(cVia);
+        tr.appendChild(c5); tr.appendChild(c6); tr.appendChild(c7);
+        tb.appendChild(tr);
+      }
+
+      function renderRecentShipmentsSection(sales, code) {
+        if (!salesRecentWrap) return;
+        salesRecentWrap.replaceChildren();
+        if (!sales) {
+          var e0 = document.createElement("div");
+          e0.className = "dg-prod-empty";
+          e0.textContent = "Нет данных продаж.";
+          salesRecentWrap.appendChild(e0);
+          return;
+        }
+        var rows = Array.isArray(sales.recent) ? sales.recent : [];
+        var total = Number(sales.recent_total != null ? sales.recent_total : rows.length);
+        var page = Math.max(1, Number(sales.recent_page) || recentShipState.page || 1);
+        var pageSize = Math.max(10, Number(sales.recent_page_size) || recentShipState.pageSize || 100);
+        var totalPages = Math.max(1, Number(sales.recent_total_pages) || Math.ceil(total / pageSize) || 1);
+        var incBundles = !!sales.includes_via_bundles;
+
+        var toolbar = document.createElement("div");
+        toolbar.className = "row g-2 align-items-end mb-2";
+
+        var colVia = document.createElement("div");
+        colVia.className = "col-auto";
+        var lbVia = document.createElement("label");
+        lbVia.className = "form-label small mb-0 d-block";
+        lbVia.setAttribute("for", "dg-prod-recent-via");
+        lbVia.textContent = "Через";
+        lbVia.title = "То же, что колонка «Через» в таблице: прямая продажа кода или эквивалент через комплект.";
+        var viaSel = document.createElement("select");
+        viaSel.id = "dg-prod-recent-via";
+        viaSel.className = "form-select form-select-sm";
+        viaSel.style.maxWidth = "220px";
+        viaSel.title = lbVia.title;
+        [["all", "Все"], ["direct", "Прямая"], ["bundle", "Комплект"]].forEach(function (opt) {
+          var o = document.createElement("option");
+          o.value = opt[0];
+          o.textContent = opt[1];
+          viaSel.appendChild(o);
+        });
+        viaSel.value = recentShipState.via === "direct" ? "direct" : recentShipState.via === "bundle" ? "bundle" : "all";
+        colVia.appendChild(lbVia);
+        colVia.appendChild(viaSel);
+
+        var colB = document.createElement("div");
+        colB.className = "col-auto";
+        colB.id = "dg-prod-recent-bundle-col";
+        if (!incBundles || viaSel.value !== "bundle") colB.classList.add("d-none");
+        var lbB = document.createElement("label");
+        lbB.className = "form-label small mb-0 d-block";
+        lbB.setAttribute("for", "dg-prod-recent-bundle");
+        lbB.textContent = "Код комплекта";
+        var bSel = document.createElement("select");
+        bSel.id = "dg-prod-recent-bundle";
+        bSel.className = "form-select form-select-sm";
+        bSel.style.minWidth = "12rem";
+        var o0 = document.createElement("option");
+        o0.value = "";
+        o0.textContent = "Все комплекты";
+        bSel.appendChild(o0);
+        (Array.isArray(sales.recent_bundle_codes) ? sales.recent_bundle_codes : []).forEach(function (bc) {
+          var c = String(bc.bundle_code || "").trim();
+          if (!c) return;
+          var o = document.createElement("option");
+          o.value = c;
+          o.textContent = c + (bc.bundle_name ? " — " + String(bc.bundle_name).slice(0, 60) : "");
+          bSel.appendChild(o);
+        });
+        if (recentShipState.bundleCode) bSel.value = recentShipState.bundleCode;
+        colB.appendChild(lbB);
+        colB.appendChild(bSel);
+
+        var colPs = document.createElement("div");
+        colPs.className = "col-auto";
+        var lbPs = document.createElement("label");
+        lbPs.className = "form-label small mb-0 d-block";
+        lbPs.setAttribute("for", "dg-prod-recent-ps");
+        lbPs.textContent = "На странице";
+        var psSel = document.createElement("select");
+        psSel.id = "dg-prod-recent-ps";
+        psSel.className = "form-select form-select-sm";
+        [50, 100, 200].forEach(function (n) {
+          var o = document.createElement("option");
+          o.value = String(n);
+          o.textContent = String(n);
+          if (n === pageSize) o.selected = true;
+          psSel.appendChild(o);
+        });
+        colPs.appendChild(lbPs);
+        colPs.appendChild(psSel);
+
+        var colBtn = document.createElement("div");
+        colBtn.className = "col-auto";
+        var applyBtn = document.createElement("button");
+        applyBtn.type = "button";
+        applyBtn.id = "dg-prod-recent-apply";
+        applyBtn.className = "btn btn-sm btn-primary";
+        applyBtn.textContent = "Показать";
+        colBtn.appendChild(applyBtn);
+
+        toolbar.appendChild(colVia);
+        toolbar.appendChild(colB);
+        toolbar.appendChild(colPs);
+        toolbar.appendChild(colBtn);
+        salesRecentWrap.appendChild(toolbar);
+
+        viaSel.addEventListener("change", function () {
+          if (incBundles && viaSel.value === "bundle") colB.classList.remove("d-none");
+          else colB.classList.add("d-none");
+        });
+
+        var t = document.createElement("table");
+        t.className = "table table-sm table-striped dg-prod-mini";
+        t.innerHTML =
+          "<thead><tr>" +
+            "<th>Документ</th>" +
+            "<th>Дата</th>" +
+            "<th>Контрагент</th>" +
+            "<th>Склад</th>" +
+            "<th>Через</th>" +
+            "<th class=\"text-end\">Кол-во</th>" +
+            "<th class=\"text-end\">Цена</th>" +
+            "<th class=\"text-end\">Сумма</th>" +
+          "</tr></thead>";
+        var tb = document.createElement("tbody");
+        if (!rows.length) {
+          var tr0 = document.createElement("tr");
+          var td0 = document.createElement("td");
+          td0.colSpan = 8;
+          td0.className = "text-muted";
+          td0.textContent = "Нет строк за выбранный период и фильтр.";
+          tr0.appendChild(td0);
+          tb.appendChild(tr0);
+        } else {
+          rows.forEach(function (r) {
+            appendRecentShipmentRow(tb, r);
+          });
+        }
+        t.appendChild(tb);
+        salesRecentWrap.appendChild(t);
+
+        var sumEl = document.createElement("div");
+        sumEl.id = "dg-prod-recent-summary";
+        sumEl.className = "small text-muted mt-2";
+        sumEl.textContent =
+          "Найдено: " +
+          fmtNum(total) +
+          "; страница " +
+          page +
+          "/" +
+          totalPages +
+          "; показано: " +
+          fmtNum(rows.length);
+        salesRecentWrap.appendChild(sumEl);
+
+        var pager = document.createElement("div");
+        pager.className = "d-flex flex-wrap gap-2 align-items-center mt-2";
+        var prevBtn = document.createElement("button");
+        prevBtn.type = "button";
+        prevBtn.id = "dg-prod-recent-prev";
+        prevBtn.className = "btn btn-sm btn-outline-secondary";
+        prevBtn.textContent = "Назад";
+        prevBtn.disabled = page <= 1;
+        var nextBtn = document.createElement("button");
+        nextBtn.type = "button";
+        nextBtn.id = "dg-prod-recent-next";
+        nextBtn.className = "btn btn-sm btn-outline-secondary";
+        nextBtn.textContent = "Вперёд";
+        nextBtn.disabled = page >= totalPages;
+        pager.appendChild(prevBtn);
+        pager.appendChild(nextBtn);
+        salesRecentWrap.appendChild(pager);
+
+        applyBtn.addEventListener("click", function () {
+          readRecentFormIntoState();
+          recentShipState.page = 1;
+          fetchRecentShipmentsOnly();
+        });
+        psSel.addEventListener("change", function () {
+          readRecentFormIntoState();
+          recentShipState.page = 1;
+          fetchRecentShipmentsOnly();
+        });
+        prevBtn.addEventListener("click", function () {
+          readRecentFormIntoState();
+          if (recentShipState.page > 1) {
+            recentShipState.page -= 1;
+            fetchRecentShipmentsOnly();
+          }
+        });
+        nextBtn.addEventListener("click", function () {
+          readRecentFormIntoState();
+          if (recentShipState.page < totalPages) {
+            recentShipState.page += 1;
+            fetchRecentShipmentsOnly();
+          }
+        });
+      }
+
+      // Палитра гармонично сочетается с темой ArchitectUI.
+      var PIE_PALETTE = [
+        "#0b5ed7", "#16a34a", "#f59e0b", "#dc2626",
+        "#7c3aed", "#0ea5e9", "#db2777", "#10b981",
+        "#f97316", "#6366f1", "#94a3b8"
+      ];
+      function pieColor(i) { return PIE_PALETTE[i % PIE_PALETTE.length]; }
+
+      function fmtMonthLabel(ym) {
+        var s = String(ym || ""); var p = s.split("-");
+        if (p.length !== 2) return s;
+        var months = ["янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
+        var mIdx = Math.max(0, Math.min(11, Number(p[1]) - 1));
+        return months[mIdx] + " " + String(p[0]).slice(2);
+      }
+
+      function renderMonthlyChart(monthly) {
+        var emptyEl = document.getElementById("dg-prod-monthly-empty");
+        var canvas = document.getElementById("dg-prod-monthly-chart");
+        if (!canvas) return;
+        var rows = Array.isArray(monthly) ? monthly : [];
+        var hasAny = rows.some(function (r) { return Number(r.sum_qty) > 0 || Number(r.sum_amount) > 0; });
+        if (!hasAny) {
+          if (monthlyChart) { try { monthlyChart.destroy(); } catch (e) {} monthlyChart = null; }
+          canvas.style.display = "none";
+          emptyEl.classList.remove("d-none");
+          return;
+        }
+        canvas.style.display = "";
+        emptyEl.classList.add("d-none");
+
+        var labels = rows.map(function (r) { return fmtMonthLabel(r.month); });
+        var dataField = monthlyMode === "amount" ? "sum_amount" : "sum_qty";
+        var values = rows.map(function (r) { return Number(r[dataField] || 0); });
+        var titleText = monthlyMode === "amount" ? "Сумма, ₽" : "Количество, шт.";
+
+        loadChartJs().then(function (Chart) {
+          if (monthlyChart) { try { monthlyChart.destroy(); } catch (e) {} monthlyChart = null; }
+          var ctx = canvas.getContext("2d");
+          monthlyChart = new Chart(ctx, {
+            type: "bar",
+            data: {
+              labels: labels,
+              datasets: [{
+                label: titleText,
+                data: values,
+                backgroundColor: "rgba(11, 94, 215, 0.55)",
+                borderColor: "rgba(11, 94, 215, 1)",
+                borderWidth: 1,
+                borderRadius: 4,
+                maxBarThickness: 28
+              }]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: { display: false },
+                tooltip: {
+                  callbacks: {
+                    label: function (ctx2) {
+                      var v = Number(ctx2.parsed.y || 0);
+                      var src = rows[ctx2.dataIndex] || {};
+                      var qtyTxt = "Кол-во: " + (Number(src.sum_qty || 0)).toLocaleString("ru-RU");
+                      var sumTxt = "Сумма: " + (Number(src.sum_amount || 0)).toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " ₽";
+                      var posTxt = "Отгрузок: " + (Number(src.positions || 0)).toLocaleString("ru-RU");
+                      return [qtyTxt, sumTxt, posTxt];
+                    }
+                  }
+                }
+              },
+              scales: {
+                x: { ticks: { font: { size: 11 } }, grid: { display: false } },
+                y: {
+                  beginAtZero: true,
+                  ticks: {
+                    font: { size: 11 },
+                    callback: function (v) {
+                      var n = Number(v);
+                      if (monthlyMode === "amount" && n >= 1000) {
+                        return (n / 1000).toLocaleString("ru-RU") + "k";
+                      }
+                      return n.toLocaleString("ru-RU");
+                    }
+                  },
+                  grid: { color: "rgba(0,0,0,0.05)" }
+                }
+              }
+            }
+          });
+        }).catch(function (e) {
+          canvas.style.display = "none";
+          emptyEl.classList.remove("d-none");
+          emptyEl.textContent = "График недоступен: " + (e && e.message ? e.message : e);
+        });
+      }
+
+      function renderBreakdownChart(sales) {
+        var canvas = document.getElementById("dg-prod-breakdown-chart");
+        var emptyEl = document.getElementById("dg-prod-breakdown-empty");
+        if (!canvas) return;
+        var src = breakdownMode === "store"
+          ? (sales && sales.by_store ? sales.by_store : [])
+          : (sales && sales.by_agent ? sales.by_agent : []);
+        var rows = (src || []).filter(function (r) { return Number(r.sum_qty) > 0; });
+        if (!rows.length) {
+          if (breakdownChart) { try { breakdownChart.destroy(); } catch (e) {} breakdownChart = null; }
+          canvas.style.display = "none";
+          emptyEl.classList.remove("d-none");
+          return;
+        }
+        canvas.style.display = "";
+        emptyEl.classList.add("d-none");
+
+        var labels = rows.map(function (r) { return r.label || "(не указано)"; });
+        var values = rows.map(function (r) { return Number(r.sum_qty || 0); });
+        var colors = rows.map(function (_, i) { return pieColor(i); });
+
+        loadChartJs().then(function (Chart) {
+          if (breakdownChart) { try { breakdownChart.destroy(); } catch (e) {} breakdownChart = null; }
+          var ctx = canvas.getContext("2d");
+          breakdownChart = new Chart(ctx, {
+            type: "doughnut",
+            data: {
+              labels: labels,
+              datasets: [{
+                data: values,
+                backgroundColor: colors,
+                borderColor: "#fff",
+                borderWidth: 2
+              }]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              cutout: "55%",
+              plugins: {
+                legend: {
+                  position: "right",
+                  labels: { boxWidth: 12, font: { size: 11 } }
+                },
+                tooltip: {
+                  callbacks: {
+                    label: function (ctx2) {
+                      var i = ctx2.dataIndex;
+                      var r = rows[i] || {};
+                      var totalQty = values.reduce(function (a, b) { return a + b; }, 0) || 1;
+                      var pct = (Number(r.sum_qty || 0) / totalQty * 100).toFixed(1);
+                      var qtyTxt = "Кол-во: " + Number(r.sum_qty || 0).toLocaleString("ru-RU") + " (" + pct + "%)";
+                      var sumTxt = "Сумма: " + Number(r.sum_amount || 0).toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " ₽";
+                      var posTxt = "Отгрузок: " + Number(r.positions || 0).toLocaleString("ru-RU");
+                      return [qtyTxt, sumTxt, posTxt];
+                    }
+                  }
+                }
+              }
+            }
+          });
+        }).catch(function (e) {
+          canvas.style.display = "none";
+          emptyEl.classList.remove("d-none");
+          emptyEl.textContent = "График недоступен: " + (e && e.message ? e.message : e);
+        });
+      }
+
+      // Привязка переключателей графиков (один раз при инициализации).
+      (function bindChartTabs() {
+        document.querySelectorAll("[data-dg-monthly-mode]").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            document.querySelectorAll("[data-dg-monthly-mode]").forEach(function (b) { b.classList.remove("active"); });
+            btn.classList.add("active");
+            monthlyMode = btn.getAttribute("data-dg-monthly-mode") || "qty";
+            if (lastSales) renderMonthlyChart(lastSales.monthly);
+          });
+        });
+        document.querySelectorAll("[data-dg-breakdown]").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            document.querySelectorAll("[data-dg-breakdown]").forEach(function (b) { b.classList.remove("active"); });
+            btn.classList.add("active");
+            breakdownMode = btn.getAttribute("data-dg-breakdown") || "agent";
+            if (lastSales) renderBreakdownChart(lastSales);
+          });
+        });
+      })();
+
+      function renderSalesPeriodSummary(sales) {
+        if (!salesPeriodSummary) return;
+        salesPeriodSummary.innerHTML = "";
+        if (!sales) {
+          var empty = document.createElement("span");
+          empty.className = "text-muted";
+          empty.textContent = "—";
+          salesPeriodSummary.appendChild(empty);
+          return;
+        }
+        var sw = sales.sales_window;
+        var prelude = document.createElement("div");
+        prelude.className = "text-muted mb-2";
+        if (sw && sw.mode === "range" && sw.sales_from && sw.sales_to) {
+          prelude.textContent = "Календарный период: " + formatYmdRu(sw.sales_from) + " — " + formatYmdRu(sw.sales_to) + " (" + (sales.recent_days || "") + " дн.)";
+        } else {
+          prelude.textContent = "Скользящее окно: последние " + (sales.recent_days || 365) + " дн. от сегодня";
+        }
+        salesPeriodSummary.appendChild(prelude);
+
+        var days = sales.recent_days || 365;
+        var dp = sales.direct_period || { sum_qty: 0, sum_amount: 0, positions: 0 };
+        var line1 = document.createElement("div");
+        line1.className = "mb-1";
+        var s1 = document.createElement("strong");
+        s1.textContent = "Прямые по коду товара";
+        line1.appendChild(s1);
+        line1.appendChild(document.createTextNode(" (строка отгрузки с этим кодом): "));
+        line1.appendChild(document.createTextNode(fmtFloat(dp.sum_qty, 2) + " шт · "));
+        line1.appendChild(document.createTextNode(fmtMoney(dp.sum_amount, "RUB") + " · позиций: "));
+        line1.appendChild(document.createTextNode(fmtNum(dp.positions)));
+        salesPeriodSummary.appendChild(line1);
+        if (sales.includes_via_bundles && sales.bundles_period) {
+          var bp = sales.bundles_period;
+          var line2 = document.createElement("div");
+          line2.className = "mb-0";
+          var s2 = document.createElement("strong");
+          s2.textContent = "Эквивалент через комплекты";
+          line2.appendChild(s2);
+          var tail = sw && sw.mode === "range" && sw.sales_from && sw.sales_to
+            ? " за тот же календарный период: "
+            : (" (состав из МС, те же " + days + " дн.): ");
+          line2.appendChild(document.createTextNode(tail));
+          line2.appendChild(document.createTextNode(fmtFloat(bp.sum_qty, 2) + " шт · "));
+          line2.appendChild(document.createTextNode(fmtMoney(bp.sum_amount, "RUB") + " · позиций строк с комплектами: "));
+          line2.appendChild(document.createTextNode(fmtNum(bp.positions)));
+          salesPeriodSummary.appendChild(line2);
+        } else if (!sales.includes_via_bundles) {
+          var line3 = document.createElement("div");
+          line3.className = "text-muted mb-0";
+          line3.textContent = "Карточка комплекта: эквивалент через другие комплекты здесь не считается.";
+          salesPeriodSummary.appendChild(line3);
+        }
+      }
+
+      function renderViaBundles(sales) {
+        if (!viaBundlesWrap) return;
+        viaBundlesWrap.innerHTML = "";
+        if (salesNoteEl) {
+          salesNoteEl.textContent = sales && sales.note ? sales.note : "";
+          salesNoteEl.style.display = sales && sales.note ? "" : "none";
+        }
+        if (!sales) return;
+        if (!sales.includes_via_bundles) {
+          var p0 = document.createElement("p");
+          p0.className = "text-muted small mb-0";
+          p0.textContent = "Это карточка комплекта — эквивалент через другие комплекты не считается.";
+          viaBundlesWrap.appendChild(p0);
+          return;
+        }
+        var rows = Array.isArray(sales.via_bundles) ? sales.via_bundles : [];
+        if (!rows.length) {
+          var p1 = document.createElement("p");
+          p1.className = "text-muted small mb-0";
+          p1.textContent = "Нет продаж комплектов с этим компонентом за выбранный период (только проведённые отгрузки).";
+          viaBundlesWrap.appendChild(p1);
+          return;
+        }
+        var t = document.createElement("table");
+        t.className = "table table-sm table-striped dg-prod-mini";
+        t.innerHTML =
+          "<thead><tr>" +
+            "<th>Код комплекта</th>" +
+            "<th>Наименование</th>" +
+            "<th class=\"text-center\">Архив</th>" +
+            "<th class=\"text-end\">Позиций</th>" +
+            "<th class=\"text-end\">Продано комплектов</th>" +
+            "<th class=\"text-end\">Экв. шт. товара</th>" +
+            "<th class=\"text-end\">Сумма ₽ (доля)</th>" +
+          "</tr></thead>";
+        var tb = document.createElement("tbody");
+        rows.forEach(function (r) {
+          var tr = document.createElement("tr");
+          if (Number(r.is_archived) === 1) tr.className = "table-secondary";
+          var c0 = document.createElement("td");
+          var a = document.createElement("a");
+          a.href = "/product.html?code=" + encodeURIComponent(r.bundle_code || "");
+          a.target = "_blank"; a.rel = "noopener";
+          a.className = "dg-prod-link";
+          a.textContent = r.bundle_code || "—";
+          c0.appendChild(a);
+          var c1 = document.createElement("td"); c1.textContent = (r.bundle_name || "").slice(0, 120);
+          var c2 = document.createElement("td"); c2.className = "text-center";
+          if (Number(r.is_archived) === 1) {
+            var b = document.createElement("span"); b.className = "badge bg-secondary"; b.textContent = "Да";
+            c2.appendChild(b);
+          } else c2.textContent = "—";
+          var c3 = document.createElement("td"); c3.className = "text-end"; c3.textContent = fmtNum(r.positions);
+          var c4 = document.createElement("td"); c4.className = "text-end"; c4.textContent = fmtFloat(r.sold_bundles, 2);
+          var c5 = document.createElement("td"); c5.className = "text-end"; c5.textContent = fmtFloat(r.equivalent_qty, 2);
+          var c6 = document.createElement("td"); c6.className = "text-end"; c6.textContent = fmtMoney(r.equivalent_amount, "RUB");
+          tr.appendChild(c0); tr.appendChild(c1); tr.appendChild(c2); tr.appendChild(c3); tr.appendChild(c4); tr.appendChild(c5); tr.appendChild(c6);
+          tb.appendChild(tr);
+        });
+        t.appendChild(tb);
+        viaBundlesWrap.appendChild(t);
+      }
+
       function renderSales(sales, code) {
+        lastSales = sales || null;
+        syncRecentMetaFromSales(lastSales);
+        syncSalesDatesFromResponse(sales);
+        renderSalesPeriodSummary(sales);
         salesAggs.innerHTML = "";
+        if (salesRecentWrap) salesRecentWrap.innerHTML = "";
         var aggs = sales && sales.aggregates ? sales.aggregates : {};
         var keys = ["d3", "d5", "d7", "d15", "d30", "d60", "d90", "d180", "d365"];
         keys.forEach(function (k) {
@@ -301,51 +1110,42 @@
           var qty = document.createElement("div"); qty.className = "dg-sales-qty"; qty.textContent = fmtFloat(a.sum_qty, 2);
           var meta = document.createElement("div"); meta.className = "dg-sales-meta";
           meta.textContent = "ср/день: " + fmtFloat(a.avg_per_day, 3) + " · " + fmtMoney(a.sum_amount, "RUB");
+          if (sales && sales.includes_via_bundles) {
+            meta.title = "Включает прямые продажи товара и эквивалент через проданные комплекты (состав из МС).";
+          }
           card.appendChild(win); card.appendChild(qty); card.appendChild(meta);
           salesAggs.appendChild(card);
         });
 
-        salesRecentWrap.innerHTML = "";
-        var rows = sales && Array.isArray(sales.recent) ? sales.recent : [];
-        if (!rows.length) {
-          var empty = document.createElement("div");
-          empty.className = "dg-prod-empty";
-          empty.textContent = "Нет отгрузок за выбранный период (" + (sales && sales.recent_days ? sales.recent_days : 365) + " дн.).";
-          salesRecentWrap.appendChild(empty);
-          return;
-        }
-        var t = document.createElement("table");
-        t.className = "table table-sm table-striped dg-prod-mini";
-        t.innerHTML =
-          "<thead><tr>" +
-            "<th>Документ</th>" +
-            "<th>Дата</th>" +
-            "<th>Контрагент</th>" +
-            "<th>Склад</th>" +
-            "<th class=\"text-end\">Кол-во</th>" +
-            "<th class=\"text-end\">Цена</th>" +
-            "<th class=\"text-end\">Сумма</th>" +
-          "</tr></thead>";
-        var tb = document.createElement("tbody");
-        rows.forEach(function (r) {
-          var tr = document.createElement("tr");
-          if (!r.applicable) tr.style.color = "#9aa1ad";
-          var c1 = document.createElement("td"); c1.textContent = r.doc_name || "";
-          var c2 = document.createElement("td"); c2.textContent = fmtDate(r.moment);
-          var c3 = document.createElement("td"); c3.textContent = r.agent_name || "";
-          var c4 = document.createElement("td"); c4.textContent = r.store_name || "";
-          var c5 = document.createElement("td"); c5.className = "text-end"; c5.textContent = fmtFloat(r.quantity, 2);
-          var c6 = document.createElement("td"); c6.className = "text-end"; c6.textContent = fmtMoney(r.price, "RUB");
-          var c7 = document.createElement("td"); c7.className = "text-end"; c7.textContent = fmtMoney(r.sum, "RUB");
-          tr.appendChild(c1); tr.appendChild(c2); tr.appendChild(c3); tr.appendChild(c4); tr.appendChild(c5); tr.appendChild(c6); tr.appendChild(c7);
-          tb.appendChild(tr);
-        });
-        t.appendChild(tb);
-        salesRecentWrap.appendChild(t);
+        renderViaBundles(sales);
+        renderRecentShipmentsSection(sales, code);
 
         if (salesLink && code) {
           salesLink.href = "/ms-sales.html?search=" + encodeURIComponent(code);
         }
+
+        var mh = document.getElementById("dg-prod-monthly-hint");
+        if (mh) {
+          if (sales && sales.monthly) {
+            var sw2 = sales.sales_window;
+            var lbl = sw2 && sw2.mode === "range" && sw2.sales_from && sw2.sales_to
+              ? (formatYmdRu(sw2.sales_from) + " — " + formatYmdRu(sw2.sales_to))
+              : ("последние " + (sales.recent_days || 365) + " дн.");
+            mh.textContent = lbl + " · " + sales.monthly.length + " мес. · только проведённые";
+          } else {
+            mh.textContent = "";
+          }
+        }
+
+        renderMonthlyChart(sales && sales.monthly);
+        renderBreakdownChart(sales);
+      }
+
+      function zeroSourceLabel(src) {
+        var s = String(src || "manual");
+        if (s === "moysklad_sync") return "После синка МС";
+        if (s === "auto") return "Авто (устар.)";
+        return s;
       }
 
       function renderZeroLog(rows) {
@@ -353,7 +1153,8 @@
         if (!rows || !rows.length) {
           var d = document.createElement("div");
           d.className = "dg-zero-empty";
-          d.textContent = "За выбранный период нет зафиксированных нулевых остатков. Нажмите «Зафиксировать нулевой остаток сейчас», чтобы добавить запись на сегодня.";
+          d.textContent =
+            "За выбранный период нет записей. После синка МойСклад сюда попадут нули по складским позициям (не архив). Либо нажмите «Зафиксировать нулевой остаток сейчас».";
           zeroTableWrap.appendChild(d);
           return;
         }
@@ -375,13 +1176,58 @@
           c2.textContent = r.store_name ? r.store_name : (r.store_uuid === "__total__" ? "Все склады (общая фиксация)" : r.store_uuid);
           var c3 = document.createElement("td"); c3.className = "text-end";
           c3.textContent = r.total_stock == null ? "—" : fmtFloat(r.total_stock, 3);
-          var c4 = document.createElement("td"); c4.textContent = r.source || "manual";
+          var c4 = document.createElement("td"); c4.textContent = zeroSourceLabel(r.source);
           var c5 = document.createElement("td"); c5.textContent = fmtDate(r.created_at);
           tr.appendChild(c1); tr.appendChild(c2); tr.appendChild(c3); tr.appendChild(c4); tr.appendChild(c5);
           tb.appendChild(tr);
         });
         t.appendChild(tb);
         zeroTableWrap.appendChild(t);
+      }
+
+      function renderZeroWinImport(win) {
+        if (!zeroWinImportWrap) return;
+        zeroWinImportWrap.innerHTML = "";
+        if (!win || !win.reference_date) {
+          var empty = document.createElement("p");
+          empty.className = "text-muted small mb-0";
+          empty.textContent = "Импортированной сводки по окнам для этого кода пока нет.";
+          zeroWinImportWrap.appendChild(empty);
+          return;
+        }
+        var t = document.createElement("table");
+        t.className = "table table-sm table-bordered mb-0 dg-prod-mini";
+        t.innerHTML =
+          "<thead><tr>" +
+            "<th>Дата среза</th>" +
+            "<th class=\"text-end\">30 дн.</th>" +
+            "<th class=\"text-end\">60 дн.</th>" +
+            "<th class=\"text-end\">90 дн.</th>" +
+            "<th class=\"text-end\">180 дн.</th>" +
+            "<th class=\"text-end\">365 дн.</th>" +
+            "<th>Комментарий импорта</th>" +
+          "</tr></thead>";
+        var tb = document.createElement("tbody");
+        var tr = document.createElement("tr");
+        var c0 = document.createElement("td");
+        c0.textContent = formatYmdRu(win.reference_date);
+        var c1 = document.createElement("td"); c1.className = "text-end"; c1.textContent = String(win.absent_last_30 != null ? win.absent_last_30 : "—");
+        var c2 = document.createElement("td"); c2.className = "text-end"; c2.textContent = String(win.absent_last_60 != null ? win.absent_last_60 : "—");
+        var c3 = document.createElement("td"); c3.className = "text-end"; c3.textContent = String(win.absent_last_90 != null ? win.absent_last_90 : "—");
+        var c4 = document.createElement("td"); c4.className = "text-end"; c4.textContent = String(win.absent_last_180 != null ? win.absent_last_180 : "—");
+        var c5 = document.createElement("td"); c5.className = "text-end"; c5.textContent = String(win.absent_last_365 != null ? win.absent_last_365 : "—");
+        var c6 = document.createElement("td");
+        c6.textContent = win.note ? String(win.note) : "—";
+        tr.appendChild(c0); tr.appendChild(c1); tr.appendChild(c2); tr.appendChild(c3); tr.appendChild(c4); tr.appendChild(c5); tr.appendChild(c6);
+        tb.appendChild(tr);
+        t.appendChild(tb);
+        zeroWinImportWrap.appendChild(t);
+        if (win.created_at) {
+          var meta = document.createElement("p");
+          meta.className = "text-muted small mt-2 mb-0";
+          meta.textContent = "Запись импорта создана/обновлена: " + fmtDate(win.created_at);
+          zeroWinImportWrap.appendChild(meta);
+        }
       }
 
       function renderAll(payload) {
@@ -391,6 +1237,7 @@
         renderStock(payload.stock);
         renderOverride(payload.override);
         renderSales(payload.sales, payload.code);
+        renderZeroWinImport(payload.zero_stock_windows_import);
         renderZeroLog(payload.zero_stock ? payload.zero_stock.rows : []);
       }
 
@@ -401,13 +1248,22 @@
           return;
         }
         setStatus("loading", "Загрузка карточки товара…");
+        recentShipState = { page: 1, pageSize: 100, via: "all", bundleCode: "" };
         var zd = Number(zeroDaysSel && zeroDaysSel.value || 90);
-        fetch("/api/product/" + encodeURIComponent(code) + "?zero_days=" + zd, { credentials: "same-origin" })
+        var salesQ = buildProductSalesQuery();
+        if (!salesQ) salesQ = "&recent_days=365";
+        fetch("/api/product/" + encodeURIComponent(code) + "?zero_days=" + zd + salesQ + recentSalesQuerySuffix(), { credentials: "same-origin" })
           .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
           .then(function (x) {
             if (!x.ok || !x.j || x.j.success === false) {
               throw new Error((x.j && x.j.error) || ("HTTP " + (x.ok ? "?" : "ошибка")));
             }
+            try {
+              var swx = x.j.sales && x.j.sales.sales_window;
+              if (swx && swx.mode === "range" && swx.sales_from && swx.sales_to) {
+                localStorage.setItem("datagon_product_sales_range_v1", JSON.stringify({ from: swx.sales_from, to: swx.sales_to }));
+              }
+            } catch (e) {}
             setStatus(null);
             renderAll(x.j);
           })
@@ -469,6 +1325,15 @@
       if (zeroFixBtn) zeroFixBtn.addEventListener("click", fixZeroNow);
       if (zeroDaysSel) zeroDaysSel.addEventListener("change", reloadZeroLog);
 
+      document.querySelectorAll("[data-dg-sales-preset]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var d = btn.getAttribute("data-dg-sales-preset");
+          setSalesRangeLastDays(d);
+          loadCard();
+        });
+      });
+      if (salesApplyBtn) salesApplyBtn.addEventListener("click", function () { loadCard(); });
+      initSalesDateInputs();
       loadCard();
     })();
   </script>

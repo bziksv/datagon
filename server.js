@@ -7,6 +7,7 @@ const fsSync = require('fs');
 const bcrypt = require('bcryptjs');
 const os = require('os');
 const config = require('./config');
+const { parseAutoSyncWeekdaysMon17 } = require('./lib/datagonAutoSyncRegistry');
 
 const app = express();
 const PORT = config.port || 3000;
@@ -113,7 +114,15 @@ let appSettings = {
      *  длительность». См. routes/msSales.js → runDemandSync. */
     auto_sync_mssales_enabled: 0,
     auto_sync_mssales_time: '07:30',
-    auto_sync_mssales_days: 90
+    auto_sync_mssales_days: 90,
+    /** Пн=1…Вс=7, CSV; пусто — каждый день (как раньше без поля). */
+    auto_sync_mssales_weekdays: '',
+    /** Отдельное расписание: полный синк demand (`fresh: true`), своё окно и дни недели. */
+    auto_sync_mssales_full_enabled: 0,
+    auto_sync_mssales_full_time: '03:15',
+    auto_sync_mssales_full_days: 730,
+    /** По умолчанию только вс; при включении задайте удобные дни. */
+    auto_sync_mssales_full_weekdays: '7'
 };
 let syncState = { active: false, processed: 0, total: 0, message: '' };
 const moyskladRouterFactory = require('./routes/moysklad');
@@ -295,7 +304,12 @@ async function initDB() {
             ['auto_sync_dimensions_time','21:00'],
             ['auto_sync_mssales_enabled','0'],
             ['auto_sync_mssales_time','07:30'],
-            ['auto_sync_mssales_days','90']
+            ['auto_sync_mssales_days','90'],
+            ['auto_sync_mssales_weekdays',''],
+            ['auto_sync_mssales_full_enabled','0'],
+            ['auto_sync_mssales_full_time','03:15'],
+            ['auto_sync_mssales_full_days','730'],
+            ['auto_sync_mssales_full_weekdays','7']
         ];
         for (const [k, v] of defaults) await db.query('INSERT IGNORE INTO app_settings (setting_key, setting_value) VALUES (?, ?)', [k, v]);
 
@@ -304,6 +318,7 @@ async function initDB() {
             if (appSettings.hasOwnProperty(r.setting_key)) {
                 const asInt =
                     !r.setting_key.endsWith('_time') &&
+                    !r.setting_key.endsWith('_weekdays') &&
                     (
                         r.setting_key.includes('limit') ||
                         r.setting_key.includes('size') ||
@@ -615,7 +630,7 @@ async function initDB() {
     }
 }
 
-app.use(bodyParser.json({ limit: '10mb' }));
+app.use(bodyParser.json({ limit: '32mb' }));
 
 // Подключение роутов (ТОЛЬКО ПОСЛЕ инициализации БД внутри initDB, но мы вызовем их позже)
 // Чтобы избежать ошибки require, мы подключим их внутри .then()
@@ -783,10 +798,16 @@ async function cleanupDimensionsLogByRetentionDays(days) {
     }
 }
 
+function getMoscowWeekdayMon1Sun7() {
+    const wk = new Intl.DateTimeFormat('en-US', { timeZone: 'Europe/Moscow', weekday: 'long' }).format(new Date());
+    const map = { Monday: 1, Tuesday: 2, Wednesday: 3, Thursday: 4, Friday: 5, Saturday: 6, Sunday: 7 };
+    return map[wk] || 1;
+}
+
 function getMoscowNowParts() {
     const fmtDate = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Moscow', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
     const fmtTime = new Intl.DateTimeFormat('ru-RU', { timeZone: 'Europe/Moscow', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date());
-    return { date: fmtDate, time: fmtTime };
+    return { date: fmtDate, time: fmtTime, weekdayMon1Sun7: getMoscowWeekdayMon1Sun7() };
 }
 
 function getRuntimeMetrics() {
@@ -1303,6 +1324,53 @@ async function processAutoSyncQueue() {
                         'routes/dimensions.js не экспортирует runScheduledSyncMs (обновите код)'
                     );
                 }
+            } else if (task === 'mssales_full') {
+                console.log('[AUTO SYNC] Queue start: mssales_full');
+                await startAutoSyncRun('mssales_full', triggerType);
+                const daysFull = Math.max(1, Math.min(365 * 5, Number(appSettings.auto_sync_mssales_full_days || 730)));
+                let startResFull = { started: false };
+                if (typeof msSalesModule.triggerSync === 'function') {
+                    try {
+                        startResFull = await msSalesModule.triggerSync(db, { days: daysFull, fresh: true });
+                    } catch (e) {
+                        startResFull = { started: false, error: e && e.message ? e.message : String(e) };
+                    }
+                }
+                if (startResFull && startResFull.started === false && startResFull.reason !== 'already_running') {
+                    await finishAutoSyncRun('mssales_full', 'failed',
+                        startResFull.error || startResFull.reason || 'Не удалось запустить полный синк продаж МС');
+                    console.log('[AUTO SYNC] Queue done: mssales_full — failed (start)');
+                } else {
+                    const doneFull = await waitUntil(() => {
+                        const s = typeof msSalesModule.getSyncState === 'function'
+                            ? msSalesModule.getSyncState()
+                            : { active: false };
+                        return !s.active;
+                    }, 12 * 60 * 60 * 1000, 1000);
+                    const finalStateFull = typeof msSalesModule.getSyncState === 'function'
+                        ? msSalesModule.getSyncState()
+                        : { active: false };
+                    let statusFull = 'failed';
+                    let messageFull;
+                    if (!doneFull) {
+                        messageFull = 'Таймаут ожидания (12 ч)';
+                    } else if (finalStateFull.last_error) {
+                        messageFull = ('Ошибка: ' + finalStateFull.last_error).slice(0, 480);
+                    } else {
+                        statusFull = 'completed';
+                        messageFull = (
+                            'Полный (fresh), окно ' + daysFull + ' дн.: отгрузок ' + (finalStateFull.fetched_demands || 0) +
+                            '/' + (finalStateFull.total_demands || 0) +
+                            ', позиций ' + (finalStateFull.saved_positions || 0) +
+                            ' (резолв ' + (finalStateFull.resolved_positions || 0) +
+                            ', не привязано ' + (finalStateFull.unresolved_positions || 0) +
+                            ', помечено удалёнными ' + (finalStateFull.deleted_demands || 0) +
+                            ', воскрешено ' + (finalStateFull.restored_demands || 0) + ')'
+                        ).slice(0, 480);
+                    }
+                    await finishAutoSyncRun('mssales_full', statusFull, messageFull);
+                    console.log('[AUTO SYNC] Queue done: mssales_full — ' + statusFull + ' (' + messageFull + ')');
+                }
             } else if (task === 'mssales') {
                 console.log('[AUTO SYNC] Queue start: mssales');
                 await startAutoSyncRun('mssales', triggerType);
@@ -1378,6 +1446,9 @@ async function processAutoSyncQueue() {
         if (autoSyncRunIds.has('mssales')) {
             await finishAutoSyncRun('mssales', 'failed', e.message || 'Ошибка очереди');
         }
+        if (autoSyncRunIds.has('mssales_full')) {
+            await finishAutoSyncRun('mssales_full', 'failed', e.message || 'Ошибка очереди');
+        }
     } finally {
         autoSyncRunnerActive = false;
     }
@@ -1421,12 +1492,20 @@ function startAutoSyncScheduler() {
                 {
                     type: 'mssales',
                     enabled: Number(appSettings.auto_sync_mssales_enabled || 0) === 1,
-                    time: String(appSettings.auto_sync_mssales_time || '07:30').slice(0, 5)
+                    time: String(appSettings.auto_sync_mssales_time || '07:30').slice(0, 5),
+                    weekdays: parseAutoSyncWeekdaysMon17(appSettings.auto_sync_mssales_weekdays)
+                },
+                {
+                    type: 'mssales_full',
+                    enabled: Number(appSettings.auto_sync_mssales_full_enabled || 0) === 1,
+                    time: String(appSettings.auto_sync_mssales_full_time || '03:15').slice(0, 5),
+                    weekdays: parseAutoSyncWeekdaysMon17(appSettings.auto_sync_mssales_full_weekdays)
                 }
             ];
             for (const t of tasks) {
                 if (!t.enabled) continue;
                 if (now.time !== t.time) continue;
+                if (t.weekdays && !t.weekdays.has(now.weekdayMon1Sun7)) continue;
                 const runKey = `${now.date} ${t.time}`;
                 const last = autoSyncLastRunByTask.get(t.type);
                 if (last === runKey) continue;
@@ -1675,7 +1754,12 @@ initDB().then(() => {
                     dimensions_time: String(appSettings.auto_sync_dimensions_time || '21:00'),
                     mssales_enabled: Number(appSettings.auto_sync_mssales_enabled || 0) === 1,
                     mssales_time: String(appSettings.auto_sync_mssales_time || '07:30'),
-                    mssales_days: Number(appSettings.auto_sync_mssales_days || 90)
+                    mssales_days: Number(appSettings.auto_sync_mssales_days || 90),
+                    mssales_weekdays: String(appSettings.auto_sync_mssales_weekdays || ''),
+                    mssales_full_enabled: Number(appSettings.auto_sync_mssales_full_enabled || 0) === 1,
+                    mssales_full_time: String(appSettings.auto_sync_mssales_full_time || '03:15'),
+                    mssales_full_days: Number(appSettings.auto_sync_mssales_full_days || 730),
+                    mssales_full_weekdays: String(appSettings.auto_sync_mssales_full_weekdays || '7')
                 }
             };
             const discovery = (typeof pagesRouter?.getDiscoveryJobsSnapshot === 'function')

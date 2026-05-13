@@ -6,18 +6,31 @@
  * Контракт:
  *   • Источник истины для базовых полей — `ms_export` (синк МС).
  *   • Полная карточка (атрибуты, цены, барcодes, packagings) — `ms_entity_details.payload_json`.
- *   • Продажи — `ms_demand_position` + `ms_demand` (берём по `p.ms_export_code`).
+ *   • Продажи — `ms_demand_position` + `ms_demand` (по `p.ms_export_code`) **плюс**
+ *     эквивалент через комплекты: кэш `dg_bundle_components` (состав bundle из
+ *     `ms_entity_details.payload_json.components.rows`), позиции отгрузок по
+ *     `bundle_code` умножаются на `qty_per_bundle` компонента; сумма распределяется
+ *     пропорционально доле компонента в составе (`qty_per_bundle / SUM(qty)` по строкам комплекта).
+ *     Окно дат: query `sales_from`+`sales_to` (**календарные дни** по DATE(d.moment), без времени суток в query) или скользящее `recent_days`.
  *   • Override-поля (для блока «Закупки»: min_stock_dg, multiplicity, и т.д.) —
  *     из `dg_purchase_overrides`. Совместно с `routes/purchase.js`.
  *   • Лог «нулевых остатков по складам» — отдельная таблица `dg_product_zero_stock_log`
  *     (см. ensureZeroStockSchema). Пока поддерживается общий лог (`store_uuid='__total__'`),
  *     место под пo-складскую разбивку зарезервировано (после расширения синка
  *     `report/stock/bystore` сможем писать `store_uuid` реальный).
+ *   • Нулевые остатки: пакетная фиксация за **сегодня** после успешного синка МС в `ms_export`
+ *     (`syncZeroStockLogAfterMoyskladExport` из `routes/moysklad.js`) — только `stock_position='Да'`,
+ *     не архив (`is_archived=0`), `stock≤0`; ручная запись за тот же день (`source=manual`) не перезаписывается.
  *
  * Эндпоинты:
  *   GET    /api/product/:code                  — агрегатная карточка.
+ *   GET    /api/product/:code/recent-shipments — пагинация «Последних отгрузок» (тот же период, что sales_*).
  *   GET    /api/product/:code/zero-stock-log   — лог нулевых остатков.
  *   POST   /api/product/:code/zero-stock-log   — ручная фиксация (если stock<=0).
+ *   POST   /api/product/zero-stock-windows-import — импорт сводки по окнам 30/60/90/180/365 (JSON или csv).
+ *
+ * Историческая **сводка по окнам** (как в Excel) — `dg_product_zero_stock_window_import`; не подменяет
+ * построчный `dg_product_zero_stock_log` (там нужны конкретные даты).
  *
  * См. правила:
  *   .cursor/rules/datagon-list-page-baseline-moysklad.mdc (таблица карточки — не списочная)
@@ -27,7 +40,13 @@
 
 const express = require('express');
 
+/** Не пересобирать `dg_bundle_components` для одного component_code чаще (GET карточки + серия /recent-shipments). */
+const bundleComponentsLastBuiltMs = new Map();
+const BUNDLE_COMPONENTS_REBUILD_COOLDOWN_MS = 90_000;
+
 let zeroStockSchemaReady = false;
+let zeroWinImportSchemaReady = false;
+let bundleComponentsSchemaReady = false;
 
 /** Окна для агрегатов продаж. Совмещены с «суточными» колонками в /purchase.html. */
 const SALES_WINDOWS = [3, 5, 7, 15, 30, 60, 90, 180, 365];
@@ -50,6 +69,316 @@ async function ensureZeroStockSchema(db) {
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     `);
     zeroStockSchemaReady = true;
+}
+
+async function ensureZeroStockWindowImportSchema(db) {
+    if (zeroWinImportSchemaReady) return;
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS dg_product_zero_stock_window_import (
+            id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            reference_date DATE NOT NULL,
+            code VARCHAR(255) NOT NULL,
+            absent_last_30 INT NOT NULL DEFAULT 0,
+            absent_last_60 INT NOT NULL DEFAULT 0,
+            absent_last_90 INT NOT NULL DEFAULT 0,
+            absent_last_180 INT NOT NULL DEFAULT 0,
+            absent_last_365 INT NOT NULL DEFAULT 0,
+            note VARCHAR(512) NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY uq_zero_win_ref_code (reference_date, code),
+            INDEX idx_zero_win_code_ref (code, reference_date)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `);
+    zeroWinImportSchemaReady = true;
+}
+
+function clampIntWindowCount(v) {
+    const n = Math.floor(Number(String(v ?? '').replace(',', '.')));
+    if (!Number.isFinite(n) || n < 0) return 0;
+    return Math.min(366, n);
+}
+
+async function ensureBundleComponentsSchema(db) {
+    if (bundleComponentsSchemaReady) return;
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS dg_bundle_components (
+            bundle_uuid VARCHAR(64) NOT NULL,
+            bundle_code VARCHAR(255) NOT NULL,
+            component_code VARCHAR(255) NOT NULL,
+            qty_per_bundle DECIMAL(15, 6) NOT NULL,
+            bundle_name VARCHAR(512) NULL DEFAULT NULL,
+            is_archived TINYINT(1) NOT NULL DEFAULT 0,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (bundle_uuid, component_code),
+            INDEX idx_dg_bc_component (component_code),
+            INDEX idx_dg_bc_bundle_code (bundle_code)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `);
+    bundleComponentsSchemaReady = true;
+}
+
+/** Только «безопасные» коды МС для LIKE-поиска по JSON (инъекция в шаблон невозможна). */
+function safeMsCodeForLike(code) {
+    const s = String(code || '').trim();
+    if (!/^[A-Za-z0-9_.-]+$/u.test(s)) return '';
+    return s;
+}
+
+/**
+ * Окно продаж для графиков / последних отгрузок / сводок:
+ * при валидной паре `sales_from` + `sales_to` (YYYY-MM-DD) — календарный диапазон (max 1825 дн.),
+ * иначе — скользящее `recent_days` от NOW (default 365).
+ */
+function parseProductSalesWindow(req) {
+    const fromQ = String(req.query.sales_from || '').trim();
+    const toQ = String(req.query.sales_to || '').trim();
+    const dateRe = /^\d{4}-\d{2}-\d{2}$/;
+    if (dateRe.test(fromQ) && dateRe.test(toQ)) {
+        const tFrom = Date.parse(`${fromQ}T00:00:00.000Z`);
+        const tTo = Date.parse(`${toQ}T00:00:00.000Z`);
+        if (Number.isFinite(tFrom) && Number.isFinite(tTo) && tFrom <= tTo) {
+            const spanDays = Math.floor((tTo - tFrom) / 86400000) + 1;
+            if (spanDays >= 1 && spanDays <= 1825) {
+                return {
+                    useRange: true,
+                    fromDateStr: fromQ,
+                    toDateStr: toQ,
+                    spanDays,
+                    daysRolling: null,
+                };
+            }
+        }
+    }
+    const daysRolling = Math.min(365 * 5, Math.max(1, parseInt(req.query.recent_days, 10) || 365));
+    return {
+        useRange: false,
+        fromDateStr: null,
+        toDateStr: null,
+        spanDays: daysRolling,
+        daysRolling,
+    };
+}
+
+function buildSalesMomentFilter(window) {
+    if (window.useRange) {
+        return {
+            clause: 'AND DATE(d.moment) >= ? AND DATE(d.moment) <= ?',
+            params: [window.fromDateStr, window.toDateStr],
+        };
+    }
+    return {
+        clause: 'AND d.moment >= (NOW() - INTERVAL ? DAY)',
+        params: [window.daysRolling],
+    };
+}
+
+/** Список YYYY-MM от fromYmd до toYmd включительно. */
+function enumerateCalendarMonths(fromYmd, toYmd) {
+    const out = [];
+    let y = Number(fromYmd.slice(0, 4));
+    let m = Number(fromYmd.slice(5, 7)) - 1;
+    const y1 = Number(toYmd.slice(0, 4));
+    const m1 = Number(toYmd.slice(5, 7)) - 1;
+    for (;;) {
+        out.push(`${y}-${String(m + 1).padStart(2, '0')}`);
+        if (y === y1 && m === m1) break;
+        m += 1;
+        if (m > 11) {
+            m = 0;
+            y += 1;
+        }
+    }
+    return out;
+}
+
+function enumerateRollingMonths(daysRolling) {
+    const months = Math.min(60, Math.max(1, Math.ceil(daysRolling / 30)));
+    const out = [];
+    const now = new Date();
+    for (let i = months - 1; i >= 0; i -= 1) {
+        const dt = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
+        out.push(`${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}`);
+    }
+    return out;
+}
+
+function isMsBundleExportRow(row) {
+    const t = String(row?.type || '').toLowerCase();
+    return t.includes('комплект');
+}
+
+/**
+ * Пересобирает кэш состава комплектов для одного component_code.
+ * Ищет кандидатов через LIKE по `payload_json`, затем точно парсит `components.rows`.
+ * Суммирует quantity по **всем** строкам с тем же кодом или артикулом компонента (в МС несколько строк на один товар).
+ */
+async function refreshBundleComponentsCache(db, componentCode) {
+    const safe = safeMsCodeForLike(componentCode);
+    if (!safe) return 0;
+    await ensureBundleComponentsSchema(db);
+    const likeCodeTight = `%"code":"${safe}"%`;
+    const likeCodeSpace = `%"code": "${safe}"%`;
+    const likeArticleTight = `%"article":"${safe}"%`;
+    const likeArticleSpace = `%"article": "${safe}"%`;
+    const [cands] = await db.query(
+        `SELECT m.uuid AS bundle_uuid, e.code AS bundle_code, e.name AS bundle_name,
+                CAST(COALESCE(e.is_archived, 0) AS UNSIGNED) AS is_archived, m.payload_json
+           FROM ms_entity_details m
+           INNER JOIN ms_export e ON e.uuid = m.uuid
+          WHERE m.kind = 'bundle' AND (
+                m.payload_json LIKE ? OR m.payload_json LIKE ?
+             OR m.payload_json LIKE ? OR m.payload_json LIKE ?
+              )`,
+        [likeCodeTight, likeCodeSpace, likeArticleTight, likeArticleSpace],
+    );
+    const upserts = [];
+    for (const row of cands) {
+        const payload = parsePayloadSafe(row.payload_json);
+        const crows = payload?.components?.rows;
+        if (!Array.isArray(crows)) continue;
+        let sumQ = 0;
+        for (const cr of crows) {
+            const a = cr?.assortment || {};
+            const code = String(a.code || '').trim();
+            const article = String(a.article || '').trim();
+            if (code !== safe && article !== safe) continue;
+            const q = Number(cr.quantity);
+            if (Number.isFinite(q) && q > 0) sumQ += q;
+        }
+        if (sumQ <= 0) continue;
+        upserts.push({
+            bundle_uuid: String(row.bundle_uuid),
+            bundle_code: String(row.bundle_code || ''),
+            component_code: safe,
+            qty_per_bundle: sumQ,
+            bundle_name: row.bundle_name ? String(row.bundle_name).slice(0, 500) : '',
+            is_archived: Number(row.is_archived || 0) ? 1 : 0,
+        });
+    }
+    await db.query('DELETE FROM dg_bundle_components WHERE component_code = ?', [safe]);
+    if (!upserts.length) return 0;
+    const CHUNK = 40;
+    for (let i = 0; i < upserts.length; i += CHUNK) {
+        const chunk = upserts.slice(i, i + CHUNK);
+        const placeholders = chunk.map(() => '(?, ?, ?, ?, ?, ?)').join(', ');
+        const flat = [];
+        for (const u of chunk) {
+            flat.push(u.bundle_uuid, u.bundle_code, u.component_code, u.qty_per_bundle, u.bundle_name, u.is_archived);
+        }
+        await db.query(
+            `INSERT INTO dg_bundle_components
+                (bundle_uuid, bundle_code, component_code, qty_per_bundle, bundle_name, is_archived)
+             VALUES ${placeholders}`,
+            flat,
+        );
+    }
+    return upserts.length;
+}
+
+async function ensureBundleComponentsForProduct(db, componentCode, isBundleProduct) {
+    if (isBundleProduct) return;
+    const safe = safeMsCodeForLike(componentCode);
+    if (!safe) return;
+    await ensureBundleComponentsSchema(db);
+    const now = Date.now();
+    if (bundleComponentsLastBuiltMs.has(safe)) {
+        const last = bundleComponentsLastBuiltMs.get(safe);
+        if (now - last < BUNDLE_COMPONENTS_REBUILD_COOLDOWN_MS) return;
+    }
+    await refreshBundleComponentsCache(db, safe);
+    bundleComponentsLastBuiltMs.set(safe, now);
+}
+
+async function loadViaBundlesDetail(db, componentCode, window, includeViaBundles) {
+    if (!includeViaBundles) return [];
+    const safe = safeMsCodeForLike(componentCode);
+    if (!safe) return [];
+    const mf = buildSalesMomentFilter(window);
+    const [rows] = await db.query(
+        `SELECT bc.bundle_code,
+                MAX(bc.bundle_name) AS bundle_name,
+                MAX(bc.is_archived) AS is_archived,
+                COUNT(*) AS positions,
+                COALESCE(SUM(p.quantity), 0) AS sold_bundles,
+                COALESCE(SUM(p.quantity * bc.qty_per_bundle), 0) AS equivalent_qty,
+                COALESCE(SUM(p.sum_minor * (bc.qty_per_bundle / NULLIF(tot.qty_sum, 0))), 0) / 100 AS equivalent_amount
+           FROM ms_demand_position p
+           INNER JOIN ms_demand d ON d.uuid = p.demand_uuid
+           INNER JOIN dg_bundle_components bc ON bc.bundle_code = p.ms_export_code AND bc.component_code = ?
+           INNER JOIN (
+                SELECT bundle_uuid, SUM(qty_per_bundle) AS qty_sum
+                  FROM dg_bundle_components
+                 GROUP BY bundle_uuid
+               ) tot ON tot.bundle_uuid = bc.bundle_uuid
+          WHERE d.applicable = 1
+            ${mf.clause}
+          GROUP BY bc.bundle_code
+          ORDER BY equivalent_qty DESC, equivalent_amount DESC`,
+        [safe, ...mf.params],
+    );
+    return rows.map((r) => ({
+        bundle_code: String(r.bundle_code || ''),
+        bundle_name: r.bundle_name ? String(r.bundle_name) : '',
+        is_archived: Number(r.is_archived || 0),
+        positions: Number(r.positions || 0),
+        sold_bundles: Number(r.sold_bundles || 0),
+        equivalent_qty: Number(r.equivalent_qty || 0),
+        equivalent_amount: Number(r.equivalent_amount || 0),
+    }));
+}
+
+/** Прямые продажи по коду товара в позиции отгрузки за окно `window` (только проведённые документы). */
+async function loadDirectSalesPeriod(db, code, window) {
+    const mf = buildSalesMomentFilter(window);
+    const [rows] = await db.query(
+        `SELECT COALESCE(SUM(p.quantity), 0) AS sum_qty,
+                COALESCE(SUM(p.sum_minor), 0) AS sum_amount_minor,
+                COUNT(*) AS positions
+           FROM ms_demand_position p
+           INNER JOIN ms_demand d ON d.uuid = p.demand_uuid
+          WHERE p.ms_export_code = ?
+            AND d.applicable = 1
+            ${mf.clause}`,
+        [code, ...mf.params],
+    );
+    const r = rows && rows[0] ? rows[0] : { sum_qty: 0, sum_amount_minor: 0, positions: 0 };
+    return {
+        sum_qty: Number(r.sum_qty || 0),
+        sum_amount: Number(r.sum_amount_minor || 0) / 100,
+        positions: Number(r.positions || 0),
+    };
+}
+
+/** Эквивалент компонента через проданные комплекты за окно `window` (только проведённые). */
+async function loadBundlesEquivalentPeriod(db, componentCode, window, includeViaBundles) {
+    if (!includeViaBundles) return null;
+    const safe = safeMsCodeForLike(componentCode);
+    if (!safe) {
+        return { sum_qty: 0, sum_amount: 0, positions: 0 };
+    }
+    const mf = buildSalesMomentFilter(window);
+    const [rows] = await db.query(
+        `SELECT COALESCE(SUM(p.quantity * bc.qty_per_bundle), 0) AS sum_qty,
+                COALESCE(SUM(p.sum_minor * (bc.qty_per_bundle / NULLIF(tot.qty_sum, 0))), 0) AS sum_amount_minor,
+                COUNT(*) AS positions
+           FROM ms_demand_position p
+           INNER JOIN ms_demand d ON d.uuid = p.demand_uuid
+           INNER JOIN dg_bundle_components bc ON bc.bundle_code = p.ms_export_code AND bc.component_code = ?
+           INNER JOIN (
+                SELECT bundle_uuid, SUM(qty_per_bundle) AS qty_sum
+                  FROM dg_bundle_components
+                 GROUP BY bundle_uuid
+               ) tot ON tot.bundle_uuid = bc.bundle_uuid
+          WHERE d.applicable = 1
+            ${mf.clause}`,
+        [safe, ...mf.params],
+    );
+    const r = rows && rows[0] ? rows[0] : { sum_qty: 0, sum_amount_minor: 0, positions: 0 };
+    return {
+        sum_qty: Number(r.sum_qty || 0),
+        sum_amount: Number(r.sum_amount_minor || 0) / 100,
+        positions: Number(r.positions || 0),
+    };
 }
 
 function parsePayloadSafe(raw) {
@@ -172,10 +501,10 @@ function extractStock(msExportRow, payload) {
     };
 }
 
-async function loadSalesAggregates(db, code) {
+async function loadSalesAggregates(db, code, componentCode, includeViaBundles) {
     const out = {};
     for (const days of SALES_WINDOWS) {
-        const [rows] = await db.query(
+        const [dRows] = await db.query(
             `SELECT
                 COALESCE(SUM(p.quantity), 0) AS sum_qty,
                 COALESCE(SUM(p.sum_minor), 0) AS sum_amount_minor,
@@ -187,47 +516,383 @@ async function loadSalesAggregates(db, code) {
                AND d.moment >= (NOW() - INTERVAL ? DAY)`,
             [code, days],
         );
-        const r = rows && rows[0] ? rows[0] : { sum_qty: 0, sum_amount_minor: 0, positions: 0 };
+        const dr = dRows && dRows[0] ? dRows[0] : { sum_qty: 0, sum_amount_minor: 0, positions: 0 };
+        let sumQty = Number(dr.sum_qty || 0);
+        let sumAmtMinor = Number(dr.sum_amount_minor || 0);
+        let positions = Number(dr.positions || 0);
+
+        if (includeViaBundles) {
+            const safe = safeMsCodeForLike(componentCode);
+            if (safe) {
+                const [bRows] = await db.query(
+                    `SELECT
+                        COALESCE(SUM(p.quantity * bc.qty_per_bundle), 0) AS sum_qty,
+                        COALESCE(SUM(p.sum_minor * (bc.qty_per_bundle / NULLIF(tot.qty_sum, 0))), 0) AS sum_amount_minor,
+                        COUNT(*) AS positions
+                     FROM ms_demand_position p
+                     INNER JOIN ms_demand d ON d.uuid = p.demand_uuid
+                     INNER JOIN dg_bundle_components bc ON bc.bundle_code = p.ms_export_code AND bc.component_code = ?
+                     INNER JOIN (
+                            SELECT bundle_uuid, SUM(qty_per_bundle) AS qty_sum
+                              FROM dg_bundle_components
+                             GROUP BY bundle_uuid
+                           ) tot ON tot.bundle_uuid = bc.bundle_uuid
+                     WHERE d.applicable = 1
+                       AND d.moment >= (NOW() - INTERVAL ? DAY)`,
+                    [safe, days],
+                );
+                const br = bRows && bRows[0] ? bRows[0] : { sum_qty: 0, sum_amount_minor: 0, positions: 0 };
+                sumQty += Number(br.sum_qty || 0);
+                sumAmtMinor += Number(br.sum_amount_minor || 0);
+                positions += Number(br.positions || 0);
+            }
+        }
+
         out[`d${days}`] = {
             days,
-            sum_qty: Number(r.sum_qty || 0),
-            sum_amount: Number(r.sum_amount_minor || 0) / 100,
-            positions: Number(r.positions || 0),
-            avg_per_day: days > 0 ? Number(r.sum_qty || 0) / days : 0,
+            sum_qty: sumQty,
+            sum_amount: sumAmtMinor / 100,
+            positions,
+            avg_per_day: days > 0 ? sumQty / days : 0,
         };
     }
     return out;
 }
 
-async function loadRecentSales(db, code, limit, days) {
-    const lim = Math.min(500, Math.max(1, Number(limit) || 30));
-    const period = Math.min(365 * 5, Math.max(1, Number(days) || 365));
-    const [rows] = await db.query(
-        `SELECT d.uuid AS demand_uuid, d.doc_name, d.moment, d.applicable,
-                d.agent_name, d.store_name,
-                p.position_uuid, p.quantity, p.price_minor, p.sum_minor,
-                p.assortment_kind
+/**
+ * Помесячный ряд продаж за окно `window`.
+ * При календарном диапазоне — месяцы от `sales_from` до `sales_to`; иначе последние ceil(recent_days/30) мес. от текущей даты.
+ */
+async function loadMonthlySales(db, code, componentCode, includeViaBundles, window) {
+    const mf = buildSalesMomentFilter(window);
+    const [directRows] = await db.query(
+        `SELECT DATE_FORMAT(d.moment, '%Y-%m') AS ym,
+                COALESCE(SUM(p.quantity), 0) AS sum_qty,
+                COALESCE(SUM(p.sum_minor), 0) AS sum_amount_minor,
+                COUNT(*) AS positions
            FROM ms_demand_position p
            INNER JOIN ms_demand d ON d.uuid = p.demand_uuid
           WHERE p.ms_export_code = ?
-            AND d.moment >= (NOW() - INTERVAL ? DAY)
-          ORDER BY d.moment DESC
-          LIMIT ?`,
-        [code, period, lim],
+            AND d.applicable = 1
+            ${mf.clause}
+          GROUP BY ym
+          ORDER BY ym ASC`,
+        [code, ...mf.params],
     );
-    return rows.map((r) => ({
+
+    const map = new Map();
+    for (const r of directRows) {
+        map.set(String(r.ym), {
+            sum_qty: Number(r.sum_qty || 0),
+            sum_amount: Number(r.sum_amount_minor || 0) / 100,
+            positions: Number(r.positions || 0),
+        });
+    }
+
+    if (includeViaBundles) {
+        const safe = safeMsCodeForLike(componentCode);
+        if (safe) {
+            const [bRows] = await db.query(
+                `SELECT DATE_FORMAT(d.moment, '%Y-%m') AS ym,
+                        COALESCE(SUM(p.quantity * bc.qty_per_bundle), 0) AS sum_qty,
+                        COALESCE(SUM(p.sum_minor * (bc.qty_per_bundle / NULLIF(tot.qty_sum, 0))), 0) AS sum_amount_minor,
+                        COUNT(*) AS positions
+                   FROM ms_demand_position p
+                   INNER JOIN ms_demand d ON d.uuid = p.demand_uuid
+                   INNER JOIN dg_bundle_components bc ON bc.bundle_code = p.ms_export_code AND bc.component_code = ?
+                   INNER JOIN (
+                        SELECT bundle_uuid, SUM(qty_per_bundle) AS qty_sum
+                          FROM dg_bundle_components
+                         GROUP BY bundle_uuid
+                       ) tot ON tot.bundle_uuid = bc.bundle_uuid
+                  WHERE d.applicable = 1
+                    ${mf.clause}
+                  GROUP BY ym
+                  ORDER BY ym ASC`,
+                [safe, ...mf.params],
+            );
+            for (const r of bRows) {
+                const k = String(r.ym);
+                const cur = map.get(k) || { sum_qty: 0, sum_amount: 0, positions: 0 };
+                cur.sum_qty += Number(r.sum_qty || 0);
+                cur.sum_amount += Number(r.sum_amount_minor || 0) / 100;
+                cur.positions += Number(r.positions || 0);
+                map.set(k, cur);
+            }
+        }
+    }
+
+    const monthKeys = window.useRange
+        ? enumerateCalendarMonths(window.fromDateStr, window.toDateStr)
+        : enumerateRollingMonths(window.daysRolling);
+    return monthKeys.map((ym) => {
+        const v = map.get(ym) || { sum_qty: 0, sum_amount: 0, positions: 0 };
+        return { month: ym, ...v };
+    });
+}
+
+/**
+ * Распределение продаж по `groupCol` (`d.agent_name` | `d.store_name`) за окно.
+ * Топ N + «Прочие». Сумма sum_qty и sum_amount.
+ */
+async function loadSalesBreakdown(db, code, componentCode, includeViaBundles, window, groupCol, topN) {
+    const mf = buildSalesMomentFilter(window);
+    const safeCol = groupCol === 'd.store_name' ? 'd.store_name' : 'd.agent_name';
+
+    const mergeMap = new Map();
+
+    const [dirRows] = await db.query(
+        `SELECT COALESCE(NULLIF(${safeCol}, ''), '(не указано)') AS label,
+                COALESCE(SUM(p.quantity), 0) AS sum_qty,
+                COALESCE(SUM(p.sum_minor), 0) AS sum_amount_minor,
+                COUNT(*) AS positions
+           FROM ms_demand_position p
+           INNER JOIN ms_demand d ON d.uuid = p.demand_uuid
+          WHERE p.ms_export_code = ?
+            AND d.applicable = 1
+            ${mf.clause}
+          GROUP BY label
+          ORDER BY sum_qty DESC, sum_amount_minor DESC`,
+        [code, ...mf.params],
+    );
+    for (const r of dirRows) {
+        const label = String(r.label || '(не указано)');
+        mergeMap.set(label, {
+            label,
+            sum_qty: Number(r.sum_qty || 0),
+            sum_amount: Number(r.sum_amount_minor || 0) / 100,
+            positions: Number(r.positions || 0),
+        });
+    }
+
+    if (includeViaBundles) {
+        const safe = safeMsCodeForLike(componentCode);
+        if (safe) {
+            const [bRows] = await db.query(
+                `SELECT COALESCE(NULLIF(${safeCol}, ''), '(не указано)') AS label,
+                        COALESCE(SUM(p.quantity * bc.qty_per_bundle), 0) AS sum_qty,
+                        COALESCE(SUM(p.sum_minor * (bc.qty_per_bundle / NULLIF(tot.qty_sum, 0))), 0) AS sum_amount_minor,
+                        COUNT(*) AS positions
+                   FROM ms_demand_position p
+                   INNER JOIN ms_demand d ON d.uuid = p.demand_uuid
+                   INNER JOIN dg_bundle_components bc ON bc.bundle_code = p.ms_export_code AND bc.component_code = ?
+                   INNER JOIN (
+                        SELECT bundle_uuid, SUM(qty_per_bundle) AS qty_sum
+                          FROM dg_bundle_components
+                         GROUP BY bundle_uuid
+                       ) tot ON tot.bundle_uuid = bc.bundle_uuid
+                  WHERE d.applicable = 1
+                    ${mf.clause}
+                  GROUP BY label
+                  ORDER BY sum_qty DESC, sum_amount_minor DESC`,
+                [safe, ...mf.params],
+            );
+            for (const r of bRows) {
+                const label = String(r.label || '(не указано)');
+                const cur = mergeMap.get(label) || { label, sum_qty: 0, sum_amount: 0, positions: 0 };
+                cur.sum_qty += Number(r.sum_qty || 0);
+                cur.sum_amount += Number(r.sum_amount_minor || 0) / 100;
+                cur.positions += Number(r.positions || 0);
+                mergeMap.set(label, cur);
+            }
+        }
+    }
+
+    const merged = Array.from(mergeMap.values()).sort(
+        (a, b) => b.sum_qty - a.sum_qty || b.sum_amount - a.sum_amount || b.positions - a.positions,
+    );
+
+    const top = Math.min(20, Math.max(3, Number(topN) || 8));
+    const head = merged.slice(0, top);
+    const tail = merged.slice(top);
+    const out = head.map((x) => ({ ...x }));
+    if (tail.length) {
+        const tailSum = tail.reduce(
+            (acc, r) => {
+                acc.sum_qty += r.sum_qty;
+                acc.sum_amount += r.sum_amount;
+                acc.positions += r.positions;
+                return acc;
+            },
+            { sum_qty: 0, sum_amount: 0, positions: 0 },
+        );
+        out.push({ label: `Прочие (${tail.length})`, ...tailSum });
+    }
+    return out;
+}
+
+function parseRecentShipmentsRequest(req) {
+    const pageSize = Math.min(200, Math.max(10, parseInt(req.query.recent_page_size, 10) || 100));
+    const page = Math.max(1, parseInt(req.query.recent_page, 10) || 1);
+    const offset = (page - 1) * pageSize;
+    const via = String(req.query.recent_via || 'all').trim().toLowerCase();
+    const bRaw = String(req.query.recent_bundle_code || '').trim();
+    const bSafe = safeMsCodeForLike(bRaw);
+    let mode = 'all';
+    let bundleCode = '';
+    if (via === 'direct') mode = 'direct';
+    else if (via === 'bundle') {
+        if (bSafe) {
+            mode = 'bundle_one';
+            bundleCode = bSafe;
+        } else mode = 'bundle_all';
+    }
+    return { page, pageSize, offset, limit: pageSize, mode, bundleCode };
+}
+
+function mapRecentShipmentRow(r) {
+    const qty = Number(r.quantity || 0);
+    const sum = Number(r.sum_amount != null ? r.sum_amount : 0);
+    const price = Number(r.price != null ? r.price : 0);
+    const via = String(r.via || '') === 'bundle' ? 'bundle' : 'direct';
+    return {
         demand_uuid: String(r.demand_uuid),
         doc_name: String(r.doc_name || ''),
-        moment: r.moment ? new Date(r.moment).toISOString() : null,
+        moment: r.sort_moment ? new Date(r.sort_moment).toISOString() : null,
         applicable: !!r.applicable,
         agent_name: r.agent_name ? String(r.agent_name) : '',
         store_name: r.store_name ? String(r.store_name) : '',
         position_uuid: String(r.position_uuid || ''),
         assortment_kind: String(r.assortment_kind || ''),
-        quantity: Number(r.quantity || 0),
-        price: Number(r.price_minor || 0) / 100,
-        sum: Number(r.sum_minor || 0) / 100,
-    }));
+        via,
+        bundle_code: via === 'bundle' ? String(r.bundle_code || '') : '',
+        bundle_name: via === 'bundle' ? String(r.bundle_name || '') : '',
+        bundle_qty: r.bundle_qty != null ? Number(r.bundle_qty) : null,
+        qty_per_bundle: r.qty_per_bundle != null ? Number(r.qty_per_bundle) : null,
+        quantity: qty,
+        price,
+        sum,
+    };
+}
+
+/**
+ * Прямые + через комплекты, один UNION, фильтр и LIMIT/OFFSET на сервере.
+ * @returns {{ rows: object[], total: number, bundle_codes: { bundle_code: string, bundle_name: string }[] }}
+ */
+async function loadRecentShipmentsPaged(db, code, componentCode, includeViaBundles, window, rp) {
+    const mf = buildSalesMomentFilter(window);
+    const safeComp = safeMsCodeForLike(componentCode);
+
+    const directSql = `
+        SELECT d.moment AS sort_moment, d.uuid AS demand_uuid, d.doc_name, d.applicable,
+               d.agent_name, d.store_name, p.position_uuid, p.assortment_kind,
+               'direct' AS via, '' AS bundle_code, '' AS bundle_name,
+               NULL AS bundle_qty, NULL AS qty_per_bundle,
+               CAST(p.quantity AS DECIMAL(18,6)) AS quantity,
+               (CAST(p.price_minor AS DECIMAL(24,4)) / 100) AS price,
+               (CAST(p.sum_minor AS DECIMAL(24,4)) / 100) AS sum_amount
+          FROM ms_demand_position p
+          INNER JOIN ms_demand d ON d.uuid = p.demand_uuid
+         WHERE p.ms_export_code = ?
+           AND d.applicable = 1
+           ${mf.clause}`;
+
+    const paramsDirect = [code, ...mf.params];
+
+    let innerSql;
+    let innerParams;
+    if (includeViaBundles && safeComp) {
+        const bundleSql = `
+        SELECT d.moment AS sort_moment, d.uuid AS demand_uuid, d.doc_name, d.applicable,
+               d.agent_name, d.store_name, p.position_uuid, p.assortment_kind,
+               'bundle' AS via, bc.bundle_code AS bundle_code, COALESCE(bc.bundle_name, '') AS bundle_name,
+               CAST(p.quantity AS DECIMAL(18,6)) AS bundle_qty,
+               CAST(bc.qty_per_bundle AS DECIMAL(18,6)) AS qty_per_bundle,
+               CAST(p.quantity * bc.qty_per_bundle AS DECIMAL(18,6)) AS quantity,
+               CASE WHEN (p.quantity * bc.qty_per_bundle) > 0
+                    THEN ((CAST(p.sum_minor AS DECIMAL(38,6)) * CAST(bc.qty_per_bundle AS DECIMAL(38,6))
+                           / NULLIF(CAST(tot.qty_sum AS DECIMAL(38,6)), 0) / 100)
+                         / CAST(p.quantity * bc.qty_per_bundle AS DECIMAL(38,6)))
+                    ELSE 0 END AS price,
+               (CAST(p.sum_minor AS DECIMAL(38,6)) * CAST(bc.qty_per_bundle AS DECIMAL(38,6))
+                 / NULLIF(CAST(tot.qty_sum AS DECIMAL(38,6)), 0) / 100) AS sum_amount
+          FROM ms_demand_position p
+          INNER JOIN ms_demand d ON d.uuid = p.demand_uuid
+          INNER JOIN dg_bundle_components bc ON bc.bundle_code = p.ms_export_code AND bc.component_code = ?
+          INNER JOIN (
+               SELECT bundle_uuid, SUM(qty_per_bundle) AS qty_sum
+                 FROM dg_bundle_components
+                GROUP BY bundle_uuid
+               ) tot ON tot.bundle_uuid = bc.bundle_uuid
+         WHERE d.applicable = 1
+           ${mf.clause}`;
+        const paramsBundle = [safeComp, ...mf.params];
+        innerSql = `(${directSql.trim()}) UNION ALL (${bundleSql.trim()})`;
+        innerParams = [...paramsDirect, ...paramsBundle];
+    } else {
+        innerSql = `(${directSql.trim()})`;
+        innerParams = paramsDirect;
+    }
+
+    let filterSql = ' WHERE 1=1 ';
+    const filterParams = [];
+    if (rp.mode === 'direct') filterSql = " WHERE u.via = 'direct' ";
+    else if (rp.mode === 'bundle_all') filterSql = " WHERE u.via = 'bundle' ";
+    else if (rp.mode === 'bundle_one') {
+        filterSql = " WHERE u.via = 'bundle' AND u.bundle_code = ? ";
+        filterParams.push(rp.bundleCode);
+    }
+
+    const countSql = `SELECT COUNT(*) AS c FROM (${innerSql}) u ${filterSql}`;
+    const [cntRows] = await db.query(countSql, [...innerParams, ...filterParams]);
+    const total = Number(cntRows?.[0]?.c || 0);
+
+    const dataSql = `SELECT * FROM (${innerSql}) u ${filterSql} ORDER BY sort_moment DESC LIMIT ? OFFSET ?`;
+    const [rows] = await db.query(dataSql, [...innerParams, ...filterParams, rp.limit, rp.offset]);
+
+    let bundle_codes = [];
+    if (includeViaBundles && safeComp) {
+        const [bcRows] = await db.query(
+            `SELECT bundle_code, MAX(bundle_name) AS bundle_name
+               FROM dg_bundle_components
+              WHERE component_code = ?
+              GROUP BY bundle_code
+              ORDER BY bundle_code
+              LIMIT 500`,
+            [safeComp],
+        );
+        bundle_codes = (bcRows || []).map((x) => ({
+            bundle_code: String(x.bundle_code || ''),
+            bundle_name: x.bundle_name ? String(x.bundle_name) : '',
+        }));
+    }
+
+    return {
+        rows: (rows || []).map(mapRecentShipmentRow),
+        total,
+        bundle_codes,
+    };
+}
+
+/**
+ * После полной выгрузки МС в `ms_export`: одним запросом фиксируем «нулевой день» за CURDATE()
+ * для позиций со складской позицией «Да», не в архиве, с остатком ≤ 0.
+ * Строка за (code, __total__, сегодня) с `source=manual` не меняется.
+ * @returns {{ scanned: number }}
+ */
+async function syncZeroStockLogAfterMoyskladExport(db) {
+    await ensureZeroStockSchema(db);
+    const [[cntRow]] = await db.query(
+        `SELECT COUNT(*) AS c
+           FROM ms_export m
+          WHERE m.stock_position = 'Да'
+            AND COALESCE(m.is_archived, 0) = 0
+            AND COALESCE(m.stock, 0) <= 0`,
+    );
+    const scanned = Number(cntRow?.c || 0);
+    await db.query(
+        `INSERT INTO dg_product_zero_stock_log (code, store_uuid, store_name, ts_date, total_stock, source)
+         SELECT m.code, ?, NULL, CURDATE(), m.stock, 'moysklad_sync'
+           FROM ms_export m
+          WHERE m.stock_position = 'Да'
+            AND COALESCE(m.is_archived, 0) = 0
+            AND COALESCE(m.stock, 0) <= 0
+         ON DUPLICATE KEY UPDATE
+           total_stock = IF(source = 'manual', total_stock, VALUES(total_stock)),
+           source = IF(source = 'manual', 'manual', VALUES(source))`,
+        [ZERO_LOG_DEFAULT_STORE],
+    );
+    return { scanned };
 }
 
 async function loadZeroStockLog(db, code, days) {
@@ -253,16 +918,272 @@ async function loadZeroStockLog(db, code, days) {
     }));
 }
 
+const WINDOW_IMPORT_MAX_ROWS = 100000;
+const WINDOW_IMPORT_CHUNK = 500;
+
+function mapWindowHeaderToIdx(headers) {
+    const idx = { code: -1, a30: -1, a60: -1, a90: -1, a180: -1, a365: -1 };
+    headers.forEach((raw, i) => {
+        const t = String(raw || '')
+            .trim()
+            .replace(/^\uFEFF/, '')
+            .replace(/^"|"$/g, '')
+            .trim();
+        const n = parseInt(t, 10);
+        if (n === 30) idx.a30 = i;
+        else if (n === 60) idx.a60 = i;
+        else if (n === 90) idx.a90 = i;
+        else if (n === 180) idx.a180 = i;
+        else if (n === 365) idx.a365 = i;
+        else {
+            const k = t.toLowerCase().replace(/\s+/g, '');
+            if (['code', 'код', 'кодмс', 'sku', 'артикул'].includes(k)) idx.code = i;
+            if (['absent_last_30', 'absent30', 'n30', 'd30', 'zero30'].includes(k)) idx.a30 = i;
+            if (['absent_last_60', 'absent60', 'n60', 'd60', 'zero60'].includes(k)) idx.a60 = i;
+            if (['absent_last_90', 'absent90', 'n90', 'd90', 'zero90'].includes(k)) idx.a90 = i;
+            if (['absent_last_180', 'absent180', 'n180', 'd180', 'zero180'].includes(k)) idx.a180 = i;
+            if (['absent_last_365', 'absent365', 'n365', 'd365', 'zero365'].includes(k)) idx.a365 = i;
+        }
+    });
+    return idx;
+}
+
+function splitCsvLine(line, delim) {
+    return String(line || '')
+        .split(delim)
+        .map((s) => s.trim().replace(/^"|"$/g, '').trim());
+}
+
+function parseWindowImportCsv(text) {
+    const raw = String(text || '').replace(/^\uFEFF/, '').trim();
+    if (!raw) return [];
+    const lines = raw
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter(Boolean);
+    if (lines.length < 2) {
+        throw new Error('CSV: нужна строка заголовка и минимум одна строка данных');
+    }
+    const first = lines[0];
+    const delim = first.split(';').length >= 6 ? ';' : ',';
+    const headerCells = splitCsvLine(first, delim);
+    const idx = mapWindowHeaderToIdx(headerCells);
+    if (idx.code < 0 || idx.a30 < 0 || idx.a60 < 0 || idx.a90 < 0 || idx.a180 < 0 || idx.a365 < 0) {
+        throw new Error(
+            'CSV: в первой строке должны быть колонки кода (code|код|…) и все окна 30, 60, 90, 180, 365 (числами или absent_last_*)',
+        );
+    }
+    const out = [];
+    for (let li = 1; li < lines.length; li += 1) {
+        const cells = splitCsvLine(lines[li], delim);
+        if (cells.length <= idx.code) continue;
+        const code = String(cells[idx.code] || '').trim();
+        if (!code) continue;
+        out.push({
+            code,
+            absent_last_30: clampIntWindowCount(cells[idx.a30]),
+            absent_last_60: clampIntWindowCount(cells[idx.a60]),
+            absent_last_90: clampIntWindowCount(cells[idx.a90]),
+            absent_last_180: clampIntWindowCount(cells[idx.a180]),
+            absent_last_365: clampIntWindowCount(cells[idx.a365]),
+        });
+    }
+    return out;
+}
+
+function normalizeWindowRowFromJson(r) {
+    const o = r && typeof r === 'object' ? r : {};
+    const code = String(o.code || o.Code || o.CODE || o.код || '').trim();
+    if (!code) return null;
+    return {
+        code,
+        absent_last_30: clampIntWindowCount(o.absent_last_30 ?? o.absent_30 ?? o.d30 ?? o.n30),
+        absent_last_60: clampIntWindowCount(o.absent_last_60 ?? o.absent_60 ?? o.d60 ?? o.n60),
+        absent_last_90: clampIntWindowCount(o.absent_last_90 ?? o.absent_90 ?? o.d90 ?? o.n90),
+        absent_last_180: clampIntWindowCount(o.absent_last_180 ?? o.absent_180 ?? o.d180 ?? o.n180),
+        absent_last_365: clampIntWindowCount(o.absent_last_365 ?? o.absent_365 ?? o.d365 ?? o.n365),
+    };
+}
+
+function parseWindowImportPayload(body) {
+    const b = body && typeof body === 'object' ? body : {};
+    const ref = String(b.reference_date || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(ref)) {
+        throw new Error('Укажите reference_date (YYYY-MM-DD) — дата среза, на которую считалась сводка в Excel');
+    }
+    const note = b.note != null ? String(b.note).slice(0, 512) : null;
+    let rows = [];
+    if (Array.isArray(b.rows) && b.rows.length) {
+        rows = b.rows.map(normalizeWindowRowFromJson).filter(Boolean);
+    } else if (typeof b.csv === 'string' && b.csv.trim()) {
+        rows = parseWindowImportCsv(b.csv);
+    } else {
+        throw new Error('Передайте массив rows или строку csv (UTF-8, первая строка — заголовки)');
+    }
+    if (rows.length > WINDOW_IMPORT_MAX_ROWS) {
+        throw new Error(`Слишком много строк (${rows.length}), максимум ${WINDOW_IMPORT_MAX_ROWS}`);
+    }
+    return { reference_date: ref, note, rows };
+}
+
+async function upsertWindowImportBatch(db, referenceDate, note, rows) {
+    await ensureZeroStockWindowImportSchema(db);
+    let done = 0;
+    for (let i = 0; i < rows.length; i += WINDOW_IMPORT_CHUNK) {
+        const chunk = rows.slice(i, i + WINDOW_IMPORT_CHUNK);
+        const placeholders = chunk.map(() => '(?,?,?,?,?,?,?,?)').join(',');
+        const params = [];
+        for (const r of chunk) {
+            params.push(
+                referenceDate,
+                r.code,
+                r.absent_last_30,
+                r.absent_last_60,
+                r.absent_last_90,
+                r.absent_last_180,
+                r.absent_last_365,
+                note,
+            );
+        }
+        await db.query(
+            `INSERT INTO dg_product_zero_stock_window_import
+                (reference_date, code, absent_last_30, absent_last_60, absent_last_90, absent_last_180, absent_last_365, note)
+             VALUES ${placeholders}
+             ON DUPLICATE KEY UPDATE
+                absent_last_30 = VALUES(absent_last_30),
+                absent_last_60 = VALUES(absent_last_60),
+                absent_last_90 = VALUES(absent_last_90),
+                absent_last_180 = VALUES(absent_last_180),
+                absent_last_365 = VALUES(absent_last_365),
+                note = VALUES(note)`,
+            params,
+        );
+        done += chunk.length;
+    }
+    return done;
+}
+
+async function loadLatestZeroStockWindowImport(db, code) {
+    await ensureZeroStockWindowImportSchema(db);
+    const [rows] = await db.query(
+        `SELECT reference_date, absent_last_30, absent_last_60, absent_last_90,
+                absent_last_180, absent_last_365, note, created_at
+           FROM dg_product_zero_stock_window_import
+          WHERE code = ?
+          ORDER BY reference_date DESC, id DESC
+          LIMIT 1`,
+        [code],
+    );
+    if (!rows || !rows[0]) return null;
+    const r = rows[0];
+    return {
+        reference_date: r.reference_date ? new Date(r.reference_date).toISOString().slice(0, 10) : null,
+        absent_last_30: Number(r.absent_last_30 || 0),
+        absent_last_60: Number(r.absent_last_60 || 0),
+        absent_last_90: Number(r.absent_last_90 || 0),
+        absent_last_180: Number(r.absent_last_180 || 0),
+        absent_last_365: Number(r.absent_last_365 || 0),
+        note: r.note ? String(r.note) : '',
+        created_at: r.created_at ? new Date(r.created_at).toISOString() : null,
+        note_explain:
+            'Импортированная сводка: числа — сколько дней с нулевым остатком в каждом скользящем окне относительно даты среза. Это не список конкретных календарных дней.',
+    };
+}
+
+/** Общий обработчик POST импорта сводки по окнам (используется и в `/api/product`, и в `/api/purchase`). */
+function createHandleZeroStockWindowsImport(db) {
+    return async function handleZeroStockWindowsImport(req, res) {
+        try {
+            const parsed = parseWindowImportPayload(req.body || {});
+            const n = await upsertWindowImportBatch(db, parsed.reference_date, parsed.note, parsed.rows);
+            res.json({
+                success: true,
+                reference_date: parsed.reference_date,
+                rows_upserted: n,
+                note: parsed.note || null,
+            });
+        } catch (err) {
+            const msg = err && err.message ? err.message : String(err);
+            if (msg && (msg.startsWith('Укажите') || msg.startsWith('Передайте') || msg.startsWith('CSV:') || msg.startsWith('Слишком'))) {
+                return res.status(400).json({ success: false, error: msg });
+            }
+            console.error('[product][zero-win-import] error:', err);
+            res.status(500).json({ success: false, error: msg || 'Внутренняя ошибка' });
+        }
+    };
+}
+
 function createProductRouter(db /* , appSettings */) {
     const router = express.Router();
+
+    /**
+     * POST /api/product/zero-stock-windows-import
+     * Body (JSON): { reference_date, note?, rows?: [...] , csv?: "..." }
+     * Сводка по окнам (дней «нуля» за 30/60/90/180/365) — отдельно от построчного dg_product_zero_stock_log.
+     */
+    router.post('/zero-stock-windows-import', express.json({ limit: '25mb' }), createHandleZeroStockWindowsImport(db));
+
+    /**
+     * GET /api/product/:code/recent-shipments — только таблица последних отгрузок (пагинация + фильтр).
+     * Query: те же `sales_from`/`sales_to` или `recent_days`, плюс
+     * `recent_page` (default 1), `recent_page_size` (10..200, default 100),
+     * `recent_via` = all | direct | bundle, при bundle опционально `recent_bundle_code` (код комплекта).
+     */
+    router.get('/:code/recent-shipments', async (req, res) => {
+        try {
+            const code = String(req.params.code || '').trim();
+            if (!code) return res.status(400).json({ success: false, error: 'Не указан code' });
+            const salesWindow = parseProductSalesWindow(req);
+            const rp = parseRecentShipmentsRequest(req);
+
+            const [msRows] = await db.query(
+                `SELECT mse.code, mse.type FROM ms_export mse WHERE mse.code = ? LIMIT 1`,
+                [code],
+            );
+            if (!msRows.length) {
+                return res.status(404).json({ success: false, error: 'Товар с таким кодом не найден в ms_export' });
+            }
+            const mse = msRows[0];
+            const isBundleProduct = isMsBundleExportRow(mse);
+            await ensureBundleComponentsSchema(db);
+            if (!isBundleProduct) {
+                await ensureBundleComponentsForProduct(db, code, isBundleProduct);
+            }
+            const includeViaBundles = !isBundleProduct;
+            const data = await loadRecentShipmentsPaged(db, code, code, includeViaBundles, salesWindow, rp);
+            const totalPages = Math.max(1, Math.ceil(data.total / rp.pageSize));
+            return res.json({
+                success: true,
+                code,
+                sales_window: {
+                    mode: salesWindow.useRange ? 'range' : 'rolling',
+                    sales_from: salesWindow.fromDateStr,
+                    sales_to: salesWindow.toDateStr,
+                    span_days: salesWindow.spanDays,
+                },
+                recent_via: rp.mode === 'bundle_one' ? 'bundle' : rp.mode === 'all' ? 'all' : rp.mode,
+                recent_bundle_code: rp.mode === 'bundle_one' ? rp.bundleCode : '',
+                recent_page: rp.page,
+                recent_page_size: rp.pageSize,
+                recent_total: data.total,
+                recent_total_pages: totalPages,
+                rows: data.rows,
+                bundle_codes: data.bundle_codes,
+                includes_via_bundles: includeViaBundles,
+            });
+        } catch (err) {
+            console.error('[product][recent-shipments] error:', err);
+            res.status(500).json({ success: false, error: err && err.message ? err.message : 'Внутренняя ошибка' });
+        }
+    });
 
     /** GET /api/product/:code — агрегатная карточка. */
     router.get('/:code', async (req, res) => {
         try {
             const code = String(req.params.code || '').trim();
             if (!code) return res.status(400).json({ success: false, error: 'Не указан code' });
-            const recentLimit = Math.min(500, Math.max(1, parseInt(req.query.recent_limit, 10) || 30));
-            const recentDays = Math.min(365 * 5, Math.max(1, parseInt(req.query.recent_days, 10) || 365));
+            const salesWindow = parseProductSalesWindow(req);
+            const recentRp = parseRecentShipmentsRequest(req);
             const zeroDays = Math.min(365 * 5, Math.max(1, parseInt(req.query.zero_days, 10) || 90));
 
             await ensureZeroStockSchema(db);
@@ -291,11 +1212,40 @@ function createProductRouter(db /* , appSettings */) {
             );
             const override = poRows && poRows[0] ? poRows[0] : null;
 
-            const [salesAggregates, recentSales, zeroLog] = await Promise.all([
-                loadSalesAggregates(db, code),
-                loadRecentSales(db, code, recentLimit, recentDays),
+            const isBundleProduct = isMsBundleExportRow(mse);
+            await ensureBundleComponentsSchema(db);
+            if (!isBundleProduct) {
+                await ensureBundleComponentsForProduct(db, code, isBundleProduct);
+            }
+            const includeViaBundles = !isBundleProduct;
+
+            const [
+                salesAggregates,
+                recentPack,
+                zeroLog,
+                zeroWinImport,
+                monthlySales,
+                byAgent,
+                byStore,
+                viaBundlesDetail,
+                directPeriod,
+                bundlesPeriod,
+            ] = await Promise.all([
+                loadSalesAggregates(db, code, code, includeViaBundles),
+                loadRecentShipmentsPaged(db, code, code, includeViaBundles, salesWindow, recentRp),
                 loadZeroStockLog(db, code, zeroDays),
+                loadLatestZeroStockWindowImport(db, code),
+                loadMonthlySales(db, code, code, includeViaBundles, salesWindow),
+                loadSalesBreakdown(db, code, code, includeViaBundles, salesWindow, 'd.agent_name', 8),
+                loadSalesBreakdown(db, code, code, includeViaBundles, salesWindow, 'd.store_name', 8),
+                loadViaBundlesDetail(db, code, salesWindow, includeViaBundles),
+                loadDirectSalesPeriod(db, code, salesWindow),
+                loadBundlesEquivalentPeriod(db, code, salesWindow, includeViaBundles),
             ]);
+            const recentSales = recentPack.rows;
+            const recentTotal = recentPack.total;
+            const recentBundleCodes = recentPack.bundle_codes;
+            const recentTotalPages = Math.max(1, Math.ceil(recentTotal / recentRp.pageSize));
 
             const supplierLabel = buildSupplierLabel(mse.supplier, mse.supplier2);
             const article = payload && typeof payload.article === 'string' ? payload.article : '';
@@ -353,14 +1303,38 @@ function createProductRouter(db /* , appSettings */) {
                 sales: {
                     aggregates: salesAggregates,
                     recent: recentSales,
-                    recent_days: recentDays,
-                    recent_limit: recentLimit,
+                    recent_days: salesWindow.spanDays,
+                    recent_page: recentRp.page,
+                    recent_page_size: recentRp.pageSize,
+                    recent_total: recentTotal,
+                    recent_total_pages: recentTotalPages,
+                    recent_via: recentRp.mode === 'bundle_one' ? 'bundle' : recentRp.mode === 'all' ? 'all' : recentRp.mode,
+                    recent_bundle_code: recentRp.mode === 'bundle_one' ? recentRp.bundleCode : '',
+                    recent_bundle_codes: recentBundleCodes,
+                    sales_window: {
+                        mode: salesWindow.useRange ? 'range' : 'rolling',
+                        sales_from: salesWindow.fromDateStr,
+                        sales_to: salesWindow.toDateStr,
+                    },
+                    direct_period: directPeriod,
+                    bundles_period: bundlesPeriod,
+                    monthly: monthlySales,
+                    by_agent: byAgent,
+                    by_store: byStore,
+                    includes_via_bundles: includeViaBundles,
+                    via_bundles: viaBundlesDetail,
+                    note:
+                        includeViaBundles
+                            ? 'Графики, сводка за период и «Последние отгрузки» — только проведённые отгрузки (applicable); прямые продажи + эквивалент через комплекты (состав из payload МС; сумма по доле компонента). Агрегаты по фиксированным окнам 3…365 дн. — как прежде.'
+                            : 'Страница комплекта: эквивалент через другие комплекты не считается. Учитываются только проведённые отгрузки.',
                 },
                 zero_stock: {
                     days: zeroDays,
                     rows: zeroLog,
-                    note: 'Сейчас фиксация общая по товару. Разбивка по складам появится после расширения синка report/stock/bystore.',
+                    note:
+                        'Записи за сегодня с source=moysklad_sync ставятся пакетно после синка МС в ms_export (складская позиция=Да, не архив, остаток≤0). Ручная фиксация за тот же день не затирается. Разбивка по складам — после report/stock/bystore.',
                 },
+                zero_stock_windows_import: zeroWinImport,
                 formula: {
                     placeholder: true,
                     description: 'Формула продаж будет добавлена позже (TBD).',
@@ -455,3 +1429,4 @@ function createProductRouter(db /* , appSettings */) {
 module.exports = createProductRouter;
 module.exports.createProductRouter = createProductRouter;
 module.exports.ensureZeroStockSchema = ensureZeroStockSchema;
+module.exports.syncZeroStockLogAfterMoyskladExport = syncZeroStockLogAfterMoyskladExport;

@@ -171,4 +171,75 @@
       font-size: 13px;
     }
     .dg-prod-page .dg-zero-empty { color: #6b7280; font-size: 12px; padding: 8px 0; }
+    /* Автолинки в KV/атрибутах: подчёркнутый синий, аккуратный break-all для длинных URL. */
+    .dg-prod-page a.dg-prod-link {
+      color: #0b5ed7;
+      text-decoration: underline;
+      word-break: break-all;
+    }
+    .dg-prod-page a.dg-prod-link:hover { color: #0a4ea8; }
+    /* Изображения: миниатюры с открытием в новой вкладке, сетка фиксированной плотности. */
+    .dg-prod-page .dg-prod-images {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .dg-prod-page .dg-prod-images a {
+      display: inline-block;
+      width: 88px;
+      height: 88px;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      overflow: hidden;
+      background: #fff;
+      transition: border-color 120ms ease, box-shadow 120ms ease;
+    }
+    .dg-prod-page .dg-prod-images a:hover {
+      border-color: #0b5ed7;
+      box-shadow: 0 0 0 2px rgba(11, 94, 215, 0.15);
+    }
+    .dg-prod-page .dg-prod-images img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      background: #fafafa;
+    }
+    /* В таблице атрибутов и KV — внутри тоже разрешим перенос длинных ссылок. */
+    .dg-prod-page .dg-kv-grid .dg-kv-val a,
+    .dg-prod-page .dg-attr-table td a { word-break: break-all; }
+    /* Карточки графиков (Chart.js) внутри блока «Продажи». */
+    .dg-prod-page .dg-chart-card {
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      background: #fff;
+      padding: 10px 12px 8px;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+    .dg-prod-page .dg-chart-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 6px;
+      flex-wrap: wrap;
+    }
+    .dg-prod-page .dg-chart-tabs .btn { font-size: 11px; padding: 2px 8px; }
+    .dg-prod-page .dg-chart-canvas-wrap {
+      position: relative;
+      width: 100%;
+      min-height: 220px;
+      flex: 1 1 auto;
+    }
+    .dg-prod-page .dg-chart-canvas-wrap.dg-chart-doughnut { min-height: 240px; }
+    .dg-prod-page .dg-chart-empty {
+      color: #6b7280;
+      font-size: 12px;
+      padding: 12px;
+      text-align: center;
+      border: 1px dashed #d1d5db;
+      border-radius: 6px;
+      background: #fafbfc;
+    }
   </style>
