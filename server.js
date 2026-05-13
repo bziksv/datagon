@@ -50,6 +50,8 @@ let appSettings = {
     log_retention_days: 7,
     results_retention_days: 120,
     ms_dimensions_log_retention_days: 180,
+    /** Срок хранения строк в `auto_sync_runs` (журнал запусков автосинхронизации на /processes.html). */
+    auto_sync_runs_retention_days: 180,
     auto_sync_myproducts_enabled: 0,
     auto_sync_myproducts_time: '03:00',
     auto_sync_moysklad_enabled: 0,
