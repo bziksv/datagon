@@ -137,9 +137,20 @@
         } catch (e0) {}
         return h;
       }
-      fetch("/api/auth/me", { credentials: "same-origin", headers: meHeaders() })
+      fetch("/api/auth/me?then=" + encodeURIComponent(thenPath()), { credentials: "same-origin", headers: meHeaders() })
         .then(function (r) {
-          if (r.ok) window.location.replace(thenPath());
+          return r.json().then(function (j) {
+            return { r: r, j: j };
+          });
+        })
+        .then(function (x) {
+          if (!x.r.ok || !x.j || !x.j.success) return;
+          var dest =
+            x.j.redirect_after_login && String(x.j.redirect_after_login).indexOf("..") === -1
+              ? String(x.j.redirect_after_login).split("#")[0]
+              : null;
+          if (dest && dest.charAt(0) === "/") window.location.replace(dest);
+          else window.location.replace(thenPath());
         })
         .catch(function () {});
       var form = document.getElementById("dg-login-form");
@@ -161,7 +172,7 @@
           method: "POST",
           credentials: "same-origin",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ username: username, password: password }),
+          body: JSON.stringify({ username: username, password: password, then: thenPath() }),
         })
           .then(function (r) {
             return r.json().then(function (j) {
@@ -198,10 +209,19 @@
                 })()
               ),
               body: "{}",
-            }).catch(function () {});
+            })
+              .catch(function () {})
+              .then(function () {
+                return json;
+              });
           })
-          .then(function () {
-            window.location.replace(thenPath());
+          .then(function (json) {
+            var dest =
+              json && json.redirect_after_login && String(json.redirect_after_login).indexOf("..") === -1
+                ? String(json.redirect_after_login).split("#")[0]
+                : null;
+            if (dest && dest.charAt(0) === "/") window.location.replace(dest);
+            else window.location.replace(thenPath());
           })
           .catch(function (e3) {
             err.textContent = (e3 && e3.message) || "Ошибка входа";

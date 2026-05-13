@@ -223,6 +223,32 @@ function mapDimensionListRow(r) {
     };
 }
 
+/** Значение для сортировки в памяти (пост-фильтр): override → MS из payload, как в UI. */
+function sortMetricRawString(row, key) {
+    const m = row && row.measurement;
+    const d = row && row.dimensions_ms;
+    if (m && m[key] != null && String(m[key]).trim() !== '') return String(m[key]).trim();
+    if (d && d[key] != null && String(d[key]).trim() !== '') return String(d[key]).trim();
+    return '';
+}
+
+function sortMetricNumberOrNull(row, key) {
+    const s = sortMetricRawString(row, key);
+    if (!s) return null;
+    const n = Number(String(s).replace(',', '.'));
+    return Number.isFinite(n) ? n : null;
+}
+
+/** Порядок как у `ORDER BY col ASC` в MySQL для DECIMAL NULL: NULL раньше чисел. */
+function compareNullableNumberSqlOrder(aVal, bVal) {
+    const aNull = aVal == null || !Number.isFinite(aVal);
+    const bNull = bVal == null || !Number.isFinite(bVal);
+    if (aNull && bNull) return 0;
+    if (aNull) return -1;
+    if (bNull) return 1;
+    return aVal - bVal;
+}
+
 function compareDimensionOutRows(a, b, sortBy, sortDir) {
     const dir = String(sortDir || 'asc').toLowerCase() === 'desc' ? -1 : 1;
     const sb = String(sortBy || 'code');
@@ -234,7 +260,17 @@ function compareDimensionOutRows(a, b, sortBy, sortDir) {
     else if (sb === 'measured_by_name') cmp = str(a.measured_by_name).localeCompare(str(b.measured_by_name), 'ru');
     else if (sb === 'name') cmp = str(a.name).localeCompare(str(b.name), 'ru');
     else if (sb === 'type') cmp = str(a.type).localeCompare(str(b.type), 'ru');
-    else cmp = str(a.code).localeCompare(str(b.code), 'ru');
+    else if (sb === 'packing_type') {
+        cmp = sortMetricRawString(a, 'packing_type').localeCompare(sortMetricRawString(b, 'packing_type'), 'ru');
+    } else if (
+        sb === 'length_cm' ||
+        sb === 'width_cm' ||
+        sb === 'height_box_cm' ||
+        sb === 'height_bag_cm' ||
+        sb === 'weight_kg'
+    ) {
+        cmp = compareNullableNumberSqlOrder(sortMetricNumberOrNull(a, sb), sortMetricNumberOrNull(b, sb));
+    } else cmp = str(a.code).localeCompare(str(b.code), 'ru');
     if (cmp !== 0) return cmp * dir;
     return str(a.code).localeCompare(str(b.code), 'ru') * dir;
 }
@@ -248,7 +284,8 @@ function compareDimensionOutRows(a, b, sortBy, sortDir) {
 async function collectPostFilteredDimensionRowsChunked(db, selectForCap, fromForCap, whereFull, baseParams, ctx) {
     const { problemStock, postFilter, mpScope } = ctx;
     const matched = [];
-    const CHUNK = 400;
+    /** `postFilter` тянет широкий JOIN маркетплейсов — маленький чанк. `problem_stock` — узкий SELECT, можно больше строк за round-trip. */
+    const CHUNK = postFilter ? 400 : 1200;
     const maxScan = DIM_LIST_POST_FILTER_CAP;
     const baseSql = `${selectForCap}\n                 ${fromForCap}\n                 ${whereFull}\n                 ORDER BY mse.code ASC`;
     let offset = 0;
@@ -296,6 +333,12 @@ const ALLOWED_SORT = {
     stock: 'mse.stock',
     measured_by_name: 'mdm.measured_by_name',
     measured_at: 'mdm.measured_at',
+    packing_type: 'mdm.packing_type',
+    length_cm: 'mdm.length_cm',
+    width_cm: 'mdm.width_cm',
+    height_box_cm: 'mdm.height_box_cm',
+    height_bag_cm: 'mdm.height_bag_cm',
+    weight_kg: 'mdm.weight_kg',
 };
 
 /**

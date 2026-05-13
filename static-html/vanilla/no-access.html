@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, shrink-to-fit=no" />
+  <title>Нет доступа — Датагон</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <!-- ARCHITECTUI_MAIN_CSS -->
+  <style>
+    html, body { min-height: 100%; margin: 0; }
+    body.dg-noaccess-body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      color: #1e293b;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 16px;
+      box-sizing: border-box;
+      background-color: #0f172a;
+      background-image:
+        radial-gradient(ellipse 120% 80% at 50% -20%, rgba(47, 93, 224, 0.35), transparent 55%),
+        radial-gradient(ellipse 90% 60% at 100% 100%, rgba(30, 63, 158, 0.25), transparent 50%);
+    }
+    .dg-noaccess-card {
+      width: 100%;
+      max-width: 440px;
+      border-radius: 16px;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.45);
+      background: rgba(255, 255, 255, 0.97);
+      padding: 1.75rem;
+    }
+    .dg-noaccess-card h1 { margin: 0 0 0.75rem; font-size: 1.2rem; font-weight: 600; }
+    .dg-noaccess-card p { margin: 0 0 1rem; font-size: 0.9rem; color: #475569; line-height: 1.45; }
+    .dg-noaccess-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+  </style>
+</head>
+<body class="dg-noaccess-body">
+  <div class="dg-noaccess-card">
+    <h1>Нет доступа к разделам панели</h1>
+    <p>
+      Для вашей учётной записи не открыта ни одна страница панели Datagon, либо вы перешли по ссылке на недоступный раздел.
+      Обратитесь к администратору (настройка группы и матрицы «Страницы и API» в настройках).
+    </p>
+    <div class="dg-noaccess-actions">
+      <button type="button" class="btn btn-outline-secondary" id="dg-noaccess-logout">Выйти</button>
+    </div>
+  </div>
+  <script>
+    (function () {
+      function meHeaders() {
+        var h = {};
+        try {
+          var u = window.localStorage.getItem("currentUser");
+          var t = window.localStorage.getItem("authToken");
+          if (u) h["x-auth-username"] = u;
+          if (t) h["x-auth-token"] = t;
+        } catch (e0) {}
+        return h;
+      }
+      function clearStorage() {
+        try {
+          window.localStorage.removeItem("authToken");
+          window.localStorage.removeItem("currentUser");
+          window.localStorage.removeItem("currentUserDisplayName");
+          window.localStorage.removeItem("isAdmin");
+          window.localStorage.removeItem("isLoggedIn");
+          window.localStorage.removeItem("canManageUsers");
+          window.localStorage.removeItem("datagonPageModesV1");
+          window.localStorage.removeItem("datagonSpecialtyNameV1");
+        } catch (e1) {}
+      }
+      document.getElementById("dg-noaccess-logout").addEventListener("click", function () {
+        fetch("/api/auth/logout", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: Object.assign({ "Content-Type": "application/json" }, meHeaders()),
+          body: "{}",
+        })
+          .catch(function () {})
+          .then(function () {
+            clearStorage();
+            window.location.replace("/login.html");
+          });
+      });
+    })();
+  </script>
+</body>
+</html>

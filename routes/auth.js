@@ -208,6 +208,9 @@ module.exports = (db, appSettings = {}) => {
         try {
             const actor = await getActor(req);
             if (!actor) return res.status(401).json({ error: 'Не авторизован' });
+            const { resolveRedirectAfterLogin } = require('../lib/datagonPageRegistry');
+            const thenQ = req.query && req.query.then != null ? String(req.query.then) : '';
+            const redirect_after_login = resolveRedirectAfterLogin(actor, thenQ);
             return res.json({
                 success: true,
                 username: actor.username,
@@ -216,7 +219,8 @@ module.exports = (db, appSettings = {}) => {
                 canManageUsers: actor.username === 'admin' || actor.can_manage_users === true,
                 specialty_id: actor.specialty_id != null ? Number(actor.specialty_id) : null,
                 specialty_name: actor.specialty_name || null,
-                page_modes: actor.page_modes || {}
+                page_modes: actor.page_modes || {},
+                redirect_after_login
             });
         } catch (e) {
             return res.status(500).json({ error: e.message });
@@ -581,7 +585,7 @@ module.exports = (db, appSettings = {}) => {
     });
 
     router.post('/login', async (req, res) => {
-        const { username, password } = req.body;
+        const { username, password, then: thenBody } = req.body;
         try {
             await ensureAuthSchema();
             const [users] = await db.query('SELECT * FROM users WHERE username = ?', [username]);
@@ -643,6 +647,13 @@ module.exports = (db, appSettings = {}) => {
             } catch (_) {
                 page_modes = await datagonSpecialties.getPageModesForSpecialty(db, null);
             }
+            const { resolveRedirectAfterLogin } = require('../lib/datagonPageRegistry');
+            const actorLike = {
+                username: user.username,
+                can_manage_users: Number(user.can_manage_users || 0) === 1,
+                page_modes
+            };
+            const redirect_after_login = resolveRedirectAfterLogin(actorLike, thenBody != null ? String(thenBody) : '');
             res.json({
                 success: true,
                 username: user.username,
@@ -652,7 +663,8 @@ module.exports = (db, appSettings = {}) => {
                 specialty_id: user.specialty_id != null ? Number(user.specialty_id) : null,
                 specialty_name,
                 page_modes,
-                auth_token: token
+                auth_token: token,
+                redirect_after_login
             });
         } catch (e) { res.status(500).json({ error: e.message }); }
     });

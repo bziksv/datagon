@@ -33,6 +33,7 @@ function injectArchitectuiMainCssIntoDatagonHtml() {
   const publishHtml = [
     'dashboard.html',
     'login.html',
+    'no-access.html',
     'my-sites.html',
     'moysklad.html',
     'purchase.html',
@@ -98,6 +99,7 @@ if (!fs.existsSync(vanillaSrc)) {
 const publishNames = [
   'dashboard.html',
   'login.html',
+  'no-access.html',
   'my-sites.html',
   'moysklad.html',
   'purchase.html',

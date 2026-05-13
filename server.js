@@ -14,15 +14,6 @@ const PORT = config.port || 3000;
 let db;
 const postInitTasks = [];
 
-function pickFirstAllowedHtmlForActor(actor) {
-    try {
-        const { PAGE_DEFS, isHtmlLeafAccessHiddenForActor } = require('./lib/datagonPageRegistry');
-        for (const p of PAGE_DEFS) {
-            if (!isHtmlLeafAccessHiddenForActor(actor, p.htmlFile.toLowerCase())) return `/${p.htmlFile}`;
-        }
-    } catch (_) {}
-    return '/login.html';
-}
 
 function buildSourceUrl(domain, rawPath, cmsType = '') {
     const d = String(domain || '').trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '');
@@ -2212,9 +2203,15 @@ initDB().then(() => {
             const actor = await authModule.getActor(req);
             if (actor) {
                 if (actor.username !== 'admin') {
-                    const { isHtmlLeafAccessHiddenForActor } = require('./lib/datagonPageRegistry');
+                    const {
+                        isHtmlLeafAccessHiddenForActor,
+                        pickFirstAllowedHtmlForActor
+                    } = require('./lib/datagonPageRegistry');
+                    if (leaf === 'no-access.html') return next();
                     if (isHtmlLeafAccessHiddenForActor(actor, leaf)) {
-                        return res.redirect(302, pickFirstAllowedHtmlForActor(actor));
+                        const dest = pickFirstAllowedHtmlForActor(actor);
+                        if (dest) return res.redirect(302, dest);
+                        return res.redirect(302, '/no-access.html');
                     }
                 }
                 return next();
