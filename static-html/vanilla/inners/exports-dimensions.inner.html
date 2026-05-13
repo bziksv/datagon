@@ -46,8 +46,8 @@
                   </select>
                 </div>
                 <div class="col-md-3">
-                  <label class="form-label" for="dg-dim-f-scope">Замер</label>
-                  <select class="form-select" id="dg-dim-f-scope">
+                  <label class="form-label" for="dg-dim-f-measure-scope">Замер</label>
+                  <select class="form-select" id="dg-dim-f-measure-scope">
                     <option value="all">Все позиции</option>
                     <option value="without">Без замера</option>
                     <option value="with">С замером</option>
@@ -61,6 +61,23 @@
                     <option value="200">200</option>
                     <option value="500">500</option>
                   </select>
+                </div>
+                <div class="col-12" data-dg-dim-filter-field="problem_profile" data-dg-filter-field-title="Проблемные товары">
+                  <label class="form-label small mb-1" id="dg-dim-problem-label">Проблемные товары</label>
+                  <div class="btn-group flex-wrap d-flex" role="group" aria-labelledby="dg-dim-problem-label" id="dg-dim-problem-group">
+                    <input type="radio" class="btn-check" name="dg-dim-problem-profile" id="dg-dim-problem-off" value="" checked />
+                    <label class="btn btn-outline-primary" for="dg-dim-problem-off" title="Все складские позиции по выбранным фильтрам">Выключено</label>
+                    <input type="radio" class="btn-check" name="dg-dim-problem-profile" id="dg-dim-problem-stock" value="stock_missing" />
+                    <label
+                      class="btn btn-outline-primary"
+                      for="dg-dim-problem-stock"
+                      title="Остаток по МС больше нуля, но для текущего типа упаковки не заполнены обязательные поля замера — ячейки подсвечиваются."
+                      >Остаток есть — не заполнены нужные поля</label>
+                  </div>
+                  <p class="form-text text-muted mb-0 small mt-1">
+                    Сверка с маркетплейсами (коды, НДС, габариты в снапшотах) — на странице
+                    <a href="/exports-marketplaces-issues.html">«Проблемы с товарами»</a>; здесь только реестр замеров.
+                  </p>
                 </div>
               </div>
               <div class="mt-3 d-flex flex-wrap gap-2">
@@ -202,7 +219,7 @@
           </div>
 
           <!--
-            Карточка «История изменений» — глобальный журнал всех правок габаритов
+            Карточка «Журнал изменений габаритов» — глобальный журнал (таблица БД ms_dimensions_log)
             по всем позициям. Свернута по умолчанию; разворачивается кнопкой в шапке.
             Источник данных: GET /api/exports/dimensions/log/global.
           -->
@@ -210,7 +227,7 @@
             <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
               <div class="d-flex align-items-center">
                 <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"></i>
-                <span>История изменений</span>
+                <span>Журнал изменений габаритов</span>
                 <span class="text-muted small ms-2" id="dg-dim-history-summary"></span>
               </div>
               <div class="d-flex align-items-center gap-2">
@@ -218,7 +235,7 @@
                   type="button"
                   class="btn btn-sm btn-outline-secondary"
                   id="dg-dim-history-refresh"
-                  title="Перечитать журнал с применёнными фильтрами"
+                  title="Перечитать ms_dimensions_log с применёнными фильтрами"
                 >
                   ↻ Обновить
                 </button>
@@ -245,6 +262,7 @@
                     <option value="set">Правка</option>
                     <option value="sync_ms">Отправлено в МС</option>
                     <option value="sync_ms_skip">МС пропустил</option>
+                    <option value="sync_ms_error">Ошибка МС</option>
                     <option value="delete">Удаление замера</option>
                   </select>
                 </div>
@@ -306,7 +324,7 @@
               </div>
               <div class="dg-dim-history-pagination px-1 py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
                 <div class="text-muted small" id="dg-dim-history-hint">—</div>
-                <div class="btn-group" role="group" aria-label="Страницы истории">
+                <div class="btn-group" role="group" aria-label="Страницы журнала">
                   <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-dim-history-prev">Назад</button>
                   <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-dim-history-next">Вперёд</button>
                 </div>
@@ -316,7 +334,7 @@
 
           <!--
             Модальный оверлей «Лог замера». Открывается по клику на «🕘 Лог» в ячейке
-            «Наименование» и загружает историю изменений через GET /api/exports/dimensions/log.
+            «Наименование» и загружает журнал изменений через GET /api/exports/dimensions/log.
           -->
           <div id="dg-dim-log-overlay" class="dg-dim-log-overlay" style="display: none" aria-hidden="true">
             <div class="dg-dim-log-backdrop" id="dg-dim-log-backdrop"></div>

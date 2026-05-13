@@ -16,6 +16,7 @@
 const express = require('express');
 const axios = require('axios');
 const config = require('../config');
+const mpIssuesRowFilters = require('../lib/mpIssuesRowFilters');
 
 const MS_BASE_URL = 'https://api.moysklad.ru/api/remap/1.2';
 const MS_ATTR_META_TTL_MS = 60 * 60 * 1000; /** 1 час — параритет с moysklad.js */
@@ -23,6 +24,291 @@ const msAttrMetaCache = new Map(); /** entityKind('product'|'bundle') → { ts, 
 
 const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 500;
+/** Сколько строк максимум сканируем из БД для пост-фильтрации (НДС/габариты МП / «проблемные»). */
+const DIM_LIST_POST_FILTER_CAP = 50000;
+
+const MP_JOIN_SQL = `
+                LEFT JOIN marketplace_export_rows dg_dim_ozon
+                    ON dg_dim_ozon.marketplace = 'ozon' AND dg_dim_ozon.external_id = mse.code
+                LEFT JOIN marketplace_export_rows dg_dim_wb
+                    ON dg_dim_wb.marketplace = 'wildberries' AND dg_dim_wb.external_id = mse.code
+                LEFT JOIN marketplace_export_rows dg_dim_ym
+                    ON dg_dim_ym.marketplace = 'yandex_market' AND dg_dim_ym.external_id = mse.code`;
+
+const MP_SCOPE_POST = new Set(['vat_mismatch', 'dims_mismatch']);
+
+function normalizeMpScopeFromQuery(query) {
+    const raw = String((query && query.mp_scope) || '').trim().toLowerCase();
+    const aliases = {
+        all: 'all',
+        any: 'any',
+        all3: 'all3',
+        'all-3': 'all3',
+        ozon: 'ozon',
+        wb: 'wb',
+        wildberries: 'wb',
+        ym: 'ym',
+        yandex: 'ym',
+        'yandex-market': 'ym',
+        yandex_market: 'ym',
+        vat_mismatch: 'vat_mismatch',
+        'vat-mismatch': 'vat_mismatch',
+        dims_mismatch: 'dims_mismatch',
+        'dims-mismatch': 'dims_mismatch',
+    };
+    return aliases[raw] || 'all';
+}
+
+/** Профиль «Проблемные товары»: остаток > 0, не заполнены нужные поля замера. */
+function normalizeProblemProfileFromQuery(query) {
+    const v = String((query && query.problem_profile) || '').trim().toLowerCase();
+    if (v === 'stock_missing' || v === 'problem' || v === 'problem_stock') return 'stock_missing';
+    return '';
+}
+
+/**
+ * Замер: all | with | without. Раньше передавалось как `scope` — поддерживаем обратную совместимость,
+ * если в `scope` не зашит маркетплейсный пресет.
+ */
+function normalizeMeasureScopeFromQuery(query) {
+    const ms = String((query && query.measure_scope) || '').trim().toLowerCase();
+    if (ms === 'with' || ms === 'without') return ms;
+    const legacy = String((query && query.scope) || '').trim().toLowerCase();
+    if (legacy === 'with' || legacy === 'without') return legacy;
+    if (
+        legacy === 'any'
+        || legacy === 'all3'
+        || legacy === 'ozon'
+        || legacy === 'wb'
+        || legacy === 'ym'
+        || legacy === 'vat_mismatch'
+        || legacy === 'dims_mismatch'
+        || legacy === 'vat-mismatch'
+        || legacy === 'dims-mismatch'
+    ) {
+        return 'all';
+    }
+    return 'all';
+}
+
+function sqlWhereMpScope(mpScope) {
+    if (mpScope === 'ozon') return ' AND dg_dim_ozon.external_id IS NULL';
+    if (mpScope === 'wb') return ' AND dg_dim_wb.external_id IS NULL';
+    if (mpScope === 'ym') return ' AND dg_dim_ym.external_id IS NULL';
+    if (mpScope === 'all3') {
+        return ' AND dg_dim_ozon.external_id IS NULL AND dg_dim_wb.external_id IS NULL AND dg_dim_ym.external_id IS NULL';
+    }
+    if (mpScope === 'any') {
+        return ' AND (dg_dim_ozon.external_id IS NULL OR dg_dim_wb.external_id IS NULL OR dg_dim_ym.external_id IS NULL)';
+    }
+    return '';
+}
+
+function isFieldDisabledForPackingKind(kind, key) {
+    if (kind === 'bag' && key === 'height_box_cm') return true;
+    if ((kind === 'box' || kind === 'custom_box') && key === 'height_bag_cm') return true;
+    return false;
+}
+
+/** Эвристика «пусто» для обязательности замера (как на клиенте resolveCellSource). */
+function resolveCellSourceForProblem(rowOut, key) {
+    const measurement = rowOut.measurement || {};
+    if (measurement[key] != null && String(measurement[key]).trim() !== '') {
+        return { source: 'override' };
+    }
+    const dims = rowOut.dimensions_ms || {};
+    if (dims[key] != null && String(dims[key]).trim() !== '') {
+        const raw = String(dims[key]).trim();
+        if (key !== 'packing_type') {
+            const n = Number(raw.replace(',', '.'));
+            if (Number.isFinite(n)) return { source: 'ms' };
+        } else {
+            return { source: 'ms' };
+        }
+    }
+    const parsed = rowOut.dimensions_parsed || {};
+    if (parsed[key] != null) return { source: 'parsed' };
+    return { source: 'empty' };
+}
+
+function computeProblemCellsForRow(rowOut) {
+    if (!rowOut || !(Number(rowOut.stock) > 0)) return null;
+    const parsed = rowOut.dimensions_parsed || {};
+    const kind = parsed.kind || 'unknown';
+    const missing = {};
+    for (const k of Object.keys(MEASUREMENT_FIELDS)) {
+        if (isFieldDisabledForPackingKind(kind, k)) continue;
+        const r = resolveCellSourceForProblem(rowOut, k);
+        if (r.source === 'empty') missing[k] = true;
+    }
+    return Object.keys(missing).length ? missing : null;
+}
+
+function mapSqlRowToIssueFilterShape(r) {
+    return {
+        code: r.code,
+        name: r.name,
+        uuid: r.uuid,
+        type: r.type,
+        ms_vat: r.ms_vat,
+        manager: r.manager,
+        content_manager: r.content_manager,
+        synced_at: r.synced_at,
+        ms_stock: r.stock,
+        ms_length: r.ms_length,
+        ms_width: r.ms_width,
+        ms_height_box: r.ms_height_box,
+        ms_height_bag: r.ms_height_bag,
+        ms_weight: r.ms_weight,
+        ozon_code: r.ozon_code,
+        ozon_name: r.ozon_name,
+        ozon_vat: r.ozon_vat,
+        ozon_stock: r.ozon_stock,
+        ozon_length: r.ozon_length,
+        ozon_width: r.ozon_width,
+        ozon_height: r.ozon_height,
+        ozon_weight: r.ozon_weight,
+        wb_code: r.wb_code,
+        wb_name: r.wb_name,
+        wb_vat: r.wb_vat,
+        wb_stock: r.wb_stock,
+        wb_length: r.wb_length,
+        wb_width: r.wb_width,
+        wb_height: r.wb_height,
+        wb_weight: r.wb_weight,
+        ym_code: r.ym_code,
+        ym_name: r.ym_name,
+        ym_vat: r.ym_vat,
+        ym_stock: r.ym_stock,
+        ym_length: r.ym_length,
+        ym_width: r.ym_width,
+        ym_height: r.ym_height,
+        ym_weight: r.ym_weight,
+    };
+}
+
+function mapDimensionListRow(r) {
+    const payload = parsePayloadSafe(r.payload_json);
+    const dimsMs = buildDimensionsFromPayload(payload);
+    const measurement = rowToMeasurement({
+        length_cm: r.m_length_cm,
+        width_cm: r.m_width_cm,
+        height_box_cm: r.m_height_box_cm,
+        height_bag_cm: r.m_height_bag_cm,
+        weight_kg: r.m_weight_kg,
+        packing_type: r.m_packing_type,
+    });
+    const packingForParse = (measurement && measurement.packing_type)
+        ? measurement.packing_type
+        : dimsMs.packing_type;
+    const parsed = parsePackingDims(packingForParse);
+    return {
+        code: String(r.code || ''),
+        name: String(r.name || ''),
+        type: String(r.type || ''),
+        uuid: String(r.uuid || ''),
+        stock: r.stock != null ? Number(r.stock) : null,
+        is_archived: Number(r.is_archived || 0) === 1,
+        measured_by_user_id: r.measured_by_user_id != null ? Number(r.measured_by_user_id) : null,
+        measured_by_name: r.measured_by_name != null ? String(r.measured_by_name) : '',
+        measured_at: r.measured_at ? new Date(r.measured_at).toISOString() : '',
+        dimensions_ms: dimsMs,
+        measurement,
+        dimensions_parsed: parsed,
+    };
+}
+
+function compareDimensionOutRows(a, b, sortBy, sortDir) {
+    const dir = String(sortDir || 'asc').toLowerCase() === 'desc' ? -1 : 1;
+    const sb = String(sortBy || 'code');
+    const num = (x) => (x == null || Number.isNaN(Number(x)) ? 0 : Number(x));
+    const str = (x) => String(x == null ? '' : x);
+    let cmp = 0;
+    if (sb === 'stock') cmp = num(a.stock) - num(b.stock);
+    else if (sb === 'measured_at') cmp = str(a.measured_at).localeCompare(str(b.measured_at), 'ru');
+    else if (sb === 'measured_by_name') cmp = str(a.measured_by_name).localeCompare(str(b.measured_by_name), 'ru');
+    else if (sb === 'name') cmp = str(a.name).localeCompare(str(b.name), 'ru');
+    else if (sb === 'type') cmp = str(a.type).localeCompare(str(b.type), 'ru');
+    else cmp = str(a.code).localeCompare(str(b.code), 'ru');
+    if (cmp !== 0) return cmp * dir;
+    return str(a.code).localeCompare(str(b.code), 'ru') * dir;
+}
+
+/**
+ * Пост-фильтр по строкам с тяжёлым `payload_json`: одним `db.query` + 50k строк
+ * держит все LONGTEXT в памяти → OOM на больших каталогах. Берём отдельное
+ * соединение из пула и mysql2 streaming (`result`), обрабатываем по одной строке.
+ */
+function collectPostFilteredDimensionRowsStream(db, sql, sqlParams, ctx) {
+    const { problemStock, postFilter, mpScope } = ctx;
+    const matched = [];
+    return new Promise((resolve, reject) => {
+        let conn;
+        let finished = false;
+        const releaseConn = () => {
+            if (!conn) return;
+            try {
+                conn.release();
+            } catch (_) {
+                /* noop */
+            }
+            conn = null;
+        };
+        const done = (err) => {
+            if (finished) return;
+            finished = true;
+            releaseConn();
+            if (err) reject(err);
+            else resolve(matched);
+        };
+        db.getConnection()
+            .then((c) => {
+                conn = c;
+                const q = conn.query(sql, sqlParams);
+                q.on('error', (e) => done(e));
+                q.on('result', (row) => {
+                    if (finished) return;
+                    conn.pause();
+                    try {
+                        const out = mapDimensionListRow(row);
+                        if (problemStock) {
+                            const cells = computeProblemCellsForRow(out);
+                            if (cells) {
+                                out.problem_cells = cells;
+                                matched.push(out);
+                            }
+                        } else if (postFilter) {
+                            const ir = mapSqlRowToIssueFilterShape(row);
+                            mpIssuesRowFilters.formatIssueRowMsDims(ir);
+                            mpIssuesRowFilters.preprocessIssueRowVatPretty(ir);
+                            const keep =
+                                mpScope === 'vat_mismatch'
+                                    ? mpIssuesRowFilters.issuesRowVatMismatch(ir)
+                                    : mpIssuesRowFilters.issuesRowDimsMismatch(ir);
+                            if (keep) matched.push(out);
+                        }
+                    } catch (e) {
+                        try {
+                            conn.resume();
+                        } catch (_) {
+                            /* noop */
+                        }
+                        try {
+                            if (typeof q.destroy === 'function') q.destroy();
+                        } catch (_) {
+                            /* noop */
+                        }
+                        done(e);
+                        return;
+                    }
+                    conn.resume();
+                });
+                q.on('end', () => done(null));
+            })
+            .catch((e) => done(e));
+    });
+}
+
 const ALLOWED_SORT = {
     code: 'mse.code',
     name: 'mse.name',
@@ -415,10 +701,10 @@ function buildWhereClauseFromQuery(query) {
         params.push('комплект');
     }
 
-    const scope = String((query && query.scope) || 'all').trim().toLowerCase();
-    if (scope === 'with') {
+    const measureScope = normalizeMeasureScopeFromQuery(query);
+    if (measureScope === 'with') {
         where.push('mdm.code IS NOT NULL');
-    } else if (scope === 'without') {
+    } else if (measureScope === 'without') {
         where.push('mdm.code IS NULL');
     }
 
@@ -889,6 +1175,25 @@ async function syncCodeToMs(db, code, options) {
                 [cleanCode, f, v != null ? String(v) : null, actorId, actorName, note],
             );
         }
+    } else if (!result.ok) {
+        /** Одна строка на неуспешный push в МС — для «Процессы» и `ms_dimensions_log`. */
+        const errLine = String(result.error || 'Не удалось обновить позицию в МС').replace(/\s+/g, ' ').trim();
+        let note =
+            'entity=' + (result.entity_kind || '?') +
+            ' http=' + (result.http_status != null ? String(result.http_status) : '—') +
+            ': ' + errLine +
+            (persistNoteSuffix ? ' ' + persistNoteSuffix : '');
+        if (note.length > 500) note = note.slice(0, 497) + '…';
+        try {
+            await db.query(
+                `INSERT INTO ms_dimensions_log
+                    (code, field, old_value, new_value, action, changed_by_user_id, changed_by_name, note)
+                 VALUES (?, 'ms_push', NULL, NULL, 'sync_ms_error', ?, ?, ?)`,
+                [cleanCode, actorId, actorName, note],
+            );
+        } catch (_) {
+            /** не блокируем ответ при сбое журнала */
+        }
     }
 
     return {
@@ -1133,32 +1438,37 @@ function createDimensionsRouter(db, appSettings = {}) {
             const limit = clampInt(req.query.limit, 1, MAX_LIMIT, DEFAULT_LIMIT);
             const offset = clampInt(req.query.offset, 0, 1_000_000, 0);
             const orderBy = resolveSort(req.query);
-            const { whereSql, params } = buildWhereClauseFromQuery(req.query);
+            const sortBy = String(req.query.sort_by || 'code');
+            const sortDir = String(req.query.sort_dir || 'asc');
 
-            const fromSql = `
+            const problemProfile = normalizeProblemProfileFromQuery(req.query);
+            const mpScope = problemProfile ? 'all' : normalizeMpScopeFromQuery(req.query);
+            const useMpJoins = Boolean(!problemProfile && mpScope !== 'all');
+            const postFilter = Boolean(!problemProfile && MP_SCOPE_POST.has(mpScope));
+            const problemStock = problemProfile === 'stock_missing';
+
+            const { whereSql, params } = buildWhereClauseFromQuery(req.query);
+            let extraStockWhere = '';
+            const extraParams = [];
+            if (problemStock) {
+                extraStockWhere = ' AND COALESCE(mse.stock, 0) > 0';
+            }
+
+            const fromCore = `
                 FROM ms_export mse
                 LEFT JOIN ms_dimensions_measurements mdm ON mdm.code = mse.code
-            `;
+                LEFT JOIN ms_entity_details med ON med.uuid = mse.uuid`;
 
-            const [countRows] = await db.query(
-                `SELECT COUNT(*) AS total ${fromSql} ${whereSql}`,
-                params,
-            );
-            const total = Number((countRows && countRows[0] && countRows[0].total) || 0);
-
-            /**
-             * Подгружаем `payload_json` из ms_entity_details только для строк текущей страницы
-             * (LEFT JOIN ниже), а не для всего ms_export. JSON может быть тяжёлым (LONGTEXT,
-             * ~2–5 КБ × 57k строк), без ограничения по странице запрос растащит память
-             * сервера на удалённой БД.
-             */
-            const [rows] = await db.query(
-                `SELECT
+            const selectNarrow = `SELECT
                     mse.code AS code,
                     mse.name AS name,
                     mse.type AS type,
                     mse.uuid AS uuid,
                     mse.stock AS stock,
+                    mse.vat AS ms_vat,
+                    mse.manager AS manager,
+                    mse.content_manager AS content_manager,
+                    DATE_FORMAT(mse.synced_at, '%d.%m.%Y %H:%i') AS synced_at,
                     COALESCE(mse.is_archived, 0) AS is_archived,
                     mdm.measured_by_user_id AS measured_by_user_id,
                     mdm.measured_by_name AS measured_by_name,
@@ -1169,63 +1479,98 @@ function createDimensionsRouter(db, appSettings = {}) {
                     mdm.height_bag_cm AS m_height_bag_cm,
                     mdm.weight_kg AS m_weight_kg,
                     mdm.packing_type AS m_packing_type,
-                    med.payload_json AS payload_json
-                 ${fromSql}
-                 LEFT JOIN ms_entity_details med ON med.uuid = mse.uuid
-                 ${whereSql}
-                 ORDER BY ${orderBy}
-                 LIMIT ? OFFSET ?`,
-                params.concat([limit, offset]),
+                    med.payload_json AS payload_json`;
+
+            const selectWideDims = `,
+                    mdm.length_cm AS ms_length,
+                    mdm.width_cm AS ms_width,
+                    mdm.height_box_cm AS ms_height_box,
+                    mdm.height_bag_cm AS ms_height_bag,
+                    mdm.weight_kg AS ms_weight`;
+
+            const selectMp = `,
+                    dg_dim_ozon.external_id AS ozon_code,
+                    dg_dim_ozon.name AS ozon_name,
+                    dg_dim_ozon.vat AS ozon_vat,
+                    dg_dim_ozon.stock AS ozon_stock,
+                    dg_dim_ozon.length_cm AS ozon_length,
+                    dg_dim_ozon.width_cm AS ozon_width,
+                    dg_dim_ozon.height_cm AS ozon_height,
+                    dg_dim_ozon.weight_kg AS ozon_weight,
+                    dg_dim_wb.external_id AS wb_code,
+                    dg_dim_wb.name AS wb_name,
+                    dg_dim_wb.vat AS wb_vat,
+                    dg_dim_wb.stock AS wb_stock,
+                    dg_dim_wb.length_cm AS wb_length,
+                    dg_dim_wb.width_cm AS wb_width,
+                    dg_dim_wb.height_cm AS wb_height,
+                    dg_dim_wb.weight_kg AS wb_weight,
+                    dg_dim_ym.external_id AS ym_code,
+                    dg_dim_ym.name AS ym_name,
+                    dg_dim_ym.vat AS ym_vat,
+                    dg_dim_ym.stock AS ym_stock,
+                    dg_dim_ym.length_cm AS ym_length,
+                    dg_dim_ym.width_cm AS ym_width,
+                    dg_dim_ym.height_cm AS ym_height,
+                    dg_dim_ym.weight_kg AS ym_weight`;
+
+            const joinMpList = useMpJoins || postFilter;
+            const fromSql = joinMpList ? `${fromCore}${MP_JOIN_SQL}` : fromCore;
+            const mpWhere = useMpJoins && !postFilter ? sqlWhereMpScope(mpScope) : '';
+            const whereFull = `${whereSql}${extraStockWhere}${mpWhere}`;
+            const baseParams = params.concat(extraParams);
+
+            /** Пагинация в SQL (без пост-фильтрации в Node). */
+            if (!postFilter && !problemStock) {
+                const [countRows] = await db.query(`SELECT COUNT(*) AS total ${fromSql} ${whereFull}`, baseParams);
+                const total = Number((countRows && countRows[0] && countRows[0].total) || 0);
+                const selectSql =
+                    (useMpJoins ? `${selectNarrow}${selectWideDims}${selectMp}` : selectNarrow) +
+                    `\n                 ${fromSql}\n                 ${whereFull}\n                 ORDER BY ${orderBy}\n                 LIMIT ? OFFSET ?`;
+                const [rows] = await db.query(selectSql, baseParams.concat([limit, offset]));
+                const out = (rows || []).map((r) => mapDimensionListRow(r));
+                return res.json({
+                    success: true,
+                    rows: out,
+                    total,
+                    limit,
+                    offset,
+                    sort_by: sortBy,
+                    sort_dir: sortDir,
+                    mp_scope: mpScope,
+                    problem_profile: problemProfile || null,
+                    post_filtered: false,
+                    dimension_attrs: DIMENSION_ATTRS.map((d) => ({ key: d.key, label: d.label, attr: d.attr })),
+                });
+            }
+
+            /** Пост-фильтр: vat_mismatch / dims_mismatch / «проблемные товары». */
+            const fromForCap = postFilter ? `${fromCore}${MP_JOIN_SQL}` : fromCore;
+            const selectForCap = postFilter ? `${selectNarrow}${selectWideDims}${selectMp}` : selectNarrow;
+            const sqlCap = `${selectForCap}\n                 ${fromForCap}\n                 ${whereFull}\n                 ORDER BY mse.code ASC\n                 LIMIT ?`;
+            const outOnly = await collectPostFilteredDimensionRowsStream(
+                db,
+                sqlCap,
+                baseParams.concat([DIM_LIST_POST_FILTER_CAP]),
+                { problemStock, postFilter, mpScope },
             );
 
-            const out = (rows || []).map((r) => {
-                const payload = parsePayloadSafe(r.payload_json);
-                const dimsMs = buildDimensionsFromPayload(payload);
-                const measurement = rowToMeasurement({
-                    length_cm: r.m_length_cm,
-                    width_cm: r.m_width_cm,
-                    height_box_cm: r.m_height_box_cm,
-                    height_bag_cm: r.m_height_bag_cm,
-                    weight_kg: r.m_weight_kg,
-                    packing_type: r.m_packing_type,
-                });
-                /** Парсим «Тип упаковки»: даёт authoritative kind + автозначения
-                 *  для L/W/H, которые UI показывает как ghost-default, пока не
-                 *  появится user-override (см. /measure ниже). Источник —
-                 *  override (`measurement.packing_type`), если он есть; иначе
-                 *  МС-значение (`dimensions_ms.packing_type`). До этого сервер
-                 *  всегда брал МС-значение, и после смены упаковки в UI
-                 *  parsed-фолбэк оставался старым до следующего полного синка
-                 *  МС (`POST /api/ms/sync` обновляет `ms_export`, а только
-                 *  оттуда читается `dimensions_ms`). */
-                const packingForParse = (measurement && measurement.packing_type)
-                    ? measurement.packing_type
-                    : dimsMs.packing_type;
-                const parsed = parsePackingDims(packingForParse);
-                return {
-                    code: String(r.code || ''),
-                    name: String(r.name || ''),
-                    type: String(r.type || ''),
-                    uuid: String(r.uuid || ''),
-                    stock: r.stock != null ? Number(r.stock) : null,
-                    is_archived: Number(r.is_archived || 0) === 1,
-                    measured_by_user_id: r.measured_by_user_id != null ? Number(r.measured_by_user_id) : null,
-                    measured_by_name: r.measured_by_name != null ? String(r.measured_by_name) : '',
-                    measured_at: r.measured_at ? new Date(r.measured_at).toISOString() : '',
-                    dimensions_ms: dimsMs,
-                    measurement,
-                    dimensions_parsed: parsed,
-                };
-            });
+            outOnly.sort((a, b) => compareDimensionOutRows(a, b, sortBy, sortDir));
+            const total = outOnly.length;
+            const pageRows = outOnly.slice(offset, offset + limit);
 
             return res.json({
                 success: true,
-                rows: out,
+                rows: pageRows,
                 total,
                 limit,
                 offset,
-                sort_by: String(req.query.sort_by || 'code'),
-                sort_dir: String(req.query.sort_dir || 'asc'),
+                sort_by: sortBy,
+                sort_dir: sortDir,
+                mp_scope: mpScope,
+                problem_profile: problemProfile || null,
+                post_filtered: true,
+                post_filter_cap: DIM_LIST_POST_FILTER_CAP,
                 dimension_attrs: DIMENSION_ATTRS.map((d) => ({ key: d.key, label: d.label, attr: d.attr })),
             });
         } catch (e) {
@@ -1412,7 +1757,7 @@ function createDimensionsRouter(db, appSettings = {}) {
     });
 
     /**
-     * Статистика журнала `ms_dimensions_log` для UI «Логи сервера» в /settings.html:
+     * Статистика таблицы `ms_dimensions_log` (UI: «Журнал изменений габаритов» на /settings.html):
      *  total — всего строк, oldest_at — дата самой старой записи (для отображения
      *  «накопилось за …»), newest_at — самая свежая, by_action — разбивка по
      *  действиям (set/sync_ms/delete), older_than_retention — сколько строк будет
@@ -1600,10 +1945,10 @@ function createDimensionsRouter(db, appSettings = {}) {
     });
 
     /**
-     * Глобальный журнал изменений габаритов: страница «История» на /exports-dimensions.html.
+     * Глобальный журнал изменений габаритов: карточка «Журнал изменений габаритов» на /exports-dimensions.html.
      * Фильтры:
      *   - `search` — подстрока по `code` или `name` (ms_export.name).
-     *   - `action` — `set`, `delete`, `sync_ms`, `sync_ms_skip` (см. ms_dimensions_log).
+     *   - `action` — `set`, `delete`, `sync_ms`, `sync_ms_skip`, `sync_ms_error` (см. ms_dimensions_log).
      *   - `field`  — конкретное поле (`length_cm` и т.д.).
      *   - `who`    — подстрока по `changed_by_name`.
      *   - `from`, `to` — диапазон по `changed_at` (`YYYY-MM-DD` или ISO).

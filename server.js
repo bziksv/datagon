@@ -16,11 +16,9 @@ const postInitTasks = [];
 
 function pickFirstAllowedHtmlForActor(actor) {
     try {
-        const { PAGE_DEFS } = require('./lib/datagonPageRegistry');
-        const modes = (actor && actor.page_modes) || {};
+        const { PAGE_DEFS, isHtmlLeafAccessHiddenForActor } = require('./lib/datagonPageRegistry');
         for (const p of PAGE_DEFS) {
-            const mode = String(modes[p.key] || 'full').toLowerCase();
-            if (mode !== 'hidden') return `/${p.htmlFile}`;
+            if (!isHtmlLeafAccessHiddenForActor(actor, p.htmlFile.toLowerCase())) return `/${p.htmlFile}`;
         }
     } catch (_) {}
     return '/login.html';
@@ -797,7 +795,7 @@ async function cleanupResultsByRetentionDays(days) {
 }
 
 /**
- * Автоочистка журнала замеров габаритов `ms_dimensions_log` по retention в днях
+ * Автоочистка таблицы `ms_dimensions_log` (журнал изменений габаритов) по retention в днях
  * (`app_settings.ms_dimensions_log_retention_days`, по умолчанию 180).
  * Удаляются ВСЕ типы записей (`set`, `delete`, `sync_ms`) старше N дней.
  * Возвращает число удалённых строк (для UI-кнопки «Очистить сейчас»).
@@ -1740,6 +1738,13 @@ initDB().then(() => {
         if (!req.datagonActor) return next();
         if (req.datagonActor.username === 'admin') return next();
         const pathOnly = String(req.path || '').split('?')[0];
+        const canManageUsers = req.datagonActor.can_manage_users === true;
+        if (canManageUsers) {
+            if (pathOnly === '/auth/users' || pathOnly.startsWith('/auth/users/')) return next();
+            if (isHttpReadMethod(req.method) && (pathOnly === '/specialties' || pathOnly.startsWith('/specialties/'))) {
+                return next();
+            }
+        }
         const pageKey = apiRelativePathToPageKey(pathOnly);
         if (pageKey == null) return next();
         const mode = req.datagonActor.page_modes[pageKey] || 'full';
@@ -1775,7 +1780,8 @@ initDB().then(() => {
                 skip_reason: enq.ok ? null : enq.reason || null,
                 task,
                 queue: autoSyncQueue.map((item) => (typeof item === 'string' ? item : item?.type)).filter(Boolean),
-                runner_active: Boolean(autoSyncRunnerActive)
+                runner_active: Boolean(autoSyncRunnerActive),
+                running_tasks: Array.from(autoSyncRunIds.keys())
             });
         } catch (e) {
             return res.status(500).json({ success: false, error: e.message || 'Ошибка запуска автосинхронизации' });
@@ -1914,6 +1920,8 @@ initDB().then(() => {
                 now_moscow_date: mskNow.date,
                 queue: [...autoSyncQueue],
                 runner_active: Boolean(autoSyncRunnerActive),
+                /** Типы задач с открытой строкой `auto_sync_runs` (то, что воркер реально исполняет сейчас). */
+                running_tasks: Array.from(autoSyncRunIds.keys()),
                 sections: buildAutoSyncSectionsSnapshot(appSettings),
                 /** Живой прогресс текущих задач автосинка (только при открытой строке auto_sync_runs). */
                 tasks_live: buildAutoSyncTasksLiveForOverview(),
@@ -2174,8 +2182,8 @@ initDB().then(() => {
             const actor = await authModule.getActor(req);
             if (actor) {
                 if (actor.username !== 'admin') {
-                    const { isHtmlLeafAccessHidden } = require('./lib/datagonPageRegistry');
-                    if (actor.page_modes && isHtmlLeafAccessHidden(actor.page_modes, leaf)) {
+                    const { isHtmlLeafAccessHiddenForActor } = require('./lib/datagonPageRegistry');
+                    if (isHtmlLeafAccessHiddenForActor(actor, leaf)) {
                         return res.redirect(302, pickFirstAllowedHtmlForActor(actor));
                     }
                 }

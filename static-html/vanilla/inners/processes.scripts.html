@@ -2,6 +2,7 @@
     (function () {
       var FILTERS_KEY = "datagon_processes_filters_collapsed_v1";
       var overview = null;
+      var dgProcAsRunLogById = Object.create(null);
       var loading = false;
       var pollTimer = null;
       var processesPrefsMerged = false;
@@ -506,6 +507,39 @@
         });
       }
 
+      /** Элементы `autoSync.queue` с бэка — `{ type, triggerType }` или строка; для UI только типы по порядку ожидания. */
+      function formatAutoSyncQueueTypes(queue) {
+        if (!Array.isArray(queue) || !queue.length) return "пусто";
+        return queue
+          .map(function (item) {
+            if (item && typeof item === "object" && item.type != null) return String(item.type || "").trim();
+            return String(item || "").trim();
+          })
+          .filter(Boolean)
+          .join(" → ");
+      }
+
+      function titleForAutoSyncTaskKey(autoSync, key) {
+        var k = String(key || "").trim();
+        if (!k) return "";
+        var secs = resolveAutoSyncSections(autoSync || {});
+        for (var i = 0; i < secs.length; i++) {
+          if (secs[i].key === k) return String(secs[i].title || k);
+        }
+        return k;
+      }
+
+      function formatRunningAutoSyncTasks(autoSync) {
+        var rt = autoSync && autoSync.running_tasks;
+        if (!Array.isArray(rt) || !rt.length) return "";
+        return rt
+          .map(function (key) {
+            return titleForAutoSyncTaskKey(autoSync, key);
+          })
+          .filter(Boolean)
+          .join(", ");
+      }
+
       function statusBadgeHtml(status) {
         var s = String(status || "").trim().toLowerCase();
         if (s === "completed") return '<span class="badge bg-success">Завершено</span>';
@@ -532,6 +566,84 @@
           .replace(/</g, "&lt;")
           .replace(/>/g, "&gt;")
           .replace(/"/g, "&quot;");
+      }
+
+      function openAutoSyncRunLogModal(runIdStr) {
+        var rec = dgProcAsRunLogById[runIdStr];
+        var dlg = document.getElementById("dg-proc-as-run-log-dialog");
+        if (!dlg || !rec) return;
+        var titleEl = document.getElementById("dg-proc-as-run-log-d-title");
+        var pre = document.getElementById("dg-proc-as-run-log-d-summary");
+        var foot = document.getElementById("dg-proc-as-run-log-d-foot");
+        var dimWrap = document.getElementById("dg-proc-as-run-log-d-dim-wrap");
+        var dimBody = document.getElementById("dg-proc-as-run-log-d-dim");
+        var tt = String(rec.task_type || "").trim() || "—";
+        var trig = String(rec.trigger_type || "").trim() || "—";
+        var st = String(rec.status || "").trim() || "—";
+        if (titleEl) titleEl.textContent = "#" + String(rec.id) + " · " + tt;
+        var lines = [
+          "task_type: " + tt,
+          "trigger_type: " + trig,
+          "status: " + st,
+          "started_at: " + (rec.started_at || "—"),
+          "finished_at: " + (rec.finished_at || "—"),
+          "",
+          String(rec.message || "").trim() || "(пустое сообщение)",
+        ];
+        if (pre) pre.textContent = lines.join("\n");
+        if (foot) {
+          foot.textContent =
+            "Для «Габариты МС» отказы выгрузки в МойСклад пишутся в таблицу ms_dimensions_log (на странице «Габариты» — «Журнал изменений габаритов», действие «Ошибка МС»). У старых запусков список отказов может быть пуст.";
+        }
+        var isDim = tt.toLowerCase() === "dimensions";
+        if (isDim && rec.started_at && rec.finished_at && dimWrap && dimBody) {
+          dimWrap.classList.remove("d-none");
+          dimBody.textContent = "Загрузка ms_dimensions_log…";
+          var qs = new URLSearchParams();
+          qs.set("action", "sync_ms_error");
+          qs.set("limit", "200");
+          qs.set("from", new Date(rec.started_at).toISOString());
+          qs.set("to", new Date(rec.finished_at).toISOString());
+          fetch("/api/exports/dimensions/log/global?" + qs.toString(), { credentials: "same-origin" })
+            .then(function (r) {
+              return r.json().then(function (j) {
+                return { r: r, j: j };
+              });
+            })
+            .then(function (x) {
+              if (!x.r.ok || !x.j || !x.j.success) {
+                dimBody.textContent =
+                  "Не удалось загрузить ms_dimensions_log: " + String((x.j && x.j.error) || x.r.status || "?");
+                return;
+              }
+              var rows = Array.isArray(x.j.rows) ? x.j.rows : [];
+              if (!rows.length) {
+                dimBody.textContent =
+                  "За интервал этого запуска записей «Ошибка МС» нет (запуск до обновления сервера без логирования отказов, либо ошибок не было).";
+                return;
+              }
+              dimBody.textContent = rows
+                .map(function (row) {
+                  var t = row.changed_at ? fmtTimeMsk(row.changed_at) : "—";
+                  return t + "  " + row.code + "  " + String(row.note || "").trim();
+                })
+                .join("\n");
+            })
+            .catch(function (e) {
+              dimBody.textContent = "Сеть: " + (e && e.message ? e.message : String(e));
+            });
+        } else if (dimWrap) {
+          dimWrap.classList.add("d-none");
+        }
+        if (typeof dlg.showModal === "function") {
+          try {
+            dlg.showModal();
+          } catch (e2) {
+            window.alert(lines.join("\n"));
+          }
+        } else {
+          window.alert(lines.join("\n"));
+        }
       }
 
       function resolveAutoSyncLiveByTask(autoSync) {
@@ -624,6 +736,10 @@
 
       function renderAutoSyncSections(sections, runs, isToday, liveByTask) {
         liveByTask = liveByTask || {};
+        dgProcAsRunLogById = Object.create(null);
+        (Array.isArray(runs) ? runs : []).forEach(function (r) {
+          if (r && r.id != null) dgProcAsRunLogById[String(r.id)] = r;
+        });
         var root = document.getElementById("dg-proc-as-sections");
         if (!root) return;
         root.replaceChildren();
@@ -695,13 +811,27 @@
                 String(r.status || "").toLowerCase() === "running" && lv ? formatAutoSyncLiveLine(sec.key, lv) : "";
               if (liveLine) msgParts.push(escapeText(liveLine));
               var msgHtml = msgParts.length
-                ? '<div class="text-muted small mt-1" style="white-space:normal;word-break:break-word">' +
+                ? '<div class="text-muted small mt-1 dg-proc-as-run-msg" style="white-space:normal;word-break:break-word">' +
                     msgParts.join("<br/>") +
+                    (r.message && String(r.message).length > 240
+                      ? '<br/><span class="fst-italic">Обрезано в списке — полный текст в «Лог».</span>'
+                      : "") +
                     "</div>"
                 : "";
               row.innerHTML =
-                '<span class="dg-proc-as-run-time">' + escapeText(start) + " → " + escapeText(finish) + (dur ? " · " + escapeText(dur) : "") + '</span>' +
-                '<span class="dg-proc-as-run-status">' + statusBadgeHtml(r.status) + " " + triggerBadgeHtml(r.trigger_type) + '</span>' +
+                '<div class="dg-proc-as-run-top d-flex flex-wrap align-items-center gap-2 w-100">' +
+                '<span class="dg-proc-as-run-time">' +
+                escapeText(start) +
+                " → " +
+                escapeText(finish) +
+                (dur ? " · " + escapeText(dur) : "") +
+                '</span><span class="dg-proc-as-run-status">' +
+                statusBadgeHtml(r.status) +
+                " " +
+                triggerBadgeHtml(r.trigger_type) +
+                '</span><button type="button" class="btn btn-sm btn-outline-secondary dg-proc-as-run-log-btn py-0 px-2" data-run-id="' +
+                escapeText(String(r.id)) +
+                '">Лог</button></div>' +
                 msgHtml;
               runsBox.appendChild(row);
             });
@@ -795,11 +925,14 @@
         var cfg = autoSync.config || {};
         document.getElementById("dg-proc-as-now").textContent =
           (autoSync.now_moscow_date || "-") + " " + (autoSync.now_moscow_time || "-");
+        var runningTitles = formatRunningAutoSyncTasks(autoSync);
         document.getElementById("dg-proc-as-runner").textContent = autoSync.runner_active
-          ? "выполняется"
+          ? runningTitles
+            ? "выполняется: " + runningTitles
+            : "выполняется (тип задачи уточняется — обновите страницу)"
           : "ожидание";
         var q = Array.isArray(autoSync.queue) ? autoSync.queue : [];
-        document.getElementById("dg-proc-as-queue").textContent = q.length ? q.join(" → ") : "пусто";
+        document.getElementById("dg-proc-as-queue").textContent = formatAutoSyncQueueTypes(q);
         var asDayHint = document.getElementById("dg-proc-as-day-hint");
         if (asDayHint) {
           asDayHint.textContent = "запуски за " + moscowDayLabel(overview.forDate || moscowTodayDate());
@@ -1270,6 +1403,28 @@
         if (actOffset + actLimit < actTotal) actOffset += actLimit;
         loadActivityJournal();
       });
+
+      (function initAutoSyncRunLogDialog() {
+        var dlg = document.getElementById("dg-proc-as-run-log-dialog");
+        var btnClose = document.getElementById("dg-proc-as-run-log-d-close");
+        var root = document.getElementById("dg-proc-as-sections");
+        if (!dlg || !btnClose) return;
+        btnClose.addEventListener("click", function () {
+          if (typeof dlg.close === "function") dlg.close();
+        });
+        dlg.addEventListener("click", function (ev) {
+          if (ev.target === dlg && typeof dlg.close === "function") dlg.close();
+        });
+        if (root) {
+          root.addEventListener("click", function (ev) {
+            var t = ev.target && ev.target.closest ? ev.target.closest(".dg-proc-as-run-log-btn") : null;
+            if (!t) return;
+            ev.preventDefault();
+            var rid = t.getAttribute("data-run-id");
+            if (rid) openAutoSyncRunLogModal(rid);
+          });
+        }
+      })();
 
       loadOverview();
       resetActivityJournalFilters();

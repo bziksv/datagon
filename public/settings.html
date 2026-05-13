@@ -1191,8 +1191,8 @@
                     Аналог кнопки «↗ В МС: все правки» на странице
                     <a href="/exports-dimensions.html">«Габариты»</a>: для всех позиций с пользовательским
                     замером и заполненным <code>uuid</code> в <code>ms_export</code> отправляет PUT в
-                    <code>/entity/{product|bundle}/{uuid}</code>. Журнал — таблица
-                    <code>ms_dimensions_log</code> (action <code>sync_ms</code>); прогресс и статус — на
+                    <code>/entity/{product|bundle}/{uuid}</code>. Журнал изменений габаритов хранится в таблице
+                    <code>ms_dimensions_log</code> (при успешной выгрузке — <code>action=sync_ms</code>); прогресс и статус — на
                     <a href="/processes.html">«Логи фоновых процессов»</a> (раздел «Габариты МС»).
                   </p>
                 </div>
@@ -1295,53 +1295,32 @@
           <div class="main-card mb-3 card">
             <div class="card-header d-flex align-items-center">
               <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
-              <span>Логи сервера</span>
+              <span>Журнал изменений габаритов</span>
             </div>
             <div class="card-body">
-              <p class="small text-muted">Управление лог-файлами server.log и worker.log.</p>
-              <div class="row g-2">
-                <div class="col-md-4"><label class="form-label" for="dg-set-log_retention_days">Автоочистка логов (дней)</label><input type="number" class="form-control" id="dg-set-log_retention_days" /></div>
-              </div>
-              <div class="small text-muted mt-2" id="dg-set-logs-info"></div>
-              <div class="mt-3 d-flex gap-2">
-                <button type="button" class="btn btn-info" id="dg-set-btn-logs-refresh" data-dg-activity-label="Обновить информацию о логах">
-                  Обновить информацию о логах
-                </button>
-                <button type="button" class="btn btn-warning" id="dg-set-btn-logs-clear" data-dg-activity-label="Очистить логи приложения">
-                  Очистить логи сейчас
-                </button>
-              </div>
-
-              <!--
-                Журнал замеров габаритов (`ms_dimensions_log`).
-                Этот блок — отдельный inline-feedback контракт (`runSaveWithInlineFeedback`),
-                чтобы автономно сохранять `ms_dimensions_log_retention_days` без зависимостей
-                от формы парсера. См. `datagon-settings-save-feedback.mdc`.
-              -->
-              <hr class="my-4" />
-              <h6 class="mb-2">Журнал замеров габаритов</h6>
               <p class="small text-muted mb-2">
-                Журнал хранит историю изменений габаритов товаров/комплектов МойСклад
-                (страница <a href="/exports-dimensions.html">Габариты</a>): кто, что и
-                когда менял в ячейках, и какие значения отправлялись в МС. Автоочистка
-                удаляет записи старше указанного числа дней — раз в 12 часов плюс при
-                старте сервера. По умолчанию <strong>180 дней</strong>.
+                Таблица <code>ms_dimensions_log</code> — <strong>только</strong> журнал по габаритам и замерам: правки в
+                ячейках на странице <a href="/exports-dimensions.html">Габариты</a>, выгрузка этих полей в МойСклад,
+                откаты и ошибки выгрузки. Это <strong>не</strong> общий лог приложения (фоновые задачи —
+                <a href="/processes.html">Процессы</a>, действия пользователей — отдельные разделы и таблицы). Те же
+                строки смотрите внизу «Габариты» в свёрнутой карточке журнала. Автоочистка удаляет записи старше
+                указанного числа дней — раз в 12 часов и при старте сервера. По умолчанию <strong>180 дней</strong>.
               </p>
               <div class="row g-2 align-items-end">
                 <div class="col-md-4">
-                  <label class="form-label" for="dg-set-ms_dimensions_log_retention_days">Хранить журнал замеров (дней)</label>
+                  <label class="form-label" for="dg-set-ms_dimensions_log_retention_days">Срок хранения журнала габаритов (дней)</label>
                   <input type="number" class="form-control" id="dg-set-ms_dimensions_log_retention_days" min="1" step="1" />
                 </div>
               </div>
-              <div class="small text-muted mt-2" id="dg-set-dim-log-info">Статистика журнала: загрузка…</div>
+              <div class="small text-muted mt-2" id="dg-set-dim-log-info">Статистика ms_dimensions_log: загрузка…</div>
               <div class="mt-3 d-flex gap-2 flex-wrap">
-                <button type="button" class="btn btn-primary" id="dg-set-btn-save-dim-log" data-dg-activity-label="Сохранить retention журнала замеров">
+                <button type="button" class="btn btn-primary" id="dg-set-btn-save-dim-log" data-dg-activity-label="Сохранить срок хранения ms_dimensions_log">
                   Сохранить
                 </button>
-                <button type="button" class="btn btn-info" id="dg-set-btn-dim-log-refresh" data-dg-activity-label="Обновить статистику журнала замеров">
+                <button type="button" class="btn btn-info" id="dg-set-btn-dim-log-refresh" data-dg-activity-label="Обновить статистику ms_dimensions_log">
                   Обновить статистику
                 </button>
-                <button type="button" class="btn btn-warning" id="dg-set-btn-dim-log-cleanup" data-dg-activity-label="Очистить журнал замеров сейчас">
+                <button type="button" class="btn btn-warning" id="dg-set-btn-dim-log-cleanup" data-dg-activity-label="Очистить ms_dimensions_log по сроку">
                   Очистить сейчас
                 </button>
               </div>
@@ -1530,7 +1509,6 @@
         auto_sync_mssales_full_time: "03:15",
         auto_sync_mssales_full_days: 730,
         auto_sync_mssales_full_weekdays: "7",
-        log_retention_days: 7,
         ms_dimensions_log_retention_days: 180,
         ozon_client_id: "",
         ozon_api_key: "",
@@ -1748,7 +1726,6 @@
         set("dg-set-auto_mssales_full_time", merged.auto_sync_mssales_full_time || "03:15");
         set("dg-set-auto_mssales_full_days", String(Number(merged.auto_sync_mssales_full_days || 730)));
         applyAutoSyncWeekdayChecks("dg-set-auto_mssales_full_wd", merged.auto_sync_mssales_full_weekdays);
-        set("dg-set-log_retention_days", merged.log_retention_days);
         set("dg-set-ms_dimensions_log_retention_days", merged.ms_dimensions_log_retention_days);
         set("dg-set-ozon_client_id", merged.ozon_client_id || "");
         set("dg-set-ozon_api_key", merged.ozon_api_key || "");
@@ -2147,39 +2124,6 @@
             .catch(function (e) {
               alert(e.message || "Ошибка загрузки настроек");
             })
-        );
-      }
-
-      function loadLogsInfo() {
-        return dgKeepScroll(
-          fetch("/api/settings/logs-info", { credentials: "same-origin" })
-          .then(function (r) {
-            return r.json().then(function (j) {
-              return { r: r, j: j };
-            });
-          })
-          .then(function (x) {
-            var box = document.getElementById("dg-set-logs-info");
-            box.replaceChildren();
-            if (!x.r.ok) throw new Error(x.j.error || "Не удалось получить информацию о логах");
-            var rows = Array.isArray(x.j.data) ? x.j.data : [];
-            if (!rows.length) {
-              box.textContent = "Логи не найдены";
-              return;
-            }
-            rows.forEach(function (r) {
-              var mb = (Number(r.size_bytes || 0) / (1024 * 1024)).toFixed(2);
-              var mtime = r.modified_at ? new Date(r.modified_at).toLocaleString("ru-RU") : "нет файла";
-              var d = document.createElement("div");
-              d.textContent = r.name + ": " + mb + " MB (обновлен: " + mtime + ")";
-              box.appendChild(d);
-            });
-          })
-          .catch(function (e) {
-            var box = document.getElementById("dg-set-logs-info");
-            box.replaceChildren();
-            box.textContent = "Ошибка чтения логов: " + (e.message || String(e));
-          })
         );
       }
 
@@ -2592,13 +2536,12 @@
           discover_request_delay_ms: getNum("dg-set-discover_request_delay_ms", 100),
           fetch_proxy_enabled: document.getElementById("dg-set-fetch_proxy_enabled").checked ? 1 : 0,
           fetch_proxy_list: getStr("dg-set-fetch_proxy_list"),
-          log_retention_days: getNum("dg-set-log_retention_days", 7),
         };
         runSaveWithInlineFeedback({
           sectionId: "general",
           payload: payload,
           okText: "Настройки парсера сохранены",
-          verifyKeys: ["default_limit", "parse_batch_size", "page_delay_ms", "results_retention_days", "log_retention_days"],
+          verifyKeys: ["default_limit", "parse_batch_size", "page_delay_ms", "results_retention_days"],
         });
       }
 
@@ -2738,7 +2681,9 @@
         if (!Array.isArray(queue) || !queue.length) return "пусто (ваша задача может начаться сразу, если воркер был свободен).";
         return queue
           .map(function (t) {
-            var k = String(t || "").trim();
+            var k = "";
+            if (t && typeof t === "object" && t.type != null) k = String(t.type || "").trim();
+            else k = String(t || "").trim();
             return escAutoRunHtml(AUTO_RUN_TASK_LABELS[k] || k);
           })
           .join(" → ");
@@ -2800,9 +2745,17 @@
             }
             var j = x.j || {};
             var timeStr = new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+            var runningKeys = Array.isArray(j.running_tasks) ? j.running_tasks.filter(Boolean) : [];
+            var runningTitles = runningKeys
+              .map(function (k) {
+                return escAutoRunHtml(AUTO_RUN_TASK_LABELS[String(k)] || String(k));
+              })
+              .join(", ");
             var workerLine =
               j.runner_active === true
-                ? "Воркер автосинка сейчас <strong>занят</strong> (выполняется какая‑то задача)."
+                ? runningTitles
+                  ? "Воркер сейчас занят: выполняется — <strong>" + runningTitles + "</strong>."
+                  : "Воркер автосинка сейчас <strong>занят</strong> (активная задача не передана в ответе — откройте «Процессы» и обновите страницу)."
                 : "Воркер автосинка сейчас <strong>свободен</strong>.";
             var queueLine = "Очередь после ответа сервера: " + formatAutoSyncQueueForUi(j.queue) + "";
             var procLink =
@@ -2915,33 +2868,15 @@
           });
       }
 
-      function clearLogsNow() {
-        if (!window.confirm("Очистить server.log и worker.log прямо сейчас?")) return;
-        fetch("/api/settings/logs-clear", { method: "POST", credentials: "same-origin" })
-          .then(function (r) {
-            return r.json().then(function (j) {
-              return { r: r, j: j };
-            });
-          })
-          .then(function (x) {
-            if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Не удалось очистить логи");
-            alert("Логи очищены");
-            loadLogsInfo();
-          })
-          .catch(function (e) {
-            alert(e.message || "Ошибка очистки логов");
-          });
-      }
-
       /**
-       * Статистика журнала замеров габаритов `ms_dimensions_log` для блока
-       * «Журнал замеров габаритов» в карточке «Логи сервера»: всего строк,
+       * Статистика таблицы `ms_dimensions_log` (на UI — «Журнал изменений габаритов») для карточки
+       * с тем же названием на /settings.html: всего строк,
        * самая старая/свежая запись, разбивка по action и сколько будет
        * удалено по текущему retention.
        */
       function loadDimLogStats() {
         var box = document.getElementById("dg-set-dim-log-info");
-        if (box) box.textContent = "Статистика журнала: загрузка…";
+        if (box) box.textContent = "Статистика ms_dimensions_log: загрузка…";
         return dgKeepScroll(
           fetch("/api/exports/dimensions/log/stats", { credentials: "same-origin" })
             .then(function (r) { return r.json().then(function (j) { return { r: r, j: j }; }); })
@@ -2949,12 +2884,12 @@
               if (!box) return;
               box.replaceChildren();
               if (!x.r.ok || !x.j || x.j.success === false) {
-                box.textContent = "Ошибка статистики журнала: " + ((x.j && x.j.error) || "неизвестно");
+                box.textContent = "Ошибка статистики ms_dimensions_log: " + ((x.j && x.j.error) || "неизвестно");
                 return;
               }
               var j = x.j;
               var act = j.by_action || {};
-              var actStr = ["set", "sync_ms", "delete"]
+              var actStr = ["set", "sync_ms", "sync_ms_skip", "sync_ms_error", "delete"]
                 .filter(function (k) { return act[k] != null; })
                 .map(function (k) { return k + "=" + (act[k] || 0); })
                 .join(", ");
@@ -2978,13 +2913,13 @@
             .catch(function (e) {
               if (!box) return;
               box.replaceChildren();
-              box.textContent = "Сетевая ошибка статистики журнала: " + ((e && e.message) || e);
+              box.textContent = "Сетевая ошибка статистики ms_dimensions_log: " + ((e && e.message) || e);
             })
         );
       }
 
       /**
-       * Сохранить retention журнала замеров через единую утилиту inline-feedback
+       * Сохранить `ms_dimensions_log` retention через единую утилиту inline-feedback
        * (`datagon-settings-save-feedback.mdc`). После успешного сохранения сразу
        * обновляем статистику — пользователь видит «по новому retention удалится X».
        */
@@ -2998,20 +2933,20 @@
         runSaveWithInlineFeedback({
           sectionId: "dim-log",
           payload: { ms_dimensions_log_retention_days: days },
-          okText: "Retention журнала замеров сохранён",
+          okText: "Срок хранения ms_dimensions_log сохранён",
           verifyKeys: ["ms_dimensions_log_retention_days"],
         }).then(function () { loadDimLogStats(); }).catch(function () { /** баннер уже показан утилитой */ });
       }
 
       /**
        * Принудительная очистка прямо сейчас (без ожидания cron). Использует ТЕКУЩЕЕ
-       * значение поля «Хранить журнал замеров (дней)» — даже если оно ещё не сохранено,
+       * значение поля «Срок хранения журнала габаритов (дней)» — даже если оно ещё не сохранено,
        * чтобы пользователь мог попробовать другое значение и нажать «Очистить сейчас»
        * для предпросмотра.
        */
       function cleanupDimLogNow() {
         var days = getNum("dg-set-ms_dimensions_log_retention_days", 180);
-        if (!window.confirm("Удалить из журнала замеров записи старше " + days + " дней?")) return;
+        if (!window.confirm("Удалить из таблицы ms_dimensions_log записи старше " + days + " дней?")) return;
         fetch("/api/exports/dimensions/log/cleanup", {
           method: "POST",
           credentials: "same-origin",
@@ -3021,13 +2956,13 @@
           .then(function (r) { return r.json().then(function (j) { return { r: r, j: j }; }); })
           .then(function (x) {
             if (!x.r.ok || !x.j || x.j.success === false) {
-              throw new Error((x.j && x.j.error) || "Не удалось очистить журнал");
+              throw new Error((x.j && x.j.error) || "Не удалось очистить ms_dimensions_log");
             }
             alert("Удалено записей: " + (x.j.deleted || 0));
             loadDimLogStats();
           })
           .catch(function (e) {
-            alert((e && e.message) || "Ошибка очистки журнала");
+            alert((e && e.message) || "Ошибка очистки ms_dimensions_log");
           });
       }
 
@@ -3304,8 +3239,6 @@
       if (mssalesRunBtn) mssalesRunBtn.addEventListener("click", function () { runAutoSyncNow("mssales", "Продажи МС", "dg-set-auto_mssales_run"); });
       var mssalesFullRunBtn = document.getElementById("dg-set-auto_mssales_full_run");
       if (mssalesFullRunBtn) mssalesFullRunBtn.addEventListener("click", function () { runAutoSyncNow("mssales_full", "Продажи МС (полный)", "dg-set-auto_mssales_full_run"); });
-      document.getElementById("dg-set-btn-logs-refresh").addEventListener("click", loadLogsInfo);
-      document.getElementById("dg-set-btn-logs-clear").addEventListener("click", clearLogsNow);
       document.getElementById("dg-set-btn-save-dim-log").addEventListener("click", saveDimLogRetention);
       document.getElementById("dg-set-btn-dim-log-refresh").addEventListener("click", loadDimLogStats);
       document.getElementById("dg-set-btn-dim-log-cleanup").addEventListener("click", cleanupDimLogNow);
@@ -3347,7 +3280,6 @@
       set("dg-set-pw-username", isAdmin() ? "admin" : currentUser() || "");
       document.getElementById("dg-set-pw-username").readOnly = !isAdmin();
       loadSettings();
-      loadLogsInfo();
       loadDimLogStats();
       loadUsers();
       window.addEventListener("datagon-profile-loaded", function () {

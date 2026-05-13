@@ -315,10 +315,32 @@
                 <div class="col-md-6"><b>Сейчас (МСК):</b> <span id="dg-proc-as-now">— —</span></div>
                 <div class="col-md-6"><b>Исполнитель:</b> <span id="dg-proc-as-runner">—</span></div>
                 <div class="col-12"><b>Очередь задач:</b> <span id="dg-proc-as-queue">—</span></div>
+                <div class="col-12 small text-muted">
+                  В «очереди» только ожидающие типы; задача, которую воркер выполняет сейчас, из списка снята (она показана в «Исполнитель»). Не отбрасывается: следующая по расписанию встанет в хвост и дождётся конца текущей.
+                </div>
               </div>
               <div id="dg-proc-as-sections" class="dg-proc-as-sections"></div>
             </div>
           </div>
+
+          <dialog id="dg-proc-as-run-log-dialog" class="dg-proc-as-run-log-dialog border-0 rounded shadow-lg p-0">
+            <div class="card border-0 mb-0">
+              <div class="card-header d-flex justify-content-between align-items-center gap-2 py-2">
+                <strong id="dg-proc-as-run-log-d-title" class="text-break">Запуск автосинхронизации</strong>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-proc-as-run-log-d-close">Закрыть</button>
+              </div>
+              <div class="card-body">
+                <div class="small text-muted mb-1">Полный текст из БД (<code>auto_sync_runs.message</code>) и, для габаритов МС, строки отказов из <code>ms_dimensions_log</code> (на странице «Габариты» — «Журнал изменений габаритов»).</div>
+                <pre id="dg-proc-as-run-log-d-summary" class="small mb-0 bg-light p-2 rounded"></pre>
+                <div id="dg-proc-as-run-log-d-dim-wrap" class="d-none">
+                  <div class="fw-semibold small mb-1">Отказы выгрузки в МС (<code>ms_dimensions_log</code>, действие «Ошибка МС»)</div>
+                  <div id="dg-proc-as-run-log-d-dim" class="small border rounded p-2 bg-white"></div>
+                  <a href="/exports-dimensions.html#dg-dim-history-card" class="small mt-2 d-inline-block">Страница «Габариты» → «Журнал изменений габаритов»</a>
+                </div>
+                <p class="text-muted small mb-0 mt-2" id="dg-proc-as-run-log-d-foot"></p>
+              </div>
+            </div>
+          </dialog>
 
           <div class="main-card mb-3 card">
             <div class="card-header d-flex align-items-center">

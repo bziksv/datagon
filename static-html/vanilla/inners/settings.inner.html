@@ -672,8 +672,8 @@
                     Аналог кнопки «↗ В МС: все правки» на странице
                     <a href="/exports-dimensions.html">«Габариты»</a>: для всех позиций с пользовательским
                     замером и заполненным <code>uuid</code> в <code>ms_export</code> отправляет PUT в
-                    <code>/entity/{product|bundle}/{uuid}</code>. Журнал — таблица
-                    <code>ms_dimensions_log</code> (action <code>sync_ms</code>); прогресс и статус — на
+                    <code>/entity/{product|bundle}/{uuid}</code>. Журнал изменений габаритов хранится в таблице
+                    <code>ms_dimensions_log</code> (при успешной выгрузке — <code>action=sync_ms</code>); прогресс и статус — на
                     <a href="/processes.html">«Логи фоновых процессов»</a> (раздел «Габариты МС»).
                   </p>
                 </div>
@@ -776,53 +776,32 @@
           <div class="main-card mb-3 card">
             <div class="card-header d-flex align-items-center">
               <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
-              <span>Логи сервера</span>
+              <span>Журнал изменений габаритов</span>
             </div>
             <div class="card-body">
-              <p class="small text-muted">Управление лог-файлами server.log и worker.log.</p>
-              <div class="row g-2">
-                <div class="col-md-4"><label class="form-label" for="dg-set-log_retention_days">Автоочистка логов (дней)</label><input type="number" class="form-control" id="dg-set-log_retention_days" /></div>
-              </div>
-              <div class="small text-muted mt-2" id="dg-set-logs-info"></div>
-              <div class="mt-3 d-flex gap-2">
-                <button type="button" class="btn btn-info" id="dg-set-btn-logs-refresh" data-dg-activity-label="Обновить информацию о логах">
-                  Обновить информацию о логах
-                </button>
-                <button type="button" class="btn btn-warning" id="dg-set-btn-logs-clear" data-dg-activity-label="Очистить логи приложения">
-                  Очистить логи сейчас
-                </button>
-              </div>
-
-              <!--
-                Журнал замеров габаритов (`ms_dimensions_log`).
-                Этот блок — отдельный inline-feedback контракт (`runSaveWithInlineFeedback`),
-                чтобы автономно сохранять `ms_dimensions_log_retention_days` без зависимостей
-                от формы парсера. См. `datagon-settings-save-feedback.mdc`.
-              -->
-              <hr class="my-4" />
-              <h6 class="mb-2">Журнал замеров габаритов</h6>
               <p class="small text-muted mb-2">
-                Журнал хранит историю изменений габаритов товаров/комплектов МойСклад
-                (страница <a href="/exports-dimensions.html">Габариты</a>): кто, что и
-                когда менял в ячейках, и какие значения отправлялись в МС. Автоочистка
-                удаляет записи старше указанного числа дней — раз в 12 часов плюс при
-                старте сервера. По умолчанию <strong>180 дней</strong>.
+                Таблица <code>ms_dimensions_log</code> — <strong>только</strong> журнал по габаритам и замерам: правки в
+                ячейках на странице <a href="/exports-dimensions.html">Габариты</a>, выгрузка этих полей в МойСклад,
+                откаты и ошибки выгрузки. Это <strong>не</strong> общий лог приложения (фоновые задачи —
+                <a href="/processes.html">Процессы</a>, действия пользователей — отдельные разделы и таблицы). Те же
+                строки смотрите внизу «Габариты» в свёрнутой карточке журнала. Автоочистка удаляет записи старше
+                указанного числа дней — раз в 12 часов и при старте сервера. По умолчанию <strong>180 дней</strong>.
               </p>
               <div class="row g-2 align-items-end">
                 <div class="col-md-4">
-                  <label class="form-label" for="dg-set-ms_dimensions_log_retention_days">Хранить журнал замеров (дней)</label>
+                  <label class="form-label" for="dg-set-ms_dimensions_log_retention_days">Срок хранения журнала габаритов (дней)</label>
                   <input type="number" class="form-control" id="dg-set-ms_dimensions_log_retention_days" min="1" step="1" />
                 </div>
               </div>
-              <div class="small text-muted mt-2" id="dg-set-dim-log-info">Статистика журнала: загрузка…</div>
+              <div class="small text-muted mt-2" id="dg-set-dim-log-info">Статистика ms_dimensions_log: загрузка…</div>
               <div class="mt-3 d-flex gap-2 flex-wrap">
-                <button type="button" class="btn btn-primary" id="dg-set-btn-save-dim-log" data-dg-activity-label="Сохранить retention журнала замеров">
+                <button type="button" class="btn btn-primary" id="dg-set-btn-save-dim-log" data-dg-activity-label="Сохранить срок хранения ms_dimensions_log">
                   Сохранить
                 </button>
-                <button type="button" class="btn btn-info" id="dg-set-btn-dim-log-refresh" data-dg-activity-label="Обновить статистику журнала замеров">
+                <button type="button" class="btn btn-info" id="dg-set-btn-dim-log-refresh" data-dg-activity-label="Обновить статистику ms_dimensions_log">
                   Обновить статистику
                 </button>
-                <button type="button" class="btn btn-warning" id="dg-set-btn-dim-log-cleanup" data-dg-activity-label="Очистить журнал замеров сейчас">
+                <button type="button" class="btn btn-warning" id="dg-set-btn-dim-log-cleanup" data-dg-activity-label="Очистить ms_dimensions_log по сроку">
                   Очистить сейчас
                 </button>
               </div>

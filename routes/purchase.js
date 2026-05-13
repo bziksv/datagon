@@ -393,7 +393,8 @@ async function loadPurchaseDirectSalesWindowsMap(db, codes) {
         [...codes],
     );
     for (const r of rows || []) {
-        map.set(String(r.code), r);
+        const k = String(r.code || '').trim();
+        if (k) map.set(k, r);
     }
     return map;
 }
@@ -419,7 +420,8 @@ async function loadPurchaseBundleSalesWindowsMap(db, componentCodes) {
         [...componentCodes],
     );
     for (const r of rows || []) {
-        map.set(String(r.code), r);
+        const k = String(r.code || '').trim();
+        if (k) map.set(k, r);
     }
     return map;
 }
@@ -438,7 +440,8 @@ async function loadPurchaseAbsenceDistinctDaysMap(db, codes, periodDays) {
         [p, ...codes],
     );
     for (const r of rows || []) {
-        map.set(String(r.code), Number(r.distinct_days || 0));
+        const k = String(r.code || '').trim();
+        if (k) map.set(k, Number(r.distinct_days || 0));
     }
     return map;
 }
@@ -554,13 +557,20 @@ async function enrichPurchaseRowsWithFormula(db, appSettings, sqlRows, data) {
     ]);
 
     const [bundleRows] = bundleRowsResult;
-    const directMap = new Map(directRows.map((row) => [String(row.code), Number(row.sum_qty || 0)]));
+    const directMap = new Map(
+        directRows.map((row) => [String(row.code || '').trim(), Number(row.sum_qty || 0)]).filter(([k]) => k),
+    );
     const bundleMap = new Map();
     for (const row of bundleRows || []) {
-        bundleMap.set(String(row.code), Number(row.sum_qty || 0));
+        const k = String(row.code || '').trim();
+        if (k) bundleMap.set(k, Number(row.sum_qty || 0));
     }
-    const absenceMap = new Map(absenceRows.map((row) => [String(row.code), Number(row.distinct_days || 0)]));
-    const econMap = new Map(econRows.map((row) => [String(row.code), Number(row.distinct_days || 0)]));
+    const absenceMap = new Map(
+        absenceRows.map((row) => [String(row.code || '').trim(), Number(row.distinct_days || 0)]).filter(([k]) => k),
+    );
+    const econMap = new Map(
+        econRows.map((row) => [String(row.code || '').trim(), Number(row.distinct_days || 0)]).filter(([k]) => k),
+    );
 
     const rowByCode = new Map(
         (sqlRows || []).map((row) => [String(row.code || '').trim(), row]).filter(([k]) => k),
@@ -580,13 +590,13 @@ async function enrichPurchaseRowsWithFormula(db, appSettings, sqlRows, data) {
         const d = data[i];
         const codeKey = String(d.code || '').trim();
         const r = rowByCode.get(codeKey) || null;
-        const code = String(d.code || '');
         const isBundle = isMsBundleType(d.type);
-        let sumQty = directMap.get(code) || 0;
-        if (!isBundle) sumQty += bundleMap.get(code) || 0;
+        /** Везде `codeKey`: иначе расхождение с ключами из агрегатов по `ms_demand_position` / логам даёт sumQty=0 и ветку «редкий товар» (2 шт) при нормальной карточке товара. */
+        let sumQty = directMap.get(codeKey) || 0;
+        if (!isBundle) sumQty += bundleMap.get(codeKey) || 0;
 
-        const absenceDistinct = absenceMap.get(code) || 0;
-        const econDistinct = econMap.get(code) || 0;
+        const absenceDistinct = absenceMap.get(codeKey) || 0;
+        const econDistinct = econMap.get(codeKey) || 0;
 
         const payload = parsePayloadSafe(r ? r.payload_json : null);
         const marketPriceRub = marketPriceRubFromPayload(payload);
@@ -618,21 +628,21 @@ async function enrichPurchaseRowsWithFormula(db, appSettings, sqlRows, data) {
         });
         d.formula_proposed_min_stock = fr.proposed_min_stock;
 
-        d.d_3 = sumWindowQty(code, isBundle, 3);
-        d.d_5 = sumWindowQty(code, isBundle, 5);
-        d.d_7 = sumWindowQty(code, isBundle, 7);
-        d.d_15a = sumWindowQty(code, isBundle, 15);
-        d.d_15b = abs15Map.get(code) || 0;
-        d.d_30a = sumWindowQty(code, isBundle, 30);
-        d.d_30b = abs30Map.get(code) || 0;
-        d.d_60a = sumWindowQty(code, isBundle, 60);
-        d.d_60b = abs60Map.get(code) || 0;
-        d.d_90a = sumWindowQty(code, isBundle, 90);
-        d.d_90b = abs90Map.get(code) || 0;
-        d.d_180a = sumWindowQty(code, isBundle, 180);
-        d.d_180b = abs180Map.get(code) || 0;
-        d.d_365a = sumWindowQty(code, isBundle, 365);
-        d.d_365b = abs365Map.get(code) || 0;
+        d.d_3 = sumWindowQty(codeKey, isBundle, 3);
+        d.d_5 = sumWindowQty(codeKey, isBundle, 5);
+        d.d_7 = sumWindowQty(codeKey, isBundle, 7);
+        d.d_15a = sumWindowQty(codeKey, isBundle, 15);
+        d.d_15b = abs15Map.get(codeKey) || 0;
+        d.d_30a = sumWindowQty(codeKey, isBundle, 30);
+        d.d_30b = abs30Map.get(codeKey) || 0;
+        d.d_60a = sumWindowQty(codeKey, isBundle, 60);
+        d.d_60b = abs60Map.get(codeKey) || 0;
+        d.d_90a = sumWindowQty(codeKey, isBundle, 90);
+        d.d_90b = abs90Map.get(codeKey) || 0;
+        d.d_180a = sumWindowQty(codeKey, isBundle, 180);
+        d.d_180b = abs180Map.get(codeKey) || 0;
+        d.d_365a = sumWindowQty(codeKey, isBundle, 365);
+        d.d_365b = abs365Map.get(codeKey) || 0;
     }
 }
 

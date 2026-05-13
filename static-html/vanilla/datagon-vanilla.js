@@ -799,7 +799,12 @@
         return;
       }
       var mode = datagonEffectivePageMode(pm, navKey);
-      if (mode === "hidden") li.style.display = "none";
+      var cmUsers = false;
+      try {
+        cmUsers = window.localStorage.getItem("canManageUsers") === "true";
+      } catch (eCm) {}
+      if (navKey === "settings" && cmUsers) li.style.display = "";
+      else if (mode === "hidden") li.style.display = "none";
       else li.style.display = "";
     });
   }

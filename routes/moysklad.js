@@ -1044,12 +1044,13 @@ async function resolveAssortmentCode(assortment, headers, assortmentCodeCache) {
 }
 
 async function syncMsExport(db, config, settings = {}) {
-    await ensureMsArchivedColumn(db);
-    await ensureMsMinStockColumn(db);
     const token = getToken(config);
     if (!token) throw new Error('MS_TOKEN не задан (env MS_TOKEN или config.msToken)');
     const headers = { Authorization: `Bearer ${token}` };
 
+    /** Сразу после проверки токена — до любых `await`, иначе `processAutoSyncQueue` в server.js
+     *  успевает `waitUntil(() => !getJobState().active)` и закрывает `auto_sync_runs` за «0 с»,
+     *  пока фоновый `syncMsExport` ещё не выставил active (гонка с fire-and-forget `triggerSync`). */
     jobState.active = true;
     jobState.done = false;
     jobState.cancelRequested = false;
@@ -1057,6 +1058,9 @@ async function syncMsExport(db, config, settings = {}) {
     jobState.total = 0;
     jobState.message = 'Загрузка метаданных МойСклад...';
     jobState.logs = [];
+
+    await ensureMsArchivedColumn(db);
+    await ensureMsMinStockColumn(db);
     pruneMsSyncLogOldRows(db).catch(() => {});
     addLog('Старт синхронизации');
     addLog('Этап 1/6: метаданные атрибутов');

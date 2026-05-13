@@ -10,13 +10,17 @@
       var DEFAULT_FILTERS = {
         search: '',
         type: 'all',
-        scope: 'all',
+        measure_scope: 'all',
+        mp_scope: 'all',
+        problem_profile: '',
         limit: 100,
       };
 
       var state = {
         applied: cloneFilters(DEFAULT_FILTERS),
         pending: cloneFilters(DEFAULT_FILTERS),
+        lastPostFiltered: false,
+        lastPostFilterCap: 0,
         sortBy: 'code',
         sortDir: 'asc',
         offset: 0,
@@ -27,10 +31,18 @@
       };
 
       function cloneFilters(src) {
+        var measure = String((src && src.measure_scope) || '');
+        if (!measure && src && src.scope) {
+          var leg = String(src.scope || '').trim();
+          if (leg === 'with' || leg === 'without') measure = leg;
+        }
+        if (!measure) measure = 'all';
         return {
           search: String((src && src.search) || ''),
           type: String((src && src.type) || 'all'),
-          scope: String((src && src.scope) || 'all'),
+          measure_scope: measure,
+          mp_scope: 'all',
+          problem_profile: String((src && src.problem_profile) || ''),
           limit: Number((src && src.limit) || 100) || 100,
         };
       }
@@ -62,29 +74,50 @@
           .replace(/'/g, '&#39;');
       }
 
+      function syncProblemRadiosFromFilters(f) {
+        f = f || {};
+        var prob = String(f.problem_profile || '').trim();
+        var prOff = document.getElementById('dg-dim-problem-off');
+        var prStock = document.getElementById('dg-dim-problem-stock');
+        if (prOff && prStock) {
+          if (prob === 'stock_missing') {
+            prStock.checked = true;
+            prOff.checked = false;
+          } else {
+            prOff.checked = true;
+            prStock.checked = false;
+          }
+        }
+      }
+
       function applyFormFromState(s) {
         var elSearch = document.getElementById('dg-dim-f-search');
         var elType = document.getElementById('dg-dim-f-type');
-        var elScope = document.getElementById('dg-dim-f-scope');
+        var elMeasure = document.getElementById('dg-dim-f-measure-scope');
         var elLimit = document.getElementById('dg-dim-f-limit');
         var elMirror = document.getElementById('dg-dim-table-search-mirror');
         if (elSearch) elSearch.value = s.search;
         if (elType) elType.value = s.type;
-        if (elScope) elScope.value = s.scope;
+        if (elMeasure) elMeasure.value = s.measure_scope || 'all';
         if (elLimit) elLimit.value = String(s.limit);
         if (elMirror) elMirror.value = s.search;
+        syncProblemRadiosFromFilters(s);
       }
 
       function readFormToPending() {
         var elSearch = document.getElementById('dg-dim-f-search');
         var elType = document.getElementById('dg-dim-f-type');
-        var elScope = document.getElementById('dg-dim-f-scope');
+        var elMeasure = document.getElementById('dg-dim-f-measure-scope');
         var elLimit = document.getElementById('dg-dim-f-limit');
         state.pending.search = elSearch ? String(elSearch.value || '').trim() : '';
         state.pending.type = elType ? String(elType.value || 'all') : 'all';
-        state.pending.scope = elScope ? String(elScope.value || 'all') : 'all';
+        state.pending.measure_scope = elMeasure ? String(elMeasure.value || 'all') : 'all';
+        var probEl = document.querySelector('input[name="dg-dim-problem-profile"]:checked');
+        state.pending.problem_profile = probEl ? String(probEl.value || '').trim() : '';
+        state.pending.mp_scope = 'all';
         var limNum = Number((elLimit && elLimit.value) || 100);
         state.pending.limit = Number.isFinite(limNum) && limNum > 0 ? limNum : 100;
+        syncProblemRadiosFromFilters(state.pending);
       }
 
       function setStatusHint(msg, kind) {
@@ -312,10 +345,10 @@
             var nameHtml = r.name
               ? escapeHtml(r.name)
               : '<span class="dg-dim-empty">— без наименования —</span>';
-            /** Кнопка «🕘 Лог» рядом с именем: открывает overlay с историей изменений. */
+            /** Кнопка «🕘 Лог» рядом с именем: открывает overlay с журналом изменений габаритов (ms_dimensions_log). */
             var logBtn = '<button type="button" class="dg-dim-log-btn" data-dg-log-code="' +
               escapeHtml(r.code) + '" data-dg-log-name="' + escapeHtml(r.name || r.code || '') +
-              '" title="История замеров и изменений по этой позиции">🕘 Лог</button>';
+              '" title="Журнал изменений габаритов по позиции (ms_dimensions_log)">🕘 Лог</button>';
             /** Кнопка «↗ В МС» — отправляет user-override габаритов обратно в МойСклад
              *  (POST /api/exports/dimensions/sync-ms). Отображается только если есть
              *  хоть один override; иначе будет показываться как disabled. */
@@ -580,7 +613,10 @@
           var rowHtml = '<tr data-dg-code="' + escapeHtml(r.code) + '">';
           for (var j = 0; j < cols.length; j++) {
             var c = cols[j];
-            var cls = c.cellClass ? ' class="' + c.cellClass + '"' : '';
+            var tdClasses = [];
+            if (c.cellClass) tdClasses.push(c.cellClass);
+            if (r.problem_cells && r.problem_cells[c.key]) tdClasses.push('dg-dim-cell-problem');
+            var cls = tdClasses.length ? ' class="' + tdClasses.join(' ') + '"' : '';
             var extra = typeof c.cellAttr === 'function' ? c.cellAttr(r, c) : '';
             var content = '';
             try {
@@ -772,7 +808,9 @@
         var qs = new URLSearchParams();
         qs.set('search', state.applied.search);
         qs.set('type', state.applied.type);
-        qs.set('scope', state.applied.scope);
+        qs.set('measure_scope', state.applied.measure_scope || 'all');
+        qs.set('mp_scope', state.applied.mp_scope || 'all');
+        if (state.applied.problem_profile) qs.set('problem_profile', state.applied.problem_profile);
         qs.set('limit', String(state.applied.limit));
         qs.set('offset', String(state.offset));
         qs.set('sort_by', state.sortBy);
@@ -788,17 +826,28 @@
             if (!x.ok || !x.j || x.j.success === false) {
               state.rows = [];
               state.total = 0;
+              state.lastPostFiltered = false;
+              state.lastPostFilterCap = 0;
               state.lastError = (x.j && x.j.error) || 'Ошибка загрузки списка';
             } else {
               state.rows = Array.isArray(x.j.rows) ? x.j.rows : [];
               state.total = Number(x.j.total || 0) || 0;
+              state.lastPostFiltered = !!x.j.post_filtered;
+              state.lastPostFilterCap = Number(x.j.post_filter_cap || 0) || 0;
             }
             renderTable();
             renderPagination();
+            var capNote = '';
+            if (state.lastPostFiltered && state.lastPostFilterCap) {
+              capNote =
+                ' Фильтр применён к первым ' +
+                state.lastPostFilterCap +
+                ' строкам каталога (сортировка — по всему отфильтрованному набору).';
+            }
             setStatusHint(
               state.lastError
                 ? 'Ошибка: ' + state.lastError
-                : 'Готово. Записей всего: ' + (state.total || 0) + '.',
+                : 'Готово. Записей всего: ' + (state.total || 0) + '.' + capNote,
               state.lastError ? 'error' : 'success',
             );
             dimRefreshFloatingAfterLayout();
@@ -808,6 +857,8 @@
             state.lastError = (e && e.message) || 'Сеть';
             state.rows = [];
             state.total = 0;
+            state.lastPostFiltered = false;
+            state.lastPostFilterCap = 0;
             renderTable();
             renderPagination();
             setStatusHint('Сетевая ошибка: ' + state.lastError, 'error');
@@ -1298,6 +1349,7 @@
         set: 'Правка',
         sync_ms: 'Отправлено в МС',
         sync_ms_skip: 'МС пропустил',
+        sync_ms_error: 'Ошибка МС',
         delete: 'Удаление замера',
       };
       function actionLabel(action) {
@@ -1319,7 +1371,7 @@
         overlay.dataset.dgCode = logModalState.code;
         if (titleEl) titleEl.textContent = 'Лог замера';
         if (subEl) subEl.textContent = (name ? name + ' · ' : '') + 'код: ' + String(code || '—');
-        body.innerHTML = '<div class="text-muted small text-center py-4">Загрузка журнала…</div>';
+        body.innerHTML = '<div class="text-muted small text-center py-4">Загрузка журнала изменений габаритов…</div>';
         overlay.style.display = '';
         overlay.setAttribute('aria-hidden', 'false');
         loadLogFor(logModalState.code, { offset: 0, limit: logModalState.limit });
@@ -1344,7 +1396,7 @@
         var offset = Math.max(0, Number.isFinite(Number(o.offset)) ? Number(o.offset) : 0);
         var limit = Math.max(1, Number.isFinite(Number(o.limit)) ? Number(o.limit) : 100);
         var qs = new URLSearchParams({ code: String(code), limit: String(limit), offset: String(offset) });
-        body.innerHTML = '<div class="text-muted small text-center py-4">Загрузка журнала…</div>';
+        body.innerHTML = '<div class="text-muted small text-center py-4">Загрузка журнала изменений габаритов…</div>';
         fetch('/api/exports/dimensions/log?' + qs.toString(), { credentials: 'same-origin' })
           .then(function (r) {
             return r.json().then(function (j) { return { ok: r.ok, j: j }; });
@@ -1352,7 +1404,7 @@
           .then(function (x) {
             if (!x.ok || !x.j || x.j.success === false) {
               body.innerHTML = '<div class="text-danger small text-center py-4">' +
-                escapeHtml((x.j && x.j.error) || 'Ошибка загрузки журнала') + '</div>';
+                escapeHtml((x.j && x.j.error) || 'Ошибка загрузки ms_dimensions_log') + '</div>';
               return;
             }
             logModalState.code = String(code);
@@ -1806,8 +1858,11 @@
               if (ap.type && String(ap.type) !== 'all') {
                 activeFilters.push('Тип = ' + (typeLabels[String(ap.type)] || String(ap.type)));
               }
-              if (ap.scope && String(ap.scope) !== 'all') {
-                activeFilters.push('Замер = ' + (scopeLabels[String(ap.scope)] || String(ap.scope)));
+              if (ap.measure_scope && String(ap.measure_scope) !== 'all') {
+                activeFilters.push('Замер = ' + (scopeLabels[String(ap.measure_scope)] || String(ap.measure_scope)));
+              }
+              if (ap.problem_profile === 'stock_missing') {
+                activeFilters.push('Проблемные товары: остаток > 0, не заполнены поля замера');
               }
             } catch (_) { /** state может быть не инициализирован — ничего страшного */ }
 
@@ -1992,11 +2047,16 @@
             loadList();
           });
         var elType = document.getElementById('dg-dim-f-type');
-        var elScope = document.getElementById('dg-dim-f-scope');
+        var elMeasure = document.getElementById('dg-dim-f-measure-scope');
         var elLimit = document.getElementById('dg-dim-f-limit');
-        [elType, elScope, elLimit].forEach(function (el) {
+        [elType, elMeasure, elLimit].forEach(function (el) {
           if (!el) return;
           el.addEventListener('change', function () {
+            readFormToPending();
+          });
+        });
+        document.querySelectorAll('input[name="dg-dim-problem-profile"]').forEach(function (inp) {
+          inp.addEventListener('change', function () {
             readFormToPending();
           });
         });
@@ -2198,7 +2258,7 @@
       function renderTipContent(rows, field) {
         if (!rows || rows.length === 0) {
           return '<div class="dg-dim-cell-tip-empty">' +
-            (field ? 'Это поле ещё не правили.' : 'История по позиции пуста.') +
+            (field ? 'Это поле ещё не правили.' : 'Журнал по позиции пуст.') +
             '</div>';
         }
         var title = field
@@ -2240,7 +2300,7 @@
           positionTip(target);
           return;
         }
-        tipEl.innerHTML = '<div class="dg-dim-cell-tip-loading">Загрузка истории…</div>';
+        tipEl.innerHTML = '<div class="dg-dim-cell-tip-loading">Загрузка журнала…</div>';
         positionTip(target);
         var qs = new URLSearchParams({ code: String(code), limit: '3' });
         if (field) qs.set('field', field);
@@ -2353,7 +2413,7 @@
         if (outer) outer.addEventListener('scroll', dismissOnScroll, { passive: true });
       }
 
-      /* ====================== Карточка «История изменений» ===================== */
+      /* ====================== Карточка «Журнал изменений габаритов» (ms_dimensions_log) ===================== */
 
       var HISTORY_COLLAPSED_KEY = 'dg.dim.history-card.collapsed.v1';
       var historyState = {
@@ -2393,7 +2453,7 @@
         historyState.lastFilters = filters;
         historyState.limit = filters.limit;
         historyState.loading = true;
-        tbody.innerHTML = '<tr><td colspan="6" class="text-muted small py-3 text-center">Загрузка журнала…</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" class="text-muted small py-3 text-center">Загрузка ms_dimensions_log…</td></tr>';
         if (hint) hint.textContent = '—';
         var qs = new URLSearchParams();
         if (filters.search) qs.set('search', filters.search);
@@ -2412,7 +2472,7 @@
             historyState.loading = false;
             if (!x.ok || !x.j || x.j.success === false) {
               tbody.innerHTML = '<tr><td colspan="6" class="text-danger small py-3 text-center">' +
-                escapeHtml((x.j && x.j.error) || 'Ошибка загрузки журнала') + '</td></tr>';
+                escapeHtml((x.j && x.j.error) || 'Ошибка загрузки ms_dimensions_log') + '</td></tr>';
               if (hint) hint.textContent = '—';
               if (summary) summary.textContent = '';
               return;

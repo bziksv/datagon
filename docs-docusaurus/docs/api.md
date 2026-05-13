@@ -155,7 +155,7 @@ Body (пример):
 
 Body: `{ "task": "myproducts" | "moysklad" | "marketplaces" | "huckster" | "db_size" | "dimensions" | "mssales" | "mssales_full" }`. Whitelist допустимых значений берётся из единого реестра `lib/datagonAutoSyncRegistry.js → getAutoSyncTaskKeys()` (см. правило `datagon-auto-sync-registry.mdc`); чтобы добавить задачу — расширьте `AUTO_SYNC_TASKS` в реестре. Запись в `auto_sync_runs` создаётся с `trigger_type = "manual"`. Для `dimensions` запускается тот же балк-синк, что и по расписанию (см. описание `auto_sync_dimensions_*` выше), но с `actor='Авто-синхронизация (вручную)'` в журнале. Для `mssales` — тот же `triggerSync(db, { days })` с `days = appSettings.auto_sync_mssales_days` (см. ниже). Для **`mssales_full`** — `triggerSync(db, { days: appSettings.auto_sync_mssales_full_days, fresh: true })`.
 
-Ответ `{ "success": true, "queued": true|false, "skip_reason": null|"already_running"|"already_queued"|"invalid_task", "task", "queue", "runner_active" }`. Поле **`queued: false`** означает, что задача **не** добавлена в очередь (дубликат или такой тип уже выполняется); в этом случае в **`skip_reason`** — причина. Успешная постановка не гарантирует мгновенный старт: если в этот момент уже крутится **другая** задача очереди, исполнение отложится до её завершения (сервер сам вызовет обработчик снова). На `/settings.html` тот же ответ показывается **плашкой** в карточке «Автосинхронизация по расписанию» (текст очереди, занятость воркера, время ответа), чтобы не гадать, «уехало» ли нажатие.
+Ответ `{ "success": true, "queued": true|false, "skip_reason": null|"already_running"|"already_queued"|"invalid_task", "task", "queue", "runner_active", "running_tasks" }`. Поле **`running_tasks`** — массив строк `task_type`, у которых в этот момент есть незавершённая запись в `auto_sync_runs` (**что реально крутится в воркере**); удобно показывать в UI вместе с `runner_active`. Поле **`queued: false`** означает, что задача **не** добавлена в очередь (дубликат или такой тип уже выполняется); в этом случае в **`skip_reason`** — причина. Успешная постановка не гарантирует мгновенный старт: если в этот момент уже крутится **другая** задача очереди, исполнение отложится до её завершения (сервер сам вызовет обработчик снова). На `/settings.html` тот же ответ показывается **плашкой** в карточке «Автосинхронизация по расписанию» (текст очереди, занятость воркера, время ответа), чтобы не гадать, «уехало» ли нажатие.
 
 ### POST `/api/settings/fetch-proxy`
 
@@ -171,11 +171,11 @@ Body: `{ "task": "myproducts" | "moysklad" | "marketplaces" | "huckster" | "db_s
 
 ### GET `/api/settings/logs-info`
 
-Метаинформация по лог-файлам на сервере.
+Размер и `mtime` файлов **`server.log`** и **`worker.log`** в корне проекта (рядом с `server.js`), если они существуют. На `/settings.html` отдельного блока под это больше нет; эндпоинт оставлен для скриптов/диагностики.
 
 ### POST `/api/settings/logs-clear`
 
-Очистка логов (осторожно: операция на стороне сервера).
+Обнуляет содержимое тех же двух файлов (создаёт пустые при отсутствии). Имеет смысл только если процесс действительно пишет stdout/stderr в эти пути.
 
 ## Projects
 
@@ -700,7 +700,7 @@ Body (JSON, опционально): `trigger_type` (по умолчанию `ma
 
 Префикс: `/api/exports/dimensions`. Экран: `/exports-dimensions.html` (входит в подменю **Маркетплейсы** сразу после «Яндекс Маркет»).
 
-Назначение: реестр замеров габаритов товаров и комплектов МойСклад с фиксацией **кто** и **когда** замерял. Базовые поля (код, наименование, тип) берутся из `ms_export`. Замеры хранятся в отдельной таблице **`ms_dimensions_measurements`** и подмешиваются к строкам `ms_export` по полю `code`. История изменений по каждой позиции ведётся в **`ms_dimensions_log`** (см. ниже).
+Назначение: реестр замеров габаритов товаров и комплектов МойСклад с фиксацией **кто** и **когда** замерял. Базовые поля (код, наименование, тип) берутся из `ms_export`. Замеры хранятся в отдельной таблице **`ms_dimensions_measurements`** и подмешиваются к строкам `ms_export` по полю `code`. Журнал изменений по каждой позиции ведётся в **`ms_dimensions_log`** (см. ниже).
 
 Таблица замеров (создаётся и доращивается миграцией при первом обращении к роуту):
 
@@ -754,12 +754,14 @@ CREATE TABLE IF NOT EXISTS ms_dimensions_log (
 
 - `search` — мульти-токен (через пробел = AND) по `mse.code` и `mse.name`.
 - `type` — `all` (по умолчанию) / `товар` / `комплект`.
-- `scope` — `all` (по умолчанию) / `with` (только с замером) / `without` (только без замера).
+- `measure_scope` — `all` (по умолчанию) / `with` (только с замером) / `without` (только без замера). Обратная совместимость: то же значение можно передать как устаревший `scope`, если это не ключ маркетплейсного пресета.
+- `mp_scope` — на экране **«Габариты»** всегда используется `all` (фильтры по снапшотам маркетплейсов — на странице «Проблемы с товарами»). В HTTP-API параметр по-прежнему принимается для совместимости и интеграций: `all` (по умолчанию), `any`, `all3`, `ozon`, `wb`, `ym`, `vat_mismatch`, `dims_mismatch`. Для `vat_mismatch` и `dims_mismatch` выборка ограничивается первыми **50000** строками каталога (после базовых фильтров), затем фильтрация выполняется в Node; в ответе `post_filtered: true`, `post_filter_cap`. Чтобы не исчерпывать память Node из‑за тяжёлого `payload_json` у каждой позиции, эти режимы (и `problem_profile=stock_missing`) читают результат запроса **потоком** по одной строке, а не одним массивом на весь лимит.
+- `problem_profile` — если `stock_missing`, показываются только позиции с **остатком > 0**, у которых для текущего типа упаковки не заполнено хотя бы одно обязательное поле замера (аналогично подсветке на «Проблемах с товарами»); поле `problem_cells` в строке — какие ключи замера подсвечивать. Взаимоисключающе с `mp_scope` ≠ `all` на UI: при активном профиле маркетплейсный пресет сбрасывается в `all`. Обработка в пределах `post_filter_cap` — так же потоком, как для `vat_mismatch` / `dims_mismatch`.
 - `limit` — 1…500 (по умолчанию 100), `offset` — 0…1_000_000.
 - `sort_by` — `code` | `name` | `type` | `stock` | `measured_by_name` | `measured_at` (по умолчанию `code`).
 - `sort_dir` — `asc` | `desc`.
 
-Ответ: `{ success: true, rows: [...], total, limit, offset, sort_by, sort_dir, dimension_attrs }`. Каждая строка содержит `code`, `name`, `type`, `uuid`, `stock` (`Number|null` — актуальный остаток из `ms_export.stock`), `is_archived` (bool), `measured_by_user_id` (`number|null`), `measured_by_name` (string), `measured_at` (ISO-строка или `''`), а также **`dimensions_ms`** — объект с **6 атрибутами МойСклада**, парсимыми на лету из `ms_entity_details.payload_json` для строк текущей страницы (без расширения `ms_export`):
+Ответ: `{ success: true, rows: [...], total, limit, offset, sort_by, sort_dir, mp_scope, problem_profile, post_filtered?, post_filter_cap?, dimension_attrs }`.
 
 | Поле в API | Атрибут МойСклада | Описание |
 |---|---|---|
@@ -784,7 +786,7 @@ CREATE TABLE IF NOT EXISTS ms_dimensions_log (
 
 Парсер понимает разделители `*`, `x`, `х` (кириллица), `×`, `/`; распознаёт запятую как десятичный разделитель (`30,5`).
 
-UI поверх этих данных вычисляет «эффективное» значение каждой ячейки замера в порядке приоритета: **override → MS-атрибут → parsed → пусто**.
+UI поверх этих данных вычисляет «эффективное» значение каждой ячейки замера в порядке приоритета: **override → MS-атрибут → parsed → пусто**. При `problem_profile=stock_missing` сервер может добавить в строку объект **`problem_cells`** (`{ length_cm: true, … }`) — какие поля замера считаются незаполненными для подсветки в таблице.
 
 ### POST `/api/exports/dimensions/measure`
 
@@ -818,7 +820,7 @@ Body (JSON):
 
 ### GET `/api/exports/dimensions/log`
 
-История изменений по конкретной позиции с пагинацией. Используется модалкой `🕘 Лог` на `/exports-dimensions.html`, а также tooltip-ом «3 последних правки» при наведении на ячейки (там через `?field=...&limit=3`).
+Журнал изменений по конкретной позиции с пагинацией. Используется модалкой `🕘 Лог` на `/exports-dimensions.html`, а также tooltip-ом «3 последних правки» при наведении на ячейки (там через `?field=...&limit=3`).
 
 Параметры:
 
@@ -858,12 +860,12 @@ Body (JSON):
 
 ### GET `/api/exports/dimensions/log/global`
 
-Глобальный журнал всех изменений габаритов — по всем позициям. Используется карточкой «История изменений» на `/exports-dimensions.html` (свёрнута по умолчанию, разворачивается по кнопке «Развернуть» в шапке карточки).
+Глобальный журнал всех изменений габаритов — по всем позициям. Используется карточкой **«Журнал изменений габаритов»** (`ms_dimensions_log`) на `/exports-dimensions.html` (свёрнута по умолчанию, разворачивается по кнопке «Развернуть» в шапке карточки).
 
 Параметры (все опциональные, комбинируются по AND):
 
 - `search` — подстрока по `code` ИЛИ `ms_export.name` (через `LIKE %x%`).
-- `action` — `set`, `sync_ms`, `sync_ms_skip`, `delete`.
+- `action` — `set`, `sync_ms`, `sync_ms_skip`, `sync_ms_error`, `delete`. Значение **`sync_ms_error`** — одна строка на неуспешную попытку `PUT` габаритов в МойСклад при автоматической или ручной выгрузке (текст ошибки и HTTP в `note`, поле `field` = `ms_push`).
 - `field` — конкретное поле габаритов (см. список выше).
 - `who` — подстрока по `changed_by_name`.
 - `from`, `to` — диапазон по `changed_at`. Принимаются как `YYYY-MM-DD` (для `from` берётся 00:00, для `to` — 23:59), так и полные ISO-строки.
@@ -930,7 +932,7 @@ Body (JSON):
 
 ### GET `/api/exports/dimensions/log/stats`
 
-Статистика журнала `ms_dimensions_log` для блока «Журнал замеров габаритов» в `/settings.html` («Логи сервера»). Не принимает параметров.
+Статистика таблицы `ms_dimensions_log` для карточки **«Журнал изменений габаритов»** на `/settings.html`. Не принимает параметров.
 
 Ответ:
 
@@ -1332,9 +1334,11 @@ Body (JSON): `email`, `password` (обязательны), опциональн�
 Поле `for_date` влияет на три блока:
 
 - **`moyskladPersistedLogs`** — все строки `dg_ms_sync_log` за выбранный день в МСК. Упорядочены по `id DESC` — самые свежие шаги синхронизации идут **первыми**, чтобы UI не заставлял пользователя листать журнал вниз. Реализация: `fetchMsSyncPersistedLogsForDate(db, forDate)` в `routes/moysklad.js`.
-- **`autoSyncRuns`** — записи `auto_sync_runs`, чей `started_at` приходится на выбранный день в МСК. Фронт группирует их по `task_type` и рисует по секциям из `autoSync.sections` (см. ниже). Чтобы добавить новую секцию — добавляйте задачу в `lib/datagonAutoSyncRegistry.js → AUTO_SYNC_TASKS` (правило `datagon-auto-sync-registry.mdc`).
+- **`autoSyncRuns`** — записи `auto_sync_runs`, чей `started_at` приходится на выбранный день в МСК. Фронт группирует их по `task_type` и рисует по секциям из `autoSync.sections` (см. ниже). Чтобы добавить новую секцию — добавляйте задачу в `lib/datagonAutoSyncRegistry.js → AUTO_SYNC_TASKS` (правило `datagon-auto-sync-registry.mdc`). На `/processes.html` у каждой строки есть кнопка **«Лог»**: полный текст `message` из БД; для **`dimensions`** дополнительно запрашиваются строки журнала габаритов с `action=sync_ms_error` за интервал `started_at`…`finished_at` (см. `GET /api/exports/dimensions/log/global`).
 - **`autoSync.sections`** — массив `{ key, title, subtitle, enabled, time, extras: [{ key, label, value }] }`, построен `buildAutoSyncSectionsSnapshot(appSettings)` из `lib/datagonAutoSyncRegistry.js`. Используется фронтом `processes.scripts.html` (`renderAutoSyncSections`), чтобы держать набор задач в `/settings.html` ↔ `/processes.html` синхронным без ручной правки UI при добавлении новой автосинки. Поле `autoSync.config` оставлено для обратной совместимости (legacy фронт без `sections`).
 - **`autoSync.tasks_live`** — объект «по ключу задачи» (`myproducts`, `moysklad`, `marketplaces`, `huckster`, `db_size`, `dimensions`, `mssales`, `mssales_full`): снимок **только** для типов, у которых в этот момент есть незавершённая строка `auto_sync_runs` в памяти сервера (`autoSyncRunIds`), чтобы не путать с ручными синками. Поля зависят от задачи: для **`dimensions`** — тот же payload, что `getScheduledSyncState()` в `routes/dimensions.js` (`processed`, `total`, `ok`, `err`, …); для **`myproducts`** / **`moysklad`** — `processed`/`total`/`message` из глобального `syncState` и `getJobState()`; для **`marketplaces`** — `message` + сводка по Ozon/WB/Я.Маркет; для **`huckster`** — `status_text`, `progress` (магазины), `stop_requested`; для **`db_size`** — текстовая стадия пересчёта; для **`mssales`** / **`mssales_full`** — метрики из `routes/msSales.js → getSyncState()` (отгрузки, позиции, `days`, `message`). Фронт `/processes.html` подмешивает строку «Сейчас: …» к записи со статусом `running`.
+- **`autoSync.running_tasks`** — массив тех же ключей задач, что и ключи `tasks_live` (типы с открытым `auto_sync_runs`); дублирует «что сейчас выполняется» в компактном виде для строки «Исполнитель» на `/processes.html`.
+- **`autoSync.queue`** — FIFO очередь **ожидающих** задач: элементы `{ type, triggerType }`. Текущая выполняющаяся задача **не** входит в этот массив (она уже извлечена из очереди циклом воркера). Пока воркер занят, новые срабатывания по расписанию **добавляются в хвост** (`enqueueAutoSyncTask`); после завершения текущей задачи воркер сам снова вызывает `processAutoSyncQueue` и берёт следующий элемент. Один и тот же `type` не дублируется в очереди и не стартует параллельно второй раз (`already_queued` / `already_running` в ручном API). Планировщик раз в 30 с сравнивает МСК `HH:MM` с настройками и для каждого типа не чаще **одного раза на календарный день и слот** (`autoSyncLastRunByTask`), чтобы не плодить повторы в ту же минуту.
 - **`matches`** — последняя задача `matching_jobs` для `my_site_id`, чей `started_at` приходится на выбранный день в МСК. Если задач за день не было — `matches.message` = «За выбранный день задач сопоставления не было».
 - **`moysklad.logs`** (in-memory `jobState.logs`, до 30 строк текущей сессии) — отдаются только за «сегодня»; для других дней массив пустой, так как память процесса не различает даты.
 
