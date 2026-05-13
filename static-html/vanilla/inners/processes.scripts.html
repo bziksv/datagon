@@ -534,7 +534,8 @@
           .replace(/"/g, "&quot;");
       }
 
-      function renderAutoSyncSections(sections, runs, isToday) {
+      function renderAutoSyncSections(sections, runs, isToday, liveByTask) {
+        liveByTask = liveByTask || {};
         var root = document.getElementById("dg-proc-as-sections");
         if (!root) return;
         root.replaceChildren();
@@ -599,10 +600,41 @@
               }
               var start = r.started_at ? fmtTimeMsk(r.started_at) : "—";
               var finish = r.finished_at ? fmtTimeMsk(r.finished_at) : "ещё идёт";
+              var msgParts = [];
+              if (r.message) msgParts.push(escapeText(String(r.message).slice(0, 240)));
+              var lv = liveByTask.dimensions;
+              if (
+                sec.key === "dimensions" &&
+                lv &&
+                lv.active &&
+                String(r.status || "").toLowerCase() === "running"
+              ) {
+                msgParts.push(
+                  escapeText(
+                    "Сейчас в процессе: " +
+                      fmtNum(lv.processed) +
+                      "/" +
+                      fmtNum(lv.total) +
+                      " · ✓ " +
+                      fmtNum(lv.ok) +
+                      " · × " +
+                      fmtNum(lv.err) +
+                      " · без uuid " +
+                      fmtNum(lv.skipped_no_uuid || 0) +
+                      (lv.last_code ? " · код " + String(lv.last_code).slice(0, 40) : "") +
+                      (lv.last_message ? " — " + String(lv.last_message).slice(0, 140) : "")
+                  )
+                );
+              }
+              var msgHtml = msgParts.length
+                ? '<div class="text-muted small mt-1" style="white-space:normal;word-break:break-word">' +
+                    msgParts.join("<br/>") +
+                    "</div>"
+                : "";
               row.innerHTML =
                 '<span class="dg-proc-as-run-time">' + escapeText(start) + " → " + escapeText(finish) + (dur ? " · " + escapeText(dur) : "") + '</span>' +
                 '<span class="dg-proc-as-run-status">' + statusBadgeHtml(r.status) + " " + triggerBadgeHtml(r.trigger_type) + '</span>' +
-                (r.message ? '<span class="text-muted">' + escapeText(String(r.message).slice(0, 240)) + '</span>' : "");
+                msgHtml;
               runsBox.appendChild(row);
             });
           }
@@ -711,7 +743,10 @@
           var hay = (String(r.task_type || "") + " " + String(r.status || "") + " " + String(r.message || "")).toLowerCase();
           return hay.indexOf(needle) !== -1;
         });
-        renderAutoSyncSections(resolveAutoSyncSections(autoSync), filteredRuns, isTodayResp);
+        var dl = autoSync.dimensions_live;
+        var liveByTask = {};
+        if (dl && typeof dl === "object") liveByTask.dimensions = dl;
+        renderAutoSyncSections(resolveAutoSyncSections(autoSync), filteredRuns, isTodayResp, liveByTask);
 
         var discEl = document.getElementById("dg-proc-discovery");
         discEl.replaceChildren();

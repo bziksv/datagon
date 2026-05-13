@@ -968,8 +968,20 @@ function snapshotScheduledState() {
  *   3) После каждой позиции обновляем state.* (ok/err/skipped_no_uuid/last_*).
  *   4) Между запросами 60ms задержка — паритет с UI bulk runner (не «душим» MS API).
  *   5) В конце ставим `active=false`, формируем `summary`.
+ *
+ * Опционально `hooks.onRunMessage(msg)` — обновить текст в `auto_sync_runs.message`
+ * (см. `server.js` / «Процессы»), чтобы не зависать на «Запуск задачи» на всём длинном балке.
  */
-async function runScheduledDimensionsSyncMs(db, triggerType) {
+async function runScheduledDimensionsSyncMs(db, triggerType, hooks) {
+    const hookMsg =
+        hooks && typeof hooks.onRunMessage === 'function'
+            ? async (msg) => {
+                  try {
+                      await hooks.onRunMessage(String(msg || '').slice(0, 2000));
+                  } catch (_) {}
+              }
+            : null;
+
     if (dimensionsScheduledState.active) {
         return { started: false, reason: 'already_running' };
     }
@@ -1018,6 +1030,14 @@ async function runScheduledDimensionsSyncMs(db, triggerType) {
         })).filter((t) => t.code);
         dimensionsScheduledState.total = tasks.length;
 
+        if (hookMsg) {
+            await hookMsg(
+                'Габариты МС: старт; позиций ' +
+                    tasks.length +
+                    (tasks.length ? ' (обновление этой строки каждые 5 позиций + 60 мс пауза к МС)' : '')
+            );
+        }
+
         for (let i = 0; i < tasks.length; i++) {
             const t = tasks[i];
             dimensionsScheduledState.last_code = t.code;
@@ -1028,31 +1048,55 @@ async function runScheduledDimensionsSyncMs(db, triggerType) {
                 dimensionsScheduledState.last_status = 'skip_no_uuid';
                 dimensionsScheduledState.last_message =
                     'Пропуск: нет uuid в ms_export (позиция удалена/не синкается из МС)';
-                continue;
-            }
-            try {
-                const r = await syncCodeToMs(db, t.code, {
-                    actorId: null,
-                    actorName,
-                    persistNoteSuffix,
-                });
-                if (r && r.success) {
-                    dimensionsScheduledState.ok++;
-                    dimensionsScheduledState.last_status = 'ok';
-                    const sent = (r.sent_fields || []).join(', ') || '—';
-                    dimensionsScheduledState.last_message = '✓ В МС: ' + sent;
-                } else {
+            } else {
+                try {
+                    const r = await syncCodeToMs(db, t.code, {
+                        actorId: null,
+                        actorName,
+                        persistNoteSuffix,
+                    });
+                    if (r && r.success) {
+                        dimensionsScheduledState.ok++;
+                        dimensionsScheduledState.last_status = 'ok';
+                        const sent = (r.sent_fields || []).join(', ') || '—';
+                        dimensionsScheduledState.last_message = '✓ В МС: ' + sent;
+                    } else {
+                        dimensionsScheduledState.err++;
+                        dimensionsScheduledState.last_status = 'err';
+                        dimensionsScheduledState.last_message = (r && r.error) || 'Не удалось обновить позицию в МС';
+                    }
+                } catch (e) {
                     dimensionsScheduledState.err++;
                     dimensionsScheduledState.last_status = 'err';
-                    dimensionsScheduledState.last_message = (r && r.error) || 'Не удалось обновить позицию в МС';
+                    dimensionsScheduledState.last_message = (e && e.message) || String(e);
                 }
-            } catch (e) {
-                dimensionsScheduledState.err++;
-                dimensionsScheduledState.last_status = 'err';
-                dimensionsScheduledState.last_message = (e && e.message) || String(e);
+                dimensionsScheduledState.processed++;
+                await new Promise((resolve) => setTimeout(resolve, 60));
             }
-            dimensionsScheduledState.processed++;
-            await new Promise((resolve) => setTimeout(resolve, 60));
+
+            if (i % 10 === 9) {
+                await new Promise((resolve) => setImmediate(resolve));
+            }
+            if (
+                hookMsg &&
+                (i % 5 === 4 || i === tasks.length - 1 || dimensionsScheduledState.total === 0)
+            ) {
+                await hookMsg(
+                    'Габариты МС: ' +
+                        dimensionsScheduledState.processed +
+                        '/' +
+                        dimensionsScheduledState.total +
+                        '; ✓ ' +
+                        dimensionsScheduledState.ok +
+                        '; × ' +
+                        dimensionsScheduledState.err +
+                        '; без uuid: ' +
+                        dimensionsScheduledState.skipped_no_uuid +
+                        (dimensionsScheduledState.last_code
+                            ? ' · последний код: ' + dimensionsScheduledState.last_code
+                            : '')
+                );
+            }
         }
 
         dimensionsScheduledState.summary =
@@ -1778,8 +1822,8 @@ module.exports.ensureSchema = ensureSchema;
  * запустить балк-выгрузку всех override габаритов в МС. Не зависит от создания
  * router'а — можно дернуть из любого места процесса.
  */
-module.exports.runScheduledSyncMs = function triggerScheduledDimensionsSync(db, triggerType) {
-    return runScheduledDimensionsSyncMs(db, triggerType);
+module.exports.runScheduledSyncMs = function triggerScheduledDimensionsSync(db, triggerType, hooks) {
+    return runScheduledDimensionsSyncMs(db, triggerType, hooks);
 };
 
 /** Снимок состояния балк-синка: для honest-статуса auto_sync_runs + UI processes. */

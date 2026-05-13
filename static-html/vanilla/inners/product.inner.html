@@ -7,7 +7,7 @@
         <div>
           <span id="dg-prod-title">Карточка товара</span>
           <div class="page-title-subheading" id="dg-prod-subtitle">
-            Подробные данные из МойСклад: атрибуты, цены, остатки, продажи и фиксация нулевых остатков.
+            Подробные данные из МойСклад: атрибуты, цены, остатки, продажи и дни отсутствия товара на складе.
           </div>
         </div>
       </div>
@@ -23,14 +23,24 @@
 
     <!-- 1. Основные данные из МС -->
     <div class="main-card mb-3 card">
-      <div class="card-header d-flex justify-content-between gap-2 flex-wrap">
-        <div class="d-flex align-items-center gap-2">
+      <div class="card-header d-flex justify-content-between align-items-center gap-2 flex-wrap">
+        <div class="d-flex align-items-center gap-2 min-w-0">
           <i class="header-icon pe-7s-info icon-gradient bg-tempting-azure me-1"></i>
           <h5>Данные из МойСклад</h5>
         </div>
-        <span class="text-muted" id="dg-prod-synced-at"></span>
+        <div class="d-flex align-items-center gap-2 flex-shrink-0 ms-auto">
+          <span class="text-muted small text-end" id="dg-prod-synced-at"></span>
+          <button
+            type="button"
+            class="btn btn-sm btn-outline-secondary"
+            id="dg-prod-main-toggle"
+            data-dg-tooltip="Свернуть/развернуть тело карточки"
+          >
+            Свернуть
+          </button>
+        </div>
       </div>
-      <div class="card-body">
+      <div class="card-body" id="dg-prod-main-body">
         <div class="dg-prod-link-row mb-2" id="dg-prod-link-row"></div>
         <div class="dg-kv-grid" id="dg-prod-main-kv"></div>
       </div>
@@ -38,88 +48,145 @@
 
     <!-- 1.1 Атрибуты (полный список из МС) -->
     <div class="main-card mb-3 card">
-      <div class="card-header d-flex justify-content-between gap-2 flex-wrap">
-        <div class="d-flex align-items-center gap-2">
+      <div class="card-header d-flex justify-content-between align-items-center gap-2 flex-wrap">
+        <div class="d-flex align-items-center gap-2 min-w-0">
           <i class="header-icon pe-7s-note2 icon-gradient bg-tempting-azure me-1"></i>
           <h5>Атрибуты МС</h5>
         </div>
-        <span class="text-muted" id="dg-prod-attrs-meta"></span>
+        <div class="d-flex align-items-center gap-2 flex-shrink-0 ms-auto">
+          <span class="text-muted small text-end" id="dg-prod-attrs-meta"></span>
+          <button
+            type="button"
+            class="btn btn-sm btn-outline-secondary"
+            id="dg-prod-attrs-toggle"
+            data-dg-tooltip="Свернуть/развернуть тело карточки"
+          >
+            Свернуть
+          </button>
+        </div>
       </div>
-      <div class="card-body">
+      <div class="card-body" id="dg-prod-attrs-body">
         <div id="dg-prod-attrs"></div>
       </div>
     </div>
 
     <!-- 2. Цены -->
     <div class="main-card mb-3 card">
-      <div class="card-header d-flex align-items-center gap-2">
-        <i class="header-icon pe-7s-cash icon-gradient bg-mean-fruit me-1"></i>
-        <h5>Цены из МойСклад</h5>
+      <div class="card-header d-flex justify-content-between align-items-center gap-2 flex-wrap">
+        <div class="d-flex align-items-center gap-2 min-w-0">
+          <i class="header-icon pe-7s-cash icon-gradient bg-mean-fruit me-1"></i>
+          <h5>Цены из МойСклад</h5>
+        </div>
+        <button
+          type="button"
+          class="btn btn-sm btn-outline-secondary flex-shrink-0 ms-auto"
+          id="dg-prod-prices-toggle"
+          data-dg-tooltip="Свернуть/развернуть тело карточки"
+        >
+          Свернуть
+        </button>
       </div>
-      <div class="card-body">
+      <div class="card-body" id="dg-prod-prices-body">
         <div class="dg-prices-grid" id="dg-prod-prices"></div>
       </div>
     </div>
 
     <!-- 3. Остатки и ожидания (+ override-блок) -->
     <div class="main-card mb-3 card">
-      <div class="card-header d-flex justify-content-between gap-2 flex-wrap">
-        <div class="d-flex align-items-center gap-2">
+      <div class="card-header d-flex justify-content-between align-items-center gap-2 flex-wrap">
+        <div class="d-flex align-items-center gap-2 min-w-0">
           <i class="header-icon pe-7s-box1 icon-gradient bg-mean-fruit me-1"></i>
           <h5>Остатки и ожидания</h5>
         </div>
-        <a href="/purchase.html" class="text-muted small">Редактировать override-поля</a>
+        <div class="d-flex align-items-center gap-2 flex-shrink-0 ms-auto flex-wrap justify-content-end">
+          <a href="/purchase.html" class="text-muted small">Редактировать override-поля</a>
+          <button
+            type="button"
+            class="btn btn-sm btn-outline-secondary"
+            id="dg-prod-stock-toggle"
+            data-dg-tooltip="Свернуть/развернуть тело карточки"
+          >
+            Свернуть
+          </button>
+        </div>
       </div>
-      <div class="card-body">
+      <div class="card-body" id="dg-prod-stock-body">
         <div class="dg-stock-grid mb-3" id="dg-prod-stock"></div>
         <div class="dg-section-title">Override-поля «Закупки» (только просмотр)</div>
         <div class="dg-kv-grid" id="dg-prod-override"></div>
       </div>
     </div>
 
-    <!-- 4. Фиксация нулевых остатков по складам -->
+    <!-- 4. Отсутствие товара на складе (автолог после синка МС + ручная запись) -->
     <div class="main-card mb-3 card">
-      <div class="card-header d-flex justify-content-between gap-2 flex-wrap">
-        <div class="d-flex align-items-center gap-2">
+      <div class="card-header d-flex justify-content-between align-items-center gap-2 flex-wrap">
+        <div class="d-flex align-items-center gap-2 min-w-0">
           <i class="header-icon pe-7s-clock icon-gradient bg-mean-fruit me-1"></i>
-          <h5>Нулевые остатки по складам</h5>
+          <h5>Отсутствие на складе</h5>
         </div>
-        <div class="d-flex align-items-center gap-2">
-          <select id="dg-prod-zero-days" class="form-select form-select-sm" style="width:auto;">
+        <div class="d-flex align-items-center gap-2 flex-shrink-0 ms-auto flex-wrap justify-content-end">
+          <select id="dg-prod-zero-days" class="form-select form-select-sm" style="width:auto;" aria-label="Глубина лога по дням">
             <option value="30">30 дней</option>
             <option value="60">60 дней</option>
             <option value="90" selected>90 дней</option>
             <option value="180">180 дней</option>
             <option value="365">365 дней</option>
           </select>
-          <button id="dg-prod-zero-fix" class="btn btn-sm btn-outline-warning" type="button">Зафиксировать нулевой остаток сейчас</button>
+          <button
+            id="dg-prod-zero-fix"
+            class="btn btn-sm btn-outline-secondary"
+            type="button"
+            data-dg-tooltip="Обычно не нужно: после синка МС строка за сегодня создаётся сама. Кнопка — добавить или обновить ручную запись за сегодня (агрегат «все склады»); автоматическая запись за этот день не перезаписывается."
+          >
+            Записать вручную за сегодня
+          </button>
+          <button
+            type="button"
+            class="btn btn-sm btn-outline-secondary"
+            id="dg-prod-zero-toggle"
+            data-dg-tooltip="Свернуть/развернуть тело карточки"
+          >
+            Свернуть
+          </button>
         </div>
       </div>
-      <div class="card-body">
-        <p class="text-muted small mb-2" id="dg-prod-zero-note">
-          После синка МойСклад в лог за сегодня автоматически попадают позиции со <strong>складской позицией «Да»</strong>, <strong>не в архиве</strong> и с <strong>остатком ≤ 0</strong> (источник «После синка МС»). Ручная кнопка не затирается за тот же день. Разбивка по складам — после расширения синка <code>report/stock/bystore</code>.
-        </p>
+      <div class="card-body" id="dg-prod-zero-body">
+        <p class="text-muted small mb-2" id="dg-prod-zero-note" style="display:none;"></p>
         <div id="dg-prod-zero-result" class="dg-prod-status" style="display:none;"></div>
-        <div class="dg-section-title mt-3">Сводка по окнам (импорт из Excel)</div>
-        <p class="text-muted small mb-2">Агрегаты «сколько дней с нулём» за последние 30 / 60 / 90 / 180 / 365 календарных дней на дату среза. Не подменяет построчный лог ниже — хранится отдельно. Загрузка: <code>POST /api/product/zero-stock-windows-import</code> (см. <a href="/docs/api#карточка-товара">справку API</a>).</p>
+        <div class="dg-section-title">Сводка по окнам (импорт из Excel)</div>
+        <p class="text-muted small mb-2">
+          Как агрегаты продаж по фиксированным окнам — здесь одна строка на дату среза: сколько календарных дней без товара в окнах 30…365 дней до этой даты. Это <strong>не</strong> построчный лог ниже и <strong>не</strong> подставляется в него автоматически. Загрузка: <a href="/docs/api#карточка-товара">справка API</a>, метод <code>POST /api/product/zero-stock-windows-import</code>.
+        </p>
         <div id="dg-prod-zero-win-import-wrap" class="mb-3"></div>
+        <div class="dg-section-title mt-1">Лог по дням</div>
+        <p class="text-muted small mb-2">
+          Каждая строка — календарный день, когда по выгрузке МС остаток был ≤ 0 при условиях из пояснения выше (аналогично тому, как в продажах учитываются только проведённые отгрузки).
+        </p>
         <div id="dg-prod-zero-table-wrap"></div>
       </div>
     </div>
 
     <!-- 5. Продажи -->
     <div class="main-card mb-3 card">
-      <div class="card-header d-flex justify-content-between gap-2 flex-wrap">
-        <div class="d-flex align-items-center gap-2">
+      <div class="card-header d-flex justify-content-between align-items-center gap-2 flex-wrap">
+        <div class="d-flex align-items-center gap-2 min-w-0">
           <i class="header-icon pe-7s-graph2 icon-gradient bg-tempting-azure me-1"></i>
           <h5>Продажи товара</h5>
         </div>
-        <div class="d-flex align-items-center gap-2">
+        <div class="d-flex align-items-center gap-2 flex-shrink-0 ms-auto flex-wrap justify-content-end">
           <span class="text-muted small">Источник: <a href="/ms-sales.html">/ms-sales.html</a></span>
           <a id="dg-prod-sales-link" href="#" class="btn btn-sm btn-outline-primary">Открыть в «Продажи МС»</a>
+          <button
+            type="button"
+            class="btn btn-sm btn-outline-secondary"
+            id="dg-prod-sales-toggle"
+            data-dg-tooltip="Свернуть/развернуть тело карточки"
+          >
+            Свернуть
+          </button>
         </div>
       </div>
-      <div class="card-body">
+      <div class="card-body" id="dg-prod-sales-body">
         <p class="text-muted small mb-2" id="dg-prod-sales-note"></p>
         <div class="dg-section-title">Агрегаты по окнам (количество)</div>
         <div class="dg-sales-aggregates mb-3" id="dg-prod-sales-aggs"></div>
@@ -201,18 +268,32 @@
       </div>
     </div>
 
-    <!-- 6. Формула продаж — заглушка -->
+    <!-- 6. Формула продаж -->
     <div class="main-card mb-3 card">
-      <div class="card-header d-flex align-items-center gap-2">
-        <i class="header-icon pe-7s-calculator icon-gradient bg-mean-fruit me-1"></i>
-        <h5>Формула продаж</h5>
-      </div>
-      <div class="card-body">
-        <div class="dg-prod-formula-placeholder">
-          Формула продаж будет добавлена позже — конкретные коэффициенты и алгоритм пользователь предоставит отдельно.
-          Заготовлено место для компонент: средние продажи (3/5/7/15/30/60/90/180/365 дн.),
-          доля «нулевых» дней, кратность и неснижаемый остаток Датагон.
+      <div class="card-header d-flex justify-content-between align-items-center gap-2 flex-wrap">
+        <div class="d-flex align-items-center gap-2 min-w-0">
+          <i class="header-icon pe-7s-calculator icon-gradient bg-mean-fruit me-1"></i>
+          <h5 class="mb-0">Формула продаж</h5>
+          <button
+            type="button"
+            class="btn btn-link btn-sm text-muted p-0"
+            aria-label="Справка: как считается формула"
+            data-dg-tooltip="Предлагаемый неснижаемый (Датагон) считается на сервере по настройкам «Формула продаж / закупки». Сначала сумма продаж за окно (проведённые отгрузки, прямые + через комплекты), затем × коэффициент пополнения. Дальше по ситуации: редкий по средним, режим экономии, минимум для дорогих по цене с «маркет» в названии, ограничение скачка от текущего неснижаемого. На карточке: крупный итог и разбор **«Формула этапами»** (шаблон и числа). Числа для проверки также есть в JSON ответа в `formula.inputs`."
+          >
+            <i class="pe-7s-help1" style="font-size: 1.15rem" aria-hidden="true"></i>
+          </button>
         </div>
+        <button
+          type="button"
+          class="btn btn-sm btn-outline-secondary flex-shrink-0"
+          id="dg-prod-formula-toggle"
+          data-dg-tooltip="Свернуть/развернуть тело карточки"
+        >
+          Свернуть
+        </button>
+      </div>
+      <div class="card-body" id="dg-prod-formula-body">
+        <div id="dg-prod-formula-wrap"></div>
       </div>
     </div>
   </div>

@@ -1,5 +1,7 @@
 'use strict';
 
+const { parseFormulaSettings, pickMarketPriceRub, computeSalesFormula } = require('../lib/datagonSalesFormula');
+
 /**
  * Карточка товара — агрегатный read-only endpoint для страницы /product.html.
  *
@@ -559,6 +561,58 @@ async function loadSalesAggregates(db, code, componentCode, includeViaBundles) {
     return out;
 }
 
+/** Сумма quantity за последние `days` календарных дней (прямые + через комплекты). */
+async function loadSalesSumLastDays(db, code, componentCode, includeViaBundles, days) {
+    const W = Math.min(365 * 2, Math.max(1, Math.round(Number(days) || 90)));
+    const [dRows] = await db.query(
+        `SELECT COALESCE(SUM(p.quantity), 0) AS sum_qty
+           FROM ms_demand_position p
+           INNER JOIN ms_demand d ON d.uuid = p.demand_uuid
+          WHERE p.ms_export_code = ?
+            AND d.applicable = 1
+            AND d.moment >= (NOW() - INTERVAL ? DAY)`,
+        [code, W],
+    );
+    let sumQty = Number((dRows && dRows[0] && dRows[0].sum_qty) || 0);
+
+    if (includeViaBundles) {
+        const safe = safeMsCodeForLike(componentCode);
+        if (safe) {
+            const [bRows] = await db.query(
+                `SELECT COALESCE(SUM(p.quantity * bc.qty_per_bundle), 0) AS sum_qty
+                   FROM ms_demand_position p
+                   INNER JOIN ms_demand d ON d.uuid = p.demand_uuid
+                   INNER JOIN dg_bundle_components bc ON bc.bundle_code = p.ms_export_code AND bc.component_code = ?
+                   INNER JOIN (
+                        SELECT bundle_uuid, SUM(qty_per_bundle) AS qty_sum
+                          FROM dg_bundle_components
+                         GROUP BY bundle_uuid
+                       ) tot ON tot.bundle_uuid = bc.bundle_uuid
+                  WHERE d.applicable = 1
+                    AND d.moment >= (NOW() - INTERVAL ? DAY)`,
+                [safe, W],
+            );
+            sumQty += Number((bRows && bRows[0] && bRows[0].sum_qty) || 0);
+        }
+    }
+
+    return { days: W, sum_qty: sumQty };
+}
+
+/** Сколько календарных дней с записью «нулевого» остатка за последние `days`. */
+async function loadZeroStockDistinctDays(db, code, days) {
+    await ensureZeroStockSchema(db);
+    const period = Math.min(365 * 5, Math.max(1, Math.round(Number(days) || 90)));
+    const [cntRows] = await db.query(
+        `SELECT COUNT(DISTINCT ts_date) AS c
+           FROM dg_product_zero_stock_log
+          WHERE code = ?
+            AND ts_date >= (CURDATE() - INTERVAL ? DAY)`,
+        [code, period],
+    );
+    return { days: period, distinct_days: Number((cntRows && cntRows[0] && cntRows[0].c) || 0) };
+}
+
 /**
  * Помесячный ряд продаж за окно `window`.
  * При календарном диапазоне — месяцы от `sales_from` до `sales_to`; иначе последние ceil(recent_days/30) мес. от текущей даты.
@@ -837,7 +891,7 @@ async function loadRecentShipmentsPaged(db, code, componentCode, includeViaBundl
     const [cntRows] = await db.query(countSql, [...innerParams, ...filterParams]);
     const total = Number(cntRows?.[0]?.c || 0);
 
-    const dataSql = `SELECT * FROM (${innerSql}) u ${filterSql} ORDER BY sort_moment DESC LIMIT ? OFFSET ?`;
+    const dataSql = `SELECT * FROM (${innerSql}) u ${filterSql} ORDER BY sort_moment DESC, demand_uuid DESC, position_uuid DESC LIMIT ? OFFSET ?`;
     const [rows] = await db.query(dataSql, [...innerParams, ...filterParams, rp.limit, rp.offset]);
 
     let bundle_codes = [];
@@ -1113,7 +1167,7 @@ function createHandleZeroStockWindowsImport(db) {
     };
 }
 
-function createProductRouter(db /* , appSettings */) {
+function createProductRouter(db, appSettings) {
     const router = express.Router();
 
     /**
@@ -1127,7 +1181,7 @@ function createProductRouter(db /* , appSettings */) {
      * GET /api/product/:code/recent-shipments — только таблица последних отгрузок (пагинация + фильтр).
      * Query: те же `sales_from`/`sales_to` или `recent_days`, плюс
      * `recent_page` (default 1), `recent_page_size` (10..200, default 100),
-     * `recent_via` = all | direct | bundle, при bundle опционально `recent_bundle_code` (код комплекта).
+     * `recent_via` = all | direct | bundle, при bundle опционально `recent_bundle_code` (код комплекта/строки отгрузки; пусто = все комплекты).
      */
     router.get('/:code/recent-shipments', async (req, res) => {
         try {
@@ -1219,6 +1273,7 @@ function createProductRouter(db /* , appSettings */) {
             }
             const includeViaBundles = !isBundleProduct;
 
+            const formulaCfg = parseFormulaSettings(appSettings);
             const [
                 salesAggregates,
                 recentPack,
@@ -1230,6 +1285,9 @@ function createProductRouter(db /* , appSettings */) {
                 viaBundlesDetail,
                 directPeriod,
                 bundlesPeriod,
+                salesWindowSum,
+                absenceDistinctPack,
+                economyDistinctPack,
             ] = await Promise.all([
                 loadSalesAggregates(db, code, code, includeViaBundles),
                 loadRecentShipmentsPaged(db, code, code, includeViaBundles, salesWindow, recentRp),
@@ -1241,6 +1299,9 @@ function createProductRouter(db /* , appSettings */) {
                 loadViaBundlesDetail(db, code, salesWindow, includeViaBundles),
                 loadDirectSalesPeriod(db, code, salesWindow),
                 loadBundlesEquivalentPeriod(db, code, salesWindow, includeViaBundles),
+                loadSalesSumLastDays(db, code, code, includeViaBundles, formulaCfg.salesWindowDays),
+                loadZeroStockDistinctDays(db, code, formulaCfg.absenceAnalysisDays),
+                loadZeroStockDistinctDays(db, code, formulaCfg.economyAbsenceWindowDays),
             ]);
             const recentSales = recentPack.rows;
             const recentTotal = recentPack.total;
@@ -1293,6 +1354,50 @@ function createProductRouter(db /* , appSettings */) {
                     : [],
             };
 
+            const msMinStock = ms.min_stock != null && Number.isFinite(Number(ms.min_stock)) ? Number(ms.min_stock) : 0;
+            let prevBaseline = msMinStock;
+            let prevBaselineSource = 'ms_export.min_stock';
+            if (override) {
+                if (override.proposed_min_stock != null && override.proposed_min_stock !== '') {
+                    const pm = Number(override.proposed_min_stock);
+                    if (Number.isFinite(pm)) {
+                        prevBaseline = pm;
+                        prevBaselineSource = 'override.proposed_min_stock';
+                    }
+                } else if (override.min_stock_dg != null && override.min_stock_dg !== '') {
+                    const md = Number(override.min_stock_dg);
+                    if (Number.isFinite(md)) {
+                        prevBaseline = md;
+                        prevBaselineSource = 'override.min_stock_dg';
+                    }
+                }
+            }
+            const multRaw =
+                override && override.multiplicity != null && override.multiplicity !== '' ? Number(override.multiplicity) : 0;
+            const multiplicity = Number.isFinite(multRaw) && multRaw >= 0 ? multRaw : 0;
+
+            const formulaResult = computeSalesFormula({
+                settings: formulaCfg,
+                sumQty: salesWindowSum.sum_qty,
+                absenceDistinctDays: absenceDistinctPack.distinct_days,
+                economyAbsenceDistinctDays: economyDistinctPack.distinct_days,
+                marketPriceRub: pickMarketPriceRub(prices),
+                multiplicity,
+                stockQty: ms.stock,
+                prevBaseline,
+                prevBaselineSource,
+            });
+
+            const formulaPayload = {
+                proposed_min_stock: formulaResult.proposed_min_stock,
+                settings_effective: formulaCfg,
+                inputs: formulaResult.inputs,
+                warnings: formulaResult.warnings,
+                detail: formulaResult.detail,
+                note:
+                    'Окно продаж и коэффициенты задаются в «Настройки» → «Формула продаж / закупки». Сумма продаж — проведённые отгрузки МС за календарное окно (прямые + эквивалент через комплекты). Дни без остатка — число различных дат в логе отсутствия на складе за выбранные окна (см. блок «Отсутствие на складе» на карточке).',
+            };
+
             res.json({
                 success: true,
                 code,
@@ -1332,13 +1437,10 @@ function createProductRouter(db /* , appSettings */) {
                     days: zeroDays,
                     rows: zeroLog,
                     note:
-                        'Записи за сегодня с source=moysklad_sync ставятся пакетно после синка МС в ms_export (складская позиция=Да, не архив, остаток≤0). Ручная фиксация за тот же день не затирается. Разбивка по складам — после report/stock/bystore.',
+                        'По аналогии с продажами (там в лог попадают только проведённые отгрузки), здесь в лог попадают только дни, когда по выгрузке МС товар реально числился как отсутствующий на складе: после каждого успешного синка МойСклад за текущие сутки автоматически добавляется строка, если складская позиция «Да», товар не в архиве и остаток ≤ 0. Ручная запись за тот же день автоматикой не перезаписывается. Разбивка по отдельным складам — когда в синке появится report/stock/bystore.',
                 },
                 zero_stock_windows_import: zeroWinImport,
-                formula: {
-                    placeholder: true,
-                    description: 'Формула продаж будет добавлена позже (TBD).',
-                },
+                formula: formulaPayload,
             });
         } catch (err) {
             console.error('[product][get] error:', err);
@@ -1429,4 +1531,5 @@ function createProductRouter(db /* , appSettings */) {
 module.exports = createProductRouter;
 module.exports.createProductRouter = createProductRouter;
 module.exports.ensureZeroStockSchema = ensureZeroStockSchema;
+module.exports.ensureBundleComponentsSchema = ensureBundleComponentsSchema;
 module.exports.syncZeroStockLogAfterMoyskladExport = syncZeroStockLogAfterMoyskladExport;

@@ -178,6 +178,211 @@
       color: #475569;
       font-size: 13px;
     }
+    .dg-prod-page #dg-prod-formula-wrap [data-dg-tooltip] {
+      cursor: help;
+    }
+    /* Формула продаж: компактные пары «подпись — значение» (без широких таблиц). */
+    .dg-prod-formula .dg-formula-hero {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 14px;
+      margin-bottom: 12px;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+    }
+    .dg-prod-formula .dg-formula-hero-main { min-width: 0; flex: 1 1 auto; }
+    .dg-prod-formula .dg-formula-hero-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: #64748b;
+      margin-bottom: 2px;
+    }
+    .dg-prod-formula .dg-formula-hero-value {
+      font-size: 28px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      line-height: 1.1;
+      color: #0f172a;
+    }
+    .dg-prod-formula .dg-formula-hero-unit {
+      font-size: 14px;
+      font-weight: 600;
+      color: #64748b;
+      margin-left: 4px;
+    }
+    .dg-prod-formula .dg-formula-kv-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 4px 12px;
+      background: #fff;
+    }
+    .dg-prod-formula .dg-formula-kv-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px 16px;
+      align-items: start;
+      padding: 8px 0;
+      border-bottom: 1px solid #f1f5f9;
+    }
+    .dg-prod-formula .dg-formula-kv-row:last-child { border-bottom: 0; }
+    .dg-prod-formula .dg-formula-kv-row .dg-fk-label {
+      color: #6b7280;
+      font-size: 12px;
+      line-height: 1.35;
+      word-break: break-word;
+    }
+    .dg-prod-formula .dg-formula-kv-row .dg-fk-val {
+      font-size: 13px;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      color: #111827;
+      text-align: right;
+      white-space: nowrap;
+    }
+    .dg-prod-formula .dg-formula-steps {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .dg-prod-formula .dg-formula-step {
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 8px 10px;
+      background: #fafbfc;
+    }
+    .dg-prod-formula .dg-formula-step-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px 12px;
+    }
+    .dg-prod-formula .dg-formula-step-label {
+      font-weight: 600;
+      font-size: 12px;
+      color: #1e293b;
+      min-width: 0;
+      flex: 1 1 160px;
+    }
+    .dg-prod-formula .dg-formula-step-value {
+      font-size: 13px;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      color: #0b5ed7;
+      white-space: nowrap;
+    }
+    .dg-prod-formula .dg-formula-step-detail {
+      margin-top: 6px;
+      font-size: 12px;
+      color: #64748b;
+      line-height: 1.4;
+    }
+    .dg-prod-formula .dg-formula-details {
+      overflow: hidden;
+    }
+    .dg-prod-formula .dg-formula-details-summary {
+      cursor: pointer;
+      list-style: none;
+      font-size: 13px;
+      font-weight: 600;
+      color: #334155;
+      user-select: none;
+    }
+    .dg-prod-formula .dg-formula-details-summary::-webkit-details-marker { display: none; }
+    .dg-prod-formula .dg-formula-details-summary::before {
+      content: "▸ ";
+      display: inline-block;
+      transition: transform 0.15s ease;
+      color: #64748b;
+    }
+    .dg-prod-formula .dg-formula-details[open] .dg-formula-details-summary::before {
+      transform: rotate(90deg);
+    }
+    .dg-prod-formula .dg-formula-details-body {
+      border-top: 1px solid #e5e7eb;
+      padding-top: 4px;
+    }
+    /* Упрощённый разбор: каждый шаг — отдельный <details> с подписью Развернуть/Свернуть. */
+    .dg-prod-formula .dg-formula-simple-story-block {
+      overflow: hidden;
+      background: #fff;
+    }
+    .dg-prod-formula .dg-formula-simple-story-summary {
+      cursor: pointer;
+      list-style: none;
+      user-select: none;
+    }
+    .dg-prod-formula .dg-formula-simple-story-summary::-webkit-details-marker {
+      display: none;
+    }
+    .dg-prod-formula .dg-formula-simple-story-summary::before {
+      content: "▸ ";
+      display: inline-block;
+      flex-shrink: 0;
+      margin-right: 4px;
+      transition: transform 0.15s ease;
+      color: #64748b;
+    }
+    .dg-prod-formula .dg-formula-simple-story-block[open] .dg-formula-simple-story-summary::before {
+      transform: rotate(90deg);
+    }
+    .dg-prod-formula .dg-formula-simple-story-block:not([open]) .dg-fss-toggle-hint::after {
+      content: "Развернуть";
+      font-weight: 400;
+    }
+    .dg-prod-formula .dg-formula-simple-story-block[open] .dg-fss-toggle-hint::after {
+      content: "Свернуть";
+      font-weight: 400;
+    }
+    .dg-prod-formula .dg-formula-simple-story-body {
+      border-top: 1px solid #eef2f7;
+      padding: 8px 12px 10px 12px;
+    }
+    .dg-prod-formula .dg-formula-detail-block {
+      border: 1px solid #eef2f7;
+      border-radius: 8px;
+      padding: 8px 10px;
+      margin-bottom: 8px;
+      background: #fff;
+    }
+    .dg-prod-formula .dg-formula-detail-block:last-child { margin-bottom: 0; }
+    .dg-prod-formula .dg-formula-pipe-card .dg-fk-applied {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: #e7f1ff;
+      color: #0b5ed7;
+    }
+    .dg-prod-formula .dg-formula-pipe-card .dg-fk-applied.is-off {
+      background: #f1f5f9;
+      color: #64748b;
+    }
+    .dg-prod-formula .dg-formula-eq-stages { margin-top: 0; }
+    .dg-prod-formula .dg-formula-eq-stage {
+      border-left: 3px solid #0d6efd;
+      padding: 10px 12px 10px 14px;
+      background: #f8fafc;
+      border-radius: 0 8px 8px 0;
+    }
+    .dg-prod-formula .dg-formula-eq-template {
+      font-size: 12px;
+      line-height: 1.45;
+      letter-spacing: 0.01em;
+    }
+    .dg-prod-formula .dg-formula-eq-values {
+      font-size: 13px;
+      line-height: 1.5;
+      word-break: break-word;
+    }
     .dg-prod-page .dg-zero-empty { color: #6b7280; font-size: 12px; padding: 8px 0; }
     /* Автолинки в KV/атрибутах: подчёркнутый синий, аккуратный break-all для длинных URL. */
     .dg-prod-page a.dg-prod-link {
@@ -765,7 +970,7 @@
         <div>
           <span id="dg-prod-title">Карточка товара</span>
           <div class="page-title-subheading" id="dg-prod-subtitle">
-            Подробные данные из МойСклад: атрибуты, цены, остатки, продажи и фиксация нулевых остатков.
+            Подробные данные из МойСклад: атрибуты, цены, остатки, продажи и дни отсутствия товара на складе.
           </div>
         </div>
       </div>
@@ -781,14 +986,24 @@
 
     <!-- 1. Основные данные из МС -->
     <div class="main-card mb-3 card">
-      <div class="card-header d-flex justify-content-between gap-2 flex-wrap">
-        <div class="d-flex align-items-center gap-2">
+      <div class="card-header d-flex justify-content-between align-items-center gap-2 flex-wrap">
+        <div class="d-flex align-items-center gap-2 min-w-0">
           <i class="header-icon pe-7s-info icon-gradient bg-tempting-azure me-1"></i>
           <h5>Данные из МойСклад</h5>
         </div>
-        <span class="text-muted" id="dg-prod-synced-at"></span>
+        <div class="d-flex align-items-center gap-2 flex-shrink-0 ms-auto">
+          <span class="text-muted small text-end" id="dg-prod-synced-at"></span>
+          <button
+            type="button"
+            class="btn btn-sm btn-outline-secondary"
+            id="dg-prod-main-toggle"
+            data-dg-tooltip="Свернуть/развернуть тело карточки"
+          >
+            Свернуть
+          </button>
+        </div>
       </div>
-      <div class="card-body">
+      <div class="card-body" id="dg-prod-main-body">
         <div class="dg-prod-link-row mb-2" id="dg-prod-link-row"></div>
         <div class="dg-kv-grid" id="dg-prod-main-kv"></div>
       </div>
@@ -796,88 +1011,145 @@
 
     <!-- 1.1 Атрибуты (полный список из МС) -->
     <div class="main-card mb-3 card">
-      <div class="card-header d-flex justify-content-between gap-2 flex-wrap">
-        <div class="d-flex align-items-center gap-2">
+      <div class="card-header d-flex justify-content-between align-items-center gap-2 flex-wrap">
+        <div class="d-flex align-items-center gap-2 min-w-0">
           <i class="header-icon pe-7s-note2 icon-gradient bg-tempting-azure me-1"></i>
           <h5>Атрибуты МС</h5>
         </div>
-        <span class="text-muted" id="dg-prod-attrs-meta"></span>
+        <div class="d-flex align-items-center gap-2 flex-shrink-0 ms-auto">
+          <span class="text-muted small text-end" id="dg-prod-attrs-meta"></span>
+          <button
+            type="button"
+            class="btn btn-sm btn-outline-secondary"
+            id="dg-prod-attrs-toggle"
+            data-dg-tooltip="Свернуть/развернуть тело карточки"
+          >
+            Свернуть
+          </button>
+        </div>
       </div>
-      <div class="card-body">
+      <div class="card-body" id="dg-prod-attrs-body">
         <div id="dg-prod-attrs"></div>
       </div>
     </div>
 
     <!-- 2. Цены -->
     <div class="main-card mb-3 card">
-      <div class="card-header d-flex align-items-center gap-2">
-        <i class="header-icon pe-7s-cash icon-gradient bg-mean-fruit me-1"></i>
-        <h5>Цены из МойСклад</h5>
+      <div class="card-header d-flex justify-content-between align-items-center gap-2 flex-wrap">
+        <div class="d-flex align-items-center gap-2 min-w-0">
+          <i class="header-icon pe-7s-cash icon-gradient bg-mean-fruit me-1"></i>
+          <h5>Цены из МойСклад</h5>
+        </div>
+        <button
+          type="button"
+          class="btn btn-sm btn-outline-secondary flex-shrink-0 ms-auto"
+          id="dg-prod-prices-toggle"
+          data-dg-tooltip="Свернуть/развернуть тело карточки"
+        >
+          Свернуть
+        </button>
       </div>
-      <div class="card-body">
+      <div class="card-body" id="dg-prod-prices-body">
         <div class="dg-prices-grid" id="dg-prod-prices"></div>
       </div>
     </div>
 
     <!-- 3. Остатки и ожидания (+ override-блок) -->
     <div class="main-card mb-3 card">
-      <div class="card-header d-flex justify-content-between gap-2 flex-wrap">
-        <div class="d-flex align-items-center gap-2">
+      <div class="card-header d-flex justify-content-between align-items-center gap-2 flex-wrap">
+        <div class="d-flex align-items-center gap-2 min-w-0">
           <i class="header-icon pe-7s-box1 icon-gradient bg-mean-fruit me-1"></i>
           <h5>Остатки и ожидания</h5>
         </div>
-        <a href="/purchase.html" class="text-muted small">Редактировать override-поля</a>
+        <div class="d-flex align-items-center gap-2 flex-shrink-0 ms-auto flex-wrap justify-content-end">
+          <a href="/purchase.html" class="text-muted small">Редактировать override-поля</a>
+          <button
+            type="button"
+            class="btn btn-sm btn-outline-secondary"
+            id="dg-prod-stock-toggle"
+            data-dg-tooltip="Свернуть/развернуть тело карточки"
+          >
+            Свернуть
+          </button>
+        </div>
       </div>
-      <div class="card-body">
+      <div class="card-body" id="dg-prod-stock-body">
         <div class="dg-stock-grid mb-3" id="dg-prod-stock"></div>
         <div class="dg-section-title">Override-поля «Закупки» (только просмотр)</div>
         <div class="dg-kv-grid" id="dg-prod-override"></div>
       </div>
     </div>
 
-    <!-- 4. Фиксация нулевых остатков по складам -->
+    <!-- 4. Отсутствие товара на складе (автолог после синка МС + ручная запись) -->
     <div class="main-card mb-3 card">
-      <div class="card-header d-flex justify-content-between gap-2 flex-wrap">
-        <div class="d-flex align-items-center gap-2">
+      <div class="card-header d-flex justify-content-between align-items-center gap-2 flex-wrap">
+        <div class="d-flex align-items-center gap-2 min-w-0">
           <i class="header-icon pe-7s-clock icon-gradient bg-mean-fruit me-1"></i>
-          <h5>Нулевые остатки по складам</h5>
+          <h5>Отсутствие на складе</h5>
         </div>
-        <div class="d-flex align-items-center gap-2">
-          <select id="dg-prod-zero-days" class="form-select form-select-sm" style="width:auto;">
+        <div class="d-flex align-items-center gap-2 flex-shrink-0 ms-auto flex-wrap justify-content-end">
+          <select id="dg-prod-zero-days" class="form-select form-select-sm" style="width:auto;" aria-label="Глубина лога по дням">
             <option value="30">30 дней</option>
             <option value="60">60 дней</option>
             <option value="90" selected>90 дней</option>
             <option value="180">180 дней</option>
             <option value="365">365 дней</option>
           </select>
-          <button id="dg-prod-zero-fix" class="btn btn-sm btn-outline-warning" type="button">Зафиксировать нулевой остаток сейчас</button>
+          <button
+            id="dg-prod-zero-fix"
+            class="btn btn-sm btn-outline-secondary"
+            type="button"
+            data-dg-tooltip="Обычно не нужно: после синка МС строка за сегодня создаётся сама. Кнопка — добавить или обновить ручную запись за сегодня (агрегат «все склады»); автоматическая запись за этот день не перезаписывается."
+          >
+            Записать вручную за сегодня
+          </button>
+          <button
+            type="button"
+            class="btn btn-sm btn-outline-secondary"
+            id="dg-prod-zero-toggle"
+            data-dg-tooltip="Свернуть/развернуть тело карточки"
+          >
+            Свернуть
+          </button>
         </div>
       </div>
-      <div class="card-body">
-        <p class="text-muted small mb-2" id="dg-prod-zero-note">
-          После синка МойСклад в лог за сегодня автоматически попадают позиции со <strong>складской позицией «Да»</strong>, <strong>не в архиве</strong> и с <strong>остатком ≤ 0</strong> (источник «После синка МС»). Ручная кнопка не затирается за тот же день. Разбивка по складам — после расширения синка <code>report/stock/bystore</code>.
-        </p>
+      <div class="card-body" id="dg-prod-zero-body">
+        <p class="text-muted small mb-2" id="dg-prod-zero-note" style="display:none;"></p>
         <div id="dg-prod-zero-result" class="dg-prod-status" style="display:none;"></div>
-        <div class="dg-section-title mt-3">Сводка по окнам (импорт из Excel)</div>
-        <p class="text-muted small mb-2">Агрегаты «сколько дней с нулём» за последние 30 / 60 / 90 / 180 / 365 календарных дней на дату среза. Не подменяет построчный лог ниже — хранится отдельно. Загрузка: <code>POST /api/product/zero-stock-windows-import</code> (см. <a href="/docs/api#карточка-товара">справку API</a>).</p>
+        <div class="dg-section-title">Сводка по окнам (импорт из Excel)</div>
+        <p class="text-muted small mb-2">
+          Как агрегаты продаж по фиксированным окнам — здесь одна строка на дату среза: сколько календарных дней без товара в окнах 30…365 дней до этой даты. Это <strong>не</strong> построчный лог ниже и <strong>не</strong> подставляется в него автоматически. Загрузка: <a href="/docs/api#карточка-товара">справка API</a>, метод <code>POST /api/product/zero-stock-windows-import</code>.
+        </p>
         <div id="dg-prod-zero-win-import-wrap" class="mb-3"></div>
+        <div class="dg-section-title mt-1">Лог по дням</div>
+        <p class="text-muted small mb-2">
+          Каждая строка — календарный день, когда по выгрузке МС остаток был ≤ 0 при условиях из пояснения выше (аналогично тому, как в продажах учитываются только проведённые отгрузки).
+        </p>
         <div id="dg-prod-zero-table-wrap"></div>
       </div>
     </div>
 
     <!-- 5. Продажи -->
     <div class="main-card mb-3 card">
-      <div class="card-header d-flex justify-content-between gap-2 flex-wrap">
-        <div class="d-flex align-items-center gap-2">
+      <div class="card-header d-flex justify-content-between align-items-center gap-2 flex-wrap">
+        <div class="d-flex align-items-center gap-2 min-w-0">
           <i class="header-icon pe-7s-graph2 icon-gradient bg-tempting-azure me-1"></i>
           <h5>Продажи товара</h5>
         </div>
-        <div class="d-flex align-items-center gap-2">
+        <div class="d-flex align-items-center gap-2 flex-shrink-0 ms-auto flex-wrap justify-content-end">
           <span class="text-muted small">Источник: <a href="/ms-sales.html">/ms-sales.html</a></span>
           <a id="dg-prod-sales-link" href="#" class="btn btn-sm btn-outline-primary">Открыть в «Продажи МС»</a>
+          <button
+            type="button"
+            class="btn btn-sm btn-outline-secondary"
+            id="dg-prod-sales-toggle"
+            data-dg-tooltip="Свернуть/развернуть тело карточки"
+          >
+            Свернуть
+          </button>
         </div>
       </div>
-      <div class="card-body">
+      <div class="card-body" id="dg-prod-sales-body">
         <p class="text-muted small mb-2" id="dg-prod-sales-note"></p>
         <div class="dg-section-title">Агрегаты по окнам (количество)</div>
         <div class="dg-sales-aggregates mb-3" id="dg-prod-sales-aggs"></div>
@@ -959,18 +1231,32 @@
       </div>
     </div>
 
-    <!-- 6. Формула продаж — заглушка -->
+    <!-- 6. Формула продаж -->
     <div class="main-card mb-3 card">
-      <div class="card-header d-flex align-items-center gap-2">
-        <i class="header-icon pe-7s-calculator icon-gradient bg-mean-fruit me-1"></i>
-        <h5>Формула продаж</h5>
-      </div>
-      <div class="card-body">
-        <div class="dg-prod-formula-placeholder">
-          Формула продаж будет добавлена позже — конкретные коэффициенты и алгоритм пользователь предоставит отдельно.
-          Заготовлено место для компонент: средние продажи (3/5/7/15/30/60/90/180/365 дн.),
-          доля «нулевых» дней, кратность и неснижаемый остаток Датагон.
+      <div class="card-header d-flex justify-content-between align-items-center gap-2 flex-wrap">
+        <div class="d-flex align-items-center gap-2 min-w-0">
+          <i class="header-icon pe-7s-calculator icon-gradient bg-mean-fruit me-1"></i>
+          <h5 class="mb-0">Формула продаж</h5>
+          <button
+            type="button"
+            class="btn btn-link btn-sm text-muted p-0"
+            aria-label="Справка: как считается формула"
+            data-dg-tooltip="Предлагаемый неснижаемый (Датагон) считается на сервере по настройкам «Формула продаж / закупки». Сначала сумма продаж за окно (проведённые отгрузки, прямые + через комплекты), затем × коэффициент пополнения. Дальше по ситуации: редкий по средним, режим экономии, минимум для дорогих по цене с «маркет» в названии, ограничение скачка от текущего неснижаемого. На карточке: крупный итог и разбор **«Формула этапами»** (шаблон и числа). Числа для проверки также есть в JSON ответа в `formula.inputs`."
+          >
+            <i class="pe-7s-help1" style="font-size: 1.15rem" aria-hidden="true"></i>
+          </button>
         </div>
+        <button
+          type="button"
+          class="btn btn-sm btn-outline-secondary flex-shrink-0"
+          id="dg-prod-formula-toggle"
+          data-dg-tooltip="Свернуть/развернуть тело карточки"
+        >
+          Свернуть
+        </button>
+      </div>
+      <div class="card-body" id="dg-prod-formula-body">
+        <div id="dg-prod-formula-wrap"></div>
       </div>
     </div>
   </div>
@@ -1051,8 +1337,7 @@
     <script>
     (function () {
       // Карточка товара /product.html?code=XXX. Один агрегатный fetch /api/product/:code,
-      // отрисовка 6 блоков. Дополнительно: лог нулевых остатков с обновлением окна
-      // и ручной фиксацией. Никакой бизнес-логики формулы — только заготовка.
+      // отрисовка блоков. Лог отсутствия на складе — в основном автоматически после синка МС; ручная запись — опционально.
 
       var statusEl = document.getElementById("dg-prod-status");
       var titleEl = document.getElementById("dg-prod-title");
@@ -1071,11 +1356,13 @@
       var zeroResultEl = document.getElementById("dg-prod-zero-result");
       var zeroWinImportWrap = document.getElementById("dg-prod-zero-win-import-wrap");
       var zeroTableWrap = document.getElementById("dg-prod-zero-table-wrap");
+      var zeroNoteEl = document.getElementById("dg-prod-zero-note");
       var salesLink = document.getElementById("dg-prod-sales-link");
       var salesAggs = document.getElementById("dg-prod-sales-aggs");
       var salesNoteEl = document.getElementById("dg-prod-sales-note");
       var viaBundlesWrap = document.getElementById("dg-prod-via-bundles-wrap");
       var salesRecentWrap = document.getElementById("dg-prod-sales-recent-wrap");
+      var formulaWrap = document.getElementById("dg-prod-formula-wrap");
       var salesPeriodSummary = document.getElementById("dg-prod-sales-period-summary");
       var salesApplyBtn = document.getElementById("dg-prod-sales-apply");
 
@@ -1610,8 +1897,9 @@
 
       function appendRecentShipmentRow(tb, r) {
         var tr = document.createElement("tr");
-        var c1 = document.createElement("td"); c1.textContent = r.doc_name || "";
         var c2 = document.createElement("td"); c2.textContent = fmtDate(r.moment);
+        c2.title = "Момент проведённой отгрузки в МС (d.moment), сортировка таблицы — по этому полю, новые сверху.";
+        var c1 = document.createElement("td"); c1.textContent = r.doc_name || "";
         var c3 = document.createElement("td"); c3.textContent = r.agent_name || "";
         var c4 = document.createElement("td"); c4.textContent = r.store_name || "";
         var cVia = document.createElement("td");
@@ -1638,7 +1926,7 @@
         var c5 = document.createElement("td"); c5.className = "text-end"; c5.textContent = fmtFloat(r.quantity, 2);
         var c6 = document.createElement("td"); c6.className = "text-end"; c6.textContent = fmtMoney(r.price, "RUB");
         var c7 = document.createElement("td"); c7.className = "text-end"; c7.textContent = fmtMoney(r.sum, "RUB");
-        tr.appendChild(c1); tr.appendChild(c2); tr.appendChild(c3); tr.appendChild(c4); tr.appendChild(cVia);
+        tr.appendChild(c2); tr.appendChild(c1); tr.appendChild(c3); tr.appendChild(c4); tr.appendChild(cVia);
         tr.appendChild(c5); tr.appendChild(c6); tr.appendChild(c7);
         tb.appendChild(tr);
       }
@@ -1688,30 +1976,62 @@
         var colB = document.createElement("div");
         colB.className = "col-auto";
         colB.id = "dg-prod-recent-bundle-col";
-        if (!incBundles || viaSel.value !== "bundle") colB.classList.add("d-none");
+        if (!incBundles) colB.classList.add("d-none");
         var lbB = document.createElement("label");
         lbB.className = "form-label small mb-0 d-block";
         lbB.setAttribute("for", "dg-prod-recent-bundle");
-        lbB.textContent = "Код комплекта";
-        var bSel = document.createElement("select");
-        bSel.id = "dg-prod-recent-bundle";
-        bSel.className = "form-select form-select-sm";
-        bSel.style.minWidth = "12rem";
-        var o0 = document.createElement("option");
-        o0.value = "";
-        o0.textContent = "Все комплекты";
-        bSel.appendChild(o0);
+        lbB.textContent = "Код комплекта или товара";
+        lbB.title =
+          "Подсказки: комплекты, в составе которых есть товар с этой карточки, плюс код самой карточки. Можно ввести или вставить любой код из колонки «Через» / строки отгрузки МС. Пусто — все комплекты. Работает только при «Через» = «Комплект».";
+        var dlId = "dg-prod-recent-bundle-dl";
+        var dl = document.createElement("datalist");
+        dl.id = dlId;
+        var seen = {};
         (Array.isArray(sales.recent_bundle_codes) ? sales.recent_bundle_codes : []).forEach(function (bc) {
           var c = String(bc.bundle_code || "").trim();
-          if (!c) return;
-          var o = document.createElement("option");
-          o.value = c;
-          o.textContent = c + (bc.bundle_name ? " — " + String(bc.bundle_name).slice(0, 60) : "");
-          bSel.appendChild(o);
+          if (!c || seen[c]) return;
+          seen[c] = 1;
+          var op = document.createElement("option");
+          op.value = c;
+          if (bc.bundle_name) op.setAttribute("label", String(bc.bundle_name).slice(0, 80));
+          dl.appendChild(op);
         });
-        if (recentShipState.bundleCode) bSel.value = recentShipState.bundleCode;
+        var codeTrim = code ? String(code).trim() : "";
+        if (codeTrim && !seen[codeTrim]) {
+          var opSelf = document.createElement("option");
+          opSelf.value = codeTrim;
+          opSelf.setAttribute("label", "Код открытой карточки");
+          dl.appendChild(opSelf);
+        }
+        var bInput = document.createElement("input");
+        bInput.type = "text";
+        bInput.id = "dg-prod-recent-bundle";
+        bInput.setAttribute("list", dlId);
+        bInput.className = "form-control form-control-sm";
+        bInput.autocomplete = "off";
+        bInput.placeholder = "Все комплекты или введите код…";
+        bInput.title = lbB.title;
+        bInput.style.minWidth = "14rem";
+        bInput.style.maxWidth = "22rem";
+        bInput.value = recentShipState.bundleCode ? String(recentShipState.bundleCode) : "";
         colB.appendChild(lbB);
-        colB.appendChild(bSel);
+        colB.appendChild(dl);
+        colB.appendChild(bInput);
+
+        function syncRecentBundleFilterUi() {
+          if (!incBundles) return;
+          if (viaSel.value === "bundle") {
+            bInput.disabled = false;
+            bInput.placeholder = "Все комплекты или введите код…";
+            bInput.title = lbB.title;
+          } else {
+            bInput.disabled = true;
+            bInput.placeholder = "Сначала «Через» → Комплект";
+            bInput.title =
+              "Фильтр по коду строки отгрузки включается только в режиме «Комплект». Слева в «Через» выберите «Комплект», затем при необходимости укажите код и нажмите «Показать».";
+          }
+        }
+        syncRecentBundleFilterUi();
 
         var colPs = document.createElement("div");
         colPs.className = "col-auto";
@@ -1748,16 +2068,15 @@
         salesRecentWrap.appendChild(toolbar);
 
         viaSel.addEventListener("change", function () {
-          if (incBundles && viaSel.value === "bundle") colB.classList.remove("d-none");
-          else colB.classList.add("d-none");
+          syncRecentBundleFilterUi();
         });
 
         var t = document.createElement("table");
         t.className = "table table-sm table-striped dg-prod-mini";
         t.innerHTML =
           "<thead><tr>" +
+            "<th title=\"Поле moment отгрузки в МС; строки отсортированы по убыванию этого времени.\">Дата (МС)</th>" +
             "<th>Документ</th>" +
-            "<th>Дата</th>" +
             "<th>Контрагент</th>" +
             "<th>Склад</th>" +
             "<th>Через</th>" +
@@ -2193,28 +2512,53 @@
 
       function zeroSourceLabel(src) {
         var s = String(src || "manual");
-        if (s === "moysklad_sync") return "После синка МС";
+        if (s === "moysklad_sync") return "Авто после синка МС";
+        if (s === "manual") return "Вручную";
         if (s === "auto") return "Авто (устар.)";
         return s;
       }
 
-      function renderZeroLog(rows) {
+      function renderZeroLog(zs) {
+        var rows = zs && Array.isArray(zs.rows) ? zs.rows : [];
+        var days = zs && zs.days != null ? Number(zs.days) : Number((zeroDaysSel && zeroDaysSel.value) || 90);
+        if (!Number.isFinite(days) || days < 1) days = 90;
         zeroTableWrap.innerHTML = "";
-        if (!rows || !rows.length) {
-          var d = document.createElement("div");
-          d.className = "dg-zero-empty";
-          d.textContent =
-            "За выбранный период нет записей. После синка МойСклад сюда попадут нули по складским позициям (не архив). Либо нажмите «Зафиксировать нулевой остаток сейчас».";
-          zeroTableWrap.appendChild(d);
-          return;
+
+        var summary = document.createElement("div");
+        summary.className = "text-muted small mb-2";
+        if (rows.length) {
+          var dateSet = {};
+          rows.forEach(function (r) {
+            if (!r || !r.ts_date) return;
+            var d = String(r.ts_date).slice(0, 10);
+            if (d) dateSet[d] = 1;
+          });
+          var distinctDays = Object.keys(dateSet).length;
+          summary.textContent =
+            "За последние " +
+            days +
+            " дн.: записей в логе — " +
+            rows.length +
+            ", разных календарных дней без товара на складе (по выгрузке МС) — " +
+            distinctDays +
+            ".";
+        } else {
+          summary.textContent =
+            "За последние " +
+            days +
+            " дн. записей нет: в это окно не попал ни один день, когда одновременно выполнялись условия автолога (остаток ≤ 0, складская позиция «Да», не архив), либо после включения лога ещё не было успешного синка МС. Добавить день вручную можно кнопкой «Записать вручную за сегодня» в шапке блока.";
         }
+        zeroTableWrap.appendChild(summary);
+
+        if (!rows.length) return;
+
         var t = document.createElement("table");
         t.className = "table table-sm table-striped dg-prod-mini";
         t.innerHTML =
           "<thead><tr>" +
             "<th>Дата</th>" +
             "<th>Склад</th>" +
-            "<th class=\"text-end\">Остаток на момент фиксации</th>" +
+            "<th class=\"text-end\">Остаток, шт</th>" +
             "<th>Источник</th>" +
             "<th>Создано</th>" +
           "</tr></thead>";
@@ -2223,7 +2567,7 @@
           var tr = document.createElement("tr");
           var c1 = document.createElement("td"); c1.textContent = fmtDateOnly(r.ts_date);
           var c2 = document.createElement("td");
-          c2.textContent = r.store_name ? r.store_name : (r.store_uuid === "__total__" ? "Все склады (общая фиксация)" : r.store_uuid);
+          c2.textContent = r.store_name ? r.store_name : (r.store_uuid === "__total__" ? "Все склады" : r.store_uuid);
           var c3 = document.createElement("td"); c3.className = "text-end";
           c3.textContent = r.total_stock == null ? "—" : fmtFloat(r.total_stock, 3);
           var c4 = document.createElement("td"); c4.textContent = zeroSourceLabel(r.source);
@@ -2241,42 +2585,154 @@
         if (!win || !win.reference_date) {
           var empty = document.createElement("p");
           empty.className = "text-muted small mb-0";
-          empty.textContent = "Импортированной сводки по окнам для этого кода пока нет.";
+          empty.textContent = "Сводки по окнам из Excel для этого кода пока не загружали.";
           zeroWinImportWrap.appendChild(empty);
           return;
         }
-        var t = document.createElement("table");
-        t.className = "table table-sm table-bordered mb-0 dg-prod-mini";
-        t.innerHTML =
-          "<thead><tr>" +
-            "<th>Дата среза</th>" +
-            "<th class=\"text-end\">30 дн.</th>" +
-            "<th class=\"text-end\">60 дн.</th>" +
-            "<th class=\"text-end\">90 дн.</th>" +
-            "<th class=\"text-end\">180 дн.</th>" +
-            "<th class=\"text-end\">365 дн.</th>" +
-            "<th>Комментарий импорта</th>" +
-          "</tr></thead>";
-        var tb = document.createElement("tbody");
-        var tr = document.createElement("tr");
-        var c0 = document.createElement("td");
-        c0.textContent = formatYmdRu(win.reference_date);
-        var c1 = document.createElement("td"); c1.className = "text-end"; c1.textContent = String(win.absent_last_30 != null ? win.absent_last_30 : "—");
-        var c2 = document.createElement("td"); c2.className = "text-end"; c2.textContent = String(win.absent_last_60 != null ? win.absent_last_60 : "—");
-        var c3 = document.createElement("td"); c3.className = "text-end"; c3.textContent = String(win.absent_last_90 != null ? win.absent_last_90 : "—");
-        var c4 = document.createElement("td"); c4.className = "text-end"; c4.textContent = String(win.absent_last_180 != null ? win.absent_last_180 : "—");
-        var c5 = document.createElement("td"); c5.className = "text-end"; c5.textContent = String(win.absent_last_365 != null ? win.absent_last_365 : "—");
-        var c6 = document.createElement("td");
-        c6.textContent = win.note ? String(win.note) : "—";
-        tr.appendChild(c0); tr.appendChild(c1); tr.appendChild(c2); tr.appendChild(c3); tr.appendChild(c4); tr.appendChild(c5); tr.appendChild(c6);
-        tb.appendChild(tr);
-        t.appendChild(tb);
-        zeroWinImportWrap.appendChild(t);
+        var head = document.createElement("div");
+        head.className = "text-muted small mb-2";
+        head.textContent = "Дата среза: " + formatYmdRu(win.reference_date) + (win.note ? " · " + String(win.note) : "");
+        zeroWinImportWrap.appendChild(head);
+
+        var grid = document.createElement("div");
+        grid.className = "dg-sales-aggregates";
+        [
+          [30, win.absent_last_30],
+          [60, win.absent_last_60],
+          [90, win.absent_last_90],
+          [180, win.absent_last_180],
+          [365, win.absent_last_365]
+        ].forEach(function (pair) {
+          var dWin = pair[0];
+          var v = pair[1];
+          var card = document.createElement("div");
+          card.className = "dg-sales-card";
+          var winEl = document.createElement("div");
+          winEl.className = "dg-sales-window";
+          winEl.textContent = dWin + " дн.";
+          var qty = document.createElement("div");
+          qty.className = "dg-sales-qty";
+          qty.textContent = v != null ? String(v) : "—";
+          var meta = document.createElement("div");
+          meta.className = "dg-sales-meta";
+          meta.textContent = "дн. без товара";
+          card.appendChild(winEl);
+          card.appendChild(qty);
+          card.appendChild(meta);
+          grid.appendChild(card);
+        });
+        zeroWinImportWrap.appendChild(grid);
+
         if (win.created_at) {
-          var meta = document.createElement("p");
-          meta.className = "text-muted small mt-2 mb-0";
-          meta.textContent = "Запись импорта создана/обновлена: " + fmtDate(win.created_at);
-          zeroWinImportWrap.appendChild(meta);
+          var meta2 = document.createElement("p");
+          meta2.className = "text-muted small mt-2 mb-0";
+          meta2.textContent = "Импорт в систему: " + fmtDate(win.created_at);
+          zeroWinImportWrap.appendChild(meta2);
+        }
+      }
+
+        if (!wrap || !Array.isArray(stages) || !stages.length) return;
+        var h = document.createElement("div");
+        h.className = "dg-section-title mt-3 mb-2";
+        h.textContent = "Формула этапами";
+        h.setAttribute(
+          "data-dg-tooltip",
+          "Сначала запись через символы (÷, ×, min, max, ceil), ниже — та же строка с числами для этого товара. Порядок совпадает с расчётом на сервере."
+        );
+        wrap.appendChild(h);
+        var box = document.createElement("div");
+        box.className = "dg-formula-eq-stages small";
+        stages.forEach(function (st) {
+          var blk = document.createElement("div");
+          blk.className = "dg-formula-eq-stage mb-3";
+          var t = document.createElement("div");
+          t.className = "fw-semibold text-body mb-2";
+          t.textContent = st.title || "";
+          blk.appendChild(t);
+          var tmpl = document.createElement("div");
+          tmpl.className = "dg-formula-eq-template font-monospace";
+          tmpl.textContent = st.template || "";
+          blk.appendChild(tmpl);
+          var vals = document.createElement("div");
+          vals.className = "dg-formula-eq-values font-monospace mt-2";
+          vals.textContent = st.values || "—";
+          blk.appendChild(vals);
+          if (st.note) {
+            var n = document.createElement("div");
+            n.className = "small text-muted mt-2 mb-0";
+            n.textContent = st.note;
+            blk.appendChild(n);
+          }
+          box.appendChild(blk);
+        });
+        wrap.appendChild(box);
+      }
+
+      function renderFormula(f) {
+        if (!formulaWrap) return;
+        formulaWrap.className = "";
+        formulaWrap.innerHTML = "";
+        if (!f || f.proposed_min_stock == null) {
+          var empty = document.createElement("p");
+          empty.className = "text-muted small mb-0";
+          empty.textContent = "Нет данных формулы.";
+          formulaWrap.appendChild(empty);
+          return;
+        }
+        formulaWrap.className = "dg-prod-formula";
+
+        var hero = document.createElement("div");
+        hero.className = "dg-formula-hero";
+        hero.setAttribute(
+          "data-dg-tooltip",
+          "Итог после всех шагов на сервере, округление вверх до целых штук. Не пишется автоматически в МойСклад: при необходимости используйте «Закупки» и override."
+        );
+        var heroMain = document.createElement("div");
+        heroMain.className = "dg-formula-hero-main";
+        var heroLabel = document.createElement("div");
+        heroLabel.className = "dg-formula-hero-label";
+        heroLabel.textContent = "Предлагаемый неснижаемый (Датагон)";
+        var heroVal = document.createElement("div");
+        heroVal.className = "dg-formula-hero-value";
+        heroVal.appendChild(document.createTextNode(String(f.proposed_min_stock)));
+        var heroUnit = document.createElement("span");
+        heroUnit.className = "dg-formula-hero-unit";
+        heroUnit.textContent = " шт";
+        heroVal.appendChild(heroUnit);
+        heroMain.appendChild(heroLabel);
+        heroMain.appendChild(heroVal);
+        hero.appendChild(heroMain);
+        formulaWrap.appendChild(hero);
+
+        if (f.note) {
+          var note = document.createElement("p");
+          note.className = "small text-muted mb-0 mt-2";
+          note.textContent = f.note;
+          note.setAttribute(
+            "data-dg-tooltip",
+            "Краткое напоминание с сервера: период суммирования продаж, лог нулевых остатков и связь с настройками."
+          );
+          formulaWrap.appendChild(note);
+        }
+
+        if (f.detail && Array.isArray(f.detail.equation_stages) && f.detail.equation_stages.length) {
+          renderFormulaEquationStages(formulaWrap, f.detail.equation_stages);
+        }
+
+        if (Array.isArray(f.warnings) && f.warnings.length) {
+          var wBox = document.createElement("div");
+          wBox.className = "alert alert-warning mt-3 mb-0";
+          wBox.setAttribute("role", "status");
+          wBox.setAttribute(
+            "data-dg-tooltip",
+            "Сработало ограничение или нетипичный случай. Текст ниже — предупреждение с сервера."
+          );
+          f.warnings.forEach(function (w) {
+            var line = document.createElement("div");
+            line.textContent = String(w);
+            wBox.appendChild(line);
+          });
+          formulaWrap.appendChild(wBox);
         }
       }
 
@@ -2287,8 +2743,18 @@
         renderStock(payload.stock);
         renderOverride(payload.override);
         renderSales(payload.sales, payload.code);
+        if (zeroNoteEl) {
+          if (payload.zero_stock && payload.zero_stock.note) {
+            zeroNoteEl.textContent = payload.zero_stock.note;
+            zeroNoteEl.style.display = "";
+          } else {
+            zeroNoteEl.textContent = "";
+            zeroNoteEl.style.display = "none";
+          }
+        }
         renderZeroWinImport(payload.zero_stock_windows_import);
-        renderZeroLog(payload.zero_stock ? payload.zero_stock.rows : []);
+        renderZeroLog(payload.zero_stock || null);
+        renderFormula(payload.formula);
       }
 
       function loadCard() {
@@ -2330,7 +2796,7 @@
           .then(function (r) { return r.json(); })
           .then(function (j) {
             if (!j || j.success === false) throw new Error((j && j.error) || "Ошибка");
-            renderZeroLog(j.rows || []);
+            renderZeroLog({ rows: j.rows || [], days: j.days != null ? j.days : zd });
           })
           .catch(function (e) {
             zeroResultEl.style.display = "";
@@ -2345,7 +2811,7 @@
         zeroFixBtn.disabled = true;
         zeroResultEl.style.display = "";
         zeroResultEl.className = "dg-prod-status is-loading";
-        zeroResultEl.textContent = "Фиксируем нулевой остаток…";
+        zeroResultEl.textContent = "Записываем…";
         fetch("/api/product/" + encodeURIComponent(code) + "/zero-stock-log", {
           method: "POST",
           credentials: "same-origin",
@@ -2357,12 +2823,16 @@
             zeroFixBtn.disabled = false;
             if (!x.ok || !x.j || x.j.success === false) {
               zeroResultEl.className = "dg-prod-status is-error";
-              zeroResultEl.textContent = "Не удалось зафиксировать: " + ((x.j && x.j.error) || "ошибка");
+              zeroResultEl.textContent = "Не удалось записать: " + ((x.j && x.j.error) || "ошибка");
               return;
             }
             zeroResultEl.className = "dg-prod-status is-loading";
             var s = x.j.stored || {};
-            zeroResultEl.textContent = "OK. Запись от " + (s.ts_date ? fmtDateOnly(s.ts_date) : "сегодня") + ", остаток на момент фиксации: " + (s.total_stock == null ? "—" : fmtFloat(s.total_stock, 3));
+            zeroResultEl.textContent =
+              "Добавлена ручная запись за " +
+              (s.ts_date ? fmtDateOnly(s.ts_date) : "сегодня") +
+              ", остаток в записи: " +
+              (s.total_stock == null ? "—" : fmtFloat(s.total_stock, 3));
             reloadZeroLog();
           })
           .catch(function (e) {
@@ -2384,6 +2854,44 @@
       });
       if (salesApplyBtn) salesApplyBtn.addEventListener("click", function () { loadCard(); });
       initSalesDateInputs();
+
+      function bindProductCardCollapse(btnId, bodyId, storageKey) {
+        var btn = document.getElementById(btnId);
+        var body = document.getElementById(bodyId);
+        if (!btn || !body) return;
+        function apply() {
+          var c = false;
+          try {
+            c = localStorage.getItem(storageKey) === "1";
+          } catch (e) {}
+          if (c) {
+            body.style.display = "none";
+            btn.textContent = "Развернуть";
+          } else {
+            body.style.display = "";
+            btn.textContent = "Свернуть";
+          }
+        }
+        apply();
+        btn.addEventListener("click", function () {
+          var hidden = body.style.display === "none";
+          body.style.display = hidden ? "" : "none";
+          btn.textContent = hidden ? "Свернуть" : "Развернуть";
+          try {
+            localStorage.setItem(storageKey, hidden ? "0" : "1");
+          } catch (e) {}
+        });
+      }
+
+      // «Свернуть/Развернуть» для всех карточек страницы — как на списочных страницах (moysklad / my-sites).
+      bindProductCardCollapse("dg-prod-main-toggle", "dg-prod-main-body", "datagon_product_main_card_collapsed_v1");
+      bindProductCardCollapse("dg-prod-attrs-toggle", "dg-prod-attrs-body", "datagon_product_attrs_card_collapsed_v1");
+      bindProductCardCollapse("dg-prod-prices-toggle", "dg-prod-prices-body", "datagon_product_prices_card_collapsed_v1");
+      bindProductCardCollapse("dg-prod-stock-toggle", "dg-prod-stock-body", "datagon_product_stock_card_collapsed_v1");
+      bindProductCardCollapse("dg-prod-zero-toggle", "dg-prod-zero-body", "datagon_product_zero_card_collapsed_v1");
+      bindProductCardCollapse("dg-prod-sales-toggle", "dg-prod-sales-body", "datagon_product_sales_card_collapsed_v1");
+      bindProductCardCollapse("dg-prod-formula-toggle", "dg-prod-formula-body", "datagon_product_formula_card_collapsed_v1");
+
       loadCard();
     })();
   </script>

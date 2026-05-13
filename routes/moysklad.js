@@ -1148,7 +1148,19 @@ async function syncMsExport(db, config, settings = {}) {
         const stock = Number(row.stock || 0);
         const stockDays = row.stockDays ?? '';
         const salePrice = row.salePrice ? `${(Number(row.salePrice) / 100).toFixed(2)} ₽` : '';
-        stockMap.set(code, { stock, stockDays, salePrice });
+        const rawIt = row.inTransit != null ? row.inTransit : row.in_transit;
+        let inTransit = null;
+        if (rawIt != null && rawIt !== '') {
+            const n = Number(rawIt);
+            if (Number.isFinite(n)) inTransit = n;
+        }
+        const rawRes = row.reserve;
+        let reserve = null;
+        if (rawRes != null && rawRes !== '') {
+            const n = Number(rawRes);
+            if (Number.isFinite(n)) reserve = n;
+        }
+        stockMap.set(code, { stock, stockDays, salePrice, inTransit, reserve });
     }
     addLog(`Остатков загружено: ${stockMap.size}`);
 
@@ -1350,6 +1362,23 @@ async function syncMsExport(db, config, settings = {}) {
     }
     const exportRowsSavedCount = exportRows.length;
     exportRows.length = 0;
+
+    // `inTransit` / `reserve` в ответе `entity/product` с текущим expand часто отсутствуют;
+    // в `report/stock/all` они есть — подмешиваем в объекты карточек перед записью в `ms_entity_details`,
+    // чтобы закупки/карточка товара читали те же поля из payload_json.
+    for (const item of all) {
+        if (!item || typeof item !== 'object') continue;
+        const code = normalizeCode(item.code);
+        if (!code) continue;
+        const sm = stockMap.get(code);
+        if (!sm) continue;
+        if (sm.inTransit != null && Number.isFinite(sm.inTransit)) {
+            item.inTransit = sm.inTransit;
+        }
+        if (sm.reserve != null && Number.isFinite(sm.reserve)) {
+            item.reserve = sm.reserve;
+        }
+    }
 
     addLog('Сохранение полных карточек МойСклад...');
     jobState.message = 'Сохранение полных карточек МойСклад...';

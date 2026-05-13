@@ -112,7 +112,12 @@ module.exports = (db, appSettings) => {
             auth_session_ttl_days, auth_session_user_limit, auth_online_presence_minutes,
             fetch_proxy_enabled, fetch_proxy_list,
             ozon_client_id, ozon_api_key, wb_api_key, wb_token_type, ym_api_key, ym_campaign_id, ym_business_id,
-            mp_ozon_delay_ms, mp_wb_delay_cards_ms, mp_wb_delay_other_ms, mp_yandex_delay_ms, mp_ozon_include_archived
+            mp_ozon_delay_ms, mp_wb_delay_cards_ms, mp_wb_delay_other_ms, mp_yandex_delay_ms, mp_ozon_include_archived,
+            sales_formula_replenishment_coef, sales_formula_sales_window_days, sales_formula_absence_analysis_days,
+            sales_formula_rare_base_qty, sales_formula_rare_avg_max, sales_formula_expensive_rare_threshold_rub,
+            sales_formula_expensive_rare_min_qty, sales_formula_max_change_coef, sales_formula_incomplete_pack_pct,
+            sales_formula_economy_enabled, sales_formula_economy_absence_window_days, sales_formula_economy_max_absence_pct,
+            sales_formula_economy_target_cover_days
         } = req.body;
         try {
             const queries = [];
@@ -196,6 +201,65 @@ module.exports = (db, appSettings) => {
             if (mp_yandex_delay_ms !== undefined) queries.push(['mp_yandex_delay_ms', Math.max(200, Number(mp_yandex_delay_ms || 280))]);
             if (mp_ozon_include_archived !== undefined) queries.push(['mp_ozon_include_archived', mp_ozon_include_archived ? 1 : 0]);
 
+            if (sales_formula_replenishment_coef !== undefined) {
+                const c = Number(sales_formula_replenishment_coef);
+                const v = Number.isFinite(c) ? Math.max(0, Math.min(1000, c)) : 1 / 3;
+                queries.push(['sales_formula_replenishment_coef', String(v)]);
+            }
+            if (sales_formula_sales_window_days !== undefined) {
+                const w = Math.max(7, Math.min(730, Math.round(Number(sales_formula_sales_window_days || 90))));
+                queries.push(['sales_formula_sales_window_days', String(w)]);
+            }
+            if (sales_formula_absence_analysis_days !== undefined) {
+                const a = Math.max(7, Math.min(365 * 3, Math.round(Number(sales_formula_absence_analysis_days || 210))));
+                queries.push(['sales_formula_absence_analysis_days', String(a)]);
+            }
+            if (sales_formula_rare_base_qty !== undefined) {
+                queries.push(['sales_formula_rare_base_qty', String(Math.max(0, Math.round(Number(sales_formula_rare_base_qty || 0))))]);
+            }
+            if (sales_formula_rare_avg_max !== undefined) {
+                const r = Number(sales_formula_rare_avg_max);
+                queries.push(['sales_formula_rare_avg_max', String(Number.isFinite(r) && r >= 0 ? r : 1)]);
+            }
+            if (sales_formula_expensive_rare_threshold_rub !== undefined) {
+                queries.push([
+                    'sales_formula_expensive_rare_threshold_rub',
+                    String(Math.max(0, Math.round(Number(sales_formula_expensive_rare_threshold_rub || 0)))),
+                ]);
+            }
+            if (sales_formula_expensive_rare_min_qty !== undefined) {
+                queries.push([
+                    'sales_formula_expensive_rare_min_qty',
+                    String(Math.max(0, Math.round(Number(sales_formula_expensive_rare_min_qty || 0)))),
+                ]);
+            }
+            if (sales_formula_max_change_coef !== undefined) {
+                const m = Number(sales_formula_max_change_coef);
+                const mv = Number.isFinite(m) ? Math.max(1, Math.min(100, m)) : 1.6;
+                queries.push(['sales_formula_max_change_coef', String(mv)]);
+            }
+            if (sales_formula_incomplete_pack_pct !== undefined) {
+                const p = Number(sales_formula_incomplete_pack_pct);
+                const pv = Number.isFinite(p) ? Math.max(0, Math.min(100, p)) : 10;
+                queries.push(['sales_formula_incomplete_pack_pct', String(pv)]);
+            }
+            if (sales_formula_economy_enabled !== undefined) {
+                queries.push(['sales_formula_economy_enabled', sales_formula_economy_enabled ? 1 : 0]);
+            }
+            if (sales_formula_economy_absence_window_days !== undefined) {
+                const e = Math.max(7, Math.min(730, Math.round(Number(sales_formula_economy_absence_window_days || 90))));
+                queries.push(['sales_formula_economy_absence_window_days', String(e)]);
+            }
+            if (sales_formula_economy_max_absence_pct !== undefined) {
+                const ep = Number(sales_formula_economy_max_absence_pct);
+                const epv = Number.isFinite(ep) ? Math.max(0, Math.min(100, ep)) : 6;
+                queries.push(['sales_formula_economy_max_absence_pct', String(epv)]);
+            }
+            if (sales_formula_economy_target_cover_days !== undefined) {
+                const t = Math.max(1, Math.min(365, Math.round(Number(sales_formula_economy_target_cover_days || 18))));
+                queries.push(['sales_formula_economy_target_cover_days', String(t)]);
+            }
+
             for (const [key, val] of queries) {
                 await db.query('INSERT INTO app_settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value=?', [key, val, val]);
             }
@@ -262,6 +326,49 @@ module.exports = (db, appSettings) => {
             if (mp_wb_delay_other_ms !== undefined) appSettings.mp_wb_delay_other_ms = Math.max(1000, Number(mp_wb_delay_other_ms || 1600));
             if (mp_yandex_delay_ms !== undefined) appSettings.mp_yandex_delay_ms = Math.max(200, Number(mp_yandex_delay_ms || 280));
             if (mp_ozon_include_archived !== undefined) appSettings.mp_ozon_include_archived = mp_ozon_include_archived ? 1 : 0;
+
+            if (sales_formula_replenishment_coef !== undefined) {
+                const c = Number(sales_formula_replenishment_coef);
+                appSettings.sales_formula_replenishment_coef = Number.isFinite(c) ? Math.max(0, Math.min(1000, c)) : 1 / 3;
+            }
+            if (sales_formula_sales_window_days !== undefined) {
+                appSettings.sales_formula_sales_window_days = Math.max(7, Math.min(730, Math.round(Number(sales_formula_sales_window_days || 90))));
+            }
+            if (sales_formula_absence_analysis_days !== undefined) {
+                appSettings.sales_formula_absence_analysis_days = Math.max(7, Math.min(365 * 3, Math.round(Number(sales_formula_absence_analysis_days || 210))));
+            }
+            if (sales_formula_rare_base_qty !== undefined) {
+                appSettings.sales_formula_rare_base_qty = Math.max(0, Math.round(Number(sales_formula_rare_base_qty || 0)));
+            }
+            if (sales_formula_rare_avg_max !== undefined) {
+                const r = Number(sales_formula_rare_avg_max);
+                appSettings.sales_formula_rare_avg_max = Number.isFinite(r) && r >= 0 ? r : 1;
+            }
+            if (sales_formula_expensive_rare_threshold_rub !== undefined) {
+                appSettings.sales_formula_expensive_rare_threshold_rub = Math.max(0, Math.round(Number(sales_formula_expensive_rare_threshold_rub || 0)));
+            }
+            if (sales_formula_expensive_rare_min_qty !== undefined) {
+                appSettings.sales_formula_expensive_rare_min_qty = Math.max(0, Math.round(Number(sales_formula_expensive_rare_min_qty || 0)));
+            }
+            if (sales_formula_max_change_coef !== undefined) {
+                const m = Number(sales_formula_max_change_coef);
+                appSettings.sales_formula_max_change_coef = Number.isFinite(m) ? Math.max(1, Math.min(100, m)) : 1.6;
+            }
+            if (sales_formula_incomplete_pack_pct !== undefined) {
+                const p = Number(sales_formula_incomplete_pack_pct);
+                appSettings.sales_formula_incomplete_pack_pct = Number.isFinite(p) ? Math.max(0, Math.min(100, p)) : 10;
+            }
+            if (sales_formula_economy_enabled !== undefined) appSettings.sales_formula_economy_enabled = sales_formula_economy_enabled ? 1 : 0;
+            if (sales_formula_economy_absence_window_days !== undefined) {
+                appSettings.sales_formula_economy_absence_window_days = Math.max(7, Math.min(730, Math.round(Number(sales_formula_economy_absence_window_days || 90))));
+            }
+            if (sales_formula_economy_max_absence_pct !== undefined) {
+                const ep = Number(sales_formula_economy_max_absence_pct);
+                appSettings.sales_formula_economy_max_absence_pct = Number.isFinite(ep) ? Math.max(0, Math.min(100, ep)) : 6;
+            }
+            if (sales_formula_economy_target_cover_days !== undefined) {
+                appSettings.sales_formula_economy_target_cover_days = Math.max(1, Math.min(365, Math.round(Number(sales_formula_economy_target_cover_days || 18))));
+            }
 
             res.json({ success: true });
         } catch (e) { res.status(500).json({ error: e.message }); }

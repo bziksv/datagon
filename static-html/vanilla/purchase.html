@@ -622,8 +622,9 @@
                 <div>
                   Закупки
                   <div class="page-title-subheading">
-                    Планирование закупок: только активные складские позиции МойСклад (без комплектов).
-                    Можно вручную задавать неснижаемый остаток Датагон, кратность и минимальный остаток счёт-как.
+                    По умолчанию в списке только неархивные позиции МойСклад со складской позицией «Да» и без комплектов.
+                    Остальное — фильтрами (архив, складская позиция, комплекты, только с остатком, поиск, поставщик).
+                    К выгрузке МС добавляются сохранённые вами поля закупок (неснижаемый Датагон, кратность, мин. «считать как», предлагаемый вручную).
                   </div>
                 </div>
               </div>
@@ -871,7 +872,8 @@
       // Один источник истины для колонок: видимость, ширины, шапка и тело берут отсюда.
       // [key, label, opts?]
       //   opts.editable → редактируемое override-поле (POST /api/purchase/override)
-      //   opts.future   → "пустая" суточная колонка из ТЗ (3/5/7/15/15/30/...)
+      //   opts.future   → зарезервированная пустая колонка (сейчас не используется)
+      //   opts.puSub    → подпись под числом в шапке (продажи / дни отсутствия)
       //   opts.center   → центрирование текста
       var PU_COLS = [
         ["code", "Код", { center: true }],
@@ -880,29 +882,30 @@
         ["supplier_label", "Поставщик"],
         ["buy_price", "Закупочная цена", { center: true }],
         ["min_stock", "Неснижаемый остаток", { center: true }],
+        ["formula_proposed_min_stock", "Предлагаемый нес.ост.", { center: true }],
         ["automation_price", "Автоматизация цены", { center: true }],
-        ["proposed_min_stock", "Предлагаемый нес.ост.", { center: true }],
+        ["proposed_min_stock", "Предлаг. (закупки)", { center: true }],
         ["min_stock_dg", "Нес.остаток Датагон", { center: true, editable: true }],
         ["multiplicity", "Кратность товара", { center: true, editable: true }],
         ["min_stock_calc_as", "Мин.Остаток сч.как", { center: true, editable: true }],
         ["pack_qty", "Кол-во в упаковке", { center: true }],
         ["stock", "Остаток", { center: true }],
         ["in_transit", "Ожидание", { center: true }],
-        ["d_3", "3", { center: true, future: true }],
-        ["d_5", "5", { center: true, future: true }],
-        ["d_7", "7", { center: true, future: true }],
-        ["d_15a", "15", { center: true, future: true }],
-        ["d_15b", "15", { center: true, future: true }],
-        ["d_30a", "30", { center: true, future: true }],
-        ["d_30b", "30", { center: true, future: true }],
-        ["d_60a", "60", { center: true, future: true }],
-        ["d_60b", "60", { center: true, future: true }],
-        ["d_90a", "90", { center: true, future: true }],
-        ["d_90b", "90", { center: true, future: true }],
-        ["d_180a", "180", { center: true, future: true }],
-        ["d_180b", "180", { center: true, future: true }],
-        ["d_365a", "365", { center: true, future: true }],
-        ["d_365b", "365", { center: true, future: true }],
+        ["d_3", "3", { center: true, puSub: "прод., шт" }],
+        ["d_5", "5", { center: true, puSub: "прод., шт" }],
+        ["d_7", "7", { center: true, puSub: "прод., шт" }],
+        ["d_15a", "15", { center: true, puSub: "прод., шт" }],
+        ["d_15b", "15", { center: true, puSub: "дн. нет" }],
+        ["d_30a", "30", { center: true, puSub: "прод., шт" }],
+        ["d_30b", "30", { center: true, puSub: "дн. нет" }],
+        ["d_60a", "60", { center: true, puSub: "прод., шт" }],
+        ["d_60b", "60", { center: true, puSub: "дн. нет" }],
+        ["d_90a", "90", { center: true, puSub: "прод., шт" }],
+        ["d_90b", "90", { center: true, puSub: "дн. нет" }],
+        ["d_180a", "180", { center: true, puSub: "прод., шт" }],
+        ["d_180b", "180", { center: true, puSub: "дн. нет" }],
+        ["d_365a", "365", { center: true, puSub: "прод., шт" }],
+        ["d_365b", "365", { center: true, puSub: "дн. нет" }],
       ];
 
       var COL_OPTS = {};
@@ -910,9 +913,11 @@
 
       var SORTABLE = new Set([
         "code", "article", "name", "supplier", "buy_price",
-        "min_stock", "automation_price", "proposed_min_stock",
+        "min_stock", "formula_proposed_min_stock", "automation_price", "proposed_min_stock",
         "min_stock_dg", "multiplicity", "min_stock_calc_as",
-        "stock", "is_archived",
+        "stock", "is_archived", "in_transit",
+        "d_3", "d_5", "d_7", "d_15a", "d_15b", "d_30a", "d_30b",
+        "d_60a", "d_60b", "d_90a", "d_90b", "d_180a", "d_180b", "d_365a", "d_365b",
       ]);
 
       // По смыслу сортировки — поставщик в БД лежит как `supplier`/`supplier2`,
@@ -921,9 +926,11 @@
 
       var COL_MIN = {
         code: 90, article: 110, name: 320, supplier_label: 220,
-        buy_price: 110, min_stock: 110, automation_price: 130,
+        buy_price: 110, min_stock: 110, formula_proposed_min_stock: 120, automation_price: 130,
         proposed_min_stock: 130, min_stock_dg: 130, multiplicity: 110,
         min_stock_calc_as: 130, pack_qty: 110, stock: 100, in_transit: 100,
+        d_3: 72, d_5: 72, d_7: 72, d_15a: 76, d_15b: 76, d_30a: 76, d_30b: 76,
+        d_60a: 76, d_60b: 76, d_90a: 76, d_90b: 76, d_180a: 80, d_180b: 80, d_365a: 80, d_365b: 80,
       };
       function getColMin(key) {
         if (COL_MIN[key] != null) return COL_MIN[key];
@@ -958,8 +965,8 @@
       function userVisibleColsKey() {
         try {
           var u = String(localStorage.getItem("currentUser") || "guest").trim() || "guest";
-          return "datagon_purchase_visible_cols_v1:" + u;
-        } catch (e) { return "datagon_purchase_visible_cols_v1:guest"; }
+          return "datagon_purchase_visible_cols_v2:" + u;
+        } catch (e) { return "datagon_purchase_visible_cols_v2:guest"; }
       }
 
       var page = 1;
@@ -978,6 +985,12 @@
       function fmtNum(n) {
         var x = Number(n || 0);
         return Number.isFinite(x) ? x.toLocaleString("ru-RU") : "0";
+      }
+      function fmtPuSnapQty(v) {
+        if (v == null || v === "") return "—";
+        var x = Number(v);
+        if (!Number.isFinite(x)) return "—";
+        return x.toLocaleString("ru-RU", { maximumFractionDigits: 3, minimumFractionDigits: 0 });
       }
       function fmtNumEditable(n) {
         if (n == null) return "";
@@ -1213,6 +1226,36 @@
           s.textContent = (v == null || v === "") ? "—" : fmtNum(v);
           return s;
         }
+        if (
+          key === "d_3" || key === "d_5" || key === "d_7" || key === "d_15a" || key === "d_30a" ||
+          key === "d_60a" || key === "d_90a" || key === "d_180a" || key === "d_365a"
+        ) {
+          var spSq = document.createElement("span");
+          spSq.textContent = fmtPuSnapQty(r[key]);
+          spSq.title =
+            "Продано за последние N календарных дней (шт): проведённые отгрузки, прямой код + эквивалент через комплекты (для не-комплектов).";
+          return spSq;
+        }
+        if (
+          key === "d_15b" || key === "d_30b" ||
+          key === "d_60b" || key === "d_90b" || key === "d_180b" || key === "d_365b"
+        ) {
+          var spAb = document.createElement("span");
+          spAb.textContent = fmtNum(r[key]);
+          spAb.title =
+            "Разных календарных дней за N дн. с записью в логе «нулевого» остатка (dg_product_zero_stock_log).";
+          return spAb;
+        }
+        if (key === "formula_proposed_min_stock") {
+          var fp = document.createElement("span");
+          fp.setAttribute(
+            "data-dg-tooltip",
+            "Расчёт «Формула продаж» (как на карточке товара): те же окна и настройки app_settings; не путать с колонкой «Предлаг. (закупки)» — сохранённое override в dg_purchase_overrides."
+          );
+          var fpn = r.formula_proposed_min_stock;
+          fp.textContent = fpn != null && fpn !== "" && Number.isFinite(Number(fpn)) ? fmtNum(fpn) : "—";
+          return fp;
+        }
         if (key === "stock") {
           var s2 = document.createElement("span");
           s2.textContent = fmtNum(r.stock);
@@ -1220,7 +1263,8 @@
         }
         if (key === "in_transit") {
           var s3 = document.createElement("span");
-          s3.textContent = (r.in_transit == null || r.in_transit === "") ? "" : fmtNum(r.in_transit);
+          s3.textContent = (r.in_transit == null || r.in_transit === "") ? "—" : fmtPuSnapQty(r.in_transit);
+          s3.title = "В пути (inTransit) из карточки МС в ms_entity_details.payload_json.";
           return s3;
         }
         if (key === "supplier_label") {
@@ -1332,6 +1376,16 @@
           labelWrap.style.fontVariantNumeric = "tabular-nums";
           labelWrap.appendChild(labelText);
           th.appendChild(labelWrap);
+          if (opts.puSub) {
+            var sub = document.createElement("div");
+            sub.className = "text-muted";
+            sub.style.fontSize = "10px";
+            sub.style.fontWeight = "400";
+            sub.style.lineHeight = "1.15";
+            sub.style.marginTop = "2px";
+            sub.textContent = opts.puSub;
+            labelWrap.appendChild(sub);
+          }
 
           var handle = document.createElement("span");
           handle.setAttribute("role", "separator");

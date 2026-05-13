@@ -1,8 +1,7 @@
   <script>
     (function () {
       // Карточка товара /product.html?code=XXX. Один агрегатный fetch /api/product/:code,
-      // отрисовка 6 блоков. Дополнительно: лог нулевых остатков с обновлением окна
-      // и ручной фиксацией. Никакой бизнес-логики формулы — только заготовка.
+      // отрисовка блоков. Лог отсутствия на складе — в основном автоматически после синка МС; ручная запись — опционально.
 
       var statusEl = document.getElementById("dg-prod-status");
       var titleEl = document.getElementById("dg-prod-title");
@@ -21,11 +20,13 @@
       var zeroResultEl = document.getElementById("dg-prod-zero-result");
       var zeroWinImportWrap = document.getElementById("dg-prod-zero-win-import-wrap");
       var zeroTableWrap = document.getElementById("dg-prod-zero-table-wrap");
+      var zeroNoteEl = document.getElementById("dg-prod-zero-note");
       var salesLink = document.getElementById("dg-prod-sales-link");
       var salesAggs = document.getElementById("dg-prod-sales-aggs");
       var salesNoteEl = document.getElementById("dg-prod-sales-note");
       var viaBundlesWrap = document.getElementById("dg-prod-via-bundles-wrap");
       var salesRecentWrap = document.getElementById("dg-prod-sales-recent-wrap");
+      var formulaWrap = document.getElementById("dg-prod-formula-wrap");
       var salesPeriodSummary = document.getElementById("dg-prod-sales-period-summary");
       var salesApplyBtn = document.getElementById("dg-prod-sales-apply");
 
@@ -560,8 +561,9 @@
 
       function appendRecentShipmentRow(tb, r) {
         var tr = document.createElement("tr");
-        var c1 = document.createElement("td"); c1.textContent = r.doc_name || "";
         var c2 = document.createElement("td"); c2.textContent = fmtDate(r.moment);
+        c2.title = "Момент проведённой отгрузки в МС (d.moment), сортировка таблицы — по этому полю, новые сверху.";
+        var c1 = document.createElement("td"); c1.textContent = r.doc_name || "";
         var c3 = document.createElement("td"); c3.textContent = r.agent_name || "";
         var c4 = document.createElement("td"); c4.textContent = r.store_name || "";
         var cVia = document.createElement("td");
@@ -588,7 +590,7 @@
         var c5 = document.createElement("td"); c5.className = "text-end"; c5.textContent = fmtFloat(r.quantity, 2);
         var c6 = document.createElement("td"); c6.className = "text-end"; c6.textContent = fmtMoney(r.price, "RUB");
         var c7 = document.createElement("td"); c7.className = "text-end"; c7.textContent = fmtMoney(r.sum, "RUB");
-        tr.appendChild(c1); tr.appendChild(c2); tr.appendChild(c3); tr.appendChild(c4); tr.appendChild(cVia);
+        tr.appendChild(c2); tr.appendChild(c1); tr.appendChild(c3); tr.appendChild(c4); tr.appendChild(cVia);
         tr.appendChild(c5); tr.appendChild(c6); tr.appendChild(c7);
         tb.appendChild(tr);
       }
@@ -638,30 +640,62 @@
         var colB = document.createElement("div");
         colB.className = "col-auto";
         colB.id = "dg-prod-recent-bundle-col";
-        if (!incBundles || viaSel.value !== "bundle") colB.classList.add("d-none");
+        if (!incBundles) colB.classList.add("d-none");
         var lbB = document.createElement("label");
         lbB.className = "form-label small mb-0 d-block";
         lbB.setAttribute("for", "dg-prod-recent-bundle");
-        lbB.textContent = "Код комплекта";
-        var bSel = document.createElement("select");
-        bSel.id = "dg-prod-recent-bundle";
-        bSel.className = "form-select form-select-sm";
-        bSel.style.minWidth = "12rem";
-        var o0 = document.createElement("option");
-        o0.value = "";
-        o0.textContent = "Все комплекты";
-        bSel.appendChild(o0);
+        lbB.textContent = "Код комплекта или товара";
+        lbB.title =
+          "Подсказки: комплекты, в составе которых есть товар с этой карточки, плюс код самой карточки. Можно ввести или вставить любой код из колонки «Через» / строки отгрузки МС. Пусто — все комплекты. Работает только при «Через» = «Комплект».";
+        var dlId = "dg-prod-recent-bundle-dl";
+        var dl = document.createElement("datalist");
+        dl.id = dlId;
+        var seen = {};
         (Array.isArray(sales.recent_bundle_codes) ? sales.recent_bundle_codes : []).forEach(function (bc) {
           var c = String(bc.bundle_code || "").trim();
-          if (!c) return;
-          var o = document.createElement("option");
-          o.value = c;
-          o.textContent = c + (bc.bundle_name ? " — " + String(bc.bundle_name).slice(0, 60) : "");
-          bSel.appendChild(o);
+          if (!c || seen[c]) return;
+          seen[c] = 1;
+          var op = document.createElement("option");
+          op.value = c;
+          if (bc.bundle_name) op.setAttribute("label", String(bc.bundle_name).slice(0, 80));
+          dl.appendChild(op);
         });
-        if (recentShipState.bundleCode) bSel.value = recentShipState.bundleCode;
+        var codeTrim = code ? String(code).trim() : "";
+        if (codeTrim && !seen[codeTrim]) {
+          var opSelf = document.createElement("option");
+          opSelf.value = codeTrim;
+          opSelf.setAttribute("label", "Код открытой карточки");
+          dl.appendChild(opSelf);
+        }
+        var bInput = document.createElement("input");
+        bInput.type = "text";
+        bInput.id = "dg-prod-recent-bundle";
+        bInput.setAttribute("list", dlId);
+        bInput.className = "form-control form-control-sm";
+        bInput.autocomplete = "off";
+        bInput.placeholder = "Все комплекты или введите код…";
+        bInput.title = lbB.title;
+        bInput.style.minWidth = "14rem";
+        bInput.style.maxWidth = "22rem";
+        bInput.value = recentShipState.bundleCode ? String(recentShipState.bundleCode) : "";
         colB.appendChild(lbB);
-        colB.appendChild(bSel);
+        colB.appendChild(dl);
+        colB.appendChild(bInput);
+
+        function syncRecentBundleFilterUi() {
+          if (!incBundles) return;
+          if (viaSel.value === "bundle") {
+            bInput.disabled = false;
+            bInput.placeholder = "Все комплекты или введите код…";
+            bInput.title = lbB.title;
+          } else {
+            bInput.disabled = true;
+            bInput.placeholder = "Сначала «Через» → Комплект";
+            bInput.title =
+              "Фильтр по коду строки отгрузки включается только в режиме «Комплект». Слева в «Через» выберите «Комплект», затем при необходимости укажите код и нажмите «Показать».";
+          }
+        }
+        syncRecentBundleFilterUi();
 
         var colPs = document.createElement("div");
         colPs.className = "col-auto";
@@ -698,16 +732,15 @@
         salesRecentWrap.appendChild(toolbar);
 
         viaSel.addEventListener("change", function () {
-          if (incBundles && viaSel.value === "bundle") colB.classList.remove("d-none");
-          else colB.classList.add("d-none");
+          syncRecentBundleFilterUi();
         });
 
         var t = document.createElement("table");
         t.className = "table table-sm table-striped dg-prod-mini";
         t.innerHTML =
           "<thead><tr>" +
+            "<th title=\"Поле moment отгрузки в МС; строки отсортированы по убыванию этого времени.\">Дата (МС)</th>" +
             "<th>Документ</th>" +
-            "<th>Дата</th>" +
             "<th>Контрагент</th>" +
             "<th>Склад</th>" +
             "<th>Через</th>" +
@@ -1143,28 +1176,53 @@
 
       function zeroSourceLabel(src) {
         var s = String(src || "manual");
-        if (s === "moysklad_sync") return "После синка МС";
+        if (s === "moysklad_sync") return "Авто после синка МС";
+        if (s === "manual") return "Вручную";
         if (s === "auto") return "Авто (устар.)";
         return s;
       }
 
-      function renderZeroLog(rows) {
+      function renderZeroLog(zs) {
+        var rows = zs && Array.isArray(zs.rows) ? zs.rows : [];
+        var days = zs && zs.days != null ? Number(zs.days) : Number((zeroDaysSel && zeroDaysSel.value) || 90);
+        if (!Number.isFinite(days) || days < 1) days = 90;
         zeroTableWrap.innerHTML = "";
-        if (!rows || !rows.length) {
-          var d = document.createElement("div");
-          d.className = "dg-zero-empty";
-          d.textContent =
-            "За выбранный период нет записей. После синка МойСклад сюда попадут нули по складским позициям (не архив). Либо нажмите «Зафиксировать нулевой остаток сейчас».";
-          zeroTableWrap.appendChild(d);
-          return;
+
+        var summary = document.createElement("div");
+        summary.className = "text-muted small mb-2";
+        if (rows.length) {
+          var dateSet = {};
+          rows.forEach(function (r) {
+            if (!r || !r.ts_date) return;
+            var d = String(r.ts_date).slice(0, 10);
+            if (d) dateSet[d] = 1;
+          });
+          var distinctDays = Object.keys(dateSet).length;
+          summary.textContent =
+            "За последние " +
+            days +
+            " дн.: записей в логе — " +
+            rows.length +
+            ", разных календарных дней без товара на складе (по выгрузке МС) — " +
+            distinctDays +
+            ".";
+        } else {
+          summary.textContent =
+            "За последние " +
+            days +
+            " дн. записей нет: в это окно не попал ни один день, когда одновременно выполнялись условия автолога (остаток ≤ 0, складская позиция «Да», не архив), либо после включения лога ещё не было успешного синка МС. Добавить день вручную можно кнопкой «Записать вручную за сегодня» в шапке блока.";
         }
+        zeroTableWrap.appendChild(summary);
+
+        if (!rows.length) return;
+
         var t = document.createElement("table");
         t.className = "table table-sm table-striped dg-prod-mini";
         t.innerHTML =
           "<thead><tr>" +
             "<th>Дата</th>" +
             "<th>Склад</th>" +
-            "<th class=\"text-end\">Остаток на момент фиксации</th>" +
+            "<th class=\"text-end\">Остаток, шт</th>" +
             "<th>Источник</th>" +
             "<th>Создано</th>" +
           "</tr></thead>";
@@ -1173,7 +1231,7 @@
           var tr = document.createElement("tr");
           var c1 = document.createElement("td"); c1.textContent = fmtDateOnly(r.ts_date);
           var c2 = document.createElement("td");
-          c2.textContent = r.store_name ? r.store_name : (r.store_uuid === "__total__" ? "Все склады (общая фиксация)" : r.store_uuid);
+          c2.textContent = r.store_name ? r.store_name : (r.store_uuid === "__total__" ? "Все склады" : r.store_uuid);
           var c3 = document.createElement("td"); c3.className = "text-end";
           c3.textContent = r.total_stock == null ? "—" : fmtFloat(r.total_stock, 3);
           var c4 = document.createElement("td"); c4.textContent = zeroSourceLabel(r.source);
@@ -1191,42 +1249,154 @@
         if (!win || !win.reference_date) {
           var empty = document.createElement("p");
           empty.className = "text-muted small mb-0";
-          empty.textContent = "Импортированной сводки по окнам для этого кода пока нет.";
+          empty.textContent = "Сводки по окнам из Excel для этого кода пока не загружали.";
           zeroWinImportWrap.appendChild(empty);
           return;
         }
-        var t = document.createElement("table");
-        t.className = "table table-sm table-bordered mb-0 dg-prod-mini";
-        t.innerHTML =
-          "<thead><tr>" +
-            "<th>Дата среза</th>" +
-            "<th class=\"text-end\">30 дн.</th>" +
-            "<th class=\"text-end\">60 дн.</th>" +
-            "<th class=\"text-end\">90 дн.</th>" +
-            "<th class=\"text-end\">180 дн.</th>" +
-            "<th class=\"text-end\">365 дн.</th>" +
-            "<th>Комментарий импорта</th>" +
-          "</tr></thead>";
-        var tb = document.createElement("tbody");
-        var tr = document.createElement("tr");
-        var c0 = document.createElement("td");
-        c0.textContent = formatYmdRu(win.reference_date);
-        var c1 = document.createElement("td"); c1.className = "text-end"; c1.textContent = String(win.absent_last_30 != null ? win.absent_last_30 : "—");
-        var c2 = document.createElement("td"); c2.className = "text-end"; c2.textContent = String(win.absent_last_60 != null ? win.absent_last_60 : "—");
-        var c3 = document.createElement("td"); c3.className = "text-end"; c3.textContent = String(win.absent_last_90 != null ? win.absent_last_90 : "—");
-        var c4 = document.createElement("td"); c4.className = "text-end"; c4.textContent = String(win.absent_last_180 != null ? win.absent_last_180 : "—");
-        var c5 = document.createElement("td"); c5.className = "text-end"; c5.textContent = String(win.absent_last_365 != null ? win.absent_last_365 : "—");
-        var c6 = document.createElement("td");
-        c6.textContent = win.note ? String(win.note) : "—";
-        tr.appendChild(c0); tr.appendChild(c1); tr.appendChild(c2); tr.appendChild(c3); tr.appendChild(c4); tr.appendChild(c5); tr.appendChild(c6);
-        tb.appendChild(tr);
-        t.appendChild(tb);
-        zeroWinImportWrap.appendChild(t);
+        var head = document.createElement("div");
+        head.className = "text-muted small mb-2";
+        head.textContent = "Дата среза: " + formatYmdRu(win.reference_date) + (win.note ? " · " + String(win.note) : "");
+        zeroWinImportWrap.appendChild(head);
+
+        var grid = document.createElement("div");
+        grid.className = "dg-sales-aggregates";
+        [
+          [30, win.absent_last_30],
+          [60, win.absent_last_60],
+          [90, win.absent_last_90],
+          [180, win.absent_last_180],
+          [365, win.absent_last_365]
+        ].forEach(function (pair) {
+          var dWin = pair[0];
+          var v = pair[1];
+          var card = document.createElement("div");
+          card.className = "dg-sales-card";
+          var winEl = document.createElement("div");
+          winEl.className = "dg-sales-window";
+          winEl.textContent = dWin + " дн.";
+          var qty = document.createElement("div");
+          qty.className = "dg-sales-qty";
+          qty.textContent = v != null ? String(v) : "—";
+          var meta = document.createElement("div");
+          meta.className = "dg-sales-meta";
+          meta.textContent = "дн. без товара";
+          card.appendChild(winEl);
+          card.appendChild(qty);
+          card.appendChild(meta);
+          grid.appendChild(card);
+        });
+        zeroWinImportWrap.appendChild(grid);
+
         if (win.created_at) {
-          var meta = document.createElement("p");
-          meta.className = "text-muted small mt-2 mb-0";
-          meta.textContent = "Запись импорта создана/обновлена: " + fmtDate(win.created_at);
-          zeroWinImportWrap.appendChild(meta);
+          var meta2 = document.createElement("p");
+          meta2.className = "text-muted small mt-2 mb-0";
+          meta2.textContent = "Импорт в систему: " + fmtDate(win.created_at);
+          zeroWinImportWrap.appendChild(meta2);
+        }
+      }
+
+        if (!wrap || !Array.isArray(stages) || !stages.length) return;
+        var h = document.createElement("div");
+        h.className = "dg-section-title mt-3 mb-2";
+        h.textContent = "Формула этапами";
+        h.setAttribute(
+          "data-dg-tooltip",
+          "Сначала запись через символы (÷, ×, min, max, ceil), ниже — та же строка с числами для этого товара. Порядок совпадает с расчётом на сервере."
+        );
+        wrap.appendChild(h);
+        var box = document.createElement("div");
+        box.className = "dg-formula-eq-stages small";
+        stages.forEach(function (st) {
+          var blk = document.createElement("div");
+          blk.className = "dg-formula-eq-stage mb-3";
+          var t = document.createElement("div");
+          t.className = "fw-semibold text-body mb-2";
+          t.textContent = st.title || "";
+          blk.appendChild(t);
+          var tmpl = document.createElement("div");
+          tmpl.className = "dg-formula-eq-template font-monospace";
+          tmpl.textContent = st.template || "";
+          blk.appendChild(tmpl);
+          var vals = document.createElement("div");
+          vals.className = "dg-formula-eq-values font-monospace mt-2";
+          vals.textContent = st.values || "—";
+          blk.appendChild(vals);
+          if (st.note) {
+            var n = document.createElement("div");
+            n.className = "small text-muted mt-2 mb-0";
+            n.textContent = st.note;
+            blk.appendChild(n);
+          }
+          box.appendChild(blk);
+        });
+        wrap.appendChild(box);
+      }
+
+      function renderFormula(f) {
+        if (!formulaWrap) return;
+        formulaWrap.className = "";
+        formulaWrap.innerHTML = "";
+        if (!f || f.proposed_min_stock == null) {
+          var empty = document.createElement("p");
+          empty.className = "text-muted small mb-0";
+          empty.textContent = "Нет данных формулы.";
+          formulaWrap.appendChild(empty);
+          return;
+        }
+        formulaWrap.className = "dg-prod-formula";
+
+        var hero = document.createElement("div");
+        hero.className = "dg-formula-hero";
+        hero.setAttribute(
+          "data-dg-tooltip",
+          "Итог после всех шагов на сервере, округление вверх до целых штук. Не пишется автоматически в МойСклад: при необходимости используйте «Закупки» и override."
+        );
+        var heroMain = document.createElement("div");
+        heroMain.className = "dg-formula-hero-main";
+        var heroLabel = document.createElement("div");
+        heroLabel.className = "dg-formula-hero-label";
+        heroLabel.textContent = "Предлагаемый неснижаемый (Датагон)";
+        var heroVal = document.createElement("div");
+        heroVal.className = "dg-formula-hero-value";
+        heroVal.appendChild(document.createTextNode(String(f.proposed_min_stock)));
+        var heroUnit = document.createElement("span");
+        heroUnit.className = "dg-formula-hero-unit";
+        heroUnit.textContent = " шт";
+        heroVal.appendChild(heroUnit);
+        heroMain.appendChild(heroLabel);
+        heroMain.appendChild(heroVal);
+        hero.appendChild(heroMain);
+        formulaWrap.appendChild(hero);
+
+        if (f.note) {
+          var note = document.createElement("p");
+          note.className = "small text-muted mb-0 mt-2";
+          note.textContent = f.note;
+          note.setAttribute(
+            "data-dg-tooltip",
+            "Краткое напоминание с сервера: период суммирования продаж, лог нулевых остатков и связь с настройками."
+          );
+          formulaWrap.appendChild(note);
+        }
+
+        if (f.detail && Array.isArray(f.detail.equation_stages) && f.detail.equation_stages.length) {
+          renderFormulaEquationStages(formulaWrap, f.detail.equation_stages);
+        }
+
+        if (Array.isArray(f.warnings) && f.warnings.length) {
+          var wBox = document.createElement("div");
+          wBox.className = "alert alert-warning mt-3 mb-0";
+          wBox.setAttribute("role", "status");
+          wBox.setAttribute(
+            "data-dg-tooltip",
+            "Сработало ограничение или нетипичный случай. Текст ниже — предупреждение с сервера."
+          );
+          f.warnings.forEach(function (w) {
+            var line = document.createElement("div");
+            line.textContent = String(w);
+            wBox.appendChild(line);
+          });
+          formulaWrap.appendChild(wBox);
         }
       }
 
@@ -1237,8 +1407,18 @@
         renderStock(payload.stock);
         renderOverride(payload.override);
         renderSales(payload.sales, payload.code);
+        if (zeroNoteEl) {
+          if (payload.zero_stock && payload.zero_stock.note) {
+            zeroNoteEl.textContent = payload.zero_stock.note;
+            zeroNoteEl.style.display = "";
+          } else {
+            zeroNoteEl.textContent = "";
+            zeroNoteEl.style.display = "none";
+          }
+        }
         renderZeroWinImport(payload.zero_stock_windows_import);
-        renderZeroLog(payload.zero_stock ? payload.zero_stock.rows : []);
+        renderZeroLog(payload.zero_stock || null);
+        renderFormula(payload.formula);
       }
 
       function loadCard() {
@@ -1280,7 +1460,7 @@
           .then(function (r) { return r.json(); })
           .then(function (j) {
             if (!j || j.success === false) throw new Error((j && j.error) || "Ошибка");
-            renderZeroLog(j.rows || []);
+            renderZeroLog({ rows: j.rows || [], days: j.days != null ? j.days : zd });
           })
           .catch(function (e) {
             zeroResultEl.style.display = "";
@@ -1295,7 +1475,7 @@
         zeroFixBtn.disabled = true;
         zeroResultEl.style.display = "";
         zeroResultEl.className = "dg-prod-status is-loading";
-        zeroResultEl.textContent = "Фиксируем нулевой остаток…";
+        zeroResultEl.textContent = "Записываем…";
         fetch("/api/product/" + encodeURIComponent(code) + "/zero-stock-log", {
           method: "POST",
           credentials: "same-origin",
@@ -1307,12 +1487,16 @@
             zeroFixBtn.disabled = false;
             if (!x.ok || !x.j || x.j.success === false) {
               zeroResultEl.className = "dg-prod-status is-error";
-              zeroResultEl.textContent = "Не удалось зафиксировать: " + ((x.j && x.j.error) || "ошибка");
+              zeroResultEl.textContent = "Не удалось записать: " + ((x.j && x.j.error) || "ошибка");
               return;
             }
             zeroResultEl.className = "dg-prod-status is-loading";
             var s = x.j.stored || {};
-            zeroResultEl.textContent = "OK. Запись от " + (s.ts_date ? fmtDateOnly(s.ts_date) : "сегодня") + ", остаток на момент фиксации: " + (s.total_stock == null ? "—" : fmtFloat(s.total_stock, 3));
+            zeroResultEl.textContent =
+              "Добавлена ручная запись за " +
+              (s.ts_date ? fmtDateOnly(s.ts_date) : "сегодня") +
+              ", остаток в записи: " +
+              (s.total_stock == null ? "—" : fmtFloat(s.total_stock, 3));
             reloadZeroLog();
           })
           .catch(function (e) {
@@ -1334,6 +1518,44 @@
       });
       if (salesApplyBtn) salesApplyBtn.addEventListener("click", function () { loadCard(); });
       initSalesDateInputs();
+
+      function bindProductCardCollapse(btnId, bodyId, storageKey) {
+        var btn = document.getElementById(btnId);
+        var body = document.getElementById(bodyId);
+        if (!btn || !body) return;
+        function apply() {
+          var c = false;
+          try {
+            c = localStorage.getItem(storageKey) === "1";
+          } catch (e) {}
+          if (c) {
+            body.style.display = "none";
+            btn.textContent = "Развернуть";
+          } else {
+            body.style.display = "";
+            btn.textContent = "Свернуть";
+          }
+        }
+        apply();
+        btn.addEventListener("click", function () {
+          var hidden = body.style.display === "none";
+          body.style.display = hidden ? "" : "none";
+          btn.textContent = hidden ? "Свернуть" : "Развернуть";
+          try {
+            localStorage.setItem(storageKey, hidden ? "0" : "1");
+          } catch (e) {}
+        });
+      }
+
+      // «Свернуть/Развернуть» для всех карточек страницы — как на списочных страницах (moysklad / my-sites).
+      bindProductCardCollapse("dg-prod-main-toggle", "dg-prod-main-body", "datagon_product_main_card_collapsed_v1");
+      bindProductCardCollapse("dg-prod-attrs-toggle", "dg-prod-attrs-body", "datagon_product_attrs_card_collapsed_v1");
+      bindProductCardCollapse("dg-prod-prices-toggle", "dg-prod-prices-body", "datagon_product_prices_card_collapsed_v1");
+      bindProductCardCollapse("dg-prod-stock-toggle", "dg-prod-stock-body", "datagon_product_stock_card_collapsed_v1");
+      bindProductCardCollapse("dg-prod-zero-toggle", "dg-prod-zero-body", "datagon_product_zero_card_collapsed_v1");
+      bindProductCardCollapse("dg-prod-sales-toggle", "dg-prod-sales-body", "datagon_product_sales_card_collapsed_v1");
+      bindProductCardCollapse("dg-prod-formula-toggle", "dg-prod-formula-body", "datagon_product_formula_card_collapsed_v1");
+
       loadCard();
     })();
   </script>

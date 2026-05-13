@@ -144,15 +144,18 @@ Body (пример):
 - **`auto_sync_marketplaces_enabled`** / **`auto_sync_marketplaces_time`** — ежедневное обновление снапшотов маркетплейсов (МСК, `HH:MM`).
 - **`auto_sync_huckster_enabled`** / **`auto_sync_huckster_time`** — ежедневное обновление матриц Huckster (МСК); учётные данные — из `app_settings` или `HUCKSTER_EMAIL` / `HUCKSTER_PASSWORD`.
 - **`auto_sync_db_size_enabled`** / **`auto_sync_db_size_time`** — ежедневный пересчёт кэша размера БД для дашборда (МСК, `HH:MM`).
-- **`auto_sync_dimensions_enabled`** / **`auto_sync_dimensions_time`** — ежедневная **выгрузка пользовательских габаритов** (`ms_dimensions_measurements`) в МойСклад (МСК, `HH:MM`, по умолчанию `21:00`). Серверный аналог кнопки «↗ В МС: все правки (все страницы)» на `/exports-dimensions.html`: для каждой позиции с override и валидным `uuid` в `ms_export` отправляет `PUT /entity/{product|bundle}/{uuid}` через `routes/dimensions.js → runScheduledSyncMs`. Каждое отправленное поле фиксируется в `ms_dimensions_log` как `action='sync_ms'` с `note='sync_ms entity=… http=… (schedule)'`. Прогресс и summary видны на `/processes.html` (раздел «Габариты МС») и в `auto_sync_runs.message` (`Всего: N; ✓ ok; × err; пропущено (без uuid): K`).
+- **`auto_sync_dimensions_enabled`** / **`auto_sync_dimensions_time`** — ежедневная **выгрузка пользовательских габаритов** (`ms_dimensions_measurements`) в МойСклад (МСК, `HH:MM`, по умолчанию `21:00`). Серверный аналог кнопки «↗ В МС: все правки (все страницы)» на `/exports-dimensions.html`: для каждой позиции с override и валидным `uuid` в `ms_export` отправляет `PUT /entity/{product|bundle}/{uuid}` через `routes/dimensions.js → runScheduledSyncMs`. Каждое отправленное поле фиксируется в `ms_dimensions_log` как `action='sync_ms'` с `note='sync_ms entity=… http=… (schedule)'`. Прогресс и summary видны на `/processes.html` (раздел «Габариты МС») и в `auto_sync_runs.message` (после старта текст **обновляется по ходу** каждые 5 позиций: `обработано/всего`, ✓/×, без uuid; финально — `Всего: N; ✓ ok; × err; пропущено (без uuid): K`).
 - **`auto_sync_mssales_enabled`** / **`auto_sync_mssales_time`** / **`auto_sync_mssales_days`** / **`auto_sync_mssales_weekdays`** — **импорт продаж МС** (`entity/demand` → `ms_demand` / `ms_demand_position`) для `/ms-sales.html` (МСК, `HH:MM`, по умолчанию `07:30`). Окно периода — `auto_sync_mssales_days` (1..1825 дней, default **90**). **`auto_sync_mssales_weekdays`** — дни недели по календарю **МСК**: строка CSV, числа **1=пн … 7=вс**; пустая строка, значение **`1,2,3,4,5,6,7`** или все семь галочек в UI — запуск **каждый** календарный день (в БД «все дни» нормализуется в явную семёрку, чтобы снятие одного дня не схлопывалось обратно в «все дни»). Серверный путь — `routes/msSales.js → triggerSync(db, { days })` (без `fresh`). Планировщик в `server.js` сравнивает текущий день недели в МСК с этим множеством и только тогда ставит задачу в очередь (вместе с совпадением `HH:MM`). Запись в `auto_sync_runs` (`task_type='mssales'`, `message` — метрики как раньше).
 - **`auto_sync_mssales_full_enabled`** / **`auto_sync_mssales_full_time`** / **`auto_sync_mssales_full_days`** / **`auto_sync_mssales_full_weekdays`** — отдельное расписание **полного** синка продаж МС: `triggerSync(db, { days, fresh: true })` (аналог «Полный синк с нуля» на `/ms-sales.html`). Окно по умолчанию **730** дней; дни недели — тот же формат CSV (**по умолчанию только `7`** — воскресенье). `task_type='mssales_full'` в `auto_sync_runs`. Не планируйте на то же `HH:MM`, что обычный `mssales`, если оба включены: один активный job `ms-sales` в памяти.
+- **`sales_formula_replenishment_coef`**, **`sales_formula_sales_window_days`**, **`sales_formula_absence_analysis_days`**, **`sales_formula_rare_base_qty`**, **`sales_formula_rare_avg_max`**, **`sales_formula_expensive_rare_threshold_rub`**, **`sales_formula_expensive_rare_min_qty`**, **`sales_formula_max_change_coef`**, **`sales_formula_incomplete_pack_pct`**, **`sales_formula_economy_enabled`**, **`sales_formula_economy_absence_window_days`**, **`sales_formula_economy_max_absence_pct`**, **`sales_formula_economy_target_cover_days`** — **формула продаж** на карточке товара (`GET /api/product/:code` → объект `formula`). Логика в `lib/datagonSalesFormula.js`; UI — карточка «Формула продаж / закупки» в `/settings.html`.
 
 ### POST `/api/settings/auto-sync-run`
 
 Принудительно поставить одну задачу автосинхронизации в общую очередь расписания, не дожидаясь времени запуска. Используется кнопками «Запустить сейчас» в `settings.html`.
 
 Body: `{ "task": "myproducts" | "moysklad" | "marketplaces" | "huckster" | "db_size" | "dimensions" | "mssales" | "mssales_full" }`. Whitelist допустимых значений берётся из единого реестра `lib/datagonAutoSyncRegistry.js → getAutoSyncTaskKeys()` (см. правило `datagon-auto-sync-registry.mdc`); чтобы добавить задачу — расширьте `AUTO_SYNC_TASKS` в реестре. Запись в `auto_sync_runs` создаётся с `trigger_type = "manual"`. Для `dimensions` запускается тот же балк-синк, что и по расписанию (см. описание `auto_sync_dimensions_*` выше), но с `actor='Авто-синхронизация (вручную)'` в журнале. Для `mssales` — тот же `triggerSync(db, { days })` с `days = appSettings.auto_sync_mssales_days` (см. ниже). Для **`mssales_full`** — `triggerSync(db, { days: appSettings.auto_sync_mssales_full_days, fresh: true })`.
+
+Ответ `{ "success": true, "queued": true|false, "skip_reason": null|"already_running"|"already_queued"|"invalid_task", "task", "queue", "runner_active" }`. Поле **`queued: false`** означает, что задача **не** добавлена в очередь (дубликат или такой тип уже выполняется); в этом случае в **`skip_reason`** — причина. Успешная постановка не гарантирует мгновенный старт: если в этот момент уже крутится **другая** задача очереди, исполнение отложится до её завершения (сервер сам вызовет обработчик снова).
 
 ### POST `/api/settings/fetch-proxy`
 
@@ -1331,6 +1334,7 @@ Body (JSON): `email`, `password` (обязательны), опциональн�
 - **`moyskladPersistedLogs`** — все строки `dg_ms_sync_log` за выбранный день в МСК. Упорядочены по `id DESC` — самые свежие шаги синхронизации идут **первыми**, чтобы UI не заставлял пользователя листать журнал вниз. Реализация: `fetchMsSyncPersistedLogsForDate(db, forDate)` в `routes/moysklad.js`.
 - **`autoSyncRuns`** — записи `auto_sync_runs`, чей `started_at` приходится на выбранный день в МСК. Фронт группирует их по `task_type` и рисует по секциям из `autoSync.sections` (см. ниже). Чтобы добавить новую секцию — добавляйте задачу в `lib/datagonAutoSyncRegistry.js → AUTO_SYNC_TASKS` (правило `datagon-auto-sync-registry.mdc`).
 - **`autoSync.sections`** — массив `{ key, title, subtitle, enabled, time, extras: [{ key, label, value }] }`, построен `buildAutoSyncSectionsSnapshot(appSettings)` из `lib/datagonAutoSyncRegistry.js`. Используется фронтом `processes.scripts.html` (`renderAutoSyncSections`), чтобы держать набор задач в `/settings.html` ↔ `/processes.html` синхронным без ручной правки UI при добавлении новой автосинки. Поле `autoSync.config` оставлено для обратной совместимости (legacy фронт без `sections`).
+- **`autoSync.dimensions_live`** — снимок in-memory прогресса балк-выгрузки габаритов в МС (`routes/dimensions.js` → `getScheduledSyncState`), пока `active: true`: `processed`, `total`, `ok`, `err`, `skipped_no_uuid`, `last_code`, `last_message` и т.д. Фронт подмешивает его к строке `auto_sync_runs` со статусом `running` для задачи `dimensions`, чтобы не казалось, что процесс «завис» на «Запуск задачи».
 - **`matches`** — последняя задача `matching_jobs` для `my_site_id`, чей `started_at` приходится на выбранный день в МСК. Если задач за день не было — `matches.message` = «За выбранный день задач сопоставления не было».
 - **`moysklad.logs`** (in-memory `jobState.logs`, до 30 строк текущей сессии) — отдаются только за «сегодня»; для других дней массив пустой, так как память процесса не различает даты.
 
@@ -1356,9 +1360,9 @@ Body (JSON): `email`, `password` (обязательны), опциональн�
 
 ## Закупки
 
-Отдельная страница `/purchase.html` и роутер `routes/purchase.js`. Источник истины базовых полей — `ms_export` (синк МойСклад). Дополнительные **редактируемые поля** (Неснижаемый остаток Датагон, Кратность товара, Мин.Остаток сч.как, Предлагаемый нес.остаток, Кол-во в упаковке вручную) хранятся в отдельной таблице `dg_purchase_overrides`, чтобы синк МС не затирал ручные значения и схема `ms_export` оставалась стабильной.
+Отдельная страница `/purchase.html` и роутер `routes/purchase.js`. Источник истины базовых полей — `ms_export` (синк МойСклад). Дополнительные **редактируемые поля** (Неснижаемый остаток Датагон, Кратность товара, Мин.Остаток сч.как, поле `proposed_min_stock` в закупках, Кол-во в упаковке вручную) хранятся в отдельной таблице `dg_purchase_overrides`, чтобы синк МС не затирал ручные значения и схема `ms_export` оставалась стабильной. В списке `GET /api/purchase` дополнительно отдаётся **`formula_proposed_min_stock`** — расчёт «Формула продаж» (как на карточке товара), не путать с `proposed_min_stock` из overrides. Для окон **3 / 5 / 7 / 15 / 30 / 60 / 90 / 180 / 365** дней — поля **`d_3`, `d_5`, … `d_365a`**: сумма проданного количества (шт) за скользящие календарные дни (прямые отгрузки по коду + эквивалент через комплекты, для строк-комплектов только прямые). Поля **`d_15b`, `d_30b`, … `d_365b`** — число **разных календарных дат** с нулевым остатком в `dg_product_zero_stock_log` за последние N дн. (как на карточке товара). Поле **`in_transit`** — «в пути» из `payload_json.inTransit`, если есть.
 
-Сырые поля (`article`, `packagings`) подмешиваются к строкам из `ms_entity_details.payload_json` (raw карточка из МС API).
+Сырые поля (`article`, `packagings`, `inTransit`) подмешиваются к строкам из `ms_entity_details.payload_json` (raw карточка из МС API).
 
 ### Таблица `dg_purchase_overrides`
 
@@ -1379,7 +1383,9 @@ CREATE TABLE dg_purchase_overrides (
 
 ### GET `/api/purchase`
 
-Список товаров для планирования закупок. **Фильтр по умолчанию (как в ТЗ страницы):**
+Список товаров для планирования закупок. Для каждой строки сервер дополнительно считает **`formula_proposed_min_stock`** — предлагаемый неснижаемый по той же логике, что `GET /api/product/:code` → `formula.proposed_min_stock` (`lib/datagonSalesFormula.js`, окна из `app_settings`). Поле **`proposed_min_stock`** в ответе по-прежнему из **`dg_purchase_overrides`** (ручное значение «Предлаг. (закупки)» в UI).
+
+**Фильтр по умолчанию (как в ТЗ страницы):**
 
 - `is_archived = 0` (только активные);
 - `stock_position = 'да'` (только складская позиция);
@@ -1394,8 +1400,10 @@ Query:
 - `include_bundles` — `0` (default, исключить комплекты) | `1` (включить).
 - `only_stock` — `1` чтобы оставить только `stock > 0`.
 - `limit` (default 100, max 1000), `offset`.
-- `sort_by` — `code` (default), `article`, `name`, `supplier`, `buy_price`, `min_stock`, `automation_price`, `proposed_min_stock`, `min_stock_dg`, `multiplicity`, `min_stock_calc_as`, `stock`, `is_archived`.
+- `sort_by` — `code` (default), `article`, `name`, `supplier`, `buy_price`, `min_stock`, **`formula_proposed_min_stock`**, `automation_price`, `proposed_min_stock`, `min_stock_dg`, `multiplicity`, `min_stock_calc_as`, `stock`, `is_archived`, **`in_transit`**, **`d_3`**, **`d_5`**, **`d_7`**, **`d_15a`**, **`d_15b`**, **`d_30a`**, **`d_30b`**, **`d_60a`**, **`d_60b`**, **`d_90a`**, **`d_90b`**, **`d_180a`**, **`d_180b`**, **`d_365a`**, **`d_365b`**.
 - `sort_dir` — `asc` (default) | `desc`.
+
+Для **`sort_by`** из перечисленных **вычисляемых** полей (`formula_proposed_min_stock`, `in_transit`, все `d_*`) порядок строк на **текущей странице** (`limit`/`offset`) пересчитывается в памяти после расчёта метрик (глобальный порядок по всему каталогу без отдельного запроса не гарантируется).
 
 Ответ:
 
@@ -1414,6 +1422,7 @@ Query:
       "supplier": "Вектор", "supplier2": "Вектор", "supplier_label": "Вектор",
       "buy_price": "12 345,67 ₽",
       "min_stock": "10.000",
+      "formula_proposed_min_stock": 12,
       "automation_price": "Авто",
       "proposed_min_stock": null,
       "min_stock_dg": "5.000",
@@ -1421,9 +1430,11 @@ Query:
       "min_stock_calc_as": null,
       "pack_qty": 6, "pack_qty_auto": 6, "pack_qty_manual": null,
       "stock": 42,
-      "in_transit": "",
+      "in_transit": 0,
       "no_longer_cooperation": "", "stock_position": "Да",
-      "override_updated_at": "2026-05-12 19:01:23"
+      "override_updated_at": "2026-05-12 19:01:23",
+      "d_3": 0, "d_5": 1.2, "d_7": 2, "d_15a": 4.5, "d_15b": 0, "d_30a": 12, "d_30b": 2,
+      "d_60a": 20, "d_60b": 3, "d_90a": 25, "d_90b": 4, "d_180a": 40, "d_180b": 5, "d_365a": 80, "d_365b": 8
     }
   ]
 }
@@ -1456,7 +1467,7 @@ Query:
 
 ## Карточка товара
 
-Детальная страница товара `/product.html?code=XXX` (открывается из «Закупки» в новом окне). Бэкенд агрегирует данные из `ms_export`, `ms_entity_details` (полный JSON-payload), `ms_demand`/`ms_demand_position` (продажи), `dg_product_zero_stock_log` (построчный лог нулевых дней) и при наличии — последний срез `dg_product_zero_stock_window_import` (импорт сводки по окнам из Excel).
+Детальная страница товара `/product.html?code=XXX` (открывается из «Закупки» в новом окне). Бэкенд агрегирует данные из `ms_export`, `ms_entity_details` (полный JSON-payload), `ms_demand`/`ms_demand_position` (продажи), `dg_product_zero_stock_log` (дни отсутствия товара на складе по выгрузке МС) и при наличии — последний срез `dg_product_zero_stock_window_import` (импорт сводки по окнам из Excel).
 
 ### Схема `dg_product_zero_stock_window_import`
 
@@ -1520,7 +1531,7 @@ Query:
 - `recent_page` — номер страницы для блока «Последние отгрузки» (default 1).
 - `recent_page_size` — размер страницы (10…200, default 100). Полный список за период — листая страницы или увеличив `recent_page_size`.
 - `recent_via` — фильтр строк отгрузок: `all` (все) | `direct` (только прямые позиции по коду) | `bundle` (только эквивалент через комплекты; для карточки комплекта ветка через комплекты отключена на бэкенде).
-- `recent_bundle_code` — при `recent_via=bundle` ограничить одним кодом комплекта из МС (опционально; без параметра — «все комплекты» в окне).
+- `recent_bundle_code` — при `recent_via=bundle` ограничить одним **кодом из строки отгрузки** (как правило код комплекта в МС; можно передать любой код, совпадающий с `bundle_code` в объединённой выборке). Без параметра — все комплекты в окне.
 - `sales_from`, `sales_to` — даты **`YYYY-MM-DD`** (включительно). Если обе валидны и `from <= to`, окно продаж **календарное** (графики, сводки, `recent`, `via_bundles`); максимум 1825 дней между датами. Фильтр по дате отгрузки в SQL — **`DATE(d.moment)`** между этими днями (время суток из UI в query **не** передаётся; сравнение с отчётом МС «по часам» может расходиться на границах суток). Иначе используется скользящее окно `recent_days`.
 - `recent_days` — скользящее окно в днях от `NOW()`, если **не** задана пара `sales_from`+`sales_to` (default 365, max 1825).
 - `zero_days` — окно для лога нулевых остатков (default 90, max 1825).
@@ -1604,7 +1615,7 @@ Query:
         "ts_date": "2026-05-12", "total_stock": 0, "source": "moysklad_sync",
         "created_at": "2026-05-12T19:00:00.000Z" }
     ],
-    "note": "Пакетная фиксация за сегодня (moysklad_sync) — после синка МС в ms_export: склад.поз.=Да, не архив, stock≤0. Ручная за день не затирается. По складам — после report/stock/bystore."
+    "note": "По аналогии с продажами (только проведённые отгрузки), здесь — только факты из выгрузки МС: после успешного синка за сегодня автоматически пишется строка при складской позиции «Да», не архив и остаток ≤ 0. Ручная запись за тот же день автоматикой не перезаписывается."
   },
   "zero_stock_windows_import": {
     "reference_date": "2026-01-15",
@@ -1614,12 +1625,40 @@ Query:
     "created_at": "2026-01-16T10:00:00.000Z",
     "note_explain": "Импортированная сводка: числа — сколько дней с нулевым остатком в каждом скользящем окне относительно даты среза. Это не список конкретных календарных дней."
   },
-  "formula": { "placeholder": true, "description": "Формула продаж будет добавлена позже (TBD)." }
+  "formula": {
+    "proposed_min_stock": 12,
+    "settings_effective": { "replenishmentCoef": 0.333, "salesWindowDays": 90, "economyEnabled": false },
+    "inputs": {
+      "sales_window_days": 90,
+      "sum_qty_window": 36,
+      "avg_daily": 0.4,
+      "prev_baseline": 10,
+      "prev_baseline_source": "ms_export.min_stock",
+      "stock_qty": 42
+    },
+    "warnings": [],
+    "detail": {
+      "equation_stages": [
+        {
+          "id": "avg_daily",
+          "order": 1,
+          "title": "Этап 1. Средние продажи",
+          "template": "Продажи за окно ÷ дней в окне (W)",
+          "values": "36 ÷ 90 = 0.4 шт/день",
+          "note": "…"
+        }
+      ]
+    },
+    "note": "Длина периода продаж и коэффициенты задаются в «Настройки» → «Формула продаж / закупки»."
+  }
 }
 ```
 
 Возвращает `404`, если в `ms_export` нет товара с указанным `code`.
 
+Объект **`formula`**: `proposed_min_stock` (целое, шт), `settings_effective` — нормализованный снимок настроек после clamp, `inputs` — числа и строки, ушедшие в расчёт (в т.ч. `prev_baseline_source` — откуда взят опорный неснижаемый: `override.proposed_min_stock` | `override.min_stock_dg` | `ms_export.min_stock`), `warnings` — например срабатывание ограничения скачка. Поле **`detail`** для карточки товара содержит только **`equation_stages`**: этапы в виде «шаблон формулы» и строка с подставленными числами (блок **«Формула этапами»** на UI). Логика в `lib/datagonSalesFormula.js`.
+
+- `zero_stock` — `{ days, rows, note }`: построчный лог за запрошенную глубину; `note` — пояснение для UI (как заполняется лог автоматически после синка МС и зачем ручная кнопка).
 - `zero_stock_windows_import` — последняя по дате среза (`reference_date`) и `id` запись из `dg_product_zero_stock_window_import` для этого кода, либо `null`, если импорта не было. Поле `note_explain` — подсказка для UI; не дублирует бизнес-данные.
 
 Поля раздела `sales` (для графиков на UI):
@@ -1628,9 +1667,10 @@ Query:
 - `sales_window` — `{ mode: "range"|"rolling", sales_from, sales_to }`; в режиме `rolling` поля дат `null`.
 - `direct_period` / `bundles_period` — сводки за то же окно, что графики и `recent` (только **`d.applicable = 1`**). `bundles_period` — `null`, если `includes_via_bundles: false`.
 - `note` — короткое пояснение для UI (что включено в цифры).
-- `via_bundles` — сводка по комплектам за окно `recent_days`: продано комплектов, эквивалентное количество компонента, доля суммы строки (`qty_per_bundle / сумма qty по составу` того же комплекта).
-- `recent[]` — текущая страница отгрузок (см. `recent_page` / `recent_page_size` / `recent_total`). Для строк с `via: "bundle"` поля `quantity` / `price` / `sum` — **эквивалент** компонента; `bundle_qty` — количество проданных комплектов в строке; `qty_per_bundle` — из состава МС.
-- `recent_total`, `recent_total_pages`, `recent_via`, `recent_bundle_code`, `recent_bundle_codes` — метаданные пагинации и фильтра по комплекту; `recent_bundle_codes` — список комплектов, встречавшихся в окне (для селекта на UI).
+- `aggregates` — ключи `d3` … `d365`: продажи (шт, сумма ₽, позиции, ср./день) за скользящие N календарных дней по `ms_demand.moment` (+ эквивалент через комплекты при `includes_via_bundles`).
+- `via_bundles` — сводка по комплектам за то же окно продаж, что графики и `recent`: продано комплектов, эквивалентное количество компонента, доля суммы строки (`qty_per_bundle / сумма qty по составу` того же комплекта). Массив **отсортирован по объёму** (`equivalent_qty` по убыванию), затем по сумме.
+- `recent[]` — текущая страница отгрузок (см. `recent_page` / `recent_page_size` / `recent_total`). Порядок строк: **`ms_demand.moment` по убыванию** (момент проведённой отгрузки в МС); при совпадении момента — по `demand_uuid`, затем `position_uuid`. Для строк с `via: "bundle"` поля `quantity` / `price` / `sum` — **эквивалент** компонента; `bundle_qty` — количество проданных комплектов в строке; `qty_per_bundle` — из состава МС.
+- `recent_total`, `recent_total_pages`, `recent_via`, `recent_bundle_code`, `recent_bundle_codes` — метаданные пагинации и фильтра по комплекту; `recent_bundle_codes` — подсказки для UI (комплекты, где текущий товар в составе), плюс на карточке можно ввести любой код вручную.
 - `monthly` — ряд по календарным месяцам: при **`sales_from`+`sales_to`** — все месяцы от первого до последнего в диапазоне; при скользящем окне — последние до `ceil(recent_days/30)` мес. от текущей даты (max 60). Без продаж — нули в точке.
 - `by_agent` / `by_store` — топ-N (по умолчанию 8) + строка «Прочие (M)», если хвост не пустой. Используются для doughnut-графика «Распределение продаж» с переключателем «По контрагентам / По складам». Контрагенты в МС часто и есть «маркетплейсы» (`ООО ИНТЕРНЕТ РЕШЕНИЯ` = Ozon, `ООО ВАЙЛДБЕРРИЗ` = WB и т.п.) — поэтому пирог автоматически даёт картину по проектам.
 
@@ -1638,7 +1678,7 @@ Query:
 
 Только таблица «Последние отгрузки» за то же окно, что и `sales.*` у `GET /api/product/:code` (те же query: `sales_from` / `sales_to` / `recent_days`). Дополнительно: `recent_page`, `recent_page_size`, `recent_via`, `recent_bundle_code` — как у основного GET.
 
-Ответ: `{ success, code, rows, recent_page, recent_page_size, recent_total, recent_total_pages, recent_via, recent_bundle_code, bundle_codes, sales_window, includes_via_bundles }` (структура элементов `rows` — как в `sales.recent[]` выше).
+Ответ: `{ success, code, rows, recent_page, recent_page_size, recent_total, recent_total_pages, recent_via, recent_bundle_code, bundle_codes, sales_window, includes_via_bundles }` (структура элементов `rows` — как в `sales.recent[]` выше). Порядок `rows` — как у `sales.recent[]`: **`moment` из МС по убыванию** с детерминированными tie-breaker’ами (`demand_uuid`, `position_uuid`).
 
 ### GET `/api/product/:code/zero-stock-log`
 
@@ -1650,7 +1690,7 @@ Query: `days` (default 90, max 1825).
 
 ### POST `/api/product/:code/zero-stock-log`
 
-Зафиксировать «нулевой остаток» вручную (используется кнопкой «Зафиксировать нулевой остаток сейчас»). Body (JSON):
+Запись в лог **вручную** за «сегодня» (кнопка «Записать вручную за сегодня» на карточке товара). Body (JSON):
 
 ```json
 { "store_uuid": "__total__", "store_name": null, "ts_date": "2026-05-12", "force": "0" }

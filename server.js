@@ -122,7 +122,21 @@ let appSettings = {
     auto_sync_mssales_full_time: '03:15',
     auto_sync_mssales_full_days: 730,
     /** По умолчанию только вс; при включении задайте удобные дни. */
-    auto_sync_mssales_full_weekdays: '7'
+    auto_sync_mssales_full_weekdays: '7',
+    /** Формула продаж / предлагаемого неснижаемого (см. `lib/datagonSalesFormula.js`, карточка товара). */
+    sales_formula_replenishment_coef: 1 / 3,
+    sales_formula_sales_window_days: 90,
+    sales_formula_absence_analysis_days: 210,
+    sales_formula_rare_base_qty: 2,
+    sales_formula_rare_avg_max: 1,
+    sales_formula_expensive_rare_threshold_rub: 50000,
+    sales_formula_expensive_rare_min_qty: 1,
+    sales_formula_max_change_coef: 1.6,
+    sales_formula_incomplete_pack_pct: 10,
+    sales_formula_economy_enabled: 0,
+    sales_formula_economy_absence_window_days: 90,
+    sales_formula_economy_max_absence_pct: 6,
+    sales_formula_economy_target_cover_days: 18
 };
 let syncState = { active: false, processed: 0, total: 0, message: '' };
 const moyskladRouterFactory = require('./routes/moysklad');
@@ -309,7 +323,20 @@ async function initDB() {
             ['auto_sync_mssales_full_enabled','0'],
             ['auto_sync_mssales_full_time','03:15'],
             ['auto_sync_mssales_full_days','730'],
-            ['auto_sync_mssales_full_weekdays','7']
+            ['auto_sync_mssales_full_weekdays','7'],
+            ['sales_formula_replenishment_coef','0.3333333333333333'],
+            ['sales_formula_sales_window_days','90'],
+            ['sales_formula_absence_analysis_days','210'],
+            ['sales_formula_rare_base_qty','2'],
+            ['sales_formula_rare_avg_max','1'],
+            ['sales_formula_expensive_rare_threshold_rub','50000'],
+            ['sales_formula_expensive_rare_min_qty','1'],
+            ['sales_formula_max_change_coef','1.6'],
+            ['sales_formula_incomplete_pack_pct','10'],
+            ['sales_formula_economy_enabled','0'],
+            ['sales_formula_economy_absence_window_days','90'],
+            ['sales_formula_economy_max_absence_pct','6'],
+            ['sales_formula_economy_target_cover_days','18']
         ];
         for (const [k, v] of defaults) await db.query('INSERT IGNORE INTO app_settings (setting_key, setting_value) VALUES (?, ?)', [k, v]);
 
@@ -1051,13 +1078,21 @@ async function getDiskUsageMetrics(forceRefresh = false) {
     return diskUsageInFlight;
 }
 
+/**
+ * @returns {{ ok: boolean, reason?: string }}
+ * `already_running` — для этого task_type уже идёт запись в `auto_sync_runs` (runner внутри шага).
+ * `already_queued` — такой тип уже в `autoSyncQueue` (дождитесь старта).
+ */
 function enqueueAutoSyncTask(taskType, triggerType = 'schedule') {
-    if (!taskType) return;
+    if (!taskType) return { ok: false, reason: 'invalid_task' };
     const type = String(taskType || '').trim();
-    if (!type) return;
-    if (autoSyncRunIds.has(type)) return;
-    if (autoSyncQueue.some((item) => (typeof item === 'string' ? item : item?.type) === type)) return;
+    if (!type) return { ok: false, reason: 'invalid_task' };
+    if (autoSyncRunIds.has(type)) return { ok: false, reason: 'already_running' };
+    if (autoSyncQueue.some((item) => (typeof item === 'string' ? item : item?.type) === type)) {
+        return { ok: false, reason: 'already_queued' };
+    }
     autoSyncQueue.push({ type, triggerType: String(triggerType || 'schedule').trim() || 'schedule' });
+    return { ok: true };
 }
 
 async function ensureAutoSyncRunsTable() {
@@ -1286,9 +1321,23 @@ async function processAutoSyncQueue() {
                      * виден в getScheduledSyncState() — UI processes.html
                      * подхватывает его как обычный auto_sync раздел.
                      */
+                    const dimsRunId = autoSyncRunIds.get('dimensions');
+                    const dimHooks =
+                        dimsRunId > 0
+                            ? {
+                                  onRunMessage: async (msg) => {
+                                      try {
+                                          await db.query('UPDATE auto_sync_runs SET message = ? WHERE id = ?', [
+                                              String(msg || '').slice(0, 2000),
+                                              dimsRunId,
+                                          ]);
+                                      } catch (_) {}
+                                  },
+                              }
+                            : undefined;
                     let runResult;
                     try {
-                        runResult = await dimensionsRouterFactory.runScheduledSyncMs(db, triggerType);
+                        runResult = await dimensionsRouterFactory.runScheduledSyncMs(db, triggerType, dimHooks);
                     } catch (e) {
                         runResult = { started: true, error: e && e.message ? e.message : String(e) };
                     }
@@ -1451,6 +1500,14 @@ async function processAutoSyncQueue() {
         }
     } finally {
         autoSyncRunnerActive = false;
+        /** Пока runner занят, новые задачи только копятся в очереди; без повторного вызова они бы не стартовали. */
+        if (autoSyncQueue.length > 0) {
+            setImmediate(() => {
+                processAutoSyncQueue().catch((err) => {
+                    console.error('[AUTO SYNC] chained drain:', err && err.message ? err.message : err);
+                });
+            });
+        }
     }
 }
 
@@ -1512,7 +1569,7 @@ function startAutoSyncScheduler() {
                 autoSyncLastRunByTask.set(t.type, runKey);
                 enqueueAutoSyncTask(t.type);
             }
-            processAutoSyncQueue();
+            processAutoSyncQueue().catch((e) => console.error('[AUTO SYNC] scheduler tick:', e && e.message ? e.message : e));
         } catch (e) {
             console.error('[AUTO SYNC] ERROR:', e.message);
         }
@@ -1592,11 +1649,12 @@ initDB().then(() => {
             if (!allowed.has(task)) {
                 return res.status(400).json({ success: false, error: 'Некорректный тип автосинхронизации' });
             }
-            enqueueAutoSyncTask(task, 'manual');
+            const enq = enqueueAutoSyncTask(task, 'manual');
             processAutoSyncQueue();
             return res.json({
                 success: true,
-                queued: true,
+                queued: enq.ok,
+                skip_reason: enq.ok ? null : enq.reason || null,
                 task,
                 queue: autoSyncQueue.map((item) => (typeof item === 'string' ? item : item?.type)).filter(Boolean),
                 runner_active: Boolean(autoSyncRunnerActive)
@@ -1739,6 +1797,11 @@ initDB().then(() => {
                 queue: [...autoSyncQueue],
                 runner_active: Boolean(autoSyncRunnerActive),
                 sections: buildAutoSyncSectionsSnapshot(appSettings),
+                /** Живой прогресс балка габаритов (память процесса), пока `active=true`. */
+                dimensions_live:
+                    typeof dimensionsRouterFactory.getScheduledSyncState === 'function'
+                        ? dimensionsRouterFactory.getScheduledSyncState()
+                        : null,
                 config: {
                     myproducts_enabled: Number(appSettings.auto_sync_myproducts_enabled || 0) === 1,
                     myproducts_time: String(appSettings.auto_sync_myproducts_time || '03:00'),
