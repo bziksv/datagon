@@ -1605,9 +1605,15 @@ async function processAutoSyncQueue() {
                 try {
                     const purchaseWarm = require('./routes/purchase');
                     if (typeof purchaseWarm.warmupPurchaseListCaches === 'function') {
+                        const sortTouchesEnv = String(process.env.PURCHASE_WARMUP_SORT_TOUCHES || '')
+                            .trim()
+                            .toLowerCase();
                         const stats = await purchaseWarm.warmupPurchaseListCaches(db, appSettings, {
                             force: true,
-                            warmSorts: true,
+                            warmSorts:
+                                sortTouchesEnv === '1' ||
+                                sortTouchesEnv === 'true' ||
+                                sortTouchesEnv === 'yes',
                         });
                         status = stats.errors > 0 && stats.built === 0 ? 'failed' : 'completed';
                         message = (
@@ -2224,6 +2230,7 @@ initDB().then(() => {
     setImmediate(async () => {
         // Лог нулей — один SQL, без большого RAM. Прогрев закупок на старте по умолчанию выключен:
         // 10 пресетов × ~57k строк × enrich + payload_json ≈ 4+ ГБ heap → OOM. Полный прогрев — 08:00 (purchase_warmup) или PURCHASE_STARTUP_WARMUP=1.
+        // Прогрев «всех сортировок в RAM» при warmup по умолчанию отключён (PURCHASE_WARMUP_SORT_TOUCHES=1 — включить для purchase_warmup).
         try {
             const { syncZeroStockLogAfterMoyskladExport } = require('./routes/product');
             if (typeof syncZeroStockLogAfterMoyskladExport === 'function') {

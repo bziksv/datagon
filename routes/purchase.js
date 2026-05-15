@@ -179,7 +179,7 @@ async function runPurchaseStartupProgressiveWarmup(db, appSettings) {
             await warmupPurchaseListCaches(db, appSettings, {
                 presets: [presets[i]],
                 force: false,
-                warmSorts: true,
+                warmSorts: false,
                 _warmupRunLabel: runLabel,
                 _warmupPresetIndex: idx,
                 _warmupPresetTotal: total,
@@ -1590,13 +1590,15 @@ const PURCHASE_WARMUP_QUERY_PRESETS = [
  * Фоновый прогрев снимков списка закупок.
  * @param {{ force?: boolean, warmSorts?: boolean, presets?: object[] }} [options]
  *   force — пересобрать даже при живом кэше (утренний прогрев 08:00);
- *   warmSorts — прогреть все пары sort×dir в RAM (по умолчанию true);
+ *   warmSorts — прогреть все пары sort×dir в RAM (**по умолчанию false**; на больших выборках 52 полных сорта × пресет
+ *     сильно грузят CPU и не ускоряют первый заход — только кэш снимка по фильтрам). Включить явно: `warmSorts: true`
+ *     или для задачи `purchase_warmup` в `server.js`: `PURCHASE_WARMUP_SORT_TOUCHES=1`.
  *   presets — подмножество `PURCHASE_WARMUP_QUERY_PRESETS` (progressive на старте Node — по одному пресету за вызов, см. `runPurchaseStartupProgressiveWarmup` / `server.js`).
  * @returns {Promise<{ built: number, skipped: number, sortTouches: number, errors: number }>}
  */
 async function warmupPurchaseListCaches(db, appSettings, options = {}) {
     const force = options.force === true;
-    const warmSorts = options.warmSorts !== false;
+    const warmSorts = options.warmSorts === true;
     const presets = Array.isArray(options.presets) ? options.presets : PURCHASE_WARMUP_QUERY_PRESETS;
     const stats = { built: 0, skipped: 0, sortTouches: 0, errors: 0 };
     const runLabel = String(options._warmupRunLabel || '').trim();
