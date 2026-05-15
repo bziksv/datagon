@@ -1120,7 +1120,11 @@
             th.style.minWidth = cw + "px";
             th.style.maxWidth = cw + "px";
           } else {
+            /* Без явной тройки width/min/max при table-layout:fixed и min-width таблицы 2500px
+               браузер раздувает колонки; дефолт = COL_MIN как фиксированная ширина. */
+            th.style.width = minW + "px";
             th.style.minWidth = minW + "px";
+            th.style.maxWidth = minW + "px";
           }
           th.style.whiteSpace = "normal";
           th.style.wordBreak = "break-word";
@@ -1189,7 +1193,7 @@
         if (Number.isFinite(cw) && cw > 0) {
           s.width = cw + "px"; s.minWidth = cw + "px"; s.maxWidth = cw + "px";
         } else {
-          s.minWidth = minW + "px";
+          s.width = minW + "px"; s.minWidth = minW + "px"; s.maxWidth = minW + "px";
         }
         return s;
       }
@@ -1673,20 +1677,39 @@
         });
       })();
 
-      // Восстановление сохранённых ширин и видимости столбцов.
-      try {
-        columnWidths = JSON.parse(localStorage.getItem(userColWidthKey()) || "{}") || {};
-      } catch (e) { columnWidths = {}; }
-      try {
-        var allowed = new Set(PU_COLS.map(function (p) { return p[0]; }));
-        var rawVisible = JSON.parse(localStorage.getItem(userVisibleColsKey()) || "[]");
-        if (Array.isArray(rawVisible) && rawVisible.length) {
-          visibleCols = new Set(rawVisible.filter(function (k) { return allowed.has(k); }));
-        }
-        if (!visibleCols.has("code")) visibleCols.add("code");
-        if (visibleCols.size && !visibleCols.has("name")) visibleCols.add("name");
-        if (!visibleCols.size) visibleCols = new Set(DEFAULT_VISIBLE_KEYS);
-      } catch (e) {}
+      /** Ширины/видимость завязаны на localStorage currentUser; он выставляется после /api/auth/me (datagon-vanilla.js). */
+      function loadPurchaseColumnPreferences() {
+        try {
+          columnWidths = JSON.parse(localStorage.getItem(userColWidthKey()) || "{}") || {};
+        } catch (e) { columnWidths = {}; }
+        try {
+          var allowed = new Set(PU_COLS.map(function (p) { return p[0]; }));
+          var rawVisible = JSON.parse(localStorage.getItem(userVisibleColsKey()) || "[]");
+          if (Array.isArray(rawVisible) && rawVisible.length) {
+            visibleCols = new Set(rawVisible.filter(function (k) { return allowed.has(k); }));
+          }
+          if (!visibleCols.has("code")) visibleCols.add("code");
+          if (visibleCols.size && !visibleCols.has("name")) visibleCols.add("name");
+          if (!visibleCols.size) visibleCols = new Set(DEFAULT_VISIBLE_KEYS);
+        } catch (e) {}
+      }
+
+      function redrawPurchaseTableAfterPrefs() {
+        renderColumnControls();
+        buildThead();
+        renderTable(lastRows);
+        updateTableHint();
+        var wp = document.getElementById("dg-pu-widths-panel");
+        if (wp && wp.classList.contains("open")) renderWidthControls();
+        puRefreshFloatingAfterLayout();
+      }
+
+      loadPurchaseColumnPreferences();
+
+      window.addEventListener("datagon-profile-loaded", function () {
+        loadPurchaseColumnPreferences();
+        redrawPurchaseTableAfterPrefs();
+      });
 
       bindPurchaseCellTooltips();
       parseUrlToForm();

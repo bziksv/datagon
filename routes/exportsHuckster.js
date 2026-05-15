@@ -217,6 +217,52 @@ function getRepricerField(obj, camel, pascal) {
     return undefined;
 }
 
+/**
+ * Доп. идентификаторы из `repricer/items/list` для сшивки с кодом МС: когда `uid` в Huckster
+ * совпадает с id оффера на МП (например Я.М. «код товара на МП»), а в МойСклад другой код/артикул.
+ * Список полей — эвристика по типичным ключам DTO wbs.e-teleport.ru.
+ */
+function extractRepricerAltMatchIds(x, uid) {
+    const u = String(uid || '').trim();
+    const seen = new Set();
+    const out = [];
+    function add(v) {
+        if (v == null || v === '') return;
+        const s =
+            typeof v === 'number' && Number.isFinite(v)
+                ? String(Number.isInteger(v) ? v : Math.trunc(v))
+                : String(v).trim();
+        if (!s || s === u) return;
+        if (seen.has(s)) return;
+        seen.add(s);
+        out.push(s);
+    }
+    const pairs = [
+        ['offer_id', 'OfferId'],
+        ['offerId', 'OfferId'],
+        ['marketplace_offer_id', 'MarketplaceOfferId'],
+        ['shop_sku', 'ShopSku'],
+        ['seller_sku', 'SellerSku'],
+        ['external_id', 'ExternalId'],
+        ['product_id', 'ProductId'],
+        ['marketplace_product_id', 'MarketplaceProductId'],
+        ['item_id', 'ItemId'],
+        ['article', 'Article'],
+        ['barcode', 'Barcode'],
+        ['supplier_article', 'SupplierArticle'],
+        ['vendor_code', 'VendorCode'],
+        ['ms_code', 'MsCode'],
+        ['yandex_offer_id', 'YandexOfferId'],
+        ['ym_offer_id', 'YmOfferId'],
+        ['shop_product_id', 'ShopProductId'],
+    ];
+    for (const [camel, pascal] of pairs) {
+        const v = getRepricerField(x, camel, pascal);
+        if (v !== undefined && v !== null) add(v);
+    }
+    return out;
+}
+
 function isExplicitlyOff(v) {
     return v === false || v === 0 || v === '0' || String(v).toLowerCase() === 'false';
 }
@@ -405,13 +451,24 @@ async function fetchRepricerProductsForShop(shop, sessionId, opts, isStopped, on
         for (const x of rows) {
             const uid = String(getRepricerField(x, 'uid', 'Uid') || '').trim();
             if (!uid) continue;
-            if (uidFilter && !uidFilter.has(uid)) continue;
-            if (uidFilter) foundFiltered.add(uid);
+            if (uidFilter) {
+                const alts = extractRepricerAltMatchIds(x, uid);
+                const hit =
+                    uidFilter.has(uid) || alts.some((a) => uidFilter.has(String(a || '').trim()));
+                if (!hit) continue;
+                if (uidFilter.has(uid)) foundFiltered.add(uid);
+                for (const a of alts) {
+                    const t = String(a || '').trim();
+                    if (t && uidFilter.has(t)) foundFiltered.add(t);
+                }
+            }
             byUid.set(uid, {
                 uid,
                 name: String(getRepricerField(x, 'name', 'Name') || ''),
                 updatedAt: extractItemUpdatedAt(x),
                 repricerEnabled: isIncludedRepricerItem(x),
+                altMatchIds: extractRepricerAltMatchIds(x, uid),
+                mpSku: String(getRepricerField(x, 'sku', 'Sku') ?? x.sku ?? '').trim(),
             });
         }
         if (uidFilter && foundFiltered.size >= uidFilter.size) break;
@@ -746,9 +803,9 @@ function createExportsHucksterRouter(_db, appSettings) {
         const byCode = new Map();
         function emptyMarkets() {
             return {
-                ozon: { repricer: false, modelNames: new Set() },
-                wildberries: { repricer: false, modelNames: new Set() },
-                yandex: { repricer: false, modelNames: new Set() },
+                ozon: { repricer: false, modelNames: new Set(), mpSku: '' },
+                wildberries: { repricer: false, modelNames: new Set(), mpSku: '' },
+                yandex: { repricer: false, modelNames: new Set(), mpSku: '' },
             };
         }
         function touch(code) {
@@ -771,18 +828,28 @@ function createExportsHucksterRouter(_db, appSettings) {
                 const list = Array.isArray(def.items[shopId]) ? def.items[shopId] : [];
                 const mp = mpByShopId.get(String(shopId || '')) || '';
                 for (const row of list) {
-                    const rec = touch(row && row.uid);
-                    if (!rec) continue;
-                    if (row && row.repricerEnabled === true) rec.repricer = true;
-                    const marketRec = rec.markets && rec.markets[mp] ? rec.markets[mp] : null;
-                    if (marketRec && row && row.repricerEnabled === true) marketRec.repricer = true;
-                    const names = String((row && row.unitModelNames) || '').trim();
-                    if (names) {
-                        for (const part of names.split(';')) {
-                            const nm = String(part || '').trim();
-                            if (!nm) continue;
-                            rec.modelNames.add(nm);
-                            if (marketRec) marketRec.modelNames.add(nm);
+                    const uid = row && row.uid != null ? String(row.uid).trim() : '';
+                    if (!uid) continue;
+                    const altKeys = Array.isArray(row.altMatchIds)
+                        ? row.altMatchIds.map((a) => String(a || '').trim()).filter(Boolean)
+                        : [];
+                    const mergeKeys = Array.from(new Set([uid, ...altKeys]));
+                    for (const k of mergeKeys) {
+                        const rec = touch(k);
+                        if (!rec) continue;
+                        if (row && row.repricerEnabled === true) rec.repricer = true;
+                        const marketRec = rec.markets && rec.markets[mp] ? rec.markets[mp] : null;
+                        if (marketRec && row && row.repricerEnabled === true) marketRec.repricer = true;
+                        const sku = String((row && row.mpSku) || '').trim();
+                        if (marketRec && sku) marketRec.mpSku = sku;
+                        const names = String((row && row.unitModelNames) || '').trim();
+                        if (names) {
+                            for (const part of names.split(';')) {
+                                const nm = String(part || '').trim();
+                                if (!nm) continue;
+                                rec.modelNames.add(nm);
+                                if (marketRec) marketRec.modelNames.add(nm);
+                            }
                         }
                     }
                 }
@@ -792,7 +859,23 @@ function createExportsHucksterRouter(_db, appSettings) {
     }
 
     function buildHucksterLostRows(msRows, signalMap, syncedAtIso) {
-        const header = ['ID / КОД', 'Наименование товара', 'Менеджер', 'Остаток', 'Ozon', 'Модель Ozon', 'WB', 'Модель WB', 'ЯМ', 'Модель ЯМ', 'Актуально на'];
+        const header = [
+            'ID / КОД',
+            'Наименование товара',
+            'Менеджер',
+            'Остаток',
+            'Автоматизация цены',
+            'Ozon',
+            'Модель Ozon',
+            'Код товара на МП (Ozon)',
+            'WB',
+            'Модель WB',
+            'Код товара на МП (WB)',
+            'ЯМ',
+            'Модель ЯМ',
+            'Код товара на МП (ЯМ)',
+            'Актуально на',
+        ];
         const rows = [header];
         const syncCell = syncedAtIso ? new Date(syncedAtIso).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' }) : '';
         function repricerCell(marketSig) {
@@ -805,6 +888,10 @@ function createExportsHucksterRouter(_db, appSettings) {
             if (marketSig && marketSig.repricer) return names || 'Модель не назначена';
             if (names) return `Модель назначена, но Репрайсер на модели выключен: ${names}`;
             return 'Модель не назначена';
+        }
+        function mpSkuLostCell(marketSig) {
+            const s = marketSig && marketSig.mpSku != null ? String(marketSig.mpSku).trim() : '';
+            return s || '';
         }
         for (const ms of msRows || []) {
             const code = String(ms && ms.code ? ms.code : '').trim();
@@ -822,12 +909,16 @@ function createExportsHucksterRouter(_db, appSettings) {
                 String(ms.name || ''),
                 String(ms.manager || ''),
                 String(ms.stock != null ? ms.stock : ''),
+                String(ms.automation_price != null ? ms.automation_price : '').trim(),
                 repricerCell(mo),
                 modelCell(mo),
+                mpSkuLostCell(mo),
                 repricerCell(mw),
                 modelCell(mw),
+                mpSkuLostCell(mw),
                 repricerCell(my),
                 modelCell(my),
+                mpSkuLostCell(my),
                 syncCell,
             ]);
         }

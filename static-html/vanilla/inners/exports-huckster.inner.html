@@ -9,7 +9,7 @@
                   <div class="page-title-subheading">
                     Таблицы <strong>Huckster Export</strong> и <strong>Huckster Export RRC</strong> строятся от товаров МойСклад: код МС сопоставляется с UID в Huckster по кабинетам Ozon, WB и ЯМ.
                     В блоке <strong>Наборы</strong> задаются кабинеты для каждого набора и опциональный <strong>Тип цены МойСклад</strong>. Если тип цены выбран, при обновлении остаются только товары, где эта цена больше 0, а в таблицу добавляется колонка с названием цены и её значением.
-                    <strong>Репрайсер ВКЛЮЧЕН</strong> означает, что по UID найден ровно один включённый repricer для маркетплейса; <strong>Репрайсер ВЫКЛЮЧЕН</strong> — товар не найден, выключен или кабинет не определяется однозначно. Колонки <strong>Модель</strong> показывают назначение Unit-модели, а <strong>Актуально на</strong> — время сборки снимка Datagon.
+                    <strong>Репрайсер ВКЛЮЧЕН</strong> означает, что по UID найден ровно один включённый repricer для маркетплейса; <strong>Репрайсер ВЫКЛЮЧЕН</strong> — товар не найден, выключен или кабинет не определяется однозначно. Колонки <strong>Модель</strong> показывают назначение Unit-модели; при ненулевой <strong>Автоматизация цены</strong> в МС число% в названии модели должно совпадать с выгрузкой (фильтр «Модели»). <strong>Актуально на</strong> — время сборки снимка Datagon.
                     См.
                     <a href="https://wiki.huckster.ru/prochie-instrukcii/rukovodstvo-polzovatelya-po-rabote-s-api-repraisera-huckster" target="_blank" rel="noopener">wiki Huckster</a>.
                   </div>
@@ -188,7 +188,7 @@
                       <option value="bad">Репрайсер ВЫКЛЮЧЕН</option>
                     </select>
                   </div>
-                  <div class="col-md-2" data-dg-huckster-filter-field="models" data-dg-filter-field-title="Модели (расхождения)">
+                  <div class="col-md-2" data-dg-huckster-filter-field="models" data-dg-filter-field-title="Модели (число% ↔ Автоматизация цены, затем расхождения между МП)">
                     <label class="form-label small mb-1" for="dg-huckster-filter-models">Модели</label>
                     <select class="form-select form-select-sm" id="dg-huckster-filter-models">
                       <option value="">Все</option>
@@ -268,6 +268,7 @@
                   </label>
                 </div>
                 <div class="dg-huckster-matrix-actions">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-huckster-columns-toggle-1" title="Управление видимостью столбцов таблицы (мост МС)">🧩 Столбцы</button>
                   <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-huckster-widths-toggle-1" data-dg-tooltip="Открыть/скрыть панель ручной настройки ширины колонок (UID, Наименование, Менеджер, Цена, Статус, Модели и др.)">📏 Ширины</button>
                   <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-huckster-matrix-export-toggle">Свернуть</button>
                 </div>
@@ -275,7 +276,19 @@
             </div>
             <div id="dg-huckster-matrix-export-body">
               <div class="card-body p-0">
-                <div class="dg-huckster-colwidth-strip d-none" id="dg-huckster-widths-panel-1">
+                <div class="datagon-columns-toolbox mb-2 d-none" id="dg-huckster-toolbox-panels-1">
+                  <div class="datagon-columns-panel" id="dg-huckster-columns-panel-1">
+                    <div class="columns-actions mb-2">
+                      <button type="button" class="btn btn-sm" id="dg-huckster-columns-all-1">Выделить все</button>
+                      <button type="button" class="btn btn-sm" id="dg-huckster-columns-none-1">Снять все</button>
+                      <button type="button" class="btn btn-sm" id="dg-huckster-columns-default-1">По умолчанию</button>
+                    </div>
+                    <div id="dg-huckster-columns-list-1" class="columns-grid" aria-live="polite"></div>
+                    <p class="small text-muted mb-0 d-none" id="dg-huckster-columns-nonbridge-hint-1">
+                      Для repricer-матрицы переключение столбцов недоступно. Нужен вид «мост МС» (первая колонка «ID / КОД»).
+                    </p>
+                  </div>
+                  <div class="datagon-columns-panel dg-huckster-colwidth-strip" id="dg-huckster-widths-panel-1">
                   <div class="dg-huckster-colwidth-wrap" title="Ширина колонок UID и «Наименование …» в обеих матрицах; сохраняется в браузере для пользователя.">
                     <span class="small text-muted text-nowrap">Ширина, px:</span>
                     <div class="dg-huckster-width-control">
@@ -315,6 +328,10 @@
                       <input type="number" class="form-control form-control-sm" data-huckster-width-key="stock_px" min="60" max="220" step="1" autocomplete="off" style="width:4.25rem" />
                     </div>
                     <div class="dg-huckster-width-control">
+                      <label class="small text-muted mb-0 text-nowrap">Авто цены</label>
+                      <input type="number" class="form-control form-control-sm" data-huckster-width-key="bridge_automation_px" min="72" max="420" step="2" autocomplete="off" style="width:4.25rem" />
+                    </div>
+                    <div class="dg-huckster-width-control">
                       <label class="small text-muted mb-0 text-nowrap">Цена</label>
                       <input type="number" class="form-control form-control-sm" data-huckster-width-key="price_px" min="80" max="360" step="5" autocomplete="off" style="width:4.25rem" />
                     </div>
@@ -325,6 +342,10 @@
                     <div class="dg-huckster-width-control">
                       <label class="small text-muted mb-0 text-nowrap">Модели</label>
                       <input type="number" class="form-control form-control-sm" data-huckster-width-key="bridge_models_px" min="90" max="640" step="5" autocomplete="off" style="width:4.25rem" />
+                    </div>
+                    <div class="dg-huckster-width-control">
+                      <label class="small text-muted mb-0 text-nowrap">Код МП</label>
+                      <input type="number" class="form-control form-control-sm" data-huckster-width-key="bridge_mp_sku_px" min="72" max="220" step="2" autocomplete="off" style="width:4.25rem" />
                     </div>
                     <div class="dg-huckster-width-control">
                       <label class="small text-muted mb-0 text-nowrap">Модели Unit</label>
@@ -347,6 +368,7 @@
                       <input type="number" class="form-control form-control-sm" data-huckster-width-key="sync_px" min="80" max="240" step="1" autocomplete="off" style="width:4.25rem" />
                     </div>
                     <button type="button" class="btn btn-sm btn-outline-primary" data-huckster-width-apply>Применить</button>
+                  </div>
                   </div>
                 </div>
                 <div class="dg-huckster-matrix-scroll">
@@ -405,6 +427,7 @@
                   </label>
                 </div>
                 <div class="dg-huckster-matrix-actions">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-huckster-columns-toggle-2" title="Управление видимостью столбцов таблицы (мост МС)">🧩 Столбцы</button>
                   <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-huckster-widths-toggle-2" data-dg-tooltip="Открыть/скрыть панель ручной настройки ширины колонок (UID, Наименование, Менеджер, Цена, Статус, Модели и др.)">📏 Ширины</button>
                   <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-huckster-matrix-rrc-toggle">Свернуть</button>
                 </div>
@@ -412,7 +435,19 @@
             </div>
             <div id="dg-huckster-matrix-rrc-body">
               <div class="card-body p-0">
-                <div class="dg-huckster-colwidth-strip d-none" id="dg-huckster-widths-panel-2">
+                <div class="datagon-columns-toolbox mb-2 d-none" id="dg-huckster-toolbox-panels-2">
+                  <div class="datagon-columns-panel" id="dg-huckster-columns-panel-2">
+                    <div class="columns-actions mb-2">
+                      <button type="button" class="btn btn-sm" id="dg-huckster-columns-all-2">Выделить все</button>
+                      <button type="button" class="btn btn-sm" id="dg-huckster-columns-none-2">Снять все</button>
+                      <button type="button" class="btn btn-sm" id="dg-huckster-columns-default-2">По умолчанию</button>
+                    </div>
+                    <div id="dg-huckster-columns-list-2" class="columns-grid" aria-live="polite"></div>
+                    <p class="small text-muted mb-0 d-none" id="dg-huckster-columns-nonbridge-hint-2">
+                      Для repricer-матрицы переключение столбцов недоступно. Нужен вид «мост МС» (первая колонка «ID / КОД»).
+                    </p>
+                  </div>
+                  <div class="datagon-columns-panel dg-huckster-colwidth-strip" id="dg-huckster-widths-panel-2">
                   <div class="dg-huckster-colwidth-wrap" title="Те же ширины колонок UID и «Наименование …», что и в матрице набора 1.">
                     <span class="small text-muted text-nowrap">Ширина, px:</span>
                     <div class="dg-huckster-width-control">
@@ -452,6 +487,10 @@
                       <input type="number" class="form-control form-control-sm" data-huckster-width-key="stock_px" min="60" max="220" step="1" autocomplete="off" style="width:4.25rem" />
                     </div>
                     <div class="dg-huckster-width-control">
+                      <label class="small text-muted mb-0 text-nowrap">Авто цены</label>
+                      <input type="number" class="form-control form-control-sm" data-huckster-width-key="bridge_automation_px" min="72" max="420" step="2" autocomplete="off" style="width:4.25rem" />
+                    </div>
+                    <div class="dg-huckster-width-control">
                       <label class="small text-muted mb-0 text-nowrap">Цена</label>
                       <input type="number" class="form-control form-control-sm" data-huckster-width-key="price_px" min="80" max="360" step="5" autocomplete="off" style="width:4.25rem" />
                     </div>
@@ -462,6 +501,10 @@
                     <div class="dg-huckster-width-control">
                       <label class="small text-muted mb-0 text-nowrap">Модели</label>
                       <input type="number" class="form-control form-control-sm" data-huckster-width-key="bridge_models_px" min="90" max="640" step="5" autocomplete="off" style="width:4.25rem" />
+                    </div>
+                    <div class="dg-huckster-width-control">
+                      <label class="small text-muted mb-0 text-nowrap">Код МП</label>
+                      <input type="number" class="form-control form-control-sm" data-huckster-width-key="bridge_mp_sku_px" min="72" max="220" step="2" autocomplete="off" style="width:4.25rem" />
                     </div>
                     <div class="dg-huckster-width-control">
                       <label class="small text-muted mb-0 text-nowrap">Модели Unit</label>
@@ -484,6 +527,7 @@
                       <input type="number" class="form-control form-control-sm" data-huckster-width-key="sync_px" min="80" max="240" step="1" autocomplete="off" style="width:4.25rem" />
                     </div>
                     <button type="button" class="btn btn-sm btn-outline-primary" data-huckster-width-apply>Применить</button>
+                  </div>
                   </div>
                 </div>
                 <div class="dg-huckster-matrix-scroll">
@@ -525,6 +569,7 @@
               </div>
               <div class="dg-huckster-matrix-toolbar">
                 <div class="dg-huckster-matrix-actions">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-huckster-columns-toggle-lost" title="Управление видимостью столбцов таблицы (мост МС)">🧩 Столбцы</button>
                   <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-huckster-widths-toggle-lost" data-dg-tooltip="Открыть/скрыть панель ручной настройки ширины колонок (UID, Наименование, Менеджер, Статус и др.)">📏 Ширины</button>
                   <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-huckster-matrix-lost-toggle">Свернуть</button>
                 </div>
@@ -532,7 +577,19 @@
             </div>
             <div id="dg-huckster-matrix-lost-body">
               <div class="card-body p-0">
-              <div class="dg-huckster-colwidth-strip d-none" id="dg-huckster-widths-panel-lost">
+                <div class="datagon-columns-toolbox mb-2 d-none" id="dg-huckster-toolbox-panels-lost">
+                  <div class="datagon-columns-panel" id="dg-huckster-columns-panel-lost">
+                    <div class="columns-actions mb-2">
+                      <button type="button" class="btn btn-sm" id="dg-huckster-columns-all-lost">Выделить все</button>
+                      <button type="button" class="btn btn-sm" id="dg-huckster-columns-none-lost">Снять все</button>
+                      <button type="button" class="btn btn-sm" id="dg-huckster-columns-default-lost">По умолчанию</button>
+                    </div>
+                    <div id="dg-huckster-columns-list-lost" class="columns-grid" aria-live="polite"></div>
+                    <p class="small text-muted mb-0 d-none" id="dg-huckster-columns-nonbridge-hint-lost">
+                      Для repricer-матрицы переключение столбцов недоступно. Нужен вид «мост МС» (первая колонка «ID / КОД»).
+                    </p>
+                  </div>
+                  <div class="datagon-columns-panel dg-huckster-colwidth-strip" id="dg-huckster-widths-panel-lost">
                 <div class="dg-huckster-colwidth-wrap" title="Те же ширины колонок, что и в наборе 1.">
                   <span class="small text-muted text-nowrap">Ширина, px:</span>
                   <div class="dg-huckster-width-control">
@@ -552,6 +609,10 @@
                     <input type="number" class="form-control form-control-sm" data-huckster-width-key="stock_px" min="60" max="220" step="1" autocomplete="off" style="width:4.25rem" />
                   </div>
                   <div class="dg-huckster-width-control">
+                    <label class="small text-muted mb-0 text-nowrap">Авто цены</label>
+                    <input type="number" class="form-control form-control-sm" data-huckster-width-key="bridge_automation_px" min="72" max="420" step="2" autocomplete="off" style="width:4.25rem" />
+                  </div>
+                  <div class="dg-huckster-width-control">
                     <label class="small text-muted mb-0 text-nowrap">Статус</label>
                     <input type="number" class="form-control form-control-sm" data-huckster-width-key="bridge_status_px" min="70" max="360" step="5" autocomplete="off" style="width:4.25rem" />
                   </div>
@@ -560,12 +621,17 @@
                     <input type="number" class="form-control form-control-sm" data-huckster-width-key="bridge_models_px" min="90" max="640" step="5" autocomplete="off" style="width:4.25rem" />
                   </div>
                   <div class="dg-huckster-width-control">
+                    <label class="small text-muted mb-0 text-nowrap">Код МП</label>
+                    <input type="number" class="form-control form-control-sm" data-huckster-width-key="bridge_mp_sku_px" min="72" max="220" step="2" autocomplete="off" style="width:4.25rem" />
+                  </div>
+                  <div class="dg-huckster-width-control">
                     <label class="small text-muted mb-0 text-nowrap">Актуально</label>
                     <input type="number" class="form-control form-control-sm" data-huckster-width-key="sync_px" min="80" max="240" step="1" autocomplete="off" style="width:4.25rem" />
                   </div>
                   <button type="button" class="btn btn-sm btn-outline-primary" data-huckster-width-apply>Применить</button>
                 </div>
-              </div>
+                  </div>
+                </div>
               <div class="dg-huckster-matrix-scroll">
                 <div class="table-responsive datagon-my-products-table-wrap">
                   <table class="table mb-0 dg-huckster-matrix-table" id="dg-huckster-table-lost"></table>
@@ -1069,9 +1135,11 @@
                 name_px: { def: 190, min: 80, max: 1600 },
                 manager_px: { def: 180, min: 100, max: 360 },
                 stock_px: { def: 88, min: 60, max: 220 },
+                bridge_automation_px: { def: 110, min: 72, max: 420 },
                 price_px: { def: 150, min: 80, max: 360 },
                 bridge_status_px: { def: 190, min: 70, max: 360 },
                 bridge_models_px: { def: 240, min: 90, max: 640 },
+                bridge_mp_sku_px: { def: 120, min: 72, max: 220 },
                 updated_px: { def: 118, min: 90, max: 240 },
                 repricer_px: { def: 76, min: 70, max: 180 },
                 unit_px: { def: 88, min: 70, max: 180 },
@@ -1777,7 +1845,113 @@
                 return base;
               }
 
+              /** Есть ли в ячейке «Модель …» текст названия (в т.ч. после двоеточия у «Репрайсер выключен»). */
+              function hucksterBridgeModelCellHasNames_(raw) {
+                var s = String(raw == null ? "" : raw).trim();
+                if (!s || s === "Модель не назначена") return false;
+                if (s.indexOf("Модель назначена, но Репрайсер на модели выключен") === 0) {
+                  var rest = s.split(":").slice(1).join(":").trim();
+                  return !!rest;
+                }
+                return true;
+              }
+
+              /** Уникальные числа из шаблона «число%» (как в ms_export.automation_price и в названиях Unit-моделей). */
+              function hucksterExtractPercentKeys_(text) {
+                var s = String(text == null ? "" : text);
+                var allowed = {};
+                var list = [];
+                var re = /(\d+)\s*%/g;
+                var m;
+                while ((m = re.exec(s)) !== null) {
+                  var k = String(m[1]);
+                  if (!allowed[k]) {
+                    allowed[k] = true;
+                    list.push(k);
+                  }
+                }
+                return { map: allowed, list: list };
+              }
+
+              /** Маркетплейс по индексу в фиксированном списке колонок «Модель Ozon|WB|ЯМ». */
+              function hucksterBridgeModelMpByIndex_(i) {
+                return i === 0 ? "ozon" : i === 1 ? "wildberries" : i === 2 ? "yandex" : "";
+              }
+
+              /**
+               * Этап 1: в «Автоматизация цены» есть хотя бы одно N%.
+               * Для маркетплейса с **Репрайсер ВКЛЮЧЕН**: либо в названии модели есть только N% из МС,
+               * либо при «Модель не назначена» — это тоже расхождение (нет названия для сверки с МС).
+               * Этап 2 (ниже): расхождение базы названий между маркетплейсами — bridgeModelCrossMpProblem_.
+               */
+              function bridgeModelPercentMismatchDetail_(row, head, opts) {
+                void opts;
+                var autoIdx = bridgeColIndex_(head, "Автоматизация цены");
+                var allowed = {};
+                var allowedList = [];
+                if (autoIdx >= 0) {
+                  var ak = hucksterExtractPercentKeys_(row[autoIdx]);
+                  allowed = ak.map;
+                  allowedList = ak.list;
+                }
+                if (!allowedList.length) {
+                  return { rowMismatch: false, byIdx: {}, allowedList: [] };
+                }
+                var modelLabels = ["Модель Ozon", "Модель WB", "Модель ЯМ"];
+                var byIdx = {};
+                var rowMismatch = false;
+                for (var i = 0; i < modelLabels.length; i++) {
+                  var idx = bridgeColIndex_(head, modelLabels[i]);
+                  if (idx < 0) continue;
+                  var raw = row[idx];
+                  var mp = hucksterBridgeModelMpByIndex_(i);
+                  if (!mp || bridgeCabStateFromRow_(row, head, mp) !== "ok") continue;
+                  var bad = false;
+                  if (!hucksterBridgeModelCellHasNames_(raw)) {
+                    bad = true;
+                  } else {
+                    var rawStr = String(raw == null ? "" : raw);
+                    var mk = hucksterExtractPercentKeys_(rawStr);
+                    var modelKeys = mk.list;
+                    if (!modelKeys.length) bad = true;
+                    else {
+                      for (var p = 0; p < modelKeys.length; p++) {
+                        if (!allowed[modelKeys[p]]) {
+                          bad = true;
+                          break;
+                        }
+                      }
+                    }
+                  }
+                  if (bad) {
+                    byIdx[idx] = true;
+                    rowMismatch = true;
+                  }
+                }
+                return { rowMismatch: rowMismatch, byIdx: byIdx, allowedList: allowedList };
+              }
+
+              function bridgeModelPercentMismatchProblemFromDetail_(head, det) {
+                if (!det || !det.rowMismatch) return null;
+                var parts = [];
+                var labels = ["Модель Ozon", "Модель WB", "Модель ЯМ"];
+                for (var i = 0; i < labels.length; i++) {
+                  var idx = bridgeColIndex_(head, labels[i]);
+                  if (idx >= 0 && det.byIdx[idx]) parts.push(bridgeModelLabel_(labels[i]));
+                }
+                var autoStr = det.allowedList.length ? det.allowedList.join("%, ") + "%" : "";
+                return {
+                  text:
+                    "Этап 1 — «Автоматизация цены» (" +
+                    autoStr +
+                    "): при включённом репрайсере для " +
+                    (parts.length ? parts.join(", ") : "маркетплейса") +
+                    " нет Unit-модели с нужным числом% в названии (или модель не назначена).",
+                };
+              }
+
               function bridgeModelsDiffState_(row, head, opts) {
+                if (bridgeModelPercentMismatchDetail_(row, head, opts).rowMismatch) return "diff";
                 var cols = [bridgeColIndex_(head, "Модель Ozon"), bridgeColIndex_(head, "Модель WB"), bridgeColIndex_(head, "Модель ЯМ")];
                 var uniq = {};
                 var count = 0;
@@ -1797,7 +1971,7 @@
                 return t || String(headLabel || "").trim();
               }
 
-              function bridgeModelProblem_(row, head, opts) {
+              function bridgeModelCrossMpProblem_(row, head, opts) {
                 var modelLabels = ["Модель Ozon", "Модель WB", "Модель ЯМ"];
                 var values = [];
                 var counts = {};
@@ -1815,13 +1989,23 @@
                   if (v.base && counts[v.base] === 1) {
                     return {
                       text:
-                        "Имеется расхождение моделей: предположительно модель " +
+                        "Этап 2 — расхождение моделей: предположительно модель " +
                         v.label +
                         " некорректная.",
                     };
                   }
                 }
-                return { text: "Имеется расхождение моделей: модели везде разные." };
+                return { text: "Этап 2 — расхождение моделей: модели везде разные." };
+              }
+
+              /** pctDetail: результат bridgeModelPercentMismatchDetail_, чтобы не считать дважды в рендере. */
+              function bridgeModelProblem_(row, head, opts, pctDetail) {
+                var det = pctDetail !== undefined && pctDetail !== null ? pctDetail : bridgeModelPercentMismatchDetail_(row, head, opts);
+                var pctP = bridgeModelPercentMismatchProblemFromDetail_(head, det);
+                var crossP = bridgeModelCrossMpProblem_(row, head, opts);
+                if (pctP && crossP) return { text: pctP.text + " " + crossP.text };
+                if (pctP) return pctP;
+                return crossP;
               }
 
               function readBridgeFilters_() {
@@ -1961,15 +2145,141 @@
                 return out;
               }
 
+              function hucksterBridgeColVisUserSlug_() {
+                var u = "guest";
+                try {
+                  u = String(window.localStorage.getItem("currentUser") || "guest").trim() || "guest";
+                } catch (eU) {}
+                return u.replace(/[^\w.-]+/g, "_");
+              }
+              function hucksterBridgeColVisStorageKey_(tableId) {
+                return "datagon_huckster_bridge_col_vis_v1." + tableId + "." + hucksterBridgeColVisUserSlug_();
+              }
+              function loadHucksterBridgeColVisibilityRaw_(tableId) {
+                try {
+                  var raw = localStorage.getItem(hucksterBridgeColVisStorageKey_(tableId));
+                  if (!raw) return {};
+                  var o = JSON.parse(raw);
+                  return o && typeof o === "object" ? o : {};
+                } catch (eL) {
+                  return {};
+                }
+              }
+              function saveHucksterBridgeColVisibilityRaw_(tableId, obj) {
+                try {
+                  localStorage.setItem(hucksterBridgeColVisStorageKey_(tableId), JSON.stringify(obj || {}));
+                } catch (eS) {}
+              }
+              function filterBridgeMatrixRowsByColumnVisibility_(tableId, rows) {
+                if (!rows || rows.length < 1) return rows;
+                var head = rows[0];
+                if (!head || !matrixIsMsBridgeHeader(head[0])) return rows;
+                var raw = loadHucksterBridgeColVisibilityRaw_(tableId);
+                var indices = [];
+                for (var i = 0; i < head.length; i++) {
+                  var label = String(head[i] == null ? "" : head[i]).trim();
+                  if (raw[label] === false) continue;
+                  indices.push(i);
+                }
+                var codeIx = bridgeColIndex_(head, "ID / КОД");
+                if (codeIx >= 0 && indices.indexOf(codeIx) < 0) indices.push(codeIx);
+                if (!indices.length) indices.push(0);
+                indices.sort(function (a, b) {
+                  return a - b;
+                });
+                function pick(row) {
+                  return indices.map(function (ix) {
+                    return row[ix];
+                  });
+                }
+                return [pick(head)].concat(rows.slice(1).map(pick));
+              }
+              function getHucksterCanonicalBridgeHeadForCols_(which) {
+                var rows =
+                  which === "lost"
+                    ? lastMatrixRowsLost
+                    : which === "1"
+                      ? hucksterMatrixFull1
+                      : hucksterMatrixFull2;
+                if (!rows || !rows.length) return null;
+                var h0 = rows[0];
+                if (!h0 || !matrixIsMsBridgeHeader(h0[0])) return null;
+                return h0;
+              }
+              function renderHucksterBridgeColumnPanel_(which) {
+                var tableId = which === "lost" ? "dg-huckster-table-lost" : "dg-huckster-table-" + which;
+                var list = document.getElementById("dg-huckster-columns-list-" + which);
+                var hint = document.getElementById("dg-huckster-columns-nonbridge-hint-" + which);
+                if (!list) return;
+                list.innerHTML = "";
+                if (hint) hint.classList.add("d-none");
+                var head = getHucksterCanonicalBridgeHeadForCols_(which);
+                if (!head) {
+                  if (hint) hint.classList.remove("d-none");
+                  return;
+                }
+                var raw = loadHucksterBridgeColVisibilityRaw_(tableId);
+                for (var i = 0; i < head.length; i++) {
+                  var label = String(head[i] == null ? "" : head[i]).trim();
+                  var id = "dg-huckster-colvis-" + which + "-" + i;
+                  var wrap = document.createElement("label");
+                  wrap.setAttribute("for", id);
+                  var cb = document.createElement("input");
+                  cb.type = "checkbox";
+                  cb.id = id;
+                  cb.checked = raw[label] !== false;
+                  var span = document.createElement("span");
+                  span.textContent = label;
+                  cb.addEventListener(
+                    "change",
+                    (function (L) {
+                      return function () {
+                        var o = loadHucksterBridgeColVisibilityRaw_(tableId);
+                        if (!this.checked && L === "ID / КОД") {
+                          this.checked = true;
+                          return;
+                        }
+                        o[L] = !!this.checked;
+                        saveHucksterBridgeColVisibilityRaw_(tableId, o);
+                        if (which === "lost") redrawHucksterLostMatrix();
+                        else redrawHucksterMatrix(which === "1" ? 1 : 2);
+                        renderHucksterBridgeColumnPanel_(which);
+                      };
+                    })(label)
+                  );
+                  wrap.appendChild(cb);
+                  wrap.appendChild(span);
+                  list.appendChild(wrap);
+                }
+              }
+              function applyHucksterBridgeColVisPreset_(which, mode) {
+                var tableId = which === "lost" ? "dg-huckster-table-lost" : "dg-huckster-table-" + which;
+                var head = getHucksterCanonicalBridgeHeadForCols_(which);
+                if (!head) return;
+                var o = {};
+                for (var i = 0; i < head.length; i++) {
+                  var label = String(head[i] == null ? "" : head[i]).trim();
+                  if (mode === "none") o[label] = label === "ID / КОД";
+                  else o[label] = true;
+                }
+                saveHucksterBridgeColVisibilityRaw_(tableId, o);
+                if (which === "lost") redrawHucksterLostMatrix();
+                else redrawHucksterMatrix(which === "1" ? 1 : 2);
+                renderHucksterBridgeColumnPanel_(which);
+              }
+
               function bridgeHeaderTooltip_(txt) {
                 var t = String(txt || "").trim();
                 if (t === "ID / КОД") return "Код товара из МойСклад; сопоставляется с UID Huckster в repricer.";
                 if (t === "Наименование товара") return "Название товара из МойСклад.";
                 if (t === "Менеджер") return "Менеджер из МойСклад (поле manager в ms_export).";
                 if (t === "Остаток") return "Остаток из ms_export. Строки моста — все коды из выгрузки МС; сужение списка — фильтрами на этой странице и галочками архива.";
+                if (t === "Автоматизация цены") return "Поле automation_price из ms_export (как на выгрузке МойСклад).";
                 if (t.indexOf("Цена") === 0) return "Выбранный тип цены из карточки МойСклад (если задан в настройках набора). Пусто — если цены нет или 0; строки при этом не скрываются.";
                 if (t === "Ozon" || t === "WB" || t === "ЯМ") return "Статус repricer по этому маркетплейсу: зелёный — ровно один включённый repricer по UID; красный — включённого repricer нет или кабинет не определяется однозначно.";
                 if (t.indexOf("Модель ") === 0) return "Unit-модель Huckster, где найден этот UID для выбранного кабинета маркетплейса.";
+                if (t.indexOf("Код товара на МП") === 0)
+                  return "Поле sku из ответа repricer/items/list для этого кабинета маркетплейса — идентификатор товара на МП.";
                 if (t === HUCKSTER_MATRIX_SYNC_HEADER) return "Когда Datagon успешно собрал этот тест/снимок матрицы.";
                 return t;
               }
@@ -1977,14 +2287,17 @@
               function renderMsBridgeMatrixTable(table, tableId, rows, renderOpts) {
                 renderOpts = renderOpts || {};
                 var isLostTable = tableId === "dg-huckster-table-lost";
+                rows = filterBridgeMatrixRowsByColumnVisibility_(tableId, rows);
                 var bridgeMeta = renderOpts.bridgeMeta || [];
                 var uidW = getUidColW();
                 var nameW = getNameColW();
                 var managerW = getMatrixColW("manager_px");
                 var stockW = getMatrixColW("stock_px");
+                var automationW = getMatrixColW("bridge_automation_px");
                 var priceW = getMatrixColW("price_px");
                 var statusW = getMatrixColW("bridge_status_px");
                 var modelW = getMatrixColW("bridge_models_px");
+                var mpSkuW = getMatrixColW("bridge_mp_sku_px");
                 var syncW = getMatrixColW("sync_px");
                 var head = rows[0];
                 var colCount = head.length;
@@ -2003,9 +2316,11 @@
                   else if (h === "Наименование товара") { w = nameW; cls = "dg-huckster-bridge-col-name"; }
                   else if (h === "Менеджер") { w = managerW; cls = "dg-huckster-bridge-col-manager"; }
                   else if (h === "Остаток") { w = stockW; }
+                  else if (h === "Автоматизация цены") { w = automationW; cls = "dg-huckster-bridge-col-automation"; }
                   else if (h.indexOf("Цена") === 0) { w = priceW; cls = "dg-huckster-bridge-col-price"; }
                   else if (h === "Ozon" || h === "WB" || h === "ЯМ") { w = statusW; }
                   else if (h.indexOf("Модель ") === 0) { w = modelW; cls = "dg-huckster-col-unit-models"; }
+                  else if (h.indexOf("Код товара на МП") === 0) { w = mpSkuW; cls = "dg-huckster-bridge-col-mp-sku"; }
                   else if (h === HUCKSTER_MATRIX_SYNC_HEADER) { w = syncW; cls = "dg-huckster-col-sync"; }
                   colHtml += '<col' + (cls ? ' class="' + cls + '"' : "") + ' style="width:' + w + "px;min-width:" + w + "px;max-width:" + w + 'px">';
                 }
@@ -2021,7 +2336,10 @@
                   var row = rows[r] || [];
                   var metaRow = bridgeMeta[r] || null;
                   var cabs = metaRow && metaRow.cabinets ? metaRow.cabinets : {};
-                  var modelProblem = bridgeModelProblem_(row, head, { rrc: tableId === "dg-huckster-table-2" });
+                  var pctMismatchDetail = bridgeModelPercentMismatchDetail_(row, head, {
+                    rrc: tableId === "dg-huckster-table-2",
+                  });
+                  var modelProblem = bridgeModelProblem_(row, head, { rrc: tableId === "dg-huckster-table-2" }, pctMismatchDetail);
                   var nameIdx = bridgeColIndex_(head, "Наименование товара");
                   tbody += "<tr>";
                   for (var j = 0; j < colCount; j++) {
@@ -2047,22 +2365,28 @@
                       }
                     }
                     if (String(head[j] || "").indexOf("Цена") === 0) cls.push("dg-huckster-bridge-price");
+                    if (String(head[j] || "").trim() === "Автоматизация цены") cls.push("dg-huckster-bridge-col-automation");
                     var isModelCol = String(head[j] || "").indexOf("Модель ") === 0;
+                    if (String(head[j] || "").indexOf("Код товара на МП") === 0) cls.push("dg-huckster-bridge-col-mp-sku");
                     if (isModelCol) {
                       var modelValRaw = String(val || "").trim();
                       var modelVal = modelValRaw.toLowerCase();
                       var modelOff =
                         modelVal.indexOf("модель назначена, но репрайсер на модели выключен") === 0;
                       var modelMissing = modelValRaw === "Модель не назначена";
+                      var pctBad = pctMismatchDetail && pctMismatchDetail.byIdx && pctMismatchDetail.byIdx[j];
                       if (isLostTable) {
                         if (modelMissing || !modelValRaw) cls.push("dg-huckster-bridge-model-ok");
                         else cls.push(modelOff ? "dg-huckster-bridge-model-missing" : "dg-huckster-bridge-model-missing");
+                        if (pctBad) cls.push("dg-huckster-bridge-model-percent-bad");
                       } else if (modelMissing) {
                         cls.push("dg-huckster-bridge-model-missing");
+                        if (pctBad) cls.push("dg-huckster-bridge-model-percent-bad");
                       } else if (modelOff) {
                         cls.push("dg-huckster-bridge-model-off");
                       } else if (modelValRaw) {
-                        cls.push("dg-huckster-bridge-model-ok");
+                        if (pctBad) cls.push("dg-huckster-bridge-model-percent-bad");
+                        else cls.push("dg-huckster-bridge-model-ok");
                       }
                     }
                     if (modelProblem && j === nameIdx) cls.push("dg-huckster-bridge-name-model-diff");
@@ -2077,9 +2401,20 @@
                         ) +
                         '"';
                     } else if (isModelCol) {
-                      if (val === "Модель не назначена") {
+                      if (pctMismatchDetail && pctMismatchDetail.byIdx && pctMismatchDetail.byIdx[j]) {
+                        var al = pctMismatchDetail.allowedList && pctMismatchDetail.allowedList.length
+                          ? pctMismatchDetail.allowedList.join("%, ") + "%"
+                          : "";
+                        var pctTip =
+                          String(val).trim() === "Модель не назначена"
+                            ? "Этап 1: при «Автоматизация цены» МС (" +
+                              al +
+                              ") и включённом репрайсере должна быть Unit-модель с тем же числом% в названии. Сейчас модель не назначена."
+                            : "Этап 1: число% в названии модели не совпадает с «Автоматизация цены» МС (" + al + ").";
+                        tip = ' title="' + escAttr(pctTip) + '"';
+                      } else if (val === "Модель не назначена") {
                         tip = ' title="UID не найден в Unit-моделях этого маркетплейса."';
-                      } else if (val === "Модель назначена, но Репрайсер на модели выключен") {
+                      } else if (String(val).indexOf("Модель назначена, но Репрайсер на модели выключен") === 0) {
                         tip = ' title="UID есть в Unit-модели, но repricer для товара выключен или кабинет не определён как включённый."';
                       } else if (val) {
                         tip = ' title="' + escAttr("Модель назначена: " + val) + '"';
@@ -2223,6 +2558,24 @@
                 var y = window.scrollY || window.pageYOffset || 0;
                 var absTop = y + (rect && rect.top ? rect.top : 0);
                 thead.setAttribute("data-dg-base-top", String(absTop));
+              }
+
+              /**
+               * После открытия/закрытия `.datagon-columns-toolbox` (или сворачивания card-body) таблица
+               * смещается по вертикали — без пересъёма `data-dg-base-top` плавающий thead уезжает вниз.
+               * См. `.cursor/rules/datagon-table-behavior-lock.mdc` (без искусственного смещения; паритет moysklad/my-products).
+               */
+              function hucksterMatrixFloatingRebaseAllAfterLayout_() {
+                requestAnimationFrame(function () {
+                  requestAnimationFrame(function () {
+                    ["dg-huckster-table-1", "dg-huckster-table-2", "dg-huckster-table-lost"].forEach(function (tid) {
+                      var th = document.getElementById(tid + "-thead");
+                      if (!th) return;
+                      hucksterMatrixFloatingMeasureBase(th);
+                      hucksterMatrixFloatingSchedule(tid);
+                    });
+                  });
+                });
               }
 
               function hucksterMatrixFloatingBind(tableId) {
@@ -3248,6 +3601,7 @@
                   try {
                     localStorage.setItem(HUCKSTER_MATRIX_EXPORT_COLLAPSE_KEY, hidden ? "0" : "1");
                   } catch (e) {}
+                  hucksterMatrixFloatingRebaseAllAfterLayout_();
                 });
               })();
 
@@ -3277,6 +3631,7 @@
                   try {
                     localStorage.setItem(HUCKSTER_MATRIX_RRC_COLLAPSE_KEY, hidden ? "0" : "1");
                   } catch (e) {}
+                  hucksterMatrixFloatingRebaseAllAfterLayout_();
                 });
               })();
 
@@ -3306,6 +3661,7 @@
                   try {
                     localStorage.setItem(HUCKSTER_MATRIX_LOST_COLLAPSE_KEY, hidden ? "0" : "1");
                   } catch (e) {}
+                  hucksterMatrixFloatingRebaseAllAfterLayout_();
                 });
               })();
 
@@ -3317,7 +3673,7 @@
               // (см. .cursor/rules/datagon-list-page-baseline-moysklad.mdc — баритон таблицы:
               // тяжёлые управляющие панели не должны постоянно занимать место в card-body,
               // открываются по запросу из card-header). Состояние сохраняется per-user.
-              (function bindHucksterMatrixWidthsPanels() {
+              (function bindHucksterMatrixToolboxPanels() {
                 var STORAGE_PREFIX = "datagon_huckster_matrix_widths_panel_open_v1.";
                 function userKey(which) {
                   var u = "guest";
@@ -3326,25 +3682,99 @@
                   } catch (e0) {}
                   return STORAGE_PREFIX + which + "." + u.replace(/[^\w.-]+/g, "_");
                 }
+                function syncToolbox(panelsWrap, colPanel, widthsPanel) {
+                  if (!panelsWrap) return;
+                  var open =
+                    (colPanel && colPanel.classList.contains("open")) ||
+                    (widthsPanel && widthsPanel.classList.contains("open"));
+                  panelsWrap.classList.toggle("d-none", !open);
+                }
                 function bindOne(which) {
-                  var btn = document.getElementById("dg-huckster-widths-toggle-" + which);
-                  var panel = document.getElementById("dg-huckster-widths-panel-" + which);
-                  if (!btn || !panel) return;
+                  var colBtn = document.getElementById("dg-huckster-columns-toggle-" + which);
+                  var widthsBtn = document.getElementById("dg-huckster-widths-toggle-" + which);
+                  var panelsWrap = document.getElementById("dg-huckster-toolbox-panels-" + which);
+                  var colPanel = document.getElementById("dg-huckster-columns-panel-" + which);
+                  var widthsPanel = document.getElementById("dg-huckster-widths-panel-" + which);
+                  if (!widthsBtn || !widthsPanel || !panelsWrap) return;
                   var key = userKey(which);
-                  var startOpen = false;
-                  try { startOpen = window.localStorage.getItem(key) === "1"; } catch (e) {}
-                  if (startOpen) panel.classList.remove("d-none");
-                  btn.setAttribute("aria-expanded", startOpen ? "true" : "false");
-                  btn.addEventListener("click", function () {
-                    var open = panel.classList.toggle("d-none");
-                    var nowOpen = !open;
-                    btn.setAttribute("aria-expanded", nowOpen ? "true" : "false");
-                    try { window.localStorage.setItem(key, nowOpen ? "1" : "0"); } catch (e) {}
+                  var startWidthsOpen = false;
+                  try {
+                    startWidthsOpen = window.localStorage.getItem(key) === "1";
+                  } catch (eS) {}
+                  if (startWidthsOpen) {
+                    widthsPanel.classList.add("open");
+                    syncToolbox(panelsWrap, colPanel, widthsPanel);
+                  }
+                  widthsBtn.setAttribute("aria-expanded", startWidthsOpen ? "true" : "false");
+                  if (colBtn && colPanel) {
+                    colBtn.addEventListener("click", function (e) {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      colPanel.classList.toggle("open");
+                      widthsPanel.classList.remove("open");
+                      if (colPanel.classList.contains("open")) renderHucksterBridgeColumnPanel_(which);
+                      syncToolbox(panelsWrap, colPanel, widthsPanel);
+                      widthsBtn.setAttribute("aria-expanded", "false");
+                      colBtn.setAttribute("aria-expanded", colPanel.classList.contains("open") ? "true" : "false");
+                      hucksterMatrixFloatingRebaseAllAfterLayout_();
+                    });
+                    var allB = document.getElementById("dg-huckster-columns-all-" + which);
+                    var noneB = document.getElementById("dg-huckster-columns-none-" + which);
+                    var defB = document.getElementById("dg-huckster-columns-default-" + which);
+                    if (allB)
+                      allB.addEventListener("click", function (e) {
+                        e.preventDefault();
+                        applyHucksterBridgeColVisPreset_(which, "all");
+                      });
+                    if (noneB)
+                      noneB.addEventListener("click", function (e) {
+                        e.preventDefault();
+                        applyHucksterBridgeColVisPreset_(which, "none");
+                      });
+                    if (defB)
+                      defB.addEventListener("click", function (e) {
+                        e.preventDefault();
+                        applyHucksterBridgeColVisPreset_(which, "default");
+                      });
+                  }
+                  widthsBtn.addEventListener("click", function (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    widthsPanel.classList.toggle("open");
+                    if (colPanel) colPanel.classList.remove("open");
+                    if (colBtn) colBtn.setAttribute("aria-expanded", "false");
+                    var nowW = widthsPanel.classList.contains("open");
+                    widthsBtn.setAttribute("aria-expanded", nowW ? "true" : "false");
+                    syncToolbox(panelsWrap, colPanel, widthsPanel);
+                    try {
+                      window.localStorage.setItem(key, nowW ? "1" : "0");
+                    } catch (eW) {}
+                    hucksterMatrixFloatingRebaseAllAfterLayout_();
                   });
                 }
                 bindOne("1");
                 bindOne("2");
                 bindOne("lost");
+                hucksterMatrixFloatingRebaseAllAfterLayout_();
+                document.addEventListener("click", function (e) {
+                  ["1", "2", "lost"].forEach(function (which) {
+                    var panelsWrap = document.getElementById("dg-huckster-toolbox-panels-" + which);
+                    var colPanel = document.getElementById("dg-huckster-columns-panel-" + which);
+                    var widthsPanel = document.getElementById("dg-huckster-widths-panel-" + which);
+                    var colBtn = document.getElementById("dg-huckster-columns-toggle-" + which);
+                    var widthsBtn = document.getElementById("dg-huckster-widths-toggle-" + which);
+                    if (!panelsWrap || !widthsPanel) return;
+                    if (e.target.closest("#dg-huckster-toolbox-panels-" + which)) return;
+                    if (e.target.closest("#dg-huckster-columns-toggle-" + which)) return;
+                    if (e.target.closest("#dg-huckster-widths-toggle-" + which)) return;
+                    if (colPanel) colPanel.classList.remove("open");
+                    widthsPanel.classList.remove("open");
+                    if (colBtn) colBtn.setAttribute("aria-expanded", "false");
+                    if (widthsBtn) widthsBtn.setAttribute("aria-expanded", "false");
+                    syncToolbox(panelsWrap, colPanel, widthsPanel);
+                  });
+                  hucksterMatrixFloatingRebaseAllAfterLayout_();
+                });
               })();
 
               (function bindHucksterFilterFieldsVisibility() {
@@ -3357,7 +3787,7 @@
                       { key: 'ozon', title: 'Ozon', hint: 'Состояние репрайсера на Ozon' },
                       { key: 'wb', title: 'Wildberries', hint: 'Состояние репрайсера на WB' },
                       { key: 'yandex', title: 'Яндекс Маркет', hint: 'Состояние репрайсера на ЯМ' },
-                      { key: 'models', title: 'Модели (расхождения)', hint: 'Расхождения назначения Unit-моделей' },
+                      { key: 'models', title: 'Модели (расхождения)', hint: 'Сначала число% в названии модели vs «Автоматизация цены»; затем разные Unit-модели между Ozon/WB/ЯМ' },
                     ],
                   },
                   {
