@@ -8,7 +8,8 @@
                   Закупки
                   <div class="page-title-subheading">
                     По умолчанию в списке только неархивные позиции МойСклад со складской позицией «Да» и без комплектов.
-                    Остальное — фильтрами (архив, складская позиция, комплекты, только с остатком, поиск, поставщик).
+                    Остальное — фильтрами (архив, складская позиция, «Перестали сотрудничать», комплекты, только с остатком, поиск, поставщик).
+                    Код товара и ссылка «🕘 Лог» выводятся в колонке «Наименование»; ссылка на карточку — по коду.
                     К выгрузке МС добавляются сохранённые вами поля закупок (неснижаемый Датагон, кратность, мин. остаток «считать как 0»).
                   </div>
                 </div>
@@ -98,6 +99,20 @@
                   </select>
                 </div>
               </div>
+              <div class="row g-2 align-items-end mt-2">
+                <div
+                  class="col-md-3"
+                  data-dg-pu-filter-field="pu_no_longer_cooperation"
+                  data-dg-tooltip="Поле МС «Перестали сотрудничать» (no_longer_cooperation). Нет — не помечено «Да» в МС (пусто, «нет», другое). Да — в МС ровно «Да». Все — без отбора."
+                >
+                  <label class="form-label" for="pu-f-no_longer_cooperation">Перестали сотрудничать</label>
+                  <select class="form-select" id="pu-f-no_longer_cooperation">
+                    <option value="all">Все</option>
+                    <option value="not_stopped" selected>Нет</option>
+                    <option value="stopped">Да</option>
+                  </select>
+                </div>
+              </div>
               <div class="mt-3 d-flex flex-wrap gap-3" data-dg-pu-filter-field="pu_filter_checks">
                 <div class="form-check">
                   <input class="form-check-input" type="checkbox" id="pu-only-stock" />
@@ -107,15 +122,28 @@
                   <input class="form-check-input" type="checkbox" id="pu-include-bundles" />
                   <label class="form-check-label" for="pu-include-bundles" data-dg-tooltip="По умолчанию комплекты исключены, как требует ТЗ закупок">Включить комплекты</label>
                 </div>
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" id="pu-zero-stock" />
+                  <label class="form-check-label" for="pu-zero-stock" data-dg-tooltip="Остаток в МС (ms_export.stock) ≤ 0">Нулевой остаток</label>
+                </div>
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" id="pu-zero-stock-no-transit" />
+                  <label class="form-check-label" for="pu-zero-stock-no-transit" data-dg-tooltip="Остаток ≤ 0 и «В пути» из карточки МС (inTransit в payload) ≤ 0 — без ожидаемой поставки">Нулевой остаток без ожидания</label>
+                </div>
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" id="pu-no-multiplicity" />
+                  <label class="form-check-label" for="pu-no-multiplicity" data-dg-tooltip="В закупках не задана кратность или она &lt; 1 шт (dg_purchase_overrides.multiplicity)">Без кратности</label>
+                </div>
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" id="pu-incomplete-pack" />
+                  <label class="form-check-label" for="pu-incomplete-pack" data-dg-tooltip="Кратность в закупках ≥ 1, остаток &gt; 0, но меньше кратности (неполная «упаковка» заказа)">Неполная упаковка</label>
+                </div>
               </div>
               <div class="mt-3 d-flex flex-wrap gap-2" data-dg-pu-filter-field="pu_filter_actions">
-                <button type="button" class="btn btn-sm btn-primary" id="purchase-apply" data-dg-tooltip="Применить фильтры и обновить таблицу"><i class="pe-7s-search me-1"></i>Применить</button>
-                <button type="button" class="btn btn-sm btn-outline-secondary" id="purchase-reset" data-dg-tooltip="Сбросить фильтры к значениям по умолчанию"><i class="pe-7s-refresh me-1"></i>По умолчанию</button>
-                <button type="button" class="btn btn-sm btn-outline-primary" id="purchase-refresh"><i class="pe-7s-refresh me-1"></i>Обновить</button>
+                <button type="button" class="btn btn-sm btn-primary" id="purchase-apply" data-dg-tooltip="Применить фильтры и обновить таблицу" data-dg-notify-start="Применяем фильтры закупок…"><i class="pe-7s-search me-1"></i>Применить</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="purchase-reset" data-dg-tooltip="Сбросить фильтры к значениям по умолчанию" data-dg-notify-start="Сбрасываем фильтры закупок…"><i class="pe-7s-refresh me-1"></i>По умолчанию</button>
+                <button type="button" class="btn btn-sm btn-outline-primary" id="purchase-refresh" data-dg-notify-start="Обновляем таблицу закупок…"><i class="pe-7s-refresh me-1"></i>Обновить</button>
                 <button type="button" class="btn btn-sm btn-outline-dark" id="purchase-copy-link"><i class="pe-7s-link me-1"></i>Скопировать ссылку</button>
-                <input type="file" id="dg-pu-import-file" accept=".csv,text/csv,text/plain" class="d-none" aria-hidden="true" />
-                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-pu-import-btn" data-dg-tooltip="UTF-8 CSV (Excel: разделитель ; или ,). Колонки: Код и поля Нес.остаток Датагон / Кратность / Мин. остаток сч.как 0. Пустая ячейка — очистить значение в БД."><i class="pe-7s-upload me-1"></i>Импорт CSV…</button>
-                <button type="button" class="btn btn-sm btn-link py-0 align-baseline" id="dg-pu-import-template" data-dg-tooltip="Скачать пример строки заголовков (Excel RU)">Шаблон CSV</button>
               </div>
               </div>
             </div>
@@ -163,9 +191,9 @@
                   <div id="dg-pu-widths-list" class="dg-pu-widths-grid"></div>
                 </div>
               </div>
-              <div style="width:100%;max-width:100%;overflow-x:auto;overflow-y:visible;-webkit-overflow-scrolling:touch">
+              <div id="dg-pu-table-scroll-outer" style="width:100%;max-width:100%;overflow-x:auto;overflow-y:visible;-webkit-overflow-scrolling:touch">
                 <div class="table-responsive datagon-my-products-table-wrap" style="display:block;width:100%;max-width:100%;min-width:0;overflow:visible;position:relative">
-                  <table class="table table-hover table-striped mb-0 datagon-my-products-table dg-pu-table" style="width:max-content;min-width:2400px;max-width:none;table-layout:fixed;border-collapse:collapse;border-spacing:0">
+                  <table class="table table-hover table-striped mb-0 datagon-my-products-table dg-pu-table" style="width:max-content;min-width:2500px;max-width:none;table-layout:fixed;border-collapse:collapse;border-spacing:0">
                     <thead id="dg-pu-thead"></thead>
                     <tbody id="dg-pu-tbody"></tbody>
                   </table>
@@ -179,5 +207,26 @@
                 </div>
               </div>
               <p class="text-muted mb-0 mt-2" id="dg-pu-table-hint">—</p>
+            </div>
+          </div>
+
+          <div id="dg-pu-log-overlay" class="dg-pu-log-overlay" style="display: none" aria-hidden="true">
+            <div class="dg-pu-log-backdrop" id="dg-pu-log-backdrop"></div>
+            <div class="dg-pu-log-panel card shadow-lg border-0">
+              <div class="card-header d-flex align-items-center justify-content-between gap-2">
+                <div class="d-flex flex-column" style="min-width: 0">
+                  <div class="fw-semibold" id="dg-pu-log-title">Журнал закупок</div>
+                  <div class="text-muted small" id="dg-pu-log-subtitle"></div>
+                </div>
+                <div class="d-flex align-items-center gap-2 flex-shrink-0">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-pu-log-refresh" data-dg-notify-start="Обновляем журнал закупок…">Обновить</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-pu-log-close">Закрыть</button>
+                </div>
+              </div>
+              <div class="card-body p-0">
+                <div class="dg-pu-log-body" id="dg-pu-log-body">
+                  <div class="text-muted small text-center py-4">Загрузка журнала…</div>
+                </div>
+              </div>
             </div>
           </div>

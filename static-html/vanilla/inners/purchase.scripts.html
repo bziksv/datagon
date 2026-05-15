@@ -7,9 +7,9 @@
       //   opts.puSub    → подпись под числом в шапке (продажи / дни отсутствия)
       //   opts.center   → центрирование текста
       var PU_COLS = [
-        ["code", "Код", { center: true }],
+        ["code", "Код"],
         ["article", "Артикул", { center: true }],
-        ["name", "Наименование"],
+        ["name", "Наименование", { sortKey: "code" }],
         ["supplier_label", "Поставщик"],
         ["buy_price", "Закупочная цена", { center: true }],
         ["min_stock", "Неснижаемый остаток", { center: true }],
@@ -54,13 +54,37 @@
       // карточка в UI собирается отдельно, поэтому маппим к ключу `supplier`.
       var SORT_KEY_REMAP = { supplier_label: "supplier" };
 
+      // Минимальные ширины = дефолт «📏 Ширины» для новых пользователей / сброса localStorage.
       var COL_MIN = {
-        code: 90, article: 110, name: 320, supplier_label: 220,
-        buy_price: 110, min_stock: 110, formula_proposed_min_stock: 120, automation_price: 130,
-        min_stock_dg: 130, multiplicity: 110,
-        min_stock_calc_as: 130, pack_qty: 110, stock: 100, in_transit: 100,
-        d_3: 72, d_5: 72, d_7: 72, d_15a: 76, d_15b: 76, d_30a: 76, d_30b: 76,
-        d_60a: 76, d_60b: 76, d_90a: 76, d_90b: 76, d_180a: 80, d_180b: 80, d_365a: 80, d_365b: 80,
+        code: 60,
+        article: 80,
+        name: 260,
+        supplier_label: 110,
+        buy_price: 100,
+        min_stock: 70,
+        formula_proposed_min_stock: 70,
+        automation_price: 70,
+        min_stock_dg: 70,
+        multiplicity: 70,
+        min_stock_calc_as: 70,
+        pack_qty: 70,
+        stock: 80,
+        in_transit: 60,
+        d_3: 60,
+        d_5: 60,
+        d_7: 60,
+        d_15a: 60,
+        d_15b: 60,
+        d_30a: 60,
+        d_30b: 60,
+        d_60a: 60,
+        d_60b: 60,
+        d_90a: 60,
+        d_90b: 60,
+        d_180a: 60,
+        d_180b: 60,
+        d_365a: 60,
+        d_365b: 60,
       };
       function getColMin(key) {
         if (COL_MIN[key] != null) return COL_MIN[key];
@@ -69,6 +93,117 @@
 
       var FLOATING_HEADER_OFFSET_PX = 2;
       var FLOATING_HEADER_START_EPS_PX = 3;
+      var puFloatingHeaderRaf = 0;
+      var puFloatingLastScrollTs = 0;
+
+      function updatePuStickyTopVar() {
+        var app = document.querySelector(".app-container");
+        var header = document.querySelector(".app-header");
+        var fixed = Boolean(app && app.classList && app.classList.contains("fixed-header"));
+        var top = 0;
+        if (fixed && header && header.getBoundingClientRect) {
+          var rect = header.getBoundingClientRect();
+          top = rect && rect.height ? rect.height : 60;
+        }
+        document.documentElement.style.setProperty("--dg-table-sticky-top", top + "px");
+      }
+
+      function getPuStickyTopPx() {
+        var app = document.querySelector(".app-container");
+        var hdr = document.querySelector(".app-header");
+        var fixed = Boolean(app && app.classList && app.classList.contains("fixed-header"));
+        if (!fixed) return 0;
+        if (!hdr || !hdr.getBoundingClientRect) return 60;
+        var r = hdr.getBoundingClientRect();
+        var h = r && r.height ? r.height : 60;
+        return h > 0 ? h : 60;
+      }
+
+      function capturePuTheadBaseTop() {
+        var thead = document.getElementById("dg-pu-thead");
+        if (!thead) return;
+        thead.style.transform = "";
+        thead.style.position = "";
+        thead.style.zIndex = "";
+        thead.style.willChange = "";
+        thead.removeAttribute("data-dg-floating");
+        var rect = thead.getBoundingClientRect();
+        var absTop = (window.scrollY || window.pageYOffset || 0) + (rect && rect.top ? rect.top : 0);
+        thead.setAttribute("data-dg-base-top", String(absTop));
+      }
+
+      function updatePuFloatingHeaderFallback() {
+        var thead = document.getElementById("dg-pu-thead");
+        if (!thead) return;
+        var table = thead.closest("table");
+        if (!table || !table.getBoundingClientRect) return;
+        var row = thead.querySelector("tr");
+        if (!row) return;
+
+        var y = window.scrollY || window.pageYOffset || 0;
+        var headerTop = getPuStickyTopPx();
+
+        var baseTopAbs = Number(thead.getAttribute("data-dg-base-top") || 0);
+        if (!Number.isFinite(baseTopAbs) || baseTopAbs <= 0) return;
+        var tableRect = table.getBoundingClientRect();
+        var tableBottom = tableRect.bottom + y;
+        var rowRect = row.getBoundingClientRect();
+        var rowHeight = rowRect && rowRect.height ? rowRect.height : 0;
+
+        var headerLine = y + headerTop;
+        var start = baseTopAbs + FLOATING_HEADER_START_EPS_PX;
+        var end = tableBottom - rowHeight;
+        if (headerLine <= start || headerLine >= end) {
+          if (thead.style.transform) {
+            thead.style.transform = "";
+            thead.style.position = "";
+            thead.style.zIndex = "";
+            thead.style.willChange = "";
+            thead.removeAttribute("data-dg-floating");
+          }
+          return;
+        }
+
+        var zoomAwareOffset = FLOATING_HEADER_OFFSET_PX;
+        var dpr = window.devicePixelRatio || 1;
+        if (Math.abs(dpr - 1) < 0.03) zoomAwareOffset = FLOATING_HEADER_OFFSET_PX - 3;
+        var shift = Math.max(0, headerLine - start - zoomAwareOffset);
+        var shiftPx = Number(shift.toFixed(3));
+        var nextTransform = "translate3d(0," + shiftPx + "px,0)";
+        if (thead.style.transform !== nextTransform) {
+          thead.style.transform = nextTransform;
+          thead.style.position = "relative";
+          thead.style.zIndex = "25";
+          thead.style.willChange = "transform";
+          thead.setAttribute("data-dg-floating", "1");
+        }
+      }
+
+      function puFloatingHeaderTick(ts) {
+        puFloatingHeaderRaf = 0;
+        updatePuFloatingHeaderFallback();
+        if (ts - puFloatingLastScrollTs < 140) {
+          puFloatingHeaderRaf = requestAnimationFrame(puFloatingHeaderTick);
+        }
+      }
+
+      function schedulePuFloatingHeaderUpdate() {
+        puFloatingLastScrollTs = performance.now();
+        if (puFloatingHeaderRaf) return;
+        puFloatingHeaderRaf = requestAnimationFrame(puFloatingHeaderTick);
+      }
+
+      function onScrollPuFloatingHeader() {
+        schedulePuFloatingHeaderUpdate();
+      }
+
+      function puRefreshFloatingAfterLayout() {
+        requestAnimationFrame(function () {
+          capturePuTheadBaseTop();
+          schedulePuFloatingHeaderUpdate();
+        });
+      }
+
       var HEADER_FONT = {
         verticalAlign: "middle", fontSize: "12px", textAlign: "center",
         paddingTop: "8px", paddingBottom: "8px",
@@ -78,10 +213,15 @@
         limit: 100,
         archived: "active",
         stock_position: "yes",
+        no_longer_cooperation: "not_stopped",
         search: "",
         supplier: "",
         only_stock: "0",
         include_bundles: "0",
+        zero_stock: "0",
+        zero_stock_no_transit: "0",
+        no_multiplicity: "0",
+        incomplete_pack: "0",
       };
 
       var FILTERS_KEY = "datagon_purchase_filters_collapsed_v1";
@@ -105,6 +245,8 @@
       var total = 0;
       var limit = 100;
       var lastRows = [];
+      var puLogModal = { code: "", name: "", offset: 0, limit: 100, total: 0, filterField: "" };
+      var PURCHASE_LOG_SOURCE_LABELS = { override: "Ячейка", import: "Импорт CSV" };
       var loading = false;
       var columnWidths = {};
       var DEFAULT_VISIBLE_KEYS = PU_COLS.map(function (p) { return p[0]; });
@@ -128,6 +270,234 @@
         if (!Number.isFinite(x)) return "";
         return Number.isInteger(x) ? String(x) : String(x);
       }
+
+      function escapeHtml(s) {
+        return String(s == null ? "" : s)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      }
+
+      function formatDateTimeMsk(value) {
+        if (!value) return "";
+        var d;
+        try {
+          d = new Date(value);
+        } catch (e) {
+          return String(value);
+        }
+        if (!d || isNaN(d.getTime())) return String(value);
+        try {
+          return d.toLocaleString("ru-RU", { timeZone: "Europe/Moscow" });
+        } catch (e) {
+          return d.toISOString();
+        }
+      }
+
+      function purchaseLogSourceLabel(src) {
+        var k = String(src || "override");
+        return PURCHASE_LOG_SOURCE_LABELS[k] || k;
+      }
+
+      /* ----- Hover-журнал по полю override (как .dg-dim-cell-tip на exports-dimensions) ----- */
+      var puTipCache = {};
+      var PU_TIP_CACHE_TTL_MS = 60000;
+      var puTipEl = null;
+      var puTipShowTimer = null;
+      var puTipHideTimer = null;
+      var puTipCurrentTarget = null;
+      var puTipListenersBound = false;
+
+      function ensurePuTipEl() {
+        if (puTipEl) return puTipEl;
+        puTipEl = document.createElement("div");
+        puTipEl.className = "dg-pu-cell-tip";
+        puTipEl.setAttribute("role", "tooltip");
+        puTipEl.style.display = "none";
+        document.body.appendChild(puTipEl);
+        puTipEl.addEventListener("mouseenter", cancelPuHideTip);
+        puTipEl.addEventListener("mouseleave", schedulePuHideTip);
+        return puTipEl;
+      }
+
+      function positionPuTip(target) {
+        if (!puTipEl || !target) return;
+        var r = target.getBoundingClientRect();
+        puTipEl.style.maxWidth = "360px";
+        puTipEl.style.left = "-9999px";
+        puTipEl.style.top = "-9999px";
+        puTipEl.style.display = "";
+        var tipRect = puTipEl.getBoundingClientRect();
+        var top = r.bottom + 6 + window.scrollY;
+        var left = r.left + window.scrollX;
+        var maxLeft = window.scrollX + document.documentElement.clientWidth - tipRect.width - 8;
+        if (left > maxLeft) left = Math.max(window.scrollX + 8, maxLeft);
+        puTipEl.style.left = left + "px";
+        puTipEl.style.top = top + "px";
+      }
+
+      function renderPuTipContent(rows, fieldKey) {
+        if (!rows || rows.length === 0) {
+          return (
+            '<div class="dg-pu-cell-tip-empty">Это поле ещё не правили.</div>'
+          );
+        }
+        var title =
+          "Последние правки поля «" +
+          escapeHtml(rows[0].field_label || purchaseColLabel(fieldKey) || fieldKey) +
+          "»";
+        var out = '<div class="dg-pu-cell-tip-title">' + title + '</div><ul class="dg-pu-cell-tip-list">';
+        for (var i = 0; i < rows.length; i++) {
+          var row = rows[i] || {};
+          var oldV = row.old_value == null ? "∅" : escapeHtml(row.old_value);
+          var newV = row.new_value == null ? "∅" : escapeHtml(row.new_value);
+          var who = row.changed_by_name || ("user#" + (row.changed_by_user_id || "—"));
+          var srcRaw = String(row.source || "override");
+          var srcCls = "dg-pu-log-action " + purchaseLogSourceClass(srcRaw);
+          out +=
+            "<li>" +
+            '<div class="dg-pu-cell-tip-row1"><span>' +
+            escapeHtml(formatDateTimeMsk(row.changed_at)) +
+            "</span> · <span>" +
+            escapeHtml(who) +
+            '</span> · <span class="' +
+            srcCls +
+            '" title="' +
+            escapeHtml(srcRaw) +
+            '">' +
+            escapeHtml(purchaseLogSourceLabel(srcRaw)) +
+            "</span></div>" +
+            '<div class="dg-pu-cell-tip-row2"><span class="dg-pu-cell-tip-old">' +
+            oldV +
+            '</span> → <span class="dg-pu-cell-tip-new">' +
+            newV +
+            "</span></div>" +
+            "</li>";
+        }
+        out += "</ul>";
+        return out;
+      }
+
+      function showPuTipFor(target) {
+        if (!target) return;
+        var code = target.getAttribute("data-dg-code") || "";
+        var field = target.getAttribute("data-dg-field") || "";
+        if (!code || !field) return;
+        ensurePuTipEl();
+        var cacheKey = code + "/" + field;
+        var now = Date.now();
+        var cached = puTipCache[cacheKey];
+        if (cached && now - cached.ts < PU_TIP_CACHE_TTL_MS) {
+          puTipEl.innerHTML = renderPuTipContent(cached.rows, field);
+          positionPuTip(target);
+          return;
+        }
+        puTipEl.innerHTML = '<div class="dg-pu-cell-tip-loading">Загрузка журнала…</div>';
+        positionPuTip(target);
+        var qs = new URLSearchParams({ code: String(code), limit: "3", field: String(field) });
+        fetch("/api/purchase/log?" + qs.toString(), { credentials: "same-origin" })
+          .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+          .then(function (x) {
+            if (!x.ok || !x.j || x.j.success === false) {
+              if (puTipCurrentTarget === target) {
+                puTipEl.innerHTML =
+                  '<div class="dg-pu-cell-tip-err">' +
+                  escapeHtml((x.j && x.j.error) || "Не удалось загрузить") +
+                  "</div>";
+              }
+              return;
+            }
+            var rows = (x.j.rows || []).slice(0, 3);
+            puTipCache[cacheKey] = { ts: Date.now(), rows: rows };
+            if (puTipCurrentTarget === target) {
+              puTipEl.innerHTML = renderPuTipContent(rows, field);
+              positionPuTip(target);
+            }
+          })
+          .catch(function () {
+            if (puTipCurrentTarget === target) {
+              puTipEl.innerHTML = '<div class="dg-pu-cell-tip-err">Сетевая ошибка</div>';
+            }
+          });
+      }
+
+      function schedulePuShowTip(target) {
+        cancelPuShowTip();
+        puTipCurrentTarget = target;
+        puTipShowTimer = setTimeout(function () { showPuTipFor(target); }, 350);
+      }
+
+      function schedulePuHideTip() {
+        cancelPuHideTip();
+        puTipHideTimer = setTimeout(function () {
+          if (puTipEl) puTipEl.style.display = "none";
+          puTipCurrentTarget = null;
+        }, 150);
+      }
+
+      function cancelPuShowTip() {
+        if (puTipShowTimer) { clearTimeout(puTipShowTimer); puTipShowTimer = null; }
+      }
+      function cancelPuHideTip() {
+        if (puTipHideTimer) { clearTimeout(puTipHideTimer); puTipHideTimer = null; }
+      }
+
+      function puTipTargetFromEvent(el) {
+        if (!el || !el.closest) return null;
+        return el.closest(".dg-pu-edit-tip-wrap[data-dg-code][data-dg-field]");
+      }
+
+      function invalidatePuTipCache(code, field) {
+        if (!code) return;
+        try {
+          if (field) {
+            delete puTipCache[code + "/" + field];
+          } else {
+            for (var k in puTipCache) {
+              if (Object.prototype.hasOwnProperty.call(puTipCache, k) && k.indexOf(code + "/") === 0) {
+                delete puTipCache[k];
+              }
+            }
+          }
+        } catch (e) {}
+      }
+
+      function bindPurchaseCellTooltips() {
+        if (puTipListenersBound) return;
+        var tbody = document.getElementById("dg-pu-tbody");
+        if (!tbody) return;
+        puTipListenersBound = true;
+        tbody.addEventListener("mouseover", function (ev) {
+          var t = puTipTargetFromEvent(ev.target);
+          if (!t) return;
+          cancelPuHideTip();
+          if (puTipCurrentTarget === t) return;
+          schedulePuShowTip(t);
+        });
+        tbody.addEventListener("mouseout", function (ev) {
+          var t = puTipTargetFromEvent(ev.target);
+          if (!t) return;
+          var related = ev.relatedTarget;
+          if (related && puTipEl && puTipEl.contains(related)) return;
+          if (related && puTipTargetFromEvent(related) === t) return;
+          cancelPuShowTip();
+          schedulePuHideTip();
+        });
+        function dismissOnScroll() {
+          cancelPuShowTip();
+          if (puTipEl && puTipEl.style.display !== "none") {
+            puTipEl.style.display = "none";
+            puTipCurrentTarget = null;
+          }
+        }
+        window.addEventListener("scroll", dismissOnScroll, { passive: true, capture: true });
+        var appOuter = document.querySelector(".app-main__outer");
+        if (appOuter) appOuter.addEventListener("scroll", dismissOnScroll, { passive: true });
+        var outer = document.getElementById("dg-pu-table-scroll-outer");
+        if (outer) outer.addEventListener("scroll", dismissOnScroll, { passive: true });
+      }
       function formatMoneyText(value) {
         var raw = String(value == null ? "" : value).trim();
         if (!raw) return "";
@@ -142,9 +512,14 @@
           supplier: document.getElementById("pu-f-supplier").value.trim(),
           archived: document.getElementById("pu-f-archived").value,
           stock_position: document.getElementById("pu-f-stock_position").value,
+          no_longer_cooperation: document.getElementById("pu-f-no_longer_cooperation").value,
           limit: Number(document.getElementById("pu-f-limit").value) || 100,
           only_stock: document.getElementById("pu-only-stock").checked ? "1" : "0",
           include_bundles: document.getElementById("pu-include-bundles").checked ? "1" : "0",
+          zero_stock: document.getElementById("pu-zero-stock").checked ? "1" : "0",
+          zero_stock_no_transit: document.getElementById("pu-zero-stock-no-transit").checked ? "1" : "0",
+          no_multiplicity: document.getElementById("pu-no-multiplicity").checked ? "1" : "0",
+          incomplete_pack: document.getElementById("pu-incomplete-pack").checked ? "1" : "0",
         };
       }
 
@@ -153,8 +528,15 @@
         if (f.supplier) p.set("supplier", f.supplier);
         if (f.archived && f.archived !== initialFilters.archived) p.set("archived", f.archived);
         if (f.stock_position && f.stock_position !== initialFilters.stock_position) p.set("stock_position", f.stock_position);
+        if (f.no_longer_cooperation && f.no_longer_cooperation !== initialFilters.no_longer_cooperation) {
+          p.set("no_longer_cooperation", f.no_longer_cooperation);
+        }
         if (f.only_stock === "1") p.set("only_stock", "1");
         if (f.include_bundles === "1") p.set("include_bundles", "1");
+        if (f.zero_stock === "1") p.set("zero_stock", "1");
+        if (f.zero_stock_no_transit === "1") p.set("zero_stock_no_transit", "1");
+        if (f.no_multiplicity === "1") p.set("no_multiplicity", "1");
+        if (f.incomplete_pack === "1") p.set("incomplete_pack", "1");
       }
 
       function buildListParams() {
@@ -171,6 +553,7 @@
         // archived нам нужно всегда отправлять явно: бэк трактует "active" как дефолт
         if (!p.has("archived")) p.set("archived", f.archived);
         if (!p.has("stock_position")) p.set("stock_position", f.stock_position);
+        if (!p.has("no_longer_cooperation")) p.set("no_longer_cooperation", f.no_longer_cooperation);
         return p;
       }
 
@@ -203,7 +586,7 @@
 
       function parseUrlToForm() {
         var params = new URLSearchParams(window.location.search);
-        var keys = ["limit", "archived", "stock_position", "search", "supplier", "only_stock", "include_bundles"];
+        var keys = ["limit", "archived", "stock_position", "no_longer_cooperation", "search", "supplier", "only_stock", "include_bundles", "zero_stock", "zero_stock_no_transit", "no_multiplicity", "incomplete_pack"];
         keys.forEach(function (k) {
           var v = params.get(k);
           if (v === null) return;
@@ -212,8 +595,17 @@
           else if (k === "supplier") document.getElementById("pu-f-supplier").value = v;
           else if (k === "archived") document.getElementById("pu-f-archived").value = v;
           else if (k === "stock_position") document.getElementById("pu-f-stock_position").value = v;
+          else if (k === "no_longer_cooperation") {
+            if (v === "all" || v === "not_stopped" || v === "stopped") {
+              document.getElementById("pu-f-no_longer_cooperation").value = v;
+            }
+          }
           else if (k === "only_stock") document.getElementById("pu-only-stock").checked = v === "1";
           else if (k === "include_bundles") document.getElementById("pu-include-bundles").checked = v === "1";
+          else if (k === "zero_stock") document.getElementById("pu-zero-stock").checked = v === "1";
+          else if (k === "zero_stock_no_transit") document.getElementById("pu-zero-stock-no-transit").checked = v === "1";
+          else if (k === "no_multiplicity") document.getElementById("pu-no-multiplicity").checked = v === "1";
+          else if (k === "incomplete_pack") document.getElementById("pu-incomplete-pack").checked = v === "1";
         });
         var pg = Number(params.get("page") || 1);
         if (Number.isFinite(pg) && pg > 0) page = pg;
@@ -235,31 +627,74 @@
       }
 
       function renderNameCell(r) {
-        var wrap = document.createElement("div");
-        wrap.style.display = "flex";
-        wrap.style.flexWrap = "wrap";
-        wrap.style.alignItems = "center";
-        wrap.style.gap = "4px";
+        var root = document.createElement("div");
+        root.className = "dg-pu-name-cell";
+        var code = String(r.code || "").trim();
+        var rawName = String(r.name || "").trim();
+        var displayTitle = rawName || "—";
+
+        var textWrap = document.createElement("span");
+        textWrap.className = "dg-pu-name-text";
+
         if (Number(r.is_archived) === 1) {
           var arch = document.createElement("span");
           arch.className = "badge bg-danger me-1";
           arch.textContent = "Архив";
-          wrap.appendChild(arch);
+          textWrap.appendChild(arch);
         }
-        var sp = document.createElement("span");
-        sp.style.whiteSpace = "normal";
-        sp.style.wordBreak = "break-word";
-        sp.title = r.name || "";
-        sp.textContent = r.name || "";
-        wrap.appendChild(sp);
-        return wrap;
+
+        if (code) {
+          var nameEl = document.createElement("a");
+          nameEl.href = "/product.html?code=" + encodeURIComponent(code);
+          nameEl.target = "_blank";
+          nameEl.rel = "noopener";
+          nameEl.className = "dg-pu-name-link";
+          nameEl.title = (rawName ? rawName + " · " : "") + "код: " + code + " — открыть карточку";
+          nameEl.textContent = displayTitle;
+          textWrap.appendChild(nameEl);
+        } else {
+          var sp = document.createElement("span");
+          sp.className = "dg-pu-name-plain";
+          sp.title = rawName || "";
+          sp.textContent = displayTitle;
+          textWrap.appendChild(sp);
+        }
+
+        var actions = document.createElement("span");
+        actions.className = "dg-pu-name-actions";
+        if (code) {
+          var logBtn = document.createElement("button");
+          logBtn.type = "button";
+          logBtn.className = "dg-pu-log-btn";
+          logBtn.setAttribute("data-dg-pu-log-code", code);
+          logBtn.setAttribute("data-dg-pu-log-name", rawName);
+          logBtn.setAttribute("aria-label", "Журнал изменений полей закупок для кода " + code);
+          logBtn.setAttribute("data-dg-tooltip", "Журнал: Нес.остаток Датагон, кратность, мин. остаток «сч.как 0»");
+          logBtn.textContent = "\uD83D\uDD59 \u041B\u043E\u0433";
+          actions.appendChild(logBtn);
+        }
+
+        root.appendChild(textWrap);
+        root.appendChild(actions);
+        return root;
+      }
+
+      function purchaseColLabel(key) {
+        for (var i = 0; i < PU_COLS.length; i++) {
+          if (PU_COLS[i][0] === key) return PU_COLS[i][1] || key;
+        }
+        return key;
       }
 
       function makeEditableCell(key, r) {
-        var wrap = document.createElement("div");
-        wrap.style.display = "flex";
-        wrap.style.alignItems = "center";
-        wrap.style.justifyContent = "center";
+        var tipWrap = document.createElement("div");
+        tipWrap.className = "dg-pu-edit-tip-wrap dg-pu-edit-cell";
+        tipWrap.style.display = "flex";
+        tipWrap.style.alignItems = "center";
+        tipWrap.style.justifyContent = "center";
+        tipWrap.style.gap = "4px";
+        tipWrap.setAttribute("data-dg-code", String(r.code || ""));
+        tipWrap.setAttribute("data-dg-field", key);
         var input = document.createElement("input");
         input.type = "text";
         input.inputMode = "decimal";
@@ -278,8 +713,21 @@
           if (e.key === "Enter") { e.preventDefault(); input.blur(); }
           else if (e.key === "Escape") { input.value = input.dataset.original || ""; input.blur(); }
         });
-        wrap.appendChild(input);
-        return wrap;
+        tipWrap.appendChild(input);
+        return tipWrap;
+      }
+
+      /** Паритет с lib/datagonSalesFormula.js applyMinStockDgFloor — обновление «Предлагаемый» после смены min_stock_dg без полного reload. */
+      function applyMinStockDgFloorPu(proposed, minDgRaw) {
+        var p = Number(proposed);
+        var base = Number.isFinite(p) ? Math.trunc(p) : 0;
+        if (minDgRaw == null || minDgRaw === "") return Math.max(0, base);
+        var s = String(minDgRaw).replace(/\u00a0/g, " ").trim().replace(/\s+/g, "").replace(",", ".");
+        if (!s) return Math.max(0, base);
+        var dg = Number(s);
+        if (!Number.isFinite(dg) || dg <= 0) return Math.max(0, base);
+        var floorInt = Math.ceil(dg - 1e-9);
+        return Math.max(base, floorInt);
       }
 
       function saveOverride(input) {
@@ -310,9 +758,19 @@
             input.dataset.original = input.value;
             input.classList.add("is-saved");
             input.title = "Сохранено: " + new Date().toLocaleTimeString("ru-RU");
+            invalidatePuTipCache(code, field);
             // Обновим локальный кэш строки, чтобы перерисовка не сбрасывала значение
             var rowIdx = lastRows.findIndex(function (rr) { return String(rr.code) === String(code); });
-            if (rowIdx >= 0) lastRows[rowIdx][field] = v;
+            if (rowIdx >= 0) {
+              lastRows[rowIdx][field] = v;
+              if (field === "min_stock_dg") {
+                lastRows[rowIdx].formula_proposed_min_stock = applyMinStockDgFloorPu(
+                  lastRows[rowIdx].formula_proposed_min_stock,
+                  v
+                );
+                renderTable(lastRows);
+              }
+            }
           })
           .catch(function (e) {
             input.classList.remove("is-saving");
@@ -321,28 +779,197 @@
           });
       }
 
-      function renderCodeCell(r) {
-        var code = String(r.code || "");
-        if (!code) {
-          var em = document.createElement("span");
-          em.textContent = "—";
-          return em;
+      function openPuLogFor(code, name, opts) {
+        var overlay = document.getElementById("dg-pu-log-overlay");
+        var titleEl = document.getElementById("dg-pu-log-title");
+        var subEl = document.getElementById("dg-pu-log-subtitle");
+        var body = document.getElementById("dg-pu-log-body");
+        if (!overlay || !body) return;
+        puLogModal.code = String(code || "");
+        puLogModal.name = String(name || "");
+        puLogModal.filterField = opts && opts.field ? String(opts.field) : "";
+        puLogModal.offset = 0;
+        puLogModal.limit = 100;
+        puLogModal.total = 0;
+        overlay.dataset.dgPuLogCode = puLogModal.code;
+        if (titleEl) titleEl.textContent = "Журнал закупок (overrides)";
+        if (subEl) {
+          var base = (puLogModal.name ? puLogModal.name + " · " : "") + "код: " + String(code || "—");
+          if (puLogModal.filterField) base += " · только: " + purchaseColLabel(puLogModal.filterField);
+          subEl.textContent = base;
         }
-        var a = document.createElement("a");
-        a.href = "/product.html?code=" + encodeURIComponent(code);
-        a.target = "_blank";
-        a.rel = "noopener";
-        a.textContent = code;
-        a.title = "Открыть карточку товара в новой вкладке";
-        a.className = "dg-pu-code-link";
-        return a;
+        body.innerHTML = '<div class="text-muted small text-center py-4">Загрузка журнала…</div>';
+        overlay.style.display = "";
+        overlay.setAttribute("aria-hidden", "false");
+        loadPuLogFor(puLogModal.code, { offset: 0, limit: puLogModal.limit });
       }
+
+      function closePuLog() {
+        var overlay = document.getElementById("dg-pu-log-overlay");
+        if (!overlay) return;
+        overlay.style.display = "none";
+        overlay.setAttribute("aria-hidden", "true");
+        delete overlay.dataset.dgPuLogCode;
+        puLogModal.code = "";
+        puLogModal.name = "";
+        puLogModal.filterField = "";
+        puLogModal.offset = 0;
+        puLogModal.total = 0;
+      }
+
+      function loadPuLogFor(code, opts) {
+        var body = document.getElementById("dg-pu-log-body");
+        if (!body || !code) return;
+        var o = opts && typeof opts === "object" ? opts : {};
+        var offset = Math.max(0, Number.isFinite(Number(o.offset)) ? Number(o.offset) : 0);
+        var limit = Math.max(1, Number.isFinite(Number(o.limit)) ? Number(o.limit) : 100);
+        var qs = new URLSearchParams({ code: String(code), limit: String(limit), offset: String(offset) });
+        if (puLogModal.filterField) qs.set("field", puLogModal.filterField);
+        body.innerHTML = '<div class="text-muted small text-center py-4">Загрузка журнала…</div>';
+        fetch("/api/purchase/log?" + qs.toString(), { credentials: "same-origin" })
+          .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+          .then(function (x) {
+            if (!x.ok || !x.j || x.j.success === false) {
+              body.innerHTML = '<div class="text-danger small text-center py-4">' +
+                escapeHtml((x.j && x.j.error) || "Ошибка загрузки журнала") + "</div>";
+              return;
+            }
+            puLogModal.code = String(code);
+            puLogModal.offset = Number(x.j.offset || 0);
+            puLogModal.limit = Number(x.j.limit || limit);
+            puLogModal.total = Number(x.j.total || 0);
+            renderPuLogRows(body, x.j.rows || [], {
+              total: puLogModal.total,
+              limit: puLogModal.limit,
+              offset: puLogModal.offset,
+            });
+          })
+          .catch(function (e) {
+            body.innerHTML = '<div class="text-danger small text-center py-4">Сетевая ошибка: ' +
+              escapeHtml((e && e.message) || String(e)) + "</div>";
+          });
+      }
+
+      function purchaseLogSourceClass(src) {
+        var s = String(src || "override").toLowerCase();
+        return s === "import" ? "src-import" : "src-override";
+      }
+
+      function renderPuLogPager(total, limit, offset) {
+        var pages = total > 0 ? Math.max(1, Math.ceil(total / limit)) : 1;
+        var current = Math.floor(offset / limit) + 1;
+        var prevDisabled = offset <= 0 ? " disabled" : "";
+        var nextDisabled = (offset + limit) >= total ? " disabled" : "";
+        var shown = Math.min(limit, Math.max(0, total - offset));
+        return (
+          '<div class="dg-pu-log-pager d-flex align-items-center justify-content-between gap-2 px-3 py-2 border-top">' +
+          '<div class="text-muted small">Найдено: ' + total + "; страница " + current + "/" + pages + "; показано: " + shown + "</div>" +
+          '<div class="d-flex align-items-center gap-2">' +
+          '<button type="button" class="btn btn-sm btn-outline-secondary dg-pu-log-prev"' + prevDisabled + ">Назад</button>" +
+          '<button type="button" class="btn btn-sm btn-outline-secondary dg-pu-log-next"' + nextDisabled + ">Вперёд</button>" +
+          "</div></div>"
+        );
+      }
+
+      function renderPuLogRows(container, rows, meta) {
+        var total = meta && Number(meta.total) > 0 ? Number(meta.total) : 0;
+        var limit = meta && Number(meta.limit) > 0 ? Number(meta.limit) : 100;
+        var offset = meta && Number(meta.offset) >= 0 ? Number(meta.offset) : 0;
+        if (!Array.isArray(rows) || rows.length === 0) {
+          var emptyHtml = '<div class="text-muted small text-center py-4">';
+          if (total === 0) {
+            emptyHtml += "Журнал пуст: по этой позиции ещё не было изменений полей закупок.";
+          } else {
+            emptyHtml += "Пустая страница (offset=" + offset + ").";
+          }
+          emptyHtml += "</div>";
+          if (total > 0) emptyHtml += renderPuLogPager(total, limit, offset);
+          container.innerHTML = emptyHtml;
+          return;
+        }
+        var html = "<table><thead><tr>" +
+          '<th style="width:16%">Когда (МСК)</th>' +
+          '<th style="width:20%">Кто</th>' +
+          '<th style="width:11%">Источник</th>' +
+          '<th style="width:18%">Поле</th>' +
+          "<th>Было → стало</th>" +
+          "</tr></thead><tbody>";
+        for (var i = 0; i < rows.length; i++) {
+          var r = rows[i] || {};
+          var who = r.changed_by_name || ("user#" + (r.changed_by_user_id != null ? r.changed_by_user_id : "—"));
+          var oldVal = r.old_value == null ? '<span class="text-muted">∅</span>' : '<span class="dg-pu-log-old">' + escapeHtml(r.old_value) + "</span>";
+          var newVal = r.new_value == null ? '<span class="text-muted">∅</span>' : '<span class="dg-pu-log-new">' + escapeHtml(r.new_value) + "</span>";
+          var srcRaw = String(r.source || "override");
+          var srcCls = "dg-pu-log-action " + purchaseLogSourceClass(r.source);
+          html += "<tr>" +
+            "<td>" + escapeHtml(formatDateTimeMsk(r.changed_at)) + "</td>" +
+            "<td>" + escapeHtml(who) + "</td>" +
+            '<td><span class="' + srcCls + '" title="' + escapeHtml(srcRaw) + '">' + escapeHtml(purchaseLogSourceLabel(r.source)) + "</span></td>" +
+            "<td>" + escapeHtml(r.field_label || r.field || "") + "</td>" +
+            "<td>" + oldVal + '<span class="dg-pu-log-arrow">→</span>' + newVal + "</td>" +
+            "</tr>";
+        }
+        html += "</tbody></table>";
+        html += renderPuLogPager(total, limit, offset);
+        container.innerHTML = html;
+      }
+
+      function bindPuLogModal() {
+        document.addEventListener("click", function (ev) {
+          var btn = ev.target && ev.target.closest && ev.target.closest(".dg-pu-log-btn");
+          if (btn) {
+            ev.preventDefault();
+            var c = btn.getAttribute("data-dg-pu-log-code") || "";
+            var n = btn.getAttribute("data-dg-pu-log-name") || "";
+            if (c) openPuLogFor(c, n);
+            return;
+          }
+        });
+        var closeBtn = document.getElementById("dg-pu-log-close");
+        if (closeBtn) closeBtn.addEventListener("click", closePuLog);
+        var refreshBtn = document.getElementById("dg-pu-log-refresh");
+        if (refreshBtn) refreshBtn.addEventListener("click", function () {
+          if (puLogModal.code) loadPuLogFor(puLogModal.code, { offset: puLogModal.offset, limit: puLogModal.limit });
+        });
+        var backdrop = document.getElementById("dg-pu-log-backdrop");
+        if (backdrop) backdrop.addEventListener("click", closePuLog);
+        document.addEventListener("click", function (ev) {
+          var prev = ev.target && ev.target.closest && ev.target.closest(".dg-pu-log-prev");
+          if (prev && !prev.disabled && puLogModal.code) {
+            ev.preventDefault();
+            var nextOff = Math.max(0, puLogModal.offset - puLogModal.limit);
+            loadPuLogFor(puLogModal.code, { offset: nextOff, limit: puLogModal.limit });
+          }
+          var next = ev.target && ev.target.closest && ev.target.closest(".dg-pu-log-next");
+          if (next && !next.disabled && puLogModal.code) {
+            ev.preventDefault();
+            var off2 = puLogModal.offset + puLogModal.limit;
+            if (off2 < puLogModal.total) loadPuLogFor(puLogModal.code, { offset: off2, limit: puLogModal.limit });
+          }
+        });
+      }
+      bindPuLogModal();
 
       function renderCell(key, r) {
         var opts = COL_OPTS[key] || {};
         if (opts.future) return makeFutureCell();
         if (key === "name") return renderNameCell(r);
-        if (key === "code") return renderCodeCell(r);
+        if (key === "code") {
+          var c0 = String(r.code || "").trim();
+          if (!c0) {
+            var em = document.createElement("span");
+            em.textContent = "—";
+            return em;
+          }
+          var a0 = document.createElement("a");
+          a0.href = "/product.html?code=" + encodeURIComponent(c0);
+          a0.target = "_blank";
+          a0.rel = "noopener";
+          a0.className = "dg-pu-name-link";
+          a0.title = "Открыть карточку товара";
+          a0.textContent = c0;
+          return a0;
+        }
         if (opts.editable) return makeEditableCell(key, r);
         if (key === "buy_price") {
           var t = formatMoneyText(r.buy_price);
@@ -380,7 +1007,7 @@
           var fp = document.createElement("span");
           fp.setAttribute(
             "data-dg-tooltip",
-            "Расчёт «Формула продаж» (как на карточке товара): те же окна и настройки app_settings; при заданном в БД override proposed_min_stock он участвует в расчёте как опорный неснижаемый."
+            "Расчёт «Формула продаж» (как на карточке товара): те же периоды A и W (поле «Продажи за период, дней» в настройках) и ключи app_settings; при заданном в БД override proposed_min_stock он участвует в расчёте как опорный неснижаемый. «Нес.остаток Датагон» не входит в baseline формулы; если задан > 0, показанное значение не ниже него."
           );
           var fpn = r.formula_proposed_min_stock;
           fp.textContent = fpn != null && fpn !== "" && Number.isFinite(Number(fpn)) ? fmtNum(fpn) : "—";
@@ -454,6 +1081,7 @@
         var delta = e.clientX - resizeState.startX;
         var nextWidth = Math.max(50, Math.min(700, Math.round(resizeState.startWidth + delta)));
         applyColumnWidth(resizeState.key, nextWidth);
+        schedulePuFloatingHeaderUpdate();
       }
       function onMouseUp() {
         if (!resizeState) return;
@@ -461,6 +1089,7 @@
         document.body.style.cursor = "";
         document.body.style.userSelect = "";
         try { localStorage.setItem(userColWidthKey(), JSON.stringify(columnWidths || {})); } catch (e) {}
+        puRefreshFloatingAfterLayout();
       }
 
       function buildThead() {
@@ -475,7 +1104,7 @@
           var th = document.createElement("th");
           th.dataset.colKey = key;
           th.setAttribute("data-col-key", key);
-          var apiSort = SORT_KEY_REMAP[key] || key;
+          var apiSort = SORT_KEY_REMAP[key] || (opts.sortKey || key);
           var isSortable = SORTABLE.has(apiSort);
           var minW = getColMin(key);
           var cw = Number(columnWidths[key] || 0);
@@ -503,6 +1132,7 @@
           );
           var labelWrap = document.createElement("div");
           labelWrap.style.textAlign = "center";
+          if (key === "name" || key === "code") labelWrap.style.textAlign = "left";
           labelWrap.style.fontVariantNumeric = "tabular-nums";
           labelWrap.appendChild(labelText);
           th.appendChild(labelWrap);
@@ -547,11 +1177,13 @@
           tr.appendChild(th);
         });
         thead.appendChild(tr);
+        puRefreshFloatingAfterLayout();
       }
 
       function getTdStyle(key) {
         var opts = COL_OPTS[key] || {};
         var s = { verticalAlign: opts.editable ? "middle" : "top", whiteSpace: "normal", wordBreak: "break-word" };
+        if (key === "name" || key === "code") s.textAlign = "left";
         var minW = getColMin(key);
         var cw = Number(columnWidths[key] || 0);
         if (Number.isFinite(cw) && cw > 0) {
@@ -578,6 +1210,7 @@
           tdL.textContent = "Загрузка...";
           trL.appendChild(tdL);
           tbody.appendChild(trL);
+          puRefreshFloatingAfterLayout();
           return;
         }
         var list = rows || [];
@@ -589,6 +1222,7 @@
           td.textContent = "Нет данных";
           tr.appendChild(td);
           tbody.appendChild(tr);
+          puRefreshFloatingAfterLayout();
           return;
         }
         list.forEach(function (r) {
@@ -605,11 +1239,14 @@
               td.style.background = "#fbfcfe";
             }
             if (opts.center) td.className = (td.className ? td.className + " " : "") + "text-center";
+            if (key === "name") td.classList.add("dg-pu-cell-name");
+            if (key === "code") td.classList.add("dg-pu-cell-code");
             td.appendChild(renderCell(key, r));
             tr.appendChild(td);
           });
           tbody.appendChild(tr);
         });
+        puRefreshFloatingAfterLayout();
       }
 
       function renderColumnControls() {
@@ -662,7 +1299,7 @@
       }
 
       function setApplyResetDisabled(dis) {
-        ["purchase-apply", "purchase-reset", "purchase-refresh", "dg-pu-import-btn"].forEach(function (id) {
+        ["purchase-apply", "purchase-reset", "purchase-refresh"].forEach(function (id) {
           var b = document.getElementById(id);
           if (b) b.disabled = dis;
         });
@@ -687,6 +1324,7 @@
             syncUrlFromState();
             var ds = document.getElementById("dg-pu-status");
             if (ds) { ds.style.display = "none"; ds.textContent = ""; }
+            puRefreshFloatingAfterLayout();
           })
           .catch(function (e) {
             loading = false;
@@ -698,6 +1336,7 @@
               ds.textContent = "Ошибка: " + (e && e.message ? e.message : e);
               ds.classList.add("text-danger");
             }
+            puRefreshFloatingAfterLayout();
           });
       }
 
@@ -707,9 +1346,14 @@
         document.getElementById("pu-f-supplier").value = "";
         document.getElementById("pu-f-archived").value = "active";
         document.getElementById("pu-f-stock_position").value = "yes";
+        document.getElementById("pu-f-no_longer_cooperation").value = "not_stopped";
         document.getElementById("pu-f-limit").value = "100";
         document.getElementById("pu-only-stock").checked = false;
         document.getElementById("pu-include-bundles").checked = false;
+        document.getElementById("pu-zero-stock").checked = false;
+        document.getElementById("pu-zero-stock-no-transit").checked = false;
+        document.getElementById("pu-no-multiplicity").checked = false;
+        document.getElementById("pu-incomplete-pack").checked = false;
         sortBy = "code";
         sortDir = "asc";
         page = 1;
@@ -719,6 +1363,21 @@
 
       window.addEventListener("mousemove", onMouseMove);
       window.addEventListener("mouseup", onMouseUp);
+      window.addEventListener("scroll", onScrollPuFloatingHeader, { passive: true });
+      window.addEventListener("resize", function () {
+        updatePuStickyTopVar();
+        puRefreshFloatingAfterLayout();
+      });
+      (function bindPuScrollContainers() {
+        var mainOuter = document.querySelector(".app-main__outer");
+        if (mainOuter && mainOuter.addEventListener) {
+          mainOuter.addEventListener("scroll", onScrollPuFloatingHeader, { passive: true });
+        }
+        var horiz = document.getElementById("dg-pu-table-scroll-outer");
+        if (horiz && horiz.addEventListener) {
+          horiz.addEventListener("scroll", onScrollPuFloatingHeader, { passive: true });
+        }
+      })();
 
       // По правилу datagon-table-filter-apply.mdc: фильтры применяются только
       // по «Применить» / Enter / Esc / «Сбросить». Никаких fetch на каждый input.
@@ -736,88 +1395,6 @@
       document.getElementById("purchase-copy-link").addEventListener("click", function () {
         navigator.clipboard.writeText(window.location.href).catch(function () {});
       });
-      (function bindPurchaseCsvImport() {
-        var fileInput = document.getElementById("dg-pu-import-file");
-        var btn = document.getElementById("dg-pu-import-btn");
-        var tpl = document.getElementById("dg-pu-import-template");
-        if (!fileInput || !btn) return;
-        function showStatus(msg, isError) {
-          var ds = document.getElementById("dg-pu-status");
-          if (!ds) return;
-          ds.style.display = "";
-          ds.textContent = msg;
-          ds.classList.toggle("text-danger", !!isError);
-          ds.classList.toggle("text-success", !isError);
-        }
-        tpl && tpl.addEventListener("click", function () {
-          var bom = "\uFEFF";
-          var header = "Код;Нес.остаток Датагон;Кратность товара;Мин.Остаток сч.как 0\r\n";
-          var blob = new Blob([bom + header], { type: "text/csv;charset=utf-8" });
-          var a = document.createElement("a");
-          a.href = URL.createObjectURL(blob);
-          a.download = "datagon-purchase-import-template.csv";
-          a.click();
-          setTimeout(function () { URL.revokeObjectURL(a.href); }, 2000);
-        });
-        btn.addEventListener("click", function () {
-          if (btn.disabled) return;
-          fileInput.value = "";
-          fileInput.click();
-        });
-        fileInput.addEventListener("change", function () {
-          var f = fileInput.files && fileInput.files[0];
-          if (!f) return;
-          var reader = new FileReader();
-          reader.onload = function () {
-            var text = String(reader.result || "");
-            setApplyResetDisabled(true);
-            fetch("/api/purchase/overrides-import", {
-              method: "POST",
-              credentials: "same-origin",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ csv: text }),
-            })
-              .then(function (r) {
-                return r.text().then(function (t) {
-                  var j = {};
-                  try { j = t ? JSON.parse(t) : {}; } catch (e) { j = { error: t || "Ошибка сервера" }; }
-                  return { ok: r.ok, j: j };
-                });
-              })
-              .then(function (x) {
-                setApplyResetDisabled(false);
-                fileInput.value = "";
-                if (!x.j || x.j.success === false) {
-                  showStatus("Импорт: " + (x.j && x.j.error ? x.j.error : "ошибка"), true);
-                  return;
-                }
-                var j = x.j;
-                var parts = [
-                  "Импорт выполнен: обновлено строк " + (j.rows_upserted != null ? j.rows_upserted : 0),
-                  "прочитано из файла " + (j.rows_read != null ? j.rows_read : 0),
-                ];
-                if (j.skipped_unknown_code > 0) {
-                  parts.push("пропущено (нет кода в ms_export): " + j.skipped_unknown_code);
-                  if (j.unknown_codes_sample && j.unknown_codes_sample.length) {
-                    parts.push("примеры: " + j.unknown_codes_sample.join(", "));
-                  }
-                }
-                showStatus(parts.join(". ") + ".", false);
-                loadData();
-              })
-              .catch(function (e) {
-                setApplyResetDisabled(false);
-                fileInput.value = "";
-                showStatus("Импорт: " + (e && e.message ? e.message : e), true);
-              });
-          };
-          reader.onerror = function () {
-            setApplyResetDisabled(false);
-            showStatus("Не удалось прочитать файл", true);
-          };
-          reader.readAsText(f, "UTF-8");
-        });
-      })();
       document.getElementById("pu-btn-prev").addEventListener("click", function () {
         if (page > 1) { page -= 1; loadData(); }
       });
@@ -886,6 +1463,7 @@
           body.style.display = hidden ? "" : "none";
           btn.textContent = hidden ? "Свернуть" : "Развернуть";
           try { localStorage.setItem(FILTERS_KEY, hidden ? "0" : "1"); } catch (e) {}
+          puRefreshFloatingAfterLayout();
         });
       })();
 
@@ -900,6 +1478,7 @@
               { key: "pu_supplier", title: "Поставщик", hint: "" },
               { key: "pu_archived", title: "Архивные", hint: "Активные / Архив / Все" },
               { key: "pu_stock_position", title: "Складская позиция", hint: "Да / Нет / Все" },
+              { key: "pu_no_longer_cooperation", title: "Перестали сотрудничать", hint: "Все / Нет / Да (как в МС)" },
               { key: "pu_limit", title: "На странице", hint: "" },
             ],
           },
@@ -907,7 +1486,7 @@
             title: "Чекбоксы и кнопки",
             subtitle: "",
             items: [
-              { key: "pu_filter_checks", title: "Чекбоксы (остаток, комплекты)", hint: "" },
+              { key: "pu_filter_checks", title: "Чекбоксы (остаток, комплекты, нули, кратность)", hint: "" },
               { key: "pu_filter_actions", title: "Кнопки действий", hint: "" },
             ],
           },
@@ -920,6 +1499,7 @@
             togglesRootId: "dg-pu-filter-blocks-toggles",
             idPrefix: "dg-pu-ff-",
             exposeAs: "DatagonPurchaseFilterBlocks",
+            onAfterApply: puRefreshFloatingAfterLayout,
           });
         }
       })();
@@ -966,7 +1546,7 @@
           updateTableHint();
         });
         if (noneBtn) noneBtn.addEventListener("click", function () {
-          visibleCols = new Set([PU_COLS[0][0]]);
+          visibleCols = new Set(["code", "name"]);
           saveVisible();
           renderColumnControls();
           buildThead();
@@ -1058,6 +1638,7 @@
           body.style.display = hidden ? "" : "none";
           btn.textContent = hidden ? "Свернуть" : "Развернуть";
           try { localStorage.setItem(STORAGE_KEY, hidden ? "0" : "1"); } catch (e) {}
+          puRefreshFloatingAfterLayout();
         });
       })();
 
@@ -1071,12 +1652,26 @@
         if (Array.isArray(rawVisible) && rawVisible.length) {
           visibleCols = new Set(rawVisible.filter(function (k) { return allowed.has(k); }));
         }
+        if (!visibleCols.has("code")) visibleCols.add("code");
+        if (visibleCols.size && !visibleCols.has("name")) visibleCols.add("name");
         if (!visibleCols.size) visibleCols = new Set(DEFAULT_VISIBLE_KEYS);
       } catch (e) {}
 
+      bindPurchaseCellTooltips();
       parseUrlToForm();
       renderColumnControls();
+      updatePuStickyTopVar();
       buildThead();
       loadData();
+      if (document.fonts && document.fonts.ready) {
+        document.fonts.ready.then(function () {
+          updatePuStickyTopVar();
+          puRefreshFloatingAfterLayout();
+        });
+      }
+      window.addEventListener("load", function () {
+        updatePuStickyTopVar();
+        puRefreshFloatingAfterLayout();
+      });
     })();
   </script>

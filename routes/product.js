@@ -1,6 +1,14 @@
 'use strict';
 
-const { parseFormulaSettings, pickMarketPriceRub, computeSalesFormula } = require('../lib/datagonSalesFormula');
+const { parseFormulaSettings, pickMarketPriceRub, computeSalesFormula, applyMinStockDgFloor } = require('../lib/datagonSalesFormula');
+const { mergeAbsenceDistinctForFormula } = require('../lib/datagonZeroStockAbsence');
+
+/** Срок хранения строк `dg_product_stock_snapshot` (дней); из `app_settings.product_stock_snapshot_retention_days`. */
+function clampProductStockSnapshotRetentionDays(raw) {
+    const n = Math.round(Number(raw));
+    if (!Number.isFinite(n)) return 365;
+    return Math.max(30, Math.min(3650, n));
+}
 
 /**
  * Карточка товара — агрегатный read-only endpoint для страницы /product.html.
@@ -22,17 +30,23 @@ const { parseFormulaSettings, pickMarketPriceRub, computeSalesFormula } = requir
  *     `report/stock/bystore` сможем писать `store_uuid` реальный).
  *   • Нулевые остатки: пакетная фиксация за **сегодня** после успешного синка МС в `ms_export`
  *     (`syncZeroStockLogAfterMoyskladExport` из `routes/moysklad.js`) — только `stock_position='Да'`,
- *     не архив (`is_archived=0`), `stock≤0`; ручная запись за тот же день (`source=manual`) не перезаписывается.
+ *     не архив (`is_archived=0`), и либо `stock≤0`, либо (для кода **без** «-» в `ms_export.code`) остаток
+ *     **строго меньше** минимального числового суффикса среди номенклатур вида `<тот же код>-<число>` в `ms_export`
+ *     (например при `27877-2`, `27877-10` порог = 2 шт. для базы `27877`); ручная запись за тот же день
+ *     (`source=manual`) не перезаписывается.
  *
  * Эндпоинты:
  *   GET    /api/product/:code                  — агрегатная карточка.
  *   GET    /api/product/:code/recent-shipments — пагинация «Последних отгрузок» (тот же период, что sales_*).
  *   GET    /api/product/:code/zero-stock-log   — лог нулевых остатков.
- *   POST   /api/product/:code/zero-stock-log   — ручная фиксация (если stock<=0).
+ *   POST   /api/product/:code/zero-stock-log   — ручная фиксация (если stock≤0 или force=1).
  *   POST   /api/product/zero-stock-windows-import — импорт сводки по окнам 30/60/90/180/365 (JSON или csv).
  *
- * Историческая **сводка по окнам** (как в Excel) — `dg_product_zero_stock_window_import`; не подменяет
- * построчный `dg_product_zero_stock_log` (там нужны конкретные даты).
+ * **Сводка по окнам 30…365 на карточке** — считается из `dg_product_zero_stock_log` (COUNT DISTINCT `ts_date` по
+ * скользящим окнам до `CURDATE()`), см. `computeZeroStockWindowsFromLog`. Исторический **импорт Excel**
+ * (`dg_product_zero_stock_window_import`) не подменяет построчный лог; для **формулы продаж** число дней отсутствия
+ * за период A по-прежнему max(разных дат в логе за A дн., оценка по последнему импорту — `lib/datagonZeroStockAbsence.js`),
+ * если срез импорта не старше ~730 дн.; иначе только лог.
  *
  * См. правила:
  *   .cursor/rules/datagon-list-page-baseline-moysklad.mdc (таблица карточки — не списочная)
@@ -46,13 +60,27 @@ const express = require('express');
 const bundleComponentsLastBuiltMs = new Map();
 const BUNDLE_COMPONENTS_REBUILD_COOLDOWN_MS = 90_000;
 
+/** Карточка / recent-shipments: не гонять тяжёлый LIKE по `ms_entity_details`, если кэш комплектов свежий. */
+const PRODUCT_CARD_BUNDLE_CACHE_FRESH_MS = 8 * 60 * 60 * 1000;
+const PRODUCT_CARD_BUNDLE_EMPTY_NEGATIVE_MS = 4 * 60 * 60 * 1000;
+const bundleComponentsEmptyNegativeAt = new Map();
+
 let zeroStockSchemaReady = false;
 let zeroWinImportSchemaReady = false;
 let bundleComponentsSchemaReady = false;
+let productStockSnapshotSchemaReady = false;
 
 /** Окна для агрегатов продаж. Совмещены с «суточными» колонками в /purchase.html. */
 const SALES_WINDOWS = [3, 5, 7, 15, 30, 60, 90, 180, 365];
 const ZERO_LOG_DEFAULT_STORE = '__total__';
+
+/** Тот же критерий, что middleware `/api` + `page_modes.purchase` для POST (см. `lib/datagonPageRegistry.js`). */
+function purchaseOverridesEditable(req) {
+    const a = req && req.datagonActor;
+    if (!a || a.username === 'admin') return true;
+    const raw = a.page_modes && a.page_modes.purchase != null ? a.page_modes.purchase : 'full';
+    return String(raw).toLowerCase() === 'full';
+}
 
 async function ensureZeroStockSchema(db) {
     if (zeroStockSchemaReady) return;
@@ -71,6 +99,23 @@ async function ensureZeroStockSchema(db) {
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     `);
     zeroStockSchemaReady = true;
+}
+
+async function ensureProductStockSnapshotSchema(db) {
+    if (productStockSnapshotSchemaReady) return;
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS dg_product_stock_snapshot (
+            id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            code VARCHAR(255) NOT NULL,
+            ts_date DATE NOT NULL,
+            stock DECIMAL(15,3) NOT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            UNIQUE KEY uq_snap_code_date (code, ts_date),
+            INDEX idx_snap_date (ts_date),
+            INDEX idx_snap_code_date2 (code, ts_date)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `);
+    productStockSnapshotSchemaReady = true;
 }
 
 async function ensureZeroStockWindowImportSchema(db) {
@@ -127,7 +172,7 @@ function safeMsCodeForLike(code) {
 }
 
 /**
- * Окно продаж для графиков / последних отгрузок / сводок:
+ * Период продаж (W, настройка «Продажи за период, дней») для графиков / последних отгрузок / сводок:
  * при валидной паре `sales_from` + `sales_to` (YYYY-MM-DD) — календарный диапазон (max 1825 дн.),
  * иначе — скользящее `recent_days` от NOW (default 365).
  */
@@ -277,18 +322,54 @@ async function refreshBundleComponentsCache(db, componentCode) {
     return upserts.length;
 }
 
+/** @returns {Promise<number|undefined>} число вставленных строк кэша комплектов; `undefined` — пропуск (комплект, невалидный код, кулдаун). */
 async function ensureBundleComponentsForProduct(db, componentCode, isBundleProduct) {
+    if (isBundleProduct) return undefined;
+    const safe = safeMsCodeForLike(componentCode);
+    if (!safe) return undefined;
+    await ensureBundleComponentsSchema(db);
+    const now = Date.now();
+    if (bundleComponentsLastBuiltMs.has(safe)) {
+        const last = bundleComponentsLastBuiltMs.get(safe);
+        if (now - last < BUNDLE_COMPONENTS_REBUILD_COOLDOWN_MS) return undefined;
+    }
+    const n = await refreshBundleComponentsCache(db, safe);
+    bundleComponentsLastBuiltMs.set(safe, now);
+    return n;
+}
+
+/**
+ * Для страницы товара и пагинации отгрузок: при свежих строках в `dg_bundle_components` или недавнем
+ * «пустом» ответе — не вызывать `refreshBundleComponentsCache` (4× LIKE по большому JSON).
+ */
+async function maybeRefreshBundleComponentsForProductView(db, componentCode, isBundleProduct) {
     if (isBundleProduct) return;
     const safe = safeMsCodeForLike(componentCode);
     if (!safe) return;
     await ensureBundleComponentsSchema(db);
     const now = Date.now();
-    if (bundleComponentsLastBuiltMs.has(safe)) {
-        const last = bundleComponentsLastBuiltMs.get(safe);
-        if (now - last < BUNDLE_COMPONENTS_REBUILD_COOLDOWN_MS) return;
+    const [statRows] = await db.query(
+        `SELECT COUNT(*) AS c, MAX(updated_at) AS mx FROM dg_bundle_components WHERE component_code = ?`,
+        [safe],
+    );
+    const st = statRows && statRows[0];
+    const cnt = Number(st && st.c != null ? st.c : 0);
+    const mx = st && st.mx ? new Date(st.mx).getTime() : 0;
+    if (cnt > 0 && mx && now - mx < PRODUCT_CARD_BUNDLE_CACHE_FRESH_MS) {
+        return;
     }
-    await refreshBundleComponentsCache(db, safe);
-    bundleComponentsLastBuiltMs.set(safe, now);
+    if (cnt === 0) {
+        const neg = bundleComponentsEmptyNegativeAt.get(safe);
+        if (neg && now - neg < PRODUCT_CARD_BUNDLE_EMPTY_NEGATIVE_MS) {
+            return;
+        }
+    }
+    const n = await ensureBundleComponentsForProduct(db, componentCode, isBundleProduct);
+    if (n === 0) {
+        bundleComponentsEmptyNegativeAt.set(safe, now);
+    } else if (typeof n === 'number' && n > 0) {
+        bundleComponentsEmptyNegativeAt.delete(safe);
+    }
 }
 
 async function loadViaBundlesDetail(db, componentCode, window, includeViaBundles) {
@@ -920,33 +1001,87 @@ async function loadRecentShipmentsPaged(db, code, componentCode, includeViaBundl
 
 /**
  * После полной выгрузки МС в `ms_export`: одним запросом фиксируем «нулевой день» за CURDATE()
- * для позиций со складской позицией «Да», не в архиве, с остатком ≤ 0.
+ * для позиций со складской позицией «Да», не в архиве, если остаток ≤ 0 **или** (только для кода без «-»)
+ * остаток < минимального суффикса среди номенклатур `<code>-<целое>` в той же выгрузке (комплекты вида 27877-2).
  * Строка за (code, __total__, сегодня) с `source=manual` не меняется.
  * @returns {{ scanned: number }}
  */
 async function syncZeroStockLogAfterMoyskladExport(db) {
     await ensureZeroStockSchema(db);
-    const [[cntRow]] = await db.query(
-        `SELECT COUNT(*) AS c
-           FROM ms_export m
-          WHERE m.stock_position = 'Да'
-            AND COALESCE(m.is_archived, 0) = 0
-            AND COALESCE(m.stock, 0) <= 0`,
-    );
+    const zeroOrBundleShortSql = `
+        FROM ms_export m
+        LEFT JOIN (
+             SELECT SUBSTRING_INDEX(code, '-', 1) AS base_code,
+                    MIN(CAST(SUBSTRING_INDEX(code, '-', -1) AS UNSIGNED)) AS min_suffix
+               FROM ms_export
+              WHERE (LENGTH(code) - LENGTH(REPLACE(code, '-', ''))) = 1
+                AND SUBSTRING_INDEX(code, '-', -1) REGEXP '^[0-9]+$'
+              GROUP BY SUBSTRING_INDEX(code, '-', 1)
+        ) bb ON bb.base_code = m.code
+       WHERE m.stock_position = 'Да'
+         AND COALESCE(m.is_archived, 0) = 0
+         AND (
+              COALESCE(m.stock, 0) <= 0
+              OR (
+                   INSTR(m.code, '-') = 0
+               AND bb.min_suffix IS NOT NULL
+               AND bb.min_suffix > 0
+               AND COALESCE(m.stock, 0) < bb.min_suffix
+              )
+         )`;
+    const [[cntRow]] = await db.query(`SELECT COUNT(*) AS c ${zeroOrBundleShortSql}`);
     const scanned = Number(cntRow?.c || 0);
     await db.query(
         `INSERT INTO dg_product_zero_stock_log (code, store_uuid, store_name, ts_date, total_stock, source)
          SELECT m.code, ?, NULL, CURDATE(), m.stock, 'moysklad_sync'
-           FROM ms_export m
-          WHERE m.stock_position = 'Да'
-            AND COALESCE(m.is_archived, 0) = 0
-            AND COALESCE(m.stock, 0) <= 0
+         ${zeroOrBundleShortSql}
          ON DUPLICATE KEY UPDATE
            total_stock = IF(source = 'manual', total_stock, VALUES(total_stock)),
            source = IF(source = 'manual', 'manual', VALUES(source))`,
         [ZERO_LOG_DEFAULT_STORE],
     );
     return { scanned };
+}
+
+/**
+ * После полного синка: один снимок `stock` из `ms_export` на календарный день (CURDATE()) по каждому коду.
+ * Повторный синк в тот же день перезаписывает число. Строки старше порога **retention** (настройка `product_stock_snapshot_retention_days`, по умолчанию 365 дн.) удаляются.
+ * @param {number} [retentionDays] — из `app_settings.product_stock_snapshot_retention_days` (30…3650).
+ * @returns {{ upserted: number }}
+ */
+async function syncProductStockSnapshotsAfterMoyskladExport(db, retentionDays) {
+    await ensureProductStockSnapshotSchema(db);
+    const keepDays = clampProductStockSnapshotRetentionDays(retentionDays);
+    const [res] = await db.query(
+        `INSERT INTO dg_product_stock_snapshot (code, ts_date, stock)
+         SELECT m.code, CURDATE(), COALESCE(m.stock, 0)
+           FROM ms_export m
+         ON DUPLICATE KEY UPDATE
+           stock = VALUES(stock),
+           created_at = CURRENT_TIMESTAMP`,
+    );
+    const upserted = Number(res && res.affectedRows != null ? res.affectedRows : 0);
+    await db.query(`DELETE FROM dg_product_stock_snapshot WHERE ts_date < DATE_SUB(CURDATE(), INTERVAL ? DAY)`, [keepDays]);
+    return { upserted };
+}
+
+async function loadStockSnapshots(db, code, days) {
+    await ensureProductStockSnapshotSchema(db);
+    const period = Math.min(730, Math.max(1, Math.round(Number(days) || 365)));
+    const [rows] = await db.query(
+        `SELECT ts_date, stock, created_at
+           FROM dg_product_stock_snapshot
+          WHERE code = ?
+            AND ts_date >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+          ORDER BY ts_date DESC
+          LIMIT 400`,
+        [code, period - 1],
+    );
+    return (rows || []).map((r) => ({
+        ts_date: r.ts_date ? new Date(r.ts_date).toISOString().slice(0, 10) : null,
+        stock: r.stock != null ? Number(r.stock) : 0,
+        created_at: r.created_at ? new Date(r.created_at).toISOString() : null,
+    }));
 }
 
 async function loadZeroStockLog(db, code, days) {
@@ -970,6 +1105,64 @@ async function loadZeroStockLog(db, code, days) {
         source: r.source ? String(r.source) : 'manual',
         created_at: r.created_at ? new Date(r.created_at).toISOString() : null,
     }));
+}
+
+const ZERO_STOCK_ROLLING_WINDOWS = [30, 60, 90, 180, 365];
+
+/**
+ * Скользящие окна до сегодня (дата сервера): число разных календарных дат в логе с нулём/отсутствием
+ * в интервале (CURDATE() − N, CURDATE] — ровно N календарных дней, согласовано с импортом «absent_last_N».
+ */
+async function computeZeroStockWindowsFromLog(db, code) {
+    await ensureZeroStockSchema(db);
+    const safeCode = String(code || '').trim();
+    if (!safeCode) {
+        return {
+            reference_date: null,
+            absent_last_30: 0,
+            absent_last_60: 0,
+            absent_last_90: 0,
+            absent_last_180: 0,
+            absent_last_365: 0,
+            source: 'zero_log',
+            note_explain:
+                'Числа — COUNT(DISTINCT ts_date) в dg_product_zero_stock_log по скользящим окнам до сегодняшней даты сервера.',
+        };
+    }
+    const counts = await Promise.all(
+        ZERO_STOCK_ROLLING_WINDOWS.map((w) =>
+            db.query(
+                `SELECT COUNT(DISTINCT ts_date) AS c
+                   FROM dg_product_zero_stock_log
+                  WHERE code = ?
+                    AND ts_date > DATE_SUB(CURDATE(), INTERVAL ? DAY)
+                    AND ts_date <= CURDATE()`,
+                [safeCode, w],
+            ),
+        ),
+    );
+    let a30 = Number(counts[0][0]?.[0]?.c || 0);
+    let a60 = Number(counts[1][0]?.[0]?.c || 0);
+    let a90 = Number(counts[2][0]?.[0]?.c || 0);
+    let a180 = Number(counts[3][0]?.[0]?.c || 0);
+    let a365 = Number(counts[4][0]?.[0]?.c || 0);
+    a60 = Math.max(a30, a60);
+    a90 = Math.max(a60, a90);
+    a180 = Math.max(a90, a180);
+    a365 = Math.max(a180, a365);
+    const [[drow]] = await db.query(`SELECT CURDATE() AS d`);
+    const ref = drow && drow.d ? new Date(drow.d).toISOString().slice(0, 10) : null;
+    return {
+        reference_date: ref,
+        absent_last_30: a30,
+        absent_last_60: a60,
+        absent_last_90: a90,
+        absent_last_180: a180,
+        absent_last_365: a365,
+        source: 'zero_log',
+        note_explain:
+            'Расчёт по логу Datagon: сколько разных календарных дат с записью отсутствия в каждом скользящем окне (N дней до сегодня включительно). Не заменяет построчный лог ниже.',
+    };
 }
 
 const WINDOW_IMPORT_MAX_ROWS = 100000;
@@ -1144,6 +1337,57 @@ async function loadLatestZeroStockWindowImport(db, code) {
     };
 }
 
+/** Последняя строка импорта сводки по каждому коду (для закупок / формулы). */
+async function loadLatestZeroStockWindowImportMap(db, codes) {
+    await ensureZeroStockWindowImportSchema(db);
+    const list = [...new Set(codes.map((c) => String(c || '').trim()).filter(Boolean))];
+    if (!list.length) return new Map();
+    const ph = list.map(() => '?').join(',');
+    let rows;
+    try {
+        const [r] = await db.query(
+            `SELECT code, reference_date, absent_last_30, absent_last_60, absent_last_90,
+                    absent_last_180, absent_last_365
+               FROM (
+                 SELECT w.*, ROW_NUMBER() OVER (PARTITION BY code ORDER BY reference_date DESC, id DESC) AS rn
+                   FROM dg_product_zero_stock_window_import w
+                  WHERE w.code IN (${ph})
+               ) t
+              WHERE t.rn = 1`,
+            list,
+        );
+        rows = r;
+    } catch (_) {
+        const [r2] = await db.query(
+            `SELECT w.code, w.reference_date, w.absent_last_30, w.absent_last_60, w.absent_last_90,
+                    w.absent_last_180, w.absent_last_365
+               FROM dg_product_zero_stock_window_import w
+               INNER JOIN (
+                 SELECT code, MAX(id) AS max_id
+                   FROM dg_product_zero_stock_window_import
+                  WHERE code IN (${ph})
+                  GROUP BY code
+               ) z ON z.max_id = w.id`,
+            list,
+        );
+        rows = r2;
+    }
+    const map = new Map();
+    for (const row of rows || []) {
+        const k = String(row.code || '').trim();
+        if (!k) continue;
+        map.set(k, {
+            reference_date: row.reference_date ? new Date(row.reference_date).toISOString().slice(0, 10) : null,
+            absent_last_30: Number(row.absent_last_30 || 0),
+            absent_last_60: Number(row.absent_last_60 || 0),
+            absent_last_90: Number(row.absent_last_90 || 0),
+            absent_last_180: Number(row.absent_last_180 || 0),
+            absent_last_365: Number(row.absent_last_365 || 0),
+        });
+    }
+    return map;
+}
+
 /** Общий обработчик POST импорта сводки по окнам (используется и в `/api/product`, и в `/api/purchase`). */
 function createHandleZeroStockWindowsImport(db) {
     return async function handleZeroStockWindowsImport(req, res) {
@@ -1199,10 +1443,7 @@ function createProductRouter(db, appSettings) {
             }
             const mse = msRows[0];
             const isBundleProduct = isMsBundleExportRow(mse);
-            await ensureBundleComponentsSchema(db);
-            if (!isBundleProduct) {
-                await ensureBundleComponentsForProduct(db, code, isBundleProduct);
-            }
+            await maybeRefreshBundleComponentsForProductView(db, code, isBundleProduct);
             const includeViaBundles = !isBundleProduct;
             const data = await loadRecentShipmentsPaged(db, code, code, includeViaBundles, salesWindow, rp);
             const totalPages = Math.max(1, Math.ceil(data.total / rp.pageSize));
@@ -1239,38 +1480,46 @@ function createProductRouter(db, appSettings) {
             const salesWindow = parseProductSalesWindow(req);
             const recentRp = parseRecentShipmentsRequest(req);
             const zeroDays = Math.min(365 * 5, Math.max(1, parseInt(req.query.zero_days, 10) || 90));
-
-            await ensureZeroStockSchema(db);
-
-            const [msRows] = await db.query(
-                `SELECT mse.*, med.payload_json
-                   FROM ms_export mse
-                   LEFT JOIN ms_entity_details med ON med.uuid = mse.uuid
-                  WHERE mse.code = ?
-                  LIMIT 1`,
-                [code],
+            const snapRetention = clampProductStockSnapshotRetentionDays(appSettings.product_stock_snapshot_retention_days);
+            const qSnap = parseInt(req.query.stock_snapshot_days, 10);
+            const stockSnapDays = Math.min(
+                snapRetention,
+                Math.min(730, Math.max(1, Number.isFinite(qSnap) && qSnap > 0 ? qSnap : Math.min(730, snapRetention))),
             );
+
+            const [msPack, poPack, , ,] = await Promise.all([
+                db.query(
+                    `SELECT mse.*, med.payload_json
+                       FROM ms_export mse
+                       LEFT JOIN ms_entity_details med ON med.uuid = mse.uuid
+                      WHERE mse.code = ?
+                      LIMIT 1`,
+                    [code],
+                ),
+                db.query(
+                    `SELECT code, min_stock_dg, multiplicity, min_stock_calc_as,
+                            proposed_min_stock, pack_qty_manual, note, updated_at
+                       FROM dg_purchase_overrides
+                      WHERE code = ?
+                      LIMIT 1`,
+                    [code],
+                ),
+                ensureZeroStockSchema(db),
+                ensureProductStockSnapshotSchema(db),
+                ensureBundleComponentsSchema(db),
+            ]);
+            const msRows = msPack[0];
+            const poRows = poPack[0];
             if (!msRows.length) {
                 return res.status(404).json({ success: false, error: 'Товар с таким кодом не найден в ms_export' });
             }
             const mse = msRows[0];
             const payload = parsePayloadSafe(mse.payload_json);
 
-            const [poRows] = await db.query(
-                `SELECT code, min_stock_dg, multiplicity, min_stock_calc_as,
-                        proposed_min_stock, pack_qty_manual, note, updated_at
-                   FROM dg_purchase_overrides
-                  WHERE code = ?
-                  LIMIT 1`,
-                [code],
-            );
             const override = poRows && poRows[0] ? poRows[0] : null;
 
             const isBundleProduct = isMsBundleExportRow(mse);
-            await ensureBundleComponentsSchema(db);
-            if (!isBundleProduct) {
-                await ensureBundleComponentsForProduct(db, code, isBundleProduct);
-            }
+            await maybeRefreshBundleComponentsForProductView(db, code, isBundleProduct);
             const includeViaBundles = !isBundleProduct;
 
             const formulaCfg = parseFormulaSettings(appSettings);
@@ -1279,6 +1528,7 @@ function createProductRouter(db, appSettings) {
                 recentPack,
                 zeroLog,
                 zeroWinImport,
+                zeroWindowsFromLog,
                 monthlySales,
                 byAgent,
                 byStore,
@@ -1286,13 +1536,15 @@ function createProductRouter(db, appSettings) {
                 directPeriod,
                 bundlesPeriod,
                 salesWindowSum,
+                salesAbsenceWindowSum,
                 absenceDistinctPack,
-                economyDistinctPack,
+                stockSnapshots,
             ] = await Promise.all([
                 loadSalesAggregates(db, code, code, includeViaBundles),
                 loadRecentShipmentsPaged(db, code, code, includeViaBundles, salesWindow, recentRp),
                 loadZeroStockLog(db, code, zeroDays),
                 loadLatestZeroStockWindowImport(db, code),
+                computeZeroStockWindowsFromLog(db, code),
                 loadMonthlySales(db, code, code, includeViaBundles, salesWindow),
                 loadSalesBreakdown(db, code, code, includeViaBundles, salesWindow, 'd.agent_name', 8),
                 loadSalesBreakdown(db, code, code, includeViaBundles, salesWindow, 'd.store_name', 8),
@@ -1300,8 +1552,9 @@ function createProductRouter(db, appSettings) {
                 loadDirectSalesPeriod(db, code, salesWindow),
                 loadBundlesEquivalentPeriod(db, code, salesWindow, includeViaBundles),
                 loadSalesSumLastDays(db, code, code, includeViaBundles, formulaCfg.salesWindowDays),
+                loadSalesSumLastDays(db, code, code, includeViaBundles, formulaCfg.absenceAnalysisDays),
                 loadZeroStockDistinctDays(db, code, formulaCfg.absenceAnalysisDays),
-                loadZeroStockDistinctDays(db, code, formulaCfg.economyAbsenceWindowDays),
+                loadStockSnapshots(db, code, stockSnapDays),
             ]);
             const recentSales = recentPack.rows;
             const recentTotal = recentPack.total;
@@ -1364,29 +1617,55 @@ function createProductRouter(db, appSettings) {
                         prevBaseline = pm;
                         prevBaselineSource = 'override.proposed_min_stock';
                     }
-                } else if (override.min_stock_dg != null && override.min_stock_dg !== '') {
-                    const md = Number(override.min_stock_dg);
-                    if (Number.isFinite(md)) {
-                        prevBaseline = md;
-                        prevBaselineSource = 'override.min_stock_dg';
-                    }
                 }
             }
             const multRaw =
                 override && override.multiplicity != null && override.multiplicity !== '' ? Number(override.multiplicity) : 0;
             const multiplicity = Number.isFinite(multRaw) && multRaw >= 0 ? multRaw : 0;
 
+            const absenceLog = absenceDistinctPack.distinct_days;
+            const absenceMerged = mergeAbsenceDistinctForFormula({
+                logDistinctDays: absenceLog,
+                windowImport: zeroWinImport,
+                analysisDaysA: formulaCfg.absenceAnalysisDays,
+            });
+
             const formulaResult = computeSalesFormula({
                 settings: formulaCfg,
                 sumQty: salesWindowSum.sum_qty,
-                absenceDistinctDays: absenceDistinctPack.distinct_days,
-                economyAbsenceDistinctDays: economyDistinctPack.distinct_days,
+                sumQtyAbsenceWindow: salesAbsenceWindowSum.sum_qty,
+                absenceDistinctDays: absenceMerged.effective,
                 marketPriceRub: pickMarketPriceRub(prices),
                 multiplicity,
                 stockQty: ms.stock,
                 prevBaseline,
                 prevBaselineSource,
             });
+
+            formulaResult.inputs.absence_distinct_days_log = absenceMerged.log;
+            if (absenceMerged.importEstimate != null) {
+                formulaResult.inputs.absence_distinct_days_import_estimate = absenceMerged.importEstimate;
+            }
+            if (absenceMerged.import_reference_age_days != null) {
+                formulaResult.inputs.absence_import_reference_age_days = absenceMerged.import_reference_age_days;
+            }
+            if (absenceMerged.importSkippedReason) {
+                formulaResult.inputs.absence_import_merge_note = absenceMerged.importSkippedReason;
+            }
+
+            const proposedFloored = applyMinStockDgFloor(
+                formulaResult.proposed_min_stock,
+                override && override.min_stock_dg,
+            );
+            if (proposedFloored !== formulaResult.proposed_min_stock) {
+                formulaResult.warnings = Array.isArray(formulaResult.warnings)
+                    ? formulaResult.warnings.slice()
+                    : [];
+                formulaResult.warnings.push(
+                    'Итог поднят до минимума «Неснижаемый остаток Датагон» (min_stock_dg): предлагаемый неснижаемый не может быть ниже этого порога.',
+                );
+            }
+            formulaResult.proposed_min_stock = proposedFloored;
 
             const formulaPayload = {
                 proposed_min_stock: formulaResult.proposed_min_stock,
@@ -1395,12 +1674,13 @@ function createProductRouter(db, appSettings) {
                 warnings: formulaResult.warnings,
                 detail: formulaResult.detail,
                 note:
-                    'Период продаж и коэффициенты задаются в «Настройки» → «Формула продаж / закупки» (там же параметр «Окно продаж» в календарных днях). Сумма продаж — проведённые отгрузки МС за выбранный календарный период (прямые + эквивалент через комплекты). Дни без остатка — число различных дат в логе отсутствия на складе за заданные интервалы (см. блок «Отсутствие на складе» на карточке).',
+                    'Сумма с учётом отсутствий × «Коэффициент пополнения» (без прибавки «Базовый запас» и «Базовый для дорогих»); редкий товар — ранний выход в «Базовый запас для товаров с редкими продажами» по фактической сумме за «Продажи за период», затем не ниже кратности из закупок при кратности ≥ 1; нередкая ветка — кратность и «Процент от упаковки»; «Макс. изменение» только на повышение. Подробности — «Формула этапами» и блок подсказки в настройках.',
             };
 
             res.json({
                 success: true,
                 code,
+                purchase_overrides_editable: purchaseOverridesEditable(req),
                 ms,
                 override: override || null,
                 prices,
@@ -1437,10 +1717,17 @@ function createProductRouter(db, appSettings) {
                     days: zeroDays,
                     rows: zeroLog,
                     note:
-                        'По аналогии с продажами (там в лог попадают только проведённые отгрузки), здесь в лог попадают только дни, когда по выгрузке МС товар реально числился как отсутствующий на складе: после каждого успешного синка МойСклад за текущие сутки автоматически добавляется строка, если складская позиция «Да», товар не в архиве и остаток ≤ 0. Ручная запись за тот же день автоматикой не перезаписывается. Разбивка по отдельным складам — когда в синке появится report/stock/bystore.',
+                        'По аналогии с продажами (там в лог попадают только проведённые отгрузки), здесь в лог попадают только дни, когда по выгрузке МС товар реально числился как отсутствующий на складе: после каждого успешного синка МойСклад за текущие сутки автоматически добавляется строка, если складская позиция «Да», товар не в архиве и (остаток ≤ 0 или для кода без «-» в номенклатуре остаток строго меньше минимального числового суффикса среди кодов вида «тот же код-число», например при 27877-2 и 27877-10 порог для 27877 = 2 шт.). Ручная запись за тот же день автоматикой не перезаписывается. Разбивка по отдельным складам — когда в синке появится report/stock/bystore.',
                 },
                 zero_stock_windows_import: zeroWinImport,
+                zero_stock_windows_from_log: zeroWindowsFromLog,
                 formula: formulaPayload,
+                stock_snapshots: {
+                    days: stockSnapDays,
+                    retention_days: snapRetention,
+                    rows: stockSnapshots,
+                    note: `По одному значению stock из ms_export на календарный день после полного синка МС; повторный синк в тот же день перезаписывает. Глубину списка задаёт query stock_snapshot_days (1…min(730, retention)); без query — min(730, retention). В БД хранятся снимки не старше ${snapRetention} дн. (Настройки → срок хранения снимков остатка).`,
+                },
             });
         } catch (err) {
             console.error('[product][get] error:', err);
@@ -1531,5 +1818,9 @@ function createProductRouter(db, appSettings) {
 module.exports = createProductRouter;
 module.exports.createProductRouter = createProductRouter;
 module.exports.ensureZeroStockSchema = ensureZeroStockSchema;
+module.exports.ensureZeroStockWindowImportSchema = ensureZeroStockWindowImportSchema;
 module.exports.ensureBundleComponentsSchema = ensureBundleComponentsSchema;
+module.exports.ensureBundleComponentsForProduct = ensureBundleComponentsForProduct;
 module.exports.syncZeroStockLogAfterMoyskladExport = syncZeroStockLogAfterMoyskladExport;
+module.exports.syncProductStockSnapshotsAfterMoyskladExport = syncProductStockSnapshotsAfterMoyskladExport;
+module.exports.loadLatestZeroStockWindowImportMap = loadLatestZeroStockWindowImportMap;

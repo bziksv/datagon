@@ -1,6 +1,6 @@
 const express = require('express');
 const axios = require('axios');
-const { syncZeroStockLogAfterMoyskladExport } = require('./product');
+const { syncZeroStockLogAfterMoyskladExport, syncProductStockSnapshotsAfterMoyskladExport } = require('./product');
 
 const router = express.Router();
 
@@ -1359,10 +1359,19 @@ async function syncMsExport(db, config, settings = {}) {
     try {
         const { scanned } = await syncZeroStockLogAfterMoyskladExport(db);
         addLog(
-            `Нулевые остатки (лог за сегодня): склад.поз.=Да, не архив, stock≤0 — кандидатов ${scanned}, upsert выполнен (source=moysklad_sync; manual за день не перезаписываем).`,
+            `Нулевые остатки (лог за сегодня): склад.поз.=Да, не архив, stock≤0 или база без «-» и stock < min(суффикс в кодах «код-число») — кандидатов ${scanned}, upsert выполнен (source=moysklad_sync; manual за день не перезаписываем).`,
         );
     } catch (e) {
         addLog(`Нулевые остатки: не удалось обновить лог — ${e && e.message ? e.message : String(e)}`);
+    }
+    try {
+        const snapKeep = Math.max(30, Math.min(3650, Math.round(Number(settings.product_stock_snapshot_retention_days) || 365)));
+        const { upserted } = await syncProductStockSnapshotsAfterMoyskladExport(db, snapKeep);
+        addLog(
+            `Снимки остатка ms_export: за сегодня upsert строк ≈${upserted}; из dg_product_stock_snapshot удалены даты старше ${snapKeep} дн. (product_stock_snapshot_retention_days).`,
+        );
+    } catch (e) {
+        addLog(`Снимки остатка: не удалось записать — ${e && e.message ? e.message : String(e)}`);
     }
     const exportRowsSavedCount = exportRows.length;
     exportRows.length = 0;

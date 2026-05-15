@@ -38,6 +38,198 @@
     };
   })();
 
+  /**
+   * Единые уведомления о действиях (тосты) + busy-состояние кнопок.
+   * API: window.DatagonNotify.toast({ type, message, title?, duration? })
+   *      window.DatagonNotify.busyRun(buttonEl, functionReturningPromise)
+   * HTML: data-dg-notify-start="Текст при клике" — мгновенный info-тост (пока грузится fetch в обработчике).
+   * На страницах с .datagon-vanilla-shell window.alert заменяется на тост (эвристика типа по тексту).
+   */
+  (function installDatagonNotify() {
+    if (window.__datagonNotifyModuleInstalled) return;
+    window.__datagonNotifyModuleInstalled = true;
+    var STYLES_ID = "dg-notify-styles-v1";
+    function injectStyles() {
+      if (document.getElementById(STYLES_ID)) return;
+      var st = document.createElement("style");
+      st.id = STYLES_ID;
+      st.textContent = [
+        "#dg-notify-stack{position:fixed;bottom:1rem;right:1rem;z-index:10050;display:flex;flex-direction:column;gap:0.5rem;",
+        "max-width:min(420px,calc(100vw - 2rem));pointer-events:none;font-family:inherit;}",
+        ".dg-notify-item{pointer-events:auto;border-radius:8px;padding:0.65rem 0.9rem;font-size:0.875rem;line-height:1.35;",
+        "box-shadow:0 6px 28px rgba(15,23,42,0.18);border:1px solid transparent;animation:dg-notify-in 0.22s ease-out;cursor:default;}",
+        ".dg-notify-item.dg-notify-success{background:#ecfdf5;border-color:#a7f3d0;color:#065f46;}",
+        ".dg-notify-item.dg-notify-danger{background:#fef2f2;border-color:#fecaca;color:#991b1b;}",
+        ".dg-notify-item.dg-notify-warning{background:#fffbeb;border-color:#fde68a;color:#92400e;}",
+        ".dg-notify-item.dg-notify-info{background:#eff6ff;border-color:#bfdbfe;color:#1e3a8a;}",
+        ".dg-notify-title{font-weight:600;margin-bottom:0.2rem;}",
+        "@keyframes dg-notify-in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}",
+      ].join("");
+      (document.head || document.documentElement).appendChild(st);
+    }
+    function ensureHost() {
+      injectStyles();
+      var h = document.getElementById("dg-notify-stack");
+      if (!h) {
+        h = document.createElement("div");
+        h.id = "dg-notify-stack";
+        h.setAttribute("aria-live", "polite");
+        (document.body || document.documentElement).appendChild(h);
+      }
+      return h;
+    }
+    function escapeHtml(s) {
+      return String(s == null ? "" : s)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+    var toastSeq = 0;
+    var lastDedupe = Object.create(null);
+    function toast(opts) {
+      opts = opts || {};
+      var type = String(opts.type || "info").toLowerCase();
+      if (type !== "success" && type !== "danger" && type !== "warning" && type !== "info") type = "info";
+      var message = String(opts.message != null ? opts.message : "").trim();
+      if (!message) return;
+      var dedupeKey = String(opts.dedupeKey || "").trim();
+      if (dedupeKey) {
+        var now = Date.now();
+        if (lastDedupe[dedupeKey] && now - lastDedupe[dedupeKey] < 900) return;
+        lastDedupe[dedupeKey] = now;
+      }
+      var duration = Math.max(1200, Math.min(20000, Number(opts.duration) || (type === "danger" ? 9000 : 5200)));
+      var host = ensureHost();
+      var id = "dg-toast-" + ++toastSeq;
+      var el = document.createElement("div");
+      el.id = id;
+      el.className = "dg-notify-item dg-notify-" + type;
+      el.setAttribute("role", type === "danger" ? "alert" : "status");
+      var title = String(opts.title || "").trim();
+      var html = "";
+      if (title) html += '<div class="dg-notify-title">' + escapeHtml(title) + "</div>";
+      html += "<div>" + escapeHtml(message).replace(/\n/g, "<br/>") + "</div>";
+      el.innerHTML = html;
+      while (host.children.length >= 6) {
+        try {
+          host.removeChild(host.firstChild);
+        } catch (eRem) {
+          break;
+        }
+      }
+      host.appendChild(el);
+      var tmr = setTimeout(function () {
+        try {
+          if (el.parentNode) el.parentNode.removeChild(el);
+        } catch (e2) {}
+      }, duration);
+      el.addEventListener(
+        "click",
+        function () {
+          try {
+            clearTimeout(tmr);
+            if (el.parentNode) el.parentNode.removeChild(el);
+          } catch (e3) {}
+        },
+        { once: true }
+      );
+    }
+    function busyRun(btn, fn) {
+      if (!btn || !fn) return Promise.resolve();
+      var hadDisabled = btn.disabled;
+      var prevHtml = btn.innerHTML;
+      var prevBusy = btn.getAttribute("aria-busy");
+      var label = String(btn.textContent || btn.innerText || "").replace(/\s+/g, " ").trim().slice(0, 80);
+      btn.disabled = true;
+      btn.setAttribute("aria-busy", "true");
+      if (btn.classList && btn.classList.contains("btn")) {
+        btn.innerHTML =
+          '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>' +
+          (label || "…");
+      }
+      var started = Date.now();
+      var minMs = 380;
+      return Promise.resolve()
+        .then(fn)
+        .finally(function () {
+          var wait = Math.max(0, minMs - (Date.now() - started));
+          setTimeout(function () {
+            try {
+              btn.innerHTML = prevHtml;
+              btn.disabled = hadDisabled;
+              if (prevBusy == null) btn.removeAttribute("aria-busy");
+              else btn.setAttribute("aria-busy", prevBusy);
+            } catch (eF) {}
+          }, wait);
+        });
+    }
+    function guessAlertType(msg) {
+      var s = String(msg || "").toLowerCase();
+      if (/ошиб|не удалось|не\s+удалось|\bfail|\berror|fatal|econn|timeout|etimedout/.test(s)) return "danger";
+      if (/заполните|выберите|введите|недостаточно|короче|должен\s+быть|укажите|нужн|только\s+admin/.test(s)) return "warning";
+      if (/готово|сохран|удален|запущен|добавлен|очищен|записей|скопирован|вошли|успешн|матриц|обновлен|остановлен|пересчитан/.test(s))
+        return "success";
+      return "info";
+    }
+    function patchAlertForShell() {
+      if (window.__datagonAlertToToastV1) return;
+      if (!document.querySelector(".datagon-vanilla-shell")) return;
+      window.__datagonAlertToToastV1 = true;
+      var orig = window.alert;
+      window.alert = function (msg) {
+        var s = String(msg == null ? "" : msg);
+        if (!s) {
+          try {
+            orig.call(window, msg);
+          } catch (e0) {}
+          return;
+        }
+        if (window.DatagonNotify && typeof window.DatagonNotify.toast === "function") {
+          var gt = guessAlertType(s);
+          window.DatagonNotify.toast({ type: gt, message: s, duration: gt === "danger" ? 10000 : 5600 });
+        } else {
+          try {
+            orig.call(window, msg);
+          } catch (e1) {}
+        }
+      };
+    }
+    document.addEventListener(
+      "click",
+      function (e) {
+        var t = e.target;
+        if (!t || !t.closest) return;
+        var el = t.closest("[data-dg-notify-start]");
+        if (!el || el.disabled || el.getAttribute("aria-disabled") === "true") return;
+        var msg = el.getAttribute("data-dg-notify-start");
+        if (!msg || !String(msg).trim()) return;
+        toast({ type: "info", message: String(msg).trim(), duration: 2400 });
+      },
+      true
+    );
+    window.DatagonNotify = {
+      __dgNotifyV1: true,
+      toast: toast,
+      busyRun: busyRun,
+      success: function (m) {
+        toast({ type: "success", message: m });
+      },
+      danger: function (m) {
+        toast({ type: "danger", message: m });
+      },
+      warning: function (m) {
+        toast({ type: "warning", message: m });
+      },
+      info: function (m) {
+        toast({ type: "info", message: m });
+      },
+    };
+    try {
+      patchAlertForShell();
+    } catch (ePatch) {}
+  })();
+
   var dgActivityQueue = [];
   var dgActivityFlushTimer = null;
   var dgActivityStarted = false;

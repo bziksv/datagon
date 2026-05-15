@@ -99,6 +99,33 @@
     body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-table tbody td.dg-dim-cell-name {
       white-space: normal;
       word-break: break-word;
+      /* Базовый `td` выше задаёт overflow:hidden + ellipsis — для имени с кнопками «Лог»/«В МС» это обрезает подпись и иконки. */
+      overflow: visible;
+      text-overflow: clip;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-name-cell {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-start;
+      gap: 6px 8px;
+      min-width: 0;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-name-text {
+      flex: 1 1 140px;
+      min-width: 0;
+      word-break: break-word;
+      line-height: 1.35;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-name-actions {
+      flex: 0 0 auto;
+      display: inline-flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-name-actions .dg-dim-log-btn,
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-name-actions .dg-dim-sync-btn {
+      margin-left: 0;
     }
     body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-table tbody td.dg-dim-cell-num {
       text-align: right;

@@ -1529,7 +1529,11 @@
               ds.classList.remove("text-muted");
               ds.classList.add("text-danger");
             }
-            alert(e.message || String(e));
+            if (window.DatagonNotify) {
+              window.DatagonNotify.toast({ type: "danger", message: msg, duration: 9000 });
+            } else {
+              alert(e.message || String(e));
+            }
           });
       }
 

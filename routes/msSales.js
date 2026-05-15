@@ -265,8 +265,12 @@ function moneyToMinor(v) {
 
 /* =========================== Job state (in-memory) =========================== */
 
+/** Номер прогона: `.then` старого синка не сбрасывает `active` у нового (иначе журнал автосинка показывает «1 с»). */
+let msSalesJobSerial = 0;
+
 const jobState = {
     active: false,
+    job_serial: 0,
     cancelRequested: false,
     started_at: null,
     finished_at: null,
@@ -308,6 +312,9 @@ const jobState = {
 };
 
 function resetJobState(days) {
+    msSalesJobSerial += 1;
+    const serial = msSalesJobSerial;
+    jobState.job_serial = serial;
     jobState.active = true;
     jobState.cancelRequested = false;
     jobState.started_at = new Date();
@@ -326,6 +333,20 @@ function resetJobState(days) {
     jobState.resume_mode = false;
     jobState.resume_from_moment = null;
     jobState.existing_count_at_start = 0;
+    return serial;
+}
+
+/** Завершение только для актуального `serial` (игнорируем хвосты старых promise-цепочек). */
+function finalizeMsSalesJob(serial, outcome, err) {
+    if (jobState.job_serial !== serial) return;
+    jobState.active = false;
+    jobState.finished_at = new Date();
+    if (outcome === 'ok') {
+        jobState.message = buildFinalMessage();
+    } else {
+        logJobError((err && err.message) || 'unknown');
+        jobState.message = 'Ошибка: ' + (err && err.message ? err.message : 'unknown');
+    }
 }
 
 function jobStateToPayload() {
@@ -348,6 +369,7 @@ function jobStateToPayload() {
         resume_mode: jobState.resume_mode,
         resume_from_moment: jobState.resume_from_moment,
         existing_count_at_start: jobState.existing_count_at_start,
+        job_serial: jobState.job_serial,
     };
 }
 
@@ -1646,21 +1668,16 @@ function createMsSalesRouter(db, appSettings = {}) {
         }
         const days = clampInt(req.body && req.body.days, 1, 365 * 5, 30);
         const fresh = !!(req.body && req.body.fresh === true);
-        resetJobState(days);
+        const serial = resetJobState(days);
 
         /** Запускаем в фоне, не блокируем HTTP-ответ. */
         ensureSchema(db)
             .then(() => runDemandSync(db, days, { fresh }))
             .then(() => {
-                jobState.active = false;
-                jobState.finished_at = new Date();
-                jobState.message = buildFinalMessage();
+                finalizeMsSalesJob(serial, 'ok');
             })
             .catch((e) => {
-                jobState.active = false;
-                jobState.finished_at = new Date();
-                logJobError((e && e.message) || 'unknown');
-                jobState.message = 'Ошибка: ' + (e && e.message ? e.message : 'unknown');
+                finalizeMsSalesJob(serial, 'err', e);
             });
 
         return res.json({ success: true, started: true, fresh, status: jobStateToPayload() });
@@ -1718,12 +1735,14 @@ function createMsSalesRouter(db, appSettings = {}) {
  * Поведение:
  *   • если синк уже идёт — вернёт `{ started: false, reason: 'already_running' }`;
  *   • если нет MS_TOKEN — `{ started: false, reason: 'missing_creds', error: '…' }`;
- *   • при успешном старте — `{ started: true }`, сам синк гоняется в фоне
- *     (как и в HTTP-варианте, чтобы не держать вызывающий контекст).
+ *   • при успешном старте — `{ started: true, … }`; по умолчанию синк в фоне
+ *     (как HTTP). Если `options.awaitCompletion === true` — Promise резолвится
+ *     после реального завершения пайплайна (для автосинка в server.js).
  */
 function triggerSync(db, options = {}) {
     const days = clampInt(options.days, 1, 365 * 5, 90);
     const fresh = !!(options && options.fresh === true);
+    const awaitCompletion = !!(options && options.awaitCompletion === true);
     if (jobState.active) {
         return Promise.resolve({ started: false, reason: 'already_running', status: jobStateToPayload() });
     }
@@ -1735,21 +1754,19 @@ function triggerSync(db, options = {}) {
             error: 'MS_TOKEN не задан (env MS_TOKEN или config.msToken)',
         });
     }
-    resetJobState(days);
-    /** Фоновый запуск: автосинхронизация ждёт через polling getSyncState(). */
-    ensureSchema(db)
+    const serial = resetJobState(days);
+    const pipeline = ensureSchema(db)
         .then(() => runDemandSync(db, days, { fresh }))
         .then(() => {
-            jobState.active = false;
-            jobState.finished_at = new Date();
-            jobState.message = buildFinalMessage();
+            finalizeMsSalesJob(serial, 'ok');
         })
         .catch((e) => {
-            jobState.active = false;
-            jobState.finished_at = new Date();
-            logJobError((e && e.message) || 'unknown');
-            jobState.message = 'Ошибка: ' + (e && e.message ? e.message : 'unknown');
+            finalizeMsSalesJob(serial, 'err', e);
         });
+    if (awaitCompletion) {
+        return pipeline.then(() => ({ started: true, days, fresh, status: jobStateToPayload() }));
+    }
+    void pipeline;
     return Promise.resolve({ started: true, days, fresh, status: jobStateToPayload() });
 }
 

@@ -1167,11 +1167,20 @@
           })
           .then(function (x) {
             if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Не удалось остановить синхронизацию");
-            alert("Синхронизация МойСклад остановлена");
+            if (window.DatagonNotify && typeof window.DatagonNotify.toast === "function") {
+              window.DatagonNotify.toast({ type: "success", message: "Синхронизация МойСклад остановлена", duration: 4500 });
+            } else {
+              alert("Синхронизация МойСклад остановлена");
+            }
             loadOverview();
           })
           .catch(function (e) {
-            alert(e.message || "Ошибка остановки");
+            var msg = e.message || "Ошибка остановки";
+            if (window.DatagonNotify && typeof window.DatagonNotify.toast === "function") {
+              window.DatagonNotify.toast({ type: "danger", message: msg, duration: 8000 });
+            } else {
+              alert(msg);
+            }
           });
       }
 

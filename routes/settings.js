@@ -114,7 +114,7 @@ module.exports = (db, appSettings) => {
     
     router.post('/', async (req, res) => {
         const {
-            default_limit, parse_batch_size, page_delay_ms, sync_batch_size, sync_delay_ms, sync_mode, log_retention_days, results_retention_days, ms_dimensions_log_retention_days, auto_sync_runs_retention_days,
+            default_limit, parse_batch_size, page_delay_ms, sync_batch_size, sync_delay_ms, sync_mode, log_retention_days, results_retention_days, ms_dimensions_log_retention_days, dg_purchase_overrides_log_retention_days, auto_sync_runs_retention_days, product_stock_snapshot_retention_days,
             ms_sync_page_limit, ms_sync_delay_ms,
             auto_sync_myproducts_enabled, auto_sync_myproducts_time,
             auto_sync_moysklad_enabled, auto_sync_moysklad_time,
@@ -130,10 +130,8 @@ module.exports = (db, appSettings) => {
             ozon_client_id, ozon_api_key, wb_api_key, wb_token_type, ym_api_key, ym_campaign_id, ym_business_id,
             mp_ozon_delay_ms, mp_wb_delay_cards_ms, mp_wb_delay_other_ms, mp_yandex_delay_ms, mp_ozon_include_archived,
             sales_formula_replenishment_coef, sales_formula_sales_window_days, sales_formula_absence_analysis_days,
-            sales_formula_rare_base_qty, sales_formula_rare_avg_max, sales_formula_expensive_rare_threshold_rub,
-            sales_formula_expensive_rare_min_qty, sales_formula_max_change_coef, sales_formula_incomplete_pack_pct,
-            sales_formula_economy_enabled, sales_formula_economy_absence_window_days, sales_formula_economy_max_absence_pct,
-            sales_formula_economy_target_cover_days
+            sales_formula_base_qty, sales_formula_rare_base_qty, sales_formula_rare_avg_max, sales_formula_expensive_rare_threshold_rub,
+            sales_formula_expensive_rare_min_qty, sales_formula_max_change_coef, sales_formula_incomplete_pack_pct
         } = req.body;
         try {
             const queries = [];
@@ -147,7 +145,14 @@ module.exports = (db, appSettings) => {
             if (log_retention_days !== undefined) queries.push(['log_retention_days', Number(log_retention_days || 7)]);
             if (results_retention_days !== undefined) queries.push(['results_retention_days', Number(results_retention_days || 120)]);
             if (ms_dimensions_log_retention_days !== undefined) queries.push(['ms_dimensions_log_retention_days', Number(ms_dimensions_log_retention_days || 180)]);
+            if (dg_purchase_overrides_log_retention_days !== undefined) {
+                queries.push(['dg_purchase_overrides_log_retention_days', Number(dg_purchase_overrides_log_retention_days || 180)]);
+            }
             if (auto_sync_runs_retention_days !== undefined) queries.push(['auto_sync_runs_retention_days', Number(auto_sync_runs_retention_days || 180)]);
+            if (product_stock_snapshot_retention_days !== undefined) {
+                const psr = Math.max(30, Math.min(3650, Math.round(Number(product_stock_snapshot_retention_days || 365))));
+                queries.push(['product_stock_snapshot_retention_days', String(psr)]);
+            }
             if (auto_sync_myproducts_enabled !== undefined) queries.push(['auto_sync_myproducts_enabled', auto_sync_myproducts_enabled ? 1 : 0]);
             if (auto_sync_myproducts_time !== undefined) queries.push(['auto_sync_myproducts_time', auto_sync_myproducts_time || '03:00']);
             if (auto_sync_moysklad_enabled !== undefined) queries.push(['auto_sync_moysklad_enabled', auto_sync_moysklad_enabled ? 1 : 0]);
@@ -231,6 +236,9 @@ module.exports = (db, appSettings) => {
                 const a = Math.max(7, Math.min(365 * 3, Math.round(Number(sales_formula_absence_analysis_days || 210))));
                 queries.push(['sales_formula_absence_analysis_days', String(a)]);
             }
+            if (sales_formula_base_qty !== undefined) {
+                queries.push(['sales_formula_base_qty', String(Math.max(0, Math.round(Number(sales_formula_base_qty || 0))))]);
+            }
             if (sales_formula_rare_base_qty !== undefined) {
                 queries.push(['sales_formula_rare_base_qty', String(Math.max(0, Math.round(Number(sales_formula_rare_base_qty || 0))))]);
             }
@@ -257,24 +265,8 @@ module.exports = (db, appSettings) => {
             }
             if (sales_formula_incomplete_pack_pct !== undefined) {
                 const p = Number(sales_formula_incomplete_pack_pct);
-                const pv = Number.isFinite(p) ? Math.max(0, Math.min(100, p)) : 10;
+                const pv = Number.isFinite(p) ? Math.max(0, Math.min(100, p)) : 80;
                 queries.push(['sales_formula_incomplete_pack_pct', String(pv)]);
-            }
-            if (sales_formula_economy_enabled !== undefined) {
-                queries.push(['sales_formula_economy_enabled', sales_formula_economy_enabled ? 1 : 0]);
-            }
-            if (sales_formula_economy_absence_window_days !== undefined) {
-                const e = Math.max(7, Math.min(730, Math.round(Number(sales_formula_economy_absence_window_days || 90))));
-                queries.push(['sales_formula_economy_absence_window_days', String(e)]);
-            }
-            if (sales_formula_economy_max_absence_pct !== undefined) {
-                const ep = Number(sales_formula_economy_max_absence_pct);
-                const epv = Number.isFinite(ep) ? Math.max(0, Math.min(100, ep)) : 6;
-                queries.push(['sales_formula_economy_max_absence_pct', String(epv)]);
-            }
-            if (sales_formula_economy_target_cover_days !== undefined) {
-                const t = Math.max(1, Math.min(365, Math.round(Number(sales_formula_economy_target_cover_days || 18))));
-                queries.push(['sales_formula_economy_target_cover_days', String(t)]);
             }
 
             for (const [key, val] of queries) {
@@ -296,7 +288,14 @@ module.exports = (db, appSettings) => {
             if(log_retention_days !== undefined) appSettings.log_retention_days = parseInt(log_retention_days);
             if(results_retention_days !== undefined) appSettings.results_retention_days = parseInt(results_retention_days);
             if(ms_dimensions_log_retention_days !== undefined) appSettings.ms_dimensions_log_retention_days = parseInt(ms_dimensions_log_retention_days);
+            if(dg_purchase_overrides_log_retention_days !== undefined) appSettings.dg_purchase_overrides_log_retention_days = parseInt(dg_purchase_overrides_log_retention_days);
             if(auto_sync_runs_retention_days !== undefined) appSettings.auto_sync_runs_retention_days = parseInt(auto_sync_runs_retention_days);
+            if (product_stock_snapshot_retention_days !== undefined) {
+                appSettings.product_stock_snapshot_retention_days = Math.max(
+                    30,
+                    Math.min(3650, Math.round(Number(product_stock_snapshot_retention_days || 365))),
+                );
+            }
             if(auto_sync_myproducts_enabled !== undefined) appSettings.auto_sync_myproducts_enabled = auto_sync_myproducts_enabled ? 1 : 0;
             if(auto_sync_myproducts_time !== undefined) appSettings.auto_sync_myproducts_time = auto_sync_myproducts_time || '03:00';
             if(auto_sync_moysklad_enabled !== undefined) appSettings.auto_sync_moysklad_enabled = auto_sync_moysklad_enabled ? 1 : 0;
@@ -355,6 +354,9 @@ module.exports = (db, appSettings) => {
             if (sales_formula_absence_analysis_days !== undefined) {
                 appSettings.sales_formula_absence_analysis_days = Math.max(7, Math.min(365 * 3, Math.round(Number(sales_formula_absence_analysis_days || 210))));
             }
+            if (sales_formula_base_qty !== undefined) {
+                appSettings.sales_formula_base_qty = Math.max(0, Math.round(Number(sales_formula_base_qty || 0)));
+            }
             if (sales_formula_rare_base_qty !== undefined) {
                 appSettings.sales_formula_rare_base_qty = Math.max(0, Math.round(Number(sales_formula_rare_base_qty || 0)));
             }
@@ -374,18 +376,7 @@ module.exports = (db, appSettings) => {
             }
             if (sales_formula_incomplete_pack_pct !== undefined) {
                 const p = Number(sales_formula_incomplete_pack_pct);
-                appSettings.sales_formula_incomplete_pack_pct = Number.isFinite(p) ? Math.max(0, Math.min(100, p)) : 10;
-            }
-            if (sales_formula_economy_enabled !== undefined) appSettings.sales_formula_economy_enabled = sales_formula_economy_enabled ? 1 : 0;
-            if (sales_formula_economy_absence_window_days !== undefined) {
-                appSettings.sales_formula_economy_absence_window_days = Math.max(7, Math.min(730, Math.round(Number(sales_formula_economy_absence_window_days || 90))));
-            }
-            if (sales_formula_economy_max_absence_pct !== undefined) {
-                const ep = Number(sales_formula_economy_max_absence_pct);
-                appSettings.sales_formula_economy_max_absence_pct = Number.isFinite(ep) ? Math.max(0, Math.min(100, ep)) : 6;
-            }
-            if (sales_formula_economy_target_cover_days !== undefined) {
-                appSettings.sales_formula_economy_target_cover_days = Math.max(1, Math.min(365, Math.round(Number(sales_formula_economy_target_cover_days || 18))));
+                appSettings.sales_formula_incomplete_pack_pct = Number.isFinite(p) ? Math.max(0, Math.min(100, p)) : 80;
             }
 
             res.json({ success: true });

@@ -99,7 +99,7 @@
           <h5>Остатки и ожидания</h5>
         </div>
         <div class="d-flex align-items-center gap-2 flex-shrink-0 ms-auto flex-wrap justify-content-end">
-          <a href="/purchase.html" class="text-muted small">Редактировать override-поля</a>
+          <a href="/purchase.html" class="text-muted small">Закупки: список</a>
           <button
             type="button"
             class="btn btn-sm btn-outline-secondary"
@@ -112,8 +112,35 @@
       </div>
       <div class="card-body" id="dg-prod-stock-body">
         <div class="dg-stock-grid mb-3" id="dg-prod-stock"></div>
-        <div class="dg-section-title">Override-поля «Закупки» (только просмотр)</div>
-        <div class="dg-kv-grid" id="dg-prod-override"></div>
+        <div class="mb-3" id="dg-prod-stock-snapshots-section">
+          <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+            <div class="dg-section-title mb-0">История остатка по дням</div>
+            <div class="d-flex align-items-center gap-2 flex-shrink-0">
+              <label class="small text-muted mb-0" for="dg-prod-stock-snap-days">Период</label>
+              <select id="dg-prod-stock-snap-days" class="form-select form-select-sm" style="width:auto;min-width:7.5rem;" aria-label="Глубина таблицы снимков остатка, дней"></select>
+            </div>
+          </div>
+          <p class="text-muted small mb-2">
+            Один снимок поля <code>stock</code> из выгрузки <code>ms_export</code> на календарный день после успешного синка МойСклад; повторный синк в тот же день перезаписывает значение. Глубину таблицы ограничивает срок хранения в
+            <a href="/settings.html">Настройках</a> (снимки остатка МС).
+          </p>
+          <div id="dg-prod-stock-snapshots-wrap"></div>
+        </div>
+        <div class="dg-prod-purchase-panel border rounded-3 p-3 p-md-4 bg-white">
+          <div class="d-flex flex-wrap align-items-start justify-content-between gap-2 mb-3">
+            <div class="min-w-0">
+              <div class="fw-semibold text-body mb-1">Параметры закупок (Datagon)</div>
+              <p class="text-muted small mb-0">
+                Те же поля, что в <a href="/purchase.html">Закупках</a>. Пустое поле при сохранении сбрасывает значение в базе (NULL).
+              </p>
+            </div>
+          </div>
+          <div id="dg-prod-override-form"></div>
+          <div id="dg-prod-override-msg" class="alert mt-3 mb-0 d-none" role="status"></div>
+          <hr class="my-3 text-muted opacity-50" />
+          <div class="dg-section-title mb-2">Прочие override</div>
+          <div class="dg-kv-grid" id="dg-prod-override"></div>
+        </div>
       </div>
     </div>
 
@@ -136,6 +163,7 @@
             id="dg-prod-zero-fix"
             class="btn btn-sm btn-outline-secondary"
             type="button"
+            data-dg-notify-start="Записываем ручную отметку по складу…"
             data-dg-tooltip="Обычно не нужно: после синка МС строка за сегодня создаётся сама. Кнопка — добавить или обновить ручную запись за сегодня (агрегат «все склады»); автоматическая запись за этот день не перезаписывается."
           >
             Записать вручную за сегодня
@@ -153,9 +181,9 @@
       <div class="card-body" id="dg-prod-zero-body">
         <p class="text-muted small mb-2" id="dg-prod-zero-note" style="display:none;"></p>
         <div id="dg-prod-zero-result" class="dg-prod-status" style="display:none;"></div>
-        <div class="dg-section-title">Сводка по периодам (импорт из Excel)</div>
+        <div class="dg-section-title">Сводка по периодам (по логу отсутствий)</div>
         <p class="text-muted small mb-2">
-          Как агрегаты по фиксированным периодам — здесь одна строка на дату среза: сколько календарных дней без товара в интервалах 30…365 дней до этой даты. Это <strong>не</strong> построчный лог ниже и <strong>не</strong> подставляется в него автоматически. Загрузка: <a href="/docs/api#карточка-товара">справка API</a>, метод <code>POST /api/product/zero-stock-windows-import</code>.
+          Сколько <strong>разных календарных дат</strong> с записью в логе ниже попало в скользящие окна 30…365 дней до <strong>сегодняшней даты сервера</strong> (те же правила, что и строки лога: выгрузка МС, складская позиция «Да», не архив, остаток ≤ 0 или для базового кода без «-» остаток &lt; минимального суффикса в кодах «код-число» в выгрузке). Пакетный импорт Excel для закупок — отдельно, см. <a href="/docs/api#карточка-товара">справку API</a>, <code>POST /api/product/zero-stock-windows-import</code>.
         </p>
         <div id="dg-prod-zero-win-import-wrap" class="mb-3"></div>
         <div class="dg-section-title mt-1">Лог по дням</div>
@@ -214,7 +242,7 @@
               </div>
             </div>
             <div class="col-12 col-md-auto">
-              <button type="button" id="dg-prod-sales-apply" class="btn btn-sm btn-primary">Применить</button>
+              <button type="button" id="dg-prod-sales-apply" class="btn btn-sm btn-primary" data-dg-notify-start="Обновляем графики продаж…">Применить</button>
             </div>
           </div>
         </div>
@@ -278,7 +306,7 @@
             type="button"
             class="btn btn-link btn-sm text-muted p-0"
             aria-label="Справка: как считается формула"
-            data-dg-tooltip="Предлагаемый неснижаемый (Датагон) считается на сервере по настройкам «Формула продаж / закупки». Сначала сумма продаж за период (проведённые отгрузки, прямые + через комплекты), затем × коэффициент пополнения. Дальше по ситуации: редкий по средним, режим экономии, минимум для дорогих по цене с «маркет» в названии, ограничение скачка от текущего неснижаемого. На карточке: крупный итог и разбор **«Формула этапами»** (шаблон и числа). Числа для проверки также есть в JSON ответа в `formula.inputs`."
+            data-dg-tooltip="Предлагаемый неснижаемый (Датагон) считается на сервере по настройкам «Формула продаж / закупки»: средний спрос за «Продажи за период, дней» (W); «упущенные» = дни отсутствия за «Анализ отсутствий, дней» (A) × этот средний спрос; (сумма за W + упущенные) × «Коэффициент пополнения» (без прибавки «Базовый запас» и «Базовый для дорогих»); редкий товар — отдельная ветка; затем кратность и «Процент от упаковки», «Макс. изменение» только на повышение. На карточке — «Формула этапами» и formula.inputs."
           >
             <i class="pe-7s-help1" style="font-size: 1.15rem" aria-hidden="true"></i>
           </button>
@@ -293,6 +321,9 @@
         </button>
       </div>
       <div class="card-body" id="dg-prod-formula-body">
+        <div class="alert alert-secondary small mb-3" role="note">
+          <strong>Согласованность с настройками:</strong> к шагу «(сумма с учётом отсутствий) × Коэффициент пополнения» <strong>не</strong> прибавляются «Базовый запас» и «Базовый запас для дорогих товаров с редкими продажами» (ключи <code>sales_formula_base_qty</code>, <code>sales_formula_expensive_rare_min_qty</code>). «Редкий товар» — если не дорогой по порогу и сумма продаж за «Продажи за период, дней» ≤ 1 шт (без «упущенных») → сразу «Базовый запас для товаров с редкими продажами». Если после кратности и «Процента от упаковки» получилось бы меньше 1 шт при положительном черновике до шага — подставляется тот же «Базовый запас для товаров с редкими продажами» или «Базовый запас для дорогих товаров с редкими продажами» по дорогости. Полный текст — серый блок в <a href="/settings.html">настройках</a>, карточка «Формула продаж / закупки».
+        </div>
         <div id="dg-prod-formula-wrap"></div>
       </div>
     </div>

@@ -75,7 +75,9 @@
         auto_sync_mssales_full_days: 730,
         auto_sync_mssales_full_weekdays: "7",
         ms_dimensions_log_retention_days: 180,
+        dg_purchase_overrides_log_retention_days: 180,
         auto_sync_runs_retention_days: 180,
+        product_stock_snapshot_retention_days: 365,
         ozon_client_id: "",
         ozon_api_key: "",
         wb_api_key: "",
@@ -91,16 +93,13 @@
         sales_formula_replenishment_coef: 0.3333333333333333,
         sales_formula_sales_window_days: 90,
         sales_formula_absence_analysis_days: 210,
+        sales_formula_base_qty: 2,
         sales_formula_rare_base_qty: 2,
         sales_formula_rare_avg_max: 1,
         sales_formula_expensive_rare_threshold_rub: 50000,
         sales_formula_expensive_rare_min_qty: 1,
         sales_formula_max_change_coef: 1.6,
-        sales_formula_incomplete_pack_pct: 10,
-        sales_formula_economy_enabled: 0,
-        sales_formula_economy_absence_window_days: 90,
-        sales_formula_economy_max_absence_pct: 6,
-        sales_formula_economy_target_cover_days: 18,
+        sales_formula_incomplete_pack_pct: 80,
       };
 
       function buildUsernameFromFullName(fullName) {
@@ -331,7 +330,9 @@
         set("dg-set-auto_mssales_full_days", String(Number(merged.auto_sync_mssales_full_days || 730)));
         applyAutoSyncWeekdayChecks("dg-set-auto_mssales_full_wd", merged.auto_sync_mssales_full_weekdays);
         set("dg-set-ms_dimensions_log_retention_days", merged.ms_dimensions_log_retention_days);
+        set("dg-set-dg_purchase_overrides_log_retention_days", merged.dg_purchase_overrides_log_retention_days);
         set("dg-set-auto_sync_runs_retention_days", merged.auto_sync_runs_retention_days);
+        set("dg-set-product_stock_snapshot_retention_days", merged.product_stock_snapshot_retention_days);
         set("dg-set-ozon_client_id", merged.ozon_client_id || "");
         set("dg-set-ozon_api_key", merged.ozon_api_key || "");
         set("dg-set-wb_api_key", merged.wb_api_key || "");
@@ -355,6 +356,7 @@
           "dg-set-sales_formula_absence_analysis_days",
           merged.sales_formula_absence_analysis_days != null ? String(merged.sales_formula_absence_analysis_days) : "210"
         );
+        set("dg-set-sales_formula_base_qty", merged.sales_formula_base_qty != null ? String(merged.sales_formula_base_qty) : "2");
         set("dg-set-sales_formula_rare_base_qty", merged.sales_formula_rare_base_qty != null ? String(merged.sales_formula_rare_base_qty) : "2");
         set(
           "dg-set-sales_formula_rare_avg_max",
@@ -378,23 +380,7 @@
         );
         set(
           "dg-set-sales_formula_incomplete_pack_pct",
-          merged.sales_formula_incomplete_pack_pct != null ? String(merged.sales_formula_incomplete_pack_pct) : "10"
-        );
-        var econEn = document.getElementById("dg-set-sales_formula_economy_enabled");
-        if (econEn) econEn.checked = Number(merged.sales_formula_economy_enabled) === 1;
-        set(
-          "dg-set-sales_formula_economy_absence_window_days",
-          merged.sales_formula_economy_absence_window_days != null ? String(merged.sales_formula_economy_absence_window_days) : "90"
-        );
-        set(
-          "dg-set-sales_formula_economy_max_absence_pct",
-          merged.sales_formula_economy_max_absence_pct != null && merged.sales_formula_economy_max_absence_pct !== ""
-            ? String(merged.sales_formula_economy_max_absence_pct)
-            : "6"
-        );
-        set(
-          "dg-set-sales_formula_economy_target_cover_days",
-          merged.sales_formula_economy_target_cover_days != null ? String(merged.sales_formula_economy_target_cover_days) : "18"
+          merged.sales_formula_incomplete_pack_pct != null ? String(merged.sales_formula_incomplete_pack_pct) : "80"
         );
         usersPresenceWindowMinutes = getNum("dg-set-auth_online_presence_minutes", 15);
         syncUsersSessionsHeader();
@@ -1055,7 +1041,7 @@
           var sentDisplay = mask ? maskValue(sent) : (sent === "" ? "<em>пусто</em>" : "<code>" + String(sent) + "</code>");
           var gotDisplay = mask ? maskValue(got) : (got === "" || got == null ? "<em>пусто</em>" : "<code>" + String(got) + "</code>");
           var same = String(sent || "") === String(got || "");
-          if (!same && /^sales_formula_/.test(String(k || "")) && k !== "sales_formula_economy_enabled") {
+          if (!same && /^sales_formula_/.test(String(k || ""))) {
             var sn = parseFloat(String(sent).replace(",", "."));
             var gn = parseFloat(String(got).replace(",", "."));
             if (Number.isFinite(sn) && Number.isFinite(gn)) same = Math.abs(sn - gn) < 1e-6;
@@ -1141,16 +1127,13 @@
           sales_formula_replenishment_coef: getFloat("dg-set-sales_formula_replenishment_coef", 1 / 3),
           sales_formula_sales_window_days: getNum("dg-set-sales_formula_sales_window_days", 90),
           sales_formula_absence_analysis_days: getNum("dg-set-sales_formula_absence_analysis_days", 210),
+          sales_formula_base_qty: getNum("dg-set-sales_formula_base_qty", 2),
           sales_formula_rare_base_qty: getNum("dg-set-sales_formula_rare_base_qty", 2),
           sales_formula_rare_avg_max: getFloat("dg-set-sales_formula_rare_avg_max", 1),
           sales_formula_expensive_rare_threshold_rub: getNum("dg-set-sales_formula_expensive_rare_threshold_rub", 50000),
           sales_formula_expensive_rare_min_qty: getNum("dg-set-sales_formula_expensive_rare_min_qty", 1),
           sales_formula_max_change_coef: getFloat("dg-set-sales_formula_max_change_coef", 1.6),
-          sales_formula_incomplete_pack_pct: getNum("dg-set-sales_formula_incomplete_pack_pct", 10),
-          sales_formula_economy_enabled: document.getElementById("dg-set-sales_formula_economy_enabled").checked ? 1 : 0,
-          sales_formula_economy_absence_window_days: getNum("dg-set-sales_formula_economy_absence_window_days", 90),
-          sales_formula_economy_max_absence_pct: getFloat("dg-set-sales_formula_economy_max_absence_pct", 6),
-          sales_formula_economy_target_cover_days: getNum("dg-set-sales_formula_economy_target_cover_days", 18),
+          sales_formula_incomplete_pack_pct: getNum("dg-set-sales_formula_incomplete_pack_pct", 80),
         };
         runSaveWithInlineFeedback({
           sectionId: "sales-formula",
@@ -1684,6 +1667,101 @@
           });
       }
 
+      function loadPurchaseOvLogStats() {
+        var box = document.getElementById("dg-set-pu-ov-log-info");
+        if (box) box.textContent = "Статистика dg_purchase_overrides_log: загрузка…";
+        return dgKeepScroll(
+          fetch("/api/purchase/log/stats", { credentials: "same-origin" })
+            .then(function (r) { return r.json().then(function (j) { return { r: r, j: j }; }); })
+            .then(function (x) {
+              if (!box) return;
+              box.replaceChildren();
+              if (!x.r.ok || !x.j || x.j.success === false) {
+                box.textContent = "Ошибка статистики dg_purchase_overrides_log: " + ((x.j && x.j.error) || "неизвестно");
+                return;
+              }
+              var j = x.j;
+              var src = j.by_source || {};
+              var srcStr = ["override", "import"]
+                .filter(function (k) { return src[k] != null; })
+                .map(function (k) { return k + "=" + (src[k] || 0); })
+                .join(", ");
+              var oldestStr = j.oldest_at
+                ? new Date(j.oldest_at).toLocaleString("ru-RU", { timeZone: "Europe/Moscow" })
+                : "—";
+              var newestStr = j.newest_at
+                ? new Date(j.newest_at).toLocaleString("ru-RU", { timeZone: "Europe/Moscow" })
+                : "—";
+              var d1 = document.createElement("div");
+              d1.textContent = "Всего записей: " + (j.total || 0) + (srcStr ? " (" + srcStr + ")" : "");
+              var d2 = document.createElement("div");
+              d2.textContent = "Самая старая: " + oldestStr + " · самая свежая: " + newestStr;
+              var d3 = document.createElement("div");
+              d3.textContent = "Текущий retention: " + (j.retention_days || 0) +
+                " дней · по нему будет удалено сейчас: " + (j.older_than_retention || 0);
+              box.appendChild(d1);
+              box.appendChild(d2);
+              box.appendChild(d3);
+            })
+            .catch(function (e) {
+              if (!box) return;
+              box.replaceChildren();
+              box.textContent = "Сетевая ошибка статистики dg_purchase_overrides_log: " + ((e && e.message) || e);
+            })
+        );
+      }
+
+      function savePurchaseOvLogRetention() {
+        var days = getNum("dg-set-dg_purchase_overrides_log_retention_days", 180);
+        if (!Number.isFinite(days) || days < 1) {
+          days = 180;
+          var el = document.getElementById("dg-set-dg_purchase_overrides_log_retention_days");
+          if (el) el.value = "180";
+        }
+        runSaveWithInlineFeedback({
+          sectionId: "purchase-ov-log",
+          payload: { dg_purchase_overrides_log_retention_days: days },
+          okText: "Срок хранения dg_purchase_overrides_log сохранён",
+          verifyKeys: ["dg_purchase_overrides_log_retention_days"],
+        }).then(function () { loadPurchaseOvLogStats(); }).catch(function () { /** баннер уже показан утилитой */ });
+      }
+
+      function saveStockSnapshotRetention() {
+        var days = getNum("dg-set-product_stock_snapshot_retention_days", 365);
+        if (!Number.isFinite(days)) days = 365;
+        days = Math.max(30, Math.min(3650, Math.round(days)));
+        var el = document.getElementById("dg-set-product_stock_snapshot_retention_days");
+        if (el) el.value = String(days);
+        runSaveWithInlineFeedback({
+          sectionId: "stock-snap-retention",
+          payload: { product_stock_snapshot_retention_days: days },
+          okText: "Срок хранения dg_product_stock_snapshot сохранён",
+          verifyKeys: ["product_stock_snapshot_retention_days"],
+        }).catch(function () { /** баннер уже показан утилитой */ });
+      }
+
+      function cleanupPurchaseOvLogNow() {
+        var days = getNum("dg-set-dg_purchase_overrides_log_retention_days", 180);
+        if (!window.confirm("Удалить из таблицы dg_purchase_overrides_log записи старше " + days + " дней?")) return;
+        fetch("/api/purchase/log/cleanup", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ days: days }),
+        })
+          .then(function (r) { return r.json().then(function (j) { return { r: r, j: j }; }); })
+          .then(function (x) {
+            if (!x.r.ok || !x.j || x.j.success === false) {
+              throw new Error((x.j && x.j.error) || "Не удалось очистить dg_purchase_overrides_log");
+            }
+            alert("Удалено записей: " + (x.j.deleted || 0));
+            loadPurchaseOvLogStats();
+          })
+          .catch(function (e) {
+            alert((e && e.message) || "Ошибка очистки dg_purchase_overrides_log");
+          });
+      }
+
       function createUser() {
         if (!canManageUsers()) return alert("Недостаточно прав");
         var full_name = getStr("dg-set-new-fullname").trim();
@@ -1963,6 +2041,11 @@
       document.getElementById("dg-set-btn-save-dim-log").addEventListener("click", saveDimLogRetention);
       document.getElementById("dg-set-btn-dim-log-refresh").addEventListener("click", loadDimLogStats);
       document.getElementById("dg-set-btn-dim-log-cleanup").addEventListener("click", cleanupDimLogNow);
+      document.getElementById("dg-set-btn-save-purchase-ov-log").addEventListener("click", savePurchaseOvLogRetention);
+      var saveStockSnapRetBtn = document.getElementById("dg-set-btn-save-stock-snap-retention");
+      if (saveStockSnapRetBtn) saveStockSnapRetBtn.addEventListener("click", saveStockSnapshotRetention);
+      document.getElementById("dg-set-btn-pu-ov-log-refresh").addEventListener("click", loadPurchaseOvLogStats);
+      document.getElementById("dg-set-btn-pu-ov-log-cleanup").addEventListener("click", cleanupPurchaseOvLogNow);
       document.getElementById("dg-set-pw-toggle").addEventListener("click", function () {
         showPasswordChange = !showPasswordChange;
         document.getElementById("dg-set-pw-new").type = showPasswordChange ? "text" : "password";
@@ -2006,6 +2089,7 @@
         loadSettings();
         loadAsrStats();
         loadDimLogStats();
+        loadPurchaseOvLogStats();
       }
       loadUsers();
       window.addEventListener("datagon-profile-loaded", function () {
@@ -2015,6 +2099,9 @@
         document.getElementById("dg-set-pw-username").readOnly = !isAdmin();
         if (!isSettingsUsersManagerShell()) {
           loadSettings();
+          loadAsrStats();
+          loadDimLogStats();
+          loadPurchaseOvLogStats();
         }
         loadUsers();
       });

@@ -608,11 +608,12 @@
                     class="btn btn-success"
                     id="dg-set-btn-add-user"
                     data-dg-no-activity
+                    data-dg-notify-start="Открываем форму добавления пользователя…"
                     title="Итог создания фиксируется отдельной записью в журнале после сохранения"
                   >
                     Добавить пользователя
                   </button>
-                  <button type="button" class="btn btn-info" id="dg-set-btn-refresh-users" data-dg-no-activity="1">
+                  <button type="button" class="btn btn-info" id="dg-set-btn-refresh-users" data-dg-no-activity="1" data-dg-notify-start="Обновляем список пользователей…">
                     Обновить список
                   </button>
                 </div>
@@ -690,7 +691,7 @@
                 </div>
                 <div class="col-md-4 col-lg-3">
                   <button type="button" class="btn btn-primary" id="dg-set-spec-matrix-load" data-dg-no-activity="1">Загрузить</button>
-                  <button type="button" class="btn btn-success" id="dg-set-spec-matrix-save" data-dg-activity-label="Сохранить матрицу доступа специальности">
+                  <button type="button" class="btn btn-success" id="dg-set-spec-matrix-save" data-dg-activity-label="Сохранить матрицу доступа специальности" data-dg-notify-start="Сохраняем матрицу доступа…">
                     Сохранить матрицу
                   </button>
                 </div>
@@ -730,7 +731,7 @@
                   <select class="form-select" id="dg-set-edit-specialty"></select>
                 </div>
                 <div class="col-md-12 col-lg-12 d-flex align-items-end gap-2 flex-wrap mt-1">
-                  <button type="button" class="btn btn-success" id="dg-set-edit-save">Сохранить</button>
+                  <button type="button" class="btn btn-success" id="dg-set-edit-save" data-dg-notify-start="Сохраняем пользователя…">Сохранить</button>
                   <button type="button" class="btn btn-outline-secondary" id="dg-set-edit-cancel">Отмена</button>
                 </div>
               </div>
@@ -768,7 +769,7 @@
                 </div>
               </div>
               <div class="mt-3">
-                <button type="button" class="btn btn-success" id="dg-set-btn-save-sessions" data-dg-activity-label="Сохранить настройки сессий и онлайн">
+                <button type="button" class="btn btn-success" id="dg-set-btn-save-sessions" data-dg-activity-label="Сохранить настройки сессий и онлайн" data-dg-notify-start="Сохраняем настройки сессий…">
                   Сохранить сессии и онлайн
                 </button>
               </div>
@@ -813,7 +814,7 @@
                 </div>
               </div>
               <div class="mt-3">
-                <button type="button" class="btn btn-success" id="dg-set-btn-save-general" data-dg-activity-label="Сохранить общие настройки">
+                <button type="button" class="btn btn-success" id="dg-set-btn-save-general" data-dg-activity-label="Сохранить общие настройки" data-dg-notify-start="Сохраняем общие настройки…">
                   Сохранить общие настройки
                 </button>
               </div>
@@ -840,7 +841,7 @@
                 </div>
               </div>
               <div class="mt-3">
-                <button type="button" class="btn btn-success" id="dg-set-btn-save-myproducts" data-dg-activity-label="Сохранить настройки синхронизации «Мои товары»">
+                <button type="button" class="btn btn-success" id="dg-set-btn-save-myproducts" data-dg-activity-label="Сохранить настройки синхронизации «Мои товары»" data-dg-notify-start="Сохраняем настройки синхронизации продуктов…">
                   Сохранить настройки синхронизации продуктов
                 </button>
               </div>
@@ -860,7 +861,7 @@
                 <div class="col-md-4"><label class="form-label" for="dg-set-ms_sync_delay_ms">Пауза между запросами (мс)</label><input type="number" class="form-control" id="dg-set-ms_sync_delay_ms" /></div>
               </div>
               <div class="mt-3">
-                <button type="button" class="btn btn-success" id="dg-set-btn-save-ms" data-dg-activity-label="Сохранить настройки синхронизации МойСклад">
+                <button type="button" class="btn btn-success" id="dg-set-btn-save-ms" data-dg-activity-label="Сохранить настройки синхронизации МойСклад" data-dg-notify-start="Сохраняем настройки синхронизации МС…">
                   Сохранить настройки синхронизации МойСклад
                 </button>
               </div>
@@ -876,7 +877,7 @@
                 type="button"
                 class="btn btn-link btn-sm text-muted p-0 ms-md-auto"
                 aria-label="Как считается формула на карточке товара"
-                data-dg-tooltip="На карточке товара считается предлагаемый неснижаемый: сумма продаж за «окно продаж» (проведённые отгрузки МС, прямые + через комплекты) умножается на коэффициент пополнения. Дальше могут сработать ветка «редкий по спросу», режим экономии, минимум для дорогих по цене «маркет», ограничение скачка от текущего неснижаемого. Подробные шаги видны внизу карточки товара в таблице «Шаги»."
+                data-dg-tooltip="Кратко: средний спрос за «Продажи за период»; упущенные = дни отсутствия за «Анализ отсутствий» × этот средний спрос; (сумма с учётом отсутствий) × «Коэффициент пополнения» без прибавки «Базовый запас» и «Базовый для дорогих»; редкий — ранний выход в «Базовый запас для товаров с редкими продажами»; кратность и % упаковки (если после округления вниз получилось бы меньше 1 шт при положительном черновике — подставляется тот же базовый запас для редких или для дорогих с редкими продажами); макс. изменение на повышение. Полный текст — серый блок «Подсказка» под этим абзацем."
               >
                 <i class="pe-7s-help1" style="font-size: 1.15rem" aria-hidden="true"></i>
               </button>
@@ -884,130 +885,120 @@
             <div class="card-body">
               <p
                 class="small text-muted mb-2 dg-set-formula-tt"
-                data-dg-tooltip="Эти параметры читает сервер при каждом GET /api/product/:code. Окно продаж и коэффициент задают масштаб базового предложения; остальные поля включают ветки «редкий», «дорогой», «экономия» и ограничение скачка. Карточка товара показывает численный разбор в таблицах «Входы» и «Шаги»."
+                data-dg-tooltip="Эти параметры читает сервер при каждом GET /api/product/:code. Подробное описание шагов и соответствие полей — серый блок «Подсказка по полям и расчёту» ниже."
               >
                 Параметры для блока «Формула продаж» на
                 <a href="/product.html" target="_blank" rel="noopener">карточке товара</a>
-                (предлагаемый неснижаемый). Окно продаж — календарные дни по проведённым отгрузкам МС; коэффициент пополнения по смыслу как в Lagerplus:
-                при удлинении окна снижайте коэффициент, чтобы не раздувать запас (пример: запас ~30 дней при окне 90 дн. → коэф. ≈ 1/3).
+                (предлагаемый неснижаемый). Средний спрос и сумма за период
+                <strong>Продажи за период, дней</strong> (ключ <code>sales_formula_sales_window_days</code>); дни без остатка — за период
+                <strong>Анализ отсутствий, дней</strong> (<code>sales_formula_absence_analysis_days</code>), умножаются на тот же средний спрос; затем
+                <strong>сумма с учётом отсутствий × Коэффициент пополнения</strong> (<code>sales_formula_replenishment_coef</code>) — без прибавки полей
+                «Базовый запас» и «Базовый запас для дорогих…» (они остаются в форме для учёта и возможных доработок). Редкий товар: не дорогой по цене «маркет» и сумма продаж за период «Продажи за период» ≤ 1 шт → сразу
+                <strong>Базовый запас для товаров с редкими продажами</strong> (<code>sales_formula_rare_base_qty</code>). Далее кратность и
+                <strong>Процент от упаковки</strong> (если после округления вниз получилось бы меньше 1 шт при положительном черновике — подставляется тот же базовый запас для редких или для дорогих с редкими продажами), затем <strong>Макс. изменение</strong> только на повышение.
               </p>
+              <div class="alert alert-secondary small mb-3" role="note" id="dg-set-sales-formula-contract">
+                <div class="fw-semibold mb-1">Подсказка по полям и расчёту (как на карточке «Формула этапами»)</div>
+                <ul class="mb-0 ps-3">
+                  <li>
+                    В шаге «редкий товар» сравнивается только <strong>фактическая сумма продаж</strong> за окно «Продажи за период, дней», без сложения с «упущенными».
+                    Условие: сумма ≤ 1 шт и товар не дорогой (цена с «маркет» в названии ≤ «Порог дорогой товар»).
+                  </li>
+                  <li>
+                    В шаге умножения на коэффициент участвует только <strong>(сумма с учётом отсутствий) × Коэффициент пополнения</strong>. Поля «Базовый запас» (<code>sales_formula_base_qty</code>) и «Базовый запас для дорогих товаров с редкими продажами» (<code>sales_formula_expensive_rare_min_qty</code>) к этому произведению <strong>не добавляются</strong> — так зафиксировано в эталонном примере расчёта.
+                  </li>
+                  <li>
+                    «Порог „редкого“, шт/день (legacy)» (<code>sales_formula_rare_avg_max</code>) в формуле <strong>не используется</strong>.
+                  </li>
+                  <li>
+                    После шага кратности и «Процента от упаковки»: если округление вниз дало бы меньше 1 шт при положительном черновике до шага, подставляется минимум — для не дорогого товара «Базовый запас для товаров с редкими продажами», для дорогого — «Базовый запас для дорогих товаров с редкими продажами» (по проверке дорогости на карточке).
+                  </li>
+                </ul>
+              </div>
               <div class="row g-2">
                 <div
                   class="col-md-4 dg-set-formula-tt"
-                  data-dg-tooltip="Множитель к сумме продаж за выбранное «окно продаж». База: продано за N дней × коэффициент. Ориентир для желаемого запаса примерно на T дней: коэффициент порядка T/N (пример: запас ~30 дн. при окне 90 дн. ≈ 0,33). Чем длиннее окно при том же желаемом горизонте запаса, тем меньше коэффициент."
+                  data-dg-tooltip="Множитель из настроек «Коэффициент пополнения» (ключ sales_formula_replenishment_coef). Умножается на сумму «продажи за период + оценка упущенных» (без прибавки «Базовый запас» и «Базовый для дорогих» — см. блок подсказки под текстом карточки)."
                 >
                   <label class="form-label" for="dg-set-sales_formula_replenishment_coef">Коэффициент пополнения</label>
                   <input type="text" class="form-control" id="dg-set-sales_formula_replenishment_coef" inputmode="decimal" autocomplete="off" />
                 </div>
                 <div
                   class="col-md-4 dg-set-formula-tt"
-                  data-dg-tooltip="Сколько последних календарных дней суммируем по проведённым отгрузкам МС (прямые продажи кода + эквивалент через комплекты). Это не период графиков на карточке: там отдельные даты «с / по» или recent_days."
+                  data-dg-tooltip="Число дней W (ключ sales_formula_sales_window_days): сумма quantity за последние W календарных дней и средний спрос ÷ W для шагов на карточке. Графики продаж на карточке — отдельные даты."
                 >
-                  <label class="form-label" for="dg-set-sales_formula_sales_window_days">Окно продаж, дней</label>
+                  <label class="form-label" for="dg-set-sales_formula_sales_window_days">Продажи за&nbsp;период, дней</label>
                   <input type="number" class="form-control" id="dg-set-sales_formula_sales_window_days" min="7" max="730" step="1" />
                 </div>
                 <div
                   class="col-md-4 dg-set-formula-tt"
-                  data-dg-tooltip="Глубина, за которую считаем число разных календарных дат с записью «нулевого» остатка в логе dg_product_zero_stock_log. Доля дней отсутствия = таких дней / это число. Используется в режиме экономии и для прозрачности расчёта на карточке."
+                  data-dg-tooltip="Число дней A (ключ sales_formula_absence_analysis_days): по нему считается число разных дат нулевого остатка в логе (и слияние с импортом окон). Сумма продаж за те же A дн. в ответе API остаётся справочной."
                 >
                   <label class="form-label" for="dg-set-sales_formula_absence_analysis_days">Анализ отсутствий, дней</label>
                   <input type="number" class="form-control" id="dg-set-sales_formula_absence_analysis_days" min="7" max="1095" step="1" />
                 </div>
                 <div
                   class="col-md-4 dg-set-formula-tt"
-                  data-dg-tooltip="Если средние продажи за окно (сумма продаж / окно дней) не выше порога «редкого», вместо расчёта по спросу подставляется это целое число штук как предлагаемый неснижаемый."
+                  data-dg-tooltip="Поле хранится в app_settings (sales_formula_base_qty). В текущей цепочке расчёта на карточке к произведению «(сумма с учётом отсутствий) × Коэффициент пополнения» не прибавляется — см. серый блок подсказки под текстом карточки."
                 >
-                  <label class="form-label" for="dg-set-sales_formula_rare_base_qty">Базовый запас (редкие)</label>
+                  <label class="form-label" for="dg-set-sales_formula_base_qty">Базовый запас</label>
+                  <input type="number" class="form-control" id="dg-set-sales_formula_base_qty" min="0" step="1" />
+                </div>
+                <div
+                  class="col-md-4 dg-set-formula-tt"
+                  data-dg-tooltip="Ключ sales_formula_rare_base_qty. Если товар не дорогой по цене «маркет» и сумма продаж за период «Продажи за период, дней» ≤ 1 шт (без «упущенных»), предлагаемый неснижаемый сразу равен этому числу штук; умножение на коэффициент и кратность не выполняются; остаётся «Макс. изменение». Также используется как минимум после кратности и «Процента от упаковки», если иначе получилось бы меньше 1 шт при положительном черновике до шага (и товар не дорогой)."
+                >
+                  <label class="form-label" for="dg-set-sales_formula_rare_base_qty">Базовый запас для товаров с редкими продажами</label>
                   <input type="number" class="form-control" id="dg-set-sales_formula_rare_base_qty" min="0" step="1" />
                 </div>
                 <div
                   class="col-md-4 dg-set-formula-tt"
-                  data-dg-tooltip="Порог средних продаж в штуках в день. Если среднее за окно ≤ этого значения, товар считается «редким по спросу» и берётся базовый запас (поле выше). В старой системе часто использовали порог 1."
+                  data-dg-tooltip="Ключ sales_formula_expensive_rare_min_qty. Хранится в настройках; к шагу «(сумма с учётом отсутствий) × Коэффициент пополнения» в текущей версии не добавляется. Проверка «дорогой / не дорогой» влияет на ветку «редкий товар» и на подстановку минимума после кратности и «Процента от упаковки», если иначе получилось бы меньше 1 шт при положительном черновике до шага (для дорогого товара)."
                 >
-                  <label class="form-label" for="dg-set-sales_formula_rare_avg_max">Порог «редкого», шт/день</label>
-                  <input type="text" class="form-control" id="dg-set-sales_formula_rare_avg_max" inputmode="decimal" autocomplete="off" />
-                  <div class="form-text">Если средние продажи за окно ≤ этого значения, подставляется базовый запас (аналог «≤ 1» в legacy).</div>
+                  <label class="form-label" for="dg-set-sales_formula_expensive_rare_min_qty">Базовый запас для дорогих товаров с редкими продажами</label>
+                  <input type="number" class="form-control" id="dg-set-sales_formula_expensive_rare_min_qty" min="0" step="1" />
                 </div>
+                <div class="col-12"><hr class="my-1 text-muted opacity-50" /></div>
                 <div
-                  class="col-md-4 dg-set-formula-tt"
-                  data-dg-tooltip="Берётся первая цена из типов цен МС, у которой в названии есть слово «маркет» (без учёта регистра). Если такая цена ≥ этого порога в рублях, предложение не будет ниже «мин. остатка для дорогих»."
+                  class="col-md-6 dg-set-formula-tt"
+                  data-dg-tooltip="Ключ sales_formula_expensive_rare_threshold_rub. Цена с «маркет» в названии из карточки товара сравнивается с этим порогом; результат влияет только на ветку «редкий товар» (если дорогой — ранний выход по редкости не применяется)."
                 >
-                  <label class="form-label" for="dg-set-sales_formula_expensive_rare_threshold_rub">Порог «дорогой», ₽ (цена с «маркет» в названии)</label>
+                  <label class="form-label" for="dg-set-sales_formula_expensive_rare_threshold_rub">Порог дорогой товар, ₽ (цена с «маркет» в названии)</label>
                   <input type="number" class="form-control" id="dg-set-sales_formula_expensive_rare_threshold_rub" min="0" step="1" />
                 </div>
                 <div
-                  class="col-md-4 dg-set-formula-tt"
-                  data-dg-tooltip="Нижняя граница предлагаемого неснижаемого для позиций, попавших под порог дорогой цены «маркет». Не отменяет ограничение скачка вверх от текущего неснижаемого."
+                  class="col-md-6 dg-set-formula-tt"
+                  data-dg-tooltip="Ключ sales_formula_rare_avg_max. Не используется в расчёте на карточке; редкость — по сумме за «Продажи за период». Поле в whitelist POST /api/settings."
                 >
-                  <label class="form-label" for="dg-set-sales_formula_expensive_rare_min_qty">Мин. остаток для дорогих, шт</label>
-                  <input type="number" class="form-control" id="dg-set-sales_formula_expensive_rare_min_qty" min="0" step="1" />
+                  <label class="form-label" for="dg-set-sales_formula_rare_avg_max">Порог «редкого», шт/день (legacy)</label>
+                  <input type="text" class="form-control" id="dg-set-sales_formula_rare_avg_max" inputmode="decimal" autocomplete="off" />
+                  <div class="form-text">Не участвует в расчёте: редкость — по сумме за «Продажи за период», не это поле.</div>
                 </div>
+              </div>
+              <h6 class="text-muted mt-3 mb-2 dg-set-formula-tt">Ограничение скачка и процент от упаковки</h6>
+              <div class="row g-2">
                 <div
-                  class="col-md-4 dg-set-formula-tt"
-                  data-dg-tooltip="Защита от резкого роста предложения после разовых крупных продаж. Если новое значение больше опорного неснижаемого (сначала proposed_min_stock в override, иначе min_stock_dg, иначе МС) умноженного на этот коэффициент, оно обрезается сверху. Минимум 1."
+                  class="col-md-6 dg-set-formula-tt"
+                  data-dg-tooltip="Ключ sales_formula_max_change_coef. После кратности и «Процент от упаковки»: если значение больше опорного неснижаемого (override → min_stock_dg → МС) × M, обрезается сверху; на понижение не действует. Минимум 1."
                 >
                   <label class="form-label" for="dg-set-sales_formula_max_change_coef">Макс. изменение (× к текущему)</label>
                   <input type="text" class="form-control" id="dg-set-sales_formula_max_change_coef" inputmode="decimal" autocomplete="off" />
                 </div>
                 <div
-                  class="col-md-4 dg-set-formula-tt"
-                  data-dg-tooltip="Доля от кратности (упаковки): на карточке пока справочный блок по текущему остатку и кратности. Полный учёт «мелкого хвоста» в днях отсутствия для средних продаж планируется отдельно."
+                  class="col-md-6 dg-set-formula-tt"
+                  data-dg-tooltip="Ключ sales_formula_incomplete_pack_pct. При заданной кратности ≥ 1: доля хвоста от полной «упаковки» по кратности ≤ этого % — черновик округляется **вниз** до целых кратностей; **строго больше** % — **вверх** до кратности. Далее — «Макс. изменение». Если после округления **вниз** получилось бы меньше 1 шт при положительном черновике до шага — подставляются «Базовый запас для товаров с редкими продажами» / «Базовый запас для дорогих товаров с редкими продажами» по дорогости."
                 >
-                  <label class="form-label" for="dg-set-sales_formula_incomplete_pack_pct">Неполная упаковка, %</label>
+                  <label class="form-label" for="dg-set-sales_formula_incomplete_pack_pct">Процент от упаковки, %</label>
                   <input type="number" class="form-control" id="dg-set-sales_formula_incomplete_pack_pct" min="0" max="100" step="1" />
-                  <div class="form-text">Справочно на карточке; полный учёт по дневным срезам — позже.</div>
                 </div>
               </div>
-              <h6
-                class="text-muted mt-3 mb-2 dg-set-formula-tt"
-                data-dg-tooltip="Дополнительная ветка: при низкой доле дней без товара на складе (по логу нулей за короткое окно) ограничиваем сверху запас в днях по средним продажам, чтобы не закладывать излишек при стабильных поставках."
-              >
-                Режим экономии
-              </h6>
-              <div class="row g-2 align-items-end">
-                <div
-                  class="col-md-3 dg-set-formula-tt"
-                  data-dg-tooltip="Включает проверку: если доля дней с нулём в коротком окне не выше заданного процента, предложение ограничивается сверху запасом на N дней по средним продажам (поле «Запас при экономии»)."
-                >
-                  <div class="form-check">
-                    <input type="checkbox" class="form-check-input" id="dg-set-sales_formula_economy_enabled" />
-                    <label class="form-check-label" for="dg-set-sales_formula_economy_enabled">Включить</label>
-                  </div>
-                </div>
-                <div
-                  class="col-md-3 dg-set-formula-tt"
-                  data-dg-tooltip="За сколько последних дней считаем процент дней с записью нулевого остатка в логе (разные даты). Сравниваем этот процент с «макс. допустимым %»."
-                >
-                  <label class="form-label" for="dg-set-sales_formula_economy_absence_window_days">Окно отсутствий, дн.</label>
-                  <input type="number" class="form-control" id="dg-set-sales_formula_economy_absence_window_days" min="7" max="730" step="1" />
-                </div>
-                <div
-                  class="col-md-3 dg-set-formula-tt"
-                  data-dg-tooltip="Если фактический процент дней с нулём в «окне отсутствий» не превышает это значение, считаем поставки стабильными и ограничиваем предложение сверху: средние продажи × «Запас при экономии, дн.». Если процент выше, ограничение не применяется."
-                >
-                  <label class="form-label" for="dg-set-sales_formula_economy_max_absence_pct">Макс. допустимый % дней отсутствия</label>
-                  <input type="text" class="form-control" id="dg-set-sales_formula_economy_max_absence_pct" inputmode="decimal" autocomplete="off" />
-                </div>
-                <div
-                  class="col-md-3 dg-set-formula-tt"
-                  data-dg-tooltip="Верхняя граница предложения в режиме экономии при «хорошей» доле дней с товаром: средние продажи (шт/день) умножаются на это число календарных дней."
-                >
-                  <label class="form-label" for="dg-set-sales_formula_economy_target_cover_days">Запас при экономии, дн.</label>
-                  <input type="number" class="form-control" id="dg-set-sales_formula_economy_target_cover_days" min="1" max="365" step="1" />
-                </div>
-              </div>
-              <p
-                class="small text-muted mt-2 mb-0 dg-set-formula-tt"
-                data-dg-tooltip="Кратко: при низкой доле дней без товара (по логу нулей за короткое окно) верхняя граница предложения — средние продажи × «Запас при экономии». Если доля отсутствий выше порога, эта ветка не сужает число."
-              >
-                Если доля дней с «нулём» в коротком окне не выше порога — предложение ограничивается сверху запасом на указанное число дней по средним продажам.
-              </p>
               <div class="mt-3">
                 <button
                   type="button"
                   class="btn btn-success"
                   id="dg-set-btn-save-sales-formula"
                   data-dg-activity-label="Сохранить формулу продаж"
+                  data-dg-notify-start="Сохраняем формулу продаж…"
                   data-dg-tooltip="Записывает ключи sales_formula_* в app_settings через POST /api/settings. После сохранения карточка товара сразу использует новые значения (перезапуск Node не обязателен, если не менялись только серверные файлы)."
                 >
                   Сохранить формулу продаж
@@ -1053,10 +1044,10 @@
                 </div>
               </div>
               <div class="mt-3 d-flex gap-2 flex-wrap">
-                <button type="button" class="btn btn-success" id="dg-set-btn-save-marketplaces" data-dg-activity-label="Сохранить настройки маркетплейсов">
+                <button type="button" class="btn btn-success" id="dg-set-btn-save-marketplaces" data-dg-activity-label="Сохранить настройки маркетплейсов" data-dg-notify-start="Сохраняем настройки маркетплейсов…">
                   Сохранить настройки маркетплейсов
                 </button>
-                <button type="button" class="btn btn-primary" id="dg-set-btn-sync-marketplaces-now" data-dg-activity-label="Принудительно обновить маркетплейсы">
+                <button type="button" class="btn btn-primary" id="dg-set-btn-sync-marketplaces-now" data-dg-activity-label="Принудительно обновить маркетплейсы" data-dg-notify-start="Запускаем обновление из маркетплейсов…">
                   Обновить из маркетплейсов сейчас
                 </button>
               </div>
@@ -1083,7 +1074,7 @@
                     <input type="checkbox" id="dg-set-auto_my_en" />
                     <span>Включить</span>
                     <input type="time" class="form-control" id="dg-set-auto_my_time" style="max-width:140px" />
-                    <button type="button" class="btn btn-outline-primary btn-sm" id="dg-set-auto_my_run" data-dg-activity-label="Принудительно запустить импорт «Моих товаров» из CMS">
+                    <button type="button" class="btn btn-outline-primary btn-sm" id="dg-set-auto_my_run" data-dg-activity-label="Принудительно запустить импорт «Моих товаров» из CMS" data-dg-notify-start="Ставим в очередь импорт «Мои товары»…">
                       Запустить сейчас
                     </button>
                   </div>
@@ -1101,7 +1092,7 @@
                     <input type="checkbox" id="dg-set-auto_ms_en" />
                     <span>Включить</span>
                     <input type="time" class="form-control" id="dg-set-auto_ms_time" style="max-width:140px" />
-                    <button type="button" class="btn btn-outline-primary btn-sm" id="dg-set-auto_ms_run" data-dg-activity-label="Принудительно запустить выгрузку МойСклад в ms_export (и обновление журнала нулевых остатков)">
+                    <button type="button" class="btn btn-outline-primary btn-sm" id="dg-set-auto_ms_run" data-dg-activity-label="Принудительно запустить выгрузку МойСклад в ms_export (и обновление журнала нулевых остатков)" data-dg-notify-start="Ставим в очередь выгрузку МойСклад…">
                       Запустить сейчас
                     </button>
                   </div>
@@ -1110,8 +1101,9 @@
                     (номенклатура, остатки, неснижаемый остаток из карточки МС, атрибуты для карточек в БД). Это
                     <strong>не</strong> импорт отгрузок — отгрузки делают «Продажи МС» (<code>mssales</code>).
                     После успешного сохранения <code>ms_export</code> одним запросом обновляется
-                    <code>dg_product_zero_stock_log</code> за сегодня: складская позиция «Да», не архив, остаток ≤ 0
-                    (ручная фиксация за тот же день не перезаписывается). Скорость обхода — поля
+                    <code>dg_product_zero_stock_log</code> за сегодня: складская позиция «Да», не архив,
+                    остаток ≤ 0 или для кода без «-» остаток &lt; минимального числового суффикса среди номенклатур
+                    «тот же код-число» в <code>ms_export</code> (ручная фиксация за тот же день не перезаписывается).
                     <em>«Лимит страницы»</em> и <em>«Задержка»</em> ниже в настройках МС. Прогресс и статус —
                     на <a href="/processes.html">«Логи фоновых процессов»</a> (секция «МойСклад: ms_export (МСК)»).
                   </p>
@@ -1122,7 +1114,7 @@
                     <input type="checkbox" id="dg-set-auto_market_en" />
                     <span>Включить</span>
                     <input type="time" class="form-control" id="dg-set-auto_market_time" style="max-width:140px" />
-                    <button type="button" class="btn btn-outline-primary btn-sm" id="dg-set-auto_market_run" data-dg-activity-label="Принудительно запустить автосинхронизацию маркетплейсов">
+                    <button type="button" class="btn btn-outline-primary btn-sm" id="dg-set-auto_market_run" data-dg-activity-label="Принудительно запустить автосинхронизацию маркетплейсов" data-dg-notify-start="Ставим в очередь синхронизацию маркетплейсов…">
                       Запустить сейчас
                     </button>
                   </div>
@@ -1137,7 +1129,7 @@
                     <input type="checkbox" id="dg-set-auto_huckster_en" />
                     <span>Включить</span>
                     <input type="time" class="form-control" id="dg-set-auto_huckster_time" style="max-width:140px" />
-                    <button type="button" class="btn btn-outline-primary btn-sm" id="dg-set-auto_huckster_run" data-dg-activity-label="Принудительно запустить расчёт цен Huckster">
+                    <button type="button" class="btn btn-outline-primary btn-sm" id="dg-set-auto_huckster_run" data-dg-activity-label="Принудительно запустить расчёт цен Huckster" data-dg-notify-start="Ставим в очередь расчёт Huckster…">
                       Запустить сейчас
                     </button>
                   </div>
@@ -1157,7 +1149,7 @@
                     <input type="checkbox" id="dg-set-auto_db_size_en" />
                     <span>Включить</span>
                     <input type="time" class="form-control" id="dg-set-auto_db_size_time" style="max-width:140px" />
-                    <button type="button" class="btn btn-outline-primary btn-sm" id="dg-set-auto_db_size_run" data-dg-activity-label="Принудительно обновить размер БД и диска">
+                    <button type="button" class="btn btn-outline-primary btn-sm" id="dg-set-auto_db_size_run" data-dg-activity-label="Принудительно обновить размер БД и диска" data-dg-notify-start="Ставим в очередь пересчёт БД и диска…">
                       Запустить сейчас
                     </button>
                   </div>
@@ -1185,7 +1177,7 @@
                     <input type="checkbox" id="dg-set-auto_dim_en" />
                     <span>Включить</span>
                     <input type="time" class="form-control" id="dg-set-auto_dim_time" style="max-width:140px" />
-                    <button type="button" class="btn btn-outline-primary btn-sm" id="dg-set-auto_dim_run" data-dg-activity-label="Принудительно выгрузить габариты в МойСклад">
+                    <button type="button" class="btn btn-outline-primary btn-sm" id="dg-set-auto_dim_run" data-dg-activity-label="Принудительно выгрузить габариты в МойСклад" data-dg-notify-start="Ставим в очередь выгрузку габаритов в МС…">
                       Запустить сейчас
                     </button>
                   </div>
@@ -1214,7 +1206,7 @@
                       <option value="180">180 дней</option>
                       <option value="365">365 дней</option>
                     </select>
-                    <button type="button" class="btn btn-outline-primary btn-sm" id="dg-set-auto_mssales_run" data-dg-activity-label="Принудительно запустить импорт продаж МС">
+                    <button type="button" class="btn btn-outline-primary btn-sm" id="dg-set-auto_mssales_run" data-dg-activity-label="Принудительно запустить импорт продаж МС" data-dg-notify-start="Ставим в очередь импорт продаж МС…">
                       Запустить сейчас
                     </button>
                   </div>
@@ -1260,7 +1252,7 @@
                       <option value="1095">1095 дней</option>
                       <option value="1825">1825 дней</option>
                     </select>
-                    <button type="button" class="btn btn-outline-primary btn-sm" id="dg-set-auto_mssales_full_run" data-dg-activity-label="Принудительно запустить полный импорт продаж МС">
+                    <button type="button" class="btn btn-outline-primary btn-sm" id="dg-set-auto_mssales_full_run" data-dg-activity-label="Принудительно запустить полный импорт продаж МС" data-dg-notify-start="Ставим в очередь полный импорт продаж МС…">
                       Запустить сейчас
                     </button>
                   </div>
@@ -1285,7 +1277,7 @@
                 </div>
               </div>
               <div class="mt-3">
-                <button type="button" class="btn btn-success" id="dg-set-btn-save-auto" data-dg-activity-label="Сохранить расписание автосинхронизации">
+                <button type="button" class="btn btn-success" id="dg-set-btn-save-auto" data-dg-activity-label="Сохранить расписание автосинхронизации" data-dg-notify-start="Сохраняем расписание автосинхронизации…">
                   Сохранить расписание автосинхронизации
                 </button>
               </div>
@@ -1317,13 +1309,13 @@
               </div>
               <div class="small text-muted mt-2" id="dg-set-asr-log-info">Статистика auto_sync_runs: загрузка…</div>
               <div class="mt-3 d-flex gap-2 flex-wrap">
-                <button type="button" class="btn btn-primary" id="dg-set-btn-save-asr-log" data-dg-activity-label="Сохранить срок хранения auto_sync_runs">
+                <button type="button" class="btn btn-primary" id="dg-set-btn-save-asr-log" data-dg-activity-label="Сохранить срок хранения auto_sync_runs" data-dg-notify-start="Сохраняем срок хранения журнала…">
                   Сохранить
                 </button>
-                <button type="button" class="btn btn-info" id="dg-set-btn-asr-log-refresh" data-dg-activity-label="Обновить статистику auto_sync_runs">
+                <button type="button" class="btn btn-info" id="dg-set-btn-asr-log-refresh" data-dg-activity-label="Обновить статистику auto_sync_runs" data-dg-notify-start="Обновляем статистику auto_sync_runs…">
                   Обновить статистику
                 </button>
-                <button type="button" class="btn btn-warning" id="dg-set-btn-asr-log-cleanup" data-dg-activity-label="Очистить auto_sync_runs по сроку">
+                <button type="button" class="btn btn-warning" id="dg-set-btn-asr-log-cleanup" data-dg-activity-label="Очистить auto_sync_runs по сроку" data-dg-notify-start="Очищаем auto_sync_runs по сроку…">
                   Очистить сейчас
                 </button>
               </div>
@@ -1353,17 +1345,79 @@
               </div>
               <div class="small text-muted mt-2" id="dg-set-dim-log-info">Статистика ms_dimensions_log: загрузка…</div>
               <div class="mt-3 d-flex gap-2 flex-wrap">
-                <button type="button" class="btn btn-primary" id="dg-set-btn-save-dim-log" data-dg-activity-label="Сохранить срок хранения ms_dimensions_log">
+                <button type="button" class="btn btn-primary" id="dg-set-btn-save-dim-log" data-dg-activity-label="Сохранить срок хранения ms_dimensions_log" data-dg-notify-start="Сохраняем срок хранения журнала габаритов…">
                   Сохранить
                 </button>
-                <button type="button" class="btn btn-info" id="dg-set-btn-dim-log-refresh" data-dg-activity-label="Обновить статистику ms_dimensions_log">
+                <button type="button" class="btn btn-info" id="dg-set-btn-dim-log-refresh" data-dg-activity-label="Обновить статистику ms_dimensions_log" data-dg-notify-start="Обновляем статистику ms_dimensions_log…">
                   Обновить статистику
                 </button>
-                <button type="button" class="btn btn-warning" id="dg-set-btn-dim-log-cleanup" data-dg-activity-label="Очистить ms_dimensions_log по сроку">
+                <button type="button" class="btn btn-warning" id="dg-set-btn-dim-log-cleanup" data-dg-activity-label="Очистить ms_dimensions_log по сроку" data-dg-notify-start="Очищаем ms_dimensions_log по сроку…">
                   Очистить сейчас
                 </button>
               </div>
               <div id="dg-set-dim-log-save-msg" class="alert mt-3 mb-0 d-none" role="status"></div>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center">
+              <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
+              <span>Журнал изменений закупок (overrides)</span>
+            </div>
+            <div class="card-body">
+              <p class="small text-muted mb-2">
+                Таблица <code>dg_purchase_overrides_log</code> — изменения полей
+                <strong>Нес.остаток Датагон</strong>, <strong>Кратность товара</strong> и <strong>Мин.Остаток сч.как 0</strong>
+                при правке в таблице на <a href="/purchase.html">Закупки</a> или при импорте CSV (<code>POST /api/purchase/overrides-import</code>).
+                Просмотр по товару — кнопка «🕘» в колонке «Код» на странице закупок. Автоочистка — раз в 12 часов и при старте сервера.
+                По умолчанию <strong>180 дней</strong>.
+              </p>
+              <div class="row g-2 align-items-end">
+                <div class="col-md-4">
+                  <label class="form-label" for="dg-set-dg_purchase_overrides_log_retention_days">Срок хранения журнала закупок (дней)</label>
+                  <input type="number" class="form-control" id="dg-set-dg_purchase_overrides_log_retention_days" min="1" step="1" />
+                </div>
+              </div>
+              <div class="small text-muted mt-2" id="dg-set-pu-ov-log-info">Статистика dg_purchase_overrides_log: загрузка…</div>
+              <div class="mt-3 d-flex gap-2 flex-wrap">
+                <button type="button" class="btn btn-primary" id="dg-set-btn-save-purchase-ov-log" data-dg-activity-label="Сохранить срок хранения dg_purchase_overrides_log" data-dg-notify-start="Сохраняем срок хранения журнала закупок…">
+                  Сохранить
+                </button>
+                <button type="button" class="btn btn-info" id="dg-set-btn-pu-ov-log-refresh" data-dg-activity-label="Обновить статистику dg_purchase_overrides_log" data-dg-notify-start="Обновляем статистику dg_purchase_overrides_log…">
+                  Обновить статистику
+                </button>
+                <button type="button" class="btn btn-warning" id="dg-set-btn-pu-ov-log-cleanup" data-dg-activity-label="Очистить dg_purchase_overrides_log по сроку" data-dg-notify-start="Очищаем dg_purchase_overrides_log по сроку…">
+                  Очистить сейчас
+                </button>
+              </div>
+              <div id="dg-set-purchase-ov-log-save-msg" class="alert mt-3 mb-0 d-none" role="status"></div>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center">
+              <i class="header-icon pe-7s-box1 icon-gradient bg-happy-fisher me-2"> </i>
+              <span>Снимки остатка МС (карточка товара)</span>
+            </div>
+            <div class="card-body">
+              <p class="small text-muted mb-2">
+                Таблица <code>dg_product_stock_snapshot</code>: после каждого успешного полного синка МойСклад записывается одно значение
+                <code>ms_export.stock</code> на календарный день по каждому коду. Повторный синк в тот же день перезаписывает число.
+                Ниже — сколько <strong>календарных дней истории</strong> хранить в БД (старые даты удаляются при синке). По умолчанию
+                <strong>365 дней</strong> (мин. 30, макс. 3650).
+              </p>
+              <div class="row g-2 align-items-end">
+                <div class="col-md-4">
+                  <label class="form-label" for="dg-set-product_stock_snapshot_retention_days">Срок хранения снимков остатка (дней)</label>
+                  <input type="number" class="form-control" id="dg-set-product_stock_snapshot_retention_days" min="30" max="3650" step="1" />
+                </div>
+              </div>
+              <div class="mt-3 d-flex gap-2 flex-wrap">
+                <button type="button" class="btn btn-primary" id="dg-set-btn-save-stock-snap-retention" data-dg-activity-label="Сохранить срок хранения dg_product_stock_snapshot" data-dg-notify-start="Сохраняем срок хранения снимков остатка…">
+                  Сохранить
+                </button>
+              </div>
+              <div id="dg-set-stock-snap-retention-save-msg" class="alert mt-3 mb-0 d-none" role="status"></div>
             </div>
           </div>
 
@@ -1391,7 +1445,7 @@
                   <button type="button" class="btn btn-primary" id="dg-set-pw-gen" data-dg-no-activity="1">
                     Сгенерировать пароль
                   </button>
-                  <button type="button" class="btn btn-success" id="dg-set-pw-submit">🔐 Сменить пароль</button>
+                  <button type="button" class="btn btn-success" id="dg-set-pw-submit" data-dg-notify-start="Меняем пароль…">🔐 Сменить пароль</button>
                 </div>
               </div>
               <p class="text-muted mb-0 mt-2 small">Минимальная длина: 15 символов</p>
@@ -1551,7 +1605,9 @@
         auto_sync_mssales_full_days: 730,
         auto_sync_mssales_full_weekdays: "7",
         ms_dimensions_log_retention_days: 180,
+        dg_purchase_overrides_log_retention_days: 180,
         auto_sync_runs_retention_days: 180,
+        product_stock_snapshot_retention_days: 365,
         ozon_client_id: "",
         ozon_api_key: "",
         wb_api_key: "",
@@ -1567,16 +1623,13 @@
         sales_formula_replenishment_coef: 0.3333333333333333,
         sales_formula_sales_window_days: 90,
         sales_formula_absence_analysis_days: 210,
+        sales_formula_base_qty: 2,
         sales_formula_rare_base_qty: 2,
         sales_formula_rare_avg_max: 1,
         sales_formula_expensive_rare_threshold_rub: 50000,
         sales_formula_expensive_rare_min_qty: 1,
         sales_formula_max_change_coef: 1.6,
-        sales_formula_incomplete_pack_pct: 10,
-        sales_formula_economy_enabled: 0,
-        sales_formula_economy_absence_window_days: 90,
-        sales_formula_economy_max_absence_pct: 6,
-        sales_formula_economy_target_cover_days: 18,
+        sales_formula_incomplete_pack_pct: 80,
       };
 
       function buildUsernameFromFullName(fullName) {
@@ -1807,7 +1860,9 @@
         set("dg-set-auto_mssales_full_days", String(Number(merged.auto_sync_mssales_full_days || 730)));
         applyAutoSyncWeekdayChecks("dg-set-auto_mssales_full_wd", merged.auto_sync_mssales_full_weekdays);
         set("dg-set-ms_dimensions_log_retention_days", merged.ms_dimensions_log_retention_days);
+        set("dg-set-dg_purchase_overrides_log_retention_days", merged.dg_purchase_overrides_log_retention_days);
         set("dg-set-auto_sync_runs_retention_days", merged.auto_sync_runs_retention_days);
+        set("dg-set-product_stock_snapshot_retention_days", merged.product_stock_snapshot_retention_days);
         set("dg-set-ozon_client_id", merged.ozon_client_id || "");
         set("dg-set-ozon_api_key", merged.ozon_api_key || "");
         set("dg-set-wb_api_key", merged.wb_api_key || "");
@@ -1831,6 +1886,7 @@
           "dg-set-sales_formula_absence_analysis_days",
           merged.sales_formula_absence_analysis_days != null ? String(merged.sales_formula_absence_analysis_days) : "210"
         );
+        set("dg-set-sales_formula_base_qty", merged.sales_formula_base_qty != null ? String(merged.sales_formula_base_qty) : "2");
         set("dg-set-sales_formula_rare_base_qty", merged.sales_formula_rare_base_qty != null ? String(merged.sales_formula_rare_base_qty) : "2");
         set(
           "dg-set-sales_formula_rare_avg_max",
@@ -1854,23 +1910,7 @@
         );
         set(
           "dg-set-sales_formula_incomplete_pack_pct",
-          merged.sales_formula_incomplete_pack_pct != null ? String(merged.sales_formula_incomplete_pack_pct) : "10"
-        );
-        var econEn = document.getElementById("dg-set-sales_formula_economy_enabled");
-        if (econEn) econEn.checked = Number(merged.sales_formula_economy_enabled) === 1;
-        set(
-          "dg-set-sales_formula_economy_absence_window_days",
-          merged.sales_formula_economy_absence_window_days != null ? String(merged.sales_formula_economy_absence_window_days) : "90"
-        );
-        set(
-          "dg-set-sales_formula_economy_max_absence_pct",
-          merged.sales_formula_economy_max_absence_pct != null && merged.sales_formula_economy_max_absence_pct !== ""
-            ? String(merged.sales_formula_economy_max_absence_pct)
-            : "6"
-        );
-        set(
-          "dg-set-sales_formula_economy_target_cover_days",
-          merged.sales_formula_economy_target_cover_days != null ? String(merged.sales_formula_economy_target_cover_days) : "18"
+          merged.sales_formula_incomplete_pack_pct != null ? String(merged.sales_formula_incomplete_pack_pct) : "80"
         );
         usersPresenceWindowMinutes = getNum("dg-set-auth_online_presence_minutes", 15);
         syncUsersSessionsHeader();
@@ -2531,7 +2571,7 @@
           var sentDisplay = mask ? maskValue(sent) : (sent === "" ? "<em>пусто</em>" : "<code>" + String(sent) + "</code>");
           var gotDisplay = mask ? maskValue(got) : (got === "" || got == null ? "<em>пусто</em>" : "<code>" + String(got) + "</code>");
           var same = String(sent || "") === String(got || "");
-          if (!same && /^sales_formula_/.test(String(k || "")) && k !== "sales_formula_economy_enabled") {
+          if (!same && /^sales_formula_/.test(String(k || ""))) {
             var sn = parseFloat(String(sent).replace(",", "."));
             var gn = parseFloat(String(got).replace(",", "."));
             if (Number.isFinite(sn) && Number.isFinite(gn)) same = Math.abs(sn - gn) < 1e-6;
@@ -2617,16 +2657,13 @@
           sales_formula_replenishment_coef: getFloat("dg-set-sales_formula_replenishment_coef", 1 / 3),
           sales_formula_sales_window_days: getNum("dg-set-sales_formula_sales_window_days", 90),
           sales_formula_absence_analysis_days: getNum("dg-set-sales_formula_absence_analysis_days", 210),
+          sales_formula_base_qty: getNum("dg-set-sales_formula_base_qty", 2),
           sales_formula_rare_base_qty: getNum("dg-set-sales_formula_rare_base_qty", 2),
           sales_formula_rare_avg_max: getFloat("dg-set-sales_formula_rare_avg_max", 1),
           sales_formula_expensive_rare_threshold_rub: getNum("dg-set-sales_formula_expensive_rare_threshold_rub", 50000),
           sales_formula_expensive_rare_min_qty: getNum("dg-set-sales_formula_expensive_rare_min_qty", 1),
           sales_formula_max_change_coef: getFloat("dg-set-sales_formula_max_change_coef", 1.6),
-          sales_formula_incomplete_pack_pct: getNum("dg-set-sales_formula_incomplete_pack_pct", 10),
-          sales_formula_economy_enabled: document.getElementById("dg-set-sales_formula_economy_enabled").checked ? 1 : 0,
-          sales_formula_economy_absence_window_days: getNum("dg-set-sales_formula_economy_absence_window_days", 90),
-          sales_formula_economy_max_absence_pct: getFloat("dg-set-sales_formula_economy_max_absence_pct", 6),
-          sales_formula_economy_target_cover_days: getNum("dg-set-sales_formula_economy_target_cover_days", 18),
+          sales_formula_incomplete_pack_pct: getNum("dg-set-sales_formula_incomplete_pack_pct", 80),
         };
         runSaveWithInlineFeedback({
           sectionId: "sales-formula",
@@ -3160,6 +3197,101 @@
           });
       }
 
+      function loadPurchaseOvLogStats() {
+        var box = document.getElementById("dg-set-pu-ov-log-info");
+        if (box) box.textContent = "Статистика dg_purchase_overrides_log: загрузка…";
+        return dgKeepScroll(
+          fetch("/api/purchase/log/stats", { credentials: "same-origin" })
+            .then(function (r) { return r.json().then(function (j) { return { r: r, j: j }; }); })
+            .then(function (x) {
+              if (!box) return;
+              box.replaceChildren();
+              if (!x.r.ok || !x.j || x.j.success === false) {
+                box.textContent = "Ошибка статистики dg_purchase_overrides_log: " + ((x.j && x.j.error) || "неизвестно");
+                return;
+              }
+              var j = x.j;
+              var src = j.by_source || {};
+              var srcStr = ["override", "import"]
+                .filter(function (k) { return src[k] != null; })
+                .map(function (k) { return k + "=" + (src[k] || 0); })
+                .join(", ");
+              var oldestStr = j.oldest_at
+                ? new Date(j.oldest_at).toLocaleString("ru-RU", { timeZone: "Europe/Moscow" })
+                : "—";
+              var newestStr = j.newest_at
+                ? new Date(j.newest_at).toLocaleString("ru-RU", { timeZone: "Europe/Moscow" })
+                : "—";
+              var d1 = document.createElement("div");
+              d1.textContent = "Всего записей: " + (j.total || 0) + (srcStr ? " (" + srcStr + ")" : "");
+              var d2 = document.createElement("div");
+              d2.textContent = "Самая старая: " + oldestStr + " · самая свежая: " + newestStr;
+              var d3 = document.createElement("div");
+              d3.textContent = "Текущий retention: " + (j.retention_days || 0) +
+                " дней · по нему будет удалено сейчас: " + (j.older_than_retention || 0);
+              box.appendChild(d1);
+              box.appendChild(d2);
+              box.appendChild(d3);
+            })
+            .catch(function (e) {
+              if (!box) return;
+              box.replaceChildren();
+              box.textContent = "Сетевая ошибка статистики dg_purchase_overrides_log: " + ((e && e.message) || e);
+            })
+        );
+      }
+
+      function savePurchaseOvLogRetention() {
+        var days = getNum("dg-set-dg_purchase_overrides_log_retention_days", 180);
+        if (!Number.isFinite(days) || days < 1) {
+          days = 180;
+          var el = document.getElementById("dg-set-dg_purchase_overrides_log_retention_days");
+          if (el) el.value = "180";
+        }
+        runSaveWithInlineFeedback({
+          sectionId: "purchase-ov-log",
+          payload: { dg_purchase_overrides_log_retention_days: days },
+          okText: "Срок хранения dg_purchase_overrides_log сохранён",
+          verifyKeys: ["dg_purchase_overrides_log_retention_days"],
+        }).then(function () { loadPurchaseOvLogStats(); }).catch(function () { /** баннер уже показан утилитой */ });
+      }
+
+      function saveStockSnapshotRetention() {
+        var days = getNum("dg-set-product_stock_snapshot_retention_days", 365);
+        if (!Number.isFinite(days)) days = 365;
+        days = Math.max(30, Math.min(3650, Math.round(days)));
+        var el = document.getElementById("dg-set-product_stock_snapshot_retention_days");
+        if (el) el.value = String(days);
+        runSaveWithInlineFeedback({
+          sectionId: "stock-snap-retention",
+          payload: { product_stock_snapshot_retention_days: days },
+          okText: "Срок хранения dg_product_stock_snapshot сохранён",
+          verifyKeys: ["product_stock_snapshot_retention_days"],
+        }).catch(function () { /** баннер уже показан утилитой */ });
+      }
+
+      function cleanupPurchaseOvLogNow() {
+        var days = getNum("dg-set-dg_purchase_overrides_log_retention_days", 180);
+        if (!window.confirm("Удалить из таблицы dg_purchase_overrides_log записи старше " + days + " дней?")) return;
+        fetch("/api/purchase/log/cleanup", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ days: days }),
+        })
+          .then(function (r) { return r.json().then(function (j) { return { r: r, j: j }; }); })
+          .then(function (x) {
+            if (!x.r.ok || !x.j || x.j.success === false) {
+              throw new Error((x.j && x.j.error) || "Не удалось очистить dg_purchase_overrides_log");
+            }
+            alert("Удалено записей: " + (x.j.deleted || 0));
+            loadPurchaseOvLogStats();
+          })
+          .catch(function (e) {
+            alert((e && e.message) || "Ошибка очистки dg_purchase_overrides_log");
+          });
+      }
+
       function createUser() {
         if (!canManageUsers()) return alert("Недостаточно прав");
         var full_name = getStr("dg-set-new-fullname").trim();
@@ -3439,6 +3571,11 @@
       document.getElementById("dg-set-btn-save-dim-log").addEventListener("click", saveDimLogRetention);
       document.getElementById("dg-set-btn-dim-log-refresh").addEventListener("click", loadDimLogStats);
       document.getElementById("dg-set-btn-dim-log-cleanup").addEventListener("click", cleanupDimLogNow);
+      document.getElementById("dg-set-btn-save-purchase-ov-log").addEventListener("click", savePurchaseOvLogRetention);
+      var saveStockSnapRetBtn = document.getElementById("dg-set-btn-save-stock-snap-retention");
+      if (saveStockSnapRetBtn) saveStockSnapRetBtn.addEventListener("click", saveStockSnapshotRetention);
+      document.getElementById("dg-set-btn-pu-ov-log-refresh").addEventListener("click", loadPurchaseOvLogStats);
+      document.getElementById("dg-set-btn-pu-ov-log-cleanup").addEventListener("click", cleanupPurchaseOvLogNow);
       document.getElementById("dg-set-pw-toggle").addEventListener("click", function () {
         showPasswordChange = !showPasswordChange;
         document.getElementById("dg-set-pw-new").type = showPasswordChange ? "text" : "password";
@@ -3482,6 +3619,7 @@
         loadSettings();
         loadAsrStats();
         loadDimLogStats();
+        loadPurchaseOvLogStats();
       }
       loadUsers();
       window.addEventListener("datagon-profile-loaded", function () {
@@ -3491,6 +3629,9 @@
         document.getElementById("dg-set-pw-username").readOnly = !isAdmin();
         if (!isSettingsUsersManagerShell()) {
           loadSettings();
+          loadAsrStats();
+          loadDimLogStats();
+          loadPurchaseOvLogStats();
         }
         loadUsers();
       });

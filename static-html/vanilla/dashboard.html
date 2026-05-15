@@ -551,7 +551,7 @@
                   <div class="text-muted small" id="dg-db-size-meta">Кэш: —</div>
                 </div>
               </div>
-              <button type="button" class="btn btn-outline-primary" id="dashboard-db-size-refresh" data-dg-activity-label="Обновить размер базы данных">
+              <button type="button" class="btn btn-outline-primary" id="dashboard-db-size-refresh" data-dg-activity-label="Обновить размер базы данных" data-dg-notify-start="Запрашиваем пересчёт размера БД…">
                 <i class="pe-7s-refresh me-1"></i>Обновить размер БД
               </button>
             </div>
@@ -699,7 +699,7 @@
               </div>
               <div class="d-flex align-items-center gap-2 flex-wrap">
                 <span class="text-muted small d-none d-md-inline" id="dg-disk-meta">—</span>
-                <button type="button" class="btn btn-sm btn-outline-primary" id="dg-disk-refresh" data-dg-activity-label="Пересчитать использование диска">
+                <button type="button" class="btn btn-sm btn-outline-primary" id="dg-disk-refresh" data-dg-activity-label="Пересчитать использование диска" data-dg-notify-start="Пересчитываем разбивку диска…">
                   <i class="pe-7s-refresh me-1"></i>Пересчитать
                 </button>
                 <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-disk-toggle">Свернуть</button>
@@ -911,10 +911,10 @@
             </div>
             <div class="card-body">
               <div class="d-flex flex-wrap gap-2">
-                <button type="button" class="btn btn-primary" id="dashboard-sync-all" title="Запустить глобальную синхронизацию товаров по всем сайтам">
+                <button type="button" class="btn btn-primary" id="dashboard-sync-all" title="Запустить глобальную синхронизацию товаров по всем сайтам" data-dg-notify-start="Запускаем синхронизацию по всем сайтам…">
                   <i class="pe-7s-repeat me-1"></i>Запустить синхронизацию всех сайтов
                 </button>
-                <button type="button" class="btn btn-outline-primary" id="dashboard-refresh" title="Обновить метрики дашборда вручную">
+                <button type="button" class="btn btn-outline-primary" id="dashboard-refresh" title="Обновить метрики дашборда вручную" data-dg-notify-start="Обновляем метрики дашборда…">
                   <i class="pe-7s-refresh me-1"></i>Обновить дашборд
                 </button>
                 <a class="btn btn-outline-secondary" href="/my-products.html?ms_linked=0&amp;limit=50"><i class="pe-7s-box2 me-1"></i>Товары без связи с МС</a>
@@ -1540,22 +1540,33 @@
       }
 
       document.getElementById("dashboard-sync-all").addEventListener("click", function () {
-        fetch("/api/sync-all-start", { method: "POST", credentials: "same-origin" })
-          .then(function (r) {
-            return r.json().then(function (j) {
-              return { ok: r.ok, j: j };
+        var btn = document.getElementById("dashboard-sync-all");
+        var run = function () {
+          return fetch("/api/sync-all-start", { method: "POST", credentials: "same-origin" })
+            .then(function (r) {
+              return r.json().then(function (j) {
+                return { ok: r.ok, j: j };
+              });
+            })
+            .then(function (x) {
+              if (!x.ok || !x.j.success) throw new Error(x.j.error || x.j.message || "Не удалось запустить синхронизацию");
+              if (window.DatagonNotify) window.DatagonNotify.toast({ type: "success", message: "Синхронизация запущена в фоне", duration: 4000 });
+              loadDashboard();
+            })
+            .catch(function (e) {
+              if (window.DatagonNotify) window.DatagonNotify.toast({ type: "danger", message: e.message || "Ошибка запуска синхронизации", duration: 8000 });
+              else alert(e.message || "Ошибка запуска синхронизации");
             });
-          })
-          .then(function (x) {
-            if (!x.ok || !x.j.success) throw new Error(x.j.error || x.j.message || "Не удалось запустить синхронизацию");
-            loadDashboard();
-          })
-          .catch(function (e) {
-            alert(e.message || "Ошибка запуска синхронизации");
-          });
+        };
+        if (window.DatagonNotify && typeof window.DatagonNotify.busyRun === "function") {
+          window.DatagonNotify.busyRun(btn, run);
+        } else {
+          run();
+        }
       });
 
       document.getElementById("dashboard-refresh").addEventListener("click", function () {
+        if (window.DatagonNotify) window.DatagonNotify.toast({ type: "info", message: "Обновляем метрики…", duration: 2200 });
         loadDashboard();
         loadDiskUsage(false);
       });

@@ -41,8 +41,12 @@ let appSettings = {
     log_retention_days: 7,
     results_retention_days: 120,
     ms_dimensions_log_retention_days: 180,
+    /** Срок хранения журнала изменений полей закупок (`dg_purchase_overrides_log`). */
+    dg_purchase_overrides_log_retention_days: 180,
     /** Срок хранения строк в `auto_sync_runs` (журнал запусков автосинхронизации на /processes.html). */
     auto_sync_runs_retention_days: 180,
+    /** Срок хранения дневных снимков `ms_export.stock` в `dg_product_stock_snapshot` (после синка МС). */
+    product_stock_snapshot_retention_days: 365,
     auto_sync_myproducts_enabled: 0,
     auto_sync_myproducts_time: '03:00',
     auto_sync_moysklad_enabled: 0,
@@ -114,20 +118,17 @@ let appSettings = {
     auto_sync_mssales_full_days: 730,
     /** По умолчанию только вс; при включении задайте удобные дни. */
     auto_sync_mssales_full_weekdays: '7',
-    /** Формула продаж / предлагаемого неснижаемого (см. `lib/datagonSalesFormula.js`, карточка товара). */
+    /** Формула продаж / предлагаемого неснижаемого, LagerPlus-parity (см. `lib/datagonSalesFormula.js`, карточка товара). */
     sales_formula_replenishment_coef: 1 / 3,
     sales_formula_sales_window_days: 90,
     sales_formula_absence_analysis_days: 210,
+    sales_formula_base_qty: 2,
     sales_formula_rare_base_qty: 2,
     sales_formula_rare_avg_max: 1,
     sales_formula_expensive_rare_threshold_rub: 50000,
     sales_formula_expensive_rare_min_qty: 1,
     sales_formula_max_change_coef: 1.6,
-    sales_formula_incomplete_pack_pct: 10,
-    sales_formula_economy_enabled: 0,
-    sales_formula_economy_absence_window_days: 90,
-    sales_formula_economy_max_absence_pct: 6,
-    sales_formula_economy_target_cover_days: 18
+    sales_formula_incomplete_pack_pct: 80
 };
 let syncState = { active: false, processed: 0, total: 0, message: '' };
 const moyskladRouterFactory = require('./routes/moysklad');
@@ -266,7 +267,7 @@ async function initDB() {
         await db.query(`CREATE TABLE IF NOT EXISTS app_settings (setting_key VARCHAR(50) PRIMARY KEY, setting_value TEXT)`);
         const defaults = [
             ['default_limit','100'],['parse_batch_size','50'],['page_delay_ms','0'],
-            ['sync_batch_size','500'],['sync_delay_ms','2000'],['sync_mode','always'],['log_retention_days','7'],['results_retention_days','120'],['ms_dimensions_log_retention_days','180'],['auto_sync_runs_retention_days','180'],
+            ['sync_batch_size','500'],['sync_delay_ms','2000'],['sync_mode','always'],['log_retention_days','7'],['results_retention_days','120'],['ms_dimensions_log_retention_days','180'],['dg_purchase_overrides_log_retention_days','180'],['auto_sync_runs_retention_days','180'],['product_stock_snapshot_retention_days','365'],
             ['ms_sync_page_limit','1000'],['ms_sync_delay_ms','0'],
             ['auto_sync_myproducts_enabled','0'],['auto_sync_myproducts_time','03:00'],
             ['auto_sync_moysklad_enabled','0'],['auto_sync_moysklad_time','04:00'],
@@ -318,16 +319,13 @@ async function initDB() {
             ['sales_formula_replenishment_coef','0.3333333333333333'],
             ['sales_formula_sales_window_days','90'],
             ['sales_formula_absence_analysis_days','210'],
+            ['sales_formula_base_qty','2'],
             ['sales_formula_rare_base_qty','2'],
             ['sales_formula_rare_avg_max','1'],
             ['sales_formula_expensive_rare_threshold_rub','50000'],
             ['sales_formula_expensive_rare_min_qty','1'],
             ['sales_formula_max_change_coef','1.6'],
-            ['sales_formula_incomplete_pack_pct','10'],
-            ['sales_formula_economy_enabled','0'],
-            ['sales_formula_economy_absence_window_days','90'],
-            ['sales_formula_economy_max_absence_pct','6'],
-            ['sales_formula_economy_target_cover_days','18']
+            ['sales_formula_incomplete_pack_pct','80']
         ];
         for (const [k, v] of defaults) await db.query('INSERT IGNORE INTO app_settings (setting_key, setting_value) VALUES (?, ?)', [k, v]);
 
@@ -812,6 +810,31 @@ async function cleanupDimensionsLogByRetentionDays(days) {
     } catch (e) {
         if (e && e.code === 'ER_NO_SUCH_TABLE') return 0;
         console.warn('[DIM-LOG CLEANUP] failed:', e?.message || e);
+        throw e;
+    }
+}
+
+/**
+ * Автоочистка `dg_purchase_overrides_log` (журнал полей «Нес.остаток Датагон», «Кратность», «Мин.остаток сч.как 0»)
+ * по `app_settings.dg_purchase_overrides_log_retention_days` (по умолчанию 180).
+ */
+async function cleanupPurchaseOverridesLogByRetentionDays(days) {
+    const retentionDays = Number(days) || 180;
+    if (retentionDays <= 0) return 0;
+    try {
+        const [r] = await db.query(
+            `DELETE FROM dg_purchase_overrides_log
+             WHERE changed_at < (NOW() - INTERVAL ? DAY)`,
+            [retentionDays]
+        );
+        const deleted = Number(r?.affectedRows || 0);
+        if (deleted > 0) {
+            console.log(`[PURCHASE-OV-LOG CLEANUP] Deleted ${deleted} rows older than ${retentionDays} days`);
+        }
+        return deleted;
+    } catch (e) {
+        if (e && e.code === 'ER_NO_SUCH_TABLE') return 0;
+        console.warn('[PURCHASE-OV-LOG CLEANUP] failed:', e?.message || e);
         throw e;
     }
 }
@@ -1517,7 +1540,11 @@ async function processAutoSyncQueue() {
                 let startResFull = { started: false };
                 if (typeof msSalesModule.triggerSync === 'function') {
                     try {
-                        startResFull = await msSalesModule.triggerSync(db, { days: daysFull, fresh: true });
+                        startResFull = await msSalesModule.triggerSync(db, {
+                            days: daysFull,
+                            fresh: true,
+                            awaitCompletion: true,
+                        });
                     } catch (e) {
                         startResFull = { started: false, error: e && e.message ? e.message : String(e) };
                     }
@@ -1527,18 +1554,26 @@ async function processAutoSyncQueue() {
                         startResFull.error || startResFull.reason || 'Не удалось запустить полный синк продаж МС');
                     console.log('[AUTO SYNC] Queue done: mssales_full — failed (start)');
                 } else {
-                    const doneFull = await waitUntil(() => {
-                        const s = typeof msSalesModule.getSyncState === 'function'
+                    let timedOutFull = false;
+                    let finalStateFull;
+                    if (startResFull && startResFull.started === false && startResFull.reason === 'already_running') {
+                        timedOutFull = !(await waitUntil(() => {
+                            const s = typeof msSalesModule.getSyncState === 'function'
+                                ? msSalesModule.getSyncState()
+                                : { active: false };
+                            return !s.active;
+                        }, 12 * 60 * 60 * 1000, 1000));
+                        finalStateFull = typeof msSalesModule.getSyncState === 'function'
                             ? msSalesModule.getSyncState()
                             : { active: false };
-                        return !s.active;
-                    }, 12 * 60 * 60 * 1000, 1000);
-                    const finalStateFull = typeof msSalesModule.getSyncState === 'function'
-                        ? msSalesModule.getSyncState()
-                        : { active: false };
+                    } else {
+                        finalStateFull = (startResFull && startResFull.status) || (typeof msSalesModule.getSyncState === 'function'
+                            ? msSalesModule.getSyncState()
+                            : { active: false });
+                    }
                     let statusFull = 'failed';
                     let messageFull;
-                    if (!doneFull) {
+                    if (timedOutFull) {
                         messageFull = 'Таймаут ожидания (12 ч)';
                     } else if (finalStateFull.last_error) {
                         messageFull = ('Ошибка: ' + finalStateFull.last_error).slice(0, 480);
@@ -1566,7 +1601,7 @@ async function processAutoSyncQueue() {
                 let startRes = { started: false };
                 if (typeof msSalesModule.triggerSync === 'function') {
                     try {
-                        startRes = await msSalesModule.triggerSync(db, { days });
+                        startRes = await msSalesModule.triggerSync(db, { days, awaitCompletion: true });
                     } catch (e) {
                         startRes = { started: false, error: e && e.message ? e.message : String(e) };
                     }
@@ -1576,19 +1611,26 @@ async function processAutoSyncQueue() {
                         startRes.error || startRes.reason || 'Не удалось запустить синхронизацию продаж МС');
                     console.log('[AUTO SYNC] Queue done: mssales — failed (start)');
                 } else {
-                    /** Ждём завершения; таймаут — 12 часов, как у остальных. */
-                    const done = await waitUntil(() => {
-                        const s = typeof msSalesModule.getSyncState === 'function'
+                    let timedOut = false;
+                    let finalState;
+                    if (startRes && startRes.started === false && startRes.reason === 'already_running') {
+                        timedOut = !(await waitUntil(() => {
+                            const s = typeof msSalesModule.getSyncState === 'function'
+                                ? msSalesModule.getSyncState()
+                                : { active: false };
+                            return !s.active;
+                        }, 12 * 60 * 60 * 1000, 1000));
+                        finalState = typeof msSalesModule.getSyncState === 'function'
                             ? msSalesModule.getSyncState()
                             : { active: false };
-                        return !s.active;
-                    }, 12 * 60 * 60 * 1000, 1000);
-                    const finalState = typeof msSalesModule.getSyncState === 'function'
-                        ? msSalesModule.getSyncState()
-                        : { active: false };
+                    } else {
+                        finalState = (startRes && startRes.status) || (typeof msSalesModule.getSyncState === 'function'
+                            ? msSalesModule.getSyncState()
+                            : { active: false });
+                    }
                     let status = 'failed';
                     let message;
-                    if (!done) {
+                    if (timedOut) {
                         message = 'Таймаут ожидания (12 ч)';
                     } else if (finalState.last_error) {
                         message = ('Ошибка: ' + finalState.last_error).slice(0, 480);
@@ -2315,11 +2357,13 @@ initDB().then(() => {
     cleanupLogsByRetentionDays(appSettings.log_retention_days).catch(() => {});
     cleanupResultsByRetentionDays(appSettings.results_retention_days).catch(() => {});
     cleanupDimensionsLogByRetentionDays(appSettings.ms_dimensions_log_retention_days).catch(() => {});
+    cleanupPurchaseOverridesLogByRetentionDays(appSettings.dg_purchase_overrides_log_retention_days).catch(() => {});
     cleanupAutoSyncRunsByRetentionDays(appSettings.auto_sync_runs_retention_days).catch(() => {});
     setInterval(() => {
         cleanupLogsByRetentionDays(appSettings.log_retention_days).catch(() => {});
         cleanupResultsByRetentionDays(appSettings.results_retention_days).catch(() => {});
         cleanupDimensionsLogByRetentionDays(appSettings.ms_dimensions_log_retention_days).catch(() => {});
+        cleanupPurchaseOverridesLogByRetentionDays(appSettings.dg_purchase_overrides_log_retention_days).catch(() => {});
         cleanupAutoSyncRunsByRetentionDays(appSettings.auto_sync_runs_retention_days).catch(() => {});
     }, 12 * 60 * 60 * 1000);
     closeStaleAutoSyncRunsOnStartup()

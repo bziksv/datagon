@@ -1,6 +1,6 @@
   <style>
-    /* Закупки: эталон таблицы — moysklad. Те же контракты:
-       - sticky `<th>` с прокруткой `thead` под `app-header`,
+    /* Закупки: эталон таблицы — my-products / moysklad.
+       - sticky `<th>` внутри таблицы; сдвиг под `app-header` — `translate3d` на `<thead id="dg-pu-thead">` в JS,
        - вертикальные разделители как в `dg-mp-table`,
        - выделяемые подписи колонок (user-select: text). */
     .dg-pu-table { font-size: 0.8rem; line-height: 1.25; font-variant-numeric: tabular-nums; }
@@ -100,7 +100,243 @@
     /* «Пустые» суточные колонки — серый фон в шапке, пустые `td`. */
     .dg-pu-future-th { color: #6b7280; background: #f5f7fb !important; }
     .dg-pu-future-td { background: #fbfcfe; }
-    /* Ссылка-«Код» открывает карточку товара /product.html?code=… в новой вкладке. */
-    .dg-pu-code-link { color: #0b5ed7; text-decoration: none; font-weight: 500; }
-    .dg-pu-code-link:hover { text-decoration: underline; }
+    /* Наименование + «Лог» в одной строке (как exports-dimensions: .dg-dim-name-cell). Код — только в title ссылки и в колонке «Артикул»/данных, не отдельной строкой над названием. */
+    body.datagon-vanilla-body[data-dg-active-nav='purchase'] .dg-pu-table tbody td.dg-pu-cell-name {
+      overflow: visible;
+      text-overflow: clip;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='purchase'] .dg-pu-name-cell {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-start;
+      gap: 6px 8px;
+      min-width: 0;
+      width: 100%;
+      max-width: 100%;
+      text-align: left;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='purchase'] .dg-pu-name-text {
+      flex: 1 1 140px;
+      min-width: 0;
+      word-break: break-word;
+      line-height: 1.35;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='purchase'] .dg-pu-name-link {
+      color: #0b5ed7;
+      text-decoration: none;
+      font-weight: 500;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='purchase'] .dg-pu-name-link:hover {
+      text-decoration: underline;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='purchase'] .dg-pu-name-plain {
+      color: inherit;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='purchase'] .dg-pu-name-actions {
+      flex: 0 0 auto;
+      display: inline-flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='purchase'] .dg-pu-cell-name .dg-pu-log-btn {
+      background: transparent;
+      border: 1px solid transparent;
+      padding: 0 4px;
+      font-size: 11px;
+      line-height: 1;
+      color: #4b5563;
+      cursor: pointer;
+      border-radius: 4px;
+      margin-left: 0;
+      vertical-align: middle;
+      white-space: nowrap;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='purchase'] .dg-pu-cell-name .dg-pu-log-btn:hover {
+      background: #eef2ff;
+      border-color: #c7d2fe;
+      color: #3730a3;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='purchase'] .dg-pu-cell-name .dg-pu-log-btn:focus {
+      outline: 2px solid #6c8bff;
+      outline-offset: 1px;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='purchase'] .dg-pu-edit-tip-wrap.dg-pu-edit-cell {
+      width: 100%;
+      max-width: 100%;
+      cursor: help;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='purchase'] .dg-pu-edit-tip-wrap .dg-pu-edit-input {
+      flex: 1 1 auto;
+      min-width: 48px;
+      width: 100%;
+      max-width: 100%;
+    }
+    /* Hover-журнал по полю (паритет с exports-dimensions — .dg-dim-cell-tip). */
+    .dg-pu-cell-tip {
+      position: absolute;
+      z-index: 10000;
+      max-width: 360px;
+      min-width: 220px;
+      background: #ffffff;
+      color: #1f2937;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      padding: 8px 10px;
+      box-shadow: 0 6px 18px rgba(15, 23, 42, 0.12);
+      font-size: 11px;
+      line-height: 1.35;
+    }
+    .dg-pu-cell-tip .dg-pu-cell-tip-title {
+      font-weight: 600;
+      font-size: 11px;
+      color: #374151;
+      margin-bottom: 6px;
+    }
+    .dg-pu-cell-tip .dg-pu-cell-tip-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    .dg-pu-cell-tip .dg-pu-cell-tip-list li {
+      padding: 4px 0;
+      border-top: 1px solid #f3f4f6;
+    }
+    .dg-pu-cell-tip .dg-pu-cell-tip-list li:first-child {
+      border-top: 0;
+      padding-top: 0;
+    }
+    .dg-pu-cell-tip .dg-pu-cell-tip-row1 {
+      color: #6b7280;
+      font-size: 10px;
+      margin-bottom: 2px;
+    }
+    .dg-pu-cell-tip .dg-pu-cell-tip-row2 {
+      color: #1f2937;
+    }
+    .dg-pu-cell-tip .dg-pu-cell-tip-old {
+      color: #b91c1c;
+      text-decoration: line-through;
+      text-decoration-thickness: 1px;
+    }
+    .dg-pu-cell-tip .dg-pu-cell-tip-new {
+      color: #14532d;
+      font-weight: 600;
+    }
+    .dg-pu-cell-tip .dg-pu-cell-tip-empty,
+    .dg-pu-cell-tip .dg-pu-cell-tip-loading,
+    .dg-pu-cell-tip .dg-pu-cell-tip-err {
+      color: #6b7280;
+      font-style: italic;
+    }
+    .dg-pu-cell-tip .dg-pu-cell-tip-err {
+      color: #b91c1c;
+    }
+    .dg-pu-cell-tip .dg-pu-log-action {
+      font-size: 9px;
+      padding: 0 4px;
+      border-radius: 3px;
+      background: #e5e7eb;
+      color: #374151;
+    }
+    .dg-pu-cell-tip .dg-pu-log-action.src-override {
+      background: #dbeafe;
+      color: #1e40af;
+    }
+    .dg-pu-cell-tip .dg-pu-log-action.src-import {
+      background: #fef3c7;
+      color: #92400e;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='purchase'] .dg-pu-log-action {
+      display: inline-block;
+      font-size: 10px;
+      padding: 1px 6px;
+      border-radius: 4px;
+      background: #e5e7eb;
+      color: #374151;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='purchase'] .dg-pu-log-action.src-override {
+      background: #dbeafe;
+      color: #1e40af;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='purchase'] .dg-pu-log-action.src-import {
+      background: #fef3c7;
+      color: #92400e;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='purchase'] .dg-pu-log-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 1080;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='purchase'] .dg-pu-log-overlay .dg-pu-log-backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.55);
+      backdrop-filter: blur(2px);
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='purchase'] .dg-pu-log-overlay .dg-pu-log-panel {
+      position: relative;
+      width: min(900px, 100%);
+      max-height: calc(100vh - 48px);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='purchase'] .dg-pu-log-body {
+      overflow: auto;
+      max-height: calc(100vh - 48px - 60px);
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='purchase'] .dg-pu-log-body table {
+      width: 100%;
+      margin: 0;
+      border-collapse: collapse;
+      font-size: 0.8rem;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='purchase'] .dg-pu-log-body thead th {
+      position: sticky;
+      top: 0;
+      background: #f8f9fa;
+      border-bottom: 1px solid #dee2e6;
+      padding: 0.4rem 0.65rem;
+      font-weight: 600;
+      color: #374151;
+      text-align: left;
+      z-index: 1;
+      user-select: text;
+      -webkit-user-select: text;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='purchase'] .dg-pu-log-body tbody td {
+      border-bottom: 1px solid #f3f4f6;
+      padding: 0.4rem 0.65rem;
+      vertical-align: top;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='purchase'] .dg-pu-log-body tbody tr:nth-child(even) td {
+      background: #fafbfc;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='purchase'] .dg-pu-log-old,
+    body.datagon-vanilla-body[data-dg-active-nav='purchase'] .dg-pu-log-new {
+      font-variant-numeric: tabular-nums;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='purchase'] .dg-pu-log-old {
+      color: #9ca3af;
+      text-decoration: line-through;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='purchase'] .dg-pu-log-arrow {
+      color: #6b7280;
+      margin: 0 6px;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='purchase'] .dg-pu-log-new {
+      color: #14532d;
+      font-weight: 500;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='purchase'] .dg-pu-log-pager {
+      background: #fafbfc;
+      position: sticky;
+      bottom: 0;
+      z-index: 2;
+    }
   </style>

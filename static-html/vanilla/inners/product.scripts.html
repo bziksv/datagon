@@ -14,7 +14,11 @@
       var attrsMeta = document.getElementById("dg-prod-attrs-meta");
       var pricesBox = document.getElementById("dg-prod-prices");
       var stockBox = document.getElementById("dg-prod-stock");
+      var stockSnapshotsWrap = document.getElementById("dg-prod-stock-snapshots-wrap");
+      var stockSnapDaysSel = document.getElementById("dg-prod-stock-snap-days");
       var overrideBox = document.getElementById("dg-prod-override");
+      var overrideFormBox = document.getElementById("dg-prod-override-form");
+      var overrideMsgEl = document.getElementById("dg-prod-override-msg");
       var zeroDaysSel = document.getElementById("dg-prod-zero-days");
       var zeroFixBtn = document.getElementById("dg-prod-zero-fix");
       var zeroResultEl = document.getElementById("dg-prod-zero-result");
@@ -400,7 +404,7 @@
         });
       }
 
-      function renderStock(stock) {
+      function renderStock(stock, formula) {
         stockBox.innerHTML = "";
         if (!stock) {
           var empty = document.createElement("div");
@@ -415,38 +419,339 @@
           { label: "В пути", value: stock.in_transit == null ? "—" : fmtFloat(stock.in_transit, 2) },
           { label: "Неснижаемый остаток (МС)", value: stock.min_stock == null ? "—" : fmtFloat(stock.min_stock, 2) }
         ];
+        if (formula && formula.proposed_min_stock != null) {
+          cards.push({
+            label: "Предлагаемый неснижаемый (Датагон)",
+            value: String(formula.proposed_min_stock) + " шт",
+            tooltip:
+              "Итог после всех шагов на сервере, округление вверх до целых штук. Не пишется автоматически в МойСклад: при необходимости используйте «Закупки» и override. Полный разбор — в блоке «Формула продаж» ниже.",
+          });
+        }
         cards.forEach(function (c) {
           var card = document.createElement("div");
           card.className = "dg-stock-card" + (c.bad ? " is-bad" : "");
-          var nm = document.createElement("div"); nm.className = "dg-stock-name"; nm.textContent = c.label;
-          var v = document.createElement("div"); v.className = "dg-stock-value"; v.textContent = c.value;
-          card.appendChild(nm); card.appendChild(v);
+          var nm = document.createElement("div");
+          nm.className = "dg-stock-name";
+          nm.textContent = c.label;
+          if (c.tooltip) nm.setAttribute("data-dg-tooltip", c.tooltip);
+          var v = document.createElement("div");
+          v.className = "dg-stock-value";
+          v.textContent = c.value;
+          card.appendChild(nm);
+          card.appendChild(v);
           stockBox.appendChild(card);
         });
       }
 
-      function renderOverride(over) {
-        overrideBox.innerHTML = "";
-        var rows = [
-          ["Нес.остаток Датагон", over ? over.min_stock_dg : null],
-          ["Кратность товара", over ? over.multiplicity : null],
-          ["Мин.Остаток сч.как 0", over ? over.min_stock_calc_as : null],
-          ["Предлагаемый нес.ост.", over ? over.proposed_min_stock : null],
-          ["Кол-во в упаковке (override)", over ? over.pack_qty_manual : null]
-        ];
-        var any = false;
-        rows.forEach(function (kv) {
-          if (kv[1] == null) return;
-          any = true;
-          pushKv(overrideBox, kv[0], fmtFloat(kv[1], 3), { numeric: true });
+      /** Заполняет селект глубины снимков; `cap` = min(730, retention из настроек). */
+      function syncStockSnapDaysOptions(sn) {
+        if (!stockSnapDaysSel) return;
+        var ret = sn && sn.retention_days != null ? Number(sn.retention_days) : 365;
+        if (!Number.isFinite(ret) || ret < 1) ret = 365;
+        var cap = Math.min(730, Math.max(1, Math.round(ret)));
+        var want = sn && sn.days != null ? Number(sn.days) : cap;
+        if (!Number.isFinite(want) || want < 1) want = cap;
+        want = Math.min(cap, Math.max(1, Math.round(want)));
+        var presets = [30, 60, 90, 120, 180, 365, 730];
+        var opts = [];
+        presets.forEach(function (d) {
+          if (d <= cap) opts.push(d);
         });
-        if (over && over.note) pushKv(overrideBox, "Заметка", over.note);
-        if (over && over.updated_at) pushKv(overrideBox, "Обновлено", fmtDate(over.updated_at));
-        if (!any && (!over || !over.note)) {
+        if (opts.indexOf(cap) < 0) opts.push(cap);
+        opts.sort(function (a, b) {
+          return a - b;
+        });
+        var uniq = [];
+        opts.forEach(function (d) {
+          if (uniq.indexOf(d) < 0) uniq.push(d);
+        });
+        stockSnapDaysSel.innerHTML = "";
+        uniq.forEach(function (d) {
+          var o = document.createElement("option");
+          o.value = String(d);
+          o.textContent = d + " дн.";
+          stockSnapDaysSel.appendChild(o);
+        });
+        var pick = uniq.indexOf(want) >= 0 ? want : uniq[uniq.length - 1];
+        stockSnapDaysSel.value = String(pick);
+      }
+
+      function stockSnapshotDaysQuerySuffix() {
+        if (!stockSnapDaysSel || !stockSnapDaysSel.value) return "";
+        var v = parseInt(stockSnapDaysSel.value, 10);
+        if (!Number.isFinite(v) || v < 1) return "";
+        return "&stock_snapshot_days=" + encodeURIComponent(String(v));
+      }
+
+      function renderStockSnapshots(sn) {
+        if (!stockSnapshotsWrap) return;
+        stockSnapshotsWrap.innerHTML = "";
+        var rows = sn && Array.isArray(sn.rows) ? sn.rows : [];
+        var days = sn && sn.days != null ? Number(sn.days) : 365;
+        if (!Number.isFinite(days) || days < 1) days = 365;
+
+        var head = document.createElement("div");
+        head.className = "text-muted small mb-2";
+        if (sn && sn.note) {
+          head.textContent = String(sn.note);
+        } else {
+          head.textContent =
+            "Окно запроса: последние " +
+            days +
+            " календарных дней (query stock_snapshot_days; по умолчанию min(730, срок хранения из настроек); в ответе не больше 400 строк).";
+        }
+        stockSnapshotsWrap.appendChild(head);
+
+        if (!rows.length) {
           var empty = document.createElement("div");
           empty.className = "dg-prod-empty";
+          empty.textContent =
+            "За выбранный период снимков нет: после включения функции нужен хотя бы один успешный синк МС, либо для этого кода ещё не попадали даты в окно.";
+          stockSnapshotsWrap.appendChild(empty);
+          return;
+        }
+
+        var t = document.createElement("table");
+        t.className = "table table-sm table-striped dg-prod-mini";
+        t.innerHTML =
+          "<thead><tr>" +
+            "<th>Дата (снимок)</th>" +
+            "<th class=\"text-end\">Остаток, шт</th>" +
+            "<th>Запись в БД</th>" +
+          "</tr></thead>";
+        var tb = document.createElement("tbody");
+        rows.forEach(function (r) {
+          var tr = document.createElement("tr");
+          var c1 = document.createElement("td");
+          c1.textContent = fmtDateOnly(r.ts_date);
+          var c2 = document.createElement("td");
+          c2.className = "text-end";
+          c2.textContent = fmtFloat(r.stock != null ? r.stock : 0, 3);
+          var c3 = document.createElement("td");
+          c3.textContent = r.created_at ? fmtDate(r.created_at) : "—";
+          tr.appendChild(c1);
+          tr.appendChild(c2);
+          tr.appendChild(c3);
+          tb.appendChild(tr);
+        });
+        t.appendChild(tb);
+        stockSnapshotsWrap.appendChild(t);
+      }
+
+      function hidePurchaseOverrideMsg() {
+        if (!overrideMsgEl) return;
+        overrideMsgEl.classList.add("d-none");
+        overrideMsgEl.textContent = "";
+        overrideMsgEl.className = "alert mt-3 mb-0 d-none";
+      }
+      function showPurchaseOverrideMsg(kind, text) {
+        if (!overrideMsgEl) return;
+        var cls =
+          kind === "success"
+            ? "alert-success"
+            : kind === "warning"
+              ? "alert-warning"
+              : kind === "danger"
+                ? "alert-danger"
+                : "alert-info";
+        overrideMsgEl.className = "alert mt-3 mb-0 " + cls;
+        overrideMsgEl.textContent = text;
+        overrideMsgEl.classList.remove("d-none");
+      }
+
+      function overrideInputDisplayValue(over, field) {
+        var v = over && over[field];
+        if (v == null || v === "") return "";
+        return String(v).replace(".", ",");
+      }
+
+      function renderOverrideForm(code, over, purchaseOverridesEditable) {
+        overrideFormSnap = null;
+        if (!overrideFormBox) return;
+        overrideFormBox.innerHTML = "";
+        hidePurchaseOverrideMsg();
+        if (!code) return;
+
+        var canEdit = purchaseOverridesEditable !== false;
+        overrideFormBox.dataset.canEdit = canEdit ? "1" : "0";
+
+        overrideFormSnap = {
+          min_stock_dg: overrideInputDisplayValue(over, "min_stock_dg"),
+          multiplicity: overrideInputDisplayValue(over, "multiplicity"),
+          min_stock_calc_as: overrideInputDisplayValue(over, "min_stock_calc_as"),
+        };
+
+        var defs = [
+          {
+            key: "min_stock_dg",
+            label: "Неснижаемый остаток Датагон",
+            hint: "Норматив в штуках для закупок. Пусто — очистить.",
+          },
+          {
+            key: "multiplicity",
+            label: "Кратность товара",
+            hint: "Заказ / упаковка. Учитывается в формуле как справочный блок (кратность > 1).",
+          },
+          {
+            key: "min_stock_calc_as",
+            label: "Мин. остаток считать как 0",
+            hint: "Порог: остаток ниже этого числа в расчётах закупок может трактоваться как ноль (как настроено в закупках).",
+          },
+        ];
+
+        var row = document.createElement("div");
+        row.className = "row g-3";
+        defs.forEach(function (d) {
+          var col = document.createElement("div");
+          col.className = "col-12 col-lg-4";
+          var wrap = document.createElement("div");
+          wrap.className = "dg-prod-ov-field";
+          var inner = document.createElement("div");
+          inner.className = "dg-prod-ov-field-inner";
+          var lab = document.createElement("label");
+          lab.className = "form-label mb-1 d-flex align-items-center gap-1";
+          lab.setAttribute("for", "dg-prod-ov-" + d.key);
+          lab.textContent = d.label;
+          lab.setAttribute("data-dg-tooltip", d.hint);
+          var inp = document.createElement("input");
+          inp.type = "text";
+          inp.className = "form-control form-control-sm";
+          inp.id = "dg-prod-ov-" + d.key;
+          inp.setAttribute("autocomplete", "off");
+          inp.setAttribute("inputmode", "decimal");
+          inp.value = overrideFormSnap[d.key];
+          inp.placeholder = "—";
+          inp.readOnly = !canEdit;
+          if (!canEdit) inp.classList.add("bg-light");
+          inner.appendChild(lab);
+          inner.appendChild(inp);
+          wrap.appendChild(inner);
+          col.appendChild(wrap);
+          row.appendChild(col);
+        });
+        overrideFormBox.appendChild(row);
+
+        var actions = document.createElement("div");
+        actions.className = "d-flex flex-wrap align-items-center gap-2 mt-3 pt-1";
+        if (canEdit) {
+          var btnSave = document.createElement("button");
+          btnSave.type = "button";
+          btnSave.className = "btn btn-primary btn-sm";
+          btnSave.id = "dg-prod-ov-save";
+          btnSave.textContent = "Сохранить параметры";
+          btnSave.setAttribute("data-dg-notify-start", "Сохраняем параметры закупки…");
+          btnSave.setAttribute(
+            "data-dg-tooltip",
+            "Записывает только изменённые поля в dg_purchase_overrides (как в таблице «Закупки»). После сохранения карточка перезагрузится — обновится формула, если меняли кратность или неснижаемый.",
+          );
+          var btnReload = document.createElement("button");
+          btnReload.type = "button";
+          btnReload.className = "btn btn-outline-secondary btn-sm";
+          btnReload.textContent = "Отменить ввод";
+          btnReload.setAttribute("data-dg-tooltip", "Вернуть в поля значения, полученные при последней загрузке карточки.");
+          btnReload.addEventListener("click", function () {
+            renderOverrideForm(code, lastLoadedOverride, purchaseOverridesEditable);
+          });
+          btnSave.addEventListener("click", function () {
+            savePurchaseOverrideFields(code, btnSave);
+          });
+          actions.appendChild(btnSave);
+          actions.appendChild(btnReload);
+        } else {
+          var roNote = document.createElement("p");
+          roNote.className = "text-muted small mb-0";
+          roNote.textContent =
+            "Для вашей роли раздел «Закупки» в режиме только просмотра — поля закупок на карточке нельзя редактировать (нужен полный доступ к «Закупки» в матрице прав).";
+          actions.appendChild(roNote);
+        }
+        overrideFormBox.appendChild(actions);
+      }
+
+      function postPurchaseOverride(code, field, rawVal) {
+        return fetch("/api/purchase/override", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code: code, field: field, value: rawVal === "" ? "" : rawVal }),
+        }).then(function (r) {
+          return r.json().then(function (j) {
+            return { ok: r.ok, j: j };
+          });
+        });
+      }
+
+      function savePurchaseOverrideFields(code, btnSave) {
+        if (overrideFormBox && overrideFormBox.dataset.canEdit !== "1") {
+          showPurchaseOverrideMsg("warning", "Редактирование недоступно в вашем режиме доступа.");
+          return;
+        }
+        if (!code || !overrideFormSnap) {
+          showPurchaseOverrideMsg("warning", "Нет кода товара.");
+          return;
+        }
+        hidePurchaseOverrideMsg();
+        var pending = [];
+        ["min_stock_dg", "multiplicity", "min_stock_calc_as"].forEach(function (key) {
+          var el = document.getElementById("dg-prod-ov-" + key);
+          var cur = el ? String(el.value).trim() : "";
+          var orig = overrideFormSnap[key] != null ? String(overrideFormSnap[key]).trim() : "";
+          if (cur === orig) return;
+          pending.push({ field: key, value: cur });
+        });
+        if (!pending.length) {
+          showPurchaseOverrideMsg("info", "Изменений нет.");
+          return;
+        }
+        if (btnSave) btnSave.disabled = true;
+
+        function step(i) {
+          if (i >= pending.length) {
+            if (btnSave) btnSave.disabled = false;
+            showPurchaseOverrideMsg("success", "Сохранено. Обновляем карточку…");
+            loadCard();
+            return;
+          }
+          var p = pending[i];
+          postPurchaseOverride(code, p.field, p.value)
+            .then(function (x) {
+              if (!x.ok || !x.j || x.j.success === false) {
+                throw new Error((x.j && x.j.error) || "HTTP " + (x.ok ? "?" : "ошибка"));
+              }
+              step(i + 1);
+            })
+            .catch(function (e) {
+              if (btnSave) btnSave.disabled = false;
+              showPurchaseOverrideMsg("danger", (e && e.message ? e.message : String(e)) || "Ошибка сохранения");
+            });
+        }
+        step(0);
+      }
+
+      function renderOverrideExtra(over) {
+        overrideBox.innerHTML = "";
+        var any = false;
+        if (over && over.proposed_min_stock != null && over.proposed_min_stock !== "") {
+          pushKv(overrideBox, "Предлагаемый нес.ост. (закупки)", fmtFloat(over.proposed_min_stock, 3), { numeric: true });
+          any = true;
+        }
+        if (over && over.pack_qty_manual != null && over.pack_qty_manual !== "") {
+          pushKv(overrideBox, "Кол-во в упаковке (override)", fmtFloat(over.pack_qty_manual, 3), { numeric: true });
+          any = true;
+        }
+        if (over && over.note) {
+          pushKv(overrideBox, "Заметка", over.note);
+          any = true;
+        }
+        if (over && over.updated_at) {
+          pushKv(overrideBox, "Обновлено (override)", fmtDate(over.updated_at));
+          any = true;
+        }
+        if (!any) {
+          var empty = document.createElement("div");
+          empty.className = "text-muted small";
           empty.style.gridColumn = "1 / -1";
-          empty.textContent = "Override-полей нет — заполняются на странице «Закупки» (/purchase.html).";
+          empty.textContent =
+            "Ручной «Предлагаемый нес.ост.» в закупках, override упаковки и заметка не заданы — задаются на странице «Закупки».";
           overrideBox.appendChild(empty);
         }
       }
@@ -470,6 +775,10 @@
       var monthlyChart = null;
       var breakdownChart = null;
       var lastSales = null;
+      /** Снимок значений полей закупок при последней отрисовке формы (для детекта изменений). */
+      var overrideFormSnap = null;
+      /** Последний override с сервера (для «Отменить ввод»). */
+      var lastLoadedOverride = null;
       var monthlyMode = "qty";
       var breakdownMode = "agent";
       /** Пагинация / фильтр «Последние отгрузки» (синхронизируется с GET /api/product/.../recent-shipments). */
@@ -1210,7 +1519,7 @@
           summary.textContent =
             "За последние " +
             days +
-            " дн. записей нет: в этот период не попал ни один день, когда одновременно выполнялись условия автолога (остаток ≤ 0, складская позиция «Да», не архив), либо после включения лога ещё не было успешного синка МС. Добавить день вручную можно кнопкой «Записать вручную за сегодня» в шапке блока.";
+            " дн. записей нет: в этот период не попал ни один день, когда одновременно выполнялись условия автолога (остаток ≤ 0 или для базового кода без «-» остаток < мин. суффикса в кодах «код-число» в выгрузке; складская позиция «Да», не архив), либо после включения лога ещё не было успешного синка МС. Добавить день вручную можно кнопкой «Записать вручную за сегодня» в шапке блока.";
         }
         zeroTableWrap.appendChild(summary);
 
@@ -1246,26 +1555,32 @@
       function renderZeroWinImport(win) {
         if (!zeroWinImportWrap) return;
         zeroWinImportWrap.innerHTML = "";
-        if (!win || !win.reference_date) {
+        var display = win || null;
+        if (!display || !display.reference_date) {
           var empty = document.createElement("p");
           empty.className = "text-muted small mb-0";
-          empty.textContent = "Сводки по периодам из Excel для этого кода пока не загружали.";
+          empty.textContent =
+            "Сводка по окнам: нет даты среза (редкий сбой). После синка МС в логе появятся дни с нулём — см. таблицу ниже.";
           zeroWinImportWrap.appendChild(empty);
           return;
         }
         var head = document.createElement("div");
         head.className = "text-muted small mb-2";
-        head.textContent = "Дата среза: " + formatYmdRu(win.reference_date) + (win.note ? " · " + String(win.note) : "");
+        if (display.source === "zero_log") {
+          head.textContent = "Дата среза (сегодня по серверу): " + formatYmdRu(display.reference_date);
+        } else {
+          head.textContent = "Дата среза (импорт Excel): " + formatYmdRu(display.reference_date) + (display.note ? " · " + String(display.note) : "");
+        }
         zeroWinImportWrap.appendChild(head);
 
         var grid = document.createElement("div");
         grid.className = "dg-sales-aggregates";
         [
-          [30, win.absent_last_30],
-          [60, win.absent_last_60],
-          [90, win.absent_last_90],
-          [180, win.absent_last_180],
-          [365, win.absent_last_365]
+          [30, display.absent_last_30],
+          [60, display.absent_last_60],
+          [90, display.absent_last_90],
+          [180, display.absent_last_180],
+          [365, display.absent_last_365]
         ].forEach(function (pair) {
           var dWin = pair[0];
           var v = pair[1];
@@ -1287,12 +1602,37 @@
         });
         zeroWinImportWrap.appendChild(grid);
 
-        if (win.created_at) {
-          var meta2 = document.createElement("p");
-          meta2.className = "text-muted small mt-2 mb-0";
-          meta2.textContent = "Импорт в систему: " + fmtDate(win.created_at);
-          zeroWinImportWrap.appendChild(meta2);
+        var meta2 = document.createElement("p");
+        meta2.className = "text-muted small mt-2 mb-0";
+        if (display.source === "zero_log") {
+          meta2.textContent =
+            "Считается автоматически из лога ниже: число разных календарных дат с записью в каждом скользящем окне. Пакетный импорт Excel (`POST /api/product/zero-stock-windows-import`) для закупок/истории не меняет этот блок.";
+        } else if (display.created_at) {
+          meta2.textContent = "Импорт в систему: " + fmtDate(display.created_at);
+        } else {
+          meta2.textContent = display.note_explain ? String(display.note_explain) : "";
         }
+        if (meta2.textContent) zeroWinImportWrap.appendChild(meta2);
+      }
+
+      function renderFormulaContextLines(wrap, lines) {
+        if (!wrap || !Array.isArray(lines) || !lines.length) return;
+        var box = document.createElement("div");
+        box.className = "dg-formula-context small text-body mb-3";
+        lines.forEach(function (row) {
+          if (!row || !row.label) return;
+          var line = document.createElement("div");
+          line.className = "mb-1";
+          var lab = document.createElement("span");
+          lab.textContent = String(row.label) + " — ";
+          var val = document.createElement("span");
+          val.className = "font-monospace";
+          val.textContent = row.value != null && row.value !== "" ? String(row.value) : "—";
+          line.appendChild(lab);
+          line.appendChild(val);
+          box.appendChild(line);
+        });
+        wrap.appendChild(box);
       }
 
       function renderFormulaEquationStages(wrap, stages) {
@@ -1380,6 +1720,9 @@
           formulaWrap.appendChild(note);
         }
 
+        if (f.detail && Array.isArray(f.detail.formula_context_lines) && f.detail.formula_context_lines.length) {
+          renderFormulaContextLines(formulaWrap, f.detail.formula_context_lines);
+        }
         if (f.detail && Array.isArray(f.detail.equation_stages) && f.detail.equation_stages.length) {
           renderFormulaEquationStages(formulaWrap, f.detail.equation_stages);
         }
@@ -1405,8 +1748,12 @@
         renderMain(payload.ms || {});
         renderAttrs(payload.ms ? payload.ms.attributes : []);
         renderPrices(payload.prices);
-        renderStock(payload.stock);
-        renderOverride(payload.override);
+        renderStock(payload.stock, payload.formula);
+        renderStockSnapshots(payload.stock_snapshots || null);
+        syncStockSnapDaysOptions(payload.stock_snapshots || null);
+        lastLoadedOverride = payload.override || null;
+        renderOverrideForm(payload.code, lastLoadedOverride, payload.purchase_overrides_editable);
+        renderOverrideExtra(payload.override || null);
         renderSales(payload.sales, payload.code);
         if (zeroNoteEl) {
           if (payload.zero_stock && payload.zero_stock.note) {
@@ -1417,7 +1764,7 @@
             zeroNoteEl.style.display = "none";
           }
         }
-        renderZeroWinImport(payload.zero_stock_windows_import);
+        renderZeroWinImport(payload.zero_stock_windows_from_log || payload.zero_stock_windows_import);
         renderZeroLog(payload.zero_stock || null);
         renderFormula(payload.formula);
       }
@@ -1433,7 +1780,16 @@
         var zd = Number(zeroDaysSel && zeroDaysSel.value || 90);
         var salesQ = buildProductSalesQuery();
         if (!salesQ) salesQ = "&recent_days=365";
-        fetch("/api/product/" + encodeURIComponent(code) + "?zero_days=" + zd + salesQ + recentSalesQuerySuffix(), { credentials: "same-origin" })
+        fetch(
+          "/api/product/" +
+            encodeURIComponent(code) +
+            "?zero_days=" +
+            zd +
+            stockSnapshotDaysQuerySuffix() +
+            salesQ +
+            recentSalesQuerySuffix(),
+          { credentials: "same-origin" },
+        )
           .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
           .then(function (x) {
             if (!x.ok || !x.j || x.j.success === false) {
@@ -1509,6 +1865,9 @@
 
       if (zeroFixBtn) zeroFixBtn.addEventListener("click", fixZeroNow);
       if (zeroDaysSel) zeroDaysSel.addEventListener("change", reloadZeroLog);
+      if (stockSnapDaysSel) stockSnapDaysSel.addEventListener("change", function () {
+        loadCard();
+      });
 
       document.querySelectorAll("[data-dg-sales-preset]").forEach(function (btn) {
         btn.addEventListener("click", function () {
