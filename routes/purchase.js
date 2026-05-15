@@ -179,7 +179,12 @@ function rememberPurchaseListBaseCache(key, snapshot) {
             if (first) purchaseListBaseCache.delete(first);
         }
     }
-    purchaseListBaseCache.set(key, { ts: Date.now(), total: snapshot.total, items: snapshot.items });
+    purchaseListBaseCache.set(key, {
+        ts: Date.now(),
+        total: snapshot.total,
+        items: snapshot.items,
+        enrichMode: snapshot.enrichMode || 'full',
+    });
 }
 
 let schemaReady = false;
@@ -587,6 +592,13 @@ const PURCHASE_IN_TRANSIT_SORT = 'in_transit';
 /** Сортировка по предлагаемому неснижаемому: см. двухфазный путь в GET / (лёгкий список + formula_only, затем полная страница). */
 const PURCHASE_FORMULA_SORT = 'formula_proposed_min_stock';
 
+/** До этого числа строк после фильтра — enrich всего снимка сразу; больше — только текущая страница (кроме сортировки по d_* / формуле). */
+const PURCHASE_ENRICH_ALL_MAX_ROWS = 600;
+
+function purchaseSortNeedsFullEnrich(sortKey) {
+    return PURCHASE_POST_SORT_KEYS.has(sortKey) || sortKey === PURCHASE_FORMULA_SORT;
+}
+
 function purchasePostSortNumeric(row, key) {
     const v = row[key];
     if (key === 'in_transit') {
@@ -653,6 +665,97 @@ function purchaseListPageFromSnapshot(snapshot, req) {
         sort_by: sortKey,
         sort_dir: sortDir,
         data: items.slice(offset, offset + limit),
+    };
+}
+
+async function loadMsPayloadRowsForCodes(db, codes) {
+    const list = [...new Set((codes || []).map((c) => String(c || '').trim()).filter(Boolean))];
+    if (!list.length) return [];
+    const out = [];
+    for (let i = 0; i < list.length; i += PURCHASE_CODES_SQL_CHUNK) {
+        const part = list.slice(i, i + PURCHASE_CODES_SQL_CHUNK);
+        const ph = part.map(() => '?').join(',');
+        const [rows] = await db.query(
+            `SELECT
+                    mse.code, mse.name, mse.supplier, mse.supplier2, mse.uuid, mse.type,
+                    mse.is_archived, mse.stock_position, mse.no_longer_cooperation,
+                    mse.buy_price, mse.min_stock, mse.stock, mse.automation_price,
+                    mse.synced_at,
+                    po.min_stock_dg, po.multiplicity, po.min_stock_calc_as,
+                    po.proposed_min_stock, po.pack_qty_manual, po.updated_at AS override_updated_at,
+                    med.payload_json
+               FROM ms_export mse
+               LEFT JOIN dg_purchase_overrides po ON po.code = mse.code
+               LEFT JOIN ms_entity_details med ON med.uuid = mse.uuid
+              WHERE mse.code IN (${ph})`,
+            part,
+        );
+        if (rows && rows.length) out.push(...rows);
+    }
+    return out;
+}
+
+/** Обогащение только строк текущей страницы (после лёгкого снимка без payload_json на весь каталог). */
+async function enrichPurchaseListPage(db, appSettings, pageItems) {
+    if (!pageItems.length) return;
+    const codes = pageItems.map((d) => d.code).filter(Boolean);
+    const sqlRows = await loadMsPayloadRowsForCodes(db, codes);
+    const byCode = new Map((sqlRows || []).map((r) => [String(r.code), mapPurchaseSqlRowToDataItem(r)]));
+    for (let i = 0; i < pageItems.length; i += 1) {
+        const fresh = byCode.get(String(pageItems[i].code || ''));
+        if (fresh) Object.assign(pageItems[i], fresh);
+    }
+    await enrichPurchaseRowsWithFormula(db, appSettings || {}, sqlRows, pageItems, { mode: 'all' });
+}
+
+/** Полное обогащение большого снимка (сортировка по формуле / d_*); payload подгружается чанками. */
+async function enrichPurchaseSnapshotFull(db, appSettings, snapshot) {
+    if (snapshot.enrichMode === 'full' || !snapshot.items.length) return;
+    const codes = snapshot.items.map((d) => String(d.code || '').trim()).filter(Boolean);
+    for (let i = 0; i < codes.length; i += PURCHASE_CODES_SQL_CHUNK) {
+        const part = codes.slice(i, i + PURCHASE_CODES_SQL_CHUNK);
+        const sqlRows = await loadMsPayloadRowsForCodes(db, part);
+        const byCode = new Map(sqlRows.map((r) => [String(r.code), r]));
+        const chunkItems = snapshot.items.filter((d) => byCode.has(String(d.code)));
+        if (chunkItems.length) {
+            await enrichPurchaseRowsWithFormula(db, appSettings || {}, sqlRows, chunkItems, { mode: 'all' });
+        }
+        await new Promise((resolve) => setImmediate(resolve));
+    }
+    snapshot.enrichMode = 'full';
+}
+
+/**
+ * Ответ GET /api/purchase: пагинация/сортировка; для больших выборок — enrich только страницы.
+ */
+async function purchaseListRespondFromSnapshot(db, appSettings, snapshot, req) {
+    const limitRaw = parseInt(req.query.limit, 10);
+    const offsetRaw = parseInt(req.query.offset, 10);
+    const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(1000, limitRaw) : 100;
+    const offset = Number.isFinite(offsetRaw) && offsetRaw >= 0 ? offsetRaw : 0;
+    const sortKey = ALLOWED_SORT[String(req.query.sort_by || 'code')] ? String(req.query.sort_by || 'code') : 'code';
+    const sortDir = String(req.query.sort_dir || 'asc').toLowerCase() === 'desc' ? 'desc' : 'asc';
+
+    if (snapshot.enrichMode !== 'full' && purchaseSortNeedsFullEnrich(sortKey)) {
+        await enrichPurchaseSnapshotFull(db, appSettings, snapshot);
+    }
+
+    const items = snapshot.items.slice();
+    sortPurchaseSnapshotItems(items, sortKey, sortDir === 'desc');
+    const page = items.slice(offset, offset + limit);
+
+    if (snapshot.enrichMode !== 'full') {
+        await enrichPurchaseListPage(db, appSettings, page);
+    }
+
+    return {
+        success: true,
+        total: snapshot.total,
+        limit,
+        offset,
+        sort_by: sortKey,
+        sort_dir: sortDir,
+        data: page,
     };
 }
 
@@ -1389,10 +1492,11 @@ async function purchaseListBuildBaseSnapshot(db, appSettings, req) {
 
             const whereSql = where.join(' AND ');
 
+            const needsMedJoin = zeroStockNoTransit;
             const baseFromJoin = `
                 FROM ms_export mse
                 LEFT JOIN dg_purchase_overrides po ON po.code = mse.code
-                LEFT JOIN ms_entity_details med ON med.uuid = mse.uuid
+                ${needsMedJoin ? 'LEFT JOIN ms_entity_details med ON med.uuid = mse.uuid' : ''}
                 ${incompletePack ? `LEFT JOIN (${MS_EXPORT_BUNDLE_MIN_SUFFIX_SUBSQL}) bb ON bb.base_code = mse.code` : ''}
             `;
 
@@ -1404,7 +1508,7 @@ async function purchaseListBuildBaseSnapshot(db, appSettings, req) {
                     mse.synced_at,
                     po.min_stock_dg, po.multiplicity, po.min_stock_calc_as,
                     po.proposed_min_stock, po.pack_qty_manual, po.updated_at AS override_updated_at,
-                    med.payload_json
+                    ${needsMedJoin ? 'med.payload_json' : 'NULL AS payload_json'}
                 ${baseFromJoin}
                 WHERE ${whereSql}`;
 
@@ -1423,18 +1527,25 @@ async function purchaseListBuildBaseSnapshot(db, appSettings, req) {
                 db.query(countSql, params),
             ]);
 
-            const data = (rows || []).map((r) => mapPurchaseSqlRowToDataItem(r));
-            await enrichPurchaseRowsWithFormula(db, appSettings || {}, rows, data, { mode: 'all' });
+            const total = Number(countRow[0]?.cnt || 0);
+            const enrichAll = (rows || []).length <= PURCHASE_ENRICH_ALL_MAX_ROWS;
+            const data = (rows || []).map((r) =>
+                mapPurchaseSqlRowToDataItem(r, enrichAll ? {} : { noPayloadForFormula: true }),
+            );
+            if (enrichAll) {
+                await enrichPurchaseRowsWithFormula(db, appSettings || {}, rows, data, { mode: 'all' });
+            }
 
             return {
-                total: Number(countRow[0]?.cnt || data.length),
+                total,
                 items: data,
+                enrichMode: enrichAll ? 'full' : 'page',
             };
 }
 
 async function purchaseListHandlerCore(db, appSettings, req) {
     const snap = await purchaseListBuildBaseSnapshot(db, appSettings, req);
-    return purchaseListPageFromSnapshot(snap, req);
+    return purchaseListRespondFromSnapshot(db, appSettings, snap, req);
 }
 
 function createPurchaseRouter(db, appSettings) {
@@ -1578,11 +1689,12 @@ function createPurchaseRouter(db, appSettings) {
                 rememberPurchaseListBaseCache(baseKey, built);
                 baseSnap = purchaseListBaseCache.get(baseKey);
             }
-            const responsePayload = purchaseListPageFromSnapshot(baseSnap, req);
+            const responsePayload = await purchaseListRespondFromSnapshot(db, appSettings, baseSnap, req);
             res.json({
                 ...responsePayload,
                 cache: {
                     source: 'snapshot',
+                    enrich: baseSnap.enrichMode || 'full',
                     age_ms: baseSnap ? Date.now() - baseSnap.ts : 0,
                     ttl_ms: PURCHASE_LIST_CACHE_TTL_MS,
                     items: baseSnap ? baseSnap.items.length : 0,
