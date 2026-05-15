@@ -2473,6 +2473,23 @@
         var p = buildListParams();
         fetch("/api/purchase?" + p.toString(), { credentials: "same-origin" })
           .then(function (r) {
+            var ct = String(r.headers.get("content-type") || "").toLowerCase();
+            if (ct.indexOf("application/json") < 0 && ct.indexOf("+json") < 0) {
+              return r.text().then(function (body) {
+                var snippet = String(body || "")
+                  .replace(/<[^>]+>/g, " ")
+                  .replace(/\s+/g, " ")
+                  .trim()
+                  .slice(0, 160);
+                var hint =
+                  r.status === 502 || r.status === 504
+                    ? " (прокси/nginx: таймаут или Node упал — см. pm2 logs)"
+                    : r.status === 401
+                      ? " (сессия истекла — перелогиньтесь)"
+                      : "";
+                throw new Error("Ответ не JSON, HTTP " + r.status + hint + (snippet ? ": " + snippet : ""));
+              });
+            }
             return r.json().then(function (j) {
               if (!r.ok || !j || j.success === false) {
                 throw new Error((j && j.error) || "HTTP " + r.status);

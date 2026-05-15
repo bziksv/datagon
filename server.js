@@ -2427,6 +2427,16 @@ initDB().then(() => {
         return res.redirect(301, '/my-products.html' + qs);
     });
 
+    /** Не отдавать HTML-страницу ошибки Express на /api — только JSON. */
+    app.use('/api', (err, req, res, next) => {
+        if (res.headersSent) return next(err);
+        console.error('[api] unhandled:', err && err.stack ? err.stack : err);
+        res.status(500).json({
+            success: false,
+            error: err && err.message ? err.message : 'Внутренняя ошибка',
+        });
+    });
+
     app.use(express.static(path.join(__dirname, 'public')));
 
     app.listen(PORT, () => {
