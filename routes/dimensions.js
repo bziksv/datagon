@@ -296,6 +296,9 @@ async function collectPostFilteredDimensionRowsChunked(db, selectForCap, fromFor
         if (!rows || rows.length === 0) break;
         for (let i = 0; i < rows.length; i += 1) {
             const row = rows[i];
+            if (problemStock && mdmMeasurementFullyOverridesMsForProblemCheck(row)) {
+                row.payload_json = null;
+            }
             const out = mapDimensionListRow(row);
             try {
                 row.payload_json = null;
@@ -498,6 +501,35 @@ function normalizeFieldValue(field, raw) {
     if (!s) return null;
     if (def.max && s.length > def.max) return s.slice(0, def.max);
     return s;
+}
+
+/**
+ * Для режима «остаток > 0, замер неполный»: если в `ms_dimensions_measurements` уже
+ * заполнены все обязательные поля с учётом типа упаковки, то `computeProblemCellsForRow`
+ * никогда не посмотрит в габариты из `payload_json` МС (сначала override, потом MS).
+ * Тогда можно не тянуть/не JSON.parse LONGTEXT — основной тормоз при чанковом скане.
+ */
+function mdmMeasurementFullyOverridesMsForProblemCheck(r) {
+    const measurement = rowToMeasurement({
+        length_cm: r.m_length_cm,
+        width_cm: r.m_width_cm,
+        height_box_cm: r.m_height_box_cm,
+        height_bag_cm: r.m_height_bag_cm,
+        weight_kg: r.m_weight_kg,
+        packing_type: r.m_packing_type,
+    });
+    if (!measurement) return false;
+    const packingTxt = measurement.packing_type != null ? String(measurement.packing_type).trim() : '';
+    if (!packingTxt) return false;
+    const parsed = parsePackingDims(packingTxt);
+    const kind = parsed.kind || 'unknown';
+    for (const k of Object.keys(MEASUREMENT_FIELDS)) {
+        if (isFieldDisabledForPackingKind(kind, k)) continue;
+        const mv = measurement[k];
+        if (mv == null) return false;
+        if (String(mv).trim() === '') return false;
+    }
+    return true;
 }
 
 /** Сравнение «было vs стало» с поправкой на плавучку. */
