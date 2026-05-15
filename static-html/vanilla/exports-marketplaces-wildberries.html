@@ -1412,6 +1412,7 @@
           content_manager: "",
         },
       };
+      var mpShopListFetchBusy = false;
 
       function authHeaders(json) {
         var headers = {};
@@ -2364,6 +2365,8 @@
 
       // ---- API ----
       function runRefreshFromMarketplace() {
+        if (mpShopListFetchBusy) return;
+        mpShopListFetchBusy = true;
         var refreshBtn = document.getElementById("dg-mp-refresh-market");
         var snapshotBtn = document.getElementById("dg-mp-load-snapshot");
         if (refreshBtn) refreshBtn.disabled = true;
@@ -2405,12 +2408,19 @@
           .finally(function () {
             stopRefreshWaitTicker();
             refreshWallClockT0 = null;
+            mpShopListFetchBusy = false;
             if (refreshBtn) refreshBtn.disabled = false;
             if (snapshotBtn) snapshotBtn.disabled = false;
           });
       }
 
       function loadSavedSnapshot() {
+        if (mpShopListFetchBusy) return;
+        mpShopListFetchBusy = true;
+        var refreshBtn = document.getElementById("dg-mp-refresh-market");
+        var snapshotBtn = document.getElementById("dg-mp-load-snapshot");
+        if (refreshBtn) refreshBtn.disabled = true;
+        if (snapshotBtn) snapshotBtn.disabled = true;
         setMsg("Загружаем последний сохранённый снапшот…", "warning");
         var url = API + "/snapshot?shop=" + encodeURIComponent(shop);
         fetch(url, { headers: authHeaders(false), credentials: "same-origin" })
@@ -2435,6 +2445,11 @@
           })
           .catch(function (e) {
             setMsg(String(e.message || e), "danger");
+          })
+          .finally(function () {
+            mpShopListFetchBusy = false;
+            if (refreshBtn) refreshBtn.disabled = false;
+            if (snapshotBtn) snapshotBtn.disabled = false;
           });
       }
 

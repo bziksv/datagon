@@ -2355,6 +2355,8 @@
                     exclude_bundle_components: !!initialFilters.exclude_bundle_components,
                     smart_columns: !!initialFilters.smart_columns,
                 },
+                /** Пока идёт fetch списка с API — блокируем «Применить» и пагинацию. */
+                listLoading: false,
                 pending: {
                     scope: 'all',
                     search: '',
@@ -3219,8 +3221,8 @@
                     if (hasFilter) base += ' (фильтр из ' + state.rowsAll.length + ')';
                     elPageHint.textContent = base;
                 }
-                if (elPagePrev) elPagePrev.disabled = state.page <= 1;
-                if (elPageNext) elPageNext.disabled = state.page >= pageCount;
+                if (elPagePrev) elPagePrev.disabled = state.listLoading || state.page <= 1;
+                if (elPageNext) elPageNext.disabled = state.listLoading || state.page >= pageCount;
                 requestAnimationFrame(function () {
                     mpuSyncLayoutAndFloating();
                 });
@@ -3232,6 +3234,12 @@
             }
 
             function load() {
+                if (state.listLoading) return;
+                state.listLoading = true;
+                if (elFltApply) elFltApply.disabled = true;
+                if (elFltReset) elFltReset.disabled = true;
+                if (elPagePrev) elPagePrev.disabled = true;
+                if (elPageNext) elPageNext.disabled = true;
                 setMsg('Загрузка…', 'info');
                 var url = API_URL + '?scope=' + encodeURIComponent(state.scope) +
                     '&exclude_bundle_components=' + (state.filters.exclude_bundle_components ? '1' : '0');
@@ -3276,6 +3284,12 @@
                         state.headerLabels = [];
                         renderTable();
                         setMsg('Ошибка загрузки: ' + (err && err.message ? err.message : err), 'error');
+                    })
+                    .finally(function () {
+                        state.listLoading = false;
+                        if (elFltApply) elFltApply.disabled = false;
+                        if (elFltReset) elFltReset.disabled = false;
+                        renderTable();
                     });
             }
 

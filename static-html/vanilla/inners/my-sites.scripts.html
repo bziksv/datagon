@@ -764,7 +764,12 @@
       }
 
       function loadMySites() {
+        if (loading) return;
         loading = true;
+        ["ms-filters-apply", "ms-filters-default"].forEach(function (id) {
+          var b = document.getElementById(id);
+          if (b) b.disabled = true;
+        });
         renderTable();
         fetch("/api/my-sites", { credentials: "same-origin" })
           .then(function (r) {
@@ -779,10 +784,18 @@
             setErr("");
             document.getElementById("ms-table-hint").textContent = sites.length + " подключений";
             loading = false;
+            ["ms-filters-apply", "ms-filters-default"].forEach(function (id) {
+              var b = document.getElementById(id);
+              if (b) b.disabled = false;
+            });
             renderTable();
           })
           .catch(function (e) {
             loading = false;
+            ["ms-filters-apply", "ms-filters-default"].forEach(function (id) {
+              var b = document.getElementById(id);
+              if (b) b.disabled = false;
+            });
             setErr(e.message || "Ошибка загрузки сайтов");
             renderTable();
           });

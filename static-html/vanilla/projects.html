@@ -1387,6 +1387,7 @@
       }
 
       function setSort(field) {
+        if (loading) return;
         if (sortBy === field) sortDir = sortDir === "asc" ? "desc" : "asc";
         else {
           sortBy = field;
@@ -1496,10 +1497,15 @@
       }
 
       function loadProjects() {
+        if (loading) return;
         sortBy = document.getElementById("dg-proj-sort-by").value;
         sortDir = document.getElementById("dg-proj-sort-dir").value;
         syncSortUrl();
         loading = true;
+        ["dg-proj-apply", "dg-proj-default"].forEach(function (id) {
+          var b = document.getElementById(id);
+          if (b) b.disabled = true;
+        });
         showErr("");
         renderTable();
         var qs = new URLSearchParams({ sort_by: sortBy, sort_dir: sortDir });
@@ -1513,10 +1519,18 @@
             if (!x.r.ok) throw new Error(x.j.error || "Не удалось загрузить проекты");
             projects = Array.isArray(x.j) ? x.j : [];
             loading = false;
+            ["dg-proj-apply", "dg-proj-default"].forEach(function (id) {
+              var b = document.getElementById(id);
+              if (b) b.disabled = false;
+            });
             renderTable();
           })
           .catch(function (e) {
             loading = false;
+            ["dg-proj-apply", "dg-proj-default"].forEach(function (id) {
+              var b = document.getElementById(id);
+              if (b) b.disabled = false;
+            });
             projects = [];
             renderTable();
             showErr(e.message || "Ошибка загрузки проектов");

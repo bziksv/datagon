@@ -2464,12 +2464,22 @@
             '; показано: ' +
             (state.rows ? state.rows.length : 0);
         }
-        if (btnPrev) btnPrev.disabled = state.offset <= 0;
-        if (btnNext) btnNext.disabled = state.offset + lim >= (state.total || 0);
+        if (btnPrev) btnPrev.disabled = state.loading || state.offset <= 0;
+        if (btnNext) btnNext.disabled = state.loading || state.offset + lim >= (state.total || 0);
+      }
+
+      /** Паритет с moysklad: пока грузится список — нельзя снова жать «Применить» / пагинацию. */
+      function setDimMainListBusy(dis) {
+        ['dg-dim-apply', 'dg-dim-reset', 'dg-dim-refresh', 'dg-dim-page-prev', 'dg-dim-page-next'].forEach(function (id) {
+          var b = document.getElementById(id);
+          if (b) b.disabled = !!dis;
+        });
       }
 
       function loadList() {
+        if (state.loading) return;
         state.loading = true;
+        setDimMainListBusy(true);
         state.lastError = '';
         renderTable();
         var qs = new URLSearchParams();
@@ -2528,9 +2538,11 @@
               state.lastError ? 'error' : 'success',
             );
             dimRefreshFloatingAfterLayout();
+            setDimMainListBusy(false);
           })
           .catch(function (e) {
             state.loading = false;
+            setDimMainListBusy(false);
             state.lastError = (e && e.message) || 'Сеть';
             state.rows = [];
             state.total = 0;
@@ -3693,6 +3705,7 @@
           if (!th) return;
           var key = th.getAttribute('data-dg-sort');
           if (!key) return;
+          if (state.loading) return;
           if (state.sortBy === key) {
             state.sortDir = state.sortDir === 'asc' ? 'desc' : 'asc';
           } else {
@@ -4122,17 +4135,26 @@
         };
       }
 
+      function setDimHistoryBusy(dis) {
+        ['dg-dim-h-apply', 'dg-dim-h-reset', 'dg-dim-history-refresh', 'dg-dim-history-prev', 'dg-dim-history-next', 'dg-dim-h-limit'].forEach(function (id) {
+          var el = document.getElementById(id);
+          if (el) el.disabled = !!dis;
+        });
+      }
+
       function loadHistory(opts) {
         var tbody = document.getElementById('dg-dim-history-tbody');
         var hint = document.getElementById('dg-dim-history-hint');
         var summary = document.getElementById('dg-dim-history-summary');
         if (!tbody) return Promise.resolve();
+        if (historyState.loading) return Promise.resolve();
         var o = opts && typeof opts === 'object' ? opts : {};
         var filters = getHistoryFilters();
         var offset = Math.max(0, Number.isFinite(Number(o.offset)) ? Number(o.offset) : 0);
         historyState.lastFilters = filters;
         historyState.limit = filters.limit;
         historyState.loading = true;
+        setDimHistoryBusy(true);
         tbody.innerHTML = '<tr><td colspan="6" class="text-muted small py-3 text-center">Загрузка ms_dimensions_log…</td></tr>';
         if (hint) hint.textContent = '—';
         var qs = new URLSearchParams();
@@ -4173,6 +4195,11 @@
             tbody.innerHTML = '<tr><td colspan="6" class="text-danger small py-3 text-center">Сетевая ошибка: ' +
               escapeHtml((e && e.message) || String(e)) + '</td></tr>';
             if (hint) hint.textContent = '—';
+          })
+          .finally(function () {
+            historyState.loading = false;
+            setDimHistoryBusy(false);
+            updateHistoryHint();
           });
       }
 
@@ -4220,8 +4247,8 @@
         var current = Math.floor(offset / limit) + 1;
         var shown = Math.min(limit, Math.max(0, total - offset));
         hint.textContent = 'Найдено: ' + total + '; страница ' + current + '/' + pages + '; показано: ' + shown;
-        if (prev) prev.disabled = offset <= 0;
-        if (next) next.disabled = (offset + limit) >= total;
+        if (prev) prev.disabled = historyState.loading || offset <= 0;
+        if (next) next.disabled = historyState.loading || (offset + limit) >= total;
       }
 
       function resetHistoryFilters() {

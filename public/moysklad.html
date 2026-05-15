@@ -1138,6 +1138,7 @@
       var pendingAction = false;
       var bundleRecalcPollTimer = null;
       var bundleRecalcPostInflight = false;
+      var msSyncLikePostInflight = false;
       var lastExportRows = [];
       var loading = false;
       var columnWidths = {};
@@ -1731,6 +1732,7 @@
       }
 
       function setSyncButtons(st) {
+        if (msSyncLikePostInflight) return;
         var active = Boolean(st && st.active);
         var syncBtn = document.getElementById("moysklad-sync");
         var stopBtn = document.getElementById("moysklad-stop");
@@ -2349,6 +2351,7 @@
       }
 
       function loadData() {
+        if (loading) return;
         if (filterReloadTimer) {
           clearTimeout(filterReloadTimer);
           filterReloadTimer = null;
@@ -2453,10 +2456,24 @@
         if (url === "/api/ms/recalc-bundle-stocks" && bundleRecalcPostInflight) {
           return;
         }
+        var isSyncLike =
+          url === "/api/ms/sync" || url === "/api/ms/stop" || url === "/api/ms/rebuild-links-cache";
+        if (isSyncLike && msSyncLikePostInflight) {
+          return;
+        }
         if (url === "/api/ms/recalc-bundle-stocks") {
           bundleRecalcPostInflight = true;
           var rbStart = document.getElementById("moysklad-recalc-bundles");
           if (rbStart) rbStart.disabled = true;
+        }
+        if (isSyncLike) {
+          msSyncLikePostInflight = true;
+          var bSync = document.getElementById("moysklad-sync");
+          var bStop = document.getElementById("moysklad-stop");
+          var bRebuild = document.getElementById("moysklad-rebuild-cache");
+          if (bSync) bSync.disabled = true;
+          if (bStop) bStop.disabled = true;
+          if (bRebuild) bRebuild.disabled = true;
         }
         var statusHintPre = document.getElementById("dg-ms-status-hint");
         if (statusHintPre) statusHintPre.textContent = "Выполняем...";
@@ -2564,6 +2581,13 @@
             } else {
               alert(e.message || String(e));
             }
+          })
+          .finally(function () {
+            if (!isSyncLike) return;
+            msSyncLikePostInflight = false;
+            var bRebuild = document.getElementById("moysklad-rebuild-cache");
+            if (bRebuild) bRebuild.disabled = false;
+            loadStatus();
           });
       }
 

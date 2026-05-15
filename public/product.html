@@ -1441,6 +1441,19 @@
       var formulaWrap = document.getElementById("dg-prod-formula-wrap");
       var salesPeriodSummary = document.getElementById("dg-prod-sales-period-summary");
       var salesApplyBtn = document.getElementById("dg-prod-sales-apply");
+      var productCardLoading = false;
+
+      function setProductCardFetchBusy(busy) {
+        if (salesApplyBtn) salesApplyBtn.disabled = !!busy;
+        if (stockSnapDaysSel) stockSnapDaysSel.disabled = !!busy;
+        document.querySelectorAll("[data-dg-sales-preset]").forEach(function (el) {
+          el.disabled = !!busy;
+        });
+        var fe = document.getElementById("dg-prod-sales-from");
+        var te = document.getElementById("dg-prod-sales-to");
+        if (fe) fe.disabled = !!busy;
+        if (te) te.disabled = !!busy;
+      }
 
       function toYMD(d) {
         var y = d.getFullYear();
@@ -3183,6 +3196,9 @@
           setStatus("error", "Не указан параметр ?code= в URL. Откройте карточку из «Закупки» (/purchase.html).");
           return;
         }
+        if (productCardLoading) return;
+        productCardLoading = true;
+        setProductCardFetchBusy(true);
         setStatus("loading", "Загрузка карточки товара…");
         recentShipState = { page: 1, pageSize: 100, via: "all", bundleCode: "" };
         var zd = Number(zeroDaysSel && zeroDaysSel.value || 90);
@@ -3214,6 +3230,10 @@
           })
           .catch(function (e) {
             setStatus("error", "Ошибка загрузки: " + (e && e.message ? e.message : e));
+          })
+          .finally(function () {
+            productCardLoading = false;
+            setProductCardFetchBusy(false);
           });
       }
 

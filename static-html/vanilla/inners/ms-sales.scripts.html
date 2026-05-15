@@ -336,9 +336,17 @@
     return qs.toString();
   }
 
+  function setMssListBusy(dis) {
+    ['dg-mss-apply', 'dg-mss-reset', 'dg-mss-page-prev', 'dg-mss-page-next'].forEach(function (id) {
+      var el = $(id);
+      if (el) el.disabled = !!dis;
+    });
+  }
+
   function fetchList() {
     if (state.loading) return;
     state.loading = true;
+    setMssListBusy(true);
     fetch('/api/ms-sales/list?' + buildQuery(), {
       credentials: 'same-origin',
       headers: { Accept: 'application/json' }
@@ -354,21 +362,23 @@
         state.expandedDemand = null;
         state.positionsCache = Object.create(null);
         renderTable();
-        renderStatus();
         renderSortIndicators();
       })
       .catch(function (err) {
         state.rows = [];
         state.total = 0;
         renderTable();
-        renderStatus();
         var emptyMsg = $('dg-mss-empty-msg');
         if (emptyMsg) {
           emptyMsg.textContent = 'Не удалось загрузить список: ' + (err && err.message ? err.message : 'неизвестная ошибка');
           emptyMsg.classList.remove('d-none');
         }
       })
-      .then(function () { state.loading = false; });
+      .finally(function () {
+        state.loading = false;
+        setMssListBusy(false);
+        renderStatus();
+      });
   }
 
   function fetchFilters() {
@@ -500,8 +510,8 @@
       + '; показано: ' + state.rows.length;
     var prev = $('dg-mss-page-prev');
     var next = $('dg-mss-page-next');
-    if (prev) prev.disabled = page <= 1;
-    if (next) next.disabled = page >= totalPages;
+    if (prev) prev.disabled = state.loading || page <= 1;
+    if (next) next.disabled = state.loading || page >= totalPages;
     var headerStatus = $('dg-mss-status');
     if (headerStatus) {
       var sumAll = state.rows.reduce(function (acc, r) { return acc + Number(r.sum || 0); }, 0);

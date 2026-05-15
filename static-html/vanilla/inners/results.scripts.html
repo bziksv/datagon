@@ -265,8 +265,8 @@
         if (th) th.textContent = "Страница " + page + "/" + pagesCount() + suffix;
         var prev = document.getElementById("dg-res-prev");
         var next = document.getElementById("dg-res-next");
-        if (prev) prev.disabled = page <= 1;
-        if (next) next.disabled = page >= pagesCount();
+        if (prev) prev.disabled = loading || page <= 1;
+        if (next) next.disabled = loading || page >= pagesCount();
       }
 
       function showErr(msg) {
@@ -539,8 +539,16 @@
         resRefreshFloatingAfterLayout();
       }
 
+      function setResultsListBusy(dis) {
+        ["results-apply", "results-default", "results-reparse-all", "results-clear-history", "dg-res-prev", "dg-res-next"].forEach(function (id) {
+          var b = document.getElementById(id);
+          if (b) b.disabled = !!dis;
+        });
+      }
+
       function loadResults(opts) {
         opts = opts || {};
+        if (loading) return;
         var showSkeleton = opts.showSkeleton !== false;
         var gen = ++loadResultsGeneration;
         if (searchReloadTimer) {
@@ -555,6 +563,7 @@
         var controller = new AbortController();
         resultsFetchAbortController = controller;
         loading = true;
+        setResultsListBusy(true);
         showErr("");
         if (showSkeleton) {
           renderTable();
@@ -575,7 +584,6 @@
             var data = x.j.data || x.j.rows || [];
             rows = Array.isArray(data) ? data : [];
             total = Number(x.j.total || 0);
-            loading = false;
             if (tbodyRefresh) tbodyRefresh.classList.remove("dg-res-tbody-refreshing");
             renderTable();
             syncUrl();
@@ -584,7 +592,6 @@
           .catch(function (e) {
             if (e.name === "AbortError") return;
             if (gen !== loadResultsGeneration) return;
-            loading = false;
             if (tbodyRefresh) tbodyRefresh.classList.remove("dg-res-tbody-refreshing");
             rows = [];
             total = 0;
@@ -595,6 +602,10 @@
             if (resultsFetchAbortController === controller) {
               resultsFetchAbortController = null;
             }
+            if (gen !== loadResultsGeneration) return;
+            loading = false;
+            setResultsListBusy(false);
+            updateHints({});
           });
       }
 

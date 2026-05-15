@@ -9,6 +9,32 @@
       var lastTotal = 0;
       var lastRows = [];
       var lastLoading = false;
+
+      function setMyProductsListBusy(busy) {
+        var applyBtn = document.getElementById("btn-apply");
+        var defBtn = document.getElementById("mp-filter-default");
+        if (applyBtn) applyBtn.disabled = !!busy;
+        if (defBtn) defBtn.disabled = !!busy;
+      }
+
+      var myProductsPostBusy = false;
+      var myProductsFxBusy = false;
+      var myProductsRowActionBusy = false;
+
+      function refreshMyProductsHeavyButtons() {
+        var busy = lastLoading || myProductsPostBusy || myProductsFxBusy || myProductsRowActionBusy;
+        var fx = document.getElementById("mp-btn-fx");
+        var syncAll = document.getElementById("mp-btn-syncall");
+        var rebuild = document.getElementById("mp-btn-rebuild");
+        var syncSite = document.getElementById("mp-btn-sync-site");
+        var sidEl = document.getElementById("f-site");
+        var sid = sidEl ? String(sidEl.value || "") : "";
+        if (fx) fx.disabled = !!busy;
+        if (syncAll) syncAll.disabled = !!busy;
+        if (rebuild) rebuild.disabled = !!busy;
+        if (syncSite) syncSite.disabled = !!busy || !sid || sid === "all";
+      }
+
       var lastFx = { usd_to_rub: 90, eur_to_rub: 100 };
       var lastFxUpdatedAt = null;
       var siteNameById = {};
@@ -771,6 +797,7 @@
       }
 
       function setSort(sortBy) {
+        if (lastLoading) return;
         var curBy = document.getElementById("mp-f-sort-by").value;
         var curDir = document.getElementById("mp-f-sort-dir").value;
         var nextDir = "asc";
@@ -1146,9 +1173,7 @@
       }
 
       function updateSyncSiteButton() {
-        var sid = document.getElementById("f-site").value;
-        var btn = document.getElementById("mp-btn-sync-site");
-        if (btn) btn.disabled = !sid || sid === "all";
+        refreshMyProductsHeavyButtons();
       }
 
       async function loadSites() {
@@ -1252,12 +1277,15 @@
       }
 
       async function load() {
+        if (lastLoading) return;
+        lastLoading = true;
+        setMyProductsListBusy(true);
+        refreshMyProductsHeavyButtons();
         var st = document.getElementById("dg-status");
         if (st) {
           st.style.display = "none";
           st.textContent = "";
         }
-        lastLoading = true;
         applyTableFilterAndRender();
         try {
           var listQs = buildQuery(collectApiFilters());
@@ -1318,23 +1346,27 @@
 
           lastRows = Array.isArray(json.data) ? json.data : [];
           lastTotal = Number(json.total || 0);
-          lastLoading = false;
           syncUrlFromDom();
           updateSortHeaders();
           persistMyProductsFilterForm();
-          applyTableFilterAndRender();
         } catch (e) {
-          lastLoading = false;
           lastRows = [];
-          applyTableFilterAndRender();
           if (st) {
             st.style.display = "";
             st.textContent = "Ошибка: " + (e && e.message ? e.message : e);
           }
+        } finally {
+          lastLoading = false;
+          setMyProductsListBusy(false);
+          refreshMyProductsHeavyButtons();
+          applyTableFilterAndRender();
         }
       }
 
       function onRefreshOne(row) {
+        if (myProductsRowActionBusy) return;
+        myProductsRowActionBusy = true;
+        refreshMyProductsHeavyButtons();
         fetch("/api/my-products/refresh-one", {
           method: "POST",
           credentials: "same-origin",
@@ -1390,10 +1422,17 @@
           })
           .catch(function (e) {
             alert(e.message || String(e));
+          })
+          .finally(function () {
+            myProductsRowActionBusy = false;
+            refreshMyProductsHeavyButtons();
           });
       }
 
       function onSyncPrice(row) {
+        if (myProductsRowActionBusy) return;
+        myProductsRowActionBusy = true;
+        refreshMyProductsHeavyButtons();
         var min =
           document.getElementById("mp-f-comp_min").value.trim() || "0.1";
         var max =
@@ -1462,10 +1501,17 @@
           })
           .catch(function (e) {
             alert(e.message || String(e));
+          })
+          .finally(function () {
+            myProductsRowActionBusy = false;
+            refreshMyProductsHeavyButtons();
           });
       }
 
       function post(url, body) {
+        if (myProductsPostBusy) return;
+        myProductsPostBusy = true;
+        refreshMyProductsHeavyButtons();
         fetch(url, {
           method: "POST",
           credentials: "same-origin",
@@ -1479,10 +1525,14 @@
           })
           .then(function (x) {
             if (!x.r.ok) throw new Error(x.j.error || "Ошибка");
-            load();
+            return load();
           })
           .catch(function (e) {
             alert(e.message || String(e));
+          })
+          .finally(function () {
+            myProductsPostBusy = false;
+            refreshMyProductsHeavyButtons();
           });
       }
 
@@ -1627,15 +1677,22 @@
       });
 
       document.getElementById("mp-btn-fx").addEventListener("click", function () {
+        if (myProductsFxBusy || lastLoading) return;
+        myProductsFxBusy = true;
+        refreshMyProductsHeavyButtons();
         fetch("/api/my-products/fx-rates?force=1", { credentials: "same-origin" })
           .then(function (r) {
             return r.json();
           })
           .then(function () {
-            load();
+            return load();
           })
           .catch(function (e) {
             alert(e.message || String(e));
+          })
+          .finally(function () {
+            myProductsFxBusy = false;
+            refreshMyProductsHeavyButtons();
           });
       });
       document.getElementById("mp-btn-syncall").addEventListener("click", function () {

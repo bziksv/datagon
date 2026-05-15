@@ -190,6 +190,13 @@
         manualQueueReason: "",
       };
 
+      var matchesMyProductsSearchDebounceId = null;
+      var loadMyProductsGen = 0;
+      var loadMatchesGen = 0;
+      var matchesJobStartBusy = false;
+      var matchesStopBusy = false;
+      var matchesRowMutationBusy = false;
+
       var MATCHES_MY_COL_COUNT = 7;
       var MATCHES_MY_COL_DEFAULTS = [44, 108, 120, 280, 96, 72, 152];
       var matchesMyColWidths = {};
@@ -211,6 +218,13 @@
         }
         el.style.display = "";
         el.textContent = msg;
+      }
+
+      function setMatchesListFetchBusy(busy) {
+        var applyBtn = document.getElementById("dg-matches-filters-apply");
+        var defBtn = document.getElementById("dg-matches-filters-default");
+        if (applyBtn) applyBtn.disabled = !!busy;
+        if (defBtn) defBtn.disabled = !!busy;
       }
 
       function parseUrlParams() {
@@ -406,10 +420,12 @@
         var mySiteId = document.getElementById("dg-matches-my-site").value;
         var hasComp = state.competitorIds.length > 0;
         var js = state.jobStatus;
-        document.getElementById("dg-matches-run-selected").disabled = !mySiteId || !hasComp;
-        document.getElementById("dg-matches-run-auto").disabled = !mySiteId || !hasComp;
-        document.getElementById("dg-matches-retry").disabled = !mySiteId || !js.canRetry;
-        document.getElementById("dg-matches-stop").disabled = !mySiteId || !js.active;
+        var startBusy = matchesJobStartBusy;
+        var stopBusy = matchesStopBusy;
+        document.getElementById("dg-matches-run-selected").disabled = startBusy || !mySiteId || !hasComp;
+        document.getElementById("dg-matches-run-auto").disabled = startBusy || !mySiteId || !hasComp;
+        document.getElementById("dg-matches-retry").disabled = startBusy || !mySiteId || !js.canRetry;
+        document.getElementById("dg-matches-stop").disabled = stopBusy || !mySiteId || !js.active;
       }
 
       function formatJobInstant(iso) {
@@ -1701,6 +1717,8 @@
           renderMyProducts();
           return;
         }
+        loadMyProductsGen += 1;
+        var gen = loadMyProductsGen;
         state.loadingProducts = true;
         renderMyProducts();
         var offset = (state.myProductsPage - 1) * PRODUCTS_LIMIT;
@@ -1718,16 +1736,19 @@
             });
           })
           .then(function (x) {
+            if (gen !== loadMyProductsGen) return;
             if (!x.r.ok) throw new Error(x.j.error || "Ошибка загрузки товаров");
             state.myProducts = Array.isArray(x.j.data) ? x.j.data : [];
             state.myProductsTotal = Number(x.j.total || 0);
           })
           .catch(function (e) {
+            if (gen !== loadMyProductsGen) return;
             alert(e.message || "Не удалось загрузить товары");
             state.myProducts = [];
             state.myProductsTotal = 0;
           })
-          .then(function () {
+          .finally(function () {
+            if (gen !== loadMyProductsGen) return;
             state.loadingProducts = false;
             renderMyProducts();
           });
@@ -1739,13 +1760,17 @@
           state.lastMatchesQuerySiteId = "";
           state.matches = [];
           state.matchesTotal = 0;
+          setMatchesListFetchBusy(false);
           renderMatchesTable();
           return;
         }
         state.lastMatchesQuerySiteId = String(mySiteId);
         var showLoader = !silent;
+        loadMatchesGen += 1;
+        var gen = loadMatchesGen;
         if (showLoader) {
           state.loadingMatches = true;
+          setMatchesListFetchBusy(true);
           renderMatchesTable();
         }
         var offset = (state.matchesPage - 1) * state.matchesLimit;
@@ -1772,11 +1797,13 @@
             });
           })
           .then(function (x) {
+            if (gen !== loadMatchesGen) return;
             if (!x.r.ok) throw new Error(x.j.error || "Ошибка загрузки совпадений");
             state.matches = Array.isArray(x.j.data) ? x.j.data : [];
             state.matchesTotal = Number(x.j.total || 0);
           })
           .catch(function (e) {
+            if (gen !== loadMatchesGen) return;
             if (e && (e.name === "AbortError" || /aborted|timeout/i.test(String(e.message || ""))))
               alert(
                 "Сервер не ответил за 2 минуты при загрузке совпадений. Частая причина — долгие операции с индексами в БД; перезапустите сервер и откройте страницу снова."
@@ -1785,8 +1812,12 @@
             state.matches = [];
             state.matchesTotal = 0;
           })
-          .then(function () {
-            if (showLoader) state.loadingMatches = false;
+          .finally(function () {
+            if (gen !== loadMatchesGen) return;
+            if (showLoader) {
+              state.loadingMatches = false;
+              setMatchesListFetchBusy(false);
+            }
             renderMatchesTable();
             scheduleSyncUrl();
             persistMatchesListFilterForm();
@@ -1861,6 +1892,9 @@
       }
 
       function runMatching(payload) {
+        if (matchesJobStartBusy) return;
+        matchesJobStartBusy = true;
+        refreshActionButtons();
         fetch("/api/matches/start-matching", {
           method: "POST",
           credentials: "same-origin",
@@ -1880,6 +1914,10 @@
           })
           .catch(function (e) {
             alert(e.message || "Ошибка запуска сопоставления");
+          })
+          .finally(function () {
+            matchesJobStartBusy = false;
+            refreshActionButtons();
           });
       }
 
@@ -1917,6 +1955,9 @@
       function onRetryLast() {
         var mySiteId = document.getElementById("dg-matches-my-site").value;
         if (!mySiteId) return alert("Выберите мой сайт");
+        if (matchesJobStartBusy) return;
+        matchesJobStartBusy = true;
+        refreshActionButtons();
         fetch("/api/matches/retry-last", {
           method: "POST",
           credentials: "same-origin",
@@ -1944,14 +1985,19 @@
           })
           .catch(function (e) {
             alert(e.message || "Ошибка повтора");
+          })
+          .finally(function () {
+            matchesJobStartBusy = false;
+            refreshActionButtons();
           });
       }
 
       function onStop() {
         var mySiteId = document.getElementById("dg-matches-my-site").value;
         if (!mySiteId) return alert("Выберите мой сайт");
-        var btn = document.getElementById("dg-matches-stop");
-        if (btn) btn.disabled = true;
+        if (matchesStopBusy) return;
+        matchesStopBusy = true;
+        refreshActionButtons();
         fetch("/api/matches/stop", {
           method: "POST",
           credentials: "same-origin",
@@ -1971,12 +2017,15 @@
           .catch(function (e) {
             alert(e.message || "Ошибка остановки");
           })
-          .then(function () {
-            if (btn) btn.disabled = false;
+          .finally(function () {
+            matchesStopBusy = false;
+            refreshActionButtons();
           });
       }
 
       function updateMatch(id, action) {
+        if (matchesRowMutationBusy) return;
+        matchesRowMutationBusy = true;
         var endpoint =
           action === "confirmed"
             ? "/api/matches/confirm"
@@ -2006,6 +2055,9 @@
           })
           .catch(function (e) {
             alert(e.message || "Ошибка обновления статуса");
+          })
+          .finally(function () {
+            matchesRowMutationBusy = false;
           });
       }
 
@@ -2217,7 +2269,11 @@
       if (dgMatchesProductSearchEl) {
         dgMatchesProductSearchEl.addEventListener("input", function () {
           scheduleSyncUrl();
-          loadMyProducts();
+          if (matchesMyProductsSearchDebounceId) clearTimeout(matchesMyProductsSearchDebounceId);
+          matchesMyProductsSearchDebounceId = setTimeout(function () {
+            matchesMyProductsSearchDebounceId = null;
+            loadMyProducts();
+          }, 300);
         });
       }
       var dgMatchesSearchModeEl = document.getElementById("dg-matches-search-mode");

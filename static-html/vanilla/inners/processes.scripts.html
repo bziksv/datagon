@@ -4,6 +4,8 @@
       var overview = null;
       var dgProcAsRunLogById = Object.create(null);
       var loading = false;
+      /** Счётчик параллельных fetch overview (поллинг + ручное «Обновить»): кнопку включаем только когда все завершились. */
+      var overviewFetchDepth = 0;
       var pollTimer = null;
       var processesPrefsMerged = false;
       /** Пока пользователь тянет выделение — не дергать DOM (поллинг каждые 3 с иначе срывает selection). */
@@ -1166,6 +1168,9 @@
             ? String(preferredSiteId)
             : getSelectedSiteId();
         loading = true;
+        overviewFetchDepth += 1;
+        var refBtn = document.getElementById("dg-proc-refresh-head");
+        if (refBtn) refBtn.disabled = true;
         if (!overview) setBootLoad(true);
         var params = new URLSearchParams();
         if (selected) params.set("my_site_id", String(selected));
@@ -1206,6 +1211,9 @@
           })
           .then(function () {
             loading = false;
+            overviewFetchDepth = Math.max(0, overviewFetchDepth - 1);
+            var rb = document.getElementById("dg-proc-refresh-head");
+            if (rb && overviewFetchDepth === 0) rb.disabled = false;
             setBootLoad(false);
           });
       }

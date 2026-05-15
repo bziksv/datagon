@@ -2,6 +2,8 @@
     (function () {
       var pollTimer;
       var lastData = null;
+      var dashboardOverviewLoading = false;
+      var dashboardDbSizeLoading = false;
 
       function num(v) {
         return Number(v || 0).toLocaleString("ru-RU");
@@ -226,6 +228,10 @@
       }
 
       function loadDashboard() {
+        if (dashboardOverviewLoading) return;
+        dashboardOverviewLoading = true;
+        var refreshMainBtn = document.getElementById("dashboard-refresh");
+        if (refreshMainBtn) refreshMainBtn.disabled = true;
         if (lastData) render(lastData, true);
         else {
           var sh = document.getElementById("dg-summary-hint");
@@ -242,11 +248,19 @@
           })
           .catch(function (e) {
             alert(e.message || "Не удалось загрузить dashboard");
+          })
+          .finally(function () {
+            dashboardOverviewLoading = false;
+            if (refreshMainBtn) refreshMainBtn.disabled = false;
           });
       }
 
       function refreshDatabaseSize() {
+        if (dashboardDbSizeLoading) return;
+        dashboardDbSizeLoading = true;
         var metaEl = document.getElementById("dg-db-size-meta");
+        var btn = document.getElementById("dashboard-db-size-refresh");
+        if (btn) btn.disabled = true;
         if (metaEl) metaEl.textContent = "Пересчитываем размер базы...";
         fetch("/api/processes/db-size?refresh=1", { credentials: "same-origin" })
           .then(function (r) {
@@ -260,6 +274,10 @@
           .catch(function (e) {
             if (metaEl) metaEl.textContent = "Ошибка: " + (e.message || String(e));
             alert(e.message || "Ошибка обновления размера базы");
+          })
+          .finally(function () {
+            dashboardDbSizeLoading = false;
+            if (btn) btn.disabled = false;
           });
       }
 

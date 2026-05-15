@@ -1303,13 +1303,14 @@
       }
 
       function setApplyResetDisabled(dis) {
-        ["purchase-apply", "purchase-reset", "purchase-refresh"].forEach(function (id) {
+        ["purchase-apply", "purchase-reset", "purchase-refresh", "pu-btn-prev", "pu-btn-next"].forEach(function (id) {
           var b = document.getElementById(id);
           if (b) b.disabled = dis;
         });
       }
 
       function loadData() {
+        if (loading) return;
         loading = true;
         setApplyResetDisabled(true);
         renderTable(lastRows);
