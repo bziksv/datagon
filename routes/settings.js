@@ -124,6 +124,7 @@ module.exports = (db, appSettings) => {
             auto_sync_dimensions_enabled, auto_sync_dimensions_time,
             auto_sync_mssales_enabled, auto_sync_mssales_time, auto_sync_mssales_days, auto_sync_mssales_weekdays,
             auto_sync_mssales_full_enabled, auto_sync_mssales_full_time, auto_sync_mssales_full_days, auto_sync_mssales_full_weekdays,
+            auto_sync_purchase_warmup_enabled, auto_sync_purchase_warmup_time,
             discover_max_sitemaps, discover_max_urls, discover_crawl_max_pages, discover_request_delay_ms,
             auth_session_ttl_days, auth_session_user_limit, auth_online_presence_minutes,
             fetch_proxy_enabled, fetch_proxy_list,
@@ -187,6 +188,12 @@ module.exports = (db, appSettings) => {
             }
             if (auto_sync_mssales_full_weekdays !== undefined) {
                 queries.push(['auto_sync_mssales_full_weekdays', normalizeAutoSyncWeekdaysCsv(auto_sync_mssales_full_weekdays)]);
+            }
+            if (auto_sync_purchase_warmup_enabled !== undefined) {
+                queries.push(['auto_sync_purchase_warmup_enabled', auto_sync_purchase_warmup_enabled ? 1 : 0]);
+            }
+            if (auto_sync_purchase_warmup_time !== undefined) {
+                queries.push(['auto_sync_purchase_warmup_time', auto_sync_purchase_warmup_time || '08:00']);
             }
             if (discover_max_sitemaps !== undefined) queries.push(['discover_max_sitemaps', Math.max(10, Number(discover_max_sitemaps || 200))]);
             if (discover_max_urls !== undefined) queries.push(['discover_max_urls', Math.max(100, Number(discover_max_urls || 50000))]);
@@ -316,6 +323,8 @@ module.exports = (db, appSettings) => {
             if(auto_sync_mssales_full_time !== undefined) appSettings.auto_sync_mssales_full_time = auto_sync_mssales_full_time || '03:15';
             if(auto_sync_mssales_full_days !== undefined) appSettings.auto_sync_mssales_full_days = Math.max(1, Math.min(365 * 5, Number(auto_sync_mssales_full_days || 730)));
             if(auto_sync_mssales_full_weekdays !== undefined) appSettings.auto_sync_mssales_full_weekdays = normalizeAutoSyncWeekdaysCsv(auto_sync_mssales_full_weekdays);
+            if(auto_sync_purchase_warmup_enabled !== undefined) appSettings.auto_sync_purchase_warmup_enabled = auto_sync_purchase_warmup_enabled ? 1 : 0;
+            if(auto_sync_purchase_warmup_time !== undefined) appSettings.auto_sync_purchase_warmup_time = auto_sync_purchase_warmup_time || '08:00';
             if(discover_max_sitemaps !== undefined) appSettings.discover_max_sitemaps = Math.max(10, Number(discover_max_sitemaps || 200));
             if(discover_max_urls !== undefined) appSettings.discover_max_urls = Math.max(100, Number(discover_max_urls || 50000));
             if(discover_crawl_max_pages !== undefined) appSettings.discover_crawl_max_pages = Math.max(10, Number(discover_crawl_max_pages || 500));

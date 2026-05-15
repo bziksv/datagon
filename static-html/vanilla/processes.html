@@ -103,6 +103,24 @@
       max-height: 18rem;
       overflow: auto;
     }
+
+    /* Текст логов/статусов можно выделять и копировать (поллинг не должен срывать selection — см. processes.scripts.html). */
+    body.datagon-vanilla-body[data-dg-active-nav='processes'] .app-main__inner,
+    body.datagon-vanilla-body[data-dg-active-nav='processes'] .app-main__inner .card-body,
+    body.datagon-vanilla-body[data-dg-active-nav='processes'] .dg-proc-as-sections,
+    body.datagon-vanilla-body[data-dg-active-nav='processes'] .dg-activity-timeline,
+    body.datagon-vanilla-body[data-dg-active-nav='processes'] #dg-proc-ms-logs,
+    body.datagon-vanilla-body[data-dg-active-nav='processes'] #dg-proc-ms-plogs {
+      user-select: text;
+      -webkit-user-select: text;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='processes'] .app-main__inner .btn,
+    body.datagon-vanilla-body[data-dg-active-nav='processes'] .app-main__inner .badge,
+    body.datagon-vanilla-body[data-dg-active-nav='processes'] .app-main__inner .form-select,
+    body.datagon-vanilla-body[data-dg-active-nav='processes'] .app-main__inner .form-control {
+      user-select: none;
+      -webkit-user-select: none;
+    }
   </style>
 
   <style>
@@ -644,6 +662,16 @@
             #dg-activity-hero .dg-act-hero-top {
               position: relative;
               z-index: 2;
+              /* Не перехватывать мышь над лентой событий ниже (иначе нельзя выделить текст) */
+              pointer-events: none;
+            }
+            #dg-activity-hero .dg-act-hero-top a,
+            #dg-activity-hero .dg-act-hero-top button,
+            #dg-activity-hero .dg-act-hero-top input,
+            #dg-activity-hero .dg-act-hero-top select,
+            #dg-activity-hero .dg-act-hero-top textarea,
+            #dg-activity-hero .dg-act-hero-top label {
+              pointer-events: auto;
             }
             #dg-activity-hero .dg-act-toolbar {
               display: flex;
@@ -1082,6 +1110,58 @@
       var loading = false;
       var pollTimer = null;
       var processesPrefsMerged = false;
+      /** Пока пользователь тянет выделение — не дергать DOM (поллинг каждые 3 с иначе срывает selection). */
+      var procPollHoldForSelection = false;
+      var procSelectionGraceUntil = 0;
+
+      function processesMainRoot() {
+        return document.querySelector("body.datagon-vanilla-body[data-dg-active-nav='processes'] .app-main__inner");
+      }
+
+      function processesSelectionTouchesMain() {
+        var sel = window.getSelection && window.getSelection();
+        if (!sel || sel.isCollapsed) return false;
+        var text = String(sel.toString() || "").trim();
+        if (!text) return false;
+        var root = processesMainRoot();
+        if (!root) return false;
+        var anchor = sel.anchorNode;
+        if (!anchor) return false;
+        var el = anchor.nodeType === 3 ? anchor.parentElement : anchor;
+        return !!(el && root.contains(el));
+      }
+
+      function processesPollShouldDefer() {
+        if (procPollHoldForSelection) return true;
+        if (Date.now() < procSelectionGraceUntil) return true;
+        return processesSelectionTouchesMain();
+      }
+
+      function bindProcessesSelectionPollGuard() {
+        var root = processesMainRoot();
+        if (!root || root.getAttribute("data-dg-proc-sel-guard") === "1") return;
+        root.setAttribute("data-dg-proc-sel-guard", "1");
+        root.addEventListener(
+          "mousedown",
+          function () {
+            procPollHoldForSelection = true;
+          },
+          true
+        );
+        root.addEventListener(
+          "mouseup",
+          function () {
+            procPollHoldForSelection = false;
+            procSelectionGraceUntil = Date.now() + 900;
+          },
+          true
+        );
+        document.addEventListener("selectionchange", function () {
+          if (processesSelectionTouchesMain()) {
+            procSelectionGraceUntil = Date.now() + 900;
+          }
+        });
+      }
 
       /**
        * Дата «За день» (МСК, формат YYYY-MM-DD). По умолчанию — сегодня по МСК.
@@ -2414,6 +2494,7 @@
       function startPoll() {
         stopPoll();
         pollTimer = setInterval(function () {
+          if (processesPollShouldDefer()) return;
           loadOverview();
         }, 3000);
       }
@@ -2511,6 +2592,7 @@
         }
       })();
 
+      bindProcessesSelectionPollGuard();
       loadOverview();
       resetActivityJournalFilters();
       loadActivityJournal();

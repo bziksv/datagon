@@ -29,7 +29,9 @@
  *                            а также «снимок» продаж за 3…365 дн. (`d_*a`) и дней отсутствия (`d_*b`) для 15/30/60/90/180/365.
  *                            Доп. query-фильтры (все `0`/`1`, по умолчанию `0`): `zero_stock` — остаток ≤ 0;
  *                            `zero_stock_no_transit` — остаток ≤ 0 и «В пути» (`payload_json.inTransit`) ≤ 0 (JOIN `ms_entity_details`);
- *                            `no_multiplicity` — кратность в overrides пустая или &lt; 1; `incomplete_pack` — кратность ≥ 1 и 0 &lt; stock &lt; кратность.
+ *                            `no_multiplicity` — кратность в overrides пустая или &lt; 1; `incomplete_pack` — кратность ≥ 1,
+ *                            остаток ≥ одной полной упаковки и хвост не кратен кратности (не «1 шт при кратности 2»);
+ *                            **кроме** базового кода с «код-число», где stock &lt; min(суффикс) — отсутствие комплекта.
  *                            Сортировка по вычисляемым полям (`d_*`, `formula_proposed_min_stock`, `in_transit`) выполняется
  *                            по всему отфильтрованному набору, затем применяется `limit`/`offset` (полный проход без
  *                            выборки `med.payload_json` для `d_*` — только при необходимости `JSON_EXTRACT` для «В пути»).
@@ -69,6 +71,116 @@ const PURCHASE_BUNDLE_WARM_DB_TTL_MS = 8 * 60 * 60 * 1000;
 /** После пустого кэша для компонента не повторять полный LIKE-скан до истечения (новые комплекты в МС — с задержкой). */
 const PURCHASE_BUNDLE_EMPTY_NEGATIVE_MS = 4 * 60 * 60 * 1000;
 const purchaseBundleEmptyWarmAt = new Map();
+
+/**
+ * Кэш снимка списка закупок: один раз на набор фильтров (без sort/limit/offset).
+ * Смена сортировки и страницы — только сортировка/slice в памяти, без повторного enrich.
+ */
+/** До следующего утреннего прогрева (~08:00 МСК); переживает рабочий день без пересборки. */
+const PURCHASE_LIST_CACHE_TTL_MS = 26 * 60 * 60 * 1000;
+const purchaseListBaseCache = new Map();
+
+/** min(числовой суффикс) среди `ms_export.code` вида «база-число» — паритет с `syncZeroStockLogAfterMoyskladExport`. */
+const MS_EXPORT_BUNDLE_MIN_SUFFIX_SUBSQL = `
+    SELECT SUBSTRING_INDEX(code, '-', 1) AS base_code,
+           MIN(CAST(SUBSTRING_INDEX(code, '-', -1) AS UNSIGNED)) AS min_suffix
+      FROM ms_export
+     WHERE (LENGTH(code) - LENGTH(REPLACE(code, '-', ''))) = 1
+       AND SUBSTRING_INDEX(code, '-', -1) REGEXP '^[0-9]+$'
+     GROUP BY SUBSTRING_INDEX(code, '-', 1)`;
+
+/** Базовый код при наличии комплектов `код-N`: остаток &lt; min(суффикс) — отсутствие комплекта, не «неполная упаковка». */
+function sqlIsBaseBundleShortage() {
+    return `(
+        INSTR(mse.code, '-') = 0
+        AND bb.min_suffix IS NOT NULL
+        AND bb.min_suffix > 0
+        AND COALESCE(mse.stock, 0) < bb.min_suffix
+    )`;
+}
+
+/**
+ * Предикат фильтра `incomplete_pack=1`.
+ * «Неполная упаковка» = есть ≥1 целая упаковка по кратности и остался хвост (не кратен).
+ * Остаток 1 при кратности 2 — не попадает (ещё нет полной упаковки на складе).
+ */
+function sqlIncompletePackPredicate() {
+    const mult = 'CAST(TRIM(CAST(po.multiplicity AS CHAR)) AS DECIMAL(18,6))';
+    const stock = 'COALESCE(mse.stock, 0)';
+    return `(
+        ${mult} >= 1
+        AND ${stock} > 0
+        AND ${stock} >= ${mult}
+        AND (${stock} - FLOOR(${stock} / ${mult}) * ${mult}) > 0
+        AND NOT ${sqlIsBaseBundleShortage()}
+    )`;
+}
+
+/** Ревизия для инвалидации кэша: любая правка `dg_purchase_overrides` или обновление выгрузки `ms_export`. */
+async function loadPurchaseDataRevision(db) {
+    try {
+        const [[r]] = await db.query(`
+            SELECT
+                (SELECT IFNULL(MAX(po.updated_at), '1970-01-01') FROM dg_purchase_overrides po) AS ov_mx,
+                (SELECT IFNULL(MAX(mse.synced_at), '1970-01-01') FROM ms_export mse) AS ms_sync_mx,
+                (SELECT COUNT(*) FROM ms_export) AS ms_n,
+                (SELECT IFNULL(MAX(d.updated_at), '1970-01-01') FROM ms_demand d) AS demand_mx
+        `);
+        const row = r || {};
+        return `${String(row.ov_mx || '')}|${String(row.ms_sync_mx || '')}|${String(row.ms_n || '')}|${String(row.demand_mx || '')}`;
+    } catch (e) {
+        return String(Date.now());
+    }
+}
+
+function buildPurchaseListCacheKey(req, appSettings, dataRev) {
+    const q = req.query || {};
+    const a = appSettings || {};
+    const formulaFp = [
+        a.sales_formula_replenishment_coef,
+        a.sales_formula_sales_window_days,
+        a.sales_formula_absence_analysis_days,
+        a.sales_formula_base_qty,
+        a.sales_formula_rare_base_qty,
+        a.sales_formula_expensive_rare_threshold_rub,
+        a.sales_formula_expensive_rare_min_qty,
+        a.sales_formula_max_change_coef,
+        a.sales_formula_incomplete_pack_pct,
+    ].join('|');
+    return JSON.stringify({
+        dataRev: String(dataRev || ''),
+        formula: formulaFp,
+        search: String(q.search || '').trim(),
+        supplier: String(q.supplier || '').trim(),
+        archived: String(q.archived || 'active').toLowerCase(),
+        stock_position: String(q.stock_position || 'yes').toLowerCase(),
+        no_longer_cooperation: String(q.no_longer_cooperation || 'not_stopped').toLowerCase(),
+        include_bundles: String(q.include_bundles || '0'),
+        only_stock: String(q.only_stock || '0'),
+        zero_stock_no_transit: String(q.zero_stock_no_transit || '0'),
+        zero_stock: String(q.zero_stock || '0'),
+        no_multiplicity: String(q.no_multiplicity || '0'),
+        incomplete_pack: String(q.incomplete_pack || '0'),
+    });
+}
+
+function clearPurchaseListResponseCache() {
+    purchaseListBaseCache.clear();
+}
+
+function rememberPurchaseListBaseCache(key, snapshot) {
+    if (purchaseListBaseCache.size > 80) {
+        const cut = Date.now() - PURCHASE_LIST_CACHE_TTL_MS;
+        for (const [k, v] of purchaseListBaseCache.entries()) {
+            if (v.ts < cut) purchaseListBaseCache.delete(k);
+        }
+        if (purchaseListBaseCache.size > 80) {
+            const first = purchaseListBaseCache.keys().next().value;
+            if (first) purchaseListBaseCache.delete(first);
+        }
+    }
+    purchaseListBaseCache.set(key, { ts: Date.now(), total: snapshot.total, items: snapshot.items });
+}
 
 let schemaReady = false;
 
@@ -485,14 +597,63 @@ function purchasePostSortNumeric(row, key) {
 }
 
 function sortPurchaseDataByKey(data, sortKey, desc) {
+    sortPurchaseSnapshotItems(data, sortKey, desc);
+}
+
+const PURCHASE_STRING_SORT_KEYS = new Set(['code', 'article', 'name', 'supplier']);
+
+function parsePurchaseRowSortValue(row, sortKey) {
+    if (PURCHASE_POST_SORT_KEYS.has(sortKey) || sortKey === PURCHASE_IN_TRANSIT_SORT) {
+        return purchasePostSortNumeric(row, sortKey);
+    }
+    if (sortKey === 'buy_price') {
+        const s = String(row.buy_price || '');
+        const cleaned = s.replace(/₽/g, '').replace(/\s/g, '').replace(',', '.');
+        const n = Number(cleaned);
+        return Number.isFinite(n) ? n : null;
+    }
+    if (sortKey === 'supplier') return String(row.supplier_label || row.supplier || '');
+    if (PURCHASE_STRING_SORT_KEYS.has(sortKey)) return String(row[sortKey] || '');
+    const n = Number(row[sortKey]);
+    return Number.isFinite(n) ? n : null;
+}
+
+/** Сортировка по уже обогащённому снимку (все колонки таблицы закупок). */
+function sortPurchaseSnapshotItems(data, sortKey, desc) {
+    const strMode = PURCHASE_STRING_SORT_KEYS.has(sortKey);
     data.sort((a, b) => {
-        const na = purchasePostSortNumeric(a, sortKey);
-        const nb = purchasePostSortNumeric(b, sortKey);
-        const va = na != null ? na : desc ? -1e18 : 1e18;
-        const vb = nb != null ? nb : desc ? -1e18 : 1e18;
-        if (vb === va) return String(a.code).localeCompare(String(b.code), 'ru');
-        return desc ? vb - va : va - vb;
+        const va = parsePurchaseRowSortValue(a, sortKey);
+        const vb = parsePurchaseRowSortValue(b, sortKey);
+        if (strMode) {
+            const cmp = String(va || '').localeCompare(String(vb || ''), 'ru');
+            if (cmp !== 0) return desc ? -cmp : cmp;
+            return String(a.code || '').localeCompare(String(b.code || ''), 'ru');
+        }
+        const na = va != null ? va : desc ? -1e18 : 1e18;
+        const nb = vb != null ? vb : desc ? -1e18 : 1e18;
+        if (nb === na) return String(a.code || '').localeCompare(String(b.code || ''), 'ru');
+        return desc ? nb - na : na - nb;
     });
+}
+
+function purchaseListPageFromSnapshot(snapshot, req) {
+    const limitRaw = parseInt(req.query.limit, 10);
+    const offsetRaw = parseInt(req.query.offset, 10);
+    const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(1000, limitRaw) : 100;
+    const offset = Number.isFinite(offsetRaw) && offsetRaw >= 0 ? offsetRaw : 0;
+    const sortKey = ALLOWED_SORT[String(req.query.sort_by || 'code')] ? String(req.query.sort_by || 'code') : 'code';
+    const sortDir = String(req.query.sort_dir || 'asc').toLowerCase() === 'desc' ? 'desc' : 'asc';
+    const items = snapshot.items.slice();
+    sortPurchaseSnapshotItems(items, sortKey, sortDir === 'desc');
+    return {
+        success: true,
+        total: snapshot.total,
+        limit,
+        offset,
+        sort_by: sortKey,
+        sort_dir: sortDir,
+        data: items.slice(offset, offset + limit),
+    };
 }
 
 /** Одна строка списка закупок (общая для полного SELECT с payload и лёгкого без med). */
@@ -598,11 +759,6 @@ async function loadPurchaseBundleSalesWindowsMap(db, componentCodes) {
                FROM ms_demand_position p
                INNER JOIN ms_demand d ON d.uuid = p.demand_uuid
                INNER JOIN dg_bundle_components bc ON bc.bundle_code = p.ms_export_code AND bc.component_code IN (${ph})
-               INNER JOIN (
-                    SELECT bundle_uuid, SUM(qty_per_bundle) AS qty_sum
-                      FROM dg_bundle_components
-                     GROUP BY bundle_uuid
-                   ) tot ON tot.bundle_uuid = bc.bundle_uuid
               WHERE d.applicable = 1
               GROUP BY bc.component_code`,
             [...part],
@@ -713,11 +869,6 @@ async function loadPurchaseSumQtyLastDaysMap(db, codes, componentCodesForBundle,
                FROM ms_demand_position p
                INNER JOIN ms_demand d ON d.uuid = p.demand_uuid
                INNER JOIN dg_bundle_components bc ON bc.bundle_code = p.ms_export_code
-               INNER JOIN (
-                    SELECT bundle_uuid, SUM(qty_per_bundle) AS qty_sum
-                      FROM dg_bundle_components
-                     GROUP BY bundle_uuid
-                   ) tot ON tot.bundle_uuid = bc.bundle_uuid
               WHERE d.applicable = 1
                 AND d.moment >= (NOW() - INTERVAL ? DAY)
                 AND bc.component_code IN (${ph2})
@@ -806,11 +957,6 @@ async function loadPurchaseBundleSumQtyWindowRows(db, safeComponentCodes, W) {
                FROM ms_demand_position p
                INNER JOIN ms_demand d ON d.uuid = p.demand_uuid
                INNER JOIN dg_bundle_components bc ON bc.bundle_code = p.ms_export_code
-               INNER JOIN (
-                    SELECT bundle_uuid, SUM(qty_per_bundle) AS qty_sum
-                      FROM dg_bundle_components
-                     GROUP BY bundle_uuid
-                   ) tot ON tot.bundle_uuid = bc.bundle_uuid
               WHERE d.applicable = 1
                 AND d.moment >= (NOW() - INTERVAL ? DAY)
                 AND bc.component_code IN (${ph})
@@ -1077,6 +1223,220 @@ async function enrichPurchaseRowsWithFormula(db, appSettings, sqlRows, data, opt
     }
 }
 
+/** Все колонки сортировки таблицы закупок (прогрев asc/desc в RAM после снимка). */
+const PURCHASE_WARMUP_SORT_KEYS = Object.keys(ALLOWED_SORT);
+
+function touchPurchaseSnapshotSorts(snapshot, reqTemplate) {
+    let touches = 0;
+    const baseQuery = Object.assign({}, reqTemplate.query || {});
+    for (let si = 0; si < PURCHASE_WARMUP_SORT_KEYS.length; si += 1) {
+        const sortKey = PURCHASE_WARMUP_SORT_KEYS[si];
+        for (const sortDir of ['asc', 'desc']) {
+            purchaseListPageFromSnapshot(snapshot, {
+                query: Object.assign({}, baseQuery, {
+                    sort_by: sortKey,
+                    sort_dir: sortDir,
+                    limit: '100',
+                    offset: '0',
+                }),
+            });
+            touches += 1;
+        }
+    }
+    return touches;
+}
+
+/** Пресеты фильтров для прогрева снимка (сортировка не в ключе — один снимок на фильтр). */
+const PURCHASE_WARMUP_QUERY_PRESETS = [
+    {},
+    { only_stock: '1' },
+    { zero_stock: '1' },
+    { zero_stock_no_transit: '1' },
+    { no_multiplicity: '1' },
+    { incomplete_pack: '1' },
+    { include_bundles: '1' },
+    { archived: 'all' },
+    { stock_position: 'all' },
+    { no_longer_cooperation: 'all' },
+];
+
+/**
+ * Фоновый прогрев снимков списка закупок.
+ * @param {{ force?: boolean, warmSorts?: boolean, presets?: object[] }} [options]
+ *   force — пересобрать даже при живом кэше (утренний прогрев 08:00);
+ *   warmSorts — прогреть все пары sort×dir в RAM (по умолчанию true);
+ *   presets — подмножество `PURCHASE_WARMUP_QUERY_PRESETS` (на старте Node — только `[{}]`, см. server.js).
+ * @returns {Promise<{ built: number, skipped: number, sortTouches: number, errors: number }>}
+ */
+async function warmupPurchaseListCaches(db, appSettings, options = {}) {
+    const force = options.force === true;
+    const warmSorts = options.warmSorts !== false;
+    const presets = Array.isArray(options.presets) ? options.presets : PURCHASE_WARMUP_QUERY_PRESETS;
+    const stats = { built: 0, skipped: 0, sortTouches: 0, errors: 0 };
+
+    await ensureSchema(db);
+    if (typeof require('./msSales').ensureSchema === 'function') {
+        await require('./msSales').ensureSchema(db);
+    }
+    const base = {
+        archived: 'active',
+        stock_position: 'yes',
+        no_longer_cooperation: 'not_stopped',
+        include_bundles: '0',
+        only_stock: '0',
+        zero_stock: '0',
+        zero_stock_no_transit: '0',
+        no_multiplicity: '0',
+        incomplete_pack: '0',
+    };
+    const rev = await loadPurchaseDataRevision(db);
+
+    for (let i = 0; i < presets.length; i += 1) {
+        const extra = presets[i];
+        const q = Object.assign({}, base, extra);
+        const req = { query: q };
+        const key = buildPurchaseListCacheKey(req, appSettings, rev);
+        const cached = purchaseListBaseCache.get(key);
+        if (!force && cached && Date.now() - cached.ts < PURCHASE_LIST_CACHE_TTL_MS) {
+            stats.skipped += 1;
+            if (warmSorts) {
+                stats.sortTouches += touchPurchaseSnapshotSorts(cached, req);
+            }
+            continue;
+        }
+        try {
+            const snap = await purchaseListBuildBaseSnapshot(db, appSettings, req);
+            rememberPurchaseListBaseCache(key, snap);
+            stats.built += 1;
+            if (warmSorts) {
+                stats.sortTouches += touchPurchaseSnapshotSorts(snap, req);
+            }
+        } catch (e) {
+            stats.errors += 1;
+            console.warn('[purchase][warmup]', (e && e.message) || e);
+        }
+        await new Promise((resolve) => setImmediate(resolve));
+    }
+    return stats;
+}
+
+/**
+ * Полный обогащённый снимок по фильтрам (без сортировки/пагинации).
+ * Дорого один раз; дальше — только slice/sort из `purchaseListBaseCache`.
+ */
+async function purchaseListBuildBaseSnapshot(db, appSettings, req) {
+            const search = String(req.query.search || '').trim();
+            const supplier = String(req.query.supplier || '').trim();
+            const archived = String(req.query.archived || 'active').toLowerCase();
+            const stockPositionMode = String(req.query.stock_position || 'yes').toLowerCase();
+            const noLongerMode = String(req.query.no_longer_cooperation || 'not_stopped').toLowerCase();
+            const includeBundles = String(req.query.include_bundles || '0') === '1';
+            const onlyStock = String(req.query.only_stock || '0') === '1';
+            const zeroStockNoTransit = String(req.query.zero_stock_no_transit || '0') === '1';
+            const zeroStockOnly = String(req.query.zero_stock || '0') === '1';
+            const noMultiplicity = String(req.query.no_multiplicity || '0') === '1';
+            const incompletePack = String(req.query.incomplete_pack || '0') === '1';
+
+            const where = ['1=1'];
+            const params = [];
+
+            if (archived === 'active') where.push('mse.is_archived = 0');
+            else if (archived === 'archive' || archived === 'archived' || archived === '1') where.push('mse.is_archived = 1');
+
+            if (stockPositionMode === 'yes') where.push("LOWER(mse.stock_position) = 'да'");
+            else if (stockPositionMode === 'no') where.push("(mse.stock_position IS NULL OR LOWER(mse.stock_position) <> 'да')");
+
+            if (!includeBundles) where.push("(mse.type IS NULL OR LOWER(mse.type) NOT LIKE '%комплект%')");
+
+            if (search) {
+                const v = `%${search.toLowerCase()}%`;
+                where.push('(LOWER(mse.code) LIKE ? OR LOWER(mse.name) LIKE ? OR LOWER(mse.supplier) LIKE ? OR LOWER(mse.supplier2) LIKE ?)');
+                params.push(v, v, v, v);
+            }
+
+            if (supplier) {
+                const v = `%${supplier.toLowerCase()}%`;
+                where.push('(LOWER(mse.supplier) LIKE ? OR LOWER(mse.supplier2) LIKE ?)');
+                params.push(v, v);
+            }
+
+            if (onlyStock) where.push('COALESCE(mse.stock, 0) > 0');
+
+            if (zeroStockNoTransit) {
+                where.push('COALESCE(mse.stock, 0) <= 0');
+                where.push(
+                    'COALESCE(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(med.payload_json, \'$.inTransit\')), \'\') AS DECIMAL(18,6)), 0) <= 0',
+                );
+            } else if (zeroStockOnly) {
+                where.push('COALESCE(mse.stock, 0) <= 0');
+            }
+
+            if (noMultiplicity) {
+                where.push(
+                    '(po.multiplicity IS NULL OR TRIM(CAST(po.multiplicity AS CHAR)) = \'\' OR CAST(TRIM(CAST(po.multiplicity AS CHAR)) AS DECIMAL(18,6)) < 1)',
+                );
+            }
+
+            if (incompletePack) {
+                where.push(sqlIncompletePackPredicate());
+            }
+
+            if (noLongerMode === 'stopped') {
+                where.push("LOWER(TRIM(COALESCE(mse.no_longer_cooperation, ''))) = 'да'");
+            } else if (noLongerMode === 'not_stopped') {
+                where.push("LOWER(TRIM(COALESCE(mse.no_longer_cooperation, ''))) <> 'да'");
+            }
+
+            const whereSql = where.join(' AND ');
+
+            const baseFromJoin = `
+                FROM ms_export mse
+                LEFT JOIN dg_purchase_overrides po ON po.code = mse.code
+                LEFT JOIN ms_entity_details med ON med.uuid = mse.uuid
+                ${incompletePack ? `LEFT JOIN (${MS_EXPORT_BUNDLE_MIN_SUFFIX_SUBSQL}) bb ON bb.base_code = mse.code` : ''}
+            `;
+
+            const listSelectBody = `
+                SELECT
+                    mse.code, mse.name, mse.supplier, mse.supplier2, mse.uuid, mse.type,
+                    mse.is_archived, mse.stock_position, mse.no_longer_cooperation,
+                    mse.buy_price, mse.min_stock, mse.stock, mse.automation_price,
+                    mse.synced_at,
+                    po.min_stock_dg, po.multiplicity, po.min_stock_calc_as,
+                    po.proposed_min_stock, po.pack_qty_manual, po.updated_at AS override_updated_at,
+                    med.payload_json
+                ${baseFromJoin}
+                WHERE ${whereSql}`;
+
+            const countFromJoin =
+                zeroStockNoTransit || incompletePack
+                    ? baseFromJoin
+                    : `
+                FROM ms_export mse
+                LEFT JOIN dg_purchase_overrides po ON po.code = mse.code
+            `;
+            const countSql = `SELECT COUNT(*) AS cnt ${countFromJoin} WHERE ${whereSql}`;
+            const listSqlFull = `${listSelectBody} ORDER BY mse.id ASC`;
+
+            const [[rows], [countRow]] = await Promise.all([
+                db.query(listSqlFull, params),
+                db.query(countSql, params),
+            ]);
+
+            const data = (rows || []).map((r) => mapPurchaseSqlRowToDataItem(r));
+            await enrichPurchaseRowsWithFormula(db, appSettings || {}, rows, data, { mode: 'all' });
+
+            return {
+                total: Number(countRow[0]?.cnt || data.length),
+                items: data,
+            };
+}
+
+async function purchaseListHandlerCore(db, appSettings, req) {
+    const snap = await purchaseListBuildBaseSnapshot(db, appSettings, req);
+    return purchaseListPageFromSnapshot(snap, req);
+}
+
 function createPurchaseRouter(db, appSettings) {
     const router = express.Router();
 
@@ -1205,277 +1565,28 @@ function createPurchaseRouter(db, appSettings) {
     router.get('/', async (req, res) => {
         try {
             await ensureSchema(db);
-
-            const limitRaw = parseInt(req.query.limit, 10);
-            const offsetRaw = parseInt(req.query.offset, 10);
-            const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(1000, limitRaw) : 100;
-            const offset = Number.isFinite(offsetRaw) && offsetRaw >= 0 ? offsetRaw : 0;
-
-            const search = String(req.query.search || '').trim();
-            const supplier = String(req.query.supplier || '').trim();
-            const archived = String(req.query.archived || 'active').toLowerCase();
-            const stockPositionMode = String(req.query.stock_position || 'yes').toLowerCase();
-            const noLongerMode = String(req.query.no_longer_cooperation || 'not_stopped').toLowerCase();
-            const includeBundles = String(req.query.include_bundles || '0') === '1';
-            const onlyStock = String(req.query.only_stock || '0') === '1';
-            const zeroStockNoTransit = String(req.query.zero_stock_no_transit || '0') === '1';
-            const zeroStockOnly = String(req.query.zero_stock || '0') === '1';
-            const noMultiplicity = String(req.query.no_multiplicity || '0') === '1';
-            const incompletePack = String(req.query.incomplete_pack || '0') === '1';
-
-            const sortKey = ALLOWED_SORT[String(req.query.sort_by || 'code')] ? String(req.query.sort_by || 'code') : 'code';
-            const sortDir = String(req.query.sort_dir || 'asc').toLowerCase() === 'desc' ? 'DESC' : 'ASC';
-
-            const where = ['1=1'];
-            const params = [];
-
-            if (archived === 'active') where.push('mse.is_archived = 0');
-            else if (archived === 'archive' || archived === 'archived' || archived === '1') where.push('mse.is_archived = 1');
-
-            if (stockPositionMode === 'yes') where.push("LOWER(mse.stock_position) = 'да'");
-            else if (stockPositionMode === 'no') where.push("(mse.stock_position IS NULL OR LOWER(mse.stock_position) <> 'да')");
-
-            if (!includeBundles) where.push("(mse.type IS NULL OR LOWER(mse.type) NOT LIKE '%комплект%')");
-
-            if (search) {
-                const v = `%${search.toLowerCase()}%`;
-                where.push('(LOWER(mse.code) LIKE ? OR LOWER(mse.name) LIKE ? OR LOWER(mse.supplier) LIKE ? OR LOWER(mse.supplier2) LIKE ?)');
-                params.push(v, v, v, v);
+            if (typeof require('./msSales').ensureSchema === 'function') {
+                await require('./msSales').ensureSchema(db);
             }
 
-            if (supplier) {
-                const v = `%${supplier.toLowerCase()}%`;
-                where.push('(LOWER(mse.supplier) LIKE ? OR LOWER(mse.supplier2) LIKE ?)');
-                params.push(v, v);
+            const dataRev = await loadPurchaseDataRevision(db);
+            const baseKey = buildPurchaseListCacheKey(req, appSettings, dataRev);
+            let baseSnap = purchaseListBaseCache.get(baseKey);
+            const cacheAge = baseSnap ? Date.now() - baseSnap.ts : null;
+            if (!baseSnap || cacheAge >= PURCHASE_LIST_CACHE_TTL_MS) {
+                const built = await purchaseListBuildBaseSnapshot(db, appSettings, req);
+                rememberPurchaseListBaseCache(baseKey, built);
+                baseSnap = purchaseListBaseCache.get(baseKey);
             }
-
-            if (onlyStock) where.push('COALESCE(mse.stock, 0) > 0');
-
-            if (zeroStockNoTransit) {
-                where.push('COALESCE(mse.stock, 0) <= 0');
-                where.push(
-                    'COALESCE(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(med.payload_json, \'$.inTransit\')), \'\') AS DECIMAL(18,6)), 0) <= 0',
-                );
-            } else if (zeroStockOnly) {
-                where.push('COALESCE(mse.stock, 0) <= 0');
-            }
-
-            if (noMultiplicity) {
-                where.push(
-                    '(po.multiplicity IS NULL OR TRIM(CAST(po.multiplicity AS CHAR)) = \'\' OR CAST(TRIM(CAST(po.multiplicity AS CHAR)) AS DECIMAL(18,6)) < 1)',
-                );
-            }
-
-            if (incompletePack) {
-                where.push(
-                    '(CAST(TRIM(CAST(po.multiplicity AS CHAR)) AS DECIMAL(18,6)) >= 1 AND COALESCE(mse.stock, 0) > 0 AND COALESCE(mse.stock, 0) < CAST(TRIM(CAST(po.multiplicity AS CHAR)) AS DECIMAL(18,6)))',
-                );
-            }
-
-            if (noLongerMode === 'stopped') {
-                where.push("LOWER(TRIM(COALESCE(mse.no_longer_cooperation, ''))) = 'да'");
-            } else if (noLongerMode === 'not_stopped') {
-                where.push("LOWER(TRIM(COALESCE(mse.no_longer_cooperation, ''))) <> 'да'");
-            }
-
-            const whereSql = where.join(' AND ');
-            const buyPriceExpr = "COALESCE(CAST(REPLACE(REPLACE(REPLACE(REPLACE(mse.buy_price, '₽', ''), ' ', ''), ' ', ''), ',', '.') AS DECIMAL(15,2)), 0)";
-            const articleSortExpr = "COALESCE(med.code, mse.code)";
-
-            const orderExpr = sortKey === 'buy_price'
-                ? buyPriceExpr
-                : sortKey === 'article'
-                    ? articleSortExpr
-                    : ALLOWED_SORT[sortKey];
-
-            const baseFromJoin = `
-                FROM ms_export mse
-                LEFT JOIN dg_purchase_overrides po ON po.code = mse.code
-                LEFT JOIN ms_entity_details med ON med.uuid = mse.uuid
-            `;
-
-            const listSelectBody = `
-                SELECT
-                    mse.code, mse.name, mse.supplier, mse.supplier2, mse.uuid, mse.type,
-                    mse.is_archived, mse.stock_position, mse.no_longer_cooperation,
-                    mse.buy_price, mse.min_stock, mse.stock, mse.automation_price,
-                    mse.synced_at,
-                    po.min_stock_dg, po.multiplicity, po.min_stock_calc_as,
-                    po.proposed_min_stock, po.pack_qty_manual, po.updated_at AS override_updated_at,
-                    med.payload_json
-                ${baseFromJoin}
-                WHERE ${whereSql}`;
-
-            /** Без `ms_entity_details`: только сортировка по формуле на полном наборе (меньше I/O по TEXT). При фильтре `zero_stock_no_transit` JOIN нужен для условия по `inTransit` в WHERE. */
-            const baseFromJoinLight = zeroStockNoTransit
-                ? `
-                FROM ms_export mse
-                LEFT JOIN dg_purchase_overrides po ON po.code = mse.code
-                LEFT JOIN ms_entity_details med ON med.uuid = mse.uuid
-            `
-                : `
-                FROM ms_export mse
-                LEFT JOIN dg_purchase_overrides po ON po.code = mse.code
-            `;
-            const listSelectLight = `
-                SELECT
-                    mse.code, mse.name, mse.supplier, mse.supplier2, mse.uuid, mse.type,
-                    mse.is_archived, mse.stock_position, mse.no_longer_cooperation,
-                    mse.buy_price, mse.min_stock, mse.stock, mse.automation_price,
-                    mse.synced_at,
-                    po.min_stock_dg, po.multiplicity, po.min_stock_calc_as,
-                    po.proposed_min_stock, po.pack_qty_manual, po.updated_at AS override_updated_at
-                ${baseFromJoinLight}
-                WHERE ${whereSql}`;
-
-            const needPostSort = PURCHASE_POST_SORT_KEYS.has(sortKey);
-            const listSqlPaged = `${listSelectBody}
-                ORDER BY ${orderExpr} ${sortDir}, mse.id ASC
-                LIMIT ? OFFSET ?`;
-            /** COUNT без join к `ms_entity_details`, иначе MySQL тянет `payload_json` по всей выборке. */
-            const countFromJoin = zeroStockNoTransit
-                ? baseFromJoin
-                : `
-                FROM ms_export mse
-                LEFT JOIN dg_purchase_overrides po ON po.code = mse.code
-            `;
-            const countSql = `SELECT COUNT(*) AS cnt ${countFromJoin} WHERE ${whereSql}`;
-            /** Полный список для пост-сортировки без `payload_json`: иначе при смене сортировки по d_* читается гигабайт JSON на больших выборках. */
-            const inTransitSortExpr =
-                "COALESCE(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(med.payload_json, '$.inTransit')), '') AS DECIMAL(18,6)), 0)";
-            const usePostSortNonFormula = needPostSort && sortKey !== PURCHASE_FORMULA_SORT;
-            const postSortMedJoin = usePostSortNonFormula && (zeroStockNoTransit || sortKey === PURCHASE_IN_TRANSIT_SORT);
-            const transitSortCol = postSortMedJoin ? `, ${inTransitSortExpr} AS in_transit_sort` : '';
-            const baseFromPostSort = postSortMedJoin
-                ? `
-                FROM ms_export mse
-                LEFT JOIN dg_purchase_overrides po ON po.code = mse.code
-                LEFT JOIN ms_entity_details med ON med.uuid = mse.uuid
-            `
-                : `
-                FROM ms_export mse
-                LEFT JOIN dg_purchase_overrides po ON po.code = mse.code
-            `;
-            const listSelectPostSortFull = `
-                SELECT
-                    mse.code, mse.name, mse.supplier, mse.supplier2, mse.uuid, mse.type,
-                    mse.is_archived, mse.stock_position, mse.no_longer_cooperation,
-                    mse.buy_price, mse.min_stock, mse.stock, mse.automation_price,
-                    mse.synced_at,
-                    po.min_stock_dg, po.multiplicity, po.min_stock_calc_as,
-                    po.proposed_min_stock, po.pack_qty_manual, po.updated_at AS override_updated_at
-                    ${transitSortCol}
-                ${baseFromPostSort}
-                WHERE ${whereSql}`;
-            const listSqlFullPostSort = `${listSelectPostSortFull}
-                ORDER BY mse.id ASC`;
-            const listSqlFullLight = `${listSelectLight}
-                ORDER BY mse.id ASC`;
-
-            const useFormulaSortLight = needPostSort && sortKey === PURCHASE_FORMULA_SORT;
-            /** Сортировка по колонкам mse/po: сначала страница без `med`, затем `payload_json` только для LIMIT строк (см. `datagon-list-query-patterns.mdc`). */
-            const useTwoPhasePagedList =
-                !needPostSort && !zeroStockNoTransit && sortKey !== 'article';
-
-            async function runTwoPhasePagedList() {
-                const sql = `${listSelectLight} ORDER BY ${orderExpr} ${sortDir}, mse.id ASC LIMIT ? OFFSET ?`;
-                const [r1] = await db.query(sql, [...params, limit, offset]);
-                const orderedCodes = (r1 || []).map((r) => String(r.code || '').trim()).filter(Boolean);
-                if (!orderedCodes.length) return [[], undefined];
-                const ph = orderedCodes.map(() => '?').join(',');
-                const [r2] = await db.query(`${listSelectBody} AND mse.code IN (${ph})`, [...params, ...orderedCodes]);
-                const byC = new Map((r2 || []).map((row) => [String(row.code || '').trim(), row]));
-                const ordered = orderedCodes.map((c) => byC.get(c)).filter(Boolean);
-                return [ordered, undefined];
-            }
-
-            let rowsPromise;
-            if (useFormulaSortLight) {
-                rowsPromise = db.query(listSqlFullLight, params);
-            } else if (needPostSort) {
-                rowsPromise = db.query(listSqlFullPostSort, params);
-            } else if (useTwoPhasePagedList) {
-                rowsPromise = runTwoPhasePagedList();
-            } else {
-                rowsPromise = db.query(listSqlPaged, [...params, limit, offset]);
-            }
-
-            const [[rows], [countRow]] = await Promise.all([rowsPromise, db.query(countSql, params)]);
-
-            const data = (rows || []).map((r) =>
-                mapPurchaseSqlRowToDataItem(r, useFormulaSortLight ? { noPayloadForFormula: true } : {}),
-            );
-
-            let responseData = data;
-            if (!needPostSort) {
-                await enrichPurchaseRowsWithFormula(db, appSettings || {}, rows, data, { mode: 'all' });
-            } else {
-                const desc = String(req.query.sort_dir || 'asc').toLowerCase() === 'desc';
-                if (sortKey === PURCHASE_FORMULA_SORT) {
-                    await enrichPurchaseRowsWithFormula(db, appSettings || {}, rows, data, {
-                        mode: 'formula_only',
-                        noPayloadForFormula: true,
-                    });
-                    sortPurchaseDataByKey(data, sortKey, desc);
-                    responseData = data.slice(offset, offset + limit);
-                    const pageCodesOrdered = responseData.map((d) => String(d.code || '').trim()).filter(Boolean);
-                    if (pageCodesOrdered.length) {
-                        const phPage = pageCodesOrdered.map(() => '?').join(',');
-                        const [pf] = await db.query(
-                            `${listSelectBody} AND mse.code IN (${phPage})`,
-                            [...params, ...pageCodesOrdered],
-                        );
-                        const byC = new Map((pf || []).map((r) => [String(r.code || '').trim(), r]));
-                        const orderedRows = pageCodesOrdered.map((c) => byC.get(c)).filter(Boolean);
-                        responseData = orderedRows.map((r) => mapPurchaseSqlRowToDataItem(r));
-                        await enrichPurchaseRowsWithFormula(db, appSettings || {}, orderedRows, responseData, {
-                            mode: 'all',
-                        });
-                    }
-                } else if (sortKey === PURCHASE_IN_TRANSIT_SORT) {
-                    sortPurchaseDataByKey(data, sortKey, desc);
-                    responseData = data.slice(offset, offset + limit);
-                    const pageCodesOrdered = responseData.map((d) => String(d.code || '').trim()).filter(Boolean);
-                    if (pageCodesOrdered.length) {
-                        const phPage = pageCodesOrdered.map(() => '?').join(',');
-                        const [pf] = await db.query(
-                            `${listSelectBody} AND mse.code IN (${phPage})`,
-                            [...params, ...pageCodesOrdered],
-                        );
-                        const byC = new Map((pf || []).map((r) => [String(r.code || '').trim(), r]));
-                        const orderedRows = pageCodesOrdered.map((c) => byC.get(c)).filter(Boolean);
-                        await enrichPurchaseRowsWithFormula(db, appSettings || {}, orderedRows, responseData, {
-                            mode: 'all',
-                        });
-                    }
-                } else {
-                    await enrichPurchaseRowsWithFormula(db, appSettings || {}, rows, data, { mode: 'windows_only' });
-                    sortPurchaseDataByKey(data, sortKey, desc);
-                    responseData = data.slice(offset, offset + limit);
-                    const pageCodesOrdered = responseData.map((d) => String(d.code || '').trim()).filter(Boolean);
-                    if (pageCodesOrdered.length) {
-                        const phPage = pageCodesOrdered.map(() => '?').join(',');
-                        const [pf] = await db.query(
-                            `${listSelectBody} AND mse.code IN (${phPage})`,
-                            [...params, ...pageCodesOrdered],
-                        );
-                        const byC = new Map((pf || []).map((r) => [String(r.code || '').trim(), r]));
-                        const orderedRows = pageCodesOrdered.map((c) => byC.get(c)).filter(Boolean);
-                        await enrichPurchaseRowsWithFormula(db, appSettings || {}, orderedRows, responseData, {
-                            mode: 'formula_only',
-                        });
-                    }
-                }
-            }
-
+            const responsePayload = purchaseListPageFromSnapshot(baseSnap, req);
             res.json({
-                success: true,
-                total: Number(countRow[0]?.cnt || 0),
-                limit,
-                offset,
-                sort_by: sortKey,
-                sort_dir: sortDir.toLowerCase(),
-                data: responseData,
+                ...responsePayload,
+                cache: {
+                    source: 'snapshot',
+                    age_ms: baseSnap ? Date.now() - baseSnap.ts : 0,
+                    ttl_ms: PURCHASE_LIST_CACHE_TTL_MS,
+                    items: baseSnap ? baseSnap.items.length : 0,
+                },
             });
         } catch (err) {
             console.error('[purchase][list] error:', err);
@@ -1537,6 +1648,7 @@ function createPurchaseRouter(db, appSettings) {
                 [code]
             );
             const stored = verifyRows && verifyRows[0] ? verifyRows[0] : null;
+            clearPurchaseListResponseCache();
             res.json({ success: true, code, field, value: num, stored });
         } catch (err) {
             console.error('[purchase][override] error:', err);
@@ -1566,6 +1678,7 @@ function createPurchaseRouter(db, appSettings) {
                 parsed.idx,
                 req.datagonActor || null,
             );
+            clearPurchaseListResponseCache();
             res.json({
                 success: true,
                 rows_read: parsed.rows.length,
@@ -1589,3 +1702,4 @@ function createPurchaseRouter(db, appSettings) {
 module.exports = createPurchaseRouter;
 module.exports.createPurchaseRouter = createPurchaseRouter;
 module.exports.ensureSchema = ensureSchema;
+module.exports.warmupPurchaseListCaches = warmupPurchaseListCaches;

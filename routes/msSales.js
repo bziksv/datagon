@@ -198,6 +198,38 @@ async function ensureSchema(db) {
             /** ignore */
         }
     }
+    /** Агрегаты продаж в `routes/purchase.js` / `product.js`: фильтр applicable + окно moment. */
+    try {
+        await db.query('CREATE INDEX idx_demand_applicable_moment ON ms_demand (applicable, moment)');
+    } catch (e) {
+        if (!/Duplicate key name/i.test(e && e.message ? e.message : '')) {
+            /** ignore */
+        }
+    }
+    try {
+        await db.query('CREATE INDEX idx_demand_updated ON ms_demand (updated_at)');
+    } catch (e) {
+        if (!/Duplicate key name/i.test(e && e.message ? e.message : '')) {
+            /** ignore */
+        }
+    }
+    /** JOIN позиций по коду выгрузки и заголовку отгрузки. */
+    try {
+        await db.query(
+            'CREATE INDEX idx_pos_export_demand ON ms_demand_position (ms_export_code, demand_uuid)',
+        );
+    } catch (e) {
+        if (!/Duplicate key name/i.test(e && e.message ? e.message : '')) {
+            /** ignore */
+        }
+    }
+    try {
+        await db.query('CREATE INDEX idx_ms_export_synced_at ON ms_export (synced_at)');
+    } catch (e) {
+        if (!/Duplicate key name/i.test(e && e.message ? e.message : '')) {
+            /** ignore */
+        }
+    }
 
     schemaReady = true;
 }
@@ -308,6 +340,12 @@ const jobState = {
      */
     resume_mode: false,
     resume_from_moment: null,
+    /**
+     * Инкремент по расписанию: догрузка с MAX(moment) − overlap до NOW(),
+     * а не «head resume» по MIN(moment) (добивание начала периода).
+     */
+    incremental_mode: false,
+    incremental_from_moment: null,
     existing_count_at_start: 0,
 };
 
@@ -332,6 +370,8 @@ function resetJobState(days) {
     jobState.last_error = null;
     jobState.resume_mode = false;
     jobState.resume_from_moment = null;
+    jobState.incremental_mode = false;
+    jobState.incremental_from_moment = null;
     jobState.existing_count_at_start = 0;
     return serial;
 }
@@ -368,6 +408,8 @@ function jobStateToPayload() {
         last_error: jobState.last_error,
         resume_mode: jobState.resume_mode,
         resume_from_moment: jobState.resume_from_moment,
+        incremental_mode: jobState.incremental_mode,
+        incremental_from_moment: jobState.incremental_from_moment,
         existing_count_at_start: jobState.existing_count_at_start,
         job_serial: jobState.job_serial,
     };
@@ -412,6 +454,11 @@ function buildFinalMessage() {
      * это resume и сколько уже было в БД, чтобы пользователю не казалось,
      * будто синк увидел только X документов из реального полного периода.
      */
+    if (jobState.incremental_mode) {
+        return '[Инкремент] ' + prefix + stats +
+            '. Запрос к МС с ' + (jobState.incremental_from_moment || '?') +
+            ' (в БД за окно уже было ' + jobState.existing_count_at_start + ' отгрузок)';
+    }
     if (jobState.resume_mode) {
         prefix = '[Resume] ' + prefix + stats +
             '. До этого прогона в БД за период уже было ' + jobState.existing_count_at_start +
@@ -915,6 +962,7 @@ async function runDemandSync(db, days, options = {}) {
         throw e;
     }
     const fresh = options && options.fresh === true;
+    const incremental = options && options.incremental === true;
     const now = new Date();
     const from = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
     const fmt = (d) => {
@@ -922,7 +970,7 @@ async function runDemandSync(db, days, options = {}) {
         return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' +
             pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
     };
-    const momentFrom = fmt(from);
+    let momentFrom = fmt(from);
     let momentTo = fmt(now);
     /**
      * Полный `momentTo` от NOW() — нужен для soft-delete пасса и для снимка
@@ -930,34 +978,63 @@ async function runDemandSync(db, days, options = {}) {
      * периода). Не подменяем его на resume‑узкое окно.
      */
     const momentToFull = momentTo;
+    const periodMomentFrom = momentFrom;
 
     /**
-     * Auto-resume: если в БД уже есть отгрузки за это окно периода, и
-     * самая старая из них (`minMoment`) ощутимо позже, чем `momentFrom`
-     * — значит прошлый прогон не успел добить хвост. Сужаем `momentTo`
-     * до `minMoment + 5 минут запаса` и идём только за хвостом. UPSERT по
-     * uuid защищает пограничные документы от дублей.
-     *
-     * Триггер «есть пробел»: `minMoment > momentFrom + 5 минут` (5 минут
-     * — тот же запас, что и в `resume_from_moment`; меньшая разница
-     * означает «мы фактически дошли до начала периода» — полный синк).
-     *
-     * Отключается флагом `fresh = true` (отдельная кнопка «Полный синк
-     * с нуля» в UI).
+     * Инкремент для автосинка: догружаем НОВЫЕ отгрузки с MAX(moment) в БД,
+     * а не «head resume» по MIN (добивание начала периода после обрыва).
+     * Без данных в БД — полное окно `periodMomentFrom..NOW`.
      */
-    if (!fresh) {
+    if (incremental && !fresh) {
+        try {
+            const [incStat] = await db.query(
+                `SELECT COUNT(*) AS cnt, MAX(moment) AS maxM
+                   FROM ms_demand
+                  WHERE moment BETWEEN ? AND ?
+                    AND deleted_at IS NULL`,
+                [periodMomentFrom, momentToFull],
+            );
+            const incRow = (incStat && incStat[0]) || {};
+            const incCnt = Number(incRow.cnt || 0);
+            jobState.existing_count_at_start = incCnt;
+            const maxM = incRow.maxM ? new Date(incRow.maxM) : null;
+            if (incCnt > 0 && maxM && !Number.isNaN(maxM.getTime())) {
+                /** Сутки назад от последней отгрузки — перекрытие на границе суток/часовых поясов. */
+                const INCREMENTAL_OVERLAP_MS = 24 * 60 * 60 * 1000;
+                const tailFromMs = Math.max(from.getTime(), maxM.getTime() - INCREMENTAL_OVERLAP_MS);
+                momentFrom = fmt(new Date(tailFromMs));
+                jobState.incremental_mode = true;
+                jobState.incremental_from_moment = momentFrom;
+                jobState.message =
+                    'Инкремент: догружаем с ' + momentFrom + ' по ' + momentTo +
+                    ' (последняя в БД — ' + fmt(maxM) + ', всего ' + incCnt + ' за окно).';
+            }
+        } catch (e) {
+            console.warn('[ms-sales] incremental-probe failed:', e && e.message);
+        }
+    }
+
+    /**
+     * Auto-resume (ручной синк / повтор после обрыва): если в БД уже есть
+     * отгрузки за это окно периода, и самая старая (`minMoment`) ощутимо
+     * позже `momentFrom` — добиваем начало периода до `minM + 5 мин`.
+     * Не смешивать с `incremental` (автосинк по расписанию).
+     *
+     * Отключается: `fresh = true`, `incremental = true`.
+     */
+    if (!fresh && !jobState.incremental_mode) {
         try {
             const [stat] = await db.query(
                 `SELECT COUNT(*) AS cnt, MIN(moment) AS minM
                    FROM ms_demand
                   WHERE moment BETWEEN ? AND ?
                     AND deleted_at IS NULL`,
-                [momentFrom, momentToFull],
+                [periodMomentFrom, momentToFull],
             );
             const stRow = (stat && stat[0]) || {};
             const cnt = Number(stRow.cnt || 0);
             const minM = stRow.minM ? new Date(stRow.minM) : null;
-            jobState.existing_count_at_start = cnt;
+            if (!jobState.existing_count_at_start) jobState.existing_count_at_start = cnt;
             if (cnt > 0 && minM && !Number.isNaN(minM.getTime())) {
                 const minMomentMs = minM.getTime();
                 const fromMs = from.getTime();
@@ -973,7 +1050,8 @@ async function runDemandSync(db, days, options = {}) {
                     jobState.message =
                         'Resume: продолжаем добивать хвост периода. Уже синкнуто ' + cnt +
                         ' отгрузок (самая старая — ' + fmt(minM) + '). Тянем ' +
-                        momentFrom + ' — ' + momentTo + '.';
+                        periodMomentFrom + ' — ' + momentTo + '.';
+                    momentFrom = periodMomentFrom;
                 }
             }
         } catch (e) {
@@ -981,7 +1059,7 @@ async function runDemandSync(db, days, options = {}) {
         }
     }
 
-    if (!jobState.resume_mode) {
+    if (!jobState.resume_mode && !jobState.incremental_mode) {
         jobState.message = 'Запрашиваем отгрузки за ' + momentFrom + ' — ' + momentTo;
     }
 
@@ -1161,6 +1239,7 @@ async function runDemandSync(db, days, options = {}) {
      */
     if (!jobState.cancelRequested &&
         !jobState.resume_mode &&
+        !jobState.incremental_mode &&
         jobState.errors.length === 0 &&
         seenUuids.size > 0) {
         let conn = null;
@@ -1742,6 +1821,7 @@ function createMsSalesRouter(db, appSettings = {}) {
 function triggerSync(db, options = {}) {
     const days = clampInt(options.days, 1, 365 * 5, 90);
     const fresh = !!(options && options.fresh === true);
+    const incremental = !!(options && options.incremental === true);
     const awaitCompletion = !!(options && options.awaitCompletion === true);
     if (jobState.active) {
         return Promise.resolve({ started: false, reason: 'already_running', status: jobStateToPayload() });
@@ -1756,7 +1836,7 @@ function triggerSync(db, options = {}) {
     }
     const serial = resetJobState(days);
     const pipeline = ensureSchema(db)
-        .then(() => runDemandSync(db, days, { fresh }))
+        .then(() => runDemandSync(db, days, { fresh, incremental }))
         .then(() => {
             finalizeMsSalesJob(serial, 'ok');
         })
@@ -1764,10 +1844,10 @@ function triggerSync(db, options = {}) {
             finalizeMsSalesJob(serial, 'err', e);
         });
     if (awaitCompletion) {
-        return pipeline.then(() => ({ started: true, days, fresh, status: jobStateToPayload() }));
+        return pipeline.then(() => ({ started: true, days, fresh, incremental, status: jobStateToPayload() }));
     }
     void pipeline;
-    return Promise.resolve({ started: true, days, fresh, status: jobStateToPayload() });
+    return Promise.resolve({ started: true, days, fresh, incremental, status: jobStateToPayload() });
 }
 
 /** Снапшот состояния фонового job-а (тот же payload, что и в /sync-status). */

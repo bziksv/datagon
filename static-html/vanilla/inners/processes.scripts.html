@@ -6,6 +6,58 @@
       var loading = false;
       var pollTimer = null;
       var processesPrefsMerged = false;
+      /** Пока пользователь тянет выделение — не дергать DOM (поллинг каждые 3 с иначе срывает selection). */
+      var procPollHoldForSelection = false;
+      var procSelectionGraceUntil = 0;
+
+      function processesMainRoot() {
+        return document.querySelector("body.datagon-vanilla-body[data-dg-active-nav='processes'] .app-main__inner");
+      }
+
+      function processesSelectionTouchesMain() {
+        var sel = window.getSelection && window.getSelection();
+        if (!sel || sel.isCollapsed) return false;
+        var text = String(sel.toString() || "").trim();
+        if (!text) return false;
+        var root = processesMainRoot();
+        if (!root) return false;
+        var anchor = sel.anchorNode;
+        if (!anchor) return false;
+        var el = anchor.nodeType === 3 ? anchor.parentElement : anchor;
+        return !!(el && root.contains(el));
+      }
+
+      function processesPollShouldDefer() {
+        if (procPollHoldForSelection) return true;
+        if (Date.now() < procSelectionGraceUntil) return true;
+        return processesSelectionTouchesMain();
+      }
+
+      function bindProcessesSelectionPollGuard() {
+        var root = processesMainRoot();
+        if (!root || root.getAttribute("data-dg-proc-sel-guard") === "1") return;
+        root.setAttribute("data-dg-proc-sel-guard", "1");
+        root.addEventListener(
+          "mousedown",
+          function () {
+            procPollHoldForSelection = true;
+          },
+          true
+        );
+        root.addEventListener(
+          "mouseup",
+          function () {
+            procPollHoldForSelection = false;
+            procSelectionGraceUntil = Date.now() + 900;
+          },
+          true
+        );
+        document.addEventListener("selectionchange", function () {
+          if (processesSelectionTouchesMain()) {
+            procSelectionGraceUntil = Date.now() + 900;
+          }
+        });
+      }
 
       /**
        * Дата «За день» (МСК, формат YYYY-MM-DD). По умолчанию — сегодня по МСК.
@@ -1338,6 +1390,7 @@
       function startPoll() {
         stopPoll();
         pollTimer = setInterval(function () {
+          if (processesPollShouldDefer()) return;
           loadOverview();
         }, 3000);
       }
@@ -1435,6 +1488,7 @@
         }
       })();
 
+      bindProcessesSelectionPollGuard();
       loadOverview();
       resetActivityJournalFilters();
       loadActivityJournal();

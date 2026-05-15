@@ -991,7 +991,7 @@
                 </div>
                 <div class="form-check">
                   <input class="form-check-input" type="checkbox" id="pu-incomplete-pack" />
-                  <label class="form-check-label" for="pu-incomplete-pack" data-dg-tooltip="Кратность в закупках ≥ 1, остаток &gt; 0, но меньше кратности (неполная «упаковка» заказа)">Неполная упаковка</label>
+                  <label class="form-check-label" for="pu-incomplete-pack" data-dg-tooltip="Кратность ≥ 1, на складе уже есть хотя бы одна полная упаковка, но остаток не кратен кратности (хвост). Пример: 11 шт при кратности 10 — да; 1 шт при кратности 2 — нет. Базовый код с «код-число» и остатком ниже min(суффикс) — отсутствие комплекта, не сюда.">Неполная упаковка</label>
                 </div>
               </div>
               <div class="mt-3 d-flex flex-wrap gap-2" data-dg-pu-filter-field="pu_filter_actions">
@@ -2472,9 +2472,15 @@
         renderTable(lastRows);
         var p = buildListParams();
         fetch("/api/purchase?" + p.toString(), { credentials: "same-origin" })
-          .then(function (r) { return r.json(); })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              if (!r.ok || !j || j.success === false) {
+                throw new Error((j && j.error) || "HTTP " + r.status);
+              }
+              return j;
+            });
+          })
           .then(function (j) {
-            if (!j || j.success === false) throw new Error((j && j.error) || "Ошибка");
             total = Number(j.total || 0);
             lastRows = Array.isArray(j.data) ? j.data : [];
             loading = false;
@@ -2484,13 +2490,21 @@
             updateTableHint();
             syncUrlFromState();
             var ds = document.getElementById("dg-pu-status");
-            if (ds) { ds.style.display = "none"; ds.textContent = ""; }
+            if (ds) {
+              ds.style.display = "none";
+              ds.textContent = "";
+              ds.classList.remove("text-danger");
+            }
             puRefreshFloatingAfterLayout();
           })
           .catch(function (e) {
             loading = false;
             setApplyResetDisabled(false);
-            renderTable(lastRows);
+            total = 0;
+            lastRows = [];
+            buildThead();
+            renderTable([]);
+            updateTableHint();
             var ds = document.getElementById("dg-pu-status");
             if (ds) {
               ds.style.display = "";

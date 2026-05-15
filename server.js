@@ -118,6 +118,9 @@ let appSettings = {
     auto_sync_mssales_full_days: 730,
     /** По умолчанию только вс; при включении задайте удобные дни. */
     auto_sync_mssales_full_weekdays: '7',
+    /** Прогрев in-memory снимка списка закупок (routes/purchase.js → warmupPurchaseListCaches). */
+    auto_sync_purchase_warmup_enabled: 1,
+    auto_sync_purchase_warmup_time: '08:00',
     /** Формула продаж / предлагаемого неснижаемого, LagerPlus-parity (см. `lib/datagonSalesFormula.js`, карточка товара). */
     sales_formula_replenishment_coef: 1 / 3,
     sales_formula_sales_window_days: 90,
@@ -316,6 +319,8 @@ async function initDB() {
             ['auto_sync_mssales_full_time','03:15'],
             ['auto_sync_mssales_full_days','730'],
             ['auto_sync_mssales_full_weekdays','7'],
+            ['auto_sync_purchase_warmup_enabled','1'],
+            ['auto_sync_purchase_warmup_time','08:00'],
             ['sales_formula_replenishment_coef','0.3333333333333333'],
             ['sales_formula_sales_window_days','90'],
             ['sales_formula_absence_analysis_days','210'],
@@ -1592,6 +1597,32 @@ async function processAutoSyncQueue() {
                     await finishAutoSyncRun('mssales_full', statusFull, messageFull);
                     console.log('[AUTO SYNC] Queue done: mssales_full — ' + statusFull + ' (' + messageFull + ')');
                 }
+            } else if (task === 'purchase_warmup') {
+                console.log('[AUTO SYNC] Queue start: purchase_warmup');
+                await startAutoSyncRun('purchase_warmup', triggerType);
+                let message = 'Прогрев закупок не выполнен (нет warmupPurchaseListCaches)';
+                let status = 'failed';
+                try {
+                    const purchaseWarm = require('./routes/purchase');
+                    if (typeof purchaseWarm.warmupPurchaseListCaches === 'function') {
+                        const stats = await purchaseWarm.warmupPurchaseListCaches(db, appSettings, {
+                            force: true,
+                            warmSorts: true,
+                        });
+                        status = stats.errors > 0 && stats.built === 0 ? 'failed' : 'completed';
+                        message = (
+                            'Снимки: обновлено ' + (stats.built || 0) +
+                            ', без пересборки ' + (stats.skipped || 0) +
+                            ', прогрев сортировок ' + (stats.sortTouches || 0) +
+                            (stats.errors ? ', ошибок пресетов ' + stats.errors : '')
+                        ).slice(0, 480);
+                    }
+                } catch (e) {
+                    message = ('Ошибка прогрева закупок: ' + (e && e.message ? e.message : e)).slice(0, 480);
+                    status = 'failed';
+                }
+                await finishAutoSyncRun('purchase_warmup', status, message);
+                console.log('[AUTO SYNC] Queue done: purchase_warmup — ' + status);
             } else if (task === 'mssales') {
                 console.log('[AUTO SYNC] Queue start: mssales');
                 await startAutoSyncRun('mssales', triggerType);
@@ -1601,7 +1632,11 @@ async function processAutoSyncQueue() {
                 let startRes = { started: false };
                 if (typeof msSalesModule.triggerSync === 'function') {
                     try {
-                        startRes = await msSalesModule.triggerSync(db, { days, awaitCompletion: true });
+                        startRes = await msSalesModule.triggerSync(db, {
+                            days,
+                            incremental: true,
+                            awaitCompletion: true,
+                        });
                     } catch (e) {
                         startRes = { started: false, error: e && e.message ? e.message : String(e) };
                     }
@@ -1636,9 +1671,12 @@ async function processAutoSyncQueue() {
                         message = ('Ошибка: ' + finalState.last_error).slice(0, 480);
                     } else {
                         status = 'completed';
+                        const incTag = finalState.incremental_mode
+                            ? ('инкремент с ' + (finalState.incremental_from_moment || '?') + ', ')
+                            : '';
                         message = (
-                            'Окно ' + days + ' дн.: отгрузок ' + (finalState.fetched_demands || 0) +
-                            '/' + (finalState.total_demands || 0) +
+                            'Окно ' + days + ' дн., ' + incTag + 'отгрузок ' +
+                            (finalState.fetched_demands || 0) + '/' + (finalState.total_demands || 0) +
                             ', позиций ' + (finalState.saved_positions || 0) +
                             ' (резолв ' + (finalState.resolved_positions || 0) +
                             ', не привязано ' + (finalState.unresolved_positions || 0) +
@@ -1676,6 +1714,9 @@ async function processAutoSyncQueue() {
         }
         if (autoSyncRunIds.has('mssales_full')) {
             await finishAutoSyncRun('mssales_full', 'failed', e.message || 'Ошибка очереди');
+        }
+        if (autoSyncRunIds.has('purchase_warmup')) {
+            await finishAutoSyncRun('purchase_warmup', 'failed', e.message || 'Ошибка очереди');
         }
     } finally {
         autoSyncRunnerActive = false;
@@ -1736,6 +1777,11 @@ function startAutoSyncScheduler() {
                     enabled: Number(appSettings.auto_sync_mssales_full_enabled || 0) === 1,
                     time: String(appSettings.auto_sync_mssales_full_time || '03:15').slice(0, 5),
                     weekdays: parseAutoSyncWeekdaysMon17(appSettings.auto_sync_mssales_full_weekdays)
+                },
+                {
+                    type: 'purchase_warmup',
+                    enabled: Number(appSettings.auto_sync_purchase_warmup_enabled ?? 1) === 1,
+                    time: String(appSettings.auto_sync_purchase_warmup_time || '08:00').slice(0, 5)
                 }
             ];
             for (const t of tasks) {
@@ -2175,7 +2221,24 @@ initDB().then(() => {
     app.use('/api/my-products', require('./routes/myproducts')(db, appSettings));
     matchesRouter = matchesRouterFactory(db, appSettings);
     app.use('/api/matches', matchesRouter);
-    setImmediate(() => {
+    setImmediate(async () => {
+        // Лог нулей — один SQL, без большого RAM. Прогрев закупок на старте по умолчанию выключен:
+        // 10 пресетов × ~57k строк × enrich + payload_json ≈ 4+ ГБ heap → OOM. Полный прогрев — 08:00 (purchase_warmup) или PURCHASE_STARTUP_WARMUP=1.
+        try {
+            const { syncZeroStockLogAfterMoyskladExport } = require('./routes/product');
+            if (typeof syncZeroStockLogAfterMoyskladExport === 'function') {
+                const { scanned } = await syncZeroStockLogAfterMoyskladExport(db);
+                console.log(
+                    `[product] zero-stock log (today): ${scanned} candidates upserted from ms_export`,
+                );
+            }
+        } catch (err) {
+            console.warn(
+                '[product] syncZeroStockLogAfterMoyskladExport:',
+                err && err.message ? err.message : err,
+            );
+        }
+
         if (matchesRouter && typeof matchesRouter.warmupMatchingIndexes === 'function') {
             matchesRouter.warmupMatchingIndexes().catch((err) => {
                 console.warn('[matches] warmupMatchingIndexes:', err && err.message ? err.message : err);
@@ -2185,6 +2248,24 @@ initDB().then(() => {
             resultsRouter.warmupResultsListPerf().catch((err) => {
                 console.warn('[results] warmupResultsListPerf:', err && err.message ? err.message : err);
             });
+        }
+
+        if (String(process.env.PURCHASE_STARTUP_WARMUP || '0') === '1') {
+            if (typeof purchaseRouterFactory.warmupPurchaseListCaches === 'function') {
+                try {
+                    const stats = await purchaseRouterFactory.warmupPurchaseListCaches(db, appSettings, {
+                        warmSorts: false,
+                        presets: [{}],
+                    });
+                    console.log('[purchase] startup warmup (light, default filters only):', stats);
+                } catch (err) {
+                    console.warn('[purchase] warmupPurchaseListCaches:', err && err.message ? err.message : err);
+                }
+            }
+        } else {
+            console.log(
+                '[purchase] startup warmup skipped (полный прогрев: автозадача 08:00 или Настройки → «Прогрев закупок»; PURCHASE_STARTUP_WARMUP=1 — только дефолтный фильтр)',
+            );
         }
     });
     app.use('/api/ms', moyskladRouterFactory(db, appSettings, config));

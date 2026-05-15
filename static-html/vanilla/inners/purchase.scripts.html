@@ -1311,9 +1311,15 @@
         renderTable(lastRows);
         var p = buildListParams();
         fetch("/api/purchase?" + p.toString(), { credentials: "same-origin" })
-          .then(function (r) { return r.json(); })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              if (!r.ok || !j || j.success === false) {
+                throw new Error((j && j.error) || "HTTP " + r.status);
+              }
+              return j;
+            });
+          })
           .then(function (j) {
-            if (!j || j.success === false) throw new Error((j && j.error) || "Ошибка");
             total = Number(j.total || 0);
             lastRows = Array.isArray(j.data) ? j.data : [];
             loading = false;
@@ -1323,13 +1329,21 @@
             updateTableHint();
             syncUrlFromState();
             var ds = document.getElementById("dg-pu-status");
-            if (ds) { ds.style.display = "none"; ds.textContent = ""; }
+            if (ds) {
+              ds.style.display = "none";
+              ds.textContent = "";
+              ds.classList.remove("text-danger");
+            }
             puRefreshFloatingAfterLayout();
           })
           .catch(function (e) {
             loading = false;
             setApplyResetDisabled(false);
-            renderTable(lastRows);
+            total = 0;
+            lastRows = [];
+            buildThead();
+            renderTable([]);
+            updateTableHint();
             var ds = document.getElementById("dg-pu-status");
             if (ds) {
               ds.style.display = "";
