@@ -820,7 +820,7 @@ async function cleanupDimensionsLogByRetentionDays(days) {
 }
 
 /**
- * Автоочистка `dg_purchase_overrides_log` (журнал полей «Нес.остаток Датагон», «Кратность», «Мин.остаток сч.как 0»)
+ * Автоочистка `dg_purchase_overrides_log` (журнал полей «Нес.остаток Датагон», «Кратность»)
  * по `app_settings.dg_purchase_overrides_log_retention_days` (по умолчанию 180).
  */
 async function cleanupPurchaseOverridesLogByRetentionDays(days) {
@@ -2250,7 +2250,23 @@ initDB().then(() => {
             });
         }
 
-        if (String(process.env.PURCHASE_STARTUP_WARMUP || '0') === '1') {
+        const startupWarmRaw = String(process.env.PURCHASE_STARTUP_WARMUP || '').trim().toLowerCase();
+        const purchaseWarmupExplicitOff =
+            startupWarmRaw === '0' || startupWarmRaw === 'off' || startupWarmRaw === 'false';
+        const purchaseWarmupTaskOn =
+            Number(
+                appSettings && appSettings.auto_sync_purchase_warmup_enabled !== undefined
+                    ? appSettings.auto_sync_purchase_warmup_enabled
+                    : 1,
+            ) === 1;
+        const explicitProg = startupWarmRaw === 'progressive' || startupWarmRaw === 'all';
+        const runProgressive =
+            !purchaseWarmupExplicitOff &&
+            startupWarmRaw !== '1' &&
+            (explicitProg || purchaseWarmupTaskOn) &&
+            typeof purchaseRouterFactory.runPurchaseStartupProgressiveWarmup === 'function';
+
+        if (startupWarmRaw === '1') {
             if (typeof purchaseRouterFactory.warmupPurchaseListCaches === 'function') {
                 try {
                     const stats = await purchaseRouterFactory.warmupPurchaseListCaches(db, appSettings, {
@@ -2262,9 +2278,17 @@ initDB().then(() => {
                     console.warn('[purchase] warmupPurchaseListCaches:', err && err.message ? err.message : err);
                 }
             }
+        } else if (runProgressive) {
+            console.log('[purchase] startup: progressive cache warmup (background, logs/purchase-cache.log)');
+            void purchaseRouterFactory.runPurchaseStartupProgressiveWarmup(db, appSettings).catch((err) => {
+                console.warn(
+                    '[purchase] runPurchaseStartupProgressiveWarmup:',
+                    err && err.message ? err.message : err,
+                );
+            });
         } else {
             console.log(
-                '[purchase] startup warmup skipped (полный прогрев: автозадача 08:00 или Настройки → «Прогрев закупок»; PURCHASE_STARTUP_WARMUP=1 — только дефолтный фильтр)',
+                '[purchase] startup warmup skipped (08:00 purchase_warmup; PURCHASE_STARTUP_WARMUP=1 — один дефолтный пресет; PURCHASE_STARTUP_WARMUP=progressive — принудительно; иначе включите «Прогрев закупок» в настройках автосинка)',
             );
         }
     });

@@ -591,7 +591,6 @@
         overrideFormSnap = {
           min_stock_dg: overrideInputDisplayValue(over, "min_stock_dg"),
           multiplicity: overrideInputDisplayValue(over, "multiplicity"),
-          min_stock_calc_as: overrideInputDisplayValue(over, "min_stock_calc_as"),
         };
 
         var defs = [
@@ -605,18 +604,13 @@
             label: "Кратность товара",
             hint: "Заказ / упаковка. Учитывается в формуле как справочный блок (кратность > 1).",
           },
-          {
-            key: "min_stock_calc_as",
-            label: "Мин. остаток считать как 0",
-            hint: "Порог: остаток ниже этого числа в расчётах закупок может трактоваться как ноль (как настроено в закупках).",
-          },
         ];
 
         var row = document.createElement("div");
         row.className = "row g-3";
         defs.forEach(function (d) {
           var col = document.createElement("div");
-          col.className = "col-12 col-lg-4";
+          col.className = "col-12 col-lg-6";
           var wrap = document.createElement("div");
           wrap.className = "dg-prod-ov-field";
           var inner = document.createElement("div");
@@ -704,7 +698,7 @@
         }
         hidePurchaseOverrideMsg();
         var pending = [];
-        ["min_stock_dg", "multiplicity", "min_stock_calc_as"].forEach(function (key) {
+        ["min_stock_dg", "multiplicity"].forEach(function (key) {
           var el = document.getElementById("dg-prod-ov-" + key);
           var cur = el ? String(el.value).trim() : "";
           var orig = overrideFormSnap[key] != null ? String(overrideFormSnap[key]).trim() : "";

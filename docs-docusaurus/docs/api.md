@@ -68,7 +68,7 @@ description: Справочник REST-эндпоинтов p.datagon.ru (осн
 - `/api/exports/marketplaces` -> `routes/exportsMarketplaces.js`
 - `/api/exports/dimensions` -> `routes/dimensions.js`
 - `/api/ms-sales` -> `routes/msSales.js` (Продажи МС: отгрузки `entity/demand` + позиции с привязкой к `ms_export`)
-- `/api/purchase` -> `routes/purchase.js` (Закупки: `GET` список, `POST /override`, `POST /overrides-import`, журнал overrides: `GET /log`, `GET /log/stats`, `POST /log/cleanup`)
+- `/api/purchase` -> `routes/purchase.js` (Закупки: `GET` список, `GET /warmup-progress`, `POST /override`, `POST /overrides-import`, журнал overrides: `GET /log`, `GET /log/stats`, `POST /log/cleanup`)
 - `/api/product` -> `routes/product.js` (Карточка товара: `ms_export` + `ms_entity_details` + продажи + `dg_bundle_components`; лог отсутствий — пакетно после синка МС: `stock≤0` или для базового кода `stock` < min суффикса в `код-число`, см. `syncZeroStockLogAfterMoyskladExport`; снимки остатка по дням — `dg_product_stock_snapshot`, см. `syncProductStockSnapshotsAfterMoyskladExport` — оба вызываются из `routes/moysklad.js` после сохранения `ms_export`)
 - `/api/activity` -> `routes/activity.js`
 - `GET /api/processes/overview`, `POST /api/sync-all-start`, `POST /api/sync-site-start`, `GET /api/sync-status` -> `server.js`
@@ -517,6 +517,8 @@ Body:
 **Поле `min_stock`** (DECIMAL(15,3) NULL, миграция `ensureMsMinStockColumn`) — нативное поле МС API `product.minimumBalance` («Неснижаемый остаток»). Заполняется только для строк `type='Товар'`; для `type='Комплект'` хранится `NULL`, потому что у `bundle` в МС-схеме поле `minimumBalance` не задано. UI `/moysklad.html` рендерит колонку «Неснижаемый остаток» прямо перед «Остаток»; для `NULL` показывает «—», чтобы пользователь отличал «норматив не задан» от честного 0. Сортировка по полю поддерживается (входит в `allowedSortFields` API list-эндпоинта).
 
 Этап «Сохранение полных карточек МойСклад» (`ms_entity_details`) — потоковый: накапливается батч на 100 сущностей, тут же делается `INSERT ... ON DUPLICATE KEY UPDATE` и буфер обнуляется. Раньше функция сначала собирала `JSON.stringify` ВСЕХ сущностей в массив (`payload_json` под 280 МБ – 1 ГБ), и в паре с живым `all` в памяти Node уходил в OOM на боевом стенде ровно после успешного сохранения `ms_export`. Прогресс архивируется на круглых процентах (5 / 10 / … / 100) и при `processed === total`.
+
+Параллельно в таблицу пишутся узкие поля **`denorm_article`**, **`denorm_in_transit`**, **`denorm_pack_qty_auto`**, **`denorm_market_price_rub`** (вычисляются из той же сущности до сериализации в `payload_json`, см. `lib/datagonMsEntityPurchaseDenorm.js`), чтобы **`GET /api/purchase`** мог собирать строки без выборки `LONGTEXT payload_json` на весь отфильтрованный список. До следующего полного синка МС старые строки без denorm обновляются скриптом `scripts/backfill-ms-entity-denorm.mjs` (по желанию).
 
 ### GET `/api/ms/status`
 Проверить статус задачи синхронизации.
@@ -1401,7 +1403,7 @@ Body (JSON): `email`, `password` (обязательны), опциональн�
 
 ## Закупки
 
-Отдельная страница `/purchase.html` и роутер `routes/purchase.js`. Источник истины базовых полей — `ms_export` (синк МойСклад). Дополнительные **редактируемые поля** (Неснижаемый остаток Датагон, Кратность товара, Мин. остаток сч.как 0, поле `proposed_min_stock` в закупках, Кол-во в упаковке вручную) хранятся в отдельной таблице `dg_purchase_overrides`, чтобы синк МС не затирал ручные значения и схема `ms_export` оставалась стабильной. В списке `GET /api/purchase` дополнительно отдаётся **`formula_proposed_min_stock`** — расчёт «Формула продаж» (как на карточке товара), не путать с `proposed_min_stock` из overrides. **`min_stock_dg`** в опорный baseline формулы **не входит**; если в overrides задано число **> 0**, итоговое **`formula_proposed_min_stock`** (и **`formula.proposed_min_stock`** на карточке) **не ниже** этого значения — см. `applyMinStockDgFloor` в `lib/datagonSalesFormula.js`. Для окон **3 / 5 / 7 / 15 / 30 / 60 / 90 / 180 / 365** дней — поля **`d_3`, `d_5`, … `d_365a`**: сумма проданного количества (шт) за скользящие календарные дни (прямые отгрузки по коду + эквивалент через комплекты, для строк-комплектов только прямые). Поля **`d_15b`, `d_30b`, … `d_365b`** — число **разных календарных дат** с нулевым остатком в `dg_product_zero_stock_log` за последние N дн. (как на карточке товара). Поле **`in_transit`** — «в пути» из `payload_json.inTransit`, если есть.
+Отдельная страница `/purchase.html` и роутер `routes/purchase.js`. Источник истины базовых полей — `ms_export` (синк МойСклад). Дополнительные **редактируемые поля** (Неснижаемый остаток Датагон, Кратность товара, поле `proposed_min_stock` в закупках, Кол-во в упаковке вручную) хранятся в отдельной таблице `dg_purchase_overrides`, чтобы синк МС не затирал ручные значения и схема `ms_export` оставалась стабильной. В списке `GET /api/purchase` дополнительно отдаётся **`formula_proposed_min_stock`** — предлагаемый неснижаемый по формуле продаж (как **`formula.proposed_min_stock`** на `GET /api/product/:code`), не путать с `proposed_min_stock` из overrides. После открытия карточки товара в **`dg_formula_proposed_cache`** сохраняются **`proposed`** (уже с **`applyMinStockDgFloor`**) и **`windows_json`** — готовые **`d_15a`/`d_15b` … `d_365a`/`d_365b`** (см. `lib/datagonPurchaseWindowSnapshot.js`). При совпадении **`formula_fp` + `data_rev`** список закупок подставляет **`proposed`** без **`computeSalesFormula`** и **`windows_json`** без трёх тяжёлых агрегатов по окнам продаж/«дн. нет»; при промахе всё считается на лету, как раньше. Ревизия **`data_rev`** учитывает в т.ч. лог нулевых остатков и обновления **`dg_bundle_components`**, чтобы не отдавать устаревшие окна. **`min_stock_dg`** в опорный baseline формулы **не входит**; если в overrides задано число **> 0**, итоговое **`formula_proposed_min_stock`** (и **`formula.proposed_min_stock`** на карточке) **не ниже** этого значения — см. `applyMinStockDgFloor` в `lib/datagonSalesFormula.js`; при подстановке из кэша нижний порог по актуальному **`min_stock_dg`** в строке списка всё равно применяется в enrich. Для окон **15 / 30 / 60 / 90 / 180 / 365** дней — поля **`d_15a`, … `d_365a`**: сумма проданного количества (шт) за скользящие календарные дни (прямые отгрузки по коду + эквивалент через комплекты, для строк-комплектов только прямые). Поля **`d_15b`, `d_30b`, … `d_365b`** — число **разных календарных дат** с нулевым остатком в `dg_product_zero_stock_log` за последние N дн. (как на карточке товара). Поле **`in_transit`** — «в пути» из `payload_json.inTransit`, если есть.
 
 Сырые поля (`article`, `packagings`, `inTransit`) подмешиваются к строкам из `ms_entity_details.payload_json` (raw карточка из МС API).
 
@@ -1412,7 +1414,6 @@ CREATE TABLE dg_purchase_overrides (
   code VARCHAR(255) NOT NULL PRIMARY KEY,
   min_stock_dg DECIMAL(15,3) NULL,
   multiplicity DECIMAL(15,3) NULL,
-  min_stock_calc_as DECIMAL(15,3) NULL,
   proposed_min_stock DECIMAL(15,3) NULL,
   pack_qty_manual DECIMAL(15,3) NULL,
   note VARCHAR(500) NULL,
@@ -1422,9 +1423,25 @@ CREATE TABLE dg_purchase_overrides (
 
 Связь с `ms_export` — по `code` (то есть по коду товара МС, как в остальных интеграциях Datagon).
 
+### Таблица `dg_formula_proposed_cache`
+
+Кэш с карточки товара для списка закупок: **`proposed`** — «предлагаемый неснижаемый» после `applyMinStockDgFloor`; **`windows_json`** — снимок колонок **`d_15a`/`d_15b` … `d_365a`/`d_365b`** (та же логика, что `lib/datagonPurchaseWindowSnapshot.js` / enrich закупок). Запись создаётся/обновляется при успешном **`GET /api/product/:code`**. Колонки **`formula_fp`** и **`data_rev`** должны совпадать с запросом списка закупок, иначе строка не используется и значения пересчитываются.
+
+```sql
+CREATE TABLE dg_formula_proposed_cache (
+  code VARCHAR(255) NOT NULL PRIMARY KEY,
+  proposed DECIMAL(18,6) NULL,
+  formula_fp VARCHAR(768) NOT NULL DEFAULT '',
+  data_rev VARCHAR(768) NOT NULL DEFAULT '',
+  windows_json JSON NULL,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_dg_formula_cache_fp_rev (formula_fp(191), data_rev(191))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+```
+
 ### Таблица `dg_purchase_overrides_log`
 
-Журнал **только** для трёх полей: `min_stock_dg`, `multiplicity`, `min_stock_calc_as`. Запись добавляется при реальном изменении значения из UI (ячейка таблицы на `/purchase.html`, `source=override`) или при пакетном импорте CSV (`source=import`). Поля `changed_by_user_id` / `changed_by_name` заполняются из `req.datagonActor`, если он есть.
+Журнал **только** для полей: `min_stock_dg`, `multiplicity`. Запись добавляется при реальном изменении значения из UI (ячейка таблицы на `/purchase.html`, `source=override`) или при пакетном импорте CSV (`source=import`). Поля `changed_by_user_id` / `changed_by_name` заполняются из `req.datagonActor`, если он есть.
 
 ```sql
 CREATE TABLE dg_purchase_overrides_log (
@@ -1442,7 +1459,7 @@ CREATE TABLE dg_purchase_overrides_log (
 
 ### GET `/api/purchase/log`
 
-Query: **`code`** (обязателен), **`limit`** (default 100, max 500), **`offset`**, опционально **`field`** — фильтр по одному из трёх полей.
+Query: **`code`** (обязателен), **`limit`** (default 100, max 500), **`offset`**, опционально **`field`** — фильтр по одному из полей `min_stock_dg` / `multiplicity`.
 
 Ответ: `{ success, code, rows[], total, limit, offset }`. В каждой строке `rows` есть `field_label` (человекочитаемо).
 
@@ -1454,11 +1471,15 @@ Query: **`code`** (обязателен), **`limit`** (default 100, max 500), **
 
 Тело JSON: опционально `{ "days": N }`; если не передано — используется текущий retention из настроек. Ответ: `{ success, deleted, days }`.
 
+### GET `/api/purchase/warmup-progress`
+
+Состояние **фонового progressive-прогрева** in-memory снимков закупок после старта Node (если включён в настройках автосинка `auto_sync_purchase_warmup_enabled` или принудительно `PURCHASE_STARTUP_WARMUP=progressive`). Ответ: `{ success: true, running, preset_index, preset_total, label, done, total, pct, preset_started_at_ms, preset_elapsed_sec, finished_at_ms, progressive_run_started_ms }` (`progressive_run_started_ms` — время старта **текущего** прогона; после рестарта Node счётчик `preset_index` снова с 1, но к моменту открытия страницы шаг может быть уже >1). Дублируется в `GET /api/purchase` → `cache.warmup_progress` для первичной отрисовки баннера.
+
 ### GET `/api/purchase`
 
-Список товаров для планирования закупок. Для каждой строки сервер дополнительно считает **`formula_proposed_min_stock`** — предлагаемый неснижаемый по той же логике, что `GET /api/product/:code` → `formula.proposed_min_stock` (`lib/datagonSalesFormula.js`, окна из `app_settings`), с **нижним порогом** по **`min_stock_dg`**, если оно задано. Перед расчётом для **уникальных кодов текущей порции данных** прогревается кэш составов комплектов (`ensureBundleComponentsForProduct`, как на карточке), чтобы в сумму попали продажи через комплекты (`dg_bundle_components`); **повторный полный LIKE-скан по `ms_entity_details` пропускается**, если для кода кэш в БД свежий (порядка **8 ч** по `MAX(updated_at)` в `dg_bundle_components`) либо недавно подтверждён пустой состав для кода (**4 ч** негативный TTL в памяти процесса; прогрев не более **3** параллельных `ensure` на запрос — см. `routes/purchase.js`). Если в одном запросе обрабатывается **больше 600** уникальных кодов (типично сортировка по `formula_proposed_min_stock` по **всему** отфильтрованному каталогу), прогрев составов **пропускается** ради времени ответа — в этом редком режиме число может временно расходиться с карточкой до появления строк в `dg_bundle_components` (например после открытия карточки товара). Поле **`proposed_min_stock`** в ответе по-прежнему из **`dg_purchase_overrides`** (ручное значение «Предлаг. (закупки)» в UI).
+Список товаров для планирования закупок. Для каждой строки при совпадении **`formula_fp` + `data_rev`** из **`dg_formula_proposed_cache`** подставляются **`formula_proposed_min_stock`** (без повторного **`computeSalesFormula`**) и колонки **`d_15a`/`d_15b` … `d_365a`/`d_365b`** из **`windows_json`** без трёх тяжёлых SQL-агрегатов по окнам (см. `routes/purchase.js` → `skipHeavyPurchaseWindows`). Запись кэша создаётся при **`GET /api/product/:code`**. Иначе **`formula_proposed_min_stock`** считается по `lib/datagonSalesFormula.js`, **`d_*`** — как раньше из `ms_demand` / комплектов / `dg_product_zero_stock_log`. Перед расчётом для **уникальных кодов текущей порции данных** прогревается кэш составов комплектов (`ensureBundleComponentsForProduct`, как на карточке), чтобы в сумму попали продажи через комплекты (`dg_bundle_components`); **повторный полный LIKE-скан по `ms_entity_details` пропускается**, если для кода кэш в БД свежий (порядка **8 ч** по `MAX(updated_at)` в `dg_bundle_components`) либо недавно подтверждён пустой состав для кода (**4 ч** негативный TTL в памяти процесса; прогрев не более **3** параллельных `ensure` на запрос — см. `routes/purchase.js`). Если в одном запросе обрабатывается **больше 600** уникальных кодов (типично сортировка по `formula_proposed_min_stock` по **всему** отфильтрованному каталогу), прогрев составов **пропускается** ради времени ответа — в этом редком режиме число может временно расходиться с карточкой до появления строк в `dg_bundle_components` (например после открытия карточки товара). Поле **`proposed_min_stock`** в ответе по-прежнему из **`dg_purchase_overrides`** (ручное значение «Предлаг. (закупки)» в UI).
 
-**Кэш снимка (процесс Node):** один раз на **набор фильтров** (без `sort_by` / `sort_dir` / `limit` / `offset`), с «отпечатком» формулы из `app_settings` и **ревизией данных** (`MAX(updated_at)` по overrides, `MAX(synced_at)` / число строк `ms_export`, `MAX(updated_at)` по `ms_demand`). В памяти хранится полный обогащённый массив строк; **смена сортировки и страницы** — только sort/slice в RAM, без повторного enrich. TTL **~26 ч** (до следующего утреннего прогрева); в ответе **`cache`: `{ "source": "snapshot", "age_ms", "ttl_ms", "items" }`**. Ревизия меняется после синка МС / импорта продаж / правки overrides; кэш сбрасывается после **`POST /api/purchase/override`** и **`POST /api/purchase/overrides-import`**. **Автопрогрев:** задача `purchase_warmup` в автосинке (по умолчанию **08:00** МСК, `auto_sync_purchase_warmup_enabled` / `auto_sync_purchase_warmup_time`) — `warmupPurchaseListCaches({ force: true })`: снимки типовых фильтров + прогрев всех пар sort×dir в RAM; журнал `auto_sync_runs`, кнопка «Запустить сейчас» на `/settings.html`, `POST /api/settings/auto-sync-run` с `task: "purchase_warmup"`.
+**Кэш снимка (процесс Node):** один раз на **набор фильтров** (без `sort_by` / `sort_dir` / `limit` / `offset`), с «отпечатком» формулы из `app_settings` и **ревизией данных** (overrides / `ms_export` / `ms_demand`, плюс срез по логу нулевых остатков и **`dg_bundle_components`** — см. `lib/datagonFormulaProposedCache.js` → `loadPurchaseDataRevision`). В памяти хранится полный обогащённый массив строк; **смена сортировки и страницы** — только sort/slice в RAM, без повторного enrich. TTL **~26 ч** (до следующего утреннего прогрева); в ответе **`cache`: `{ "source": "snapshot", "age_ms", "ttl_ms", "items", "warmup_progress" }`** (`warmup_progress` — см. `GET /api/purchase/warmup-progress`). Ревизия меняется после синка МС / импорта продаж / правки overrides / изменений логов нулей или составов комплектов; кэш сбрасывается после **`POST /api/purchase/override`** и **`POST /api/purchase/overrides-import`**. **Автопрогрев:** задача `purchase_warmup` в автосинке (по умолчанию **08:00** МСК, `auto_sync_purchase_warmup_enabled` / `auto_sync_purchase_warmup_time`) — `warmupPurchaseListCaches({ force: true })`: снимки типовых фильтров + прогрев всех пар sort×dir в RAM; журнал `auto_sync_runs`, кнопка «Запустить сейчас» на `/settings.html`, `POST /api/settings/auto-sync-run` с `task: "purchase_warmup"`. После старта Node при включённом прогреве в настройках (и не `PURCHASE_STARTUP_WARMUP=0`) дополнительно запускается **progressive** прогрев пресетов в фоне (`runPurchaseStartupProgressiveWarmup`), см. `logs/purchase-cache.log`. Набор пресетов `PURCHASE_WARMUP_QUERY_PRESETS` в `routes/purchase.js` согласован с формой закупок: не более **одного** режима из группы «доп. фильтр» (`only_stock` / `include_bundles` / `zero_stock` / …) за раз, как в селекте на странице.
 
 **Фильтр по умолчанию (как в ТЗ страницы):**
 
@@ -1476,14 +1497,14 @@ Query:
 - `include_bundles` — `0` (default, исключить комплекты) | `1` (включить).
 - `only_stock` — `1` чтобы оставить только `stock > 0`.
 - `zero_stock` — `1`: остаток `stock ≤ 0` (нулевой / отрицательный в выгрузке МС).
-- `zero_stock_no_transit` — `1`: `stock ≤ 0` и «В пути» из `ms_entity_details.payload_json.inTransit` ≤ 0 (строки без ожидаемой поставки по карточке МС; при этом к лёгкому запросу сортировки по формуле подмешивается JOIN `ms_entity_details` только для этого условия).
+- `zero_stock_no_transit` — `1`: `stock ≤ 0` и «В пути» ≤ 0 (`COALESCE(ms_entity_details.denorm_in_transit, … JSON из payload …)`).
 - `no_multiplicity` — `1`: в `dg_purchase_overrides` кратность пустая или &lt; 1 шт.
 - `incomplete_pack` — `1`: кратность ≥ 1, `stock ≥ кратность` и остаток **не кратен** кратности (хвост после полных упаковок; `1` шт при кратности `2` **не** попадает). Базовый код с «код-число» и `stock < min(суффикс)` — отсутствие комплекта, в фильтр не входит.
 - `limit` (default 100, max 1000), `offset`.
-- `sort_by` — `code` (default), `article`, `name`, `supplier`, `buy_price`, `min_stock`, **`formula_proposed_min_stock`**, `automation_price`, `proposed_min_stock`, `min_stock_dg`, `multiplicity`, `min_stock_calc_as`, `stock`, `is_archived`, **`in_transit`**, **`d_3`**, **`d_5`**, **`d_7`**, **`d_15a`**, **`d_15b`**, **`d_30a`**, **`d_30b`**, **`d_60a`**, **`d_60b`**, **`d_90a`**, **`d_90b`**, **`d_180a`**, **`d_180b`**, **`d_365a`**, **`d_365b`**.
+- `sort_by` — `code` (default), `article`, `name`, `supplier`, `buy_price`, `min_stock`, **`formula_proposed_min_stock`**, `automation_price`, `proposed_min_stock`, `min_stock_dg`, `multiplicity`, `stock`, `is_archived`, **`in_transit`**, **`d_15a`**, **`d_15b`**, **`d_30a`**, **`d_30b`**, **`d_60a`**, **`d_60b`**, **`d_90a`**, **`d_90b`**, **`d_180a`**, **`d_180b`**, **`d_365a`**, **`d_365b`**.
 - `sort_dir` — `asc` (default) | `desc`.
 
-Для **`sort_by`** из перечисленных **вычисляемых** полей (`formula_proposed_min_stock`, `in_transit`, все `d_*`) сервер подтягивает **весь** отфильтрованный набор (без SQL `LIMIT`/`OFFSET`), **сортирует в памяти по всему набору**, затем применяет `limit`/`offset` к ответу. Для остальных `sort_by` сортировка и пагинация выполняются в SQL (быстрее на больших выборках). По нагрузке: при **`formula_proposed_min_stock`** для сортировки считается формула **по каждой** строке выборки; чтобы не гонять `payload_json` и агрегаты окон **3…365** по всему каталогу, используется **двухфазный** путь: лёгкий список без `ms_entity_details` + `mode: formula_only` для порядка сортировки (цена «маркет» в этой фазе не читается → `null`), затем для **текущей страницы** — полный SELECT с payload и `enrich` в `mode: all` (итоговые числа и `d_*` как при обычной пагинации). При **`in_transit`** и сортировке по **`d_*`** тяжёлые агрегаты продаж/лога отсутствий строятся по полному набору для порядка, а **`formula_proposed_min_stock`** в ответе — только для строк текущей страницы.
+Для **`sort_by`** из перечисленных **вычисляемых** полей (`formula_proposed_min_stock`, `in_transit`, все `d_*`) сервер подтягивает **весь** отфильтрованный набор (без SQL `LIMIT`/`OFFSET`), **сортирует в памяти по всему набору**, затем применяет `limit`/`offset` к ответу. Для остальных `sort_by` сортировка и пагинация выполняются в RAM по уже собранному снимку (базовый `ORDER BY` в SQL фиксирован). По нагрузке: **`in_transit`** — порядок по **`denorm_in_transit`** из того же лёгкого SELECT снимка (JOIN `ms_entity_details`), **без** чанкового обогащения всего каталога. **`formula_proposed_min_stock`** на больших выборках: чанки с **`enrichPurchaseRowsWithFormula` в `mode: formula_only`** (агрегаты для формулы, без тяжёлых карт окон **15…365** по `ms_demand` на весь набор; цена «маркет» — из **`denorm_market_price_rub`** / payload в чанке), затем для **текущей страницы** — обычный enrich в **`mode: all`**. Сортировка по **`d_*`**: чанки в **`mode: windows_only`** (окна продаж + «дн. нет» без пересчёта формулы по каждой строке), затем страница догоняется полным enrich.
 
 Ответ:
 
@@ -1507,13 +1528,12 @@ Query:
       "proposed_min_stock": null,
       "min_stock_dg": "5.000",
       "multiplicity": "10.000",
-      "min_stock_calc_as": null,
       "pack_qty": 6, "pack_qty_auto": 6, "pack_qty_manual": null,
       "stock": 42,
       "in_transit": 0,
       "no_longer_cooperation": "", "stock_position": "Да",
       "override_updated_at": "2026-05-12 19:01:23",
-      "d_3": 0, "d_5": 1.2, "d_7": 2, "d_15a": 4.5, "d_15b": 0, "d_30a": 12, "d_30b": 2,
+      "d_15a": 4.5, "d_15b": 0, "d_30a": 12, "d_30b": 2,
       "d_60a": 20, "d_60b": 3, "d_90a": 25, "d_90b": 4, "d_180a": 40, "d_180b": 5, "d_365a": 80, "d_365b": 8
     }
   ]
@@ -1536,28 +1556,28 @@ Query:
 { "code": "00-12345", "field": "min_stock_dg", "value": "5,5" }
 ```
 
-`field` ограничен whitelist'ом: `min_stock_dg` | `multiplicity` | `min_stock_calc_as` | `proposed_min_stock` | `pack_qty_manual`. Значения парсятся гибко (запятая = точка, пробелы игнорируются). Передача `value: ""` (или `null`) очищает поле в overrides (NULL).
+`field` ограничен whitelist'ом: `min_stock_dg` | `multiplicity` | `proposed_min_stock` | `pack_qty_manual`. Значения парсятся гибко (запятая = точка, пробелы игнорируются). Передача `value: ""` (или `null`) очищает поле в overrides (NULL).
 
-Для полей **`min_stock_dg`**, **`multiplicity`**, **`min_stock_calc_as`** при фактическом изменении значения сервер дополнительно пишет строку в **`dg_purchase_overrides_log`** (`source=override`).
+Для полей **`min_stock_dg`**, **`multiplicity`** при фактическом изменении значения сервер дополнительно пишет строку в **`dg_purchase_overrides_log`** (`source=override`).
 
 Ответ при успехе содержит `stored` — текущее состояние строки `dg_purchase_overrides` для этого `code`, что позволяет UI **верифицировать** реальное значение в БД (по правилу `datagon-settings-save-feedback.mdc`).
 
 ### POST `/api/purchase/overrides-import`
 
-Пакетное обновление **`min_stock_dg`**, **`multiplicity`**, **`min_stock_calc_as`** из CSV (тело JSON, до ~12 МБ). На странице `/purchase.html` кнопок импорта нет — вызов из скриптов, Postman или внутренних утилит.
+Пакетное обновление **`min_stock_dg`**, **`multiplicity`** из CSV (тело JSON, до ~12 МБ). На странице `/purchase.html` кнопок импорта нет — вызов из скриптов, Postman или внутренних утилит.
 
 ```json
-{ "csv": "Код;Нес.остаток Датагон;Кратность товара;Мин.Остаток сч.как 0\n00-1;10;2;0\n" }
+{ "csv": "Код;Нес.остаток Датагон;Кратность товара\n00-1;10;2\n" }
 ```
 
 - Первая строка — заголовки. Разделитель **`;`** или **`,`** выбирается по большинству в первой строке.
-- Обязательна колонка **кода** товара (`code`, `Код`, `артикул`, …). Должна присутствовать **хотя бы одна** из колонок трёх полей (русские подписи как в UI, в т.ч. **`Мин.Остаток сч.как 0`** для `min_stock_calc_as`).
+- Обязательна колонка **кода** товара (`code`, `Код`, `артикул`, …). Должна присутствовать **хотя бы одна** из колонок двух полей (русские подписи как в UI).
 - Пустая ячейка, `-` или `—` — записать **NULL** в соответствующее поле override для этой строки.
 - Строки с кодом, которого **нет** в `ms_export`, пропускаются (счётчик `skipped_unknown_code`, примеры в `unknown_codes_sample`).
 
 Ответ при успехе: `{ "success": true, "rows_read", "rows_upserted", "skipped_unknown_code", "unknown_codes_sample" }`. Ошибки разбора CSV — `400` с текстом, начинающимся с `CSV:` или `Слишком`.
 
-По каждой строке CSV и каждому из трёх полей, которое реально изменилось, добавляется запись в **`dg_purchase_overrides_log`** с `source=import` (при отсутствии актёра в запросе поля пользователя в логе могут быть пустыми).
+По каждой строке CSV и каждому из полей, которое реально изменилось, добавляется запись в **`dg_purchase_overrides_log`** с `source=import` (при отсутствии актёра в запросе поля пользователя в логе могут быть пустыми).
 
 ### Заметки
 
@@ -1676,7 +1696,7 @@ Query:
   },
   "override": {
     "code": "10148", "min_stock_dg": 5, "multiplicity": 10,
-    "min_stock_calc_as": null, "proposed_min_stock": null,
+    "proposed_min_stock": null,
     "pack_qty_manual": null, "note": null, "updated_at": "…"
   },
   "prices": [

@@ -2,6 +2,11 @@
 
 const { parseFormulaSettings, pickMarketPriceRub, computeSalesFormula, applyMinStockDgFloor } = require('../lib/datagonSalesFormula');
 const { mergeAbsenceDistinctForFormula } = require('../lib/datagonZeroStockAbsence');
+const { upsertFormulaProposedFromProduct } = require('../lib/datagonFormulaProposedCache');
+const {
+    computePurchaseWindowSnapshotForItems,
+    serializeWindowsSnapshot,
+} = require('../lib/datagonPurchaseWindowSnapshot');
 
 /** Срок хранения строк `dg_product_stock_snapshot` (дней); из `app_settings.product_stock_snapshot_retention_days`. */
 function clampProductStockSnapshotRetentionDays(raw) {
@@ -24,6 +29,9 @@ function clampProductStockSnapshotRetentionDays(raw) {
  *     Окно дат: query `sales_from`+`sales_to` (**календарные дни** по DATE(d.moment), без времени суток в query) или скользящее `recent_days`.
  *   • Override-поля (для блока «Закупки»: min_stock_dg, multiplicity, и т.д.) —
  *     из `dg_purchase_overrides`. Совместно с `routes/purchase.js`.
+ *   • Итог **`formula.proposed_min_stock`** после расчёта и снимок колонок закупок **`d_*`** (окна 15…365)
+ *     дублируются в **`dg_formula_proposed_cache`** (`proposed` + `windows_json`), чтобы `GET /api/purchase` мог подставить
+ *     готовые значения без повторных тяжёлых агрегатов.
  *   • Лог «нулевых остатков по складам» — отдельная таблица `dg_product_zero_stock_log`
  *     (см. ensureZeroStockSchema). Пока поддерживается общий лог (`store_uuid='__total__'`),
  *     место под пo-складскую разбивку зарезервировано (после расширения синка
@@ -1497,7 +1505,7 @@ function createProductRouter(db, appSettings) {
                     [code],
                 ),
                 db.query(
-                    `SELECT code, min_stock_dg, multiplicity, min_stock_calc_as,
+                    `SELECT code, min_stock_dg, multiplicity,
                             proposed_min_stock, pack_qty_manual, note, updated_at
                        FROM dg_purchase_overrides
                       WHERE code = ?
@@ -1666,6 +1674,21 @@ function createProductRouter(db, appSettings) {
                 );
             }
             formulaResult.proposed_min_stock = proposedFloored;
+
+            let windowsJson = null;
+            try {
+                const winMap = await computePurchaseWindowSnapshotForItems(db, [{ code, type: ms.type }]);
+                const winRow = winMap.get(code);
+                if (winRow) windowsJson = serializeWindowsSnapshot(winRow);
+            } catch (e) {
+                console.warn('[product] purchase windows snapshot:', (e && e.message) || e);
+            }
+
+            try {
+                await upsertFormulaProposedFromProduct(db, appSettings, code, proposedFloored, windowsJson);
+            } catch (e) {
+                console.warn('[product] dg_formula_proposed_cache upsert:', (e && e.message) || e);
+            }
 
             const formulaPayload = {
                 proposed_min_stock: formulaResult.proposed_min_stock,

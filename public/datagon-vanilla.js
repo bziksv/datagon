@@ -2128,7 +2128,85 @@
     });
   }
 
+  function initDatagonPurchaseWarmupHeaderIndicator() {
+    if (window.__dgPurchaseWarmHdr) return;
+    window.__dgPurchaseWarmHdr = true;
+    var wrap = document.getElementById("dg-global-purchase-warm-wrap");
+    var bar = document.getElementById("dg-global-purchase-warm-bar");
+    var labelEl = document.getElementById("dg-global-purchase-warm-label");
+    var countEl = document.getElementById("dg-global-purchase-warm-count");
+    if (!wrap || !bar) return;
+
+    var timer = 0;
+    function applyProgress(j) {
+      var running = Boolean(j && j.running);
+      var finishedAt = j && j.finished_at_ms != null ? Number(j.finished_at_ms) : 0;
+      var recentDone = finishedAt && Date.now() - finishedAt < 10000;
+      var show = running || recentDone;
+      wrap.style.display = show ? "flex" : "none";
+      if (!show) return;
+      var pct = Math.max(0, Math.min(100, Number((j && j.pct) || 0)));
+      bar.style.width = pct + "%";
+      if (labelEl) labelEl.textContent = running ? "Прогрев закупок…" : "Прогрев закупок";
+      if (countEl) {
+        var idx = Number((j && j.preset_index) || 0);
+        var tot = Number((j && j.preset_total) || 0);
+        var sub = String((j && j.label) || "").trim();
+        if (tot && sub) {
+          try {
+            if (new RegExp("^пресет\\s*" + idx + "\\s*/\\s*" + tot + "\\s*$", "i").test(sub)) sub = "";
+          } catch (eDedup) {}
+        }
+        if (tot) {
+          var runMs = j && j.progressive_run_started_ms != null ? Number(j.progressive_run_started_ms) : 0;
+          var since = "";
+          if (running && runMs > 0) {
+            try {
+              since =
+                " · с " +
+                new Date(runMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+            } catch (eT) {}
+          }
+          countEl.textContent =
+            "Шаг " +
+            idx +
+            "/" +
+            tot +
+            (sub ? " · " + sub : running ? " · типовые фильтры на сервере" : "") +
+            since;
+        } else {
+          countEl.textContent = sub || "—";
+        }
+      }
+    }
+
+    function tick() {
+      fetch("/api/purchase/warmup-progress", { credentials: "same-origin", headers: getAuthHeaders() })
+        .then(function (r) {
+          return r.json();
+        })
+        .then(function (j) {
+          if (!j || j.success === false) return;
+          applyProgress(j);
+          var running = Boolean(j.running);
+          var finishedAt = j.finished_at_ms != null ? Number(j.finished_at_ms) : 0;
+          var recentDone = finishedAt && Date.now() - finishedAt < 12000;
+          if (!running && !recentDone && timer) {
+            window.clearInterval(timer);
+            timer = 0;
+          }
+        })
+        .catch(function () {});
+    }
+
+    tick();
+    timer = window.setInterval(tick, 2500);
+  }
+
   window.addEventListener("datagon-profile-loaded", function () {
     initDatagonUiActivityTracking();
+    try {
+      initDatagonPurchaseWarmupHeaderIndicator();
+    } catch (eInd) {}
   });
 })();

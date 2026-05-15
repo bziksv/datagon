@@ -1,5 +1,6 @@
 const express = require('express');
 const axios = require('axios');
+const { computeMsEntityPurchaseDenorm } = require('../lib/datagonMsEntityPurchaseDenorm');
 const { syncZeroStockLogAfterMoyskladExport, syncProductStockSnapshotsAfterMoyskladExport } = require('./product');
 
 const router = express.Router();
@@ -366,6 +367,10 @@ async function ensureMsEntityDetailsTable(db) {
             name VARCHAR(500),
             payload_json LONGTEXT NOT NULL,
             source VARCHAR(32) NOT NULL DEFAULT 'sync',
+            denorm_article VARCHAR(512) NULL,
+            denorm_in_transit DECIMAL(18,6) NULL,
+            denorm_pack_qty_auto DECIMAL(18,6) NULL,
+            denorm_market_price_rub DECIMAL(18,4) NULL,
             fetched_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             INDEX idx_ms_entity_details_code (code),
@@ -373,6 +378,20 @@ async function ensureMsEntityDetailsTable(db) {
             INDEX idx_ms_entity_details_updated (updated_at)
         )
     `);
+    const alters = [
+        'ALTER TABLE ms_entity_details ADD COLUMN denorm_article VARCHAR(512) NULL',
+        'ALTER TABLE ms_entity_details ADD COLUMN denorm_in_transit DECIMAL(18,6) NULL',
+        'ALTER TABLE ms_entity_details ADD COLUMN denorm_pack_qty_auto DECIMAL(18,6) NULL',
+        'ALTER TABLE ms_entity_details ADD COLUMN denorm_market_price_rub DECIMAL(18,4) NULL',
+    ];
+    for (const sql of alters) {
+        try {
+            await db.query(sql);
+        } catch (e) {
+            const msg = String((e && e.message) || e);
+            if (!/Duplicate column name/i.test(msg)) throw e;
+        }
+    }
     msEntityDetailsTableReady = true;
 }
 
@@ -411,7 +430,8 @@ async function saveMoyskladEntityDetails(db, entities, source = 'sync', onProgre
     await ensureMsEntityDetailsTable(db);
     const chunkSize = 100;
     const safeSource = String(source || 'sync').slice(0, 32);
-    const insertSql = `INSERT INTO ms_entity_details (uuid, code, kind, name, payload_json, source)
+    const insertSql = `INSERT INTO ms_entity_details (uuid, code, kind, name, payload_json, source,
+            denorm_article, denorm_in_transit, denorm_pack_qty_auto, denorm_market_price_rub)
         VALUES ?
         ON DUPLICATE KEY UPDATE
            code = VALUES(code),
@@ -419,6 +439,10 @@ async function saveMoyskladEntityDetails(db, entities, source = 'sync', onProgre
            name = VALUES(name),
            payload_json = VALUES(payload_json),
            source = VALUES(source),
+           denorm_article = VALUES(denorm_article),
+           denorm_in_transit = VALUES(denorm_in_transit),
+           denorm_pack_qty_auto = VALUES(denorm_pack_qty_auto),
+           denorm_market_price_rub = VALUES(denorm_market_price_rub),
            fetched_at = CURRENT_TIMESTAMP`;
     // `total` оцениваем по входному списку (включая возможные пустые/без uuid).
     // Прогресс-лог: каждые ~5% или ~50 батчей (что чаще). На старте — сразу
@@ -460,7 +484,19 @@ async function saveMoyskladEntityDetails(db, entities, source = 'sync', onProgre
             payload = '';
         }
         if (!payload) continue;
-        buffer.push([uuid, code, kind, name, payload, safeSource]);
+        const dn = computeMsEntityPurchaseDenorm(entity);
+        buffer.push([
+            uuid,
+            code,
+            kind,
+            name,
+            payload,
+            safeSource,
+            dn.denorm_article,
+            dn.denorm_in_transit,
+            dn.denorm_pack_qty_auto,
+            dn.denorm_market_price_rub,
+        ]);
         if (buffer.length >= chunkSize) {
             await flush();
         }

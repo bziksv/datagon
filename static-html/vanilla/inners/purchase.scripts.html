@@ -9,7 +9,7 @@
       var PU_COLS = [
         ["code", "Код"],
         ["article", "Артикул", { center: true }],
-        ["name", "Наименование", { sortKey: "code" }],
+        ["name", "Наименование"],
         ["supplier_label", "Поставщик"],
         ["buy_price", "Закупочная цена", { center: true }],
         ["min_stock", "Неснижаемый остаток", { center: true }],
@@ -17,13 +17,9 @@
         ["automation_price", "Автоматизация цены", { center: true }],
         ["min_stock_dg", "Нес.остаток Датагон", { center: true, editable: true }],
         ["multiplicity", "Кратность товара", { center: true, editable: true }],
-        ["min_stock_calc_as", "Мин.Остаток сч.как 0", { center: true, editable: true }],
         ["pack_qty", "Кол-во в упаковке", { center: true }],
         ["stock", "Остаток", { center: true }],
         ["in_transit", "Ожидание", { center: true }],
-        ["d_3", "3", { center: true, puSub: "прод., шт" }],
-        ["d_5", "5", { center: true, puSub: "прод., шт" }],
-        ["d_7", "7", { center: true, puSub: "прод., шт" }],
         ["d_15a", "15", { center: true, puSub: "прод., шт" }],
         ["d_15b", "15", { center: true, puSub: "дн. нет" }],
         ["d_30a", "30", { center: true, puSub: "прод., шт" }],
@@ -44,9 +40,9 @@
       var SORTABLE = new Set([
         "code", "article", "name", "supplier", "buy_price",
         "min_stock", "formula_proposed_min_stock", "automation_price",
-        "min_stock_dg", "multiplicity", "min_stock_calc_as",
+        "min_stock_dg", "multiplicity",
         "stock", "is_archived", "in_transit",
-        "d_3", "d_5", "d_7", "d_15a", "d_15b", "d_30a", "d_30b",
+        "d_15a", "d_15b", "d_30a", "d_30b",
         "d_60a", "d_60b", "d_90a", "d_90b", "d_180a", "d_180b", "d_365a", "d_365b",
       ]);
 
@@ -66,13 +62,9 @@
         automation_price: 70,
         min_stock_dg: 70,
         multiplicity: 70,
-        min_stock_calc_as: 70,
         pack_qty: 70,
         stock: 80,
         in_transit: 60,
-        d_3: 60,
-        d_5: 60,
-        d_7: 60,
         d_15a: 60,
         d_15b: 60,
         d_30a: 60,
@@ -248,6 +240,9 @@
       var puLogModal = { code: "", name: "", offset: 0, limit: 100, total: 0, filterField: "" };
       var PURCHASE_LOG_SOURCE_LABELS = { override: "Ячейка", import: "Импорт CSV" };
       var loading = false;
+      var lastWarmupProgress = null;
+      var puWarmupTimer = 0;
+      var puWarmupDismissUntilDone = false;
       var columnWidths = {};
       var DEFAULT_VISIBLE_KEYS = PU_COLS.map(function (p) { return p[0]; });
       var visibleCols = new Set(DEFAULT_VISIBLE_KEYS);
@@ -506,7 +501,67 @@
         return parsed.toLocaleString("ru-RU") + " ₽";
       }
 
+      /** Один режим «Доп. фильтр» → те же query-параметры, что раньше у чекбоксов (взаимоисключающе). */
+      function readPuExtraFilterSelect() {
+        var sel = document.getElementById("pu-f-extra-filter");
+        return sel ? String(sel.value || "").trim() : "";
+      }
+
+      function extraFilterModeToFlags(mode) {
+        var o = {
+          only_stock: "0",
+          include_bundles: "0",
+          zero_stock: "0",
+          zero_stock_no_transit: "0",
+          no_multiplicity: "0",
+          incomplete_pack: "0",
+        };
+        switch (String(mode || "")) {
+          case "only_stock":
+            o.only_stock = "1";
+            break;
+          case "include_bundles":
+            o.include_bundles = "1";
+            break;
+          case "zero_stock":
+            o.zero_stock = "1";
+            break;
+          case "zero_stock_no_transit":
+            o.zero_stock_no_transit = "1";
+            break;
+          case "no_multiplicity":
+            o.no_multiplicity = "1";
+            break;
+          case "incomplete_pack":
+            o.incomplete_pack = "1";
+            break;
+          default:
+            break;
+        }
+        return o;
+      }
+
+      /**
+       * Восстановление селекта из URL: при нескольких флагах=1 (старые закладки) — приоритет «узкого» фильтра.
+       */
+      function syncPuExtraFilterFromUrlParams(params) {
+        var sel = document.getElementById("pu-f-extra-filter");
+        if (!sel) return;
+        function is1(k) {
+          return params.get(k) === "1";
+        }
+        var next = "";
+        if (is1("zero_stock_no_transit")) next = "zero_stock_no_transit";
+        else if (is1("zero_stock")) next = "zero_stock";
+        else if (is1("incomplete_pack")) next = "incomplete_pack";
+        else if (is1("no_multiplicity")) next = "no_multiplicity";
+        else if (is1("only_stock")) next = "only_stock";
+        else if (is1("include_bundles")) next = "include_bundles";
+        sel.value = next;
+      }
+
       function readFilters() {
+        var xf = extraFilterModeToFlags(readPuExtraFilterSelect());
         return {
           search: document.getElementById("pu-f-search").value.trim(),
           supplier: document.getElementById("pu-f-supplier").value.trim(),
@@ -514,12 +569,12 @@
           stock_position: document.getElementById("pu-f-stock_position").value,
           no_longer_cooperation: document.getElementById("pu-f-no_longer_cooperation").value,
           limit: Number(document.getElementById("pu-f-limit").value) || 100,
-          only_stock: document.getElementById("pu-only-stock").checked ? "1" : "0",
-          include_bundles: document.getElementById("pu-include-bundles").checked ? "1" : "0",
-          zero_stock: document.getElementById("pu-zero-stock").checked ? "1" : "0",
-          zero_stock_no_transit: document.getElementById("pu-zero-stock-no-transit").checked ? "1" : "0",
-          no_multiplicity: document.getElementById("pu-no-multiplicity").checked ? "1" : "0",
-          incomplete_pack: document.getElementById("pu-incomplete-pack").checked ? "1" : "0",
+          only_stock: xf.only_stock,
+          include_bundles: xf.include_bundles,
+          zero_stock: xf.zero_stock,
+          zero_stock_no_transit: xf.zero_stock_no_transit,
+          no_multiplicity: xf.no_multiplicity,
+          incomplete_pack: xf.incomplete_pack,
         };
       }
 
@@ -568,7 +623,18 @@
           params.set(k, String(v));
         });
         if (Number(page) > 1) params.set("page", String(page));
-        if (sortBy !== "code") params.set("sort_by", sortBy);
+        if (sortBy !== "code") {
+          var urlSortKey = sortBy;
+          try {
+            for (var colK in SORT_KEY_REMAP) {
+              if (Object.prototype.hasOwnProperty.call(SORT_KEY_REMAP, colK) && SORT_KEY_REMAP[colK] === sortBy) {
+                urlSortKey = colK;
+                break;
+              }
+            }
+          } catch (eSk) {}
+          params.set("sort_by", urlSortKey);
+        }
         if (sortDir !== "asc") params.set("sort_dir", sortDir);
         var next = params.toString()
           ? window.location.pathname + "?" + params.toString()
@@ -586,7 +652,7 @@
 
       function parseUrlToForm() {
         var params = new URLSearchParams(window.location.search);
-        var keys = ["limit", "archived", "stock_position", "no_longer_cooperation", "search", "supplier", "only_stock", "include_bundles", "zero_stock", "zero_stock_no_transit", "no_multiplicity", "incomplete_pack"];
+        var keys = ["limit", "archived", "stock_position", "no_longer_cooperation", "search", "supplier"];
         keys.forEach(function (k) {
           var v = params.get(k);
           if (v === null) return;
@@ -600,16 +666,12 @@
               document.getElementById("pu-f-no_longer_cooperation").value = v;
             }
           }
-          else if (k === "only_stock") document.getElementById("pu-only-stock").checked = v === "1";
-          else if (k === "include_bundles") document.getElementById("pu-include-bundles").checked = v === "1";
-          else if (k === "zero_stock") document.getElementById("pu-zero-stock").checked = v === "1";
-          else if (k === "zero_stock_no_transit") document.getElementById("pu-zero-stock-no-transit").checked = v === "1";
-          else if (k === "no_multiplicity") document.getElementById("pu-no-multiplicity").checked = v === "1";
-          else if (k === "incomplete_pack") document.getElementById("pu-incomplete-pack").checked = v === "1";
         });
+        syncPuExtraFilterFromUrlParams(params);
         var pg = Number(params.get("page") || 1);
         if (Number.isFinite(pg) && pg > 0) page = pg;
         var sb = params.get("sort_by");
+        if (sb === "supplier_label") sb = "supplier";
         if (sb && SORTABLE.has(sb)) sortBy = sb;
         var sd = params.get("sort_dir");
         if (sd === "asc" || sd === "desc") sortDir = sd;
@@ -984,7 +1046,7 @@
           return s;
         }
         if (
-          key === "d_3" || key === "d_5" || key === "d_7" || key === "d_15a" || key === "d_30a" ||
+          key === "d_15a" || key === "d_30a" ||
           key === "d_60a" || key === "d_90a" || key === "d_180a" || key === "d_365a"
         ) {
           var spSq = document.createElement("span");
@@ -1021,7 +1083,8 @@
         if (key === "in_transit") {
           var s3 = document.createElement("span");
           s3.textContent = (r.in_transit == null || r.in_transit === "") ? "—" : fmtPuSnapQty(r.in_transit);
-          s3.title = "В пути (inTransit) из карточки МС в ms_entity_details.payload_json.";
+          s3.title =
+            "В пути (inTransit) из карточки МС: в БД — ms_entity_details.denorm_in_transit; если пусто — из сохранённого payload_json (после синка/бэкафла denorm).";
           return s3;
         }
         if (key === "supplier_label") {
@@ -1309,6 +1372,109 @@
         });
       }
 
+      function stopPuWarmupPoll() {
+        if (puWarmupTimer) {
+          window.clearInterval(puWarmupTimer);
+          puWarmupTimer = 0;
+        }
+      }
+
+      function puWarmupProgressNeedsBanner(wp) {
+        if (!wp || puWarmupDismissUntilDone) return false;
+        if (wp.running) return true;
+        if (wp.finished_at_ms != null && Date.now() - Number(wp.finished_at_ms) < 8000) return true;
+        return false;
+      }
+
+      /** Убирает дублирование «4/28» + label «пресет 4/28» от бэкенда. */
+      function puWarmupDedupePresetLabel(idx, tot, label) {
+        var s = String(label || "").trim();
+        if (!tot || !s) return s;
+        try {
+          if (new RegExp("^пресет\\s*" + Number(idx) + "\\s*/\\s*" + Number(tot) + "\\s*$", "i").test(s)) return "";
+        } catch (e) {}
+        return s;
+      }
+
+      function updatePuWarmupBannerFromProgress(wp) {
+        lastWarmupProgress = wp || null;
+        var banner = document.getElementById("dg-pu-cache-warmup-banner");
+        var bar = document.getElementById("dg-pu-warmup-bar");
+        var badge = document.getElementById("dg-pu-warmup-badge");
+        var preset = document.getElementById("dg-pu-warmup-preset");
+        if (!banner) return;
+        var show = puWarmupProgressNeedsBanner(wp);
+        if (!show) {
+          banner.classList.add("d-none");
+          stopPuWarmupPoll();
+          return;
+        }
+        banner.classList.remove("d-none");
+        var pct = Math.max(0, Math.min(100, Number(wp && wp.pct != null ? wp.pct : 0)));
+        if (bar) {
+          bar.style.width = pct + "%";
+          bar.setAttribute("aria-valuenow", String(pct));
+        }
+        var idx = Number((wp && wp.preset_index) || 0);
+        var tot = Number((wp && wp.preset_total) || 0);
+        var labelRaw = wp && String(wp.label || "").trim();
+        var labelLine = puWarmupDedupePresetLabel(idx, tot, labelRaw);
+        var running = Boolean(wp && wp.running);
+        if (badge) {
+          if (tot) {
+            var bits = ["Шаг " + idx + " из " + tot];
+            if (labelLine) bits.push(labelLine);
+            else if (running) bits.push("сервер собирает кэш по типовым фильтрам");
+            badge.textContent = bits.join(" — ");
+          } else {
+            badge.textContent = labelRaw || (running ? "Идёт прогрев…" : "Готово");
+          }
+        }
+        if (preset) {
+          var sec = wp && typeof wp.preset_elapsed_sec === "number" ? Math.max(0, Math.floor(wp.preset_elapsed_sec)) : null;
+          var runMs = wp && wp.progressive_run_started_ms != null ? Number(wp.progressive_run_started_ms) : 0;
+          var runLine = "";
+          if (tot && running && runMs > 0) {
+            try {
+              runLine =
+                "Старт этого прогона: " +
+                new Date(runMs).toLocaleString() +
+                " (после рестарта Node — новый отсчёт). ";
+            } catch (eR) {}
+          }
+          if (tot && running) {
+            preset.textContent =
+              runLine +
+              (sec != null ? "На этом шаге уже " + sec + " с — если число растёт, Node занят, зависания нет. " : "") +
+              "Полоска % обновляется только между пресетами: внутри шага идёт тяжёлая сборка снимка и прогрев сортировок в памяти (на большом каталоге это минуты). " +
+              "«Шаг N из M» — сейчас обрабатывается N-й пресет. Фиксированный набор на сервере, не клики в форме. Подробности — logs/purchase-cache.log.";
+          } else if (tot && !running && labelRaw === "Готово") {
+            preset.textContent = "Типовые пресеты на сервере прогреты; сортировка и фильтры на странице к этому не привязаны.";
+          } else if (labelRaw && labelRaw.indexOf("Ошибка") === 0) {
+            preset.textContent = labelRaw;
+          } else {
+            preset.textContent = "Фоновый прогрев кэша на сервере (см. logs/purchase-cache.log).";
+          }
+        }
+      }
+
+      function schedulePuWarmupPoll() {
+        if (puWarmupTimer) return;
+        if (!puWarmupProgressNeedsBanner(lastWarmupProgress)) return;
+        puWarmupTimer = window.setInterval(function () {
+          fetch("/api/purchase/warmup-progress", { credentials: "same-origin" })
+            .then(function (r) {
+              return r.json();
+            })
+            .then(function (j) {
+              if (!j || j.success === false) return;
+              updatePuWarmupBannerFromProgress(j);
+              if (!puWarmupProgressNeedsBanner(j)) stopPuWarmupPoll();
+            })
+            .catch(function () {});
+        }, 2500);
+      }
+
       function loadData() {
         if (loading) return;
         loading = true;
@@ -1346,6 +1512,9 @@
             lastRows = Array.isArray(j.data) ? j.data : [];
             loading = false;
             setApplyResetDisabled(false);
+            var wp = j.cache && j.cache.warmup_progress ? j.cache.warmup_progress : null;
+            updatePuWarmupBannerFromProgress(wp);
+            if (puWarmupProgressNeedsBanner(wp)) schedulePuWarmupPoll();
             buildThead();
             renderTable(lastRows);
             updateTableHint();
@@ -1384,12 +1553,8 @@
         document.getElementById("pu-f-stock_position").value = "yes";
         document.getElementById("pu-f-no_longer_cooperation").value = "not_stopped";
         document.getElementById("pu-f-limit").value = "100";
-        document.getElementById("pu-only-stock").checked = false;
-        document.getElementById("pu-include-bundles").checked = false;
-        document.getElementById("pu-zero-stock").checked = false;
-        document.getElementById("pu-zero-stock-no-transit").checked = false;
-        document.getElementById("pu-no-multiplicity").checked = false;
-        document.getElementById("pu-incomplete-pack").checked = false;
+        var xfSel = document.getElementById("pu-f-extra-filter");
+        if (xfSel) xfSel.value = "";
         sortBy = "code";
         sortDir = "asc";
         page = 1;
@@ -1514,17 +1679,21 @@
               { key: "pu_supplier", title: "Поставщик", hint: "" },
               { key: "pu_archived", title: "Архивные", hint: "Активные / Архив / Все" },
               { key: "pu_stock_position", title: "Складская позиция", hint: "Да / Нет / Все" },
-              { key: "pu_no_longer_cooperation", title: "Перестали сотрудничать", hint: "Все / Нет / Да (как в МС)" },
               { key: "pu_limit", title: "На странице", hint: "" },
             ],
           },
           {
-            title: "Чекбоксы и кнопки",
+            title: "Перестали сотрудничать и доп. фильтр",
             subtitle: "",
             items: [
-              { key: "pu_filter_checks", title: "Чекбоксы (остаток, комплекты, нули, кратность)", hint: "" },
-              { key: "pu_filter_actions", title: "Кнопки действий", hint: "" },
+              { key: "pu_no_longer_cooperation", title: "Перестали сотрудничать", hint: "Все / Нет / Да (как в МС)" },
+              { key: "pu_extra_filter", title: "Доп. фильтр", hint: "Один режим: остаток, комплекты, нули, кратность, упаковка" },
             ],
+          },
+          {
+            title: "Кнопки",
+            subtitle: "",
+            items: [{ key: "pu_filter_actions", title: "Кнопки действий", hint: "" }],
           },
         ];
         if (window.DatagonFilterFieldsVisibility && window.DatagonFilterFieldsVisibility.init) {
@@ -1714,6 +1883,15 @@
 
       bindPurchaseCellTooltips();
       parseUrlToForm();
+      var puWarmupDismiss = document.getElementById("dg-pu-warmup-dismiss");
+      if (puWarmupDismiss) {
+        puWarmupDismiss.addEventListener("click", function () {
+          puWarmupDismissUntilDone = true;
+          stopPuWarmupPoll();
+          var b = document.getElementById("dg-pu-cache-warmup-banner");
+          if (b) b.classList.add("d-none");
+        });
+      }
       renderColumnControls();
       updatePuStickyTopVar();
       buildThead();
