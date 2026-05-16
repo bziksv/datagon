@@ -7,12 +7,64 @@
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <link rel="stylesheet" href="/static/css/main.989b22a9.css" />
     <style>
+    /* Паритет с my-products / moysklad: wide-таблица не раздувает main, горизонтальный скролл снаружи */
+    body.datagon-vanilla-body[data-dg-active-nav="suppliers"] .app-main__outer {
+      min-width: 0;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="suppliers"] .app-main__inner {
+      min-width: 0;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="suppliers"] .main-card.card {
+      min-width: 0;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="suppliers"] .main-card.card > .card-body {
+      min-width: 0;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
     .dg-sp-table { font-size: 0.8rem; line-height: 1.25; font-variant-numeric: tabular-nums; }
+    body.datagon-vanilla-body[data-dg-active-nav="suppliers"] .dg-sp-table-scroll-outer {
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+      box-sizing: border-box;
+      overflow-x: auto;
+      overflow-y: visible;
+      -webkit-overflow-scrolling: touch;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="suppliers"]
+      .dg-sp-table-scroll-outer
+      > .datagon-my-products-table-wrap.table-responsive {
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+      box-sizing: border-box;
+      overflow: visible !important;
+      max-height: none !important;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="suppliers"]
+      .dg-sp-table-scroll-outer
+      > .datagon-my-products-table-wrap.table-responsive,
+    body.datagon-vanilla-body[data-dg-active-nav="suppliers"]
+      .dg-sp-table-scroll-outer
+      > .datagon-my-products-table-wrap.table-responsive
+      > table {
+      transform: none !important;
+      filter: none !important;
+      perspective: none !important;
+    }
+    /* sticky top 0 + плавающий сдвиг transform на thead в JS (как dg-mp-table / moysklad) */
     .dg-sp-table thead th {
       position: sticky !important;
       top: 0 !important;
       z-index: 20 !important;
-      background: #ffffff !important;
+      background: #f8f9fa !important;
       border-right: 1px solid #e6e9ee !important;
       text-align: center;
       vertical-align: middle;
@@ -21,15 +73,13 @@
     }
     .dg-sp-table tbody td { border-right: 1px solid #f3f5f8; vertical-align: middle; }
     .dg-sp-table .dg-sp-sortable { cursor: pointer; }
-    .datagon-my-products-table-wrap.table-responsive {
-      overflow: visible !important;
-      max-height: none !important;
+    /* Плавающий сдвиг на tr внутри thead; sticky на th отключаем, чтобы не было двойного смещения */
+    .dg-sp-table thead[data-dg-floating="1"] th {
+      position: relative !important;
+      top: auto !important;
     }
-    .datagon-my-products-table-wrap.table-responsive,
-    .datagon-my-products-table-wrap.table-responsive > table {
-      transform: none !important;
-      filter: none !important;
-      perspective: none !important;
+    .dg-sp-table thead[data-dg-floating="1"] tr {
+      background: #f8f9fa;
     }
     .datagon-columns-toolbox {
       margin: 0 0 10px 0;
@@ -135,6 +185,71 @@
       cursor: default;
       pointer-events: none;
       text-decoration: none;
+    }
+
+    .dg-sp-data-freshness .dg-sp-fresh-card {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid #e5e7eb;
+      background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+      min-height: 88px;
+      height: 100%;
+    }
+    .dg-sp-fresh-card::before {
+      content: "";
+      flex-shrink: 0;
+      width: 4px;
+      align-self: stretch;
+      border-radius: 4px;
+      background: #94a3b8;
+    }
+    .dg-sp-fresh-card.dg-sp-fresh-ok::before { background: #22c55e; }
+    .dg-sp-fresh-card.dg-sp-fresh-stale::before { background: #f59e0b; }
+    .dg-sp-fresh-card.dg-sp-fresh-running::before { background: #3b82f6; }
+    .dg-sp-fresh-card.dg-sp-fresh-failed::before { background: #ef4444; }
+    .dg-sp-fresh-card.dg-sp-fresh-unknown::before { background: #94a3b8; }
+    .dg-sp-fresh-icon {
+      flex-shrink: 0;
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.1rem;
+    }
+    .dg-sp-fresh-ok .dg-sp-fresh-icon { background: #dcfce7; color: #15803d; }
+    .dg-sp-fresh-stale .dg-sp-fresh-icon { background: #fef3c7; color: #b45309; }
+    .dg-sp-fresh-running .dg-sp-fresh-icon { background: #dbeafe; color: #1d4ed8; }
+    .dg-sp-fresh-failed .dg-sp-fresh-icon { background: #fee2e2; color: #b91c1c; }
+    .dg-sp-fresh-unknown .dg-sp-fresh-icon { background: #f1f5f9; color: #64748b; }
+    .dg-sp-fresh-title {
+      font-size: 0.8125rem;
+      font-weight: 600;
+      color: #1e293b;
+      line-height: 1.3;
+      margin-bottom: 4px;
+    }
+    .dg-sp-fresh-when {
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: #0f172a;
+      margin-bottom: 2px;
+    }
+    .dg-sp-fresh-meta {
+      font-size: 0.75rem;
+      color: #64748b;
+      line-height: 1.35;
+    }
+    .dg-sp-fresh-badge {
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
     }
 
     .dg-sp-analytics-hero {
@@ -1007,6 +1122,14 @@
             </div>
           </div>
 
+          <div class="dg-sp-data-freshness mb-3" id="dg-sp-data-freshness" aria-label="Актуальность данных МойСклад и продаж">
+            <div class="row g-2" id="dg-sp-data-freshness-row">
+              <div class="col-12">
+                <p class="text-muted small mb-0" id="dg-sp-data-freshness-loading">Проверяем актуальность данных…</p>
+              </div>
+            </div>
+          </div>
+
           <div class="dg-sp-analytics mb-2" id="dg-sp-analytics" aria-label="Сводка по привязанным сотрудникам">
             <div class="main-card card dg-sp-analytics-hero border-0 shadow-sm overflow-hidden">
               <div class="dg-sp-analytics-hero-bg" aria-hidden="true"></div>
@@ -1114,10 +1237,17 @@
             </div>
             <div class="card-body" id="dg-sp-filters-body">
               <div class="row g-2 align-items-end">
-                <div class="col-md-6">
+                <div class="col-md-5">
                   <label class="form-label" for="sp-f-search">Умный поиск</label>
                   <input type="text" class="form-control" id="sp-f-search" placeholder="Название поставщика" autocomplete="off"
                          data-dg-tooltip="Поиск по названию поставщика. Enter — применить." />
+                </div>
+                <div class="col-md-5">
+                  <label class="form-label" for="sp-f-assignee">Привязан сотрудник</label>
+                  <select class="form-select" id="sp-f-assignee" data-dg-tooltip="Только сотрудники, уже привязанные хотя бы к одному поставщику. Применить — обновить таблицу и сводку.">
+                    <option value="">Все</option>
+                    <option value="none">(не назначен)</option>
+                  </select>
                 </div>
                 <div class="col-md-2">
                   <label class="form-label" for="sp-f-limit">На странице</label>
@@ -1185,9 +1315,9 @@
                   <div id="dg-sp-widths-list" class="dg-sp-widths-grid"></div>
                 </div>
               </div>
-              <div id="dg-sp-table-scroll-outer" style="width:100%;max-width:100%;overflow-x:auto;overflow-y:visible;-webkit-overflow-scrolling:touch">
+              <div id="dg-sp-table-scroll-outer" class="dg-sp-table-scroll-outer" style="width:100%;max-width:100%;min-width:0;overflow-x:auto;overflow-y:visible;-webkit-overflow-scrolling:touch">
                 <div class="table-responsive datagon-my-products-table-wrap" style="display:block;width:100%;max-width:100%;min-width:0;overflow:visible;position:relative">
-                  <table class="table table-hover table-striped mb-0 datagon-my-products-table dg-sp-table" style="width:max-content;min-width:1200px;max-width:none;table-layout:fixed;border-collapse:collapse;border-spacing:0">
+                  <table id="dg-sp-table-main" class="table table-hover table-striped mb-0 datagon-my-products-table dg-sp-table" style="width:max-content;min-width:1200px;max-width:none;table-layout:fixed;border-collapse:collapse;border-spacing:0">
                     <thead id="dg-sp-thead"></thead>
                     <tbody id="dg-sp-tbody"></tbody>
                   </table>
@@ -1363,19 +1493,157 @@
 
       var state = {
         search: "",
+        assigned_user: "",
         limit: 100,
         offset: 0,
         sort_by: "supplier_name",
         sort_dir: "asc",
-        pending: { search: "" },
+        pending: { search: "", assigned_user: "" },
         total: 0,
         rows: [],
         assignees: [],
+        filterAssignees: [],
         loading: false,
       };
 
       var sortBy = "supplier_name";
       var sortDir = "asc";
+
+      var FLOATING_HEADER_OFFSET_PX = 2;
+      var FLOATING_HEADER_START_EPS_PX = 3;
+      var spFloatingHeaderRaf = 0;
+      var spFloatingLastScrollTs = 0;
+
+      function updateSpStickyTopVar() {
+        var app = document.querySelector(".app-container");
+        var header = document.querySelector(".app-header");
+        var fixed = Boolean(app && app.classList && app.classList.contains("fixed-header"));
+        var top = 0;
+        if (fixed && header && header.getBoundingClientRect) {
+          var rect = header.getBoundingClientRect();
+          top = rect && rect.height ? rect.height : 60;
+        }
+        document.documentElement.style.setProperty("--dg-table-sticky-top", top + "px");
+      }
+
+      function getSpStickyTopPx() {
+        var app = document.querySelector(".app-container");
+        var header = document.querySelector(".app-header");
+        var fixed = Boolean(app && app.classList && app.classList.contains("fixed-header"));
+        if (!fixed) return 0;
+        if (!header || !header.getBoundingClientRect) return 60;
+        var rect = header.getBoundingClientRect();
+        var h = rect && rect.height ? rect.height : 60;
+        return h > 0 ? h : 60;
+      }
+
+      function clearSpHeaderFloatStyles(thead, row) {
+        if (!thead) return;
+        thead.style.transform = "";
+        thead.style.position = "";
+        thead.style.zIndex = "";
+        thead.style.willChange = "";
+        thead.removeAttribute("data-dg-floating");
+        if (!row) return;
+        row.style.transform = "";
+        row.style.position = "";
+        row.style.zIndex = "";
+        row.style.willChange = "";
+      }
+
+      function captureSpTheadBaseTop() {
+        var thead = document.getElementById("dg-sp-thead");
+        if (!thead) return;
+        var row = thead.querySelector("tr");
+        if (!row) return;
+        clearSpHeaderFloatStyles(thead, row);
+        var rect = row.getBoundingClientRect();
+        var absTop =
+          (window.scrollY || window.pageYOffset || 0) + (rect && rect.top ? rect.top : 0);
+        thead.setAttribute("data-dg-base-top", String(absTop));
+      }
+
+      function updateSpFloatingHeaderFallback() {
+        var thead = document.getElementById("dg-sp-thead");
+        if (!thead) return;
+        var table = thead.closest("table");
+        if (!table || !table.getBoundingClientRect) return;
+        var row = thead.querySelector("tr");
+        if (!row) return;
+
+        var y = window.scrollY || window.pageYOffset || 0;
+        var headerTop = getSpStickyTopPx();
+        var tableRect = table.getBoundingClientRect();
+        var tableBottom = tableRect.bottom + y;
+        var rowRect = row.getBoundingClientRect();
+        var rowHeight = rowRect && rowRect.height ? rowRect.height : 0;
+        var isFloating = thead.getAttribute("data-dg-floating") === "1" || !!row.style.transform;
+
+        /* Пока шапка не «плывёт», держим base-top в актуальном месте (графики аналитики
+           подгружаются позже renderTable и сдвигают таблицу — иначе shift завышен). */
+        if (!isFloating) {
+          var liveBase = y + (rowRect && rowRect.top ? rowRect.top : 0);
+          if (Number.isFinite(liveBase) && liveBase > 0) {
+            thead.setAttribute("data-dg-base-top", String(liveBase));
+          }
+        }
+
+        var baseTopAbs = Number(thead.getAttribute("data-dg-base-top") || 0);
+        if (!Number.isFinite(baseTopAbs) || baseTopAbs <= 0) return;
+
+        var headerLine = y + headerTop;
+        var start = baseTopAbs + FLOATING_HEADER_START_EPS_PX;
+        var end = tableBottom - rowHeight;
+        if (headerLine <= start || headerLine >= end) {
+          if (row.style.transform || thead.getAttribute("data-dg-floating")) {
+            clearSpHeaderFloatStyles(thead, row);
+          }
+          return;
+        }
+
+        var zoomAwareOffset = FLOATING_HEADER_OFFSET_PX;
+        var dpr = window.devicePixelRatio || 1;
+        if (Math.abs(dpr - 1) < 0.03) zoomAwareOffset = FLOATING_HEADER_OFFSET_PX - 3;
+        var shift = Math.max(0, headerLine - start - zoomAwareOffset);
+        var shiftPx = Number(shift.toFixed(3));
+        var nextTransform = "translate3d(0," + shiftPx + "px,0)";
+        if (row.style.transform !== nextTransform) {
+          thead.style.transform = "";
+          thead.style.position = "";
+          thead.style.zIndex = "";
+          thead.style.willChange = "";
+          row.style.transform = nextTransform;
+          row.style.position = "relative";
+          row.style.zIndex = "25";
+          row.style.willChange = "transform";
+          thead.setAttribute("data-dg-floating", "1");
+        }
+      }
+
+      function spFloatingHeaderTick(ts) {
+        spFloatingHeaderRaf = 0;
+        updateSpFloatingHeaderFallback();
+        if (ts - spFloatingLastScrollTs < 140) {
+          spFloatingHeaderRaf = requestAnimationFrame(spFloatingHeaderTick);
+        }
+      }
+
+      function scheduleSpFloatingHeaderUpdate() {
+        spFloatingLastScrollTs = performance.now();
+        if (spFloatingHeaderRaf) return;
+        spFloatingHeaderRaf = requestAnimationFrame(spFloatingHeaderTick);
+      }
+
+      function onScrollSpFloatingHeader() {
+        scheduleSpFloatingHeaderUpdate();
+      }
+
+      function spRefreshFloatingAfterLayout() {
+        requestAnimationFrame(function () {
+          captureSpTheadBaseTop();
+          scheduleSpFloatingHeaderUpdate();
+        });
+      }
 
       function spAuthHeaders(withJson) {
         var headers = {};
@@ -1788,6 +2056,9 @@
                 },
               },
             });
+            requestAnimationFrame(function () {
+              spRefreshFloatingAfterLayout();
+            });
           })
           .catch(function (e) {
             var hint = document.getElementById("dg-sp-analytics-hint");
@@ -1806,12 +2077,132 @@
         renderAnalyticsCharts(assigneeRows, supplierRows);
       }
 
+      function freshStatusClass(status) {
+        var s = String(status || "unknown");
+        if (s === "ok" || s === "stale" || s === "running" || s === "failed") return "dg-sp-fresh-" + s;
+        return "dg-sp-fresh-unknown";
+      }
+
+      function freshStatusIcon(status) {
+        if (status === "ok") return "✓";
+        if (status === "stale") return "!";
+        if (status === "running") return "↻";
+        if (status === "failed") return "✕";
+        return "?";
+      }
+
+      function freshStatusBadge(status) {
+        if (status === "ok") return '<span class="badge bg-success dg-sp-fresh-badge">Сегодня</span>';
+        if (status === "stale") return '<span class="badge bg-warning text-dark dg-sp-fresh-badge">Внимание</span>';
+        if (status === "running") return '<span class="badge bg-primary dg-sp-fresh-badge">Идёт</span>';
+        if (status === "failed") return '<span class="badge bg-danger dg-sp-fresh-badge">Ошибка</span>';
+        return '<span class="badge bg-secondary dg-sp-fresh-badge">Нет данных</span>';
+      }
+
+      function renderDataFreshness(payload) {
+        var row = document.getElementById("dg-sp-data-freshness-row");
+        var loading = document.getElementById("dg-sp-data-freshness-loading");
+        if (!row) return;
+        if (loading) loading.remove();
+        var sources = (payload && payload.sources) || [];
+        if (!sources.length) {
+          row.innerHTML =
+            '<div class="col-12"><p class="text-muted small mb-0">Не удалось получить сведения об обновлении данных.</p></div>';
+          return;
+        }
+        row.innerHTML = sources
+          .map(function (src) {
+            var st = src.status || "unknown";
+            var cls = freshStatusClass(st);
+            var when = src.finished_at_msk
+              ? "Обновлено: " + src.finished_at_msk + " (МСК)"
+              : "Дата последнего обновления неизвестна";
+            var meta = [];
+            if (src.trigger_label) meta.push("Запуск: " + src.trigger_label);
+            if (st === "running") meta.push("Синхронизация выполняется…");
+            if (src.key === "moysklad" && src.detail && src.detail.zero_stock_log_batch_at_msk) {
+              meta.push("Журнал нулевых остатков: " + src.detail.zero_stock_log_batch_at_msk + " (МСК)");
+            }
+            if (src.key !== "moysklad" && src.detail && src.detail.ms_demand_max_updated_at) {
+              var d = src.detail.ms_demand_max_updated_at;
+              try {
+                d = new Date(d).toLocaleString("ru-RU", {
+                  timeZone: "Europe/Moscow",
+                  day: "2-digit",
+                  month: "2-digit",
+                  year: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                });
+              } catch (e) {}
+              meta.push("Последняя отгрузка в данных: до " + d + " (МСК)");
+            }
+            if (src.message_short && st !== "ok") meta.push(src.message_short);
+            var title = String(src.title || "").replace(/</g, "&lt;");
+            return (
+              '<div class="col-lg-6">' +
+              '<article class="dg-sp-fresh-card ' +
+              cls +
+              '" data-dg-sp-fresh-key="' +
+              String(src.key || "").replace(/"/g, "") +
+              '">' +
+              '<div class="dg-sp-fresh-icon" aria-hidden="true">' +
+              freshStatusIcon(st) +
+              "</div>" +
+              '<div class="flex-grow-1 min-width-0">' +
+              '<div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-1">' +
+              '<div class="dg-sp-fresh-title">' +
+              title +
+              "</div>" +
+              freshStatusBadge(st) +
+              "</div>" +
+              '<div class="dg-sp-fresh-when">' +
+              when.replace(/</g, "&lt;") +
+              "</div>" +
+              (meta.length
+                ? '<div class="dg-sp-fresh-meta">' + meta.map(function (m) { return m.replace(/</g, "&lt;"); }).join(" · ") + "</div>"
+                : "") +
+              "</div>" +
+              "</article></div>"
+            );
+          })
+          .join("");
+        requestAnimationFrame(function () {
+          spRefreshFloatingAfterLayout();
+        });
+      }
+
+      function loadDataFreshness() {
+        return fetch("/api/suppliers/data-freshness", {
+          credentials: "same-origin",
+          headers: spAuthHeaders(false),
+        })
+          .then(function (r) {
+            if (!r.ok) throw new Error("HTTP " + r.status);
+            return r.json();
+          })
+          .then(function (j) {
+            if (!j || j.success === false) throw new Error((j && j.error) || "Ошибка");
+            renderDataFreshness(j);
+          })
+          .catch(function (e) {
+            var row = document.getElementById("dg-sp-data-freshness-row");
+            if (row) {
+              row.innerHTML =
+                '<div class="col-12"><p class="text-danger small mb-0">Актуальность данных: ' +
+                String(e.message || e).replace(/</g, "&lt;") +
+                "</p></div>";
+            }
+          });
+      }
+
       function loadAnalytics() {
         if (analyticsState.loading) return Promise.resolve();
         analyticsState.loading = true;
         setAnalyticsLoading(true);
         var p = new URLSearchParams();
         if (state.search) p.set("search", state.search);
+        if (state.assigned_user) p.set("assigned_user", state.assigned_user);
         return fetch("/api/suppliers/analytics?" + p.toString(), {
           credentials: "same-origin",
           headers: spAuthHeaders(false),
@@ -1832,6 +2223,7 @@
           .finally(function () {
             analyticsState.loading = false;
             setAnalyticsLoading(false);
+            spRefreshFloatingAfterLayout();
           });
       }
 
@@ -2408,7 +2800,9 @@
       function syncDirtyApply() {
         var btn = document.getElementById("sp-apply");
         if (!btn) return;
-        var dirty = String(state.pending.search || "") !== String(state.search || "");
+        var dirty =
+          String(state.pending.search || "") !== String(state.search || "") ||
+          String(state.pending.assigned_user || "") !== String(state.assigned_user || "");
         btn.classList.toggle("dg-flt-dirty", dirty);
         if (dirty && btn.textContent.indexOf("•") < 0) {
           btn.innerHTML = '<i class="pe-7s-search me-1"></i>Применить •';
@@ -2420,6 +2814,8 @@
       function readPendingFromDom() {
         var el = document.getElementById("sp-f-search");
         state.pending.search = el ? String(el.value || "").trim() : "";
+        var asg = document.getElementById("sp-f-assignee");
+        state.pending.assigned_user = asg ? String(asg.value || "") : "";
         var lim = document.getElementById("sp-f-limit");
         if (lim) state.pending.limit = parseInt(lim.value, 10) || 100;
       }
@@ -2427,6 +2823,7 @@
       function commitFilters() {
         readPendingFromDom();
         state.search = state.pending.search;
+        state.assigned_user = state.pending.assigned_user;
         state.limit = state.pending.limit || 100;
         state.offset = 0;
         syncDirtyApply();
@@ -2466,15 +2863,60 @@
         return SORT_KEY_REMAP[sortBy] || sortBy;
       }
 
-      function loadAssignees() {
-        return fetch("/api/suppliers/assignees", { credentials: "same-origin", headers: spAuthHeaders(false) })
+      function populateAssigneeFilter() {
+        var sel = document.getElementById("sp-f-assignee");
+        if (!sel) return;
+        var cur = state.pending.assigned_user != null ? String(state.pending.assigned_user) : "";
+        sel.innerHTML =
+          '<option value="">Все</option><option value="none">(не назначен)</option>';
+        (state.filterAssignees || []).forEach(function (u) {
+          var o = document.createElement("option");
+          o.value = String(u.id);
+          o.textContent = u.label || u.full_name || u.username || "ID " + u.id;
+          sel.appendChild(o);
+        });
+        if (cur && Array.prototype.some.call(sel.options, function (opt) { return opt.value === cur; })) {
+          sel.value = cur;
+        } else if (cur && cur !== "none") {
+          var orphan = document.createElement("option");
+          orphan.value = cur;
+          orphan.textContent = "ID " + cur;
+          sel.appendChild(orphan);
+          sel.value = cur;
+        } else {
+          sel.value = "";
+          if (cur !== "none") state.pending.assigned_user = "";
+        }
+      }
+
+      function loadFilterAssignees() {
+        return fetch("/api/suppliers/assignees?scope=assigned", {
+          credentials: "same-origin",
+          headers: spAuthHeaders(false),
+        })
           .then(function (r) { return r.json(); })
           .then(function (j) {
-            state.assignees = (j && j.data) || [];
+            state.filterAssignees = (j && j.data) || [];
+            populateAssigneeFilter();
           })
           .catch(function () {
-            state.assignees = [];
+            state.filterAssignees = [];
+            populateAssigneeFilter();
           });
+      }
+
+      function loadAssignees() {
+        return Promise.all([
+          fetch("/api/suppliers/assignees", { credentials: "same-origin", headers: spAuthHeaders(false) })
+            .then(function (r) { return r.json(); })
+            .then(function (j) {
+              state.assignees = (j && j.data) || [];
+            })
+            .catch(function () {
+              state.assignees = [];
+            }),
+          loadFilterAssignees(),
+        ]);
       }
 
       function load() {
@@ -2487,6 +2929,7 @@
         p.set("sort_by", apiSortKey());
         p.set("sort_dir", sortDir);
         if (state.search) p.set("search", state.search);
+        if (state.assigned_user) p.set("assigned_user", state.assigned_user);
         fetch("/api/suppliers?" + p.toString(), { credentials: "same-origin", headers: spAuthHeaders(false) })
           .then(function (r) {
             if (!r.ok) throw new Error("HTTP " + r.status);
@@ -2546,6 +2989,7 @@
           patchSupplier(row.supplier_key, { assigned_user_id: v })
             .then(function () {
               row.assigned_user_id = v;
+              loadFilterAssignees();
               loadAnalytics();
               if (window.DatagonNotify && window.DatagonNotify.toast) {
                 window.DatagonNotify.toast({ type: "success", message: "Сотрудник сохранён" });
@@ -2776,6 +3220,9 @@
       }
 
       function renderTable() {
+        var theadEl = document.getElementById("dg-sp-thead");
+        var rowEl = theadEl && theadEl.querySelector("tr");
+        if (theadEl && rowEl) clearSpHeaderFloatStyles(theadEl, rowEl);
         buildThead();
         var tbody = document.getElementById("dg-sp-tbody");
         if (!tbody) return;
@@ -2789,6 +3236,7 @@
           td0.textContent = "Нет поставщиков по текущим условиям.";
           tr0.appendChild(td0);
           tbody.appendChild(tr0);
+          spRefreshFloatingAfterLayout();
           return;
         }
         state.rows.forEach(function (row, idx) {
@@ -2805,6 +3253,7 @@
           });
           tbody.appendChild(tr);
         });
+        spRefreshFloatingAfterLayout();
       }
 
       function columnControls() {
@@ -2974,12 +3423,38 @@
         function apply() {
           body.style.display = collapsed ? "none" : "";
           btn.textContent = collapsed ? "Развернуть" : "Свернуть";
+          var thead = document.getElementById("dg-sp-thead");
+          var row = thead && thead.querySelector("tr");
+          if (thead && row) clearSpHeaderFloatStyles(thead, row);
+          requestAnimationFrame(function () {
+            spRefreshFloatingAfterLayout();
+          });
         }
         apply();
         btn.addEventListener("click", function () {
           collapsed = !collapsed;
           try { window.localStorage.setItem(key, collapsed ? "1" : "0"); } catch (e) {}
           apply();
+        });
+      }
+
+      function bindSpLayoutRefreshObservers() {
+        if (typeof ResizeObserver === "undefined") return;
+        var debounce = 0;
+        function onLayoutAboveTable() {
+          if (debounce) clearTimeout(debounce);
+          debounce = setTimeout(function () {
+            debounce = 0;
+            spRefreshFloatingAfterLayout();
+          }, 80);
+        }
+        var ro = new ResizeObserver(onLayoutAboveTable);
+        [
+          document.getElementById("dg-sp-analytics"),
+          document.getElementById("dg-sp-data-freshness"),
+          document.getElementById("dg-sp-filters-body"),
+        ].forEach(function (el) {
+          if (el) ro.observe(el);
         });
       }
 
@@ -3018,6 +3493,7 @@
           collapsed = !collapsed;
           try { window.localStorage.setItem(key, collapsed ? "1" : "0"); } catch (e) {}
           apply();
+          if (!collapsed) spRefreshFloatingAfterLayout();
         });
       }
 
@@ -3059,14 +3535,21 @@
         var reset = document.getElementById("sp-reset");
         var refresh = document.getElementById("sp-refresh");
         if (apply) apply.addEventListener("click", commitFilters);
-        if (refresh) refresh.addEventListener("click", load);
+        if (refresh) refresh.addEventListener("click", function () {
+          loadDataFreshness();
+          load();
+        });
         if (reset) reset.addEventListener("click", function () {
           var main = document.getElementById("sp-f-search");
           var mirror = document.getElementById("dg-sp-table-search-mirror");
           if (main) main.value = "";
           if (mirror) mirror.value = "";
           state.pending.search = "";
+          state.pending.assigned_user = "";
           state.search = "";
+          state.assigned_user = "";
+          var asg = document.getElementById("sp-f-assignee");
+          if (asg) asg.value = "";
           state.offset = 0;
           syncLimitUi(100);
           syncDirtyApply();
@@ -3075,6 +3558,11 @@
         var search = document.getElementById("sp-f-search");
         if (search) search.addEventListener("input", function () {
           state.pending.search = String(search.value || "").trim();
+          syncDirtyApply();
+        });
+        var assignee = document.getElementById("sp-f-assignee");
+        if (assignee) assignee.addEventListener("change", function () {
+          state.pending.assigned_user = String(assignee.value || "");
           syncDirtyApply();
         });
       }
@@ -3091,13 +3579,35 @@
         bindActions();
         bindAnalyticsUi();
         bindAnalyticsCollapse();
+        bindSpLayoutRefreshObservers();
         bindHeaderSearchMirror();
         bindFiltersCollapse();
         bindTableCardCollapse();
         bindPagination();
         bindSupplierMsOrderLogModal();
         columnControls();
+        updateSpStickyTopVar();
+        window.addEventListener("scroll", onScrollSpFloatingHeader, { passive: true });
+        window.addEventListener("resize", function () {
+          updateSpStickyTopVar();
+          spRefreshFloatingAfterLayout();
+        });
+        (function bindSpScrollContainers() {
+          var mainOuter = document.querySelector(".app-main__outer");
+          if (mainOuter && mainOuter.addEventListener) {
+            mainOuter.addEventListener("scroll", onScrollSpFloatingHeader, { passive: true });
+          }
+          var horiz = document.querySelector(".dg-sp-table-scroll-outer");
+          if (horiz && horiz.addEventListener) {
+            horiz.addEventListener("scroll", onScrollSpFloatingHeader, { passive: true });
+          }
+        })();
+        if (document.fonts && document.fonts.ready) {
+          document.fonts.ready.then(spRefreshFloatingAfterLayout).catch(function () {});
+        }
+        window.addEventListener("load", spRefreshFloatingAfterLayout);
         state.pending.search = "";
+        loadDataFreshness();
         loadAssignees().then(function () { load(); });
       });
     })();

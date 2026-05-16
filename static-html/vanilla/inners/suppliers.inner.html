@@ -15,6 +15,14 @@
             </div>
           </div>
 
+          <div class="dg-sp-data-freshness mb-3" id="dg-sp-data-freshness" aria-label="Актуальность данных МойСклад и продаж">
+            <div class="row g-2" id="dg-sp-data-freshness-row">
+              <div class="col-12">
+                <p class="text-muted small mb-0" id="dg-sp-data-freshness-loading">Проверяем актуальность данных…</p>
+              </div>
+            </div>
+          </div>
+
           <div class="dg-sp-analytics mb-2" id="dg-sp-analytics" aria-label="Сводка по привязанным сотрудникам">
             <div class="main-card card dg-sp-analytics-hero border-0 shadow-sm overflow-hidden">
               <div class="dg-sp-analytics-hero-bg" aria-hidden="true"></div>
@@ -122,10 +130,17 @@
             </div>
             <div class="card-body" id="dg-sp-filters-body">
               <div class="row g-2 align-items-end">
-                <div class="col-md-6">
+                <div class="col-md-5">
                   <label class="form-label" for="sp-f-search">Умный поиск</label>
                   <input type="text" class="form-control" id="sp-f-search" placeholder="Название поставщика" autocomplete="off"
                          data-dg-tooltip="Поиск по названию поставщика. Enter — применить." />
+                </div>
+                <div class="col-md-5">
+                  <label class="form-label" for="sp-f-assignee">Привязан сотрудник</label>
+                  <select class="form-select" id="sp-f-assignee" data-dg-tooltip="Только сотрудники, уже привязанные хотя бы к одному поставщику. Применить — обновить таблицу и сводку.">
+                    <option value="">Все</option>
+                    <option value="none">(не назначен)</option>
+                  </select>
                 </div>
                 <div class="col-md-2">
                   <label class="form-label" for="sp-f-limit">На странице</label>
@@ -193,9 +208,9 @@
                   <div id="dg-sp-widths-list" class="dg-sp-widths-grid"></div>
                 </div>
               </div>
-              <div id="dg-sp-table-scroll-outer" style="width:100%;max-width:100%;overflow-x:auto;overflow-y:visible;-webkit-overflow-scrolling:touch">
+              <div id="dg-sp-table-scroll-outer" class="dg-sp-table-scroll-outer" style="width:100%;max-width:100%;min-width:0;overflow-x:auto;overflow-y:visible;-webkit-overflow-scrolling:touch">
                 <div class="table-responsive datagon-my-products-table-wrap" style="display:block;width:100%;max-width:100%;min-width:0;overflow:visible;position:relative">
-                  <table class="table table-hover table-striped mb-0 datagon-my-products-table dg-sp-table" style="width:max-content;min-width:1200px;max-width:none;table-layout:fixed;border-collapse:collapse;border-spacing:0">
+                  <table id="dg-sp-table-main" class="table table-hover table-striped mb-0 datagon-my-products-table dg-sp-table" style="width:max-content;min-width:1200px;max-width:none;table-layout:fixed;border-collapse:collapse;border-spacing:0">
                     <thead id="dg-sp-thead"></thead>
                     <tbody id="dg-sp-tbody"></tbody>
                   </table>

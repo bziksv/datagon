@@ -1448,21 +1448,29 @@ Body (JSON): `email`, `password` (обязательны), опциональн�
 
 **Позиция «к закупке» (шт):** `max(0, target − stock − in_transit)`, где `target = COALESCE(proposed_min_stock override, formula cache, min_stock МС)`. **Сумма закупки:** сумма `need_qty × buy_price` по строкам с `need_qty > 0`. **Наполняемость % (Кол-во Несн/Несниж сумм./Ост.факт/%):** в ячейке `кол-во SKU с неснижаемым &gt; 0 / Σ неснижаемый (шт) / Σ остаток факт (шт) / %`; неснижаемый на SKU = `COALESCE(override, кэш формулы, min_stock МС)`; `%` = `100 × Σ остаток ÷ Σ неснижаемый`. Подсветка: &lt;70% — красный, 70–90% — жёлтый, ≥90% — зелёный.
 
+### GET `/api/suppliers/data-freshness`
+
+Свежесть данных для плашки над блоком «Команда и закупки» на `/suppliers.html`. Без query.
+
+Ответ: `{ success, as_of_msk, sources: [{ key, title, status: ok|stale|running|failed|unknown, is_today_msk, finished_at_msk, trigger_label, message_short, detail }] }` — два источника: `moysklad` (каталог/остатки МС + журнал нулевых остатков; технически `ms_export` + `dg_product_zero_stock_log`, по `auto_sync_runs` и `MAX(synced_at)` / `MAX(created_at)`), `mssales` или `mssales_full` (импорт отгрузок; подпись `title`: «Продажи МойСклад: отгрузки за период» / «…полная выгрузка отгрузок»). **ok** — обновление было **сегодня** по календарю **МСК**; иначе **stale** (внимание).
+
 ### GET `/api/suppliers/analytics`
 
-Сводка для дашборда на `/suppliers.html` (без пагинации, те же критерии отбора поставщиков, что в списке). Query: `search` (опционально, как в списке).
+Сводка для дашборда на `/suppliers.html` (без пагинации, те же критерии отбора поставщиков, что в списке). Query: `search`, `assigned_user` (опционально, как в списке).
 
 Ответ: `{ success, totals: { … }, by_assignee: [{ assignee_id, assignee_label, … }], by_supplier: [{ supplier_key, supplier_label, products_total, products_to_purchase, total_purchase_sum, … }] }` — `by_supplier` — топ **30** поставщиков по `total_purchase_sum` (для диаграммы «Распределение по поставщикам»; переключатель метрик на фронте применяется к обеим bar-диаграммам).
 
 ### GET `/api/suppliers`
 
-Query: `search`, `limit` (default 100), `offset`, `sort_by` (`supplier_name`, `products_total`, `products_to_purchase`, `total_purchase_sum`, `min_purchase_sum`, `warehouse_fill_pct`, `stock_fill_pct`, `assigned_user_name`), `sort_dir`.
+Query: `search`, `assigned_user` (опционально: пусто — все; `none` — без привязки; иначе `id` пользователя из `/assignees`), `limit` (default 100), `offset`, `sort_by` (`supplier_name`, `products_total`, `products_to_purchase`, `total_purchase_sum`, `min_purchase_sum`, `warehouse_fill_pct`, `stock_fill_pct`, `assigned_user_name`), `sort_dir`.
 
 Ответ: `{ success, data[], total, limit, offset, applied_filters, cache? }`. В каждой строке: агрегаты + поля из `dg_supplier_settings` + `stock_fill_pct_computed`.
 
 ### GET `/api/suppliers/assignees`
 
-Список пользователей `{ id, username, full_name, label }` для select «Привязан сотрудник».
+Список пользователей `{ id, username, full_name, label }` для select «Привязан сотрудник» в таблице.
+
+Query: `scope` — `all` (по умолчанию, все пользователи) или `assigned` / `in_use` (только те, у кого уже есть привязка к поставщику из каталога страницы — для фильтра на `/suppliers.html`).
 
 ### PATCH `/api/suppliers/:supplierKey`
 

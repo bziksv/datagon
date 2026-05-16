@@ -1,10 +1,62 @@
   <style>
+    /* Паритет с my-products / moysklad: wide-таблица не раздувает main, горизонтальный скролл снаружи */
+    body.datagon-vanilla-body[data-dg-active-nav="suppliers"] .app-main__outer {
+      min-width: 0;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="suppliers"] .app-main__inner {
+      min-width: 0;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="suppliers"] .main-card.card {
+      min-width: 0;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="suppliers"] .main-card.card > .card-body {
+      min-width: 0;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
     .dg-sp-table { font-size: 0.8rem; line-height: 1.25; font-variant-numeric: tabular-nums; }
+    body.datagon-vanilla-body[data-dg-active-nav="suppliers"] .dg-sp-table-scroll-outer {
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+      box-sizing: border-box;
+      overflow-x: auto;
+      overflow-y: visible;
+      -webkit-overflow-scrolling: touch;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="suppliers"]
+      .dg-sp-table-scroll-outer
+      > .datagon-my-products-table-wrap.table-responsive {
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+      box-sizing: border-box;
+      overflow: visible !important;
+      max-height: none !important;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="suppliers"]
+      .dg-sp-table-scroll-outer
+      > .datagon-my-products-table-wrap.table-responsive,
+    body.datagon-vanilla-body[data-dg-active-nav="suppliers"]
+      .dg-sp-table-scroll-outer
+      > .datagon-my-products-table-wrap.table-responsive
+      > table {
+      transform: none !important;
+      filter: none !important;
+      perspective: none !important;
+    }
+    /* sticky top 0 + плавающий сдвиг transform на thead в JS (как dg-mp-table / moysklad) */
     .dg-sp-table thead th {
       position: sticky !important;
       top: 0 !important;
       z-index: 20 !important;
-      background: #ffffff !important;
+      background: #f8f9fa !important;
       border-right: 1px solid #e6e9ee !important;
       text-align: center;
       vertical-align: middle;
@@ -13,15 +65,13 @@
     }
     .dg-sp-table tbody td { border-right: 1px solid #f3f5f8; vertical-align: middle; }
     .dg-sp-table .dg-sp-sortable { cursor: pointer; }
-    .datagon-my-products-table-wrap.table-responsive {
-      overflow: visible !important;
-      max-height: none !important;
+    /* Плавающий сдвиг на tr внутри thead; sticky на th отключаем, чтобы не было двойного смещения */
+    .dg-sp-table thead[data-dg-floating="1"] th {
+      position: relative !important;
+      top: auto !important;
     }
-    .datagon-my-products-table-wrap.table-responsive,
-    .datagon-my-products-table-wrap.table-responsive > table {
-      transform: none !important;
-      filter: none !important;
-      perspective: none !important;
+    .dg-sp-table thead[data-dg-floating="1"] tr {
+      background: #f8f9fa;
     }
     .datagon-columns-toolbox {
       margin: 0 0 10px 0;
@@ -127,6 +177,71 @@
       cursor: default;
       pointer-events: none;
       text-decoration: none;
+    }
+
+    .dg-sp-data-freshness .dg-sp-fresh-card {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid #e5e7eb;
+      background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+      min-height: 88px;
+      height: 100%;
+    }
+    .dg-sp-fresh-card::before {
+      content: "";
+      flex-shrink: 0;
+      width: 4px;
+      align-self: stretch;
+      border-radius: 4px;
+      background: #94a3b8;
+    }
+    .dg-sp-fresh-card.dg-sp-fresh-ok::before { background: #22c55e; }
+    .dg-sp-fresh-card.dg-sp-fresh-stale::before { background: #f59e0b; }
+    .dg-sp-fresh-card.dg-sp-fresh-running::before { background: #3b82f6; }
+    .dg-sp-fresh-card.dg-sp-fresh-failed::before { background: #ef4444; }
+    .dg-sp-fresh-card.dg-sp-fresh-unknown::before { background: #94a3b8; }
+    .dg-sp-fresh-icon {
+      flex-shrink: 0;
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.1rem;
+    }
+    .dg-sp-fresh-ok .dg-sp-fresh-icon { background: #dcfce7; color: #15803d; }
+    .dg-sp-fresh-stale .dg-sp-fresh-icon { background: #fef3c7; color: #b45309; }
+    .dg-sp-fresh-running .dg-sp-fresh-icon { background: #dbeafe; color: #1d4ed8; }
+    .dg-sp-fresh-failed .dg-sp-fresh-icon { background: #fee2e2; color: #b91c1c; }
+    .dg-sp-fresh-unknown .dg-sp-fresh-icon { background: #f1f5f9; color: #64748b; }
+    .dg-sp-fresh-title {
+      font-size: 0.8125rem;
+      font-weight: 600;
+      color: #1e293b;
+      line-height: 1.3;
+      margin-bottom: 4px;
+    }
+    .dg-sp-fresh-when {
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: #0f172a;
+      margin-bottom: 2px;
+    }
+    .dg-sp-fresh-meta {
+      font-size: 0.75rem;
+      color: #64748b;
+      line-height: 1.35;
+    }
+    .dg-sp-fresh-badge {
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
     }
 
     .dg-sp-analytics-hero {

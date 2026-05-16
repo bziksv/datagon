@@ -5,6 +5,7 @@
  *
  * GET  /api/suppliers           — список поставщиков (пагинация, поиск, сортировка)
  * GET  /api/suppliers/analytics — сводка по привязанным сотрудникам (для дашборда на странице)
+ * GET  /api/suppliers/data-freshness — свежесть ms_export / журнала нулевых остатков и продаж МС (МСК)
  * GET  /api/suppliers/assignees — id / имя пользователей для привязки сотрудника
  * GET  /api/suppliers/ms-order-log — журнал отправок заказов в МС
  * GET  /api/suppliers/ms-order-log/:logId — детали попытки (detail_json.steps)
@@ -32,6 +33,7 @@ const {
     exportFilename,
     sendExcelCsv,
 } = require('../lib/datagonSupplierExport');
+const { loadSuppliersDataFreshness } = require('../lib/datagonSuppliersDataFreshness');
 
 const SUPPLIERS_LIST_CACHE_TTL_MS = 90 * 1000;
 const SUPPLIERS_ANALYTICS_CACHE_TTL_MS = 90 * 1000;
@@ -101,8 +103,9 @@ function normalizeSupplierKey(raw) {
 function buildListCacheKey(req) {
     const q = req.query || {};
     return JSON.stringify({
-        v: 2,
+        v: 3,
         search: String(q.search || '').trim().toLowerCase(),
+        assigned_user: normalizeAssignedUserFilter(q.assigned_user),
         limit: String(q.limit || '100'),
         offset: String(q.offset || '0'),
         sort_by: String(q.sort_by || 'supplier_name'),
@@ -110,12 +113,22 @@ function buildListCacheKey(req) {
     });
 }
 
+/** @returns {string|null} `none` | user id | null (все) */
+function normalizeAssignedUserFilter(raw) {
+    const s = String(raw ?? '').trim();
+    if (!s || s === 'all') return null;
+    if (s === 'none' || s === '0' || s === '__unassigned__') return 'none';
+    const id = parseInt(s, 10);
+    if (Number.isFinite(id) && id > 0) return String(id);
+    return null;
+}
+
 function invalidateSuppliersListCache() {
     suppliersListCache.clear();
     suppliersAnalyticsCache.clear();
 }
 
-function buildSupplierOuterWhere(search) {
+function buildSupplierOuterWhere(search, assignedUserRaw) {
     const outerWhere = ['1=1'];
     const params = [];
     const normalized = String(search || '').trim().toLowerCase();
@@ -123,17 +136,26 @@ function buildSupplierOuterWhere(search) {
         outerWhere.push('LOWER(agg.supplier_name) LIKE ?');
         params.push(`%${normalized}%`);
     }
+    const assignedUser = normalizeAssignedUserFilter(assignedUserRaw);
+    if (assignedUser === 'none') {
+        outerWhere.push('ss.assigned_user_id IS NULL');
+    } else if (assignedUser) {
+        outerWhere.push('ss.assigned_user_id = ?');
+        params.push(Number(assignedUser));
+    }
     return {
         whereSql: outerWhere.join(' AND '),
         params,
         search: normalized || null,
+        assigned_user: assignedUser,
     };
 }
 
-function buildAnalyticsCacheKey(search) {
+function buildAnalyticsCacheKey(search, assignedUserRaw) {
     return JSON.stringify({
-        v: 3,
+        v: 4,
         search: String(search || '').trim().toLowerCase(),
+        assigned_user: normalizeAssignedUserFilter(assignedUserRaw),
     });
 }
 
@@ -325,14 +347,40 @@ function mapSupplierRow(r) {
 module.exports = function suppliersRouterFactory(db, appSettings = {}) {
     const router = express.Router();
 
-    router.get('/assignees', async (_req, res) => {
+    router.get('/data-freshness', async (_req, res) => {
+        try {
+            const payload = await loadSuppliersDataFreshness(db);
+            res.json(payload);
+        } catch (e) {
+            console.error('[suppliers] data-freshness', e);
+            res.status(500).json({ success: false, error: e.message || 'Ошибка свежести данных' });
+        }
+    });
+
+    router.get('/assignees', async (req, res) => {
         try {
             await ensureSuppliersSchema(db);
-            const [rows] = await db.query(
-                `SELECT id, username, full_name
-                   FROM users
-                  ORDER BY COALESCE(NULLIF(TRIM(full_name), ''), username) ASC`,
-            );
+            const scope = String(req.query.scope || 'all').trim().toLowerCase();
+            let rows;
+            if (scope === 'assigned' || scope === 'in_use') {
+                const dataRev = await loadPurchaseDataRevision(db);
+                const formulaFp = buildFormulaFingerprint(appSettings);
+                const aggSql = buildSupplierAggregatesSubquery(formulaFp, dataRev);
+                [rows] = await db.query(
+                    `SELECT DISTINCT u.id, u.username, u.full_name
+                       FROM (${aggSql}) agg
+                      INNER JOIN dg_supplier_settings ss ON ss.supplier_key = agg.supplier_key
+                      INNER JOIN users u ON u.id = ss.assigned_user_id
+                      WHERE ss.assigned_user_id IS NOT NULL
+                      ORDER BY COALESCE(NULLIF(TRIM(u.full_name), ''), u.username) ASC`,
+                );
+            } else {
+                [rows] = await db.query(
+                    `SELECT id, username, full_name
+                       FROM users
+                      ORDER BY COALESCE(NULLIF(TRIM(full_name), ''), username) ASC`,
+                );
+            }
             res.json({
                 data: (rows || []).map((u) => ({
                     id: u.id,
@@ -357,6 +405,7 @@ module.exports = function suppliersRouterFactory(db, appSettings = {}) {
             }
 
             const search = String(req.query.search || '').trim();
+            const assignedUserRaw = req.query.assigned_user;
             let limit = parseInt(req.query.limit, 10);
             if (!Number.isFinite(limit) || limit < 1) limit = 100;
             if (limit > 500) limit = 500;
@@ -370,7 +419,12 @@ module.exports = function suppliersRouterFactory(db, appSettings = {}) {
             const dataRev = await loadPurchaseDataRevision(db);
             const formulaFp = buildFormulaFingerprint(appSettings);
             const aggSql = buildSupplierAggregatesSubquery(formulaFp, dataRev);
-            const { whereSql, params, search: searchApplied } = buildSupplierOuterWhere(search);
+            const {
+                whereSql,
+                params,
+                search: searchApplied,
+                assigned_user: assignedUserApplied,
+            } = buildSupplierOuterWhere(search, assignedUserRaw);
             const orderSql = buildOrderBy(sortBy, sortDesc);
 
             const countSql = `
@@ -427,7 +481,7 @@ module.exports = function suppliersRouterFactory(db, appSettings = {}) {
                 offset,
                 sort_by: sortBy,
                 sort_dir: sortDesc ? 'desc' : 'asc',
-                applied_filters: { search: searchApplied },
+                applied_filters: { search: searchApplied, assigned_user: assignedUserApplied },
                 cache: { hit: false },
             };
             suppliersListCache.set(cacheKey, { ts: Date.now(), payload });
@@ -443,7 +497,8 @@ module.exports = function suppliersRouterFactory(db, appSettings = {}) {
         try {
             await ensureSuppliersSchema(db);
             const search = String(req.query.search || '').trim();
-            const cacheKey = buildAnalyticsCacheKey(search);
+            const assignedUserRaw = req.query.assigned_user;
+            const cacheKey = buildAnalyticsCacheKey(search, assignedUserRaw);
             const cached = suppliersAnalyticsCache.get(cacheKey);
             if (cached && Date.now() - cached.ts < SUPPLIERS_ANALYTICS_CACHE_TTL_MS) {
                 return res.json({ ...cached.payload, cache: { hit: true, age_ms: Date.now() - cached.ts } });
@@ -452,7 +507,12 @@ module.exports = function suppliersRouterFactory(db, appSettings = {}) {
             const dataRev = await loadPurchaseDataRevision(db);
             const formulaFp = buildFormulaFingerprint(appSettings);
             const aggSql = buildSupplierAggregatesSubquery(formulaFp, dataRev);
-            const { whereSql, params, search: searchApplied } = buildSupplierOuterWhere(search);
+            const {
+                whereSql,
+                params,
+                search: searchApplied,
+                assigned_user: assignedUserApplied,
+            } = buildSupplierOuterWhere(search, assignedUserRaw);
 
             const byAssigneeSql = `
                 SELECT
@@ -533,7 +593,7 @@ module.exports = function suppliersRouterFactory(db, appSettings = {}) {
             const bySupplier = (supplierRows || []).map(mapAnalyticsSupplierRow);
             const payload = {
                 success: true,
-                applied_filters: { search: searchApplied },
+                applied_filters: { search: searchApplied, assigned_user: assignedUserApplied },
                 totals: {
                     suppliers_count: Number(t.suppliers_count || 0),
                     products_total: Number(t.products_total || 0),
