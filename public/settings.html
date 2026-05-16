@@ -959,6 +959,27 @@
                   <input type="number" class="form-control" id="dg-set-sales_formula_expensive_rare_min_qty" min="0" step="1" />
                 </div>
                 <div class="col-12"><hr class="my-1 text-muted opacity-50" /></div>
+                <div class="col-12 dg-set-formula-tt" data-dg-tooltip="Какие отгрузки МС учитывать при расчёте «Формулы продаж» (сумма продаж, упущенные, колонки d_*a в закупках). Графики на карточке товара и раздел «Продажи МС» не меняются.">
+                  <label class="form-label d-block mb-2">Учёт продаж для формулы (проекты МС)</label>
+                  <div class="form-check mb-1">
+                    <input class="form-check-input" type="radio" name="dg-set-sales_formula_project_mode" id="dg-set-sales_formula_project_mode_all" value="all" checked />
+                    <label class="form-check-label" for="dg-set-sales_formula_project_mode_all">Все проекты отгрузок</label>
+                  </div>
+                  <div class="form-check mb-2">
+                    <input class="form-check-input" type="radio" name="dg-set-sales_formula_project_mode" id="dg-set-sales_formula_project_mode_selected" value="selected" />
+                    <label class="form-check-label" for="dg-set-sales_formula_project_mode_selected">Только выбранные проекты</label>
+                  </div>
+                  <div id="dg-set-sales-formula-projects-wrap" class="border rounded p-2 bg-light d-none" style="max-height: 220px; overflow: auto">
+                    <div class="d-flex flex-wrap gap-2 mb-2">
+                      <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-set-sales-formula-projects-select-all">Выбрать все</button>
+                      <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-set-sales-formula-projects-clear">Снять все</button>
+                      <button type="button" class="btn btn-sm btn-outline-primary" id="dg-set-sales-formula-projects-reload" data-dg-notify-start="Обновляем список проектов…">Обновить список</button>
+                    </div>
+                    <div id="dg-set-sales-formula-projects-status" class="small text-muted mb-1">Загрузка проектов…</div>
+                    <div id="dg-set-sales-formula-projects-list" class="small"></div>
+                  </div>
+                  <div class="form-text">Список строится из <code>ms_demand</code> за последние 365 дней. После смены проектов пересчитайте кэш формулы в закупках.</div>
+                </div>
                 <div
                   class="col-md-6 dg-set-formula-tt"
                   data-dg-tooltip="Ключ sales_formula_expensive_rare_threshold_rub. Цена с «маркет» в названии из карточки товара сравнивается с этим порогом; результат влияет только на ветку «редкий товар» (если дорогой — ранний выход по редкости не применяется)."
@@ -1650,6 +1671,8 @@
         sales_formula_expensive_rare_min_qty: 1,
         sales_formula_max_change_coef: 1.6,
         sales_formula_incomplete_pack_pct: 80,
+        sales_formula_project_mode: "all",
+        sales_formula_project_uuids: "",
       };
 
       function buildUsernameFromFullName(fullName) {
@@ -1935,6 +1958,13 @@
           "dg-set-sales_formula_incomplete_pack_pct",
           merged.sales_formula_incomplete_pack_pct != null ? String(merged.sales_formula_incomplete_pack_pct) : "80"
         );
+        var sfProjMode = String(merged.sales_formula_project_mode || defaults.sales_formula_project_mode || "all").toLowerCase();
+        var sfProjAll = document.getElementById("dg-set-sales_formula_project_mode_all");
+        var sfProjSel = document.getElementById("dg-set-sales_formula_project_mode_selected");
+        if (sfProjAll) sfProjAll.checked = sfProjMode !== "selected";
+        if (sfProjSel) sfProjSel.checked = sfProjMode === "selected";
+        window.__dgSalesFormulaProjectUuidsSaved = String(merged.sales_formula_project_uuids || "").trim();
+        if (typeof window.dgSyncSalesFormulaProjectsUi === "function") window.dgSyncSalesFormulaProjectsUi();
         usersPresenceWindowMinutes = getNum("dg-set-auth_online_presence_minutes", 15);
         syncUsersSessionsHeader();
         updateUsersHint();
@@ -2675,6 +2705,22 @@
         });
       }
 
+      function getSalesFormulaProjectMode() {
+        var sel = document.getElementById("dg-set-sales_formula_project_mode_selected");
+        return sel && sel.checked ? "selected" : "all";
+      }
+
+      function getSalesFormulaProjectUuidsCsv() {
+        var list = document.getElementById("dg-set-sales-formula-projects-list");
+        if (!list) return "";
+        var out = [];
+        list.querySelectorAll('input[type="checkbox"][data-dg-sf-project-uuid]:checked').forEach(function (cb) {
+          var u = String(cb.getAttribute("data-dg-sf-project-uuid") || "").trim().toLowerCase();
+          if (u) out.push(u);
+        });
+        return out.join(",");
+      }
+
       function saveSalesFormula() {
         var payload = {
           sales_formula_replenishment_coef: getFloat("dg-set-sales_formula_replenishment_coef", 1 / 3),
@@ -2687,6 +2733,8 @@
           sales_formula_expensive_rare_min_qty: getNum("dg-set-sales_formula_expensive_rare_min_qty", 1),
           sales_formula_max_change_coef: getFloat("dg-set-sales_formula_max_change_coef", 1.6),
           sales_formula_incomplete_pack_pct: getNum("dg-set-sales_formula_incomplete_pack_pct", 80),
+          sales_formula_project_mode: getSalesFormulaProjectMode(),
+          sales_formula_project_uuids: getSalesFormulaProjectUuidsCsv(),
         };
         runSaveWithInlineFeedback({
           sectionId: "sales-formula",
@@ -3579,6 +3627,108 @@
       document.getElementById("dg-set-btn-save-sessions").addEventListener("click", saveSessionsAndOnline);
       document.getElementById("dg-set-btn-save-myproducts").addEventListener("click", saveMyProductsSync);
       document.getElementById("dg-set-btn-save-ms").addEventListener("click", saveMoyskladSync);
+      (function initSalesFormulaProjectsUi() {
+        var wrap = document.getElementById("dg-set-sales-formula-projects-wrap");
+        var listEl = document.getElementById("dg-set-sales-formula-projects-list");
+        var statusEl = document.getElementById("dg-set-sales-formula-projects-status");
+        if (!wrap || !listEl) return;
+
+        function parseSavedUuids() {
+          return String(window.__dgSalesFormulaProjectUuidsSaved || "")
+            .split(/[,;\s]+/)
+            .map(function (s) {
+              return String(s || "").trim().toLowerCase();
+            })
+            .filter(Boolean);
+        }
+
+        window.dgSyncSalesFormulaProjectsUi = function () {
+          var modeSelected =
+            document.getElementById("dg-set-sales_formula_project_mode_selected") &&
+            document.getElementById("dg-set-sales_formula_project_mode_selected").checked;
+          wrap.classList.toggle("d-none", !modeSelected);
+        };
+
+        function renderProjects(projects) {
+          var saved = new Set(parseSavedUuids());
+          if (!projects.length) {
+            listEl.innerHTML = '<p class="text-muted mb-0">Проекты не найдены в отгрузках за период. Сначала выполните синк «Продажи МС».</p>';
+            return;
+          }
+          listEl.innerHTML = projects
+            .map(function (p) {
+              var u = String(p.uuid || "").trim().toLowerCase();
+              var name = String(p.name || u || "—");
+              var cnt = Number(p.count || 0);
+              var checked = saved.has(u) ? " checked" : "";
+              return (
+                '<div class="form-check">' +
+                '<input class="form-check-input" type="checkbox" id="dg-sf-proj-' +
+                u.replace(/[^a-z0-9]/g, "") +
+                '" data-dg-sf-project-uuid="' +
+                u +
+                '"' +
+                checked +
+                " />" +
+                '<label class="form-check-label" for="dg-sf-proj-' +
+                u.replace(/[^a-z0-9]/g, "") +
+                '">' +
+                name +
+                ' <span class="text-muted">(' +
+                cnt +
+                " отгр.)</span></label></div>"
+              );
+            })
+            .join("");
+        }
+
+        function loadProjects() {
+          var days = getNum("dg-set-sales_formula_sales_window_days", 365);
+          if (statusEl) statusEl.textContent = "Загрузка проектов…";
+          fetch("/api/settings/ms-demand-projects?days=" + encodeURIComponent(String(days)), { credentials: "same-origin" })
+            .then(function (r) {
+              return r.json();
+            })
+            .then(function (j) {
+              if (!j || !j.success) throw new Error((j && j.error) || "Ошибка загрузки");
+              renderProjects(j.projects || []);
+              if (statusEl) {
+                statusEl.textContent =
+                  "Показаны проекты с отгрузками за " + String(j.days || days) + " дн. Отметьте нужные и нажмите «Сохранить формулу продаж».";
+              }
+            })
+            .catch(function (e) {
+              if (statusEl) statusEl.textContent = (e && e.message) || "Не удалось загрузить проекты";
+              listEl.innerHTML = "";
+            });
+        }
+
+        ["dg-set-sales_formula_project_mode_all", "dg-set-sales_formula_project_mode_selected"].forEach(function (id) {
+          var el = document.getElementById(id);
+          if (el) el.addEventListener("change", window.dgSyncSalesFormulaProjectsUi);
+        });
+        var reloadBtn = document.getElementById("dg-set-sales-formula-projects-reload");
+        if (reloadBtn) reloadBtn.addEventListener("click", loadProjects);
+        var selAllBtn = document.getElementById("dg-set-sales-formula-projects-select-all");
+        if (selAllBtn) {
+          selAllBtn.addEventListener("click", function () {
+            listEl.querySelectorAll('input[type="checkbox"][data-dg-sf-project-uuid]').forEach(function (cb) {
+              cb.checked = true;
+            });
+          });
+        }
+        var clearBtn = document.getElementById("dg-set-sales-formula-projects-clear");
+        if (clearBtn) {
+          clearBtn.addEventListener("click", function () {
+            listEl.querySelectorAll('input[type="checkbox"][data-dg-sf-project-uuid]').forEach(function (cb) {
+              cb.checked = false;
+            });
+          });
+        }
+        window.dgSyncSalesFormulaProjectsUi();
+        loadProjects();
+      })();
+
       var saveSalesFormulaBtn = document.getElementById("dg-set-btn-save-sales-formula");
       if (saveSalesFormulaBtn) saveSalesFormulaBtn.addEventListener("click", saveSalesFormula);
       document.getElementById("dg-set-btn-save-marketplaces").addEventListener("click", saveMarketplacesSettings);

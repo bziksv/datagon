@@ -44,6 +44,7 @@
 
 const express = require('express');
 const { parseFormulaSettings, pickMarketPriceRub, computeSalesFormula, applyMinStockDgFloor } = require('../lib/datagonSalesFormula');
+const { msDemandProjectFilterClause } = require('../lib/datagonSalesFormulaDemandFilter');
 const {
     ensureZeroStockSchema,
     ensureBundleComponentsSchema,
@@ -1003,9 +1004,10 @@ function buildWindowSumSelectSql(qtyExpr) {
     ).join(',\n            ');
 }
 
-async function loadPurchaseDirectSalesWindowsMap(db, codes) {
+async function loadPurchaseDirectSalesWindowsMap(db, codes, appSettings) {
     const map = new Map();
     if (!codes.length) return map;
+    const proj = msDemandProjectFilterClause(appSettings || {});
     const uniq = [...new Set(codes.map((c) => String(c || '').trim()).filter(Boolean))];
     const sums = buildWindowSumSelectSql('CAST(p.quantity AS DECIMAL(18,6))');
     for (let i = 0; i < uniq.length; i += PURCHASE_CODES_SQL_CHUNK) {
@@ -1017,9 +1019,9 @@ async function loadPurchaseDirectSalesWindowsMap(db, codes) {
                FROM ms_demand_position p
                INNER JOIN ms_demand d ON d.uuid = p.demand_uuid
               WHERE d.applicable = 1
-                AND p.ms_export_code IN (${ph})
+                AND p.ms_export_code IN (${ph})${proj.sql}
               GROUP BY p.ms_export_code`,
-            [...part],
+            [...part, ...proj.params],
         );
         for (const r of rows || []) {
             const k = String(r.code || '').trim();
@@ -1029,9 +1031,10 @@ async function loadPurchaseDirectSalesWindowsMap(db, codes) {
     return map;
 }
 
-async function loadPurchaseBundleSalesWindowsMap(db, componentCodes) {
+async function loadPurchaseBundleSalesWindowsMap(db, componentCodes, appSettings) {
     const map = new Map();
     if (!componentCodes.length) return map;
+    const proj = msDemandProjectFilterClause(appSettings || {});
     const uniq = [...new Set(componentCodes.map((c) => String(c || '').trim()).filter(Boolean))];
     const sums = buildWindowSumSelectSql('CAST(p.quantity * bc.qty_per_bundle AS DECIMAL(18,6))');
     for (let i = 0; i < uniq.length; i += PURCHASE_CODES_SQL_CHUNK) {
@@ -1043,9 +1046,9 @@ async function loadPurchaseBundleSalesWindowsMap(db, componentCodes) {
                FROM ms_demand_position p
                INNER JOIN ms_demand d ON d.uuid = p.demand_uuid
                INNER JOIN dg_bundle_components bc ON bc.bundle_code = p.ms_export_code AND bc.component_code IN (${ph})
-              WHERE d.applicable = 1
+              WHERE d.applicable = 1${proj.sql}
               GROUP BY bc.component_code`,
-            [...part],
+            [...part, ...proj.params],
         );
         for (const r of rows || []) {
             const k = String(r.code || '').trim();
@@ -1121,8 +1124,9 @@ function marketPriceRubFromPayload(payload) {
 /**
  * Сумма quantity за последние `intervalDays` (прямые по code + эквивалент через комплекты для component codes).
  */
-async function loadPurchaseSumQtyLastDaysMap(db, codes, componentCodesForBundle, intervalDays) {
+async function loadPurchaseSumQtyLastDaysMap(db, codes, componentCodesForBundle, intervalDays, appSettings) {
     const D = Math.min(365 * 2, Math.max(1, Math.round(Number(intervalDays) || 1)));
+    const proj = msDemandProjectFilterClause(appSettings || {});
     const map = new Map();
     if (!codes.length) return map;
     const uniqCodes = [...new Set(codes.map((c) => String(c || '').trim()).filter(Boolean))];
@@ -1135,9 +1139,9 @@ async function loadPurchaseSumQtyLastDaysMap(db, codes, componentCodesForBundle,
                INNER JOIN ms_demand d ON d.uuid = p.demand_uuid
               WHERE d.applicable = 1
                 AND d.moment >= (NOW() - INTERVAL ? DAY)
-                AND p.ms_export_code IN (${ph})
+                AND p.ms_export_code IN (${ph})${proj.sql}
               GROUP BY p.ms_export_code`,
-            [D, ...part],
+            [D, ...part, ...proj.params],
         );
         for (const r of directRows || []) {
             const k = String(r.code || '').trim();
@@ -1155,9 +1159,9 @@ async function loadPurchaseSumQtyLastDaysMap(db, codes, componentCodesForBundle,
                INNER JOIN dg_bundle_components bc ON bc.bundle_code = p.ms_export_code
               WHERE d.applicable = 1
                 AND d.moment >= (NOW() - INTERVAL ? DAY)
-                AND bc.component_code IN (${ph2})
+                AND bc.component_code IN (${ph2})${proj.sql}
               GROUP BY bc.component_code`,
-            [D, ...part],
+            [D, ...part, ...proj.params],
         );
         for (const r of bundleRows || []) {
             const k = String(r.code || '').trim();
@@ -1208,8 +1212,9 @@ async function loadLatestZeroStockWindowImportMapBatched(db, codes) {
 }
 
 /** Прямые sum_qty за скользящее окно W дн. — чанки `IN (коды)`. */
-async function loadPurchaseDirectSumQtyWindowRows(db, codes, W) {
+async function loadPurchaseDirectSumQtyWindowRows(db, codes, W, appSettings) {
     const out = [];
+    const proj = msDemandProjectFilterClause(appSettings || {});
     const uniq = [...new Set(codes.map((c) => String(c || '').trim()).filter(Boolean))];
     for (let i = 0; i < uniq.length; i += PURCHASE_CODES_SQL_CHUNK) {
         const part = uniq.slice(i, i + PURCHASE_CODES_SQL_CHUNK);
@@ -1220,9 +1225,9 @@ async function loadPurchaseDirectSumQtyWindowRows(db, codes, W) {
                INNER JOIN ms_demand d ON d.uuid = p.demand_uuid
               WHERE d.applicable = 1
                 AND d.moment >= (NOW() - INTERVAL ? DAY)
-                AND p.ms_export_code IN (${ph})
+                AND p.ms_export_code IN (${ph})${proj.sql}
               GROUP BY p.ms_export_code`,
-            [W, ...part],
+            [W, ...part, ...proj.params],
         );
         if (rows && rows.length) out.push(...rows);
     }
@@ -1230,8 +1235,9 @@ async function loadPurchaseDirectSumQtyWindowRows(db, codes, W) {
 }
 
 /** Эквивалент через комплекты sum_qty за окно W дн. */
-async function loadPurchaseBundleSumQtyWindowRows(db, safeComponentCodes, W) {
+async function loadPurchaseBundleSumQtyWindowRows(db, safeComponentCodes, W, appSettings) {
     const out = [];
+    const proj = msDemandProjectFilterClause(appSettings || {});
     const uniq = [...new Set(safeComponentCodes.map((c) => String(c || '').trim()).filter(Boolean))];
     for (let i = 0; i < uniq.length; i += PURCHASE_CODES_SQL_CHUNK) {
         const part = uniq.slice(i, i + PURCHASE_CODES_SQL_CHUNK);
@@ -1243,9 +1249,9 @@ async function loadPurchaseBundleSumQtyWindowRows(db, safeComponentCodes, W) {
                INNER JOIN dg_bundle_components bc ON bc.bundle_code = p.ms_export_code
               WHERE d.applicable = 1
                 AND d.moment >= (NOW() - INTERVAL ? DAY)
-                AND bc.component_code IN (${ph})
+                AND bc.component_code IN (${ph})${proj.sql}
               GROUP BY bc.component_code`,
-            [W, ...part],
+            [W, ...part, ...proj.params],
         );
         if (rows && rows.length) out.push(...rows);
     }
@@ -1385,8 +1391,8 @@ async function enrichPurchaseRowsWithFormula(db, appSettings, sqlRows, data, opt
             absMultiMap = new Map();
         } else {
             const [dr, br, am] = await Promise.all([
-                loadPurchaseDirectSalesWindowsMap(db, codes),
-                loadPurchaseBundleSalesWindowsMap(db, safeComponentCodes),
+                loadPurchaseDirectSalesWindowsMap(db, codes, appSettings),
+                loadPurchaseBundleSalesWindowsMap(db, safeComponentCodes, appSettings),
                 loadPurchaseAbsenceDistinctDaysAggregateMap(db, codes),
             ]);
             dirWinMap = dr;
@@ -1395,12 +1401,12 @@ async function enrichPurchaseRowsWithFormula(db, appSettings, sqlRows, data, opt
         }
     } else if (mode === 'formula_only') {
         const [dRows, bRows, aRows, asm, zwm] = await Promise.all([
-            loadPurchaseDirectSumQtyWindowRows(db, codes, W),
+            loadPurchaseDirectSumQtyWindowRows(db, codes, W, appSettings),
             safeComponentCodes.length
-                ? loadPurchaseBundleSumQtyWindowRows(db, safeComponentCodes, W)
+                ? loadPurchaseBundleSumQtyWindowRows(db, safeComponentCodes, W, appSettings)
                 : Promise.resolve([]),
             loadPurchaseAbsenceDistinctIntervalRows(db, codes, absenceWin),
-            loadPurchaseSumQtyLastDaysMap(db, codes, safeComponentCodes, absenceWin),
+            loadPurchaseSumQtyLastDaysMap(db, codes, safeComponentCodes, absenceWin, appSettings),
             loadLatestZeroStockWindowImportMapBatched(db, codes),
         ]);
         directRows = dRows || [];
@@ -1411,12 +1417,12 @@ async function enrichPurchaseRowsWithFormula(db, appSettings, sqlRows, data, opt
     } else {
         if (skipHeavyPurchaseWindows) {
             const [dRows, bRows, aRows, asm, zwm] = await Promise.all([
-                loadPurchaseDirectSumQtyWindowRows(db, codes, W),
+                loadPurchaseDirectSumQtyWindowRows(db, codes, W, appSettings),
                 safeComponentCodes.length
-                    ? loadPurchaseBundleSumQtyWindowRows(db, safeComponentCodes, W)
+                    ? loadPurchaseBundleSumQtyWindowRows(db, safeComponentCodes, W, appSettings)
                     : Promise.resolve([]),
                 loadPurchaseAbsenceDistinctIntervalRows(db, codes, absenceWin),
-                loadPurchaseSumQtyLastDaysMap(db, codes, safeComponentCodes, absenceWin),
+                loadPurchaseSumQtyLastDaysMap(db, codes, safeComponentCodes, absenceWin, appSettings),
                 loadLatestZeroStockWindowImportMapBatched(db, codes),
             ]);
             directRows = dRows || [];
@@ -1429,15 +1435,15 @@ async function enrichPurchaseRowsWithFormula(db, appSettings, sqlRows, data, opt
             absMultiMap = new Map();
         } else {
             const [dRows, bRows, aRows, drm, brm, amm, asm, zwm] = await Promise.all([
-                loadPurchaseDirectSumQtyWindowRows(db, codes, W),
+                loadPurchaseDirectSumQtyWindowRows(db, codes, W, appSettings),
                 safeComponentCodes.length
-                    ? loadPurchaseBundleSumQtyWindowRows(db, safeComponentCodes, W)
+                    ? loadPurchaseBundleSumQtyWindowRows(db, safeComponentCodes, W, appSettings)
                     : Promise.resolve([]),
                 loadPurchaseAbsenceDistinctIntervalRows(db, codes, absenceWin),
-                loadPurchaseDirectSalesWindowsMap(db, codes),
-                loadPurchaseBundleSalesWindowsMap(db, safeComponentCodes),
+                loadPurchaseDirectSalesWindowsMap(db, codes, appSettings),
+                loadPurchaseBundleSalesWindowsMap(db, safeComponentCodes, appSettings),
                 loadPurchaseAbsenceDistinctDaysAggregateMap(db, codes),
-                loadPurchaseSumQtyLastDaysMap(db, codes, safeComponentCodes, absenceWin),
+                loadPurchaseSumQtyLastDaysMap(db, codes, safeComponentCodes, absenceWin, appSettings),
                 loadLatestZeroStockWindowImportMapBatched(db, codes),
             ]);
             directRows = dRows || [];

@@ -440,6 +440,27 @@
                   <input type="number" class="form-control" id="dg-set-sales_formula_expensive_rare_min_qty" min="0" step="1" />
                 </div>
                 <div class="col-12"><hr class="my-1 text-muted opacity-50" /></div>
+                <div class="col-12 dg-set-formula-tt" data-dg-tooltip="Какие отгрузки МС учитывать при расчёте «Формулы продаж» (сумма продаж, упущенные, колонки d_*a в закупках). Графики на карточке товара и раздел «Продажи МС» не меняются.">
+                  <label class="form-label d-block mb-2">Учёт продаж для формулы (проекты МС)</label>
+                  <div class="form-check mb-1">
+                    <input class="form-check-input" type="radio" name="dg-set-sales_formula_project_mode" id="dg-set-sales_formula_project_mode_all" value="all" checked />
+                    <label class="form-check-label" for="dg-set-sales_formula_project_mode_all">Все проекты отгрузок</label>
+                  </div>
+                  <div class="form-check mb-2">
+                    <input class="form-check-input" type="radio" name="dg-set-sales_formula_project_mode" id="dg-set-sales_formula_project_mode_selected" value="selected" />
+                    <label class="form-check-label" for="dg-set-sales_formula_project_mode_selected">Только выбранные проекты</label>
+                  </div>
+                  <div id="dg-set-sales-formula-projects-wrap" class="border rounded p-2 bg-light d-none" style="max-height: 220px; overflow: auto">
+                    <div class="d-flex flex-wrap gap-2 mb-2">
+                      <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-set-sales-formula-projects-select-all">Выбрать все</button>
+                      <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-set-sales-formula-projects-clear">Снять все</button>
+                      <button type="button" class="btn btn-sm btn-outline-primary" id="dg-set-sales-formula-projects-reload" data-dg-notify-start="Обновляем список проектов…">Обновить список</button>
+                    </div>
+                    <div id="dg-set-sales-formula-projects-status" class="small text-muted mb-1">Загрузка проектов…</div>
+                    <div id="dg-set-sales-formula-projects-list" class="small"></div>
+                  </div>
+                  <div class="form-text">Список строится из <code>ms_demand</code> за последние 365 дней. После смены проектов пересчитайте кэш формулы в закупках.</div>
+                </div>
                 <div
                   class="col-md-6 dg-set-formula-tt"
                   data-dg-tooltip="Ключ sales_formula_expensive_rare_threshold_rub. Цена с «маркет» в названии из карточки товара сравнивается с этим порогом; результат влияет только на ветку «редкий товар» (если дорогой — ранний выход по редкости не применяется)."

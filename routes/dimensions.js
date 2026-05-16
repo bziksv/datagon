@@ -26,11 +26,177 @@ const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 500;
 /** Сколько строк максимум сканируем из БД для пост-фильтрации (НДС/габариты МП / «проблемные»). */
 const DIM_LIST_POST_FILTER_CAP = 50000;
+/** In-memory кэш результата пост-фильтра (problem_stock / mp mismatch) — пагинация без повторного скана. */
+const DIM_LIST_POST_FILTER_CACHE_TTL_MS = 90 * 1000;
+const dimListPostFilterCache = new Map();
 /**
  * Максимум совпадений после пост-фильтра в памяти (сортировка + total). Без лимита десятки тысяч
  * разобранных `payload_json` раздувают heap Node до OOM (~4GB).
  */
 const DIM_POST_FILTER_MAX_MATCHED = 4000;
+
+/** Кэш агрегата «товары по сотрудникам» для графика на /exports-dimensions.html */
+const DIM_EDITS_BY_EMPLOYEE_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const dimEditsByEmployeeCache = new Map();
+
+const EDITS_CHART_MONTHS_RU = [
+    'январь', 'февраль', 'март', 'апрель', 'май', 'июнь',
+    'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь',
+];
+
+function capitalizeRu(s) {
+    const t = String(s || '').trim();
+    if (!t) return t;
+    return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
+function monthTitleRu(d) {
+    return capitalizeRu(EDITS_CHART_MONTHS_RU[d.getMonth()] + ' ' + d.getFullYear());
+}
+
+/** Период графика правок: текущий месяц (по умолчанию), прошлый месяц или N дней. */
+function parseEditsByEmployeePeriod(req) {
+    const q = req.query || {};
+    const raw = String(q.period || '').trim().toLowerCase();
+    if (/^\d+$/.test(raw)) {
+        const d = Math.max(1, Math.min(365, parseInt(raw, 10)));
+        return {
+            kind: 'days',
+            days: d,
+            cacheKey: `days:${d}`,
+            period: String(d),
+            label: `${d} дн.`,
+        };
+    }
+    if (raw === 'current_month' || raw === 'this_month' || raw === 'month') {
+        const now = new Date();
+        return {
+            kind: 'current_month',
+            cacheKey: 'period:current_month',
+            period: 'current_month',
+            label: monthTitleRu(now),
+        };
+    }
+    if (raw === 'prev_month' || raw === 'previous_month' || raw === 'last_month') {
+        const now = new Date();
+        const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        return {
+            kind: 'prev_month',
+            cacheKey: 'period:prev_month',
+            period: 'prev_month',
+            label: monthTitleRu(prev),
+        };
+    }
+    const daysNum = parseInt(String(q.days || ''), 10);
+    if (Number.isFinite(daysNum) && daysNum >= 1) {
+        const d = Math.max(1, Math.min(365, daysNum));
+        return {
+            kind: 'days',
+            days: d,
+            cacheKey: `days:${d}`,
+            period: String(d),
+            label: `${d} дн.`,
+        };
+    }
+    const now = new Date();
+    return {
+        kind: 'current_month',
+        cacheKey: 'period:current_month',
+        period: 'current_month',
+        label: monthTitleRu(now),
+    };
+}
+
+function editsChartDateFilterSql(spec) {
+    if (spec.kind === 'current_month') {
+        return {
+            sql: "changed_at >= DATE_FORMAT(NOW(), '%Y-%m-01')",
+            params: [],
+        };
+    }
+    if (spec.kind === 'prev_month') {
+        return {
+            sql: `changed_at >= DATE_FORMAT(DATE_SUB(NOW(), INTERVAL 1 MONTH), '%Y-%m-01')
+                  AND changed_at < DATE_FORMAT(NOW(), '%Y-%m-01')`,
+            params: [],
+        };
+    }
+    const d = Math.max(1, Math.min(365, Math.round(Number(spec.days) || 30)));
+    return {
+        sql: 'changed_at >= (NOW() - INTERVAL ? DAY)',
+        params: [d],
+    };
+}
+
+async function computeEditsByEmployeeChart(db, spec) {
+    await ensureSchema(db);
+    const dateFilter = editsChartDateFilterSql(spec);
+    const [[uniqRow]] = await db.query(
+        `SELECT COUNT(DISTINCT code) AS products_unique
+           FROM ms_dimensions_log
+          WHERE action = 'set'
+            AND ${dateFilter.sql}`,
+        dateFilter.params,
+    );
+    const [rows] = await db.query(
+        `SELECT COALESCE(NULLIF(TRIM(changed_by_name), ''), 'Не указан') AS employee,
+                changed_by_user_id AS user_id,
+                COUNT(DISTINCT code) AS products_edited,
+                COUNT(*) AS field_edits
+           FROM ms_dimensions_log
+          WHERE action = 'set'
+            AND ${dateFilter.sql}
+          GROUP BY changed_by_user_id,
+                   COALESCE(NULLIF(TRIM(changed_by_name), ''), 'Не указан')
+          ORDER BY products_edited DESC, field_edits DESC
+          LIMIT 40`,
+        dateFilter.params,
+    );
+    const employees = (rows || []).map((r) => ({
+        name: String(r.employee || 'Не указан'),
+        user_id: r.user_id != null ? Number(r.user_id) : null,
+        products_edited: Number(r.products_edited || 0),
+        field_edits: Number(r.field_edits || 0),
+    }));
+    return {
+        period: spec.period,
+        period_kind: spec.kind,
+        period_label: spec.label,
+        days: spec.kind === 'days' ? spec.days : null,
+        generated_at: new Date().toISOString(),
+        action: 'set',
+        employees,
+        totals: {
+            products_unique: Number((uniqRow && uniqRow.products_unique) || 0),
+            field_edits: employees.reduce((s, e) => s + e.field_edits, 0),
+        },
+    };
+}
+
+function getEditsByEmployeeCached(db, spec, forceRefresh) {
+    const key = spec.cacheKey;
+    const now = Date.now();
+    if (!forceRefresh) {
+        const hit = dimEditsByEmployeeCache.get(key);
+        if (hit && now - hit.ts < DIM_EDITS_BY_EMPLOYEE_CACHE_TTL_MS) {
+            return Promise.resolve({
+                payload: hit.data,
+                cached: true,
+                cache_age_ms: now - hit.ts,
+                cache_expires_at: new Date(hit.ts + DIM_EDITS_BY_EMPLOYEE_CACHE_TTL_MS).toISOString(),
+            });
+        }
+    }
+    return computeEditsByEmployeeChart(db, spec).then((data) => {
+        dimEditsByEmployeeCache.set(key, { ts: now, data });
+        return {
+            payload: data,
+            cached: false,
+            cache_age_ms: 0,
+            cache_expires_at: new Date(now + DIM_EDITS_BY_EMPLOYEE_CACHE_TTL_MS).toISOString(),
+        };
+    });
+}
 
 const MP_JOIN_SQL = `
                 LEFT JOIN marketplace_export_rows dg_dim_ozon
@@ -75,6 +241,15 @@ function normalizeProblemProfileFromQuery(query) {
  * Замер: all | with | without. Раньше передавалось как `scope` — поддерживаем обратную совместимость,
  * если в `scope` не зашит маркетплейсный пресет.
  */
+/** Скрывать товары, которые входят в состав хотя бы одного комплекта (`dg_bundle_components`). По умолчанию — да. */
+function normalizeExcludeHasBundleFromQuery(query) {
+    const raw = query && query.exclude_has_bundle;
+    if (raw === undefined || raw === null || String(raw).trim() === '') return true;
+    const v = String(raw).trim().toLowerCase();
+    if (v === '0' || v === 'false' || v === 'no' || v === 'off') return false;
+    return true;
+}
+
 function normalizeMeasureScopeFromQuery(query) {
     const ms = String((query && query.measure_scope) || '').trim().toLowerCase();
     if (ms === 'with' || ms === 'without') return ms;
@@ -192,8 +367,18 @@ function mapSqlRowToIssueFilterShape(r) {
     };
 }
 
-function mapDimensionListRow(r) {
-    const payload = parsePayloadSafe(r.payload_json);
+/**
+ * @param {object} r — строка SQL
+ * @param {string|null|undefined} [payloadJsonOverride] — `undefined`: взять `r.payload_json`;
+ *   `null`: не парсить payload (ускорение problem_stock); иначе сырой JSON.
+ */
+function mapDimensionListRow(r, payloadJsonOverride) {
+    let payload = null;
+    if (payloadJsonOverride === undefined) {
+        payload = parsePayloadSafe(r.payload_json);
+    } else if (payloadJsonOverride != null) {
+        payload = parsePayloadSafe(payloadJsonOverride);
+    }
     const dimsMs = buildDimensionsFromPayload(payload);
     const measurement = rowToMeasurement({
         length_cm: r.m_length_cm,
@@ -509,6 +694,182 @@ function normalizeFieldValue(field, raw) {
  * никогда не посмотрит в габариты из `payload_json` МС (сначала override, потом MS).
  * Тогда можно не тянуть/не JSON.parse LONGTEXT — основной тормоз при чанковом скане.
  */
+function buildDimListPostFilterCacheKey(query) {
+    const q = { ...(query || {}) };
+    delete q.offset;
+    delete q.limit;
+    return JSON.stringify(q);
+}
+
+function getDimListPostFilterCache(key) {
+    const hit = dimListPostFilterCache.get(key);
+    if (!hit) return null;
+    if (Date.now() - hit.ts > DIM_LIST_POST_FILTER_CACHE_TTL_MS) {
+        dimListPostFilterCache.delete(key);
+        return null;
+    }
+    return hit;
+}
+
+function setDimListPostFilterCache(key, payload) {
+    dimListPostFilterCache.set(key, { ts: Date.now(), rows: payload.rows, truncated: payload.truncated });
+    if (dimListPostFilterCache.size > 48) {
+        const oldest = dimListPostFilterCache.keys().next().value;
+        if (oldest) dimListPostFilterCache.delete(oldest);
+    }
+}
+
+/** SQL: не сканируем позиции с полностью заполненным override в mdm (не могут быть «проблемными»). */
+function sqlWhereExcludeCompleteMdmForProblemStock() {
+    return ` AND NOT (
+        mdm.packing_type IS NOT NULL AND TRIM(mdm.packing_type) <> ''
+        AND mdm.length_cm IS NOT NULL AND mdm.width_cm IS NOT NULL AND mdm.weight_kg IS NOT NULL
+        AND (
+            (LOWER(mdm.packing_type) LIKE '%пакет%' AND mdm.height_bag_cm IS NOT NULL)
+            OR (
+                (LOWER(mdm.packing_type) LIKE '%короб%' OR LOWER(mdm.packing_type) LIKE '%гофр%')
+                AND mdm.height_box_cm IS NOT NULL
+            )
+            OR (LOWER(mdm.packing_type) LIKE '%сво%' AND mdm.height_box_cm IS NOT NULL)
+            OR (
+                LOWER(mdm.packing_type) NOT LIKE '%пакет%'
+                AND LOWER(mdm.packing_type) NOT LIKE '%короб%'
+                AND LOWER(mdm.packing_type) NOT LIKE '%гофр%'
+                AND LOWER(mdm.packing_type) NOT LIKE '%сво%'
+                AND (mdm.height_box_cm IS NOT NULL OR mdm.height_bag_cm IS NOT NULL)
+            )
+        )
+    )`;
+}
+
+function rowNeedsPayloadForProblemCheck(r) {
+    if (mdmMeasurementFullyOverridesMsForProblemCheck(r)) return false;
+    const pt = r.m_packing_type != null ? String(r.m_packing_type).trim() : '';
+    if (!pt) return true;
+    const measurement = rowToMeasurement({
+        length_cm: r.m_length_cm,
+        width_cm: r.m_width_cm,
+        height_box_cm: r.m_height_box_cm,
+        height_bag_cm: r.m_height_bag_cm,
+        weight_kg: r.m_weight_kg,
+        packing_type: r.m_packing_type,
+    });
+    const parsed = parsePackingDims(pt);
+    const kind = parsed.kind || 'unknown';
+    for (const k of Object.keys(MEASUREMENT_FIELDS)) {
+        if (isFieldDisabledForPackingKind(kind, k)) continue;
+        const mv = measurement[k];
+        if (mv == null || String(mv).trim() === '') return true;
+    }
+    return false;
+}
+
+async function loadPayloadsByUuids(db, uuids) {
+    const uniq = [...new Set((uuids || []).map((u) => String(u || '').trim()).filter(Boolean))];
+    const map = new Map();
+    if (!uniq.length) return map;
+    const BATCH = 250;
+    for (let i = 0; i < uniq.length; i += BATCH) {
+        const slice = uniq.slice(i, i + BATCH);
+        const ph = slice.map(() => '?').join(',');
+        const [rows] = await db.query(
+            `SELECT uuid, payload_json FROM ms_entity_details WHERE uuid IN (${ph})`,
+            slice,
+        );
+        for (const row of rows || []) {
+            const u = String(row.uuid || '').trim();
+            if (u) map.set(u, row.payload_json);
+        }
+    }
+    return map;
+}
+
+const SELECT_DIM_PROBLEM_SCAN = `SELECT
+                    mse.code AS code,
+                    mse.name AS name,
+                    mse.type AS type,
+                    mse.uuid AS uuid,
+                    mse.stock AS stock,
+                    mse.vat AS ms_vat,
+                    mse.manager AS manager,
+                    mse.content_manager AS content_manager,
+                    DATE_FORMAT(mse.synced_at, '%d.%m.%Y %H:%i') AS synced_at,
+                    COALESCE(mse.is_archived, 0) AS is_archived,
+                    mdm.measured_by_user_id AS measured_by_user_id,
+                    mdm.measured_by_name AS measured_by_name,
+                    mdm.measured_at AS measured_at,
+                    mdm.length_cm AS m_length_cm,
+                    mdm.width_cm AS m_width_cm,
+                    mdm.height_box_cm AS m_height_box_cm,
+                    mdm.height_bag_cm AS m_height_bag_cm,
+                    mdm.weight_kg AS m_weight_kg,
+                    mdm.packing_type AS m_packing_type`;
+
+const FROM_DIM_SLIM = `
+                FROM ms_export mse
+                LEFT JOIN ms_dimensions_measurements mdm ON mdm.code = mse.code`;
+
+/**
+ * «Проблемные товары»: без JOIN ms_entity_details на весь скан; payload — пакетами только
+ * для строк, где override в mdm не закрывает обязательные поля.
+ */
+async function collectProblemStockRowsChunked(db, whereFull, baseParams) {
+    const matched = [];
+    const CHUNK = 2500;
+    const maxScan = DIM_LIST_POST_FILTER_CAP;
+    const baseSql = `${SELECT_DIM_PROBLEM_SCAN}\n                 ${FROM_DIM_SLIM}\n                 ${whereFull}\n                 ORDER BY mse.code ASC`;
+    let offset = 0;
+    while (offset < maxScan) {
+        const take = Math.min(CHUNK, maxScan - offset);
+        const [rows] = await db.query(`${baseSql}\n                 LIMIT ? OFFSET ?`, baseParams.concat([take, offset]));
+        if (!rows || rows.length === 0) break;
+
+        const needPayloadRows = [];
+        for (let i = 0; i < rows.length; i += 1) {
+            const row = rows[i];
+            if (mdmMeasurementFullyOverridesMsForProblemCheck(row)) continue;
+            if (rowNeedsPayloadForProblemCheck(row)) {
+                needPayloadRows.push(row);
+                continue;
+            }
+            const out = mapDimensionListRow(row, null);
+            const cells = computeProblemCellsForRow(out);
+            if (cells) {
+                out.problem_cells = cells;
+                matched.push(out);
+            }
+            if (matched.length >= DIM_POST_FILTER_MAX_MATCHED) {
+                return { rows: matched, truncated: true };
+            }
+        }
+
+        if (needPayloadRows.length) {
+            const payloadMap = await loadPayloadsByUuids(
+                db,
+                needPayloadRows.map((r) => r.uuid),
+            );
+            for (let j = 0; j < needPayloadRows.length; j += 1) {
+                const row = needPayloadRows[j];
+                const uuid = row.uuid ? String(row.uuid).trim() : '';
+                const pj = uuid ? payloadMap.get(uuid) : null;
+                const out = mapDimensionListRow(row, pj != null ? pj : null);
+                const cells = computeProblemCellsForRow(out);
+                if (cells) {
+                    out.problem_cells = cells;
+                    matched.push(out);
+                }
+                if (matched.length >= DIM_POST_FILTER_MAX_MATCHED) {
+                    return { rows: matched, truncated: true };
+                }
+            }
+        }
+
+        offset += rows.length;
+        if (rows.length < take) break;
+    }
+    return { rows: matched, truncated: false };
+}
+
 function mdmMeasurementFullyOverridesMsForProblemCheck(r) {
     const measurement = rowToMeasurement({
         length_cm: r.m_length_cm,
@@ -761,6 +1122,15 @@ function buildWhereClauseFromQuery(query) {
         where.push('mdm.code IS NOT NULL');
     } else if (measureScope === 'without') {
         where.push('mdm.code IS NULL');
+    }
+
+    if (normalizeExcludeHasBundleFromQuery(query)) {
+        where.push(
+            `NOT EXISTS (
+                SELECT 1 FROM dg_bundle_components dg_dim_bc
+                 WHERE dg_dim_bc.component_code = mse.code
+            )`,
+        );
     }
 
     const whereSql = ' WHERE ' + where.join(' AND ');
@@ -1497,6 +1867,7 @@ function createDimensionsRouter(db, appSettings = {}) {
             const sortDir = String(req.query.sort_dir || 'asc');
 
             const problemProfile = normalizeProblemProfileFromQuery(req.query);
+            const excludeHasBundle = normalizeExcludeHasBundleFromQuery(req.query);
             const mpScope = problemProfile ? 'all' : normalizeMpScopeFromQuery(req.query);
             const useMpJoins = Boolean(!problemProfile && mpScope !== 'all');
             const postFilter = Boolean(!problemProfile && MP_SCOPE_POST.has(mpScope));
@@ -1506,7 +1877,7 @@ function createDimensionsRouter(db, appSettings = {}) {
             let extraStockWhere = '';
             const extraParams = [];
             if (problemStock) {
-                extraStockWhere = ' AND COALESCE(mse.stock, 0) > 0';
+                extraStockWhere = ' AND mse.stock > 0';
             }
 
             const fromCore = `
@@ -1594,22 +1965,43 @@ function createDimensionsRouter(db, appSettings = {}) {
                     sort_dir: sortDir,
                     mp_scope: mpScope,
                     problem_profile: problemProfile || null,
+                    exclude_has_bundle: excludeHasBundle,
                     post_filtered: false,
                     dimension_attrs: DIMENSION_ATTRS.map((d) => ({ key: d.key, label: d.label, attr: d.attr })),
                 });
             }
 
             /** Пост-фильтр: vat_mismatch / dims_mismatch / «проблемные товары». */
-            const fromForCap = postFilter ? `${fromCore}${MP_JOIN_SQL}` : fromCore;
-            const selectForCap = postFilter ? `${selectNarrow}${selectWideDims}${selectMp}` : selectNarrow;
-            const { rows: outOnly, truncated: postFilterMemoryTruncated } = await collectPostFilteredDimensionRowsChunked(
-                db,
-                selectForCap,
-                fromForCap,
-                whereFull,
-                baseParams,
-                { problemStock, postFilter, mpScope },
-            );
+            const cacheKey = buildDimListPostFilterCacheKey(req.query);
+            let outOnly;
+            let postFilterMemoryTruncated = false;
+            let listFromCache = false;
+            const cached = getDimListPostFilterCache(cacheKey);
+            if (cached) {
+                outOnly = cached.rows;
+                postFilterMemoryTruncated = cached.truncated;
+                listFromCache = true;
+            } else if (problemStock) {
+                const whereProblem = `${whereFull}${sqlWhereExcludeCompleteMdmForProblemStock()}`;
+                const scanResult = await collectProblemStockRowsChunked(db, whereProblem, baseParams);
+                outOnly = scanResult.rows;
+                postFilterMemoryTruncated = scanResult.truncated;
+                setDimListPostFilterCache(cacheKey, scanResult);
+            } else {
+                const fromForCap = `${fromCore}${MP_JOIN_SQL}`;
+                const selectForCap = `${selectNarrow}${selectWideDims}${selectMp}`;
+                const scanResult = await collectPostFilteredDimensionRowsChunked(
+                    db,
+                    selectForCap,
+                    fromForCap,
+                    whereFull,
+                    baseParams,
+                    { problemStock: false, postFilter, mpScope },
+                );
+                outOnly = scanResult.rows;
+                postFilterMemoryTruncated = scanResult.truncated;
+                setDimListPostFilterCache(cacheKey, scanResult);
+            }
 
             outOnly.sort((a, b) => compareDimensionOutRows(a, b, sortBy, sortDir));
             const total = outOnly.length;
@@ -1625,7 +2017,9 @@ function createDimensionsRouter(db, appSettings = {}) {
                 sort_dir: sortDir,
                 mp_scope: mpScope,
                 problem_profile: problemProfile || null,
+                exclude_has_bundle: excludeHasBundle,
                 post_filtered: true,
+                list_cached: listFromCache,
                 post_filter_cap: DIM_LIST_POST_FILTER_CAP,
                 post_filter_match_cap: DIM_POST_FILTER_MAX_MATCHED,
                 post_filter_truncated: postFilterMemoryTruncated,
@@ -1821,6 +2215,37 @@ function createDimensionsRouter(db, appSettings = {}) {
      *  действиям (set/sync_ms/delete), older_than_retention — сколько строк будет
      *  удалено при следующей автоочистке (или при ручной).
      */
+    /**
+     * Агрегат для графика на /exports-dimensions.html: сколько **разных товаров** (code)
+     * отредактировал каждый сотрудник за период (только action=set — правки в панели).
+     * Query: `period` — `current_month` (по умолчанию), `prev_month`, `7`, `30` (дни);
+     * устаревший `days` — только если `period` не задан. `refresh=1` — сброс кэша 24 ч.
+     */
+    router.get('/log/edits-by-employee', async (req, res) => {
+        try {
+            const periodSpec = parseEditsByEmployeePeriod(req);
+            const forceRefresh = String(req.query.refresh || '') === '1';
+            const { payload, cached, cache_age_ms, cache_expires_at } = await getEditsByEmployeeCached(
+                db,
+                periodSpec,
+                forceRefresh,
+            );
+            return res.json({
+                success: true,
+                cached,
+                cache_ttl_hours: 24,
+                cache_age_ms,
+                cache_expires_at,
+                ...payload,
+            });
+        } catch (e) {
+            return res.status(500).json({
+                success: false,
+                error: e && e.message ? e.message : 'Не удалось построить статистику по сотрудникам',
+            });
+        }
+    });
+
     router.get('/log/stats', async (req, res) => {
         try {
             await ensureSchema(db);

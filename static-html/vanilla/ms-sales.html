@@ -893,6 +893,15 @@
             <option value="0">Только с не привязанными</option>
           </select>
         </div>
+        <div class="col-md-3" data-dg-mss-filter-field="mss_stock_position">
+          <label class="form-label" for="dg-mss-stock-position">Складская позиция</label>
+          <select id="dg-mss-stock-position" class="form-select"
+                  data-dg-tooltip="По полю stock_position в ms_export для позиции отгрузки (код ms_export_code или code_at_moment). «Только Да» — остаются отгрузки, в которых есть хотя бы одна такая позиция; остальные позиции отгрузки не отсекают документ.">
+            <option value="all" selected>Все</option>
+            <option value="yes">Да</option>
+            <option value="no">Нет</option>
+          </select>
+        </div>
         <div class="col-md-2" data-dg-mss-filter-field="mss_page_size">
           <label class="form-label" for="dg-mss-page-size">На странице</label>
           <select id="dg-mss-page-size" class="form-select">
@@ -1104,7 +1113,7 @@
 
   var DEFAULTS = Object.freeze({
     search: '', docName: '', days: 30, storeUuid: '', agentUuid: '', projectUuid: '',
-    applicable: '1', deleted: '0', linked: 'all',
+    applicable: '1', deleted: '0', linked: 'all', stockPosition: 'all',
     pageSize: 100, sortBy: 'moment', sortDir: 'desc', page: 1
   });
 
@@ -1256,6 +1265,7 @@
     if ($('dg-mss-applicable')) $('dg-mss-applicable').value = s.applicable;
     if ($('dg-mss-deleted')) $('dg-mss-deleted').value = s.deleted;
     if ($('dg-mss-linked')) $('dg-mss-linked').value = s.linked;
+    if ($('dg-mss-stock-position')) $('dg-mss-stock-position').value = s.stockPosition || DEFAULTS.stockPosition;
     if ($('dg-mss-page-size')) $('dg-mss-page-size').value = String(s.pageSize);
     if ($('dg-mss-table-search-mirror')) $('dg-mss-table-search-mirror').value = s.search;
   }
@@ -1271,6 +1281,7 @@
       applicable: $('dg-mss-applicable') ? $('dg-mss-applicable').value : DEFAULTS.applicable,
       deleted: $('dg-mss-deleted') ? $('dg-mss-deleted').value : DEFAULTS.deleted,
       linked: $('dg-mss-linked') ? $('dg-mss-linked').value : DEFAULTS.linked,
+      stockPosition: $('dg-mss-stock-position') ? $('dg-mss-stock-position').value : DEFAULTS.stockPosition,
       pageSize: parseInt($('dg-mss-page-size') ? $('dg-mss-page-size').value : DEFAULTS.pageSize, 10) || DEFAULTS.pageSize,
       sortBy: state.pending.sortBy,
       sortDir: state.pending.sortDir,
@@ -1288,6 +1299,7 @@
       projectUuid: state.applied.projectUuid,
       applicable: state.applied.applicable, deleted: state.applied.deleted,
       linked: state.applied.linked,
+      stockPosition: state.applied.stockPosition,
       pageSize: state.applied.pageSize,
       sortBy: state.applied.sortBy, sortDir: state.applied.sortDir
     });
@@ -1407,6 +1419,7 @@
     if (a.applicable === '0' || a.applicable === '1') qs.set('applicable', a.applicable);
     if (a.deleted === '1' || a.deleted === 'all') qs.set('deleted', a.deleted);
     if (a.linked === '1' || a.linked === '0') qs.set('linked', a.linked);
+    if (a.stockPosition === 'yes' || a.stockPosition === 'no') qs.set('stock_position', a.stockPosition);
     qs.set('sort_by', a.sortBy);
     qs.set('sort_dir', a.sortDir);
     return qs.toString();
@@ -2202,7 +2215,9 @@
           { key: 'mss_agent', title: 'Контрагент' },
           { key: 'mss_project', title: 'Проект' },
           { key: 'mss_applicable', title: 'Проведённые' },
-          { key: 'mss_deleted', title: 'Удалённые в МС' }
+          { key: 'mss_deleted', title: 'Удалённые в МС' },
+          { key: 'mss_linked', title: 'Привязка к товарам' },
+          { key: 'mss_stock_position', title: 'Складская позиция' }
         ]},
         { title: 'Действия', items: [
           { key: 'mss_filter_actions', title: 'Кнопки действий' }

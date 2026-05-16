@@ -1,6 +1,24 @@
 'use strict';
 
 const { parseFormulaSettings, pickMarketPriceRub, computeSalesFormula, applyMinStockDgFloor } = require('../lib/datagonSalesFormula');
+const {
+    msDemandProjectFilterClause,
+    describeSalesFormulaProjectFilter,
+    loadMsDemandProjectNameMap,
+    salesFormulaProjectMode,
+    salesFormulaProjectUuids,
+} = require('../lib/datagonSalesFormulaDemandFilter');
+
+const NO_PROJECT_FILTER = { sql: '', params: [] };
+
+function parseProductSalesScope(req) {
+    return String(req.query.sales_scope || 'all').trim().toLowerCase() === 'formula' ? 'formula' : 'all';
+}
+
+function projectFilterForSalesScope(appSettings, scope) {
+    if (scope === 'formula') return msDemandProjectFilterClause(appSettings);
+    return NO_PROJECT_FILTER;
+}
 const { mergeAbsenceDistinctForFormula } = require('../lib/datagonZeroStockAbsence');
 const { upsertFormulaProposedFromProduct } = require('../lib/datagonFormulaProposedCache');
 const {
@@ -380,11 +398,12 @@ async function maybeRefreshBundleComponentsForProductView(db, componentCode, isB
     }
 }
 
-async function loadViaBundlesDetail(db, componentCode, window, includeViaBundles) {
+async function loadViaBundlesDetail(db, componentCode, window, includeViaBundles, projFilter = NO_PROJECT_FILTER) {
     if (!includeViaBundles) return [];
     const safe = safeMsCodeForLike(componentCode);
     if (!safe) return [];
     const mf = buildSalesMomentFilter(window);
+    const proj = projFilter || NO_PROJECT_FILTER;
     const [rows] = await db.query(
         `SELECT bc.bundle_code,
                 MAX(bc.bundle_name) AS bundle_name,
@@ -402,10 +421,10 @@ async function loadViaBundlesDetail(db, componentCode, window, includeViaBundles
                  GROUP BY bundle_uuid
                ) tot ON tot.bundle_uuid = bc.bundle_uuid
           WHERE d.applicable = 1
-            ${mf.clause}
+            ${mf.clause}${proj.sql}
           GROUP BY bc.bundle_code
           ORDER BY equivalent_qty DESC, equivalent_amount DESC`,
-        [safe, ...mf.params],
+        [safe, ...mf.params, ...proj.params],
     );
     return rows.map((r) => ({
         bundle_code: String(r.bundle_code || ''),
@@ -419,8 +438,9 @@ async function loadViaBundlesDetail(db, componentCode, window, includeViaBundles
 }
 
 /** Прямые продажи по коду товара в позиции отгрузки за окно `window` (только проведённые документы). */
-async function loadDirectSalesPeriod(db, code, window) {
+async function loadDirectSalesPeriod(db, code, window, projFilter = NO_PROJECT_FILTER) {
     const mf = buildSalesMomentFilter(window);
+    const proj = projFilter || NO_PROJECT_FILTER;
     const [rows] = await db.query(
         `SELECT COALESCE(SUM(p.quantity), 0) AS sum_qty,
                 COALESCE(SUM(p.sum_minor), 0) AS sum_amount_minor,
@@ -429,8 +449,8 @@ async function loadDirectSalesPeriod(db, code, window) {
            INNER JOIN ms_demand d ON d.uuid = p.demand_uuid
           WHERE p.ms_export_code = ?
             AND d.applicable = 1
-            ${mf.clause}`,
-        [code, ...mf.params],
+            ${mf.clause}${proj.sql}`,
+        [code, ...mf.params, ...proj.params],
     );
     const r = rows && rows[0] ? rows[0] : { sum_qty: 0, sum_amount_minor: 0, positions: 0 };
     return {
@@ -441,13 +461,14 @@ async function loadDirectSalesPeriod(db, code, window) {
 }
 
 /** Эквивалент компонента через проданные комплекты за окно `window` (только проведённые). */
-async function loadBundlesEquivalentPeriod(db, componentCode, window, includeViaBundles) {
+async function loadBundlesEquivalentPeriod(db, componentCode, window, includeViaBundles, projFilter = NO_PROJECT_FILTER) {
     if (!includeViaBundles) return null;
     const safe = safeMsCodeForLike(componentCode);
     if (!safe) {
         return { sum_qty: 0, sum_amount: 0, positions: 0 };
     }
     const mf = buildSalesMomentFilter(window);
+    const proj = projFilter || NO_PROJECT_FILTER;
     const [rows] = await db.query(
         `SELECT COALESCE(SUM(p.quantity * bc.qty_per_bundle), 0) AS sum_qty,
                 COALESCE(SUM(p.sum_minor * (bc.qty_per_bundle / NULLIF(tot.qty_sum, 0))), 0) AS sum_amount_minor,
@@ -461,8 +482,8 @@ async function loadBundlesEquivalentPeriod(db, componentCode, window, includeVia
                  GROUP BY bundle_uuid
                ) tot ON tot.bundle_uuid = bc.bundle_uuid
           WHERE d.applicable = 1
-            ${mf.clause}`,
-        [safe, ...mf.params],
+            ${mf.clause}${proj.sql}`,
+        [safe, ...mf.params, ...proj.params],
     );
     const r = rows && rows[0] ? rows[0] : { sum_qty: 0, sum_amount_minor: 0, positions: 0 };
     return {
@@ -592,7 +613,8 @@ function extractStock(msExportRow, payload) {
     };
 }
 
-async function loadSalesAggregates(db, code, componentCode, includeViaBundles) {
+async function loadSalesAggregates(db, code, componentCode, includeViaBundles, projFilter = NO_PROJECT_FILTER) {
+    const proj = projFilter || NO_PROJECT_FILTER;
     const out = {};
     for (const days of SALES_WINDOWS) {
         const [dRows] = await db.query(
@@ -604,8 +626,8 @@ async function loadSalesAggregates(db, code, componentCode, includeViaBundles) {
              INNER JOIN ms_demand d ON d.uuid = p.demand_uuid
              WHERE p.ms_export_code = ?
                AND d.applicable = 1
-               AND d.moment >= (NOW() - INTERVAL ? DAY)`,
-            [code, days],
+               AND d.moment >= (NOW() - INTERVAL ? DAY)${proj.sql}`,
+            [code, days, ...proj.params],
         );
         const dr = dRows && dRows[0] ? dRows[0] : { sum_qty: 0, sum_amount_minor: 0, positions: 0 };
         let sumQty = Number(dr.sum_qty || 0);
@@ -629,8 +651,8 @@ async function loadSalesAggregates(db, code, componentCode, includeViaBundles) {
                              GROUP BY bundle_uuid
                            ) tot ON tot.bundle_uuid = bc.bundle_uuid
                      WHERE d.applicable = 1
-                       AND d.moment >= (NOW() - INTERVAL ? DAY)`,
-                    [safe, days],
+                       AND d.moment >= (NOW() - INTERVAL ? DAY)${proj.sql}`,
+                    [safe, days, ...proj.params],
                 );
                 const br = bRows && bRows[0] ? bRows[0] : { sum_qty: 0, sum_amount_minor: 0, positions: 0 };
                 sumQty += Number(br.sum_qty || 0);
@@ -651,16 +673,17 @@ async function loadSalesAggregates(db, code, componentCode, includeViaBundles) {
 }
 
 /** Сумма quantity за последние `days` календарных дней (прямые + через комплекты). */
-async function loadSalesSumLastDays(db, code, componentCode, includeViaBundles, days) {
+async function loadSalesSumLastDays(db, code, componentCode, includeViaBundles, days, appSettings) {
     const W = Math.min(365 * 2, Math.max(1, Math.round(Number(days) || 90)));
+    const proj = msDemandProjectFilterClause(appSettings || {});
     const [dRows] = await db.query(
         `SELECT COALESCE(SUM(p.quantity), 0) AS sum_qty
            FROM ms_demand_position p
            INNER JOIN ms_demand d ON d.uuid = p.demand_uuid
           WHERE p.ms_export_code = ?
             AND d.applicable = 1
-            AND d.moment >= (NOW() - INTERVAL ? DAY)`,
-        [code, W],
+            AND d.moment >= (NOW() - INTERVAL ? DAY)${proj.sql}`,
+        [code, W, ...proj.params],
     );
     let sumQty = Number((dRows && dRows[0] && dRows[0].sum_qty) || 0);
 
@@ -678,8 +701,8 @@ async function loadSalesSumLastDays(db, code, componentCode, includeViaBundles, 
                          GROUP BY bundle_uuid
                        ) tot ON tot.bundle_uuid = bc.bundle_uuid
                   WHERE d.applicable = 1
-                    AND d.moment >= (NOW() - INTERVAL ? DAY)`,
-                [safe, W],
+                    AND d.moment >= (NOW() - INTERVAL ? DAY)${proj.sql}`,
+                [safe, W, ...proj.params],
             );
             sumQty += Number((bRows && bRows[0] && bRows[0].sum_qty) || 0);
         }
@@ -706,8 +729,9 @@ async function loadZeroStockDistinctDays(db, code, days) {
  * Помесячный ряд продаж за окно `window`.
  * При календарном диапазоне — месяцы от `sales_from` до `sales_to`; иначе последние ceil(recent_days/30) мес. от текущей даты.
  */
-async function loadMonthlySales(db, code, componentCode, includeViaBundles, window) {
+async function loadMonthlySales(db, code, componentCode, includeViaBundles, window, projFilter = NO_PROJECT_FILTER) {
     const mf = buildSalesMomentFilter(window);
+    const proj = projFilter || NO_PROJECT_FILTER;
     const [directRows] = await db.query(
         `SELECT DATE_FORMAT(d.moment, '%Y-%m') AS ym,
                 COALESCE(SUM(p.quantity), 0) AS sum_qty,
@@ -717,10 +741,10 @@ async function loadMonthlySales(db, code, componentCode, includeViaBundles, wind
            INNER JOIN ms_demand d ON d.uuid = p.demand_uuid
           WHERE p.ms_export_code = ?
             AND d.applicable = 1
-            ${mf.clause}
+            ${mf.clause}${proj.sql}
           GROUP BY ym
           ORDER BY ym ASC`,
-        [code, ...mf.params],
+        [code, ...mf.params, ...proj.params],
     );
 
     const map = new Map();
@@ -749,10 +773,10 @@ async function loadMonthlySales(db, code, componentCode, includeViaBundles, wind
                          GROUP BY bundle_uuid
                        ) tot ON tot.bundle_uuid = bc.bundle_uuid
                   WHERE d.applicable = 1
-                    ${mf.clause}
+                    ${mf.clause}${proj.sql}
                   GROUP BY ym
                   ORDER BY ym ASC`,
-                [safe, ...mf.params],
+                [safe, ...mf.params, ...proj.params],
             );
             for (const r of bRows) {
                 const k = String(r.ym);
@@ -778,8 +802,9 @@ async function loadMonthlySales(db, code, componentCode, includeViaBundles, wind
  * Распределение продаж по `groupCol` (`d.agent_name` | `d.store_name`) за окно.
  * Топ N + «Прочие». Сумма sum_qty и sum_amount.
  */
-async function loadSalesBreakdown(db, code, componentCode, includeViaBundles, window, groupCol, topN) {
+async function loadSalesBreakdown(db, code, componentCode, includeViaBundles, window, groupCol, topN, projFilter = NO_PROJECT_FILTER) {
     const mf = buildSalesMomentFilter(window);
+    const proj = projFilter || NO_PROJECT_FILTER;
     const safeCol = groupCol === 'd.store_name' ? 'd.store_name' : 'd.agent_name';
 
     const mergeMap = new Map();
@@ -793,10 +818,10 @@ async function loadSalesBreakdown(db, code, componentCode, includeViaBundles, wi
            INNER JOIN ms_demand d ON d.uuid = p.demand_uuid
           WHERE p.ms_export_code = ?
             AND d.applicable = 1
-            ${mf.clause}
+            ${mf.clause}${proj.sql}
           GROUP BY label
           ORDER BY sum_qty DESC, sum_amount_minor DESC`,
-        [code, ...mf.params],
+        [code, ...mf.params, ...proj.params],
     );
     for (const r of dirRows) {
         const label = String(r.label || '(не указано)');
@@ -825,10 +850,10 @@ async function loadSalesBreakdown(db, code, componentCode, includeViaBundles, wi
                          GROUP BY bundle_uuid
                        ) tot ON tot.bundle_uuid = bc.bundle_uuid
                   WHERE d.applicable = 1
-                    ${mf.clause}
+                    ${mf.clause}${proj.sql}
                   GROUP BY label
                   ORDER BY sum_qty DESC, sum_amount_minor DESC`,
-                [safe, ...mf.params],
+                [safe, ...mf.params, ...proj.params],
             );
             for (const r of bRows) {
                 const label = String(r.label || '(не указано)');
@@ -908,12 +933,85 @@ function mapRecentShipmentRow(r) {
     };
 }
 
+function buildProductSalesNote(includeViaBundles, projectScopeLabel) {
+    const base = includeViaBundles
+        ? 'Графики, сводка за период и «Последние отгрузки» — только проведённые отгрузки (applicable); прямые продажи + эквивалент через комплекты (состав из payload МС; сумма по доле компонента). Продажи за период — агрегаты по фиксированным интервалам 3…365 дн., как в таблице выше.'
+        : 'Страница комплекта: эквивалент через другие комплекты не считается. Учитываются только проведённые отгрузки.';
+    if (projectScopeLabel) {
+        return `${base} Учёт проектов: ${projectScopeLabel}`;
+    }
+    return `${base} Учёт проектов: все отгрузки МС.`;
+}
+
+/**
+ * Блок «Продажи товара» (агрегаты, графики, последние отгрузки) с опциональным фильтром по project_uuid.
+ */
+async function loadProductSalesBlock(
+    db,
+    code,
+    componentCode,
+    includeViaBundles,
+    salesWindow,
+    recentRp,
+    projFilter,
+    projectScopeLabel,
+) {
+    const [
+        aggregates,
+        recentPack,
+        monthlySales,
+        byAgent,
+        byStore,
+        viaBundlesDetail,
+        directPeriod,
+        bundlesPeriod,
+    ] = await Promise.all([
+        loadSalesAggregates(db, code, code, includeViaBundles, projFilter),
+        loadRecentShipmentsPaged(db, code, code, includeViaBundles, salesWindow, recentRp, projFilter),
+        loadMonthlySales(db, code, code, includeViaBundles, salesWindow, projFilter),
+        loadSalesBreakdown(db, code, code, includeViaBundles, salesWindow, 'd.agent_name', 8, projFilter),
+        loadSalesBreakdown(db, code, code, includeViaBundles, salesWindow, 'd.store_name', 8, projFilter),
+        loadViaBundlesDetail(db, code, salesWindow, includeViaBundles, projFilter),
+        loadDirectSalesPeriod(db, code, salesWindow, projFilter),
+        loadBundlesEquivalentPeriod(db, code, salesWindow, includeViaBundles, projFilter),
+    ]);
+    const recentTotal = recentPack.total;
+    const recentTotalPages = Math.max(1, Math.ceil(recentTotal / recentRp.pageSize));
+    return {
+        aggregates,
+        recent: recentPack.rows,
+        recent_days: salesWindow.spanDays,
+        recent_page: recentRp.page,
+        recent_page_size: recentRp.pageSize,
+        recent_total: recentTotal,
+        recent_total_pages: recentTotalPages,
+        recent_via: recentRp.mode === 'bundle_one' ? 'bundle' : recentRp.mode === 'all' ? 'all' : recentRp.mode,
+        recent_bundle_code: recentRp.mode === 'bundle_one' ? recentRp.bundleCode : '',
+        recent_bundle_codes: recentPack.bundle_codes,
+        sales_window: {
+            mode: salesWindow.useRange ? 'range' : 'rolling',
+            sales_from: salesWindow.fromDateStr,
+            sales_to: salesWindow.toDateStr,
+        },
+        direct_period: directPeriod,
+        bundles_period: bundlesPeriod,
+        monthly: monthlySales,
+        by_agent: byAgent,
+        by_store: byStore,
+        includes_via_bundles: includeViaBundles,
+        via_bundles: viaBundlesDetail,
+        note: buildProductSalesNote(includeViaBundles, projectScopeLabel),
+        sales_scope: projectScopeLabel ? 'formula' : 'all',
+    };
+}
+
 /**
  * Прямые + через комплекты, один UNION, фильтр и LIMIT/OFFSET на сервере.
  * @returns {{ rows: object[], total: number, bundle_codes: { bundle_code: string, bundle_name: string }[] }}
  */
-async function loadRecentShipmentsPaged(db, code, componentCode, includeViaBundles, window, rp) {
+async function loadRecentShipmentsPaged(db, code, componentCode, includeViaBundles, window, rp, projFilter = NO_PROJECT_FILTER) {
     const mf = buildSalesMomentFilter(window);
+    const proj = projFilter || NO_PROJECT_FILTER;
     const safeComp = safeMsCodeForLike(componentCode);
 
     const directSql = `
@@ -928,9 +1026,9 @@ async function loadRecentShipmentsPaged(db, code, componentCode, includeViaBundl
           INNER JOIN ms_demand d ON d.uuid = p.demand_uuid
          WHERE p.ms_export_code = ?
            AND d.applicable = 1
-           ${mf.clause}`;
+           ${mf.clause}${proj.sql}`;
 
-    const paramsDirect = [code, ...mf.params];
+    const paramsDirect = [code, ...mf.params, ...proj.params];
 
     let innerSql;
     let innerParams;
@@ -958,8 +1056,8 @@ async function loadRecentShipmentsPaged(db, code, componentCode, includeViaBundl
                 GROUP BY bundle_uuid
                ) tot ON tot.bundle_uuid = bc.bundle_uuid
          WHERE d.applicable = 1
-           ${mf.clause}`;
-        const paramsBundle = [safeComp, ...mf.params];
+           ${mf.clause}${proj.sql}`;
+        const paramsBundle = [safeComp, ...mf.params, ...proj.params];
         innerSql = `(${directSql.trim()}) UNION ALL (${bundleSql.trim()})`;
         innerParams = [...paramsDirect, ...paramsBundle];
     } else {
@@ -1453,7 +1551,17 @@ function createProductRouter(db, appSettings) {
             const isBundleProduct = isMsBundleExportRow(mse);
             await maybeRefreshBundleComponentsForProductView(db, code, isBundleProduct);
             const includeViaBundles = !isBundleProduct;
-            const data = await loadRecentShipmentsPaged(db, code, code, includeViaBundles, salesWindow, rp);
+            const salesScope = parseProductSalesScope(req);
+            const projFilter = projectFilterForSalesScope(appSettings, salesScope);
+            const data = await loadRecentShipmentsPaged(
+                db,
+                code,
+                code,
+                includeViaBundles,
+                salesWindow,
+                rp,
+                projFilter,
+            );
             const totalPages = Math.max(1, Math.ceil(data.total / rp.pageSize));
             return res.json({
                 success: true,
@@ -1531,43 +1639,55 @@ function createProductRouter(db, appSettings) {
             const includeViaBundles = !isBundleProduct;
 
             const formulaCfg = parseFormulaSettings(appSettings);
+            const projUuids = salesFormulaProjectUuids(appSettings);
+            const projNameMap =
+                projUuids.length > 0 ? await loadMsDemandProjectNameMap(db, projUuids) : null;
+            const projDesc = describeSalesFormulaProjectFilter(appSettings, projNameMap);
+            const formulaProjFilter = msDemandProjectFilterClause(appSettings);
+            const loadFormulaSales =
+                salesFormulaProjectMode(appSettings) === 'selected'
+                    ? loadProductSalesBlock(
+                          db,
+                          code,
+                          code,
+                          includeViaBundles,
+                          salesWindow,
+                          recentRp,
+                          formulaProjFilter,
+                          projDesc.label,
+                      )
+                    : Promise.resolve(null);
+
             const [
-                salesAggregates,
-                recentPack,
+                salesAll,
+                salesFormulaScope,
                 zeroLog,
                 zeroWinImport,
                 zeroWindowsFromLog,
-                monthlySales,
-                byAgent,
-                byStore,
-                viaBundlesDetail,
-                directPeriod,
-                bundlesPeriod,
                 salesWindowSum,
                 salesAbsenceWindowSum,
                 absenceDistinctPack,
                 stockSnapshots,
             ] = await Promise.all([
-                loadSalesAggregates(db, code, code, includeViaBundles),
-                loadRecentShipmentsPaged(db, code, code, includeViaBundles, salesWindow, recentRp),
+                loadProductSalesBlock(
+                    db,
+                    code,
+                    code,
+                    includeViaBundles,
+                    salesWindow,
+                    recentRp,
+                    NO_PROJECT_FILTER,
+                    null,
+                ),
+                loadFormulaSales,
                 loadZeroStockLog(db, code, zeroDays),
                 loadLatestZeroStockWindowImport(db, code),
                 computeZeroStockWindowsFromLog(db, code),
-                loadMonthlySales(db, code, code, includeViaBundles, salesWindow),
-                loadSalesBreakdown(db, code, code, includeViaBundles, salesWindow, 'd.agent_name', 8),
-                loadSalesBreakdown(db, code, code, includeViaBundles, salesWindow, 'd.store_name', 8),
-                loadViaBundlesDetail(db, code, salesWindow, includeViaBundles),
-                loadDirectSalesPeriod(db, code, salesWindow),
-                loadBundlesEquivalentPeriod(db, code, salesWindow, includeViaBundles),
-                loadSalesSumLastDays(db, code, code, includeViaBundles, formulaCfg.salesWindowDays),
-                loadSalesSumLastDays(db, code, code, includeViaBundles, formulaCfg.absenceAnalysisDays),
+                loadSalesSumLastDays(db, code, code, includeViaBundles, formulaCfg.salesWindowDays, appSettings),
+                loadSalesSumLastDays(db, code, code, includeViaBundles, formulaCfg.absenceAnalysisDays, appSettings),
                 loadZeroStockDistinctDays(db, code, formulaCfg.absenceAnalysisDays),
                 loadStockSnapshots(db, code, stockSnapDays),
             ]);
-            const recentSales = recentPack.rows;
-            const recentTotal = recentPack.total;
-            const recentBundleCodes = recentPack.bundle_codes;
-            const recentTotalPages = Math.max(1, Math.ceil(recentTotal / recentRp.pageSize));
 
             const supplierLabel = buildSupplierLabel(mse.supplier, mse.supplier2);
             const article = payload && typeof payload.article === 'string' ? payload.article : '';
@@ -1661,6 +1781,23 @@ function createProductRouter(db, appSettings) {
                 formulaResult.inputs.absence_import_merge_note = absenceMerged.importSkippedReason;
             }
 
+            formulaResult.inputs.sales_formula_project_mode = projDesc.mode;
+            formulaResult.inputs.sales_formula_project_filter_active = projDesc.active;
+            if (projDesc.active && projDesc.uuids.length === 0) {
+                formulaResult.warnings = Array.isArray(formulaResult.warnings)
+                    ? formulaResult.warnings.slice()
+                    : [];
+                formulaResult.warnings.push(
+                    'В настройках включён учёт только выбранных проектов, но список проектов пуст — продажи для формулы не учитываются.',
+                );
+            }
+            if (formulaResult.detail && Array.isArray(formulaResult.detail.formula_context_lines)) {
+                formulaResult.detail.formula_context_lines.unshift({
+                    label: 'Проекты отгрузок МС (формула)',
+                    value: projDesc.label,
+                });
+            }
+
             const proposedFloored = applyMinStockDgFloor(
                 formulaResult.proposed_min_stock,
                 override && override.min_stock_dg,
@@ -1677,7 +1814,7 @@ function createProductRouter(db, appSettings) {
 
             let windowsJson = null;
             try {
-                const winMap = await computePurchaseWindowSnapshotForItems(db, [{ code, type: ms.type }]);
+                const winMap = await computePurchaseWindowSnapshotForItems(db, [{ code, type: ms.type }], appSettings);
                 const winRow = winMap.get(code);
                 if (winRow) windowsJson = serializeWindowsSnapshot(winRow);
             } catch (e) {
@@ -1708,33 +1845,12 @@ function createProductRouter(db, appSettings) {
                 override: override || null,
                 prices,
                 stock: stockBlock,
-                sales: {
-                    aggregates: salesAggregates,
-                    recent: recentSales,
-                    recent_days: salesWindow.spanDays,
-                    recent_page: recentRp.page,
-                    recent_page_size: recentRp.pageSize,
-                    recent_total: recentTotal,
-                    recent_total_pages: recentTotalPages,
-                    recent_via: recentRp.mode === 'bundle_one' ? 'bundle' : recentRp.mode === 'all' ? 'all' : recentRp.mode,
-                    recent_bundle_code: recentRp.mode === 'bundle_one' ? recentRp.bundleCode : '',
-                    recent_bundle_codes: recentBundleCodes,
-                    sales_window: {
-                        mode: salesWindow.useRange ? 'range' : 'rolling',
-                        sales_from: salesWindow.fromDateStr,
-                        sales_to: salesWindow.toDateStr,
-                    },
-                    direct_period: directPeriod,
-                    bundles_period: bundlesPeriod,
-                    monthly: monthlySales,
-                    by_agent: byAgent,
-                    by_store: byStore,
-                    includes_via_bundles: includeViaBundles,
-                    via_bundles: viaBundlesDetail,
-                    note:
-                        includeViaBundles
-                            ? 'Графики, сводка за период и «Последние отгрузки» — только проведённые отгрузки (applicable); прямые продажи + эквивалент через комплекты (состав из payload МС; сумма по доле компонента). Продажи за период — агрегаты по фиксированным интервалам 3…365 дн., как в таблице выше.'
-                            : 'Страница комплекта: эквивалент через другие комплекты не считается. Учитываются только проведённые отгрузки.',
+                sales: salesAll,
+                sales_formula_scope: salesFormulaScope,
+                sales_scope_meta: {
+                    formula_available: salesFormulaProjectMode(appSettings) === 'selected',
+                    formula_label: projDesc.label,
+                    formula_project_names: Array.isArray(projDesc.project_names) ? projDesc.project_names : [],
                 },
                 zero_stock: {
                     days: zeroDays,

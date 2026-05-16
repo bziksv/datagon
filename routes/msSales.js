@@ -1323,6 +1323,12 @@ function createMsSalesRouter(db, appSettings = {}) {
              * Опирается на индекс idx_resolved (ms_demand_position.ms_export_resolved).
              */
             const linked = String(req.query.linked || 'all').trim();
+            /**
+             * stock_position: 'all' (default) — без фильтра;
+             * 'yes' — отгрузки, где есть хотя бы одна позиция с ms_export.stock_position = «Да»;
+             * 'no'  — хотя бы одна позиция с товаром не «Да» (или без привязки к ms_export по коду).
+             */
+            const stockPosition = String(req.query.stock_position || 'all').trim().toLowerCase();
             const sortBy = String(req.query.sort_by || 'moment');
             const sortDir = String(req.query.sort_dir || 'desc').toLowerCase() === 'asc' ? 'ASC' : 'DESC';
 
@@ -1394,6 +1400,19 @@ function createMsSalesRouter(db, appSettings = {}) {
                     'NOT EXISTS (SELECT 1 FROM ms_demand_position p ' +
                     'WHERE p.demand_uuid = d.uuid AND p.ms_export_resolved = 0)'
                 );
+            }
+
+            if (stockPosition === 'yes' || stockPosition === 'no') {
+                const stockExistsSql =
+                    'EXISTS (SELECT 1 FROM ms_demand_position p ' +
+                    'INNER JOIN ms_export e ON e.code = COALESCE(NULLIF(TRIM(p.ms_export_code), \'\'), NULLIF(TRIM(p.code_at_moment), \'\')) ' +
+                    'WHERE p.demand_uuid = d.uuid ' +
+                    'AND COALESCE(NULLIF(TRIM(p.ms_export_code), \'\'), NULLIF(TRIM(p.code_at_moment), \'\')) IS NOT NULL ' +
+                    (stockPosition === 'yes'
+                        ? 'AND LOWER(TRIM(e.stock_position)) = ?)'
+                        : 'AND (e.stock_position IS NULL OR LOWER(TRIM(e.stock_position)) <> ?))');
+                wheres.push(stockExistsSql);
+                params.push('да');
             }
 
             const whereSql = ' WHERE ' + wheres.join(' AND ');

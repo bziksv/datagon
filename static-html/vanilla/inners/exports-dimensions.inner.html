@@ -14,6 +14,43 @@
             </div>
           </div>
 
+          <div class="main-card mb-3 card" id="dg-dim-edits-chart-card">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+              <div class="d-flex align-items-center gap-2 min-w-0">
+                <i class="header-icon pe-7s-graph2 icon-gradient bg-tempting-azure"></i>
+                <div>
+                  <span class="fw-semibold">Правки габаритов по сотрудникам</span>
+                  <div class="small text-muted" id="dg-dim-edits-chart-subtitle">За период…</div>
+                </div>
+              </div>
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <div class="btn-group btn-group-sm" role="group" aria-label="Период графика">
+                  <button type="button" class="btn btn-outline-primary active" data-dg-dim-edits-period="current_month">Тек. месяц</button>
+                  <button type="button" class="btn btn-outline-secondary" data-dg-dim-edits-period="prev_month">Прош. месяц</button>
+                  <button type="button" class="btn btn-outline-secondary" data-dg-dim-edits-period="7">7 дн.</button>
+                  <button type="button" class="btn btn-outline-secondary" data-dg-dim-edits-period="30">30 дн.</button>
+                </div>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-secondary"
+                  id="dg-dim-edits-chart-refresh"
+                  data-dg-notify-start="Обновляем график правок…"
+                  title="Сбросить кэш и пересчитать"
+                >
+                  Обновить
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-dim-edits-chart-toggle">Свернуть</button>
+              </div>
+            </div>
+            <div class="card-body" id="dg-dim-edits-chart-body">
+              <p class="text-muted small mb-2" id="dg-dim-edits-chart-meta"></p>
+              <div class="dg-dim-edits-chart-wrap">
+                <canvas id="dg-dim-edits-chart-canvas" height="220"></canvas>
+              </div>
+              <div class="text-muted small mt-2 d-none" id="dg-dim-edits-chart-empty">Нет правок в журнале за выбранный период.</div>
+            </div>
+          </div>
+
           <div class="main-card mb-3 card">
             <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
               <div class="d-flex align-items-center">
@@ -79,6 +116,25 @@
                   <p class="form-text text-muted mb-0 small mt-1">
                     Сверка с маркетплейсами — на
                     <a href="/exports-marketplaces-issues.html">«Проблемах с товарами»</a>; здесь реестр замеров МС.
+                  </p>
+                </div>
+                <div class="col-12" data-dg-dim-filter-field="exclude_has_bundle" data-dg-filter-field-title="Состав комплектов">
+                  <label class="form-label small mb-1">Состав комплектов</label>
+                  <div class="form-check form-switch mb-0 dg-dim-problem-switch">
+                    <input
+                      class="form-check-input"
+                      type="checkbox"
+                      role="switch"
+                      id="dg-dim-exclude-bundle-switch"
+                      checked
+                      autocomplete="off"
+                    />
+                    <label class="form-check-label small" for="dg-dim-exclude-bundle-switch" data-dg-tooltip="Включено — в таблице нет товаров, которые входят в состав хотя бы одного комплекта МС (по кэшу составов). Выключено — показываются все позиции, в том числе компоненты комплектов.">
+                      Скрыть товары, входящие в комплекты
+                    </label>
+                  </div>
+                  <p class="form-text text-muted mb-0 small mt-1">
+                    Комплекты (тип «Комплект») в списке по-прежнему видны; скрываются только <strong>товары-компоненты</strong>.
                   </p>
                 </div>
               </div>

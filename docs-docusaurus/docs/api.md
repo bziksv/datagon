@@ -117,6 +117,13 @@ Body:
 
 ## Settings
 
+### GET `/api/settings/ms-demand-projects`
+
+Справочник проектов из **`ms_demand`** для UI фильтра формулы продаж на `/settings.html`.
+
+- Query: **`days`** (30…730, по умолчанию **365**) — окно для `GROUP BY project_uuid`.
+- Ответ: `{ success, days, projects: [{ uuid, name, count }] }`.
+
 ### GET `/api/settings`
 Получить текущие настройки приложения.
 
@@ -148,7 +155,7 @@ Body (пример):
 - **`auto_sync_mssales_enabled`** / **`auto_sync_mssales_time`** / **`auto_sync_mssales_days`** / **`auto_sync_mssales_weekdays`** — **импорт продаж МС** (`entity/demand` → `ms_demand` / `ms_demand_position`) для `/ms-sales.html` (МСК, `HH:MM`, по умолчанию `07:30`). Окно периода — `auto_sync_mssales_days` (1..1825 дней, default **90**). **`auto_sync_mssales_weekdays`** — дни недели по календарю **МСК**: строка CSV, числа **1=пн … 7=вс**; пустая строка, значение **`1,2,3,4,5,6,7`** или все семь галочек в UI — запуск **каждый** календарный день (в БД «все дни» нормализуется в явную семёрку, чтобы снятие одного дня не схлопывалось обратно в «все дни»). Серверный путь — `triggerSync(db, { days, incremental: true, awaitCompletion: true })`: **инкремент** с `MAX(moment) − 1 сутки` до `NOW()` (не head-resume по `MIN(moment)`). Планировщик в `server.js` сравнивает текущий день недели в МСК с этим множеством и только тогда ставит задачу в очередь (вместе с совпадением `HH:MM`). Запись в `auto_sync_runs` (`task_type='mssales'`, в `message` — префикс `инкремент с …` при догрузке хвоста).
 - **`auto_sync_mssales_full_enabled`** / **`auto_sync_mssales_full_time`** / **`auto_sync_mssales_full_days`** / **`auto_sync_mssales_full_weekdays`** — отдельное расписание **полного** синка продаж МС: `triggerSync(db, { days, fresh: true })` (аналог «Полный синк с нуля» на `/ms-sales.html`). Окно по умолчанию **730** дней; дни недели — тот же формат CSV (**по умолчанию только `7`** — воскресенье). `task_type='mssales_full'` в `auto_sync_runs`. Не планируйте на то же `HH:MM`, что обычный `mssales`, если оба включены: один активный job `ms-sales` в памяти.
 - **`auto_sync_purchase_formula_cache_enabled`** / **`auto_sync_purchase_formula_cache_time`** — batch-заполнение **`dg_formula_proposed_cache`** для дефолтной выборки закупок (`routes/purchase.js → runPurchaseFormulaCacheBatch`). `task_type='purchase_formula_cache'` в `auto_sync_runs`; журнал на `/processes.html`. Кнопка «Запустить сейчас» и «Пересчитать кэш» на `/purchase.html` — `POST /api/settings/auto-sync-run` с `task: "purchase_formula_cache"`.
-- **`sales_formula_replenishment_coef`**, **`sales_formula_sales_window_days`** (W — «Продажи за период», сумма и средний спрос для формулы v2), **`sales_formula_absence_analysis_days`** (A — дни отсутствия в логе за окно), **`sales_formula_base_qty`**, **`sales_formula_rare_base_qty`**, **`sales_formula_rare_avg_max`** (legacy, в v2 не используется), **`sales_formula_expensive_rare_threshold_rub`**, **`sales_formula_expensive_rare_min_qty`**, **`sales_formula_max_change_coef`**, **`sales_formula_incomplete_pack_pct`** — **формула продаж** на карточке товара (`GET /api/product/:code` → `formula`). Логика в `lib/datagonSalesFormula.js` (v2: сумма за W + упущенные, ×k **без** прибавки `sales_formula_base_qty` / `sales_formula_expensive_rare_min_qty`; редкий/дорогой; кратность + `incomplete_pack_pct`: хвост ≤ % — вниз до кратности, хвост > % — вверх; при положительном черновике ×k **или** при ненулевой сумме с учётом отсутствий при кратности из закупок ≥ 1 шт (в т.ч. при k=0) итог **не ниже** кратности из закупок; при дроби &lt; 1 шт после шагов кратности/макс. скачка — `rare_base_qty` / `expensive_rare_min_qty`; скачок). **Эффективный минимум редкого базиса и защита от нулевого итога при ненулевой сумме с учётом отсутствий при k=0 и кратности закупок &lt; 1 шт:** не ниже `max(1, sales_formula_rare_base_qty)` (предупреждение в `formula.warnings`). UI — `/settings.html`.
+- **`sales_formula_replenishment_coef`**, **`sales_formula_sales_window_days`** (W — «Продажи за период», сумма и средний спрос для формулы v2), **`sales_formula_absence_analysis_days`** (A — дни отсутствия в логе за окно), **`sales_formula_project_mode`** (`all` | `selected`), **`sales_formula_project_uuids`** (CSV `project_uuid` из `ms_demand`; при `selected` в сумму продаж для формулы и колонок `d_*a` входят только отгрузки выбранных проектов), **`sales_formula_base_qty`**, **`sales_formula_rare_base_qty`**, **`sales_formula_rare_avg_max`** (legacy, в v2 не используется), **`sales_formula_expensive_rare_threshold_rub`**, **`sales_formula_expensive_rare_min_qty`**, **`sales_formula_max_change_coef`**, **`sales_formula_incomplete_pack_pct`** — **формула продаж** на карточке товара (`GET /api/product/:code` → `formula`). Логика в `lib/datagonSalesFormula.js` (v2: сумма за W + упущенные, ×k **без** прибавки `sales_formula_base_qty` / `sales_formula_expensive_rare_min_qty`; редкий/дорогой; кратность + `incomplete_pack_pct`: хвост ≤ % — вниз до кратности, хвост > % — вверх; при положительном черновике ×k **или** при ненулевой сумме с учётом отсутствий при кратности из закупок ≥ 1 шт (в т.ч. при k=0) итог **не ниже** кратности из закупок; при дроби &lt; 1 шт после шагов кратности/макс. скачка — `rare_base_qty` / `expensive_rare_min_qty`; скачок). **Эффективный минимум редкого базиса и защита от нулевого итога при ненулевой сумме с учётом отсутствий при k=0 и кратности закупок &lt; 1 шт:** не ниже `max(1, sales_formula_rare_base_qty)` (предупреждение в `formula.warnings`). UI — `/settings.html`.
 - **`auto_sync_runs_retention_days`** — срок хранения строк в **`auto_sync_runs`** (журнал запусков автосинхронизации на `/processes.html`, кнопка «Лог»; по умолчанию **180**). Автоочистка в `server.js` удаляет только записи с непустым `finished_at` старше N дней (при старте и каждые 12 ч). UI: карточка **«Журнал запусков автосинхронизации»** на `/settings.html` (`GET /api/settings/auto-sync-runs/stats`, `POST /api/settings/auto-sync-runs/cleanup`).
 - **`product_stock_snapshot_retention_days`** — срок хранения дневных снимков **`ms_export.stock`** в **`dg_product_stock_snapshot`** (очистка при каждом успешном полном синке МС; по умолчанию **365**, диапазон **30…3650**). UI: карточка **«Снимки остатка МС (карточка товара)»** на `/settings.html` (`sectionId='stock-snap-retention'`).
 
@@ -791,12 +798,13 @@ CREATE TABLE IF NOT EXISTS ms_dimensions_log (
 - `type` — `all` (по умолчанию) / `товар` / `комплект`.
 - `measure_scope` — `all` (по умолчанию) / `with` (только с замером) / `without` (только без замера). Обратная совместимость: то же значение можно передать как устаревший `scope`, если это не ключ маркетплейсного пресета.
 - `mp_scope` — на экране **«Габариты»** всегда используется `all` (фильтры по снапшотам маркетплейсов — на странице «Проблемы с товарами»). В HTTP-API параметр по-прежнему принимается для совместимости и интеграций: `all` (по умолчанию), `any`, `all3`, `ozon`, `wb`, `ym`, `vat_mismatch`, `dims_mismatch`. Для `vat_mismatch` и `dims_mismatch` выборка ограничивается первыми **50000** строками каталога (после базовых фильтров), затем фильтрация выполняется в Node; в ответе `post_filtered: true`, `post_filter_cap`. Чтобы не держать в памяти сразу все строки с тяжёлым `payload_json`, эти режимы (и `problem_profile=stock_missing`) читают БД **чанками** `LIMIT/OFFSET` и сразу отбрасывают неподходящие строки. Совпадения после пост-фильтра накапливаются в RAM не более **`post_filter_match_cap`** (сейчас 4000); при превышении — `post_filter_truncated: true` (остальные в каталоге не попали в `total` этого ответа).
-- `problem_profile` — если `stock_missing`, показываются только позиции с **остатком > 0**, у которых для текущего типа упаковки не заполнено хотя бы одно обязательное поле замера (аналогично подсветке на «Проблемах с товарами»); поле `problem_cells` в строке — какие ключи замера подсвечивать. Взаимоисключающе с `mp_scope` ≠ `all` на UI: при активном профиле маркетплейсный пресет сбрасывается в `all`. Обработка в пределах `post_filter_cap` — тем же чанкованным обходом, что для `vat_mismatch` / `dims_mismatch`.
+- `problem_profile` — если `stock_missing`, показываются только позиции с **остатком > 0**, у которых для текущего типа упаковки не заполнено хотя бы одно обязательное поле замера (аналогично подсветке на «Проблемах с товарами»); поле `problem_cells` в строке — какие ключи замера подсвечивать. Взаимоисключающе с `mp_scope` ≠ `all` на UI: при активном профиле маркетплейсный пресет сбрасывается в `all`. Обработка в пределах `post_filter_cap` — чанкованный обход без JOIN `ms_entity_details` на весь каталог: `payload_json` подгружается пакетами только для строк с неполным override в `ms_dimensions_measurements`. Результат пост-фильтра кэшируется in-memory **~90 с** (`list_cached: true` при повторном запросе с теми же фильтрами, без `offset`/`limit` в ключе); пагинация — срез из кэша.
+- `exclude_has_bundle` — `1` (по умолчанию на UI) / `0`: при `1` из списка исключаются **товары**, чей `code` встречается как `component_code` в `dg_bundle_components` (есть комплект с этим компонентом). Строки типа «Комплект» не скрываются.
 - `limit` — 1…500 (по умолчанию 100), `offset` — 0…1_000_000.
 - `sort_by` — `code` | `name` | `type` | `stock` | `measured_by_name` | `measured_at` | `packing_type` | `length_cm` | `width_cm` | `height_box_cm` | `height_bag_cm` | `weight_kg` (по умолчанию `code`).
 - `sort_dir` — `asc` | `desc`.
 
-Ответ: `{ success: true, rows: [...], total, limit, offset, sort_by, sort_dir, mp_scope, problem_profile, post_filtered?, post_filter_cap?, post_filter_match_cap?, post_filter_truncated?, dimension_attrs }`.
+Ответ: `{ success: true, rows: [...], total, limit, offset, sort_by, sort_dir, mp_scope, problem_profile, exclude_has_bundle?, post_filtered?, post_filter_cap?, post_filter_match_cap?, post_filter_truncated?, dimension_attrs }`.
 
 | Поле в API | Атрибут МойСклада | Описание |
 |---|---|---|
@@ -964,6 +972,37 @@ Body (JSON):
 ### GET `/api/exports/dimensions/parse-packing`
 
 Сухой запуск парсера. Принимает `?text=...`, возвращает `{ success: true, parsed: { kind, length_cm, width_cm, height_box_cm, height_bag_cm } }` — без записи в БД. Удобно для интеграционных тестов.
+
+### GET `/api/exports/dimensions/log/edits-by-employee`
+
+Агрегат для графика на `/exports-dimensions.html`: сколько **разных товаров** (`code`) отредактировал каждый сотрудник за период (только `action=set` — правки в панели).
+
+Query:
+
+- `period` — `current_month` (по умолчанию на UI), `prev_month`, `7`, `30` (скользящие N дней). Устаревший `days` — только если `period` не задан.
+- `refresh=1` — сброс in-memory кэша и пересчёт (иначе ответ может быть из кэша **24 часа** на ключ периода).
+
+Ответ:
+
+```json
+{
+  "success": true,
+  "cached": true,
+  "cache_ttl_hours": 24,
+  "cache_age_ms": 120000,
+  "cache_expires_at": "2026-05-17T12:00:00.000Z",
+  "period": "current_month",
+  "period_kind": "current_month",
+  "period_label": "Май 2026",
+  "days": null,
+  "generated_at": "2026-05-16T12:00:00.000Z",
+  "action": "set",
+  "employees": [
+    { "name": "Иванов И.И.", "user_id": 12, "products_edited": 84, "field_edits": 210 }
+  ],
+  "totals": { "products_unique": 120, "field_edits": 340 }
+}
+```
 
 ### GET `/api/exports/dimensions/log/stats`
 
@@ -1275,6 +1314,7 @@ Body (JSON): `email`, `password` (обязательны), опциональн�
 - `applicable` — `1` (по умолчанию: только проведённые) | `0` (только черновики) | пусто (все).
 - `deleted` — `0` (по умолчанию: только активные, без soft-deleted) | `1` (только помеченные удалёнными в МС) | `all` (без фильтра по `deleted_at`).
 - `linked` — `all` (по умолчанию, без фильтра по привязке) | `1` (только отгрузки, у которых **все** позиции привязаны к `ms_export`) | `0` (только отгрузки, у которых **есть** хотя бы одна не привязанная позиция, бейдж «не привязано» в UI). Реализован через `EXISTS / NOT EXISTS` по `ms_demand_position.ms_export_resolved`, опирается на индекс `idx_resolved`.
+- `stock_position` — `all` (по умолчанию) | `yes` (отгрузки, в которых **есть хотя бы одна** позиция с `ms_export.stock_position = «Да»` по коду `ms_export_code` / `code_at_moment`) | `no` (хотя бы одна позиция с товаром не «Да»). Через `EXISTS` по позициям + `ms_export`, без дублирования строк отгрузки.
 - `limit` (1..500, default 100) / `offset` (default 0).
 - `sort_by` — `moment|doc_name|agent|store|positions_count|sum`. Default `moment`.
 - `sort_dir` — `asc|desc`. Default `desc`.
@@ -1670,6 +1710,7 @@ Query:
 - `recent_bundle_code` — при `recent_via=bundle` ограничить одним **кодом из строки отгрузки** (как правило код комплекта в МС; можно передать любой код, совпадающий с `bundle_code` в объединённой выборке). Без параметра — все комплекты в окне.
 - `sales_from`, `sales_to` — даты **`YYYY-MM-DD`** (включительно). Если обе валидны и `from <= to`, окно продаж **календарное** (графики, сводки, `recent`, `via_bundles`); максимум 1825 дней между датами. Фильтр по дате отгрузки в SQL — **`DATE(d.moment)`** между этими днями (время суток из UI в query **не** передаётся; сравнение с отчётом МС «по часам» может расходиться на границах суток). Иначе используется скользящее окно `recent_days`.
 - `recent_days` — скользящее окно в днях от `NOW()`, если **не** задана пара `sales_from`+`sales_to` (default 365, max 1825).
+- `sales_scope` — для блока «Продажи товара» и `GET …/recent-shipments`: `all` (все проекты отгрузок, default) | `formula` (только `project_uuid` из `sales_formula_project_uuids`, как в формуле). В ответе карточки: `sales` — всегда «все»; при `sales_formula_project_mode=selected` дополнительно `sales_formula_scope` (тот же объект, что `sales`, но с фильтром) и `sales_scope_meta.formula_label` (подпись с **названиями** проектов).
 - `zero_days` — окно для лога нулевых остатков (default 90, max 1825).
 - `stock_snapshot_days` — глубина в **календарных днях** для блока **`stock_snapshots.rows`** (снимки `dg_product_stock_snapshot` от `CURDATE()` назад; max **730** и не больше **`stock_snapshots.retention_days`** из настроек; если query **нет** — берётся **min(730, retention)**; в выборке не более **400** строк на ответ).
 - **`purchase_overrides_editable`** — `true`, если у текущего пользователя для раздела «Закупки» в матрице прав стоит **полный** доступ (`page_modes.purchase === 'full'`); иначе `false` — карточка товара не должна вызывать `POST /api/purchase/override` (режим только просмотра вернёт `403` с `code: PAGE_VIEW_ONLY`).

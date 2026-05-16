@@ -1,6 +1,7 @@
 const express = require('express');
 const fs = require('fs/promises');
 const path = require('path');
+const { parseUuidList } = require('../lib/datagonSalesFormulaDemandFilter');
 const router = express.Router();
 
 /** Пн=1…Вс=7; пустая строка — «каждый день» (legacy). Ровно семь дней храним как `1,2,3,4,5,6,7`, не как пусто — иначе после сохранения UI снова рисует «все дни» и «вс» «возвращается». */
@@ -37,6 +38,36 @@ module.exports = (db, appSettings) => {
     }
 
     router.get('/', async (req, res) => res.json(appSettings));
+
+    /** GET /api/settings/ms-demand-projects — проекты из отгрузок МС для фильтра формулы продаж. */
+    router.get('/ms-demand-projects', async (req, res) => {
+        try {
+            const daysRaw = parseInt(String(req.query.days || ''), 10);
+            const days = Number.isFinite(daysRaw) ? Math.max(30, Math.min(365 * 2, daysRaw)) : 365;
+            const [rows] = await db.query(
+                `SELECT project_uuid AS uuid, project_name AS name, COUNT(*) AS cnt
+                   FROM ms_demand
+                  WHERE moment >= (NOW() - INTERVAL ? DAY)
+                    AND project_uuid IS NOT NULL
+                    AND TRIM(project_uuid) <> ''
+                  GROUP BY project_uuid, project_name
+                  ORDER BY cnt DESC, name
+                  LIMIT 500`,
+                [days],
+            );
+            res.json({
+                success: true,
+                days,
+                projects: (rows || []).map((r) => ({
+                    uuid: String(r.uuid || '').toLowerCase(),
+                    name: String(r.name || '').trim() || String(r.uuid || ''),
+                    count: Number(r.cnt || 0),
+                })),
+            });
+        } catch (e) {
+            res.status(500).json({ success: false, error: e && e.message ? e.message : 'Ошибка' });
+        }
+    });
 
     router.post('/fetch-proxy', async (req, res) => {
         const { fetch_proxy_enabled, fetch_proxy_list } = req.body || {};
@@ -132,7 +163,8 @@ module.exports = (db, appSettings) => {
             mp_ozon_delay_ms, mp_wb_delay_cards_ms, mp_wb_delay_other_ms, mp_yandex_delay_ms, mp_ozon_include_archived,
             sales_formula_replenishment_coef, sales_formula_sales_window_days, sales_formula_absence_analysis_days,
             sales_formula_base_qty, sales_formula_rare_base_qty, sales_formula_rare_avg_max, sales_formula_expensive_rare_threshold_rub,
-            sales_formula_expensive_rare_min_qty, sales_formula_max_change_coef, sales_formula_incomplete_pack_pct
+            sales_formula_expensive_rare_min_qty, sales_formula_max_change_coef, sales_formula_incomplete_pack_pct,
+            sales_formula_project_mode, sales_formula_project_uuids
         } = req.body;
         try {
             const queries = [];
@@ -275,6 +307,14 @@ module.exports = (db, appSettings) => {
                 const pv = Number.isFinite(p) ? Math.max(0, Math.min(100, p)) : 80;
                 queries.push(['sales_formula_incomplete_pack_pct', String(pv)]);
             }
+            if (sales_formula_project_mode !== undefined) {
+                const mode = String(sales_formula_project_mode || 'all').trim().toLowerCase();
+                queries.push(['sales_formula_project_mode', mode === 'selected' ? 'selected' : 'all']);
+            }
+            if (sales_formula_project_uuids !== undefined) {
+                const uuids = parseUuidList(sales_formula_project_uuids);
+                queries.push(['sales_formula_project_uuids', uuids.join(',')]);
+            }
 
             for (const [key, val] of queries) {
                 await db.query('INSERT INTO app_settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value=?', [key, val, val]);
@@ -386,6 +426,13 @@ module.exports = (db, appSettings) => {
             if (sales_formula_incomplete_pack_pct !== undefined) {
                 const p = Number(sales_formula_incomplete_pack_pct);
                 appSettings.sales_formula_incomplete_pack_pct = Number.isFinite(p) ? Math.max(0, Math.min(100, p)) : 80;
+            }
+            if (sales_formula_project_mode !== undefined) {
+                const mode = String(sales_formula_project_mode || 'all').trim().toLowerCase();
+                appSettings.sales_formula_project_mode = mode === 'selected' ? 'selected' : 'all';
+            }
+            if (sales_formula_project_uuids !== undefined) {
+                appSettings.sales_formula_project_uuids = parseUuidList(sales_formula_project_uuids).join(',');
             }
 
             res.json({ success: true });

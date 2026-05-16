@@ -3,6 +3,7 @@
       var LIST_URL = '/api/exports/dimensions/list';
       var STORAGE_KEY = 'datagon_dimensions_filters_v1';
       var FILTERS_COLLAPSED_KEY = 'datagon_dimensions_filters_collapsed_v1';
+      var EDITS_CHART_COLLAPSED_KEY = 'datagon_dimensions_edits_chart_collapsed_v1';
       var TABLE_COLLAPSED_KEY = 'datagon_dimensions_table_collapsed_v1';
       var VISIBLE_COLS_KEY = 'datagon_dimensions_visible_cols_v2';
       var COL_WIDTHS_KEY = 'datagon_dimensions_col_widths_v2';
@@ -13,6 +14,7 @@
         measure_scope: 'all',
         mp_scope: 'all',
         problem_profile: '',
+        exclude_has_bundle: true,
         limit: 100,
       };
 
@@ -45,6 +47,10 @@
           measure_scope: measure,
           mp_scope: 'all',
           problem_profile: String((src && src.problem_profile) || ''),
+          exclude_has_bundle:
+            src && Object.prototype.hasOwnProperty.call(src, 'exclude_has_bundle')
+              ? !!src.exclude_has_bundle
+              : true,
           limit: Number((src && src.limit) || 100) || 100,
         };
       }
@@ -81,6 +87,8 @@
         var prob = String(f.problem_profile || '').trim();
         var sw = document.getElementById('dg-dim-problem-stock-switch');
         if (sw) sw.checked = prob === 'stock_missing';
+        var swBundle = document.getElementById('dg-dim-exclude-bundle-switch');
+        if (swBundle) swBundle.checked = f.exclude_has_bundle !== false;
       }
 
       function applyFormFromState(s) {
@@ -107,6 +115,8 @@
         state.pending.measure_scope = elMeasure ? String(elMeasure.value || 'all') : 'all';
         var swProb = document.getElementById('dg-dim-problem-stock-switch');
         state.pending.problem_profile = swProb && swProb.checked ? 'stock_missing' : '';
+        var swBundle = document.getElementById('dg-dim-exclude-bundle-switch');
+        state.pending.exclude_has_bundle = !(swBundle && !swBundle.checked);
         state.pending.mp_scope = 'all';
         var limNum = Number((elLimit && elLimit.value) || 100);
         state.pending.limit = Number.isFinite(limNum) && limNum > 0 ? limNum : 100;
@@ -825,6 +835,7 @@
         qs.set('measure_scope', state.applied.measure_scope || 'all');
         qs.set('mp_scope', state.applied.mp_scope || 'all');
         if (state.applied.problem_profile) qs.set('problem_profile', state.applied.problem_profile);
+        qs.set('exclude_has_bundle', state.applied.exclude_has_bundle === false ? '0' : '1');
         qs.set('limit', String(state.applied.limit));
         qs.set('offset', String(state.offset));
         qs.set('sort_by', state.sortBy);
@@ -1892,6 +1903,9 @@
               if (ap.problem_profile === 'stock_missing') {
                 activeFilters.push('Проблемные товары: остаток > 0, не заполнены поля замера');
               }
+              if (ap.exclude_has_bundle !== false) {
+                activeFilters.push('Скрыты товары, входящие в комплекты');
+              }
             } catch (_) { /** state может быть не инициализирован — ничего страшного */ }
 
             var warnLines = '';
@@ -2087,6 +2101,12 @@
         var swProb = document.getElementById('dg-dim-problem-stock-switch');
         if (swProb) {
           swProb.addEventListener('change', function () {
+            readFormToPending();
+          });
+        }
+        var swBundle = document.getElementById('dg-dim-exclude-bundle-switch');
+        if (swBundle) {
+          swBundle.addEventListener('change', function () {
             readFormToPending();
           });
         }
@@ -2677,6 +2697,256 @@
         });
       }
 
+      var EDITS_CHART_URL = '/api/exports/dimensions/log/edits-by-employee';
+      var editsChartPeriod = 'current_month';
+      var editsChartInstance = null;
+      var chartJsPromise = null;
+
+      var EDITS_CHART_COLORS = [
+        'rgba(11, 94, 215, 0.72)',
+        'rgba(14, 165, 233, 0.72)',
+        'rgba(16, 185, 129, 0.72)',
+        'rgba(245, 158, 11, 0.72)',
+        'rgba(99, 102, 241, 0.72)',
+        'rgba(236, 72, 153, 0.72)',
+        'rgba(20, 184, 166, 0.72)',
+        'rgba(148, 163, 184, 0.72)',
+      ];
+
+      function loadChartJs() {
+        if (window.Chart && typeof window.Chart === 'function') return Promise.resolve(window.Chart);
+        if (chartJsPromise) return chartJsPromise;
+        chartJsPromise = new Promise(function (resolve, reject) {
+          var s = document.createElement('script');
+          s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js';
+          s.async = true;
+          s.onload = function () { resolve(window.Chart); };
+          s.onerror = function () { reject(new Error('Не удалось загрузить Chart.js')); };
+          document.head.appendChild(s);
+        });
+        return chartJsPromise;
+      }
+
+      function syncEditsChartPeriodButtons() {
+        document.querySelectorAll('[data-dg-dim-edits-period]').forEach(function (btn) {
+          var p = String(btn.getAttribute('data-dg-dim-edits-period') || '');
+          var active = p === editsChartPeriod;
+          btn.classList.toggle('btn-outline-primary', active);
+          btn.classList.toggle('active', active);
+          btn.classList.toggle('btn-outline-secondary', !active);
+        });
+      }
+
+      function editsChartPeriodSubtitle(data) {
+        if (data && data.period_label) {
+          return (
+            'За ' +
+            String(data.period_label) +
+            ' — разные товары (код), где сотрудник сохранял габариты в панели'
+          );
+        }
+        var p = String((data && data.period) || editsChartPeriod || '');
+        if (p === 'current_month') return 'За текущий месяц — разные товары (код), где сотрудник сохранял габариты в панели';
+        if (p === 'prev_month') return 'За прошлый месяц — разные товары (код), где сотрудник сохранял габариты в панели';
+        if (/^\d+$/.test(p)) {
+          return 'За ' + p + ' дн. — разные товары (код), где сотрудник сохранял габариты в панели';
+        }
+        return 'Разные товары (код), где сотрудник сохранял габариты в панели';
+      }
+
+      function buildEditsChartUrl(forceRefresh) {
+        var url = EDITS_CHART_URL + '?period=' + encodeURIComponent(String(editsChartPeriod || 'current_month'));
+        if (forceRefresh) url += '&refresh=1';
+        return url;
+      }
+
+      function formatEditsChartMeta(data) {
+        if (!data) return '';
+        var totals = data.totals || {};
+        var parts = [
+          'Уникальных товаров за период: ' + Number(totals.products_unique || 0).toLocaleString('ru-RU'),
+          'строк правок полей: ' + Number(totals.field_edits || 0).toLocaleString('ru-RU'),
+        ];
+        if (data.cached) {
+          parts.push('данные из кэша (24 ч)');
+          if (data.cache_expires_at) {
+            try {
+              var exp = new Date(data.cache_expires_at);
+              if (!isNaN(exp.getTime())) {
+                parts.push('обновление после ' + exp.toLocaleString('ru-RU'));
+              }
+            } catch (e) {}
+          }
+        } else {
+          parts.push('пересчитано сейчас');
+        }
+        return parts.join(' · ');
+      }
+
+      function renderEditsByEmployeeChart(data) {
+        var canvas = document.getElementById('dg-dim-edits-chart-canvas');
+        var wrap = canvas && canvas.closest('.dg-dim-edits-chart-wrap');
+        var emptyEl = document.getElementById('dg-dim-edits-chart-empty');
+        var subEl = document.getElementById('dg-dim-edits-chart-subtitle');
+        var metaEl = document.getElementById('dg-dim-edits-chart-meta');
+        if (!canvas) return;
+
+        var employees = Array.isArray(data && data.employees) ? data.employees : [];
+        if (subEl) subEl.textContent = editsChartPeriodSubtitle(data);
+        if (metaEl) metaEl.textContent = formatEditsChartMeta(data);
+
+        if (!employees.length) {
+          if (editsChartInstance) {
+            try { editsChartInstance.destroy(); } catch (e) {}
+            editsChartInstance = null;
+          }
+          canvas.style.display = 'none';
+          if (wrap) wrap.style.minHeight = '120px';
+          if (emptyEl) emptyEl.classList.remove('d-none');
+          return;
+        }
+
+        canvas.style.display = '';
+        if (emptyEl) emptyEl.classList.add('d-none');
+        var chartH = Math.max(220, Math.min(560, employees.length * 34 + 48));
+        if (wrap) wrap.style.minHeight = chartH + 'px';
+
+        var labels = employees.map(function (e) { return String(e.name || 'Не указан'); });
+        var values = employees.map(function (e) { return Number(e.products_edited || 0); });
+        var colors = employees.map(function (_, i) {
+          return EDITS_CHART_COLORS[i % EDITS_CHART_COLORS.length];
+        });
+
+        loadChartJs().then(function (Chart) {
+          if (editsChartInstance) {
+            try { editsChartInstance.destroy(); } catch (e) {}
+            editsChartInstance = null;
+          }
+          var ctx = canvas.getContext('2d');
+          editsChartInstance = new Chart(ctx, {
+            type: 'bar',
+            data: {
+              labels: labels,
+              datasets: [{
+                label: 'Товаров отредактировано',
+                data: values,
+                backgroundColor: colors,
+                borderColor: colors.map(function (c) { return c.replace('0.72', '1'); }),
+                borderWidth: 1,
+                borderRadius: 4,
+                maxBarThickness: 22,
+              }],
+            },
+            options: {
+              indexAxis: 'y',
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: { display: false },
+                tooltip: {
+                  callbacks: {
+                    label: function (ctx2) {
+                      var i = ctx2.dataIndex;
+                      var row = employees[i] || {};
+                      return [
+                        'Товаров: ' + Number(row.products_edited || 0).toLocaleString('ru-RU'),
+                        'Правок полей: ' + Number(row.field_edits || 0).toLocaleString('ru-RU'),
+                      ];
+                    },
+                  },
+                },
+              },
+              scales: {
+                x: {
+                  beginAtZero: true,
+                  ticks: {
+                    precision: 0,
+                    font: { size: 11 },
+                  },
+                  grid: { color: 'rgba(0,0,0,0.06)' },
+                  title: {
+                    display: true,
+                    text: 'Уникальных товаров',
+                    font: { size: 11 },
+                  },
+                },
+                y: {
+                  ticks: { font: { size: 11 }, autoSkip: false },
+                  grid: { display: false },
+                },
+              },
+            },
+          });
+        }).catch(function (e) {
+          canvas.style.display = 'none';
+          if (emptyEl) {
+            emptyEl.classList.remove('d-none');
+            emptyEl.textContent = 'График недоступен: ' + (e && e.message ? e.message : e);
+          }
+        });
+      }
+
+      function loadEditsByEmployeeChart(forceRefresh) {
+        var refreshBtn = document.getElementById('dg-dim-edits-chart-refresh');
+        var url = buildEditsChartUrl(forceRefresh);
+
+        var run = function () {
+          return fetch(url, { credentials: 'same-origin' })
+            .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+            .then(function (x) {
+              if (!x.ok || !x.j || x.j.success === false) {
+                throw new Error((x.j && x.j.error) || 'Не удалось загрузить статистику');
+              }
+              renderEditsByEmployeeChart(x.j);
+              if (window.DatagonNotify && window.DatagonNotify.toast && forceRefresh) {
+                window.DatagonNotify.toast({
+                  type: 'success',
+                  message: x.j.cached ? 'График из кэша' : 'График пересчитан',
+                });
+              }
+            })
+            .catch(function (e) {
+              if (window.DatagonNotify && window.DatagonNotify.toast) {
+                window.DatagonNotify.toast({
+                  type: 'danger',
+                  message: e && e.message ? e.message : 'Ошибка загрузки графика',
+                });
+              }
+              renderEditsByEmployeeChart({
+                period: editsChartPeriod,
+                employees: [],
+                totals: {},
+              });
+            });
+        };
+
+        if (forceRefresh && refreshBtn && window.DatagonNotify && window.DatagonNotify.busyRun) {
+          return window.DatagonNotify.busyRun(refreshBtn, run);
+        }
+        return run();
+      }
+
+      function bindEditsChart() {
+        if (!document.getElementById('dg-dim-edits-chart-card')) return;
+        document.querySelectorAll('[data-dg-dim-edits-period]').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            var p = String(btn.getAttribute('data-dg-dim-edits-period') || '').trim();
+            if (!p || p === editsChartPeriod) return;
+            editsChartPeriod = p;
+            syncEditsChartPeriodButtons();
+            loadEditsByEmployeeChart(false);
+          });
+        });
+        var ref = document.getElementById('dg-dim-edits-chart-refresh');
+        if (ref) {
+          ref.addEventListener('click', function () {
+            loadEditsByEmployeeChart(true);
+          });
+        }
+        syncEditsChartPeriodButtons();
+        loadEditsByEmployeeChart(false);
+      }
+
       function init() {
         var saved = loadSavedFilters();
         if (saved) state.applied = cloneFilters(saved);
@@ -2697,11 +2967,13 @@
         bindColumnsToolbox();
         bindSyncAllButton();
         bindPackingTypesRefresh();
+        bindCardCollapse(EDITS_CHART_COLLAPSED_KEY, 'dg-dim-edits-chart-body', 'dg-dim-edits-chart-toggle');
         bindCardCollapse(FILTERS_COLLAPSED_KEY, 'dg-dim-filters-body', 'dg-dim-filters-toggle');
         bindCardCollapse(TABLE_COLLAPSED_KEY, 'dg-dim-table-body', 'dg-dim-table-toggle');
         bindHistoryCard();
         bindCellTooltips();
         bindStickyTopVar();
+        bindEditsChart();
         /** Подгружаем справочник «Тип упаковки» параллельно загрузке списка; если он
          *  успеет — packing_type-ячейки сразу будут <select>; иначе перерисуем после. */
         loadPackingTypes(false)

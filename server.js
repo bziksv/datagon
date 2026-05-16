@@ -145,7 +145,9 @@ let appSettings = {
     sales_formula_expensive_rare_threshold_rub: 50000,
     sales_formula_expensive_rare_min_qty: 1,
     sales_formula_max_change_coef: 1.6,
-    sales_formula_incomplete_pack_pct: 80
+    sales_formula_incomplete_pack_pct: 80,
+    sales_formula_project_mode: 'all',
+    sales_formula_project_uuids: ''
 };
 let syncState = { active: false, processed: 0, total: 0, message: '' };
 const moyskladRouterFactory = require('./routes/moysklad');
@@ -344,7 +346,9 @@ async function initDB() {
             ['sales_formula_expensive_rare_threshold_rub','50000'],
             ['sales_formula_expensive_rare_min_qty','1'],
             ['sales_formula_max_change_coef','1.6'],
-            ['sales_formula_incomplete_pack_pct','80']
+            ['sales_formula_incomplete_pack_pct','80'],
+            ['sales_formula_project_mode','all'],
+            ['sales_formula_project_uuids','']
         ];
         for (const [k, v] of defaults) await db.query('INSERT IGNORE INTO app_settings (setting_key, setting_value) VALUES (?, ?)', [k, v]);
 
