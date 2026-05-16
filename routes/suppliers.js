@@ -1,0 +1,768 @@
+'use strict';
+
+/**
+ * Поставщики — агрегат по `ms_export` + настройки в `dg_supplier_settings`.
+ *
+ * GET  /api/suppliers           — список поставщиков (пагинация, поиск, сортировка)
+ * GET  /api/suppliers/analytics — сводка по привязанным сотрудникам (для дашборда на странице)
+ * GET  /api/suppliers/assignees — id / имя пользователей для привязки сотрудника
+ * GET  /api/suppliers/ms-order-log — журнал отправок заказов в МС
+ * GET  /api/suppliers/ms-order-log/:logId — детали попытки (detail_json.steps)
+ * POST /api/suppliers/:supplierKey/send-ms-order — заказ поставщику в МойСклад
+ * PATCH /api/suppliers/:supplierKey — сохранить поля карточки поставщика
+ */
+
+const express = require('express');
+const { createPurchaseOrderForSupplier } = require('../lib/datagonMoyskladPurchaseOrder');
+const {
+    listSupplierMsOrderLogs,
+    getSupplierMsOrderLogDetail,
+} = require('../lib/datagonSupplierMsOrderLog');
+const {
+    SUPPLIER_BUY_PRICE_NUM,
+    SUPPLIER_NEED_QTY_SQL,
+    SUPPLIER_TARGET_STOCK_SQL,
+    sqlSupplierProductWhere,
+} = require('../lib/datagonSuppliersSql');
+const { loadPurchaseDataRevision, buildFormulaFingerprint } = require('../lib/datagonFormulaProposedCache');
+const {
+    loadSupplierExportRows,
+    buildSupplierForSupplierSpreadsheet,
+    buildPurchaserExportSpreadsheet,
+    exportFilename,
+    sendExcelCsv,
+} = require('../lib/datagonSupplierExport');
+
+const SUPPLIERS_LIST_CACHE_TTL_MS = 90 * 1000;
+const SUPPLIERS_ANALYTICS_CACHE_TTL_MS = 90 * 1000;
+const suppliersListCache = new Map();
+const suppliersAnalyticsCache = new Map();
+
+const SORT_KEYS = new Set([
+    'supplier_name',
+    'products_total',
+    'products_to_purchase',
+    'purchase_pieces_total',
+    'total_purchase_sum',
+    'min_purchase_sum',
+    'warehouse_fill_pct',
+    'stock_fill_pct',
+    'assigned_user_name',
+]);
+
+let schemaReady = false;
+
+async function ensureSuppliersSchema(db) {
+    if (schemaReady) return;
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS dg_supplier_settings (
+            supplier_key VARCHAR(255) NOT NULL PRIMARY KEY,
+            assigned_user_id INT NULL DEFAULT NULL,
+            comment TEXT NULL,
+            min_purchase_sum DECIMAL(18,2) NULL DEFAULT NULL,
+            warehouse_fill_pct DECIMAL(8,2) NULL DEFAULT NULL,
+            stock_fill_pct DECIMAL(8,2) NULL DEFAULT NULL,
+            stock_fill_pct_recorded_at TIMESTAMP NULL DEFAULT NULL,
+            auto_mailing_enabled TINYINT(1) NOT NULL DEFAULT 0,
+            mailing_text TEXT NULL,
+            updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            INDEX idx_dg_supplier_assigned (assigned_user_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `);
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS dg_supplier_fill_history (
+            id BIGINT AUTO_INCREMENT PRIMARY KEY,
+            supplier_key VARCHAR(255) NOT NULL,
+            stock_fill_pct DECIMAL(8,2) NULL,
+            products_total INT NULL,
+            products_to_purchase INT NULL,
+            purchase_pieces_total DECIMAL(18,3) NULL,
+            total_purchase_sum DECIMAL(18,2) NULL,
+            recorded_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_supplier_fill_hist_key_date (supplier_key, recorded_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `);
+    schemaReady = true;
+}
+
+function parseFlexibleNumber(raw) {
+    if (raw == null) return null;
+    const s = String(raw).trim();
+    if (!s) return null;
+    const cleaned = s.replace(/\s/g, '').replace(',', '.');
+    const n = Number(cleaned);
+    return Number.isFinite(n) ? n : null;
+}
+
+function normalizeSupplierKey(raw) {
+    return String(raw || '').trim().slice(0, 255);
+}
+
+function buildListCacheKey(req) {
+    const q = req.query || {};
+    return JSON.stringify({
+        v: 2,
+        search: String(q.search || '').trim().toLowerCase(),
+        limit: String(q.limit || '100'),
+        offset: String(q.offset || '0'),
+        sort_by: String(q.sort_by || 'supplier_name'),
+        sort_dir: String(q.sort_dir || 'asc'),
+    });
+}
+
+function invalidateSuppliersListCache() {
+    suppliersListCache.clear();
+    suppliersAnalyticsCache.clear();
+}
+
+function buildSupplierOuterWhere(search) {
+    const outerWhere = ['1=1'];
+    const params = [];
+    const normalized = String(search || '').trim().toLowerCase();
+    if (normalized) {
+        outerWhere.push('LOWER(agg.supplier_name) LIKE ?');
+        params.push(`%${normalized}%`);
+    }
+    return {
+        whereSql: outerWhere.join(' AND '),
+        params,
+        search: normalized || null,
+    };
+}
+
+function buildAnalyticsCacheKey(search) {
+    return JSON.stringify({
+        v: 3,
+        search: String(search || '').trim().toLowerCase(),
+    });
+}
+
+function trimSuppliersAnalyticsCache() {
+    if (suppliersAnalyticsCache.size <= 40) return;
+    const cut = Date.now() - SUPPLIERS_ANALYTICS_CACHE_TTL_MS * 2;
+    for (const [k, v] of suppliersAnalyticsCache.entries()) {
+        if (!v || v.ts < cut) suppliersAnalyticsCache.delete(k);
+    }
+}
+
+function mapAnalyticsAssigneeRow(r) {
+    const assigneeId = r.assignee_id != null ? Number(r.assignee_id) : 0;
+    const label = String(r.assignee_label || '').trim() || '(не назначен)';
+    return {
+        assignee_id: assigneeId,
+        assignee_label: label,
+        suppliers_count: Number(r.suppliers_count || 0),
+        products_total: Number(r.products_total || 0),
+        products_to_purchase: Number(r.products_to_purchase || 0),
+        purchase_pieces_total: Number(r.purchase_pieces_total || 0),
+        stock_total: Number(r.stock_total || 0),
+        total_purchase_sum: Number(r.total_purchase_sum || 0),
+        avg_fill_pct: r.avg_fill_pct != null && r.avg_fill_pct !== '' ? Number(r.avg_fill_pct) : null,
+    };
+}
+
+const SUPPLIERS_ANALYTICS_CHART_TOP = 30;
+
+function mapAnalyticsSupplierRow(r) {
+    const key = String(r.supplier_key || '').trim();
+    const label = String(r.supplier_label || r.supplier_name || '').trim() || key || '—';
+    return {
+        supplier_key: key,
+        supplier_label: label,
+        suppliers_count: 1,
+        products_total: Number(r.products_total || 0),
+        products_to_purchase: Number(r.products_to_purchase || 0),
+        purchase_pieces_total: Number(r.purchase_pieces_total || 0),
+        stock_total: Number(r.stock_total || 0),
+        total_purchase_sum: Number(r.total_purchase_sum || 0),
+        avg_fill_pct: r.avg_fill_pct != null && r.avg_fill_pct !== '' ? Number(r.avg_fill_pct) : null,
+    };
+}
+
+function trimSuppliersListCache() {
+    if (suppliersListCache.size <= 80) return;
+    const cut = Date.now() - SUPPLIERS_LIST_CACHE_TTL_MS * 2;
+    for (const [k, v] of suppliersListCache.entries()) {
+        if (!v || v.ts < cut) suppliersListCache.delete(k);
+    }
+}
+
+function buildSupplierAggregatesSubquery(formulaFp, dataRev) {
+    const productWhere = sqlSupplierProductWhere('mse');
+    const fp = String(formulaFp || '');
+    const rev = String(dataRev || '');
+    const fcJoin =
+        fp && rev
+            ? `LEFT JOIN dg_formula_proposed_cache fc ON fc.code = mse.code AND fc.formula_fp = '${fp.replace(/'/g, "''")}' AND fc.data_rev = '${rev.replace(/'/g, "''")}'`
+            : 'LEFT JOIN dg_formula_proposed_cache fc ON fc.code = mse.code';
+    return `
+        SELECT
+            TRIM(mse.supplier) AS supplier_key,
+            TRIM(mse.supplier) AS supplier_name,
+            COUNT(*) AS products_total,
+            SUM(CASE WHEN (${SUPPLIER_NEED_QTY_SQL}) > 0 THEN 1 ELSE 0 END) AS products_to_purchase,
+            SUM(CASE WHEN (${SUPPLIER_NEED_QTY_SQL}) > 0 THEN (${SUPPLIER_NEED_QTY_SQL}) ELSE 0 END) AS purchase_pieces_total,
+            SUM(
+                CASE WHEN (${SUPPLIER_NEED_QTY_SQL}) > 0
+                    THEN (${SUPPLIER_NEED_QTY_SQL}) * (${SUPPLIER_BUY_PRICE_NUM})
+                    ELSE 0
+                END
+            ) AS total_purchase_sum,
+            SUM((${SUPPLIER_TARGET_STOCK_SQL})) AS min_stock_total,
+            SUM(COALESCE(mse.stock, 0)) AS stock_total,
+            SUM(CASE WHEN (${SUPPLIER_TARGET_STOCK_SQL}) > 0 THEN 1 ELSE 0 END) AS min_stock_positions_count
+        FROM ms_export mse
+        LEFT JOIN dg_purchase_overrides po ON po.code = mse.code
+        LEFT JOIN ms_entity_details med ON med.uuid = mse.uuid
+        ${fcJoin}
+        WHERE ${productWhere}
+        GROUP BY TRIM(mse.supplier)
+        HAVING COUNT(*) >= 1
+    `;
+}
+
+function stockFillPctFromTotals(minStockTotal, stockTotal) {
+    const minT = Number(minStockTotal || 0);
+    const st = Number(stockTotal || 0);
+    if (!Number.isFinite(minT) || minT <= 0) return null;
+    return Math.round((100 * st) / minT * 100) / 100;
+}
+
+function buildOrderBy(sortBy, sortDesc) {
+    const desc = sortDesc ? 'DESC' : 'ASC';
+    const tie = ', agg.supplier_key ASC';
+    const num = (expr) => `(${expr}) IS NULL ASC, (${expr}) ${desc}${tie}`;
+    const str = (expr) => `${expr} ${desc}${tie}`;
+    switch (sortBy) {
+        case 'products_total':
+            return num('agg.products_total');
+        case 'products_to_purchase':
+            return num('agg.products_to_purchase');
+        case 'purchase_pieces_total':
+            return num('agg.purchase_pieces_total');
+        case 'total_purchase_sum':
+            return num('agg.total_purchase_sum');
+        case 'min_purchase_sum':
+            return num('ss.min_purchase_sum');
+        case 'warehouse_fill_pct':
+            return num('ss.warehouse_fill_pct');
+        case 'stock_fill_pct':
+            return num('COALESCE(ss.stock_fill_pct, agg.stock_fill_pct_computed)');
+        case 'assigned_user_name':
+            return str('COALESCE(u.full_name, u.username, \'\')');
+        case 'supplier_name':
+        default:
+            return str('agg.supplier_name');
+    }
+}
+
+async function recordStockFillHistory(db, row) {
+    const key = normalizeSupplierKey(row.supplier_key);
+    if (!key) return;
+    const pct = row.stock_fill_pct != null ? Number(row.stock_fill_pct) : null;
+    if (pct == null || !Number.isFinite(pct)) return;
+    await db.query(
+        `INSERT INTO dg_supplier_fill_history
+            (supplier_key, stock_fill_pct, products_total, products_to_purchase, purchase_pieces_total, total_purchase_sum)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [
+            key,
+            pct,
+            row.products_total != null ? Math.round(Number(row.products_total)) : null,
+            row.products_to_purchase != null ? Math.round(Number(row.products_to_purchase)) : null,
+            row.purchase_pieces_total != null ? Number(row.purchase_pieces_total) : null,
+            row.total_purchase_sum != null ? Number(row.total_purchase_sum) : null,
+        ],
+    );
+}
+
+function parseAggNum(v) {
+    if (v == null || v === '') return 0;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+}
+
+function mapSupplierRow(r) {
+    const minStockTotal = parseAggNum(r.min_stock_total);
+    const stockTotal = parseAggNum(r.stock_total);
+    let fillPct = stockFillPctFromTotals(minStockTotal, stockTotal);
+    if (fillPct == null && r.stock_fill_pct_computed != null && r.stock_fill_pct_computed !== '') {
+        const c = Number(r.stock_fill_pct_computed);
+        if (Number.isFinite(c)) fillPct = c;
+    }
+    const gapPct =
+        fillPct != null && Number.isFinite(fillPct) ? Math.round((fillPct - 100) * 100) / 100 : null;
+    const stored =
+        r.settings_stock_fill_pct != null && r.settings_stock_fill_pct !== ''
+            ? Number(r.settings_stock_fill_pct)
+            : null;
+    return {
+        supplier_key: r.supplier_key,
+        supplier_name: r.supplier_name || r.supplier_key,
+        assigned_user_id: r.assigned_user_id != null ? Number(r.assigned_user_id) : null,
+        assigned_user_name: r.assigned_user_name || '',
+        comment: r.comment || '',
+        min_purchase_sum: r.min_purchase_sum != null ? Number(r.min_purchase_sum) : null,
+        warehouse_fill_pct: r.warehouse_fill_pct != null ? Number(r.warehouse_fill_pct) : null,
+        min_stock_total: minStockTotal,
+        stock_total: stockTotal,
+        min_stock_positions_count: Number(r.min_stock_positions_count || 0),
+        stock_fill_pct: fillPct,
+        stock_fill_pct_computed: fillPct,
+        stock_fill_gap_pct: gapPct,
+        stock_fill_pct_stored: stored != null && Number.isFinite(stored) ? stored : null,
+        stock_fill_pct_recorded_at: r.stock_fill_pct_recorded_at || null,
+        products_total: Number(r.products_total || 0),
+        products_to_purchase: Number(r.products_to_purchase || 0),
+        purchase_pieces_total: Number(r.purchase_pieces_total || 0),
+        total_purchase_sum: Number(r.total_purchase_sum || 0),
+        auto_mailing_enabled: Number(r.auto_mailing_enabled || 0) === 1,
+        mailing_text: r.mailing_text || '',
+        settings_updated_at: r.settings_updated_at || null,
+    };
+}
+
+module.exports = function suppliersRouterFactory(db, appSettings = {}) {
+    const router = express.Router();
+
+    router.get('/assignees', async (_req, res) => {
+        try {
+            await ensureSuppliersSchema(db);
+            const [rows] = await db.query(
+                `SELECT id, username, full_name
+                   FROM users
+                  ORDER BY COALESCE(NULLIF(TRIM(full_name), ''), username) ASC`,
+            );
+            res.json({
+                data: (rows || []).map((u) => ({
+                    id: u.id,
+                    username: u.username,
+                    full_name: u.full_name || '',
+                    label: String(u.full_name || u.username || '').trim() || String(u.username),
+                })),
+            });
+        } catch (e) {
+            console.error('[suppliers] assignees', e);
+            res.status(500).json({ error: e.message || 'Ошибка загрузки пользователей' });
+        }
+    });
+
+    router.get('/', async (req, res) => {
+        try {
+            await ensureSuppliersSchema(db);
+            const cacheKey = buildListCacheKey(req);
+            const cached = suppliersListCache.get(cacheKey);
+            if (cached && Date.now() - cached.ts < SUPPLIERS_LIST_CACHE_TTL_MS) {
+                return res.json({ ...cached.payload, cache: { hit: true, age_ms: Date.now() - cached.ts } });
+            }
+
+            const search = String(req.query.search || '').trim();
+            let limit = parseInt(req.query.limit, 10);
+            if (!Number.isFinite(limit) || limit < 1) limit = 100;
+            if (limit > 500) limit = 500;
+            let offset = parseInt(req.query.offset, 10);
+            if (!Number.isFinite(offset) || offset < 0) offset = 0;
+
+            let sortBy = String(req.query.sort_by || 'supplier_name').trim();
+            if (!SORT_KEYS.has(sortBy)) sortBy = 'supplier_name';
+            const sortDesc = String(req.query.sort_dir || 'asc').toLowerCase() === 'desc';
+
+            const dataRev = await loadPurchaseDataRevision(db);
+            const formulaFp = buildFormulaFingerprint(appSettings);
+            const aggSql = buildSupplierAggregatesSubquery(formulaFp, dataRev);
+            const { whereSql, params, search: searchApplied } = buildSupplierOuterWhere(search);
+            const orderSql = buildOrderBy(sortBy, sortDesc);
+
+            const countSql = `
+                SELECT COUNT(*) AS total
+                  FROM (${aggSql}) agg
+                 WHERE ${whereSql}`;
+            const listSql = `
+                SELECT
+                    agg.supplier_key,
+                    agg.supplier_name,
+                    agg.products_total,
+                    agg.products_to_purchase,
+                    agg.purchase_pieces_total,
+                    agg.total_purchase_sum,
+                    agg.min_stock_total,
+                    agg.stock_total,
+                    agg.min_stock_positions_count,
+                    ROUND(
+                        CASE WHEN agg.min_stock_total > 0
+                            THEN 100 * agg.stock_total / agg.min_stock_total
+                            ELSE NULL
+                        END,
+                        2
+                    ) AS stock_fill_pct_computed,
+                    ss.assigned_user_id,
+                    ss.comment,
+                    ss.min_purchase_sum,
+                    ss.warehouse_fill_pct,
+                    ss.stock_fill_pct AS settings_stock_fill_pct,
+                    ss.stock_fill_pct_recorded_at,
+                    ss.auto_mailing_enabled,
+                    ss.mailing_text,
+                    ss.updated_at AS settings_updated_at,
+                    COALESCE(NULLIF(TRIM(u.full_name), ''), u.username, '') AS assigned_user_name
+                  FROM (${aggSql}) agg
+                  LEFT JOIN dg_supplier_settings ss ON ss.supplier_key = agg.supplier_key
+                  LEFT JOIN users u ON u.id = ss.assigned_user_id
+                 WHERE ${whereSql}
+                 ORDER BY ${orderSql}
+                 LIMIT ? OFFSET ?`;
+
+            const [[countRows], [listRows]] = await Promise.all([
+                db.query(countSql, params),
+                db.query(listSql, [...params, limit, offset]),
+            ]);
+            const total = Number(countRows[0]?.total || 0);
+            const data = (listRows || []).map(mapSupplierRow);
+
+            const payload = {
+                success: true,
+                data,
+                total,
+                limit,
+                offset,
+                sort_by: sortBy,
+                sort_dir: sortDesc ? 'desc' : 'asc',
+                applied_filters: { search: searchApplied },
+                cache: { hit: false },
+            };
+            suppliersListCache.set(cacheKey, { ts: Date.now(), payload });
+            trimSuppliersListCache();
+            res.json(payload);
+        } catch (e) {
+            console.error('[suppliers] list', e);
+            res.status(500).json({ error: e.message || 'Ошибка загрузки поставщиков' });
+        }
+    });
+
+    router.get('/analytics', async (req, res) => {
+        try {
+            await ensureSuppliersSchema(db);
+            const search = String(req.query.search || '').trim();
+            const cacheKey = buildAnalyticsCacheKey(search);
+            const cached = suppliersAnalyticsCache.get(cacheKey);
+            if (cached && Date.now() - cached.ts < SUPPLIERS_ANALYTICS_CACHE_TTL_MS) {
+                return res.json({ ...cached.payload, cache: { hit: true, age_ms: Date.now() - cached.ts } });
+            }
+
+            const dataRev = await loadPurchaseDataRevision(db);
+            const formulaFp = buildFormulaFingerprint(appSettings);
+            const aggSql = buildSupplierAggregatesSubquery(formulaFp, dataRev);
+            const { whereSql, params, search: searchApplied } = buildSupplierOuterWhere(search);
+
+            const byAssigneeSql = `
+                SELECT
+                    COALESCE(ss.assigned_user_id, 0) AS assignee_id,
+                    CASE
+                        WHEN ss.assigned_user_id IS NULL THEN '(не назначен)'
+                        ELSE COALESCE(NULLIF(TRIM(u.full_name), ''), u.username, CONCAT('ID ', ss.assigned_user_id))
+                    END AS assignee_label,
+                    COUNT(*) AS suppliers_count,
+                    SUM(agg.products_total) AS products_total,
+                    SUM(agg.products_to_purchase) AS products_to_purchase,
+                    SUM(agg.purchase_pieces_total) AS purchase_pieces_total,
+                    SUM(agg.stock_total) AS stock_total,
+                    SUM(agg.total_purchase_sum) AS total_purchase_sum,
+                    ROUND(
+                        CASE WHEN SUM(agg.min_stock_total) > 0
+                            THEN 100 * SUM(agg.stock_total) / SUM(agg.min_stock_total)
+                            ELSE NULL
+                        END,
+                        2
+                    ) AS avg_fill_pct
+                  FROM (${aggSql}) agg
+                  LEFT JOIN dg_supplier_settings ss ON ss.supplier_key = agg.supplier_key
+                  LEFT JOIN users u ON u.id = ss.assigned_user_id
+                 WHERE ${whereSql}
+                 GROUP BY COALESCE(ss.assigned_user_id, 0)
+                 ORDER BY total_purchase_sum DESC, suppliers_count DESC`;
+
+            const totalsSql = `
+                SELECT
+                    COUNT(*) AS suppliers_count,
+                    SUM(agg.products_total) AS products_total,
+                    SUM(agg.products_to_purchase) AS products_to_purchase,
+                    SUM(agg.purchase_pieces_total) AS purchase_pieces_total,
+                    SUM(agg.stock_total) AS stock_total,
+                    SUM(agg.total_purchase_sum) AS total_purchase_sum,
+                    SUM(CASE WHEN ss.assigned_user_id IS NULL THEN 1 ELSE 0 END) AS unassigned_suppliers,
+                    ROUND(
+                        CASE WHEN SUM(agg.min_stock_total) > 0
+                            THEN 100 * SUM(agg.stock_total) / SUM(agg.min_stock_total)
+                            ELSE NULL
+                        END,
+                        2
+                    ) AS avg_fill_pct
+                  FROM (${aggSql}) agg
+                  LEFT JOIN dg_supplier_settings ss ON ss.supplier_key = agg.supplier_key
+                 WHERE ${whereSql}`;
+
+            const bySupplierSql = `
+                SELECT
+                    agg.supplier_key,
+                    agg.supplier_name AS supplier_label,
+                    agg.products_total,
+                    agg.products_to_purchase,
+                    agg.purchase_pieces_total,
+                    agg.stock_total,
+                    agg.total_purchase_sum,
+                    ROUND(
+                        CASE WHEN agg.min_stock_total > 0
+                            THEN 100 * agg.stock_total / agg.min_stock_total
+                            ELSE NULL
+                        END,
+                        2
+                    ) AS avg_fill_pct
+                  FROM (${aggSql}) agg
+                  LEFT JOIN dg_supplier_settings ss ON ss.supplier_key = agg.supplier_key
+                 WHERE ${whereSql}
+                 ORDER BY agg.total_purchase_sum DESC, agg.supplier_name ASC
+                 LIMIT ${SUPPLIERS_ANALYTICS_CHART_TOP}`;
+
+            const [[assigneeRows], [supplierRows], [totalRows]] = await Promise.all([
+                db.query(byAssigneeSql, params),
+                db.query(bySupplierSql, params),
+                db.query(totalsSql, params),
+            ]);
+            const t = totalRows && totalRows[0] ? totalRows[0] : {};
+            const byAssignee = (assigneeRows || []).map(mapAnalyticsAssigneeRow);
+            const bySupplier = (supplierRows || []).map(mapAnalyticsSupplierRow);
+            const payload = {
+                success: true,
+                applied_filters: { search: searchApplied },
+                totals: {
+                    suppliers_count: Number(t.suppliers_count || 0),
+                    products_total: Number(t.products_total || 0),
+                    products_to_purchase: Number(t.products_to_purchase || 0),
+                    purchase_pieces_total: Number(t.purchase_pieces_total || 0),
+                    stock_total: Number(t.stock_total || 0),
+                    total_purchase_sum: Number(t.total_purchase_sum || 0),
+                    unassigned_suppliers: Number(t.unassigned_suppliers || 0),
+                    avg_fill_pct: t.avg_fill_pct != null && t.avg_fill_pct !== '' ? Number(t.avg_fill_pct) : null,
+                    assignees_count: byAssignee.length,
+                },
+                by_assignee: byAssignee,
+                by_supplier: bySupplier,
+                suppliers_chart_limit: SUPPLIERS_ANALYTICS_CHART_TOP,
+                cache: { hit: false },
+            };
+            suppliersAnalyticsCache.set(cacheKey, { ts: Date.now(), payload });
+            trimSuppliersAnalyticsCache();
+            res.json(payload);
+        } catch (e) {
+            console.error('[suppliers] analytics', e);
+            res.status(500).json({ error: e.message || 'Ошибка аналитики поставщиков' });
+        }
+    });
+
+    router.get('/export/supplier', async (req, res) => {
+        try {
+            const supplierKey = normalizeSupplierKey(req.query.supplier_key || req.query.supplier || '');
+            if (!supplierKey) return res.status(400).json({ error: 'Укажите supplier_key' });
+            const rows = await loadSupplierExportRows(db, appSettings, {
+                supplierKey,
+                toPurchaseOnly: String(req.query.to_purchase || '1') !== '0',
+            });
+            const xlsx = await buildSupplierForSupplierSpreadsheet(rows);
+            sendExcelCsv(res, xlsx, exportFilename(supplierKey, 'supplier'));
+        } catch (e) {
+            console.error('[suppliers] export/supplier', e);
+            res.status(500).json({ error: e.message || 'Ошибка выгрузки' });
+        }
+    });
+
+    router.get('/export/purchaser', async (req, res) => {
+        try {
+            const supplierKey = normalizeSupplierKey(req.query.supplier_key || req.query.supplier || '');
+            if (!supplierKey) return res.status(400).json({ error: 'Укажите supplier_key' });
+            const rows = await loadSupplierExportRows(db, appSettings, {
+                supplierKey,
+                toPurchaseOnly: String(req.query.to_purchase || '1') !== '0',
+            });
+            const xlsx = await buildPurchaserExportSpreadsheet(rows);
+            sendExcelCsv(res, xlsx, exportFilename(supplierKey, 'purchaser'));
+        } catch (e) {
+            console.error('[suppliers] export/purchaser', e);
+            res.status(500).json({ error: e.message || 'Ошибка выгрузки' });
+        }
+    });
+
+    router.get('/ms-order-log', async (req, res) => {
+        try {
+            const payload = await listSupplierMsOrderLogs(db, {
+                supplier_key: req.query.supplier_key || req.query.supplier || '',
+                limit: req.query.limit,
+                offset: req.query.offset,
+            });
+            res.json({ success: true, ...payload });
+        } catch (e) {
+            console.error('[suppliers] ms-order-log list', e);
+            res.status(500).json({ success: false, error: e.message || 'Ошибка журнала заказов МС' });
+        }
+    });
+
+    router.get('/ms-order-log/:logId', async (req, res) => {
+        try {
+            const row = await getSupplierMsOrderLogDetail(db, req.params.logId);
+            if (!row) return res.status(404).json({ success: false, error: 'Запись журнала не найдена' });
+            res.json({ success: true, log: row });
+        } catch (e) {
+            console.error('[suppliers] ms-order-log detail', e);
+            res.status(500).json({ success: false, error: e.message || 'Ошибка журнала заказов МС' });
+        }
+    });
+
+    router.post('/:supplierKey/send-ms-order', async (req, res) => {
+        const logId = () => (e && e.log_id != null ? e.log_id : null);
+        try {
+            const supplierKey = normalizeSupplierKey(decodeURIComponent(req.params.supplierKey || ''));
+            if (!supplierKey) {
+                return res.status(400).json({ success: false, error: 'Пустой ключ поставщика', code_error: 'BAD_REQUEST' });
+            }
+            const result = await createPurchaseOrderForSupplier(db, appSettings, {
+                supplierKey,
+                actor: req.datagonActor || null,
+            });
+            res.json(result);
+        } catch (e) {
+            const base = {
+                success: false,
+                error: e.message || 'Ошибка создания заказа в МойСклад',
+                code_error: e.code || 'UNKNOWN',
+                log_id: logId(e),
+            };
+            const code = e.code || '';
+            if (code === 'NO_TOKEN') {
+                return res.status(503).json({ ...base, code_error: 'NO_TOKEN' });
+            }
+            if (code === 'BAD_REQUEST' || code === 'NO_LINES') {
+                return res.status(400).json(base);
+            }
+            if (code === 'NO_UUID') {
+                return res.status(400).json({
+                    ...base,
+                    skipped_no_uuid: e.skipped_no_uuid || [],
+                });
+            }
+            if (code === 'COUNTERPARTY_NOT_FOUND' || code === 'STORE_NOT_FOUND' || code === 'NO_ORGANIZATION') {
+                return res.status(404).json({
+                    ...base,
+                    search_candidates: e.search_candidates || null,
+                });
+            }
+            if (code === 'AMBIGUOUS_ORGANIZATION') {
+                return res.status(409).json({
+                    ...base,
+                    organization_names: e.organization_names || null,
+                });
+            }
+            const httpStatus = e.http_status && Number.isFinite(e.http_status) ? e.http_status : 502;
+            res.status(httpStatus >= 400 && httpStatus < 600 ? httpStatus : 502).json({
+                ...base,
+                code_error: code || 'MS_API',
+                http_status: e.http_status || null,
+                ms_errors: e.ms_errors || null,
+            });
+        }
+    });
+
+    router.patch('/:supplierKey', async (req, res) => {
+        try {
+            await ensureSuppliersSchema(db);
+            invalidateSuppliersListCache();
+            const supplierKey = normalizeSupplierKey(decodeURIComponent(req.params.supplierKey || ''));
+            if (!supplierKey) return res.status(400).json({ error: 'Пустой ключ поставщика' });
+
+            const body = req.body && typeof req.body === 'object' ? req.body : {};
+            const fields = {};
+
+            if ('assigned_user_id' in body) {
+                const v = body.assigned_user_id;
+                if (v === null || v === '' || v === undefined) fields.assigned_user_id = null;
+                else {
+                    const id = parseInt(v, 10);
+                    if (!Number.isFinite(id) || id < 1) {
+                        return res.status(400).json({ error: 'Некорректный сотрудник' });
+                    }
+                    const [u] = await db.query('SELECT id FROM users WHERE id = ? LIMIT 1', [id]);
+                    if (!u.length) return res.status(400).json({ error: 'Пользователь не найден' });
+                    fields.assigned_user_id = id;
+                }
+            }
+            if ('comment' in body) fields.comment = String(body.comment || '').slice(0, 65535);
+            if ('min_purchase_sum' in body) {
+                const n = parseFlexibleNumber(body.min_purchase_sum);
+                fields.min_purchase_sum = n;
+            }
+            if ('warehouse_fill_pct' in body) {
+                const n = parseFlexibleNumber(body.warehouse_fill_pct);
+                fields.warehouse_fill_pct = n;
+            }
+            if ('stock_fill_pct' in body) {
+                const n = parseFlexibleNumber(body.stock_fill_pct);
+                fields.stock_fill_pct = n;
+                fields.stock_fill_pct_recorded_at = new Date();
+            }
+            if ('auto_mailing_enabled' in body) {
+                fields.auto_mailing_enabled = body.auto_mailing_enabled ? 1 : 0;
+            }
+            if ('mailing_text' in body) fields.mailing_text = String(body.mailing_text || '').slice(0, 65535);
+
+            if (!Object.keys(fields).length) {
+                return res.status(400).json({ error: 'Нет полей для сохранения' });
+            }
+
+            const cols = Object.keys(fields);
+            const placeholders = cols.map((c) => `${c} = ?`).join(', ');
+            const vals = cols.map((c) => fields[c]);
+            await db.query(
+                `INSERT INTO dg_supplier_settings (supplier_key, ${cols.join(', ')})
+                 VALUES (?, ${cols.map(() => '?').join(', ')})
+                 ON DUPLICATE KEY UPDATE ${placeholders}`,
+                [supplierKey, ...vals, ...vals],
+            );
+
+            if ('stock_fill_pct' in fields) {
+                const dataRev = await loadPurchaseDataRevision(db);
+                const formulaFp = buildFormulaFingerprint(appSettings);
+                const aggSql = buildSupplierAggregatesSubquery(formulaFp, dataRev);
+                const [[snap]] = await db.query(
+                    `SELECT agg.*
+                       FROM (${aggSql}) agg
+                      WHERE agg.supplier_key = ?
+                      LIMIT 1`,
+                    [supplierKey],
+                );
+                if (snap) {
+                    await recordStockFillHistory(db, {
+                        supplier_key: supplierKey,
+                        stock_fill_pct: fields.stock_fill_pct,
+                        products_total: snap.products_total,
+                        products_to_purchase: snap.products_to_purchase,
+                        purchase_pieces_total: snap.purchase_pieces_total,
+                        total_purchase_sum: snap.total_purchase_sum,
+                    });
+                }
+            }
+
+            const [[row]] = await db.query(
+                `SELECT ss.*, COALESCE(NULLIF(TRIM(u.full_name), ''), u.username, '') AS assigned_user_name
+                   FROM dg_supplier_settings ss
+                   LEFT JOIN users u ON u.id = ss.assigned_user_id
+                  WHERE ss.supplier_key = ?
+                  LIMIT 1`,
+                [supplierKey],
+            );
+            res.json({ success: true, supplier_key: supplierKey, settings: row || { supplier_key: supplierKey } });
+        } catch (e) {
+            console.error('[suppliers] patch', e);
+            res.status(500).json({ error: e.message || 'Ошибка сохранения' });
+        }
+    });
+
+    return router;
+};

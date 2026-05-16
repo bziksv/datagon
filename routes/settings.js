@@ -121,13 +121,15 @@ module.exports = (db, appSettings) => {
     });
 
     router.post('/sync-moysklad', async (req, res) => {
-        const { ms_sync_page_limit, ms_sync_delay_ms } = req.body || {};
+        const { ms_sync_page_limit, ms_sync_delay_ms, ms_purchase_order_organization_name } = req.body || {};
         try {
             const pageLimit = Math.max(100, Math.min(Number(ms_sync_page_limit || 1000), 5000));
             const delayMs = Math.max(0, Number(ms_sync_delay_ms || 0));
+            const orgName = String(ms_purchase_order_organization_name || '').trim().slice(0, 255);
             const queries = [
                 ['ms_sync_page_limit', pageLimit],
-                ['ms_sync_delay_ms', delayMs]
+                ['ms_sync_delay_ms', delayMs],
+                ['ms_purchase_order_organization_name', orgName],
             ];
             for (const [key, val] of queries) {
                 await db.query(
@@ -137,6 +139,7 @@ module.exports = (db, appSettings) => {
             }
             appSettings.ms_sync_page_limit = pageLimit;
             appSettings.ms_sync_delay_ms = delayMs;
+            appSettings.ms_purchase_order_organization_name = orgName;
             return res.json({ success: true });
         } catch (e) {
             return res.status(500).json({ error: e.message });
@@ -146,7 +149,7 @@ module.exports = (db, appSettings) => {
     router.post('/', async (req, res) => {
         const {
             default_limit, parse_batch_size, page_delay_ms, sync_batch_size, sync_delay_ms, sync_mode, log_retention_days, results_retention_days, ms_dimensions_log_retention_days, dg_purchase_overrides_log_retention_days, auto_sync_runs_retention_days, product_stock_snapshot_retention_days,
-            ms_sync_page_limit, ms_sync_delay_ms,
+            ms_sync_page_limit, ms_sync_delay_ms, ms_purchase_order_organization_name,
             auto_sync_myproducts_enabled, auto_sync_myproducts_time,
             auto_sync_moysklad_enabled, auto_sync_moysklad_time,
             auto_sync_marketplaces_enabled, auto_sync_marketplaces_time,
@@ -175,6 +178,12 @@ module.exports = (db, appSettings) => {
             if (sync_delay_ms !== undefined) queries.push(['sync_delay_ms', Number(sync_delay_ms || 2000)]);
             if (ms_sync_page_limit !== undefined) queries.push(['ms_sync_page_limit', Number(ms_sync_page_limit || 1000)]);
             if (ms_sync_delay_ms !== undefined) queries.push(['ms_sync_delay_ms', Number(ms_sync_delay_ms || 0)]);
+            if (ms_purchase_order_organization_name !== undefined) {
+                queries.push([
+                    'ms_purchase_order_organization_name',
+                    String(ms_purchase_order_organization_name || '').trim().slice(0, 255),
+                ]);
+            }
             if (log_retention_days !== undefined) queries.push(['log_retention_days', Number(log_retention_days || 7)]);
             if (results_retention_days !== undefined) queries.push(['results_retention_days', Number(results_retention_days || 120)]);
             if (ms_dimensions_log_retention_days !== undefined) queries.push(['ms_dimensions_log_retention_days', Number(ms_dimensions_log_retention_days || 180)]);
@@ -331,6 +340,11 @@ module.exports = (db, appSettings) => {
             if(sync_delay_ms !== undefined) appSettings.sync_delay_ms = parseInt(sync_delay_ms);
             if(ms_sync_page_limit !== undefined) appSettings.ms_sync_page_limit = parseInt(ms_sync_page_limit);
             if(ms_sync_delay_ms !== undefined) appSettings.ms_sync_delay_ms = parseInt(ms_sync_delay_ms || 0);
+            if (ms_purchase_order_organization_name !== undefined) {
+                appSettings.ms_purchase_order_organization_name = String(ms_purchase_order_organization_name || '')
+                    .trim()
+                    .slice(0, 255);
+            }
             if(sync_mode) appSettings.sync_mode = sync_mode;
             if(log_retention_days !== undefined) appSettings.log_retention_days = parseInt(log_retention_days);
             if(results_retention_days !== undefined) appSettings.results_retention_days = parseInt(results_retention_days);

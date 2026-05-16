@@ -54,6 +54,7 @@
         sync_mode: "always",
         ms_sync_page_limit: 1000,
         ms_sync_delay_ms: 0,
+        ms_purchase_order_organization_name: 'ООО "АЛЬМАМЕД"',
         auto_sync_myproducts_enabled: 0,
         auto_sync_myproducts_time: "03:00",
         auto_sync_moysklad_enabled: 0,
@@ -311,6 +312,10 @@
         document.getElementById("dg-set-sync_mode").value = merged.sync_mode || "always";
         set("dg-set-ms_sync_page_limit", merged.ms_sync_page_limit);
         set("dg-set-ms_sync_delay_ms", merged.ms_sync_delay_ms);
+        set(
+          "dg-set-ms_purchase_order_organization_name",
+          merged.ms_purchase_order_organization_name || 'ООО "АЛЬМАМЕД"',
+        );
         document.getElementById("dg-set-auto_my_en").checked = Number(merged.auto_sync_myproducts_enabled) === 1;
         set("dg-set-auto_my_time", merged.auto_sync_myproducts_time || "03:00");
         document.getElementById("dg-set-auto_ms_en").checked = Number(merged.auto_sync_moysklad_enabled) === 1;
@@ -1237,6 +1242,12 @@
         var payload = {
           ms_sync_page_limit: getNum("dg-set-ms_sync_page_limit", 1000),
           ms_sync_delay_ms: getNum("dg-set-ms_sync_delay_ms", 0),
+          ms_purchase_order_organization_name: String(
+            document.getElementById("dg-set-ms_purchase_order_organization_name") &&
+              document.getElementById("dg-set-ms_purchase_order_organization_name").value
+              ? document.getElementById("dg-set-ms_purchase_order_organization_name").value
+              : ""
+          ).trim(),
         };
         if (btn) btn.disabled = true;
         setSaveMsg(sectionId, "warning", "Сохраняем…");

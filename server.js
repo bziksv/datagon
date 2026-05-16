@@ -51,6 +51,8 @@ let appSettings = {
     sync_delay_ms: 2000,
     ms_sync_page_limit: 1000,
     ms_sync_delay_ms: 0,
+    /** Организация в заказе поставщику (страница «Поставщики» → МС). */
+    ms_purchase_order_organization_name: 'ООО "АЛЬМАМЕД"',
     sync_mode: 'always',
     log_retention_days: 7,
     results_retention_days: 120,
@@ -152,6 +154,7 @@ let appSettings = {
 let syncState = { active: false, processed: 0, total: 0, message: '' };
 const moyskladRouterFactory = require('./routes/moysklad');
 const purchaseRouterFactory = require('./routes/purchase');
+const suppliersRouterFactory = require('./routes/suppliers');
 const productRouterFactory = require('./routes/product');
 const pagesRouterFactory = require('./routes/pages');
 const matchesRouterFactory = require('./routes/matches');
@@ -287,7 +290,7 @@ async function initDB() {
         const defaults = [
             ['default_limit','100'],['parse_batch_size','50'],['page_delay_ms','0'],
             ['sync_batch_size','500'],['sync_delay_ms','2000'],['sync_mode','always'],['log_retention_days','7'],['results_retention_days','120'],['ms_dimensions_log_retention_days','180'],['dg_purchase_overrides_log_retention_days','180'],['auto_sync_runs_retention_days','180'],['product_stock_snapshot_retention_days','365'],
-            ['ms_sync_page_limit','1000'],['ms_sync_delay_ms','0'],
+            ['ms_sync_page_limit','1000'],['ms_sync_delay_ms','0'],['ms_purchase_order_organization_name','ООО "АЛЬМАМЕД"'],
             ['auto_sync_myproducts_enabled','0'],['auto_sync_myproducts_time','03:00'],
             ['auto_sync_moysklad_enabled','0'],['auto_sync_moysklad_time','04:00'],
             ['discover_max_sitemaps','200'],['discover_max_urls','50000'],
@@ -2303,6 +2306,7 @@ initDB().then(() => {
     }
     app.use('/api/ms', moyskladRouterFactory(db, appSettings, config));
     app.use('/api/purchase', purchaseRouterFactory(db, appSettings));
+    app.use('/api/suppliers', suppliersRouterFactory(db, appSettings));
     app.use('/api/product', productRouterFactory(db, appSettings));
     
     // Алиас для совместимости, если фронт стучится сюда
@@ -2326,6 +2330,7 @@ initDB().then(() => {
     app.get('/my-sites', redirectToDatagonHtml('my-sites.html'));
     app.get('/my-products', redirectToDatagonHtml('my-products.html'));
     app.get('/moysklad', redirectToDatagonHtml('moysklad.html'));
+    app.get('/suppliers', redirectToDatagonHtml('suppliers.html'));
     app.get('/purchase', redirectToDatagonHtml('purchase.html'));
     app.get('/product', redirectToDatagonHtml('product.html'));
     app.get('/matches', redirectToDatagonHtml('matches.html'));

@@ -1,0 +1,3015 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, shrink-to-fit=no" />
+  <title>Поставщики — Датагон</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="stylesheet" href="/static/css/main.989b22a9.css" />
+    <style>
+    .dg-sp-table { font-size: 0.8rem; line-height: 1.25; font-variant-numeric: tabular-nums; }
+    .dg-sp-table thead th {
+      position: sticky !important;
+      top: 0 !important;
+      z-index: 20 !important;
+      background: #ffffff !important;
+      border-right: 1px solid #e6e9ee !important;
+      text-align: center;
+      vertical-align: middle;
+      user-select: text;
+      -webkit-user-select: text;
+    }
+    .dg-sp-table tbody td { border-right: 1px solid #f3f5f8; vertical-align: middle; }
+    .dg-sp-table .dg-sp-sortable { cursor: pointer; }
+    .datagon-my-products-table-wrap.table-responsive {
+      overflow: visible !important;
+      max-height: none !important;
+    }
+    .datagon-my-products-table-wrap.table-responsive,
+    .datagon-my-products-table-wrap.table-responsive > table {
+      transform: none !important;
+      filter: none !important;
+      perspective: none !important;
+    }
+    .datagon-columns-toolbox {
+      margin: 0 0 10px 0;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      background: #fafbfc;
+      padding: 8px;
+    }
+    .dg-sp-header-search { min-width: 0; }
+    .dg-sp-header-search .input-group-text {
+      border-color: #d1d5db;
+      font-size: 14px;
+      padding-left: 8px;
+      padding-right: 4px;
+    }
+    .dg-sp-header-search .form-control { font-size: 13px; }
+    .datagon-columns-panel { margin-top: 8px; border-top: 1px dashed #d1d5db; padding-top: 8px; display: none; }
+    .datagon-columns-panel.open { display: block; }
+    .datagon-columns-panel .columns-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 6px 10px;
+    }
+    .datagon-columns-toolbox .dg-sp-widths-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 6px 10px;
+    }
+    #dg-sp-columns-panel.datagon-columns-panel label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: #374151;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .dg-sp-cell-input {
+      width: 100%;
+      min-width: 60px;
+      font-size: 12px;
+      padding: 2px 6px;
+    }
+    .dg-sp-table thead th.dg-sp-th-multiline {
+      white-space: normal;
+      line-height: 1.2;
+      padding-top: 4px;
+      padding-bottom: 4px;
+    }
+    .dg-sp-table tbody td.dg-sp-td-comment { vertical-align: top; }
+    .dg-sp-cell-input.comment {
+      min-width: 140px;
+      min-height: 2.6em;
+      line-height: 1.25;
+      resize: vertical;
+    }
+    .dg-sp-stub-btn {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+    .dg-sp-export-btn {
+      min-width: 2rem;
+      padding-left: 0.35rem;
+      padding-right: 0.35rem;
+    }
+    .dg-sp-fill-triplet {
+      display: inline-block;
+      font-variant-numeric: tabular-nums;
+      font-size: 0.72rem;
+      line-height: 1.35;
+      padding: 2px 6px;
+      border-radius: 4px;
+      white-space: nowrap;
+    }
+    .dg-sp-fill-triplet .dg-sp-fill-pct { font-weight: 600; }
+    .dg-sp-fill-triplet.dg-sp-fill-good {
+      background: #ecfdf3;
+      color: #166534;
+    }
+    .dg-sp-fill-triplet.dg-sp-fill-mid {
+      background: #fffbeb;
+      color: #92400e;
+    }
+    .dg-sp-fill-triplet.dg-sp-fill-bad {
+      background: #fef2f2;
+      color: #b91c1c;
+    }
+    .dg-sp-fill-triplet.dg-sp-fill-neutral {
+      background: #f3f4f6;
+      color: #6b7280;
+    }
+    a.dg-sp-purchase-link {
+      color: #2563eb;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    a.dg-sp-purchase-link:hover {
+      text-decoration: underline;
+      color: #1d4ed8;
+    }
+    a.dg-sp-purchase-link.dg-sp-purchase-link-muted {
+      color: #6b7280;
+      cursor: default;
+      pointer-events: none;
+      text-decoration: none;
+    }
+
+    .dg-sp-analytics-hero {
+      position: relative;
+      border-radius: 14px;
+      overflow: hidden;
+    }
+    .dg-sp-analytics-hero-bg {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(118deg, #1e293b 0%, #4338ca 52%, #5b6eea 100%);
+      z-index: 0;
+    }
+    .dg-sp-analytics-hero-bg::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 70% 55% at 8% 0%, rgba(255, 255, 255, 0.14), transparent 55%),
+        radial-gradient(ellipse 50% 40% at 95% 100%, rgba(34, 197, 94, 0.12), transparent 50%);
+      pointer-events: none;
+    }
+    .dg-sp-analytics-header,
+    .dg-sp-analytics-body {
+      position: relative;
+      z-index: 1;
+    }
+    .dg-sp-analytics-header {
+      background: transparent !important;
+      padding: 0.55rem 0.75rem 0.35rem;
+    }
+    .dg-sp-analytics-body {
+      background: #f8fafc;
+      border-radius: 12px 12px 0 0;
+      margin: 0 0.5rem;
+      padding: 0.55rem 0.65rem 0.45rem;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
+    }
+    .dg-sp-metric-toggle {
+      background: rgba(15, 23, 42, 0.22);
+      border-radius: 999px;
+      padding: 3px;
+      gap: 2px;
+    }
+    .dg-sp-metric-toggle .btn-light {
+      border: 0;
+      background: transparent;
+      color: rgba(255, 255, 255, 0.88);
+      font-size: 0.7rem;
+      padding: 0.28rem 0.62rem;
+      border-radius: 999px;
+    }
+    .dg-sp-metric-toggle .btn-light:hover {
+      background: rgba(255, 255, 255, 0.12);
+      color: #fff;
+    }
+    .dg-sp-metric-toggle .btn-light.active {
+      background: #fff;
+      color: #4338ca;
+      font-weight: 600;
+      box-shadow: 0 2px 10px rgba(15, 23, 42, 0.18);
+    }
+    .dg-sp-kpi-row { margin-bottom: 0.15rem; }
+    .dg-sp-kpi-tile {
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-left: 3px solid #cbd5e1;
+      border-radius: 8px;
+      padding: 0.35rem 0.5rem;
+      height: 100%;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+    }
+    .dg-sp-kpi-label {
+      font-size: 0.58rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: #64748b;
+      margin-bottom: 0.05rem;
+      font-weight: 600;
+      line-height: 1.2;
+    }
+    .dg-sp-kpi-value {
+      font-size: 1.02rem;
+      font-weight: 700;
+      line-height: 1.1;
+      color: #0f172a;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -0.02em;
+    }
+    .dg-sp-kpi-accent {
+      border-left-color: #f59e0b;
+      background: linear-gradient(135deg, #fffbeb 0%, #fff 72%);
+    }
+    .dg-sp-kpi-accent .dg-sp-kpi-value { color: #c2410c; }
+    .dg-sp-kpi-money {
+      border-left-color: #5b6eea;
+      background: linear-gradient(135deg, #eef2ff 0%, #fff 72%);
+    }
+    .dg-sp-kpi-money .dg-sp-kpi-value { color: #4338ca; font-size: 0.92rem; }
+    .dg-sp-charts-row { margin-top: 0.1rem !important; }
+    .dg-sp-charts-row-suppliers { margin-top: 0.1rem !important; }
+    .dg-sp-chart-subtitle { font-size: 0.65rem; font-weight: 400; }
+    .dg-sp-chart-wrap-suppliers {
+      position: relative;
+      height: 120px;
+    }
+    .dg-sp-chart-wrap-suppliers canvas {
+      display: block;
+      width: 100% !important;
+      height: 100% !important;
+    }
+    .dg-sp-chart-panel {
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 0.45rem 0.55rem 0.35rem;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    }
+    .dg-sp-chart-panel-doughnut { padding-bottom: 0.3rem; }
+    .dg-sp-chart-title {
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: #334155;
+      margin-bottom: 0.2rem;
+      letter-spacing: 0.01em;
+    }
+    .dg-sp-chart-wrap {
+      position: relative;
+      height: 120px;
+    }
+    .dg-sp-chart-wrap canvas {
+      display: block;
+      width: 100% !important;
+      height: 100% !important;
+    }
+    .dg-sp-doughnut-wrap {
+      position: relative;
+      height: 100px;
+      min-height: 100px;
+      max-height: 100px;
+    }
+    .dg-sp-doughnut-wrap canvas {
+      max-width: 100%;
+      max-height: 100%;
+    }
+    .dg-sp-assignee-legend {
+      display: flex;
+      flex-direction: column;
+      gap: 0.15rem;
+      margin-top: 0.2rem;
+      max-height: 72px;
+      overflow-y: auto;
+      font-size: 0.65rem;
+    }
+    .dg-sp-analytics-hint {
+      margin-top: 0.35rem !important;
+      padding-top: 0.25rem;
+      border-top: 1px dashed #e2e8f0;
+      line-height: 1.25;
+      font-size: 0.68rem;
+    }
+    .dg-sp-legend-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+      padding: 0.2rem 0;
+      border-bottom: 1px dashed #eef1f5;
+    }
+    .dg-sp-legend-row:last-child { border-bottom: 0; }
+    .dg-sp-legend-swatch {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.08);
+    }
+    .dg-sp-legend-name {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: #374151;
+    }
+    .dg-sp-legend-val {
+      font-variant-numeric: tabular-nums;
+      color: #6b7280;
+      flex-shrink: 0;
+    }
+    .dg-sp-analytics-loading {
+      position: absolute;
+      inset: 0;
+      z-index: 5;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255, 255, 255, 0.72);
+      border-radius: 10px;
+    }
+    @media (max-width: 991px) {
+      .dg-sp-kpi-value { font-size: 1.1rem; }
+      .dg-sp-chart-wrap { min-height: 220px; }
+    }
+    .dg-sp-ms-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      flex-wrap: nowrap;
+    }
+    .dg-sp-ms-log-btn {
+      min-width: 2rem;
+      padding-left: 0.35rem;
+      padding-right: 0.35rem;
+    }
+    .dg-sp-ms-order-log-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 2000;
+      background: rgba(15, 23, 42, 0.45);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0.75rem;
+      box-sizing: border-box;
+    }
+    .dg-sp-ms-order-log-panel {
+      width: 100%;
+      max-width: 960px;
+      max-height: 92vh;
+      overflow: hidden;
+    }
+    .dg-sp-ms-log-body {
+      max-height: min(78vh, 680px);
+      overflow-y: auto;
+    }
+    .dg-sp-ms-log-list table {
+      width: 100%;
+      font-size: 0.75rem;
+    }
+    .dg-sp-ms-log-list tr.dg-sp-ms-log-row {
+      cursor: pointer;
+    }
+    .dg-sp-ms-log-list tr.dg-sp-ms-log-row:hover {
+      background: #f3f4f6;
+    }
+    .dg-sp-ms-log-list tr.dg-sp-ms-log-row.active {
+      background: #eff6ff;
+    }
+    .dg-sp-ms-log-step {
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      padding: 6px 8px;
+      margin-bottom: 6px;
+      background: #fafbfc;
+    }
+    .dg-sp-ms-log-step.dg-sp-ms-log-step-fail {
+      border-color: #fecaca;
+      background: #fef2f2;
+    }
+    .dg-sp-ms-log-step pre {
+      margin: 4px 0 0;
+      font-size: 0.7rem;
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 120px;
+      overflow: auto;
+    }
+    @media (max-width: 991px) {
+      .dg-sp-ms-log-detail.border-start-lg {
+        border-left: 0 !important;
+        padding-left: 0 !important;
+        margin-top: 0.75rem;
+        padding-top: 0.75rem;
+        border-top: 1px solid #e5e7eb;
+      }
+    }
+  </style>
+
+  <style>
+    /* Один список сайдбара: «ArchitectUI меню» у нижнего края области навигации, без второго блока/ul */
+    .dg-sidebar-nav-scroll {
+      display: flex;
+      flex-direction: column;
+    }
+    .dg-sidebar-nav-measure {
+      flex: 1 1 auto;
+      min-height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+    .dg-sidebar-nav-measure .datagon-nav-shell,
+    .dg-sidebar-nav-measure .vertical-nav-menu {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    /* Только корневой список меню: иначе вложенный ul.metismenu-container (под «Маркетплейсы» и т.п.)
+       получает min-height:100% + flex и растягивается на всю колонку — вертикальная линия темы залезает на соседние пункты. */
+    .dg-sidebar-nav-measure .vertical-nav-menu > .metismenu-container {
+      display: flex;
+      flex-direction: column;
+      flex: 1 1 auto;
+      min-height: 100%;
+      margin-bottom: 0;
+    }
+    /*
+      Подменю «Маркетплейсы»: ArchitectUI скрывает .metismenu-icon у подпунктов и даёт малый padding.
+      Не трогаем узкую полоску без hover — большой padding раздувает li и смещает «left:50%» у всех иконок колонки.
+      При развороте по hover из closed-sidebar класс closed-sidebar не снимается — нужен отдельный селектор с .app-sidebar:hover.
+    */
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon {
+      display: block !important;
+    }
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link {
+      padding-left: 3.4375rem !important;
+      position: relative;
+      /* Длинные подписи подпунктов («Проблемы с товарами», «Яндекс Маркет»)
+         не должны обрезаться ellipsis: разрешаем перенос на 2 строки и
+         выравниваем иконку по верхней строке. */
+      white-space: normal !important;
+      line-height: 1.25;
+      align-items: flex-start;
+      padding-top: 0.45rem !important;
+      padding-bottom: 0.45rem !important;
+      padding-right: 0.5rem !important;
+      min-height: 2rem;
+      height: auto !important;
+    }
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon {
+      top: 0.55rem !important;
+    }
+    .dg-sidebar-architect-item {
+      margin-top: auto;
+    }
+    .dg-sidebar-architect-item .metismenu-link {
+      border-top: 1px solid rgba(0, 0, 0, 0.07);
+      padding-top: 0.65rem;
+    }
+    /* Пункты сайдбара с доступом как у журнала активности (admin / право на пользователей) */
+    .dg-sidebar-nav-restricted .metismenu-link {
+      display: inline-flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.15rem 0.35rem;
+    }
+    .dg-sidebar-nav-restricted .dg-nav-restricted-icon {
+      font-size: 0.7rem;
+      opacity: 0.72;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+    @media (max-width: 991.98px) {
+      /* На мобильном layout не должен наследовать desktop-сдвиг fixed/closed sidebar. */
+      .datagon-vanilla-shell .app-main__outer {
+        margin-left: 0 !important;
+      }
+      .datagon-vanilla-shell .app-footer {
+        left: 0 !important;
+        width: 100% !important;
+      }
+      .datagon-vanilla-shell .app-footer .app-footer__inner {
+        margin-left: 0 !important;
+      }
+      /* На телефонах слой мобильного меню должен перекрывать фиксированный футер. */
+      .datagon-vanilla-shell .sidebar-mobile-overlay {
+        z-index: 1090;
+      }
+      .datagon-vanilla-shell .app-sidebar {
+        z-index: 1100;
+      }
+      .datagon-vanilla-shell .app-footer {
+        z-index: 1080;
+      }
+      .datagon-vanilla-shell.sidebar-mobile-open .app-footer {
+        pointer-events: none;
+        opacity: 0.25;
+      }
+    }
+  </style>
+</head>
+<body class="datagon-vanilla-body" data-dg-active-nav="suppliers">
+  <div class="app-container app-theme-white datagon-shell datagon-vanilla-shell fixed-header fixed-sidebar fixed-footer">
+    <div class="app-header header-shadow">
+      <div class="app-header__logo">
+        <button type="button" class="logo-src datagon-brand" onclick="location.href='/dashboard.html'" title="Открыть дашборд" style="border:0;background:transparent;padding:0;cursor:pointer">Датагон</button>
+        <div class="header__pane ms-auto">
+          <div>
+            <button type="button" class="hamburger hamburger--slider dg-toggle-sidebar" aria-label="Свернуть боковую панель" title="Свернуть боковую панель">
+              <span class="hamburger-box"><span class="hamburger-inner"></span></span>
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="app-header__mobile-menu">
+        <div>
+          <button type="button" class="hamburger hamburger--slider dg-toggle-mobile-sidebar" aria-label="Открыть меню">
+            <span class="hamburger-box"><span class="hamburger-inner"></span></span>
+          </button>
+        </div>
+      </div>
+      <div class="app-header__menu">
+        <span>
+          <button type="button" class="btn btn-primary btn-sm btn-icon btn-icon-only dg-toggle-header-small" aria-label="Доп. меню шапки">
+            <div class="btn-icon-wrapper">
+              <i class="pe-7s-more" style="font-size:1.1rem;line-height:1"></i>
+            </div>
+          </button>
+        </span>
+      </div>
+      <div class="app-header__content">
+        <div class="app-header-left">
+          <div class="search-wrapper">
+            <div class="input-holder">
+              <input type="text" class="search-input" placeholder="Type to search" autocomplete="off" />
+              <button type="button" class="search-icon dg-vanilla-search-docs" aria-label="Открыть документацию" title="Документация">
+                <span></span>
+              </button>
+            </div>
+            <button type="button" class="btn-close dg-vanilla-search-close" aria-label="Закрыть поиск"></button>
+          </div>
+        </div>
+        <div class="app-header-right">
+          <div class="ui-theme-settings ui-theme-settings--header">
+            <button type="button" class="btn btn-link btn-open-options btn-open-options--header" id="TooltipDemoVanilla" aria-label="Параметры темы" title="Параметры темы (полная версия в React-панели)">
+              <i class="pe-7s-config" style="font-size:1.35rem;color:#3f6ad8;line-height:1"></i>
+            </button>
+            <div class="theme-settings__inner">
+              <div class="theme-settings__options-wrapper">
+                <h3 class="themeoptions-heading">Параметры макета</h3>
+                <div class="list-group">
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Фиксированная шапка</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-fixed-header" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Тень шапки</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-header-shadow" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Фиксированный сайдбар</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-fixed-sidebar" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Тень сайдбара</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-sidebar-shadow" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Фиксированный футер</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-fixed-footer" checked><span class="slider round"></span></label>
+                  </div>
+                </div>
+
+                <h3 class="themeoptions-heading">Параметры заголовка страницы</h3>
+                <div class="list-group">
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Иконка заголовка</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-title-icon" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Подзаголовок страницы</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-title-subheading" checked><span class="slider round"></span></label>
+                  </div>
+                </div>
+
+                <h3 class="themeoptions-heading">Цветовые схемы</h3>
+                <div class="list-group">
+                  <div class="list-group-item">
+                    <h5 class="mb-2">Цветовая схема макета</h5>
+                    <div class="theme-settings-swatches">
+                      <div class="swatch-holder-lg active dg-theme-color-scheme" data-color-scheme="white" style="background:#fff;border:1px solid #dee2e6"></div>
+                      <div class="swatch-holder-lg dg-theme-color-scheme" data-color-scheme="gray" style="background:#868e96"></div>
+                    </div>
+                  </div>
+                </div>
+
+                <h3 class="themeoptions-heading">Параметры сайдбара</h3>
+                <div class="list-group">
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Фоновое изображение сайдбара</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-sidebar-bg-image"><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item">
+                    <h5 class="mb-2">Цвета сайдбара</h5>
+                    <div class="theme-settings-swatches">
+                      <div class="swatch-holder bg-primary dg-theme-sidebar-color" data-color-class="bg-primary"></div><div class="swatch-holder bg-danger dg-theme-sidebar-color" data-color-class="bg-danger"></div><div class="swatch-holder bg-warning dg-theme-sidebar-color" data-color-class="bg-warning"></div><div class="swatch-holder bg-success dg-theme-sidebar-color" data-color-class="bg-success"></div>
+                      <div class="swatch-holder bg-info dg-theme-sidebar-color" data-color-class="bg-info"></div><div class="swatch-holder bg-secondary dg-theme-sidebar-color" data-color-class="bg-secondary"></div><div class="swatch-holder bg-dark dg-theme-sidebar-color" data-color-class="bg-dark"></div><div class="swatch-holder dg-theme-sidebar-color" data-color-class="bg-plum-plate" style="background:#667eea"></div>
+                      <div class="swatch-holder dg-theme-sidebar-color" data-color-class="bg-arielle-smile" style="background:#16d9e3"></div><div class="swatch-holder dg-theme-sidebar-color" data-color-class="bg-ripe-malin" style="background:#f093fb"></div><div class="swatch-holder dg-theme-sidebar-color" data-color-class="bg-night-fade" style="background:#a18cd1"></div><div class="swatch-holder dg-theme-sidebar-color" data-color-class="bg-malibu-beach" style="background:#4facfe"></div>
+                    </div>
+                  </div>
+                </div>
+
+                <h3 class="themeoptions-heading">Параметры шапки</h3>
+                <div class="list-group">
+                  <div class="list-group-item">
+                    <h5 class="mb-2">Цвета шапки</h5>
+                    <div class="theme-settings-swatches">
+                      <div class="swatch-holder bg-primary dg-theme-header-color" data-color-class="bg-primary"></div><div class="swatch-holder bg-danger dg-theme-header-color" data-color-class="bg-danger"></div><div class="swatch-holder bg-warning dg-theme-header-color" data-color-class="bg-warning"></div><div class="swatch-holder bg-success dg-theme-header-color" data-color-class="bg-success"></div>
+                      <div class="swatch-holder bg-info dg-theme-header-color" data-color-class="bg-info"></div><div class="swatch-holder bg-secondary dg-theme-header-color" data-color-class="bg-secondary"></div><div class="swatch-holder bg-dark dg-theme-header-color" data-color-class="bg-dark"></div><div class="swatch-holder dg-theme-header-color" data-color-class="bg-plum-plate" style="background:#667eea"></div>
+                    </div>
+                  </div>
+                </div>
+                <div class="p-2">
+                  <a href="/settings.html" class="btn btn-sm btn-outline-primary w-100">Настройки</a>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="header-dots">
+            <div class="dropdown">
+              <button type="button" class="btn btn-link p-0 me-2 dg-vanilla-dropdown-toggle" style="line-height:0" aria-expanded="false" aria-haspopup="true">
+                <div class="icon-wrapper icon-wrapper-alt rounded-circle">
+                  <div class="icon-wrapper-bg bg-success"></div>
+                  <i class="pe-7s-graph2" style="font-size:23px;color:#3ac47d"></i>
+                </div>
+              </button>
+              <div class="dropdown-menu dropdown-menu-xl rm-pointers p-0" style="min-width: 320px">
+                <div class="dropdown-menu-header">
+                  <div class="dropdown-menu-header-inner bg-premium-dark">
+                    <div class="menu-header-image" style="background-image:url('/assets/utils/images/dropdown-header/abstract4.jpg')"></div>
+                    <div class="menu-header-content text-white">
+                      <h5 class="menu-header-title">Вы в сети</h5>
+                      <h6 class="menu-header-subtitle">Онлайн за окно из настроек</h6>
+                    </div>
+                  </div>
+                </div>
+                <div class="widget-chart">
+                  <div class="widget-chart-content">
+                    <div class="icon-wrapper rounded-circle">
+                      <div class="icon-wrapper-bg opacity-9 bg-focus"></div>
+                      <i class="lnr-users text-white"></i>
+                    </div>
+                    <div class="widget-numbers d-flex flex-column align-items-center text-center" id="dg-vanilla-online-users-wrap">
+                      <span id="dg-vanilla-online-users">—</span>
+                      <span class="opacity-9 fw-normal" style="font-size: 0.72rem; line-height: 1.25; margin-top: 0.15rem" id="dg-vanilla-online-users-unit"></span>
+                    </div>
+                    <div class="widget-subheading pt-2 small text-muted" id="dg-vanilla-online-users-role"></div>
+                    <div class="text-center small px-2 pt-1 pb-1">
+                      <a href="/settings.html#dg-settings-online-presence" class="text-decoration-none">Окно минут</a>
+                    </div>
+                    <div class="widget-description text-muted small px-2 mt-1 mb-0" id="dg-vanilla-online-users-sessions" style="line-height: 1.35"></div>
+                    <div class="widget-description text-muted mt-2 mb-0">
+                      <span class="pe-1 small" id="dg-vanilla-online-users-note"></span>
+                    </div>
+                  </div>
+                  <div class="widget-chart-wrapper">
+                    <div style="height:40px;opacity:.35;background:linear-gradient(90deg,#f7b924 0%,#f7b92455 100%);border-radius:2px;"></div>
+                  </div>
+                </div>
+                <div class="nav-item-divider mt-0"></div>
+                <div class="nav-item-btn text-center pb-3 mb-2">
+                  <button type="button" class="btn btn-sm btn-shine btn-wide btn-pill btn-warning" id="dg-vanilla-online-users-refresh">
+                    <i class="pe-7s-refresh me-2"></i>Обновить
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="header-btn-lg pe-0">
+            <div class="widget-content p-0">
+              <div class="widget-content-wrapper">
+                <div class="widget-content-left d-flex align-items-center gap-1 pe-2">
+                  <span
+                    class="rounded-circle d-inline-flex align-items-center justify-content-center flex-shrink-0 bg-light text-secondary border"
+                    style="width: 42px; height: 42px; border-color: #e2e8f0"
+                    role="img"
+                    aria-label="Профиль"
+                  >
+                    <i class="pe-7s-user" style="font-size: 1.2rem; line-height: 1; opacity: 0.85" aria-hidden="true"></i>
+                  </span>
+                  <button type="button" class="btn btn-link p-0 dg-vanilla-logout d-inline-flex align-items-center justify-content-center text-danger" title="Выйти" aria-label="Выйти из профиля" style="min-width:34px;min-height:34px;line-height:1;border-radius:50%">
+                    <i class="lnr-exit" style="font-size:1.2rem"></i>
+                  </button>
+                </div>
+                <div class="widget-content-left ms-2 header-user-info">
+                  <div class="widget-heading" id="dg-vanilla-user-display-inline">Пользователь</div>
+                  <div class="widget-subheading" id="dg-vanilla-user-role-inline">Пользователь</div>
+                </div>
+                <div class="widget-content-right header-user-info ms-3">
+                  <button type="button" class="btn btn-shadow p-1 btn-sm btn-info" id="Tooltip-1" title="Click for notifications">
+                    <i class="pe-7s-date text-white" style="font-size:20px;line-height:1"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="app-main">
+      <div class="sidebar-mobile-overlay"></div>
+      <div class="app-sidebar sidebar-shadow">
+        <div class="d-flex flex-column h-100 min-h-0">
+          <div class="app-header__logo">
+            <button type="button" class="logo-src datagon-brand" onclick="location.href='/dashboard.html'" title="Открыть дашборд" style="border:0;background:transparent;padding:0;cursor:pointer">Датагон</button>
+            <div class="header__pane ms-auto">
+              <div>
+                <button type="button" class="hamburger hamburger--slider dg-toggle-sidebar" aria-label="Свернуть боковую панель" title="Свернуть боковую панель">
+                  <span class="hamburger-box"><span class="hamburger-inner"></span></span>
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="app-header__mobile-menu">
+            <div>
+              <button type="button" class="hamburger hamburger--slider dg-toggle-mobile-sidebar" aria-label="Открыть меню">
+                <span class="hamburger-box"><span class="hamburger-inner"></span></span>
+              </button>
+            </div>
+          </div>
+          <div class="app-header__menu">
+            <span>
+              <button type="button" class="btn btn-primary btn-sm btn-icon btn-icon-only dg-toggle-header-small" aria-label="Доп. меню шапки">
+                <div class="btn-icon-wrapper">
+                  <i class="pe-7s-more" style="font-size:1.1rem;line-height:1"></i>
+                </div>
+              </button>
+            </span>
+          </div>
+          <div class="custom-scrollbar dg-sidebar-nav-wrap d-flex flex-column min-h-0" style="flex:1 1 0%;min-height:0;max-height:calc(100vh - 80px);overflow-x:hidden">
+            <div class="app-sidebar__inner dg-sidebar-nav-scroll flex-grow-1 min-h-0" style="overflow-y:auto;overflow-x:hidden">
+              <div class="dg-sidebar-nav-measure">
+                <div class="datagon-nav-shell">
+                  <div class="vertical-nav-menu" style="pointer-events:auto;z-index:999;position:relative">
+                    <ul class="metismenu-container">
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="dashboard" href="/dashboard.html"><i class="metismenu-icon pe-7s-rocket"></i>Дашборд</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="my-sites" href="/my-sites.html"><i class="metismenu-icon pe-7s-global"></i>Мои сайты</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="my-products" href="/my-products.html"><i class="metismenu-icon pe-7s-box2"></i>Мои товары (сайты)</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="moysklad" href="/moysklad.html"><i class="metismenu-icon pe-7s-shopbag"></i>МойСклад</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="projects" href="/projects.html"><i class="metismenu-icon pe-7s-portfolio"></i>Конкуренты</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="queue" href="/queue.html"><i class="metismenu-icon pe-7s-network"></i>Очередь</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="results" href="/results.html"><i class="metismenu-icon pe-7s-note2"></i>Результаты</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="matches" href="/matches.html"><i class="metismenu-icon pe-7s-link"></i>Сопоставление</a></li>
+                      <li class="metismenu-item dg-sidebar-nav-restricted" data-dg-nav-restricted="activity">
+                        <a
+                          class="metismenu-link"
+                          data-nav="processes"
+                          href="/processes.html"
+                          title="Активность и процессы (доступ ограничен: администратор или право управления пользователями)"
+                        >
+                          <i class="metismenu-icon pe-7s-timer"></i>Активность
+                          <i
+                            class="pe-7s-lock dg-nav-restricted-icon"
+                            aria-hidden="true"
+                            title="Пункт меню с ограниченным доступом"
+                          ></i>
+                        </a>
+                      </li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="settings" href="/settings.html"><i class="metismenu-icon pe-7s-config"></i>Настройки</a></li>
+                      <li class="metismenu-item dg-sidebar-architect-item">
+                        <a
+                          class="metismenu-link"
+                          data-nav="architectui-demo"
+                          href="/ref/react-demo-index.html"
+                          title="Каталог разделов React-шаблона ArchitectUI"
+                        >
+                          <i class="metismenu-icon pe-7s-plugin"></i>ArchitectUI
+                        </a>
+                      </li>
+                      <li class="metismenu-item">
+                        <a
+                          href="#"
+                          class="metismenu-link dg-vanilla-submenu-toggle"
+                          aria-expanded="false"
+                          title="Интеграции маркетплейсов: ключи и диагностика выгрузок"
+                        >
+                          <i class="metismenu-icon pe-7s-graph3"></i>Маркетплейсы
+                          <i class="metismenu-state-icon pe-7s-angle-down" aria-hidden="true"></i>
+                        </a>
+                        <ul class="metismenu-container dg-vanilla-mp-submenu">
+                          <!-- Подпункт «Настройки» (data-nav="exports-marketplaces", /exports-marketplaces.html)
+                               скрыт из меню по запросу: ключи API маркетплейсов задаются в /settings.html;
+                               страница остаётся доступной по прямому URL и через ссылки из гайдов
+                               (например, на /exports-marketplaces-issues.html). -->
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-ozon"
+                              href="/exports-marketplaces-ozon.html"
+                              title="Таблица и выгрузка Ozon"
+                            >
+                              <i class="metismenu-icon pe-7s-graph2"></i>Ozon
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-wildberries"
+                              href="/exports-marketplaces-wildberries.html"
+                              title="Таблица и выгрузка Wildberries"
+                            >
+                              <i class="metismenu-icon pe-7s-graph2"></i>Wildberries
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-yandex"
+                              href="/exports-marketplaces-yandex.html"
+                              title="Таблица и выгрузка Яндекс Маркет"
+                            >
+                              <i class="metismenu-icon pe-7s-graph2"></i>Яндекс Маркет
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-huckster"
+                              href="/exports-huckster.html"
+                              title="Интеграция Huckster / e-teleport — матрица UID по магазинам"
+                            >
+                              <i class="metismenu-icon pe-7s-cart"></i>Huckster
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-dimensions"
+                              href="/exports-dimensions.html"
+                              title="Реестр замеров габаритов товаров МойСклад"
+                            >
+                              <i class="metismenu-icon pe-7s-scissors"></i>Габариты
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-issues"
+                              href="/exports-marketplaces-issues.html"
+                              title="Товары МойСклад с проблемами публикации на маркетплейсах"
+                            >
+                              <i class="metismenu-icon pe-7s-attention"></i>Проблемы с товарами
+                            </a>
+                          </li>
+                        </ul>
+                      </li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="ms-sales" href="/ms-sales.html" title="Продажи МС: отгрузки entity/demand, позиции с привязкой к товарам ms_export"><i class="metismenu-icon pe-7s-cash"></i>Продажи МС</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="suppliers" href="/suppliers.html" title="Поставщики: сводка по закупкам и настройки"><i class="metismenu-icon pe-7s-id"></i>Поставщики</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="purchase" href="/purchase.html" title="Закупки: планирование, неснижаемые остатки, кратность"><i class="metismenu-icon pe-7s-cart"></i>Закупки</a></li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="app-sidebar-bg opacity-06"></div>
+        </div>
+      </div>
+
+      <div class="app-main__outer">
+        <div class="app-main__inner">
+          <div class="app-page-title">
+            <div class="page-title-wrapper">
+              <div class="page-title-heading">
+                <div class="page-title-icon">
+                  <i class="pe-7s-id icon-gradient bg-plum-plate"> </i>
+                </div>
+                <div>
+                  Поставщики
+                  <div class="page-title-subheading">
+                    Сводка по поставщикам с хотя бы одним товаром: складская позиция «Да», без комплектов,
+                    сотрудничество не прекращено. Позиции «к закупке» — по неснижаемому остатку (закупки / МС / кэш формулы) минус остаток и «в пути».
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="dg-sp-analytics mb-2" id="dg-sp-analytics" aria-label="Сводка по привязанным сотрудникам">
+            <div class="main-card card dg-sp-analytics-hero border-0 shadow-sm overflow-hidden">
+              <div class="dg-sp-analytics-hero-bg" aria-hidden="true"></div>
+              <div class="card-header dg-sp-analytics-header border-0 d-flex flex-wrap align-items-center justify-content-between gap-2">
+                <div class="d-flex align-items-center gap-2">
+                  <i class="header-icon pe-7s-graph2 icon-gradient bg-love-kiss me-1"> </i>
+                  <div>
+                    <span class="fw-semibold text-white">Команда и закупки</span>
+                    <div class="small text-white-50 d-none d-xl-block">Нагрузка по привязанным сотрудникам · те же фильтры, что у таблицы</div>
+                  </div>
+                </div>
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                  <div class="btn-group btn-group-sm dg-sp-metric-toggle" role="group" aria-label="Метрика диаграммы">
+                    <button type="button" class="btn btn-light active" data-dg-sp-metric="total_purchase_sum">Σ к закупке</button>
+                    <button type="button" class="btn btn-light" data-dg-sp-metric="products_to_purchase">SKU к закупке</button>
+                    <button type="button" class="btn btn-light" data-dg-sp-metric="stock_total">Остатки</button>
+                    <button type="button" class="btn btn-light" data-dg-sp-metric="suppliers_count">Поставщики</button>
+                  </div>
+                  <button type="button" class="btn btn-sm btn-outline-light" id="dg-sp-analytics-refresh" data-dg-notify-start="Обновляем сводку…">
+                    <i class="pe-7s-refresh"></i>
+                  </button>
+                </div>
+              </div>
+              <div class="card-body dg-sp-analytics-body position-relative">
+                <div class="dg-sp-analytics-loading d-none" id="dg-sp-analytics-loading">
+                  <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                  <span class="ms-2 text-muted small">Считаем сводку…</span>
+                </div>
+                <div class="row row-cols-2 row-cols-md-3 row-cols-xl-5 g-2 dg-sp-kpi-row" id="dg-sp-kpi-row">
+                  <div class="col">
+                    <div class="dg-sp-kpi-tile">
+                      <div class="dg-sp-kpi-label">Поставщиков</div>
+                      <div class="dg-sp-kpi-value" id="dg-sp-kpi-suppliers">—</div>
+                    </div>
+                  </div>
+                  <div class="col">
+                    <div class="dg-sp-kpi-tile">
+                      <div class="dg-sp-kpi-label">Товаров (всего)</div>
+                      <div class="dg-sp-kpi-value" id="dg-sp-kpi-products">—</div>
+                    </div>
+                  </div>
+                  <div class="col">
+                    <div class="dg-sp-kpi-tile dg-sp-kpi-accent">
+                      <div class="dg-sp-kpi-label">К закупке (SKU)</div>
+                      <div class="dg-sp-kpi-value" id="dg-sp-kpi-to-buy">—</div>
+                    </div>
+                  </div>
+                  <div class="col">
+                    <div class="dg-sp-kpi-tile">
+                      <div class="dg-sp-kpi-label">Σ остаток (шт)</div>
+                      <div class="dg-sp-kpi-value" id="dg-sp-kpi-stock">—</div>
+                    </div>
+                  </div>
+                  <div class="col">
+                    <div class="dg-sp-kpi-tile dg-sp-kpi-money">
+                      <div class="dg-sp-kpi-label">Σ к закупке</div>
+                      <div class="dg-sp-kpi-value" id="dg-sp-kpi-sum">—</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="row g-2 dg-sp-charts-row align-items-start">
+                  <div class="col-lg-8">
+                    <div class="dg-sp-chart-panel">
+                      <div class="dg-sp-chart-title">Распределение по сотрудникам</div>
+                      <div class="dg-sp-chart-wrap">
+                        <canvas id="dg-sp-chart-bars" aria-label="Столбчатая диаграмма по сотрудникам"></canvas>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="col-lg-4">
+                    <div class="dg-sp-chart-panel dg-sp-chart-panel-doughnut d-flex flex-column">
+                      <div class="dg-sp-chart-title">Доля суммы к закупке</div>
+                      <div class="dg-sp-doughnut-wrap d-flex align-items-center justify-content-center">
+                        <canvas id="dg-sp-chart-doughnut" aria-label="Круговая диаграмма"></canvas>
+                      </div>
+                      <div class="dg-sp-assignee-legend" id="dg-sp-assignee-legend"></div>
+                    </div>
+                  </div>
+                </div>
+                <div class="row g-2 dg-sp-charts-row-suppliers">
+                  <div class="col-12">
+                    <div class="dg-sp-chart-panel">
+                      <div class="dg-sp-chart-title">Распределение по поставщикам <span class="dg-sp-chart-subtitle text-muted fw-normal">(топ 30)</span></div>
+                      <div class="dg-sp-chart-wrap dg-sp-chart-wrap-suppliers">
+                        <canvas id="dg-sp-chart-suppliers-bars" aria-label="Столбчатая диаграмма по поставщикам"></canvas>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <p class="dg-sp-analytics-hint text-muted small mb-0" id="dg-sp-analytics-hint"></p>
+              </div>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2">
+              <div class="d-flex align-items-center">
+                <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
+                <span>Фильтры и действия</span>
+              </div>
+              <div class="d-flex align-items-center gap-2">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-sp-filters-toggle">Свернуть</button>
+              </div>
+            </div>
+            <div class="card-body" id="dg-sp-filters-body">
+              <div class="row g-2 align-items-end">
+                <div class="col-md-6">
+                  <label class="form-label" for="sp-f-search">Умный поиск</label>
+                  <input type="text" class="form-control" id="sp-f-search" placeholder="Название поставщика" autocomplete="off"
+                         data-dg-tooltip="Поиск по названию поставщика. Enter — применить." />
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label" for="sp-f-limit">На странице</label>
+                  <select class="form-select" id="sp-f-limit">
+                    <option value="50">50</option>
+                    <option value="100" selected>100</option>
+                    <option value="200">200</option>
+                    <option value="500">500</option>
+                  </select>
+                </div>
+              </div>
+              <div class="mt-3 d-flex flex-wrap gap-2">
+                <button type="button" class="btn btn-sm btn-primary" id="sp-apply" data-dg-notify-start="Применяем фильтры поставщиков…">
+                  <i class="pe-7s-search me-1"></i>Применить
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="sp-reset" data-dg-notify-start="Сбрасываем фильтры…">
+                  <i class="pe-7s-refresh me-1"></i>По умолчанию
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-primary" id="sp-refresh" data-dg-notify-start="Обновляем таблицу поставщиков…">
+                  <i class="pe-7s-refresh me-1"></i>Обновить
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <p class="text-muted small mb-2 text-danger" id="dg-sp-status" style="display:none"></p>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+              <div class="d-flex align-items-center gap-3 flex-grow-1" style="min-width: 0">
+                <div class="d-flex align-items-center flex-shrink-0">
+                  <i class="header-icon pe-7s-id icon-gradient bg-happy-fisher me-2"> </i>
+                  <span>Поставщики</span>
+                </div>
+                <div class="dg-sp-header-search" style="flex: 0 1 380px; min-width: 220px">
+                  <div class="input-group input-group-sm">
+                    <span class="input-group-text bg-white text-muted px-2" aria-hidden="true">🔎</span>
+                    <input type="search" class="form-control" id="dg-sp-table-search-mirror"
+                           placeholder="Умный поиск (Enter — применить)"
+                           autocomplete="off"
+                           data-dg-tooltip="Зеркало поиска. Enter — применить, Esc — очистить." />
+                  </div>
+                </div>
+              </div>
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-sp-columns-toggle">🧩 Столбцы</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-sp-widths-toggle">📏 Ширины</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-sp-table-toggle">Свернуть</button>
+              </div>
+            </div>
+            <div class="card-body" id="dg-sp-table-body">
+              <div class="datagon-columns-toolbox mb-2 d-none" id="dg-sp-toolbox-panels">
+                <div class="datagon-columns-panel" id="dg-sp-columns-panel">
+                  <div class="columns-actions mb-2">
+                    <button type="button" class="btn btn-sm" id="dg-sp-columns-all">Выделить все</button>
+                    <button type="button" class="btn btn-sm" id="dg-sp-columns-none">Снять все</button>
+                    <button type="button" class="btn btn-sm" id="dg-sp-columns-default">По умолчанию</button>
+                  </div>
+                  <div id="dg-sp-columns-list" class="columns-grid"></div>
+                </div>
+                <div class="datagon-columns-panel" id="dg-sp-widths-panel">
+                  <div class="columns-actions mb-2">
+                    <button type="button" class="btn btn-sm" id="dg-sp-widths-default">По умолчанию</button>
+                  </div>
+                  <div id="dg-sp-widths-list" class="dg-sp-widths-grid"></div>
+                </div>
+              </div>
+              <div id="dg-sp-table-scroll-outer" style="width:100%;max-width:100%;overflow-x:auto;overflow-y:visible;-webkit-overflow-scrolling:touch">
+                <div class="table-responsive datagon-my-products-table-wrap" style="display:block;width:100%;max-width:100%;min-width:0;overflow:visible;position:relative">
+                  <table class="table table-hover table-striped mb-0 datagon-my-products-table dg-sp-table" style="width:max-content;min-width:1200px;max-width:none;table-layout:fixed;border-collapse:collapse;border-spacing:0">
+                    <thead id="dg-sp-thead"></thead>
+                    <tbody id="dg-sp-tbody"></tbody>
+                  </table>
+                </div>
+              </div>
+              <div class="mt-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                  <label class="form-label mb-0 small text-muted" for="sp-footer-limit">На странице</label>
+                  <select class="form-select form-select-sm" id="sp-footer-limit" style="width:auto">
+                    <option value="50">50</option>
+                    <option value="100" selected>100</option>
+                    <option value="200">200</option>
+                    <option value="500">500</option>
+                  </select>
+                  <span class="text-muted small" id="dg-sp-footer-stats">Найдено: 0; страница 1/1; показано: 0</span>
+                </div>
+                <div class="btn-group" role="group" aria-label="Страницы поставщиков">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="sp-btn-prev">Назад</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="sp-btn-next">Вперёд</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-sp-ms-order-log-overlay" class="dg-sp-ms-order-log-overlay" style="display: none" aria-hidden="true">
+            <div class="dg-sp-ms-order-log-panel card shadow-lg border-0" role="dialog" aria-labelledby="dg-sp-ms-log-title">
+              <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+                <div class="fw-semibold text-truncate" id="dg-sp-ms-log-title">Журнал заказов в МойСклад</div>
+                <div class="d-flex align-items-center gap-2 flex-shrink-0">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-sp-ms-log-refresh" data-dg-notify-start="Обновляем журнал…">Обновить</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-sp-ms-log-close" aria-label="Закрыть">Закрыть</button>
+                </div>
+              </div>
+              <div class="card-body dg-sp-ms-log-body">
+                <div class="dg-sp-ms-log-loading d-none" id="dg-sp-ms-log-loading">
+                  <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                  <span class="ms-2 text-muted small">Загружаем журнал…</span>
+                </div>
+                <div class="row g-2 dg-sp-ms-log-split">
+                  <div class="col-lg-5">
+                    <div id="dg-sp-ms-log-list" class="dg-sp-ms-log-list small text-muted">Нет записей</div>
+                  </div>
+                  <div class="col-lg-7">
+                    <div id="dg-sp-ms-log-detail" class="dg-sp-ms-log-detail small text-muted border-start-lg ps-lg-3">
+                      Выберите запись слева, чтобы увидеть шаги.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="app-footer">
+          <div class="app-footer__inner">
+            <div class="app-footer-left">
+              <div class="footer-dots">
+                <a href="#" class="dot-btn-wrapper dg-vanilla-footer-toggle" id="PopoverFooter-1" aria-expanded="false" aria-haspopup="true">
+                  <i class="dot-btn-icon lnr-bullhorn icon-gradient bg-mean-fruit"></i>
+                  <div class="badge badge-dot badge-abs badge-dot-sm bg-danger">Notifications</div>
+                </a>
+                <div class="dots-separator"></div>
+                <a href="#" class="dot-btn-wrapper dg-vanilla-footer-toggle" id="PopoverFooter-3" aria-expanded="false" aria-haspopup="true">
+                  <i class="dot-btn-icon lnr-pie-chart icon-gradient bg-love-kiss"></i>
+                  <div class="badge badge-dot badge-abs badge-dot-sm bg-warning">Notifications</div>
+                </a>
+                <div class="dropdown-menu popover-custom popover-custom-xl rm-pointers p-0 dg-vanilla-footer-popover" data-footer-popover="PopoverFooter-1" style="min-width:420px">
+                  <div class="dropdown-menu-header mb-0">
+                    <div class="dropdown-menu-header-inner bg-strong-bliss">
+                      <div class="menu-header-image opacity-1" style="background-image:url('./assets/utils/images/dropdown-header/city2.jpg')"></div>
+                      <div class="menu-header-content text-white">
+                        <h5 class="menu-header-title">Notifications</h5>
+                        <h6 class="menu-header-subtitle">You have <b class="text-warning">21</b> unread messages</h6>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="card-tabs-animated card-tabs-animated-inner">
+                    <ul class="nav nav-justified">
+                      <li class="nav-item"><a href="#" class="nav-link active">Messages</a></li>
+                      <li class="nav-item"><a href="#" class="nav-link">Events</a></li>
+                      <li class="nav-item"><a href="#" class="nav-link">Errors</a></li>
+                    </ul>
+                    <div class="p-3">
+                      <div class="text-muted small">Chat, timeline and system tabs in React version.</div>
+                    </div>
+                  </div>
+                  <div class="nav-item-btn text-center pt-3 pb-3">
+                    <button type="button" class="btn btn-shadow btn-wide btn-pill btn-dark">
+                      <span class="badge badge-dot badge-dot-lg bg-warning badge-pulse me-2"></span>
+                      View All Messages
+                    </button>
+                  </div>
+                </div>
+                <div class="dropdown-menu popover-custom popover-custom-lg rm-pointers p-0 dg-vanilla-footer-popover" data-footer-popover="PopoverFooter-3" style="min-width:380px">
+                  <div class="dropdown-menu-header">
+                    <div class="dropdown-menu-header-inner bg-malibu-beach">
+                      <div class="menu-header-image opacity-2" style="background-image:url('./assets/utils/images/dropdown-header/city2.jpg')"></div>
+                      <div class="menu-header-content text-white">
+                        <div class="avatar-icon-wrapper btn-hover-shine mb-3 avatar-icon-xl">
+                          <div class="avatar-icon rounded">
+                            <img src="./assets/utils/images/avatars/2.jpg" alt="Avatar 6" />
+                          </div>
+                        </div>
+                        <h5 class="menu-header-title">Fancy Statistics</h5>
+                        <h6 class="menu-header-subtitle">Just an example of a slider with some chart widgets inside.</h6>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="p-2">
+                    <div class="card no-shadow widget-chart widget-chart2 text-start p-2 m-1">
+                      <div class="widget-title opacity-6 text-muted text-uppercase">New accounts since 2018</div>
+                      <div class="widget-numbers text-success">78<small class="opacity-5 ps-1">%</small></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/datagon-vanilla.js"></script>
+    <script>
+    (function () {
+      var SP_COLS = [
+        ["row_num", "№", { center: true }],
+        ["supplier_name", "Поставщик"],
+        ["assigned_user", "Привязан сотрудник", { editable: true }],
+        ["comment", "Комментарий", { editable: true, headerLines: ["Комментар", "ий"] }],
+        ["min_purchase_sum", "Мин. сумма закупки", { center: true, editable: true }],
+        ["warehouse_fill_pct", "Наполняемость склада", { center: true, editable: true }],
+        ["stock_fill_pct", "Наполняемость % (Кол-во Несн/Несниж сумм./Ост.факт/%)", { center: true }],
+        ["products_total", "Кол-во товаров всего", { center: true }],
+        ["products_to_purchase", "Кол-во товаров К закупке", { center: true }],
+        ["total_purchase_sum", "Общая сумма закупки", { center: true }],
+        ["export_stub", "Экспорт", { center: true, stub: true }],
+        ["send_ms_stub", "Отправить заказ в МС", { center: true }],
+        ["auto_mailing_stub", "Авто рассылка", { center: true, stub: true }],
+        ["mailing_text_stub", "Текст для рассылки", { center: true, stub: true }],
+      ];
+
+      var COL_OPTS = {};
+      SP_COLS.forEach(function (p) { COL_OPTS[p[0]] = p[2] || {}; });
+
+      var SORTABLE = new Set([
+        "supplier_name", "products_total", "products_to_purchase",
+        "total_purchase_sum", "min_purchase_sum", "warehouse_fill_pct", "stock_fill_pct",
+        "assigned_user_name",
+      ]);
+      var SORT_KEY_REMAP = { assigned_user: "assigned_user_name" };
+
+      var DEFAULT_VISIBLE = SP_COLS.map(function (p) { return p[0]; });
+
+      var COL_MIN = {
+        row_num: 44,
+        supplier_name: 160,
+        assigned_user: 150,
+        comment: 160,
+        min_purchase_sum: 110,
+        warehouse_fill_pct: 120,
+        stock_fill_pct: 260,
+        products_total: 100,
+        products_to_purchase: 120,
+        total_purchase_sum: 130,
+        export_stub: 90,
+        send_ms_stub: 118,
+        auto_mailing_stub: 90,
+        mailing_text_stub: 120,
+      };
+
+      var state = {
+        search: "",
+        limit: 100,
+        offset: 0,
+        sort_by: "supplier_name",
+        sort_dir: "asc",
+        pending: { search: "" },
+        total: 0,
+        rows: [],
+        assignees: [],
+        loading: false,
+      };
+
+      var sortBy = "supplier_name";
+      var sortDir = "asc";
+
+      function spAuthHeaders(withJson) {
+        var headers = {};
+        try {
+          var username = window.localStorage.getItem("currentUser");
+          var token = window.localStorage.getItem("authToken");
+          if (username) headers["x-auth-username"] = username;
+          if (token) headers["x-auth-token"] = token;
+        } catch (e) {}
+        if (withJson) headers["Content-Type"] = "application/json";
+        return headers;
+      }
+
+      function fmtNum(n) {
+        if (n == null || n === "") return "—";
+        var x = Number(n);
+        if (!Number.isFinite(x)) return String(n);
+        if (Math.abs(x - Math.round(x)) < 1e-9) {
+          return Math.round(x).toLocaleString("ru-RU", { maximumFractionDigits: 0 });
+        }
+        return x.toLocaleString("ru-RU", { maximumFractionDigits: 2 });
+      }
+
+      /** Число для ячейки: 0 показываем как «0», не «—». */
+      function fmtQty(n) {
+        if (n == null || n === "" || !Number.isFinite(Number(n))) return "—";
+        return fmtNum(n);
+      }
+
+      function fmtMoney(n) {
+        if (n == null || !Number.isFinite(Number(n))) return "—";
+        return Number(n).toLocaleString("ru-RU", { minimumFractionDigits: 0, maximumFractionDigits: 2 }) + " ₽";
+      }
+
+      function fmtPct(n) {
+        if (n == null || !Number.isFinite(Number(n))) return "—";
+        return Number(n).toLocaleString("ru-RU", { maximumFractionDigits: 2 }) + "%";
+      }
+
+      var SP_CHART_PALETTE = [
+        "#5b6eea", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4",
+        "#ec4899", "#14b8a6", "#f97316", "#64748b", "#0ea5e9", "#a855f7",
+      ];
+
+      function spChartBarHeight(rowCount) {
+        var n = Math.max(1, rowCount || 1);
+        return Math.min(168, Math.max(88, n * 28 + 24));
+      }
+
+      function spChartBarHeightSuppliers(rowCount) {
+        var n = Math.max(1, rowCount || 1);
+        return Math.min(200, Math.max(96, n * 22 + 20));
+      }
+
+      function syncAnalyticsChartLayout(assigneeCount, supplierCount) {
+        var barH = spChartBarHeight(assigneeCount);
+        var wrap = document.querySelector("#dg-sp-chart-bars");
+        if (wrap && wrap.parentElement) wrap.parentElement.style.height = barH + "px";
+        var supWrap = document.querySelector("#dg-sp-chart-suppliers-bars");
+        if (supWrap && supWrap.parentElement) {
+          supWrap.parentElement.style.height = spChartBarHeightSuppliers(supplierCount) + "px";
+        }
+        var doughnutWrap = document.querySelector(".dg-sp-doughnut-wrap");
+        if (doughnutWrap) {
+          doughnutWrap.style.height = "100px";
+          doughnutWrap.style.minHeight = "100px";
+          doughnutWrap.style.maxHeight = "100px";
+        }
+      }
+
+      var analyticsState = {
+        metric: "total_purchase_sum",
+        payload: null,
+        loading: false,
+        barChart: null,
+        supplierBarChart: null,
+        doughnutChart: null,
+      };
+
+      var chartJsPromise = null;
+      function loadChartJs() {
+        if (window.Chart && typeof window.Chart === "function") return Promise.resolve(window.Chart);
+        if (chartJsPromise) return chartJsPromise;
+        chartJsPromise = new Promise(function (resolve, reject) {
+          var s = document.createElement("script");
+          s.src = "https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js";
+          s.async = true;
+          s.onload = function () { resolve(window.Chart); };
+          s.onerror = function () { reject(new Error("Не удалось загрузить Chart.js")); };
+          document.head.appendChild(s);
+        });
+        return chartJsPromise;
+      }
+
+      function metricMeta(key) {
+        switch (key) {
+          case "products_to_purchase":
+            return { label: "SKU к закупке", fmt: function (v) { return fmtNum(v); } };
+          case "stock_total":
+            return { label: "Σ остаток (шт)", fmt: function (v) { return fmtNum(v); } };
+          case "suppliers_count":
+            return { label: "Поставщиков", fmt: function (v) { return fmtNum(v); } };
+          default:
+            return { label: "Σ к закупке", fmt: function (v) { return fmtMoney(v); } };
+        }
+      }
+
+      function metricValue(row, key) {
+        var n = Number(row && row[key] != null ? row[key] : 0);
+        return Number.isFinite(n) ? n : 0;
+      }
+
+      function shortenLabel(name, maxLen) {
+        var s = String(name || "").trim();
+        if (s.length <= (maxLen || 28)) return s || "—";
+        return s.slice(0, (maxLen || 28) - 1) + "…";
+      }
+
+      function setAnalyticsLoading(on) {
+        var el = document.getElementById("dg-sp-analytics-loading");
+        if (el) el.classList.toggle("d-none", !on);
+      }
+
+      function renderAnalyticsKpis(totals) {
+        var t = totals || {};
+        var map = {
+          "dg-sp-kpi-suppliers": t.suppliers_count,
+          "dg-sp-kpi-products": t.products_total,
+          "dg-sp-kpi-to-buy": t.products_to_purchase,
+          "dg-sp-kpi-stock": t.stock_total,
+          "dg-sp-kpi-sum": t.total_purchase_sum,
+        };
+        Object.keys(map).forEach(function (id) {
+          var el = document.getElementById(id);
+          if (!el) return;
+          if (id === "dg-sp-kpi-sum") el.textContent = fmtMoney(map[id]);
+          else el.textContent = fmtNum(map[id]);
+        });
+      }
+
+      function renderAnalyticsHint(totals, assigneeRows, supplierRows) {
+        var hint = document.getElementById("dg-sp-analytics-hint");
+        if (!hint) return;
+        var parts = [];
+        var meta = metricMeta(analyticsState.metric);
+        if (totals && totals.assignees_count != null) {
+          parts.push("Сотрудников в сводке: " + fmtNum(totals.assignees_count));
+        }
+        if (totals && Number(totals.unassigned_suppliers) > 0) {
+          parts.push("Без привязки: " + fmtNum(totals.unassigned_suppliers) + " поставщ.");
+        }
+        if (totals && totals.avg_fill_pct != null) {
+          parts.push("Средняя наполняемость: " + fmtPct(totals.avg_fill_pct));
+        }
+        if (assigneeRows && assigneeRows.length) {
+          var topA = assigneeRows.slice().sort(function (a, b) {
+            return metricValue(b, analyticsState.metric) - metricValue(a, analyticsState.metric);
+          })[0];
+          parts.push(
+            "Лидер (сотрудники): " +
+              (topA.assignee_label || "—") +
+              " (" +
+              meta.fmt(metricValue(topA, analyticsState.metric)) +
+              ")"
+          );
+        }
+        if (supplierRows && supplierRows.length) {
+          var topS = supplierRows.slice().sort(function (a, b) {
+            return metricValue(b, analyticsState.metric) - metricValue(a, analyticsState.metric);
+          })[0];
+          parts.push(
+            "Лидер (поставщик): " +
+              (topS.supplier_label || "—") +
+              " (" +
+              meta.fmt(metricValue(topS, analyticsState.metric)) +
+              ")"
+          );
+        }
+        hint.textContent = parts.join(" · ");
+      }
+
+      function renderAssigneeLegend(rows) {
+        var root = document.getElementById("dg-sp-assignee-legend");
+        if (!root) return;
+        root.textContent = "";
+        var sumAll = 0;
+        (rows || []).forEach(function (r) {
+          sumAll += metricValue(r, "total_purchase_sum");
+        });
+        (rows || []).slice(0, 5).forEach(function (r, i) {
+          var row = document.createElement("div");
+          row.className = "dg-sp-legend-row";
+          var left = document.createElement("span");
+          left.style.display = "inline-flex";
+          left.style.alignItems = "center";
+          left.style.gap = "6px";
+          left.style.minWidth = "0";
+          left.style.flex = "1";
+          var sw = document.createElement("span");
+          sw.className = "dg-sp-legend-swatch";
+          sw.style.background = SP_CHART_PALETTE[i % SP_CHART_PALETTE.length];
+          var nm = document.createElement("span");
+          nm.className = "dg-sp-legend-name";
+          nm.textContent = r.assignee_label || "—";
+          nm.title = r.assignee_label || "";
+          left.appendChild(sw);
+          left.appendChild(nm);
+          var val = document.createElement("span");
+          val.className = "dg-sp-legend-val";
+          var v = metricValue(r, "total_purchase_sum");
+          var pct = sumAll > 0 ? Math.round((100 * v) / sumAll) : 0;
+          val.textContent = fmtMoney(v) + " · " + pct + "%";
+          row.appendChild(left);
+          row.appendChild(val);
+          root.appendChild(row);
+        });
+      }
+
+      function destroySpChart(ch) {
+        if (ch && typeof ch.destroy === "function") ch.destroy();
+      }
+
+      function sortAnalyticsRows(rows, metric) {
+        return (rows || []).slice().sort(function (a, b) {
+          return metricValue(b, metric) - metricValue(a, metric);
+        });
+      }
+
+      function spChartTickCallback(v) {
+        var n = Number(v);
+        if (!Number.isFinite(n)) return v;
+        if (analyticsState.metric === "total_purchase_sum") {
+          if (n >= 1e6) {
+            return (n / 1e6).toLocaleString("ru-RU", { maximumFractionDigits: 1 }) + " M";
+          }
+          if (n >= 1e3) {
+            return (n / 1e3).toLocaleString("ru-RU", { maximumFractionDigits: 0 }) + " k";
+          }
+        }
+        return n.toLocaleString("ru-RU");
+      }
+
+      function createSpHorizontalBarChart(Chart, canvas, sorted, labelKey, meta, isAssignee) {
+        var labels = sorted.map(function (r) {
+          return shortenLabel(r[labelKey], isAssignee ? 32 : 26);
+        });
+        var values = sorted.map(function (r) {
+          return metricValue(r, analyticsState.metric);
+        });
+        var colors = sorted.map(function (_r, i) {
+          return SP_CHART_PALETTE[i % SP_CHART_PALETTE.length];
+        });
+        return new Chart(canvas.getContext("2d"), {
+          type: "bar",
+          data: {
+            labels: labels,
+            datasets: [{
+              label: meta.label,
+              data: values,
+              backgroundColor: function (ctx) {
+                var c = colors[ctx.dataIndex % colors.length];
+                var chart = ctx.chart;
+                var g = chart.ctx.createLinearGradient(0, 0, chart.width || 320, 0);
+                g.addColorStop(0, c);
+                g.addColorStop(1, c + "66");
+                return g;
+              },
+              borderColor: colors,
+              borderWidth: 0,
+              borderRadius: 8,
+              borderSkipped: false,
+              maxBarThickness: 18,
+            }],
+          },
+          options: {
+            indexAxis: "y",
+            responsive: true,
+            maintainAspectRatio: false,
+            layout: { padding: { top: 0, bottom: 0, right: 6 } },
+            animation: { duration: 520, easing: "easeOutQuart" },
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                backgroundColor: "rgba(15, 23, 42, 0.92)",
+                padding: 10,
+                cornerRadius: 8,
+                callbacks: {
+                  label: function (ctx) {
+                    var row = sorted[ctx.dataIndex];
+                    var lines = [
+                      meta.label + ": " + meta.fmt(ctx.raw),
+                      "SKU всего: " + fmtNum(row.products_total),
+                      "SKU к закупке: " + fmtNum(row.products_to_purchase),
+                      "Σ остаток: " + fmtNum(row.stock_total),
+                    ];
+                    if (isAssignee) {
+                      lines.splice(1, 0, "Поставщиков: " + fmtNum(row.suppliers_count));
+                    }
+                    if (row.avg_fill_pct != null) lines.push("Наполняемость: " + fmtPct(row.avg_fill_pct));
+                    return lines;
+                  },
+                },
+              },
+            },
+            scales: {
+              x: {
+                beginAtZero: true,
+                grid: { color: "rgba(148, 163, 184, 0.2)", drawBorder: false },
+                ticks: {
+                  color: "#64748b",
+                  font: { size: 10 },
+                  callback: spChartTickCallback,
+                },
+              },
+              y: {
+                grid: { display: false },
+                ticks: { color: "#334155", font: { size: 10, weight: "500" } },
+              },
+            },
+          },
+        });
+      }
+
+      function renderAnalyticsCharts(assigneeRows, supplierRows) {
+        var canvasBar = document.getElementById("dg-sp-chart-bars");
+        var canvasSuppliers = document.getElementById("dg-sp-chart-suppliers-bars");
+        var canvasDoughnut = document.getElementById("dg-sp-chart-doughnut");
+        if (!canvasBar || !canvasDoughnut) return;
+        var assigneeSorted = sortAnalyticsRows(assigneeRows, analyticsState.metric);
+        var supplierSorted = sortAnalyticsRows(supplierRows, analyticsState.metric);
+        var meta = metricMeta(analyticsState.metric);
+
+        syncAnalyticsChartLayout(assigneeSorted.length, supplierSorted.length);
+
+        loadChartJs()
+          .then(function (Chart) {
+            destroySpChart(analyticsState.barChart);
+            destroySpChart(analyticsState.supplierBarChart);
+            destroySpChart(analyticsState.doughnutChart);
+
+            analyticsState.barChart = createSpHorizontalBarChart(
+              Chart,
+              canvasBar,
+              assigneeSorted,
+              "assignee_label",
+              meta,
+              true
+            );
+
+            if (canvasSuppliers) {
+              if (supplierSorted.length) {
+                analyticsState.supplierBarChart = createSpHorizontalBarChart(
+                  Chart,
+                  canvasSuppliers,
+                  supplierSorted,
+                  "supplier_label",
+                  meta,
+                  false
+                );
+              } else {
+                var sctx = canvasSuppliers.getContext("2d");
+                if (sctx) sctx.clearRect(0, 0, canvasSuppliers.width, canvasSuppliers.height);
+              }
+            }
+
+            var doughnutSorted = sortAnalyticsRows(assigneeRows, "total_purchase_sum");
+            var doughnutLabels = doughnutSorted.map(function (r) {
+              return shortenLabel(r.assignee_label, 32);
+            });
+            var doughnutValues = doughnutSorted.map(function (r) {
+              return metricValue(r, "total_purchase_sum");
+            });
+            var doughnutColors = doughnutSorted.map(function (_r, i) {
+              return SP_CHART_PALETTE[i % SP_CHART_PALETTE.length];
+            });
+            analyticsState.doughnutChart = new Chart(canvasDoughnut.getContext("2d"), {
+              type: "doughnut",
+              data: {
+                labels: doughnutLabels,
+                datasets: [{
+                  data: doughnutValues,
+                  backgroundColor: doughnutColors.map(function (c) { return c + "e8"; }),
+                  borderColor: "#ffffff",
+                  borderWidth: 3,
+                  hoverOffset: 10,
+                  hoverBorderColor: "#f8fafc",
+                }],
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: "58%",
+                animation: { animateRotate: true, duration: 620 },
+                plugins: {
+                  legend: { display: false },
+                  tooltip: {
+                    backgroundColor: "rgba(15, 23, 42, 0.92)",
+                    padding: 10,
+                    cornerRadius: 8,
+                    callbacks: {
+                      label: function (ctx) {
+                        var row = doughnutSorted[ctx.dataIndex];
+                        var v = metricValue(row, "total_purchase_sum");
+                        var total = doughnutValues.reduce(function (a, b) { return a + b; }, 0);
+                        var pct = total > 0 ? Math.round((100 * v) / total) : 0;
+                        return (row.assignee_label || "—") + ": " + fmtMoney(v) + " (" + pct + "%)";
+                      },
+                    },
+                  },
+                },
+              },
+            });
+          })
+          .catch(function (e) {
+            var hint = document.getElementById("dg-sp-analytics-hint");
+            if (hint) hint.textContent = (e && e.message) || "Графики недоступны";
+          });
+      }
+
+      function renderAnalytics(payload) {
+        analyticsState.payload = payload || null;
+        var totals = payload && payload.totals ? payload.totals : {};
+        var assigneeRows = payload && payload.by_assignee ? payload.by_assignee : [];
+        var supplierRows = payload && payload.by_supplier ? payload.by_supplier : [];
+        renderAnalyticsKpis(totals);
+        renderAnalyticsHint(totals, assigneeRows, supplierRows);
+        renderAssigneeLegend(assigneeRows);
+        renderAnalyticsCharts(assigneeRows, supplierRows);
+      }
+
+      function loadAnalytics() {
+        if (analyticsState.loading) return Promise.resolve();
+        analyticsState.loading = true;
+        setAnalyticsLoading(true);
+        var p = new URLSearchParams();
+        if (state.search) p.set("search", state.search);
+        return fetch("/api/suppliers/analytics?" + p.toString(), {
+          credentials: "same-origin",
+          headers: spAuthHeaders(false),
+        })
+          .then(function (r) {
+            if (!r.ok) throw new Error("HTTP " + r.status);
+            return r.json();
+          })
+          .then(function (j) {
+            if (!j || j.success === false) throw new Error((j && j.error) || "Ошибка аналитики");
+            renderAnalytics(j);
+          })
+          .catch(function (e) {
+            renderAnalyticsKpis({});
+            var hint = document.getElementById("dg-sp-analytics-hint");
+            if (hint) hint.textContent = "Сводка: " + (e.message || e);
+          })
+          .finally(function () {
+            analyticsState.loading = false;
+            setAnalyticsLoading(false);
+          });
+      }
+
+      function bindAnalyticsUi() {
+        document.querySelectorAll("[data-dg-sp-metric]").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            var key = btn.getAttribute("data-dg-sp-metric");
+            if (!key || key === analyticsState.metric) return;
+            analyticsState.metric = key;
+            document.querySelectorAll("[data-dg-sp-metric]").forEach(function (b) {
+              b.classList.toggle("active", b.getAttribute("data-dg-sp-metric") === key);
+            });
+            if (analyticsState.payload) {
+              renderAnalyticsCharts(
+                analyticsState.payload.by_assignee || [],
+                analyticsState.payload.by_supplier || []
+              );
+            }
+          });
+        });
+        var ref = document.getElementById("dg-sp-analytics-refresh");
+        if (ref) ref.addEventListener("click", function () { loadAnalytics(); });
+        window.addEventListener("resize", function () {
+          if (analyticsState.barChart) analyticsState.barChart.resize();
+          if (analyticsState.supplierBarChart) analyticsState.supplierBarChart.resize();
+          if (analyticsState.doughnutChart) analyticsState.doughnutChart.resize();
+        });
+      }
+
+      /** Тон подсветки: чем выше наполняемость (остаток к неснижаемому), тем зеленее. */
+      function stockFillTone(fillPct) {
+        if (fillPct == null || !Number.isFinite(Number(fillPct))) return "neutral";
+        var p = Number(fillPct);
+        if (p >= 90) return "good";
+        if (p >= 70) return "mid";
+        return "bad";
+      }
+
+      function buildPurchaseToBuyUrl(row) {
+        var name = String(row.supplier_key || row.supplier_name || "").trim();
+        var p = new URLSearchParams();
+        if (name) p.set("supplier", name);
+        p.set("to_buy", "1");
+        return "/purchase.html?" + p.toString();
+      }
+
+      var msOrderLogState = { supplierKey: "", selectedLogId: null };
+
+      function spEscHtml(s) {
+        return String(s == null ? "" : s)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+
+      function spFmtLogDt(raw) {
+        if (!raw) return "—";
+        try {
+          var d = new Date(raw);
+          if (!Number.isFinite(d.getTime())) return String(raw);
+          return d.toLocaleString("ru-RU", {
+            day: "2-digit",
+            month: "2-digit",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+          });
+        } catch (e) {
+          return String(raw);
+        }
+      }
+
+      function spMsLogStatusBadge(status) {
+        var s = String(status || "").toLowerCase();
+        if (s === "success") return '<span class="badge bg-success">OK</span>';
+        if (s === "failed") return '<span class="badge bg-danger">Ошибка</span>';
+        return '<span class="badge bg-secondary">' + spEscHtml(status || "?") + "</span>";
+      }
+
+      function setMsOrderLogLoading(on) {
+        var el = document.getElementById("dg-sp-ms-log-loading");
+        if (el) el.classList.toggle("d-none", !on);
+      }
+
+      function closeSupplierMsOrderLogModal() {
+        var ov = document.getElementById("dg-sp-ms-order-log-overlay");
+        if (!ov) return;
+        ov.style.display = "none";
+        ov.setAttribute("aria-hidden", "true");
+      }
+
+      function renderMsOrderLogDetailPlaceholder(text) {
+        var el = document.getElementById("dg-sp-ms-log-detail");
+        if (!el) return;
+        el.className = "dg-sp-ms-log-detail small text-muted border-start-lg ps-lg-3";
+        el.textContent = text || "Выберите запись слева, чтобы увидеть шаги.";
+      }
+
+      function buildMsOrderLogStepsHtml(detail) {
+        if (!detail || !detail.steps || !detail.steps.length) {
+          return '<p class="text-muted mb-0">Нет пошагового журнала.</p>';
+        }
+        var html = "";
+        detail.steps.forEach(function (st) {
+          var fail = st.ok === false;
+          html +=
+            '<div class="dg-sp-ms-log-step' +
+            (fail ? " dg-sp-ms-log-step-fail" : "") +
+            '"><div><strong>' +
+            spEscHtml(st.step || "?") +
+            "</strong> " +
+            (st.ok === true
+              ? '<span class="text-success">✓</span>'
+              : st.ok === false
+                ? '<span class="text-danger">✗</span>'
+                : '<span class="text-muted">…</span>') +
+            ' <span class="text-muted">' +
+            spEscHtml(st.at || "") +
+            "</span></div>";
+          var copy = Object.assign({}, st);
+          delete copy.step;
+          delete copy.at;
+          delete copy.ok;
+          if (Object.keys(copy).length) {
+            html += "<pre>" + spEscHtml(JSON.stringify(copy, null, 2)) + "</pre>";
+          }
+          html += "</div>";
+        });
+        return html;
+      }
+
+      function renderMsOrderLogDetail(log) {
+        var el = document.getElementById("dg-sp-ms-log-detail");
+        if (!el) return;
+        if (!log) {
+          renderMsOrderLogDetailPlaceholder("Запись не найдена.");
+          return;
+        }
+        el.className = "dg-sp-ms-log-detail small border-start-lg ps-lg-3";
+        var html =
+          '<div class="mb-2">' +
+          spMsLogStatusBadge(log.status) +
+          " <strong>#" +
+          spEscHtml(log.id) +
+          "</strong>";
+        if (log.created_by_name) html += " · " + spEscHtml(log.created_by_name);
+        html += "</div>";
+        if (log.order_name) {
+          html += "<p class=\"mb-1\"><strong>Заказ:</strong> " + spEscHtml(log.order_name) + "</p>";
+        }
+        if (log.message) {
+          html += "<p class=\"mb-2\">" + spEscHtml(log.message) + "</p>";
+        }
+        if (log.ms_web_href) {
+          html +=
+            '<p class="mb-2"><a href="' +
+            spEscHtml(log.ms_web_href) +
+            '" target="_blank" rel="noopener noreferrer">Открыть в МойСклад</a></p>';
+        }
+        html += buildMsOrderLogStepsHtml(log.detail);
+        el.innerHTML = html;
+      }
+
+      function loadSupplierMsOrderLogDetail(logId) {
+        msOrderLogState.selectedLogId = logId;
+        var list = document.getElementById("dg-sp-ms-log-list");
+        if (list) {
+          list.querySelectorAll("tr.dg-sp-ms-log-row").forEach(function (tr) {
+            tr.classList.toggle("active", Number(tr.getAttribute("data-log-id")) === Number(logId));
+          });
+        }
+        renderMsOrderLogDetailPlaceholder("Загружаем шаги…");
+        return fetch("/api/suppliers/ms-order-log/" + encodeURIComponent(String(logId)), {
+          credentials: "same-origin",
+          headers: spAuthHeaders(false),
+        })
+          .then(function (r) {
+            return r.json().catch(function () { return {}; }).then(function (j) {
+              if (!r.ok) throw new Error((j && j.error) || "HTTP " + r.status);
+              return j;
+            });
+          })
+          .then(function (j) {
+            renderMsOrderLogDetail(j && j.log);
+          })
+          .catch(function (err) {
+            renderMsOrderLogDetailPlaceholder(err.message || "Ошибка загрузки деталей");
+          });
+      }
+
+      function renderMsOrderLogList(rows) {
+        var el = document.getElementById("dg-sp-ms-log-list");
+        if (!el) return;
+        if (!rows || !rows.length) {
+          el.innerHTML = '<p class="text-muted mb-0">Попыток отправки в МС пока нет.</p>';
+          renderMsOrderLogDetailPlaceholder();
+          return;
+        }
+        var html =
+          '<table class="table table-sm table-hover mb-0"><thead><tr>' +
+          "<th>#</th><th>Дата</th><th>Статус</th><th>Поз.</th><th>Сообщение</th>" +
+          "</tr></thead><tbody>";
+        rows.forEach(function (r) {
+          html +=
+            '<tr class="dg-sp-ms-log-row" data-log-id="' +
+            spEscHtml(r.id) +
+            '" title="Показать шаги">' +
+            "<td>" +
+            spEscHtml(r.id) +
+            "</td><td>" +
+            spEscHtml(spFmtLogDt(r.created_at)) +
+            "</td><td>" +
+            spMsLogStatusBadge(r.status) +
+            "</td><td>" +
+            spEscHtml(r.positions_count != null ? r.positions_count : "—") +
+            "</td><td class=\"text-truncate\" style=\"max-width:140px\">" +
+            spEscHtml(r.message || r.code_error || "") +
+            "</td></tr>";
+        });
+        html += "</tbody></table>";
+        el.innerHTML = html;
+        el.querySelectorAll("tr.dg-sp-ms-log-row").forEach(function (tr) {
+          tr.addEventListener("click", function () {
+            loadSupplierMsOrderLogDetail(tr.getAttribute("data-log-id"));
+          });
+        });
+        if (msOrderLogState.selectedLogId) {
+          loadSupplierMsOrderLogDetail(msOrderLogState.selectedLogId);
+        } else if (rows[0]) {
+          loadSupplierMsOrderLogDetail(rows[0].id);
+        }
+      }
+
+      function loadSupplierMsOrderLogList() {
+        var key = String(msOrderLogState.supplierKey || "").trim();
+        if (!key) return Promise.resolve();
+        setMsOrderLogLoading(true);
+        var url =
+          "/api/suppliers/ms-order-log?supplier_key=" +
+          encodeURIComponent(key) +
+          "&limit=30";
+        return fetch(url, { credentials: "same-origin", headers: spAuthHeaders(false) })
+          .then(function (r) {
+            return r.json().catch(function () { return {}; }).then(function (j) {
+              if (!r.ok) throw new Error((j && j.error) || "HTTP " + r.status);
+              return j;
+            });
+          })
+          .then(function (j) {
+            renderMsOrderLogList(j.rows || []);
+          })
+          .catch(function (err) {
+            var el = document.getElementById("dg-sp-ms-log-list");
+            if (el) el.innerHTML = '<p class="text-danger mb-0">' + spEscHtml(err.message) + "</p>";
+            renderMsOrderLogDetailPlaceholder();
+          })
+          .finally(function () {
+            setMsOrderLogLoading(false);
+          });
+      }
+
+      function openSupplierMsOrderLogModal(row) {
+        var supplierKey = String(row.supplier_key || row.supplier_name || "").trim();
+        if (!supplierKey) return;
+        msOrderLogState.supplierKey = supplierKey;
+        msOrderLogState.selectedLogId = null;
+        var ov = document.getElementById("dg-sp-ms-order-log-overlay");
+        var title = document.getElementById("dg-sp-ms-log-title");
+        if (title) title.textContent = "Журнал МС · " + supplierKey;
+        if (!ov) return;
+        ov.style.display = "flex";
+        ov.setAttribute("aria-hidden", "false");
+        renderMsOrderLogList([]);
+        renderMsOrderLogDetailPlaceholder();
+        loadSupplierMsOrderLogList();
+      }
+
+      function bindSupplierMsOrderLogModal() {
+        var ov = document.getElementById("dg-sp-ms-order-log-overlay");
+        var closeBtn = document.getElementById("dg-sp-ms-log-close");
+        var refreshBtn = document.getElementById("dg-sp-ms-log-refresh");
+        if (closeBtn) closeBtn.addEventListener("click", closeSupplierMsOrderLogModal);
+        if (refreshBtn) {
+          refreshBtn.addEventListener("click", function () {
+            if (window.DatagonNotify && window.DatagonNotify.busyRun) {
+              window.DatagonNotify.busyRun(refreshBtn, loadSupplierMsOrderLogList);
+            } else {
+              loadSupplierMsOrderLogList();
+            }
+          });
+        }
+        if (ov) {
+          ov.addEventListener("click", function (e) {
+            if (e.target === ov) closeSupplierMsOrderLogModal();
+          });
+        }
+        document.addEventListener("keydown", function (e) {
+          if (e.key === "Escape" && ov && ov.style.display !== "none") closeSupplierMsOrderLogModal();
+        });
+      }
+
+      function sendPurchaseOrderToMs(row, btn) {
+        var supplierKey = String(row.supplier_key || row.supplier_name || "").trim();
+        if (!supplierKey) return;
+        var n = Number(row.products_to_purchase || 0);
+        if (!n) return;
+        var assignee = String(row.assigned_user_name || "").trim() || "(не назначен)";
+        if (
+          !window.confirm(
+            "Создать заказ поставщику «" +
+              supplierKey +
+              "» в МойСклад?\n\nПозиций к закупке: " +
+              n +
+              "\nСотрудник в названии: " +
+              assignee
+          )
+        ) {
+          return;
+        }
+        var url =
+          "/api/suppliers/" + encodeURIComponent(supplierKey) + "/send-ms-order";
+        var run = function () {
+          return fetch(url, {
+            method: "POST",
+            credentials: "same-origin",
+            headers: spAuthHeaders(true),
+            body: "{}",
+          }).then(function (r) {
+            return r
+              .json()
+              .catch(function () {
+                return {};
+              })
+              .then(function (j) {
+                if (!r.ok) {
+                  var er = new Error((j && j.error) || "HTTP " + r.status);
+                  er.responseJson = j;
+                  throw er;
+                }
+                return j;
+              });
+          });
+        };
+        var onOk = function (j) {
+          var msg =
+            "Заказ «" +
+            (j.order_name || "") +
+            "» создан (" +
+            (j.positions_count != null ? j.positions_count : "?") +
+            " поз.)";
+          if (j.skipped_no_uuid && j.skipped_no_uuid.length) {
+            msg += ". Без uuid: " + j.skipped_no_uuid.length;
+          }
+          if (window.DatagonNotify && window.DatagonNotify.toast) {
+            window.DatagonNotify.toast({ type: "success", message: msg, duration: 8000 });
+          }
+          if (j.ms_web_href && window.confirm(msg + "\n\nОткрыть заказ в МойСклад?")) {
+            window.open(j.ms_web_href, "_blank", "noopener,noreferrer");
+          }
+          if (j.log_id) msOrderLogState.selectedLogId = j.log_id;
+          var ov = document.getElementById("dg-sp-ms-order-log-overlay");
+          if (ov && ov.style.display !== "none" && msOrderLogState.supplierKey) {
+            loadSupplierMsOrderLogList();
+          }
+        };
+        var onErr = function (err, j) {
+          var msg = (j && j.error) || err.message || "Ошибка создания заказа";
+          if (j && j.log_id) msg += " (журнал #" + j.log_id + ")";
+          if (window.DatagonNotify && window.DatagonNotify.toast) {
+            window.DatagonNotify.toast({
+              type: "danger",
+              message: msg,
+              duration: 12000,
+            });
+          } else {
+            window.alert(msg);
+          }
+        };
+        if (window.DatagonNotify && window.DatagonNotify.busyRun) {
+          window.DatagonNotify.busyRun(btn, run)
+            .then(onOk)
+            .catch(function (err) {
+              onErr(err, err && err.responseJson);
+            });
+        } else {
+          run()
+            .then(onOk)
+            .catch(function (err) {
+              onErr(err, err && err.responseJson);
+            });
+        }
+      }
+
+      function downloadSupplierExport(row, kind, btn) {
+        var supplierKey = String(row.supplier_key || row.supplier_name || "").trim();
+        if (!supplierKey) return;
+        var url =
+          "/api/suppliers/export/" +
+          encodeURIComponent(kind) +
+          "?supplier_key=" +
+          encodeURIComponent(supplierKey) +
+          "&to_purchase=1";
+        var label = kind === "purchaser" ? "Экспорт для закупщиков" : "Экспорт для поставщика";
+        var run = function () {
+          return fetch(url, { credentials: "same-origin", headers: spAuthHeaders(false) })
+            .then(function (r) {
+              if (!r.ok) {
+                return r
+                  .json()
+                  .catch(function () {
+                    return {};
+                  })
+                  .then(function (j) {
+                    throw new Error((j && j.error) || "HTTP " + r.status);
+                  });
+              }
+              var dispo = r.headers.get("Content-Disposition") || "";
+              var fname = null;
+              var mStar = /filename\*=UTF-8''([^;\s]+)/i.exec(dispo);
+              if (mStar && mStar[1]) {
+                try { fname = decodeURIComponent(mStar[1]); } catch (eDec) { fname = mStar[1]; }
+              }
+              if (!fname) {
+                var m = /filename="([^"]+)"/i.exec(dispo);
+                fname = m && m[1] ? m[1] : (kind === "purchaser" ? "zakupki.xls" : "postavshik.xls");
+              }
+              return r.blob().then(function (blob) {
+                var a = document.createElement("a");
+                a.href = URL.createObjectURL(blob);
+                a.download = fname;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                setTimeout(function () {
+                  URL.revokeObjectURL(a.href);
+                }, 2000);
+              });
+            })
+            .then(function () {
+              if (window.DatagonNotify && window.DatagonNotify.toast) {
+                window.DatagonNotify.toast({ type: "success", message: label + ": файл скачан" });
+              }
+            })
+            .catch(function (e) {
+              if (window.DatagonNotify && window.DatagonNotify.toast) {
+                window.DatagonNotify.toast({ type: "danger", message: e.message || "Ошибка выгрузки" });
+              }
+            });
+        };
+        if (window.DatagonNotify && window.DatagonNotify.busyRun && btn) {
+          window.DatagonNotify.busyRun(btn, run);
+        } else {
+          run();
+        }
+      }
+
+      function makePurchaseOpenLink(row, label, allowWhenZero) {
+        var n = Number(row.products_to_purchase || 0);
+        if (!allowWhenZero && !(n > 0)) {
+          return document.createTextNode(label);
+        }
+        var a = document.createElement("a");
+        a.href = buildPurchaseToBuyUrl(row);
+        a.target = "_blank";
+        a.rel = "noopener noreferrer";
+        a.className = "dg-sp-purchase-link";
+        a.textContent = label;
+        a.title = "Открыть закупки: только позиции «к закупке» по этому поставщику";
+        a.setAttribute("data-dg-notify-start", "Открываем закупки по поставщику…");
+        return a;
+      }
+
+      function renderStockFillTriplet(row) {
+        var positionsCount =
+          row.min_stock_positions_count != null ? row.min_stock_positions_count : null;
+        var minSumTotal = row.min_stock_total != null ? row.min_stock_total : null;
+        var stockSum = row.stock_total != null ? row.stock_total : null;
+        var fillPct =
+          row.stock_fill_pct != null
+            ? row.stock_fill_pct
+            : row.stock_fill_pct_computed != null
+              ? row.stock_fill_pct_computed
+              : null;
+        if (
+          fillPct == null &&
+          minSumTotal != null &&
+          stockSum != null &&
+          Number(minSumTotal) > 0
+        ) {
+          fillPct = Math.round((100 * Number(stockSum)) / Number(minSumTotal) * 100) / 100;
+        }
+        var wrap = document.createElement("span");
+        var tone = stockFillTone(fillPct);
+        wrap.className = "dg-sp-fill-triplet dg-sp-fill-" + tone;
+        wrap.title =
+          "Кол-во SKU с неснижаемым > 0 / Σ неснижаемый (шт) / Σ остаток факт (шт) / %\n" +
+          "Процент = 100 × Σ остаток ÷ Σ неснижаемый" +
+          (row.stock_fill_pct_stored != null
+            ? "\nСохранённый вручную %: " + fmtPct(row.stock_fill_pct_stored)
+            : "") +
+          (row.stock_fill_gap_pct != null ? "\nРазрыв к 100%: " + fmtPct(row.stock_fill_gap_pct) : "");
+        if (
+          (positionsCount == null || positionsCount === "") &&
+          (minSumTotal == null || minSumTotal === "") &&
+          (stockSum == null || stockSum === "") &&
+          fillPct == null
+        ) {
+          wrap.textContent = "—";
+          return wrap;
+        }
+        function appendPart(text) {
+          var sp = document.createElement("span");
+          sp.textContent = text;
+          wrap.appendChild(sp);
+        }
+        appendPart(fmtQty(positionsCount));
+        wrap.appendChild(document.createTextNode(" / "));
+        appendPart(fmtQty(minSumTotal));
+        wrap.appendChild(document.createTextNode(" / "));
+        appendPart(fmtQty(stockSum));
+        wrap.appendChild(document.createTextNode(" / "));
+        var pctTxt = document.createElement("span");
+        pctTxt.className = "dg-sp-fill-pct";
+        pctTxt.textContent = fmtPct(fillPct);
+        wrap.appendChild(pctTxt);
+        return wrap;
+      }
+
+      function userVisibleColsKey() {
+        var u = "";
+        try { u = window.localStorage.getItem("currentUser") || ""; } catch (e) {}
+        return "dg.suppliers.visibleCols.v1:" + u;
+      }
+
+      function userColWidthKey() {
+        var u = "";
+        try { u = window.localStorage.getItem("currentUser") || ""; } catch (e) {}
+        return "dg.suppliers.colWidths.v1:" + u;
+      }
+
+      function loadVisibleCols() {
+        try {
+          var raw = window.localStorage.getItem(userVisibleColsKey());
+          if (!raw) return DEFAULT_VISIBLE.slice();
+          var arr = JSON.parse(raw);
+          if (!Array.isArray(arr) || !arr.length) return DEFAULT_VISIBLE.slice();
+          return arr.filter(function (k) { return COL_OPTS[k]; });
+        } catch (e) {
+          return DEFAULT_VISIBLE.slice();
+        }
+      }
+
+      function saveVisibleCols(keys) {
+        try { window.localStorage.setItem(userVisibleColsKey(), JSON.stringify(keys)); } catch (e) {}
+      }
+
+      function loadColWidths() {
+        try {
+          var raw = window.localStorage.getItem(userColWidthKey());
+          return raw ? JSON.parse(raw) : {};
+        } catch (e) {
+          return {};
+        }
+      }
+
+      function saveColWidths(map) {
+        try { window.localStorage.setItem(userColWidthKey(), JSON.stringify(map || {})); } catch (e) {}
+      }
+
+      var visibleCols = loadVisibleCols();
+      var colWidths = loadColWidths();
+
+      function syncDirtyApply() {
+        var btn = document.getElementById("sp-apply");
+        if (!btn) return;
+        var dirty = String(state.pending.search || "") !== String(state.search || "");
+        btn.classList.toggle("dg-flt-dirty", dirty);
+        if (dirty && btn.textContent.indexOf("•") < 0) {
+          btn.innerHTML = '<i class="pe-7s-search me-1"></i>Применить •';
+        } else if (!dirty) {
+          btn.innerHTML = '<i class="pe-7s-search me-1"></i>Применить';
+        }
+      }
+
+      function readPendingFromDom() {
+        var el = document.getElementById("sp-f-search");
+        state.pending.search = el ? String(el.value || "").trim() : "";
+        var lim = document.getElementById("sp-f-limit");
+        if (lim) state.pending.limit = parseInt(lim.value, 10) || 100;
+      }
+
+      function commitFilters() {
+        readPendingFromDom();
+        state.search = state.pending.search;
+        state.limit = state.pending.limit || 100;
+        state.offset = 0;
+        syncDirtyApply();
+        load();
+      }
+
+      function setStatus(msg, isError) {
+        var el = document.getElementById("dg-sp-status");
+        if (!el) return;
+        if (!msg) {
+          el.style.display = "none";
+          el.textContent = "";
+          return;
+        }
+        el.style.display = "";
+        el.className = isError ? "text-danger small mb-2" : "text-muted small mb-2";
+        el.textContent = msg;
+      }
+
+      function updateFooter() {
+        var total = state.total || 0;
+        var shown = (state.rows || []).length;
+        var pages = Math.max(1, Math.ceil(total / state.limit) || 1);
+        var page = Math.floor(state.offset / state.limit) + 1;
+        var stats = document.getElementById("dg-sp-footer-stats");
+        if (stats) {
+          stats.textContent =
+            "Найдено: " + fmtNum(total) + "; страница " + page + "/" + pages + "; показано: " + fmtNum(shown);
+        }
+        var prev = document.getElementById("sp-btn-prev");
+        var next = document.getElementById("sp-btn-next");
+        if (prev) prev.disabled = state.offset <= 0 || state.loading;
+        if (next) next.disabled = state.offset + state.limit >= total || state.loading;
+      }
+
+      function apiSortKey() {
+        return SORT_KEY_REMAP[sortBy] || sortBy;
+      }
+
+      function loadAssignees() {
+        return fetch("/api/suppliers/assignees", { credentials: "same-origin", headers: spAuthHeaders(false) })
+          .then(function (r) { return r.json(); })
+          .then(function (j) {
+            state.assignees = (j && j.data) || [];
+          })
+          .catch(function () {
+            state.assignees = [];
+          });
+      }
+
+      function load() {
+        if (state.loading) return;
+        state.loading = true;
+        setStatus("Загрузка…", false);
+        var p = new URLSearchParams();
+        p.set("limit", String(state.limit));
+        p.set("offset", String(state.offset));
+        p.set("sort_by", apiSortKey());
+        p.set("sort_dir", sortDir);
+        if (state.search) p.set("search", state.search);
+        fetch("/api/suppliers?" + p.toString(), { credentials: "same-origin", headers: spAuthHeaders(false) })
+          .then(function (r) {
+            if (!r.ok) throw new Error("HTTP " + r.status);
+            return r.json();
+          })
+          .then(function (j) {
+            state.rows = (j && j.data) || [];
+            state.total = Number(j && j.total != null ? j.total : state.rows.length);
+            setStatus("");
+            renderTable();
+            updateFooter();
+            loadAnalytics();
+          })
+          .catch(function (e) {
+            setStatus(e.message || "Ошибка загрузки", true);
+            if (window.DatagonNotify && window.DatagonNotify.toast) {
+              window.DatagonNotify.toast({ type: "danger", message: e.message || "Ошибка загрузки" });
+            }
+          })
+          .finally(function () {
+            state.loading = false;
+            updateFooter();
+          });
+      }
+
+      function patchSupplier(supplierKey, payload) {
+        var enc = encodeURIComponent(supplierKey);
+        return fetch("/api/suppliers/" + enc, {
+          method: "PATCH",
+          credentials: "same-origin",
+          headers: spAuthHeaders(true),
+          body: JSON.stringify(payload),
+        }).then(function (r) {
+          return r.json().then(function (j) {
+            if (!r.ok) throw new Error((j && j.error) || "HTTP " + r.status);
+            return j;
+          });
+        });
+      }
+
+      function buildAssigneeSelect(row, selectedId) {
+        var sel = document.createElement("select");
+        sel.className = "form-select form-select-sm dg-sp-cell-input";
+        var opt0 = document.createElement("option");
+        opt0.value = "";
+        opt0.textContent = "—";
+        sel.appendChild(opt0);
+        (state.assignees || []).forEach(function (u) {
+          var o = document.createElement("option");
+          o.value = String(u.id);
+          o.textContent = u.label || u.username;
+          if (selectedId != null && Number(selectedId) === Number(u.id)) o.selected = true;
+          sel.appendChild(o);
+        });
+        sel.addEventListener("change", function () {
+          var v = sel.value ? parseInt(sel.value, 10) : null;
+          patchSupplier(row.supplier_key, { assigned_user_id: v })
+            .then(function () {
+              row.assigned_user_id = v;
+              loadAnalytics();
+              if (window.DatagonNotify && window.DatagonNotify.toast) {
+                window.DatagonNotify.toast({ type: "success", message: "Сотрудник сохранён" });
+              }
+            })
+            .catch(function (e) {
+              if (window.DatagonNotify && window.DatagonNotify.toast) {
+                window.DatagonNotify.toast({ type: "danger", message: e.message || "Ошибка" });
+              }
+            });
+        });
+        return sel;
+      }
+
+      function bindEditableInput(row, field, type, getVal) {
+        var inp = document.createElement("input");
+        inp.type = type || "text";
+        inp.className = "form-control form-control-sm dg-sp-cell-input";
+        inp.value = getVal(row) != null ? String(getVal(row)) : "";
+        if (type === "number") inp.step = "any";
+        inp.addEventListener("change", function () {
+          var payload = {};
+          var raw = inp.value;
+          if (type === "number") {
+            payload[field] = raw === "" ? null : raw;
+          } else {
+            payload[field] = raw;
+          }
+          patchSupplier(row.supplier_key, payload)
+            .then(function () {
+              if (window.DatagonNotify && window.DatagonNotify.toast) {
+                window.DatagonNotify.toast({ type: "success", message: "Сохранено" });
+              }
+              load();
+            })
+            .catch(function (e) {
+              if (window.DatagonNotify && window.DatagonNotify.toast) {
+                window.DatagonNotify.toast({ type: "danger", message: e.message || "Ошибка" });
+              }
+            });
+        });
+        return inp;
+      }
+
+      function bindEditableComment(row) {
+        var ta = document.createElement("textarea");
+        ta.rows = 2;
+        ta.className = "form-control form-control-sm dg-sp-cell-input comment";
+        ta.value = row.comment != null ? String(row.comment) : "";
+        ta.addEventListener("change", function () {
+          patchSupplier(row.supplier_key, { comment: ta.value })
+            .then(function () {
+              if (window.DatagonNotify && window.DatagonNotify.toast) {
+                window.DatagonNotify.toast({ type: "success", message: "Сохранено" });
+              }
+              load();
+            })
+            .catch(function (e) {
+              if (window.DatagonNotify && window.DatagonNotify.toast) {
+                window.DatagonNotify.toast({ type: "danger", message: e.message || "Ошибка" });
+              }
+            });
+        });
+        return ta;
+      }
+
+      function renderCell(key, row, rowIndex) {
+        if (key === "row_num") return document.createTextNode(String(state.offset + rowIndex + 1));
+        if (key === "supplier_name") {
+          return makePurchaseOpenLink(
+            row,
+            row.supplier_name || row.supplier_key || "—",
+            true,
+          );
+        }
+        if (key === "assigned_user") return buildAssigneeSelect(row, row.assigned_user_id);
+        if (key === "comment") return bindEditableComment(row);
+        if (key === "min_purchase_sum") {
+          return bindEditableInput(row, "min_purchase_sum", "number", function (r) {
+            return r.min_purchase_sum;
+          });
+        }
+        if (key === "warehouse_fill_pct") {
+          return bindEditableInput(row, "warehouse_fill_pct", "number", function (r) {
+            return r.warehouse_fill_pct;
+          });
+        }
+        if (key === "stock_fill_pct") {
+          return renderStockFillTriplet(row);
+        }
+        if (key === "products_total") return document.createTextNode(fmtNum(row.products_total));
+        if (key === "products_to_purchase") {
+          var label = fmtNum(row.products_to_purchase) + " / " + fmtNum(row.purchase_pieces_total);
+          return makePurchaseOpenLink(row, label, false);
+        }
+        if (key === "total_purchase_sum") return document.createTextNode(fmtMoney(row.total_purchase_sum));
+        if (key === "export_stub") {
+          var g = document.createElement("div");
+          g.className = "d-flex gap-1 justify-content-center flex-nowrap";
+          var canExport = Number(row.products_to_purchase || 0) > 0;
+          var b1 = document.createElement("button");
+          b1.type = "button";
+          b1.className = "btn btn-sm btn-outline-secondary dg-sp-export-btn";
+          b1.textContent = "📊";
+          b1.title = "Экспорт для поставщика (позиции к закупке)";
+          b1.setAttribute("data-dg-notify-start", "Формируем выгрузку для поставщика…");
+          b1.disabled = !canExport;
+          if (canExport) {
+            b1.addEventListener("click", function (e) {
+              e.preventDefault();
+              e.stopPropagation();
+              downloadSupplierExport(row, "supplier", b1);
+            });
+          }
+          var b2 = document.createElement("button");
+          b2.type = "button";
+          b2.className = "btn btn-sm btn-outline-secondary dg-sp-export-btn";
+          b2.textContent = "📥";
+          b2.title = "Экспорт для закупщиков";
+          b2.setAttribute("data-dg-notify-start", "Формируем выгрузку для закупщиков…");
+          b2.disabled = !canExport;
+          if (canExport) {
+            b2.addEventListener("click", function (e) {
+              e.preventDefault();
+              e.stopPropagation();
+              downloadSupplierExport(row, "purchaser", b2);
+            });
+          }
+          g.appendChild(b1);
+          g.appendChild(b2);
+          return g;
+        }
+        if (key === "send_ms_stub") {
+          var canSend = Number(row.products_to_purchase || 0) > 0;
+          var gMs = document.createElement("div");
+          gMs.className = "dg-sp-ms-actions";
+          var bMs = document.createElement("button");
+          bMs.type = "button";
+          bMs.className = "btn btn-sm btn-outline-primary";
+          bMs.textContent = "МС";
+          bMs.title = "Создать заказ поставщику в МойСклад";
+          bMs.setAttribute("data-dg-notify-start", "Создаём заказ в МойСклад…");
+          bMs.disabled = !canSend;
+          if (canSend) {
+            bMs.addEventListener("click", function (e) {
+              e.preventDefault();
+              e.stopPropagation();
+              sendPurchaseOrderToMs(row, bMs);
+            });
+          }
+          var bLog = document.createElement("button");
+          bLog.type = "button";
+          bLog.className = "btn btn-sm btn-outline-secondary dg-sp-ms-log-btn";
+          bLog.textContent = "📋";
+          bLog.title = "Журнал заказов в МойСклад";
+          bLog.setAttribute("data-dg-notify-start", "Открываем журнал МС…");
+          bLog.addEventListener("click", function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            openSupplierMsOrderLogModal(row);
+          });
+          gMs.appendChild(bMs);
+          gMs.appendChild(bLog);
+          return gMs;
+        }
+        if (key === "auto_mailing_stub") {
+          var b2 = document.createElement("button");
+          b2.type = "button";
+          b2.className = "btn btn-sm btn-outline-secondary dg-sp-stub-btn";
+          b2.title = "Скоро";
+          b2.textContent = "—";
+          b2.disabled = true;
+          return b2;
+        }
+        if (key === "mailing_text_stub") {
+          var t = document.createElement("span");
+          t.className = "text-muted small";
+          t.textContent = "—";
+          return t;
+        }
+        return document.createTextNode("");
+      }
+
+      function buildThead() {
+        var thead = document.getElementById("dg-sp-thead");
+        if (!thead) return;
+        thead.innerHTML = "";
+        var tr = document.createElement("tr");
+        var cols = SP_COLS.filter(function (p) { return visibleCols.indexOf(p[0]) >= 0; });
+        cols.forEach(function (p) {
+          var key = p[0];
+          var label = p[1];
+          var opts = COL_OPTS[key] || {};
+          var th = document.createElement("th");
+          th.scope = "col";
+          var w = colWidths[key] || COL_MIN[key] || 90;
+          th.style.width = w + "px";
+          th.style.minWidth = w + "px";
+          if (opts.headerLines && opts.headerLines.length) {
+            th.className = (th.className ? th.className + " " : "") + "dg-sp-th-multiline";
+            th.innerHTML = opts.headerLines.map(function (line) {
+              return String(line)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;");
+            }).join("<br>");
+          }
+          if (SORTABLE.has(key) || SORTABLE.has(SORT_KEY_REMAP[key])) {
+            th.className = (th.className ? th.className + " " : "") + "dg-sp-sortable";
+            var sk = SORT_KEY_REMAP[key] || key;
+            if (!opts.headerLines || !opts.headerLines.length) {
+              if (sk === sortBy) th.textContent = label + (sortDir === "desc" ? " ▼" : " ▲");
+              else th.textContent = label;
+            }
+            th.addEventListener("click", function (ev) {
+              if (window.getSelection && window.getSelection().toString().trim()) return;
+              if (sk === sortBy) sortDir = sortDir === "asc" ? "desc" : "asc";
+              else { sortBy = sk; sortDir = "asc"; }
+              state.offset = 0;
+              load();
+            });
+          } else if (!opts.headerLines || !opts.headerLines.length) {
+            th.textContent = label;
+          }
+          tr.appendChild(th);
+        });
+        thead.appendChild(tr);
+      }
+
+      function renderTable() {
+        buildThead();
+        var tbody = document.getElementById("dg-sp-tbody");
+        if (!tbody) return;
+        tbody.innerHTML = "";
+        var cols = SP_COLS.filter(function (p) { return visibleCols.indexOf(p[0]) >= 0; });
+        if (!state.rows.length) {
+          var tr0 = document.createElement("tr");
+          var td0 = document.createElement("td");
+          td0.colSpan = Math.max(cols.length, 1);
+          td0.className = "text-muted py-3";
+          td0.textContent = "Нет поставщиков по текущим условиям.";
+          tr0.appendChild(td0);
+          tbody.appendChild(tr0);
+          return;
+        }
+        state.rows.forEach(function (row, idx) {
+          var tr = document.createElement("tr");
+          tr.setAttribute("data-supplier-key", row.supplier_key);
+          cols.forEach(function (p) {
+            var td = document.createElement("td");
+            var opts = COL_OPTS[p[0]] || {};
+            if (p[0] === "comment") td.className = "dg-sp-td-comment";
+            else if (opts.center) td.className = "text-center";
+            var cell = renderCell(p[0], row, idx);
+            if (cell) td.appendChild(cell);
+            tr.appendChild(td);
+          });
+          tbody.appendChild(tr);
+        });
+      }
+
+      function columnControls() {
+        var wrap = document.getElementById("dg-sp-toolbox-panels");
+        var colPanel = document.getElementById("dg-sp-columns-panel");
+        var widthPanel = document.getElementById("dg-sp-widths-panel");
+        var colList = document.getElementById("dg-sp-columns-list");
+        var widthList = document.getElementById("dg-sp-widths-list");
+
+        function syncWrap() {
+          var open = (colPanel && colPanel.classList.contains("open")) ||
+            (widthPanel && widthPanel.classList.contains("open"));
+          if (wrap) wrap.classList.toggle("d-none", !open);
+        }
+
+        function renderColumnControls() {
+          if (!colList) return;
+          colList.innerHTML = "";
+          SP_COLS.forEach(function (p) {
+            var key = p[0];
+            var label = document.createElement("label");
+            var cb = document.createElement("input");
+            cb.type = "checkbox";
+            cb.checked = visibleCols.indexOf(key) >= 0;
+            cb.addEventListener("change", function () {
+              if (cb.checked) {
+                if (visibleCols.indexOf(key) < 0) visibleCols.push(key);
+              } else {
+                visibleCols = visibleCols.filter(function (k) { return k !== key; });
+              }
+              if (!visibleCols.length) visibleCols = [key];
+              saveVisibleCols(visibleCols);
+              renderTable();
+            });
+            label.appendChild(cb);
+            label.appendChild(document.createTextNode(" " + p[1]));
+            colList.appendChild(label);
+          });
+        }
+
+        function renderWidthControls() {
+          if (!widthList) return;
+          widthList.innerHTML = "";
+          SP_COLS.forEach(function (p) {
+            var key = p[0];
+            var label = document.createElement("label");
+            label.textContent = p[1];
+            var inp = document.createElement("input");
+            inp.type = "number";
+            inp.min = "40";
+            inp.max = "800";
+            inp.value = String(colWidths[key] || COL_MIN[key] || 90);
+            inp.addEventListener("change", function () {
+              colWidths[key] = parseInt(inp.value, 10) || COL_MIN[key] || 90;
+              saveColWidths(colWidths);
+              renderTable();
+            });
+            label.appendChild(inp);
+            widthList.appendChild(label);
+          });
+        }
+
+        renderColumnControls();
+        renderWidthControls();
+
+        var colToggle = document.getElementById("dg-sp-columns-toggle");
+        var widthToggle = document.getElementById("dg-sp-widths-toggle");
+        if (colToggle) {
+          colToggle.addEventListener("click", function (e) {
+            e.stopPropagation();
+            if (widthPanel) widthPanel.classList.remove("open");
+            if (colPanel) colPanel.classList.toggle("open");
+            syncWrap();
+          });
+        }
+        if (widthToggle) {
+          widthToggle.addEventListener("click", function (e) {
+            e.stopPropagation();
+            if (colPanel) colPanel.classList.remove("open");
+            if (widthPanel) widthPanel.classList.toggle("open");
+            syncWrap();
+          });
+        }
+        document.addEventListener("click", function () {
+          if (colPanel) colPanel.classList.remove("open");
+          if (widthPanel) widthPanel.classList.remove("open");
+          syncWrap();
+        });
+        if (wrap) wrap.addEventListener("click", function (e) { e.stopPropagation(); });
+
+        var colAll = document.getElementById("dg-sp-columns-all");
+        var colNone = document.getElementById("dg-sp-columns-none");
+        var colDef = document.getElementById("dg-sp-columns-default");
+        if (colAll) colAll.addEventListener("click", function () {
+          visibleCols = DEFAULT_VISIBLE.slice();
+          saveVisibleCols(visibleCols);
+          renderColumnControls();
+          renderTable();
+        });
+        if (colNone) colNone.addEventListener("click", function () {
+          visibleCols = ["supplier_name"];
+          saveVisibleCols(visibleCols);
+          renderColumnControls();
+          renderTable();
+        });
+        if (colDef) colDef.addEventListener("click", function () {
+          visibleCols = DEFAULT_VISIBLE.slice();
+          saveVisibleCols(visibleCols);
+          renderColumnControls();
+          renderTable();
+        });
+        var widthDef = document.getElementById("dg-sp-widths-default");
+        if (widthDef) widthDef.addEventListener("click", function () {
+          colWidths = {};
+          saveColWidths(colWidths);
+          renderWidthControls();
+          renderTable();
+        });
+      }
+
+      function bindHeaderSearchMirror() {
+        var main = document.getElementById("sp-f-search");
+        var mirror = document.getElementById("dg-sp-table-search-mirror");
+        if (!main || !mirror) return;
+        var syncing = false;
+        function sync(a, b) {
+          if (syncing) return;
+          syncing = true;
+          b.value = a.value;
+          state.pending.search = String(a.value || "").trim();
+          syncDirtyApply();
+          syncing = false;
+        }
+        main.addEventListener("input", function () { sync(main, mirror); });
+        mirror.addEventListener("input", function () { sync(mirror, main); });
+        function applyFrom(el) {
+          sync(el, el === main ? mirror : main);
+          commitFilters();
+        }
+        main.addEventListener("keydown", function (e) {
+          if (e.key === "Enter") { e.preventDefault(); applyFrom(main); }
+          if (e.key === "Escape") {
+            main.value = "";
+            mirror.value = "";
+            state.pending.search = "";
+            commitFilters();
+          }
+        });
+        mirror.addEventListener("keydown", function (e) {
+          if (e.key === "Enter") { e.preventDefault(); applyFrom(mirror); }
+          if (e.key === "Escape") {
+            main.value = "";
+            mirror.value = "";
+            state.pending.search = "";
+            commitFilters();
+          }
+        });
+      }
+
+      function bindFiltersCollapse() {
+        var key = "datagon_suppliers_filters_collapsed_v1";
+        var body = document.getElementById("dg-sp-filters-body");
+        var btn = document.getElementById("dg-sp-filters-toggle");
+        if (!body || !btn) return;
+        var collapsed = false;
+        try { collapsed = window.localStorage.getItem(key) === "1"; } catch (e) {}
+        function apply() {
+          body.style.display = collapsed ? "none" : "";
+          btn.textContent = collapsed ? "Развернуть" : "Свернуть";
+        }
+        apply();
+        btn.addEventListener("click", function () {
+          collapsed = !collapsed;
+          try { window.localStorage.setItem(key, collapsed ? "1" : "0"); } catch (e) {}
+          apply();
+        });
+      }
+
+      function bindTableCardCollapse() {
+        var key = "dg.suppliers.table-card.collapsed.v1";
+        var body = document.getElementById("dg-sp-table-body");
+        var btn = document.getElementById("dg-sp-table-toggle");
+        if (!body || !btn) return;
+        var collapsed = false;
+        try { collapsed = window.localStorage.getItem(key) === "1"; } catch (e) {}
+        function apply() {
+          body.style.display = collapsed ? "none" : "";
+          btn.textContent = collapsed ? "Развернуть" : "Свернуть";
+        }
+        apply();
+        btn.addEventListener("click", function () {
+          collapsed = !collapsed;
+          try { window.localStorage.setItem(key, collapsed ? "1" : "0"); } catch (e) {}
+          apply();
+        });
+      }
+
+      function bindPagination() {
+        function syncLimit(v) {
+          state.limit = v;
+          state.offset = 0;
+          var a = document.getElementById("sp-f-limit");
+          var b = document.getElementById("sp-footer-limit");
+          if (a) a.value = String(v);
+          if (b) b.value = String(v);
+        }
+        var limA = document.getElementById("sp-f-limit");
+        var limB = document.getElementById("sp-footer-limit");
+        if (limA) limA.addEventListener("change", function () {
+          syncLimit(parseInt(limA.value, 10) || 100);
+          load();
+        });
+        if (limB) limB.addEventListener("change", function () {
+          syncLimit(parseInt(limB.value, 10) || 100);
+          load();
+        });
+        var prev = document.getElementById("sp-btn-prev");
+        var next = document.getElementById("sp-btn-next");
+        if (prev) prev.addEventListener("click", function () {
+          state.offset = Math.max(0, state.offset - state.limit);
+          load();
+        });
+        if (next) next.addEventListener("click", function () {
+          if (state.offset + state.limit < state.total) {
+            state.offset += state.limit;
+            load();
+          }
+        });
+      }
+
+      function bindActions() {
+        var apply = document.getElementById("sp-apply");
+        var reset = document.getElementById("sp-reset");
+        var refresh = document.getElementById("sp-refresh");
+        if (apply) apply.addEventListener("click", commitFilters);
+        if (refresh) refresh.addEventListener("click", load);
+        if (reset) reset.addEventListener("click", function () {
+          var main = document.getElementById("sp-f-search");
+          var mirror = document.getElementById("dg-sp-table-search-mirror");
+          if (main) main.value = "";
+          if (mirror) mirror.value = "";
+          state.pending.search = "";
+          state.search = "";
+          state.offset = 0;
+          syncLimitUi(100);
+          syncDirtyApply();
+          load();
+        });
+        var search = document.getElementById("sp-f-search");
+        if (search) search.addEventListener("input", function () {
+          state.pending.search = String(search.value || "").trim();
+          syncDirtyApply();
+        });
+      }
+
+      function syncLimitUi(v) {
+        state.limit = v;
+        var a = document.getElementById("sp-f-limit");
+        var b = document.getElementById("sp-footer-limit");
+        if (a) a.value = String(v);
+        if (b) b.value = String(v);
+      }
+
+      document.addEventListener("DOMContentLoaded", function () {
+        bindActions();
+        bindAnalyticsUi();
+        bindHeaderSearchMirror();
+        bindFiltersCollapse();
+        bindTableCardCollapse();
+        bindPagination();
+        bindSupplierMsOrderLogModal();
+        columnControls();
+        state.pending.search = "";
+        loadAssignees().then(function () { load(); });
+      });
+    })();
+  </script>
+
+</body>
+</html>

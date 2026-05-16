@@ -52,6 +52,14 @@ function assemble() {
             PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/moysklad.scripts.html')),
         },
         {
+            out: 'suppliers.html',
+            PAGE_TITLE: 'Поставщики — Датагон',
+            BODY_ATTRS: 'class="datagon-vanilla-body" data-dg-active-nav="suppliers"',
+            EXTRA_HEAD: read(path.join(vanillaDir, 'inners/suppliers.head.html')),
+            MAIN_INNER: read(path.join(vanillaDir, 'inners/suppliers.inner.html')),
+            PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/suppliers.scripts.html')),
+        },
+        {
             out: 'purchase.html',
             PAGE_TITLE: 'Закупки — Датагон',
             BODY_ATTRS: 'class="datagon-vanilla-body" data-dg-active-nav="purchase"',

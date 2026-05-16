@@ -68,6 +68,7 @@ description: Справочник REST-эндпоинтов p.datagon.ru (осн
 - `/api/exports/marketplaces` -> `routes/exportsMarketplaces.js`
 - `/api/exports/dimensions` -> `routes/dimensions.js`
 - `/api/ms-sales` -> `routes/msSales.js` (Продажи МС: отгрузки `entity/demand` + позиции с привязкой к `ms_export`)
+- `/api/suppliers` -> `routes/suppliers.js` (Поставщики: агрегат по `ms_export` + `dg_supplier_settings`; `GET /`, `GET /assignees`, `GET /ms-order-log`, `GET /ms-order-log/:logId`, `GET /export/supplier`, `GET /export/purchaser`, `POST /:supplierKey/send-ms-order`, `PATCH /:supplierKey`)
 - `/api/purchase` -> `routes/purchase.js` (Закупки: `GET` список — SQL `ORDER BY` + пагинация, enrich страницы; `POST /override`, `POST /overrides-import`, журнал overrides: `GET /log`, `GET /log/stats`, `POST /log/cleanup`)
 - `/api/product` -> `routes/product.js` (Карточка товара: `ms_export` + `ms_entity_details` + продажи + `dg_bundle_components`; лог отсутствий — пакетно после синка МС: `stock≤0` или для базового кода `stock` < min суффикса в `код-число`, см. `syncZeroStockLogAfterMoyskladExport`; снимки остатка по дням — `dg_product_stock_snapshot`, см. `syncProductStockSnapshotsAfterMoyskladExport` — оба вызываются из `routes/moysklad.js` после сохранения `ms_export`)
 - `/api/activity` -> `routes/activity.js`
@@ -1441,6 +1442,72 @@ Body (JSON): `email`, `password` (обязательны), опциональн�
 
 Кэш — 5 минут (`DISK_USAGE_CACHE_TTL_MS` в `server.js`); параллельные запросы дедуплицируются через общее `in-flight` обещание. `?refresh=1` принудительно пересчитывает разбивку. Обход дерева использует `fs.readdir` + `fs.lstat`, не следует по симлинкам и устойчив к `EACCES`.
 
+## Поставщики
+
+Страница `/suppliers.html`, роутер `routes/suppliers.js`. В список попадают **уникальные** значения `ms_export.supplier`, у которых есть хотя бы один товар: `stock_position = Да`, `type` не комплект, `no_longer_cooperation` не «Да», `is_archived = 0`. Настройки по поставщику — `dg_supplier_settings` (PK = `supplier_key` = trim(`supplier`)). История снимков наполняемости — `dg_supplier_fill_history` (запись при сохранении `stock_fill_pct` через PATCH).
+
+**Позиция «к закупке» (шт):** `max(0, target − stock − in_transit)`, где `target = COALESCE(proposed_min_stock override, formula cache, min_stock МС)`. **Сумма закупки:** сумма `need_qty × buy_price` по строкам с `need_qty > 0`. **Наполняемость % (Кол-во Несн/Несниж сумм./Ост.факт/%):** в ячейке `кол-во SKU с неснижаемым &gt; 0 / Σ неснижаемый (шт) / Σ остаток факт (шт) / %`; неснижаемый на SKU = `COALESCE(override, кэш формулы, min_stock МС)`; `%` = `100 × Σ остаток ÷ Σ неснижаемый`. Подсветка: &lt;70% — красный, 70–90% — жёлтый, ≥90% — зелёный.
+
+### GET `/api/suppliers/analytics`
+
+Сводка для дашборда на `/suppliers.html` (без пагинации, те же критерии отбора поставщиков, что в списке). Query: `search` (опционально, как в списке).
+
+Ответ: `{ success, totals: { … }, by_assignee: [{ assignee_id, assignee_label, … }], by_supplier: [{ supplier_key, supplier_label, products_total, products_to_purchase, total_purchase_sum, … }] }` — `by_supplier` — топ **30** поставщиков по `total_purchase_sum` (для диаграммы «Распределение по поставщикам»; переключатель метрик на фронте применяется к обеим bar-диаграммам).
+
+### GET `/api/suppliers`
+
+Query: `search`, `limit` (default 100), `offset`, `sort_by` (`supplier_name`, `products_total`, `products_to_purchase`, `total_purchase_sum`, `min_purchase_sum`, `warehouse_fill_pct`, `stock_fill_pct`, `assigned_user_name`), `sort_dir`.
+
+Ответ: `{ success, data[], total, limit, offset, applied_filters, cache? }`. В каждой строке: агрегаты + поля из `dg_supplier_settings` + `stock_fill_pct_computed`.
+
+### GET `/api/suppliers/assignees`
+
+Список пользователей `{ id, username, full_name, label }` для select «Привязан сотрудник».
+
+### PATCH `/api/suppliers/:supplierKey`
+
+Body (любое подмножество): `assigned_user_id`, `comment`, `min_purchase_sum`, `warehouse_fill_pct`, `stock_fill_pct`, `auto_mailing_enabled`, `mailing_text`. При изменении `stock_fill_pct` — INSERT в `dg_supplier_fill_history`.
+
+### POST `/api/suppliers/:supplierKey/send-ms-order`
+
+Создаёт **заказ поставщику** (`entity/purchaseorder`) в МойСклад для позиций «к закупке» (та же логика, что в Excel-выгрузке: `need_qty > 0`). Требуется `MS_TOKEN` / `config.msToken` с правами на создание заказов.
+
+Параметры заказа:
+
+- **Наименование:** `Имя_Фамилия_сотрудника_Поставщик_ГГГГ-ММ-ДД` — сотрудник из `dg_supplier_settings.assigned_user_id` → `users.full_name` (если не назначен — «Сотрудник»).
+- **Контрагент (`agent`):** поиск контрагента по имени = `supplier_key` (trim `ms_export.supplier`).
+- **Склад:** «Альмамед Ожидание».
+- **Организация:** `app_settings.ms_purchase_order_organization_name` (Настройки → «Синхронизация МойСклад», по умолчанию `ООО "АЛЬМАМЕД"`), env `MS_PURCHASE_ORGANIZATION_NAME`, иначе автовыбор единственной «АЛЬМАМЕД» в списке организаций МС; при неоднозначности — `409 AMBIGUOUS_ORGANIZATION`.
+- **Проведено:** `applicable: false` (черновик). Поле «Ожидание» не выставляется.
+- **Позиции:** `quantity` = потребность, `price` в копейках из закупочной цены, `assortment` по `ms_export.uuid` (ед. изм. — по умолчанию из карточки товара в МС, `uom` в позицию не передаётся).
+
+Успех: `{ success: true, log_id, order_name, ms_uuid, ms_href, ms_web_href, positions_count, lines_total, skipped_no_uuid[], counterparty_name, store_name, organization_name }`.
+
+Ошибки: `503` `NO_TOKEN`; `400` `NO_LINES` / `NO_UUID`; `404` контрагент или склад; `409` `AMBIGUOUS_ORGANIZATION`; иначе текст от API МС (`502` / код ответа МС). В ответе всегда есть **`log_id`** — id строки в `dg_supplier_ms_order_log`.
+
+**Журнал:** таблица `dg_supplier_ms_order_log` (`lib/datagonSupplierMsOrderLog.js`). На каждую попытку — одна строка + `detail_json.steps[]` (пошагово: токен, загрузка строк, сотрудник, позиции, поиск контрагента/склада/организации с кандидатами, POST в МС с `ms_errors`). В stdout: `[suppliers-ms-order] {"log_id":…,…}`.
+
+### GET `/api/suppliers/ms-order-log`
+
+Query: `supplier_key` (опц.), `limit` (default 20, max 100), `offset`. Список попыток без полного `detail_json`.
+
+### GET `/api/suppliers/ms-order-log/:logId`
+
+Детали одной попытки: `{ success, log: { …, detail: { steps: […] } } }` — для разбора, на каком шаге упало.
+
+### GET `/api/suppliers/export/supplier` · GET `/api/suppliers/export/purchaser`
+
+Query: `supplier_key` (обяз.), `to_purchase` (`1` по умолчанию — только позиции с потребностью &gt; 0). Ответ: файл **XLSX** (Office Open XML, расширение `.xlsx`) — открывается в Excel, LibreOffice Calc и **Numbers** на macOS. Колонка **«Наименование товаров»** — ширина ~400 px, **перенос по строкам**; числа — тип Number с форматом `# ##0` / `# ##0.00` (разделитель тысяч — пробел). В конце — строка **«Итого»** с суммами по количественным колонкам.
+
+- **supplier** — колонки: №, Артикул, Наименование товаров, Кол-во, Ед. изм., Цена (закупочная), Итого; в **Итого** суммируются **Кол-во** и **Итого** (сумма).
+- **purchaser** — №, Код, Артикул, Наименование, Поставщик, Неснижаемый остаток, Нес.остаток Датагон, Кратность, Остаток, Ожидание, Резерв, Ед. изм., Процент остатка, Кол-во, Закупочная цена, Итого; в **Итого** суммируются все количественные поля, кроме закупочной цены и процента остатка.
+
+Логика строк — `lib/datagonSupplierExport.js` (паритет с «к закупке» на `/suppliers.html`).
+
+Ссылки **«Поставщик»** и **«Кол-во товаров К закупке»** ведут на `/purchase.html?supplier=<ключ>&to_buy=1` — на закупках показываются только позиции этого поставщика (точное имя в `ms_export.supplier`) с потребностью &gt; 0.
+
+Доступ: `pageKey: suppliers` (`lib/datagonPageRegistry.js`).
+
 ## Закупки
 
 Отдельная страница `/purchase.html` и роутер `routes/purchase.js`. Источник истины базовых полей — `ms_export` (синк МойСклад). Дополнительные **редактируемые поля** (Неснижаемый остаток Датагон, Кратность товара, поле `proposed_min_stock` в закупках, Кол-во в упаковке вручную) хранятся в отдельной таблице `dg_purchase_overrides`, чтобы синк МС не затирал ручные значения и схема `ms_export` оставалась стабильной. В списке `GET /api/purchase` дополнительно отдаётся **`formula_proposed_min_stock`** — предлагаемый неснижаемый по формуле продаж (как **`formula.proposed_min_stock`** на `GET /api/product/:code`), не путать с `proposed_min_stock` из overrides. После открытия карточки товара в **`dg_formula_proposed_cache`** сохраняются **`proposed`** (уже с **`applyMinStockDgFloor`**) и **`windows_json`** — готовые **`d_15a`/`d_15b` … `d_365a`/`d_365b`** (см. `lib/datagonPurchaseWindowSnapshot.js`). При совпадении **`formula_fp` + `data_rev`** список закупок подставляет **`proposed`** без **`computeSalesFormula`** и **`windows_json`** без трёх тяжёлых агрегатов по окнам продаж/«дн. нет»; при промахе всё считается на лету, как раньше. Ревизия **`data_rev`** учитывает в т.ч. лог нулевых остатков и обновления **`dg_bundle_components`**, чтобы не отдавать устаревшие окна. **`min_stock_dg`** в опорный baseline формулы **не входит**; если в overrides задано число **> 0**, итоговое **`formula_proposed_min_stock`** (и **`formula.proposed_min_stock`** на карточке) **не ниже** этого значения — см. `applyMinStockDgFloor` в `lib/datagonSalesFormula.js`; при подстановке из кэша нижний порог по актуальному **`min_stock_dg`** в строке списка всё равно применяется в enrich. Для окон **15 / 30 / 60 / 90 / 180 / 365** дней — поля **`d_15a`, … `d_365a`**: сумма проданного количества (шт) за скользящие календарные дни (прямые отгрузки по коду + эквивалент через комплекты, для строк-комплектов только прямые). Поля **`d_15b`, `d_30b`, … `d_365b`** — число **разных календарных дат** с нулевым остатком в `dg_product_zero_stock_log` за последние N дн. (как на карточке товара). Поле **`in_transit`** — «в пути» из `payload_json.inTransit`, если есть.
@@ -1528,7 +1595,10 @@ Query: **`code`** (обязателен), **`limit`** (default 100, max 500), **
 Query:
 
 - `search` — подстрока по `code`, `name`, `supplier`, `supplier2` (case-insensitive).
-- `supplier` — отдельный фильтр по поставщику (`supplier` ИЛИ `supplier2`, case-insensitive).
+- `supplier` — фильтр по поставщику: по умолчанию подстрока в `supplier` **или** `supplier2` (case-insensitive). При **`supplier_exact=1`** или **`to_buy=1`** — только **`TRIM(ms_export.supplier)`** (точное совпадение, как в реестре «Поставщики»).
+- `supplier_key` — синоним `supplier` (для ссылок с `/suppliers.html`).
+- `to_purchase` — `1`: только позиции с потребностью к закупке (`GREATEST(0, целевой_неснижаемый − stock − в_пути) > 0`, см. `lib/datagonSuppliersSql.js` → `SUPPLIER_NEED_QTY_SQL`). На `/purchase.html` после «Ожидание» появляется колонка **«К закупке»** с этой разницей в шт.
+- `to_buy` — `1`: режим перехода с «Поставщики» — включает `to_purchase=1`, `supplier_exact=1` и дефолтные отборы (активные, складская позиция, не «перестали сотрудничать»). Короткая ссылка: `/purchase.html?supplier=…&to_buy=1`.
 - `archived` — `active` (default) | `archived` | `all`.
 - `stock_position` — `yes` (default) | `no` | `all`.
 - `no_longer_cooperation` — опционально; **по умолчанию** (если параметр не передан) — `not_stopped` (в МС значение не «Да»; в UI закупок — **Нет**). Явно: `all` (без отбора; в UI — **Все**) | `not_stopped` | `stopped` (в МС «Да»; в UI — **Да**).
@@ -1546,7 +1616,7 @@ Query:
 
 Локальный замер без HTTP: `npm run bench:purchase-list-sql` (скрипт `scripts/purchase-list-sql-bench.cjs`, читает `config.js` и вызывает тот же `purchaseListQueryPaged`).
 
-Ответ:
+Ответ: **`column_totals`** — суммы по **всем** строкам текущего фильтра (не только текущая страница): `min_stock`, `formula_proposed_min_stock` (сумма `fc.proposed` из кэша), `stock`, `in_transit`, `to_purchase_qty`. На `/purchase.html` — строка **«Σ по фильтру»** внизу таблицы.
 
 ```json
 {
@@ -1556,6 +1626,14 @@ Query:
   "offset": 0,
   "sort_by": "code",
   "sort_dir": "asc",
+  "to_purchase_active": true,
+  "column_totals": {
+    "min_stock": 1200,
+    "formula_proposed_min_stock": 980,
+    "stock": 5400,
+    "in_transit": 320,
+    "to_purchase_qty": 150
+  },
   "data": [
     {
       "code": "00-12345", "article": "AB-001",
@@ -1571,6 +1649,8 @@ Query:
       "pack_qty": 6, "pack_qty_auto": 6, "pack_qty_manual": null,
       "stock": 42,
       "in_transit": 0,
+      "purchase_target_stock": 12,
+      "to_purchase_qty": 0,
       "no_longer_cooperation": "", "stock_position": "Да",
       "override_updated_at": "2026-05-12 19:01:23",
       "d_15a": 4.5, "d_15b": 0, "d_30a": 12, "d_30b": 2,

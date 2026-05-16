@@ -504,6 +504,7 @@
                         </ul>
                       </li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="ms-sales" href="/ms-sales.html" title="Продажи МС: отгрузки entity/demand, позиции с привязкой к товарам ms_export"><i class="metismenu-icon pe-7s-cash"></i>Продажи МС</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="suppliers" href="/suppliers.html" title="Поставщики: сводка по закупкам и настройки"><i class="metismenu-icon pe-7s-id"></i>Поставщики</a></li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="purchase" href="/purchase.html" title="Закупки: планирование, неснижаемые остатки, кратность"><i class="metismenu-icon pe-7s-cart"></i>Закупки</a></li>
                     </ul>
                   </div>
@@ -859,6 +860,11 @@
               <div class="row g-2">
                 <div class="col-md-4"><label class="form-label" for="dg-set-ms_sync_page_limit">Лимит страницы API</label><input type="number" class="form-control" id="dg-set-ms_sync_page_limit" /></div>
                 <div class="col-md-4"><label class="form-label" for="dg-set-ms_sync_delay_ms">Пауза между запросами (мс)</label><input type="number" class="form-control" id="dg-set-ms_sync_delay_ms" /></div>
+                <div class="col-md-4">
+                  <label class="form-label" for="dg-set-ms_purchase_order_organization_name">Организация для заказов поставщику</label>
+                  <input type="text" class="form-control" id="dg-set-ms_purchase_order_organization_name" placeholder='ООО "АЛЬМАМЕД"' autocomplete="off" />
+                  <div class="form-text">Заказы в МС со страницы «Поставщики». При нескольких организациях в МС — точное имя из справочника.</div>
+                </div>
               </div>
               <div class="mt-3">
                 <button type="button" class="btn btn-success" id="dg-set-btn-save-ms" data-dg-activity-label="Сохранить настройки синхронизации МойСклад" data-dg-notify-start="Сохраняем настройки синхронизации МС…">
@@ -1623,6 +1629,7 @@
         sync_mode: "always",
         ms_sync_page_limit: 1000,
         ms_sync_delay_ms: 0,
+        ms_purchase_order_organization_name: 'ООО "АЛЬМАМЕД"',
         auto_sync_myproducts_enabled: 0,
         auto_sync_myproducts_time: "03:00",
         auto_sync_moysklad_enabled: 0,
@@ -1880,6 +1887,10 @@
         document.getElementById("dg-set-sync_mode").value = merged.sync_mode || "always";
         set("dg-set-ms_sync_page_limit", merged.ms_sync_page_limit);
         set("dg-set-ms_sync_delay_ms", merged.ms_sync_delay_ms);
+        set(
+          "dg-set-ms_purchase_order_organization_name",
+          merged.ms_purchase_order_organization_name || 'ООО "АЛЬМАМЕД"',
+        );
         document.getElementById("dg-set-auto_my_en").checked = Number(merged.auto_sync_myproducts_enabled) === 1;
         set("dg-set-auto_my_time", merged.auto_sync_myproducts_time || "03:00");
         document.getElementById("dg-set-auto_ms_en").checked = Number(merged.auto_sync_moysklad_enabled) === 1;
@@ -2806,6 +2817,12 @@
         var payload = {
           ms_sync_page_limit: getNum("dg-set-ms_sync_page_limit", 1000),
           ms_sync_delay_ms: getNum("dg-set-ms_sync_delay_ms", 0),
+          ms_purchase_order_organization_name: String(
+            document.getElementById("dg-set-ms_purchase_order_organization_name") &&
+              document.getElementById("dg-set-ms_purchase_order_organization_name").value
+              ? document.getElementById("dg-set-ms_purchase_order_organization_name").value
+              : ""
+          ).trim(),
         };
         if (btn) btn.disabled = true;
         setSaveMsg(sectionId, "warning", "Сохраняем…");

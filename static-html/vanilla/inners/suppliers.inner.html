@@ -1,0 +1,248 @@
+          <div class="app-page-title">
+            <div class="page-title-wrapper">
+              <div class="page-title-heading">
+                <div class="page-title-icon">
+                  <i class="pe-7s-id icon-gradient bg-plum-plate"> </i>
+                </div>
+                <div>
+                  Поставщики
+                  <div class="page-title-subheading">
+                    Сводка по поставщикам с хотя бы одним товаром: складская позиция «Да», без комплектов,
+                    сотрудничество не прекращено. Позиции «к закупке» — по неснижаемому остатку (закупки / МС / кэш формулы) минус остаток и «в пути».
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="dg-sp-analytics mb-2" id="dg-sp-analytics" aria-label="Сводка по привязанным сотрудникам">
+            <div class="main-card card dg-sp-analytics-hero border-0 shadow-sm overflow-hidden">
+              <div class="dg-sp-analytics-hero-bg" aria-hidden="true"></div>
+              <div class="card-header dg-sp-analytics-header border-0 d-flex flex-wrap align-items-center justify-content-between gap-2">
+                <div class="d-flex align-items-center gap-2">
+                  <i class="header-icon pe-7s-graph2 icon-gradient bg-love-kiss me-1"> </i>
+                  <div>
+                    <span class="fw-semibold text-white">Команда и закупки</span>
+                    <div class="small text-white-50 d-none d-xl-block">Нагрузка по привязанным сотрудникам · те же фильтры, что у таблицы</div>
+                  </div>
+                </div>
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                  <div class="btn-group btn-group-sm dg-sp-metric-toggle" role="group" aria-label="Метрика диаграммы">
+                    <button type="button" class="btn btn-light active" data-dg-sp-metric="total_purchase_sum">Σ к закупке</button>
+                    <button type="button" class="btn btn-light" data-dg-sp-metric="products_to_purchase">SKU к закупке</button>
+                    <button type="button" class="btn btn-light" data-dg-sp-metric="stock_total">Остатки</button>
+                    <button type="button" class="btn btn-light" data-dg-sp-metric="suppliers_count">Поставщики</button>
+                  </div>
+                  <button type="button" class="btn btn-sm btn-outline-light" id="dg-sp-analytics-refresh" data-dg-notify-start="Обновляем сводку…">
+                    <i class="pe-7s-refresh"></i>
+                  </button>
+                </div>
+              </div>
+              <div class="card-body dg-sp-analytics-body position-relative">
+                <div class="dg-sp-analytics-loading d-none" id="dg-sp-analytics-loading">
+                  <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                  <span class="ms-2 text-muted small">Считаем сводку…</span>
+                </div>
+                <div class="row row-cols-2 row-cols-md-3 row-cols-xl-5 g-2 dg-sp-kpi-row" id="dg-sp-kpi-row">
+                  <div class="col">
+                    <div class="dg-sp-kpi-tile">
+                      <div class="dg-sp-kpi-label">Поставщиков</div>
+                      <div class="dg-sp-kpi-value" id="dg-sp-kpi-suppliers">—</div>
+                    </div>
+                  </div>
+                  <div class="col">
+                    <div class="dg-sp-kpi-tile">
+                      <div class="dg-sp-kpi-label">Товаров (всего)</div>
+                      <div class="dg-sp-kpi-value" id="dg-sp-kpi-products">—</div>
+                    </div>
+                  </div>
+                  <div class="col">
+                    <div class="dg-sp-kpi-tile dg-sp-kpi-accent">
+                      <div class="dg-sp-kpi-label">К закупке (SKU)</div>
+                      <div class="dg-sp-kpi-value" id="dg-sp-kpi-to-buy">—</div>
+                    </div>
+                  </div>
+                  <div class="col">
+                    <div class="dg-sp-kpi-tile">
+                      <div class="dg-sp-kpi-label">Σ остаток (шт)</div>
+                      <div class="dg-sp-kpi-value" id="dg-sp-kpi-stock">—</div>
+                    </div>
+                  </div>
+                  <div class="col">
+                    <div class="dg-sp-kpi-tile dg-sp-kpi-money">
+                      <div class="dg-sp-kpi-label">Σ к закупке</div>
+                      <div class="dg-sp-kpi-value" id="dg-sp-kpi-sum">—</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="row g-2 dg-sp-charts-row align-items-start">
+                  <div class="col-lg-8">
+                    <div class="dg-sp-chart-panel">
+                      <div class="dg-sp-chart-title">Распределение по сотрудникам</div>
+                      <div class="dg-sp-chart-wrap">
+                        <canvas id="dg-sp-chart-bars" aria-label="Столбчатая диаграмма по сотрудникам"></canvas>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="col-lg-4">
+                    <div class="dg-sp-chart-panel dg-sp-chart-panel-doughnut d-flex flex-column">
+                      <div class="dg-sp-chart-title">Доля суммы к закупке</div>
+                      <div class="dg-sp-doughnut-wrap d-flex align-items-center justify-content-center">
+                        <canvas id="dg-sp-chart-doughnut" aria-label="Круговая диаграмма"></canvas>
+                      </div>
+                      <div class="dg-sp-assignee-legend" id="dg-sp-assignee-legend"></div>
+                    </div>
+                  </div>
+                </div>
+                <div class="row g-2 dg-sp-charts-row-suppliers">
+                  <div class="col-12">
+                    <div class="dg-sp-chart-panel">
+                      <div class="dg-sp-chart-title">Распределение по поставщикам <span class="dg-sp-chart-subtitle text-muted fw-normal">(топ 30)</span></div>
+                      <div class="dg-sp-chart-wrap dg-sp-chart-wrap-suppliers">
+                        <canvas id="dg-sp-chart-suppliers-bars" aria-label="Столбчатая диаграмма по поставщикам"></canvas>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <p class="dg-sp-analytics-hint text-muted small mb-0" id="dg-sp-analytics-hint"></p>
+              </div>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2">
+              <div class="d-flex align-items-center">
+                <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
+                <span>Фильтры и действия</span>
+              </div>
+              <div class="d-flex align-items-center gap-2">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-sp-filters-toggle">Свернуть</button>
+              </div>
+            </div>
+            <div class="card-body" id="dg-sp-filters-body">
+              <div class="row g-2 align-items-end">
+                <div class="col-md-6">
+                  <label class="form-label" for="sp-f-search">Умный поиск</label>
+                  <input type="text" class="form-control" id="sp-f-search" placeholder="Название поставщика" autocomplete="off"
+                         data-dg-tooltip="Поиск по названию поставщика. Enter — применить." />
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label" for="sp-f-limit">На странице</label>
+                  <select class="form-select" id="sp-f-limit">
+                    <option value="50">50</option>
+                    <option value="100" selected>100</option>
+                    <option value="200">200</option>
+                    <option value="500">500</option>
+                  </select>
+                </div>
+              </div>
+              <div class="mt-3 d-flex flex-wrap gap-2">
+                <button type="button" class="btn btn-sm btn-primary" id="sp-apply" data-dg-notify-start="Применяем фильтры поставщиков…">
+                  <i class="pe-7s-search me-1"></i>Применить
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="sp-reset" data-dg-notify-start="Сбрасываем фильтры…">
+                  <i class="pe-7s-refresh me-1"></i>По умолчанию
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-primary" id="sp-refresh" data-dg-notify-start="Обновляем таблицу поставщиков…">
+                  <i class="pe-7s-refresh me-1"></i>Обновить
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <p class="text-muted small mb-2 text-danger" id="dg-sp-status" style="display:none"></p>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+              <div class="d-flex align-items-center gap-3 flex-grow-1" style="min-width: 0">
+                <div class="d-flex align-items-center flex-shrink-0">
+                  <i class="header-icon pe-7s-id icon-gradient bg-happy-fisher me-2"> </i>
+                  <span>Поставщики</span>
+                </div>
+                <div class="dg-sp-header-search" style="flex: 0 1 380px; min-width: 220px">
+                  <div class="input-group input-group-sm">
+                    <span class="input-group-text bg-white text-muted px-2" aria-hidden="true">🔎</span>
+                    <input type="search" class="form-control" id="dg-sp-table-search-mirror"
+                           placeholder="Умный поиск (Enter — применить)"
+                           autocomplete="off"
+                           data-dg-tooltip="Зеркало поиска. Enter — применить, Esc — очистить." />
+                  </div>
+                </div>
+              </div>
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-sp-columns-toggle">🧩 Столбцы</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-sp-widths-toggle">📏 Ширины</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-sp-table-toggle">Свернуть</button>
+              </div>
+            </div>
+            <div class="card-body" id="dg-sp-table-body">
+              <div class="datagon-columns-toolbox mb-2 d-none" id="dg-sp-toolbox-panels">
+                <div class="datagon-columns-panel" id="dg-sp-columns-panel">
+                  <div class="columns-actions mb-2">
+                    <button type="button" class="btn btn-sm" id="dg-sp-columns-all">Выделить все</button>
+                    <button type="button" class="btn btn-sm" id="dg-sp-columns-none">Снять все</button>
+                    <button type="button" class="btn btn-sm" id="dg-sp-columns-default">По умолчанию</button>
+                  </div>
+                  <div id="dg-sp-columns-list" class="columns-grid"></div>
+                </div>
+                <div class="datagon-columns-panel" id="dg-sp-widths-panel">
+                  <div class="columns-actions mb-2">
+                    <button type="button" class="btn btn-sm" id="dg-sp-widths-default">По умолчанию</button>
+                  </div>
+                  <div id="dg-sp-widths-list" class="dg-sp-widths-grid"></div>
+                </div>
+              </div>
+              <div id="dg-sp-table-scroll-outer" style="width:100%;max-width:100%;overflow-x:auto;overflow-y:visible;-webkit-overflow-scrolling:touch">
+                <div class="table-responsive datagon-my-products-table-wrap" style="display:block;width:100%;max-width:100%;min-width:0;overflow:visible;position:relative">
+                  <table class="table table-hover table-striped mb-0 datagon-my-products-table dg-sp-table" style="width:max-content;min-width:1200px;max-width:none;table-layout:fixed;border-collapse:collapse;border-spacing:0">
+                    <thead id="dg-sp-thead"></thead>
+                    <tbody id="dg-sp-tbody"></tbody>
+                  </table>
+                </div>
+              </div>
+              <div class="mt-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                  <label class="form-label mb-0 small text-muted" for="sp-footer-limit">На странице</label>
+                  <select class="form-select form-select-sm" id="sp-footer-limit" style="width:auto">
+                    <option value="50">50</option>
+                    <option value="100" selected>100</option>
+                    <option value="200">200</option>
+                    <option value="500">500</option>
+                  </select>
+                  <span class="text-muted small" id="dg-sp-footer-stats">Найдено: 0; страница 1/1; показано: 0</span>
+                </div>
+                <div class="btn-group" role="group" aria-label="Страницы поставщиков">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="sp-btn-prev">Назад</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="sp-btn-next">Вперёд</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-sp-ms-order-log-overlay" class="dg-sp-ms-order-log-overlay" style="display: none" aria-hidden="true">
+            <div class="dg-sp-ms-order-log-panel card shadow-lg border-0" role="dialog" aria-labelledby="dg-sp-ms-log-title">
+              <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+                <div class="fw-semibold text-truncate" id="dg-sp-ms-log-title">Журнал заказов в МойСклад</div>
+                <div class="d-flex align-items-center gap-2 flex-shrink-0">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-sp-ms-log-refresh" data-dg-notify-start="Обновляем журнал…">Обновить</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-sp-ms-log-close" aria-label="Закрыть">Закрыть</button>
+                </div>
+              </div>
+              <div class="card-body dg-sp-ms-log-body">
+                <div class="dg-sp-ms-log-loading d-none" id="dg-sp-ms-log-loading">
+                  <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                  <span class="ms-2 text-muted small">Загружаем журнал…</span>
+                </div>
+                <div class="row g-2 dg-sp-ms-log-split">
+                  <div class="col-lg-5">
+                    <div id="dg-sp-ms-log-list" class="dg-sp-ms-log-list small text-muted">Нет записей</div>
+                  </div>
+                  <div class="col-lg-7">
+                    <div id="dg-sp-ms-log-detail" class="dg-sp-ms-log-detail small text-muted border-start-lg ps-lg-3">
+                      Выберите запись слева, чтобы увидеть шаги.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>

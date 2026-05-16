@@ -347,6 +347,31 @@
       bottom: 0;
       z-index: 2;
     }
+    body.datagon-vanilla-body[data-dg-active-nav='purchase'] .dg-pu-to-buy-qty {
+      color: #1d4ed8;
+      font-variant-numeric: tabular-nums;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='purchase'] th[data-col-key="to_purchase_qty"] {
+      background: #eff6ff !important;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='purchase'] #dg-pu-tfoot tr.dg-pu-tfoot-row td {
+      position: sticky;
+      bottom: 0;
+      z-index: 15;
+      background: #eef2ff !important;
+      border-top: 2px solid #a5b4fc;
+      font-weight: 600;
+      font-size: 0.8rem;
+      font-variant-numeric: tabular-nums;
+      box-shadow: 0 -2px 6px rgba(15, 23, 42, 0.06);
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='purchase'] #dg-pu-tfoot .dg-pu-tfoot-label {
+      color: #3730a3;
+      white-space: nowrap;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='purchase'] #dg-pu-tfoot .dg-pu-tfoot-sum {
+      color: #1e3a8a;
+    }
   </style>
 
   <style>
@@ -840,6 +865,7 @@
                         </ul>
                       </li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="ms-sales" href="/ms-sales.html" title="Продажи МС: отгрузки entity/demand, позиции с привязкой к товарам ms_export"><i class="metismenu-icon pe-7s-cash"></i>Продажи МС</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="suppliers" href="/suppliers.html" title="Поставщики: сводка по закупкам и настройки"><i class="metismenu-icon pe-7s-id"></i>Поставщики</a></li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="purchase" href="/purchase.html" title="Закупки: планирование, неснижаемые остатки, кратность"><i class="metismenu-icon pe-7s-cart"></i>Закупки</a></li>
                     </ul>
                   </div>
@@ -983,6 +1009,7 @@
                     <option value="zero_stock_no_transit">Нулевой остаток без ожидания</option>
                     <option value="no_multiplicity">Без кратности</option>
                     <option value="incomplete_pack">Неполная упаковка</option>
+                    <option value="to_purchase">К закупке</option>
                   </select>
                 </div>
               </div>
@@ -1045,6 +1072,7 @@
                   <table class="table table-hover table-striped mb-0 datagon-my-products-table dg-pu-table" style="width:max-content;min-width:2500px;max-width:none;table-layout:fixed;border-collapse:collapse;border-spacing:0">
                     <thead id="dg-pu-thead"></thead>
                     <tbody id="dg-pu-tbody"></tbody>
+                    <tfoot id="dg-pu-tfoot"></tfoot>
                   </table>
                 </div>
               </div>
@@ -1169,7 +1197,7 @@
         ["buy_price", "Закупочная цена", { center: true }],
         ["min_stock", "Неснижаемый остаток", { center: true }],
         ["formula_proposed_min_stock", "Предлагаемый нес.ост.", { center: true }],
-        ["automation_price", "Автоматизация цены", { center: true }],
+        ["automation_price", "Автоматизация цены", { center: true, hideInToPurchaseMode: true }],
         ["min_stock_dg", "Нес.остаток Датагон", { center: true, editable: true }],
         ["multiplicity", "Кратность товара", { center: true, editable: true }],
         ["stock", "Остаток", { center: true }],
@@ -1190,6 +1218,19 @@
 
       var COL_OPTS = {};
       PU_COLS.forEach(function (p) { COL_OPTS[p[0]] = p[2] || {}; });
+      COL_OPTS.to_purchase_qty = { center: true, toBuyCol: true };
+
+      /** После «Применить» с доп. фильтром «К закупке» / to_buy — показываем колонку «К закупке». */
+      var purchaseToPurchaseMode = false;
+
+      var lastColumnTotals = null;
+      var PU_SUM_COL_KEYS = new Set([
+        "min_stock",
+        "formula_proposed_min_stock",
+        "stock",
+        "in_transit",
+        "to_purchase_qty",
+      ]);
 
       var SORTABLE = new Set([
         "code", "article", "name", "supplier", "buy_price",
@@ -1345,6 +1386,7 @@
         multiplicity: 70,
         stock: 80,
         in_transit: 60,
+        to_purchase_qty: 76,
         d_15a: 60,
         d_15b: 60,
         d_30a: 60,
@@ -1494,7 +1536,11 @@
         zero_stock_no_transit: "0",
         no_multiplicity: "0",
         incomplete_pack: "0",
+        to_purchase: "0",
       };
+
+      /** Переход с «Поставщики» (?supplier=…&to_buy=1): точный поставщик + только «к закупке». */
+      var purchaseToBuyLink = false;
 
       var FILTERS_KEY = "datagon_purchase_filters_collapsed_v1";
 
@@ -1792,6 +1838,7 @@
           zero_stock_no_transit: "0",
           no_multiplicity: "0",
           incomplete_pack: "0",
+          to_purchase: "0",
         };
         switch (String(mode || "")) {
           case "only_stock":
@@ -1811,6 +1858,9 @@
             break;
           case "incomplete_pack":
             o.incomplete_pack = "1";
+            break;
+          case "to_purchase":
+            o.to_purchase = "1";
             break;
           default:
             break;
@@ -1834,6 +1884,7 @@
         else if (is1("no_multiplicity")) next = "no_multiplicity";
         else if (is1("only_stock")) next = "only_stock";
         else if (is1("include_bundles")) next = "include_bundles";
+        else if (is1("to_purchase")) next = "to_purchase";
         sel.value = next;
       }
 
@@ -1852,6 +1903,7 @@
           zero_stock_no_transit: xf.zero_stock_no_transit,
           no_multiplicity: xf.no_multiplicity,
           incomplete_pack: xf.incomplete_pack,
+          to_purchase: xf.to_purchase,
         };
       }
 
@@ -1869,6 +1921,11 @@
         if (f.zero_stock_no_transit === "1") p.set("zero_stock_no_transit", "1");
         if (f.no_multiplicity === "1") p.set("no_multiplicity", "1");
         if (f.incomplete_pack === "1") p.set("incomplete_pack", "1");
+        if (f.to_purchase === "1") p.set("to_purchase", "1");
+        if (purchaseToBuyLink && f.supplier) {
+          p.set("to_buy", "1");
+          p.set("supplier_exact", "1");
+        }
       }
 
       function buildListParams() {
@@ -1891,6 +1948,28 @@
 
       function syncUrlFromState() {
         var f = readFilters();
+        if (purchaseToBuyLink && f.supplier) {
+          var shortP = new URLSearchParams();
+          shortP.set("supplier", f.supplier);
+          shortP.set("to_buy", "1");
+          if (Number(page) > 1) shortP.set("page", String(page));
+          if (sortBy !== "code") {
+            var urlSortKey = sortBy;
+            try {
+              for (var colK in SORT_KEY_REMAP) {
+                if (Object.prototype.hasOwnProperty.call(SORT_KEY_REMAP, colK) && SORT_KEY_REMAP[colK] === sortBy) {
+                  urlSortKey = colK;
+                  break;
+                }
+              }
+            } catch (eSk) {}
+            shortP.set("sort_by", urlSortKey);
+          }
+          if (sortDir !== "asc") shortP.set("sort_dir", sortDir);
+          var shortNext = window.location.pathname + "?" + shortP.toString();
+          try { window.history.replaceState(null, "", shortNext); } catch (e) {}
+          return;
+        }
         var params = new URLSearchParams();
         Object.keys(f).forEach(function (k) {
           var v = f[k];
@@ -1929,10 +2008,27 @@
 
       function parseUrlToForm() {
         var params = new URLSearchParams(window.location.search);
+        var supFromUrl = params.get("supplier") || params.get("supplier_key") || "";
+        var toBuy =
+          params.get("to_buy") === "1" ||
+          (params.get("to_purchase") === "1" && supFromUrl);
+        if (toBuy) {
+          purchaseToBuyLink = true;
+          var sup = params.get("supplier") || params.get("supplier_key") || "";
+          if (sup) document.getElementById("pu-f-supplier").value = sup;
+          document.getElementById("pu-f-archived").value = "active";
+          document.getElementById("pu-f-stock_position").value = "yes";
+          document.getElementById("pu-f-no_longer_cooperation").value = "not_stopped";
+          var xfBuy = document.getElementById("pu-f-extra-filter");
+          if (xfBuy) xfBuy.value = "to_purchase";
+          purchaseToPurchaseMode = true;
+          syncToPurchaseColumnVisibility();
+        }
         var keys = ["limit", "archived", "stock_position", "no_longer_cooperation", "search", "supplier"];
         keys.forEach(function (k) {
           var v = params.get(k);
           if (v === null) return;
+          if (toBuy && (k === "archived" || k === "stock_position" || k === "no_longer_cooperation")) return;
           if (k === "limit") document.getElementById("pu-f-limit").value = String(Number(v) || 100);
           else if (k === "search") document.getElementById("pu-f-search").value = v;
           else if (k === "supplier") document.getElementById("pu-f-supplier").value = v;
@@ -1944,7 +2040,7 @@
             }
           }
         });
-        syncPuExtraFilterFromUrlParams(params);
+        if (!toBuy) syncPuExtraFilterFromUrlParams(params);
         var pg = Number(params.get("page") || 1);
         if (Number.isFinite(pg) && pg > 0) page = pg;
         var sb = params.get("sort_by");
@@ -1954,8 +2050,36 @@
         if (sd === "asc" || sd === "desc") sortDir = sd;
       }
 
+      function getPuColsList() {
+        if (!purchaseToPurchaseMode) return PU_COLS;
+        var out = [];
+        PU_COLS.forEach(function (p) {
+          var key = p[0];
+          var opts = p[2] || {};
+          if (opts.hideInToPurchaseMode) return;
+          out.push(p);
+          if (key === "in_transit") {
+            out.push(["to_purchase_qty", "К закупке", COL_OPTS.to_purchase_qty]);
+          }
+        });
+        return out;
+      }
+
+      function syncToPurchaseColumnVisibility() {
+        if (purchaseToPurchaseMode) {
+          visibleCols.add("to_purchase_qty");
+          visibleCols.delete("automation_price");
+          if (sortBy === "automation_price") {
+            sortBy = "code";
+            sortDir = "asc";
+          }
+        } else {
+          visibleCols.delete("to_purchase_qty");
+        }
+      }
+
       function getVisibleColumns() {
-        return PU_COLS.filter(function (p) { return visibleCols.has(p[0]); });
+        return getPuColsList().filter(function (p) { return visibleCols.has(p[0]); });
       }
 
       function makeFutureCell() {
@@ -2364,6 +2488,29 @@
             "В пути (inTransit) из карточки МС: в БД — ms_entity_details.denorm_in_transit; если пусто — из сохранённого payload_json (после синка/бэкафла denorm).";
           return s3;
         }
+        if (key === "to_purchase_qty") {
+          var need = r.to_purchase_qty;
+          var spNeed = document.createElement("span");
+          spNeed.className = "dg-pu-to-buy-qty fw-semibold";
+          var nNeed = need != null && need !== "" ? Number(need) : null;
+          spNeed.textContent =
+            nNeed != null && Number.isFinite(nNeed) ? fmtPuSnapQty(nNeed) : "—";
+          var tgt = r.purchase_target_stock;
+          var st = Number(r.stock || 0);
+          var tr =
+            r.in_transit != null && r.in_transit !== "" && Number.isFinite(Number(r.in_transit))
+              ? Number(r.in_transit)
+              : 0;
+          spNeed.title =
+            "К закупке (разница): max(0, целевой неснижаемый − остаток − ожидание)\n" +
+            "Целевой: " +
+            (tgt != null && Number.isFinite(Number(tgt)) ? fmtPuSnapQty(tgt) : "—") +
+            " · Остаток: " +
+            fmtPuSnapQty(st) +
+            " · Ожидание: " +
+            fmtPuSnapQty(tr);
+          return spNeed;
+        }
         if (key === "supplier_label") {
           var sp4 = document.createElement("span");
           sp4.textContent = r.supplier_label || "-";
@@ -2414,6 +2561,7 @@
             td.style.maxWidth = nextWidth + "px";
           }
         });
+        buildTfoot();
       }
 
       function onMouseMove(e) {
@@ -2521,6 +2669,7 @@
           tr.appendChild(th);
         });
         thead.appendChild(tr);
+        buildTfoot();
         puRefreshFloatingAfterLayout();
       }
 
@@ -2542,6 +2691,46 @@
         Object.keys(o).forEach(function (k) { td.style[k] = o[k]; });
       }
 
+      function formatPuColumnTotal(key, val) {
+        if (val == null || !Number.isFinite(Number(val))) return "—";
+        if (key === "min_stock" || key === "formula_proposed_min_stock") return fmtNum(val);
+        return fmtPuSnapQty(val);
+      }
+
+      function buildTfoot() {
+        var tfoot = document.getElementById("dg-pu-tfoot");
+        if (!tfoot) return;
+        tfoot.replaceChildren();
+        if (loading || !lastColumnTotals) return;
+        var cols = getVisibleColumns();
+        if (!cols.length) return;
+        var tr = document.createElement("tr");
+        tr.className = "dg-pu-tfoot-row";
+        var labelPlaced = false;
+        cols.forEach(function (pair) {
+          var key = pair[0];
+          var td = document.createElement("td");
+          applyTdStyle(td, key);
+          if (COL_OPTS[key] && COL_OPTS[key].center) td.classList.add("text-center");
+          if (!labelPlaced) {
+            labelPlaced = true;
+            var lab = document.createElement("span");
+            lab.className = "dg-pu-tfoot-label";
+            lab.textContent = "Σ по фильтру";
+            lab.title =
+              "Сумма по всем строкам, попавшим в текущий фильтр (все страницы, не только эта)";
+            td.appendChild(lab);
+          } else if (PU_SUM_COL_KEYS.has(key)) {
+            var sp = document.createElement("span");
+            sp.className = "dg-pu-tfoot-sum";
+            sp.textContent = formatPuColumnTotal(key, lastColumnTotals[key]);
+            td.appendChild(sp);
+          }
+          tr.appendChild(td);
+        });
+        tfoot.appendChild(tr);
+      }
+
       function renderTable(rows) {
         var tbody = document.getElementById("dg-pu-tbody");
         tbody.replaceChildren();
@@ -2554,6 +2743,7 @@
           tdL.textContent = "Загрузка...";
           trL.appendChild(tdL);
           tbody.appendChild(trL);
+          buildTfoot();
           puRefreshFloatingAfterLayout();
           return;
         }
@@ -2566,6 +2756,7 @@
           td.textContent = "Нет данных";
           tr.appendChild(td);
           tbody.appendChild(tr);
+          buildTfoot();
           puRefreshFloatingAfterLayout();
           return;
         }
@@ -2590,6 +2781,7 @@
           });
           tbody.appendChild(tr);
         });
+        buildTfoot();
         puRefreshFloatingAfterLayout();
       }
 
@@ -2597,7 +2789,7 @@
         var list = document.getElementById("dg-pu-columns-list");
         if (!list) return;
         list.innerHTML = "";
-        PU_COLS.forEach(function (pair) {
+        getPuColsList().forEach(function (pair) {
           var key = pair[0];
           var label = pair[1];
           var wrap = document.createElement("label");
@@ -2615,6 +2807,7 @@
             try { localStorage.setItem(userVisibleColsKey(), JSON.stringify(Array.from(visibleCols))); } catch (e) {}
             buildThead();
             renderTable(lastRows);
+            buildTfoot();
             updateTableHint();
           });
           var text = document.createElement("span");
@@ -2693,10 +2886,14 @@
 
       function loadData() {
         if (loading) return;
+        var p = buildListParams();
+        purchaseToPurchaseMode = p.get("to_purchase") === "1" || p.get("to_buy") === "1";
+        syncToPurchaseColumnVisibility();
         loading = true;
         setApplyResetDisabled(true);
+        buildThead();
+        renderColumnControls();
         renderTable(lastRows);
-        var p = buildListParams();
         fetch("/api/purchase?" + p.toString(), { credentials: "same-origin" })
           .then(function (r) {
             var ct = String(r.headers.get("content-type") || "").toLowerCase();
@@ -2726,6 +2923,7 @@
           .then(function (j) {
             total = Number(j.total || 0);
             lastRows = Array.isArray(j.data) ? j.data : [];
+            lastColumnTotals = j && j.column_totals ? j.column_totals : null;
             lastPurchaseCacheMeta = j && j.cache ? j.cache : null;
             loading = false;
             setApplyResetDisabled(false);
@@ -2746,8 +2944,10 @@
             setApplyResetDisabled(false);
             total = 0;
             lastRows = [];
+            lastColumnTotals = null;
             buildThead();
             renderTable([]);
+            buildTfoot();
             updateTableHint();
             var ds = document.getElementById("dg-pu-status");
             if (ds) {
@@ -2760,6 +2960,7 @@
       }
 
       function resetFilters() {
+        purchaseToBuyLink = false;
         if (window.DatagonPurchaseFilterBlocks && window.DatagonPurchaseFilterBlocks.reset) window.DatagonPurchaseFilterBlocks.reset();
         document.getElementById("pu-f-search").value = "";
         document.getElementById("pu-f-supplier").value = "";
@@ -3009,7 +3210,7 @@
         var list = document.getElementById("dg-pu-widths-list");
         if (!list) return;
         list.innerHTML = "";
-        PU_COLS.forEach(function (pair) {
+        getPuColsList().forEach(function (pair) {
           var key = pair[0];
           var label = pair[1];
           var minW = getColMin(key);
@@ -3074,6 +3275,7 @@
         } catch (e) { columnWidths = {}; }
         try {
           var allowed = new Set(PU_COLS.map(function (p) { return p[0]; }));
+          allowed.add("to_purchase_qty");
           var rawVisible = JSON.parse(localStorage.getItem(userVisibleColsKey()) || "[]");
           if (Array.isArray(rawVisible) && rawVisible.length) {
             visibleCols = new Set(rawVisible.filter(function (k) { return allowed.has(k); }));
