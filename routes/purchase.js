@@ -447,11 +447,14 @@ function buildPurchaseCountFromJoin(incompletePack, withFormulaCache) {
             `;
 }
 
-function purchaseCountQueryParams(frag, formulaFpVal, dataRev) {
-    if (frag && frag.toPurchaseOnly) {
-        return [formulaFpVal, dataRev, ...frag.whereParams];
+/**
+ * @param {boolean} [withFormulaCache] — JOIN `dg_formula_proposed_cache` в этом запросе (итоги колонок всегда с fc).
+ */
+function purchaseCountQueryParams(frag, formulaFpVal, dataRev, withFormulaCache) {
+    if (withFormulaCache) {
+        return [formulaFpVal, dataRev, ...(frag.whereParams || [])];
     }
-    return frag.whereParams;
+    return [...(frag.whereParams || [])];
 }
 
 const PURCHASE_MIN_STOCK_SUM_SQL = 'COALESCE(CAST(mse.min_stock AS DECIMAL(20,6)), 0)';
@@ -503,7 +506,7 @@ async function purchaseListQueryPaged(db, appSettings, req, runOpts = {}) {
 
     const countFromJoin = buildPurchaseCountFromJoin(frag.incompletePack, frag.toPurchaseOnly);
     const countSql = `SELECT COUNT(*) AS cnt ${countFromJoin} WHERE ${frag.whereSql}`;
-    const countParams = purchaseCountQueryParams(frag, formulaFpVal, dataRev);
+    const countParams = purchaseCountQueryParams(frag, formulaFpVal, dataRev, frag.toPurchaseOnly);
     const baseFromJoin = buildPurchaseBaseFromJoin(frag.incompletePack);
     const listSql = `
                 SELECT
@@ -528,7 +531,7 @@ async function purchaseListQueryPaged(db, appSettings, req, runOpts = {}) {
                 LIMIT ? OFFSET ?`;
     const listParams = [formulaFpVal, dataRev, ...frag.whereParams, limit, offset];
     const totalsSql = buildPurchaseColumnTotalsSql(frag);
-    const totalsParams = purchaseCountQueryParams(frag, formulaFpVal, dataRev);
+    const totalsParams = purchaseCountQueryParams(frag, formulaFpVal, dataRev, true);
 
     t0 = process.hrtime.bigint();
     const countT0 = process.hrtime.bigint();
@@ -1728,7 +1731,7 @@ async function loadPurchaseFormulaCacheStatus(db, appSettings, req) {
     const frag = buildPurchaseListWhereFragments(req);
     const countFromJoin = buildPurchaseCountFromJoin(frag.incompletePack, frag.toPurchaseOnly);
     const countSql = `SELECT COUNT(*) AS cnt ${countFromJoin} WHERE ${frag.whereSql}`;
-    const countParams = purchaseCountQueryParams(frag, formulaFp, dataRev);
+    const countParams = purchaseCountQueryParams(frag, formulaFp, dataRev, frag.toPurchaseOnly);
     const baseFromJoin = buildPurchaseBaseFromJoin(frag.incompletePack);
     const cacheSql = `SELECT COUNT(*) AS cnt ${baseFromJoin}
                 INNER JOIN dg_formula_proposed_cache fc
