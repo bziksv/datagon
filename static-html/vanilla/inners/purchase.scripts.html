@@ -383,6 +383,7 @@
       var puLogModal = { code: "", name: "", offset: 0, limit: 100, total: 0, filterField: "" };
       var PURCHASE_LOG_SOURCE_LABELS = { override: "Ячейка", import: "Импорт CSV" };
       var loading = false;
+      var loadSeq = 0;
       var columnWidths = {};
       var DEFAULT_VISIBLE_KEYS = PU_COLS.map(function (p) { return p[0]; });
       var visibleCols = new Set(DEFAULT_VISIBLE_KEYS);
@@ -701,7 +702,7 @@
         else if (is1("no_multiplicity")) next = "no_multiplicity";
         else if (is1("only_stock")) next = "only_stock";
         else if (is1("include_bundles")) next = "include_bundles";
-        else if (is1("to_purchase")) next = "to_purchase";
+        else if (is1("to_purchase") || is1("to_buy")) next = "to_purchase";
         sel.value = next;
       }
 
@@ -739,9 +740,10 @@
         if (f.no_multiplicity === "1") p.set("no_multiplicity", "1");
         if (f.incomplete_pack === "1") p.set("incomplete_pack", "1");
         if (f.to_purchase === "1") p.set("to_purchase", "1");
-        if (purchaseToBuyLink && f.supplier) {
+        if (purchaseToBuyLink) {
           p.set("to_buy", "1");
-          p.set("supplier_exact", "1");
+          p.set("to_purchase", "1");
+          if (f.supplier) p.set("supplier_exact", "1");
         }
       }
 
@@ -1319,8 +1321,8 @@
               ? Number(r.in_transit)
               : 0;
           spNeed.title =
-            "К закупке (разница): max(0, целевой неснижаемый − остаток − ожидание)\n" +
-            "Целевой: " +
+            "К закупке (разница): max(0, неснижаемый остаток МС − остаток − ожидание)\n" +
+            "Неснижаемый (МС): " +
             (tgt != null && Number.isFinite(Number(tgt)) ? fmtPuSnapQty(tgt) : "—") +
             " · Остаток: " +
             fmtPuSnapQty(st) +
@@ -1519,6 +1521,12 @@
         if (!tfoot) return;
         tfoot.replaceChildren();
         if (loading || !lastColumnTotals) return;
+        var posInTotals = Number(lastColumnTotals.positions_count || 0);
+        var posMismatch =
+          Number.isFinite(posInTotals) &&
+          posInTotals > 0 &&
+          Number(total || 0) > 0 &&
+          posInTotals !== Number(total || 0);
         var cols = getVisibleColumns();
         if (!cols.length) return;
         var tr = document.createElement("tr");
@@ -1533,9 +1541,16 @@
             labelPlaced = true;
             var lab = document.createElement("span");
             lab.className = "dg-pu-tfoot-label";
-            lab.textContent = "Σ по фильтру";
+            var posLabel =
+              posInTotals > 0 ? " (" + fmtNum(posInTotals) + " поз.)" : "";
+            lab.textContent = "Σ по фильтру" + posLabel;
             lab.title =
-              "Сумма по всем строкам, попавшим в текущий фильтр (все страницы, не только эта)";
+              "Сумма по всем строкам текущего фильтра (все страницы, не только эта)." +
+              (posInTotals > 0 ? " Позиций в выборке: " + posInTotals + "." : "") +
+              (posMismatch
+                ? " Внимание: число позиций в итогах не совпадает с «Найдено» — обновите страницу или нажмите «Применить»."
+                : "");
+            if (posMismatch) lab.classList.add("text-warning");
             td.appendChild(lab);
           } else if (PU_SUM_COL_KEYS.has(key)) {
             var sp = document.createElement("span");
@@ -1703,10 +1718,12 @@
 
       function loadData() {
         if (loading) return;
+        var mySeq = ++loadSeq;
         var p = buildListParams();
         purchaseToPurchaseMode = p.get("to_purchase") === "1" || p.get("to_buy") === "1";
         syncToPurchaseColumnVisibility();
         loading = true;
+        lastColumnTotals = null;
         setApplyResetDisabled(true);
         buildThead();
         renderColumnControls();
@@ -1738,6 +1755,7 @@
             });
           })
           .then(function (j) {
+            if (mySeq !== loadSeq) return;
             total = Number(j.total || 0);
             lastRows = Array.isArray(j.data) ? j.data : [];
             lastColumnTotals = j && j.column_totals ? j.column_totals : null;
@@ -1757,6 +1775,7 @@
             puRefreshFloatingAfterLayout();
           })
           .catch(function (e) {
+            if (mySeq !== loadSeq) return;
             loading = false;
             setApplyResetDisabled(false);
             total = 0;
@@ -2126,6 +2145,13 @@
       updatePuStickyTopVar();
       buildThead();
       loadData();
+      window.addEventListener("pageshow", function (e) {
+        if (!e || !e.persisted) return;
+        loading = false;
+        parseUrlToForm();
+        page = 1;
+        loadData();
+      });
       if (document.fonts && document.fonts.ready) {
         document.fonts.ready.then(function () {
           updatePuStickyTopVar();

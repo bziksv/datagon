@@ -117,6 +117,7 @@ function buildPurchaseListCacheKey(req, dataRev, formulaFp) {
     const q = req && req.query ? req.query : {};
     const norm = (k) => String(q[k] != null ? q[k] : '').trim();
     return JSON.stringify({
+        v: 4,
         data_rev: dataRev,
         formula_fp: formulaFp,
         limit: norm('limit') || '100',
@@ -336,7 +337,8 @@ function buildPurchaseSqlOrderBy(sortKey, sortDesc) {
  * WHERE для списка закупок (как раньше в `purchaseListBuildBaseSnapshot`).
  * @returns {{ whereSql: string, whereParams: any[], incompletePack: boolean }}
  */
-function buildPurchaseListWhereFragments(req) {
+function buildPurchaseListWhereFragments(req, opts = {}) {
+    const skipToPurchaseSqlFilter = Boolean(opts.skipToPurchaseSqlFilter);
     const search = String(req.query.search || '').trim();
     const supplier = String(req.query.supplier || req.query.supplier_key || '').trim();
     const toBuyMode = String(req.query.to_buy || '0') === '1';
@@ -408,7 +410,7 @@ function buildPurchaseListWhereFragments(req) {
         where.push("LOWER(TRIM(COALESCE(mse.no_longer_cooperation, ''))) <> 'да'");
     }
 
-    if (toPurchaseOnly) {
+    if (toPurchaseOnly && !skipToPurchaseSqlFilter) {
         where.push(`(${SUPPLIER_NEED_QTY_SQL}) > 0`);
     }
 
@@ -463,6 +465,7 @@ function buildPurchaseColumnTotalsSql(frag) {
     const fromJoin = buildPurchaseCountFromJoin(frag.incompletePack, true);
     return `
         SELECT
+            COUNT(*) AS positions_count,
             SUM(${PURCHASE_MIN_STOCK_SUM_SQL}) AS min_stock_total,
             SUM(COALESCE(CAST(fc.proposed AS DECIMAL(20,6)), 0)) AS formula_proposed_min_stock_total,
             SUM(COALESCE(mse.stock, 0)) AS stock_total,
@@ -475,12 +478,188 @@ function buildPurchaseColumnTotalsSql(frag) {
 function mapPurchaseColumnTotalsRow(r) {
     const row = r || {};
     return {
+        positions_count: Number(row.positions_count || 0),
         min_stock: Number(row.min_stock_total || 0),
         formula_proposed_min_stock: Number(row.formula_proposed_min_stock_total || 0),
         stock: Number(row.stock_total || 0),
         in_transit: Number(row.in_transit_total || 0),
         to_purchase_qty: Number(row.to_purchase_qty_total || 0),
     };
+}
+
+/** Порог: полный enrich всех строк фильтра для Σ и режима «К закупке». */
+const PURCHASE_ENRICHED_TOTALS_MAX_ROWS = 2500;
+
+function sumPurchaseColumnTotalsFromItems(items) {
+    let positions = 0;
+    let minStock = 0;
+    let formula = 0;
+    let stock = 0;
+    let inTransit = 0;
+    let toPurchase = 0;
+    for (const d of items || []) {
+        positions += 1;
+        const ms = parsePurchaseNumOrNull(d.min_stock);
+        if (ms != null) minStock += ms;
+        const fp = parsePurchaseNumOrNull(d.formula_proposed_min_stock);
+        if (fp != null) formula += fp;
+        stock += Number(d.stock || 0);
+        const tr = parsePurchaseNumOrNull(d.in_transit);
+        if (tr != null) inTransit += tr;
+        toPurchase += Number(d.to_purchase_qty || 0);
+    }
+    return {
+        positions_count: positions,
+        min_stock: minStock,
+        formula_proposed_min_stock: formula,
+        stock,
+        in_transit: inTransit,
+        to_purchase_qty: toPurchase,
+    };
+}
+
+function purchaseItemSortValue(d, sortKey) {
+    const k = String(sortKey || 'code');
+    switch (k) {
+        case 'code':
+            return String(d.code || '');
+        case 'article':
+            return String(d.article || '').toLowerCase();
+        case 'name':
+            return String(d.name || '');
+        case 'supplier':
+            return `${String(d.supplier || '')}\t${String(d.supplier2 || '')}`;
+        case 'buy_price':
+        case 'automation_price':
+            return parsePurchaseNumOrNull(d[k]);
+        case 'min_stock':
+            return parsePurchaseNumOrNull(d.min_stock);
+        case 'min_stock_dg':
+            return parsePurchaseNumOrNull(d.min_stock_dg);
+        case 'multiplicity':
+            return parsePurchaseNumOrNull(d.multiplicity);
+        case 'proposed_min_stock':
+            return parsePurchaseNumOrNull(d.proposed_min_stock);
+        case 'stock':
+            return Number(d.stock || 0);
+        case 'formula_proposed_min_stock':
+            return parsePurchaseNumOrNull(d.formula_proposed_min_stock);
+        case 'in_transit':
+            return parsePurchaseNumOrNull(d.in_transit);
+        case 'is_archived':
+            return Number(d.is_archived || 0);
+        default:
+            if (Object.prototype.hasOwnProperty.call(d, k)) {
+                const v = d[k];
+                if (v == null || v === '') return null;
+                const n = Number(v);
+                return Number.isFinite(n) ? n : String(v);
+            }
+            return null;
+    }
+}
+
+function comparePurchaseItemsForSort(a, b, sortKey, sortDesc) {
+    const va = purchaseItemSortValue(a, sortKey);
+    const vb = purchaseItemSortValue(b, sortKey);
+    const aNull = va == null || va === '';
+    const bNull = vb == null || vb === '';
+    if (aNull !== bNull) return aNull ? 1 : -1;
+    let cmp = 0;
+    if (typeof va === 'number' && typeof vb === 'number') cmp = va - vb;
+    else cmp = String(va).localeCompare(String(vb), 'ru', { numeric: true, sensitivity: 'base' });
+    if (cmp !== 0) return sortDesc ? -cmp : cmp;
+    return String(a.code || '').localeCompare(String(b.code || ''), 'ru', { numeric: true });
+}
+
+function buildPurchaseListSelectSql(frag) {
+    const baseFromJoin = buildPurchaseBaseFromJoin(frag.incompletePack);
+    return `
+                SELECT
+                    mse.code, mse.name, mse.supplier, mse.supplier2, mse.uuid, mse.type,
+                    mse.is_archived, mse.stock_position, mse.no_longer_cooperation,
+                    mse.buy_price, mse.min_stock, mse.stock, mse.automation_price,
+                    mse.synced_at,
+                    po.min_stock_dg, po.multiplicity,
+                    po.proposed_min_stock, po.pack_qty_manual, po.updated_at AS override_updated_at,
+                    NULL AS payload_json,
+                    med.denorm_article,
+                    med.denorm_in_transit,
+                    med.denorm_pack_qty_auto,
+                    med.denorm_market_price_rub,
+                    fc.proposed AS formula_cached_proposed,
+                    fc.windows_json AS formula_cached_windows_json
+                ${baseFromJoin}
+                LEFT JOIN dg_formula_proposed_cache fc
+                  ON fc.code = mse.code AND fc.formula_fp = ? AND fc.data_rev = ?`;
+}
+
+async function loadPurchaseListItemsForFrag(db, appSettings, frag, formulaFpVal, dataRev, loadOpts = {}) {
+    const listSql = `${buildPurchaseListSelectSql(frag)}
+                WHERE ${frag.whereSql}`;
+    const listParams = [formulaFpVal, dataRev, ...(frag.whereParams || [])];
+    const [rows] = await db.query(listSql, listParams);
+    const items = (rows || []).map((r) => mapPurchaseSqlRowToDataItem(r, { noPayloadForFormula: !loadOpts.includePayload }));
+    await enrichPurchaseListPage(db, appSettings, items, {
+        dataRev,
+        formulaFp: formulaFpVal,
+        skipBundleWarmup: true,
+        includePayload: Boolean(loadOpts.includePayload),
+    });
+    attachPurchaseNeedFields(items);
+    return items;
+}
+
+async function computePurchaseColumnTotalsEnriched(db, appSettings, frag, formulaFpVal, dataRev) {
+    const items = await loadPurchaseListItemsForFrag(db, appSettings, frag, formulaFpVal, dataRev);
+    return sumPurchaseColumnTotalsFromItems(items);
+}
+
+/**
+ * Режим «К закупке»: отбор после enrich (как в ячейках таблицы), а не только по SQL-кэшу формулы.
+ */
+async function purchaseListQueryToPurchaseEnriched(db, appSettings, req, frag, runOpts = {}) {
+    const bench = Boolean(runOpts.bench);
+    const benchOut = bench ? {} : null;
+
+    let t0 = process.hrtime.bigint();
+    const dataRev = await loadPurchaseDataRevisionCached(db);
+    const formulaFpVal = buildFormulaFingerprint(appSettings);
+    const limitRaw = parseInt(req.query.limit, 10);
+    const offsetRaw = parseInt(req.query.offset, 10);
+    const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(1000, limitRaw) : 100;
+    const offset = Number.isFinite(offsetRaw) && offsetRaw >= 0 ? offsetRaw : 0;
+    const sortKeyRaw = String(req.query.sort_by || 'code').trim();
+    const sortKey = PURCHASE_SORT_KEYS.has(sortKeyRaw) ? sortKeyRaw : 'code';
+    const sortDir = String(req.query.sort_dir || 'asc').toLowerCase() === 'desc' ? 'desc' : 'asc';
+    const sortDesc = sortDir === 'desc';
+
+    const fragBase = buildPurchaseListWhereFragments(req, { skipToPurchaseSqlFilter: true });
+    t0 = process.hrtime.bigint();
+    let items = await loadPurchaseListItemsForFrag(db, appSettings, fragBase, formulaFpVal, dataRev);
+    if (bench) benchOut.enrich_all_ms = Number(process.hrtime.bigint() - t0) / 1e6;
+
+    items = items.filter((d) => Number(d.to_purchase_qty || 0) > 0);
+    items.sort((a, b) => comparePurchaseItemsForSort(a, b, sortKey, sortDesc));
+
+    const total = items.length;
+    const column_totals = sumPurchaseColumnTotalsFromItems(items);
+    const pageItems = items.slice(offset, offset + limit);
+
+    const out = {
+        success: true,
+        total,
+        limit,
+        offset,
+        sort_by: sortKey,
+        sort_dir: sortDir,
+        to_purchase_active: true,
+        column_totals,
+        data: pageItems,
+        column_totals_source: 'enriched',
+    };
+    if (bench) out._bench = benchOut;
+    return out;
 }
 
 async function purchaseListQueryPaged(db, appSettings, req, runOpts = {}) {
@@ -502,30 +681,16 @@ async function purchaseListQueryPaged(db, appSettings, req, runOpts = {}) {
     const sortDesc = sortDir === 'desc';
 
     const frag = buildPurchaseListWhereFragments(req);
+    if (frag.toPurchaseOnly) {
+        return purchaseListQueryToPurchaseEnriched(db, appSettings, req, frag, runOpts);
+    }
+
     const orderBy = buildPurchaseSqlOrderBy(sortKey, sortDesc);
 
     const countFromJoin = buildPurchaseCountFromJoin(frag.incompletePack, frag.toPurchaseOnly);
     const countSql = `SELECT COUNT(*) AS cnt ${countFromJoin} WHERE ${frag.whereSql}`;
     const countParams = purchaseCountQueryParams(frag, formulaFpVal, dataRev, frag.toPurchaseOnly);
-    const baseFromJoin = buildPurchaseBaseFromJoin(frag.incompletePack);
-    const listSql = `
-                SELECT
-                    mse.code, mse.name, mse.supplier, mse.supplier2, mse.uuid, mse.type,
-                    mse.is_archived, mse.stock_position, mse.no_longer_cooperation,
-                    mse.buy_price, mse.min_stock, mse.stock, mse.automation_price,
-                    mse.synced_at,
-                    po.min_stock_dg, po.multiplicity,
-                    po.proposed_min_stock, po.pack_qty_manual, po.updated_at AS override_updated_at,
-                    NULL AS payload_json,
-                    med.denorm_article,
-                    med.denorm_in_transit,
-                    med.denorm_pack_qty_auto,
-                    med.denorm_market_price_rub,
-                    fc.proposed AS formula_cached_proposed,
-                    fc.windows_json AS formula_cached_windows_json
-                ${baseFromJoin}
-                LEFT JOIN dg_formula_proposed_cache fc
-                  ON fc.code = mse.code AND fc.formula_fp = ? AND fc.data_rev = ?
+    const listSql = `${buildPurchaseListSelectSql(frag)}
                 WHERE ${frag.whereSql}
                 ORDER BY ${orderBy}
                 LIMIT ? OFFSET ?`;
@@ -567,6 +732,15 @@ async function purchaseListQueryPaged(db, appSettings, req, runOpts = {}) {
 
     attachPurchaseNeedFields(pageItems);
 
+    let column_totals = mapPurchaseColumnTotalsRow(totalsRows && totalsRows[0] ? totalsRows[0] : null);
+    let column_totals_source = 'sql';
+    if (total > 0 && total <= PURCHASE_ENRICHED_TOTALS_MAX_ROWS) {
+        t0 = process.hrtime.bigint();
+        column_totals = await computePurchaseColumnTotalsEnriched(db, appSettings, frag, formulaFpVal, dataRev);
+        if (bench) benchOut.totals_enriched_ms = Number(process.hrtime.bigint() - t0) / 1e6;
+        column_totals_source = 'enriched';
+    }
+
     const out = {
         success: true,
         total,
@@ -575,7 +749,8 @@ async function purchaseListQueryPaged(db, appSettings, req, runOpts = {}) {
         sort_by: sortKey,
         sort_dir: sortDir,
         to_purchase_active: Boolean(frag.toPurchaseOnly),
-        column_totals: mapPurchaseColumnTotalsRow(totalsRows && totalsRows[0] ? totalsRows[0] : null),
+        column_totals,
+        column_totals_source,
         data: pageItems,
     };
     if (bench) out._bench = benchOut;
@@ -1078,18 +1253,13 @@ function parsePurchaseNumOrNull(v) {
     return Number.isFinite(n) ? n : null;
 }
 
-/** Целевой неснижаемый (паритет с `SUPPLIER_TARGET_STOCK_SQL` / закупки). */
+/** Для «к закупке»: только неснижаемый остаток из МС (`min_stock`), паритет с `SUPPLIER_PURCHASE_NEED_MIN_STOCK_SQL`. */
 function purchaseTargetStock(d) {
-    const po = parsePurchaseNumOrNull(d.proposed_min_stock);
-    const formula = parsePurchaseNumOrNull(d.formula_proposed_min_stock);
     const ms = parsePurchaseNumOrNull(d.min_stock);
-    if (po != null) return po;
-    if (formula != null) return formula;
-    if (ms != null) return ms;
-    return 0;
+    return ms != null ? ms : 0;
 }
 
-/** Кол-во «к закупке»: max(0, целевой − остаток − в пути). */
+/** Кол-во «к закупке»: max(0, неснижаемый МС − остаток − в пути). */
 function computePurchaseNeedQty(d) {
     const target = purchaseTargetStock(d);
     const stock = Number(d.stock || 0);

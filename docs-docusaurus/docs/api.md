@@ -1446,7 +1446,7 @@ Body (JSON): `email`, `password` (обязательны), опциональн�
 
 Страница `/suppliers.html`, роутер `routes/suppliers.js`. В список попадают **уникальные** значения `ms_export.supplier`, у которых есть хотя бы один товар: `stock_position = Да`, `type` не комплект, `no_longer_cooperation` не «Да», `is_archived = 0`. Настройки по поставщику — `dg_supplier_settings` (PK = `supplier_key` = trim(`supplier`)). История снимков наполняемости — `dg_supplier_fill_history` (запись при сохранении `stock_fill_pct` через PATCH).
 
-**Позиция «к закупке» (шт):** `max(0, target − stock − in_transit)`, где `target = COALESCE(proposed_min_stock override, formula cache, min_stock МС)`. **Сумма закупки:** сумма `need_qty × buy_price` по строкам с `need_qty > 0`. **Наполняемость % (Кол-во Несн/Несниж сумм./Ост.факт/%):** в ячейке `кол-во SKU с неснижаемым &gt; 0 / Σ неснижаемый (шт) / Σ остаток факт (шт) / %`; неснижаемый на SKU = `COALESCE(override, кэш формулы, min_stock МС)`; `%` = `100 × Σ остаток ÷ Σ неснижаемый`. Подсветка: &lt;70% — красный, 70–90% — жёлтый, ≥90% — зелёный.
+**Позиция «к закупке» (шт):** `max(0, min_stock МС − stock − in_transit)` — только поле «Неснижаемый остаток» из `ms_export`, без override и без формулы. **Сумма закупки:** сумма `need_qty × buy_price` по строкам с `need_qty > 0`. **Наполняемость % (Кол-во Несн/Несниж сумм./Ост.факт/%):** в ячейке `кол-во SKU с неснижаемым &gt; 0 / Σ неснижаемый (шт) / Σ остаток факт (шт) / %`; неснижаемый на SKU = `COALESCE(override, кэш формулы, min_stock МС)`; `%` = `100 × Σ остаток ÷ Σ неснижаемый`. Подсветка: &lt;70% — красный, 70–90% — жёлтый, ≥90% — зелёный.
 
 ### GET `/api/suppliers/data-freshness`
 
@@ -1605,7 +1605,7 @@ Query:
 - `search` — подстрока по `code`, `name`, `supplier`, `supplier2` (case-insensitive).
 - `supplier` — фильтр по поставщику: по умолчанию подстрока в `supplier` **или** `supplier2` (case-insensitive). При **`supplier_exact=1`** или **`to_buy=1`** — только **`TRIM(ms_export.supplier)`** (точное совпадение, как в реестре «Поставщики»).
 - `supplier_key` — синоним `supplier` (для ссылок с `/suppliers.html`).
-- `to_purchase` — `1`: только позиции с потребностью к закупке (`GREATEST(0, целевой_неснижаемый − stock − в_пути) > 0`, см. `lib/datagonSuppliersSql.js` → `SUPPLIER_NEED_QTY_SQL`). На `/purchase.html` после «Ожидание» появляется колонка **«К закупке»** с этой разницей в шт.
+- `to_purchase` — `1`: только позиции с потребностью к закупке (`GREATEST(0, ms_export.min_stock − stock − в_пути) > 0` — **только** поле «Неснижаемый остаток» из МС, без override и без «Предлагаемый нес.ост.»; см. `SUPPLIER_NEED_QTY_SQL` в `lib/datagonSuppliersSql.js`). На `/purchase.html` после «Ожидание» колонка **«К закупке»**.
 - `to_buy` — `1`: режим перехода с «Поставщики» — включает `to_purchase=1`, `supplier_exact=1` и дефолтные отборы (активные, складская позиция, не «перестали сотрудничать»). Короткая ссылка: `/purchase.html?supplier=…&to_buy=1`.
 - `archived` — `active` (default) | `archived` | `all`.
 - `stock_position` — `yes` (default) | `no` | `all`.
@@ -1624,7 +1624,7 @@ Query:
 
 Локальный замер без HTTP: `npm run bench:purchase-list-sql` (скрипт `scripts/purchase-list-sql-bench.cjs`, читает `config.js` и вызывает тот же `purchaseListQueryPaged`).
 
-Ответ: **`column_totals`** — суммы по **всем** строкам текущего фильтра (не только текущая страница): `min_stock`, `formula_proposed_min_stock` (сумма `fc.proposed` из кэша), `stock`, `in_transit`, `to_purchase_qty`. На `/purchase.html` — строка **«Σ по фильтру»** внизу таблицы.
+Ответ: **`column_totals`** — суммы по **всем** строкам текущего фильтра (не только текущая страница): `positions_count` (число позиций, должно совпадать с `total`), `min_stock`, `formula_proposed_min_stock`, `stock`, `in_transit`, `to_purchase_qty`. Источник: `column_totals_source` — `enriched` (после пересчёта формулы и «К закупке», как в ячейках; обязательно при `to_purchase` / `to_buy`) или `sql` (только для очень больших выборок без режима «К закупке»). На `/purchase.html` — строка **«Σ по фильтру»** внизу таблицы.
 
 ```json
 {
@@ -1636,6 +1636,7 @@ Query:
   "sort_dir": "asc",
   "to_purchase_active": true,
   "column_totals": {
+    "positions_count": 1234,
     "min_stock": 1200,
     "formula_proposed_min_stock": 980,
     "stock": 5400,
