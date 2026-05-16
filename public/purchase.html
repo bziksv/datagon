@@ -524,29 +524,6 @@
             <button type="button" class="btn-close dg-vanilla-search-close" aria-label="Закрыть поиск"></button>
           </div>
         </div>
-        <div
-          class="flex-grow-1 min-w-0 d-flex align-items-center mx-2"
-          id="dg-global-purchase-warm-wrap"
-          style="display: none; max-width: min(360px, calc(100vw - 420px))"
-          title="Фоновый прогрев кэша закупок на сервере (типовые пресеты фильтров, не клики в UI). Подробности: logs/purchase-cache.log."
-        >
-          <div class="w-100">
-            <div class="d-flex align-items-center gap-2 small text-muted mb-1">
-              <span class="text-truncate fw-semibold" id="dg-global-purchase-warm-label" style="flex: 1 1 auto"
-                >Прогрев закупок</span
-              >
-              <span class="flex-shrink-0" id="dg-global-purchase-warm-count">—</span>
-            </div>
-            <div class="progress" style="height: 6px">
-              <div
-                class="progress-bar progress-bar-striped progress-bar-animated bg-info"
-                role="progressbar"
-                id="dg-global-purchase-warm-bar"
-                style="width: 0%"
-              ></div>
-            </div>
-          </div>
-        </div>
         <div class="app-header-right">
           <div class="ui-theme-settings ui-theme-settings--header">
             <button type="button" class="btn btn-link btn-open-options btn-open-options--header" id="TooltipDemoVanilla" aria-label="Параметры темы" title="Параметры темы (полная версия в React-панели)">
@@ -895,31 +872,6 @@
             </div>
           </div>
 
-          <div id="dg-pu-cache-warmup-banner" class="alert alert-info d-none py-2 px-3 mb-3" role="status">
-            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
-              <div class="small mb-0">
-                <strong>Фоновый прогрев кэша закупок</strong> — сервер по очереди обходит фиксированные пресеты фильтров
-                (их число не из ваших действий на странице). Полоска % меняется между пресетами; на одном пресете она может долго стоять, при этом таймер «на этом шаге … с» растёт — работа идёт.
-                После завершения тяжёлые режимы откликаются быстрее; страница не блокируется.
-              </div>
-              <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-pu-warmup-dismiss">Скрыть</button>
-            </div>
-            <div class="progress mb-1" style="height: 8px">
-              <div
-                class="progress-bar progress-bar-striped progress-bar-animated"
-                role="progressbar"
-                id="dg-pu-warmup-bar"
-                style="width: 0%"
-                aria-valuemin="0"
-                aria-valuemax="100"
-                aria-valuenow="0"
-              ></div>
-            </div>
-            <div class="small text-muted d-flex flex-wrap justify-content-between gap-2">
-              <span id="dg-pu-warmup-badge">—</span>
-              <span id="dg-pu-warmup-preset">—</span>
-            </div>
-          </div>
 
           <div class="main-card mb-3 card">
             <div class="card-header d-flex align-items-center justify-content-between gap-2">
@@ -1039,12 +991,14 @@
                 <button type="button" class="btn btn-sm btn-outline-secondary" id="purchase-reset" data-dg-tooltip="Сбросить фильтры к значениям по умолчанию" data-dg-notify-start="Сбрасываем фильтры закупок…"><i class="pe-7s-refresh me-1"></i>По умолчанию</button>
                 <button type="button" class="btn btn-sm btn-outline-primary" id="purchase-refresh" data-dg-notify-start="Обновляем таблицу закупок…"><i class="pe-7s-refresh me-1"></i>Обновить</button>
                 <button type="button" class="btn btn-sm btn-outline-dark" id="purchase-copy-link"><i class="pe-7s-link me-1"></i>Скопировать ссылку</button>
+                <button type="button" class="btn btn-sm btn-outline-warning" id="dg-pu-rebuild-formula-cache" data-dg-tooltip="Заполнить dg_formula_proposed_cache для дефолтной выборки (фоновая задача, журнал на processes)" data-dg-notify-start="Ставим в очередь пересчёт кэша формулы закупок…"><i class="pe-7s-refresh me-1"></i>Пересчитать кэш</button>
               </div>
               </div>
             </div>
           </div>
 
           <p class="text-muted small mb-2 text-danger" id="dg-pu-status" style="display:none"></p>
+          <div class="alert alert-warning py-2 px-3 small mb-2 d-none" id="dg-pu-sort-hint" role="status"></div>
 
           <div class="main-card mb-3 card">
             <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
@@ -1251,6 +1205,133 @@
       // карточка в UI собирается отдельно, поэтому маппим к ключу `supplier`.
       var SORT_KEY_REMAP = { supplier_label: "supplier" };
 
+      /** Паритет с `PURCHASE_HEAVY_SORT_KEYS` в `routes/purchase.js`. */
+      var PURCHASE_HEAVY_SORT = new Set([
+        "formula_proposed_min_stock",
+        "d_15a", "d_15b", "d_30a", "d_30b",
+        "d_60a", "d_60b", "d_90a", "d_90b", "d_180a", "d_180b", "d_365a", "d_365b",
+      ]);
+
+      function purchaseAuthHeaders(withJson) {
+        var headers = {};
+        try {
+          var username = window.localStorage.getItem("currentUser");
+          var token = window.localStorage.getItem("authToken");
+          if (username) headers["x-auth-username"] = username;
+          if (token) headers["x-auth-token"] = token;
+        } catch (e) {}
+        if (withJson) headers["Content-Type"] = "application/json";
+        return headers;
+      }
+
+      function currentApiSortKey() {
+        return SORT_KEY_REMAP[sortBy] || sortBy;
+      }
+
+      function isHeavySortActive() {
+        return PURCHASE_HEAVY_SORT.has(currentApiSortKey());
+      }
+
+      var lastPurchaseCacheMeta = null;
+
+      function updateSortHint() {
+        var el = document.getElementById("dg-pu-sort-hint");
+        if (!el) return;
+        if (!isHeavySortActive()) {
+          el.classList.add("d-none");
+          el.textContent = "";
+          return;
+        }
+        el.classList.remove("d-none");
+        el.className = "alert py-2 px-3 small mb-2";
+        var fc = lastPurchaseCacheMeta && lastPurchaseCacheMeta.formula_cache;
+        var memNote = "";
+        if (lastPurchaseCacheMeta && lastPurchaseCacheMeta.source === "memory") {
+          memNote =
+            " Ответ списка из кратковременного кэша (~" +
+            Math.round(Number(lastPurchaseCacheMeta.age_ms || 0) / 1000) +
+            " с) — обновите страницу после пересчёта.";
+        }
+        var ok = fc && fc.last_batch_success;
+        var interrupted = fc && fc.last_run_interrupted;
+        var revMismatch = fc && fc.rev_mismatch;
+        if (fc && fc.ready) {
+          el.classList.add("alert-success");
+          var whenOk = "";
+          if (ok && ok.finished_at) {
+            whenOk =
+              " Пересчёт: " +
+              formatDateTimeMsk(ok.finished_at) +
+              (ok.upserted != null ? ", записано " + fmtNum(ok.upserted) : "") +
+              ".";
+          }
+          el.textContent =
+            "Сортировка по формуле / d_*: кэш столбцов актуален — " +
+            fmtNum(fc.cached_rows) +
+            " из " +
+            fmtNum(fc.selection_total) +
+            " (100%)." +
+            whenOk +
+            memNote;
+          return;
+        }
+        if (fc && Number(fc.cached_rows || 0) > 0) {
+          el.classList.add("alert-warning");
+          var parts = [];
+          parts.push(
+            "Сортировка по формуле / d_*: для текущей ревизии данных в кэше " +
+              fmtNum(fc.cached_rows) +
+              " из " +
+              fmtNum(fc.selection_total) +
+              " (" +
+              String(fc.coverage_pct != null ? fc.coverage_pct : "—") +
+              "%)."
+          );
+          if (interrupted) {
+            parts.push(
+              " Последний запуск пересчёта прерван (перезапуск Node ~39 с) — в processes см. «закрыта при старте сервера»."
+            );
+          }
+          if (ok && ok.upserted != null && ok.processed != null) {
+            parts.push(
+              " Последний успешный пересчёт: " +
+                formatDateTimeMsk(ok.finished_at) +
+                ", записано " +
+                fmtNum(ok.upserted) +
+                " из " +
+                fmtNum(ok.processed) +
+                "."
+            );
+          }
+          if (revMismatch && Number(fc.cached_rows_stale_rev || 0) > 0) {
+            parts.push(
+              " У " +
+                fmtNum(fc.cached_rows_stale_rev) +
+                " позиций кэш с устаревшей ревизией (после синка МС/продаж) — нужен новый «Пересчитать кэш»."
+            );
+          } else if (!interrupted) {
+            parts.push(
+              " Для части товаров формула не дала число (не записано в кэш) — такие строки в конце списка."
+            );
+          }
+          parts.push(" Нажмите «Пересчитать кэш» и дождитесь ~10–15 мин (не перезапускайте сервер).");
+          parts.push(memNote);
+          el.textContent = parts.join("");
+          return;
+        }
+        el.classList.add("alert-warning");
+        var emptyParts = [
+          "Сортировка по формуле / d_*: кэш столбцов пуст для текущей ревизии данных.",
+        ];
+        if (interrupted) {
+          emptyParts.push(" Последний пересчёт прерван перезапуском сервера — повторите «Пересчитать кэш».");
+        } else {
+          emptyParts.push(" Нажмите «Пересчитать кэш» или дождитесь автосинхронизации.");
+        }
+        emptyParts.push(memNote);
+        el.textContent = emptyParts.join("");
+      }
+
       // Минимальные ширины = дефолт «📏 Ширины» для новых пользователей / сброса localStorage.
       var COL_MIN = {
         code: 60,
@@ -1441,9 +1522,6 @@
       var puLogModal = { code: "", name: "", offset: 0, limit: 100, total: 0, filterField: "" };
       var PURCHASE_LOG_SOURCE_LABELS = { override: "Ячейка", import: "Импорт CSV" };
       var loading = false;
-      var lastWarmupProgress = null;
-      var puWarmupTimer = 0;
-      var puWarmupDismissUntilDone = false;
       var columnWidths = {};
       var DEFAULT_VISIBLE_KEYS = PU_COLS.map(function (p) { return p[0]; });
       var visibleCols = new Set(DEFAULT_VISIBLE_KEYS);
@@ -2564,6 +2642,48 @@
         var next = document.getElementById("pu-btn-next");
         if (prev) prev.disabled = page <= 1;
         if (next) next.disabled = page >= pages;
+        updateSortHint();
+      }
+
+      function runPurchaseFormulaCacheRebuild() {
+        var btn = document.getElementById("dg-pu-rebuild-formula-cache");
+        var doFetch = function () {
+          return fetch("/api/settings/auto-sync-run", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: purchaseAuthHeaders(true),
+            body: JSON.stringify({ task: "purchase_formula_cache" }),
+          }).then(function (r) {
+            return r.json().then(function (j) {
+              if (!r.ok || !j || j.success === false) {
+                throw new Error((j && j.error) || "HTTP " + r.status);
+              }
+              return j;
+            });
+          });
+        };
+        var onOk = function () {
+          if (window.DatagonNotify && window.DatagonNotify.toast) {
+            window.DatagonNotify.toast({
+              type: "success",
+              message: "Кэш формулы закупок поставлен в очередь. Прогресс — на /processes.html.",
+            });
+          }
+        };
+        var onErr = function (e) {
+          if (window.DatagonNotify && window.DatagonNotify.toast) {
+            window.DatagonNotify.toast({
+              type: "danger",
+              message: "Не удалось запустить кэш: " + (e && e.message ? e.message : e),
+            });
+          }
+        };
+        if (window.DatagonNotify && window.DatagonNotify.busyRun && btn) {
+          return window.DatagonNotify.busyRun(btn, function () {
+            return doFetch().then(onOk);
+          }).catch(onErr);
+        }
+        return doFetch().then(onOk).catch(onErr);
       }
 
       function setApplyResetDisabled(dis) {
@@ -2571,109 +2691,6 @@
           var b = document.getElementById(id);
           if (b) b.disabled = dis;
         });
-      }
-
-      function stopPuWarmupPoll() {
-        if (puWarmupTimer) {
-          window.clearInterval(puWarmupTimer);
-          puWarmupTimer = 0;
-        }
-      }
-
-      function puWarmupProgressNeedsBanner(wp) {
-        if (!wp || puWarmupDismissUntilDone) return false;
-        if (wp.running) return true;
-        if (wp.finished_at_ms != null && Date.now() - Number(wp.finished_at_ms) < 8000) return true;
-        return false;
-      }
-
-      /** Убирает дублирование «4/28» + label «пресет 4/28» от бэкенда. */
-      function puWarmupDedupePresetLabel(idx, tot, label) {
-        var s = String(label || "").trim();
-        if (!tot || !s) return s;
-        try {
-          if (new RegExp("^пресет\\s*" + Number(idx) + "\\s*/\\s*" + Number(tot) + "\\s*$", "i").test(s)) return "";
-        } catch (e) {}
-        return s;
-      }
-
-      function updatePuWarmupBannerFromProgress(wp) {
-        lastWarmupProgress = wp || null;
-        var banner = document.getElementById("dg-pu-cache-warmup-banner");
-        var bar = document.getElementById("dg-pu-warmup-bar");
-        var badge = document.getElementById("dg-pu-warmup-badge");
-        var preset = document.getElementById("dg-pu-warmup-preset");
-        if (!banner) return;
-        var show = puWarmupProgressNeedsBanner(wp);
-        if (!show) {
-          banner.classList.add("d-none");
-          stopPuWarmupPoll();
-          return;
-        }
-        banner.classList.remove("d-none");
-        var pct = Math.max(0, Math.min(100, Number(wp && wp.pct != null ? wp.pct : 0)));
-        if (bar) {
-          bar.style.width = pct + "%";
-          bar.setAttribute("aria-valuenow", String(pct));
-        }
-        var idx = Number((wp && wp.preset_index) || 0);
-        var tot = Number((wp && wp.preset_total) || 0);
-        var labelRaw = wp && String(wp.label || "").trim();
-        var labelLine = puWarmupDedupePresetLabel(idx, tot, labelRaw);
-        var running = Boolean(wp && wp.running);
-        if (badge) {
-          if (tot) {
-            var bits = ["Шаг " + idx + " из " + tot];
-            if (labelLine) bits.push(labelLine);
-            else if (running) bits.push("сервер собирает кэш по типовым фильтрам");
-            badge.textContent = bits.join(" — ");
-          } else {
-            badge.textContent = labelRaw || (running ? "Идёт прогрев…" : "Готово");
-          }
-        }
-        if (preset) {
-          var sec = wp && typeof wp.preset_elapsed_sec === "number" ? Math.max(0, Math.floor(wp.preset_elapsed_sec)) : null;
-          var runMs = wp && wp.progressive_run_started_ms != null ? Number(wp.progressive_run_started_ms) : 0;
-          var runLine = "";
-          if (tot && running && runMs > 0) {
-            try {
-              runLine =
-                "Старт этого прогона: " +
-                new Date(runMs).toLocaleString() +
-                " (после рестарта Node — новый отсчёт). ";
-            } catch (eR) {}
-          }
-          if (tot && running) {
-            preset.textContent =
-              runLine +
-              (sec != null ? "На этом шаге уже " + sec + " с — если число растёт, Node/MySQL заняты сборкой снимка, зависания нет. " : "") +
-              "Полоска % обновляется только между пресетами: внутри шага в основном тяжёлый SQL (полный список по фильтру в память Node). " +
-              "Прогрев сортировок в RAM по умолчанию отключён — он не ускоряет первый открытый экран, но съедал CPU. «Шаг N из M» — N-й типовой пресет на сервере (не клики в форме). Подробности — logs/purchase-cache.log.";
-          } else if (tot && !running && labelRaw === "Готово") {
-            preset.textContent = "Типовые пресеты на сервере прогреты (кэш снимков по фильтрам). Первый заход с теми же фильтрами идёт из RAM; другой набор фильтров — снова тяжёлый SQL.";
-          } else if (labelRaw && labelRaw.indexOf("Ошибка") === 0) {
-            preset.textContent = labelRaw;
-          } else {
-            preset.textContent = "Фоновый прогрев кэша на сервере (см. logs/purchase-cache.log).";
-          }
-        }
-      }
-
-      function schedulePuWarmupPoll() {
-        if (puWarmupTimer) return;
-        if (!puWarmupProgressNeedsBanner(lastWarmupProgress)) return;
-        puWarmupTimer = window.setInterval(function () {
-          fetch("/api/purchase/warmup-progress", { credentials: "same-origin" })
-            .then(function (r) {
-              return r.json();
-            })
-            .then(function (j) {
-              if (!j || j.success === false) return;
-              updatePuWarmupBannerFromProgress(j);
-              if (!puWarmupProgressNeedsBanner(j)) stopPuWarmupPoll();
-            })
-            .catch(function () {});
-        }, 2500);
       }
 
       function loadData() {
@@ -2711,11 +2728,9 @@
           .then(function (j) {
             total = Number(j.total || 0);
             lastRows = Array.isArray(j.data) ? j.data : [];
+            lastPurchaseCacheMeta = j && j.cache ? j.cache : null;
             loading = false;
             setApplyResetDisabled(false);
-            var wp = j.cache && j.cache.warmup_progress ? j.cache.warmup_progress : null;
-            updatePuWarmupBannerFromProgress(wp);
-            if (puWarmupProgressNeedsBanner(wp)) schedulePuWarmupPoll();
             buildThead();
             renderTable(lastRows);
             updateTableHint();
@@ -2797,6 +2812,12 @@
       document.getElementById("purchase-copy-link").addEventListener("click", function () {
         navigator.clipboard.writeText(window.location.href).catch(function () {});
       });
+      var puRebuildCacheBtn = document.getElementById("dg-pu-rebuild-formula-cache");
+      if (puRebuildCacheBtn) {
+        puRebuildCacheBtn.addEventListener("click", function () {
+          runPurchaseFormulaCacheRebuild();
+        });
+      }
       document.getElementById("pu-btn-prev").addEventListener("click", function () {
         if (page > 1) { page -= 1; loadData(); }
       });
@@ -3084,15 +3105,6 @@
 
       bindPurchaseCellTooltips();
       parseUrlToForm();
-      var puWarmupDismiss = document.getElementById("dg-pu-warmup-dismiss");
-      if (puWarmupDismiss) {
-        puWarmupDismiss.addEventListener("click", function () {
-          puWarmupDismissUntilDone = true;
-          stopPuWarmupPoll();
-          var b = document.getElementById("dg-pu-cache-warmup-banner");
-          if (b) b.classList.add("d-none");
-        });
-      }
       renderColumnControls();
       updatePuStickyTopVar();
       buildThead();

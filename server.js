@@ -14,6 +14,20 @@ const PORT = config.port || 3000;
 let db;
 const postInitTasks = [];
 
+/** Тяжёлые фоновые задачи после listen — не сразу, чтобы HTML/API успели ответить (пул MySQL 10 conn). */
+const STARTUP_DEFER_MS = Math.max(0, Number(process.env.DATAGON_STARTUP_DEFER_MS || 60000));
+
+function promiseWithTimeout(promise, ms, label) {
+    const tag = label || 'timeout';
+    let timer;
+    const timeout = new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(tag)), ms);
+    });
+    return Promise.race([promise, timeout]).finally(() => {
+        if (timer) clearTimeout(timer);
+    });
+}
+
 
 function buildSourceUrl(domain, rawPath, cmsType = '') {
     const d = String(domain || '').trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '');
@@ -118,9 +132,9 @@ let appSettings = {
     auto_sync_mssales_full_days: 730,
     /** По умолчанию только вс; при включении задайте удобные дни. */
     auto_sync_mssales_full_weekdays: '7',
-    /** Прогрев in-memory снимка списка закупок (routes/purchase.js → warmupPurchaseListCaches). */
-    auto_sync_purchase_warmup_enabled: 1,
-    auto_sync_purchase_warmup_time: '08:00',
+    /** Batch: dg_formula_proposed_cache для дефолтной выборки закупок (`routes/purchase.js → runPurchaseFormulaCacheBatch`). */
+    auto_sync_purchase_formula_cache_enabled: 0,
+    auto_sync_purchase_formula_cache_time: '08:30',
     /** Формула продаж / предлагаемого неснижаемого, LagerPlus-parity (см. `lib/datagonSalesFormula.js`, карточка товара). */
     sales_formula_replenishment_coef: 1 / 3,
     sales_formula_sales_window_days: 90,
@@ -241,7 +255,7 @@ async function initDB() {
             password: config.db.password,
             database: config.db.database,
             waitForConnections: true,
-            connectionLimit: 10,
+            connectionLimit: Math.max(10, Number(process.env.DB_CONNECTION_LIMIT || 20)),
             queueLimit: 0
         });
         await db.query('SELECT 1');
@@ -319,8 +333,8 @@ async function initDB() {
             ['auto_sync_mssales_full_time','03:15'],
             ['auto_sync_mssales_full_days','730'],
             ['auto_sync_mssales_full_weekdays','7'],
-            ['auto_sync_purchase_warmup_enabled','1'],
-            ['auto_sync_purchase_warmup_time','08:00'],
+            ['auto_sync_purchase_formula_cache_enabled','0'],
+            ['auto_sync_purchase_formula_cache_time','08:30'],
             ['sales_formula_replenishment_coef','0.3333333333333333'],
             ['sales_formula_sales_window_days','90'],
             ['sales_formula_absence_analysis_days','210'],
@@ -352,28 +366,27 @@ async function initDB() {
             }
         });
         console.log('[Settings] Loaded', appSettings);
-        // Снимаем "зависшие" processing после перезапуска сервера,
-        // чтобы в очереди не висели ложные статусы выполнения.
-        try {
-            await db.query(`
-                UPDATE pages
-                SET status = 'error',
-                    last_error = CASE
-                        WHEN COALESCE(last_error, '') = '' THEN 'Прервано: сервер перезапущен'
-                        ELSE CONCAT('Прервано: сервер перезапущен; ', last_error)
-                    END,
-                    parsed_at = NOW()
-                WHERE status = 'processing'
-            `);
-        } catch (_) {}
-        try {
-            await require('./lib/datagonSpecialties').ensureSchemaAndSeed(db);
-        } catch (eSp) {
-            console.warn('[DB] specialties:', eSp && eSp.message ? eSp.message : eSp);
-        }
+        // Не блокировать app.listen: на большой `pages` UPDATE может ждать metadata lock минутами.
+        postInitTasks.push(async () => {
+            try {
+                await db.query(`
+                    UPDATE pages
+                    SET status = 'error',
+                        last_error = CASE
+                            WHEN COALESCE(last_error, '') = '' THEN 'Прервано: сервер перезапущен'
+                            ELSE CONCAT('Прервано: сервер перезапущен; ', last_error)
+                        END,
+                        parsed_at = NOW()
+                    WHERE status = 'processing'
+                `);
+            } catch (_) {}
+            try {
+                await require('./lib/datagonSpecialties').ensureSchemaAndSeed(db);
+            } catch (eSp) {
+                console.warn('[DB] specialties:', eSp && eSp.message ? eSp.message : eSp);
+            }
+        });
         // Fast-start mode: avoid blocking startup on heavy schema checks/migrations.
-        // The current project DB is already initialized; this keeps the app available
-        // even if long-running DDL statements are blocked by metadata locks.
         console.log('[DB] Fast start: skipping startup migrations');
         return db;
 
@@ -1597,38 +1610,32 @@ async function processAutoSyncQueue() {
                     await finishAutoSyncRun('mssales_full', statusFull, messageFull);
                     console.log('[AUTO SYNC] Queue done: mssales_full — ' + statusFull + ' (' + messageFull + ')');
                 }
-            } else if (task === 'purchase_warmup') {
-                console.log('[AUTO SYNC] Queue start: purchase_warmup');
-                await startAutoSyncRun('purchase_warmup', triggerType);
-                let message = 'Прогрев закупок не выполнен (нет warmupPurchaseListCaches)';
-                let status = 'failed';
+            } else if (task === 'purchase_formula_cache') {
+                console.log('[AUTO SYNC] Queue start: purchase_formula_cache');
+                await startAutoSyncRun('purchase_formula_cache', triggerType);
+                let statusPfc = 'completed';
+                let messagePfc = '';
                 try {
-                    const purchaseWarm = require('./routes/purchase');
-                    if (typeof purchaseWarm.warmupPurchaseListCaches === 'function') {
-                        const sortTouchesEnv = String(process.env.PURCHASE_WARMUP_SORT_TOUCHES || '')
-                            .trim()
-                            .toLowerCase();
-                        const stats = await purchaseWarm.warmupPurchaseListCaches(db, appSettings, {
-                            force: true,
-                            warmSorts:
-                                sortTouchesEnv === '1' ||
-                                sortTouchesEnv === 'true' ||
-                                sortTouchesEnv === 'yes',
-                        });
-                        status = stats.errors > 0 && stats.built === 0 ? 'failed' : 'completed';
-                        message = (
-                            'Снимки: обновлено ' + (stats.built || 0) +
-                            ', без пересборки ' + (stats.skipped || 0) +
-                            ', прогрев сортировок ' + (stats.sortTouches || 0) +
-                            (stats.errors ? ', ошибок пресетов ' + stats.errors : '')
-                        ).slice(0, 480);
+                    const purchaseMod = require('./routes/purchase');
+                    if (typeof purchaseMod.runPurchaseFormulaCacheBatch !== 'function') {
+                        throw new Error('runPurchaseFormulaCacheBatch недоступен');
                     }
+                    const batchRes = await purchaseMod.runPurchaseFormulaCacheBatch(db, appSettings, {});
+                    messagePfc = (
+                        'Кэш формулы закупок: обработано ' +
+                        (batchRes.processed || 0) +
+                        ', записано ' +
+                        (batchRes.upserted || 0) +
+                        ', data_rev=' +
+                        String(batchRes.data_rev || '').slice(0, 120) +
+                        (batchRes.errors ? ', ошибок чанков ' + batchRes.errors : '')
+                    ).slice(0, 480);
                 } catch (e) {
-                    message = ('Ошибка прогрева закупок: ' + (e && e.message ? e.message : e)).slice(0, 480);
-                    status = 'failed';
+                    statusPfc = 'failed';
+                    messagePfc = ('Ошибка кэша формулы закупок: ' + (e && e.message ? e.message : e)).slice(0, 480);
                 }
-                await finishAutoSyncRun('purchase_warmup', status, message);
-                console.log('[AUTO SYNC] Queue done: purchase_warmup — ' + status);
+                await finishAutoSyncRun('purchase_formula_cache', statusPfc, messagePfc);
+                console.log('[AUTO SYNC] Queue done: purchase_formula_cache — ' + statusPfc);
             } else if (task === 'mssales') {
                 console.log('[AUTO SYNC] Queue start: mssales');
                 await startAutoSyncRun('mssales', triggerType);
@@ -1721,8 +1728,8 @@ async function processAutoSyncQueue() {
         if (autoSyncRunIds.has('mssales_full')) {
             await finishAutoSyncRun('mssales_full', 'failed', e.message || 'Ошибка очереди');
         }
-        if (autoSyncRunIds.has('purchase_warmup')) {
-            await finishAutoSyncRun('purchase_warmup', 'failed', e.message || 'Ошибка очереди');
+        if (autoSyncRunIds.has('purchase_formula_cache')) {
+            await finishAutoSyncRun('purchase_formula_cache', 'failed', e.message || 'Ошибка очереди');
         }
     } finally {
         autoSyncRunnerActive = false;
@@ -1785,9 +1792,9 @@ function startAutoSyncScheduler() {
                     weekdays: parseAutoSyncWeekdaysMon17(appSettings.auto_sync_mssales_full_weekdays)
                 },
                 {
-                    type: 'purchase_warmup',
-                    enabled: Number(appSettings.auto_sync_purchase_warmup_enabled ?? 1) === 1,
-                    time: String(appSettings.auto_sync_purchase_warmup_time || '08:00').slice(0, 5)
+                    type: 'purchase_formula_cache',
+                    enabled: Number(appSettings.auto_sync_purchase_formula_cache_enabled || 0) === 1,
+                    time: String(appSettings.auto_sync_purchase_formula_cache_time || '08:30').slice(0, 5)
                 }
             ];
             for (const t of tasks) {
@@ -1824,6 +1831,30 @@ function startUnifiedTaskWatchdog() {
 
 // Инициализация БД и запуск сервера
 initDB().then(() => {
+    // Слушаем порт сразу после БД: регистрация роутов ниже может занимать секунды,
+    // а тяжёлый post-init/фон не должен держать пользователя на «белой» странице.
+    const publicDirEarly = path.join(__dirname, 'public');
+    app.use('/static', express.static(path.join(publicDirEarly, 'static'), { maxAge: '1d', fallthrough: true }));
+    app.get(['/login.html', '/favicon.svg', '/favicon.ico', '/datagon-vanilla.js'], (req, res, next) => {
+        if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+        const base = req.path === '/favicon.ico' ? 'favicon.svg' : req.path.replace(/^\//, '');
+        const file = path.join(publicDirEarly, base);
+        if (!fsSync.existsSync(file)) return next();
+        return res.sendFile(path.resolve(file));
+    });
+
+    if (!app.__datagonListening) {
+        app.__datagonListening = true;
+        app.listen(PORT, () => {
+            console.log(`[Server] Running on port ${PORT}`);
+            for (const task of postInitTasks) {
+                Promise.resolve()
+                    .then(() => task())
+                    .catch((e) => console.warn('[startup] post-init:', e && e.message ? e.message : e));
+            }
+        });
+    }
+
     // Подключаем роуты ТОЛЬКО после успешного подключения к БД
     const authModule = require('./routes/auth')(db, appSettings);
 
@@ -2227,78 +2258,45 @@ initDB().then(() => {
     app.use('/api/my-products', require('./routes/myproducts')(db, appSettings));
     matchesRouter = matchesRouterFactory(db, appSettings);
     app.use('/api/matches', matchesRouter);
-    setImmediate(async () => {
-        // Лог нулей — один SQL, без большого RAM. Прогрев закупок на старте по умолчанию выключен:
-        // 10 пресетов × ~57k строк × enrich + payload_json ≈ 4+ ГБ heap → OOM. Полный прогрев — 08:00 (purchase_warmup) или PURCHASE_STARTUP_WARMUP=1.
-        // Прогрев «всех сортировок в RAM» при warmup по умолчанию отключён (PURCHASE_WARMUP_SORT_TOUCHES=1 — включить для purchase_warmup).
-        try {
-            const { syncZeroStockLogAfterMoyskladExport } = require('./routes/product');
-            if (typeof syncZeroStockLogAfterMoyskladExport === 'function') {
-                const { scanned } = await syncZeroStockLogAfterMoyskladExport(db);
-                console.log(
-                    `[product] zero-stock log (today): ${scanned} candidates upserted from ms_export`,
-                );
-            }
-        } catch (err) {
-            console.warn(
-                '[product] syncZeroStockLogAfterMoyskladExport:',
-                err && err.message ? err.message : err,
-            );
-        }
-
-        if (matchesRouter && typeof matchesRouter.warmupMatchingIndexes === 'function') {
-            matchesRouter.warmupMatchingIndexes().catch((err) => {
-                console.warn('[matches] warmupMatchingIndexes:', err && err.message ? err.message : err);
-            });
-        }
-        if (resultsRouter && typeof resultsRouter.warmupResultsListPerf === 'function') {
-            resultsRouter.warmupResultsListPerf().catch((err) => {
-                console.warn('[results] warmupResultsListPerf:', err && err.message ? err.message : err);
-            });
-        }
-
-        const startupWarmRaw = String(process.env.PURCHASE_STARTUP_WARMUP || '').trim().toLowerCase();
-        const purchaseWarmupExplicitOff =
-            startupWarmRaw === '0' || startupWarmRaw === 'off' || startupWarmRaw === 'false';
-        const purchaseWarmupTaskOn =
-            Number(
-                appSettings && appSettings.auto_sync_purchase_warmup_enabled !== undefined
-                    ? appSettings.auto_sync_purchase_warmup_enabled
-                    : 1,
-            ) === 1;
-        const explicitProg = startupWarmRaw === 'progressive' || startupWarmRaw === 'all';
-        const runProgressive =
-            !purchaseWarmupExplicitOff &&
-            startupWarmRaw !== '1' &&
-            (explicitProg || purchaseWarmupTaskOn) &&
-            typeof purchaseRouterFactory.runPurchaseStartupProgressiveWarmup === 'function';
-
-        if (startupWarmRaw === '1') {
-            if (typeof purchaseRouterFactory.warmupPurchaseListCaches === 'function') {
-                try {
-                    const stats = await purchaseRouterFactory.warmupPurchaseListCaches(db, appSettings, {
-                        warmSorts: false,
-                        presets: [{}],
-                    });
-                    console.log('[purchase] startup warmup (light, default filters only):', stats);
-                } catch (err) {
-                    console.warn('[purchase] warmupPurchaseListCaches:', err && err.message ? err.message : err);
+    setTimeout(() => {
+        (async () => {
+            // Лог нулей — один SQL, без большого RAM. Список закупок — SQL-пагинация в routes/purchase.js (без in-memory снимка).
+            try {
+                const { syncZeroStockLogAfterMoyskladExport } = require('./routes/product');
+                if (typeof syncZeroStockLogAfterMoyskladExport === 'function') {
+                    const { scanned } = await syncZeroStockLogAfterMoyskladExport(db);
+                    console.log(
+                        `[product] zero-stock log (today): ${scanned} candidates upserted from ms_export`,
+                    );
                 }
-            }
-        } else if (runProgressive) {
-            console.log('[purchase] startup: progressive cache warmup (background, logs/purchase-cache.log)');
-            void purchaseRouterFactory.runPurchaseStartupProgressiveWarmup(db, appSettings).catch((err) => {
+            } catch (err) {
                 console.warn(
-                    '[purchase] runPurchaseStartupProgressiveWarmup:',
+                    '[product] syncZeroStockLogAfterMoyskladExport:',
                     err && err.message ? err.message : err,
                 );
-            });
-        } else {
+            }
+
+            if (matchesRouter && typeof matchesRouter.warmupMatchingIndexes === 'function') {
+                matchesRouter.warmupMatchingIndexes().catch((err) => {
+                    console.warn('[matches] warmupMatchingIndexes:', err && err.message ? err.message : err);
+                });
+            }
+            if (resultsRouter && typeof resultsRouter.warmupResultsListPerf === 'function') {
+                resultsRouter.warmupResultsListPerf().catch((err) => {
+                    console.warn('[results] warmupResultsListPerf:', err && err.message ? err.message : err);
+                });
+            }
+
             console.log(
-                '[purchase] startup warmup skipped (08:00 purchase_warmup; PURCHASE_STARTUP_WARMUP=1 — один дефолтный пресет; PURCHASE_STARTUP_WARMUP=progressive — принудительно; иначе включите «Прогрев закупок» в настройках автосинка)',
+                '[purchase] список закупок: SQL ORDER BY + LIMIT/OFFSET; env PURCHASE_STARTUP_WARMUP / purchase_warmup больше не грузят каталог в память Node',
             );
-        }
-    });
+        })().catch((err) => {
+            console.warn('[startup] deferred tasks:', err && err.message ? err.message : err);
+        });
+    }, STARTUP_DEFER_MS);
+    if (STARTUP_DEFER_MS > 0) {
+        console.log(`[startup] тяжёлые фоновые задачи отложены на ${STARTUP_DEFER_MS} мс (DATAGON_STARTUP_DEFER_MS)`);
+    }
     app.use('/api/ms', moyskladRouterFactory(db, appSettings, config));
     app.use('/api/purchase', purchaseRouterFactory(db, appSettings));
     app.use('/api/product', productRouterFactory(db, appSettings));
@@ -2339,6 +2337,17 @@ initDB().then(() => {
         return res.redirect(302, '/login.html' + qs);
     });
 
+    const publicDir = path.join(__dirname, 'public');
+    /** CSS/JS/favicon — без проверки сессии и без ожидания пула MySQL (иначе «белая» страница при занятом пуле). */
+    app.use('/static', express.static(path.join(publicDir, 'static'), { maxAge: '1d', fallthrough: true }));
+    app.get(['/datagon-vanilla.js', '/favicon.svg', '/favicon.ico'], (req, res, next) => {
+        if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+        const base = req.path === '/favicon.ico' ? 'favicon.svg' : req.path.replace(/^\//, '');
+        const file = path.join(publicDir, base);
+        if (!fsSync.existsSync(file)) return next();
+        return res.sendFile(path.resolve(file));
+    });
+
     /** HTML-страницы Datagon (vanilla) без сессии не отдаём: редирект на /login.html?then=… */
     app.use(async (req, res, next) => {
         if (req.method !== 'GET' && req.method !== 'HEAD') return next();
@@ -2354,7 +2363,16 @@ initDB().then(() => {
         const leaf = raw.slice(raw.lastIndexOf('/') + 1).toLowerCase();
         if (leaf === 'login.html') return next();
         try {
-            const actor = await authModule.getActor(req);
+            let actor = null;
+            try {
+                actor = await promiseWithTimeout(authModule.getActor(req), 12000, 'HTML auth DB timeout');
+            } catch (authErr) {
+                if (String(authErr && authErr.message ? authErr.message : authErr).includes('timeout')) {
+                    console.warn('[auth] HTML page auth timeout:', raw);
+                } else {
+                    throw authErr;
+                }
+            }
             if (actor) {
                 if (actor.username !== 'admin') {
                     const {
@@ -2364,7 +2382,10 @@ initDB().then(() => {
                     if (leaf === 'no-access.html') return next();
                     if (isHtmlLeafAccessHiddenForActor(actor, leaf)) {
                         const dest = pickFirstAllowedHtmlForActor(actor);
-                        if (dest) return res.redirect(302, dest);
+                        if (dest) {
+                            const destLeaf = dest.slice(dest.lastIndexOf('/') + 1).toLowerCase();
+                            if (destLeaf !== leaf) return res.redirect(302, dest);
+                        }
                         return res.redirect(302, '/no-access.html');
                     }
                 }
@@ -2468,11 +2489,8 @@ initDB().then(() => {
         });
     });
 
-    app.use(express.static(path.join(__dirname, 'public')));
+    app.use(express.static(publicDir));
 
-    app.listen(PORT, () => {
-        console.log(`[Server] Running on port ${PORT}`);
-    });
     // Intentionally skip heavy post-init DDL tasks in runtime mode.
 
     // Автоочистка логов по настройке: раз в 12 часов.
@@ -2488,16 +2506,23 @@ initDB().then(() => {
         cleanupPurchaseOverridesLogByRetentionDays(appSettings.dg_purchase_overrides_log_retention_days).catch(() => {});
         cleanupAutoSyncRunsByRetentionDays(appSettings.auto_sync_runs_retention_days).catch(() => {});
     }, 12 * 60 * 60 * 1000);
-    closeStaleAutoSyncRunsOnStartup()
-        .catch((e) => console.warn('[AUTO SYNC]', e.message || e))
-        .finally(() => {
-            startAutoSyncScheduler();
-            startUnifiedTaskWatchdog();
-            closeAncientRunningAutoSyncRuns().catch(() => {});
-            setInterval(() => {
+    const bootAutoSync = () => {
+        closeStaleAutoSyncRunsOnStartup()
+            .catch((e) => console.warn('[AUTO SYNC]', e.message || e))
+            .finally(() => {
+                startAutoSyncScheduler();
+                startUnifiedTaskWatchdog();
                 closeAncientRunningAutoSyncRuns().catch(() => {});
-            }, 6 * 60 * 60 * 1000);
-        });
+                setInterval(() => {
+                    closeAncientRunningAutoSyncRuns().catch(() => {});
+                }, 6 * 60 * 60 * 1000);
+            });
+    };
+    if (STARTUP_DEFER_MS > 0) {
+        setTimeout(bootAutoSync, STARTUP_DEFER_MS);
+    } else {
+        bootAutoSync();
+    }
 }).catch(err => {
     console.error('Failed to start server:', err);
     process.exit(1);

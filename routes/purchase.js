@@ -19,33 +19,15 @@
  *       no_longer_cooperation — если query не задан: **не** «Да» в МС (`not_stopped`, как «Нет» в UI закупок)
  *
  * Эндпоинты:
- *   GET    /api/purchase/warmup-progress — состояние фонового progressive-прогрева кэша (для шапки и баннера).
- *   GET    /api/purchase            — список товаров с overrides и raw-полями; в cache — warmup_progress;
- *                            `all` | `not_stopped` (default, как UI закупок) | `stopped` — фильтр по ms_export.no_longer_cooperation;
- *                            `formula_proposed_min_stock` — при совпадении ревизии и отпечатка настроек формулы
- *                            подставляется из `dg_formula_proposed_cache` (пишется при открытой карточке `GET /api/product/:code`);
- *                            иначе считается здесь (как на карточке товара:
- *                            перед расчётом для кодов страницы прогревается кэш составов комплектов (`ensureBundleComponentsForProduct`,
- *                            см. `routes/purchase.js`: батч-проверка свежести `dg_bundle_components.updated_at` и негативный кэш пустого состава,
- *                            чтобы не повторять тяжёлые LIKE по `ms_entity_details` на каждый запрос списка),
- *                            с нижним порогом по `min_stock_dg`: если «Нес.остаток Датагон» > 0, итог не ниже него;
- *                            сам `min_stock_dg` в опорный baseline формулы не входит (только `proposed_min_stock` из overrides или МС).
- *                            а также «снимок» продаж за 15…365 дн. (`d_*a`) и дней отсутствия (`d_*b`) для 15/30/60/90/180/365;
- *                            при совпадении `formula_fp`+`data_rev` с `dg_formula_proposed_cache.windows_json` (после открытия карточки)
- *                            эти колонки подставляются без трёх тяжёлых SQL-агрегатов по окнам.
- *                            Доп. query-фильтры (все `0`/`1`, по умолчанию `0`): `zero_stock` — остаток ≤ 0;
- *                            `zero_stock_no_transit` — остаток ≤ 0 и «В пути» (`payload_json.inTransit`) ≤ 0 (JOIN `ms_entity_details`);
- *                            `no_multiplicity` — кратность в overrides пустая или &lt; 1; `incomplete_pack` — кратность ≥ 1,
- *                            остаток ≥ одной полной упаковки и хвост не кратен кратности (не «1 шт при кратности 2»);
- *                            **кроме** базового кода с «код-число», где stock &lt; min(суффикс) — отсутствие комплекта.
- *                            Сортировка по вычисляемым полям (`d_*`, `formula_proposed_min_stock`) — по всему отфильтрованному
- *                            набору, затем `limit`/`offset`. «В пути» (`in_transit`) сортируется по `med.denorm_in_transit` из
- *                            того же лёгкого SELECT снимка — без полного enrich всех строк.
- *                            Для `formula_proposed_min_stock` на больших выборках: чанковый enrich только `formula_only`
- *                            (без тяжёлых `loadPurchaseDirectSalesWindowsMap` / `loadPurchaseBundleSalesWindowsMap` по всему набору),
- *                            затем для текущей страницы — обычный `enrichPurchaseListPage` (полные `d_*` + формула с payload).
- *                            Для сортировки по `d_*` — чанковый `windows_only` (окна + «дн. нет» без пересчёта формулы по каждой строке),
- *                            затем страница догоняется через `enrichPurchaseListPage`.
+ *   GET    /api/purchase/warmup-progress — заглушка «idle» (legacy UI); фоновых снимков закупок больше нет.
+ *   GET    /api/purchase            — список: **COUNT + SELECT с ORDER BY в MySQL**, затем `LIMIT`/`OFFSET`; тяжёлое
+ *                            обогащение (`enrichPurchaseListPage` → `loadMsPayloadRowsForCodes` + `enrichPurchaseRowsWithFormula`)
+ *                            **только для текущей страницы** (~100 строк). Сортировка по `formula_proposed_min_stock` и `d_*a`/`d_*b`
+ *                            в SQL идёт по полям **`dg_formula_proposed_cache`** (если строка кэша есть после открытия карточки
+ *                            `GET /api/product/:code`); без кэша значение в ORDER BY NULL → строки в конце списка, на странице
+ *                            после enrich отображается пересчитанное число (редкий рассинхрон порядка/ячейки — см. api.md).
+ *                            `all` | `not_stopped` (default) | `stopped` — `no_longer_cooperation`;
+ *                            доп. фильтры: `zero_stock`, `zero_stock_no_transit`, `no_multiplicity`, `incomplete_pack` (см. ниже).
  *   POST   /api/purchase/override   — сохранить одно значение (code + field + value).
  *   POST   /api/purchase/overrides-import — пакетный импорт CSV для min_stock_dg / multiplicity.
  *   GET    /api/purchase/log        — журнал изменений полей overrides `min_stock_dg` / `multiplicity` (query: code, limit, offset, field?).
@@ -69,7 +51,6 @@ const {
     loadLatestZeroStockWindowImportMap,
 } = require('./product');
 const { mergeAbsenceDistinctForFormula } = require('../lib/datagonZeroStockAbsence');
-const { purchaseCacheLogFire } = require('../lib/purchaseCacheLogger');
 const {
     loadPurchaseDataRevision,
     buildFormulaFingerprint,
@@ -78,6 +59,7 @@ const {
 const {
     parsePurchaseWindowsJson,
     applyPurchaseWindowsToDataItem,
+    serializeWindowsSnapshot,
 } = require('../lib/datagonPurchaseWindowSnapshot');
 
 /** Макс. уникальных кодов на странице, для которых выполняется прогрев составов комплектов. */
@@ -90,120 +72,105 @@ const PURCHASE_BUNDLE_WARM_DB_TTL_MS = 8 * 60 * 60 * 1000;
 const PURCHASE_BUNDLE_EMPTY_NEGATIVE_MS = 4 * 60 * 60 * 1000;
 const purchaseBundleEmptyWarmAt = new Map();
 
-/**
- * Кэш снимка списка закупок: один раз на набор фильтров (без sort/limit/offset).
- * Смена сортировки и страницы — только сортировка/slice в памяти, без повторного enrich.
- */
-/** До следующего утреннего прогрева (~08:00 МСК); переживает рабочий день без пересборки. */
-const PURCHASE_LIST_CACHE_TTL_MS = 26 * 60 * 60 * 1000;
-const purchaseListBaseCache = new Map();
+/** Кэш `data_rev` в памяти процесса (не дергать 6 подзапросов на каждый list). */
+const PURCHASE_DATA_REV_TTL_MS = 45 * 1000;
+let purchaseDataRevCache = { rev: '', ts: 0 };
 
-/** Пауза между пресетами progressive-прогрева (снижает пик CPU / даёт breath I/O). */
-const PURCHASE_PROGRESSIVE_PAUSE_MS = Math.max(
-    0,
-    Math.min(120000, Number(process.env.PURCHASE_PROGRESSIVE_PAUSE_MS || 350) || 350),
-);
+/** Кэш ответа `GET /api/purchase` (фаза 3 — до Redis). */
+const PURCHASE_LIST_RESPONSE_CACHE_TTL_MS = 90 * 1000;
+const purchaseListResponseCache = new Map();
 
-let purchaseStartupProgressiveRunning = false;
-let purchaseStartupProgressiveState = {
-    running: false,
-    preset_index: 0,
-    preset_total: 0,
-    label: '',
-    done: 0,
-    total: 0,
-    pct: 0,
-    preset_started_at_ms: null,
-    finished_at_ms: null,
-    progressive_run_started_ms: null,
-};
+/** Сортировки, зависящие от `dg_formula_proposed_cache` / тяжёлого enrich. */
+const PURCHASE_HEAVY_SORT_KEYS = new Set([
+    'formula_proposed_min_stock',
+    'd_15a',
+    'd_15b',
+    'd_30a',
+    'd_30b',
+    'd_60a',
+    'd_60b',
+    'd_90a',
+    'd_90b',
+    'd_180a',
+    'd_180b',
+    'd_365a',
+    'd_365b',
+]);
 
-function purchaseSleepMs(ms) {
-    const n = Math.max(0, Number(ms) || 0);
-    if (!n) return Promise.resolve();
-    return new Promise((resolve) => setTimeout(resolve, n));
-}
-
-function getPurchaseWarmupProgressPayload() {
-    const s = purchaseStartupProgressiveState;
+async function loadPurchaseDataRevisionCached(db) {
     const now = Date.now();
-    const presetStarted = Number(s.preset_started_at_ms) || 0;
-    const presetElapsedSec = presetStarted ? Math.round((now - presetStarted) / 1000) : 0;
+    if (purchaseDataRevCache.rev && now - purchaseDataRevCache.ts < PURCHASE_DATA_REV_TTL_MS) {
+        return purchaseDataRevCache.rev;
+    }
+    const rev = await loadPurchaseDataRevision(db);
+    purchaseDataRevCache = { rev, ts: now };
+    return rev;
+}
+
+function invalidatePurchaseDataRevisionCache() {
+    purchaseDataRevCache = { rev: '', ts: 0 };
+}
+
+function buildPurchaseListCacheKey(req, dataRev, formulaFp) {
+    const q = req && req.query ? req.query : {};
+    const norm = (k) => String(q[k] != null ? q[k] : '').trim();
+    return JSON.stringify({
+        data_rev: dataRev,
+        formula_fp: formulaFp,
+        limit: norm('limit') || '100',
+        offset: norm('offset') || '0',
+        sort_by: norm('sort_by') || 'code',
+        sort_dir: norm('sort_dir') || 'asc',
+        search: norm('search'),
+        supplier: norm('supplier'),
+        archived: norm('archived') || 'active',
+        stock_position: norm('stock_position') || 'yes',
+        no_longer_cooperation: norm('no_longer_cooperation') || 'not_stopped',
+        include_bundles: norm('include_bundles') || '0',
+        only_stock: norm('only_stock') || '0',
+        zero_stock: norm('zero_stock') || '0',
+        zero_stock_no_transit: norm('zero_stock_no_transit') || '0',
+        no_multiplicity: norm('no_multiplicity') || '0',
+        incomplete_pack: norm('incomplete_pack') || '0',
+    });
+}
+
+function invalidatePurchaseListResponseCache() {
+    purchaseListResponseCache.clear();
+}
+
+function trimPurchaseListResponseCache() {
+    if (purchaseListResponseCache.size <= 120) return;
+    const cut = Date.now() - PURCHASE_LIST_RESPONSE_CACHE_TTL_MS * 2;
+    for (const [k, v] of purchaseListResponseCache.entries()) {
+        if (!v || v.ts < cut) purchaseListResponseCache.delete(k);
+    }
+    if (purchaseListResponseCache.size > 120) {
+        const first = purchaseListResponseCache.keys().next().value;
+        if (first) purchaseListResponseCache.delete(first);
+    }
+}
+
+/** Legacy: UI/шапка могут опрашивать `/warmup-progress`; фонового прогрева снимков больше нет. */
+function getPurchaseWarmupProgressPayload() {
     return {
-        running: Boolean(s.running),
-        preset_index: Number(s.preset_index || 0),
-        preset_total: Number(s.preset_total || 0),
-        label: String(s.label || ''),
-        done: Number(s.done || 0),
-        total: Number(s.total || 0),
-        pct: Math.min(100, Math.max(0, Number(s.pct || 0))),
-        preset_started_at_ms: presetStarted || null,
-        preset_elapsed_sec: presetElapsedSec,
-        finished_at_ms: s.finished_at_ms != null ? Number(s.finished_at_ms) : null,
-        progressive_run_started_ms:
-            s.progressive_run_started_ms != null ? Number(s.progressive_run_started_ms) : null,
+        running: false,
+        preset_index: 0,
+        preset_total: 0,
+        label: 'Выключено',
+        done: 0,
+        total: 0,
+        pct: 100,
+        preset_started_at_ms: null,
+        preset_elapsed_sec: 0,
+        finished_at_ms: null,
+        progressive_run_started_ms: null,
+        disabled: true,
     };
 }
 
-/**
- * По одному пресету из `PURCHASE_WARMUP_QUERY_PRESETS` — обновляет `purchaseStartupProgressiveState` для UI и `/warmup-progress`.
- */
-async function runPurchaseStartupProgressiveWarmup(db, appSettings) {
-    if (purchaseStartupProgressiveRunning) return;
-    purchaseStartupProgressiveRunning = true;
-    const presets = PURCHASE_WARMUP_QUERY_PRESETS;
-    const total = presets.length;
-    const runLabel = `startup-progressive-${Date.now()}`;
-    const runStarted = Date.now();
-    purchaseStartupProgressiveState = {
-        running: true,
-        preset_index: 0,
-        preset_total: total,
-        label: 'Старт…',
-        done: 0,
-        total,
-        pct: 0,
-        preset_started_at_ms: runStarted,
-        finished_at_ms: null,
-        progressive_run_started_ms: runStarted,
-    };
-    try {
-        purchaseCacheLogFire(runLabel, 'progressive warmup start', { presets: total });
-        for (let i = 0; i < presets.length; i += 1) {
-            const idx = i + 1;
-            purchaseStartupProgressiveState.preset_index = idx;
-            purchaseStartupProgressiveState.label = `пресет ${idx}/${total}`;
-            purchaseStartupProgressiveState.preset_started_at_ms = Date.now();
-            purchaseStartupProgressiveState.done = i;
-            purchaseStartupProgressiveState.pct = total ? Math.round((i / total) * 100) : 0;
-            await warmupPurchaseListCaches(db, appSettings, {
-                presets: [presets[i]],
-                force: false,
-                warmSorts: false,
-                _warmupRunLabel: runLabel,
-                _warmupPresetIndex: idx,
-                _warmupPresetTotal: total,
-            });
-            purchaseStartupProgressiveState.done = idx;
-            purchaseStartupProgressiveState.pct = total ? Math.round((idx / total) * 100) : 100;
-            if (i < presets.length - 1) {
-                await purchaseSleepMs(PURCHASE_PROGRESSIVE_PAUSE_MS);
-            }
-        }
-        purchaseStartupProgressiveState.running = false;
-        purchaseStartupProgressiveState.label = 'Готово';
-        purchaseStartupProgressiveState.pct = 100;
-        purchaseStartupProgressiveState.finished_at_ms = Date.now();
-        purchaseCacheLogFire(runLabel, 'progressive warmup done', { presets: total });
-    } catch (e) {
-        purchaseStartupProgressiveState.running = false;
-        purchaseStartupProgressiveState.label = `Ошибка: ${e && e.message ? e.message : String(e)}`;
-        purchaseStartupProgressiveState.finished_at_ms = Date.now();
-        purchaseCacheLogFire(runLabel, 'progressive warmup error', { err: String(e && e.message) });
-        console.warn('[purchase] progressive warmup:', e);
-    } finally {
-        purchaseStartupProgressiveRunning = false;
-    }
+async function runPurchaseStartupProgressiveWarmup(_db, _appSettings) {
+    /* no-op: список закупок переведён на SQL-пагинацию без in-memory снимков */
 }
 
 /** min(числовой суффикс) среди `ms_export.code` вида «база-число» — паритет с `syncZeroStockLogAfterMoyskladExport`. */
@@ -242,84 +209,302 @@ function sqlIncompletePackPredicate() {
     )`;
 }
 
-function buildPurchaseListCacheKey(req, appSettings, dataRev) {
-    const q = req.query || {};
-    const formulaFp = buildFormulaFingerprint(appSettings);
-    return JSON.stringify({
-        dataRev: String(dataRev || ''),
-        formula: formulaFp,
-        search: String(q.search || '').trim(),
-        supplier: String(q.supplier || '').trim(),
-        archived: String(q.archived || 'active').toLowerCase(),
-        stock_position: String(q.stock_position || 'yes').toLowerCase(),
-        no_longer_cooperation: String(q.no_longer_cooperation || 'not_stopped').toLowerCase(),
-        include_bundles: String(q.include_bundles || '0'),
-        only_stock: String(q.only_stock || '0'),
-        zero_stock_no_transit: String(q.zero_stock_no_transit || '0'),
-        zero_stock: String(q.zero_stock || '0'),
-        no_multiplicity: String(q.no_multiplicity || '0'),
-        incomplete_pack: String(q.incomplete_pack || '0'),
-    });
-}
-
-function clearPurchaseListResponseCache() {
-    purchaseListBaseCache.clear();
-}
-
-function rememberPurchaseListBaseCache(key, snapshot) {
-    if (purchaseListBaseCache.size > 80) {
-        const cut = Date.now() - PURCHASE_LIST_CACHE_TTL_MS;
-        for (const [k, v] of purchaseListBaseCache.entries()) {
-            if (v.ts < cut) purchaseListBaseCache.delete(k);
-        }
-        if (purchaseListBaseCache.size > 80) {
-            const first = purchaseListBaseCache.keys().next().value;
-            if (first) purchaseListBaseCache.delete(first);
-        }
-    }
-    purchaseListBaseCache.set(key, {
-        ts: Date.now(),
-        total: snapshot.total,
-        items: snapshot.items,
-        enrichMode: snapshot.enrichMode || 'full',
-        dataRev: snapshot.dataRev != null ? String(snapshot.dataRev) : '',
-        formulaFp: snapshot.formulaFp != null ? String(snapshot.formulaFp) : '',
-    });
-}
-
 let schemaReady = false;
 
 const OVERRIDE_FIELDS = new Set(['min_stock_dg', 'multiplicity', 'proposed_min_stock', 'pack_qty_manual']);
 
-const ALLOWED_SORT = {
-    code: 'mse.code',
-    article: 'article_sort',
-    name: 'mse.name',
-    supplier: 'mse.supplier',
-    buy_price: 'buy_price_num',
-    min_stock: 'mse.min_stock',
-    automation_price: 'mse.automation_price',
-    min_stock_dg: 'po.min_stock_dg',
-    multiplicity: 'po.multiplicity',
-    proposed_min_stock: 'po.proposed_min_stock',
-    stock: 'mse.stock',
-    is_archived: 'mse.is_archived',
-    /* SQL-заглушка; фактический порядок — после enrich в RAM (см. `purchaseSnapshotSortEnrichMode`). */
-    formula_proposed_min_stock: 'mse.code',
-    in_transit: 'mse.code',
-    d_15a: 'mse.code',
-    d_15b: 'mse.code',
-    d_30a: 'mse.code',
-    d_30b: 'mse.code',
-    d_60a: 'mse.code',
-    d_60b: 'mse.code',
-    d_90a: 'mse.code',
-    d_90b: 'mse.code',
-    d_180a: 'mse.code',
-    d_180b: 'mse.code',
-    d_365a: 'mse.code',
-    d_365b: 'mse.code',
-};
+/** Допустимые `sort_by` из UI (whitelist). */
+const PURCHASE_SORT_KEYS = new Set([
+    'code',
+    'article',
+    'name',
+    'supplier',
+    'buy_price',
+    'min_stock',
+    'automation_price',
+    'min_stock_dg',
+    'multiplicity',
+    'proposed_min_stock',
+    'stock',
+    'is_archived',
+    'formula_proposed_min_stock',
+    'in_transit',
+    'd_15a',
+    'd_15b',
+    'd_30a',
+    'd_30b',
+    'd_60a',
+    'd_60b',
+    'd_90a',
+    'd_90b',
+    'd_180a',
+    'd_180b',
+    'd_365a',
+    'd_365b',
+]);
+
+/**
+ * Число из ценовой строки для ORDER BY: CAST в utf8mb4 (без CONVERT … utf8mb3 — ломает MariaDB и строки с 4-байтным UTF-8),
+ * NBSP как UTF-8 (U+00A0 → UNHEX('C2A0')).
+ */
+const PURCHASE_SQL_BUY_PRICE_STR = 'TRIM(CAST(IFNULL(mse.buy_price, \'\') AS CHAR(100) CHARACTER SET utf8mb4))';
+const PURCHASE_SQL_AUTO_PRICE_STR = 'TRIM(CAST(IFNULL(mse.automation_price, \'\') AS CHAR(100) CHARACTER SET utf8mb4))';
+const PURCHASE_SQL_NBSP_UTF8 = `CAST(UNHEX('C2A0') AS CHAR(2) CHARACTER SET utf8mb4)`;
+
+const PURCHASE_SQL_PRICE_NUM = `(
+    CASE
+        WHEN ${PURCHASE_SQL_BUY_PRICE_STR} = '' THEN NULL
+        ELSE (
+            REPLACE(REPLACE(REPLACE(REPLACE(${PURCHASE_SQL_BUY_PRICE_STR}, ' ', ''), ',', '.'), '₽', ''), ${PURCHASE_SQL_NBSP_UTF8}, '')
+            + 0
+        )
+    END
+)`;
+
+const PURCHASE_SQL_AUTO_PRICE_NUM = `(
+    CASE
+        WHEN ${PURCHASE_SQL_AUTO_PRICE_STR} = '' THEN NULL
+        ELSE (
+            REPLACE(REPLACE(REPLACE(REPLACE(${PURCHASE_SQL_AUTO_PRICE_STR}, ' ', ''), ',', '.'), '₽', ''), ${PURCHASE_SQL_NBSP_UTF8}, '')
+            + 0
+        )
+    END
+)`;
+
+const PURCHASE_IN_TRANSIT_SQL = `COALESCE(
+    med.denorm_in_transit,
+    CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(med.payload_json, '$.inTransit')), '') AS DECIMAL(18,6)),
+    0
+)`;
+
+function buildPurchaseJsonWindowExpr(sortKey) {
+    const k = String(sortKey || '');
+    if (!/^d_(15|30|60|90|180|365)[ab]$/.test(k)) return null;
+    return `CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(fc.windows_json, '$.${k}')), '') AS DECIMAL(20,6))`;
+}
+
+/** Фрагмент `ORDER BY …` (без ключевого слова ORDER BY). */
+function buildPurchaseSqlOrderBy(sortKey, sortDesc) {
+    const desc = sortDesc ? 'DESC' : 'ASC';
+    const num = (expr) => `(${expr}) IS NULL ASC, (${expr}) ${desc}`;
+    const str = (expr) => `${expr} ${desc}`;
+    const tie = ', mse.id ASC';
+
+    switch (sortKey) {
+        case 'code':
+            return `${str('mse.code')}${tie}`;
+        case 'article':
+            return `${str("LOWER(COALESCE(TRIM(med.denorm_article), ''))")}${tie}`;
+        case 'name':
+            return `${str('mse.name')}${tie}`;
+        case 'supplier':
+            return `mse.supplier ${desc}, mse.supplier2 ${desc}${tie}`;
+        case 'buy_price':
+            return `${num(PURCHASE_SQL_PRICE_NUM)}${tie}`;
+        case 'automation_price':
+            return `${num(PURCHASE_SQL_AUTO_PRICE_NUM)}${tie}`;
+        case 'min_stock':
+            return `${num('CAST(mse.min_stock AS DECIMAL(20,6))')}${tie}`;
+        case 'min_stock_dg':
+            return `${num('CAST(po.min_stock_dg AS DECIMAL(20,6))')}${tie}`;
+        case 'multiplicity':
+            return `${num('CAST(po.multiplicity AS DECIMAL(20,6))')}${tie}`;
+        case 'proposed_min_stock':
+            return `${num('CAST(po.proposed_min_stock AS DECIMAL(20,6))')}${tie}`;
+        case 'stock':
+            return `${num('CAST(COALESCE(mse.stock,0) AS DECIMAL(20,6))')}${tie}`;
+        case 'is_archived':
+            return `${str('mse.is_archived')}${tie}`;
+        case 'formula_proposed_min_stock':
+            return `${num('CAST(fc.proposed AS DECIMAL(20,6))')}${tie}`;
+        case 'in_transit':
+            return `${num(`CAST(${PURCHASE_IN_TRANSIT_SQL} AS DECIMAL(20,6))`)}${tie}`;
+        default: {
+            const w = buildPurchaseJsonWindowExpr(sortKey);
+            if (w) return `${num(w)}${tie}`;
+            return `${str('mse.code')}${tie}`;
+        }
+    }
+}
+
+/**
+ * WHERE для списка закупок (как раньше в `purchaseListBuildBaseSnapshot`).
+ * @returns {{ whereSql: string, whereParams: any[], incompletePack: boolean }}
+ */
+function buildPurchaseListWhereFragments(req) {
+    const search = String(req.query.search || '').trim();
+    const supplier = String(req.query.supplier || '').trim();
+    const archived = String(req.query.archived || 'active').toLowerCase();
+    const stockPositionMode = String(req.query.stock_position || 'yes').toLowerCase();
+    const noLongerMode = String(req.query.no_longer_cooperation || 'not_stopped').toLowerCase();
+    const includeBundles = String(req.query.include_bundles || '0') === '1';
+    const onlyStock = String(req.query.only_stock || '0') === '1';
+    const zeroStockNoTransit = String(req.query.zero_stock_no_transit || '0') === '1';
+    const zeroStockOnly = String(req.query.zero_stock || '0') === '1';
+    const noMultiplicity = String(req.query.no_multiplicity || '0') === '1';
+    const incompletePack = String(req.query.incomplete_pack || '0') === '1';
+
+    const where = ['1=1'];
+    const params = [];
+
+    if (archived === 'active') where.push('mse.is_archived = 0');
+    else if (archived === 'archive' || archived === 'archived' || archived === '1') where.push('mse.is_archived = 1');
+
+    if (stockPositionMode === 'yes') where.push("LOWER(mse.stock_position) = 'да'");
+    else if (stockPositionMode === 'no') where.push("(mse.stock_position IS NULL OR LOWER(mse.stock_position) <> 'да')");
+
+    if (!includeBundles) where.push("(mse.type IS NULL OR LOWER(mse.type) NOT LIKE '%комплект%')");
+
+    if (search) {
+        const v = `%${search.toLowerCase()}%`;
+        where.push('(LOWER(mse.code) LIKE ? OR LOWER(mse.name) LIKE ? OR LOWER(mse.supplier) LIKE ? OR LOWER(mse.supplier2) LIKE ?)');
+        params.push(v, v, v, v);
+    }
+
+    if (supplier) {
+        const v = `%${supplier.toLowerCase()}%`;
+        where.push('(LOWER(mse.supplier) LIKE ? OR LOWER(mse.supplier2) LIKE ?)');
+        params.push(v, v);
+    }
+
+    if (onlyStock) where.push('COALESCE(mse.stock, 0) > 0');
+
+    if (zeroStockNoTransit) {
+        where.push('COALESCE(mse.stock, 0) <= 0');
+        where.push(
+            'COALESCE(med.denorm_in_transit, CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(med.payload_json, \'$.inTransit\')), \'\') AS DECIMAL(18,6)), 0) <= 0',
+        );
+    } else if (zeroStockOnly) {
+        where.push('COALESCE(mse.stock, 0) <= 0');
+    }
+
+    if (noMultiplicity) {
+        where.push(
+            '(po.multiplicity IS NULL OR TRIM(CAST(po.multiplicity AS CHAR)) = \'\' OR CAST(TRIM(CAST(po.multiplicity AS CHAR)) AS DECIMAL(18,6)) < 1)',
+        );
+    }
+
+    if (incompletePack) {
+        where.push(sqlIncompletePackPredicate());
+    }
+
+    if (noLongerMode === 'stopped') {
+        where.push("LOWER(TRIM(COALESCE(mse.no_longer_cooperation, ''))) = 'да'");
+    } else if (noLongerMode === 'not_stopped') {
+        where.push("LOWER(TRIM(COALESCE(mse.no_longer_cooperation, ''))) <> 'да'");
+    }
+
+    return {
+        whereSql: where.join(' AND '),
+        whereParams: params,
+        incompletePack,
+    };
+}
+
+function buildPurchaseBaseFromJoin(incompletePack) {
+    return `
+                FROM ms_export mse
+                LEFT JOIN dg_purchase_overrides po ON po.code = mse.code
+                LEFT JOIN ms_entity_details med ON med.uuid = mse.uuid
+                ${incompletePack ? `LEFT JOIN (${MS_EXPORT_BUNDLE_MIN_SUFFIX_SUBSQL}) bb ON bb.base_code = mse.code` : ''}
+            `;
+}
+
+function buildPurchaseCountFromJoin(incompletePack) {
+    if (incompletePack) return buildPurchaseBaseFromJoin(true);
+    return `
+                FROM ms_export mse
+                LEFT JOIN dg_purchase_overrides po ON po.code = mse.code
+                LEFT JOIN ms_entity_details med ON med.uuid = mse.uuid
+            `;
+}
+
+async function purchaseListQueryPaged(db, appSettings, req, runOpts = {}) {
+    const bench = Boolean(runOpts.bench);
+    const benchOut = bench ? {} : null;
+
+    let t0 = process.hrtime.bigint();
+    const dataRev = await loadPurchaseDataRevisionCached(db);
+    if (bench) benchOut.data_rev_ms = Number(process.hrtime.bigint() - t0) / 1e6;
+
+    const formulaFpVal = buildFormulaFingerprint(appSettings);
+    const limitRaw = parseInt(req.query.limit, 10);
+    const offsetRaw = parseInt(req.query.offset, 10);
+    const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(1000, limitRaw) : 100;
+    const offset = Number.isFinite(offsetRaw) && offsetRaw >= 0 ? offsetRaw : 0;
+    const sortKeyRaw = String(req.query.sort_by || 'code').trim();
+    const sortKey = PURCHASE_SORT_KEYS.has(sortKeyRaw) ? sortKeyRaw : 'code';
+    const sortDir = String(req.query.sort_dir || 'asc').toLowerCase() === 'desc' ? 'desc' : 'asc';
+    const sortDesc = sortDir === 'desc';
+
+    const frag = buildPurchaseListWhereFragments(req);
+    const orderBy = buildPurchaseSqlOrderBy(sortKey, sortDesc);
+
+    const countFromJoin = buildPurchaseCountFromJoin(frag.incompletePack);
+    const countSql = `SELECT COUNT(*) AS cnt ${countFromJoin} WHERE ${frag.whereSql}`;
+    const baseFromJoin = buildPurchaseBaseFromJoin(frag.incompletePack);
+    const listSql = `
+                SELECT
+                    mse.code, mse.name, mse.supplier, mse.supplier2, mse.uuid, mse.type,
+                    mse.is_archived, mse.stock_position, mse.no_longer_cooperation,
+                    mse.buy_price, mse.min_stock, mse.stock, mse.automation_price,
+                    mse.synced_at,
+                    po.min_stock_dg, po.multiplicity,
+                    po.proposed_min_stock, po.pack_qty_manual, po.updated_at AS override_updated_at,
+                    NULL AS payload_json,
+                    med.denorm_article,
+                    med.denorm_in_transit,
+                    med.denorm_pack_qty_auto,
+                    med.denorm_market_price_rub,
+                    fc.proposed AS formula_cached_proposed,
+                    fc.windows_json AS formula_cached_windows_json
+                ${baseFromJoin}
+                LEFT JOIN dg_formula_proposed_cache fc
+                  ON fc.code = mse.code AND fc.formula_fp = ? AND fc.data_rev = ?
+                WHERE ${frag.whereSql}
+                ORDER BY ${orderBy}
+                LIMIT ? OFFSET ?`;
+    const listParams = [formulaFpVal, dataRev, ...frag.whereParams, limit, offset];
+
+    t0 = process.hrtime.bigint();
+    const countT0 = process.hrtime.bigint();
+    const listT0 = process.hrtime.bigint();
+    const [[countRows], [rows]] = await Promise.all([
+        db.query(countSql, frag.whereParams).then((r) => {
+            if (bench) benchOut.count_ms = Number(process.hrtime.bigint() - countT0) / 1e6;
+            return r;
+        }),
+        db.query(listSql, listParams).then((r) => {
+            if (bench) benchOut.list_sql_ms = Number(process.hrtime.bigint() - listT0) / 1e6;
+            return r;
+        }),
+    ]);
+    if (bench) benchOut.sql_parallel_ms = Number(process.hrtime.bigint() - t0) / 1e6;
+
+    const total = Number(countRows && countRows[0] ? countRows[0].cnt : 0);
+    const pageItems = (rows || []).map((r) => mapPurchaseSqlRowToDataItem(r, { noPayloadForFormula: true }));
+
+    t0 = process.hrtime.bigint();
+    await enrichPurchaseListPage(db, appSettings, pageItems, {
+        dataRev,
+        formulaFp: formulaFpVal,
+        skipBundleWarmup: true,
+        includePayload: false,
+    });
+    if (bench) benchOut.enrich_ms = Number(process.hrtime.bigint() - t0) / 1e6;
+
+    const out = {
+        success: true,
+        total,
+        limit,
+        offset,
+        sort_by: sortKey,
+        sort_dir: sortDir,
+        data: pageItems,
+    };
+    if (bench) out._bench = benchOut;
+    return out;
+}
 
 async function ensureSchema(db) {
     if (schemaReady) return;
@@ -661,121 +846,17 @@ function safeMsCodeForLike(code) {
 /** Окна «снимка» для таблицы закупок: продажи (шт), совмещены с карточкой товара (`SALES_WINDOWS` в product). */
 const PU_SNAPSHOT_SALES_DAYS = [3, 5, 7, 15, 30, 60, 90, 180, 365];
 
-/** Сортировка по колонкам «15/30/… прод., шт» и «дн. нет» — после чанкового enrich `windows_only` по всему набору. */
-const PURCHASE_WINDOW_SORT_KEYS = new Set([
-    'd_15a',
-    'd_15b',
-    'd_30a',
-    'd_30b',
-    'd_60a',
-    'd_60b',
-    'd_90a',
-    'd_90b',
-    'd_180a',
-    'd_180b',
-    'd_365a',
-    'd_365b',
-]);
-
-/** Сортировка по «В пути» — значение уже в снимке из `denorm_in_transit` (`mapPurchaseSqlRowToDataItem`), полный enrich не нужен. */
-const PURCHASE_IN_TRANSIT_SORT = 'in_transit';
-/** Сортировка по предлагаемому неснижаемому: чанковый `formula_only` по снимку, затем страница через `enrichPurchaseListPage`. */
-const PURCHASE_FORMULA_SORT = 'formula_proposed_min_stock';
-
-/** До этого числа строк после фильтра — enrich всего снимка сразу; больше — только текущая страница (кроме сортировки по d_* / формуле). */
-const PURCHASE_ENRICH_ALL_MAX_ROWS = 600;
-
-/** @returns {'formula_only'|'windows_only'|null} */
-function purchaseSnapshotSortEnrichMode(sortKey) {
-    if (!ALLOWED_SORT[String(sortKey || '')]) return null;
-    if (String(sortKey) === PURCHASE_IN_TRANSIT_SORT) return null;
-    if (String(sortKey) === PURCHASE_FORMULA_SORT) return 'formula_only';
-    if (PURCHASE_WINDOW_SORT_KEYS.has(String(sortKey))) return 'windows_only';
-    return null;
-}
-
-function purchasePostSortNumeric(row, key) {
-    const v = row[key];
-    if (key === 'in_transit') {
-        if (v == null || v === '') return null;
-    }
-    const n = Number(v);
-    return Number.isFinite(n) ? n : null;
-}
-
-function sortPurchaseDataByKey(data, sortKey, desc) {
-    sortPurchaseSnapshotItems(data, sortKey, desc);
-}
-
-const PURCHASE_STRING_SORT_KEYS = new Set(['code', 'article', 'name', 'supplier']);
-
-function parsePurchaseRowSortValue(row, sortKey) {
-    if (
-        PURCHASE_WINDOW_SORT_KEYS.has(sortKey) ||
-        sortKey === PURCHASE_FORMULA_SORT ||
-        sortKey === PURCHASE_IN_TRANSIT_SORT
-    ) {
-        return purchasePostSortNumeric(row, sortKey);
-    }
-    if (sortKey === 'buy_price') {
-        const s = String(row.buy_price || '');
-        const cleaned = s.replace(/₽/g, '').replace(/\s/g, '').replace(',', '.');
-        const n = Number(cleaned);
-        return Number.isFinite(n) ? n : null;
-    }
-    if (sortKey === 'supplier') return String(row.supplier_label || row.supplier || '');
-    if (PURCHASE_STRING_SORT_KEYS.has(sortKey)) return String(row[sortKey] || '');
-    const n = Number(row[sortKey]);
-    return Number.isFinite(n) ? n : null;
-}
-
-/** Сортировка по уже обогащённому снимку (все колонки таблицы закупок). */
-function sortPurchaseSnapshotItems(data, sortKey, desc) {
-    const strMode = PURCHASE_STRING_SORT_KEYS.has(sortKey);
-    data.sort((a, b) => {
-        const va = parsePurchaseRowSortValue(a, sortKey);
-        const vb = parsePurchaseRowSortValue(b, sortKey);
-        if (strMode) {
-            const cmp = String(va || '').localeCompare(String(vb || ''), 'ru');
-            if (cmp !== 0) return desc ? -cmp : cmp;
-            return String(a.code || '').localeCompare(String(b.code || ''), 'ru');
-        }
-        const na = va != null ? va : desc ? -1e18 : 1e18;
-        const nb = vb != null ? vb : desc ? -1e18 : 1e18;
-        if (nb === na) return String(a.code || '').localeCompare(String(b.code || ''), 'ru');
-        return desc ? nb - na : na - nb;
-    });
-}
-
-function purchaseListPageFromSnapshot(snapshot, req) {
-    const limitRaw = parseInt(req.query.limit, 10);
-    const offsetRaw = parseInt(req.query.offset, 10);
-    const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(1000, limitRaw) : 100;
-    const offset = Number.isFinite(offsetRaw) && offsetRaw >= 0 ? offsetRaw : 0;
-    const sortKey = ALLOWED_SORT[String(req.query.sort_by || 'code')] ? String(req.query.sort_by || 'code') : 'code';
-    const sortDir = String(req.query.sort_dir || 'asc').toLowerCase() === 'desc' ? 'desc' : 'asc';
-    const items = snapshot.items.slice();
-    sortPurchaseSnapshotItems(items, sortKey, sortDir === 'desc');
-    return {
-        success: true,
-        total: snapshot.total,
-        limit,
-        offset,
-        sort_by: sortKey,
-        sort_dir: sortDir,
-        data: items.slice(offset, offset + limit),
-    };
-}
-
 /**
  * @param {{ dataRev?: string, formulaFp?: string }} [formulaMeta] — для `formula_cached_proposed` (паритет с основным списком).
  */
-async function loadMsPayloadRowsForCodes(db, codes, formulaMeta) {
+async function loadMsPayloadRowsForCodes(db, codes, formulaMeta, loadOpts = {}) {
+    const includePayload = Boolean(loadOpts.includePayload);
     const list = [...new Set((codes || []).map((c) => String(c || '').trim()).filter(Boolean))];
     if (!list.length) return [];
     const rev = formulaMeta && formulaMeta.dataRev != null ? String(formulaMeta.dataRev) : '';
     const fp = formulaMeta && formulaMeta.formulaFp != null ? String(formulaMeta.formulaFp) : '';
     const useFc = rev !== '' && fp !== '';
+    const payloadSel = includePayload ? 'med.payload_json' : 'NULL AS payload_json';
     const out = [];
     for (let i = 0; i < list.length; i += PURCHASE_CODES_SQL_CHUNK) {
         const part = list.slice(i, i + PURCHASE_CODES_SQL_CHUNK);
@@ -795,7 +876,7 @@ async function loadMsPayloadRowsForCodes(db, codes, formulaMeta) {
                     mse.synced_at,
                     po.min_stock_dg, po.multiplicity,
                     po.proposed_min_stock, po.pack_qty_manual, po.updated_at AS override_updated_at,
-                    med.payload_json,
+                    ${payloadSel},
                     med.denorm_article,
                     med.denorm_in_transit,
                     med.denorm_pack_qty_auto,
@@ -813,92 +894,35 @@ async function loadMsPayloadRowsForCodes(db, codes, formulaMeta) {
     return out;
 }
 
-/** Обогащение только строк текущей страницы (после лёгкого снимка без payload_json на весь каталог). */
+/** Обогащение только строк текущей страницы (после SQL-списка без payload в первом SELECT). */
 async function enrichPurchaseListPage(db, appSettings, pageItems, snapshotMeta = {}) {
     if (!pageItems.length) return;
     const codes = pageItems.map((d) => d.code).filter(Boolean);
     const dataRev =
         snapshotMeta && snapshotMeta.dataRev != null && String(snapshotMeta.dataRev) !== ''
             ? String(snapshotMeta.dataRev)
-            : await loadPurchaseDataRevision(db);
+            : await loadPurchaseDataRevisionCached(db);
     const formulaFp =
         snapshotMeta && snapshotMeta.formulaFp != null && String(snapshotMeta.formulaFp) !== ''
             ? String(snapshotMeta.formulaFp)
             : buildFormulaFingerprint(appSettings);
-    const sqlRows = await loadMsPayloadRowsForCodes(db, codes, { dataRev, formulaFp });
-    const byCode = new Map((sqlRows || []).map((r) => [String(r.code), mapPurchaseSqlRowToDataItem(r)]));
+    const includePayload = snapshotMeta.includePayload === true;
+    const sqlRows = await loadMsPayloadRowsForCodes(
+        db,
+        codes,
+        { dataRev, formulaFp },
+        { includePayload },
+    );
+    const byCode = new Map((sqlRows || []).map((r) => [String(r.code), mapPurchaseSqlRowToDataItem(r, { noPayloadForFormula: !includePayload })]));
     for (let i = 0; i < pageItems.length; i += 1) {
         const fresh = byCode.get(String(pageItems[i].code || ''));
         if (fresh) Object.assign(pageItems[i], fresh);
     }
-    await enrichPurchaseRowsWithFormula(db, appSettings || {}, sqlRows, pageItems, { mode: 'all' });
-}
-
-/**
- * Обогащение всего снимка чанками для сортировки по формуле (`formula_only`) или по окнам `d_*` (`windows_only`).
- * Режим `all` — только при изначально полном снимке (мало строк); сюда не передаётся для «тяжёлой» сортировки.
- * После `formula_only` / `windows_only` оставляем `enrichMode: 'page'`, чтобы `enrichPurchaseListPage` догнал текущую страницу.
- */
-async function enrichPurchaseSnapshotFull(db, appSettings, snapshot, enrichModeArg) {
-    if (snapshot.enrichMode === 'full' || !snapshot.items.length) return;
-    const enrichMode = enrichModeArg === 'windows_only' || enrichModeArg === 'formula_only' ? enrichModeArg : 'all';
-    const dataRev =
-        snapshot.dataRev != null && String(snapshot.dataRev) !== ''
-            ? String(snapshot.dataRev)
-            : await loadPurchaseDataRevision(db);
-    const formulaFp =
-        snapshot.formulaFp != null && String(snapshot.formulaFp) !== ''
-            ? String(snapshot.formulaFp)
-            : buildFormulaFingerprint(appSettings);
-    const codes = snapshot.items.map((d) => String(d.code || '').trim()).filter(Boolean);
-    for (let i = 0; i < codes.length; i += PURCHASE_CODES_SQL_CHUNK) {
-        const part = codes.slice(i, i + PURCHASE_CODES_SQL_CHUNK);
-        const sqlRows = await loadMsPayloadRowsForCodes(db, part, { dataRev, formulaFp });
-        const byCode = new Map(sqlRows.map((r) => [String(r.code), r]));
-        const chunkItems = snapshot.items.filter((d) => byCode.has(String(d.code)));
-        if (chunkItems.length) {
-            await enrichPurchaseRowsWithFormula(db, appSettings || {}, sqlRows, chunkItems, { mode: enrichMode });
-        }
-        await new Promise((resolve) => setImmediate(resolve));
-    }
-    snapshot.enrichMode = enrichMode === 'all' ? 'full' : 'page';
-}
-
-/**
- * Ответ GET /api/purchase: пагинация/сортировка; для больших выборок — enrich только страницы.
- */
-async function purchaseListRespondFromSnapshot(db, appSettings, snapshot, req) {
-    const limitRaw = parseInt(req.query.limit, 10);
-    const offsetRaw = parseInt(req.query.offset, 10);
-    const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(1000, limitRaw) : 100;
-    const offset = Number.isFinite(offsetRaw) && offsetRaw >= 0 ? offsetRaw : 0;
-    const sortKey = ALLOWED_SORT[String(req.query.sort_by || 'code')] ? String(req.query.sort_by || 'code') : 'code';
-    const sortDir = String(req.query.sort_dir || 'asc').toLowerCase() === 'desc' ? 'desc' : 'asc';
-
-    const sortEnrichMode = purchaseSnapshotSortEnrichMode(sortKey);
-    let ranSortSnapshotEnrich = false;
-    if (snapshot.enrichMode !== 'full' && sortEnrichMode) {
-        await enrichPurchaseSnapshotFull(db, appSettings, snapshot, sortEnrichMode);
-        ranSortSnapshotEnrich = true;
-    }
-
-    const items = snapshot.items.slice();
-    sortPurchaseSnapshotItems(items, sortKey, sortDir === 'desc');
-    const page = items.slice(offset, offset + limit);
-
-    if (snapshot.enrichMode !== 'full' || ranSortSnapshotEnrich) {
-        await enrichPurchaseListPage(db, appSettings, page, snapshot);
-    }
-
-    return {
-        success: true,
-        total: snapshot.total,
-        limit,
-        offset,
-        sort_by: sortKey,
-        sort_dir: sortDir,
-        data: page,
-    };
+    await enrichPurchaseRowsWithFormula(db, appSettings || {}, sqlRows, pageItems, {
+        mode: 'all',
+        noPayloadForFormula: !includePayload,
+        skipBundleWarmup: snapshotMeta.skipBundleWarmup !== false,
+    });
 }
 
 /** Одна строка списка закупок (общая для полного SELECT с payload и лёгкого без med). */
@@ -1300,7 +1324,7 @@ async function enrichPurchaseRowsWithFormula(db, appSettings, sqlRows, data, opt
         nonBundSafeList.length ? loadPurchaseBundleCacheLastUpdatedMap(db, nonBundSafeList) : Promise.resolve(new Map()),
     ]);
 
-    if (warmPairs.length <= PURCHASE_BUNDLE_WARM_MAX_CODES) {
+    if (!opts.skipBundleWarmup && warmPairs.length <= PURCHASE_BUNDLE_WARM_MAX_CODES) {
         const warmOnlyPairs = warmPairs.filter(([, isBund]) => !isBund);
         const nowMs = Date.now();
         /** Мало параллельных LIKE по `ms_entity_details`: при 8–10 одновременно MySQL «встаёт» и ответ закупок уходит в десятки секунд. */
@@ -1535,285 +1559,276 @@ async function enrichPurchaseRowsWithFormula(db, appSettings, sqlRows, data, opt
     }
 }
 
-/** Все колонки сортировки таблицы закупок (прогрев asc/desc в RAM после снимка). */
-const PURCHASE_WARMUP_SORT_KEYS = Object.keys(ALLOWED_SORT);
+let purchaseListIndexesReady = false;
 
-function touchPurchaseSnapshotSorts(snapshot, reqTemplate) {
-    let touches = 0;
-    const baseQuery = Object.assign({}, reqTemplate.query || {});
-    for (let si = 0; si < PURCHASE_WARMUP_SORT_KEYS.length; si += 1) {
-        const sortKey = PURCHASE_WARMUP_SORT_KEYS[si];
-        for (const sortDir of ['asc', 'desc']) {
-            purchaseListPageFromSnapshot(snapshot, {
-                query: Object.assign({}, baseQuery, {
-                    sort_by: sortKey,
-                    sort_dir: sortDir,
-                    limit: '100',
-                    offset: '0',
-                }),
-            });
-            touches += 1;
-        }
-    }
-    return touches;
-}
-
-/** Пресеты фильтров для прогрева снимка (сортировка не в ключе — один снимок на фильтр).
- *  Согласовано с UI закупок: не больше одного из
- *  only_stock | include_bundles | zero_stock | zero_stock_no_transit | no_multiplicity | incomplete_pack
- *  (один «Доп. фильтр» в селекте). Комбинации с двумя такими флагами убраны — их нельзя набрать в форме.
- */
-const PURCHASE_WARMUP_QUERY_PRESETS = [
-    {},
-    { only_stock: '1' },
-    { zero_stock: '1' },
-    { zero_stock_no_transit: '1' },
-    { no_multiplicity: '1' },
-    { incomplete_pack: '1' },
-    { include_bundles: '1' },
-    { archived: 'all' },
-    { stock_position: 'all' },
-    { no_longer_cooperation: 'all' },
-    { include_bundles: '1', archived: 'all' },
-    { stock_position: 'all', archived: 'all' },
-    { no_longer_cooperation: 'all', stock_position: 'all' },
-    { stock_position: 'all', only_stock: '1' },
-    { no_longer_cooperation: 'all', zero_stock: '1' },
-    { archived: 'all', stock_position: 'all', no_longer_cooperation: 'all' },
-    { archived: 'all', zero_stock: '1' },
-    { archived: 'archived', include_bundles: '1' },
-    { archived: 'archived' },
-    { stock_position: 'no' },
-];
-
-/**
- * Фоновый прогрев снимков списка закупок.
- * @param {{ force?: boolean, warmSorts?: boolean, presets?: object[] }} [options]
- *   force — пересобрать даже при живом кэше (утренний прогрев 08:00);
- *   warmSorts — прогреть все пары sort×dir в RAM (**по умолчанию false**; на больших выборках 52 полных сорта × пресет
- *     сильно грузят CPU и не ускоряют первый заход — только кэш снимка по фильтрам). Включить явно: `warmSorts: true`
- *     или для задачи `purchase_warmup` в `server.js`: `PURCHASE_WARMUP_SORT_TOUCHES=1`.
- *   presets — подмножество `PURCHASE_WARMUP_QUERY_PRESETS` (progressive на старте Node — по одному пресету за вызов, см. `runPurchaseStartupProgressiveWarmup` / `server.js`).
- * @returns {Promise<{ built: number, skipped: number, sortTouches: number, errors: number }>}
- */
-async function warmupPurchaseListCaches(db, appSettings, options = {}) {
-    const force = options.force === true;
-    const warmSorts = options.warmSorts === true;
-    const presets = Array.isArray(options.presets) ? options.presets : PURCHASE_WARMUP_QUERY_PRESETS;
-    const stats = { built: 0, skipped: 0, sortTouches: 0, errors: 0 };
-    const runLabel = String(options._warmupRunLabel || '').trim();
-    if (runLabel) {
-        purchaseCacheLogFire(runLabel, 'warmup batch begin', {
-            presets: presets.length,
-            warmSorts,
-            force,
-            idx: options._warmupPresetIndex,
-            total: options._warmupPresetTotal,
-        });
-    }
-
-    await ensureSchema(db);
-    if (typeof require('./msSales').ensureSchema === 'function') {
-        await require('./msSales').ensureSchema(db);
-    }
-    const base = {
-        archived: 'active',
-        stock_position: 'yes',
-        no_longer_cooperation: 'not_stopped',
-        include_bundles: '0',
-        only_stock: '0',
-        zero_stock: '0',
-        zero_stock_no_transit: '0',
-        no_multiplicity: '0',
-        incomplete_pack: '0',
-    };
-    const rev = await loadPurchaseDataRevision(db);
-
-    for (let i = 0; i < presets.length; i += 1) {
-        const extra = presets[i];
-        const q = Object.assign({}, base, extra);
-        const req = { query: q };
-        const key = buildPurchaseListCacheKey(req, appSettings, rev);
-        if (runLabel) {
-            purchaseCacheLogFire(runLabel, `preset ${i + 1}/${presets.length} start`, { extra });
-        }
-        const cached = purchaseListBaseCache.get(key);
-        if (!force && cached && Date.now() - cached.ts < PURCHASE_LIST_CACHE_TTL_MS) {
-            stats.skipped += 1;
-            if (warmSorts) {
-                stats.sortTouches += touchPurchaseSnapshotSorts(cached, req);
-            }
-            if (runLabel) {
-                purchaseCacheLogFire(runLabel, `preset ${i + 1}/${presets.length} skipped (cache ok)`, { extra });
-            }
-            await new Promise((resolve) => setImmediate(resolve));
-            continue;
-        }
+/** Идемпотентные индексы под дефолтный список закупок (не блокировать GET). */
+async function ensurePurchaseListPerfIndexes(db) {
+    if (purchaseListIndexesReady) return;
+    const specs = [
+        {
+            table: 'ms_export',
+            index: 'idx_ms_export_purchase_default',
+            ddl: 'CREATE INDEX idx_ms_export_purchase_default ON ms_export (is_archived, stock_position, code)',
+        },
+        {
+            table: 'dg_formula_proposed_cache',
+            index: 'idx_dg_formula_cache_rev_fp_code',
+            ddl: 'CREATE INDEX idx_dg_formula_cache_rev_fp_code ON dg_formula_proposed_cache (data_rev(191), formula_fp(191), code)',
+        },
+    ];
+    for (const s of specs) {
         try {
-            const snap = await purchaseListBuildBaseSnapshot(db, appSettings, req, rev);
-            rememberPurchaseListBaseCache(key, snap);
-            stats.built += 1;
-            if (warmSorts) {
-                stats.sortTouches += touchPurchaseSnapshotSorts(snap, req);
-            }
-            if (runLabel) {
-                purchaseCacheLogFire(runLabel, `preset ${i + 1}/${presets.length} built`, { extra });
-            }
+            const [ex] = await db.query(
+                `SELECT 1 FROM information_schema.statistics
+                 WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ? LIMIT 1`,
+                [s.table, s.index],
+            );
+            if (ex && ex.length) continue;
+            await db.query(s.ddl);
         } catch (e) {
-            stats.errors += 1;
-            console.warn('[purchase][warmup]', (e && e.message) || e);
-            if (runLabel) {
-                purchaseCacheLogFire(runLabel, `preset ${i + 1}/${presets.length} error`, {
-                    err: String(e && e.message),
-                });
-            }
+            console.warn('[purchase] ensurePurchaseListPerfIndexes:', s.index, e && e.message ? e.message : e);
         }
-        await new Promise((resolve) => setImmediate(resolve));
     }
-    if (runLabel) {
-        purchaseCacheLogFire(runLabel, 'warmup batch end', stats);
-    }
-    return stats;
+    purchaseListIndexesReady = true;
 }
 
 /**
- * Полный обогащённый снимок по фильтрам (без сортировки/пагинации).
- * Дорого один раз; дальше — только slice/sort из `purchaseListBaseCache`.
+ * Покрытие `dg_formula_proposed_cache` для текущих фильтров списка + последний успешный batch.
+ * @returns {Promise<object>}
  */
-async function purchaseListBuildBaseSnapshot(db, appSettings, req, dataRevPre) {
-            const dataRev =
-                dataRevPre != null && typeof dataRevPre === 'string' ? dataRevPre : await loadPurchaseDataRevision(db);
-            const formulaFpVal = buildFormulaFingerprint(appSettings);
-            const search = String(req.query.search || '').trim();
-            const supplier = String(req.query.supplier || '').trim();
-            const archived = String(req.query.archived || 'active').toLowerCase();
-            const stockPositionMode = String(req.query.stock_position || 'yes').toLowerCase();
-            const noLongerMode = String(req.query.no_longer_cooperation || 'not_stopped').toLowerCase();
-            const includeBundles = String(req.query.include_bundles || '0') === '1';
-            const onlyStock = String(req.query.only_stock || '0') === '1';
-            const zeroStockNoTransit = String(req.query.zero_stock_no_transit || '0') === '1';
-            const zeroStockOnly = String(req.query.zero_stock || '0') === '1';
-            const noMultiplicity = String(req.query.no_multiplicity || '0') === '1';
-            const incompletePack = String(req.query.incomplete_pack || '0') === '1';
-
-            const where = ['1=1'];
-            const params = [];
-
-            if (archived === 'active') where.push('mse.is_archived = 0');
-            else if (archived === 'archive' || archived === 'archived' || archived === '1') where.push('mse.is_archived = 1');
-
-            if (stockPositionMode === 'yes') where.push("LOWER(mse.stock_position) = 'да'");
-            else if (stockPositionMode === 'no') where.push("(mse.stock_position IS NULL OR LOWER(mse.stock_position) <> 'да')");
-
-            if (!includeBundles) where.push("(mse.type IS NULL OR LOWER(mse.type) NOT LIKE '%комплект%')");
-
-            if (search) {
-                const v = `%${search.toLowerCase()}%`;
-                where.push('(LOWER(mse.code) LIKE ? OR LOWER(mse.name) LIKE ? OR LOWER(mse.supplier) LIKE ? OR LOWER(mse.supplier2) LIKE ?)');
-                params.push(v, v, v, v);
-            }
-
-            if (supplier) {
-                const v = `%${supplier.toLowerCase()}%`;
-                where.push('(LOWER(mse.supplier) LIKE ? OR LOWER(mse.supplier2) LIKE ?)');
-                params.push(v, v);
-            }
-
-            if (onlyStock) where.push('COALESCE(mse.stock, 0) > 0');
-
-            if (zeroStockNoTransit) {
-                where.push('COALESCE(mse.stock, 0) <= 0');
-                where.push(
-                    'COALESCE(med.denorm_in_transit, CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(med.payload_json, \'$.inTransit\')), \'\') AS DECIMAL(18,6)), 0) <= 0',
-                );
-            } else if (zeroStockOnly) {
-                where.push('COALESCE(mse.stock, 0) <= 0');
-            }
-
-            if (noMultiplicity) {
-                where.push(
-                    '(po.multiplicity IS NULL OR TRIM(CAST(po.multiplicity AS CHAR)) = \'\' OR CAST(TRIM(CAST(po.multiplicity AS CHAR)) AS DECIMAL(18,6)) < 1)',
-                );
-            }
-
-            if (incompletePack) {
-                where.push(sqlIncompletePackPredicate());
-            }
-
-            if (noLongerMode === 'stopped') {
-                where.push("LOWER(TRIM(COALESCE(mse.no_longer_cooperation, ''))) = 'да'");
-            } else if (noLongerMode === 'not_stopped') {
-                where.push("LOWER(TRIM(COALESCE(mse.no_longer_cooperation, ''))) <> 'да'");
-            }
-
-            const whereSql = where.join(' AND ');
-
-            const baseFromJoin = `
-                FROM ms_export mse
-                LEFT JOIN dg_purchase_overrides po ON po.code = mse.code
-                LEFT JOIN ms_entity_details med ON med.uuid = mse.uuid
-                ${incompletePack ? `LEFT JOIN (${MS_EXPORT_BUNDLE_MIN_SUFFIX_SUBSQL}) bb ON bb.base_code = mse.code` : ''}
-            `;
-
-            const listSelectBody = `
-                SELECT
-                    mse.code, mse.name, mse.supplier, mse.supplier2, mse.uuid, mse.type,
-                    mse.is_archived, mse.stock_position, mse.no_longer_cooperation,
-                    mse.buy_price, mse.min_stock, mse.stock, mse.automation_price,
-                    mse.synced_at,
-                    po.min_stock_dg, po.multiplicity,
-                    po.proposed_min_stock, po.pack_qty_manual, po.updated_at AS override_updated_at,
-                    NULL AS payload_json,
-                    med.denorm_article,
-                    med.denorm_in_transit,
-                    med.denorm_pack_qty_auto,
-                    med.denorm_market_price_rub,
-                    fc.proposed AS formula_cached_proposed,
-                    fc.windows_json AS formula_cached_windows_json
-                ${baseFromJoin}
-                LEFT JOIN dg_formula_proposed_cache fc
-                  ON fc.code = mse.code AND fc.formula_fp = ? AND fc.data_rev = ?
-                WHERE ${whereSql}`;
-
-            const countFromJoin =
-                incompletePack
-                    ? baseFromJoin
-                    : `
-                FROM ms_export mse
-                LEFT JOIN dg_purchase_overrides po ON po.code = mse.code
-                LEFT JOIN ms_entity_details med ON med.uuid = mse.uuid
-            `;
-            const countSql = `SELECT COUNT(*) AS cnt ${countFromJoin} WHERE ${whereSql}`;
-            const listSqlFull = `${listSelectBody} ORDER BY mse.id ASC`;
-
-            const listParams = [formulaFpVal, dataRev, ...params];
-            const [[rows], [countRow]] = await Promise.all([
-                db.query(listSqlFull, listParams),
-                db.query(countSql, params),
-            ]);
-
-            const total = Number(countRow[0]?.cnt || 0);
-            const enrichAll = (rows || []).length <= PURCHASE_ENRICH_ALL_MAX_ROWS;
-            const data = (rows || []).map((r) =>
-                mapPurchaseSqlRowToDataItem(r, enrichAll ? {} : { noPayloadForFormula: true }),
-            );
-            if (enrichAll) {
-                await enrichPurchaseRowsWithFormula(db, appSettings || {}, rows, data, { mode: 'all' });
-            }
-
-            return {
-                total,
-                items: data,
-                enrichMode: enrichAll ? 'full' : 'page',
-                dataRev,
-                formulaFp: formulaFpVal,
-            };
+function parsePurchaseFormulaBatchRunMessage(message) {
+    const msg = String(message || '');
+    const out = { processed: null, upserted: null, batch_data_rev: null };
+    const mProc = msg.match(/обработано\s+(\d+)/i);
+    const mUps = msg.match(/записано\s+(\d+)/i);
+    const mRev = msg.match(/data_rev=([^\s,;]+)/i);
+    if (mProc) out.processed = Number(mProc[1]);
+    if (mUps) out.upserted = Number(mUps[1]);
+    if (mRev) out.batch_data_rev = mRev[1];
+    return out;
 }
 
-async function purchaseListHandlerCore(db, appSettings, req) {
+async function loadPurchaseFormulaCacheStatus(db, appSettings, req) {
+    /** Для покрытия — всегда свежая ревизия (не TTL-кэш: после batch/синка МС иначе «ложное» частичное покрытие). */
     const dataRev = await loadPurchaseDataRevision(db);
-    const snap = await purchaseListBuildBaseSnapshot(db, appSettings, req, dataRev);
-    return purchaseListRespondFromSnapshot(db, appSettings, snap, req);
+    purchaseDataRevCache = { rev: dataRev, ts: Date.now() };
+    const formulaFp = buildFormulaFingerprint(appSettings);
+    const frag = buildPurchaseListWhereFragments(req);
+    const countFromJoin = buildPurchaseCountFromJoin(frag.incompletePack);
+    const countSql = `SELECT COUNT(*) AS cnt ${countFromJoin} WHERE ${frag.whereSql}`;
+    const baseFromJoin = buildPurchaseBaseFromJoin(frag.incompletePack);
+    const cacheSql = `SELECT COUNT(*) AS cnt ${baseFromJoin}
+                INNER JOIN dg_formula_proposed_cache fc
+                  ON fc.code = mse.code AND fc.formula_fp = ? AND fc.data_rev = ?
+                WHERE ${frag.whereSql}`;
+    const cacheAnyRevSql = `SELECT COUNT(*) AS cnt ${baseFromJoin}
+                INNER JOIN dg_formula_proposed_cache fc
+                  ON fc.code = mse.code AND fc.formula_fp = ?
+                WHERE ${frag.whereSql}`;
+    const cacheStaleRevSql = `SELECT COUNT(*) AS cnt ${baseFromJoin}
+                INNER JOIN dg_formula_proposed_cache fc
+                  ON fc.code = mse.code AND fc.formula_fp = ? AND fc.data_rev <> ?
+                WHERE ${frag.whereSql}`;
+    let selectionTotal = 0;
+    let cachedRows = 0;
+    let cachedRowsAnyRev = 0;
+    let cachedRowsStaleRev = 0;
+    try {
+        const [[countRows], [cacheHitRows], [cacheAnyRows], [cacheStaleRows]] = await Promise.all([
+            db.query(countSql, frag.whereParams),
+            db.query(cacheSql, [formulaFp, dataRev, ...frag.whereParams]),
+            db.query(cacheAnyRevSql, [formulaFp, ...frag.whereParams]),
+            db.query(cacheStaleRevSql, [formulaFp, dataRev, ...frag.whereParams]),
+        ]);
+        selectionTotal = Number(countRows && countRows[0] ? countRows[0].cnt : 0);
+        cachedRows = Number(cacheHitRows && cacheHitRows[0] ? cacheHitRows[0].cnt : 0);
+        cachedRowsAnyRev = Number(cacheAnyRows && cacheAnyRows[0] ? cacheAnyRows[0].cnt : 0);
+        cachedRowsStaleRev = Number(cacheStaleRows && cacheStaleRows[0] ? cacheStaleRows[0].cnt : 0);
+    } catch (e) {
+        console.warn('[purchase][formula-cache-status]', e && e.message ? e.message : e);
+    }
+    let lastBatch = null;
+    let lastBatchSuccess = null;
+    let lastRunInterrupted = false;
+    try {
+        const [runs] = await db.query(
+            `SELECT finished_at, message, trigger_type, status
+             FROM auto_sync_runs
+             WHERE task_type = 'purchase_formula_cache'
+               AND finished_at IS NOT NULL
+             ORDER BY finished_at DESC
+             LIMIT 8`,
+        );
+        for (const r of runs || []) {
+            if (!lastBatch) {
+                lastBatch = {
+                    finished_at: r.finished_at,
+                    message: String(r.message || '').slice(0, 480),
+                    trigger_type: String(r.trigger_type || ''),
+                    status: String(r.status || ''),
+                };
+                if (
+                    r.status === 'interrupted' ||
+                    /закрыта при старте сервера/i.test(String(r.message || ''))
+                ) {
+                    lastRunInterrupted = true;
+                }
+            }
+            const parsed = parsePurchaseFormulaBatchRunMessage(r.message);
+            if (
+                r.status === 'completed' &&
+                parsed.upserted != null &&
+                parsed.processed != null &&
+                /обработано\s+\d+/i.test(String(r.message || ''))
+            ) {
+                lastBatchSuccess = {
+                    finished_at: r.finished_at,
+                    message: String(r.message || '').slice(0, 480),
+                    trigger_type: String(r.trigger_type || ''),
+                    status: 'completed',
+                    ...parsed,
+                };
+                break;
+            }
+        }
+    } catch (_) {
+        /* auto_sync_runs может отсутствовать в тестовой схеме */
+    }
+    const coveragePct =
+        selectionTotal > 0 ? Math.round((cachedRows / selectionTotal) * 1000) / 10 : 0;
+    const revMismatch =
+        selectionTotal > 0 &&
+        cachedRows < selectionTotal &&
+        cachedRowsStaleRev > 0 &&
+        cachedRowsAnyRev >= cachedRows;
+    return {
+        data_rev: dataRev,
+        formula_fp: formulaFp,
+        selection_total: selectionTotal,
+        cached_rows: cachedRows,
+        cached_rows_any_rev: cachedRowsAnyRev,
+        cached_rows_stale_rev: cachedRowsStaleRev,
+        coverage_pct: coveragePct,
+        ready: selectionTotal > 0 && cachedRows >= selectionTotal,
+        rev_mismatch: revMismatch,
+        last_batch: lastBatch,
+        last_batch_success: lastBatchSuccess,
+        last_run_interrupted: lastRunInterrupted,
+    };
+}
+
+async function buildPurchaseListResponseCacheMeta(db, appSettings, req, sortKey, listSource) {
+    const formulaCache = await loadPurchaseFormulaCacheStatus(db, appSettings, req);
+    return {
+        source: listSource,
+        warmup_progress: getPurchaseWarmupProgressPayload(),
+        sort_profile: PURCHASE_HEAVY_SORT_KEYS.has(sortKey) ? 'heavy' : 'fast',
+        formula_cache: formulaCache,
+    };
+}
+
+async function upsertFormulaCacheFromPageItems(db, appSettings, pageItems, dataRev, formulaFp) {
+    if (!pageItems || !pageItems.length) return 0;
+    await ensureFormulaProposedCacheSchema(db);
+    const rev = dataRev != null ? String(dataRev) : await loadPurchaseDataRevisionCached(db);
+    const fp = formulaFp != null ? String(formulaFp) : buildFormulaFingerprint(appSettings);
+    let n = 0;
+    for (const d of pageItems) {
+        const code = String(d.code || '').trim();
+        if (!code) continue;
+        const proposed = d.formula_proposed_min_stock;
+        if (proposed == null || !Number.isFinite(Number(proposed))) continue;
+        const wj = serializeWindowsSnapshot(d);
+        await db.query(
+            `INSERT INTO dg_formula_proposed_cache (code, proposed, formula_fp, data_rev, windows_json)
+             VALUES (?, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE
+               proposed = VALUES(proposed),
+               formula_fp = VALUES(formula_fp),
+               data_rev = VALUES(data_rev),
+               windows_json = VALUES(windows_json),
+               updated_at = CURRENT_TIMESTAMP`,
+            [code, Number(proposed), fp, rev, wj],
+        );
+        n += 1;
+    }
+    return n;
+}
+
+/**
+ * Фоновое заполнение `dg_formula_proposed_cache` для дефолтной выборки закупок (без in-memory снимка).
+ * @param {{ chunkSize?: number, maxCodes?: number, req?: object }} [opts]
+ */
+async function runPurchaseFormulaCacheBatch(db, appSettings, opts = {}) {
+    const chunkSize = Math.min(150, Math.max(20, Number(opts.chunkSize) || 50));
+    const maxCodes = Math.max(0, Number(opts.maxCodes) || 0);
+    const listReq = opts.req && typeof opts.req === 'object' ? opts.req : { query: {} };
+    invalidatePurchaseDataRevisionCache();
+    const dataRev = await loadPurchaseDataRevision(db);
+    purchaseDataRevCache = { rev: dataRev, ts: Date.now() };
+    const formulaFp = buildFormulaFingerprint(appSettings);
+    const frag = buildPurchaseListWhereFragments(listReq);
+    const baseFromJoin = buildPurchaseBaseFromJoin(frag.incompletePack);
+
+    let offset = 0;
+    let processed = 0;
+    let upserted = 0;
+    let errors = 0;
+
+    while (true) {
+        if (maxCodes > 0 && processed >= maxCodes) break;
+        const take = maxCodes > 0 ? Math.min(chunkSize, maxCodes - processed) : chunkSize;
+        const listSql = `
+            SELECT
+                mse.code, mse.name, mse.supplier, mse.supplier2, mse.uuid, mse.type,
+                mse.is_archived, mse.stock_position, mse.no_longer_cooperation,
+                mse.buy_price, mse.min_stock, mse.stock, mse.automation_price,
+                mse.synced_at,
+                po.min_stock_dg, po.multiplicity,
+                po.proposed_min_stock, po.pack_qty_manual, po.updated_at AS override_updated_at,
+                NULL AS payload_json,
+                med.denorm_article,
+                med.denorm_in_transit,
+                med.denorm_pack_qty_auto,
+                med.denorm_market_price_rub,
+                NULL AS formula_cached_proposed,
+                NULL AS formula_cached_windows_json
+            ${baseFromJoin}
+            WHERE ${frag.whereSql}
+            ORDER BY mse.code ASC
+            LIMIT ? OFFSET ?`;
+        const [rows] = await db.query(listSql, [...frag.whereParams, take, offset]);
+        if (!rows || !rows.length) break;
+
+        const pageItems = rows.map((r) => mapPurchaseSqlRowToDataItem(r, { noPayloadForFormula: true }));
+        try {
+            await enrichPurchaseListPage(db, appSettings, pageItems, {
+                dataRev,
+                formulaFp,
+                skipBundleWarmup: true,
+                includePayload: false,
+            });
+            upserted += await upsertFormulaCacheFromPageItems(db, appSettings, pageItems, dataRev, formulaFp);
+        } catch (e) {
+            errors += 1;
+            console.warn('[purchase][formula-cache-batch] chunk error:', e && e.message ? e.message : e);
+        }
+        processed += rows.length;
+        offset += rows.length;
+        if (rows.length < take) break;
+    }
+
+    purchaseDataRevCache = { rev: dataRev, ts: Date.now() };
+    invalidatePurchaseListResponseCache();
+    return { processed, upserted, errors, data_rev: dataRev, formula_fp: formulaFp };
+}
+
+/**
+ * Legacy hook для автосинка `purchase_warmup` / env на старте Node.
+ * In-memory снимки списка закупок отключены — список строится в SQL (`purchaseListQueryPaged`).
+ */
+async function warmupPurchaseListCaches() {
+    return { built: 0, skipped: 1, sortTouches: 0, errors: 0, disabled: true };
 }
 
 function createPurchaseRouter(db, appSettings) {
@@ -1958,28 +1973,38 @@ function createPurchaseRouter(db, appSettings) {
             if (typeof require('./msSales').ensureSchema === 'function') {
                 await require('./msSales').ensureSchema(db);
             }
+            ensurePurchaseListPerfIndexes(db).catch(() => {});
 
-            const dataRev = await loadPurchaseDataRevision(db);
-            const baseKey = buildPurchaseListCacheKey(req, appSettings, dataRev);
-            let baseSnap = purchaseListBaseCache.get(baseKey);
-            const cacheAge = baseSnap ? Date.now() - baseSnap.ts : null;
-            if (!baseSnap || cacheAge >= PURCHASE_LIST_CACHE_TTL_MS) {
-                const built = await purchaseListBuildBaseSnapshot(db, appSettings, req, dataRev);
-                rememberPurchaseListBaseCache(baseKey, built);
-                baseSnap = purchaseListBaseCache.get(baseKey);
+            const dataRev = await loadPurchaseDataRevisionCached(db);
+            const formulaFpVal = buildFormulaFingerprint(appSettings);
+            const cacheKey = buildPurchaseListCacheKey(req, dataRev, formulaFpVal);
+            const cached = purchaseListResponseCache.get(cacheKey);
+            if (cached && Date.now() - cached.ts < PURCHASE_LIST_RESPONSE_CACHE_TTL_MS) {
+                const sortKeyMem = (cached.payload && cached.payload.sort_by) || 'code';
+                const cacheMetaMem = await buildPurchaseListResponseCacheMeta(
+                    db,
+                    appSettings,
+                    req,
+                    sortKeyMem,
+                    'memory',
+                );
+                return res.json({
+                    ...cached.payload,
+                    cache: {
+                        ...cacheMetaMem,
+                        age_ms: Date.now() - cached.ts,
+                        ttl_ms: PURCHASE_LIST_RESPONSE_CACHE_TTL_MS,
+                    },
+                });
             }
-            const responsePayload = await purchaseListRespondFromSnapshot(db, appSettings, baseSnap, req);
-            res.json({
-                ...responsePayload,
-                cache: {
-                    source: 'snapshot',
-                    enrich: baseSnap.enrichMode || 'full',
-                    age_ms: baseSnap ? Date.now() - baseSnap.ts : 0,
-                    ttl_ms: PURCHASE_LIST_CACHE_TTL_MS,
-                    items: baseSnap ? baseSnap.items.length : 0,
-                    warmup_progress: getPurchaseWarmupProgressPayload(),
-                },
-            });
+
+            const responsePayload = await purchaseListQueryPaged(db, appSettings, req);
+            const sortKey = responsePayload.sort_by;
+            const cacheMeta = await buildPurchaseListResponseCacheMeta(db, appSettings, req, sortKey, 'sql');
+            const body = { ...responsePayload, cache: cacheMeta };
+            purchaseListResponseCache.set(cacheKey, { ts: Date.now(), payload: body });
+            trimPurchaseListResponseCache();
+            res.json(body);
         } catch (err) {
             console.error('[purchase][list] error:', err);
             res.status(500).json({ success: false, error: err && err.message ? err.message : 'Внутренняя ошибка' });
@@ -2040,7 +2065,8 @@ function createPurchaseRouter(db, appSettings) {
                 [code]
             );
             const stored = verifyRows && verifyRows[0] ? verifyRows[0] : null;
-            clearPurchaseListResponseCache();
+            invalidatePurchaseListResponseCache();
+            invalidatePurchaseDataRevisionCache();
             res.json({ success: true, code, field, value: num, stored });
         } catch (err) {
             console.error('[purchase][override] error:', err);
@@ -2070,7 +2096,6 @@ function createPurchaseRouter(db, appSettings) {
                 parsed.idx,
                 req.datagonActor || null,
             );
-            clearPurchaseListResponseCache();
             res.json({
                 success: true,
                 rows_read: parsed.rows.length,
@@ -2097,3 +2122,8 @@ module.exports.ensureSchema = ensureSchema;
 module.exports.warmupPurchaseListCaches = warmupPurchaseListCaches;
 module.exports.runPurchaseStartupProgressiveWarmup = runPurchaseStartupProgressiveWarmup;
 module.exports.getPurchaseWarmupProgressPayload = getPurchaseWarmupProgressPayload;
+/** Для `scripts/purchase-list-sql-bench.cjs` — замер `GET /api/purchase` без HTTP. */
+module.exports.purchaseListQueryPaged = purchaseListQueryPaged;
+module.exports.runPurchaseFormulaCacheBatch = runPurchaseFormulaCacheBatch;
+module.exports.PURCHASE_HEAVY_SORT_KEYS = PURCHASE_HEAVY_SORT_KEYS;
+module.exports.invalidatePurchaseListResponseCache = invalidatePurchaseListResponseCache;

@@ -1128,6 +1128,7 @@
           th.style.overflow = "hidden";
           th.style.verticalAlign = "middle";
           if (COLUMN_CENTER_KEYS.has(key)) th.className = "dg-ms-numeric";
+          if (isSortable) th.classList.add("dg-ms-sortable");
           var stickyLeftMap = computeStickyLeftMap();
           if (STICKY_LEFT_SET.has(key)) applyStickyStyle(th, key, stickyLeftMap, true);
           if (isSortable) th.style.cursor = "pointer";
@@ -1136,6 +1137,7 @@
           );
           th.appendChild(numericInner(key, labelText));
           var handle = document.createElement("span");
+          handle.className = "dg-th-resize-handle";
           handle.setAttribute("role", "separator");
           handle.setAttribute("aria-orientation", "vertical");
           handle.title = "Потяните, чтобы изменить ширину";
@@ -1150,7 +1152,12 @@
             ev.stopPropagation();
           });
           th.appendChild(handle);
-          th.addEventListener("click", function () {
+          th.addEventListener("click", function (e) {
+            if (e && e.target && e.target.closest && e.target.closest(".dg-th-resize-handle")) return;
+            try {
+              var sel = window.getSelection ? window.getSelection() : null;
+              if (sel && String(sel.toString() || "").trim().length > 0) return;
+            } catch (err) {}
             if (!isSortable) return;
             if (sortBy === key) sortDir = sortDir === "asc" ? "desc" : "asc";
             else {

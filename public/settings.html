@@ -188,29 +188,6 @@
             <button type="button" class="btn-close dg-vanilla-search-close" aria-label="Закрыть поиск"></button>
           </div>
         </div>
-        <div
-          class="flex-grow-1 min-w-0 d-flex align-items-center mx-2"
-          id="dg-global-purchase-warm-wrap"
-          style="display: none; max-width: min(360px, calc(100vw - 420px))"
-          title="Фоновый прогрев кэша закупок на сервере (типовые пресеты фильтров, не клики в UI). Подробности: logs/purchase-cache.log."
-        >
-          <div class="w-100">
-            <div class="d-flex align-items-center gap-2 small text-muted mb-1">
-              <span class="text-truncate fw-semibold" id="dg-global-purchase-warm-label" style="flex: 1 1 auto"
-                >Прогрев закупок</span
-              >
-              <span class="flex-shrink-0" id="dg-global-purchase-warm-count">—</span>
-            </div>
-            <div class="progress" style="height: 6px">
-              <div
-                class="progress-bar progress-bar-striped progress-bar-animated bg-info"
-                role="progressbar"
-                id="dg-global-purchase-warm-bar"
-                style="width: 0%"
-              ></div>
-            </div>
-          </div>
-        </div>
         <div class="app-header-right">
           <div class="ui-theme-settings ui-theme-settings--header">
             <button type="button" class="btn btn-link btn-open-options btn-open-options--header" id="TooltipDemoVanilla" aria-label="Параметры темы" title="Параметры темы (полная версия в React-панели)">
@@ -1298,25 +1275,25 @@
                     <code>mssales_full</code> (журнал на <a href="/processes.html">processes</a>).
                   </p>
                 </div>
-              </div>
-                <div class="col-12 mt-2">
-                  <label class="form-label">Закупки: прогрев снимка таблицы (МСК)</label>
-                  <div class="d-flex gap-2 align-items-center flex-wrap">
-                    <input type="checkbox" id="dg-set-auto_purchase_warmup_en" />
-                    <span>Включить</span>
-                    <input type="time" class="form-control" id="dg-set-auto_purchase_warmup_time" style="max-width:140px" />
-                    <button type="button" class="btn btn-outline-primary btn-sm" id="dg-set-auto_purchase_warmup_run" data-dg-activity-label="Принудительно прогреть снимок закупок" data-dg-notify-start="Ставим в очередь прогрев таблицы закупок…">
+                <div class="col-12">
+                  <div class="border rounded p-2 bg-light">
+                    <div class="fw-semibold small mb-1">Закупки: кэш формулы и окон (МСК)</div>
+                    <div class="text-muted small mb-2">
+                      Заполняет <code>dg_formula_proposed_cache</code> для дефолтной выборки закупок (без RAM-снимка).
+                      Ускоряет сортировку по «Предлагаемый нес.ост.» и колонкам d_*; журнал —
+                      <code>purchase_formula_cache</code> на <a href="/processes.html">processes</a>.
+                    </div>
+                    <label class="form-check form-check-inline mb-0">
+                      <input type="checkbox" id="dg-set-auto_purchase_formula_cache_en" />
+                      <span class="form-check-label">Включить</span>
+                    </label>
+                    <input type="time" class="form-control d-inline-block" id="dg-set-auto_purchase_formula_cache_time" style="max-width:140px" />
+                    <button type="button" class="btn btn-outline-primary btn-sm ms-2" id="dg-set-auto_purchase_formula_cache_run" data-dg-activity-label="Запустить кэш формулы закупок" data-dg-notify-start="Ставим в очередь кэш формулы закупок…">
                       Запустить сейчас
                     </button>
                   </div>
-                  <p class="small text-muted mb-0 mt-1">
-                    К <strong>08:00</strong> (по умолчанию) в фоне собирается in-memory снимок
-                    <a href="/purchase.html">закупок</a> для типовых фильтров и прогреваются все сортировки колонок —
-                    днём смена столбца без минутного пересчёта. Журнал: задача
-                    <code>purchase_warmup</code> на <a href="/processes.html">processes</a>.
-                    После синка МС / продаж МС / правки overrides снимок пересобирается при следующем прогреве или «Запустить сейчас».
-                  </p>
                 </div>
+              </div>
               <div class="mt-3">
                 <button type="button" class="btn btn-success" id="dg-set-btn-save-auto" data-dg-activity-label="Сохранить расписание автосинхронизации" data-dg-notify-start="Сохраняем расписание автосинхронизации…">
                   Сохранить расписание автосинхронизации
@@ -1645,8 +1622,8 @@
         auto_sync_mssales_full_time: "03:15",
         auto_sync_mssales_full_days: 730,
         auto_sync_mssales_full_weekdays: "7",
-        auto_sync_purchase_warmup_enabled: 1,
-        auto_sync_purchase_warmup_time: "08:00",
+        auto_sync_purchase_formula_cache_enabled: 0,
+        auto_sync_purchase_formula_cache_time: "08:30",
         ms_dimensions_log_retention_days: 180,
         dg_purchase_overrides_log_retention_days: 180,
         auto_sync_runs_retention_days: 180,
@@ -1902,9 +1879,9 @@
         set("dg-set-auto_mssales_full_time", merged.auto_sync_mssales_full_time || "03:15");
         set("dg-set-auto_mssales_full_days", String(Number(merged.auto_sync_mssales_full_days || 730)));
         applyAutoSyncWeekdayChecks("dg-set-auto_mssales_full_wd", merged.auto_sync_mssales_full_weekdays);
-        var purchaseWarmEn = document.getElementById("dg-set-auto_purchase_warmup_en");
-        if (purchaseWarmEn) purchaseWarmEn.checked = Number(merged.auto_sync_purchase_warmup_enabled) === 1;
-        set("dg-set-auto_purchase_warmup_time", merged.auto_sync_purchase_warmup_time || "08:00");
+        var pfcEn = document.getElementById("dg-set-auto_purchase_formula_cache_en");
+        if (pfcEn) pfcEn.checked = Number(merged.auto_sync_purchase_formula_cache_enabled) === 1;
+        set("dg-set-auto_purchase_formula_cache_time", merged.auto_sync_purchase_formula_cache_time || "08:30");
         set("dg-set-ms_dimensions_log_retention_days", merged.ms_dimensions_log_retention_days);
         set("dg-set-dg_purchase_overrides_log_retention_days", merged.dg_purchase_overrides_log_retention_days);
         set("dg-set-auto_sync_runs_retention_days", merged.auto_sync_runs_retention_days);
@@ -2833,10 +2810,10 @@
           auto_sync_mssales_full_time: getStr("dg-set-auto_mssales_full_time") || "03:15",
           auto_sync_mssales_full_days: getNum("dg-set-auto_mssales_full_days", 730),
           auto_sync_mssales_full_weekdays: collectAutoSyncWeekdayCsv("dg-set-auto_mssales_full_wd"),
-          auto_sync_purchase_warmup_enabled: document.getElementById("dg-set-auto_purchase_warmup_en")
-            ? document.getElementById("dg-set-auto_purchase_warmup_en").checked
+          auto_sync_purchase_formula_cache_enabled: document.getElementById("dg-set-auto_purchase_formula_cache_en")
+            ? document.getElementById("dg-set-auto_purchase_formula_cache_en").checked
             : false,
-          auto_sync_purchase_warmup_time: getStr("dg-set-auto_purchase_warmup_time") || "08:00",
+          auto_sync_purchase_formula_cache_time: getStr("dg-set-auto_purchase_formula_cache_time") || "08:30",
         };
         runSaveWithInlineFeedback({
           sectionId: "auto",
@@ -2855,7 +2832,7 @@
             "auto_sync_mssales_full_time",
             "auto_sync_mssales_full_days",
             "auto_sync_mssales_full_weekdays",
-            "auto_sync_purchase_warmup_time",
+            "auto_sync_purchase_formula_cache_time",
           ],
         });
       }
@@ -2870,7 +2847,7 @@
         dimensions: "Габариты МС",
         mssales: "Продажи МС",
         mssales_full: "Продажи МС (полный)",
-        purchase_warmup: "Закупки: прогрев снимка",
+        purchase_formula_cache: "Закупки: кэш формулы",
       };
       function escAutoRunHtml(s) {
         return String(s || "")
@@ -3617,8 +3594,12 @@
       if (mssalesRunBtn) mssalesRunBtn.addEventListener("click", function () { runAutoSyncNow("mssales", "Продажи МС", "dg-set-auto_mssales_run"); });
       var mssalesFullRunBtn = document.getElementById("dg-set-auto_mssales_full_run");
       if (mssalesFullRunBtn) mssalesFullRunBtn.addEventListener("click", function () { runAutoSyncNow("mssales_full", "Продажи МС (полный)", "dg-set-auto_mssales_full_run"); });
-      var purchaseWarmRunBtn = document.getElementById("dg-set-auto_purchase_warmup_run");
-      if (purchaseWarmRunBtn) purchaseWarmRunBtn.addEventListener("click", function () { runAutoSyncNow("purchase_warmup", "Закупки: прогрев снимка", "dg-set-auto_purchase_warmup_run"); });
+      var purchaseFormulaCacheRunBtn = document.getElementById("dg-set-auto_purchase_formula_cache_run");
+      if (purchaseFormulaCacheRunBtn) {
+        purchaseFormulaCacheRunBtn.addEventListener("click", function () {
+          runAutoSyncNow("purchase_formula_cache", "Закупки: кэш формулы", "dg-set-auto_purchase_formula_cache_run");
+        });
+      }
       document.getElementById("dg-set-btn-save-asr-log").addEventListener("click", saveAsrRetention);
       document.getElementById("dg-set-btn-asr-log-refresh").addEventListener("click", loadAsrStats);
       document.getElementById("dg-set-btn-asr-log-cleanup").addEventListener("click", cleanupAsrNow);

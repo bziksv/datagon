@@ -105,6 +105,11 @@
       border-right: 1px solid #e6e9ee !important;
       text-align: center;
     }
+    /* Сортируемые заголовки: подпись можно выделить и скопировать (datagon-table-behavior-lock.mdc). */
+    body.datagon-vanilla-body[data-dg-active-nav="moysklad"] .dg-ms-table thead th.dg-ms-sortable {
+      user-select: text;
+      -webkit-user-select: text;
+    }
     .dg-ms-table tbody td {
       border-right: 1px solid #f3f5f8;
     }
@@ -320,29 +325,6 @@
               </button>
             </div>
             <button type="button" class="btn-close dg-vanilla-search-close" aria-label="Закрыть поиск"></button>
-          </div>
-        </div>
-        <div
-          class="flex-grow-1 min-w-0 d-flex align-items-center mx-2"
-          id="dg-global-purchase-warm-wrap"
-          style="display: none; max-width: min(360px, calc(100vw - 420px))"
-          title="Фоновый прогрев кэша закупок на сервере (типовые пресеты фильтров, не клики в UI). Подробности: logs/purchase-cache.log."
-        >
-          <div class="w-100">
-            <div class="d-flex align-items-center gap-2 small text-muted mb-1">
-              <span class="text-truncate fw-semibold" id="dg-global-purchase-warm-label" style="flex: 1 1 auto"
-                >Прогрев закупок</span
-              >
-              <span class="flex-shrink-0" id="dg-global-purchase-warm-count">—</span>
-            </div>
-            <div class="progress" style="height: 6px">
-              <div
-                class="progress-bar progress-bar-striped progress-bar-animated bg-info"
-                role="progressbar"
-                id="dg-global-purchase-warm-bar"
-                style="width: 0%"
-              ></div>
-            </div>
           </div>
         </div>
         <div class="app-header-right">
@@ -2181,6 +2163,7 @@
           th.style.overflow = "hidden";
           th.style.verticalAlign = "middle";
           if (COLUMN_CENTER_KEYS.has(key)) th.className = "dg-ms-numeric";
+          if (isSortable) th.classList.add("dg-ms-sortable");
           var stickyLeftMap = computeStickyLeftMap();
           if (STICKY_LEFT_SET.has(key)) applyStickyStyle(th, key, stickyLeftMap, true);
           if (isSortable) th.style.cursor = "pointer";
@@ -2189,6 +2172,7 @@
           );
           th.appendChild(numericInner(key, labelText));
           var handle = document.createElement("span");
+          handle.className = "dg-th-resize-handle";
           handle.setAttribute("role", "separator");
           handle.setAttribute("aria-orientation", "vertical");
           handle.title = "Потяните, чтобы изменить ширину";
@@ -2203,7 +2187,12 @@
             ev.stopPropagation();
           });
           th.appendChild(handle);
-          th.addEventListener("click", function () {
+          th.addEventListener("click", function (e) {
+            if (e && e.target && e.target.closest && e.target.closest(".dg-th-resize-handle")) return;
+            try {
+              var sel = window.getSelection ? window.getSelection() : null;
+              if (sel && String(sel.toString() || "").trim().length > 0) return;
+            } catch (err) {}
             if (!isSortable) return;
             if (sortBy === key) sortDir = sortDir === "asc" ? "desc" : "asc";
             else {
