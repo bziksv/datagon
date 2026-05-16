@@ -19,7 +19,7 @@ const PAGE_REGISTRY = [
     { value: 'queue', label: 'Очередь парсинга' },
     { value: 'results', label: 'Результаты' },
     { value: 'matches', label: 'Сопоставление' },
-    { value: 'processes', label: 'Активность и процессы' },
+    { value: 'processes', label: 'Активность/Логи' },
     { value: 'settings', label: 'Настройки' },
     { value: 'sections', label: 'Статические экраны' },
     { value: 'architectui-demo', label: 'ArchitectUI меню' },

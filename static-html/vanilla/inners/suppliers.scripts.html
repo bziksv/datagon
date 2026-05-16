@@ -1649,6 +1649,25 @@
         });
       }
 
+      function bindAnalyticsCollapse() {
+        var key = "datagon_suppliers_analytics_collapsed_v1";
+        var body = document.getElementById("dg-sp-analytics-body");
+        var btn = document.getElementById("dg-sp-analytics-toggle");
+        if (!body || !btn) return;
+        var collapsed = false;
+        try { collapsed = window.localStorage.getItem(key) === "1"; } catch (e) {}
+        function apply() {
+          body.style.display = collapsed ? "none" : "";
+          btn.textContent = collapsed ? "Развернуть" : "Свернуть";
+        }
+        apply();
+        btn.addEventListener("click", function () {
+          collapsed = !collapsed;
+          try { window.localStorage.setItem(key, collapsed ? "1" : "0"); } catch (e) {}
+          apply();
+        });
+      }
+
       function bindFiltersCollapse() {
         var key = "datagon_suppliers_filters_collapsed_v1";
         var body = document.getElementById("dg-sp-filters-body");
@@ -1756,6 +1775,7 @@
       document.addEventListener("DOMContentLoaded", function () {
         bindActions();
         bindAnalyticsUi();
+        bindAnalyticsCollapse();
         bindHeaderSearchMirror();
         bindFiltersCollapse();
         bindTableCardCollapse();

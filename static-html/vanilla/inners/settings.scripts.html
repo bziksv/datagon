@@ -2171,6 +2171,66 @@
         loadProjects();
       })();
 
+      function bindSettingsSectionsCollapse() {
+        var STORAGE_PREFIX = "datagon_settings_section_collapsed_v1:";
+        var page = document.querySelector(".datagon-settings-page");
+        if (!page) return;
+
+        function sectionKey(card, idx) {
+          if (card.id) return card.id;
+          var span = card.querySelector(".card-header span");
+          if (span && span.textContent) {
+            return (
+              "sec-" +
+              span.textContent
+                .trim()
+                .replace(/[^\w\u0400-\u04FF]+/gi, "_")
+                .replace(/^_+|_+$/g, "")
+                .slice(0, 56)
+            );
+          }
+          return "sec-" + idx;
+        }
+
+        page.querySelectorAll(".main-card.card").forEach(function (card, idx) {
+          var header = card.querySelector(":scope > .card-header");
+          var body = card.querySelector(":scope > .card-body");
+          if (!header || !body || header.querySelector("[data-dg-set-collapse-toggle]")) return;
+
+          var storageKey = STORAGE_PREFIX + sectionKey(card, idx);
+          var btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "btn btn-sm btn-outline-secondary flex-shrink-0 ms-auto";
+          btn.setAttribute("data-dg-set-collapse-toggle", "1");
+          btn.setAttribute("data-dg-no-activity", "1");
+          if (!header.classList.contains("d-flex")) {
+            header.classList.add("d-flex", "align-items-center", "gap-2", "flex-wrap");
+          } else if (!header.classList.contains("flex-wrap")) {
+            header.classList.add("flex-wrap");
+          }
+          header.appendChild(btn);
+
+          var collapsed = false;
+          try {
+            collapsed = window.localStorage.getItem(storageKey) === "1";
+          } catch (e) {}
+          function apply() {
+            body.style.display = collapsed ? "none" : "";
+            btn.textContent = collapsed ? "Развернуть" : "Свернуть";
+          }
+          apply();
+          btn.addEventListener("click", function () {
+            collapsed = !collapsed;
+            try {
+              window.localStorage.setItem(storageKey, collapsed ? "1" : "0");
+            } catch (e2) {}
+            apply();
+          });
+        });
+      }
+
+      bindSettingsSectionsCollapse();
+
       var saveSalesFormulaBtn = document.getElementById("dg-set-btn-save-sales-formula");
       if (saveSalesFormulaBtn) saveSalesFormulaBtn.addEventListener("click", saveSalesFormula);
       document.getElementById("dg-set-btn-save-marketplaces").addEventListener("click", saveMarketplacesSettings);

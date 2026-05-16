@@ -45,7 +45,7 @@ function assemble() {
         },
         {
             out: 'moysklad.html',
-            PAGE_TITLE: 'МойСклад — Датагон',
+            PAGE_TITLE: 'Мой Склад (товары) — Датагон',
             BODY_ATTRS: 'class="datagon-vanilla-body" data-dg-active-nav="moysklad"',
             EXTRA_HEAD: read(path.join(vanillaDir, 'inners/moysklad.head.html')),
             MAIN_INNER: read(path.join(vanillaDir, 'inners/moysklad.inner.html')),
@@ -61,7 +61,7 @@ function assemble() {
         },
         {
             out: 'purchase.html',
-            PAGE_TITLE: 'Закупки — Датагон',
+            PAGE_TITLE: 'Закупки товары — Датагон',
             BODY_ATTRS: 'class="datagon-vanilla-body" data-dg-active-nav="purchase"',
             EXTRA_HEAD: read(path.join(vanillaDir, 'inners/purchase.head.html')),
             MAIN_INNER: read(path.join(vanillaDir, 'inners/purchase.inner.html')),
@@ -119,7 +119,7 @@ function assemble() {
         },
         {
             out: 'processes.html',
-            PAGE_TITLE: 'Активность и процессы — Датагон',
+            PAGE_TITLE: 'Активность/Логи — Датагон',
             BODY_ATTRS: 'class="datagon-vanilla-body" data-dg-active-nav="processes"',
             EXTRA_HEAD: read(path.join(vanillaDir, 'inners/processes.head.html')),
             MAIN_INNER: read(path.join(vanillaDir, 'inners/processes.inner.html')),

@@ -48,13 +48,19 @@
     */
     .datagon-vanilla-shell:not(.closed-sidebar)
       .vertical-nav-menu
-      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible,
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
       > .metismenu-item
       > .metismenu-link
       .metismenu-icon,
     .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
       .vertical-nav-menu
-      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
       > .metismenu-item
       > .metismenu-link
       .metismenu-icon {
@@ -65,9 +71,19 @@
       ul.dg-vanilla-mp-submenu.metismenu-container.visible
       > .metismenu-item
       > .metismenu-link,
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link,
     .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
       .vertical-nav-menu
       ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
       > .metismenu-item
       > .metismenu-link {
       padding-left: 3.4375rem !important;
@@ -86,13 +102,19 @@
     }
     .datagon-vanilla-shell:not(.closed-sidebar)
       .vertical-nav-menu
-      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible,
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
       > .metismenu-item
       > .metismenu-link
       .metismenu-icon,
     .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
       .vertical-nav-menu
-      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
       > .metismenu-item
       > .metismenu-link
       .metismenu-icon {
@@ -395,19 +417,68 @@
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="dashboard" href="/dashboard.html"><i class="metismenu-icon pe-7s-rocket"></i>Дашборд</a></li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="my-sites" href="/my-sites.html"><i class="metismenu-icon pe-7s-global"></i>Мои сайты</a></li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="my-products" href="/my-products.html"><i class="metismenu-icon pe-7s-box2"></i>Мои товары (сайты)</a></li>
-                      <li class="metismenu-item"><a class="metismenu-link" data-nav="moysklad" href="/moysklad.html"><i class="metismenu-icon pe-7s-shopbag"></i>МойСклад</a></li>
-                      <li class="metismenu-item"><a class="metismenu-link" data-nav="projects" href="/projects.html"><i class="metismenu-icon pe-7s-portfolio"></i>Конкуренты</a></li>
-                      <li class="metismenu-item"><a class="metismenu-link" data-nav="queue" href="/queue.html"><i class="metismenu-icon pe-7s-network"></i>Очередь</a></li>
-                      <li class="metismenu-item"><a class="metismenu-link" data-nav="results" href="/results.html"><i class="metismenu-icon pe-7s-note2"></i>Результаты</a></li>
-                      <li class="metismenu-item"><a class="metismenu-link" data-nav="matches" href="/matches.html"><i class="metismenu-icon pe-7s-link"></i>Сопоставление</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="moysklad" href="/moysklad.html"><i class="metismenu-icon pe-7s-shopbag"></i>Мой Склад (товары)</a></li>
+                      <li class="metismenu-item">
+                        <a
+                          href="#"
+                          class="metismenu-link dg-vanilla-submenu-toggle"
+                          aria-expanded="false"
+                          title="Парсинг сайтов конкурентов: проекты, очередь, результаты, сопоставление"
+                        >
+                          <i class="metismenu-icon pe-7s-browser"></i>Парсинг
+                          <i class="metismenu-state-icon pe-7s-angle-down" aria-hidden="true"></i>
+                        </a>
+                        <ul class="metismenu-container dg-vanilla-parse-submenu">
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="projects"
+                              href="/projects.html"
+                              title="Проекты и сайты конкурентов"
+                            >
+                              <i class="metismenu-icon pe-7s-portfolio"></i>Конкуренты
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="queue"
+                              href="/queue.html"
+                              title="Очередь задач парсинга"
+                            >
+                              <i class="metismenu-icon pe-7s-network"></i>Очередь
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="results"
+                              href="/results.html"
+                              title="Результаты парсинга"
+                            >
+                              <i class="metismenu-icon pe-7s-note2"></i>Результаты
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="matches"
+                              href="/matches.html"
+                              title="Сопоставление товаров"
+                            >
+                              <i class="metismenu-icon pe-7s-link"></i>Сопоставление
+                            </a>
+                          </li>
+                        </ul>
+                      </li>
                       <li class="metismenu-item dg-sidebar-nav-restricted" data-dg-nav-restricted="activity">
                         <a
                           class="metismenu-link"
                           data-nav="processes"
                           href="/processes.html"
-                          title="Активность и процессы (доступ ограничен: администратор или право управления пользователями)"
+                          title="Активность/Логи: журнал команды и фоновые процессы (доступ ограничен: администратор или право управления пользователями)"
                         >
-                          <i class="metismenu-icon pe-7s-timer"></i>Активность
+                          <i class="metismenu-icon pe-7s-timer"></i>Активность/Логи
                           <i
                             class="pe-7s-lock dg-nav-restricted-icon"
                             aria-hidden="true"
@@ -504,8 +575,8 @@
                         </ul>
                       </li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="ms-sales" href="/ms-sales.html" title="Продажи МС: отгрузки entity/demand, позиции с привязкой к товарам ms_export"><i class="metismenu-icon pe-7s-cash"></i>Продажи МС</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="purchase" href="/purchase.html" title="Закупки товары: планирование, неснижаемые остатки, кратность"><i class="metismenu-icon pe-7s-cart"></i>Закупки товары</a></li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="suppliers" href="/suppliers.html" title="Поставщики: сводка по закупкам и настройки"><i class="metismenu-icon pe-7s-id"></i>Поставщики</a></li>
-                      <li class="metismenu-item"><a class="metismenu-link" data-nav="purchase" href="/purchase.html" title="Закупки: планирование, неснижаемые остатки, кратность"><i class="metismenu-icon pe-7s-cart"></i>Закупки</a></li>
                     </ul>
                   </div>
                 </div>
@@ -3745,6 +3816,66 @@
         window.dgSyncSalesFormulaProjectsUi();
         loadProjects();
       })();
+
+      function bindSettingsSectionsCollapse() {
+        var STORAGE_PREFIX = "datagon_settings_section_collapsed_v1:";
+        var page = document.querySelector(".datagon-settings-page");
+        if (!page) return;
+
+        function sectionKey(card, idx) {
+          if (card.id) return card.id;
+          var span = card.querySelector(".card-header span");
+          if (span && span.textContent) {
+            return (
+              "sec-" +
+              span.textContent
+                .trim()
+                .replace(/[^\w\u0400-\u04FF]+/gi, "_")
+                .replace(/^_+|_+$/g, "")
+                .slice(0, 56)
+            );
+          }
+          return "sec-" + idx;
+        }
+
+        page.querySelectorAll(".main-card.card").forEach(function (card, idx) {
+          var header = card.querySelector(":scope > .card-header");
+          var body = card.querySelector(":scope > .card-body");
+          if (!header || !body || header.querySelector("[data-dg-set-collapse-toggle]")) return;
+
+          var storageKey = STORAGE_PREFIX + sectionKey(card, idx);
+          var btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "btn btn-sm btn-outline-secondary flex-shrink-0 ms-auto";
+          btn.setAttribute("data-dg-set-collapse-toggle", "1");
+          btn.setAttribute("data-dg-no-activity", "1");
+          if (!header.classList.contains("d-flex")) {
+            header.classList.add("d-flex", "align-items-center", "gap-2", "flex-wrap");
+          } else if (!header.classList.contains("flex-wrap")) {
+            header.classList.add("flex-wrap");
+          }
+          header.appendChild(btn);
+
+          var collapsed = false;
+          try {
+            collapsed = window.localStorage.getItem(storageKey) === "1";
+          } catch (e) {}
+          function apply() {
+            body.style.display = collapsed ? "none" : "";
+            btn.textContent = collapsed ? "Развернуть" : "Свернуть";
+          }
+          apply();
+          btn.addEventListener("click", function () {
+            collapsed = !collapsed;
+            try {
+              window.localStorage.setItem(storageKey, collapsed ? "1" : "0");
+            } catch (e2) {}
+            apply();
+          });
+        });
+      }
+
+      bindSettingsSectionsCollapse();
 
       var saveSalesFormulaBtn = document.getElementById("dg-set-btn-save-sales-formula");
       if (saveSalesFormulaBtn) saveSalesFormulaBtn.addEventListener("click", saveSalesFormula);

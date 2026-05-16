@@ -280,12 +280,12 @@
     dashboard: "Дашборд",
     "my-sites": "Мои сайты",
     "my-products": "Мои товары",
-    moysklad: "МойСклад",
+    moysklad: "Мой Склад (товары)",
     projects: "Конкуренты",
     queue: "Очередь парсинга",
     results: "Результаты",
     matches: "Сопоставление",
-    processes: "Активность и процессы",
+    processes: "Активность/Логи",
     settings: "Настройки",
     sections: "Статические экраны",
     "exports-marketplaces": "Маркетплейсы — Настройки",
@@ -1001,6 +1001,17 @@
       if (navKey === "settings" && cmUsers) li.style.display = "";
       else if (mode === "hidden") li.style.display = "none";
       else li.style.display = "";
+    });
+    document.querySelectorAll("a.dg-vanilla-submenu-toggle").forEach(function (toggle) {
+      var ul = toggle.nextElementSibling;
+      if (!ul || !ul.classList.contains("metismenu-container")) return;
+      var parentLi = toggle.closest(".metismenu-item");
+      if (!parentLi) return;
+      var anyVisible = false;
+      ul.querySelectorAll(":scope > .metismenu-item").forEach(function (childLi) {
+        if (childLi.style.display !== "none") anyVisible = true;
+      });
+      parentLi.style.display = anyVisible ? "" : "none";
     });
   }
 
