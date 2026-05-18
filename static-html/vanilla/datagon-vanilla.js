@@ -1800,6 +1800,7 @@
       /** Маркетплейсы (Ozon/WB/Я.Маркет): свои стили в exports-marketplaces.head.html; глобальный baseline ломает шапку/колонки. */
       id === "dg-mp-table-main" ||
       id === "dg-sp-table-main" ||
+      id === "dg-sa-table" ||
       /** Маркетплейсы → Габариты: свои стили в exports-dimensions.head.html + локальный JS sticky-top. */
       id === "dg-dim-table"
     )
@@ -2144,4 +2145,53 @@
   window.addEventListener("datagon-profile-loaded", function () {
     initDatagonUiActivityTracking();
   });
+
+  /**
+   * Форматирование чисел для UI (ru-RU, разделитель тысяч — пробел: 1 000).
+   * API: DatagonFmt.formatNumber / formatInteger / formatMoney / parseNumberInput
+   */
+  (function installDatagonFmt() {
+    if (window.DatagonFmt && window.DatagonFmt.formatNumber) return;
+    function normalizeSpaces(s) {
+      return String(s).replace(/\u00a0/g, " ").replace(/\u202f/g, " ");
+    }
+    function formatNumber(value, opts) {
+      if (value == null || value === "") return "—";
+      var x = Number(value);
+      if (!Number.isFinite(x)) return "—";
+      var o = opts || {};
+      var maxFd = o.maxFractionDigits != null ? o.maxFractionDigits : 2;
+      var minFd = o.minFractionDigits != null ? o.minFractionDigits : 0;
+      if (o.integer === true) maxFd = 0;
+      return normalizeSpaces(
+        x.toLocaleString("ru-RU", { minimumFractionDigits: minFd, maximumFractionDigits: maxFd })
+      );
+    }
+    function formatInteger(value) {
+      return formatNumber(value, { maxFractionDigits: 0, minFractionDigits: 0 });
+    }
+    function formatMoney(value, opts) {
+      var o = opts || {};
+      var s = formatNumber(value, {
+        maxFractionDigits: o.maxFractionDigits != null ? o.maxFractionDigits : 2,
+        minFractionDigits: 0,
+      });
+      return s === "—" ? s : s + " \u20bd";
+    }
+    function parseNumberInput(raw) {
+      if (raw == null) return null;
+      var s = String(raw).trim();
+      if (!s) return null;
+      s = s.replace(/\s/g, "").replace(/\u00a0/g, "").replace(",", ".");
+      var x = Number(s);
+      return Number.isFinite(x) ? x : null;
+    }
+    window.DatagonFmt = {
+      normalizeSpaces: normalizeSpaces,
+      formatNumber: formatNumber,
+      formatInteger: formatInteger,
+      formatMoney: formatMoney,
+      parseNumberInput: parseNumberInput,
+    };
+  })();
 })();

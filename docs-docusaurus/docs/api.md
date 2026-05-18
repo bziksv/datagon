@@ -69,7 +69,8 @@ description: Справочник REST-эндпоинтов p.datagon.ru (осн
 - `/api/exports/dimensions` -> `routes/dimensions.js`
 - `/api/ms-sales` -> `routes/msSales.js` (Продажи МС: отгрузки `entity/demand` + позиции с привязкой к `ms_export`)
 - `/api/suppliers` -> `routes/suppliers.js` (Поставщики: агрегат по `ms_export` + `dg_supplier_settings`; `GET /`, `GET /assignees`, `GET /ms-order-log`, `GET /ms-order-log/:logId`, `GET /export/supplier`, `GET /export/purchaser`, `POST /:supplierKey/send-ms-order`, `PATCH /:supplierKey`)
-- `/api/purchase` -> `routes/purchase.js` (Закупки: `GET` список — SQL `ORDER BY` + пагинация, enrich страницы; `POST /override`, `POST /overrides-import`, журнал overrides: `GET /log`, `GET /log/stats`, `POST /log/cleanup`)
+- `/api/supplier-analysis` -> `routes/supplierAnalysis.js` (Анализ поставщиков: продажи из `ms_demand` + `ms_export.supplier`; `GET /projects`, `/overview`, `/ranking`, `/highlights`, `/trend`, `/products`, `/export`, `/data-freshness`; фильтр `project_mode` / `project_uuids`)
+- `/api/purchase` -> `routes/purchase.js` (Закупки: `GET` список — SQL `ORDER BY` + пагинация, enrich страницы; `POST /override`, `POST /overrides-import`, журнал overrides: `GET /log`, `GET /log/stats`, `POST /log/cleanup`; перенос «Предлагаемый нес.ост.» → `ms_export.min_stock`: `POST /min-stock-apply/run`, `GET /min-stock-apply/log`, `GET /min-stock-apply/batch/:id`, `POST /min-stock-apply/revert`)
 - `/api/product` -> `routes/product.js` (Карточка товара: `ms_export` + `ms_entity_details` + продажи + `dg_bundle_components`; лог отсутствий — пакетно после синка МС: `stock≤0` или для базового кода `stock` < min суффикса в `код-число`, см. `syncZeroStockLogAfterMoyskladExport`; снимки остатка по дням — `dg_product_stock_snapshot`, см. `syncProductStockSnapshotsAfterMoyskladExport` — оба вызываются из `routes/moysklad.js` после сохранения `ms_export`)
 - `/api/activity` -> `routes/activity.js`
 - `GET /api/processes/overview`, `POST /api/sync-all-start`, `POST /api/sync-site-start`, `GET /api/sync-status` -> `server.js`
@@ -1448,6 +1449,50 @@ Body (JSON): `email`, `password` (обязательны), опциональн�
 
 **Позиция «к закупке» (шт):** `max(0, min_stock МС − stock − in_transit)` — только поле «Неснижаемый остаток» из `ms_export`, без override и без формулы. **Сумма закупки:** сумма `need_qty × buy_price` по строкам с `need_qty > 0`. **Наполняемость % (Кол-во Несн/Несниж сумм./Ост.факт/%):** в ячейке `кол-во SKU с неснижаемым &gt; 0 / Σ неснижаемый (шт) / Σ остаток факт (шт) / %`; неснижаемый на SKU = `COALESCE(override, кэш формулы, min_stock МС)`; `%` = `100 × Σ остаток ÷ Σ неснижаемый`. Подсветка: &lt;70% — красный, 70–90% — жёлтый, ≥90% — зелёный.
 
+## Анализ поставщиков
+
+Страница `/supplier-analysis.html`, роутер `routes/supplierAnalysis.js`. Тот же каталог SKU, что на `/suppliers.html` (`sqlSupplierProductWhere`). Продажи — суммы по `ms_demand_position` (отгрузки МС, `applicable=1`, не удалённые), привязка к поставщику через `ms_export.code`. Сравнение периодов: текущее окно `days` и предыдущее такое же окно.
+
+Фильтр проектов отгрузок (только для продаж): `project_mode` (`all` | `selected`, default `all`), `project_uuids` — список UUID через запятую (при `selected` без UUID продажи не учитываются). **Выручка, маржа и Δ выручки** в `/overview` считаются только по отгрузкам выбранных проектов. Маржа: `sum_minor` позиции − закупка из `ms_export` × кол-во (не выше суммы строки). Остатки и каталог SKU от фильтра не зависят.
+
+### GET `/api/supplier-analysis/projects`
+
+Query: `days` (7–365, default 90). Список проектов из `ms_demand` с отгрузками за период: `{ success, days, projects: [{ uuid, name, count }] }`.
+
+### GET `/api/supplier-analysis/sales-breakdown`
+
+Расшифровка KPI продаж: построчно по `ms_demand_position` (отгрузка, SKU, выручка, закупка ед., себестоимость, маржа). Query: `days`, `project_mode`, `project_uuids`, `search` (поставщик/код/название), `limit` (1–200, default 50), `offset`. Ответ: `{ totals: { sales_revenue, gross_margin_est, demands_count, lines_count }, rows[], total }` — `totals` совпадают с логикой `/overview`.
+
+### GET `/api/supplier-analysis/overview`
+
+Query: `days` (7–365, default 90), `project_mode`, `project_uuids`. Ответ: `{ success, days, project_filter: { mode, uuids, project_names, label }, totals: { … } }`.
+
+### GET `/api/supplier-analysis/highlights`
+
+Query: `days`. Ответ: `{ needs_attention, top_revenue, top_growth, weak }` — до 8 поставщиков в каждом блоке (сигналы `signals`, `attention_score`).
+
+### GET `/api/supplier-analysis/ranking`
+
+Query: `days`, `new_stock_days` (7–180, default 30), `project_mode`, `project_uuids`, `focus` (`all`|`develop`|`problem`), `search`, `limit`, `offset`, `sort_by`, `sort_dir`.
+
+В каждой строке: `skus_warehouse` (= складские SKU в каталоге), `skus_total` (все SKU поставщика в МС), `stock_value_rub`, `turnover_monthly` (коэффициент; в UI ×100 = % остатка в месяц: (выручка/остаток ₽) ÷ (days÷30)), `sales_revenue`, `skus_new_on_stock`, `new_avg_days_on_stock` (среднее число дней с первого остатка > 0 у новинок), `skus_ineffective` (залежалые: остаток, 0 продаж, не новинка), `sales_revenue`, `signals[]`, `portfolio_tag` (для подсветок/фильтра `focus`, опционально). Сортировка по умолчанию: `sales_revenue` desc (№1 в таблице — поставщик с наибольшими продажами за период).
+
+### GET `/api/supplier-analysis/trend`
+
+Query: `supplier_key`, `months` (3–24, default 12), `project_mode`, `project_uuids`. Помесячные `sales_qty`, `sales_revenue`.
+
+### GET `/api/supplier-analysis/products`
+
+Query: `supplier_key`, `days`, `new_stock_days` (для `stale`/`new`), `mode` (`all`|`warehouse`|`catalog`|`all_skus`|`total`|`leaders`|`laggards`|`stale`|`new`|`weak`), `limit` (до 500 для `warehouse`/`all_skus`), `project_mode`, `project_uuids`. **`warehouse`** / `catalog` — SKU складская (`sqlSupplierProductWhere`: не архив, не «перестали сотрудничать», складская «Да»). **`all_skus`** / `total` — все SKU поставщика (`sqlSupplierAllSkusWhere`: без архива и «перестали сотрудничать», комплекты исключены). **`stale`** / `laggards` — остаток > 0, 0 продаж, не новинка. **`new`** — остаток > 0, первый остаток в пределах `new_stock_days`. **`weak`** — есть продажи, но `sales_qty` < 25% медианы. Ответ каталога: `total`, `truncated`, в строке `is_warehouse`, `stock_position`, `stock`, **`in_transit`** (ожидание / в пути: `ms_entity_details.denorm_in_transit` или `payload.inTransit`, как на закупках).
+
+### GET `/api/supplier-analysis/export`
+
+Query: `days`, `search`, `project_mode`, `project_uuids` (как в ranking). Ответ: CSV (UTF-8 BOM) со всеми поставщиками, отсортированными по `attention_score`.
+
+### GET `/api/supplier-analysis/data-freshness`
+
+Как `/api/suppliers/data-freshness` (каталог МС + продажи МС).
+
 ### GET `/api/suppliers/data-freshness`
 
 Свежесть данных для плашки над блоком «Команда и закупки» на `/suppliers.html`. Без query.
@@ -1458,13 +1503,13 @@ Body (JSON): `email`, `password` (обязательны), опциональн�
 
 Сводка для дашборда на `/suppliers.html` (без пагинации, те же критерии отбора поставщиков, что в списке). Query: `search`, `assigned_user` (опционально, как в списке).
 
-Ответ: `{ success, totals: { … }, by_assignee: [{ assignee_id, assignee_label, … }], by_supplier: [{ supplier_key, supplier_label, products_total, products_to_purchase, total_purchase_sum, … }] }` — `by_supplier` — топ **30** поставщиков по `total_purchase_sum` (для диаграммы «Распределение по поставщикам»; переключатель метрик на фронте применяется к обеим bar-диаграммам).
+Ответ: `{ success, totals: { …, procurement_attention_never, procurement_attention_stale_warn, procurement_attention_stale_danger, procurement_attention_total }, by_assignee: […], by_supplier: […], ms_orders: { period_days, success_orders_total, by_creator: [{ creator_id, creator_label, orders_count, suppliers_count, positions_total }] } }` — `by_supplier` — топ **30** по `total_purchase_sum`; `ms_orders.by_creator` — успешные отправки в МС из `dg_supplier_ms_order_log` за `period_days` (90 дн.); пороги внимания: `procurement_attention_thresholds: { warn_days: 30, danger_days: 60 }`.
 
 ### GET `/api/suppliers`
 
-Query: `search`, `assigned_user` (опционально: пусто — все; `none` — без привязки; иначе `id` пользователя из `/assignees`), `limit` (default 100), `offset`, `sort_by` (`supplier_name`, `products_total`, `products_to_purchase`, `total_purchase_sum`, `min_purchase_sum`, `warehouse_fill_pct`, `stock_fill_pct`, `assigned_user_name`), `sort_dir`.
+Query: `search`, `assigned_user` (опционально: пусто — все; `none` — без привязки; иначе `id` пользователя из `/assignees`), `attention_only=1` — поставщики «требуют внимания»: `products_to_purchase > 0`, `total_purchase_sum > 0`, сумма ≥ `min_purchase_sum` (если мин. задан), и без успешного заказа в МС ≥30 дн. (или никогда), `limit` (default 100), `offset`, `sort_by` (`supplier_name`, `sales_rank`, `products_total`, `products_to_purchase`, `total_purchase_sum`, `min_purchase_sum`, `warehouse_fill_pct`, `stock_fill_pct`, `assigned_user_name`, `last_ms_order_at`), `sort_dir`. Для `sales_rank`: `asc` — лидеры сверху (место 1…), `desc` — слабые продажи сверху.
 
-Ответ: `{ success, data[], total, limit, offset, applied_filters, cache? }`. В каждой строке: агрегаты + поля из `dg_supplier_settings` + `stock_fill_pct_computed`.
+Ответ: `{ success, data[], total, limit, offset, applied_filters, procurement_attention_thresholds?, sales_rank_period_days, sales_rank_total, cache? }`. В каждой строке: агрегаты + `dg_supplier_settings` + `last_ms_order_at`, `last_ms_order_name`, `last_ms_order_by`, `procurement_attention: { level, code, label, days_since }`, рейтинг продаж за `sales_rank_period_days` (90): `sales_rank` (место), `sales_rank_total`, `sales_revenue_90d` — та же сортировка, что `GET /api/supplier-analysis/ranking?days=90` (выручка отгрузок МС по всем проектам, DESC).
 
 ### GET `/api/suppliers/assignees`
 
@@ -1521,6 +1566,12 @@ Query: `supplier_key` (обяз.), `to_purchase` (`1` по умолчанию �
 Отдельная страница `/purchase.html` и роутер `routes/purchase.js`. Источник истины базовых полей — `ms_export` (синк МойСклад). Дополнительные **редактируемые поля** (Неснижаемый остаток Датагон, Кратность товара, поле `proposed_min_stock` в закупках, Кол-во в упаковке вручную) хранятся в отдельной таблице `dg_purchase_overrides`, чтобы синк МС не затирал ручные значения и схема `ms_export` оставалась стабильной. В списке `GET /api/purchase` дополнительно отдаётся **`formula_proposed_min_stock`** — предлагаемый неснижаемый по формуле продаж (как **`formula.proposed_min_stock`** на `GET /api/product/:code`), не путать с `proposed_min_stock` из overrides. После открытия карточки товара в **`dg_formula_proposed_cache`** сохраняются **`proposed`** (уже с **`applyMinStockDgFloor`**) и **`windows_json`** — готовые **`d_15a`/`d_15b` … `d_365a`/`d_365b`** (см. `lib/datagonPurchaseWindowSnapshot.js`). При совпадении **`formula_fp` + `data_rev`** список закупок подставляет **`proposed`** без **`computeSalesFormula`** и **`windows_json`** без трёх тяжёлых агрегатов по окнам продаж/«дн. нет»; при промахе всё считается на лету, как раньше. Ревизия **`data_rev`** учитывает в т.ч. лог нулевых остатков и обновления **`dg_bundle_components`**, чтобы не отдавать устаревшие окна. **`min_stock_dg`** в опорный baseline формулы **не входит**; если в overrides задано число **> 0**, итоговое **`formula_proposed_min_stock`** (и **`formula.proposed_min_stock`** на карточке) **не ниже** этого значения — см. `applyMinStockDgFloor` в `lib/datagonSalesFormula.js`; при подстановке из кэша нижний порог по актуальному **`min_stock_dg`** в строке списка всё равно применяется в enrich. Для окон **15 / 30 / 60 / 90 / 180 / 365** дней — поля **`d_15a`, … `d_365a`**: сумма проданного количества (шт) за скользящие календарные дни (прямые отгрузки по коду + эквивалент через комплекты, для строк-комплектов только прямые). Поля **`d_15b`, `d_30b`, … `d_365b`** — число **разных календарных дат** с нулевым остатком в `dg_product_zero_stock_log` за последние N дн. (как на карточке товара). Поле **`in_transit`** — «в пути» из `payload_json.inTransit`, если есть.
 
 Сырые поля (`article`, `packagings`, `inTransit`) подмешиваются к строкам из `ms_entity_details.payload_json` (raw карточка из МС API).
+
+### `GET /api/purchase/managers`
+
+Справочник для фильтра «Менеджер» на `/purchase.html`: уникальные непустые значения **`ms_export.manager`** (синк атрибута МС **«Менеджер поддерживающий товар»**), отсортированные по алфавиту.
+
+Ответ: `{ "success": true, "managers": ["Иванов И.И.", "…"] }`.
 
 ### Таблица `dg_purchase_overrides`
 
@@ -1586,13 +1637,49 @@ Query: **`code`** (обязателен), **`limit`** (default 100, max 500), **
 
 Тело JSON: опционально `{ "days": N }`; если не передано — используется текущий retention из настроек. Ответ: `{ success, deleted, days }`.
 
+### Перенос «Предлагаемый нес.ост.» → «Неснижаемый» (МС)
+
+Пакетное обновление **`ms_export.min_stock`** из рассчитанного **`formula_proposed_min_stock`** (после `applyMinStockDgFloor`, округление до целого ≥ 0). Снимок старых значений — в **`dg_purchase_min_stock_apply_item`**; откат — **целиком по пакету** (`batch_id`), не по отдельным SKU.
+
+Таблицы: **`dg_purchase_min_stock_apply_batch`** (статус `running` | `completed` | `failed` | `reverted`, счётчики, `filter_json`, автор, время) и **`dg_purchase_min_stock_apply_item`** (`batch_id`, `code`, `old_min_stock`, `new_min_stock`, `formula_proposed`).
+
+На `/purchase.html` кнопка **«Пр.→НС»** рядом с «Пересчитать кэш»; журнал переноса и «Откатить» — в блоке «Перенос в неснижаемый (МС)». Кнопка **«Пересчитать кэш»** ставит задачу `purchase_formula_cache` (`POST /api/settings/auto-sync-run`); ход пересчёта на странице — опрос **`GET /api/purchase/formula-cache-progress`** (живой прогресс в памяти процесса + последняя строка `auto_sync_runs`).
+
+#### GET `/api/purchase/formula-cache-progress`
+
+Ответ: `{ "success", "running", "live": { "running", "processed", "upserted", "errors", "selection_total", "pct", "message", … }, "db_run": { "id", "status", "message", "trigger_type", "started_at", "finished_at", … } }`. Пока batch `runPurchaseFormulaCacheBatch` выполняется в том же Node, `live` обновляется по чанкам; `auto_sync_runs.message` для `task_type=purchase_formula_cache` дополняется не чаще раза в ~2 с.
+
+#### POST `/api/purchase/min-stock-apply/run`
+
+Тело JSON: `{ "filters": { … } }` — те же query-ключи, что у **`GET /api/purchase`** (без `limit` / `offset` / `sort_*`). Если `filters` пустой — дефолтная выборка закупок.
+
+Ответ сразу: `{ "success": true, "batch_id": N, "status": "running" }`. Обработка — в фоне в том же процессе Node; прогресс — **`GET /min-stock-apply/batch/:id`** или **`GET /min-stock-apply/log`**. Одновременно только один активный перенос (`409`, если уже `running`).
+
+#### GET `/api/purchase/min-stock-apply/log`
+
+Query: `limit` (default 12, max 50). Ответ: `{ "success", "batches": [ { "id", "status", "rows_updated", "rows_unchanged", "rows_skipped", "created_at", "finished_at", "can_revert", … } ] }`.
+
+#### GET `/api/purchase/min-stock-apply/batch/:id`
+
+Один пакет (для опроса статуса).
+
+#### GET `/api/purchase/min-stock-apply/batch/:id/items`
+
+Строки изменений пакета для журнала на `/purchase.html`: `{ code, name, old_min_stock, new_min_stock, formula_proposed }`. Query: `limit` (default 200, max 500), `offset`.
+
+#### POST `/api/purchase/min-stock-apply/revert`
+
+Тело: `{ "batch_id": N }`. Восстанавливает `ms_export.min_stock` из `old_min_stock` всех позиций пакета; помечает batch `reverted`. Только для `status=completed`.
+
 ### GET `/api/purchase`
 
 Список товаров для планирования закупок. **Пагинация и сортировка в MySQL:** параллельно `COUNT(*)` и `SELECT … ORDER BY <колонка> LIMIT ? OFFSET ?`. Обогащение (`enrichPurchaseListPage`) — **только для строк текущей страницы** (~`limit` кодов), **без** `payload_json` в списке и **без** bundle-warmup на list (`skipBundleWarmup: true`).
 
-Для каждой строки при совпадении **`formula_fp` + `data_rev`** в **`dg_formula_proposed_cache`** в SQL-списке уже подставляются **`formula_cached_proposed`** / **`windows_json`** (LEFT JOIN), поэтому **`formula_proposed_min_stock`** и сортировка по **`d_*`** в `ORDER BY` идут по кэшу. Кэш заполняют **`GET /api/product/:code`**, batch **`purchase_formula_cache`** (автосинхронизация / «Пересчитать кэш» на `/purchase.html`) и `runPurchaseFormulaCacheBatch`. Если строки кэша нет, в SQL-сортировке значение NULL → такие строки **в конце** при `asc`; enrich пересчитывает ячейки страницы.
+Для каждой строки при совпадении **`formula_fp` + `data_rev`** в **`dg_formula_proposed_cache`** в SQL-списке подставляются **`formula_cached_proposed`** / **`windows_json`** (LEFT JOIN); кэш заполняют **`GET /api/product/:code`**, batch **`purchase_formula_cache`** и `runPurchaseFormulaCacheBatch`.
 
-**`cache` в ответе (опционально):** `{ "source": "sql"|"memory", "sort_profile": "fast"|"heavy", "age_ms", "ttl_ms", "note" }`. Повторные идентичные запросы в течение ~90 с могут отдаваться из in-memory кэша (`purchaseListResponseCache` в `routes/purchase.js`). Замер с разбивкой `_bench` (data_rev / count / list_sql / enrich): `npm run bench:purchase-list-sql`.
+**Сортировка по `formula_proposed_min_stock` и `d_*a` / `d_*b`:** не по SQL-кэшу на одной странице — загружается выборка по фильтрам, **`enrichPurchaseListPage` для всех строк**, затем сортировка в Node по **фактическим** значению в ячейке (`column_totals_source: "enriched"`, `cache.source: "enriched"`). Иначе при неполном `dg_formula_proposed_cache` порядок в таблице не совпадал с числами в колонке. Обычные колонки (`code`, `stock`, `min_stock`, …) по-прежнему **`ORDER BY` в MySQL** + enrich только текущей страницы.
+
+**`cache` в ответе (опционально):** `{ "source": "sql"|"enriched"|"memory", "sort_profile": "fast"|"heavy", "age_ms", "ttl_ms", "note" }`. Повторные идентичные запросы в течение ~90 с могут отдаваться из in-memory кэша (`purchaseListResponseCache` в `routes/purchase.js`). Замер с разбивкой `_bench` (data_rev / count / list_sql / enrich): `npm run bench:purchase-list-sql`.
 
 **Фильтр по умолчанию (как в ТЗ страницы):**
 
@@ -1603,6 +1690,9 @@ Query: **`code`** (обязателен), **`limit`** (default 100, max 500), **
 Query:
 
 - `search` — подстрока по `code`, `name`, `supplier`, `supplier2` (case-insensitive).
+- `manager` — **точное** совпадение с `TRIM(ms_export.manager)` (свойство МС «Менеджер поддерживающий товар»; на `/purchase.html` — выбор из списка `GET /api/purchase/managers`).
+
+Ответ `GET /api/purchase` дополнительно содержит `column_totals` с полями **`stock_value_rub`**, **`min_stock_value_rub`**, **`formula_proposed_value_rub`** (Σ количество × закупочная цена из МС по всем строкам фильтра) и **`positions_without_buy_price`** (позиции без закупочной цены, не входят в рублёвую оценку). Карточка «Сводка по фильтру» на `/purchase.html` показывает эти три суммы.
 - `supplier` — фильтр по поставщику: по умолчанию подстрока в `supplier` **или** `supplier2` (case-insensitive). При **`supplier_exact=1`** или **`to_buy=1`** — только **`TRIM(ms_export.supplier)`** (точное совпадение, как в реестре «Поставщики»).
 - `supplier_key` — синоним `supplier` (для ссылок с `/suppliers.html`).
 - `to_purchase` — `1`: только позиции с потребностью к закупке (`GREATEST(0, ms_export.min_stock − stock − в_пути) > 0` — **только** поле «Неснижаемый остаток» из МС, без override и без «Предлагаемый нес.ост.»; см. `SUPPLIER_NEED_QTY_SQL` в `lib/datagonSuppliersSql.js`). На `/purchase.html` после «Ожидание» колонка **«К закупке»**.
@@ -1617,7 +1707,7 @@ Query:
 - `no_multiplicity` — `1`: в `dg_purchase_overrides` кратность пустая или &lt; 1 шт.
 - `incomplete_pack` — `1`: кратность ≥ 1, `stock ≥ кратность` и остаток **не кратен** кратности (хвост после полных упаковок; `1` шт при кратности `2` **не** попадает). Базовый код с «код-число» и `stock < min(суффикс)` — отсутствие комплекта, в фильтр не входит.
 - `limit` (default 100, max 1000), `offset`.
-- `sort_by` — `code` (default), `article`, `name`, `supplier`, `buy_price`, `min_stock`, **`formula_proposed_min_stock`**, `automation_price`, `proposed_min_stock`, `min_stock_dg`, `multiplicity`, `stock`, `is_archived`, **`in_transit`**, **`d_15a`**, **`d_15b`**, **`d_30a`**, **`d_30b`**, **`d_60a`**, **`d_60b`**, **`d_90a`**, **`d_90b`**, **`d_180a`**, **`d_180b`**, **`d_365a`**, **`d_365b`**.
+- `sort_by` — `code` (default), `article`, `name`, `supplier`, `price_comment`, `buy_price`, `min_stock`, **`formula_proposed_min_stock`**, `automation_price`, `proposed_min_stock`, `min_stock_dg`, `multiplicity`, `stock`, `is_archived`, **`in_transit`**, **`d_15a`**, **`d_15b`**, **`d_30a`**, **`d_30b`**, **`d_60a`**, **`d_60b`**, **`d_90a`**, **`d_90b`**, **`d_180a`**, **`d_180b`**, **`d_365a`**, **`d_365b`**.
 - `sort_dir` — `asc` (default) | `desc`.
 
 Сортировка по **`formula_proposed_min_stock`** и **`d_*`** в SQL использует поля из **`dg_formula_proposed_cache`**; без кэша — NULL в ключе сортировки (см. выше). Остальные `sort_by` мапятся на колонки `ms_export` / `dg_purchase_overrides` / `med.denorm_article` и т.д. (см. `buildPurchaseSqlOrderBy` в `routes/purchase.js`).

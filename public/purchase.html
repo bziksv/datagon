@@ -372,6 +372,105 @@
     body.datagon-vanilla-body[data-dg-active-nav='purchase'] #dg-pu-tfoot .dg-pu-tfoot-sum {
       color: #1e3a8a;
     }
+    body.datagon-vanilla-body[data-dg-active-nav='purchase'] .dg-pu-formula-cache-log {
+      max-height: 160px;
+      overflow-y: auto;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.75rem;
+      line-height: 1.45;
+      white-space: pre-wrap;
+      word-break: break-word;
+      padding: 6px 8px;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      background: #fafbfc;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='purchase'] .dg-pu-ms-apply-batches {
+      max-height: 320px;
+      overflow-y: auto;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='purchase'] .dg-pu-ms-apply-batch {
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      background: #fafbfc;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='purchase'] .dg-pu-ms-apply-batch-hdr {
+      padding: 6px 8px;
+      background: #f3f4f6;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='purchase'] .dg-pu-ms-apply-items-table {
+      width: 100%;
+      font-size: 0.75rem;
+      margin: 0;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='purchase'] .dg-pu-ms-apply-items-table th {
+      background: #fff;
+      border-bottom: 1px solid #e5e7eb;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='purchase'] .dg-pu-ms-apply-items-table td {
+      border-bottom: 1px solid #f3f4f6;
+      vertical-align: top;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='purchase'] .dg-pu-ms-apply-old {
+      color: #b45309;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='purchase'] .dg-pu-ms-apply-new {
+      color: #047857;
+      font-weight: 600;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='purchase'] .dg-pu-ms-apply-arrow {
+      color: #9ca3af;
+      padding: 0 4px;
+    }
+
+    .dg-pu-summary-card .dg-pu-summary-header {
+      background: linear-gradient(135deg, #2c3e50 0%, #1e6bb8 55%, #2980b9 100%);
+    }
+    .dg-pu-summary-body {
+      background: linear-gradient(180deg, #f8fafc 0%, #fff 120px);
+    }
+    .dg-pu-summary-loading {
+      display: flex;
+      align-items: center;
+      margin-bottom: 0.5rem;
+    }
+    .dg-pu-kpi-tile {
+      background: #fff;
+      border: 1px solid #e8eaed;
+      border-radius: 10px;
+      padding: 12px 14px;
+      height: 100%;
+      min-height: 88px;
+    }
+    .dg-pu-kpi-label {
+      font-size: 0.72rem;
+      color: #6c757d;
+      line-height: 1.3;
+      margin-bottom: 4px;
+    }
+    .dg-pu-kpi-value {
+      font-size: 1.25rem;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      line-height: 1.3;
+      min-height: 1.35em;
+    }
+    .dg-pu-kpi-sub {
+      font-size: 0.72rem;
+      line-height: 1.25;
+      margin-top: 4px;
+      min-height: 1.1em;
+    }
+    .dg-pu-kpi-money .dg-pu-kpi-value { color: #1e6bb8; }
+    .dg-pu-kpi-accent {
+      border-color: #cfe2ff;
+      background: linear-gradient(180deg, #f8fbff 0%, #fff 100%);
+    }
+    .dg-pu-kpi-accent .dg-pu-kpi-value { color: #0d6efd; }
+    .dg-pu-summary-positions { font-variant-numeric: tabular-nums; }
   </style>
 
   <style>
@@ -938,6 +1037,7 @@
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="ms-sales" href="/ms-sales.html" title="Продажи МС: отгрузки entity/demand, позиции с привязкой к товарам ms_export"><i class="metismenu-icon pe-7s-cash"></i>Продажи МС</a></li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="purchase" href="/purchase.html" title="Закупки товары: планирование, неснижаемые остатки, кратность"><i class="metismenu-icon pe-7s-cart"></i>Закупки товары</a></li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="suppliers" href="/suppliers.html" title="Поставщики: сводка по закупкам и настройки"><i class="metismenu-icon pe-7s-id"></i>Поставщики</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="supplier-analysis" href="/supplier-analysis.html" title="Продажи, оборот и тренды по поставщикам"><i class="metismenu-icon pe-7s-graph2"></i>Анализ поставщиков</a></li>
                     </ul>
                   </div>
                 </div>
@@ -968,6 +1068,52 @@
               </div>
             </div>
           </div>
+
+          <div class="main-card card mb-3 dg-pu-summary-card border-0 shadow-sm overflow-hidden">
+            <div class="card-header dg-pu-summary-header border-0 d-flex flex-wrap align-items-center justify-content-between gap-2">
+              <div class="d-flex align-items-center gap-2">
+                <i class="header-icon pe-7s-graph2 icon-gradient bg-love-kiss me-1"> </i>
+                <div>
+                  <span class="fw-semibold text-white">Сводка по фильтру</span>
+                  <div class="small text-white-50 d-none d-md-block">Оценка в рублях: количество × закупочная цена из МойСклад</div>
+                </div>
+              </div>
+              <span class="badge bg-light text-dark dg-pu-summary-positions" id="dg-pu-summary-positions">—</span>
+            </div>
+            <div class="card-body dg-pu-summary-body position-relative" id="dg-pu-summary-body">
+              <div class="dg-pu-summary-loading d-none" id="dg-pu-summary-loading">
+                <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                <span class="ms-2 text-muted small">Считаем сводку…</span>
+              </div>
+              <div class="row row-cols-1 row-cols-md-3 g-2" id="dg-pu-kpi-row">
+                <div class="col">
+                  <div class="dg-pu-kpi-tile dg-pu-kpi-money">
+                    <div class="dg-pu-kpi-label">Остаток на закупочную</div>
+                    <div class="dg-pu-kpi-value" id="dg-pu-kpi-stock-rub">—</div>
+                    <div class="dg-pu-kpi-sub text-muted" id="dg-pu-kpi-stock-qty"></div>
+                  </div>
+                </div>
+                <div class="col">
+                  <div class="dg-pu-kpi-tile">
+                    <div class="dg-pu-kpi-label">Неснижаемый остаток на закупочную</div>
+                    <div class="dg-pu-kpi-value" id="dg-pu-kpi-min-stock-rub">—</div>
+                    <div class="dg-pu-kpi-sub text-muted" id="dg-pu-kpi-min-stock-qty"></div>
+                  </div>
+                </div>
+                <div class="col">
+                  <div class="dg-pu-kpi-tile dg-pu-kpi-accent">
+                    <div class="dg-pu-kpi-label" title="Предлагаемый неснижаемый по формуле продаж">Предлагаемый нес.ост. на закупочную</div>
+                    <div class="dg-pu-kpi-value" id="dg-pu-kpi-formula-rub">—</div>
+                    <div class="dg-pu-kpi-sub text-muted" id="dg-pu-kpi-formula-qty"></div>
+                  </div>
+                </div>
+              </div>
+              <p class="small text-muted mb-0 mt-2" id="dg-pu-summary-hint">
+                Суммы по всем строкам текущего фильтра (все страницы таблицы). Позиции без закупочной цены в МС в рублёвую оценку не входят.
+              </p>
+            </div>
+          </div>
+
 
 
           <div class="main-card mb-3 card">
@@ -1054,7 +1200,7 @@
               </div>
               <div class="row g-2 align-items-end mt-2">
                 <div
-                  class="col-md-3"
+                  class="col-md-2"
                   data-dg-pu-filter-field="pu_no_longer_cooperation"
                   data-dg-tooltip="Поле МС «Перестали сотрудничать» (no_longer_cooperation). Нет — не помечено «Да» в МС (пусто, «нет», другое). Да — в МС ровно «Да». Все — без отбора."
                 >
@@ -1066,7 +1212,18 @@
                   </select>
                 </div>
                 <div
-                  class="col-md-5"
+                  class="col-md-3"
+                  data-dg-pu-filter-field="pu_manager"
+                  data-dg-filter-field-title="Менеджер"
+                  data-dg-tooltip="Значение свойства МС «Менеджер поддерживающий товар» (ms_export.manager). Список — из выгрузки МойСклад. Срабатывает по «Применить»."
+                >
+                  <label class="form-label" for="pu-f-manager">Менеджер</label>
+                  <select class="form-select" id="pu-f-manager">
+                    <option value="">— все —</option>
+                  </select>
+                </div>
+                <div
+                  class="col-md-4"
                   data-dg-pu-filter-field="pu_extra_filter"
                   data-dg-filter-field-title="Доп. фильтр"
                   data-dg-tooltip="Один специальный режим за раз (остаток, комплекты, нули, кратность, неполная упаковка). Срабатывает по кнопке «Применить»."
@@ -1089,7 +1246,25 @@
                 <button type="button" class="btn btn-sm btn-outline-secondary" id="purchase-reset" data-dg-tooltip="Сбросить фильтры к значениям по умолчанию" data-dg-notify-start="Сбрасываем фильтры закупок…"><i class="pe-7s-refresh me-1"></i>По умолчанию</button>
                 <button type="button" class="btn btn-sm btn-outline-primary" id="purchase-refresh" data-dg-notify-start="Обновляем таблицу закупок…"><i class="pe-7s-refresh me-1"></i>Обновить</button>
                 <button type="button" class="btn btn-sm btn-outline-dark" id="purchase-copy-link"><i class="pe-7s-link me-1"></i>Скопировать ссылку</button>
-                <button type="button" class="btn btn-sm btn-outline-warning" id="dg-pu-rebuild-formula-cache" data-dg-tooltip="Заполнить dg_formula_proposed_cache для дефолтной выборки (фоновая задача, журнал на processes)" data-dg-notify-start="Ставим в очередь пересчёт кэша формулы закупок…"><i class="pe-7s-refresh me-1"></i>Пересчитать кэш</button>
+                <button type="button" class="btn btn-sm btn-outline-warning" id="dg-pu-rebuild-formula-cache" data-dg-tooltip="Заполнить dg_formula_proposed_cache для дефолтной выборки (фоновая задача). Ход пересчёта — в журнале ниже." data-dg-notify-start="Ставим в очередь пересчёт кэша формулы закупок…"><i class="pe-7s-refresh me-1"></i>Пересчитать кэш</button>
+                <button type="button" class="btn btn-sm btn-outline-info" id="dg-pu-apply-formula-min-stock" data-dg-tooltip="Перенести «Предлагаемый нес.ост.» в «Неснижаемый» (МС) по текущим применённым фильтрам. Откат — по пакету в журнале ниже." data-dg-notify-start="Запускаем перенос предлагаемого неснижаемого в МС…">Пр.→НС</button>
+              </div>
+              <div id="dg-pu-formula-cache-panel" class="w-100 mt-2 border-top pt-2 small">
+                <div class="d-flex flex-wrap align-items-center gap-2 mb-1">
+                  <span class="text-muted">Пересчёт кэша формулы:</span>
+                  <span id="dg-pu-formula-cache-status" class="text-muted">—</span>
+                </div>
+                <div id="dg-pu-formula-cache-progress-wrap" class="progress mb-1 d-none" style="height: 6px">
+                  <div id="dg-pu-formula-cache-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+                </div>
+                <div id="dg-pu-formula-cache-log" class="dg-pu-formula-cache-log text-muted">Журнал пересчёта: пока нет запусков.</div>
+              </div>
+              <div id="dg-pu-ms-apply-panel" class="w-100 mt-2 border-top pt-2 small">
+                <div class="d-flex flex-wrap align-items-center gap-2 mb-1">
+                  <span class="text-muted">Перенос в неснижаемый (МС):</span>
+                  <span id="dg-pu-ms-apply-status" class="text-muted">—</span>
+                </div>
+                <div id="dg-pu-ms-apply-batches" class="dg-pu-ms-apply-batches text-muted">Журнал пакетов: загрузка…</div>
               </div>
               </div>
             </div>
@@ -1265,6 +1440,7 @@
         ["article", "Артикул", { center: true }],
         ["name", "Наименование"],
         ["supplier_label", "Поставщик"],
+        ["price_comment", "Проработка цены / коммент"],
         ["buy_price", "Закупочная цена", { center: true }],
         ["min_stock", "Неснижаемый остаток", { center: true }],
         ["formula_proposed_min_stock", "Предлагаемый нес.ост.", { center: true }],
@@ -1304,7 +1480,7 @@
       ]);
 
       var SORTABLE = new Set([
-        "code", "article", "name", "supplier", "buy_price",
+        "code", "article", "name", "supplier", "price_comment", "buy_price",
         "min_stock", "formula_proposed_min_stock", "automation_price",
         "min_stock_dg", "multiplicity",
         "stock", "is_archived", "in_transit",
@@ -1449,6 +1625,7 @@
         article: 80,
         name: 260,
         supplier_label: 110,
+        price_comment: 220,
         buy_price: 100,
         min_stock: 70,
         formula_proposed_min_stock: 70,
@@ -1601,6 +1778,7 @@
         no_longer_cooperation: "not_stopped",
         search: "",
         supplier: "",
+        manager: "",
         only_stock: "0",
         include_bundles: "0",
         zero_stock: "0",
@@ -1634,6 +1812,7 @@
       var total = 0;
       var limit = 100;
       var lastRows = [];
+      var lastColumnTotalsSource = "";
       var puLogModal = { code: "", name: "", offset: 0, limit: 100, total: 0, filterField: "" };
       var PURCHASE_LOG_SOURCE_LABELS = { override: "Ячейка", import: "Импорт CSV" };
       var loading = false;
@@ -1653,6 +1832,72 @@
         var x = Number(v);
         if (!Number.isFinite(x)) return "—";
         return x.toLocaleString("ru-RU", { maximumFractionDigits: 3, minimumFractionDigits: 0 });
+      }
+      function fmtMoneyRub(n) {
+        if (n == null || !Number.isFinite(Number(n))) return "—";
+        return (
+          Math.round(Number(n)).toLocaleString("ru-RU") + " ₽"
+        );
+      }
+      function fmtPuKpiQtySub(label, qty) {
+        if (qty == null || !Number.isFinite(Number(qty))) return "";
+        return label + ": " + fmtPuSnapQty(qty) + " шт.";
+      }
+
+      function renderPurchaseSummary() {
+        var loadingEl = document.getElementById("dg-pu-summary-loading");
+        var kpiRow = document.getElementById("dg-pu-kpi-row");
+        var posBadge = document.getElementById("dg-pu-summary-positions");
+        var hint = document.getElementById("dg-pu-summary-hint");
+        var set = function (id, text) {
+          var el = document.getElementById(id);
+          if (el) el.textContent = text;
+        };
+        if (loading) {
+          if (loadingEl) loadingEl.classList.remove("d-none");
+          if (kpiRow) kpiRow.classList.add("opacity-50");
+          set("dg-pu-kpi-stock-rub", "—");
+          set("dg-pu-kpi-min-stock-rub", "—");
+          set("dg-pu-kpi-formula-rub", "—");
+          set("dg-pu-kpi-stock-qty", "");
+          set("dg-pu-kpi-min-stock-qty", "");
+          set("dg-pu-kpi-formula-qty", "");
+          if (posBadge) posBadge.textContent = "…";
+          return;
+        }
+        if (loadingEl) loadingEl.classList.add("d-none");
+        if (kpiRow) kpiRow.classList.remove("opacity-50");
+        var t = lastColumnTotals || {};
+        var pos = Number(t.positions_count || total || 0);
+        if (posBadge) {
+          posBadge.textContent = pos > 0 ? fmtNum(pos) + " поз." : "0 поз.";
+        }
+        set("dg-pu-kpi-stock-rub", fmtMoneyRub(t.stock_value_rub));
+        set("dg-pu-kpi-min-stock-rub", fmtMoneyRub(t.min_stock_value_rub));
+        set("dg-pu-kpi-formula-rub", fmtMoneyRub(t.formula_proposed_value_rub));
+        set("dg-pu-kpi-stock-qty", fmtPuKpiQtySub("Остаток", t.stock));
+        set("dg-pu-kpi-min-stock-qty", fmtPuKpiQtySub("Неснижаемый", t.min_stock));
+        set("dg-pu-kpi-formula-qty", fmtPuKpiQtySub("Предлагаемый", t.formula_proposed_min_stock));
+        if (hint) {
+          var parts = [
+            "Суммы по всем строкам текущего фильтра (все страницы таблицы).",
+            "Рубли = количество × закупочная цена из МойСклад.",
+          ];
+          var noPrice = Number(t.positions_without_buy_price || 0);
+          if (noPrice > 0) {
+            parts.push(
+              "Без закупочной цены в оценку не входят: " + fmtNum(noPrice) + " поз."
+            );
+          }
+          if (lastColumnTotalsSource === "enriched") {
+            parts.push("Предлагаемый нес.ост. пересчитан по формуле для всей выборки.");
+          } else if (Number(total || 0) > 2500) {
+            parts.push(
+              "Для очень большой выборки предлагаемый нес.ост. в ₽ может быть занижен (нет полного пересчёта формулы)."
+            );
+          }
+          hint.textContent = parts.join(" ");
+        }
       }
       function fmtNumEditable(n) {
         if (n == null) return "";
@@ -1960,11 +2205,67 @@
         sel.value = next;
       }
 
+      var purchaseManagerOptions = [];
+
+      function rebuildPurchaseManagerSelect(currentValue) {
+        var el = document.getElementById("pu-f-manager");
+        if (!el) return;
+        currentValue = currentValue != null ? String(currentValue).trim() : "";
+        el.innerHTML = "";
+        var optAll = document.createElement("option");
+        optAll.value = "";
+        optAll.textContent = "— все —";
+        el.appendChild(optAll);
+        var hasCurrent = false;
+        purchaseManagerOptions.forEach(function (name) {
+          var opt = document.createElement("option");
+          opt.value = name;
+          opt.textContent = name;
+          if (name === currentValue) {
+            opt.selected = true;
+            hasCurrent = true;
+          }
+          el.appendChild(opt);
+        });
+        if (currentValue && !hasCurrent) {
+          var ghost = document.createElement("option");
+          ghost.value = currentValue;
+          ghost.textContent = currentValue + " (нет в справочнике МС)";
+          ghost.selected = true;
+          el.appendChild(ghost);
+        }
+      }
+
+      function loadPurchaseManagers() {
+        return fetch("/api/purchase/managers", { credentials: "same-origin" })
+          .then(function (r) {
+            if (!r.ok) throw new Error("HTTP " + r.status);
+            return r.json();
+          })
+          .then(function (j) {
+            if (!j || j.success === false) throw new Error((j && j.error) || "Ошибка загрузки менеджеров");
+            purchaseManagerOptions = Array.isArray(j.managers)
+              ? j.managers.map(function (m) { return String(m || "").trim(); }).filter(Boolean)
+              : [];
+            try {
+              purchaseManagerOptions.sort(function (a, b) {
+                return a.localeCompare(b, "ru", { sensitivity: "base" });
+              });
+            } catch (eSort) {
+              purchaseManagerOptions.sort();
+            }
+          })
+          .catch(function () {
+            purchaseManagerOptions = [];
+          });
+      }
+
       function readFilters() {
         var xf = extraFilterModeToFlags(readPuExtraFilterSelect());
         return {
           search: document.getElementById("pu-f-search").value.trim(),
           supplier: document.getElementById("pu-f-supplier").value.trim(),
+          manager: document.getElementById("pu-f-manager").value.trim(),
           archived: document.getElementById("pu-f-archived").value,
           stock_position: document.getElementById("pu-f-stock_position").value,
           no_longer_cooperation: document.getElementById("pu-f-no_longer_cooperation").value,
@@ -1982,6 +2283,7 @@
       function appendFilterParams(p, f) {
         if (f.search) p.set("search", f.search);
         if (f.supplier) p.set("supplier", f.supplier);
+        if (f.manager) p.set("manager", f.manager);
         if (f.archived && f.archived !== initialFilters.archived) p.set("archived", f.archived);
         if (f.stock_position && f.stock_position !== initialFilters.stock_position) p.set("stock_position", f.stock_position);
         if (f.no_longer_cooperation && f.no_longer_cooperation !== initialFilters.no_longer_cooperation) {
@@ -2097,7 +2399,7 @@
           purchaseToPurchaseMode = true;
           syncToPurchaseColumnVisibility();
         }
-        var keys = ["limit", "archived", "stock_position", "no_longer_cooperation", "search", "supplier"];
+        var keys = ["limit", "archived", "stock_position", "no_longer_cooperation", "search", "supplier", "manager"];
         keys.forEach(function (k) {
           var v = params.get(k);
           if (v === null) return;
@@ -2105,6 +2407,7 @@
           if (k === "limit") document.getElementById("pu-f-limit").value = String(Number(v) || 100);
           else if (k === "search") document.getElementById("pu-f-search").value = v;
           else if (k === "supplier") document.getElementById("pu-f-supplier").value = v;
+          else if (k === "manager") document.getElementById("pu-f-manager").value = v;
           else if (k === "archived") document.getElementById("pu-f-archived").value = v;
           else if (k === "stock_position") document.getElementById("pu-f-stock_position").value = v;
           else if (k === "no_longer_cooperation") {
@@ -2507,6 +2810,13 @@
           return a0;
         }
         if (opts.editable) return makeEditableCell(key, r);
+        if (key === "price_comment") {
+          var spPc = document.createElement("span");
+          spPc.className = "dg-pu-price-comment";
+          spPc.title = r.price_comment || "";
+          spPc.textContent = r.price_comment || "—";
+          return spPc;
+        }
         if (key === "buy_price") {
           var t = formatMoneyText(r.buy_price);
           var sp = document.createElement("span");
@@ -2922,6 +3232,647 @@
         updateSortHint();
       }
 
+      var msApplyPollTimer = null;
+      var msApplyActiveBatchId = null;
+      var msApplyExpandedBatchId = null;
+      var msApplyItemsCache = {};
+      var formulaCachePollTimer = null;
+      var formulaCacheWasRunning = false;
+
+      function buildApplyFilterObject() {
+        var f = readFilters();
+        var p = new URLSearchParams();
+        appendFilterParams(p, f);
+        var o = {};
+        p.forEach(function (v, k) {
+          if (k === "limit" || k === "offset" || k === "sort_by" || k === "sort_dir") return;
+          o[k] = v;
+        });
+        if (!o.archived) o.archived = f.archived;
+        if (!o.stock_position) o.stock_position = f.stock_position;
+        if (!o.no_longer_cooperation) o.no_longer_cooperation = f.no_longer_cooperation;
+        return o;
+      }
+
+      function fmtMinStockVal(n) {
+        if (n == null || n === "") return "∅";
+        var x = Number(n);
+        if (!Number.isFinite(x)) return String(n);
+        if (Math.abs(x - Math.round(x)) < 1e-9) return String(Math.round(x));
+        return x.toFixed(2);
+      }
+
+      function msApplyCountsLabel(batch) {
+        if (!batch) return "—";
+        var st = String(batch.status || "");
+        if (st === "running") {
+          return "выполняется… обновлено " + fmtNum(batch.rows_updated || 0);
+        }
+        if (st === "failed") {
+          return "ошибка — " + (batch.error_message || "?");
+        }
+        if (st === "reverted") {
+          return "откачен " + formatDateTimeMsk(batch.reverted_at);
+        }
+        return (
+          "обновлено " +
+          fmtNum(batch.rows_updated || 0) +
+          ", без изм. " +
+          fmtNum(batch.rows_unchanged || 0) +
+          ", пропуск " +
+          fmtNum(batch.rows_skipped || 0)
+        );
+      }
+
+      function msApplyStatusLabel(batch) {
+        if (!batch) return "—";
+        return "пакет #" + batch.id + " — " + msApplyCountsLabel(batch);
+      }
+
+      function msApplyWhoLabel(meta) {
+        if (!meta) return "—";
+        var name = String(meta.created_by_name || "").trim();
+        if (name) return name;
+        if (meta.created_by_user_id != null && meta.created_by_user_id !== "") {
+          return "user#" + meta.created_by_user_id;
+        }
+        return "не записан";
+      }
+
+      function msApplyWhoHeaderHtml(meta) {
+        var who = escapeHtml(msApplyWhoLabel(meta));
+        var html = '<span class="text-nowrap"><span class="fw-semibold">Кто:</span> ' + who + "</span>";
+        if (meta && String(meta.status) === "reverted") {
+          var rev = String(meta.reverted_by_name || "").trim();
+          if (rev) {
+            html +=
+              ' <span class="text-muted text-nowrap">· откатил: <span class="fw-semibold">' +
+              escapeHtml(rev) +
+              "</span></span>";
+          }
+        }
+        return html;
+      }
+
+      function renderMsApplyItemRows(items, batchMeta) {
+        var meta = batchMeta && typeof batchMeta === "object" ? batchMeta : {};
+        var whoCell = escapeHtml(msApplyWhoLabel(meta));
+        var fieldLabel =
+          String(meta.status || "") === "reverted" ? "откачен" : "неснижаемый МС";
+        if (!Array.isArray(items) || !items.length) {
+          return (
+            '<tr><td colspan="5" class="text-muted py-2 text-center">В пакете нет изменённых позиций.</td></tr>'
+          );
+        }
+        var out = "";
+        for (var i = 0; i < items.length; i++) {
+          var it = items[i] || {};
+          var oldV =
+            it.old_min_stock == null
+              ? '<span class="text-muted">∅</span>'
+              : '<span class="dg-pu-ms-apply-old">' + escapeHtml(fmtMinStockVal(it.old_min_stock)) + "</span>";
+          var newV =
+            it.new_min_stock == null
+              ? '<span class="text-muted">∅</span>'
+              : '<span class="dg-pu-ms-apply-new">' + escapeHtml(fmtMinStockVal(it.new_min_stock)) + "</span>";
+          var pr =
+            it.formula_proposed != null
+              ? '<div style="font-size:0.7rem" class="text-muted">пр. ' +
+                escapeHtml(fmtMinStockVal(it.formula_proposed)) +
+                "</div>"
+              : "";
+          var nameCell = it.name
+            ? '<div class="text-truncate" style="max-width:220px" title="' + escapeHtml(it.name) + '">' + escapeHtml(it.name) + "</div>"
+            : '<span class="text-muted">—</span>';
+          out +=
+            "<tr>" +
+            '<td class="text-nowrap"><code>' + escapeHtml(it.code || "") + "</code></td>" +
+            "<td>" + nameCell + "</td>" +
+            '<td class="text-end text-nowrap">' + oldV +
+            '<span class="dg-pu-ms-apply-arrow">→</span>' + newV + pr + "</td>" +
+            "<td>" + whoCell + "</td>" +
+            '<td class="text-muted text-nowrap">' + escapeHtml(fieldLabel) + "</td></tr>";
+        }
+        return out;
+      }
+
+      function loadMsApplyBatchItems(batchId, bodyEl) {
+        if (!bodyEl) return Promise.resolve();
+        var bid = Number(batchId);
+        if (!Number.isFinite(bid) || bid <= 0) return Promise.resolve();
+        if (msApplyItemsCache[bid] && msApplyItemsCache[bid].loaded) {
+          bodyEl.innerHTML = msApplyItemsCache[bid].html;
+          return Promise.resolve();
+        }
+        bodyEl.innerHTML = '<div class="text-muted small py-2 px-2">Загрузка позиций пакета…</div>';
+        return fetch("/api/purchase/min-stock-apply/batch/" + bid + "/items?limit=500", {
+          credentials: "same-origin",
+          headers: purchaseAuthHeaders(false),
+        })
+          .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+          .then(function (x) {
+            if (!x.ok || !x.j || x.j.success === false) {
+              bodyEl.innerHTML = '<div class="text-danger small py-2 px-2">' + escapeHtml((x.j && x.j.error) || "Ошибка загрузки") + "</div>";
+              return;
+            }
+            var meta = (msApplyItemsCache[bid] && msApplyItemsCache[bid].whoMeta) || {};
+            if (x.j.batch) meta = x.j.batch;
+            var rows = renderMsApplyItemRows(x.j.items || [], meta);
+            var more = Number(x.j.total || 0) > (x.j.items ? x.j.items.length : 0)
+              ? '<div class="text-muted small px-2 py-1">Показано ' + fmtNum(x.j.items.length) + " из " + fmtNum(x.j.total) + ".</div>"
+              : "";
+            var html = '<div class="table-responsive"><table class="table table-sm dg-pu-ms-apply-items-table mb-0">' +
+              '<thead><tr><th>Код</th><th>Наименование</th><th class="text-end">Было → стало</th><th>Кто</th><th>Поле</th></tr></thead><tbody>' +
+              rows + "</tbody></table></div>" + more;
+            msApplyItemsCache[bid] = {
+              loaded: true,
+              html: html,
+              whoMeta: meta,
+              status: String(meta.status || ""),
+            };
+            bodyEl.innerHTML = html;
+          })
+          .catch(function (e) {
+            bodyEl.innerHTML = '<div class="text-danger small py-2 px-2">Сеть: ' + escapeHtml((e && e.message) || String(e)) + "</div>";
+          });
+      }
+
+      function toggleMsApplyBatch(batchId) {
+        var bid = Number(batchId);
+        if (!Number.isFinite(bid) || bid <= 0) return;
+        msApplyExpandedBatchId = msApplyExpandedBatchId === bid ? null : bid;
+        var wrap = document.getElementById("dg-pu-ms-apply-batches");
+        if (!wrap) return;
+        wrap.querySelectorAll(".dg-pu-ms-apply-batch").forEach(function (block) {
+          var id = Number(block.getAttribute("data-batch-id"));
+          var open = id === msApplyExpandedBatchId;
+          var body = block.querySelector(".dg-pu-ms-apply-batch-body");
+          var btn = block.querySelector(".dg-pu-ms-apply-expand");
+          if (body) body.classList.toggle("d-none", !open);
+          if (btn) btn.textContent = open ? "▾" : "▸";
+          if (open && body) loadMsApplyBatchItems(id, body);
+        });
+      }
+
+      function bindMsApplyBatchUi(root) {
+        if (!root) return;
+        root.querySelectorAll(".dg-pu-ms-apply-expand").forEach(function (btn) {
+          btn.addEventListener("click", function () { toggleMsApplyBatch(btn.getAttribute("data-batch-id")); });
+        });
+        root.querySelectorAll(".dg-pu-ms-apply-revert").forEach(function (btn) {
+          btn.addEventListener("click", function (e) {
+            e.stopPropagation();
+            var bid = Number(btn.getAttribute("data-batch-id"));
+            if (!Number.isFinite(bid) || bid <= 0) return;
+            if (!window.confirm("Откатить пакет #" + bid + "? Неснижаемый остаток (МС) вернётся к значениям до переноса.")) return;
+            revertMsApplyBatch(bid, btn);
+          });
+        });
+      }
+
+      function renderMsApplyLog(batches) {
+        var logEl = document.getElementById("dg-pu-ms-apply-batches");
+        if (!logEl) return;
+        if (!Array.isArray(batches) || !batches.length) {
+          logEl.innerHTML = '<span class="text-muted">Пакетов переноса пока нет.</span>';
+          msApplyExpandedBatchId = null;
+          return;
+        }
+        if (
+          msApplyExpandedBatchId != null &&
+          !batches.some(function (b) {
+            return Number(b.id) === Number(msApplyExpandedBatchId);
+          })
+        ) {
+          msApplyExpandedBatchId = null;
+        }
+        var html = "";
+        for (var i = 0; i < batches.length; i++) {
+          var b = batches[i] || {};
+          var bid = Number(b.id);
+          msApplyItemsCache[bid] = msApplyItemsCache[bid] || {};
+          msApplyItemsCache[bid].status = String(b.status || "");
+          msApplyItemsCache[bid].whoMeta = {
+            created_by_name: b.created_by_name,
+            created_by_user_id: b.created_by_user_id,
+            reverted_by_name: b.reverted_by_name,
+            status: b.status,
+          };
+          if (String(b.status) === "reverted" || String(b.status) === "running") msApplyItemsCache[bid].loaded = false;
+          var open = Number(msApplyExpandedBatchId) === bid;
+          var st = String(b.status || "");
+          var statusBadge = st === "running" ? '<span class="badge bg-warning text-dark">в работе</span>'
+            : st === "failed" ? '<span class="badge bg-danger">ошибка</span>'
+            : st === "reverted" ? '<span class="badge bg-secondary">откачен</span>'
+            : '<span class="badge bg-success">готово</span>';
+          var revertBtn = b.can_revert
+            ? '<button type="button" class="btn btn-link btn-sm p-0 dg-pu-ms-apply-revert" data-batch-id="' + escapeHtml(String(b.id)) + '" data-dg-notify-start="Откатываем пакет #' + escapeHtml(String(b.id)) + '…">Откатить</button>'
+            : "";
+          html += '<div class="dg-pu-ms-apply-batch mb-2" data-batch-id="' + escapeHtml(String(b.id)) + '">' +
+            '<div class="dg-pu-ms-apply-batch-hdr d-flex flex-wrap align-items-center gap-2">' +
+            '<button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1 dg-pu-ms-apply-expand" data-batch-id="' + escapeHtml(String(b.id)) + '">' + (open ? "▾" : "▸") + '</button>' +
+            '<span class="text-nowrap">' + escapeHtml(formatDateTimeMsk(b.finished_at || b.created_at)) + '</span>' +
+            '<span class="text-nowrap">#' + escapeHtml(String(b.id)) + '</span>' + statusBadge +
+            '<span>' + escapeHtml(msApplyCountsLabel(b)) + '</span>' + msApplyWhoHeaderHtml(b) +
+            '<span class="ms-auto">' + revertBtn + '</span></div>' +
+            '<div class="dg-pu-ms-apply-batch-body' + (open ? "" : " d-none") + '" data-batch-id="' + escapeHtml(String(b.id)) + '">' +
+            (open && msApplyItemsCache[bid] && msApplyItemsCache[bid].loaded ? msApplyItemsCache[bid].html : '<div class="text-muted small py-2 px-2">Загрузка…</div>') +
+            '</div></div>';
+        }
+        logEl.innerHTML = html;
+        bindMsApplyBatchUi(logEl);
+        if (msApplyExpandedBatchId != null) {
+          var openBlock = logEl.querySelector('.dg-pu-ms-apply-batch[data-batch-id="' + msApplyExpandedBatchId + '"]');
+          if (openBlock) {
+            var body = openBlock.querySelector(".dg-pu-ms-apply-batch-body");
+            if (body) loadMsApplyBatchItems(msApplyExpandedBatchId, body);
+          }
+        }
+      }
+
+      function setMsApplyStatusFromBatch(batch) {
+        var el = document.getElementById("dg-pu-ms-apply-status");
+        if (!el) return;
+        if (!batch) {
+          el.textContent = "—";
+          el.className = "text-muted";
+          return;
+        }
+        el.textContent = msApplyStatusLabel(batch);
+        var st = String(batch.status || "");
+        el.className =
+          st === "failed"
+            ? "text-danger"
+            : st === "running"
+              ? "text-warning"
+              : st === "reverted"
+                ? "text-muted"
+                : "text-success";
+      }
+
+      function loadMsApplyLog() {
+        return fetch("/api/purchase/min-stock-apply/log?limit=12", {
+          credentials: "same-origin",
+          headers: purchaseAuthHeaders(false),
+        })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { ok: r.ok, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.ok || !x.j || x.j.success === false) {
+              var logEl = document.getElementById("dg-pu-ms-apply-batches");
+              if (logEl) {
+                logEl.textContent =
+                  "Ошибка журнала: " + ((x.j && x.j.error) || "неизвестно");
+              }
+              return;
+            }
+            var batches = Array.isArray(x.j.batches) ? x.j.batches : [];
+            renderMsApplyLog(batches);
+            var active = null;
+            if (msApplyActiveBatchId != null) {
+              for (var bi = 0; bi < batches.length; bi++) {
+                if (Number(batches[bi].id) === Number(msApplyActiveBatchId)) {
+                  active = batches[bi];
+                  break;
+                }
+              }
+            }
+            if (!active && batches.length) active = batches[0];
+            if (active) setMsApplyStatusFromBatch(active);
+            else setMsApplyStatusFromBatch(null);
+            var stillRunning = batches.some(function (b) {
+              return String(b.status) === "running";
+            });
+            if (stillRunning && !msApplyPollTimer) {
+              msApplyPollTimer = window.setInterval(function () {
+                loadMsApplyLog();
+              }, 2500);
+            } else if (!stillRunning && msApplyPollTimer) {
+              window.clearInterval(msApplyPollTimer);
+              msApplyPollTimer = null;
+              msApplyActiveBatchId = null;
+            }
+          })
+          .catch(function () {
+            var logEl = document.getElementById("dg-pu-ms-apply-batches");
+            if (logEl) logEl.textContent = "Сетевая ошибка загрузки журнала переноса.";
+          });
+      }
+
+      function pollMsApplyBatch(batchId) {
+        msApplyActiveBatchId = batchId;
+        if (msApplyPollTimer) {
+          window.clearInterval(msApplyPollTimer);
+          msApplyPollTimer = null;
+        }
+        function tick() {
+          return fetch("/api/purchase/min-stock-apply/batch/" + batchId, {
+            credentials: "same-origin",
+            headers: purchaseAuthHeaders(false),
+          })
+            .then(function (r) {
+              return r.json().then(function (j) {
+                return { ok: r.ok, j: j };
+              });
+            })
+            .then(function (x) {
+              if (!x.ok || !x.j || !x.j.batch) return;
+              setMsApplyStatusFromBatch(x.j.batch);
+              if (String(x.j.batch.status) !== "running") {
+                msApplyActiveBatchId = null;
+                loadData();
+                return loadMsApplyLog();
+              }
+            });
+        }
+        tick();
+        msApplyPollTimer = window.setInterval(tick, 2500);
+      }
+
+      function revertMsApplyBatch(batchId, btn) {
+        var doFetch = function () {
+          return fetch("/api/purchase/min-stock-apply/revert", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: purchaseAuthHeaders(true),
+            body: JSON.stringify({ batch_id: batchId }),
+          }).then(function (r) {
+            return r.json().then(function (j) {
+              if (!r.ok || !j || j.success === false) {
+                throw new Error((j && j.error) || "HTTP " + r.status);
+              }
+              return j;
+            });
+          });
+        };
+        var onOk = function (j) {
+          if (window.DatagonNotify && window.DatagonNotify.toast) {
+            window.DatagonNotify.toast({
+              type: "success",
+              message:
+                "Откат пакета #" +
+                batchId +
+                " выполнен (" +
+                fmtNum(j.reverted_rows || 0) +
+                " поз.)",
+            });
+          }
+          delete msApplyItemsCache[batchId];
+          msApplyExpandedBatchId = batchId;
+          loadMsApplyLog();
+          loadData();
+        };
+        var onErr = function (e) {
+          if (window.DatagonNotify && window.DatagonNotify.toast) {
+            window.DatagonNotify.toast({
+              type: "danger",
+              message: "Откат не удался: " + (e && e.message ? e.message : e),
+            });
+          }
+        };
+        if (window.DatagonNotify && window.DatagonNotify.busyRun && btn) {
+          return window.DatagonNotify.busyRun(btn, function () {
+            return doFetch().then(onOk);
+          }).catch(onErr);
+        }
+        return doFetch().then(onOk).catch(onErr);
+      }
+
+      function runPurchaseMinStockApply() {
+        var btn = document.getElementById("dg-pu-apply-formula-min-stock");
+        var filters = buildApplyFilterObject();
+        var doFetch = function () {
+          return fetch("/api/purchase/min-stock-apply/run", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: purchaseAuthHeaders(true),
+            body: JSON.stringify({ filters: filters }),
+          }).then(function (r) {
+            return r.json().then(function (j) {
+              if (!r.ok || !j || j.success === false) {
+                throw new Error((j && j.error) || "HTTP " + r.status);
+              }
+              return j;
+            });
+          });
+        };
+        var onOk = function (j) {
+          if (window.DatagonNotify && window.DatagonNotify.toast) {
+            window.DatagonNotify.toast({
+              type: "info",
+              message: "Перенос запущен (пакет #" + j.batch_id + "). Следите за журналом ниже.",
+            });
+          }
+          setMsApplyStatusFromBatch({ id: j.batch_id, status: "running", rows_updated: 0 });
+          msApplyExpandedBatchId = j.batch_id;
+          delete msApplyItemsCache[j.batch_id];
+          pollMsApplyBatch(j.batch_id);
+          loadMsApplyLog();
+        };
+        var onErr = function (e) {
+          if (window.DatagonNotify && window.DatagonNotify.toast) {
+            window.DatagonNotify.toast({
+              type: "danger",
+              message: "Не удалось запустить перенос: " + (e && e.message ? e.message : e),
+            });
+          }
+        };
+        if (window.DatagonNotify && window.DatagonNotify.busyRun && btn) {
+          return window.DatagonNotify.busyRun(btn, function () {
+            return doFetch().then(onOk);
+          }).catch(onErr);
+        }
+        return doFetch().then(onOk).catch(onErr);
+      }
+
+      function purchaseFmtDateTime(v) {
+        if (!v) return "";
+        try {
+          var d = new Date(v);
+          if (isNaN(d.getTime())) return String(v);
+          return d.toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "medium" });
+        } catch (e) {
+          return String(v);
+        }
+      }
+
+      function formulaCacheStatusClass(running, dbStatus) {
+        if (running) return "text-warning";
+        var st = String(dbStatus || "");
+        if (st === "failed") return "text-danger";
+        if (st === "completed") return "text-success";
+        return "text-muted";
+      }
+
+      function renderFormulaCacheProgress(payload) {
+        var statusEl = document.getElementById("dg-pu-formula-cache-status");
+        var logEl = document.getElementById("dg-pu-formula-cache-log");
+        var barWrap = document.getElementById("dg-pu-formula-cache-progress-wrap");
+        var bar = document.getElementById("dg-pu-formula-cache-progress-bar");
+        if (!statusEl || !logEl) return;
+        var live = (payload && payload.live) || {};
+        var db = payload && payload.db_run;
+        var running = !!(payload && payload.running);
+        var msg = String(live.message || (db && db.message) || "").trim();
+        var pct = running ? Math.max(0, Math.min(100, Number(live.pct) || 0)) : 0;
+        if (!running && db && String(db.status) === "completed") pct = 100;
+
+        if (running) {
+          var total = Number(live.selection_total) || 0;
+          var done = Number(live.processed) || 0;
+          statusEl.textContent =
+            msg ||
+            (total > 0
+              ? "Выполняется: " + fmtNum(done) + " / " + fmtNum(total)
+              : "Выполняется…");
+        } else if (db && db.status) {
+          statusEl.textContent = msg || "Задача: " + db.status;
+        } else {
+          statusEl.textContent = msg || "—";
+        }
+        statusEl.className = formulaCacheStatusClass(running, db && db.status);
+
+        if (barWrap && bar) {
+          if (running) {
+            barWrap.classList.remove("d-none");
+            bar.style.width = pct + "%";
+            bar.setAttribute("aria-valuenow", String(Math.round(pct)));
+            bar.classList.add("progress-bar-animated");
+          } else if (db && String(db.status) === "completed") {
+            barWrap.classList.remove("d-none");
+            bar.style.width = "100%";
+            bar.setAttribute("aria-valuenow", "100");
+            bar.classList.remove("progress-bar-animated");
+          } else {
+            barWrap.classList.add("d-none");
+            bar.style.width = "0%";
+            bar.setAttribute("aria-valuenow", "0");
+          }
+        }
+
+        var lines = [];
+        var doneN = Number(live.processed) || 0;
+        var totalN = Number(live.selection_total) || 0;
+        if (running) {
+          if (totalN > 0) {
+            lines.push(
+              "Прогресс: " +
+                fmtNum(doneN) +
+                " / " +
+                fmtNum(totalN) +
+                " поз., в кэш " +
+                fmtNum(live.upserted || 0)
+            );
+          } else if (doneN > 0) {
+            lines.push(
+              "Обработано " +
+                fmtNum(doneN) +
+                " поз., в кэш " +
+                fmtNum(live.upserted || 0) +
+                " (идёт пересчёт, между пакетами пауза на формулу — это нормально)"
+            );
+          }
+          if (live.last_tick_ms) {
+            var secAgo = Math.max(0, Math.round((Date.now() - Number(live.last_tick_ms)) / 1000));
+            lines.push("Последнее обновление: " + secAgo + " с назад");
+          }
+        }
+        if (msg && lines.indexOf(msg) < 0 && lines.join("\n").indexOf(msg) < 0) lines.push(msg);
+        if (db && db.started_at) lines.push("Старт: " + purchaseFmtDateTime(db.started_at));
+        if (db && db.finished_at && !running) {
+          lines.push("Завершено: " + purchaseFmtDateTime(db.finished_at));
+        }
+        if (db && db.trigger_type) {
+          lines.push(
+            "Запуск: " + (db.trigger_type === "manual" ? "вручную" : db.trigger_type)
+          );
+        }
+        logEl.textContent =
+          lines.length > 0 ? lines.join("\n") : "Журнал пересчёта: пока нет запусков.";
+      }
+
+      function loadFormulaCacheProgress() {
+        return fetch("/api/purchase/formula-cache-progress", {
+          credentials: "same-origin",
+          headers: purchaseAuthHeaders(false),
+        })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { ok: r.ok, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.ok || !x.j || x.j.success === false) {
+              var logEl = document.getElementById("dg-pu-formula-cache-log");
+              if (logEl) {
+                logEl.textContent =
+                  "Ошибка журнала: " + ((x.j && x.j.error) || "неизвестно");
+              }
+              return;
+            }
+            var running = !!x.j.running;
+            renderFormulaCacheProgress(x.j);
+            if (running) {
+              if (!formulaCachePollTimer) {
+                formulaCachePollTimer = window.setInterval(function () {
+                  loadFormulaCacheProgress();
+                }, 2000);
+              }
+              formulaCacheWasRunning = true;
+            } else {
+              if (formulaCachePollTimer) {
+                window.clearInterval(formulaCachePollTimer);
+                formulaCachePollTimer = null;
+              }
+              if (formulaCacheWasRunning) {
+                formulaCacheWasRunning = false;
+                loadData();
+                if (window.DatagonNotify && window.DatagonNotify.toast) {
+                  var db = x.j.db_run;
+                  if (db && String(db.status) === "completed") {
+                    window.DatagonNotify.toast({
+                      type: "success",
+                      message:
+                        (db.message && String(db.message).slice(0, 220)) ||
+                        "Пересчёт кэша завершён.",
+                    });
+                  } else if (db && String(db.status) === "failed") {
+                    window.DatagonNotify.toast({
+                      type: "danger",
+                      message:
+                        (db.message && String(db.message).slice(0, 220)) ||
+                        "Пересчёт кэша завершился с ошибкой.",
+                    });
+                  }
+                }
+              }
+            }
+          })
+          .catch(function () {
+            var logEl = document.getElementById("dg-pu-formula-cache-log");
+            if (logEl) logEl.textContent = "Сетевая ошибка загрузки журнала пересчёта.";
+          });
+      }
+
+      function startFormulaCacheProgressPoll() {
+        formulaCacheWasRunning = true;
+        renderFormulaCacheProgress({
+          running: true,
+          live: {
+            running: true,
+            message: "Поставлено в очередь, ожидаем старт…",
+            pct: 0,
+            processed: 0,
+            upserted: 0,
+            selection_total: 0,
+          },
+        });
+        loadFormulaCacheProgress();
+      }
+
       function runPurchaseFormulaCacheRebuild() {
         var btn = document.getElementById("dg-pu-rebuild-formula-cache");
         var doFetch = function () {
@@ -2942,10 +3893,12 @@
         var onOk = function () {
           if (window.DatagonNotify && window.DatagonNotify.toast) {
             window.DatagonNotify.toast({
-              type: "success",
-              message: "Кэш формулы закупок поставлен в очередь. Прогресс — на /processes.html.",
+              type: "info",
+              message:
+                "Кэш формулы поставлен в очередь. Ход пересчёта — в журнале «Пересчёт кэша формулы» на этой странице.",
             });
           }
+          startFormulaCacheProgressPoll();
         };
         var onErr = function (e) {
           if (window.DatagonNotify && window.DatagonNotify.toast) {
@@ -2978,7 +3931,9 @@
         syncToPurchaseColumnVisibility();
         loading = true;
         lastColumnTotals = null;
+        lastColumnTotalsSource = "";
         setApplyResetDisabled(true);
+        renderPurchaseSummary();
         buildThead();
         renderColumnControls();
         renderTable(lastRows);
@@ -3013,9 +3968,11 @@
             total = Number(j.total || 0);
             lastRows = Array.isArray(j.data) ? j.data : [];
             lastColumnTotals = j && j.column_totals ? j.column_totals : null;
+            lastColumnTotalsSource = (j && j.column_totals_source) || "";
             lastPurchaseCacheMeta = j && j.cache ? j.cache : null;
             loading = false;
             setApplyResetDisabled(false);
+            renderPurchaseSummary();
             buildThead();
             renderTable(lastRows);
             updateTableHint();
@@ -3035,6 +3992,8 @@
             total = 0;
             lastRows = [];
             lastColumnTotals = null;
+            lastColumnTotalsSource = "";
+            renderPurchaseSummary();
             buildThead();
             renderTable([]);
             buildTfoot();
@@ -3054,6 +4013,7 @@
         if (window.DatagonPurchaseFilterBlocks && window.DatagonPurchaseFilterBlocks.reset) window.DatagonPurchaseFilterBlocks.reset();
         document.getElementById("pu-f-search").value = "";
         document.getElementById("pu-f-supplier").value = "";
+        document.getElementById("pu-f-manager").value = "";
         document.getElementById("pu-f-archived").value = "active";
         document.getElementById("pu-f-stock_position").value = "yes";
         document.getElementById("pu-f-no_longer_cooperation").value = "not_stopped";
@@ -3107,6 +4067,14 @@
           runPurchaseFormulaCacheRebuild();
         });
       }
+      var puApplyMinStockBtn = document.getElementById("dg-pu-apply-formula-min-stock");
+      if (puApplyMinStockBtn) {
+        puApplyMinStockBtn.addEventListener("click", function () {
+          runPurchaseMinStockApply();
+        });
+      }
+      loadMsApplyLog();
+      loadFormulaCacheProgress();
       document.getElementById("pu-btn-prev").addEventListener("click", function () {
         if (page > 1) { page -= 1; loadData(); }
       });
@@ -3194,10 +4162,11 @@
             ],
           },
           {
-            title: "Перестали сотрудничать и доп. фильтр",
+            title: "Перестали сотрудничать, менеджер и доп. фильтр",
             subtitle: "",
             items: [
               { key: "pu_no_longer_cooperation", title: "Перестали сотрудничать", hint: "Все / Нет / Да (как в МС)" },
+              { key: "pu_manager", title: "Менеджер", hint: "Свойство МС «Менеджер поддерживающий товар» (точное совпадение)" },
               { key: "pu_extra_filter", title: "Доп. фильтр", hint: "Один режим: остаток, комплекты, нули, кратность, упаковка" },
             ],
           },
@@ -3394,17 +4363,23 @@
       });
 
       bindPurchaseCellTooltips();
-      parseUrlToForm();
-      renderColumnControls();
-      updatePuStickyTopVar();
-      buildThead();
-      loadData();
+      loadPurchaseManagers().then(function () {
+        parseUrlToForm();
+        rebuildPurchaseManagerSelect(document.getElementById("pu-f-manager").value);
+        renderColumnControls();
+        updatePuStickyTopVar();
+        buildThead();
+        loadData();
+      });
       window.addEventListener("pageshow", function (e) {
         if (!e || !e.persisted) return;
         loading = false;
-        parseUrlToForm();
-        page = 1;
-        loadData();
+        loadPurchaseManagers().then(function () {
+          parseUrlToForm();
+          rebuildPurchaseManagerSelect(document.getElementById("pu-f-manager").value);
+          page = 1;
+          loadData();
+        });
       });
       if (document.fonts && document.fonts.ready) {
         document.fonts.ready.then(function () {

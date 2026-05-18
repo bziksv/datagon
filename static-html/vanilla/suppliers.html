@@ -349,6 +349,40 @@
       background: linear-gradient(135deg, #eef2ff 0%, #fff 72%);
     }
     .dg-sp-kpi-money .dg-sp-kpi-value { color: #4338ca; font-size: 0.92rem; }
+    .dg-sp-kpi-ms {
+      border-left-color: #0ea5e9;
+      background: linear-gradient(135deg, #ecfeff 0%, #fff 72%);
+    }
+    .dg-sp-kpi-ms .dg-sp-kpi-value { color: #0369a1; }
+    .dg-sp-kpi-suffix { font-size: 0.55rem; font-weight: 500; text-transform: none; letter-spacing: 0; }
+    .dg-sp-kpi-attention {
+      border-left-color: #dc2626;
+      background: linear-gradient(135deg, #fef2f2 0%, #fff 72%);
+    }
+    .dg-sp-kpi-attention .dg-sp-kpi-value { color: #b91c1c; }
+    .dg-sp-kpi-sub { font-size: 0.62rem; line-height: 1.25; margin-top: 0.15rem; }
+    .dg-sp-chart-wrap-ms-orders {
+      position: relative;
+      height: 120px;
+    }
+    .dg-sp-chart-wrap-ms-orders canvas {
+      display: block;
+      width: 100% !important;
+      height: 100% !important;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='suppliers'] tr.dg-sp-row-attention-warning td {
+      background-color: #fffbeb !important;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='suppliers'] tr.dg-sp-row-attention-danger td {
+      background-color: #fef2f2 !important;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='suppliers'] tr.dg-sp-row-attention-warning:hover td,
+    body.datagon-vanilla-body[data-dg-active-nav='suppliers'] tr.dg-sp-row-attention-danger:hover td {
+      filter: brightness(0.98);
+    }
+    .dg-sp-attention-badge { font-size: 0.68rem; font-weight: 600; white-space: normal; line-height: 1.25; }
+    .dg-sp-last-ms-order { line-height: 1.3; min-width: 8rem; }
+    .dg-sp-last-ms-name { max-width: 12rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .dg-sp-charts-row { margin-top: 0.1rem !important; }
     .dg-sp-charts-row-suppliers { margin-top: 0.1rem !important; }
     .dg-sp-chart-subtitle { font-size: 0.65rem; font-weight: 400; }
@@ -1093,6 +1127,7 @@
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="ms-sales" href="/ms-sales.html" title="Продажи МС: отгрузки entity/demand, позиции с привязкой к товарам ms_export"><i class="metismenu-icon pe-7s-cash"></i>Продажи МС</a></li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="purchase" href="/purchase.html" title="Закупки товары: планирование, неснижаемые остатки, кратность"><i class="metismenu-icon pe-7s-cart"></i>Закупки товары</a></li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="suppliers" href="/suppliers.html" title="Поставщики: сводка по закупкам и настройки"><i class="metismenu-icon pe-7s-id"></i>Поставщики</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="supplier-analysis" href="/supplier-analysis.html" title="Продажи, оборот и тренды по поставщикам"><i class="metismenu-icon pe-7s-graph2"></i>Анализ поставщиков</a></li>
                     </ul>
                   </div>
                 </div>
@@ -1147,6 +1182,7 @@
                     <button type="button" class="btn btn-light" data-dg-sp-metric="products_to_purchase">SKU к закупке</button>
                     <button type="button" class="btn btn-light" data-dg-sp-metric="stock_total">Остатки</button>
                     <button type="button" class="btn btn-light" data-dg-sp-metric="suppliers_count">Поставщики</button>
+                    <button type="button" class="btn btn-light" data-dg-sp-metric="ms_orders_count">Заказы в МС</button>
                   </div>
                   <button type="button" class="btn btn-sm btn-outline-light" id="dg-sp-analytics-refresh" data-dg-notify-start="Обновляем сводку…">
                     <i class="pe-7s-refresh"></i>
@@ -1188,6 +1224,31 @@
                     <div class="dg-sp-kpi-tile dg-sp-kpi-money">
                       <div class="dg-sp-kpi-label">Σ к закупке</div>
                       <div class="dg-sp-kpi-value" id="dg-sp-kpi-sum">—</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="row row-cols-2 row-cols-md-2 g-2 dg-sp-kpi-row-secondary mb-1">
+                  <div class="col">
+                    <div class="dg-sp-kpi-tile dg-sp-kpi-ms">
+                      <div class="dg-sp-kpi-label">Заказов в МС <span class="dg-sp-kpi-suffix" id="dg-sp-kpi-ms-period">90 дн.</span></div>
+                      <div class="dg-sp-kpi-value" id="dg-sp-kpi-ms-orders">—</div>
+                    </div>
+                  </div>
+                  <div class="col">
+                    <div class="dg-sp-kpi-tile dg-sp-kpi-attention">
+                      <div class="dg-sp-kpi-label">Требуют внимания</div>
+                      <div class="dg-sp-kpi-value" id="dg-sp-kpi-attention">—</div>
+                      <div class="dg-sp-kpi-sub text-muted" id="dg-sp-kpi-attention-sub">нет заказа ≥30 дн. при Σ к закупке &gt; 0 и ≥ мин. суммы</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="row g-2 dg-sp-charts-row-ms mb-1">
+                  <div class="col-12">
+                    <div class="dg-sp-chart-panel">
+                      <div class="dg-sp-chart-title">Успешные заказы в МойСклад по сотрудникам <span class="dg-sp-chart-subtitle text-muted fw-normal" id="dg-sp-ms-chart-period">(90 дн.)</span></div>
+                      <div class="dg-sp-chart-wrap dg-sp-chart-wrap-ms-orders">
+                        <canvas id="dg-sp-chart-ms-orders" aria-label="Заказы в МС по сотрудникам"></canvas>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1237,17 +1298,24 @@
             </div>
             <div class="card-body" id="dg-sp-filters-body">
               <div class="row g-2 align-items-end">
-                <div class="col-md-5">
+                <div class="col-md-4">
                   <label class="form-label" for="sp-f-search">Умный поиск</label>
                   <input type="text" class="form-control" id="sp-f-search" placeholder="Название поставщика" autocomplete="off"
                          data-dg-tooltip="Поиск по названию поставщика. Enter — применить." />
                 </div>
-                <div class="col-md-5">
+                <div class="col-md-3">
                   <label class="form-label" for="sp-f-assignee">Привязан сотрудник</label>
                   <select class="form-select" id="sp-f-assignee" data-dg-tooltip="Только сотрудники, уже привязанные хотя бы к одному поставщику. Применить — обновить таблицу и сводку.">
                     <option value="">Все</option>
                     <option value="none">(не назначен)</option>
                   </select>
+                </div>
+                <div class="col-md-3">
+                  <label class="form-label d-block" for="sp-f-attention-only">Проблемные</label>
+                  <div class="form-check mt-2">
+                    <input class="form-check-input" type="checkbox" id="sp-f-attention-only" value="1" />
+                    <label class="form-check-label small" for="sp-f-attention-only">Без заказа в МС ≥30 дн. (Σ &gt; 0, ≥ мин.)</label>
+                  </div>
                 </div>
                 <div class="col-md-2">
                   <label class="form-label" for="sp-f-limit">На странице</label>
@@ -1448,6 +1516,7 @@
       var SP_COLS = [
         ["row_num", "№", { center: true }],
         ["supplier_name", "Поставщик"],
+        ["sales_rank", "Рейтинг продаж", { center: true, headerLines: ["Рейтинг", "продаж (90д)"] }],
         ["assigned_user", "Привязан сотрудник", { editable: true }],
         ["comment", "Комментарий", { editable: true, headerLines: ["Комментар", "ий"] }],
         ["min_purchase_sum", "Мин. сумма закупки", { center: true, editable: true }],
@@ -1456,6 +1525,8 @@
         ["products_total", "Кол-во товаров всего", { center: true }],
         ["products_to_purchase", "Кол-во товаров К закупке", { center: true }],
         ["total_purchase_sum", "Общая сумма закупки", { center: true }],
+        ["procurement_attention", "Внимание", { center: true, headerLines: ["Вни", "мание"] }],
+        ["last_ms_order_at", "Последний заказ в МС", { center: true, headerLines: ["Последний", "заказ в МС"] }],
         ["export_stub", "Экспорт", { center: true, stub: true }],
         ["send_ms_stub", "Отправить заказ в МС", { center: true }],
         ["auto_mailing_stub", "Авто рассылка", { center: true, stub: true }],
@@ -1466,9 +1537,9 @@
       SP_COLS.forEach(function (p) { COL_OPTS[p[0]] = p[2] || {}; });
 
       var SORTABLE = new Set([
-        "supplier_name", "products_total", "products_to_purchase",
+        "supplier_name", "sales_rank", "products_total", "products_to_purchase",
         "total_purchase_sum", "min_purchase_sum", "warehouse_fill_pct", "stock_fill_pct",
-        "assigned_user_name",
+        "assigned_user_name", "last_ms_order_at",
       ]);
       var SORT_KEY_REMAP = { assigned_user: "assigned_user_name" };
 
@@ -1477,6 +1548,7 @@
       var COL_MIN = {
         row_num: 44,
         supplier_name: 160,
+        sales_rank: 118,
         assigned_user: 150,
         comment: 160,
         min_purchase_sum: 110,
@@ -1485,6 +1557,8 @@
         products_total: 100,
         products_to_purchase: 120,
         total_purchase_sum: 130,
+        procurement_attention: 150,
+        last_ms_order_at: 168,
         export_stub: 90,
         send_ms_stub: 118,
         auto_mailing_stub: 90,
@@ -1494,11 +1568,14 @@
       var state = {
         search: "",
         assigned_user: "",
+        attention_only: false,
         limit: 100,
         offset: 0,
         sort_by: "supplier_name",
         sort_dir: "asc",
-        pending: { search: "", assigned_user: "" },
+        pending: { search: "", assigned_user: "", attention_only: false },
+        attentionThresholds: { warn_days: 30, danger_days: 60 },
+        salesRankTotal: null,
         total: 0,
         rows: [],
         assignees: [],
@@ -1657,14 +1734,14 @@
         return headers;
       }
 
-      function fmtNum(n) {
+      function fmtNum(n, opts) {
+        if (window.DatagonFmt && window.DatagonFmt.formatNumber) {
+          return window.DatagonFmt.formatNumber(n, opts);
+        }
         if (n == null || n === "") return "—";
         var x = Number(n);
         if (!Number.isFinite(x)) return String(n);
-        if (Math.abs(x - Math.round(x)) < 1e-9) {
-          return Math.round(x).toLocaleString("ru-RU", { maximumFractionDigits: 0 });
-        }
-        return x.toLocaleString("ru-RU", { maximumFractionDigits: 2 });
+        return x.toLocaleString("ru-RU", { maximumFractionDigits: (opts && opts.maxFractionDigits) || 2 });
       }
 
       /** Число для ячейки: 0 показываем как «0», не «—». */
@@ -1674,13 +1751,24 @@
       }
 
       function fmtMoney(n) {
+        if (window.DatagonFmt && window.DatagonFmt.formatMoney) return window.DatagonFmt.formatMoney(n);
         if (n == null || !Number.isFinite(Number(n))) return "—";
-        return Number(n).toLocaleString("ru-RU", { minimumFractionDigits: 0, maximumFractionDigits: 2 }) + " ₽";
+        return fmtNum(n) + " ₽";
       }
 
       function fmtPct(n) {
         if (n == null || !Number.isFinite(Number(n))) return "—";
-        return Number(n).toLocaleString("ru-RU", { maximumFractionDigits: 2 }) + "%";
+        return fmtNum(n, { maxFractionDigits: 2 }) + "%";
+      }
+
+      function parseRuNumberInput(raw) {
+        if (window.DatagonFmt && window.DatagonFmt.parseNumberInput) {
+          return window.DatagonFmt.parseNumberInput(raw);
+        }
+        if (raw == null || String(raw).trim() === "") return null;
+        var s = String(raw).replace(/\s/g, "").replace(",", ".");
+        var x = Number(s);
+        return Number.isFinite(x) ? x : null;
       }
 
       var SP_CHART_PALETTE = [
@@ -1721,7 +1809,77 @@
         barChart: null,
         supplierBarChart: null,
         doughnutChart: null,
+        msOrderChart: null,
       };
+
+      function fmtDateTimeSp(v) {
+        if (!v) return "—";
+        try {
+          var d = new Date(v);
+          if (isNaN(d.getTime())) return String(v);
+          return d.toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" });
+        } catch (e) {
+          return String(v);
+        }
+      }
+
+      function renderSalesRankCell(row) {
+        var wrap = document.createElement("div");
+        wrap.className = "dg-sp-sales-rank text-center small";
+        var rank = row.sales_rank != null ? Number(row.sales_rank) : null;
+        var total =
+          row.sales_rank_total != null
+            ? Number(row.sales_rank_total)
+            : state.salesRankTotal != null
+              ? Number(state.salesRankTotal)
+              : null;
+        if (
+          rank == null ||
+          total == null ||
+          !Number.isFinite(rank) ||
+          !Number.isFinite(total) ||
+          rank < 1 ||
+          total < 1
+        ) {
+          wrap.innerHTML = '<span class="text-muted">—</span>';
+          wrap.title =
+            state.salesRankError ||
+            "Место в рейтинге по выручке отгрузок МС за 90 дней. Если прочерк — обновите страницу или перезапустите сервер после обновления.";
+          return wrap;
+        }
+        var main = document.createElement("span");
+        main.className = "fw-semibold";
+        main.textContent = rank + " из " + total;
+        var rev = row.sales_revenue_90d != null ? Number(row.sales_revenue_90d) : null;
+        var tip =
+          "Место в рейтинге по выручке отгрузок МС за последние 90 дней (как на странице «Анализ поставщиков»).";
+        if (rev != null && Number.isFinite(rev)) {
+          tip += " Выручка: " + fmtMoney(rev) + ".";
+        }
+        wrap.title = tip;
+        main.title = tip;
+        wrap.appendChild(main);
+        return wrap;
+      }
+
+      function renderProcurementAttentionBadge(row) {
+        var att = row.procurement_attention || {};
+        var wrap = document.createElement("div");
+        wrap.className = "dg-sp-attention-cell";
+        var level = String(att.level || "none");
+        if (level === "none" || !att.label) {
+          wrap.innerHTML = '<span class="text-muted small">—</span>';
+          return wrap;
+        }
+        var badge = document.createElement("span");
+        badge.className =
+          "badge dg-sp-attention-badge " +
+          (level === "danger" ? "bg-danger" : level === "warning" ? "bg-warning text-dark" : "bg-secondary");
+        badge.textContent = att.label;
+        badge.title = att.label;
+        wrap.appendChild(badge);
+        return wrap;
+      }
 
       var chartJsPromise = null;
       function loadChartJs() {
@@ -1746,12 +1904,18 @@
             return { label: "Σ остаток (шт)", fmt: function (v) { return fmtNum(v); } };
           case "suppliers_count":
             return { label: "Поставщиков", fmt: function (v) { return fmtNum(v); } };
+          case "ms_orders_count":
+            return { label: "Заказов в МС", fmt: function (v) { return fmtNum(v); } };
           default:
             return { label: "Σ к закупке", fmt: function (v) { return fmtMoney(v); } };
         }
       }
 
       function metricValue(row, key) {
+        if (key === "ms_orders_count") {
+          var n0 = Number(row && row.orders_count != null ? row.orders_count : 0);
+          return Number.isFinite(n0) ? n0 : 0;
+        }
         var n = Number(row && row[key] != null ? row[key] : 0);
         return Number.isFinite(n) ? n : 0;
       }
@@ -1767,7 +1931,7 @@
         if (el) el.classList.toggle("d-none", !on);
       }
 
-      function renderAnalyticsKpis(totals) {
+      function renderAnalyticsKpis(totals, msOrders) {
         var t = totals || {};
         var map = {
           "dg-sp-kpi-suppliers": t.suppliers_count,
@@ -1782,6 +1946,30 @@
           if (id === "dg-sp-kpi-sum") el.textContent = fmtMoney(map[id]);
           else el.textContent = fmtNum(map[id]);
         });
+        var msEl = document.getElementById("dg-sp-kpi-ms-orders");
+        if (msEl) {
+          msEl.textContent = fmtNum(
+            msOrders && msOrders.success_orders_total != null
+              ? msOrders.success_orders_total
+              : 0
+          );
+        }
+        var periodEl = document.getElementById("dg-sp-kpi-ms-period");
+        var chartPeriodEl = document.getElementById("dg-sp-ms-chart-period");
+        var days = msOrders && msOrders.period_days ? msOrders.period_days : 90;
+        if (periodEl) periodEl.textContent = days + " дн.";
+        if (chartPeriodEl) chartPeriodEl.textContent = "(" + days + " дн.)";
+        var attEl = document.getElementById("dg-sp-kpi-attention");
+        if (attEl) {
+          attEl.textContent = fmtNum(t.procurement_attention_total != null ? t.procurement_attention_total : 0);
+        }
+        var attSub = document.getElementById("dg-sp-kpi-attention-sub");
+        if (attSub) {
+          var w = state.attentionThresholds.warn_days || 30;
+          var d = state.attentionThresholds.danger_days || 60;
+          attSub.textContent =
+            "нет заказа ≥" + w + " дн. при Σ к закупке > 0 и сумме ≥ мин. порога";
+        }
       }
 
       function renderAnalyticsHint(totals, assigneeRows, supplierRows) {
@@ -1797,6 +1985,19 @@
         }
         if (totals && totals.avg_fill_pct != null) {
           parts.push("Средняя наполняемость: " + fmtPct(totals.avg_fill_pct));
+        }
+        if (totals && Number(totals.procurement_attention_total) > 0) {
+          parts.push(
+            "Требуют внимания: " +
+              fmtNum(totals.procurement_attention_total) +
+              " (никогда: " +
+              fmtNum(totals.procurement_attention_never) +
+              ", ≥" +
+              (state.attentionThresholds.danger_days || 60) +
+              " дн.: " +
+              fmtNum(totals.procurement_attention_stale_danger) +
+              ")"
+          );
         }
         if (assigneeRows && assigneeRows.length) {
           var topA = assigneeRows.slice().sort(function (a, b) {
@@ -1940,7 +2141,12 @@
                       "Σ остаток: " + fmtNum(row.stock_total),
                     ];
                     if (isAssignee) {
-                      lines.splice(1, 0, "Поставщиков: " + fmtNum(row.suppliers_count));
+                      if (row.orders_count != null) {
+                        lines.splice(1, 0, "Поставщиков: " + fmtNum(row.suppliers_count));
+                        lines.push("Позиций в заказах: " + fmtNum(row.positions_total));
+                      } else {
+                        lines.splice(1, 0, "Поставщиков: " + fmtNum(row.suppliers_count));
+                      }
                     }
                     if (row.avg_fill_pct != null) lines.push("Наполняемость: " + fmtPct(row.avg_fill_pct));
                     return lines;
@@ -1967,14 +2173,33 @@
         });
       }
 
-      function renderAnalyticsCharts(assigneeRows, supplierRows) {
+      function renderAnalyticsCharts(assigneeRows, supplierRows, msOrders) {
         var canvasBar = document.getElementById("dg-sp-chart-bars");
         var canvasSuppliers = document.getElementById("dg-sp-chart-suppliers-bars");
         var canvasDoughnut = document.getElementById("dg-sp-chart-doughnut");
         if (!canvasBar || !canvasDoughnut) return;
-        var assigneeSorted = sortAnalyticsRows(assigneeRows, analyticsState.metric);
-        var supplierSorted = sortAnalyticsRows(supplierRows, analyticsState.metric);
-        var meta = metricMeta(analyticsState.metric);
+        var metric = analyticsState.metric;
+        var barRows = assigneeRows;
+        var barLabelKey = "assignee_label";
+        if (metric === "ms_orders_count") {
+          barRows = (msOrders && msOrders.by_creator) || [];
+          barLabelKey = "creator_label";
+        }
+        var assigneeSorted = sortAnalyticsRows(barRows, metric);
+        var supplierSorted = sortAnalyticsRows(supplierRows, metric);
+        var meta = metricMeta(metric);
+        var barTitle = document.querySelector(
+          "#dg-sp-chart-bars"
+        );
+        if (barTitle && barTitle.closest(".dg-sp-chart-panel")) {
+          var tEl = barTitle.closest(".dg-sp-chart-panel").querySelector(".dg-sp-chart-title");
+          if (tEl) {
+            tEl.textContent =
+              metric === "ms_orders_count"
+                ? "Заказы в МС по сотрудникам (те же фильтры)"
+                : "Распределение по сотрудникам";
+          }
+        }
 
         syncAnalyticsChartLayout(assigneeSorted.length, supplierSorted.length);
 
@@ -1988,7 +2213,7 @@
               Chart,
               canvasBar,
               assigneeSorted,
-              "assignee_label",
+              barLabelKey,
               meta,
               true
             );
@@ -2066,15 +2291,50 @@
           });
       }
 
+      function renderMsOrdersChart(msOrders) {
+        var canvas = document.getElementById("dg-sp-chart-ms-orders");
+        if (!canvas) return;
+        var rows = (msOrders && msOrders.by_creator) || [];
+        var sorted = rows.slice().sort(function (a, b) {
+          return Number(b.orders_count || 0) - Number(a.orders_count || 0);
+        });
+        var wrap = canvas.parentElement;
+        if (wrap) wrap.style.height = spChartBarHeight(sorted.length) + "px";
+        loadChartJs()
+          .then(function (Chart) {
+            destroySpChart(analyticsState.msOrderChart);
+            if (!sorted.length) {
+              var ctx = canvas.getContext("2d");
+              if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+              return;
+            }
+            var meta = metricMeta("ms_orders_count");
+            analyticsState.msOrderChart = createSpHorizontalBarChart(
+              Chart,
+              canvas,
+              sorted,
+              "creator_label",
+              meta,
+              true
+            );
+          })
+          .catch(function () {});
+      }
+
       function renderAnalytics(payload) {
         analyticsState.payload = payload || null;
+        if (payload && payload.procurement_attention_thresholds) {
+          state.attentionThresholds = payload.procurement_attention_thresholds;
+        }
         var totals = payload && payload.totals ? payload.totals : {};
         var assigneeRows = payload && payload.by_assignee ? payload.by_assignee : [];
         var supplierRows = payload && payload.by_supplier ? payload.by_supplier : [];
-        renderAnalyticsKpis(totals);
+        var msOrders = payload && payload.ms_orders ? payload.ms_orders : null;
+        renderAnalyticsKpis(totals, msOrders);
         renderAnalyticsHint(totals, assigneeRows, supplierRows);
         renderAssigneeLegend(assigneeRows);
-        renderAnalyticsCharts(assigneeRows, supplierRows);
+        renderMsOrdersChart(msOrders);
+        renderAnalyticsCharts(assigneeRows, supplierRows, msOrders);
       }
 
       function freshStatusClass(status) {
@@ -2239,7 +2499,8 @@
             if (analyticsState.payload) {
               renderAnalyticsCharts(
                 analyticsState.payload.by_assignee || [],
-                analyticsState.payload.by_supplier || []
+                analyticsState.payload.by_supplier || [],
+                analyticsState.payload.ms_orders || null
               );
             }
           });
@@ -2250,6 +2511,7 @@
           if (analyticsState.barChart) analyticsState.barChart.resize();
           if (analyticsState.supplierBarChart) analyticsState.supplierBarChart.resize();
           if (analyticsState.doughnutChart) analyticsState.doughnutChart.resize();
+          if (analyticsState.msOrderChart) analyticsState.msOrderChart.resize();
         });
       }
 
@@ -2768,10 +3030,17 @@
       function loadVisibleCols() {
         try {
           var raw = window.localStorage.getItem(userVisibleColsKey());
-          if (!raw) return DEFAULT_VISIBLE.slice();
-          var arr = JSON.parse(raw);
-          if (!Array.isArray(arr) || !arr.length) return DEFAULT_VISIBLE.slice();
-          return arr.filter(function (k) { return COL_OPTS[k]; });
+          var arr;
+          if (!raw) arr = DEFAULT_VISIBLE.slice();
+          else {
+            arr = JSON.parse(raw);
+            if (!Array.isArray(arr) || !arr.length) arr = DEFAULT_VISIBLE.slice();
+          }
+          arr = arr.filter(function (k) { return COL_OPTS[k]; });
+          DEFAULT_VISIBLE.forEach(function (k) {
+            if (arr.indexOf(k) < 0) arr.push(k);
+          });
+          return arr;
         } catch (e) {
           return DEFAULT_VISIBLE.slice();
         }
@@ -2802,7 +3071,8 @@
         if (!btn) return;
         var dirty =
           String(state.pending.search || "") !== String(state.search || "") ||
-          String(state.pending.assigned_user || "") !== String(state.assigned_user || "");
+          String(state.pending.assigned_user || "") !== String(state.assigned_user || "") ||
+          !!state.pending.attention_only !== !!state.attention_only;
         btn.classList.toggle("dg-flt-dirty", dirty);
         if (dirty && btn.textContent.indexOf("•") < 0) {
           btn.innerHTML = '<i class="pe-7s-search me-1"></i>Применить •';
@@ -2818,12 +3088,15 @@
         state.pending.assigned_user = asg ? String(asg.value || "") : "";
         var lim = document.getElementById("sp-f-limit");
         if (lim) state.pending.limit = parseInt(lim.value, 10) || 100;
+        var att = document.getElementById("sp-f-attention-only");
+        state.pending.attention_only = !!(att && att.checked);
       }
 
       function commitFilters() {
         readPendingFromDom();
         state.search = state.pending.search;
         state.assigned_user = state.pending.assigned_user;
+        state.attention_only = !!state.pending.attention_only;
         state.limit = state.pending.limit || 100;
         state.offset = 0;
         syncDirtyApply();
@@ -2930,6 +3203,7 @@
         p.set("sort_dir", sortDir);
         if (state.search) p.set("search", state.search);
         if (state.assigned_user) p.set("assigned_user", state.assigned_user);
+        if (state.attention_only) p.set("attention_only", "1");
         fetch("/api/suppliers?" + p.toString(), { credentials: "same-origin", headers: spAuthHeaders(false) })
           .then(function (r) {
             if (!r.ok) throw new Error("HTTP " + r.status);
@@ -2938,6 +3212,12 @@
           .then(function (j) {
             state.rows = (j && j.data) || [];
             state.total = Number(j && j.total != null ? j.total : state.rows.length);
+            if (j && j.procurement_attention_thresholds) {
+              state.attentionThresholds = j.procurement_attention_thresholds;
+            }
+            state.salesRankTotal =
+              j && j.sales_rank_total != null ? Number(j.sales_rank_total) : null;
+            state.salesRankError = j && j.sales_rank_error ? String(j.sales_rank_error) : "";
             setStatus("");
             renderTable();
             updateFooter();
@@ -3004,6 +3284,46 @@
         return sel;
       }
 
+      function bindEditableNumericInput(row, field, getVal, opts) {
+        var o = opts || {};
+        var inp = document.createElement("input");
+        inp.type = "text";
+        inp.inputMode = "decimal";
+        inp.className = "form-control form-control-sm dg-sp-cell-input text-end";
+        inp.autocomplete = "off";
+        function syncDisplay() {
+          var v = getVal(row);
+          if (v == null || v === "" || !Number.isFinite(Number(v))) inp.value = "";
+          else if (o.integer) inp.value = fmtNum(v, { integer: true, maxFractionDigits: 0 });
+          else inp.value = fmtNum(v, { maxFractionDigits: o.maxFractionDigits != null ? o.maxFractionDigits : 2 });
+        }
+        syncDisplay();
+        inp.addEventListener("focus", function () {
+          var v = parseRuNumberInput(inp.value);
+          inp.value = v != null ? String(v) : "";
+        });
+        inp.addEventListener("blur", syncDisplay);
+        inp.addEventListener("change", function () {
+          var n = parseRuNumberInput(inp.value);
+          var payload = {};
+          payload[field] = n == null ? null : n;
+          patchSupplier(row.supplier_key, payload)
+            .then(function () {
+              if (window.DatagonNotify && window.DatagonNotify.toast) {
+                window.DatagonNotify.toast({ type: "success", message: "Сохранено" });
+              }
+              load();
+            })
+            .catch(function (e) {
+              syncDisplay();
+              if (window.DatagonNotify && window.DatagonNotify.toast) {
+                window.DatagonNotify.toast({ type: "danger", message: e.message || "Ошибка" });
+              }
+            });
+        });
+        return inp;
+      }
+
       function bindEditableInput(row, field, type, getVal) {
         var inp = document.createElement("input");
         inp.type = type || "text";
@@ -3065,12 +3385,13 @@
             true,
           );
         }
+        if (key === "sales_rank") return renderSalesRankCell(row);
         if (key === "assigned_user") return buildAssigneeSelect(row, row.assigned_user_id);
         if (key === "comment") return bindEditableComment(row);
         if (key === "min_purchase_sum") {
-          return bindEditableInput(row, "min_purchase_sum", "number", function (r) {
+          return bindEditableNumericInput(row, "min_purchase_sum", function (r) {
             return r.min_purchase_sum;
-          });
+          }, { integer: true });
         }
         if (key === "warehouse_fill_pct") {
           return bindEditableInput(row, "warehouse_fill_pct", "number", function (r) {
@@ -3086,6 +3407,33 @@
           return makePurchaseOpenLink(row, label, false);
         }
         if (key === "total_purchase_sum") return document.createTextNode(fmtMoney(row.total_purchase_sum));
+        if (key === "procurement_attention") return renderProcurementAttentionBadge(row);
+        if (key === "last_ms_order_at") {
+          var box = document.createElement("div");
+          box.className = "dg-sp-last-ms-order small text-start";
+          if (!row.last_ms_order_at) {
+            box.innerHTML = '<span class="text-muted">—</span>';
+            return box;
+          }
+          var when = document.createElement("div");
+          when.className = "dg-sp-last-ms-when";
+          when.textContent = fmtDateTimeSp(row.last_ms_order_at);
+          box.appendChild(when);
+          if (row.last_ms_order_name) {
+            var nm = document.createElement("div");
+            nm.className = "text-muted dg-sp-last-ms-name";
+            nm.textContent = String(row.last_ms_order_name);
+            nm.title = String(row.last_ms_order_name);
+            box.appendChild(nm);
+          }
+          if (row.last_ms_order_by) {
+            var who = document.createElement("div");
+            who.className = "text-muted";
+            who.textContent = row.last_ms_order_by;
+            box.appendChild(who);
+          }
+          return box;
+        }
         if (key === "export_stub") {
           var g = document.createElement("div");
           g.className = "d-flex gap-1 justify-content-center flex-nowrap";
@@ -3188,26 +3536,32 @@
           var w = colWidths[key] || COL_MIN[key] || 90;
           th.style.width = w + "px";
           th.style.minWidth = w + "px";
+          var sk = SORT_KEY_REMAP[key] || key;
+          var sortMark = sk === sortBy ? (sortDir === "desc" ? " ▼" : " ▲") : "";
           if (opts.headerLines && opts.headerLines.length) {
             th.className = (th.className ? th.className + " " : "") + "dg-sp-th-multiline";
-            th.innerHTML = opts.headerLines.map(function (line) {
+            var lines = opts.headerLines.map(function (line) {
               return String(line)
                 .replace(/&/g, "&amp;")
                 .replace(/</g, "&lt;")
                 .replace(/>/g, "&gt;");
-            }).join("<br>");
+            });
+            if (sortMark) lines[lines.length - 1] += sortMark;
+            th.innerHTML = lines.join("<br>");
           }
           if (SORTABLE.has(key) || SORTABLE.has(SORT_KEY_REMAP[key])) {
             th.className = (th.className ? th.className + " " : "") + "dg-sp-sortable";
-            var sk = SORT_KEY_REMAP[key] || key;
             if (!opts.headerLines || !opts.headerLines.length) {
-              if (sk === sortBy) th.textContent = label + (sortDir === "desc" ? " ▼" : " ▲");
+              if (sk === sortBy) th.textContent = label + sortMark;
               else th.textContent = label;
             }
             th.addEventListener("click", function (ev) {
               if (window.getSelection && window.getSelection().toString().trim()) return;
               if (sk === sortBy) sortDir = sortDir === "asc" ? "desc" : "asc";
-              else { sortBy = sk; sortDir = "asc"; }
+              else {
+                sortBy = sk;
+                sortDir = "asc";
+              }
               state.offset = 0;
               load();
             });
@@ -3242,6 +3596,10 @@
         state.rows.forEach(function (row, idx) {
           var tr = document.createElement("tr");
           tr.setAttribute("data-supplier-key", row.supplier_key);
+          var att = row.procurement_attention || {};
+          var attLevel = String(att.level || "none");
+          if (attLevel === "danger") tr.classList.add("dg-sp-row-attention-danger");
+          else if (attLevel === "warning") tr.classList.add("dg-sp-row-attention-warning");
           cols.forEach(function (p) {
             var td = document.createElement("td");
             var opts = COL_OPTS[p[0]] || {};
@@ -3546,10 +3904,14 @@
           if (mirror) mirror.value = "";
           state.pending.search = "";
           state.pending.assigned_user = "";
+          state.pending.attention_only = false;
           state.search = "";
           state.assigned_user = "";
+          state.attention_only = false;
           var asg = document.getElementById("sp-f-assignee");
           if (asg) asg.value = "";
+          var attOnly = document.getElementById("sp-f-attention-only");
+          if (attOnly) attOnly.checked = false;
           state.offset = 0;
           syncLimitUi(100);
           syncDirtyApply();
@@ -3565,6 +3927,11 @@
           state.pending.assigned_user = String(assignee.value || "");
           syncDirtyApply();
         });
+        var attOnly = document.getElementById("sp-f-attention-only");
+        if (attOnly) attOnly.addEventListener("change", function () {
+          state.pending.attention_only = !!attOnly.checked;
+          syncDirtyApply();
+        });
       }
 
       function syncLimitUi(v) {
@@ -3573,6 +3940,15 @@
         var b = document.getElementById("sp-footer-limit");
         if (a) a.value = String(v);
         if (b) b.value = String(v);
+      }
+
+      function searchFromUrl() {
+        try {
+          var q = new URLSearchParams(window.location.search || "");
+          return String(q.get("search") || "").trim();
+        } catch (e) {
+          return "";
+        }
       }
 
       document.addEventListener("DOMContentLoaded", function () {
@@ -3606,7 +3982,12 @@
           document.fonts.ready.then(spRefreshFloatingAfterLayout).catch(function () {});
         }
         window.addEventListener("load", spRefreshFloatingAfterLayout);
-        state.pending.search = "";
+        var urlSearch = searchFromUrl();
+        state.pending.search = urlSearch;
+        state.search = urlSearch;
+        var spSearchEl = document.getElementById("sp-f-search");
+        if (spSearchEl && urlSearch) spSearchEl.value = urlSearch;
+        syncDirtyApply();
         loadDataFreshness();
         loadAssignees().then(function () { load(); });
       });

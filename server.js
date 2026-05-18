@@ -155,6 +155,7 @@ let syncState = { active: false, processed: 0, total: 0, message: '' };
 const moyskladRouterFactory = require('./routes/moysklad');
 const purchaseRouterFactory = require('./routes/purchase');
 const suppliersRouterFactory = require('./routes/suppliers');
+const supplierAnalysisRouterFactory = require('./routes/supplierAnalysis');
 const productRouterFactory = require('./routes/product');
 const pagesRouterFactory = require('./routes/pages');
 const matchesRouterFactory = require('./routes/matches');
@@ -1317,6 +1318,17 @@ async function finishAutoSyncRun(taskType, status = 'completed', message = '') {
     autoSyncRunIds.delete(taskType);
 }
 
+/** Промежуточный текст в `auto_sync_runs.message` (журнал на /purchase.html и /processes.html). */
+async function touchAutoSyncRunMessage(taskType, message) {
+    const runId = autoSyncRunIds.get(taskType);
+    if (!runId) return;
+    await db.query('UPDATE auto_sync_runs SET message = ? WHERE id = ? AND status = ?', [
+        String(message || '').slice(0, 480),
+        runId,
+        'running',
+    ]);
+}
+
 /**
  * После рестарта Node в памяти нет autoSyncRunIds и waitUntil не «дожимает» старую задачу,
  * а строки в БД остаются status=running без finished_at — закрываем их при холодном старте.
@@ -1627,7 +1639,17 @@ async function processAutoSyncQueue() {
                     if (typeof purchaseMod.runPurchaseFormulaCacheBatch !== 'function') {
                         throw new Error('runPurchaseFormulaCacheBatch недоступен');
                     }
-                    const batchRes = await purchaseMod.runPurchaseFormulaCacheBatch(db, appSettings, {});
+                    let lastPfcMsgAt = 0;
+                    const batchRes = await purchaseMod.runPurchaseFormulaCacheBatch(db, appSettings, {
+                        onProgress: async (p) => {
+                            const msg = String((p && p.message) || '').slice(0, 480);
+                            if (!msg) return;
+                            const now = Date.now();
+                            if (now - lastPfcMsgAt < 2000) return;
+                            lastPfcMsgAt = now;
+                            await touchAutoSyncRunMessage('purchase_formula_cache', msg);
+                        },
+                    });
                     messagePfc = (
                         'Кэш формулы закупок: обработано ' +
                         (batchRes.processed || 0) +
@@ -2307,6 +2329,7 @@ initDB().then(() => {
     app.use('/api/ms', moyskladRouterFactory(db, appSettings, config));
     app.use('/api/purchase', purchaseRouterFactory(db, appSettings));
     app.use('/api/suppliers', suppliersRouterFactory(db, appSettings));
+    app.use('/api/supplier-analysis', supplierAnalysisRouterFactory(db));
     app.use('/api/product', productRouterFactory(db, appSettings));
     
     // Алиас для совместимости, если фронт стучится сюда
@@ -2331,6 +2354,7 @@ initDB().then(() => {
     app.get('/my-products', redirectToDatagonHtml('my-products.html'));
     app.get('/moysklad', redirectToDatagonHtml('moysklad.html'));
     app.get('/suppliers', redirectToDatagonHtml('suppliers.html'));
+    app.get('/supplier-analysis', redirectToDatagonHtml('supplier-analysis.html'));
     app.get('/purchase', redirectToDatagonHtml('purchase.html'));
     app.get('/product', redirectToDatagonHtml('product.html'));
     app.get('/matches', redirectToDatagonHtml('matches.html'));

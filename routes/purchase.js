@@ -20,6 +20,7 @@
  *
  * Эндпоинты:
  *   GET    /api/purchase/warmup-progress — заглушка «idle» (legacy UI); фоновых снимков закупок больше нет.
+ *   GET    /api/purchase/managers   — уникальные значения `ms_export.manager` (свойство МС «Менеджер поддерживающий товар»).
  *   GET    /api/purchase            — список: **COUNT + SELECT с ORDER BY в MySQL**, затем `LIMIT`/`OFFSET`; тяжёлое
  *                            обогащение (`enrichPurchaseListPage` → `loadMsPayloadRowsForCodes` + `enrichPurchaseRowsWithFormula`)
  *                            **только для текущей страницы** (~100 строк). Сортировка по `formula_proposed_min_stock` и `d_*a`/`d_*b`
@@ -33,6 +34,10 @@
  *   GET    /api/purchase/log        — журнал изменений полей overrides `min_stock_dg` / `multiplicity` (query: code, limit, offset, field?).
  *   GET    /api/purchase/log/stats  — статистика таблицы `dg_purchase_overrides_log` + retention из app_settings.
  *   POST   /api/purchase/log/cleanup — удалить записи журнала старше N дней (body.days опц.).
+ *   POST   /api/purchase/min-stock-apply/run — перенос `formula_proposed_min_stock` → `ms_export.min_stock` по фильтрам списка (batch).
+ *   GET    /api/purchase/min-stock-apply/log — журнал batch-переносов (откат на весь batch).
+ *   GET    /api/purchase/min-stock-apply/batch/:id/items — строки пакета (код, было/стало).
+ *   POST   /api/purchase/min-stock-apply/revert — откат batch по `batch_id`.
  *
  * См. правила:
  *   .cursor/rules/datagon-list-page-baseline-moysklad.mdc
@@ -126,6 +131,7 @@ function buildPurchaseListCacheKey(req, dataRev, formulaFp) {
         sort_dir: norm('sort_dir') || 'asc',
         search: norm('search'),
         supplier: norm('supplier'),
+        manager: norm('manager'),
         archived: norm('archived') || 'active',
         stock_position: norm('stock_position') || 'yes',
         no_longer_cooperation: norm('no_longer_cooperation') || 'not_stopped',
@@ -157,8 +163,71 @@ function trimPurchaseListResponseCache() {
     }
 }
 
-/** Legacy: UI/шапка могут опрашивать `/warmup-progress`; фонового прогрева снимков больше нет. */
+/** Живой прогресс batch `runPurchaseFormulaCacheBatch` (опрос с `/purchase.html`). */
+let formulaCacheBatchLive = {
+    running: false,
+    processed: 0,
+    upserted: 0,
+    errors: 0,
+    selection_total: 0,
+    started_at_ms: null,
+    finished_at_ms: null,
+    last_tick_ms: null,
+    message: '',
+};
+
+function getPurchaseFormulaCacheProgressPayload() {
+    const p = formulaCacheBatchLive;
+    const total = Math.max(0, Number(p.selection_total) || 0);
+    const done = Math.max(0, Number(p.processed) || 0);
+    let pct = 100;
+    if (p.running) {
+        pct = total > 0 ? Math.min(99.9, Math.round((done / total) * 1000) / 10) : 0;
+    } else if (total > 0) {
+        pct = Math.min(100, Math.round((done / total) * 1000) / 10);
+    }
+    return {
+        running: !!p.running,
+        processed: done,
+        upserted: Math.max(0, Number(p.upserted) || 0),
+        errors: Math.max(0, Number(p.errors) || 0),
+        selection_total: total,
+        pct,
+        message: String(p.message || ''),
+        started_at_ms: p.started_at_ms,
+        finished_at_ms: p.finished_at_ms,
+        last_tick_ms: p.last_tick_ms,
+    };
+}
+
+function emitFormulaCacheBatchProgress(opts) {
+    if (opts && typeof opts.onProgress === 'function') {
+        opts.onProgress(getPurchaseFormulaCacheProgressPayload());
+    }
+}
+
+/** Legacy: UI/шапка могут опрашивать `/warmup-progress`; отдаём живой прогресс кэша формулы, если batch идёт. */
 function getPurchaseWarmupProgressPayload() {
+    const fc = getPurchaseFormulaCacheProgressPayload();
+    if (fc.running) {
+        const elapsedSec =
+            fc.started_at_ms != null ? Math.max(0, Math.round((Date.now() - fc.started_at_ms) / 1000)) : 0;
+        return {
+            running: true,
+            preset_index: 1,
+            preset_total: 1,
+            label: 'Кэш формулы закупок',
+            done: fc.processed,
+            total: fc.selection_total,
+            pct: fc.pct,
+            preset_started_at_ms: fc.started_at_ms,
+            preset_elapsed_sec: elapsedSec,
+            finished_at_ms: null,
+            progressive_run_started_ms: fc.started_at_ms,
+            disabled: false,
+            message: fc.message,
+        };
+    }
     return {
         running: false,
         preset_index: 0,
@@ -172,6 +241,7 @@ function getPurchaseWarmupProgressPayload() {
         finished_at_ms: null,
         progressive_run_started_ms: null,
         disabled: true,
+        message: '',
     };
 }
 
@@ -225,6 +295,7 @@ const PURCHASE_SORT_KEYS = new Set([
     'article',
     'name',
     'supplier',
+    'price_comment',
     'buy_price',
     'min_stock',
     'automation_price',
@@ -305,6 +376,8 @@ function buildPurchaseSqlOrderBy(sortKey, sortDesc) {
             return `${str('mse.name')}${tie}`;
         case 'supplier':
             return `mse.supplier ${desc}, mse.supplier2 ${desc}${tie}`;
+        case 'price_comment':
+            return `${str('mse.price_comment')}${tie}`;
         case 'buy_price':
             return `${num(PURCHASE_SQL_PRICE_NUM)}${tie}`;
         case 'automation_price':
@@ -341,6 +414,7 @@ function buildPurchaseListWhereFragments(req, opts = {}) {
     const skipToPurchaseSqlFilter = Boolean(opts.skipToPurchaseSqlFilter);
     const search = String(req.query.search || '').trim();
     const supplier = String(req.query.supplier || req.query.supplier_key || '').trim();
+    const manager = String(req.query.manager || '').trim();
     const toBuyMode = String(req.query.to_buy || '0') === '1';
     const supplierExact =
         toBuyMode || String(req.query.supplier_exact || '0') === '1';
@@ -381,6 +455,11 @@ function buildPurchaseListWhereFragments(req, opts = {}) {
             where.push('(LOWER(mse.supplier) LIKE ? OR LOWER(mse.supplier2) LIKE ?)');
             params.push(v, v);
         }
+    }
+
+    if (manager) {
+        where.push('LOWER(TRIM(mse.manager)) = LOWER(TRIM(?))');
+        params.push(manager);
     }
 
     if (onlyStock) where.push('COALESCE(mse.stock, 0) > 0');
@@ -463,6 +542,7 @@ const PURCHASE_MIN_STOCK_SUM_SQL = 'COALESCE(CAST(mse.min_stock AS DECIMAL(20,6)
 
 function buildPurchaseColumnTotalsSql(frag) {
     const fromJoin = buildPurchaseCountFromJoin(frag.incompletePack, true);
+    const price = `COALESCE(${PURCHASE_SQL_PRICE_NUM}, 0)`;
     return `
         SELECT
             COUNT(*) AS positions_count,
@@ -470,7 +550,11 @@ function buildPurchaseColumnTotalsSql(frag) {
             SUM(COALESCE(CAST(fc.proposed AS DECIMAL(20,6)), 0)) AS formula_proposed_min_stock_total,
             SUM(COALESCE(mse.stock, 0)) AS stock_total,
             SUM((${SUPPLIER_IN_TRANSIT_SQL})) AS in_transit_total,
-            SUM((${SUPPLIER_NEED_QTY_SQL})) AS to_purchase_qty_total
+            SUM((${SUPPLIER_NEED_QTY_SQL})) AS to_purchase_qty_total,
+            SUM(COALESCE(CAST(mse.stock AS DECIMAL(20,6)), 0) * ${price}) AS stock_value_rub,
+            SUM(${PURCHASE_MIN_STOCK_SUM_SQL} * ${price}) AS min_stock_value_rub,
+            SUM(COALESCE(CAST(fc.proposed AS DECIMAL(20,6)), 0) * ${price}) AS formula_proposed_value_rub,
+            SUM(CASE WHEN ${PURCHASE_SQL_PRICE_NUM} IS NULL OR ${PURCHASE_SQL_PRICE_NUM} <= 0 THEN 1 ELSE 0 END) AS positions_without_buy_price
         ${fromJoin}
         WHERE ${frag.whereSql}`;
 }
@@ -484,11 +568,35 @@ function mapPurchaseColumnTotalsRow(r) {
         stock: Number(row.stock_total || 0),
         in_transit: Number(row.in_transit_total || 0),
         to_purchase_qty: Number(row.to_purchase_qty_total || 0),
+        stock_value_rub: Number(row.stock_value_rub || 0),
+        min_stock_value_rub: Number(row.min_stock_value_rub || 0),
+        formula_proposed_value_rub: Number(row.formula_proposed_value_rub || 0),
+        positions_without_buy_price: Number(row.positions_without_buy_price || 0),
     };
 }
 
 /** Порог: полный enrich всех строк фильтра для Σ и режима «К закупке». */
 const PURCHASE_ENRICHED_TOTALS_MAX_ROWS = 2500;
+
+function parsePurchaseBuyPriceRub(v) {
+    if (v == null || v === '') return null;
+    const s = String(v)
+        .trim()
+        .replace(/\u00a0/g, '')
+        .replace(/\s/g, '')
+        .replace(/₽/g, '')
+        .replace(',', '.');
+    if (!s) return null;
+    const n = Number(s);
+    return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+function purchaseLineValueRub(qty, buyPriceRaw) {
+    const q = parsePurchaseNumOrNull(qty);
+    const p = parsePurchaseBuyPriceRub(buyPriceRaw);
+    if (q == null || p == null) return 0;
+    return q * p;
+}
 
 function sumPurchaseColumnTotalsFromItems(items) {
     let positions = 0;
@@ -497,13 +605,23 @@ function sumPurchaseColumnTotalsFromItems(items) {
     let stock = 0;
     let inTransit = 0;
     let toPurchase = 0;
+    let stockRub = 0;
+    let minStockRub = 0;
+    let formulaRub = 0;
+    let withoutPrice = 0;
     for (const d of items || []) {
         positions += 1;
+        const price = parsePurchaseBuyPriceRub(d.buy_price);
+        if (price == null || price <= 0) withoutPrice += 1;
         const ms = parsePurchaseNumOrNull(d.min_stock);
         if (ms != null) minStock += ms;
         const fp = parsePurchaseNumOrNull(d.formula_proposed_min_stock);
         if (fp != null) formula += fp;
-        stock += Number(d.stock || 0);
+        const st = Number(d.stock || 0);
+        stock += st;
+        stockRub += purchaseLineValueRub(st, d.buy_price);
+        minStockRub += purchaseLineValueRub(ms, d.buy_price);
+        formulaRub += purchaseLineValueRub(fp, d.buy_price);
         const tr = parsePurchaseNumOrNull(d.in_transit);
         if (tr != null) inTransit += tr;
         toPurchase += Number(d.to_purchase_qty || 0);
@@ -515,6 +633,10 @@ function sumPurchaseColumnTotalsFromItems(items) {
         stock,
         in_transit: inTransit,
         to_purchase_qty: toPurchase,
+        stock_value_rub: stockRub,
+        min_stock_value_rub: minStockRub,
+        formula_proposed_value_rub: formulaRub,
+        positions_without_buy_price: withoutPrice,
     };
 }
 
@@ -529,6 +651,8 @@ function purchaseItemSortValue(d, sortKey) {
             return String(d.name || '');
         case 'supplier':
             return `${String(d.supplier || '')}\t${String(d.supplier2 || '')}`;
+        case 'price_comment':
+            return String(d.price_comment || '').toLowerCase();
         case 'buy_price':
         case 'automation_price':
             return parsePurchaseNumOrNull(d[k]);
@@ -578,7 +702,7 @@ function buildPurchaseListSelectSql(frag) {
                 SELECT
                     mse.code, mse.name, mse.supplier, mse.supplier2, mse.uuid, mse.type,
                     mse.is_archived, mse.stock_position, mse.no_longer_cooperation,
-                    mse.buy_price, mse.min_stock, mse.stock, mse.automation_price,
+                    mse.price_comment, mse.buy_price, mse.min_stock, mse.stock, mse.automation_price,
                     mse.synced_at,
                     po.min_stock_dg, po.multiplicity,
                     po.proposed_min_stock, po.pack_qty_manual, po.updated_at AS override_updated_at,
@@ -616,9 +740,10 @@ async function computePurchaseColumnTotalsEnriched(db, appSettings, frag, formul
 }
 
 /**
- * Режим «К закупке»: отбор после enrich (как в ячейках таблицы), а не только по SQL-кэшу формулы.
+ * Список с сортировкой по значениям после enrich (формула, d_*), а не по устаревшему SQL-кэшу.
+ * Иначе строки без `dg_formula_proposed_cache` оказываются в произвольном порядке, а в ячейках — другие числа.
  */
-async function purchaseListQueryToPurchaseEnriched(db, appSettings, req, frag, runOpts = {}) {
+async function purchaseListQueryEnrichedSort(db, appSettings, req, frag, runOpts = {}) {
     const bench = Boolean(runOpts.bench);
     const benchOut = bench ? {} : null;
 
@@ -634,12 +759,10 @@ async function purchaseListQueryToPurchaseEnriched(db, appSettings, req, frag, r
     const sortDir = String(req.query.sort_dir || 'asc').toLowerCase() === 'desc' ? 'desc' : 'asc';
     const sortDesc = sortDir === 'desc';
 
-    const fragBase = buildPurchaseListWhereFragments(req, { skipToPurchaseSqlFilter: true });
     t0 = process.hrtime.bigint();
-    let items = await loadPurchaseListItemsForFrag(db, appSettings, fragBase, formulaFpVal, dataRev);
+    let items = await loadPurchaseListItemsForFrag(db, appSettings, frag, formulaFpVal, dataRev);
     if (bench) benchOut.enrich_all_ms = Number(process.hrtime.bigint() - t0) / 1e6;
 
-    items = items.filter((d) => Number(d.to_purchase_qty || 0) > 0);
     items.sort((a, b) => comparePurchaseItemsForSort(a, b, sortKey, sortDesc));
 
     const total = items.length;
@@ -653,13 +776,48 @@ async function purchaseListQueryToPurchaseEnriched(db, appSettings, req, frag, r
         offset,
         sort_by: sortKey,
         sort_dir: sortDir,
+        to_purchase_active: Boolean(frag.toPurchaseOnly),
+        column_totals,
+        column_totals_source: 'enriched',
+        data: pageItems,
+    };
+    if (bench) out._bench = benchOut;
+    return out;
+}
+
+/**
+ * Режим «К закупке»: отбор после enrich (как в ячейках таблицы), а не только по SQL-кэшу формулы.
+ */
+async function purchaseListQueryToPurchaseEnriched(db, appSettings, req, frag, runOpts = {}) {
+    const fragBase = buildPurchaseListWhereFragments(req, { skipToPurchaseSqlFilter: true });
+    const dataRev = await loadPurchaseDataRevisionCached(db);
+    const formulaFpVal = buildFormulaFingerprint(appSettings);
+    let items = await loadPurchaseListItemsForFrag(db, appSettings, fragBase, formulaFpVal, dataRev);
+    items = items.filter((d) => Number(d.to_purchase_qty || 0) > 0);
+    const limitRaw = parseInt(req.query.limit, 10);
+    const offsetRaw = parseInt(req.query.offset, 10);
+    const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(1000, limitRaw) : 100;
+    const offset = Number.isFinite(offsetRaw) && offsetRaw >= 0 ? offsetRaw : 0;
+    const sortKeyRaw = String(req.query.sort_by || 'code').trim();
+    const sortKey = PURCHASE_SORT_KEYS.has(sortKeyRaw) ? sortKeyRaw : 'code';
+    const sortDir = String(req.query.sort_dir || 'asc').toLowerCase() === 'desc' ? 'desc' : 'asc';
+    const sortDesc = sortDir === 'desc';
+    items.sort((a, b) => comparePurchaseItemsForSort(a, b, sortKey, sortDesc));
+    const total = items.length;
+    const column_totals = sumPurchaseColumnTotalsFromItems(items);
+    const pageItems = items.slice(offset, offset + limit);
+    return {
+        success: true,
+        total,
+        limit,
+        offset,
+        sort_by: sortKey,
+        sort_dir: sortDir,
         to_purchase_active: true,
         column_totals,
         data: pageItems,
         column_totals_source: 'enriched',
     };
-    if (bench) out._bench = benchOut;
-    return out;
 }
 
 async function purchaseListQueryPaged(db, appSettings, req, runOpts = {}) {
@@ -683,6 +841,9 @@ async function purchaseListQueryPaged(db, appSettings, req, runOpts = {}) {
     const frag = buildPurchaseListWhereFragments(req);
     if (frag.toPurchaseOnly) {
         return purchaseListQueryToPurchaseEnriched(db, appSettings, req, frag, runOpts);
+    }
+    if (PURCHASE_HEAVY_SORT_KEYS.has(sortKey)) {
+        return purchaseListQueryEnrichedSort(db, appSettings, req, frag, runOpts);
     }
 
     const orderBy = buildPurchaseSqlOrderBy(sortKey, sortDesc);
@@ -801,7 +962,248 @@ async function ensureSchema(db) {
             INDEX idx_pu_ov_log_src (source)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     `);
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS dg_purchase_min_stock_apply_batch (
+            id BIGINT AUTO_INCREMENT PRIMARY KEY,
+            status VARCHAR(16) NOT NULL DEFAULT 'running',
+            filter_json TEXT NULL,
+            rows_scanned INT NOT NULL DEFAULT 0,
+            rows_updated INT NOT NULL DEFAULT 0,
+            rows_unchanged INT NOT NULL DEFAULT 0,
+            rows_skipped INT NOT NULL DEFAULT 0,
+            error_message VARCHAR(500) NULL,
+            created_by_user_id INT NULL,
+            created_by_name VARCHAR(255) NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            finished_at TIMESTAMP NULL DEFAULT NULL,
+            reverted_at TIMESTAMP NULL DEFAULT NULL,
+            reverted_by_user_id INT NULL,
+            reverted_by_name VARCHAR(255) NULL,
+            INDEX idx_pu_ms_apply_created (created_at),
+            INDEX idx_pu_ms_apply_status (status)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `);
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS dg_purchase_min_stock_apply_item (
+            id BIGINT AUTO_INCREMENT PRIMARY KEY,
+            batch_id BIGINT NOT NULL,
+            code VARCHAR(255) NOT NULL,
+            old_min_stock DECIMAL(15,3) NULL,
+            new_min_stock DECIMAL(15,3) NULL,
+            formula_proposed DECIMAL(15,3) NULL,
+            INDEX idx_pu_ms_apply_item_batch (batch_id),
+            INDEX idx_pu_ms_apply_item_code (code)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `);
     schemaReady = true;
+}
+
+/** Один активный batch-перенос «пр. нес.ост. → неснижаемый МС» на процесс. */
+let purchaseMinStockApplyRunning = false;
+
+function minStockFromFormulaProposed(proposed) {
+    const p = Number(proposed);
+    if (!Number.isFinite(p)) return null;
+    return Math.max(0, Math.round(p));
+}
+
+function normalizeMinStockApplyFilters(raw) {
+    const out = {};
+    if (!raw || typeof raw !== 'object') return out;
+    for (const [k, v] of Object.entries(raw)) {
+        if (v == null || v === '') continue;
+        out[String(k)] = String(v);
+    }
+    return out;
+}
+
+function listReqFromApplyFilters(filters) {
+    return { query: normalizeMinStockApplyFilters(filters) };
+}
+
+function mapMinStockApplyBatchRow(r) {
+    if (!r) return null;
+    const status = String(r.status || '');
+    return {
+        id: Number(r.id),
+        status,
+        filter_json: r.filter_json != null ? String(r.filter_json) : null,
+        rows_scanned: Number(r.rows_scanned || 0),
+        rows_updated: Number(r.rows_updated || 0),
+        rows_unchanged: Number(r.rows_unchanged || 0),
+        rows_skipped: Number(r.rows_skipped || 0),
+        error_message: r.error_message != null ? String(r.error_message) : null,
+        created_by_user_id: r.created_by_user_id != null ? Number(r.created_by_user_id) : null,
+        created_by_name: r.created_by_name != null ? String(r.created_by_name) : '',
+        created_at: r.created_at ? new Date(r.created_at).toISOString() : '',
+        finished_at: r.finished_at ? new Date(r.finished_at).toISOString() : null,
+        reverted_at: r.reverted_at ? new Date(r.reverted_at).toISOString() : null,
+        reverted_by_name: r.reverted_by_name != null ? String(r.reverted_by_name) : '',
+        can_revert: status === 'completed',
+    };
+}
+
+async function updateMinStockApplyBatchProgress(db, batchId, counts) {
+    await db.query(
+        `UPDATE dg_purchase_min_stock_apply_batch
+         SET rows_scanned = ?, rows_updated = ?, rows_unchanged = ?, rows_skipped = ?
+         WHERE id = ?`,
+        [
+            Number(counts.rows_scanned || 0),
+            Number(counts.rows_updated || 0),
+            Number(counts.rows_unchanged || 0),
+            Number(counts.rows_skipped || 0),
+            batchId,
+        ],
+    );
+}
+
+/**
+ * Перенос `formula_proposed_min_stock` → `ms_export.min_stock` для выборки списка закупок.
+ * Снимок старых значений — в `dg_purchase_min_stock_apply_item` для batch-отката.
+ */
+async function runPurchaseMinStockApplyBatch(db, appSettings, opts = {}) {
+    const batchId = Number(opts.batchId);
+    if (!Number.isFinite(batchId) || batchId <= 0) {
+        throw new Error('Не указан batchId');
+    }
+    const chunkSize = Math.min(150, Math.max(20, Number(opts.chunkSize) || 50));
+    const maxCodes = Math.max(0, Number(opts.maxCodes) || 0);
+    const listReq = opts.req && typeof opts.req === 'object' ? opts.req : { query: {} };
+
+    invalidatePurchaseDataRevisionCache();
+    const dataRev = await loadPurchaseDataRevision(db);
+    purchaseDataRevCache = { rev: dataRev, ts: Date.now() };
+    const formulaFp = buildFormulaFingerprint(appSettings);
+    const frag = buildPurchaseListWhereFragments(listReq);
+    const baseFromJoin = buildPurchaseBaseFromJoin(frag.incompletePack);
+
+    let offset = 0;
+    const counts = { rows_scanned: 0, rows_updated: 0, rows_unchanged: 0, rows_skipped: 0 };
+
+    while (true) {
+        if (maxCodes > 0 && counts.rows_scanned >= maxCodes) break;
+        const take = maxCodes > 0 ? Math.min(chunkSize, maxCodes - counts.rows_scanned) : chunkSize;
+        const listSql = `
+            SELECT
+                mse.code, mse.name, mse.supplier, mse.supplier2, mse.uuid, mse.type,
+                mse.is_archived, mse.stock_position, mse.no_longer_cooperation,
+                mse.price_comment, mse.buy_price, mse.min_stock, mse.stock, mse.automation_price,
+                mse.synced_at,
+                po.min_stock_dg, po.multiplicity,
+                po.proposed_min_stock, po.pack_qty_manual, po.updated_at AS override_updated_at,
+                NULL AS payload_json,
+                med.denorm_article,
+                med.denorm_in_transit,
+                med.denorm_pack_qty_auto,
+                med.denorm_market_price_rub,
+                NULL AS formula_cached_proposed,
+                NULL AS formula_cached_windows_json
+            ${baseFromJoin}
+            WHERE ${frag.whereSql}
+            ORDER BY mse.code ASC
+            LIMIT ? OFFSET ?`;
+        const [rows] = await db.query(listSql, [...frag.whereParams, take, offset]);
+        if (!rows || !rows.length) break;
+
+        const pageItems = rows.map((r) => mapPurchaseSqlRowToDataItem(r, { noPayloadForFormula: true }));
+        await enrichPurchaseListPage(db, appSettings, pageItems, {
+            dataRev,
+            formulaFp,
+            skipBundleWarmup: true,
+            includePayload: false,
+        });
+
+        for (const d of pageItems) {
+            const code = String(d.code || '').trim();
+            if (!code) continue;
+            const proposedRaw = d.formula_proposed_min_stock;
+            const newVal = minStockFromFormulaProposed(proposedRaw);
+            if (newVal == null) {
+                counts.rows_skipped += 1;
+                continue;
+            }
+            const oldVal =
+                d.min_stock != null && Number.isFinite(Number(d.min_stock)) ? Number(d.min_stock) : 0;
+            if (Math.abs(newVal - oldVal) < 1e-9) {
+                counts.rows_unchanged += 1;
+                continue;
+            }
+            await db.query(
+                `INSERT INTO dg_purchase_min_stock_apply_item
+                    (batch_id, code, old_min_stock, new_min_stock, formula_proposed)
+                 VALUES (?, ?, ?, ?, ?)`,
+                [batchId, code, oldVal, newVal, Number(proposedRaw)],
+            );
+            await db.query(`UPDATE ms_export SET min_stock = ? WHERE code = ?`, [newVal, code]);
+            counts.rows_updated += 1;
+        }
+
+        counts.rows_scanned += rows.length;
+        offset += rows.length;
+        await updateMinStockApplyBatchProgress(db, batchId, counts);
+        if (rows.length < take) break;
+    }
+
+    invalidatePurchaseListResponseCache();
+    invalidatePurchaseDataRevisionCache();
+    return counts;
+}
+
+async function revertPurchaseMinStockApplyBatch(db, batchId, actor) {
+    const id = Number(batchId);
+    if (!Number.isFinite(id) || id <= 0) throw new Error('Не указан batch_id');
+    const [batchRows] = await db.query(
+        `SELECT id, status FROM dg_purchase_min_stock_apply_batch WHERE id = ? LIMIT 1`,
+        [id],
+    );
+    const batch = batchRows && batchRows[0];
+    if (!batch) throw new Error('Пакет переноса не найден');
+    const status = String(batch.status || '');
+    if (status === 'reverted') throw new Error('Пакет уже откачен');
+    if (status !== 'completed') {
+        throw new Error('Откат доступен только для завершённого переноса');
+    }
+
+    const [items] = await db.query(
+        `SELECT code, old_min_stock FROM dg_purchase_min_stock_apply_item WHERE batch_id = ?`,
+        [id],
+    );
+    const list = Array.isArray(items) ? items : [];
+    if (!list.length) throw new Error('В пакете нет изменённых позиций');
+
+    const actorName = actorDisplayName(actor) || null;
+    const actorId = actor && actor.id != null ? Number(actor.id) : null;
+
+    await db.query('START TRANSACTION');
+    try {
+        for (const it of list) {
+            const code = String(it.code || '').trim();
+            if (!code) continue;
+            const oldVal =
+                it.old_min_stock != null && Number.isFinite(Number(it.old_min_stock))
+                    ? Number(it.old_min_stock)
+                    : 0;
+            await db.query(`UPDATE ms_export SET min_stock = ? WHERE code = ?`, [oldVal, code]);
+        }
+        await db.query(
+            `UPDATE dg_purchase_min_stock_apply_batch
+             SET status = 'reverted',
+                 reverted_at = CURRENT_TIMESTAMP,
+                 reverted_by_user_id = ?,
+                 reverted_by_name = ?
+             WHERE id = ?`,
+            [Number.isFinite(actorId) ? actorId : null, actorName, id],
+        );
+        await db.query('COMMIT');
+    } catch (e) {
+        await db.query('ROLLBACK');
+        throw e;
+    }
+
+    invalidatePurchaseListResponseCache();
+    invalidatePurchaseDataRevisionCache();
+    return { reverted_rows: list.length };
 }
 
 function parseFlexibleNumber(raw) {
@@ -823,7 +1225,12 @@ const PURCHASE_IMPORT_MAX_ROWS = 25000;
 
 function actorDisplayName(actor) {
     if (!actor) return '';
-    return String(actor.full_name || actor.username || '').trim();
+    const name = String(actor.full_name || actor.username || '').trim();
+    if (name) return name;
+    if (actor.id != null && Number.isFinite(Number(actor.id))) {
+        return 'user#' + Number(actor.id);
+    }
+    return '';
 }
 
 function normalizeOverrideNum(v) {
@@ -1123,7 +1530,7 @@ async function loadMsPayloadRowsForCodes(db, codes, formulaMeta, loadOpts = {}) 
             `SELECT
                     mse.code, mse.name, mse.supplier, mse.supplier2, mse.uuid, mse.type,
                     mse.is_archived, mse.stock_position, mse.no_longer_cooperation,
-                    mse.buy_price, mse.min_stock, mse.stock, mse.automation_price,
+                    mse.price_comment, mse.buy_price, mse.min_stock, mse.stock, mse.automation_price,
                     mse.synced_at,
                     po.min_stock_dg, po.multiplicity,
                     po.proposed_min_stock, po.pack_qty_manual, po.updated_at AS override_updated_at,
@@ -1209,6 +1616,7 @@ function mapPurchaseSqlRowToDataItem(r, opts = {}) {
         supplier: r.supplier || '',
         supplier2: r.supplier2 || '',
         supplier_label: supplierLabel,
+        price_comment: r.price_comment || '',
         buy_price: r.buy_price || '',
         min_stock: r.min_stock,
         automation_price: r.automation_price || '',
@@ -2045,6 +2453,31 @@ async function upsertFormulaCacheFromPageItems(db, appSettings, pageItems, dataR
  * Фоновое заполнение `dg_formula_proposed_cache` для дефолтной выборки закупок (без in-memory снимка).
  * @param {{ chunkSize?: number, maxCodes?: number, req?: object }} [opts]
  */
+async function loadLatestPurchaseFormulaCacheRun(db) {
+    try {
+        const [rows] = await db.query(
+            `SELECT id, status, message, trigger_type, started_at, finished_at
+               FROM auto_sync_runs
+              WHERE task_type = 'purchase_formula_cache'
+              ORDER BY COALESCE(started_at, finished_at) DESC, id DESC
+              LIMIT 1`,
+        );
+        const r = rows && rows[0];
+        if (!r) return null;
+        return {
+            id: Number(r.id),
+            status: String(r.status || ''),
+            message: String(r.message || '').slice(0, 480),
+            trigger_type: String(r.trigger_type || ''),
+            started_at: r.started_at,
+            finished_at: r.finished_at,
+            ...parsePurchaseFormulaBatchRunMessage(r.message),
+        };
+    } catch (_) {
+        return null;
+    }
+}
+
 async function runPurchaseFormulaCacheBatch(db, appSettings, opts = {}) {
     const chunkSize = Math.min(150, Math.max(20, Number(opts.chunkSize) || 50));
     const maxCodes = Math.max(0, Number(opts.maxCodes) || 0);
@@ -2055,20 +2488,60 @@ async function runPurchaseFormulaCacheBatch(db, appSettings, opts = {}) {
     const formulaFp = buildFormulaFingerprint(appSettings);
     const frag = buildPurchaseListWhereFragments(listReq);
     const baseFromJoin = buildPurchaseBaseFromJoin(frag.incompletePack);
+    const countFromJoin = buildPurchaseCountFromJoin(frag.incompletePack, frag.toPurchaseOnly);
+    let selectionTotal = 0;
+    try {
+        const [countRows] = await db.query(
+            `SELECT COUNT(*) AS cnt ${countFromJoin} WHERE ${frag.whereSql}`,
+            purchaseCountQueryParams(frag, formulaFp, dataRev, frag.toPurchaseOnly),
+        );
+        selectionTotal = Number(countRows && countRows[0] ? countRows[0].cnt : 0);
+    } catch (e) {
+        console.warn('[purchase][formula-cache-batch] count:', e && e.message ? e.message : e);
+    }
 
     let offset = 0;
     let processed = 0;
     let upserted = 0;
     let errors = 0;
 
+    formulaCacheBatchLive = {
+        running: true,
+        processed: 0,
+        upserted: 0,
+        errors: 0,
+        selection_total: selectionTotal,
+        started_at_ms: Date.now(),
+        finished_at_ms: null,
+        message:
+            selectionTotal > 0
+                ? 'Старт пересчёта: 0 из ' + selectionTotal + ' позиций…'
+                : 'Старт пересчёта кэша формулы…',
+    };
+    emitFormulaCacheBatchProgress(opts);
+
     while (true) {
         if (maxCodes > 0 && processed >= maxCodes) break;
         const take = maxCodes > 0 ? Math.min(chunkSize, maxCodes - processed) : chunkSize;
+        const chunkFrom = processed + 1;
+        const chunkTo = processed + take;
+        formulaCacheBatchLive.last_tick_ms = Date.now();
+        formulaCacheBatchLive.message =
+            selectionTotal > 0
+                ? 'Считаем формулы: позиции ' +
+                  chunkFrom +
+                  '–' +
+                  Math.min(chunkTo, selectionTotal) +
+                  ' из ' +
+                  selectionTotal +
+                  '…'
+                : 'Считаем формулы: пакет с позиции ' + chunkFrom + '…';
+        emitFormulaCacheBatchProgress(opts);
         const listSql = `
             SELECT
                 mse.code, mse.name, mse.supplier, mse.supplier2, mse.uuid, mse.type,
                 mse.is_archived, mse.stock_position, mse.no_longer_cooperation,
-                mse.buy_price, mse.min_stock, mse.stock, mse.automation_price,
+                mse.price_comment, mse.buy_price, mse.min_stock, mse.stock, mse.automation_price,
                 mse.synced_at,
                 po.min_stock_dg, po.multiplicity,
                 po.proposed_min_stock, po.pack_qty_manual, po.updated_at AS override_updated_at,
@@ -2101,12 +2574,40 @@ async function runPurchaseFormulaCacheBatch(db, appSettings, opts = {}) {
         }
         processed += rows.length;
         offset += rows.length;
+        formulaCacheBatchLive.processed = processed;
+        formulaCacheBatchLive.upserted = upserted;
+        formulaCacheBatchLive.errors = errors;
+        formulaCacheBatchLive.selection_total = selectionTotal;
+        formulaCacheBatchLive.last_tick_ms = Date.now();
+        const totalLabel = selectionTotal > 0 ? selectionTotal : '?';
+        formulaCacheBatchLive.message =
+            'Обработано ' +
+            processed +
+            ' из ' +
+            totalLabel +
+            ', записано в кэш ' +
+            upserted +
+            (errors ? ', ошибок чанков ' + errors : '') +
+            '…';
+        emitFormulaCacheBatchProgress(opts);
         if (rows.length < take) break;
     }
 
     purchaseDataRevCache = { rev: dataRev, ts: Date.now() };
     invalidatePurchaseListResponseCache();
-    return { processed, upserted, errors, data_rev: dataRev, formula_fp: formulaFp };
+    formulaCacheBatchLive.running = false;
+    formulaCacheBatchLive.processed = processed;
+    formulaCacheBatchLive.upserted = upserted;
+    formulaCacheBatchLive.errors = errors;
+    formulaCacheBatchLive.finished_at_ms = Date.now();
+    formulaCacheBatchLive.message =
+        'Готово: обработано ' +
+        processed +
+        ', записано в кэш ' +
+        upserted +
+        (errors ? ', ошибок чанков ' + errors : '');
+    emitFormulaCacheBatchProgress(opts);
+    return { processed, upserted, errors, data_rev: dataRev, formula_fp: formulaFp, selection_total: selectionTotal };
 }
 
 /**
@@ -2115,6 +2616,31 @@ async function runPurchaseFormulaCacheBatch(db, appSettings, opts = {}) {
  */
 async function warmupPurchaseListCaches() {
     return { built: 0, skipped: 1, sortTouches: 0, errors: 0, disabled: true };
+}
+
+const PURCHASE_MANAGERS_CACHE_TTL_MS = 5 * 60 * 1000;
+let purchaseManagersCache = { list: [], ts: 0 };
+
+/**
+ * Уникальные менеджеры из `ms_export.manager` (синк атрибута МС «Менеджер поддерживающий товар»).
+ * @returns {Promise<string[]>}
+ */
+async function loadPurchaseDistinctManagers(db) {
+    const now = Date.now();
+    if (purchaseManagersCache.list.length && now - purchaseManagersCache.ts < PURCHASE_MANAGERS_CACHE_TTL_MS) {
+        return purchaseManagersCache.list;
+    }
+    const [rows] = await db.query(
+        `SELECT DISTINCT TRIM(manager) AS manager
+         FROM ms_export
+         WHERE manager IS NOT NULL AND TRIM(manager) <> ''
+         ORDER BY manager ASC`,
+    );
+    const list = (rows || [])
+        .map((r) => String(r.manager || '').trim())
+        .filter(Boolean);
+    purchaseManagersCache = { list, ts: now };
+    return list;
 }
 
 function createPurchaseRouter(db, appSettings) {
@@ -2253,6 +2779,38 @@ function createPurchaseRouter(db, appSettings) {
         }
     });
 
+    router.get('/formula-cache-progress', async (req, res) => {
+        try {
+            const live = getPurchaseFormulaCacheProgressPayload();
+            const db_run = await loadLatestPurchaseFormulaCacheRun(db);
+            const running =
+                live.running || (db_run && String(db_run.status) === 'running');
+            return res.json({
+                success: true,
+                running,
+                live,
+                db_run,
+            });
+        } catch (e) {
+            return res.status(500).json({
+                success: false,
+                error: e && e.message ? e.message : 'Не удалось получить прогресс кэша',
+            });
+        }
+    });
+
+    router.get('/managers', async (req, res) => {
+        try {
+            const managers = await loadPurchaseDistinctManagers(db);
+            return res.json({ success: true, managers });
+        } catch (e) {
+            return res.status(500).json({
+                success: false,
+                error: e && e.message ? e.message : 'Не удалось загрузить список менеджеров',
+            });
+        }
+    });
+
     router.get('/', async (req, res) => {
         try {
             await ensureSchema(db);
@@ -2286,7 +2844,12 @@ function createPurchaseRouter(db, appSettings) {
 
             const responsePayload = await purchaseListQueryPaged(db, appSettings, req);
             const sortKey = responsePayload.sort_by;
-            const cacheMeta = await buildPurchaseListResponseCacheMeta(db, appSettings, req, sortKey, 'sql');
+            const listSource =
+                responsePayload.column_totals_source === 'enriched' &&
+                PURCHASE_HEAVY_SORT_KEYS.has(sortKey)
+                    ? 'enriched'
+                    : 'sql';
+            const cacheMeta = await buildPurchaseListResponseCacheMeta(db, appSettings, req, sortKey, listSource);
             const body = { ...responsePayload, cache: cacheMeta };
             purchaseListResponseCache.set(cacheKey, { ts: Date.now(), payload: body });
             trimPurchaseListResponseCache();
@@ -2399,6 +2962,223 @@ function createPurchaseRouter(db, appSettings) {
         }
     });
 
+    router.get('/min-stock-apply/log', async (req, res) => {
+        try {
+            await ensureSchema(db);
+            const rawLimit = Number(req.query.limit);
+            const limit = Math.min(
+                50,
+                Math.max(1, Number.isFinite(rawLimit) && rawLimit > 0 ? Math.floor(rawLimit) : 12),
+            );
+            const [rows] = await db.query(
+                `SELECT id, status, filter_json, rows_scanned, rows_updated, rows_unchanged, rows_skipped,
+                        error_message, created_by_user_id, created_by_name, created_at, finished_at,
+                        reverted_at, reverted_by_name
+                 FROM dg_purchase_min_stock_apply_batch
+                 ORDER BY id DESC
+                 LIMIT ?`,
+                [limit],
+            );
+            const batches = (rows || []).map(mapMinStockApplyBatchRow).filter(Boolean);
+            return res.json({ success: true, batches });
+        } catch (e) {
+            return res.status(500).json({
+                success: false,
+                error: e && e.message ? e.message : 'Ошибка чтения журнала переноса',
+            });
+        }
+    });
+
+    router.get('/min-stock-apply/batch/:id/items', async (req, res) => {
+        try {
+            await ensureSchema(db);
+            const id = Number(req.params.id);
+            if (!Number.isFinite(id) || id <= 0) {
+                return res.status(400).json({ success: false, error: 'Некорректный id' });
+            }
+            const rawLimit = Number(req.query.limit);
+            const limit = Math.min(
+                500,
+                Math.max(1, Number.isFinite(rawLimit) && rawLimit > 0 ? Math.floor(rawLimit) : 200),
+            );
+            const rawOffset = Number(req.query.offset);
+            const offset = Math.max(
+                0,
+                Number.isFinite(rawOffset) && rawOffset >= 0 ? Math.floor(rawOffset) : 0,
+            );
+            const [batchRows] = await db.query(
+                `SELECT id, status, filter_json, rows_scanned, rows_updated, rows_unchanged, rows_skipped,
+                        error_message, created_by_user_id, created_by_name, created_at, finished_at,
+                        reverted_at, reverted_by_user_id, reverted_by_name
+                 FROM dg_purchase_min_stock_apply_batch WHERE id = ? LIMIT 1`,
+                [id],
+            );
+            if (!batchRows || !batchRows.length) {
+                return res.status(404).json({ success: false, error: 'Пакет не найден' });
+            }
+            const batchMeta = mapMinStockApplyBatchRow(batchRows[0]);
+            const [totRows] = await db.query(
+                `SELECT COUNT(*) AS total FROM dg_purchase_min_stock_apply_item WHERE batch_id = ?`,
+                [id],
+            );
+            const total = Number((totRows && totRows[0] && totRows[0].total) || 0);
+            const [rows] = await db.query(
+                `SELECT i.id, i.code, i.old_min_stock, i.new_min_stock, i.formula_proposed,
+                        e.name AS product_name
+                 FROM dg_purchase_min_stock_apply_item i
+                 LEFT JOIN ms_export e ON e.code = i.code
+                 WHERE i.batch_id = ?
+                 ORDER BY i.code ASC
+                 LIMIT ? OFFSET ?`,
+                [id, limit, offset],
+            );
+            const items = (rows || []).map((r) => ({
+                id: Number(r.id),
+                code: String(r.code || ''),
+                name: r.product_name != null ? String(r.product_name) : '',
+                old_min_stock: r.old_min_stock != null ? Number(r.old_min_stock) : null,
+                new_min_stock: r.new_min_stock != null ? Number(r.new_min_stock) : null,
+                formula_proposed:
+                    r.formula_proposed != null && Number.isFinite(Number(r.formula_proposed))
+                        ? Number(r.formula_proposed)
+                        : null,
+            }));
+            return res.json({
+                success: true,
+                batch_id: id,
+                batch: batchMeta,
+                items,
+                total,
+                limit,
+                offset,
+            });
+        } catch (e) {
+            return res.status(500).json({
+                success: false,
+                error: e && e.message ? e.message : 'Ошибка чтения строк пакета переноса',
+            });
+        }
+    });
+
+    router.get('/min-stock-apply/batch/:id', async (req, res) => {
+        try {
+            await ensureSchema(db);
+            const id = Number(req.params.id);
+            if (!Number.isFinite(id) || id <= 0) {
+                return res.status(400).json({ success: false, error: 'Некорректный id' });
+            }
+            const [rows] = await db.query(
+                `SELECT id, status, filter_json, rows_scanned, rows_updated, rows_unchanged, rows_skipped,
+                        error_message, created_by_user_id, created_by_name, created_at, finished_at,
+                        reverted_at, reverted_by_name
+                 FROM dg_purchase_min_stock_apply_batch WHERE id = ? LIMIT 1`,
+                [id],
+            );
+            const batch = mapMinStockApplyBatchRow(rows && rows[0]);
+            if (!batch) return res.status(404).json({ success: false, error: 'Пакет не найден' });
+            return res.json({ success: true, batch });
+        } catch (e) {
+            return res.status(500).json({
+                success: false,
+                error: e && e.message ? e.message : 'Ошибка чтения пакета переноса',
+            });
+        }
+    });
+
+    router.post('/min-stock-apply/run', express.json({ limit: '64kb' }), async (req, res) => {
+        try {
+            await ensureSchema(db);
+            if (purchaseMinStockApplyRunning) {
+                return res.status(409).json({
+                    success: false,
+                    error: 'Уже выполняется другой перенос. Дождитесь завершения.',
+                });
+            }
+            const body = req.body && typeof req.body === 'object' ? req.body : {};
+            const filters = normalizeMinStockApplyFilters(body.filters);
+            const listReq = listReqFromApplyFilters(filters);
+            const actor = req.datagonActor || null;
+            const actorId = actor && actor.id != null ? Number(actor.id) : null;
+            const actorName = actorDisplayName(actor) || null;
+            const filterJson = JSON.stringify(filters);
+
+            const [ins] = await db.query(
+                `INSERT INTO dg_purchase_min_stock_apply_batch
+                    (status, filter_json, created_by_user_id, created_by_name)
+                 VALUES ('running', ?, ?, ?)`,
+                [filterJson, Number.isFinite(actorId) ? actorId : null, actorName],
+            );
+            const batchId = Number(ins && ins.insertId);
+            if (!Number.isFinite(batchId) || batchId <= 0) {
+                return res.status(500).json({ success: false, error: 'Не удалось создать пакет переноса' });
+            }
+
+            purchaseMinStockApplyRunning = true;
+            res.json({ success: true, batch_id: batchId, status: 'running' });
+
+            setImmediate(async () => {
+                try {
+                    const counts = await runPurchaseMinStockApplyBatch(db, appSettings, {
+                        batchId,
+                        req: listReq,
+                    });
+                    await db.query(
+                        `UPDATE dg_purchase_min_stock_apply_batch
+                         SET status = 'completed',
+                             rows_scanned = ?, rows_updated = ?, rows_unchanged = ?, rows_skipped = ?,
+                             finished_at = CURRENT_TIMESTAMP
+                         WHERE id = ?`,
+                        [
+                            counts.rows_scanned,
+                            counts.rows_updated,
+                            counts.rows_unchanged,
+                            counts.rows_skipped,
+                            batchId,
+                        ],
+                    );
+                } catch (e) {
+                    const msg = e && e.message ? String(e.message).slice(0, 500) : 'Ошибка переноса';
+                    console.error('[purchase][min-stock-apply] batch error:', e);
+                    try {
+                        await db.query(
+                            `UPDATE dg_purchase_min_stock_apply_batch
+                             SET status = 'failed', error_message = ?, finished_at = CURRENT_TIMESTAMP
+                             WHERE id = ?`,
+                            [msg, batchId],
+                        );
+                    } catch (e2) {
+                        console.error('[purchase][min-stock-apply] batch status update failed:', e2);
+                    }
+                } finally {
+                    purchaseMinStockApplyRunning = false;
+                }
+            });
+        } catch (e) {
+            purchaseMinStockApplyRunning = false;
+            return res.status(500).json({
+                success: false,
+                error: e && e.message ? e.message : 'Не удалось запустить перенос',
+            });
+        }
+    });
+
+    router.post('/min-stock-apply/revert', express.json({ limit: '16kb' }), async (req, res) => {
+        try {
+            await ensureSchema(db);
+            const body = req.body && typeof req.body === 'object' ? req.body : {};
+            const batchId = Number(body.batch_id);
+            if (!Number.isFinite(batchId) || batchId <= 0) {
+                return res.status(400).json({ success: false, error: 'Не указан batch_id' });
+            }
+            const result = await revertPurchaseMinStockApplyBatch(db, batchId, req.datagonActor || null);
+            return res.json({ success: true, batch_id: batchId, ...result });
+        } catch (e) {
+            const msg = e && e.message ? e.message : 'Ошибка отката';
+            const code = msg.includes('не найден') ? 404 : msg.includes('уже откачен') || msg.includes('доступен') ? 400 : 500;
+            return res.status(code).json({ success: false, error: msg });
+        }
+    });
+
     return router;
 }
 
@@ -2408,8 +3188,12 @@ module.exports.ensureSchema = ensureSchema;
 module.exports.warmupPurchaseListCaches = warmupPurchaseListCaches;
 module.exports.runPurchaseStartupProgressiveWarmup = runPurchaseStartupProgressiveWarmup;
 module.exports.getPurchaseWarmupProgressPayload = getPurchaseWarmupProgressPayload;
+module.exports.getPurchaseFormulaCacheProgressPayload = getPurchaseFormulaCacheProgressPayload;
 /** Для `scripts/purchase-list-sql-bench.cjs` — замер `GET /api/purchase` без HTTP. */
 module.exports.purchaseListQueryPaged = purchaseListQueryPaged;
 module.exports.runPurchaseFormulaCacheBatch = runPurchaseFormulaCacheBatch;
+module.exports.runPurchaseMinStockApplyBatch = runPurchaseMinStockApplyBatch;
+module.exports.revertPurchaseMinStockApplyBatch = revertPurchaseMinStockApplyBatch;
 module.exports.PURCHASE_HEAVY_SORT_KEYS = PURCHASE_HEAVY_SORT_KEYS;
 module.exports.invalidatePurchaseListResponseCache = invalidatePurchaseListResponseCache;
+module.exports.loadPurchaseDistinctManagers = loadPurchaseDistinctManagers;

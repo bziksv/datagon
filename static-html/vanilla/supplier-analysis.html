@@ -1,0 +1,4221 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, shrink-to-fit=no" />
+  <title>Анализ поставщиков — Датагон</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="stylesheet" href="/static/css/main.989b22a9.css" />
+    <style>
+    /* Паритет с suppliers / my-products: wide-таблица не раздувает main */
+    body.datagon-vanilla-body[data-dg-active-nav="supplier-analysis"] .app-main__outer {
+      min-width: 0;
+      max-width: 100%;
+      box-sizing: border-box;
+      overflow-x: clip;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="supplier-analysis"] .app-main__inner {
+      min-width: 0;
+      max-width: 100%;
+      box-sizing: border-box;
+      overflow-x: clip;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="supplier-analysis"] .main-card.card,
+    body.datagon-vanilla-body[data-dg-active-nav="supplier-analysis"] .main-card.card > .card-body {
+      min-width: 0;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="supplier-analysis"] .dg-sa-summary-card,
+    body.datagon-vanilla-body[data-dg-active-nav="supplier-analysis"] .dg-sa-summary-body {
+      min-width: 0;
+      max-width: 100%;
+    }
+
+    /* Hero «Сводка» — как у поставщиков */
+    .dg-sa-summary-card .dg-sa-summary-header {
+      background: linear-gradient(135deg, #3d4a5c 0%, #2c3e50 45%, #1e6bb8 100%);
+    }
+    .dg-sa-summary-body {
+      background: linear-gradient(180deg, #f8fafc 0%, #fff 120px);
+    }
+    .dg-sa-block-label {
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #6c757d;
+      margin-bottom: 0.5rem;
+    }
+    .dg-sa-kpi-tile {
+      background: #fff;
+      border: 1px solid #e8eaed;
+      border-radius: 8px;
+      padding: 10px 12px;
+      height: 100%;
+      min-height: 72px;
+    }
+    .dg-sa-kpi-label { font-size: 0.72rem; color: #6c757d; line-height: 1.25; }
+    .dg-sa-kpi-value {
+      font-size: 1.1rem;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      margin-top: 2px;
+      min-height: 1.35em;
+      line-height: 1.35;
+    }
+    .dg-sa-kpi-value-pct { min-height: 1.35em; }
+    .dg-sa-kpi-sub {
+      font-size: 0.72rem;
+      min-height: 1.1em;
+      line-height: 1.2;
+      margin-top: 2px;
+    }
+    .dg-sa-kpi-money .dg-sa-kpi-value { color: #1e6bb8; }
+    .dg-sa-breakdown-scroll { max-height: 360px; overflow: auto; }
+    .dg-sa-breakdown-table { font-size: 0.78rem; font-variant-numeric: tabular-nums; }
+    .dg-sa-breakdown-table thead th {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      background: #f8f9fa;
+      white-space: nowrap;
+    }
+    .dg-sa-kpi-warn .dg-sa-kpi-value { color: #c0392b; }
+
+    .dg-sa-insight-panel {
+      background: #fff;
+      border: 1px solid #e8eaed;
+      border-radius: 8px;
+      overflow: hidden;
+      height: 100%;
+      min-height: 200px;
+      display: flex;
+      flex-direction: column;
+    }
+    #dg-sa-highlights-row > [class*="col"] {
+      min-width: 0;
+    }
+    .dg-sa-insight-count {
+      font-weight: 500;
+      font-size: 0.72rem;
+      color: #6c757d;
+      margin-left: 4px;
+    }
+    .dg-sa-insight-body {
+      flex: 1;
+      min-height: 0;
+      max-height: min(320px, 38vh);
+      overflow-x: hidden;
+      overflow-y: auto;
+      border-top: 1px solid #eef0f2;
+      -webkit-overflow-scrolling: touch;
+    }
+    .dg-sa-insight-body::-webkit-scrollbar { width: 10px; }
+    .dg-sa-insight-body::-webkit-scrollbar-track {
+      background: #f1f3f5;
+      border-radius: 0 0 8px 0;
+    }
+    .dg-sa-insight-body::-webkit-scrollbar-thumb {
+      background: #adb5bd;
+      border-radius: 5px;
+      border: 2px solid #f1f3f5;
+    }
+    .dg-sa-insight-body.dg-sa-scroll-more {
+      box-shadow: inset 0 -14px 12px -12px rgba(33, 37, 41, 0.12);
+    }
+    .dg-sa-insight-foot {
+      flex-shrink: 0;
+      font-size: 0.72rem;
+      color: #495057;
+      padding: 6px 12px 8px;
+      background: #f8f9fa;
+      border-top: 1px solid #e8eaed;
+      border-radius: 0 0 8px 8px;
+    }
+    .dg-sa-insight-foot::before {
+      content: "↕ ";
+      color: #1e6bb8;
+      font-weight: 600;
+    }
+    .dg-sa-insight-title {
+      font-size: 0.8rem;
+      font-weight: 600;
+      padding: 8px 12px 4px;
+      background: #f1f3f5;
+      border-bottom: 1px solid #e8eaed;
+      flex-shrink: 0;
+    }
+    .dg-sa-insight-desc {
+      font-size: 0.72rem;
+      color: #6c757d;
+      padding: 0 12px 8px;
+      background: #f1f3f5;
+      border-bottom: 1px solid #e8eaed;
+      flex-shrink: 0;
+      line-height: 1.35;
+    }
+    .dg-sa-insight-danger .dg-sa-insight-title { background: #fdecea; color: #b02a1f; border-bottom-color: #f5d0cb; }
+    .dg-sa-insight-danger .dg-sa-insight-desc { background: #fdecea; color: #8f2419; }
+    .dg-sa-insight-success .dg-sa-insight-title { background: #e8f6ee; color: #1a6b3c; border-bottom-color: #cfe8d8; }
+    .dg-sa-insight-success .dg-sa-insight-desc { background: #e8f6ee; color: #1a5c34; }
+    .dg-sa-insight-subtitle {
+      font-size: 0.68rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: #868e96;
+      padding: 6px 12px 2px;
+      background: #f1f3f5;
+      flex-shrink: 0;
+    }
+    .dg-sa-insight-panel .dg-sa-highlight-list {
+      margin: 0;
+    }
+    .dg-sa-highlight-list .list-group-item {
+      font-size: 0.82rem;
+      cursor: pointer;
+      padding: 8px 12px;
+      border-left: 0;
+      border-right: 0;
+    }
+    .dg-sa-highlight-list .list-group-item:hover { background: #f8f9fa; }
+    .dg-sa-highlight-meta {
+      font-size: 0.72rem;
+      color: #6c757d;
+      line-height: 1.35;
+      margin-top: 2px;
+    }
+    .dg-sa-highlight-signal {
+      font-size: 0.72rem;
+      color: #b02a1f;
+      line-height: 1.35;
+      margin-top: 2px;
+      word-break: break-word;
+    }
+    #dg-sa-breakdown-block .dg-sa-block-label {
+      margin-bottom: 0;
+    }
+    .dg-sa-highlight-sub .list-group-item { background: #fafbfc; font-size: 0.78rem; }
+
+    .dg-sa-chart-panel {
+      border: 1px solid #e8eaed;
+      border-radius: 8px;
+      padding: 10px 12px;
+      background: #fff;
+    }
+    .dg-sa-chart-title { font-size: 0.8rem; font-weight: 600; margin-bottom: 6px; color: #495057; }
+    .dg-sa-chart-wrap { position: relative; height: 260px; }
+    .dg-sa-chart-wrap-trend { height: 220px; }
+    .dg-sa-doughnut-wrap { position: relative; height: 240px; max-width: 100%; margin: 0 auto; }
+    .dg-sa-trend-select { max-width: 260px; }
+
+    .dg-sa-detail-panel {
+      background: #f8fafc;
+      border: 1px solid #dee2e6;
+      border-radius: 8px;
+      padding: 12px 14px;
+    }
+    .dg-sa-detail-table-wrap { max-height: 220px; overflow-y: auto; }
+    .dg-sa-detail-table-wrap-catalog { max-height: 280px; }
+    .dg-sa-detail-block .card-header { border-bottom: 1px solid rgba(0, 0, 0, 0.06); }
+    .dg-sa-col-num { width: 2.5rem; color: #868e96; }
+    .dg-sa-detail-chart-panel {
+      border: 1px solid #e8eaed;
+      border-radius: 8px;
+      padding: 10px 12px;
+      background: #fff;
+    }
+    .dg-sa-detail-trend .dg-sa-chart-wrap-trend { height: 200px; }
+
+    body.datagon-vanilla-body[data-dg-active-nav="supplier-analysis"] .dg-sa-table-scroll-outer {
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+      box-sizing: border-box;
+      overflow-x: auto;
+      overflow-y: visible;
+      -webkit-overflow-scrolling: touch;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="supplier-analysis"] #dg-sa-table-body {
+      min-width: 0;
+      max-width: 100%;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="supplier-analysis"]
+      .dg-sa-table-scroll-outer > .datagon-my-products-table-wrap {
+      overflow: visible !important;
+      max-height: none !important;
+    }
+    .dg-sa-table { font-size: 0.82rem; font-variant-numeric: tabular-nums; table-layout: fixed; }
+    .dg-sa-table thead th,
+    .dg-sa-table tbody td {
+      box-sizing: border-box;
+    }
+    .dg-sa-table tbody td {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      vertical-align: middle;
+      padding-top: 6px;
+      padding-bottom: 6px;
+    }
+    .dg-sa-table thead th.dg-sa-expand-col,
+    .dg-sa-table tbody td.dg-sa-expand-cell {
+      overflow: visible;
+      text-overflow: clip;
+    }
+    /* Поставщик — до двух строк; остальные колонки строки остаются по вертикали по центру */
+    .dg-sa-table tbody td.dg-sa-cell-supplier {
+      white-space: normal;
+      vertical-align: middle;
+      line-height: 1.25;
+    }
+    .dg-sa-table tbody td.dg-sa-cell-supplier .dg-sa-supplier-label {
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      white-space: normal;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+      line-height: 1.25;
+      max-height: 2.55em;
+    }
+    .dg-sa-table tbody tr.dg-sa-row > td {
+      vertical-align: middle !important;
+    }
+    .dg-sa-table tbody tr.dg-sa-row > td.text-end {
+      vertical-align: middle !important;
+    }
+    .dg-sa-header-search .input-group-text { border-right: 0; }
+    .dg-sa-widths-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 0.35rem 0.75rem;
+    }
+    /* sticky top 0 + плавающий сдвиг transform на tr в JS (как dg-sp-table / my-products) */
+    .dg-sa-table thead th {
+      position: sticky !important;
+      top: 0 !important;
+      z-index: 20 !important;
+      background: #f8f9fa !important;
+      border-right: 1px solid #e6e9ee;
+      user-select: text;
+      -webkit-user-select: text;
+      vertical-align: bottom;
+    }
+    .dg-sa-table thead th.dg-sa-expand-col,
+    .dg-sa-table thead th.dg-sa-col-num {
+      white-space: nowrap;
+      vertical-align: middle;
+    }
+    .dg-sa-table thead th.dg-sa-th-label {
+      white-space: normal;
+      word-break: break-word;
+      overflow-wrap: break-word;
+      line-height: 1.25;
+      padding-top: 5px;
+      padding-bottom: 5px;
+      overflow: hidden;
+    }
+    .dg-sa-table thead th.dg-sa-th-label .dg-sa-th-inner {
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      max-height: 2.55em;
+      word-break: break-word;
+      line-height: 1.25;
+    }
+    .dg-sa-table thead th.text-end.dg-sa-th-label .dg-sa-th-inner {
+      text-align: right;
+    }
+    .dg-sa-table thead[data-dg-floating="1"] th {
+      position: relative !important;
+      top: auto !important;
+    }
+    .dg-sa-table thead[data-dg-floating="1"] tr {
+      background: #f8f9fa;
+    }
+    .dg-sa-table tbody td { border-right: 1px solid #f3f5f8; }
+    .dg-sa-table tbody tr.dg-sa-row-active { background: rgba(30, 107, 184, 0.1) !important; }
+    .dg-sa-expand-col,
+    .dg-sa-expand-cell {
+      width: 32px;
+      max-width: 32px;
+      padding-left: 8px !important;
+      padding-right: 4px !important;
+      vertical-align: middle;
+    }
+    .dg-sa-row-expandable { cursor: default; }
+    .dg-sa-cell-drill { cursor: pointer; }
+    .dg-sa-cell-drill:hover { background: #eef4fb !important; }
+    .dg-sa-row-expandable:hover td:not(.dg-sa-cell-drill) { background: inherit; }
+    .dg-sa-row-view-warehouse .dg-sa-cell-skus-warehouse { background: rgba(30, 107, 184, 0.12) !important; }
+    .dg-sa-row-view-all_skus .dg-sa-cell-skus-total { background: rgba(30, 107, 184, 0.12) !important; }
+    .dg-sa-row-view-summary.dg-sa-row-active .dg-sa-cell-num,
+    .dg-sa-row-view-summary.dg-sa-row-active .dg-sa-cell-supplier,
+    .dg-sa-row-view-summary.dg-sa-row-active .dg-sa-expand-cell { background: rgba(30, 107, 184, 0.12) !important; }
+    .dg-sa-detail-sku-table,
+    .dg-sa-detail-mini-table {
+      font-size: 0.78rem;
+      font-variant-numeric: tabular-nums;
+      table-layout: fixed;
+      border-collapse: collapse;
+    }
+    /* ширина таблицы SKU задаётся в JS (сумма col), не max-content */
+    .dg-sa-detail-sku-table.dg-sa-detail-table-sized {
+      width: auto;
+      min-width: 0;
+      max-width: none;
+    }
+    .dg-sa-detail-table-wrap-catalog,
+    .dg-sa-detail-table-wrap-scroll {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .dg-sa-detail-sku-table thead th,
+    .dg-sa-detail-mini-table thead th {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      background: #f8f9fa;
+      border-right: 1px solid #e6e9ee;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      user-select: text;
+      -webkit-user-select: text;
+      box-sizing: border-box;
+    }
+    .dg-sa-detail-sku-table tbody td,
+    .dg-sa-detail-mini-table tbody td {
+      border-right: 1px solid #f3f5f8;
+      vertical-align: middle;
+    }
+    .dg-sa-detail-sortable { cursor: pointer; }
+    .dg-sa-detail-sku-table thead th.dg-sa-detail-sort-active,
+    .dg-sa-detail-mini-table thead th.dg-sa-detail-sort-active {
+      font-weight: 600;
+    }
+    .dg-sa-detail-name-cell,
+    .dg-sa-detail-sku-table th.dg-sa-detail-name-col {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 1px;
+    }
+    .dg-sa-detail-name-cell a {
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .dg-sa-detail-code-cell {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .dg-sa-detail-widths-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 0.35rem 0.75rem;
+      font-size: 0.78rem;
+    }
+    .dg-sa-detail-widths-grid label {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      margin: 0;
+    }
+    .dg-sa-detail-widths-grid input {
+      width: 100%;
+      max-width: 120px;
+    }
+    .dg-sa-row-chevron {
+      display: inline-block;
+      color: #868e96;
+      font-size: 1.1rem;
+      line-height: 1;
+      transition: transform 0.15s ease, color 0.15s ease;
+    }
+    .dg-sa-row-active .dg-sa-row-chevron {
+      transform: rotate(90deg);
+      color: #1e6bb8;
+    }
+    .dg-sa-detail-row {
+      position: relative;
+      z-index: 30;
+    }
+    .dg-sa-detail-row > .dg-sa-detail-cell {
+      padding: 0 !important;
+      background: #f8fafc;
+      border-top: 0;
+      box-shadow: inset 3px 0 0 #1e6bb8;
+      position: relative;
+      z-index: 30;
+    }
+    .dg-sa-detail-row .dg-sa-detail-panel {
+      margin: 0;
+      border: 0;
+      border-radius: 0;
+      box-shadow: none;
+    }
+    .dg-sa-sortable { cursor: pointer; user-select: text; -webkit-user-select: text; }
+    body.datagon-vanilla-body[data-dg-active-nav="supplier-analysis"] .dg-sa-table thead th.dg-sa-sort-active {
+      font-weight: 600;
+    }
+    .dg-sa-signals-cell { max-width: 280px; }
+    .dg-sa-signal {
+      display: inline-block;
+      font-size: 0.68rem;
+      margin: 1px 2px 1px 0;
+      max-width: 100%;
+      white-space: normal;
+      text-align: left;
+      line-height: 1.25;
+    }
+    .dg-sa-pct-up { color: #198754; }
+    .dg-sa-pct-down { color: #dc3545; }
+    .dg-sa-attn-badge { font-weight: 600; }
+  </style>
+
+  <style>
+    /* Один список сайдбара: «ArchitectUI меню» у нижнего края области навигации, без второго блока/ul */
+    .dg-sidebar-nav-scroll {
+      display: flex;
+      flex-direction: column;
+    }
+    .dg-sidebar-nav-measure {
+      flex: 1 1 auto;
+      min-height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+    .dg-sidebar-nav-measure .datagon-nav-shell,
+    .dg-sidebar-nav-measure .vertical-nav-menu {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    /* Только корневой список меню: иначе вложенный ul.metismenu-container (под «Маркетплейсы» и т.п.)
+       получает min-height:100% + flex и растягивается на всю колонку — вертикальная линия темы залезает на соседние пункты. */
+    .dg-sidebar-nav-measure .vertical-nav-menu > .metismenu-container {
+      display: flex;
+      flex-direction: column;
+      flex: 1 1 auto;
+      min-height: 100%;
+      margin-bottom: 0;
+    }
+    /*
+      Подменю «Маркетплейсы»: ArchitectUI скрывает .metismenu-icon у подпунктов и даёт малый padding.
+      Не трогаем узкую полоску без hover — большой padding раздувает li и смещает «left:50%» у всех иконок колонки.
+      При развороте по hover из closed-sidebar класс closed-sidebar не снимается — нужен отдельный селектор с .app-sidebar:hover.
+    */
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible,
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon {
+      display: block !important;
+    }
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link,
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link {
+      padding-left: 3.4375rem !important;
+      position: relative;
+      /* Длинные подписи подпунктов («Проблемы с товарами», «Яндекс Маркет»)
+         не должны обрезаться ellipsis: разрешаем перенос на 2 строки и
+         выравниваем иконку по верхней строке. */
+      white-space: normal !important;
+      line-height: 1.25;
+      align-items: flex-start;
+      padding-top: 0.45rem !important;
+      padding-bottom: 0.45rem !important;
+      padding-right: 0.5rem !important;
+      min-height: 2rem;
+      height: auto !important;
+    }
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible,
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon {
+      top: 0.55rem !important;
+    }
+    .dg-sidebar-architect-item {
+      margin-top: auto;
+    }
+    .dg-sidebar-architect-item .metismenu-link {
+      border-top: 1px solid rgba(0, 0, 0, 0.07);
+      padding-top: 0.65rem;
+    }
+    /* Пункты сайдбара с доступом как у журнала активности (admin / право на пользователей) */
+    .dg-sidebar-nav-restricted .metismenu-link {
+      display: inline-flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.15rem 0.35rem;
+    }
+    .dg-sidebar-nav-restricted .dg-nav-restricted-icon {
+      font-size: 0.7rem;
+      opacity: 0.72;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+    @media (max-width: 991.98px) {
+      /* На мобильном layout не должен наследовать desktop-сдвиг fixed/closed sidebar. */
+      .datagon-vanilla-shell .app-main__outer {
+        margin-left: 0 !important;
+      }
+      .datagon-vanilla-shell .app-footer {
+        left: 0 !important;
+        width: 100% !important;
+      }
+      .datagon-vanilla-shell .app-footer .app-footer__inner {
+        margin-left: 0 !important;
+      }
+      /* На телефонах слой мобильного меню должен перекрывать фиксированный футер. */
+      .datagon-vanilla-shell .sidebar-mobile-overlay {
+        z-index: 1090;
+      }
+      .datagon-vanilla-shell .app-sidebar {
+        z-index: 1100;
+      }
+      .datagon-vanilla-shell .app-footer {
+        z-index: 1080;
+      }
+      .datagon-vanilla-shell.sidebar-mobile-open .app-footer {
+        pointer-events: none;
+        opacity: 0.25;
+      }
+    }
+  </style>
+</head>
+<body class="datagon-vanilla-body" data-dg-active-nav="supplier-analysis">
+  <div class="app-container app-theme-white datagon-shell datagon-vanilla-shell fixed-header fixed-sidebar fixed-footer">
+    <div class="app-header header-shadow">
+      <div class="app-header__logo">
+        <button type="button" class="logo-src datagon-brand" onclick="location.href='/dashboard.html'" title="Открыть дашборд" style="border:0;background:transparent;padding:0;cursor:pointer">Датагон</button>
+        <div class="header__pane ms-auto">
+          <div>
+            <button type="button" class="hamburger hamburger--slider dg-toggle-sidebar" aria-label="Свернуть боковую панель" title="Свернуть боковую панель">
+              <span class="hamburger-box"><span class="hamburger-inner"></span></span>
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="app-header__mobile-menu">
+        <div>
+          <button type="button" class="hamburger hamburger--slider dg-toggle-mobile-sidebar" aria-label="Открыть меню">
+            <span class="hamburger-box"><span class="hamburger-inner"></span></span>
+          </button>
+        </div>
+      </div>
+      <div class="app-header__menu">
+        <span>
+          <button type="button" class="btn btn-primary btn-sm btn-icon btn-icon-only dg-toggle-header-small" aria-label="Доп. меню шапки">
+            <div class="btn-icon-wrapper">
+              <i class="pe-7s-more" style="font-size:1.1rem;line-height:1"></i>
+            </div>
+          </button>
+        </span>
+      </div>
+      <div class="app-header__content">
+        <div class="app-header-left">
+          <div class="search-wrapper">
+            <div class="input-holder">
+              <input type="text" class="search-input" placeholder="Type to search" autocomplete="off" />
+              <button type="button" class="search-icon dg-vanilla-search-docs" aria-label="Открыть документацию" title="Документация">
+                <span></span>
+              </button>
+            </div>
+            <button type="button" class="btn-close dg-vanilla-search-close" aria-label="Закрыть поиск"></button>
+          </div>
+        </div>
+        <div class="app-header-right">
+          <div class="ui-theme-settings ui-theme-settings--header">
+            <button type="button" class="btn btn-link btn-open-options btn-open-options--header" id="TooltipDemoVanilla" aria-label="Параметры темы" title="Параметры темы (полная версия в React-панели)">
+              <i class="pe-7s-config" style="font-size:1.35rem;color:#3f6ad8;line-height:1"></i>
+            </button>
+            <div class="theme-settings__inner">
+              <div class="theme-settings__options-wrapper">
+                <h3 class="themeoptions-heading">Параметры макета</h3>
+                <div class="list-group">
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Фиксированная шапка</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-fixed-header" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Тень шапки</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-header-shadow" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Фиксированный сайдбар</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-fixed-sidebar" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Тень сайдбара</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-sidebar-shadow" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Фиксированный футер</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-fixed-footer" checked><span class="slider round"></span></label>
+                  </div>
+                </div>
+
+                <h3 class="themeoptions-heading">Параметры заголовка страницы</h3>
+                <div class="list-group">
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Иконка заголовка</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-title-icon" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Подзаголовок страницы</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-title-subheading" checked><span class="slider round"></span></label>
+                  </div>
+                </div>
+
+                <h3 class="themeoptions-heading">Цветовые схемы</h3>
+                <div class="list-group">
+                  <div class="list-group-item">
+                    <h5 class="mb-2">Цветовая схема макета</h5>
+                    <div class="theme-settings-swatches">
+                      <div class="swatch-holder-lg active dg-theme-color-scheme" data-color-scheme="white" style="background:#fff;border:1px solid #dee2e6"></div>
+                      <div class="swatch-holder-lg dg-theme-color-scheme" data-color-scheme="gray" style="background:#868e96"></div>
+                    </div>
+                  </div>
+                </div>
+
+                <h3 class="themeoptions-heading">Параметры сайдбара</h3>
+                <div class="list-group">
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Фоновое изображение сайдбара</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-sidebar-bg-image"><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item">
+                    <h5 class="mb-2">Цвета сайдбара</h5>
+                    <div class="theme-settings-swatches">
+                      <div class="swatch-holder bg-primary dg-theme-sidebar-color" data-color-class="bg-primary"></div><div class="swatch-holder bg-danger dg-theme-sidebar-color" data-color-class="bg-danger"></div><div class="swatch-holder bg-warning dg-theme-sidebar-color" data-color-class="bg-warning"></div><div class="swatch-holder bg-success dg-theme-sidebar-color" data-color-class="bg-success"></div>
+                      <div class="swatch-holder bg-info dg-theme-sidebar-color" data-color-class="bg-info"></div><div class="swatch-holder bg-secondary dg-theme-sidebar-color" data-color-class="bg-secondary"></div><div class="swatch-holder bg-dark dg-theme-sidebar-color" data-color-class="bg-dark"></div><div class="swatch-holder dg-theme-sidebar-color" data-color-class="bg-plum-plate" style="background:#667eea"></div>
+                      <div class="swatch-holder dg-theme-sidebar-color" data-color-class="bg-arielle-smile" style="background:#16d9e3"></div><div class="swatch-holder dg-theme-sidebar-color" data-color-class="bg-ripe-malin" style="background:#f093fb"></div><div class="swatch-holder dg-theme-sidebar-color" data-color-class="bg-night-fade" style="background:#a18cd1"></div><div class="swatch-holder dg-theme-sidebar-color" data-color-class="bg-malibu-beach" style="background:#4facfe"></div>
+                    </div>
+                  </div>
+                </div>
+
+                <h3 class="themeoptions-heading">Параметры шапки</h3>
+                <div class="list-group">
+                  <div class="list-group-item">
+                    <h5 class="mb-2">Цвета шапки</h5>
+                    <div class="theme-settings-swatches">
+                      <div class="swatch-holder bg-primary dg-theme-header-color" data-color-class="bg-primary"></div><div class="swatch-holder bg-danger dg-theme-header-color" data-color-class="bg-danger"></div><div class="swatch-holder bg-warning dg-theme-header-color" data-color-class="bg-warning"></div><div class="swatch-holder bg-success dg-theme-header-color" data-color-class="bg-success"></div>
+                      <div class="swatch-holder bg-info dg-theme-header-color" data-color-class="bg-info"></div><div class="swatch-holder bg-secondary dg-theme-header-color" data-color-class="bg-secondary"></div><div class="swatch-holder bg-dark dg-theme-header-color" data-color-class="bg-dark"></div><div class="swatch-holder dg-theme-header-color" data-color-class="bg-plum-plate" style="background:#667eea"></div>
+                    </div>
+                  </div>
+                </div>
+                <div class="p-2">
+                  <a href="/settings.html" class="btn btn-sm btn-outline-primary w-100">Настройки</a>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="header-dots">
+            <div class="dropdown">
+              <button type="button" class="btn btn-link p-0 me-2 dg-vanilla-dropdown-toggle" style="line-height:0" aria-expanded="false" aria-haspopup="true">
+                <div class="icon-wrapper icon-wrapper-alt rounded-circle">
+                  <div class="icon-wrapper-bg bg-success"></div>
+                  <i class="pe-7s-graph2" style="font-size:23px;color:#3ac47d"></i>
+                </div>
+              </button>
+              <div class="dropdown-menu dropdown-menu-xl rm-pointers p-0" style="min-width: 320px">
+                <div class="dropdown-menu-header">
+                  <div class="dropdown-menu-header-inner bg-premium-dark">
+                    <div class="menu-header-image" style="background-image:url('/assets/utils/images/dropdown-header/abstract4.jpg')"></div>
+                    <div class="menu-header-content text-white">
+                      <h5 class="menu-header-title">Вы в сети</h5>
+                      <h6 class="menu-header-subtitle">Онлайн за окно из настроек</h6>
+                    </div>
+                  </div>
+                </div>
+                <div class="widget-chart">
+                  <div class="widget-chart-content">
+                    <div class="icon-wrapper rounded-circle">
+                      <div class="icon-wrapper-bg opacity-9 bg-focus"></div>
+                      <i class="lnr-users text-white"></i>
+                    </div>
+                    <div class="widget-numbers d-flex flex-column align-items-center text-center" id="dg-vanilla-online-users-wrap">
+                      <span id="dg-vanilla-online-users">—</span>
+                      <span class="opacity-9 fw-normal" style="font-size: 0.72rem; line-height: 1.25; margin-top: 0.15rem" id="dg-vanilla-online-users-unit"></span>
+                    </div>
+                    <div class="widget-subheading pt-2 small text-muted" id="dg-vanilla-online-users-role"></div>
+                    <div class="text-center small px-2 pt-1 pb-1">
+                      <a href="/settings.html#dg-settings-online-presence" class="text-decoration-none">Окно минут</a>
+                    </div>
+                    <div class="widget-description text-muted small px-2 mt-1 mb-0" id="dg-vanilla-online-users-sessions" style="line-height: 1.35"></div>
+                    <div class="widget-description text-muted mt-2 mb-0">
+                      <span class="pe-1 small" id="dg-vanilla-online-users-note"></span>
+                    </div>
+                  </div>
+                  <div class="widget-chart-wrapper">
+                    <div style="height:40px;opacity:.35;background:linear-gradient(90deg,#f7b924 0%,#f7b92455 100%);border-radius:2px;"></div>
+                  </div>
+                </div>
+                <div class="nav-item-divider mt-0"></div>
+                <div class="nav-item-btn text-center pb-3 mb-2">
+                  <button type="button" class="btn btn-sm btn-shine btn-wide btn-pill btn-warning" id="dg-vanilla-online-users-refresh">
+                    <i class="pe-7s-refresh me-2"></i>Обновить
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="header-btn-lg pe-0">
+            <div class="widget-content p-0">
+              <div class="widget-content-wrapper">
+                <div class="widget-content-left d-flex align-items-center gap-1 pe-2">
+                  <span
+                    class="rounded-circle d-inline-flex align-items-center justify-content-center flex-shrink-0 bg-light text-secondary border"
+                    style="width: 42px; height: 42px; border-color: #e2e8f0"
+                    role="img"
+                    aria-label="Профиль"
+                  >
+                    <i class="pe-7s-user" style="font-size: 1.2rem; line-height: 1; opacity: 0.85" aria-hidden="true"></i>
+                  </span>
+                  <button type="button" class="btn btn-link p-0 dg-vanilla-logout d-inline-flex align-items-center justify-content-center text-danger" title="Выйти" aria-label="Выйти из профиля" style="min-width:34px;min-height:34px;line-height:1;border-radius:50%">
+                    <i class="lnr-exit" style="font-size:1.2rem"></i>
+                  </button>
+                </div>
+                <div class="widget-content-left ms-2 header-user-info">
+                  <div class="widget-heading" id="dg-vanilla-user-display-inline">Пользователь</div>
+                  <div class="widget-subheading" id="dg-vanilla-user-role-inline">Пользователь</div>
+                </div>
+                <div class="widget-content-right header-user-info ms-3">
+                  <button type="button" class="btn btn-shadow p-1 btn-sm btn-info" id="Tooltip-1" title="Click for notifications">
+                    <i class="pe-7s-date text-white" style="font-size:20px;line-height:1"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="app-main">
+      <div class="sidebar-mobile-overlay"></div>
+      <div class="app-sidebar sidebar-shadow">
+        <div class="d-flex flex-column h-100 min-h-0">
+          <div class="app-header__logo">
+            <button type="button" class="logo-src datagon-brand" onclick="location.href='/dashboard.html'" title="Открыть дашборд" style="border:0;background:transparent;padding:0;cursor:pointer">Датагон</button>
+            <div class="header__pane ms-auto">
+              <div>
+                <button type="button" class="hamburger hamburger--slider dg-toggle-sidebar" aria-label="Свернуть боковую панель" title="Свернуть боковую панель">
+                  <span class="hamburger-box"><span class="hamburger-inner"></span></span>
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="app-header__mobile-menu">
+            <div>
+              <button type="button" class="hamburger hamburger--slider dg-toggle-mobile-sidebar" aria-label="Открыть меню">
+                <span class="hamburger-box"><span class="hamburger-inner"></span></span>
+              </button>
+            </div>
+          </div>
+          <div class="app-header__menu">
+            <span>
+              <button type="button" class="btn btn-primary btn-sm btn-icon btn-icon-only dg-toggle-header-small" aria-label="Доп. меню шапки">
+                <div class="btn-icon-wrapper">
+                  <i class="pe-7s-more" style="font-size:1.1rem;line-height:1"></i>
+                </div>
+              </button>
+            </span>
+          </div>
+          <div class="custom-scrollbar dg-sidebar-nav-wrap d-flex flex-column min-h-0" style="flex:1 1 0%;min-height:0;max-height:calc(100vh - 80px);overflow-x:hidden">
+            <div class="app-sidebar__inner dg-sidebar-nav-scroll flex-grow-1 min-h-0" style="overflow-y:auto;overflow-x:hidden">
+              <div class="dg-sidebar-nav-measure">
+                <div class="datagon-nav-shell">
+                  <div class="vertical-nav-menu" style="pointer-events:auto;z-index:999;position:relative">
+                    <ul class="metismenu-container">
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="dashboard" href="/dashboard.html"><i class="metismenu-icon pe-7s-rocket"></i>Дашборд</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="my-sites" href="/my-sites.html"><i class="metismenu-icon pe-7s-global"></i>Мои сайты</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="my-products" href="/my-products.html"><i class="metismenu-icon pe-7s-box2"></i>Мои товары (сайты)</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="moysklad" href="/moysklad.html"><i class="metismenu-icon pe-7s-shopbag"></i>Мой Склад (товары)</a></li>
+                      <li class="metismenu-item">
+                        <a
+                          href="#"
+                          class="metismenu-link dg-vanilla-submenu-toggle"
+                          aria-expanded="false"
+                          title="Парсинг сайтов конкурентов: проекты, очередь, результаты, сопоставление"
+                        >
+                          <i class="metismenu-icon pe-7s-browser"></i>Парсинг
+                          <i class="metismenu-state-icon pe-7s-angle-down" aria-hidden="true"></i>
+                        </a>
+                        <ul class="metismenu-container dg-vanilla-parse-submenu">
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="projects"
+                              href="/projects.html"
+                              title="Проекты и сайты конкурентов"
+                            >
+                              <i class="metismenu-icon pe-7s-portfolio"></i>Конкуренты
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="queue"
+                              href="/queue.html"
+                              title="Очередь задач парсинга"
+                            >
+                              <i class="metismenu-icon pe-7s-network"></i>Очередь
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="results"
+                              href="/results.html"
+                              title="Результаты парсинга"
+                            >
+                              <i class="metismenu-icon pe-7s-note2"></i>Результаты
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="matches"
+                              href="/matches.html"
+                              title="Сопоставление товаров"
+                            >
+                              <i class="metismenu-icon pe-7s-link"></i>Сопоставление
+                            </a>
+                          </li>
+                        </ul>
+                      </li>
+                      <li class="metismenu-item dg-sidebar-nav-restricted" data-dg-nav-restricted="activity">
+                        <a
+                          class="metismenu-link"
+                          data-nav="processes"
+                          href="/processes.html"
+                          title="Активность/Логи: журнал команды и фоновые процессы (доступ ограничен: администратор или право управления пользователями)"
+                        >
+                          <i class="metismenu-icon pe-7s-timer"></i>Активность/Логи
+                          <i
+                            class="pe-7s-lock dg-nav-restricted-icon"
+                            aria-hidden="true"
+                            title="Пункт меню с ограниченным доступом"
+                          ></i>
+                        </a>
+                      </li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="settings" href="/settings.html"><i class="metismenu-icon pe-7s-config"></i>Настройки</a></li>
+                      <li class="metismenu-item dg-sidebar-architect-item">
+                        <a
+                          class="metismenu-link"
+                          data-nav="architectui-demo"
+                          href="/ref/react-demo-index.html"
+                          title="Каталог разделов React-шаблона ArchitectUI"
+                        >
+                          <i class="metismenu-icon pe-7s-plugin"></i>ArchitectUI
+                        </a>
+                      </li>
+                      <li class="metismenu-item">
+                        <a
+                          href="#"
+                          class="metismenu-link dg-vanilla-submenu-toggle"
+                          aria-expanded="false"
+                          title="Интеграции маркетплейсов: ключи и диагностика выгрузок"
+                        >
+                          <i class="metismenu-icon pe-7s-graph3"></i>Маркетплейсы
+                          <i class="metismenu-state-icon pe-7s-angle-down" aria-hidden="true"></i>
+                        </a>
+                        <ul class="metismenu-container dg-vanilla-mp-submenu">
+                          <!-- Подпункт «Настройки» (data-nav="exports-marketplaces", /exports-marketplaces.html)
+                               скрыт из меню по запросу: ключи API маркетплейсов задаются в /settings.html;
+                               страница остаётся доступной по прямому URL и через ссылки из гайдов
+                               (например, на /exports-marketplaces-issues.html). -->
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-ozon"
+                              href="/exports-marketplaces-ozon.html"
+                              title="Таблица и выгрузка Ozon"
+                            >
+                              <i class="metismenu-icon pe-7s-graph2"></i>Ozon
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-wildberries"
+                              href="/exports-marketplaces-wildberries.html"
+                              title="Таблица и выгрузка Wildberries"
+                            >
+                              <i class="metismenu-icon pe-7s-graph2"></i>Wildberries
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-yandex"
+                              href="/exports-marketplaces-yandex.html"
+                              title="Таблица и выгрузка Яндекс Маркет"
+                            >
+                              <i class="metismenu-icon pe-7s-graph2"></i>Яндекс Маркет
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-huckster"
+                              href="/exports-huckster.html"
+                              title="Интеграция Huckster / e-teleport — матрица UID по магазинам"
+                            >
+                              <i class="metismenu-icon pe-7s-cart"></i>Huckster
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-dimensions"
+                              href="/exports-dimensions.html"
+                              title="Реестр замеров габаритов товаров МойСклад"
+                            >
+                              <i class="metismenu-icon pe-7s-scissors"></i>Габариты
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-issues"
+                              href="/exports-marketplaces-issues.html"
+                              title="Товары МойСклад с проблемами публикации на маркетплейсах"
+                            >
+                              <i class="metismenu-icon pe-7s-attention"></i>Проблемы с товарами
+                            </a>
+                          </li>
+                        </ul>
+                      </li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="ms-sales" href="/ms-sales.html" title="Продажи МС: отгрузки entity/demand, позиции с привязкой к товарам ms_export"><i class="metismenu-icon pe-7s-cash"></i>Продажи МС</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="purchase" href="/purchase.html" title="Закупки товары: планирование, неснижаемые остатки, кратность"><i class="metismenu-icon pe-7s-cart"></i>Закупки товары</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="suppliers" href="/suppliers.html" title="Поставщики: сводка по закупкам и настройки"><i class="metismenu-icon pe-7s-id"></i>Поставщики</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="supplier-analysis" href="/supplier-analysis.html" title="Продажи, оборот и тренды по поставщикам"><i class="metismenu-icon pe-7s-graph2"></i>Анализ поставщиков</a></li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="app-sidebar-bg opacity-06"></div>
+        </div>
+      </div>
+
+      <div class="app-main__outer">
+        <div class="app-main__inner">
+          <div class="app-page-title">
+            <div class="page-title-wrapper">
+              <div class="page-title-heading">
+                <div class="page-title-icon">
+                  <i class="pe-7s-graph2 icon-gradient bg-love-kiss"> </i>
+                </div>
+                <div>
+                  Анализ поставщиков
+                  <div class="page-title-subheading">
+                    Сравниваем продажи (отгрузки МойСклад) за выбранный период с таким же предыдущим окном.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 1. Фильтры (как на списочных страницах) -->
+          <div class="main-card card mb-3">
+            <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+              <div class="card-header-title mb-0">
+                <i class="header-icon pe-7s-filter icon-gradient bg-sunny-morning"> </i>
+                Фильтры и действия
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-sa-filters-toggle">Свернуть</button>
+            </div>
+            <div class="card-body" id="dg-sa-filters-body">
+              <div class="dg-sa-data-freshness mb-3 pb-2 border-bottom" id="dg-sa-data-freshness" aria-label="Актуальность данных">
+                <div class="row g-2" id="dg-sa-data-freshness-row">
+                  <div class="col-12">
+                    <p class="text-muted small mb-0" id="dg-sa-data-freshness-loading">Проверяем актуальность каталога и продаж…</p>
+                  </div>
+                </div>
+              </div>
+              <div class="row g-2 align-items-end">
+                <div class="col-sm-6 col-lg-2">
+                  <label class="form-label small mb-1" for="dg-sa-new-stock-days" title="По истории остатков: с какого числа дней «с первого появления на складе» SKU ещё считается новым">Считать «новым на складе», дней</label>
+                  <select class="form-select form-select-sm" id="dg-sa-new-stock-days" title="Если первый остаток &gt; 0 был не раньше этого срока — SKU в колонке «Новые» и не в «Залежалые»">
+                    <option value="14">14 дней</option>
+                    <option value="30" selected>30 дней</option>
+                    <option value="45">45 дней</option>
+                    <option value="60">60 дней</option>
+                  </select>
+                </div>
+                <div class="col-sm-6 col-lg-2">
+                  <label class="form-label small mb-1" for="dg-sa-days">Период продаж</label>
+                  <select class="form-select form-select-sm" id="dg-sa-days">
+                    <option value="30">30 дней</option>
+                    <option value="90" selected>90 дней</option>
+                    <option value="180">180 дней</option>
+                    <option value="365">365 дней</option>
+                  </select>
+                </div>
+                <div class="col-12" data-dg-sa-filter-field="projects">
+                  <label class="form-label small mb-1">Проекты отгрузок (учёт продаж)</label>
+                  <div class="d-flex flex-wrap gap-3 align-items-center mb-1">
+                    <div class="form-check form-check-inline mb-0">
+                      <input class="form-check-input" type="radio" name="dg-sa-project-mode" id="dg-sa-project-mode-all" value="all" />
+                      <label class="form-check-label small" for="dg-sa-project-mode-all">Все проекты</label>
+                    </div>
+                    <div class="form-check form-check-inline mb-0">
+                      <input class="form-check-input" type="radio" name="dg-sa-project-mode" id="dg-sa-project-mode-selected" value="selected" checked />
+                      <label class="form-check-label small" for="dg-sa-project-mode-selected">Только выбранные</label>
+                    </div>
+                    <button type="button" class="btn btn-link btn-sm p-0" id="dg-sa-projects-reload">Обновить список</button>
+                    <button type="button" class="btn btn-link btn-sm p-0" id="dg-sa-projects-select-all">Выбрать все</button>
+                    <button type="button" class="btn btn-link btn-sm p-0" id="dg-sa-projects-clear">Снять все</button>
+                  </div>
+                  <div id="dg-sa-projects-wrap" class="border rounded p-2 bg-light" style="max-height: 160px; overflow: auto">
+                    <div id="dg-sa-projects-status" class="small text-muted mb-1">Загрузка проектов…</div>
+                    <div id="dg-sa-projects-list"></div>
+                  </div>
+                  <p id="dg-sa-project-filter-hint" class="small text-muted mb-0 mt-1 d-none"></p>
+                </div>
+                <div class="col-sm-6 col-lg-4">
+                  <label class="form-label small mb-1" for="dg-sa-search">Поставщик</label>
+                  <input type="search" class="form-control form-control-sm" id="dg-sa-search" placeholder="Часть названия…" autocomplete="off" />
+                </div>
+                <div class="col-sm-4 col-lg-2">
+                  <label class="form-label small mb-1" for="dg-sa-page-size">На странице</label>
+                  <select class="form-select form-select-sm" id="dg-sa-page-size">
+                    <option value="50">50</option>
+                    <option value="100" selected>100</option>
+                    <option value="200">200</option>
+                  </select>
+                </div>
+                <div class="col-sm-8 col-lg-4 d-flex flex-wrap gap-2 align-items-center">
+                  <button type="button" class="btn btn-primary btn-sm" id="dg-sa-apply" data-dg-notify-start="Считаем анализ…">Применить</button>
+                  <button type="button" class="btn btn-outline-secondary btn-sm" id="dg-sa-reset">По умолчанию</button>
+                  <button type="button" class="btn btn-outline-primary btn-sm" id="dg-sa-export" data-dg-notify-start="Готовим CSV…">CSV</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 2. Сводка: KPI + кого смотреть + графики — одна карточка -->
+          <div class="main-card card mb-3 dg-sa-summary-card border-0 shadow-sm overflow-hidden">
+            <div class="card-header dg-sa-summary-header border-0 d-flex flex-wrap align-items-center justify-content-between gap-2">
+              <div class="d-flex align-items-center gap-2">
+                <i class="header-icon pe-7s-graph2 icon-gradient bg-love-kiss me-1"> </i>
+                <div>
+                  <span class="fw-semibold text-white">Сводка за период</span>
+                  <div class="small text-white-50 d-none d-md-block">Ключевые цифры, списки и графики по тем же фильтрам</div>
+                </div>
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-light" id="dg-sa-summary-toggle">Свернуть</button>
+            </div>
+            <div class="card-body dg-sa-summary-body position-relative" id="dg-sa-summary-body">
+
+              <div class="dg-sa-kpi-block mb-3">
+                <div class="d-flex flex-wrap align-items-baseline gap-2 mb-1">
+                  <div class="dg-sa-block-label mb-0">Продажи за период</div>
+                  <div id="dg-sa-sales-scope-hint" class="small text-muted d-none"></div>
+                </div>
+                <div class="row row-cols-1 row-cols-sm-3 g-2" id="dg-sa-kpi-row-money">
+                  <div class="col">
+                    <div class="dg-sa-kpi-tile dg-sa-kpi-money">
+                      <div class="dg-sa-kpi-label">Выручка</div>
+                      <div class="dg-sa-kpi-value" id="dg-sa-kpi-revenue">—</div>
+                    </div>
+                  </div>
+                  <div class="col">
+                    <div class="dg-sa-kpi-tile">
+                      <div class="dg-sa-kpi-label" title="Сумма строк отгрузок минус закупка из каталога × кол-во; тот же фильтр проекта, что выручка">Маржа, оценка</div>
+                      <div class="dg-sa-kpi-value" id="dg-sa-kpi-margin">—</div>
+                      <div class="dg-sa-kpi-sub text-muted" id="dg-sa-kpi-margin-pct"></div>
+                    </div>
+                  </div>
+                  <div class="col">
+                    <div class="dg-sa-kpi-tile">
+                      <div class="dg-sa-kpi-label">Δ выручки</div>
+                      <div class="dg-sa-kpi-value dg-sa-kpi-value-pct" id="dg-sa-kpi-change">—</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+
+              <div class="dg-sa-kpi-block mb-4">
+                <div class="dg-sa-block-label">Склад и просадки</div>
+                <div class="row g-2" id="dg-sa-kpi-row-risk">
+                  <div class="col-6 col-xl-3">
+                    <div class="dg-sa-kpi-tile">
+                      <div class="dg-sa-kpi-label">Поставщиков</div>
+                      <div class="dg-sa-kpi-value" id="dg-sa-kpi-suppliers">—</div>
+                    </div>
+                  </div>
+                  <div class="col-6 col-xl-3">
+                    <div class="dg-sa-kpi-tile">
+                      <div class="dg-sa-kpi-label">Поставщиков без продаж</div>
+                      <div class="dg-sa-kpi-value" id="dg-sa-kpi-no-sales">—</div>
+                    </div>
+                  </div>
+                  <div class="col-6 col-xl-3">
+                    <div class="dg-sa-kpi-tile dg-sa-kpi-warn">
+                      <div class="dg-sa-kpi-label">С просадкой выручки</div>
+                      <div class="dg-sa-kpi-value" id="dg-sa-kpi-declining">—</div>
+                    </div>
+                  </div>
+                  <div class="col-6 col-xl-3">
+                    <div class="dg-sa-kpi-tile">
+                      <div class="dg-sa-kpi-label">Сумма остатков</div>
+                      <div class="dg-sa-kpi-value dg-sa-kpi-money" id="dg-sa-kpi-stock">—</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="dg-sa-insights-block mb-4">
+                <div class="dg-sa-block-label mb-1">На что обратить внимание</div>
+                <p class="text-muted small mb-2 mb-lg-1">Клик по строке — детали в таблице ниже.</p>
+                <div class="row g-2 align-items-stretch" id="dg-sa-highlights-row">
+                  <div class="col-lg-4 d-flex">
+                    <div class="dg-sa-insight-panel dg-sa-insight-danger w-100" id="dg-sa-panel-attention">
+                      <div class="dg-sa-insight-title">Нужна проверка <span class="dg-sa-insight-count" id="dg-sa-count-attention"></span></div>
+                      <div class="dg-sa-insight-desc">Просадка выручки, много SKU без продаж или слабая маржа</div>
+                      <div class="dg-sa-insight-body" id="dg-sa-body-attention" tabindex="0" aria-label="Список поставщиков, прокрутка">
+                        <ul class="list-group list-group-flush dg-sa-highlight-list" id="dg-sa-list-attention"></ul>
+                        <div class="dg-sa-insight-subtitle d-none" id="dg-sa-weak-header">Остаток на складе, продаж в периоде не было</div>
+                        <ul class="list-group list-group-flush dg-sa-highlight-list dg-sa-highlight-sub d-none" id="dg-sa-list-weak"></ul>
+                      </div>
+                      <div class="dg-sa-insight-foot d-none" id="dg-sa-foot-attention" aria-live="polite"></div>
+                    </div>
+                  </div>
+                  <div class="col-lg-4 d-flex">
+                    <div class="dg-sa-insight-panel dg-sa-insight-success w-100" id="dg-sa-panel-revenue">
+                      <div class="dg-sa-insight-title">Лучшие по выручке <span class="dg-sa-insight-count" id="dg-sa-count-revenue"></span></div>
+                      <div class="dg-sa-insight-desc">Наибольшая сумма продаж за период</div>
+                      <div class="dg-sa-insight-body" id="dg-sa-body-revenue" tabindex="0">
+                        <ul class="list-group list-group-flush dg-sa-highlight-list" id="dg-sa-list-revenue"></ul>
+                      </div>
+                      <div class="dg-sa-insight-foot d-none" id="dg-sa-foot-revenue"></div>
+                    </div>
+                  </div>
+                  <div class="col-lg-4 d-flex">
+                    <div class="dg-sa-insight-panel w-100" id="dg-sa-panel-growth">
+                      <div class="dg-sa-insight-title">Сильный рост <span class="dg-sa-insight-count" id="dg-sa-count-growth"></span></div>
+                      <div class="dg-sa-insight-desc">Выручка выросла к прошлому окну</div>
+                      <div class="dg-sa-insight-body" id="dg-sa-body-growth" tabindex="0">
+                        <ul class="list-group list-group-flush dg-sa-highlight-list" id="dg-sa-list-growth"></ul>
+                      </div>
+                      <div class="dg-sa-insight-foot d-none" id="dg-sa-foot-growth"></div>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+
+              <div class="dg-sa-charts-block">
+                <div class="dg-sa-block-label mb-2">Топ поставщиков (сводка)</div>
+                <div class="row g-2 align-items-start">
+                  <div class="col-lg-8">
+                    <div class="dg-sa-chart-panel">
+                      <div class="dg-sa-chart-title">Топ по выручке</div>
+                      <div class="dg-sa-chart-wrap"><canvas id="dg-sa-chart-revenue" aria-label="Топ по выручке"></canvas></div>
+                    </div>
+                  </div>
+                  <div class="col-lg-4">
+                    <div class="dg-sa-chart-panel">
+                      <div class="dg-sa-chart-title">Доля (топ‑8)</div>
+                      <div class="dg-sa-doughnut-wrap"><canvas id="dg-sa-chart-share" aria-label="Доля выручки"></canvas></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="dg-sa-kpi-block mb-3 mt-2 pt-3 border-top" id="dg-sa-breakdown-block">
+                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-1">
+                  <div class="dg-sa-block-label mb-0">Расшифровка продаж (строки отгрузок)</div>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-sa-breakdown-toggle">Развернуть</button>
+                </div>
+                <div id="dg-sa-breakdown-summary" class="small text-muted mb-0">Загрузка…</div>
+                <div id="dg-sa-breakdown-body" class="d-none mt-2">
+                  <p class="text-muted small mb-2">
+                    Как считаются KPI выше: <strong>выручка</strong> = сумма позиции в отгрузке;
+                    <strong>себестоимость</strong> = кол-во × закупочная из каталога МС;
+                    <strong>маржа</strong> = выручка − себестоимость (не меньше 0). Те же фильтр периода и проекта.
+                  </p>
+                  <div class="dg-sa-breakdown-scroll table-responsive border rounded">
+                    <table class="table table-sm table-hover mb-0 dg-sa-breakdown-table">
+                      <thead class="table-light">
+                        <tr>
+                          <th>Дата</th>
+                          <th>Отгрузка</th>
+                          <th>Проект</th>
+                          <th>Код</th>
+                          <th>Наименование</th>
+                          <th>Поставщик</th>
+                          <th class="text-end">Кол-во</th>
+                          <th class="text-end">Цена в отгр.</th>
+                          <th class="text-end">Выручка</th>
+                          <th class="text-end">Закупка ед.</th>
+                          <th class="text-end">Себестоимость</th>
+                          <th class="text-end">Маржа</th>
+                        </tr>
+                      </thead>
+                      <tbody id="dg-sa-breakdown-tbody">
+                        <tr><td colspan="12" class="text-muted">Загрузка…</td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-2">
+                    <span class="small text-muted" id="dg-sa-breakdown-pager-info">—</span>
+                    <div class="btn-group btn-group-sm">
+                      <button type="button" class="btn btn-outline-secondary" id="dg-sa-breakdown-prev" disabled>Назад</button>
+                      <button type="button" class="btn btn-outline-secondary" id="dg-sa-breakdown-next" disabled>Вперёд</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- 3. Таблица + детали поставщика -->
+          <div class="main-card card mb-3">
+            <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+              <div class="d-flex align-items-center gap-3 flex-grow-1" style="min-width: 0">
+                <div class="d-flex align-items-center flex-shrink-0">
+                  <i class="header-icon pe-7s-note2 icon-gradient bg-malibu-beach me-2"> </i>
+                  <span class="fw-semibold">Поставщики: остатки и оборачиваемость</span>
+                </div>
+                <div class="dg-sa-header-search" style="flex: 0 1 380px; min-width: 220px">
+                  <div class="input-group input-group-sm">
+                    <span class="input-group-text bg-white text-muted px-2" aria-hidden="true">🔎</span>
+                    <input type="search" class="form-control" id="dg-sa-table-search-mirror"
+                           placeholder="Поставщик (Enter — применить)"
+                           autocomplete="off"
+                           data-dg-tooltip="Зеркало поиска из фильтров. Enter — применить, Esc — очистить." />
+                  </div>
+                </div>
+              </div>
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-sa-columns-toggle" data-dg-tooltip="Видимость столбцов таблицы">🧩 Столбцы</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-sa-widths-toggle" data-dg-tooltip="Ширина столбцов в пикселях">📏 Ширины</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-sa-table-toggle" data-dg-tooltip="Свернуть/развернуть тело карточки с таблицей">Свернуть</button>
+              </div>
+            </div>
+            <div class="card-body" id="dg-sa-table-body">
+              <p class="text-muted small mb-2">
+                <strong>SKU складская</strong> — позиции с отметкой «складская» в каталоге МС (как в закупках).
+                <strong>SKU всего</strong> — все товары поставщика в МС.
+                <strong>Продажи ₽</strong> — выручка за выбранный период (с учётом фильтра проектов).
+                <strong>Оборач. / мес.</strong> — % от суммы остатка: (продажи ÷ остаток ₽) ÷ (дней ÷ 30) × 100 (за 90 дней — делим на 3).
+                <strong>Новые на складе</strong> — сейчас есть остаток; по снимкам склада товар впервые появился с остатком не более N дней назад (N — поле в фильтрах); в скобках — сколько дней в среднем лежит с этого дня.
+                <strong>Залежалые</strong> — остаток есть, за период 0 продаж, и товар уже не «новый на складе».
+                Клик по <strong>№</strong> или <strong>поставщику</strong> — сводка (залежалые, новые, слабые продажи).
+                Клик по <strong>SKU складская</strong> — таблица всех складских SKU с продажами.
+                Клик по <strong>SKU всего</strong> — сначала не складские, затем складские подробно.
+              </p>
+
+              <div id="dg-sa-detail-host" class="d-none" aria-hidden="true">
+              <div class="dg-sa-detail-panel d-none" id="dg-sa-detail-card" aria-hidden="true">
+                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2 pb-2 border-bottom">
+                  <div>
+                    <div class="fw-semibold" id="dg-sa-detail-title">Детали поставщика</div>
+                    <div class="small text-muted" id="dg-sa-detail-signals"></div>
+                  </div>
+                  <div class="d-flex flex-wrap gap-2">
+                    <a class="btn btn-sm btn-outline-primary d-none" id="dg-sa-detail-suppliers" href="/suppliers.html" target="_blank" rel="noopener">Закупки</a>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-sa-detail-close">Скрыть</button>
+                  </div>
+                </div>
+                <div id="dg-sa-detail-view-summary" class="dg-sa-detail-view">
+                <div class="dg-sa-detail-blocks row g-3">
+                  <div class="col-12">
+                    <div class="card dg-sa-detail-block border-danger-subtle">
+                      <div class="card-header py-2 bg-danger-subtle">
+                        <div class="fw-semibold small">Залежалые</div>
+                        <div class="text-muted small">Есть остаток, за период нет продаж, товар на складе давно (не «новый»)</div>
+                      </div>
+                      <div class="card-body p-0">
+                        <div class="table-responsive dg-sa-detail-table-wrap dg-sa-detail-table-wrap-scroll">
+                          <table class="table table-sm table-hover mb-0 dg-sa-detail-mini-table">
+                            <thead class="table-light" id="dg-sa-detail-stale-thead"></thead>
+                            <tbody id="dg-sa-detail-stale"></tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="col-12">
+                    <div class="card dg-sa-detail-block border-success-subtle">
+                      <div class="card-header py-2 bg-success-subtle">
+                        <div class="fw-semibold small">Недавно появились на складе</div>
+                        <div class="text-muted small">Сейчас есть остаток; по истории остатков впервые лежит на складе не дольше срока из фильтра «Считать новым на складе». Не дата карточки в МС и не первая продажа</div>
+                      </div>
+                      <div class="card-body p-0">
+                        <div class="table-responsive dg-sa-detail-table-wrap dg-sa-detail-table-wrap-scroll">
+                          <table class="table table-sm table-hover mb-0 dg-sa-detail-mini-table">
+                            <thead class="table-light" id="dg-sa-detail-new-thead"></thead>
+                            <tbody id="dg-sa-detail-new"></tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="col-12">
+                    <div class="card dg-sa-detail-block border-warning-subtle">
+                      <div class="card-header py-2 bg-warning-subtle">
+                        <div class="fw-semibold small">Слабые продажи у поставщика</div>
+                        <div class="text-muted small">Есть продажи за период, но &lt; 25% медианы шт. по этому поставщику</div>
+                      </div>
+                      <div class="card-body p-0">
+                        <div class="table-responsive dg-sa-detail-table-wrap dg-sa-detail-table-wrap-scroll">
+                          <table class="table table-sm table-hover mb-0 dg-sa-detail-mini-table">
+                            <thead class="table-light" id="dg-sa-detail-weak-thead"></thead>
+                            <tbody id="dg-sa-detail-weak"></tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="dg-sa-detail-trend mt-3 pt-3 border-top" id="dg-sa-detail-trend-wrap">
+                  <h6 class="small text-uppercase text-muted mb-2">Тренд по месяцам (выручка)</h6>
+                  <div class="dg-sa-chart-panel dg-sa-detail-chart-panel mb-0">
+                    <div class="dg-sa-chart-wrap dg-sa-chart-wrap-trend"><canvas id="dg-sa-chart-trend" aria-label="Тренд продаж поставщика"></canvas></div>
+                  </div>
+                </div>
+                </div>
+                <div id="dg-sa-detail-view-warehouse" class="dg-sa-detail-view d-none">
+                  <div class="card dg-sa-detail-block border-primary-subtle mb-0">
+                    <div class="card-header py-2 bg-primary-subtle d-flex flex-wrap align-items-start justify-content-between gap-2">
+                      <div>
+                        <div class="fw-semibold small">SKU складская — подробно <span class="text-muted fw-normal" id="dg-sa-detail-warehouse-ext-count"></span></div>
+                        <div class="text-muted small">Складская «Да»; не архив; не «перестали сотрудничать». Продажи за выбранный период.</div>
+                      </div>
+                      <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0 dg-sa-detail-widths-btn" data-dg-detail-profile="ext">📏 Ширины</button>
+                    </div>
+                    <div class="card-body p-0">
+                      <div class="dg-sa-detail-widths-panel-wrap d-none px-2 pt-2" data-dg-detail-profile="ext">
+                        <div class="dg-sa-detail-widths-panel border rounded bg-white p-2 mb-2">
+                          <button type="button" class="btn btn-sm mb-2 dg-sa-detail-widths-default" data-dg-detail-profile="ext">По умолчанию</button>
+                          <div class="dg-sa-detail-widths-grid" id="dg-sa-detail-widths-ext"></div>
+                        </div>
+                      </div>
+                      <div class="table-responsive dg-sa-detail-table-wrap dg-sa-detail-table-wrap-catalog">
+                        <table class="table table-sm table-hover mb-0 dg-sa-detail-sku-table" id="dg-sa-detail-warehouse-ext-table">
+                          <colgroup id="dg-sa-detail-warehouse-ext-cols"></colgroup>
+                          <thead class="table-light" id="dg-sa-detail-warehouse-ext-thead"></thead>
+                          <tbody id="dg-sa-detail-warehouse-ext"></tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div id="dg-sa-detail-view-all-skus" class="dg-sa-detail-view d-none">
+                  <div class="card dg-sa-detail-block border-secondary-subtle mb-3">
+                    <div class="card-header py-2 bg-light d-flex flex-wrap align-items-start justify-content-between gap-2">
+                      <div>
+                        <div class="fw-semibold small">Не складская позиция <span class="text-muted fw-normal" id="dg-sa-detail-non-wh-count"></span></div>
+                        <div class="text-muted small">В каталоге поставщика без отметки «складская»</div>
+                      </div>
+                      <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0 dg-sa-detail-widths-btn" data-dg-detail-profile="simple">📏 Ширины</button>
+                    </div>
+                    <div class="card-body p-0">
+                      <div class="dg-sa-detail-widths-panel-wrap d-none px-2 pt-2" data-dg-detail-profile="simple">
+                        <div class="dg-sa-detail-widths-panel border rounded bg-white p-2 mb-2">
+                          <button type="button" class="btn btn-sm mb-2 dg-sa-detail-widths-default" data-dg-detail-profile="simple">По умолчанию</button>
+                          <div class="dg-sa-detail-widths-grid" id="dg-sa-detail-widths-simple"></div>
+                        </div>
+                      </div>
+                      <div class="table-responsive dg-sa-detail-table-wrap dg-sa-detail-table-wrap-catalog">
+                        <table class="table table-sm table-hover mb-0 dg-sa-detail-sku-table" id="dg-sa-detail-non-warehouse-table">
+                          <colgroup id="dg-sa-detail-non-warehouse-cols"></colgroup>
+                          <thead class="table-light" id="dg-sa-detail-non-warehouse-thead"></thead>
+                          <tbody id="dg-sa-detail-non-warehouse"></tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="card dg-sa-detail-block border-primary-subtle mb-0">
+                    <div class="card-header py-2 bg-primary-subtle d-flex flex-wrap align-items-start justify-content-between gap-2">
+                      <div class="fw-semibold small">Складская позиция — подробно <span class="text-muted fw-normal" id="dg-sa-detail-wh-in-all-count"></span></div>
+                      <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0 dg-sa-detail-widths-btn" data-dg-detail-profile="ext">📏 Ширины</button>
+                    </div>
+                    <div class="card-body p-0">
+                      <div class="table-responsive dg-sa-detail-table-wrap dg-sa-detail-table-wrap-catalog">
+                        <table class="table table-sm table-hover mb-0 dg-sa-detail-sku-table" id="dg-sa-detail-warehouse-in-all-table">
+                          <colgroup id="dg-sa-detail-warehouse-in-all-cols"></colgroup>
+                          <thead class="table-light" id="dg-sa-detail-warehouse-in-all-thead"></thead>
+                          <tbody id="dg-sa-detail-warehouse-in-all"></tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+              </div>
+
+              <div class="datagon-columns-toolbox mb-2 d-none" id="dg-sa-toolbox-panels">
+                <div class="datagon-columns-panel" id="dg-sa-columns-panel">
+                  <div class="columns-actions mb-2">
+                    <button type="button" class="btn btn-sm" id="dg-sa-columns-all">Выделить все</button>
+                    <button type="button" class="btn btn-sm" id="dg-sa-columns-none">Снять все</button>
+                    <button type="button" class="btn btn-sm" id="dg-sa-columns-default">По умолчанию</button>
+                  </div>
+                  <div id="dg-sa-columns-list" class="columns-grid"></div>
+                </div>
+                <div class="datagon-columns-panel" id="dg-sa-widths-panel">
+                  <div class="columns-actions mb-2">
+                    <button type="button" class="btn btn-sm" id="dg-sa-widths-default">По умолчанию</button>
+                  </div>
+                  <div id="dg-sa-widths-list" class="dg-sa-widths-grid"></div>
+                </div>
+              </div>
+              <div id="dg-sa-table-scroll-outer" class="dg-sa-table-scroll-outer" style="width:100%;max-width:100%;min-width:0;overflow-x:auto;overflow-y:visible;-webkit-overflow-scrolling:touch">
+                <div class="table-responsive datagon-my-products-table-wrap" style="display:block;width:100%;max-width:100%;min-width:0;overflow:visible;position:relative">
+                  <table class="table table-hover table-striped dg-sa-table mb-0 datagon-my-products-table" id="dg-sa-table" style="table-layout:fixed;border-collapse:collapse;border-spacing:0">
+                    <colgroup id="dg-sa-colgroup"></colgroup>
+                    <thead id="dg-sa-thead"></thead>
+                    <tbody id="dg-sa-tbody">
+                      <tr><td colspan="15" class="text-muted text-center py-4">Нажмите «Применить» в фильтрах</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <div class="mt-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                  <label class="form-label mb-0 small text-muted" for="dg-sa-footer-page-size">На странице</label>
+                  <select class="form-select form-select-sm" id="dg-sa-footer-page-size" style="width:auto">
+                    <option value="50">50</option>
+                    <option value="100" selected>100</option>
+                    <option value="200">200</option>
+                  </select>
+                  <span class="text-muted small" id="dg-sa-pager-status">Найдено: 0; страница 1/1; показано: 0</span>
+                </div>
+                <div class="btn-group btn-group-sm" role="group" aria-label="Страницы анализа поставщиков">
+                  <button type="button" class="btn btn-outline-secondary" id="dg-sa-prev" disabled>Назад</button>
+                  <button type="button" class="btn btn-outline-secondary" id="dg-sa-next" disabled>Вперёд</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="app-footer">
+          <div class="app-footer__inner">
+            <div class="app-footer-left">
+              <div class="footer-dots">
+                <a href="#" class="dot-btn-wrapper dg-vanilla-footer-toggle" id="PopoverFooter-1" aria-expanded="false" aria-haspopup="true">
+                  <i class="dot-btn-icon lnr-bullhorn icon-gradient bg-mean-fruit"></i>
+                  <div class="badge badge-dot badge-abs badge-dot-sm bg-danger">Notifications</div>
+                </a>
+                <div class="dots-separator"></div>
+                <a href="#" class="dot-btn-wrapper dg-vanilla-footer-toggle" id="PopoverFooter-3" aria-expanded="false" aria-haspopup="true">
+                  <i class="dot-btn-icon lnr-pie-chart icon-gradient bg-love-kiss"></i>
+                  <div class="badge badge-dot badge-abs badge-dot-sm bg-warning">Notifications</div>
+                </a>
+                <div class="dropdown-menu popover-custom popover-custom-xl rm-pointers p-0 dg-vanilla-footer-popover" data-footer-popover="PopoverFooter-1" style="min-width:420px">
+                  <div class="dropdown-menu-header mb-0">
+                    <div class="dropdown-menu-header-inner bg-strong-bliss">
+                      <div class="menu-header-image opacity-1" style="background-image:url('./assets/utils/images/dropdown-header/city2.jpg')"></div>
+                      <div class="menu-header-content text-white">
+                        <h5 class="menu-header-title">Notifications</h5>
+                        <h6 class="menu-header-subtitle">You have <b class="text-warning">21</b> unread messages</h6>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="card-tabs-animated card-tabs-animated-inner">
+                    <ul class="nav nav-justified">
+                      <li class="nav-item"><a href="#" class="nav-link active">Messages</a></li>
+                      <li class="nav-item"><a href="#" class="nav-link">Events</a></li>
+                      <li class="nav-item"><a href="#" class="nav-link">Errors</a></li>
+                    </ul>
+                    <div class="p-3">
+                      <div class="text-muted small">Chat, timeline and system tabs in React version.</div>
+                    </div>
+                  </div>
+                  <div class="nav-item-btn text-center pt-3 pb-3">
+                    <button type="button" class="btn btn-shadow btn-wide btn-pill btn-dark">
+                      <span class="badge badge-dot badge-dot-lg bg-warning badge-pulse me-2"></span>
+                      View All Messages
+                    </button>
+                  </div>
+                </div>
+                <div class="dropdown-menu popover-custom popover-custom-lg rm-pointers p-0 dg-vanilla-footer-popover" data-footer-popover="PopoverFooter-3" style="min-width:380px">
+                  <div class="dropdown-menu-header">
+                    <div class="dropdown-menu-header-inner bg-malibu-beach">
+                      <div class="menu-header-image opacity-2" style="background-image:url('./assets/utils/images/dropdown-header/city2.jpg')"></div>
+                      <div class="menu-header-content text-white">
+                        <div class="avatar-icon-wrapper btn-hover-shine mb-3 avatar-icon-xl">
+                          <div class="avatar-icon rounded">
+                            <img src="./assets/utils/images/avatars/2.jpg" alt="Avatar 6" />
+                          </div>
+                        </div>
+                        <h5 class="menu-header-title">Fancy Statistics</h5>
+                        <h6 class="menu-header-subtitle">Just an example of a slider with some chart widgets inside.</h6>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="p-2">
+                    <div class="card no-shadow widget-chart widget-chart2 text-start p-2 m-1">
+                      <div class="widget-title opacity-6 text-muted text-uppercase">New accounts since 2018</div>
+                      <div class="widget-numbers text-success">78<small class="opacity-5 ps-1">%</small></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/datagon-vanilla.js"></script>
+    <script>
+    (function () {
+      var chartJsPromise = null;
+      var revenueChart = null;
+      var shareChart = null;
+      var trendChart = null;
+
+      /** По умолчанию — три маркетплейса с отгрузками (имена из ms_demand.project_name). */
+      function isDefaultMarketplaceProjectName(name) {
+        var n = String(name || "").trim().toLowerCase();
+        if (!n) return false;
+        if (n === "озон" || n.indexOf("ozon") >= 0) return true;
+        if (n.indexOf("вайлдберриз") >= 0 || n.indexOf("wildberries") >= 0) return true;
+        if (n.indexOf("яндекс") >= 0 && n.indexOf("маркет") >= 0) return true;
+        return false;
+      }
+
+      function pickDefaultMarketplaceProjectUuids(projects) {
+        var out = [];
+        var used = new Set();
+        (projects || []).forEach(function (p) {
+          var u = String(p.uuid || "").trim().toLowerCase();
+          if (!u || used.has(u) || !isDefaultMarketplaceProjectName(p.name)) return;
+          out.push(u);
+          used.add(u);
+        });
+        return out.sort();
+      }
+
+      function applyDefaultMarketplaceProjectSelection() {
+        var uuids = pickDefaultMarketplaceProjectUuids(state.projectsCatalog);
+        state.pending.project_mode = "selected";
+        state.pending.project_uuids = uuids;
+        state.project_mode = "selected";
+        state.project_uuids = uuids.slice();
+        var modeSel = document.getElementById("dg-sa-project-mode-selected");
+        if (modeSel) modeSel.checked = true;
+        var wrap = document.getElementById("dg-sa-projects-wrap");
+        var selAll = document.getElementById("dg-sa-projects-select-all");
+        var clearBtn = document.getElementById("dg-sa-projects-clear");
+        if (wrap) wrap.classList.remove("d-none");
+        if (selAll) selAll.classList.remove("d-none");
+        if (clearBtn) clearBtn.classList.remove("d-none");
+        renderProjectsList(state.projectsCatalog);
+        updateProjectFilterHint();
+      }
+
+      var state = {
+        days: 90,
+        new_stock_days: 30,
+        project_mode: "selected",
+        project_uuids: [],
+        focus: "all",
+        search: "",
+        limit: 100,
+        offset: 0,
+        sort_by: "sales_revenue",
+        sort_dir: "desc",
+        pending: { days: 90, new_stock_days: 30, search: "", project_mode: "selected", project_uuids: [] },
+        total: 0,
+        rows: [],
+        selectedKey: "",
+        detailView: "summary",
+        highlights: null,
+        overview: null,
+        breakdown: null,
+        breakdownOffset: 0,
+        breakdownLimit: 50,
+        projectsCatalog: [],
+      };
+
+      function projectUuidsEqual(a, b) {
+        var sa = (a || []).slice().sort().join(",");
+        var sb = (b || []).slice().sort().join(",");
+        return sa === sb;
+      }
+
+      function readPendingProjectUuids() {
+        var list = document.getElementById("dg-sa-projects-list");
+        if (!list) return (state.pending.project_uuids || []).slice();
+        var out = [];
+        list.querySelectorAll('input[type="checkbox"][data-dg-sa-project-uuid]:checked').forEach(function (cb) {
+          var u = String(cb.getAttribute("data-dg-sa-project-uuid") || "").trim().toLowerCase();
+          if (u) out.push(u);
+        });
+        return out.sort();
+      }
+
+      function appendProjectParams(p) {
+        p.set("project_mode", state.project_mode || "all");
+        if (state.project_mode === "selected" && state.project_uuids.length) {
+          p.set("project_uuids", state.project_uuids.join(","));
+        }
+        return p;
+      }
+
+      function authHeaders() {
+        var h = { Accept: "application/json" };
+        try {
+          var t = localStorage.getItem("datagon_token");
+          if (t) h.Authorization = "Bearer " + t;
+        } catch (e) {}
+        return h;
+      }
+
+      function fmtMoney(n) {
+        var x = Number(n);
+        if (!Number.isFinite(x)) return "—";
+        return x.toLocaleString("ru-RU", { maximumFractionDigits: 0 }) + " ₽";
+      }
+
+      function fmtQty(n) {
+        var x = Number(n);
+        if (!Number.isFinite(x)) return "—";
+        return x.toLocaleString("ru-RU", { maximumFractionDigits: 0 });
+      }
+
+      function fmtPct(n) {
+        if (n == null || n === "") return "—";
+        var x = Number(n);
+        if (!Number.isFinite(x)) return "—";
+        var cls = x >= 0 ? "dg-sa-pct-up" : "dg-sa-pct-down";
+        var sign = x > 0 ? "+" : "";
+        return '<span class="' + cls + '">' + sign + x.toFixed(1) + "%</span>";
+      }
+
+      function esc(s) {
+        return String(s || "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/"/g, "&quot;");
+      }
+
+      function loadChartJs() {
+        if (window.Chart && typeof window.Chart === "function") return Promise.resolve(window.Chart);
+        if (chartJsPromise) return chartJsPromise;
+        chartJsPromise = new Promise(function (resolve, reject) {
+          var s = document.createElement("script");
+          s.src = "https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js";
+          s.async = true;
+          s.onload = function () { resolve(window.Chart); };
+          s.onerror = function () { reject(new Error("Chart.js")); };
+          document.head.appendChild(s);
+        });
+        return chartJsPromise;
+      }
+
+      function destroyChart(ch) {
+        if (ch && typeof ch.destroy === "function") ch.destroy();
+      }
+
+      function syncDirtyApply() {
+        var btn = document.getElementById("dg-sa-apply");
+        if (!btn) return;
+        state.pending.project_uuids = readPendingProjectUuids();
+        var dirty =
+          state.pending.days !== state.days ||
+          state.pending.new_stock_days !== state.new_stock_days ||
+          state.pending.search !== state.search ||
+          state.pending.project_mode !== state.project_mode ||
+          !projectUuidsEqual(state.pending.project_uuids, state.project_uuids);
+        btn.textContent = dirty ? "Применить •" : "Применить";
+        btn.classList.toggle("dg-flt-dirty", dirty);
+      }
+
+      function commitFilters() {
+        state.days = Number(state.pending.days) || 90;
+        state.new_stock_days = Number(state.pending.new_stock_days) || 30;
+        state.search = String(state.pending.search || "").trim();
+        state.project_mode = state.pending.project_mode === "selected" ? "selected" : "all";
+        state.project_uuids =
+          state.project_mode === "selected" ? readPendingProjectUuids() : [];
+        state.offset = 0;
+        state.breakdownOffset = 0;
+        syncDirtyApply();
+        updateProjectFilterHint();
+        return loadAll();
+      }
+
+      function updateProjectFilterHint(label) {
+        var el = document.getElementById("dg-sa-project-filter-hint");
+        if (!el) return;
+        var text =
+          label ||
+          (state.project_mode === "selected"
+            ? state.project_uuids.length
+              ? "Учитываются продажи по " + state.project_uuids.length + " выбранным проектам"
+              : "Режим «только выбранные»: список пуст — продажи не учитываются"
+            : "");
+        if (!text) {
+          el.classList.add("d-none");
+          el.textContent = "";
+          return;
+        }
+        el.textContent = text;
+        el.classList.remove("d-none");
+      }
+
+      function syncProjectModeUi() {
+        var selected =
+          document.getElementById("dg-sa-project-mode-selected") &&
+          document.getElementById("dg-sa-project-mode-selected").checked;
+        state.pending.project_mode = selected ? "selected" : "all";
+        var wrap = document.getElementById("dg-sa-projects-wrap");
+        var selAll = document.getElementById("dg-sa-projects-select-all");
+        var clearBtn = document.getElementById("dg-sa-projects-clear");
+        if (wrap) wrap.classList.toggle("d-none", !selected);
+        if (selAll) selAll.classList.toggle("d-none", !selected);
+        if (clearBtn) clearBtn.classList.toggle("d-none", !selected);
+        if (selected && !state.projectsCatalog.length) loadProjectsList();
+        syncDirtyApply();
+      }
+
+      function renderProjectsList(projects) {
+        var list = document.getElementById("dg-sa-projects-list");
+        if (!list) return;
+        var saved = new Set((state.pending.project_uuids || []).map(function (u) { return String(u).toLowerCase(); }));
+        if (!projects.length) {
+          list.innerHTML =
+            '<p class="text-muted small mb-0">Проекты не найдены за период. Выполните синхронизацию «Продажи МС».</p>';
+          return;
+        }
+        list.innerHTML = projects
+          .map(function (p) {
+            var u = String(p.uuid || "").trim().toLowerCase();
+            var name = String(p.name || u || "—");
+            var cnt = Number(p.count || 0);
+            var id = "dg-sa-proj-" + u.replace(/[^a-z0-9]/g, "");
+            var checked = saved.has(u) ? " checked" : "";
+            return (
+              '<div class="form-check">' +
+              '<input class="form-check-input" type="checkbox" id="' +
+              id +
+              '" data-dg-sa-project-uuid="' +
+              u +
+              '"' +
+              checked +
+              " />" +
+              '<label class="form-check-label small" for="' +
+              id +
+              '">' +
+              esc(name) +
+              ' <span class="text-muted">(' +
+              cnt +
+              " отгр.)</span></label></div>"
+            );
+          })
+          .join("");
+        list.querySelectorAll('input[type="checkbox"][data-dg-sa-project-uuid]').forEach(function (cb) {
+          cb.addEventListener("change", syncDirtyApply);
+        });
+      }
+
+      function loadProjectsList() {
+        var statusEl = document.getElementById("dg-sa-projects-status");
+        var days = Number(state.pending.days) || state.days || 90;
+        if (statusEl) statusEl.textContent = "Загрузка проектов…";
+        return fetch("/api/supplier-analysis/projects?days=" + encodeURIComponent(String(days)), {
+          credentials: "same-origin",
+          headers: authHeaders(),
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (j) {
+            if (!j || !j.success) throw new Error((j && j.error) || "Ошибка");
+            state.projectsCatalog = j.projects || [];
+            renderProjectsList(state.projectsCatalog);
+            if (statusEl) {
+              statusEl.textContent =
+                "Проекты с отгрузками за " + String(j.days || days) + " дн. Отметьте нужные и нажмите «Применить».";
+            }
+          })
+          .catch(function (e) {
+            if (statusEl) statusEl.textContent = (e && e.message) || "Не удалось загрузить проекты";
+            var list = document.getElementById("dg-sa-projects-list");
+            if (list) list.innerHTML = "";
+          });
+      }
+
+      function loadFreshness() {
+        return fetch("/api/supplier-analysis/data-freshness", {
+          credentials: "same-origin",
+          headers: authHeaders(),
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (j) {
+            var row = document.getElementById("dg-sa-data-freshness-row");
+            var loading = document.getElementById("dg-sa-data-freshness-loading");
+            if (loading) loading.remove();
+            if (!row || !j || !j.sources) return;
+            row.innerHTML = j.sources
+              .map(function (src) {
+                var st = src.status || "unknown";
+                var badge =
+                  st === "ok" ? "success" : st === "running" ? "primary" : st === "stale" ? "warning" : "secondary";
+                return (
+                  '<div class="col-lg-6"><div class="card card-body py-2 px-3 border">' +
+                  '<div class="d-flex justify-content-between gap-2"><span class="small fw-semibold">' +
+                  esc(src.title) +
+                  '</span><span class="badge bg-' +
+                  badge +
+                  '">' +
+                  esc(st) +
+                  "</span></div>" +
+                  '<div class="text-muted small">' +
+                  esc(src.finished_at_msk ? "Обновлено: " + src.finished_at_msk : "Нет даты") +
+                  "</div></div></div>"
+                );
+              })
+              .join("")
+          })
+          .catch(function () {});
+      }
+
+      function firstSignalText(r) {
+        var sig = r && r.signals;
+        if (sig && sig.length && sig[0].text) return sig[0].text;
+        return "";
+      }
+
+      function findSupplierRow(key) {
+        if (!key) return null;
+        var fromTable = state.rows.find(function (r) { return r.supplier_key === key; });
+        if (fromTable) return fromTable;
+        var h = state.highlights || {};
+        var pools = [h.needs_attention, h.top_revenue, h.top_growth, h.weak];
+        for (var i = 0; i < pools.length; i++) {
+          var list = pools[i] || [];
+          var hit = list.find(function (r) { return r.supplier_key === key; });
+          if (hit) return hit;
+        }
+        return null;
+      }
+
+      function fmtDateTime(iso) {
+        if (!iso) return "—";
+        var d = new Date(iso);
+        if (Number.isNaN(d.getTime())) return String(iso).slice(0, 10);
+        return d.toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" });
+      }
+
+      function renderSalesBreakdown() {
+        var j = state.breakdown;
+        var summary = document.getElementById("dg-sa-breakdown-summary");
+        var tbody = document.getElementById("dg-sa-breakdown-tbody");
+        var info = document.getElementById("dg-sa-breakdown-pager-info");
+        var prev = document.getElementById("dg-sa-breakdown-prev");
+        var next = document.getElementById("dg-sa-breakdown-next");
+        if (!tbody) return;
+        if (!j || !j.success) {
+          if (summary) summary.textContent = (j && j.error) || "Нет данных";
+          tbody.innerHTML = '<tr><td colspan="12" class="text-muted">—</td></tr>';
+          return;
+        }
+        var t = j.totals || {};
+        if (summary) {
+          summary.innerHTML =
+            "Итого по фильтру: <strong>" +
+            fmtMoney(t.sales_revenue) +
+            "</strong> выручка · <strong>" +
+            fmtMoney(t.gross_margin_est) +
+            "</strong> маржа" +
+            (t.margin_pct != null ? " (" + Number(t.margin_pct).toFixed(1) + "%)" : "") +
+            " · " +
+            fmtQty(t.demands_count) +
+            " отгр. · " +
+            fmtQty(t.lines_count) +
+            " строк";
+        }
+        var rows = j.rows || [];
+        if (!rows.length) {
+          tbody.innerHTML = '<tr><td colspan="12" class="text-muted">Нет строк за период</td></tr>';
+        } else {
+          tbody.innerHTML = rows
+            .map(function (r) {
+              return (
+                "<tr>" +
+                "<td>" +
+                esc(fmtDateTime(r.moment)) +
+                "</td>" +
+                "<td>" +
+                esc(r.doc_name || "—") +
+                "</td>" +
+                "<td>" +
+                esc(r.project_name || "—") +
+                "</td>" +
+                '<td><a href="/product.html?code=' +
+                encodeURIComponent(r.code || "") +
+                '" target="_blank" rel="noopener">' +
+                esc(r.code) +
+                "</a></td>" +
+                "<td>" +
+                esc(r.name) +
+                "</td>" +
+                "<td>" +
+                esc(r.supplier) +
+                "</td>" +
+                '<td class="text-end">' +
+                fmtQty(r.quantity) +
+                "</td>" +
+                '<td class="text-end">' +
+                fmtMoney(r.line_price) +
+                "</td>" +
+                '<td class="text-end">' +
+                fmtMoney(r.line_revenue) +
+                "</td>" +
+                '<td class="text-end">' +
+                fmtMoney(r.buy_price_unit) +
+                "</td>" +
+                '<td class="text-end">' +
+                fmtMoney(r.line_cost) +
+                "</td>" +
+                '<td class="text-end">' +
+                fmtMoney(r.line_margin) +
+                "</td>" +
+                "</tr>"
+              );
+            })
+            .join("");
+        }
+        var total = j.total || 0;
+        var from = total ? state.breakdownOffset + 1 : 0;
+        var to = Math.min(state.breakdownOffset + state.breakdownLimit, total);
+        if (info) {
+          info.textContent =
+            "Строки " + from + "–" + to + " из " + total + " · на странице " + state.breakdownLimit;
+        }
+        if (prev) prev.disabled = state.breakdownOffset <= 0;
+        if (next) next.disabled = state.breakdownOffset + state.breakdownLimit >= total;
+      }
+
+      function loadSalesBreakdown() {
+        var q = new URLSearchParams();
+        q.set("days", String(state.days));
+        q.set("limit", String(state.breakdownLimit));
+        q.set("offset", String(state.breakdownOffset));
+        if (state.search) q.set("search", state.search);
+        appendProjectParams(q);
+        return fetch("/api/supplier-analysis/sales-breakdown?" + q.toString(), {
+          credentials: "same-origin",
+          headers: authHeaders(),
+        })
+          .then(function (r) {
+            if (!r.ok) throw new Error("HTTP " + r.status);
+            return r.json();
+          })
+          .then(function (j) {
+            if (!j || !j.success) throw new Error((j && j.error) || "Ошибка");
+            state.breakdown = j;
+            renderSalesBreakdown();
+          })
+          .catch(function (e) {
+            state.breakdown = { success: false, error: e.message };
+            renderSalesBreakdown();
+          });
+      }
+
+      function renderKpis() {
+        var t = (state.overview && state.overview.totals) || {};
+        var pf = (state.overview && state.overview.project_filter) || null;
+        var scopeHint = document.getElementById("dg-sa-sales-scope-hint");
+        if (scopeHint) {
+          var scopeText =
+            pf && pf.label
+              ? pf.label
+              : state.project_mode === "selected"
+                ? "Только выбранные проекты (примените фильтр)"
+                : "";
+          if (scopeText) {
+            scopeHint.textContent = scopeText;
+            scopeHint.classList.remove("d-none");
+          } else {
+            scopeHint.textContent = "";
+            scopeHint.classList.add("d-none");
+          }
+        }
+        var el = function (id, v) {
+          var n = document.getElementById(id);
+          if (n) n.textContent = v;
+        };
+        el("dg-sa-kpi-suppliers", fmtQty(t.suppliers_total));
+        el("dg-sa-kpi-revenue", fmtMoney(t.sales_revenue));
+        el("dg-sa-kpi-margin", fmtMoney(t.gross_margin_est));
+        var mgp = document.getElementById("dg-sa-kpi-margin-pct");
+        if (mgp) {
+          if (t.margin_pct != null && Number.isFinite(Number(t.margin_pct))) {
+            mgp.textContent = Number(t.margin_pct).toFixed(1) + "% от выручки";
+          } else {
+            mgp.textContent = "";
+          }
+        }
+        var ch = document.getElementById("dg-sa-kpi-change");
+        if (ch) ch.innerHTML = fmtPct(t.revenue_change_pct);
+        el("dg-sa-kpi-no-sales", fmtQty(t.suppliers_no_sales));
+        el("dg-sa-kpi-declining", fmtQty(t.suppliers_declining));
+        el("dg-sa-kpi-stock", fmtMoney(t.stock_value_rub));
+      }
+
+      function renderHighlightList(id, items, mode) {
+        var ul = document.getElementById(id);
+        if (!ul) return;
+        if (!items || !items.length) {
+          var empty =
+            mode === "attention"
+              ? "Нет поставщиков с тревожными сигналами"
+              : mode === "weak"
+                ? ""
+                : "Нет данных за период";
+          ul.innerHTML = empty
+            ? '<li class="list-group-item text-muted small">' + empty + "</li>"
+            : "";
+          return;
+        }
+        ul.innerHTML = items
+          .map(function (r) {
+            var meta = fmtMoney(r.sales_revenue);
+            if (mode === "growth" && r.revenue_change_pct != null) {
+              meta += " · рост " + r.revenue_change_pct + "%";
+            }
+            if (mode === "weak") meta = "Остаток " + fmtMoney(r.stock_value_rub);
+            var sigHtml = "";
+            if (mode === "attention") {
+              var st = firstSignalText(r);
+              if (st) sigHtml = '<div class="dg-sa-highlight-signal">' + esc(st) + "</div>";
+            }
+            return (
+              '<li class="list-group-item dg-sa-pick" data-key="' +
+              esc(r.supplier_key) +
+              '" data-name="' +
+              esc(r.supplier_name) +
+              '"><div class="fw-semibold">' +
+              esc(r.supplier_name) +
+              '</div><div class="dg-sa-highlight-meta">' +
+              meta +
+              "</div>" +
+              sigHtml +
+              "</li>"
+            );
+          })
+          .join("");
+      }
+
+      function syncInsightPanel(cfg) {
+        var countEl = document.getElementById(cfg.countId);
+        var bodyEl = document.getElementById(cfg.bodyId);
+        var footEl = document.getElementById(cfg.footId);
+        var n = cfg.count || 0;
+        if (countEl) countEl.textContent = n > 0 ? "(" + n + ")" : "";
+        if (!bodyEl) return;
+        function updateScrollHint() {
+          var overflow = bodyEl.scrollHeight > bodyEl.clientHeight + 2;
+          bodyEl.classList.toggle("dg-sa-scroll-more", overflow);
+          if (!footEl) return;
+          if (!n) {
+            footEl.classList.add("d-none");
+            footEl.textContent = "";
+            return;
+          }
+          if (overflow) {
+            footEl.classList.remove("d-none");
+            footEl.textContent =
+              "В списке " +
+              n +
+              " — прокрутите, чтобы увидеть всех (полоса справа)";
+          } else {
+            footEl.classList.add("d-none");
+            footEl.textContent = "";
+          }
+        }
+        if (!bodyEl._dgSaScrollBound) {
+          bodyEl._dgSaScrollBound = 1;
+          bodyEl.addEventListener("scroll", updateScrollHint);
+        }
+        requestAnimationFrame(updateScrollHint);
+      }
+
+      function renderHighlights() {
+        var h = state.highlights || {};
+        renderHighlightList("dg-sa-list-attention", h.needs_attention, "attention");
+        renderHighlightList("dg-sa-list-revenue", h.top_revenue, "revenue");
+        renderHighlightList("dg-sa-list-growth", h.top_growth, "growth");
+        var weakUl = document.getElementById("dg-sa-list-weak");
+        var weakHdr = document.getElementById("dg-sa-weak-header");
+        var weakCount = 0;
+        if (weakUl) {
+          var attKeys = {};
+          (h.needs_attention || []).forEach(function (r) {
+            if (r && r.supplier_key) attKeys[r.supplier_key] = 1;
+          });
+          var weak = (h.weak || []).filter(function (r) {
+            return r && r.supplier_key && !attKeys[r.supplier_key];
+          });
+          weakCount = weak.length;
+          if (!weak.length) {
+            weakUl.innerHTML = "";
+            weakUl.classList.add("d-none");
+            if (weakHdr) weakHdr.classList.add("d-none");
+          } else {
+            weakUl.classList.remove("d-none");
+            if (weakHdr) weakHdr.classList.remove("d-none");
+            renderHighlightList("dg-sa-list-weak", weak, "weak");
+          }
+        }
+        var attN = (h.needs_attention || []).length + weakCount;
+        syncInsightPanel({
+          countId: "dg-sa-count-attention",
+          bodyId: "dg-sa-body-attention",
+          footId: "dg-sa-foot-attention",
+          count: attN,
+        });
+        syncInsightPanel({
+          countId: "dg-sa-count-revenue",
+          bodyId: "dg-sa-body-revenue",
+          footId: "dg-sa-foot-revenue",
+          count: (h.top_revenue || []).length,
+        });
+        syncInsightPanel({
+          countId: "dg-sa-count-growth",
+          bodyId: "dg-sa-body-growth",
+          footId: "dg-sa-foot-growth",
+          count: (h.top_growth || []).length,
+        });
+      }
+
+      function renderCharts() {
+        var top = (state.highlights && state.highlights.top_revenue) || [];
+        loadChartJs()
+          .then(function (Chart) {
+            destroyChart(revenueChart);
+            destroyChart(shareChart);
+            var labels = top.map(function (r) {
+              var n = r.supplier_name || r.supplier_key;
+              return n.length > 28 ? n.slice(0, 26) + "…" : n;
+            });
+            var data = top.map(function (r) { return r.sales_revenue; });
+            var canvasR = document.getElementById("dg-sa-chart-revenue");
+            if (canvasR) {
+              revenueChart = new Chart(canvasR, {
+                type: "bar",
+                data: {
+                  labels: labels,
+                  datasets: [{ label: "Выручка ₽", data: data, backgroundColor: "rgba(30, 107, 184, 0.75)" }],
+                },
+                options: {
+                  indexAxis: "y",
+                  responsive: true,
+                  maintainAspectRatio: false,
+                  plugins: { legend: { display: false } },
+                },
+              });
+            }
+            var canvasD = document.getElementById("dg-sa-chart-share");
+            if (canvasD && data.length) {
+              shareChart = new Chart(canvasD, {
+                type: "doughnut",
+                data: {
+                  labels: labels,
+                  datasets: [{ data: data, backgroundColor: ["#1e6bb8", "#3d8fd1", "#6eb5e9", "#95c9f0", "#b8daf5", "#d4e8fa", "#e8f2fc", "#f0f7fd"] }],
+                },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: "bottom", labels: { boxWidth: 10, font: { size: 10 } } } } },
+              });
+            }
+            saRefreshFloatingAfterLayout();
+          })
+          .catch(function (e) {
+            if (window.DatagonNotify) DatagonNotify.toast({ type: "warning", message: "Графики: " + e.message });
+          });
+      }
+
+      function loadTrendChart(Chart) {
+        if (!state.selectedKey) return;
+        var months = 12;
+        var tp = new URLSearchParams();
+        tp.set("supplier_key", state.selectedKey);
+        tp.set("months", String(months));
+        appendProjectParams(tp);
+        fetch("/api/supplier-analysis/trend?" + tp.toString(), {
+          credentials: "same-origin",
+          headers: authHeaders(),
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (j) {
+            if (!j || !j.success) return;
+            destroyChart(trendChart);
+            var canvas = document.getElementById("dg-sa-chart-trend");
+            if (!canvas) return;
+            var pts = j.points || [];
+            trendChart = new Chart(canvas, {
+              type: "line",
+              data: {
+                labels: pts.map(function (p) { return p.ym; }),
+                datasets: [
+                  {
+                    label: "Выручка ₽",
+                    data: pts.map(function (p) { return p.sales_revenue; }),
+                    borderColor: "#1e6bb8",
+                    backgroundColor: "rgba(30, 107, 184, 0.12)",
+                    fill: true,
+                    tension: 0.25,
+                  },
+                ],
+              },
+              options: { responsive: true, maintainAspectRatio: false },
+            });
+          });
+      }
+
+      function productHref(code) {
+        var c = String(code || "").trim();
+        return c ? "/product.html?code=" + encodeURIComponent(c) : "#";
+      }
+
+      function suppliersHref(name) {
+        return "/suppliers.html?search=" + encodeURIComponent(String(name || "").trim());
+      }
+
+      function signalBadges(signals) {
+        if (!signals || !signals.length) return '<span class="text-muted small">—</span>';
+        var max = 2;
+        var html = signals.slice(0, max).map(function (s) {
+          var bg = s.level === "danger" ? "danger" : s.level === "success" ? "success" : "warning";
+          return '<span class="badge bg-' + bg + ' dg-sa-signal">' + esc(s.text) + "</span>";
+        }).join(" ");
+        if (signals.length > max) {
+          html += ' <span class="badge bg-secondary dg-sa-signal">+' + (signals.length - max) + "</span>";
+        }
+        return html;
+      }
+
+      var SA_COLS = [
+        ["supplier_name", "Поставщик"],
+        ["skus_warehouse", "SKU складская", { center: true, title: "Складская позиция в каталоге МС", headerLines: ["SKU", "складская"] }],
+        ["skus_total", "SKU всего", { center: true, title: "Все SKU поставщика в МойСклад", headerLines: ["SKU", "всего"] }],
+        ["stock_value_rub", "Остатков на сумму", { center: true, headerLines: ["Остатков", "на сумму"] }],
+        ["sales_revenue", "Продажи ₽", { center: true, headerLines: ["Продажи", "₽"] }],
+        ["sales_qty", "Продажи за период", { center: true, headerLines: ["Продажи", "за период"] }],
+        ["sales_revenue_avg_30d", "Продажи средняя за 30 дней", { center: true, headerLines: ["Продажи средняя", "за 30 дней"] }],
+        ["min_stock_sum", "Неснижаемый", { center: true, headerLines: ["Неснижаемый"] }],
+        ["formula_proposed_sum", "Предлагаемый неснижаемый", { center: true, headerLines: ["Предлагаемый", "неснижаемый"] }],
+        ["min_stock_dg_sum", "Нес.остаток Датагон", { center: true, headerLines: ["Нес.остаток", "Датагон"] }],
+        ["turnover_monthly", "Оборач. / мес., %", { center: true, headerLines: ["Оборач.", "/ мес., %"] }],
+        ["skus_new_on_stock", "Новые на складе", { center: true, headerLines: ["Новые", "на складе"] }],
+        ["skus_ineffective", "Залежалые", { center: true }],
+      ];
+      var SA_COL_OPTS = {};
+      SA_COLS.forEach(function (p) { SA_COL_OPTS[p[0]] = p[2] || {}; });
+      var SA_SORTABLE = new Set(SA_COLS.map(function (p) { return p[0]; }));
+      var SA_DEFAULT_VISIBLE = SA_COLS.map(function (p) { return p[0]; });
+      var SA_COL_MIN = {
+        supplier_name: 160,
+        skus_warehouse: 72,
+        skus_total: 72,
+        stock_value_rub: 110,
+        sales_revenue: 100,
+        sales_qty: 88,
+        sales_revenue_avg_30d: 120,
+        min_stock_sum: 88,
+        formula_proposed_sum: 120,
+        min_stock_dg_sum: 110,
+        turnover_monthly: 100,
+        skus_new_on_stock: 100,
+        skus_ineffective: 80,
+      };
+      var FLOATING_HEADER_OFFSET_PX = 2;
+      var FLOATING_HEADER_START_EPS_PX = 3;
+      var saFloatingHeaderRaf = 0;
+      var saFloatingLastScrollTs = 0;
+
+      function userSaVisibleColsKey() {
+        try {
+          var u = String(localStorage.getItem("currentUser") || "guest").trim() || "guest";
+          return "dg.supplier_analysis.visibleCols.v1:" + u;
+        } catch (e) { return "dg.supplier_analysis.visibleCols.v1:guest"; }
+      }
+      function userSaColWidthKey() {
+        try {
+          var u = String(localStorage.getItem("currentUser") || "guest").trim() || "guest";
+          return "dg.supplier_analysis.colWidths.v1:" + u;
+        } catch (e) { return "dg.supplier_analysis.colWidths.v1:guest"; }
+      }
+      function loadSaVisibleCols() {
+        try {
+          var raw = localStorage.getItem(userSaVisibleColsKey());
+          if (!raw) return SA_DEFAULT_VISIBLE.slice();
+          var arr = JSON.parse(raw);
+          if (!Array.isArray(arr) || !arr.length) return SA_DEFAULT_VISIBLE.slice();
+          return arr.filter(function (k) { return SA_COL_OPTS[k]; });
+        } catch (e) { return SA_DEFAULT_VISIBLE.slice(); }
+      }
+      function saveSaVisibleCols(keys) {
+        try { localStorage.setItem(userSaVisibleColsKey(), JSON.stringify(keys)); } catch (e) {}
+      }
+      function loadSaColWidths() {
+        try {
+          var raw = localStorage.getItem(userSaColWidthKey());
+          return raw ? JSON.parse(raw) : {};
+        } catch (e) { return {}; }
+      }
+      function saveSaColWidths(map) {
+        try { localStorage.setItem(userSaColWidthKey(), JSON.stringify(map || {})); } catch (e) {}
+      }
+      var visibleSaCols = loadSaVisibleCols();
+      var saColWidths = loadSaColWidths();
+
+      function getVisibleSaCols() {
+        return SA_COLS.filter(function (p) { return visibleSaCols.indexOf(p[0]) >= 0; });
+      }
+      function saColCount() {
+        return 2 + getVisibleSaCols().length;
+      }
+
+      function getSaColWidthPx(key) {
+        if (key === "__expand") return 32;
+        if (key === "__num") return 40;
+        var w = Number(saColWidths[key]);
+        if (Number.isFinite(w) && w > 0) {
+          return Math.max(32, Math.min(800, Math.round(w)));
+        }
+        return SA_COL_MIN[key] || 90;
+      }
+
+      function getSaTableColumnWidths() {
+        var widths = [getSaColWidthPx("__expand"), getSaColWidthPx("__num")];
+        getVisibleSaCols().forEach(function (p) {
+          widths.push(getSaColWidthPx(p[0]));
+        });
+        return widths;
+      }
+
+      function setSaCellWidthStyle(el, wPx) {
+        if (!el || !wPx) return;
+        el.style.width = wPx + "px";
+        el.style.minWidth = wPx + "px";
+        el.style.maxWidth = wPx + "px";
+        el.style.boxSizing = "border-box";
+      }
+
+      function applySaTableColgroup() {
+        var table = document.getElementById("dg-sa-table");
+        if (!table) return [];
+        var widths = getSaTableColumnWidths();
+        var total = widths.reduce(function (s, w) {
+          return s + w;
+        }, 0);
+        var cg = document.getElementById("dg-sa-colgroup");
+        if (!cg) {
+          cg = document.createElement("colgroup");
+          cg.id = "dg-sa-colgroup";
+          table.insertBefore(cg, table.querySelector("thead") || table.firstChild);
+        }
+        cg.innerHTML = widths
+          .map(function (w) {
+            return (
+              '<col style="width:' +
+              w +
+              "px;min-width:" +
+              w +
+              "px;max-width:" +
+              w +
+              'px">'
+            );
+          })
+          .join("");
+        table.style.tableLayout = "fixed";
+        table.style.width = total + "px";
+        table.style.minWidth = total + "px";
+        return widths;
+      }
+
+      function applySaTheadColumnWidths() {
+        var tr = document.querySelector("#dg-sa-thead tr");
+        if (!tr) return;
+        var widths = getSaTableColumnWidths();
+        Array.prototype.forEach.call(tr.children, function (th, i) {
+          if (widths[i]) setSaCellWidthStyle(th, widths[i]);
+        });
+      }
+
+      function applySaBodyColumnWidths() {
+        var widths = getSaTableColumnWidths();
+        document.querySelectorAll("#dg-sa-tbody tr.dg-sa-row-expandable").forEach(function (tr) {
+          Array.prototype.forEach.call(tr.children, function (td, i) {
+            if (widths[i]) setSaCellWidthStyle(td, widths[i]);
+          });
+        });
+      }
+
+      function applySaTableLayout() {
+        applySaTableColgroup();
+        applySaTheadColumnWidths();
+        applySaBodyColumnWidths();
+      }
+
+      function updateSaStickyTopVar() {
+        var app = document.querySelector(".app-container");
+        var header = document.querySelector(".app-header");
+        var fixed = Boolean(app && app.classList && app.classList.contains("fixed-header"));
+        var top = 0;
+        if (fixed && header && header.getBoundingClientRect) {
+          var rect = header.getBoundingClientRect();
+          top = rect && rect.height ? rect.height : 60;
+        }
+        document.documentElement.style.setProperty("--dg-table-sticky-top", top + "px");
+      }
+      function getSaStickyTopPx() {
+        var app = document.querySelector(".app-container");
+        var header = document.querySelector(".app-header");
+        var fixed = Boolean(app && app.classList && app.classList.contains("fixed-header"));
+        if (!fixed) return 0;
+        if (!header || !header.getBoundingClientRect) return 60;
+        var rect = header.getBoundingClientRect();
+        return rect && rect.height ? rect.height : 60;
+      }
+      function clearSaHeaderFloatStyles(thead, row) {
+        if (!thead) return;
+        thead.style.transform = "";
+        thead.style.position = "";
+        thead.style.zIndex = "";
+        thead.style.willChange = "";
+        thead.removeAttribute("data-dg-floating");
+        if (!row) return;
+        row.style.transform = "";
+        row.style.position = "";
+        row.style.zIndex = "";
+        row.style.willChange = "";
+      }
+      function captureSaTheadBaseTop() {
+        var thead = document.getElementById("dg-sa-thead");
+        if (!thead) return;
+        var row = thead.querySelector("tr");
+        if (!row) return;
+        clearSaHeaderFloatStyles(thead, row);
+        var rect = row.getBoundingClientRect();
+        var absTop =
+          (window.scrollY || window.pageYOffset || 0) + (rect && rect.top ? rect.top : 0);
+        thead.setAttribute("data-dg-base-top", String(absTop));
+      }
+      function updateSaFloatingHeaderFallback() {
+        if (state.selectedKey) {
+          clearSaFloatingHeaderForDetail();
+          return;
+        }
+        var thead = document.getElementById("dg-sa-thead");
+        if (!thead) return;
+        var table = thead.closest("table");
+        if (!table || !table.getBoundingClientRect) return;
+        var row = thead.querySelector("tr");
+        if (!row) return;
+
+        var y = window.scrollY || window.pageYOffset || 0;
+        var headerTop = getSaStickyTopPx();
+        var tableRect = table.getBoundingClientRect();
+        var tableBottom = tableRect.bottom + y;
+        var rowRect = row.getBoundingClientRect();
+        var rowHeight = rowRect && rowRect.height ? rowRect.height : 0;
+        var isFloating = thead.getAttribute("data-dg-floating") === "1" || !!row.style.transform;
+
+        /* Пока шапка не «плывёт», держим base-top актуальным (сводка/графики выше таблицы сдвигают её). */
+        if (!isFloating) {
+          var liveBase = y + (rowRect && rowRect.top ? rowRect.top : 0);
+          if (Number.isFinite(liveBase) && liveBase > 0) {
+            thead.setAttribute("data-dg-base-top", String(liveBase));
+          }
+        }
+
+        var baseTopAbs = Number(thead.getAttribute("data-dg-base-top") || 0);
+        if (!Number.isFinite(baseTopAbs) || baseTopAbs <= 0) return;
+
+        var headerLine = y + headerTop;
+        var start = baseTopAbs + FLOATING_HEADER_START_EPS_PX;
+        var end = tableBottom - rowHeight;
+        if (headerLine <= start || headerLine >= end) {
+          if (row.style.transform || thead.getAttribute("data-dg-floating")) {
+            clearSaHeaderFloatStyles(thead, row);
+          }
+          return;
+        }
+
+        var zoomAwareOffset = FLOATING_HEADER_OFFSET_PX;
+        var dpr = window.devicePixelRatio || 1;
+        if (Math.abs(dpr - 1) < 0.03) zoomAwareOffset = FLOATING_HEADER_OFFSET_PX - 3;
+        var shift = Math.max(0, headerLine - start - zoomAwareOffset);
+        var shiftPx = Number(shift.toFixed(3));
+        var nextTransform = "translate3d(0," + shiftPx + "px,0)";
+        if (row.style.transform !== nextTransform) {
+          thead.style.transform = "";
+          thead.style.position = "";
+          thead.style.zIndex = "";
+          thead.style.willChange = "";
+          row.style.transform = nextTransform;
+          row.style.position = "relative";
+          row.style.zIndex = "25";
+          row.style.willChange = "transform";
+          thead.setAttribute("data-dg-floating", "1");
+        }
+      }
+      function saFloatingHeaderTick(ts) {
+        saFloatingHeaderRaf = 0;
+        updateSaFloatingHeaderFallback();
+        if (ts - saFloatingLastScrollTs < 140) {
+          saFloatingHeaderRaf = requestAnimationFrame(saFloatingHeaderTick);
+        }
+      }
+      function scheduleSaFloatingHeaderUpdate() {
+        saFloatingLastScrollTs = performance.now();
+        if (saFloatingHeaderRaf) return;
+        saFloatingHeaderRaf = requestAnimationFrame(saFloatingHeaderTick);
+      }
+      function onScrollSaFloatingHeader() {
+        scheduleSaFloatingHeaderUpdate();
+      }
+      function saRefreshFloatingAfterLayout() {
+        requestAnimationFrame(function () {
+          captureSaTheadBaseTop();
+          scheduleSaFloatingHeaderUpdate();
+        });
+      }
+
+      function saSortArrow() {
+        return state.sort_dir === "asc" ? " ↑" : " ↓";
+      }
+
+      function setSaThLabel(th, label, opts) {
+        opts = opts || {};
+        th.classList.add("dg-sa-th-label");
+        var inner = document.createElement("span");
+        inner.className = "dg-sa-th-inner";
+        var lines = opts.headerLines;
+        if (lines && lines.length) {
+          inner.innerHTML = lines
+            .map(function (line) {
+              return esc(line);
+            })
+            .join("<br>");
+        } else {
+          inner.textContent = label;
+        }
+        if (opts.sortKey && opts.sortKey === state.sort_by) {
+          inner.appendChild(document.createTextNode(saSortArrow()));
+        }
+        th.appendChild(inner);
+      }
+
+      function buildSaThead() {
+        var thead = document.getElementById("dg-sa-thead");
+        if (!thead) return;
+        thead.innerHTML = "";
+        var tr = document.createElement("tr");
+        function addTh(label, opts) {
+          opts = opts || {};
+          var th = document.createElement("th");
+          th.scope = "col";
+          if (opts.expand) th.className = "dg-sa-expand-col";
+          else if (opts.num) th.className = "text-end dg-sa-col-num";
+          else {
+            if (opts.center) th.className = "text-end";
+            if (opts.sortKey) {
+              th.classList.add("dg-sa-sortable");
+              th.setAttribute("data-sort", opts.sortKey);
+              if (opts.title) th.title = opts.title;
+            }
+          }
+          var w = opts.width;
+          if (opts.sortKey) {
+            w = getSaColWidthPx(opts.sortKey);
+            th.setAttribute("data-col-key", opts.sortKey);
+          } else if (opts.expand) w = getSaColWidthPx("__expand");
+          else if (opts.num) w = getSaColWidthPx("__num");
+          if (w) setSaCellWidthStyle(th, w);
+          if (opts.sortKey) {
+            if (opts.sortKey === state.sort_by) {
+              th.classList.add("dg-sa-sort-active");
+              th.setAttribute("aria-sort", state.sort_dir === "asc" ? "ascending" : "descending");
+            }
+            setSaThLabel(th, label, {
+              sortKey: opts.sortKey,
+              headerLines: opts.headerLines,
+            });
+          } else if (opts.expand || opts.num) {
+            th.textContent = label;
+          }
+          if (opts.sortKey) {
+            th.style.cursor = "pointer";
+            th.addEventListener("click", function () {
+              if (window.getSelection && window.getSelection().toString().trim()) return;
+              if (state.sort_by === opts.sortKey) {
+                state.sort_dir = state.sort_dir === "asc" ? "desc" : "asc";
+              } else {
+                state.sort_by = opts.sortKey;
+                if (opts.sortKey === "supplier_name" || opts.sortKey === "turnover_monthly") state.sort_dir = "asc";
+                else state.sort_dir = "desc";
+              }
+              state.offset = 0;
+              buildSaThead();
+              loadRanking();
+            });
+          }
+          tr.appendChild(th);
+        }
+        addTh("", { expand: true });
+        addTh("№", { num: true });
+        getVisibleSaCols().forEach(function (p) {
+          var key = p[0];
+          var opts = SA_COL_OPTS[key] || {};
+          addTh(p[1], {
+            sortKey: key,
+            center: !!opts.center,
+            title: opts.title || "",
+            headerLines: opts.headerLines,
+          });
+        });
+        thead.appendChild(tr);
+        applySaTableLayout();
+      }
+
+      function saCellHtml(key, r, rowNum) {
+        switch (key) {
+          case "supplier_name":
+            return (
+              '<td class="dg-sa-cell-supplier dg-sa-cell-drill" title="Сводка по поставщику"><span class="dg-sa-supplier-label fw-semibold">' +
+              esc(r.supplier_name) +
+              "</span></td>"
+            );
+          case "skus_warehouse":
+            return (
+              '<td class="text-end dg-sa-cell-skus-warehouse dg-sa-cell-drill" title="Список складских SKU">' +
+              fmtQty(r.skus_warehouse != null ? r.skus_warehouse : r.products_total) +
+              "</td>"
+            );
+          case "skus_total":
+            return (
+              '<td class="text-end dg-sa-cell-skus-total dg-sa-cell-drill" title="Все SKU поставщика">' +
+              fmtQty(r.skus_total) +
+              "</td>"
+            );
+          case "stock_value_rub":
+            return '<td class="text-end">' + fmtMoney(r.stock_value_rub) + "</td>";
+          case "sales_revenue":
+            return '<td class="text-end">' + fmtMoney(r.sales_revenue) + "</td>";
+          case "sales_qty":
+            return '<td class="text-end">' + fmtQty(r.sales_qty) + "</td>";
+          case "sales_revenue_avg_30d":
+            return '<td class="text-end">' + fmtMoney(r.sales_revenue_avg_30d) + "</td>";
+          case "min_stock_sum":
+            return '<td class="text-end">' + fmtQty(r.min_stock_sum) + "</td>";
+          case "formula_proposed_sum":
+            return '<td class="text-end">' + fmtQty(r.formula_proposed_sum) + "</td>";
+          case "min_stock_dg_sum":
+            return '<td class="text-end">' + fmtQty(r.min_stock_dg_sum) + "</td>";
+          case "turnover_monthly":
+            return '<td class="text-end">' + fmtTurnoverMonthlyPct(r.turnover_monthly) + "</td>";
+          case "skus_new_on_stock":
+            return '<td class="text-end">' + fmtNewCell(r) + "</td>";
+          case "skus_ineffective":
+            return '<td class="text-end">' + fmtQty(r.skus_ineffective) + "</td>";
+          default:
+            return '<td></td>';
+        }
+      }
+
+      function bindSaHeaderSearchMirror() {
+        var primary = document.getElementById("dg-sa-search");
+        var mirror = document.getElementById("dg-sa-table-search-mirror");
+        var applyBtn = document.getElementById("dg-sa-apply");
+        if (!primary || !mirror) return;
+        var syncing = false;
+        function sync(from, to) {
+          if (syncing) return;
+          syncing = true;
+          to.value = from.value;
+          state.pending.search = String(from.value || "").trim();
+          syncing = false;
+          syncDirtyApply();
+        }
+        primary.addEventListener("input", function () { sync(primary, mirror); });
+        mirror.addEventListener("input", function () { sync(mirror, primary); });
+        function onEnter(ev) {
+          if (ev.key !== "Enter") return;
+          ev.preventDefault();
+          if (applyBtn) applyBtn.click();
+        }
+        mirror.addEventListener("keydown", onEnter);
+        mirror.addEventListener("search", function () {
+          if (mirror.value === "") {
+            primary.value = "";
+            state.pending.search = "";
+            commitFilters();
+          }
+        });
+      }
+
+      function syncSaPageSize(v) {
+        state.limit = v;
+        var a = document.getElementById("dg-sa-page-size");
+        var b = document.getElementById("dg-sa-footer-page-size");
+        if (a) a.value = String(v);
+        if (b) b.value = String(v);
+      }
+
+      function bindSaPagination() {
+        var limA = document.getElementById("dg-sa-page-size");
+        var limB = document.getElementById("dg-sa-footer-page-size");
+        function onLimitChange(el) {
+          syncSaPageSize(Number(el.value) || 100);
+          state.offset = 0;
+          loadAll();
+        }
+        if (limA) limA.addEventListener("change", function () { onLimitChange(limA); });
+        if (limB) limB.addEventListener("change", function () { onLimitChange(limB); });
+      }
+
+      function saColumnControls() {
+        var wrap = document.getElementById("dg-sa-toolbox-panels");
+        var colPanel = document.getElementById("dg-sa-columns-panel");
+        var widthPanel = document.getElementById("dg-sa-widths-panel");
+        var colList = document.getElementById("dg-sa-columns-list");
+        var widthList = document.getElementById("dg-sa-widths-list");
+        function syncWrap() {
+          var open =
+            (colPanel && colPanel.classList.contains("open")) ||
+            (widthPanel && widthPanel.classList.contains("open"));
+          if (wrap) wrap.classList.toggle("d-none", !open);
+        }
+        function renderColumnControls() {
+          if (!colList) return;
+          colList.innerHTML = "";
+          SA_COLS.forEach(function (p) {
+            var key = p[0];
+            var label = document.createElement("label");
+            var cb = document.createElement("input");
+            cb.type = "checkbox";
+            cb.checked = visibleSaCols.indexOf(key) >= 0;
+            cb.addEventListener("change", function () {
+              if (cb.checked) {
+                if (visibleSaCols.indexOf(key) < 0) visibleSaCols.push(key);
+              } else {
+                visibleSaCols = visibleSaCols.filter(function (k) { return k !== key; });
+              }
+              if (!visibleSaCols.length) visibleSaCols = ["supplier_name"];
+              saveSaVisibleCols(visibleSaCols);
+              renderTable();
+            });
+            label.appendChild(cb);
+            label.appendChild(document.createTextNode(" " + p[1]));
+            colList.appendChild(label);
+          });
+        }
+        function renderWidthControls() {
+          if (!widthList) return;
+          widthList.innerHTML = "";
+          SA_COLS.forEach(function (p) {
+            var key = p[0];
+            var label = document.createElement("label");
+            label.textContent = p[1];
+            var inp = document.createElement("input");
+            inp.type = "number";
+            inp.min = "32";
+            inp.max = "800";
+            inp.value = String(getSaColWidthPx(key));
+            inp.addEventListener("change", function () {
+              var w = parseInt(inp.value, 10);
+              if (!Number.isFinite(w)) w = SA_COL_MIN[key] || 90;
+              saColWidths[key] = Math.max(32, Math.min(800, w));
+              inp.value = String(saColWidths[key]);
+              saveSaColWidths(saColWidths);
+              buildSaThead();
+              applySaBodyColumnWidths();
+            });
+            label.appendChild(inp);
+            widthList.appendChild(label);
+          });
+        }
+        renderColumnControls();
+        renderWidthControls();
+        var colToggle = document.getElementById("dg-sa-columns-toggle");
+        var widthToggle = document.getElementById("dg-sa-widths-toggle");
+        if (colToggle) {
+          colToggle.addEventListener("click", function (e) {
+            e.stopPropagation();
+            if (widthPanel) widthPanel.classList.remove("open");
+            if (colPanel) colPanel.classList.toggle("open");
+            syncWrap();
+          });
+        }
+        if (widthToggle) {
+          widthToggle.addEventListener("click", function (e) {
+            e.stopPropagation();
+            if (colPanel) colPanel.classList.remove("open");
+            if (widthPanel) widthPanel.classList.toggle("open");
+            syncWrap();
+          });
+        }
+        document.addEventListener("click", function () {
+          if (colPanel) colPanel.classList.remove("open");
+          if (widthPanel) widthPanel.classList.remove("open");
+          syncWrap();
+        });
+        if (wrap) wrap.addEventListener("click", function (e) { e.stopPropagation(); });
+        var colAll = document.getElementById("dg-sa-columns-all");
+        var colNone = document.getElementById("dg-sa-columns-none");
+        var colDef = document.getElementById("dg-sa-columns-default");
+        if (colAll) colAll.addEventListener("click", function () {
+          visibleSaCols = SA_DEFAULT_VISIBLE.slice();
+          saveSaVisibleCols(visibleSaCols);
+          renderColumnControls();
+          renderTable();
+        });
+        if (colNone) colNone.addEventListener("click", function () {
+          visibleSaCols = ["supplier_name"];
+          saveSaVisibleCols(visibleSaCols);
+          renderColumnControls();
+          renderTable();
+        });
+        if (colDef) colDef.addEventListener("click", function () {
+          visibleSaCols = SA_DEFAULT_VISIBLE.slice();
+          saveSaVisibleCols(visibleSaCols);
+          renderColumnControls();
+          renderTable();
+        });
+        var widthDef = document.getElementById("dg-sa-widths-default");
+        if (widthDef) widthDef.addEventListener("click", function () {
+          saColWidths = {};
+          saveSaColWidths(saColWidths);
+          renderWidthControls();
+          renderTable();
+        });
+      }
+
+
+      /** Перед перерисовкой tbody — иначе innerHTML уничтожает #dg-sa-detail-card вместе со слотом. */
+      function stashDetailCardInHost() {
+        var host = document.getElementById("dg-sa-detail-host");
+        var card = document.getElementById("dg-sa-detail-card");
+        if (!host || !card) return;
+        host.appendChild(card);
+        card.classList.add("d-none");
+        host.classList.add("d-none");
+        host.setAttribute("aria-hidden", "true");
+      }
+
+      function mountDetailCard() {
+        var host = document.getElementById("dg-sa-detail-host");
+        var card = document.getElementById("dg-sa-detail-card");
+        if (!card) return;
+        var slot =
+          state.selectedKey &&
+          document.querySelector("#dg-sa-tbody tr.dg-sa-detail-row #dg-sa-detail-slot");
+        if (slot) {
+          slot.appendChild(card);
+          card.classList.remove("d-none");
+          card.removeAttribute("aria-hidden");
+          if (host) {
+            host.classList.add("d-none");
+            host.setAttribute("aria-hidden", "true");
+          }
+          return;
+        }
+        if (host) {
+          host.appendChild(card);
+          card.classList.add("d-none");
+          host.classList.add("d-none");
+          host.setAttribute("aria-hidden", "true");
+        }
+      }
+
+      function clearSaFloatingHeaderForDetail() {
+        var thead = document.getElementById("dg-sa-thead");
+        var row = thead && thead.querySelector("tr");
+        if (thead && row) clearSaHeaderFloatStyles(thead, row);
+      }
+
+      function closeDetail() {
+        state.selectedKey = "";
+        state.detailView = "summary";
+        destroyChart(trendChart);
+        trendChart = null;
+        var supLink = document.getElementById("dg-sa-detail-suppliers");
+        if (supLink) supLink.classList.add("d-none");
+        renderTable();
+      }
+
+      function fmtPctPlain(n) {
+        if (n == null || n === "") return "—";
+        var x = Number(n);
+        if (!Number.isFinite(x)) return "—";
+        return x.toFixed(1) + "%";
+      }
+
+      /** Доля оборота в месяц в % от суммы остатка (бэкенд отдаёт коэффициент, не проценты). */
+      function fmtTurnoverMonthlyPct(n) {
+        if (n == null || n === "") return "—";
+        var x = Number(n);
+        if (!Number.isFinite(x)) return "—";
+        return (x * 100).toFixed(1) + "%";
+      }
+
+      function fmtNewCell(r) {
+        var n = Number(r.skus_new_on_stock);
+        if (!Number.isFinite(n) || n <= 0) return "0";
+        var avg = r.new_avg_days_on_stock;
+        if (avg != null && Number.isFinite(Number(avg))) {
+          return fmtQty(n) + " · ср." + Math.round(Number(avg)) + "д";
+        }
+        return fmtQty(n);
+      }
+
+      function buildSupplierRowHtml(r, rowNum) {
+        var open = r.supplier_key === state.selectedKey;
+        var active = open ? " dg-sa-row-active" : "";
+        var viewHint = open && state.detailView ? " dg-sa-row-view-" + state.detailView : "";
+        var html =
+          '<tr class="dg-sa-row dg-sa-row-expandable' +
+          active +
+          viewHint +
+          '" data-key="' +
+          esc(r.supplier_key) +
+          '" data-name="' +
+          esc(r.supplier_name) +
+          '" role="button" tabindex="0" aria-expanded="' +
+          (open ? "true" : "false") +
+          '">' +
+          '<td class="dg-sa-expand-cell dg-sa-cell-drill" title="Сводка: залежалые, новые, слабые продажи"><span class="dg-sa-row-chevron" aria-hidden="true">›</span></td>' +
+          '<td class="text-end text-muted dg-sa-cell-num dg-sa-cell-drill" title="Сводка по поставщику">' +
+          fmtQty(rowNum) +
+          "</td>";
+        getVisibleSaCols().forEach(function (p) {
+          html += saCellHtml(p[0], r, rowNum);
+        });
+        return html + "</tr>";
+      }
+
+      /** Строка-контейнер под карточку деталей (не путать с detailSkuRowHtml). */
+      function supplierDetailSlotRowHtml() {
+        return (
+          '<tr class="dg-sa-detail-row"><td colspan="' +
+          saColCount() +
+          '" class="dg-sa-detail-cell"><div id="dg-sa-detail-slot"></div></td></tr>'
+        );
+      }
+
+      function renderTable() {
+        var theadEl = document.getElementById("dg-sa-thead");
+        var rowEl = theadEl && theadEl.querySelector("tr");
+        if (theadEl && rowEl) clearSaHeaderFloatStyles(theadEl, rowEl);
+        buildSaThead();
+        var tbody = document.getElementById("dg-sa-tbody");
+        if (!tbody) return;
+        destroyChart(trendChart);
+        trendChart = null;
+        stashDetailCardInHost();
+        if (!state.rows.length) {
+          tbody.innerHTML =
+            '<tr><td colspan="' +
+            saColCount() +
+            '" class="text-center text-muted py-4">Ничего не найдено</td></tr>';
+          mountDetailCard();
+          return;
+        }
+        var html = [];
+        var placed = false;
+        state.rows.forEach(function (r, idx) {
+          html.push(buildSupplierRowHtml(r, state.offset + idx + 1));
+          if (r.supplier_key === state.selectedKey) {
+            html.push(supplierDetailSlotRowHtml());
+            placed = true;
+          }
+        });
+        if (state.selectedKey && !placed) {
+          html.push(supplierDetailSlotRowHtml());
+        }
+        tbody.innerHTML = html.join("");
+        applySaBodyColumnWidths();
+        mountDetailCard();
+        if (state.selectedKey) {
+          refreshDetailTablesFromCache();
+          clearSaFloatingHeaderForDetail();
+          var detailTr = tbody.querySelector("tr.dg-sa-detail-row");
+          if (detailTr) {
+            requestAnimationFrame(function () {
+              captureSaTheadBaseTop();
+              detailTr.scrollIntoView({ behavior: "smooth", block: "nearest" });
+            });
+          }
+        }
+        var page = Math.floor(state.offset / state.limit) + 1;
+        var pages = Math.max(1, Math.ceil(state.total / state.limit));
+        var status = document.getElementById("dg-sa-pager-status");
+        if (status) {
+          status.textContent =
+            "Найдено: " +
+            state.total +
+            "; страница " +
+            page +
+            "/" +
+            pages +
+            "; показано: " +
+            state.rows.length;
+        }
+        saRefreshFloatingAfterLayout();
+        var prev = document.getElementById("dg-sa-prev");
+        var next = document.getElementById("dg-sa-next");
+        if (prev) prev.disabled = state.offset <= 0;
+        if (next) next.disabled = state.offset + state.limit >= state.total;
+      }
+
+      var detailLoadSeq = 0;
+      var detailRowsCache = {};
+
+      var SA_DETAIL_COLS_EXT = [
+        ["code", "Код"],
+        ["name", "Наименование", { nameCol: true }],
+        ["stock", "Остаток", { type: "number", align: "end" }],
+        ["in_transit", "Ожидание", { type: "number", align: "end", headerLines: ["Ожидание"] }],
+        ["stock_rub", "Остаток ₽", { type: "number", align: "end", virtual: true }],
+        ["sales_qty", "Продажи шт.", { type: "number", align: "end" }],
+        ["sales_revenue", "Продажи ₽", { type: "number", align: "end" }],
+        ["gross_margin_est", "Маржа", { type: "number", align: "end" }],
+        ["margin_pct", "Маржа %", { type: "number", align: "end" }],
+        ["days_on_stock", "Дней на складе", { type: "number", align: "end" }],
+      ];
+      var SA_DETAIL_COLS_SIMPLE = [
+        ["code", "Код"],
+        ["name", "Наименование", { nameCol: true }],
+        ["stock", "Остаток", { type: "number", align: "end" }],
+        ["in_transit", "Ожидание", { type: "number", align: "end", headerLines: ["Ожидание"] }],
+        ["sales_qty", "Продажи шт.", { type: "number", align: "end" }],
+        ["sales_revenue", "Продажи ₽", { type: "number", align: "end" }],
+      ];
+      var SA_DETAIL_COLS_STALE = [
+        ["code", "Код"],
+        ["name", "Наименование", { nameCol: true }],
+        ["stock", "Остаток", { type: "number", align: "end" }],
+        ["in_transit", "Ожидание", { type: "number", align: "end", headerLines: ["Ожидание"] }],
+      ];
+      var SA_DETAIL_COLS_NEW = [
+        ["code", "Код"],
+        ["name", "Наименование", { nameCol: true }],
+        ["stock", "Остаток", { type: "number", align: "end" }],
+        ["in_transit", "Ожидание", { type: "number", align: "end", headerLines: ["Ожидание"] }],
+        ["days_on_stock", "Дней на складе", { type: "number", align: "end" }],
+      ];
+      var SA_DETAIL_COLS_WEAK = SA_DETAIL_COLS_SIMPLE;
+
+      var SA_DETAIL_WIDTH_DEFAULTS = {
+        ext: {
+          code: 80,
+          name: 220,
+          stock: 64,
+          in_transit: 64,
+          stock_rub: 84,
+          sales_qty: 68,
+          sales_revenue: 88,
+          gross_margin_est: 80,
+          margin_pct: 68,
+          days_on_stock: 76,
+        },
+        simple: { code: 80, name: 200, stock: 64, in_transit: 64, sales_qty: 68, sales_revenue: 88 },
+      };
+
+      var SA_DETAIL_TABLES = {
+        warehouse_ext: {
+          cacheKey: "warehouse_ext",
+          widthProfile: "ext",
+          tableId: "dg-sa-detail-warehouse-ext-table",
+          tbodyId: "dg-sa-detail-warehouse-ext",
+          theadId: "dg-sa-detail-warehouse-ext-thead",
+          colgroupId: "dg-sa-detail-warehouse-ext-cols",
+          cols: SA_DETAIL_COLS_EXT,
+          defaultSort: { by: "sales_revenue", dir: "desc" },
+          emptyText: "Нет складских SKU",
+        },
+        warehouse_in_all: {
+          cacheKey: "warehouse_in_all",
+          widthProfile: "ext",
+          tableId: "dg-sa-detail-warehouse-in-all-table",
+          tbodyId: "dg-sa-detail-warehouse-in-all",
+          theadId: "dg-sa-detail-warehouse-in-all-thead",
+          colgroupId: "dg-sa-detail-warehouse-in-all-cols",
+          cols: SA_DETAIL_COLS_EXT,
+          defaultSort: { by: "sales_revenue", dir: "desc" },
+          emptyText: "Нет складских SKU",
+        },
+        non_warehouse: {
+          cacheKey: "non_warehouse",
+          widthProfile: "simple",
+          tableId: "dg-sa-detail-non-warehouse-table",
+          tbodyId: "dg-sa-detail-non-warehouse",
+          theadId: "dg-sa-detail-non-warehouse-thead",
+          colgroupId: "dg-sa-detail-non-warehouse-cols",
+          cols: SA_DETAIL_COLS_SIMPLE,
+          defaultSort: { by: "sales_revenue", dir: "desc" },
+          emptyText: "Нет позиций без отметки «складская»",
+        },
+        stale: {
+          cacheKey: "stale",
+          tbodyId: "dg-sa-detail-stale",
+          theadId: "dg-sa-detail-stale-thead",
+          cols: SA_DETAIL_COLS_STALE,
+          defaultSort: { by: "stock", dir: "desc" },
+          emptyText: "Нет залежалых (или только недавно появившиеся на складе)",
+        },
+        new: {
+          cacheKey: "new",
+          tbodyId: "dg-sa-detail-new",
+          theadId: "dg-sa-detail-new-thead",
+          cols: SA_DETAIL_COLS_NEW,
+          defaultSort: { by: "days_on_stock", dir: "asc" },
+          emptyText: "Нет SKU, которые недавно появились на складе (см. срок в фильтрах)",
+        },
+        weak: {
+          cacheKey: "weak",
+          tbodyId: "dg-sa-detail-weak",
+          theadId: "dg-sa-detail-weak-thead",
+          cols: SA_DETAIL_COLS_WEAK,
+          defaultSort: { by: "sales_revenue", dir: "desc" },
+          emptyText: "Нет SKU с продажами ниже медианы поставщика",
+        },
+      };
+
+      var detailSortUi = {};
+      var detailWidthsByProfile = { ext: null, simple: null };
+
+      function userSaDetailWidthsKey(profile) {
+        try {
+          var u = String(localStorage.getItem("currentUser") || "guest").trim() || "guest";
+          return "dg.supplier_analysis.detailWidths.v1:" + profile + ":" + u;
+        } catch (e) {
+          return "dg.supplier_analysis.detailWidths.v1:" + profile + ":guest";
+        }
+      }
+
+      function loadDetailWidths(profile) {
+        var defs = SA_DETAIL_WIDTH_DEFAULTS[profile] || {};
+        try {
+          var raw = localStorage.getItem(userSaDetailWidthsKey(profile));
+          if (!raw) return Object.assign({}, defs);
+          var parsed = JSON.parse(raw);
+          return Object.assign({}, defs, parsed || {});
+        } catch (e) {
+          return Object.assign({}, defs);
+        }
+      }
+
+      function saveDetailWidths(profile, map) {
+        try {
+          localStorage.setItem(userSaDetailWidthsKey(profile), JSON.stringify(map || {}));
+        } catch (e) {}
+      }
+
+      function ensureDetailWidths(profile) {
+        if (!detailWidthsByProfile[profile]) {
+          detailWidthsByProfile[profile] = loadDetailWidths(profile);
+        }
+        return detailWidthsByProfile[profile];
+      }
+
+      function ensureDetailSort(tableKey) {
+        var def = SA_DETAIL_TABLES[tableKey];
+        if (!def) return { by: "code", dir: "asc" };
+        if (!detailSortUi[tableKey]) {
+          detailSortUi[tableKey] = {
+            by: def.defaultSort.by,
+            dir: def.defaultSort.dir,
+          };
+        }
+        return detailSortUi[tableKey];
+      }
+
+      function detailSortArrow(dir) {
+        return dir === "asc" ? " ↑" : " ↓";
+      }
+
+      function detailSortValue(p, key) {
+        if (key === "stock_rub") return stockLineRub(p);
+        if (key === "name" || key === "code") return String(p[key] || "");
+        var n = Number(p[key]);
+        return Number.isFinite(n) ? n : null;
+      }
+
+      function sortDetailRows(rows, ui, cols) {
+        var list = rows.slice();
+        var colMap = {};
+        cols.forEach(function (c) {
+          colMap[c[0]] = (c[2] && c[2].type) || "string";
+        });
+        var type = colMap[ui.by] || "string";
+        list.sort(function (a, b) {
+          var va = detailSortValue(a, ui.by);
+          var vb = detailSortValue(b, ui.by);
+          if (type === "number") {
+            var na = va == null ? -Infinity : va;
+            var nb = vb == null ? -Infinity : vb;
+            if (na === nb) return 0;
+            return ui.dir === "asc" ? na - nb : nb - na;
+          }
+          var sa = String(va || "");
+          var sb = String(vb || "");
+          var cmp = sa.localeCompare(sb, "ru", { sensitivity: "base" });
+          return ui.dir === "asc" ? cmp : -cmp;
+        });
+        return list;
+      }
+
+      var SA_DETAIL_COL_MIN = 32;
+      var SA_DETAIL_COL_MAX = 600;
+
+      function clampDetailColWidthPx(w, fallback) {
+        var n = Number(w);
+        if (!Number.isFinite(n)) return fallback;
+        return Math.max(SA_DETAIL_COL_MIN, Math.min(SA_DETAIL_COL_MAX, Math.round(n)));
+      }
+
+      function detailColWidth(profile, key, cols) {
+        var widths = ensureDetailWidths(profile);
+        var stored = Number(widths[key]);
+        if (Number.isFinite(stored) && stored > 0) {
+          return clampDetailColWidthPx(stored, stored);
+        }
+        var defs = SA_DETAIL_WIDTH_DEFAULTS[profile] || {};
+        if (defs[key]) return defs[key];
+        var col = cols.find(function (c) { return c[0] === key; });
+        if (col && col[2] && col[2].nameCol) return 220;
+        return 72;
+      }
+
+      function getDetailTableColumnWidths(def) {
+        return def.cols.map(function (c) {
+          return detailColWidth(def.widthProfile, c[0], def.cols);
+        });
+      }
+
+      function getDetailTableEl(def) {
+        if (def.tableId) {
+          var byId = document.getElementById(def.tableId);
+          if (byId) return byId;
+        }
+        var tbody = document.getElementById(def.tbodyId);
+        return tbody ? tbody.closest("table") : null;
+      }
+
+      function applyDetailColgroup(colgroupId, widths) {
+        var cg = document.getElementById(colgroupId);
+        if (!cg) return;
+        cg.innerHTML = widths
+          .map(function (w) {
+            return (
+              '<col style="width:' +
+              w +
+              "px;min-width:" +
+              w +
+              "px;max-width:" +
+              w +
+              'px">'
+            );
+          })
+          .join("");
+      }
+
+      function applyDetailTableLayout(tableKey) {
+        var def = SA_DETAIL_TABLES[tableKey];
+        if (!def || !def.colgroupId || !def.widthProfile) return;
+        var table = getDetailTableEl(def);
+        if (!table) return;
+        var widths = getDetailTableColumnWidths(def);
+        var total = widths.reduce(function (s, w) {
+          return s + w;
+        }, 0);
+        applyDetailColgroup(def.colgroupId, widths);
+        table.classList.add("dg-sa-detail-table-sized");
+        table.style.tableLayout = "fixed";
+        table.style.width = total + "px";
+        table.style.minWidth = total + "px";
+        table.style.maxWidth = total + "px";
+        var headTr = table.querySelector("thead tr");
+        if (headTr) {
+          Array.prototype.forEach.call(headTr.children, function (th, i) {
+            if (widths[i]) setSaCellWidthStyle(th, widths[i]);
+          });
+        }
+        table.querySelectorAll("tbody tr").forEach(function (tr) {
+          if (tr.querySelector("td[colspan]")) return;
+          Array.prototype.forEach.call(tr.children, function (td, i) {
+            if (widths[i]) setSaCellWidthStyle(td, widths[i]);
+          });
+        });
+      }
+
+      function buildDetailThead(tableKey) {
+        var def = SA_DETAIL_TABLES[tableKey];
+        if (!def) return;
+        var thead = document.getElementById(def.theadId);
+        if (!thead) return;
+        var ui = ensureDetailSort(tableKey);
+        thead.innerHTML = "";
+        var tr = document.createElement("tr");
+        def.cols.forEach(function (c) {
+          var key = c[0];
+          var label = c[1];
+          var opts = c[2] || {};
+          var th = document.createElement("th");
+          th.scope = "col";
+          th.className = "dg-sa-detail-sortable" + (opts.align === "end" ? " text-end" : "");
+          if (opts.nameCol) th.classList.add("dg-sa-detail-name-col");
+          th.setAttribute("data-dg-detail-table", tableKey);
+          th.setAttribute("data-sort-key", key);
+          if (ui.by === key) {
+            th.classList.add("dg-sa-detail-sort-active");
+            th.setAttribute("aria-sort", ui.dir === "asc" ? "ascending" : "descending");
+            th.textContent = label + detailSortArrow(ui.dir);
+          } else {
+            th.textContent = label;
+          }
+          tr.appendChild(th);
+        });
+        thead.appendChild(tr);
+        if (def.colgroupId && def.widthProfile) {
+          applyDetailTableLayout(tableKey);
+        }
+      }
+
+      function detailCodeCellHtml(p) {
+        return (
+          '<td class="dg-sa-detail-code-cell"><a href="' +
+          productHref(p.code) +
+          '" target="_blank" rel="noopener">' +
+          esc(p.code) +
+          "</a></td>"
+        );
+      }
+
+      function detailNameCellHtml(p) {
+        var title = esc(p.name);
+        return (
+          '<td class="dg-sa-detail-name-cell" title="' +
+          title +
+          '"><a href="' +
+          productHref(p.code) +
+          '" target="_blank" rel="noopener">' +
+          title +
+          "</a></td>"
+        );
+      }
+
+      function detailCellHtml(key, p) {
+        switch (key) {
+          case "code":
+            return detailCodeCellHtml(p);
+          case "name":
+            return detailNameCellHtml(p);
+          case "stock":
+            return '<td class="text-end">' + fmtQty(p.stock) + "</td>";
+          case "in_transit":
+            return (
+              '<td class="text-end">' +
+              (p.in_transit != null && Number.isFinite(Number(p.in_transit)) ? fmtQty(p.in_transit) : "—") +
+              "</td>"
+            );
+          case "stock_rub":
+            return '<td class="text-end">' + fmtMoney(stockLineRub(p)) + "</td>";
+          case "sales_qty":
+            return '<td class="text-end">' + fmtQty(p.sales_qty) + "</td>";
+          case "sales_revenue":
+            return '<td class="text-end">' + fmtMoney(p.sales_revenue) + "</td>";
+          case "gross_margin_est":
+            return '<td class="text-end">' + fmtMoney(p.gross_margin_est) + "</td>";
+          case "margin_pct":
+            return '<td class="text-end">' + fmtPctPlain(p.margin_pct) + "</td>";
+          case "days_on_stock":
+            return (
+              '<td class="text-end">' +
+              (p.days_on_stock != null && Number(p.days_on_stock) > 0 ? fmtQty(p.days_on_stock) : "—") +
+              "</td>"
+            );
+          default:
+            return '<td>—</td>';
+        }
+      }
+
+      function detailSkuRowHtml(p, cols) {
+        if (!p || !cols || !cols.length) return "";
+        return "<tr>" + cols.map(function (c) { return detailCellHtml(c[0], p); }).join("") + "</tr>";
+      }
+
+      function renderDetailTable(tableKey) {
+        var def = SA_DETAIL_TABLES[tableKey];
+        if (!def || !def.cols || !def.cols.length) return;
+        var tbody = document.getElementById(def.tbodyId);
+        if (!tbody) return;
+        var rows = detailRowsCache[def.cacheKey] || [];
+        var ui = ensureDetailSort(tableKey);
+        buildDetailThead(tableKey);
+        var sorted = sortDetailRows(rows, ui, def.cols);
+        var colSpan = def.cols.length;
+        if (!sorted.length) {
+          tbody.innerHTML =
+            '<tr><td colspan="' +
+            colSpan +
+            '" class="text-muted">' +
+            def.emptyText +
+            "</td></tr>";
+          if (def.colgroupId && def.widthProfile) applyDetailTableLayout(tableKey);
+          return;
+        }
+        try {
+          var html = sorted
+            .map(function (p) {
+              return detailSkuRowHtml(p, def.cols);
+            })
+            .filter(Boolean)
+            .join("");
+          tbody.innerHTML = html || (
+            '<tr><td colspan="' + colSpan + '" class="text-muted">' + def.emptyText + "</td></tr>"
+          );
+          if (def.colgroupId && def.widthProfile) applyDetailTableLayout(tableKey);
+        } catch (err) {
+          console.error("[supplier-analysis] detail table", tableKey, err);
+          tbody.innerHTML =
+            '<tr><td colspan="' +
+            colSpan +
+            '" class="text-danger">Ошибка отрисовки: ' +
+            esc(err && err.message ? err.message : String(err)) +
+            "</td></tr>";
+        }
+      }
+
+      function refreshDetailTablesFromCache() {
+        if (!state.selectedKey) return;
+        mountDetailCard();
+        Object.keys(SA_DETAIL_TABLES).forEach(function (tableKey) {
+          var def = SA_DETAIL_TABLES[tableKey];
+          if (!def) return;
+          var cached = detailRowsCache[def.cacheKey];
+          if (cached && cached.length) renderDetailTable(tableKey);
+        });
+      }
+
+      function setDetailRows(tableKey, rows) {
+        var def = SA_DETAIL_TABLES[tableKey];
+        if (!def) return;
+        detailRowsCache[def.cacheKey] = rows || [];
+        if (state.selectedKey) mountDetailCard();
+        renderDetailTable(tableKey);
+      }
+
+      function renderDetailTablesForProfile(widthProfile) {
+        Object.keys(SA_DETAIL_TABLES).forEach(function (tableKey) {
+          var def = SA_DETAIL_TABLES[tableKey];
+          if (def.widthProfile === widthProfile) renderDetailTable(tableKey);
+        });
+      }
+
+      function renderDetailWidthControls(profile) {
+        var rootId = profile === "ext" ? "dg-sa-detail-widths-ext" : "dg-sa-detail-widths-simple";
+        var root = document.getElementById(rootId);
+        if (!root) return;
+        var cols = profile === "ext" ? SA_DETAIL_COLS_EXT : SA_DETAIL_COLS_SIMPLE;
+        var widths = ensureDetailWidths(profile);
+        root.innerHTML = "";
+        cols.forEach(function (c) {
+          var key = c[0];
+          var label = document.createElement("label");
+          label.textContent = c[1];
+          var inp = document.createElement("input");
+          inp.type = "number";
+          inp.min = String(SA_DETAIL_COL_MIN);
+          inp.max = String(SA_DETAIL_COL_MAX);
+          inp.value = String(detailColWidth(profile, key, cols));
+          inp.addEventListener("change", function () {
+            var fb = SA_DETAIL_WIDTH_DEFAULTS[profile][key] || 80;
+            widths[key] = clampDetailColWidthPx(parseInt(inp.value, 10), fb);
+            inp.value = String(widths[key]);
+            saveDetailWidths(profile, widths);
+            renderDetailTablesForProfile(profile);
+          });
+          label.appendChild(inp);
+          root.appendChild(label);
+        });
+      }
+
+      function bindSaDetailTables() {
+        var card = document.getElementById("dg-sa-detail-card");
+        if (card) {
+          card.addEventListener("click", function (ev) {
+            var th = ev.target.closest("th.dg-sa-detail-sortable");
+            if (!th) return;
+            if (window.getSelection && window.getSelection().toString().trim()) return;
+            var tableKey = th.getAttribute("data-dg-detail-table");
+            var sortKey = th.getAttribute("data-sort-key");
+            if (!tableKey || !sortKey) return;
+            var ui = ensureDetailSort(tableKey);
+            if (ui.by === sortKey) ui.dir = ui.dir === "asc" ? "desc" : "asc";
+            else {
+              ui.by = sortKey;
+              ui.dir = sortKey === "name" || sortKey === "code" ? "asc" : "desc";
+            }
+            renderDetailTable(tableKey);
+          });
+        }
+        document.querySelectorAll(".dg-sa-detail-widths-btn").forEach(function (btn) {
+          btn.addEventListener("click", function (e) {
+            e.stopPropagation();
+            var profile = btn.getAttribute("data-dg-detail-profile");
+            if (!profile) return;
+            var wrap = document.querySelector(
+              '.dg-sa-detail-widths-panel-wrap[data-dg-detail-profile="' + profile + '"]'
+            );
+            if (!wrap) return;
+            var willOpen = wrap.classList.contains("d-none");
+            wrap.classList.toggle("d-none");
+            if (willOpen) renderDetailWidthControls(profile);
+          });
+        });
+        document.querySelectorAll(".dg-sa-detail-widths-default").forEach(function (btn) {
+          btn.addEventListener("click", function (e) {
+            e.stopPropagation();
+            var profile = btn.getAttribute("data-dg-detail-profile");
+            if (!profile) return;
+            detailWidthsByProfile[profile] = Object.assign({}, SA_DETAIL_WIDTH_DEFAULTS[profile] || {});
+            saveDetailWidths(profile, detailWidthsByProfile[profile]);
+            renderDetailWidthControls(profile);
+            renderDetailTablesForProfile(profile);
+          });
+        });
+        renderDetailWidthControls("ext");
+        renderDetailWidthControls("simple");
+      }
+
+      function stockLineRub(p) {
+        var s = Number(p.stock);
+        var b = Number(p.buy_price);
+        if (!Number.isFinite(s) || !Number.isFinite(b)) return null;
+        return s * b;
+      }
+
+      function setDetailBlockCount(elId, payload, fallbackTotal) {
+        var el = document.getElementById(elId);
+        if (!el) return;
+        var total = payload && payload.total != null ? Number(payload.total) : fallbackTotal;
+        var shown = (payload && payload.rows && payload.rows.length) || 0;
+        if (!Number.isFinite(total)) total = shown;
+        var txt = "— " + fmtQty(total);
+        if (payload && payload.truncated && shown < total) {
+          txt += ", показано " + fmtQty(shown);
+        }
+        el.textContent = txt;
+      }
+
+      function fetchProducts(supplierKey, mode, limit) {
+        var px = new URLSearchParams();
+        px.set("supplier_key", supplierKey);
+        px.set("days", String(state.days));
+        px.set("mode", mode);
+        px.set("limit", String(limit || 20));
+        if (mode === "stale" || mode === "laggards" || mode === "new") {
+          px.set("new_stock_days", String(state.new_stock_days));
+        }
+        appendProjectParams(px);
+        return fetch("/api/supplier-analysis/products?" + px.toString(), {
+          credentials: "same-origin",
+          headers: authHeaders(),
+        })
+          .then(function (r) {
+            if (!r.ok) throw new Error("HTTP " + r.status);
+            return r.json();
+          })
+          .then(function (payload) {
+            if (!payload || payload.success === false) {
+              throw new Error((payload && payload.error) || "Ошибка загрузки SKU");
+            }
+            return payload;
+          });
+      }
+
+      function setDetailTbodyLoading(tbodyId, colCount, message) {
+        var el = document.getElementById(tbodyId);
+        if (!el) return;
+        var n = Math.max(1, colCount || 1);
+        el.innerHTML =
+          '<tr><td colspan="' +
+          n +
+          '" class="text-muted">' +
+          esc(message || "Загрузка…") +
+          "</td></tr>";
+      }
+
+      function showDetailLoadError(tbodyIds, colCount, message) {
+        (tbodyIds || []).forEach(function (id) {
+          setDetailTbodyLoading(id, colCount, message);
+        });
+      }
+
+      function syncDetailPanels(viewMode) {
+        var summary = document.getElementById("dg-sa-detail-view-summary");
+        var wh = document.getElementById("dg-sa-detail-view-warehouse");
+        var all = document.getElementById("dg-sa-detail-view-all-skus");
+        if (summary) summary.classList.toggle("d-none", viewMode !== "summary");
+        if (wh) wh.classList.toggle("d-none", viewMode !== "warehouse");
+        if (all) all.classList.toggle("d-none", viewMode !== "all_skus");
+      }
+
+      function updateDetailChrome(key, name, viewMode) {
+        var title = document.getElementById("dg-sa-detail-title");
+        var sig = document.getElementById("dg-sa-detail-signals");
+        var row = findSupplierRow(key);
+        var label = name || key;
+        if (title) {
+          if (viewMode === "warehouse") title.textContent = "SKU складская: " + label;
+          else if (viewMode === "all_skus") title.textContent = "SKU всего: " + label;
+          else title.textContent = "Сводка: " + label;
+        }
+        if (sig) {
+          if (viewMode === "summary" && row) sig.innerHTML = signalBadges(row.signals);
+          else if (viewMode === "warehouse")
+            sig.innerHTML =
+              '<span class="text-muted small">Клик по числу «SKU складская» — таблица с продажами и остатками по каждому SKU</span>';
+          else if (viewMode === "all_skus")
+            sig.innerHTML =
+              '<span class="text-muted small">Сначала позиции без «складская», затем складские с полными показателями</span>';
+          else
+            sig.innerHTML =
+              '<span class="text-muted small">Поставщик не на этой странице — данные SKU ниже</span>';
+        }
+      }
+
+      function loadDetailContent(key, name, viewMode, loadSeq) {
+        syncDetailPanels(viewMode);
+        updateDetailChrome(key, name, viewMode);
+        var supplierRow = findSupplierRow(key);
+
+        if (viewMode === "warehouse") {
+          setDetailTbodyLoading("dg-sa-detail-warehouse-ext", SA_DETAIL_COLS_EXT.length);
+          fetchProducts(key, "warehouse", 500)
+            .then(function (payload) {
+              if (loadSeq !== detailLoadSeq || state.selectedKey !== key) return;
+              setDetailBlockCount(
+                "dg-sa-detail-warehouse-ext-count",
+                payload,
+                supplierRow && (supplierRow.skus_warehouse != null ? supplierRow.skus_warehouse : supplierRow.products_total)
+              );
+              setDetailRows("warehouse_ext", (payload && payload.rows) || []);
+            })
+            .catch(function (err) {
+              if (loadSeq !== detailLoadSeq || state.selectedKey !== key) return;
+              showDetailLoadError(["dg-sa-detail-warehouse-ext"], SA_DETAIL_COLS_EXT.length, err.message || String(err));
+            });
+          return;
+        }
+
+        if (viewMode === "all_skus") {
+          setDetailTbodyLoading("dg-sa-detail-non-warehouse", SA_DETAIL_COLS_SIMPLE.length);
+          setDetailTbodyLoading("dg-sa-detail-warehouse-in-all", SA_DETAIL_COLS_EXT.length);
+          fetchProducts(key, "all_skus", 500)
+            .then(function (payload) {
+              if (loadSeq !== detailLoadSeq || state.selectedKey !== key) return;
+              var rows = (payload && payload.rows) || [];
+              var nonWh = rows.filter(function (p) {
+                return !p.is_warehouse;
+              });
+              var wh = rows.filter(function (p) {
+                return p.is_warehouse;
+              });
+              setDetailBlockCount("dg-sa-detail-non-wh-count", { total: nonWh.length, rows: nonWh, truncated: false }, nonWh.length);
+              setDetailBlockCount(
+                "dg-sa-detail-wh-in-all-count",
+                { total: wh.length, rows: wh, truncated: payload && payload.truncated },
+                wh.length
+              );
+              setDetailRows("non_warehouse", nonWh);
+              setDetailRows("warehouse_in_all", wh);
+            })
+            .catch(function (err) {
+              if (loadSeq !== detailLoadSeq || state.selectedKey !== key) return;
+              showDetailLoadError(
+                ["dg-sa-detail-non-warehouse", "dg-sa-detail-warehouse-in-all"],
+                SA_DETAIL_COLS_EXT.length,
+                err.message || String(err)
+              );
+            });
+          return;
+        }
+
+        loadChartJs().then(function (Chart) {
+          if (loadSeq !== detailLoadSeq || state.selectedKey !== key) return;
+          loadTrendChart(Chart);
+        });
+        ["dg-sa-detail-stale", "dg-sa-detail-new", "dg-sa-detail-weak"].forEach(function (id) {
+          var el = document.getElementById(id);
+          if (el) el.innerHTML = '<tr><td colspan="6" class="text-muted">Загрузка…</td></tr>';
+        });
+        Promise.all([
+          fetchProducts(key, "stale", 25),
+          fetchProducts(key, "new", 25),
+          fetchProducts(key, "weak", 25),
+        ]).then(function (parts) {
+          if (loadSeq !== detailLoadSeq || state.selectedKey !== key) return;
+          var stale = (parts[0] && parts[0].rows) || [];
+          var fresh = (parts[1] && parts[1].rows) || [];
+          var weak = (parts[2] && parts[2].rows) || [];
+          setDetailRows("stale", stale);
+          setDetailRows("new", fresh);
+          setDetailRows("weak", weak);
+        });
+      }
+
+      function openDetail(key, name, viewMode) {
+        if (!key) return;
+        viewMode = viewMode || "summary";
+        if (state.selectedKey === key && state.detailView === viewMode) {
+          closeDetail();
+          return;
+        }
+        state.selectedKey = key;
+        state.detailView = viewMode;
+        var loadSeq = ++detailLoadSeq;
+        renderTable();
+        var supLink = document.getElementById("dg-sa-detail-suppliers");
+        if (supLink) {
+          supLink.href = suppliersHref(name || key);
+          supLink.classList.remove("d-none");
+        }
+        requestAnimationFrame(function () {
+          if (state.selectedKey !== key || loadSeq !== detailLoadSeq) return;
+          mountDetailCard();
+          loadDetailContent(key, name, viewMode, loadSeq);
+        });
+      }
+
+      function resolveRowClickView(cell) {
+        if (!cell) return "summary";
+        if (cell.classList.contains("dg-sa-cell-skus-warehouse")) return "warehouse";
+        if (cell.classList.contains("dg-sa-cell-skus-total")) return "all_skus";
+        if (
+          cell.classList.contains("dg-sa-cell-drill") ||
+          cell.classList.contains("dg-sa-expand-cell") ||
+          cell.classList.contains("dg-sa-cell-num") ||
+          cell.classList.contains("dg-sa-cell-supplier")
+        )
+          return "summary";
+        return null;
+      }
+
+      function loadRanking() {
+        var p = new URLSearchParams();
+        p.set("days", String(state.days));
+        p.set("new_stock_days", String(state.new_stock_days));
+        p.set("focus", state.focus || "all");
+        p.set("limit", String(state.limit));
+        p.set("offset", String(state.offset));
+        p.set("sort_by", state.sort_by);
+        p.set("sort_dir", state.sort_dir);
+        if (state.search) p.set("search", state.search);
+        appendProjectParams(p);
+        return fetch("/api/supplier-analysis/ranking?" + p.toString(), {
+          credentials: "same-origin",
+          headers: authHeaders(),
+        })
+          .then(function (r) {
+            if (!r.ok) throw new Error("HTTP " + r.status);
+            return r.json();
+          })
+          .then(function (j) {
+            if (!j || !j.success) throw new Error((j && j.error) || "Ошибка");
+            state.total = j.total || 0;
+            state.rows = j.rows || [];
+            renderTable();
+          });
+      }
+
+      function loadAll() {
+        var days = state.days;
+        var q = new URLSearchParams();
+        q.set("days", String(days));
+        q.set("new_stock_days", String(state.new_stock_days));
+        if (state.search) q.set("search", state.search);
+        appendProjectParams(q);
+        var pOverview = fetch("/api/supplier-analysis/overview?" + q.toString(), {
+          credentials: "same-origin",
+          headers: authHeaders(),
+        }).then(function (r) { return r.json(); });
+        var pHigh = fetch("/api/supplier-analysis/highlights?" + q.toString(), {
+          credentials: "same-origin",
+          headers: authHeaders(),
+        }).then(function (r) { return r.json(); });
+        return Promise.all([pOverview, pHigh, loadRanking(), loadSalesBreakdown()])
+          .then(function (parts) {
+            if (parts[0] && parts[0].success) {
+              state.overview = parts[0];
+              if (parts[0].project_filter && parts[0].project_filter.label) {
+                updateProjectFilterHint(parts[0].project_filter.label);
+              }
+              renderKpis();
+            }
+            if (parts[1] && parts[1].success) {
+              state.highlights = parts[1];
+              renderHighlights();
+              renderCharts();
+            }
+
+          })
+          .catch(function (e) {
+            if (window.DatagonNotify) {
+              DatagonNotify.toast({ type: "danger", message: e.message || "Ошибка загрузки" });
+            }
+          });
+      }
+
+      function bindCollapse(toggleId, bodyId, key) {
+        var btn = document.getElementById(toggleId);
+        var body = document.getElementById(bodyId);
+        if (!btn || !body) return;
+        var storageKey = "dg.sa." + key + ".collapsed.v1";
+        function apply(collapsed) {
+          body.classList.toggle("d-none", collapsed);
+          btn.textContent = collapsed ? "Развернуть" : "Свернуть";
+        }
+        try {
+          apply(localStorage.getItem(storageKey) === "1");
+        } catch (e) {}
+        btn.addEventListener("click", function () {
+          var c = !body.classList.contains("d-none");
+          apply(c);
+          try {
+            localStorage.setItem(storageKey, c ? "1" : "0");
+          } catch (e2) {}
+        });
+      }
+
+      function bindSaTableCardCollapse() {
+        var key = "dg.supplier_analysis.table-card.collapsed.v1";
+        var body = document.getElementById("dg-sa-table-body");
+        var btn = document.getElementById("dg-sa-table-toggle");
+        if (!body || !btn) return;
+        var collapsed = false;
+        try {
+          collapsed = window.localStorage.getItem(key) === "1";
+        } catch (e) {}
+        function apply() {
+          body.style.display = collapsed ? "none" : "";
+          btn.textContent = collapsed ? "Развернуть" : "Свернуть";
+        }
+        apply();
+        btn.addEventListener("click", function () {
+          collapsed = !collapsed;
+          try {
+            window.localStorage.setItem(key, collapsed ? "1" : "0");
+          } catch (e2) {}
+          apply();
+          if (!collapsed) saRefreshFloatingAfterLayout();
+        });
+      }
+
+      function init() {
+        bindCollapse("dg-sa-filters-toggle", "dg-sa-filters-body", "filters");
+        bindCollapse("dg-sa-summary-toggle", "dg-sa-summary-body", "summary");
+        (function bindSaSummaryCollapseFloating() {
+          var btn = document.getElementById("dg-sa-summary-toggle");
+          if (!btn) return;
+          btn.addEventListener("click", function () {
+            requestAnimationFrame(function () {
+              requestAnimationFrame(saRefreshFloatingAfterLayout);
+            });
+          });
+        })();
+        bindCollapse("dg-sa-breakdown-toggle", "dg-sa-breakdown-body", "breakdown");
+        bindSaTableCardCollapse();
+
+        var bdPrev = document.getElementById("dg-sa-breakdown-prev");
+        var bdNext = document.getElementById("dg-sa-breakdown-next");
+        if (bdPrev) {
+          bdPrev.addEventListener("click", function () {
+            state.breakdownOffset = Math.max(0, state.breakdownOffset - state.breakdownLimit);
+            loadSalesBreakdown();
+          });
+        }
+        if (bdNext) {
+          bdNext.addEventListener("click", function () {
+            var total = (state.breakdown && state.breakdown.total) || 0;
+            if (state.breakdownOffset + state.breakdownLimit < total) {
+              state.breakdownOffset += state.breakdownLimit;
+              loadSalesBreakdown();
+            }
+          });
+        }
+
+        var daysEl = document.getElementById("dg-sa-days");
+        var searchEl = document.getElementById("dg-sa-search");
+        var pageSize = document.getElementById("dg-sa-page-size");
+
+        var newStockEl = document.getElementById("dg-sa-new-stock-days");
+        if (newStockEl) {
+          newStockEl.addEventListener("change", function () {
+            state.pending.new_stock_days = Number(newStockEl.value) || 30;
+            syncDirtyApply();
+          });
+        }
+        if (daysEl) {
+          daysEl.addEventListener("change", function () {
+            state.pending.days = Number(daysEl.value) || 90;
+            syncDirtyApply();
+          });
+        }
+        if (searchEl) {
+          searchEl.addEventListener("input", function () {
+            state.pending.search = searchEl.value;
+            syncDirtyApply();
+          });
+          searchEl.addEventListener("keydown", function (ev) {
+            if (ev.key === "Enter") {
+              ev.preventDefault();
+              document.getElementById("dg-sa-apply").click();
+            }
+            if (ev.key === "Escape") {
+              searchEl.value = "";
+              state.pending.search = "";
+              commitFilters();
+            }
+          });
+        }
+        if (pageSize) {
+          pageSize.addEventListener("change", function () {
+            state.limit = Number(pageSize.value) || 100;
+            state.offset = 0;
+            loadAll();
+          });
+        }
+
+        document.getElementById("dg-sa-apply").addEventListener("click", commitFilters);
+        var exportBtn = document.getElementById("dg-sa-export");
+        if (exportBtn) {
+          exportBtn.addEventListener("click", function () {
+            var p = new URLSearchParams();
+            p.set("days", String(state.days));
+            p.set("new_stock_days", String(state.new_stock_days));
+            if (state.search) p.set("search", state.search);
+            appendProjectParams(p);
+            window.location.href = "/api/supplier-analysis/export?" + p.toString();
+            if (window.DatagonNotify) {
+              DatagonNotify.toast({ type: "success", message: "Скачивание CSV…" });
+            }
+          });
+        }
+
+        document.getElementById("dg-sa-reset").addEventListener("click", function () {
+          state.pending = { days: 90, new_stock_days: 30, search: "", project_mode: "selected", project_uuids: [] };
+          if (daysEl) daysEl.value = "90";
+          if (newStockEl) newStockEl.value = "30";
+          if (searchEl) searchEl.value = "";
+          var mirror = document.getElementById("dg-sa-table-search-mirror");
+          if (mirror) mirror.value = "";
+          syncSaPageSize(100);
+          var modeSel = document.getElementById("dg-sa-project-mode-selected");
+          if (modeSel) modeSel.checked = true;
+          state.sort_by = "sales_revenue";
+          state.sort_dir = "desc";
+          buildSaThead();
+          loadProjectsList()
+            .then(function () {
+              applyDefaultMarketplaceProjectSelection();
+              syncDirtyApply();
+              return commitFilters();
+            })
+            .catch(function () {
+              syncDirtyApply();
+              return commitFilters();
+            });
+        });
+
+        ["dg-sa-project-mode-all", "dg-sa-project-mode-selected"].forEach(function (id) {
+          var el = document.getElementById(id);
+          if (el) el.addEventListener("change", syncProjectModeUi);
+        });
+        var projReload = document.getElementById("dg-sa-projects-reload");
+        if (projReload) projReload.addEventListener("click", loadProjectsList);
+        var projSelAll = document.getElementById("dg-sa-projects-select-all");
+        if (projSelAll) {
+          projSelAll.addEventListener("click", function () {
+            var list = document.getElementById("dg-sa-projects-list");
+            if (!list) return;
+            list.querySelectorAll('input[type="checkbox"][data-dg-sa-project-uuid]').forEach(function (cb) {
+              cb.checked = true;
+            });
+            syncDirtyApply();
+          });
+        }
+        var projClear = document.getElementById("dg-sa-projects-clear");
+        if (projClear) {
+          projClear.addEventListener("click", function () {
+            var list = document.getElementById("dg-sa-projects-list");
+            if (!list) return;
+            list.querySelectorAll('input[type="checkbox"][data-dg-sa-project-uuid]').forEach(function (cb) {
+              cb.checked = false;
+            });
+            syncDirtyApply();
+          });
+        }
+        if (daysEl) {
+          daysEl.addEventListener("change", function () {
+            if (
+              document.getElementById("dg-sa-project-mode-selected") &&
+              document.getElementById("dg-sa-project-mode-selected").checked
+            ) {
+              loadProjectsList();
+            }
+          });
+        }
+
+        document.getElementById("dg-sa-prev").addEventListener("click", function () {
+          state.offset = Math.max(0, state.offset - state.limit);
+          loadRanking();
+        });
+        document.getElementById("dg-sa-next").addEventListener("click", function () {
+          if (state.offset + state.limit < state.total) {
+            state.offset += state.limit;
+            loadRanking();
+          }
+        });
+
+        document.getElementById("dg-sa-detail-close").addEventListener("click", closeDetail);
+
+        document.getElementById("dg-sa-tbody").addEventListener("click", function (ev) {
+          if (ev.target.closest("a") || ev.target.closest(".dg-sa-detail-row")) return;
+          var tr = ev.target.closest("tr.dg-sa-row-expandable");
+          if (!tr) return;
+          var cell = ev.target.closest("td");
+          var view = resolveRowClickView(cell);
+          if (!view) return;
+          openDetail(tr.getAttribute("data-key"), tr.getAttribute("data-name"), view);
+        });
+        document.getElementById("dg-sa-tbody").addEventListener("keydown", function (ev) {
+          if (ev.key !== "Enter" && ev.key !== " ") return;
+          var tr = ev.target.closest("tr.dg-sa-row-expandable");
+          if (!tr) return;
+          var cell = ev.target.closest("td");
+          var view = resolveRowClickView(cell) || "summary";
+          ev.preventDefault();
+          openDetail(tr.getAttribute("data-key"), tr.getAttribute("data-name"), view);
+        });
+
+        document.getElementById("dg-sa-highlights-row").addEventListener("click", function (ev) {
+          var li = ev.target.closest(".dg-sa-pick");
+          if (!li) return;
+          openDetail(li.getAttribute("data-key"), li.getAttribute("data-name"), "summary");
+        });
+
+        bindSaDetailTables();
+        bindSaHeaderSearchMirror();
+        bindSaPagination();
+        saColumnControls();
+        buildSaThead();
+        updateSaStickyTopVar();
+        window.addEventListener("scroll", onScrollSaFloatingHeader, { passive: true });
+        window.addEventListener("resize", function () {
+          updateSaStickyTopVar();
+          saRefreshFloatingAfterLayout();
+        });
+        (function bindSaScrollContainers() {
+          var mainOuter = document.querySelector(".app-main__outer");
+          var scrollOuter = document.getElementById("dg-sa-table-scroll-outer");
+          if (mainOuter) mainOuter.addEventListener("scroll", onScrollSaFloatingHeader, { passive: true });
+          if (scrollOuter) scrollOuter.addEventListener("scroll", onScrollSaFloatingHeader, { passive: true });
+        })();
+        loadFreshness();
+        state.pending.project_mode = "selected";
+        state.project_mode = "selected";
+        var modeSelInit = document.getElementById("dg-sa-project-mode-selected");
+        if (modeSelInit) modeSelInit.checked = true;
+        var wrapInit = document.getElementById("dg-sa-projects-wrap");
+        var selAllInit = document.getElementById("dg-sa-projects-select-all");
+        var clearInit = document.getElementById("dg-sa-projects-clear");
+        if (wrapInit) wrapInit.classList.remove("d-none");
+        if (selAllInit) selAllInit.classList.remove("d-none");
+        if (clearInit) clearInit.classList.remove("d-none");
+        loadProjectsList()
+          .then(function () {
+            applyDefaultMarketplaceProjectSelection();
+            syncDirtyApply();
+            return commitFilters();
+          })
+          .catch(function () {
+            syncDirtyApply();
+            return commitFilters();
+          });
+      }
+
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", init);
+      } else {
+        init();
+      }
+    })();
+  </script>
+
+</body>
+</html>

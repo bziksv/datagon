@@ -18,6 +18,15 @@ const { createPurchaseOrderForSupplier } = require('../lib/datagonMoyskladPurcha
 const {
     listSupplierMsOrderLogs,
     getSupplierMsOrderLogDetail,
+    ensureSupplierMsOrderLogSchema,
+    sqlLastSuccessMsOrderJoin,
+    loadMsOrdersByCreator,
+    computeProcurementAttention,
+    sqlProcurementAttentionEligible,
+    sqlProcurementAttentionPredicate,
+    MS_ORDER_STATS_PERIOD_DAYS,
+    MS_ORDER_STALE_WARN_DAYS,
+    MS_ORDER_STALE_DANGER_DAYS,
 } = require('../lib/datagonSupplierMsOrderLog');
 const {
     SUPPLIER_BUY_PRICE_NUM,
@@ -34,6 +43,11 @@ const {
     sendExcelCsv,
 } = require('../lib/datagonSupplierExport');
 const { loadSuppliersDataFreshness } = require('../lib/datagonSuppliersDataFreshness');
+const {
+    loadSupplierSalesRankMap,
+    SUPPLIER_SALES_RANK_DAYS,
+    sqlSalesRevenue90Join,
+} = require('../lib/datagonSupplierSalesRank');
 
 const SUPPLIERS_LIST_CACHE_TTL_MS = 90 * 1000;
 const SUPPLIERS_ANALYTICS_CACHE_TTL_MS = 90 * 1000;
@@ -50,6 +64,8 @@ const SORT_KEYS = new Set([
     'warehouse_fill_pct',
     'stock_fill_pct',
     'assigned_user_name',
+    'last_ms_order_at',
+    'sales_rank',
 ]);
 
 let schemaReady = false;
@@ -103,9 +119,10 @@ function normalizeSupplierKey(raw) {
 function buildListCacheKey(req) {
     const q = req.query || {};
     return JSON.stringify({
-        v: 3,
+        v: 9,
         search: String(q.search || '').trim().toLowerCase(),
         assigned_user: normalizeAssignedUserFilter(q.assigned_user),
+        attention_only: String(q.attention_only || q.procurement_attention || '') === '1' ? '1' : '0',
         limit: String(q.limit || '100'),
         offset: String(q.offset || '0'),
         sort_by: String(q.sort_by || 'supplier_name'),
@@ -153,10 +170,14 @@ function buildSupplierOuterWhere(search, assignedUserRaw) {
 
 function buildAnalyticsCacheKey(search, assignedUserRaw) {
     return JSON.stringify({
-        v: 4,
+        v: 9,
         search: String(search || '').trim().toLowerCase(),
         assigned_user: normalizeAssignedUserFilter(assignedUserRaw),
     });
+}
+
+function parseAttentionOnlyFilter(raw) {
+    return String(raw || '').trim() === '1';
 }
 
 function trimSuppliersAnalyticsCache() {
@@ -272,6 +293,13 @@ function buildOrderBy(sortBy, sortDesc) {
             return num('COALESCE(ss.stock_fill_pct, agg.stock_fill_pct_computed)');
         case 'assigned_user_name':
             return str('COALESCE(u.full_name, u.username, \'\')');
+        case 'last_ms_order_at':
+            return num('ms_last.last_ms_order_at');
+        case 'sales_rank': {
+            // Место 1 = макс. выручка: asc по рангу → desc по выручке.
+            const revDesc = !sortDesc;
+            return `COALESCE(sales90.sales_revenue, 0) ${revDesc ? 'DESC' : 'ASC'}${tie}`;
+        }
         case 'supplier_name':
         default:
             return str('agg.supplier_name');
@@ -304,7 +332,48 @@ function parseAggNum(v) {
     return Number.isFinite(n) ? n : 0;
 }
 
-function mapSupplierRow(r) {
+function refreshSupplierRowDerivedFields(row) {
+    if (!row || typeof row !== 'object') return row;
+    row.procurement_attention = computeProcurementAttention({
+        products_to_purchase: Number(row.products_to_purchase || 0),
+        total_purchase_sum: Number(row.total_purchase_sum || 0),
+        min_purchase_sum: row.min_purchase_sum != null ? Number(row.min_purchase_sum) : null,
+        last_ms_order_at: row.last_ms_order_at || null,
+    });
+    return row;
+}
+
+function applySalesRankToSupplierRow(row, salesRankCtx) {
+    if (!row || typeof row !== 'object') return row;
+    const key = String(row.supplier_key || row.supplier_name || '').trim();
+    const rk = salesRankCtx && salesRankCtx.map ? salesRankCtx.map.get(key) : null;
+    if (rk) {
+        row.sales_rank = rk.rank;
+        row.sales_rank_total = rk.total;
+        row.sales_revenue_90d = rk.sales_revenue;
+    } else {
+        row.sales_rank = null;
+        row.sales_rank_total = salesRankCtx && salesRankCtx.total != null ? salesRankCtx.total : null;
+        row.sales_revenue_90d = null;
+    }
+    return row;
+}
+
+async function loadSupplierSalesRankContextSafe(db) {
+    try {
+        return await loadSupplierSalesRankMap(db, { days: SUPPLIER_SALES_RANK_DAYS });
+    } catch (e) {
+        console.error('[suppliers] sales rank map', e);
+        return {
+            map: new Map(),
+            days: SUPPLIER_SALES_RANK_DAYS,
+            total: 0,
+            error: e.message || String(e),
+        };
+    }
+}
+
+function mapSupplierRow(r, salesRankCtx) {
     const minStockTotal = parseAggNum(r.min_stock_total);
     const stockTotal = parseAggNum(r.stock_total);
     let fillPct = stockFillPctFromTotals(minStockTotal, stockTotal);
@@ -318,7 +387,7 @@ function mapSupplierRow(r) {
         r.settings_stock_fill_pct != null && r.settings_stock_fill_pct !== ''
             ? Number(r.settings_stock_fill_pct)
             : null;
-    return {
+    const row = {
         supplier_key: r.supplier_key,
         supplier_name: r.supplier_name || r.supplier_key,
         assigned_user_id: r.assigned_user_id != null ? Number(r.assigned_user_id) : null,
@@ -341,7 +410,19 @@ function mapSupplierRow(r) {
         auto_mailing_enabled: Number(r.auto_mailing_enabled || 0) === 1,
         mailing_text: r.mailing_text || '',
         settings_updated_at: r.settings_updated_at || null,
+        last_ms_order_at: r.last_ms_order_at || null,
+        last_ms_order_name: r.last_ms_order_name ? String(r.last_ms_order_name) : '',
+        last_ms_order_by: r.last_ms_order_by ? String(r.last_ms_order_by) : '',
+        last_ms_order_positions:
+            r.last_ms_order_positions != null ? Number(r.last_ms_order_positions) : null,
+        procurement_attention: computeProcurementAttention({
+            products_to_purchase: Number(r.products_to_purchase || 0),
+            total_purchase_sum: Number(r.total_purchase_sum || 0),
+            min_purchase_sum: r.min_purchase_sum != null ? Number(r.min_purchase_sum) : null,
+            last_ms_order_at: r.last_ms_order_at || null,
+        }),
     };
+    return applySalesRankToSupplierRow(row, salesRankCtx);
 }
 
 module.exports = function suppliersRouterFactory(db, appSettings = {}) {
@@ -401,11 +482,29 @@ module.exports = function suppliersRouterFactory(db, appSettings = {}) {
             const cacheKey = buildListCacheKey(req);
             const cached = suppliersListCache.get(cacheKey);
             if (cached && Date.now() - cached.ts < SUPPLIERS_LIST_CACHE_TTL_MS) {
-                return res.json({ ...cached.payload, cache: { hit: true, age_ms: Date.now() - cached.ts } });
+                const salesRankCtx = await loadSupplierSalesRankContextSafe(db);
+                const data = (cached.payload.data || []).map((row) =>
+                    applySalesRankToSupplierRow(
+                        refreshSupplierRowDerivedFields({ ...row }),
+                        salesRankCtx,
+                    ),
+                );
+                return res.json({
+                    ...cached.payload,
+                    data,
+                    sales_rank_period_days: salesRankCtx.days,
+                    sales_rank_total: salesRankCtx.total,
+                    sales_rank_error: salesRankCtx.error || null,
+                    cache: { hit: true, age_ms: Date.now() - cached.ts, rank_fresh: true },
+                });
             }
 
+            await ensureSupplierMsOrderLogSchema(db);
             const search = String(req.query.search || '').trim();
             const assignedUserRaw = req.query.assigned_user;
+            const attentionOnly = parseAttentionOnlyFilter(
+                req.query.attention_only || req.query.procurement_attention,
+            );
             let limit = parseInt(req.query.limit, 10);
             if (!Number.isFinite(limit) || limit < 1) limit = 100;
             if (limit > 500) limit = 500;
@@ -426,11 +525,19 @@ module.exports = function suppliersRouterFactory(db, appSettings = {}) {
                 assigned_user: assignedUserApplied,
             } = buildSupplierOuterWhere(search, assignedUserRaw);
             const orderSql = buildOrderBy(sortBy, sortDesc);
+            const msJoin = sqlLastSuccessMsOrderJoin('agg');
+            const attentionSql = attentionOnly ? ` AND ${sqlProcurementAttentionPredicate()}` : '';
+            const sales90 =
+                sortBy === 'sales_rank'
+                    ? sqlSalesRevenue90Join('agg', SUPPLIER_SALES_RANK_DAYS)
+                    : { joinSql: '', params: [] };
 
             const countSql = `
                 SELECT COUNT(*) AS total
                   FROM (${aggSql}) agg
-                 WHERE ${whereSql}`;
+                  ${msJoin}
+                  LEFT JOIN dg_supplier_settings ss ON ss.supplier_key = agg.supplier_key
+                 WHERE ${whereSql}${attentionSql}`;
             const listSql = `
                 SELECT
                     agg.supplier_key,
@@ -458,20 +565,28 @@ module.exports = function suppliersRouterFactory(db, appSettings = {}) {
                     ss.auto_mailing_enabled,
                     ss.mailing_text,
                     ss.updated_at AS settings_updated_at,
-                    COALESCE(NULLIF(TRIM(u.full_name), ''), u.username, '') AS assigned_user_name
+                    COALESCE(NULLIF(TRIM(u.full_name), ''), u.username, '') AS assigned_user_name,
+                    ms_last.last_ms_order_at,
+                    ms_last.last_ms_order_name,
+                    ms_last.last_ms_order_by,
+                    ms_last.last_ms_order_positions
                   FROM (${aggSql}) agg
+                  ${msJoin}
                   LEFT JOIN dg_supplier_settings ss ON ss.supplier_key = agg.supplier_key
                   LEFT JOIN users u ON u.id = ss.assigned_user_id
-                 WHERE ${whereSql}
+                  ${sales90.joinSql}
+                 WHERE ${whereSql}${attentionSql}
                  ORDER BY ${orderSql}
                  LIMIT ? OFFSET ?`;
 
+            const salesRankCtx = await loadSupplierSalesRankContextSafe(db);
+
             const [[countRows], [listRows]] = await Promise.all([
                 db.query(countSql, params),
-                db.query(listSql, [...params, limit, offset]),
+                db.query(listSql, [...params, ...sales90.params, limit, offset]),
             ]);
             const total = Number(countRows[0]?.total || 0);
-            const data = (listRows || []).map(mapSupplierRow);
+            const data = (listRows || []).map((r) => mapSupplierRow(r, salesRankCtx));
 
             const payload = {
                 success: true,
@@ -481,7 +596,18 @@ module.exports = function suppliersRouterFactory(db, appSettings = {}) {
                 offset,
                 sort_by: sortBy,
                 sort_dir: sortDesc ? 'desc' : 'asc',
-                applied_filters: { search: searchApplied, assigned_user: assignedUserApplied },
+                applied_filters: {
+                    search: searchApplied,
+                    assigned_user: assignedUserApplied,
+                    attention_only: attentionOnly,
+                },
+                procurement_attention_thresholds: {
+                    warn_days: MS_ORDER_STALE_WARN_DAYS,
+                    danger_days: MS_ORDER_STALE_DANGER_DAYS,
+                },
+                sales_rank_period_days: salesRankCtx.days,
+                sales_rank_total: salesRankCtx.total,
+                sales_rank_error: salesRankCtx.error || null,
                 cache: { hit: false },
             };
             suppliersListCache.set(cacheKey, { ts: Date.now(), payload });
@@ -496,6 +622,7 @@ module.exports = function suppliersRouterFactory(db, appSettings = {}) {
     router.get('/analytics', async (req, res) => {
         try {
             await ensureSuppliersSchema(db);
+            await ensureSupplierMsOrderLogSchema(db);
             const search = String(req.query.search || '').trim();
             const assignedUserRaw = req.query.assigned_user;
             const cacheKey = buildAnalyticsCacheKey(search, assignedUserRaw);
@@ -583,14 +710,36 @@ module.exports = function suppliersRouterFactory(db, appSettings = {}) {
                  ORDER BY agg.total_purchase_sum DESC, agg.supplier_name ASC
                  LIMIT ${SUPPLIERS_ANALYTICS_CHART_TOP}`;
 
-            const [[assigneeRows], [supplierRows], [totalRows]] = await Promise.all([
-                db.query(byAssigneeSql, params),
-                db.query(bySupplierSql, params),
-                db.query(totalsSql, params),
-            ]);
+            const msJoin = sqlLastSuccessMsOrderJoin('agg');
+            const attentionEligible = sqlProcurementAttentionEligible('agg', 'ss');
+            const attentionStatsSql = `
+                SELECT
+                    SUM(CASE WHEN ${attentionEligible} AND ms_last.last_ms_order_at IS NULL THEN 1 ELSE 0 END) AS attention_never,
+                    SUM(CASE WHEN ${attentionEligible} AND ms_last.last_ms_order_at IS NOT NULL
+                        AND ms_last.last_ms_order_at < DATE_SUB(NOW(), INTERVAL ${MS_ORDER_STALE_DANGER_DAYS} DAY) THEN 1 ELSE 0 END) AS attention_stale_danger,
+                    SUM(CASE WHEN ${attentionEligible} AND ms_last.last_ms_order_at IS NOT NULL
+                        AND ms_last.last_ms_order_at >= DATE_SUB(NOW(), INTERVAL ${MS_ORDER_STALE_DANGER_DAYS} DAY)
+                        AND ms_last.last_ms_order_at < DATE_SUB(NOW(), INTERVAL ${MS_ORDER_STALE_WARN_DAYS} DAY) THEN 1 ELSE 0 END) AS attention_stale_warn
+                  FROM (${aggSql}) agg
+                  ${msJoin}
+                  LEFT JOIN dg_supplier_settings ss ON ss.supplier_key = agg.supplier_key
+                 WHERE ${whereSql}`;
+
+            const [[assigneeRows], [supplierRows], [totalRows], [attentionRows], msOrdersByCreator] =
+                await Promise.all([
+                    db.query(byAssigneeSql, params),
+                    db.query(bySupplierSql, params),
+                    db.query(totalsSql, params),
+                    db.query(attentionStatsSql, params),
+                    loadMsOrdersByCreator(db, { period_days: MS_ORDER_STATS_PERIOD_DAYS }),
+                ]);
             const t = totalRows && totalRows[0] ? totalRows[0] : {};
+            const att = attentionRows && attentionRows[0] ? attentionRows[0] : {};
             const byAssignee = (assigneeRows || []).map(mapAnalyticsAssigneeRow);
             const bySupplier = (supplierRows || []).map(mapAnalyticsSupplierRow);
+            const attentionNever = Number(att.attention_never || 0);
+            const attentionStaleDanger = Number(att.attention_stale_danger || 0);
+            const attentionStaleWarn = Number(att.attention_stale_warn || 0);
             const payload = {
                 success: true,
                 applied_filters: { search: searchApplied, assigned_user: assignedUserApplied },
@@ -604,9 +753,26 @@ module.exports = function suppliersRouterFactory(db, appSettings = {}) {
                     unassigned_suppliers: Number(t.unassigned_suppliers || 0),
                     avg_fill_pct: t.avg_fill_pct != null && t.avg_fill_pct !== '' ? Number(t.avg_fill_pct) : null,
                     assignees_count: byAssignee.length,
+                    procurement_attention_never: attentionNever,
+                    procurement_attention_stale_warn: attentionStaleWarn,
+                    procurement_attention_stale_danger: attentionStaleDanger,
+                    procurement_attention_total:
+                        attentionNever + attentionStaleWarn + attentionStaleDanger,
                 },
                 by_assignee: byAssignee,
                 by_supplier: bySupplier,
+                ms_orders: {
+                    period_days: msOrdersByCreator.period_days,
+                    by_creator: msOrdersByCreator.rows,
+                    success_orders_total: msOrdersByCreator.rows.reduce(
+                        (s, r) => s + Number(r.orders_count || 0),
+                        0,
+                    ),
+                },
+                procurement_attention_thresholds: {
+                    warn_days: MS_ORDER_STALE_WARN_DAYS,
+                    danger_days: MS_ORDER_STALE_DANGER_DAYS,
+                },
                 suppliers_chart_limit: SUPPLIERS_ANALYTICS_CHART_TOP,
                 cache: { hit: false },
             };
@@ -687,6 +853,7 @@ module.exports = function suppliersRouterFactory(db, appSettings = {}) {
                 supplierKey,
                 actor: req.datagonActor || null,
             });
+            if (result && result.success) invalidateSuppliersListCache();
             res.json(result);
         } catch (e) {
             const base = {

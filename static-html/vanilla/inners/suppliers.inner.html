@@ -40,6 +40,7 @@
                     <button type="button" class="btn btn-light" data-dg-sp-metric="products_to_purchase">SKU к закупке</button>
                     <button type="button" class="btn btn-light" data-dg-sp-metric="stock_total">Остатки</button>
                     <button type="button" class="btn btn-light" data-dg-sp-metric="suppliers_count">Поставщики</button>
+                    <button type="button" class="btn btn-light" data-dg-sp-metric="ms_orders_count">Заказы в МС</button>
                   </div>
                   <button type="button" class="btn btn-sm btn-outline-light" id="dg-sp-analytics-refresh" data-dg-notify-start="Обновляем сводку…">
                     <i class="pe-7s-refresh"></i>
@@ -81,6 +82,31 @@
                     <div class="dg-sp-kpi-tile dg-sp-kpi-money">
                       <div class="dg-sp-kpi-label">Σ к закупке</div>
                       <div class="dg-sp-kpi-value" id="dg-sp-kpi-sum">—</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="row row-cols-2 row-cols-md-2 g-2 dg-sp-kpi-row-secondary mb-1">
+                  <div class="col">
+                    <div class="dg-sp-kpi-tile dg-sp-kpi-ms">
+                      <div class="dg-sp-kpi-label">Заказов в МС <span class="dg-sp-kpi-suffix" id="dg-sp-kpi-ms-period">90 дн.</span></div>
+                      <div class="dg-sp-kpi-value" id="dg-sp-kpi-ms-orders">—</div>
+                    </div>
+                  </div>
+                  <div class="col">
+                    <div class="dg-sp-kpi-tile dg-sp-kpi-attention">
+                      <div class="dg-sp-kpi-label">Требуют внимания</div>
+                      <div class="dg-sp-kpi-value" id="dg-sp-kpi-attention">—</div>
+                      <div class="dg-sp-kpi-sub text-muted" id="dg-sp-kpi-attention-sub">нет заказа ≥30 дн. при Σ к закупке &gt; 0 и ≥ мин. суммы</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="row g-2 dg-sp-charts-row-ms mb-1">
+                  <div class="col-12">
+                    <div class="dg-sp-chart-panel">
+                      <div class="dg-sp-chart-title">Успешные заказы в МойСклад по сотрудникам <span class="dg-sp-chart-subtitle text-muted fw-normal" id="dg-sp-ms-chart-period">(90 дн.)</span></div>
+                      <div class="dg-sp-chart-wrap dg-sp-chart-wrap-ms-orders">
+                        <canvas id="dg-sp-chart-ms-orders" aria-label="Заказы в МС по сотрудникам"></canvas>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -130,17 +156,24 @@
             </div>
             <div class="card-body" id="dg-sp-filters-body">
               <div class="row g-2 align-items-end">
-                <div class="col-md-5">
+                <div class="col-md-4">
                   <label class="form-label" for="sp-f-search">Умный поиск</label>
                   <input type="text" class="form-control" id="sp-f-search" placeholder="Название поставщика" autocomplete="off"
                          data-dg-tooltip="Поиск по названию поставщика. Enter — применить." />
                 </div>
-                <div class="col-md-5">
+                <div class="col-md-3">
                   <label class="form-label" for="sp-f-assignee">Привязан сотрудник</label>
                   <select class="form-select" id="sp-f-assignee" data-dg-tooltip="Только сотрудники, уже привязанные хотя бы к одному поставщику. Применить — обновить таблицу и сводку.">
                     <option value="">Все</option>
                     <option value="none">(не назначен)</option>
                   </select>
+                </div>
+                <div class="col-md-3">
+                  <label class="form-label d-block" for="sp-f-attention-only">Проблемные</label>
+                  <div class="form-check mt-2">
+                    <input class="form-check-input" type="checkbox" id="sp-f-attention-only" value="1" />
+                    <label class="form-check-label small" for="sp-f-attention-only">Без заказа в МС ≥30 дн. (Σ &gt; 0, ≥ мин.)</label>
+                  </div>
                 </div>
                 <div class="col-md-2">
                   <label class="form-label" for="sp-f-limit">На странице</label>

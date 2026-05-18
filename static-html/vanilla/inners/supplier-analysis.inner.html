@@ -1,0 +1,495 @@
+          <div class="app-page-title">
+            <div class="page-title-wrapper">
+              <div class="page-title-heading">
+                <div class="page-title-icon">
+                  <i class="pe-7s-graph2 icon-gradient bg-love-kiss"> </i>
+                </div>
+                <div>
+                  Анализ поставщиков
+                  <div class="page-title-subheading">
+                    Сравниваем продажи (отгрузки МойСклад) за выбранный период с таким же предыдущим окном.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 1. Фильтры (как на списочных страницах) -->
+          <div class="main-card card mb-3">
+            <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+              <div class="card-header-title mb-0">
+                <i class="header-icon pe-7s-filter icon-gradient bg-sunny-morning"> </i>
+                Фильтры и действия
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-sa-filters-toggle">Свернуть</button>
+            </div>
+            <div class="card-body" id="dg-sa-filters-body">
+              <div class="dg-sa-data-freshness mb-3 pb-2 border-bottom" id="dg-sa-data-freshness" aria-label="Актуальность данных">
+                <div class="row g-2" id="dg-sa-data-freshness-row">
+                  <div class="col-12">
+                    <p class="text-muted small mb-0" id="dg-sa-data-freshness-loading">Проверяем актуальность каталога и продаж…</p>
+                  </div>
+                </div>
+              </div>
+              <div class="row g-2 align-items-end">
+                <div class="col-sm-6 col-lg-2">
+                  <label class="form-label small mb-1" for="dg-sa-new-stock-days" title="По истории остатков: с какого числа дней «с первого появления на складе» SKU ещё считается новым">Считать «новым на складе», дней</label>
+                  <select class="form-select form-select-sm" id="dg-sa-new-stock-days" title="Если первый остаток &gt; 0 был не раньше этого срока — SKU в колонке «Новые» и не в «Залежалые»">
+                    <option value="14">14 дней</option>
+                    <option value="30" selected>30 дней</option>
+                    <option value="45">45 дней</option>
+                    <option value="60">60 дней</option>
+                  </select>
+                </div>
+                <div class="col-sm-6 col-lg-2">
+                  <label class="form-label small mb-1" for="dg-sa-days">Период продаж</label>
+                  <select class="form-select form-select-sm" id="dg-sa-days">
+                    <option value="30">30 дней</option>
+                    <option value="90" selected>90 дней</option>
+                    <option value="180">180 дней</option>
+                    <option value="365">365 дней</option>
+                  </select>
+                </div>
+                <div class="col-12" data-dg-sa-filter-field="projects">
+                  <label class="form-label small mb-1">Проекты отгрузок (учёт продаж)</label>
+                  <div class="d-flex flex-wrap gap-3 align-items-center mb-1">
+                    <div class="form-check form-check-inline mb-0">
+                      <input class="form-check-input" type="radio" name="dg-sa-project-mode" id="dg-sa-project-mode-all" value="all" />
+                      <label class="form-check-label small" for="dg-sa-project-mode-all">Все проекты</label>
+                    </div>
+                    <div class="form-check form-check-inline mb-0">
+                      <input class="form-check-input" type="radio" name="dg-sa-project-mode" id="dg-sa-project-mode-selected" value="selected" checked />
+                      <label class="form-check-label small" for="dg-sa-project-mode-selected">Только выбранные</label>
+                    </div>
+                    <button type="button" class="btn btn-link btn-sm p-0" id="dg-sa-projects-reload">Обновить список</button>
+                    <button type="button" class="btn btn-link btn-sm p-0" id="dg-sa-projects-select-all">Выбрать все</button>
+                    <button type="button" class="btn btn-link btn-sm p-0" id="dg-sa-projects-clear">Снять все</button>
+                  </div>
+                  <div id="dg-sa-projects-wrap" class="border rounded p-2 bg-light" style="max-height: 160px; overflow: auto">
+                    <div id="dg-sa-projects-status" class="small text-muted mb-1">Загрузка проектов…</div>
+                    <div id="dg-sa-projects-list"></div>
+                  </div>
+                  <p id="dg-sa-project-filter-hint" class="small text-muted mb-0 mt-1 d-none"></p>
+                </div>
+                <div class="col-sm-6 col-lg-4">
+                  <label class="form-label small mb-1" for="dg-sa-search">Поставщик</label>
+                  <input type="search" class="form-control form-control-sm" id="dg-sa-search" placeholder="Часть названия…" autocomplete="off" />
+                </div>
+                <div class="col-sm-4 col-lg-2">
+                  <label class="form-label small mb-1" for="dg-sa-page-size">На странице</label>
+                  <select class="form-select form-select-sm" id="dg-sa-page-size">
+                    <option value="50">50</option>
+                    <option value="100" selected>100</option>
+                    <option value="200">200</option>
+                  </select>
+                </div>
+                <div class="col-sm-8 col-lg-4 d-flex flex-wrap gap-2 align-items-center">
+                  <button type="button" class="btn btn-primary btn-sm" id="dg-sa-apply" data-dg-notify-start="Считаем анализ…">Применить</button>
+                  <button type="button" class="btn btn-outline-secondary btn-sm" id="dg-sa-reset">По умолчанию</button>
+                  <button type="button" class="btn btn-outline-primary btn-sm" id="dg-sa-export" data-dg-notify-start="Готовим CSV…">CSV</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 2. Сводка: KPI + кого смотреть + графики — одна карточка -->
+          <div class="main-card card mb-3 dg-sa-summary-card border-0 shadow-sm overflow-hidden">
+            <div class="card-header dg-sa-summary-header border-0 d-flex flex-wrap align-items-center justify-content-between gap-2">
+              <div class="d-flex align-items-center gap-2">
+                <i class="header-icon pe-7s-graph2 icon-gradient bg-love-kiss me-1"> </i>
+                <div>
+                  <span class="fw-semibold text-white">Сводка за период</span>
+                  <div class="small text-white-50 d-none d-md-block">Ключевые цифры, списки и графики по тем же фильтрам</div>
+                </div>
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-light" id="dg-sa-summary-toggle">Свернуть</button>
+            </div>
+            <div class="card-body dg-sa-summary-body position-relative" id="dg-sa-summary-body">
+
+              <div class="dg-sa-kpi-block mb-3">
+                <div class="d-flex flex-wrap align-items-baseline gap-2 mb-1">
+                  <div class="dg-sa-block-label mb-0">Продажи за период</div>
+                  <div id="dg-sa-sales-scope-hint" class="small text-muted d-none"></div>
+                </div>
+                <div class="row row-cols-1 row-cols-sm-3 g-2" id="dg-sa-kpi-row-money">
+                  <div class="col">
+                    <div class="dg-sa-kpi-tile dg-sa-kpi-money">
+                      <div class="dg-sa-kpi-label">Выручка</div>
+                      <div class="dg-sa-kpi-value" id="dg-sa-kpi-revenue">—</div>
+                    </div>
+                  </div>
+                  <div class="col">
+                    <div class="dg-sa-kpi-tile">
+                      <div class="dg-sa-kpi-label" title="Сумма строк отгрузок минус закупка из каталога × кол-во; тот же фильтр проекта, что выручка">Маржа, оценка</div>
+                      <div class="dg-sa-kpi-value" id="dg-sa-kpi-margin">—</div>
+                      <div class="dg-sa-kpi-sub text-muted" id="dg-sa-kpi-margin-pct"></div>
+                    </div>
+                  </div>
+                  <div class="col">
+                    <div class="dg-sa-kpi-tile">
+                      <div class="dg-sa-kpi-label">Δ выручки</div>
+                      <div class="dg-sa-kpi-value dg-sa-kpi-value-pct" id="dg-sa-kpi-change">—</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+
+              <div class="dg-sa-kpi-block mb-4">
+                <div class="dg-sa-block-label">Склад и просадки</div>
+                <div class="row g-2" id="dg-sa-kpi-row-risk">
+                  <div class="col-6 col-xl-3">
+                    <div class="dg-sa-kpi-tile">
+                      <div class="dg-sa-kpi-label">Поставщиков</div>
+                      <div class="dg-sa-kpi-value" id="dg-sa-kpi-suppliers">—</div>
+                    </div>
+                  </div>
+                  <div class="col-6 col-xl-3">
+                    <div class="dg-sa-kpi-tile">
+                      <div class="dg-sa-kpi-label">Поставщиков без продаж</div>
+                      <div class="dg-sa-kpi-value" id="dg-sa-kpi-no-sales">—</div>
+                    </div>
+                  </div>
+                  <div class="col-6 col-xl-3">
+                    <div class="dg-sa-kpi-tile dg-sa-kpi-warn">
+                      <div class="dg-sa-kpi-label">С просадкой выручки</div>
+                      <div class="dg-sa-kpi-value" id="dg-sa-kpi-declining">—</div>
+                    </div>
+                  </div>
+                  <div class="col-6 col-xl-3">
+                    <div class="dg-sa-kpi-tile">
+                      <div class="dg-sa-kpi-label">Сумма остатков</div>
+                      <div class="dg-sa-kpi-value dg-sa-kpi-money" id="dg-sa-kpi-stock">—</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="dg-sa-insights-block mb-4">
+                <div class="dg-sa-block-label mb-1">На что обратить внимание</div>
+                <p class="text-muted small mb-2 mb-lg-1">Клик по строке — детали в таблице ниже.</p>
+                <div class="row g-2 align-items-stretch" id="dg-sa-highlights-row">
+                  <div class="col-lg-4 d-flex">
+                    <div class="dg-sa-insight-panel dg-sa-insight-danger w-100" id="dg-sa-panel-attention">
+                      <div class="dg-sa-insight-title">Нужна проверка <span class="dg-sa-insight-count" id="dg-sa-count-attention"></span></div>
+                      <div class="dg-sa-insight-desc">Просадка выручки, много SKU без продаж или слабая маржа</div>
+                      <div class="dg-sa-insight-body" id="dg-sa-body-attention" tabindex="0" aria-label="Список поставщиков, прокрутка">
+                        <ul class="list-group list-group-flush dg-sa-highlight-list" id="dg-sa-list-attention"></ul>
+                        <div class="dg-sa-insight-subtitle d-none" id="dg-sa-weak-header">Остаток на складе, продаж в периоде не было</div>
+                        <ul class="list-group list-group-flush dg-sa-highlight-list dg-sa-highlight-sub d-none" id="dg-sa-list-weak"></ul>
+                      </div>
+                      <div class="dg-sa-insight-foot d-none" id="dg-sa-foot-attention" aria-live="polite"></div>
+                    </div>
+                  </div>
+                  <div class="col-lg-4 d-flex">
+                    <div class="dg-sa-insight-panel dg-sa-insight-success w-100" id="dg-sa-panel-revenue">
+                      <div class="dg-sa-insight-title">Лучшие по выручке <span class="dg-sa-insight-count" id="dg-sa-count-revenue"></span></div>
+                      <div class="dg-sa-insight-desc">Наибольшая сумма продаж за период</div>
+                      <div class="dg-sa-insight-body" id="dg-sa-body-revenue" tabindex="0">
+                        <ul class="list-group list-group-flush dg-sa-highlight-list" id="dg-sa-list-revenue"></ul>
+                      </div>
+                      <div class="dg-sa-insight-foot d-none" id="dg-sa-foot-revenue"></div>
+                    </div>
+                  </div>
+                  <div class="col-lg-4 d-flex">
+                    <div class="dg-sa-insight-panel w-100" id="dg-sa-panel-growth">
+                      <div class="dg-sa-insight-title">Сильный рост <span class="dg-sa-insight-count" id="dg-sa-count-growth"></span></div>
+                      <div class="dg-sa-insight-desc">Выручка выросла к прошлому окну</div>
+                      <div class="dg-sa-insight-body" id="dg-sa-body-growth" tabindex="0">
+                        <ul class="list-group list-group-flush dg-sa-highlight-list" id="dg-sa-list-growth"></ul>
+                      </div>
+                      <div class="dg-sa-insight-foot d-none" id="dg-sa-foot-growth"></div>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+
+              <div class="dg-sa-charts-block">
+                <div class="dg-sa-block-label mb-2">Топ поставщиков (сводка)</div>
+                <div class="row g-2 align-items-start">
+                  <div class="col-lg-8">
+                    <div class="dg-sa-chart-panel">
+                      <div class="dg-sa-chart-title">Топ по выручке</div>
+                      <div class="dg-sa-chart-wrap"><canvas id="dg-sa-chart-revenue" aria-label="Топ по выручке"></canvas></div>
+                    </div>
+                  </div>
+                  <div class="col-lg-4">
+                    <div class="dg-sa-chart-panel">
+                      <div class="dg-sa-chart-title">Доля (топ‑8)</div>
+                      <div class="dg-sa-doughnut-wrap"><canvas id="dg-sa-chart-share" aria-label="Доля выручки"></canvas></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="dg-sa-kpi-block mb-3 mt-2 pt-3 border-top" id="dg-sa-breakdown-block">
+                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-1">
+                  <div class="dg-sa-block-label mb-0">Расшифровка продаж (строки отгрузок)</div>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-sa-breakdown-toggle">Развернуть</button>
+                </div>
+                <div id="dg-sa-breakdown-summary" class="small text-muted mb-0">Загрузка…</div>
+                <div id="dg-sa-breakdown-body" class="d-none mt-2">
+                  <p class="text-muted small mb-2">
+                    Как считаются KPI выше: <strong>выручка</strong> = сумма позиции в отгрузке;
+                    <strong>себестоимость</strong> = кол-во × закупочная из каталога МС;
+                    <strong>маржа</strong> = выручка − себестоимость (не меньше 0). Те же фильтр периода и проекта.
+                  </p>
+                  <div class="dg-sa-breakdown-scroll table-responsive border rounded">
+                    <table class="table table-sm table-hover mb-0 dg-sa-breakdown-table">
+                      <thead class="table-light">
+                        <tr>
+                          <th>Дата</th>
+                          <th>Отгрузка</th>
+                          <th>Проект</th>
+                          <th>Код</th>
+                          <th>Наименование</th>
+                          <th>Поставщик</th>
+                          <th class="text-end">Кол-во</th>
+                          <th class="text-end">Цена в отгр.</th>
+                          <th class="text-end">Выручка</th>
+                          <th class="text-end">Закупка ед.</th>
+                          <th class="text-end">Себестоимость</th>
+                          <th class="text-end">Маржа</th>
+                        </tr>
+                      </thead>
+                      <tbody id="dg-sa-breakdown-tbody">
+                        <tr><td colspan="12" class="text-muted">Загрузка…</td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-2">
+                    <span class="small text-muted" id="dg-sa-breakdown-pager-info">—</span>
+                    <div class="btn-group btn-group-sm">
+                      <button type="button" class="btn btn-outline-secondary" id="dg-sa-breakdown-prev" disabled>Назад</button>
+                      <button type="button" class="btn btn-outline-secondary" id="dg-sa-breakdown-next" disabled>Вперёд</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- 3. Таблица + детали поставщика -->
+          <div class="main-card card mb-3">
+            <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+              <div class="d-flex align-items-center gap-3 flex-grow-1" style="min-width: 0">
+                <div class="d-flex align-items-center flex-shrink-0">
+                  <i class="header-icon pe-7s-note2 icon-gradient bg-malibu-beach me-2"> </i>
+                  <span class="fw-semibold">Поставщики: остатки и оборачиваемость</span>
+                </div>
+                <div class="dg-sa-header-search" style="flex: 0 1 380px; min-width: 220px">
+                  <div class="input-group input-group-sm">
+                    <span class="input-group-text bg-white text-muted px-2" aria-hidden="true">🔎</span>
+                    <input type="search" class="form-control" id="dg-sa-table-search-mirror"
+                           placeholder="Поставщик (Enter — применить)"
+                           autocomplete="off"
+                           data-dg-tooltip="Зеркало поиска из фильтров. Enter — применить, Esc — очистить." />
+                  </div>
+                </div>
+              </div>
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-sa-columns-toggle" data-dg-tooltip="Видимость столбцов таблицы">🧩 Столбцы</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-sa-widths-toggle" data-dg-tooltip="Ширина столбцов в пикселях">📏 Ширины</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-sa-table-toggle" data-dg-tooltip="Свернуть/развернуть тело карточки с таблицей">Свернуть</button>
+              </div>
+            </div>
+            <div class="card-body" id="dg-sa-table-body">
+              <p class="text-muted small mb-2">
+                <strong>SKU складская</strong> — позиции с отметкой «складская» в каталоге МС (как в закупках).
+                <strong>SKU всего</strong> — все товары поставщика в МС.
+                <strong>Продажи ₽</strong> — выручка за выбранный период (с учётом фильтра проектов).
+                <strong>Оборач. / мес.</strong> — % от суммы остатка: (продажи ÷ остаток ₽) ÷ (дней ÷ 30) × 100 (за 90 дней — делим на 3).
+                <strong>Новые на складе</strong> — сейчас есть остаток; по снимкам склада товар впервые появился с остатком не более N дней назад (N — поле в фильтрах); в скобках — сколько дней в среднем лежит с этого дня.
+                <strong>Залежалые</strong> — остаток есть, за период 0 продаж, и товар уже не «новый на складе».
+                Клик по <strong>№</strong> или <strong>поставщику</strong> — сводка (залежалые, новые, слабые продажи).
+                Клик по <strong>SKU складская</strong> — таблица всех складских SKU с продажами.
+                Клик по <strong>SKU всего</strong> — сначала не складские, затем складские подробно.
+              </p>
+
+              <div id="dg-sa-detail-host" class="d-none" aria-hidden="true">
+              <div class="dg-sa-detail-panel d-none" id="dg-sa-detail-card" aria-hidden="true">
+                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2 pb-2 border-bottom">
+                  <div>
+                    <div class="fw-semibold" id="dg-sa-detail-title">Детали поставщика</div>
+                    <div class="small text-muted" id="dg-sa-detail-signals"></div>
+                  </div>
+                  <div class="d-flex flex-wrap gap-2">
+                    <a class="btn btn-sm btn-outline-primary d-none" id="dg-sa-detail-suppliers" href="/suppliers.html" target="_blank" rel="noopener">Закупки</a>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-sa-detail-close">Скрыть</button>
+                  </div>
+                </div>
+                <div id="dg-sa-detail-view-summary" class="dg-sa-detail-view">
+                <div class="dg-sa-detail-blocks row g-3">
+                  <div class="col-12">
+                    <div class="card dg-sa-detail-block border-danger-subtle">
+                      <div class="card-header py-2 bg-danger-subtle">
+                        <div class="fw-semibold small">Залежалые</div>
+                        <div class="text-muted small">Есть остаток, за период нет продаж, товар на складе давно (не «новый»)</div>
+                      </div>
+                      <div class="card-body p-0">
+                        <div class="table-responsive dg-sa-detail-table-wrap dg-sa-detail-table-wrap-scroll">
+                          <table class="table table-sm table-hover mb-0 dg-sa-detail-mini-table">
+                            <thead class="table-light" id="dg-sa-detail-stale-thead"></thead>
+                            <tbody id="dg-sa-detail-stale"></tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="col-12">
+                    <div class="card dg-sa-detail-block border-success-subtle">
+                      <div class="card-header py-2 bg-success-subtle">
+                        <div class="fw-semibold small">Недавно появились на складе</div>
+                        <div class="text-muted small">Сейчас есть остаток; по истории остатков впервые лежит на складе не дольше срока из фильтра «Считать новым на складе». Не дата карточки в МС и не первая продажа</div>
+                      </div>
+                      <div class="card-body p-0">
+                        <div class="table-responsive dg-sa-detail-table-wrap dg-sa-detail-table-wrap-scroll">
+                          <table class="table table-sm table-hover mb-0 dg-sa-detail-mini-table">
+                            <thead class="table-light" id="dg-sa-detail-new-thead"></thead>
+                            <tbody id="dg-sa-detail-new"></tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="col-12">
+                    <div class="card dg-sa-detail-block border-warning-subtle">
+                      <div class="card-header py-2 bg-warning-subtle">
+                        <div class="fw-semibold small">Слабые продажи у поставщика</div>
+                        <div class="text-muted small">Есть продажи за период, но &lt; 25% медианы шт. по этому поставщику</div>
+                      </div>
+                      <div class="card-body p-0">
+                        <div class="table-responsive dg-sa-detail-table-wrap dg-sa-detail-table-wrap-scroll">
+                          <table class="table table-sm table-hover mb-0 dg-sa-detail-mini-table">
+                            <thead class="table-light" id="dg-sa-detail-weak-thead"></thead>
+                            <tbody id="dg-sa-detail-weak"></tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="dg-sa-detail-trend mt-3 pt-3 border-top" id="dg-sa-detail-trend-wrap">
+                  <h6 class="small text-uppercase text-muted mb-2">Тренд по месяцам (выручка)</h6>
+                  <div class="dg-sa-chart-panel dg-sa-detail-chart-panel mb-0">
+                    <div class="dg-sa-chart-wrap dg-sa-chart-wrap-trend"><canvas id="dg-sa-chart-trend" aria-label="Тренд продаж поставщика"></canvas></div>
+                  </div>
+                </div>
+                </div>
+                <div id="dg-sa-detail-view-warehouse" class="dg-sa-detail-view d-none">
+                  <div class="card dg-sa-detail-block border-primary-subtle mb-0">
+                    <div class="card-header py-2 bg-primary-subtle d-flex flex-wrap align-items-start justify-content-between gap-2">
+                      <div>
+                        <div class="fw-semibold small">SKU складская — подробно <span class="text-muted fw-normal" id="dg-sa-detail-warehouse-ext-count"></span></div>
+                        <div class="text-muted small">Складская «Да»; не архив; не «перестали сотрудничать». Продажи за выбранный период.</div>
+                      </div>
+                      <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0 dg-sa-detail-widths-btn" data-dg-detail-profile="ext">📏 Ширины</button>
+                    </div>
+                    <div class="card-body p-0">
+                      <div class="dg-sa-detail-widths-panel-wrap d-none px-2 pt-2" data-dg-detail-profile="ext">
+                        <div class="dg-sa-detail-widths-panel border rounded bg-white p-2 mb-2">
+                          <button type="button" class="btn btn-sm mb-2 dg-sa-detail-widths-default" data-dg-detail-profile="ext">По умолчанию</button>
+                          <div class="dg-sa-detail-widths-grid" id="dg-sa-detail-widths-ext"></div>
+                        </div>
+                      </div>
+                      <div class="table-responsive dg-sa-detail-table-wrap dg-sa-detail-table-wrap-catalog">
+                        <table class="table table-sm table-hover mb-0 dg-sa-detail-sku-table" id="dg-sa-detail-warehouse-ext-table">
+                          <colgroup id="dg-sa-detail-warehouse-ext-cols"></colgroup>
+                          <thead class="table-light" id="dg-sa-detail-warehouse-ext-thead"></thead>
+                          <tbody id="dg-sa-detail-warehouse-ext"></tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div id="dg-sa-detail-view-all-skus" class="dg-sa-detail-view d-none">
+                  <div class="card dg-sa-detail-block border-secondary-subtle mb-3">
+                    <div class="card-header py-2 bg-light d-flex flex-wrap align-items-start justify-content-between gap-2">
+                      <div>
+                        <div class="fw-semibold small">Не складская позиция <span class="text-muted fw-normal" id="dg-sa-detail-non-wh-count"></span></div>
+                        <div class="text-muted small">В каталоге поставщика без отметки «складская»</div>
+                      </div>
+                      <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0 dg-sa-detail-widths-btn" data-dg-detail-profile="simple">📏 Ширины</button>
+                    </div>
+                    <div class="card-body p-0">
+                      <div class="dg-sa-detail-widths-panel-wrap d-none px-2 pt-2" data-dg-detail-profile="simple">
+                        <div class="dg-sa-detail-widths-panel border rounded bg-white p-2 mb-2">
+                          <button type="button" class="btn btn-sm mb-2 dg-sa-detail-widths-default" data-dg-detail-profile="simple">По умолчанию</button>
+                          <div class="dg-sa-detail-widths-grid" id="dg-sa-detail-widths-simple"></div>
+                        </div>
+                      </div>
+                      <div class="table-responsive dg-sa-detail-table-wrap dg-sa-detail-table-wrap-catalog">
+                        <table class="table table-sm table-hover mb-0 dg-sa-detail-sku-table" id="dg-sa-detail-non-warehouse-table">
+                          <colgroup id="dg-sa-detail-non-warehouse-cols"></colgroup>
+                          <thead class="table-light" id="dg-sa-detail-non-warehouse-thead"></thead>
+                          <tbody id="dg-sa-detail-non-warehouse"></tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="card dg-sa-detail-block border-primary-subtle mb-0">
+                    <div class="card-header py-2 bg-primary-subtle d-flex flex-wrap align-items-start justify-content-between gap-2">
+                      <div class="fw-semibold small">Складская позиция — подробно <span class="text-muted fw-normal" id="dg-sa-detail-wh-in-all-count"></span></div>
+                      <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0 dg-sa-detail-widths-btn" data-dg-detail-profile="ext">📏 Ширины</button>
+                    </div>
+                    <div class="card-body p-0">
+                      <div class="table-responsive dg-sa-detail-table-wrap dg-sa-detail-table-wrap-catalog">
+                        <table class="table table-sm table-hover mb-0 dg-sa-detail-sku-table" id="dg-sa-detail-warehouse-in-all-table">
+                          <colgroup id="dg-sa-detail-warehouse-in-all-cols"></colgroup>
+                          <thead class="table-light" id="dg-sa-detail-warehouse-in-all-thead"></thead>
+                          <tbody id="dg-sa-detail-warehouse-in-all"></tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+              </div>
+
+              <div class="datagon-columns-toolbox mb-2 d-none" id="dg-sa-toolbox-panels">
+                <div class="datagon-columns-panel" id="dg-sa-columns-panel">
+                  <div class="columns-actions mb-2">
+                    <button type="button" class="btn btn-sm" id="dg-sa-columns-all">Выделить все</button>
+                    <button type="button" class="btn btn-sm" id="dg-sa-columns-none">Снять все</button>
+                    <button type="button" class="btn btn-sm" id="dg-sa-columns-default">По умолчанию</button>
+                  </div>
+                  <div id="dg-sa-columns-list" class="columns-grid"></div>
+                </div>
+                <div class="datagon-columns-panel" id="dg-sa-widths-panel">
+                  <div class="columns-actions mb-2">
+                    <button type="button" class="btn btn-sm" id="dg-sa-widths-default">По умолчанию</button>
+                  </div>
+                  <div id="dg-sa-widths-list" class="dg-sa-widths-grid"></div>
+                </div>
+              </div>
+              <div id="dg-sa-table-scroll-outer" class="dg-sa-table-scroll-outer" style="width:100%;max-width:100%;min-width:0;overflow-x:auto;overflow-y:visible;-webkit-overflow-scrolling:touch">
+                <div class="table-responsive datagon-my-products-table-wrap" style="display:block;width:100%;max-width:100%;min-width:0;overflow:visible;position:relative">
+                  <table class="table table-hover table-striped dg-sa-table mb-0 datagon-my-products-table" id="dg-sa-table" style="table-layout:fixed;border-collapse:collapse;border-spacing:0">
+                    <colgroup id="dg-sa-colgroup"></colgroup>
+                    <thead id="dg-sa-thead"></thead>
+                    <tbody id="dg-sa-tbody">
+                      <tr><td colspan="15" class="text-muted text-center py-4">Нажмите «Применить» в фильтрах</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <div class="mt-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                  <label class="form-label mb-0 small text-muted" for="dg-sa-footer-page-size">На странице</label>
+                  <select class="form-select form-select-sm" id="dg-sa-footer-page-size" style="width:auto">
+                    <option value="50">50</option>
+                    <option value="100" selected>100</option>
+                    <option value="200">200</option>
+                  </select>
+                  <span class="text-muted small" id="dg-sa-pager-status">Найдено: 0; страница 1/1; показано: 0</span>
+                </div>
+                <div class="btn-group btn-group-sm" role="group" aria-label="Страницы анализа поставщиков">
+                  <button type="button" class="btn btn-outline-secondary" id="dg-sa-prev" disabled>Назад</button>
+                  <button type="button" class="btn btn-outline-secondary" id="dg-sa-next" disabled>Вперёд</button>
+                </div>
+              </div>
+            </div>
+          </div>

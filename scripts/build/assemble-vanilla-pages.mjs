@@ -60,6 +60,14 @@ function assemble() {
             PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/suppliers.scripts.html')),
         },
         {
+            out: 'supplier-analysis.html',
+            PAGE_TITLE: 'Анализ поставщиков — Датагон',
+            BODY_ATTRS: 'class="datagon-vanilla-body" data-dg-active-nav="supplier-analysis"',
+            EXTRA_HEAD: read(path.join(vanillaDir, 'inners/supplier-analysis.head.html')),
+            MAIN_INNER: read(path.join(vanillaDir, 'inners/supplier-analysis.inner.html')),
+            PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/supplier-analysis.scripts.html')),
+        },
+        {
             out: 'purchase.html',
             PAGE_TITLE: 'Закупки товары — Датагон',
             BODY_ATTRS: 'class="datagon-vanilla-body" data-dg-active-nav="purchase"',

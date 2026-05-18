@@ -17,6 +17,52 @@
             </div>
           </div>
 
+          <div class="main-card card mb-3 dg-pu-summary-card border-0 shadow-sm overflow-hidden">
+            <div class="card-header dg-pu-summary-header border-0 d-flex flex-wrap align-items-center justify-content-between gap-2">
+              <div class="d-flex align-items-center gap-2">
+                <i class="header-icon pe-7s-graph2 icon-gradient bg-love-kiss me-1"> </i>
+                <div>
+                  <span class="fw-semibold text-white">Сводка по фильтру</span>
+                  <div class="small text-white-50 d-none d-md-block">Оценка в рублях: количество × закупочная цена из МойСклад</div>
+                </div>
+              </div>
+              <span class="badge bg-light text-dark dg-pu-summary-positions" id="dg-pu-summary-positions">—</span>
+            </div>
+            <div class="card-body dg-pu-summary-body position-relative" id="dg-pu-summary-body">
+              <div class="dg-pu-summary-loading d-none" id="dg-pu-summary-loading">
+                <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                <span class="ms-2 text-muted small">Считаем сводку…</span>
+              </div>
+              <div class="row row-cols-1 row-cols-md-3 g-2" id="dg-pu-kpi-row">
+                <div class="col">
+                  <div class="dg-pu-kpi-tile dg-pu-kpi-money">
+                    <div class="dg-pu-kpi-label">Остаток на закупочную</div>
+                    <div class="dg-pu-kpi-value" id="dg-pu-kpi-stock-rub">—</div>
+                    <div class="dg-pu-kpi-sub text-muted" id="dg-pu-kpi-stock-qty"></div>
+                  </div>
+                </div>
+                <div class="col">
+                  <div class="dg-pu-kpi-tile">
+                    <div class="dg-pu-kpi-label">Неснижаемый остаток на закупочную</div>
+                    <div class="dg-pu-kpi-value" id="dg-pu-kpi-min-stock-rub">—</div>
+                    <div class="dg-pu-kpi-sub text-muted" id="dg-pu-kpi-min-stock-qty"></div>
+                  </div>
+                </div>
+                <div class="col">
+                  <div class="dg-pu-kpi-tile dg-pu-kpi-accent">
+                    <div class="dg-pu-kpi-label" title="Предлагаемый неснижаемый по формуле продаж">Предлагаемый нес.ост. на закупочную</div>
+                    <div class="dg-pu-kpi-value" id="dg-pu-kpi-formula-rub">—</div>
+                    <div class="dg-pu-kpi-sub text-muted" id="dg-pu-kpi-formula-qty"></div>
+                  </div>
+                </div>
+              </div>
+              <p class="small text-muted mb-0 mt-2" id="dg-pu-summary-hint">
+                Суммы по всем строкам текущего фильтра (все страницы таблицы). Позиции без закупочной цены в МС в рублёвую оценку не входят.
+              </p>
+            </div>
+          </div>
+
+
 
           <div class="main-card mb-3 card">
             <div class="card-header d-flex align-items-center justify-content-between gap-2">
@@ -102,7 +148,7 @@
               </div>
               <div class="row g-2 align-items-end mt-2">
                 <div
-                  class="col-md-3"
+                  class="col-md-2"
                   data-dg-pu-filter-field="pu_no_longer_cooperation"
                   data-dg-tooltip="Поле МС «Перестали сотрудничать» (no_longer_cooperation). Нет — не помечено «Да» в МС (пусто, «нет», другое). Да — в МС ровно «Да». Все — без отбора."
                 >
@@ -114,7 +160,18 @@
                   </select>
                 </div>
                 <div
-                  class="col-md-5"
+                  class="col-md-3"
+                  data-dg-pu-filter-field="pu_manager"
+                  data-dg-filter-field-title="Менеджер"
+                  data-dg-tooltip="Значение свойства МС «Менеджер поддерживающий товар» (ms_export.manager). Список — из выгрузки МойСклад. Срабатывает по «Применить»."
+                >
+                  <label class="form-label" for="pu-f-manager">Менеджер</label>
+                  <select class="form-select" id="pu-f-manager">
+                    <option value="">— все —</option>
+                  </select>
+                </div>
+                <div
+                  class="col-md-4"
                   data-dg-pu-filter-field="pu_extra_filter"
                   data-dg-filter-field-title="Доп. фильтр"
                   data-dg-tooltip="Один специальный режим за раз (остаток, комплекты, нули, кратность, неполная упаковка). Срабатывает по кнопке «Применить»."
@@ -137,7 +194,25 @@
                 <button type="button" class="btn btn-sm btn-outline-secondary" id="purchase-reset" data-dg-tooltip="Сбросить фильтры к значениям по умолчанию" data-dg-notify-start="Сбрасываем фильтры закупок…"><i class="pe-7s-refresh me-1"></i>По умолчанию</button>
                 <button type="button" class="btn btn-sm btn-outline-primary" id="purchase-refresh" data-dg-notify-start="Обновляем таблицу закупок…"><i class="pe-7s-refresh me-1"></i>Обновить</button>
                 <button type="button" class="btn btn-sm btn-outline-dark" id="purchase-copy-link"><i class="pe-7s-link me-1"></i>Скопировать ссылку</button>
-                <button type="button" class="btn btn-sm btn-outline-warning" id="dg-pu-rebuild-formula-cache" data-dg-tooltip="Заполнить dg_formula_proposed_cache для дефолтной выборки (фоновая задача, журнал на processes)" data-dg-notify-start="Ставим в очередь пересчёт кэша формулы закупок…"><i class="pe-7s-refresh me-1"></i>Пересчитать кэш</button>
+                <button type="button" class="btn btn-sm btn-outline-warning" id="dg-pu-rebuild-formula-cache" data-dg-tooltip="Заполнить dg_formula_proposed_cache для дефолтной выборки (фоновая задача). Ход пересчёта — в журнале ниже." data-dg-notify-start="Ставим в очередь пересчёт кэша формулы закупок…"><i class="pe-7s-refresh me-1"></i>Пересчитать кэш</button>
+                <button type="button" class="btn btn-sm btn-outline-info" id="dg-pu-apply-formula-min-stock" data-dg-tooltip="Перенести «Предлагаемый нес.ост.» в «Неснижаемый» (МС) по текущим применённым фильтрам. Откат — по пакету в журнале ниже." data-dg-notify-start="Запускаем перенос предлагаемого неснижаемого в МС…">Пр.→НС</button>
+              </div>
+              <div id="dg-pu-formula-cache-panel" class="w-100 mt-2 border-top pt-2 small">
+                <div class="d-flex flex-wrap align-items-center gap-2 mb-1">
+                  <span class="text-muted">Пересчёт кэша формулы:</span>
+                  <span id="dg-pu-formula-cache-status" class="text-muted">—</span>
+                </div>
+                <div id="dg-pu-formula-cache-progress-wrap" class="progress mb-1 d-none" style="height: 6px">
+                  <div id="dg-pu-formula-cache-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+                </div>
+                <div id="dg-pu-formula-cache-log" class="dg-pu-formula-cache-log text-muted">Журнал пересчёта: пока нет запусков.</div>
+              </div>
+              <div id="dg-pu-ms-apply-panel" class="w-100 mt-2 border-top pt-2 small">
+                <div class="d-flex flex-wrap align-items-center gap-2 mb-1">
+                  <span class="text-muted">Перенос в неснижаемый (МС):</span>
+                  <span id="dg-pu-ms-apply-status" class="text-muted">—</span>
+                </div>
+                <div id="dg-pu-ms-apply-batches" class="dg-pu-ms-apply-batches text-muted">Журнал пакетов: загрузка…</div>
               </div>
               </div>
             </div>
