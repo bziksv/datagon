@@ -129,12 +129,24 @@
       padding-top: 4px;
       padding-bottom: 4px;
     }
-    .dg-sp-table tbody td.dg-sp-td-comment { vertical-align: top; }
+    .dg-sp-table tbody td.dg-sp-td-comment {
+      vertical-align: top;
+      white-space: normal;
+      overflow: visible;
+      height: auto;
+    }
     .dg-sp-cell-input.comment {
       min-width: 140px;
-      min-height: 2.6em;
-      line-height: 1.25;
+      min-height: 1.75em;
+      line-height: 1.35;
       resize: vertical;
+      overflow-x: hidden;
+      overflow-y: hidden;
+      box-sizing: border-box;
+    }
+    .dg-sp-cell-input.comment.dg-sp-comment-filled {
+      overflow-y: auto;
+      max-height: 20rem;
     }
     .dg-sp-stub-btn {
       opacity: 0.45;
@@ -166,6 +178,14 @@
     .dg-sp-fill-triplet.dg-sp-fill-bad {
       background: #fef2f2;
       color: #b91c1c;
+    }
+    .dg-sp-zero-buy-cell {
+      display: inline-block;
+      font-variant-numeric: tabular-nums;
+      line-height: 1.35;
+    }
+    .dg-sp-zero-buy-pct {
+      color: #b45309;
     }
     .dg-sp-fill-triplet.dg-sp-fill-neutral {
       background: #f3f4f6;
@@ -1514,31 +1534,138 @@
     <script>
     (function () {
       var SP_COLS = [
-        ["row_num", "№", { center: true }],
-        ["supplier_name", "Поставщик"],
-        ["sales_rank", "Рейтинг продаж", { center: true, headerLines: ["Рейтинг", "продаж (90д)"] }],
-        ["assigned_user", "Привязан сотрудник", { editable: true }],
-        ["comment", "Комментарий", { editable: true, headerLines: ["Комментар", "ий"] }],
-        ["min_purchase_sum", "Мин. сумма закупки", { center: true, editable: true }],
-        ["warehouse_fill_pct", "Наполняемость склада", { center: true, editable: true }],
-        ["stock_fill_pct", "Наполняемость % (Кол-во Несн/Несниж сумм./Ост.факт/%)", { center: true }],
-        ["products_total", "Кол-во товаров всего", { center: true }],
-        ["products_to_purchase", "Кол-во товаров К закупке", { center: true }],
-        ["total_purchase_sum", "Общая сумма закупки", { center: true }],
-        ["procurement_attention", "Внимание", { center: true, headerLines: ["Вни", "мание"] }],
-        ["last_ms_order_at", "Последний заказ в МС", { center: true, headerLines: ["Последний", "заказ в МС"] }],
-        ["export_stub", "Экспорт", { center: true, stub: true }],
-        ["send_ms_stub", "Отправить заказ в МС", { center: true }],
-        ["auto_mailing_stub", "Авто рассылка", { center: true, stub: true }],
-        ["mailing_text_stub", "Текст для рассылки", { center: true, stub: true }],
+        ["row_num", "№", { center: true, thTip: "Порядковый номер строки в текущей выборке." }],
+        ["supplier_name", "Поставщик", { thTip: "Название поставщика из МойСклад (группировка по ms_export.supplier)." }],
+        [
+          "sales_rank",
+          "Рейтинг продаж",
+          {
+            center: true,
+            headerLines: ["Рейтинг", "продаж (90д)"],
+            thTip:
+              "Место по выручке проведённых отгрузок МС за 90 дней (все проекты). Чем меньше число — выше место.",
+          },
+        ],
+        [
+          "assigned_user",
+          "Привязан сотрудник",
+          {
+            editable: true,
+            thTip: "Ответственный сотрудник Datagon (dg_supplier_settings). Редактируется в ячейке.",
+          },
+        ],
+        [
+          "comment",
+          "Комментарий",
+          {
+            editable: true,
+            headerLines: ["Комментар", "ий"],
+            thTip: "Комментарий к поставщику в настройках Datagon.",
+          },
+        ],
+        [
+          "min_purchase_sum",
+          "Мин. сумма закупки",
+          {
+            center: true,
+            editable: true,
+            thTip:
+              "Минимальная сумма заказа у поставщика. Если «Общая сумма закупки» ниже — колонка «Внимание» не срабатывает.",
+          },
+        ],
+        [
+          "stock_fill_pct",
+          "Наполняемость % (Кол-во Несн/Несниж сумм./Ост.факт/%)",
+          {
+            center: true,
+            thTip:
+              "Кол-во SKU с неснижаемым > 0 / Σ неснижаемый (шт) / Σ остаток (шт) / %. Процент = 100 × остаток ÷ неснижаемый.",
+          },
+        ],
+        [
+          "products_total",
+          "Кол-во товаров всего",
+          {
+            center: true,
+            thTip: "Все SKU поставщика в каталоге (без архива, «перестали сотрудничать», комплекты исключены).",
+          },
+        ],
+        [
+          "products_to_purchase",
+          "Кол-во товаров К закупке",
+          {
+            center: true,
+            thTip: "SKU, у которых потребность к закупке > 0: max(0, неснижаемый МС − остаток − в пути).",
+          },
+        ],
+        [
+          "products_zero_stock_to_buy",
+          "Товаров 0 на ост. / % к закупке",
+          {
+            center: true,
+            headerLines: ["Товаров 0", "на ост. / %"],
+            thTip:
+              "Среди SKU «к закупке»: сколько с остатком 0 в МС. В ячейке: кол-во / % от кол-ва SKU к закупке.",
+          },
+        ],
+        [
+          "total_purchase_sum",
+          "Общая сумма закупки",
+          {
+            center: true,
+            thTip: "Σ (кол-во к закупке × закупочная цена) по SKU с потребностью > 0.",
+          },
+        ],
+        [
+          "procurement_attention",
+          "Внимание",
+          {
+            center: true,
+            headerLines: ["Вни", "мание"],
+            thTip:
+              "Напоминание о заказе в МС: есть SKU и сумма к закупке (с учётом мин. суммы), но давно не было успешного заказа из Datagon (30/60 дн.).",
+          },
+        ],
+        [
+          "last_ms_order_at",
+          "Последний заказ в МС",
+          {
+            center: true,
+            headerLines: ["Последний", "заказ в МС"],
+            thTip: "Дата последнего успешного заказа поставщику, созданного через Datagon (журнал МС).",
+          },
+        ],
+        ["export_stub", "Экспорт", { center: true, stub: true, thTip: "Экспорт позиций к закупке (кнопки в строке)." }],
+        [
+          "send_ms_stub",
+          "Отправить заказ в МС",
+          { center: true, thTip: "Создать заказ поставщику в МойСклад из Datagon." },
+        ],
+        [
+          "auto_mailing_stub",
+          "Авто рассылка",
+          { center: true, stub: true, thTip: "Заготовка: автоматическая рассылка поставщику (в разработке)." },
+        ],
+        [
+          "mailing_text_stub",
+          "Текст для рассылки",
+          { center: true, stub: true, thTip: "Заготовка: текст письма поставщику (в разработке)." },
+        ],
       ];
+
+      function applySpThTooltip(th, key) {
+        if (!th) return;
+        var tip = String((COL_OPTS[key] || {}).thTip || "").trim();
+        if (tip) th.setAttribute("data-dg-tooltip", tip);
+      }
 
       var COL_OPTS = {};
       SP_COLS.forEach(function (p) { COL_OPTS[p[0]] = p[2] || {}; });
 
       var SORTABLE = new Set([
         "supplier_name", "sales_rank", "products_total", "products_to_purchase",
-        "total_purchase_sum", "min_purchase_sum", "warehouse_fill_pct", "stock_fill_pct",
+        "products_zero_stock_to_buy", "products_zero_stock_to_buy_pct",
+        "total_purchase_sum", "min_purchase_sum", "stock_fill_pct",
         "assigned_user_name", "last_ms_order_at",
       ]);
       var SORT_KEY_REMAP = { assigned_user: "assigned_user_name" };
@@ -1552,10 +1679,10 @@
         assigned_user: 150,
         comment: 160,
         min_purchase_sum: 110,
-        warehouse_fill_pct: 120,
         stock_fill_pct: 260,
         products_total: 100,
         products_to_purchase: 120,
+        products_zero_stock_to_buy: 118,
         total_purchase_sum: 130,
         procurement_attention: 150,
         last_ms_order_at: 168,
@@ -3015,6 +3142,32 @@
         return wrap;
       }
 
+      function renderZeroStockToBuyCell(row) {
+        var wrap = document.createElement("span");
+        wrap.className = "dg-sp-zero-buy-cell";
+        var zero = Number(row.products_zero_stock_to_buy || 0);
+        var toBuy = Number(row.products_to_purchase || 0);
+        var pct =
+          row.products_zero_stock_to_buy_pct != null
+            ? Number(row.products_zero_stock_to_buy_pct)
+            : null;
+        wrap.title =
+          "SKU «к закупке» с остатком 0 в МойСклад.\n" +
+          "% = 100 × (товаров 0 на ост.) ÷ (кол-во SKU к закупке)" +
+          (toBuy > 0 ? "\nСейчас: " + fmtNum(zero) + " из " + fmtNum(toBuy) : "");
+        if (toBuy <= 0 && zero <= 0) {
+          wrap.textContent = "—";
+          return wrap;
+        }
+        wrap.appendChild(document.createTextNode(fmtNum(zero) + " / "));
+        var pctEl = document.createElement("span");
+        pctEl.className = "dg-sp-zero-buy-pct fw-semibold";
+        pctEl.textContent =
+          pct != null && Number.isFinite(pct) ? fmtPct(pct) : "—";
+        wrap.appendChild(pctEl);
+        return wrap;
+      }
+
       function userVisibleColsKey() {
         var u = "";
         try { u = window.localStorage.getItem("currentUser") || ""; } catch (e) {}
@@ -3354,11 +3507,39 @@
         return inp;
       }
 
+      var SP_COMMENT_TA_MAX_PX = 320;
+
+      function autoSizeSpCommentTextarea(ta) {
+        if (!ta) return;
+        var text = String(ta.value || "").trim();
+        ta.classList.toggle("dg-sp-comment-filled", text.length > 0);
+        ta.style.height = "auto";
+        ta.rows = 1;
+        if (!text) {
+          ta.style.overflowY = "hidden";
+          return;
+        }
+        var h = Math.max(ta.scrollHeight + 2, 28);
+        if (h > SP_COMMENT_TA_MAX_PX) {
+          ta.style.height = SP_COMMENT_TA_MAX_PX + "px";
+          ta.style.overflowY = "auto";
+        } else {
+          ta.style.height = h + "px";
+          ta.style.overflowY = "hidden";
+        }
+      }
+
       function bindEditableComment(row) {
         var ta = document.createElement("textarea");
-        ta.rows = 2;
+        ta.rows = 1;
         ta.className = "form-control form-control-sm dg-sp-cell-input comment";
         ta.value = row.comment != null ? String(row.comment) : "";
+        ta.addEventListener("input", function () {
+          autoSizeSpCommentTextarea(ta);
+        });
+        requestAnimationFrame(function () {
+          autoSizeSpCommentTextarea(ta);
+        });
         ta.addEventListener("change", function () {
           patchSupplier(row.supplier_key, { comment: ta.value })
             .then(function () {
@@ -3393,11 +3574,6 @@
             return r.min_purchase_sum;
           }, { integer: true });
         }
-        if (key === "warehouse_fill_pct") {
-          return bindEditableInput(row, "warehouse_fill_pct", "number", function (r) {
-            return r.warehouse_fill_pct;
-          });
-        }
         if (key === "stock_fill_pct") {
           return renderStockFillTriplet(row);
         }
@@ -3406,6 +3582,7 @@
           var label = fmtNum(row.products_to_purchase) + " / " + fmtNum(row.purchase_pieces_total);
           return makePurchaseOpenLink(row, label, false);
         }
+        if (key === "products_zero_stock_to_buy") return renderZeroStockToBuyCell(row);
         if (key === "total_purchase_sum") return document.createTextNode(fmtMoney(row.total_purchase_sum));
         if (key === "procurement_attention") return renderProcurementAttentionBadge(row);
         if (key === "last_ms_order_at") {
@@ -3568,6 +3745,7 @@
           } else if (!opts.headerLines || !opts.headerLines.length) {
             th.textContent = label;
           }
+          applySpThTooltip(th, key);
           tr.appendChild(th);
         });
         thead.appendChild(tr);
@@ -3606,7 +3784,12 @@
             if (p[0] === "comment") td.className = "dg-sp-td-comment";
             else if (opts.center) td.className = "text-center";
             var cell = renderCell(p[0], row, idx);
-            if (cell) td.appendChild(cell);
+            if (cell) {
+              td.appendChild(cell);
+              if (p[0] === "comment" && cell.tagName === "TEXTAREA") {
+                autoSizeSpCommentTextarea(cell);
+              }
+            }
             tr.appendChild(td);
           });
           tbody.appendChild(tr);

@@ -7,6 +7,11 @@
       var TABLE_COLLAPSED_KEY = 'datagon_dimensions_table_collapsed_v1';
       var VISIBLE_COLS_KEY = 'datagon_dimensions_visible_cols_v2';
       var COL_WIDTHS_KEY = 'datagon_dimensions_col_widths_v2';
+      /** Абсолютный минимум ширины колонки (панель «Ширины» и drag-resize). */
+      var DIM_COL_WIDTH_ABS_MIN = 40;
+      var DIM_COL_WIDTH_RESIZE_MIN = 50;
+      var DIM_COL_WIDTH_MAX = 700;
+      var dimResizeState = null;
 
       var DEFAULT_FILTERS = {
         search: '',
@@ -316,8 +321,8 @@
         {
           key: 'code',
           label: 'Код',
-          width: 140,
-          minW: 90,
+          width: 100,
+          minW: 50,
           sortable: true,
           isNumeric: false,
           cellClass: 'dg-dim-code',
@@ -331,6 +336,19 @@
               typeBadge = '<span class="dg-dim-type-badge" title="' + escapeHtml(r.type) + '">' + escapeHtml(r.type) + '</span>';
             }
             return code + typeBadge;
+          },
+        },
+        {
+          key: 'article',
+          label: 'Артикул',
+          width: 88,
+          minW: 50,
+          sortable: true,
+          isNumeric: false,
+          cellClass: 'dg-dim-article',
+          render: function (r) {
+            var a = String(r.article || '').trim();
+            return a ? escapeHtml(a) : '<span class="dg-dim-empty">—</span>';
           },
         },
         {
@@ -509,7 +527,13 @@
           if (!Array.isArray(arr) || arr.length === 0) return defaultVisibleCols();
           var allowed = arr.filter(function (k) { return DIM_COL_KEYS.indexOf(k) !== -1; });
           if (allowed.length === 0) return defaultVisibleCols();
-          return new Set(allowed);
+          var set = new Set(allowed);
+          DIM_COL_KEYS.forEach(function (k) {
+            set.add(k);
+          });
+          return new Set(DIM_COL_KEYS.filter(function (k) {
+            return set.has(k);
+          }));
         } catch (e) {
           return defaultVisibleCols();
         }
@@ -550,8 +574,102 @@
 
       function getColWidth(col) {
         var override = Number(columnWidths[col.key]);
-        if (Number.isFinite(override) && override > 0) return Math.max(override, col.minW || 40);
-        return col.width || 120;
+        if (Number.isFinite(override) && override > 0) {
+          return Math.max(override, DIM_COL_WIDTH_ABS_MIN);
+        }
+        return Math.max(col.width || 120, DIM_COL_WIDTH_ABS_MIN);
+      }
+
+      function applyColCellWidth(el, w) {
+        if (!el || !Number.isFinite(w) || w <= 0) return;
+        el.style.width = w + 'px';
+        el.style.minWidth = w + 'px';
+        el.style.maxWidth = w + 'px';
+        el.style.boxSizing = 'border-box';
+      }
+
+      function findDimColDef(key) {
+        for (var i = 0; i < DIM_COLS.length; i++) {
+          if (DIM_COLS[i].key === key) return DIM_COLS[i];
+        }
+        return null;
+      }
+
+      function applyDimColumnWidth(key, nextWidth, opts) {
+        opts = opts || {};
+        columnWidths[key] = nextWidth;
+        if (opts.persist !== false) saveColumnWidths();
+        buildColgroup();
+        applyTableMinWidth();
+        var colDef = findDimColDef(key);
+        var w = colDef ? getColWidth(colDef) : nextWidth;
+        var thead = document.getElementById('dg-dim-thead');
+        if (thead) {
+          var th = thead.querySelector('th[data-dg-col-key="' + key + '"]');
+          if (th) applyColCellWidth(th, w);
+        }
+        var cols = getVisibleColsList();
+        var colIdx = -1;
+        for (var i = 0; i < cols.length; i++) {
+          if (cols[i].key === key) { colIdx = i; break; }
+        }
+        if (colIdx >= 0) {
+          document.querySelectorAll('#dg-dim-tbody tr').forEach(function (tr) {
+            if (tr.cells.length === 1 && tr.cells[0].colSpan > 1) return;
+            var td = tr.children[colIdx];
+            if (td) applyColCellWidth(td, w);
+          });
+        }
+        dimRefreshFloatingAfterLayout();
+      }
+
+      function startDimColumnResize(e, key) {
+        e.preventDefault();
+        e.stopPropagation();
+        var colDef = findDimColDef(key);
+        var th = e.currentTarget && e.currentTarget.closest ? e.currentTarget.closest('th') : null;
+        var w = Number(columnWidths[key] || 0);
+        if (!Number.isFinite(w) || w <= 0) {
+          var rect = th && th.getBoundingClientRect ? th.getBoundingClientRect() : null;
+          w = rect && rect.width ? Math.round(rect.width) : (colDef ? getColWidth(colDef) : DIM_COL_WIDTH_RESIZE_MIN);
+        }
+        dimResizeState = { key: key, startX: e.clientX, startWidth: w };
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+      }
+
+      function onDimColumnResizeMove(e) {
+        if (!dimResizeState) return;
+        var delta = e.clientX - dimResizeState.startX;
+        var nextWidth = Math.max(
+          DIM_COL_WIDTH_RESIZE_MIN,
+          Math.min(DIM_COL_WIDTH_MAX, Math.round(dimResizeState.startWidth + delta))
+        );
+        applyDimColumnWidth(dimResizeState.key, nextWidth, { persist: false });
+      }
+
+      function onDimColumnResizeUp() {
+        if (!dimResizeState) return;
+        dimResizeState = null;
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        saveColumnWidths();
+      }
+
+      function bindDimColumnResize() {
+        document.addEventListener('mousemove', onDimColumnResizeMove);
+        document.addEventListener('mouseup', onDimColumnResizeUp);
+      }
+
+      function applyBodyColumnWidths() {
+        var cols = getVisibleColsList();
+        document.querySelectorAll('#dg-dim-tbody tr').forEach(function (tr) {
+          if (tr.cells.length === 1 && tr.cells[0].colSpan > 1) return;
+          for (var j = 0; j < cols.length; j++) {
+            var td = tr.children[j];
+            if (td) applyColCellWidth(td, getColWidth(cols[j]));
+          }
+        });
       }
 
       function getVisibleColsList() {
@@ -580,24 +698,46 @@
         var cols = getVisibleColsList();
         var sum = 0;
         for (var i = 0; i < cols.length; i++) sum += getColWidth(cols[i]);
-        table.style.minWidth = (sum > 0 ? sum : 1200) + 'px';
+        var w = sum > 0 ? sum : 1200;
+        table.style.width = w + 'px';
+        table.style.minWidth = w + 'px';
       }
 
       function buildThead() {
         var thead = document.getElementById('dg-dim-thead');
         if (!thead) return;
+        thead.replaceChildren();
+        var tr = document.createElement('tr');
         var cols = getVisibleColsList();
-        var tr = '<tr>';
         for (var i = 0; i < cols.length; i++) {
           var c = cols[i];
-          var attrs = ' data-dg-col-key="' + c.key + '"';
-          var cls = c.sortable ? ' class="dg-dim-sortable"' : '';
-          if (c.sortable) attrs += ' data-dg-sort="' + (c.sortKey || c.key) + '"';
-          var titleAttr = c.msAttr ? ' title="Атрибут МойСклад: ' + escapeHtml(c.msAttr) + '"' : '';
-          tr += '<th' + cls + attrs + titleAttr + '>' + escapeHtml(c.label) + '</th>';
+          var w = getColWidth(c);
+          var th = document.createElement('th');
+          th.setAttribute('data-dg-col-key', c.key);
+          applyColCellWidth(th, w);
+          th.style.position = 'relative';
+          th.style.overflow = 'hidden';
+          if (c.sortable) {
+            th.classList.add('dg-dim-sortable');
+            th.setAttribute('data-dg-sort', c.sortKey || c.key);
+          }
+          if (c.msAttr) th.title = 'Атрибут МойСклад: ' + c.msAttr;
+          th.appendChild(document.createTextNode(c.label));
+          var handle = document.createElement('span');
+          handle.className = 'dg-th-resize-handle';
+          handle.setAttribute('role', 'separator');
+          handle.setAttribute('aria-orientation', 'vertical');
+          handle.title = 'Потяните, чтобы изменить ширину';
+          handle.addEventListener('mousedown', function (ev) {
+            startDimColumnResize(ev, c.key);
+          });
+          handle.addEventListener('click', function (ev) {
+            ev.stopPropagation();
+          });
+          th.appendChild(handle);
+          tr.appendChild(th);
         }
-        tr += '</tr>';
-        thead.innerHTML = tr;
+        thead.appendChild(tr);
       }
 
       function renderTable() {
@@ -644,6 +784,7 @@
           html += rowHtml;
         }
         tbody.innerHTML = html;
+        applyBodyColumnWidths();
         scheduleFloatingHeaderUpdate();
       }
 
@@ -695,20 +836,20 @@
           span.style.textOverflow = 'ellipsis';
           var input = document.createElement('input');
           input.type = 'number';
-          input.min = String(c.minW || 40);
+          input.min = String(DIM_COL_WIDTH_ABS_MIN);
           input.step = '5';
           input.value = String(getColWidth(c));
           input.addEventListener('change', function () {
             var v = Number(input.value);
             if (!Number.isFinite(v) || v <= 0) {
               delete columnWidths[c.key];
+              buildColgroup();
+              buildThead();
+              renderTable(state.rows);
             } else {
-              columnWidths[c.key] = Math.max(v, c.minW || 40);
-              input.value = String(columnWidths[c.key]);
+              applyDimColumnWidth(c.key, Math.max(v, DIM_COL_WIDTH_ABS_MIN));
+              input.value = String(getColWidth(c));
             }
-            saveColumnWidths();
-            buildColgroup();
-            dimRefreshFloatingAfterLayout();
           });
           wrap.appendChild(span);
           wrap.appendChild(input);
@@ -780,6 +921,8 @@
           saveColumnWidths();
           renderWidthControls();
           buildColgroup();
+          buildThead();
+          renderTable(state.rows);
           dimRefreshFloatingAfterLayout();
         });
         document.addEventListener('click', function (e) {
@@ -2050,6 +2193,7 @@
         var thead = document.querySelector('#dg-dim-table thead');
         if (!thead) return;
         thead.addEventListener('click', function (ev) {
+          if (ev.target && ev.target.closest && ev.target.closest('.dg-th-resize-handle')) return;
           var sel = window.getSelection ? window.getSelection() : null;
           if (sel && String(sel.toString() || '').trim().length > 0) return;
           var th = ev.target && ev.target.closest('th');
@@ -2962,6 +3106,7 @@
         bindEvents();
         bindHeaderSearchMirror();
         bindSort();
+        bindDimColumnResize();
         bindCellEditors();
         bindLogModal();
         bindColumnsToolbox();

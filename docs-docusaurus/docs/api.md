@@ -1671,6 +1671,12 @@ Query: `limit` (default 12, max 50). Ответ: `{ "success", "batches": [ { "i
 
 Тело: `{ "batch_id": N }`. Восстанавливает `ms_export.min_stock` из `old_min_stock` всех позиций пакета; помечает batch `reverted`. Только для `status=completed`.
 
+### GET `/api/purchase/summary-totals`
+
+Те же query-параметры, что у **`GET /api/purchase`**, **без** `limit` / `offset` / `sort_*`. Полный enrich по формуле для карточки «Сводка по фильтру» (`kpi_totals`), без пагинации списка. Вызывается с `/purchase.html` в фоне, если в ответе списка `formula_kpi_approximate: true` (выборка &gt; 2500 поз. — SQL-итог по кэшу формулы может быть занижен).
+
+Ответ: `{ "success", "total", "kpi_totals", "kpi_totals_source": "enriched", "formula_kpi_approximate": false }` или при `total` &gt; 6000: `{ "success", "total", "too_large": true, "formula_kpi_approximate": true }` (UI оставляет ориентировочные цифры с префиксом `~`).
+
 ### GET `/api/purchase`
 
 Список товаров для планирования закупок. **Пагинация и сортировка в MySQL:** параллельно `COUNT(*)` и `SELECT … ORDER BY <колонка> LIMIT ? OFFSET ?`. Обогащение (`enrichPurchaseListPage`) — **только для строк текущей страницы** (~`limit` кодов), **без** `payload_json` в списке и **без** bundle-warmup на list (`skipBundleWarmup: true`).
@@ -1692,7 +1698,7 @@ Query:
 - `search` — подстрока по `code`, `name`, `supplier`, `supplier2` (case-insensitive).
 - `manager` — **точное** совпадение с `TRIM(ms_export.manager)` (свойство МС «Менеджер поддерживающий товар»; на `/purchase.html` — выбор из списка `GET /api/purchase/managers`).
 
-Ответ `GET /api/purchase` дополнительно содержит `column_totals` с полями **`stock_value_rub`**, **`min_stock_value_rub`**, **`formula_proposed_value_rub`** (Σ количество × закупочная цена из МС по всем строкам фильтра) и **`positions_without_buy_price`** (позиции без закупочной цены, не входят в рублёвую оценку). Карточка «Сводка по фильтру» на `/purchase.html` показывает эти три суммы.
+Ответ `GET /api/purchase` дополнительно содержит **`kpi_totals`** (для сводки; при `to_purchase` / `to_buy` — по **полному** фильтру, не только по строкам «к закупке») и **`column_totals`** (для строки «Σ по фильтру» внизу таблицы) с полями **`stock_value_rub`**, **`min_stock_value_rub`**, **`formula_proposed_value_rub`** (Σ количество × закупочная цена из МС) и **`positions_without_buy_price`**. При выборке &gt; 2500 поз. без режима «К закупке»: `formula_kpi_approximate: true` — ориентировочный «Предлагаемый нес.ост.» из SQL; фронт догружает **`GET /api/purchase/summary-totals`**. Карточка «Сводка по фильтру» на `/purchase.html` показывает эти три суммы.
 - `supplier` — фильтр по поставщику: по умолчанию подстрока в `supplier` **или** `supplier2` (case-insensitive). При **`supplier_exact=1`** или **`to_buy=1`** — только **`TRIM(ms_export.supplier)`** (точное совпадение, как в реестре «Поставщики»).
 - `supplier_key` — синоним `supplier` (для ссылок с `/suppliers.html`).
 - `to_purchase` — `1`: только позиции с потребностью к закупке (`GREATEST(0, ms_export.min_stock − stock − в_пути) > 0` — **только** поле «Неснижаемый остаток» из МС, без override и без «Предлагаемый нес.ост.»; см. `SUPPLIER_NEED_QTY_SQL` в `lib/datagonSuppliersSql.js`). На `/purchase.html` после «Ожидание» колонка **«К закупке»**.

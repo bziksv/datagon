@@ -2355,20 +2355,131 @@
       }
 
       var SA_COLS = [
-        ["supplier_name", "Поставщик"],
-        ["skus_warehouse", "SKU складская", { center: true, title: "Складская позиция в каталоге МС", headerLines: ["SKU", "складская"] }],
-        ["skus_total", "SKU всего", { center: true, title: "Все SKU поставщика в МойСклад", headerLines: ["SKU", "всего"] }],
-        ["stock_value_rub", "Остатков на сумму", { center: true, headerLines: ["Остатков", "на сумму"] }],
-        ["sales_revenue", "Продажи ₽", { center: true, headerLines: ["Продажи", "₽"] }],
-        ["sales_qty", "Продажи за период", { center: true, headerLines: ["Продажи", "за период"] }],
-        ["sales_revenue_avg_30d", "Продажи средняя за 30 дней", { center: true, headerLines: ["Продажи средняя", "за 30 дней"] }],
-        ["min_stock_sum", "Неснижаемый", { center: true, headerLines: ["Неснижаемый"] }],
-        ["formula_proposed_sum", "Предлагаемый неснижаемый", { center: true, headerLines: ["Предлагаемый", "неснижаемый"] }],
-        ["min_stock_dg_sum", "Нес.остаток Датагон", { center: true, headerLines: ["Нес.остаток", "Датагон"] }],
-        ["turnover_monthly", "Оборач. / мес., %", { center: true, headerLines: ["Оборач.", "/ мес., %"] }],
-        ["skus_new_on_stock", "Новые на складе", { center: true, headerLines: ["Новые", "на складе"] }],
-        ["skus_ineffective", "Залежалые", { center: true }],
+        [
+          "supplier_name",
+          "Поставщик",
+          {
+            thTip:
+              "Поставщик из ms_export. Клик по строке — сводка и детальные таблицы SKU внизу.",
+          },
+        ],
+        [
+          "skus_warehouse",
+          "SKU складская",
+          {
+            center: true,
+            headerLines: ["SKU", "складская"],
+            thTip: "Число SKU со складской позицией «Да» в МС (каталог поставщика).",
+          },
+        ],
+        [
+          "skus_total",
+          "SKU всего",
+          {
+            center: true,
+            headerLines: ["SKU", "всего"],
+            thTip: "Все SKU поставщика в выгрузке (без архива и «перестали сотрудничать»).",
+          },
+        ],
+        [
+          "stock_value_rub",
+          "Остатков на сумму",
+          {
+            center: true,
+            headerLines: ["Остатков", "на сумму"],
+            thTip: "Оценка остатков на складе в рублях: Σ (остаток × закупочная цена).",
+          },
+        ],
+        [
+          "sales_revenue",
+          "Продажи ₽",
+          {
+            center: true,
+            headerLines: ["Продажи", "₽"],
+            thTip:
+              "Выручка отгрузок МС за выбранный период и проекты (проведённые, не удалённые).",
+          },
+        ],
+        [
+          "sales_qty",
+          "Продажи за период",
+          {
+            center: true,
+            headerLines: ["Продажи", "за период"],
+            thTip: "Количество проданных единиц за период (отгрузки МС).",
+          },
+        ],
+        [
+          "sales_revenue_avg_30d",
+          "Продажи средняя за 30 дней",
+          {
+            center: true,
+            headerLines: ["Продажи средняя", "за 30 дней"],
+            thTip: "Средняя выручка за календарный день: продажи ₽ ÷ min(30, дней периода).",
+          },
+        ],
+        [
+          "min_stock_sum",
+          "Неснижаемый",
+          {
+            center: true,
+            headerLines: ["Неснижаемый"],
+            thTip: "Σ неснижаемого остатка из МС по складским SKU поставщика.",
+          },
+        ],
+        [
+          "formula_proposed_sum",
+          "Предлагаемый неснижаемый",
+          {
+            center: true,
+            headerLines: ["Предлагаемый", "неснижаемый"],
+            thTip: "Σ предлагаемого неснижаемого по формуле продаж (кэш формулы Datagon).",
+          },
+        ],
+        [
+          "min_stock_dg_sum",
+          "Нес.остаток Датагон",
+          {
+            center: true,
+            headerLines: ["Нес.остаток", "Датагон"],
+            thTip: "Σ override «Нес.остаток Датагон» по SKU поставщика.",
+          },
+        ],
+        [
+          "turnover_monthly",
+          "Оборач. / мес., %",
+          {
+            center: true,
+            headerLines: ["Оборач.", "/ мес., %"],
+            thTip: "Оценка оборачиваемости остатка: продажи за период к остатку, в % в месяц.",
+          },
+        ],
+        [
+          "skus_new_on_stock",
+          "Новые на складе",
+          {
+            center: true,
+            headerLines: ["Новые", "на складе"],
+            thTip:
+              "SKU, которые недавно появились на складе (порог «новый на складе» в фильтрах, дней).",
+          },
+        ],
+        [
+          "skus_ineffective",
+          "Залежалые",
+          {
+            center: true,
+            thTip: "SKU с низкими продажами относительно остатка (залежалый ассортимент).",
+          },
+        ],
       ];
+
+      function applySaThTooltip(th, opts) {
+        if (!th) return;
+        opts = opts || {};
+        var tip = String(opts.thTip || opts.title || "").trim();
+        if (tip) th.setAttribute("data-dg-tooltip", tip);
+      }
       var SA_COL_OPTS = {};
       SA_COLS.forEach(function (p) { SA_COL_OPTS[p[0]] = p[2] || {}; });
       var SA_SORTABLE = new Set(SA_COLS.map(function (p) { return p[0]; }));
@@ -2684,7 +2795,6 @@
             if (opts.sortKey) {
               th.classList.add("dg-sa-sortable");
               th.setAttribute("data-sort", opts.sortKey);
-              if (opts.title) th.title = opts.title;
             }
           }
           var w = opts.width;
@@ -2707,6 +2817,10 @@
             th.textContent = label;
           }
           if (opts.sortKey) {
+            var colOpts = SA_COL_OPTS[opts.sortKey] || {};
+            applySaThTooltip(th, colOpts);
+          }
+          if (opts.sortKey) {
             th.style.cursor = "pointer";
             th.addEventListener("click", function () {
               if (window.getSelection && window.getSelection().toString().trim()) return;
@@ -2725,14 +2839,17 @@
           tr.appendChild(th);
         }
         addTh("", { expand: true });
+        var thExpand = tr.lastElementChild;
+        if (thExpand) thExpand.setAttribute("data-dg-tooltip", "Развернуть блок детальных таблиц SKU по поставщику.");
         addTh("№", { num: true });
+        var thNum = tr.lastElementChild;
+        if (thNum) thNum.setAttribute("data-dg-tooltip", "Порядковый номер в таблице рейтинга на текущей странице.");
         getVisibleSaCols().forEach(function (p) {
           var key = p[0];
           var opts = SA_COL_OPTS[key] || {};
           addTh(p[1], {
             sortKey: key,
             center: !!opts.center,
-            title: opts.title || "",
             headerLines: opts.headerLines,
           });
         });
@@ -3133,38 +3250,51 @@
       var detailLoadSeq = 0;
       var detailRowsCache = {};
 
+      var SA_DETAIL_TH = {
+        code: "Код товара в МойСклад.",
+        name: "Наименование из ms_export.",
+        stock: "Остаток на складе.",
+        in_transit: "В пути (inTransit) из карточки МС.",
+        stock_rub: "Остаток × закупочная цена (оценка в ₽).",
+        sales_qty: "Продано шт. за период отгрузок (фильтр страницы).",
+        sales_revenue: "Выручка отгрузок за период, ₽.",
+        gross_margin_est: "Оценка валовой маржи (выручка − закупка проданного).",
+        margin_pct: "Маржа в % от выручки.",
+        days_on_stock: "Сколько дней SKU числится на складе (оценка Datagon).",
+      };
+
       var SA_DETAIL_COLS_EXT = [
-        ["code", "Код"],
-        ["name", "Наименование", { nameCol: true }],
-        ["stock", "Остаток", { type: "number", align: "end" }],
-        ["in_transit", "Ожидание", { type: "number", align: "end", headerLines: ["Ожидание"] }],
-        ["stock_rub", "Остаток ₽", { type: "number", align: "end", virtual: true }],
-        ["sales_qty", "Продажи шт.", { type: "number", align: "end" }],
-        ["sales_revenue", "Продажи ₽", { type: "number", align: "end" }],
-        ["gross_margin_est", "Маржа", { type: "number", align: "end" }],
-        ["margin_pct", "Маржа %", { type: "number", align: "end" }],
-        ["days_on_stock", "Дней на складе", { type: "number", align: "end" }],
+        ["code", "Код", { thTip: SA_DETAIL_TH.code }],
+        ["name", "Наименование", { nameCol: true, thTip: SA_DETAIL_TH.name }],
+        ["stock", "Остаток", { type: "number", align: "end", thTip: SA_DETAIL_TH.stock }],
+        ["in_transit", "Ожидание", { type: "number", align: "end", headerLines: ["Ожидание"], thTip: SA_DETAIL_TH.in_transit }],
+        ["stock_rub", "Остаток ₽", { type: "number", align: "end", virtual: true, thTip: SA_DETAIL_TH.stock_rub }],
+        ["sales_qty", "Продажи шт.", { type: "number", align: "end", thTip: SA_DETAIL_TH.sales_qty }],
+        ["sales_revenue", "Продажи ₽", { type: "number", align: "end", thTip: SA_DETAIL_TH.sales_revenue }],
+        ["gross_margin_est", "Маржа", { type: "number", align: "end", thTip: SA_DETAIL_TH.gross_margin_est }],
+        ["margin_pct", "Маржа %", { type: "number", align: "end", thTip: SA_DETAIL_TH.margin_pct }],
+        ["days_on_stock", "Дней на складе", { type: "number", align: "end", thTip: SA_DETAIL_TH.days_on_stock }],
       ];
       var SA_DETAIL_COLS_SIMPLE = [
-        ["code", "Код"],
-        ["name", "Наименование", { nameCol: true }],
-        ["stock", "Остаток", { type: "number", align: "end" }],
-        ["in_transit", "Ожидание", { type: "number", align: "end", headerLines: ["Ожидание"] }],
-        ["sales_qty", "Продажи шт.", { type: "number", align: "end" }],
-        ["sales_revenue", "Продажи ₽", { type: "number", align: "end" }],
+        ["code", "Код", { thTip: SA_DETAIL_TH.code }],
+        ["name", "Наименование", { nameCol: true, thTip: SA_DETAIL_TH.name }],
+        ["stock", "Остаток", { type: "number", align: "end", thTip: SA_DETAIL_TH.stock }],
+        ["in_transit", "Ожидание", { type: "number", align: "end", headerLines: ["Ожидание"], thTip: SA_DETAIL_TH.in_transit }],
+        ["sales_qty", "Продажи шт.", { type: "number", align: "end", thTip: SA_DETAIL_TH.sales_qty }],
+        ["sales_revenue", "Продажи ₽", { type: "number", align: "end", thTip: SA_DETAIL_TH.sales_revenue }],
       ];
       var SA_DETAIL_COLS_STALE = [
-        ["code", "Код"],
-        ["name", "Наименование", { nameCol: true }],
-        ["stock", "Остаток", { type: "number", align: "end" }],
-        ["in_transit", "Ожидание", { type: "number", align: "end", headerLines: ["Ожидание"] }],
+        ["code", "Код", { thTip: SA_DETAIL_TH.code }],
+        ["name", "Наименование", { nameCol: true, thTip: SA_DETAIL_TH.name }],
+        ["stock", "Остаток", { type: "number", align: "end", thTip: SA_DETAIL_TH.stock }],
+        ["in_transit", "Ожидание", { type: "number", align: "end", headerLines: ["Ожидание"], thTip: SA_DETAIL_TH.in_transit }],
       ];
       var SA_DETAIL_COLS_NEW = [
-        ["code", "Код"],
-        ["name", "Наименование", { nameCol: true }],
-        ["stock", "Остаток", { type: "number", align: "end" }],
-        ["in_transit", "Ожидание", { type: "number", align: "end", headerLines: ["Ожидание"] }],
-        ["days_on_stock", "Дней на складе", { type: "number", align: "end" }],
+        ["code", "Код", { thTip: SA_DETAIL_TH.code }],
+        ["name", "Наименование", { nameCol: true, thTip: SA_DETAIL_TH.name }],
+        ["stock", "Остаток", { type: "number", align: "end", thTip: SA_DETAIL_TH.stock }],
+        ["in_transit", "Ожидание", { type: "number", align: "end", headerLines: ["Ожидание"], thTip: SA_DETAIL_TH.in_transit }],
+        ["days_on_stock", "Дней на складе", { type: "number", align: "end", thTip: SA_DETAIL_TH.days_on_stock }],
       ];
       var SA_DETAIL_COLS_WEAK = SA_DETAIL_COLS_SIMPLE;
 
@@ -3437,6 +3567,7 @@
           } else {
             th.textContent = label;
           }
+          applySaThTooltip(th, opts);
           tr.appendChild(th);
         });
         thead.appendChild(tr);

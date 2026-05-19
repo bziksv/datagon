@@ -58,6 +58,8 @@ const SORT_KEYS = new Set([
     'supplier_name',
     'products_total',
     'products_to_purchase',
+    'products_zero_stock_to_buy',
+    'products_zero_stock_to_buy_pct',
     'purchase_pieces_total',
     'total_purchase_sum',
     'min_purchase_sum',
@@ -244,6 +246,13 @@ function buildSupplierAggregatesSubquery(formulaFp, dataRev) {
             TRIM(mse.supplier) AS supplier_name,
             COUNT(*) AS products_total,
             SUM(CASE WHEN (${SUPPLIER_NEED_QTY_SQL}) > 0 THEN 1 ELSE 0 END) AS products_to_purchase,
+            SUM(
+                CASE
+                    WHEN (${SUPPLIER_NEED_QTY_SQL}) > 0 AND COALESCE(mse.stock, 0) <= 0
+                    THEN 1
+                    ELSE 0
+                END
+            ) AS products_zero_stock_to_buy,
             SUM(CASE WHEN (${SUPPLIER_NEED_QTY_SQL}) > 0 THEN (${SUPPLIER_NEED_QTY_SQL}) ELSE 0 END) AS purchase_pieces_total,
             SUM(
                 CASE WHEN (${SUPPLIER_NEED_QTY_SQL}) > 0
@@ -281,6 +290,12 @@ function buildOrderBy(sortBy, sortDesc) {
             return num('agg.products_total');
         case 'products_to_purchase':
             return num('agg.products_to_purchase');
+        case 'products_zero_stock_to_buy':
+            return num('agg.products_zero_stock_to_buy');
+        case 'products_zero_stock_to_buy_pct':
+            return num(
+                `CASE WHEN agg.products_to_purchase > 0 THEN (100 * agg.products_zero_stock_to_buy / agg.products_to_purchase) ELSE NULL END`,
+            );
         case 'purchase_pieces_total':
             return num('agg.purchase_pieces_total');
         case 'total_purchase_sum':
@@ -405,6 +420,13 @@ function mapSupplierRow(r, salesRankCtx) {
         stock_fill_pct_recorded_at: r.stock_fill_pct_recorded_at || null,
         products_total: Number(r.products_total || 0),
         products_to_purchase: Number(r.products_to_purchase || 0),
+        products_zero_stock_to_buy: Number(r.products_zero_stock_to_buy || 0),
+        products_zero_stock_to_buy_pct: (() => {
+            const toBuy = Number(r.products_to_purchase || 0);
+            const zero = Number(r.products_zero_stock_to_buy || 0);
+            if (!Number.isFinite(toBuy) || toBuy <= 0) return null;
+            return Math.round((100 * zero) / toBuy * 100) / 100;
+        })(),
         purchase_pieces_total: Number(r.purchase_pieces_total || 0),
         total_purchase_sum: Number(r.total_purchase_sum || 0),
         auto_mailing_enabled: Number(r.auto_mailing_enabled || 0) === 1,
@@ -544,6 +566,7 @@ module.exports = function suppliersRouterFactory(db, appSettings = {}) {
                     agg.supplier_name,
                     agg.products_total,
                     agg.products_to_purchase,
+                    agg.products_zero_stock_to_buy,
                     agg.purchase_pieces_total,
                     agg.total_purchase_sum,
                     agg.min_stock_total,

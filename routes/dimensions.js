@@ -372,6 +372,18 @@ function mapSqlRowToIssueFilterShape(r) {
  * @param {string|null|undefined} [payloadJsonOverride] — `undefined`: взять `r.payload_json`;
  *   `null`: не парсить payload (ускорение problem_stock); иначе сырой JSON.
  */
+function resolveArticleFromRow(r, payload) {
+    const fromDenorm =
+        r.denorm_article != null && String(r.denorm_article).trim() !== ''
+            ? String(r.denorm_article).trim()
+            : '';
+    if (fromDenorm) return fromDenorm;
+    if (payload && typeof payload.article === 'string' && String(payload.article).trim() !== '') {
+        return String(payload.article).trim();
+    }
+    return '';
+}
+
 function mapDimensionListRow(r, payloadJsonOverride) {
     let payload = null;
     if (payloadJsonOverride === undefined) {
@@ -394,6 +406,7 @@ function mapDimensionListRow(r, payloadJsonOverride) {
     const parsed = parsePackingDims(packingForParse);
     return {
         code: String(r.code || ''),
+        article: resolveArticleFromRow(r, payload),
         name: String(r.name || ''),
         type: String(r.type || ''),
         uuid: String(r.uuid || ''),
@@ -444,6 +457,7 @@ function compareDimensionOutRows(a, b, sortBy, sortDir) {
     else if (sb === 'measured_at') cmp = str(a.measured_at).localeCompare(str(b.measured_at), 'ru');
     else if (sb === 'measured_by_name') cmp = str(a.measured_by_name).localeCompare(str(b.measured_by_name), 'ru');
     else if (sb === 'name') cmp = str(a.name).localeCompare(str(b.name), 'ru');
+    else if (sb === 'article') cmp = str(a.article).localeCompare(str(b.article), 'ru');
     else if (sb === 'type') cmp = str(a.type).localeCompare(str(b.type), 'ru');
     else if (sb === 'packing_type') {
         cmp = sortMetricRawString(a, 'packing_type').localeCompare(sortMetricRawString(b, 'packing_type'), 'ru');
@@ -516,6 +530,7 @@ async function collectPostFilteredDimensionRowsChunked(db, selectForCap, fromFor
 
 const ALLOWED_SORT = {
     code: 'mse.code',
+    article: "COALESCE(NULLIF(TRIM(med.denorm_article), ''), '')",
     name: 'mse.name',
     type: 'mse.type',
     stock: 'mse.stock',
@@ -803,11 +818,13 @@ const SELECT_DIM_PROBLEM_SCAN = `SELECT
                     mdm.height_box_cm AS m_height_box_cm,
                     mdm.height_bag_cm AS m_height_bag_cm,
                     mdm.weight_kg AS m_weight_kg,
-                    mdm.packing_type AS m_packing_type`;
+                    mdm.packing_type AS m_packing_type,
+                    med.denorm_article AS denorm_article`;
 
 const FROM_DIM_SLIM = `
                 FROM ms_export mse
-                LEFT JOIN ms_dimensions_measurements mdm ON mdm.code = mse.code`;
+                LEFT JOIN ms_dimensions_measurements mdm ON mdm.code = mse.code
+                LEFT JOIN ms_entity_details med ON med.uuid = mse.uuid`;
 
 /**
  * «Проблемные товары»: без JOIN ms_entity_details на весь скан; payload — пакетами только
@@ -1103,8 +1120,10 @@ function buildWhereClauseFromQuery(query) {
         const tokens = search.split(/\s+/).filter(Boolean).slice(0, 6);
         for (const tok of tokens) {
             const like = `%${tok}%`;
-            where.push('(mse.code LIKE ? OR mse.name LIKE ?)');
-            params.push(like, like);
+            where.push(
+                '(mse.code LIKE ? OR mse.name LIKE ? OR COALESCE(med.denorm_article, \'\') LIKE ?)',
+            );
+            params.push(like, like, like);
         }
     }
 
@@ -1887,6 +1906,7 @@ function createDimensionsRouter(db, appSettings = {}) {
 
             const selectNarrow = `SELECT
                     mse.code AS code,
+                    med.denorm_article AS denorm_article,
                     mse.name AS name,
                     mse.type AS type,
                     mse.uuid AS uuid,

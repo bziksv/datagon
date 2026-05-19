@@ -122,7 +122,7 @@ function buildPurchaseListCacheKey(req, dataRev, formulaFp) {
     const q = req && req.query ? req.query : {};
     const norm = (k) => String(q[k] != null ? q[k] : '').trim();
     return JSON.stringify({
-        v: 4,
+        v: 6,
         data_rev: dataRev,
         formula_fp: formulaFp,
         limit: norm('limit') || '100',
@@ -551,6 +551,15 @@ function buildPurchaseColumnTotalsSql(frag) {
             SUM(COALESCE(mse.stock, 0)) AS stock_total,
             SUM((${SUPPLIER_IN_TRANSIT_SQL})) AS in_transit_total,
             SUM((${SUPPLIER_NEED_QTY_SQL})) AS to_purchase_qty_total,
+            SUM(
+                CASE
+                    WHEN (${SUPPLIER_NEED_QTY_SQL}) > 0
+                        AND ${PURCHASE_SQL_PRICE_NUM} IS NOT NULL
+                        AND ${PURCHASE_SQL_PRICE_NUM} > 0
+                    THEN (${SUPPLIER_NEED_QTY_SQL}) * ${PURCHASE_SQL_PRICE_NUM}
+                    ELSE 0
+                END
+            ) AS purchase_sum_total,
             SUM(COALESCE(CAST(mse.stock AS DECIMAL(20,6)), 0) * ${price}) AS stock_value_rub,
             SUM(${PURCHASE_MIN_STOCK_SUM_SQL} * ${price}) AS min_stock_value_rub,
             SUM(COALESCE(CAST(fc.proposed AS DECIMAL(20,6)), 0) * ${price}) AS formula_proposed_value_rub,
@@ -568,6 +577,7 @@ function mapPurchaseColumnTotalsRow(r) {
         stock: Number(row.stock_total || 0),
         in_transit: Number(row.in_transit_total || 0),
         to_purchase_qty: Number(row.to_purchase_qty_total || 0),
+        purchase_sum: Number(row.purchase_sum_total || 0),
         stock_value_rub: Number(row.stock_value_rub || 0),
         min_stock_value_rub: Number(row.min_stock_value_rub || 0),
         formula_proposed_value_rub: Number(row.formula_proposed_value_rub || 0),
@@ -577,6 +587,8 @@ function mapPurchaseColumnTotalsRow(r) {
 
 /** Порог: полный enrich всех строк фильтра для Σ и режима «К закупке». */
 const PURCHASE_ENRICHED_TOTALS_MAX_ROWS = 2500;
+/** Отдельный лимит для фонового пересчёта KPI «Предлагаемый нес.ост.» (тяжёлый enrich). */
+const PURCHASE_KPI_ENRICH_MAX_ROWS = 6000;
 
 function parsePurchaseBuyPriceRub(v) {
     if (v == null || v === '') return null;
@@ -605,6 +617,7 @@ function sumPurchaseColumnTotalsFromItems(items) {
     let stock = 0;
     let inTransit = 0;
     let toPurchase = 0;
+    let purchaseSum = 0;
     let stockRub = 0;
     let minStockRub = 0;
     let formulaRub = 0;
@@ -624,7 +637,9 @@ function sumPurchaseColumnTotalsFromItems(items) {
         formulaRub += purchaseLineValueRub(fp, d.buy_price);
         const tr = parsePurchaseNumOrNull(d.in_transit);
         if (tr != null) inTransit += tr;
-        toPurchase += Number(d.to_purchase_qty || 0);
+        const needQty = Number(d.to_purchase_qty || 0);
+        toPurchase += needQty;
+        purchaseSum += purchaseLineValueRub(needQty, d.buy_price);
     }
     return {
         positions_count: positions,
@@ -633,6 +648,7 @@ function sumPurchaseColumnTotalsFromItems(items) {
         stock,
         in_transit: inTransit,
         to_purchase_qty: toPurchase,
+        purchase_sum: purchaseSum,
         stock_value_rub: stockRub,
         min_stock_value_rub: minStockRub,
         formula_proposed_value_rub: formulaRub,
@@ -778,7 +794,10 @@ async function purchaseListQueryEnrichedSort(db, appSettings, req, frag, runOpts
         sort_dir: sortDir,
         to_purchase_active: Boolean(frag.toPurchaseOnly),
         column_totals,
+        kpi_totals: column_totals,
         column_totals_source: 'enriched',
+        kpi_totals_source: 'enriched',
+        formula_kpi_approximate: false,
         data: pageItems,
     };
     if (bench) out._bench = benchOut;
@@ -792,8 +811,10 @@ async function purchaseListQueryToPurchaseEnriched(db, appSettings, req, frag, r
     const fragBase = buildPurchaseListWhereFragments(req, { skipToPurchaseSqlFilter: true });
     const dataRev = await loadPurchaseDataRevisionCached(db);
     const formulaFpVal = buildFormulaFingerprint(appSettings);
-    let items = await loadPurchaseListItemsForFrag(db, appSettings, fragBase, formulaFpVal, dataRev);
-    items = items.filter((d) => Number(d.to_purchase_qty || 0) > 0);
+    const allItems = await loadPurchaseListItemsForFrag(db, appSettings, fragBase, formulaFpVal, dataRev);
+    /** KPI «Сводка по фильтру» — по всей выборке (поставщик, поиск…), не только по строкам «к закупке». */
+    const kpi_totals = sumPurchaseColumnTotalsFromItems(allItems);
+    let items = allItems.filter((d) => Number(d.to_purchase_qty || 0) > 0);
     const limitRaw = parseInt(req.query.limit, 10);
     const offsetRaw = parseInt(req.query.offset, 10);
     const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(1000, limitRaw) : 100;
@@ -815,8 +836,11 @@ async function purchaseListQueryToPurchaseEnriched(db, appSettings, req, frag, r
         sort_dir: sortDir,
         to_purchase_active: true,
         column_totals,
+        kpi_totals,
         data: pageItems,
         column_totals_source: 'enriched',
+        kpi_totals_source: 'enriched',
+        formula_kpi_approximate: false,
     };
 }
 
@@ -895,11 +919,19 @@ async function purchaseListQueryPaged(db, appSettings, req, runOpts = {}) {
 
     let column_totals = mapPurchaseColumnTotalsRow(totalsRows && totalsRows[0] ? totalsRows[0] : null);
     let column_totals_source = 'sql';
+    let kpi_totals = column_totals;
+    let kpi_totals_source = column_totals_source;
+    let formula_kpi_approximate = false;
     if (total > 0 && total <= PURCHASE_ENRICHED_TOTALS_MAX_ROWS) {
         t0 = process.hrtime.bigint();
         column_totals = await computePurchaseColumnTotalsEnriched(db, appSettings, frag, formulaFpVal, dataRev);
         if (bench) benchOut.totals_enriched_ms = Number(process.hrtime.bigint() - t0) / 1e6;
         column_totals_source = 'enriched';
+        kpi_totals = column_totals;
+        kpi_totals_source = 'enriched';
+    } else if (total > PURCHASE_ENRICHED_TOTALS_MAX_ROWS) {
+        /** SQL-итог по fc.proposed без полного enrich — может быть занижен; фронт догружает /summary-totals. */
+        formula_kpi_approximate = true;
     }
 
     const out = {
@@ -912,10 +944,41 @@ async function purchaseListQueryPaged(db, appSettings, req, runOpts = {}) {
         to_purchase_active: Boolean(frag.toPurchaseOnly),
         column_totals,
         column_totals_source,
+        kpi_totals,
+        kpi_totals_source,
+        formula_kpi_approximate,
         data: pageItems,
     };
     if (bench) out._bench = benchOut;
     return out;
+}
+
+/** KPI-сводка с полным enrich по формуле (без пагинации списка). */
+async function purchaseSummaryTotalsEnriched(db, appSettings, req) {
+    const dataRev = await loadPurchaseDataRevisionCached(db);
+    const formulaFpVal = buildFormulaFingerprint(appSettings);
+    const frag = buildPurchaseListWhereFragments(req, { skipToPurchaseSqlFilter: true });
+    const countFromJoin = buildPurchaseCountFromJoin(frag.incompletePack, false);
+    const countSql = `SELECT COUNT(*) AS cnt ${countFromJoin} WHERE ${frag.whereSql}`;
+    const countParams = purchaseCountQueryParams(frag, formulaFpVal, dataRev, true);
+    const [countRows] = await db.query(countSql, countParams);
+    const total = Number(countRows && countRows[0] ? countRows[0].cnt : 0);
+    if (total > PURCHASE_KPI_ENRICH_MAX_ROWS) {
+        return {
+            success: true,
+            total,
+            too_large: true,
+            formula_kpi_approximate: true,
+        };
+    }
+    const kpi_totals = await computePurchaseColumnTotalsEnriched(db, appSettings, frag, formulaFpVal, dataRev);
+    return {
+        success: true,
+        total,
+        kpi_totals,
+        kpi_totals_source: 'enriched',
+        formula_kpi_approximate: false,
+    };
 }
 
 async function ensureSchema(db) {
@@ -1681,6 +1744,7 @@ function attachPurchaseNeedFields(items) {
     for (const d of items) {
         d.purchase_target_stock = purchaseTargetStock(d);
         d.to_purchase_qty = computePurchaseNeedQty(d);
+        d.purchase_sum = purchaseLineValueRub(d.to_purchase_qty, d.buy_price);
     }
 }
 
@@ -2807,6 +2871,23 @@ function createPurchaseRouter(db, appSettings) {
             return res.status(500).json({
                 success: false,
                 error: e && e.message ? e.message : 'Не удалось загрузить список менеджеров',
+            });
+        }
+    });
+
+    router.get('/summary-totals', async (req, res) => {
+        try {
+            await ensureSchema(db);
+            if (typeof require('./msSales').ensureSchema === 'function') {
+                await require('./msSales').ensureSchema(db);
+            }
+            const body = await purchaseSummaryTotalsEnriched(db, appSettings, req);
+            res.json(body);
+        } catch (err) {
+            console.error('[purchase][summary-totals] error:', err);
+            res.status(500).json({
+                success: false,
+                error: err && err.message ? err.message : 'Не удалось пересчитать сводку',
             });
         }
     });

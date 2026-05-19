@@ -45,7 +45,8 @@
       perspective: none !important;
     }
     body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-table {
-      width: max-content;
+      /* Ширину задаёт JS (сумма col + table-layout:fixed). max-content не даёт сужать код/артикул. */
+      width: auto;
       min-width: 100%;
       max-width: none;
       border-collapse: collapse;
@@ -161,11 +162,31 @@
     body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-table tbody tr:hover td {
       background: #f0f4ff;
     }
-    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-code {
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-code,
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-article {
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
       font-weight: 600;
       color: #1f2937;
       font-variant-numeric: tabular-nums;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-table thead th .dg-th-resize-handle {
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 6px;
+      height: 100%;
+      cursor: col-resize;
+      z-index: 4;
+      background: linear-gradient(to right, transparent 47%, #d9dee5 47%, #d9dee5 53%, transparent 53%);
+      opacity: 0.55;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-table thead th .dg-th-resize-handle:hover {
+      opacity: 1;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-article {
+      font-weight: 500;
     }
     body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-type-badge {
       display: inline-block;

@@ -1449,6 +1449,8 @@
         ["multiplicity", "Кратность товара", { center: true, editable: true }],
         ["stock", "Остаток", { center: true }],
         ["in_transit", "Ожидание", { center: true }],
+        ["to_purchase_qty", "К закупке", { center: true, toBuyCol: true }],
+        ["purchase_sum", "Сумма закупки", { center: true }],
         ["d_15a", "15", { center: true, puSub: "прод., шт" }],
         ["d_15b", "15", { center: true, puSub: "дн. нет" }],
         ["d_30a", "30", { center: true, puSub: "прод., шт" }],
@@ -1465,18 +1467,67 @@
 
       var COL_OPTS = {};
       PU_COLS.forEach(function (p) { COL_OPTS[p[0]] = p[2] || {}; });
-      COL_OPTS.to_purchase_qty = { center: true, toBuyCol: true };
 
-      /** После «Применить» с доп. фильтром «К закупке» / to_buy — показываем колонку «К закупке». */
+      /** Подсказки к заголовкам колонок (глобальный tooltip Datagon, `data-dg-tooltip`). */
+      var PU_TH_TIPS = {
+        code: "Код товара в МойСклад (ms_export). Клик по коду в строке — карточка товара.",
+        article: "Артикул из карточки МС (ms_entity_details или payload).",
+        name: "Наименование из выгрузки МойСклад. Ссылка — карточка товара Datagon.",
+        supplier_label: "Поставщик 1 и 2 из МС (как в карточке товара).",
+        price_comment: "Поле «Проработка цены / коммент» из ms_export.",
+        buy_price: "Закупочная цена из МойСклад (строка в ms_export.buy_price).",
+        min_stock: "Неснижаемый остаток из МС (minimumBalance). Участвует в расчёте «К закупке».",
+        formula_proposed_min_stock:
+          "Предлагаемый неснижаемый по формуле продаж (кэш dg_formula_proposed_cache). Не подменяет МС в расчёте «К закупке».",
+        automation_price: "Автоматизация цены из МС.",
+        min_stock_dg:
+          "Override «Нес.остаток Датагон» (редактируется здесь). В формуле продаж — нижняя граница предложения, не baseline.",
+        multiplicity: "Кратность заказа (override Datagon, POST /api/purchase/override).",
+        stock: "Остаток на складе из ms_export.stock.",
+        in_transit:
+          "В пути (inTransit): denorm_in_transit или payload_json после синка МС.",
+        to_purchase_qty:
+          "К закупке: max(0, неснижаемый МС − остаток − ожидание). Та же логика, что на «Поставщиках».",
+        purchase_sum: "Сумма закупки: «К закупке» × закупочная цена. Без цены — прочерк.",
+        d_15a:
+          "Продано за последние 15 календарных дней (шт.): проведённые отгрузки МС, прямой код и через комплекты.",
+        d_15b:
+          "Число календарных дней за 15 дн., когда в логе был «нулевой» остаток (dg_product_zero_stock_log).",
+        d_30a: "Продано за последние 30 календарных дней (шт.), см. колонку «15 / прод., шт».",
+        d_30b: "Дней без остатка за 30 дн., см. колонку «15 / дн. нет».",
+        d_60a: "Продано за последние 60 календарных дней (шт.).",
+        d_60b: "Дней без остатка за 60 дн.",
+        d_90a: "Продано за последние 90 календарных дней (шт.).",
+        d_90b: "Дней без остатка за 90 дн.",
+        d_180a: "Продано за последние 180 календарных дней (шт.).",
+        d_180b: "Дней без остатка за 180 дн.",
+        d_365a: "Продано за последние 365 календарных дней (шт.).",
+        d_365b: "Дней без остатка за 365 дн.",
+      };
+
+      function applyPuThTooltip(th, key) {
+        if (!th) return;
+        var opts = COL_OPTS[key] || {};
+        var tip = String(opts.thTip || PU_TH_TIPS[key] || "").trim();
+        if (tip) th.setAttribute("data-dg-tooltip", tip);
+      }
+
+      /** После «Применить» с доп. фильтром «К закупке» / to_buy — скрываем «Автоматизация цены». */
       var purchaseToPurchaseMode = false;
 
       var lastColumnTotals = null;
+      var lastKpiTotals = null;
+      var lastKpiTotalsSource = "";
+      var lastFormulaKpiApproximate = false;
+      var lastFormulaKpiEnriching = false;
+      var lastToPurchaseActive = false;
       var PU_SUM_COL_KEYS = new Set([
         "min_stock",
         "formula_proposed_min_stock",
         "stock",
         "in_transit",
         "to_purchase_qty",
+        "purchase_sum",
       ]);
 
       var SORTABLE = new Set([
@@ -1635,6 +1686,7 @@
         stock: 80,
         in_transit: 60,
         to_purchase_qty: 76,
+        purchase_sum: 110,
         d_15a: 60,
         d_15b: 60,
         d_30a: 60,
@@ -1788,8 +1840,18 @@
         to_purchase: "0",
       };
 
-      /** Переход с «Поставщики» (?supplier=…&to_buy=1): точный поставщик + только «к закупке». */
+      /** Переход с «Поставщики» (?supplier=…&to_buy=1): короткая ссылка только пока доп. фильтр = «К закупке». */
       var purchaseToBuyLink = false;
+
+      function isPuSupplierToBuyDeepLink() {
+        return purchaseToBuyLink && readPuExtraFilterSelect() === "to_purchase";
+      }
+
+      function clearPurchaseToBuyLinkIfExtraChanged() {
+        if (purchaseToBuyLink && readPuExtraFilterSelect() !== "to_purchase") {
+          purchaseToBuyLink = false;
+        }
+      }
 
       var FILTERS_KEY = "datagon_purchase_filters_collapsed_v1";
 
@@ -1867,34 +1929,55 @@
         }
         if (loadingEl) loadingEl.classList.add("d-none");
         if (kpiRow) kpiRow.classList.remove("opacity-50");
-        var t = lastColumnTotals || {};
+        var t = lastKpiTotals || lastColumnTotals || {};
         var pos = Number(t.positions_count || total || 0);
         if (posBadge) {
           posBadge.textContent = pos > 0 ? fmtNum(pos) + " поз." : "0 поз.";
         }
         set("dg-pu-kpi-stock-rub", fmtMoneyRub(t.stock_value_rub));
         set("dg-pu-kpi-min-stock-rub", fmtMoneyRub(t.min_stock_value_rub));
-        set("dg-pu-kpi-formula-rub", fmtMoneyRub(t.formula_proposed_value_rub));
+        if (lastFormulaKpiEnriching) {
+          set("dg-pu-kpi-formula-rub", "…");
+          set("dg-pu-kpi-formula-qty", "пересчёт…");
+        } else {
+          var formulaRub = fmtMoneyRub(t.formula_proposed_value_rub);
+          if (lastFormulaKpiApproximate && formulaRub !== "—") {
+            formulaRub = "~ " + formulaRub;
+          }
+          set("dg-pu-kpi-formula-rub", formulaRub);
+          set(
+            "dg-pu-kpi-formula-qty",
+            fmtPuKpiQtySub("Предлагаемый", t.formula_proposed_min_stock)
+          );
+        }
         set("dg-pu-kpi-stock-qty", fmtPuKpiQtySub("Остаток", t.stock));
         set("dg-pu-kpi-min-stock-qty", fmtPuKpiQtySub("Неснижаемый", t.min_stock));
-        set("dg-pu-kpi-formula-qty", fmtPuKpiQtySub("Предлагаемый", t.formula_proposed_min_stock));
         if (hint) {
           var parts = [
-            "Суммы по всем строкам текущего фильтра (все страницы таблицы).",
+            "Суммы по всем строкам текущего фильтра (все страницы), не только по строкам на экране.",
             "Рубли = количество × закупочная цена из МойСклад.",
           ];
+          if (lastToPurchaseActive) {
+            parts.push(
+              "Доп. фильтр «К закупке»: в таблице только позиции с потребностью > 0; сводка выше — по полному фильтру (поставщик, поиск…)."
+            );
+          }
           var noPrice = Number(t.positions_without_buy_price || 0);
           if (noPrice > 0) {
             parts.push(
               "Без закупочной цены в оценку не входят: " + fmtNum(noPrice) + " поз."
             );
           }
-          if (lastColumnTotalsSource === "enriched") {
-            parts.push("Предлагаемый нес.ост. пересчитан по формуле для всей выборки.");
-          } else if (Number(total || 0) > 2500) {
+          if (lastFormulaKpiEnriching) {
             parts.push(
-              "Для очень большой выборки предлагаемый нес.ост. в ₽ может быть занижен (нет полного пересчёта формулы)."
+              "Предлагаемый нес.ост.: пересчёт по формуле для всей выборки…"
             );
+          } else if (lastFormulaKpiApproximate) {
+            parts.push(
+              "Предлагаемый нес.ост.: ориентировочно по SQL (кэш формулы есть не у всех SKU). Точные цифры — после фонового пересчёта или «Пересчитать кэш формулы»."
+            );
+          } else if (lastKpiTotalsSource === "enriched" || lastColumnTotalsSource === "enriched") {
+            parts.push("Предлагаемый нес.ост. пересчитан по формуле для всей выборки.");
           }
           hint.textContent = parts.join(" ");
         }
@@ -2296,7 +2379,7 @@
         if (f.no_multiplicity === "1") p.set("no_multiplicity", "1");
         if (f.incomplete_pack === "1") p.set("incomplete_pack", "1");
         if (f.to_purchase === "1") p.set("to_purchase", "1");
-        if (purchaseToBuyLink) {
+        if (isPuSupplierToBuyDeepLink()) {
           p.set("to_buy", "1");
           p.set("to_purchase", "1");
           if (f.supplier) p.set("supplier_exact", "1");
@@ -2322,8 +2405,9 @@
       }
 
       function syncUrlFromState() {
+        clearPurchaseToBuyLinkIfExtraChanged();
         var f = readFilters();
-        if (purchaseToBuyLink && f.supplier) {
+        if (isPuSupplierToBuyDeepLink() && f.supplier) {
           var shortP = new URLSearchParams();
           shortP.set("supplier", f.supplier);
           shortP.set("to_buy", "1");
@@ -2427,30 +2511,19 @@
       }
 
       function getPuColsList() {
-        if (!purchaseToPurchaseMode) return PU_COLS;
-        var out = [];
-        PU_COLS.forEach(function (p) {
-          var key = p[0];
+        return PU_COLS.filter(function (p) {
           var opts = p[2] || {};
-          if (opts.hideInToPurchaseMode) return;
-          out.push(p);
-          if (key === "in_transit") {
-            out.push(["to_purchase_qty", "К закупке", COL_OPTS.to_purchase_qty]);
-          }
+          return !(purchaseToPurchaseMode && opts.hideInToPurchaseMode);
         });
-        return out;
       }
 
       function syncToPurchaseColumnVisibility() {
         if (purchaseToPurchaseMode) {
-          visibleCols.add("to_purchase_qty");
           visibleCols.delete("automation_price");
           if (sortBy === "automation_price") {
             sortBy = "code";
             sortDir = "asc";
           }
-        } else {
-          visibleCols.delete("to_purchase_qty");
         }
       }
 
@@ -2894,6 +2967,31 @@
             fmtPuSnapQty(tr);
           return spNeed;
         }
+        if (key === "purchase_sum") {
+          var spSum = document.createElement("span");
+          spSum.className = "dg-pu-purchase-sum";
+          var sumVal = r.purchase_sum;
+          if (sumVal == null || sumVal === "") {
+            var need0 = r.to_purchase_qty;
+            var q0 = need0 != null && need0 !== "" ? Number(need0) : null;
+            if (q0 != null && Number.isFinite(q0) && q0 > 0) {
+              var bp = String(r.buy_price || "").trim();
+              if (bp) {
+                var p0 = Number(bp.replace(/[^\d.,-]/g, "").replace(",", "."));
+                if (Number.isFinite(p0) && p0 > 0) sumVal = q0 * p0;
+              }
+            }
+          }
+          var nSum = sumVal != null && sumVal !== "" ? Number(sumVal) : null;
+          if (nSum != null && Number.isFinite(nSum) && nSum > 0.005) {
+            spSum.textContent = fmtMoneyRub(nSum);
+          } else {
+            spSum.textContent = "—";
+          }
+          spSum.title =
+            "Сумма закупки: количество «к закупке» × закупочная цена из МойСклад. Без цены или при нулевой потребности — «—».";
+          return spSum;
+        }
         if (key === "supplier_label") {
           var sp4 = document.createElement("span");
           sp4.textContent = r.supplier_label || "-";
@@ -3011,6 +3109,7 @@
           labelWrap.style.fontVariantNumeric = "tabular-nums";
           labelWrap.appendChild(labelText);
           th.appendChild(labelWrap);
+          applyPuThTooltip(th, key);
           if (opts.puSub) {
             var sub = document.createElement("div");
             sub.className = "text-muted";
@@ -3076,6 +3175,7 @@
 
       function formatPuColumnTotal(key, val) {
         if (val == null || !Number.isFinite(Number(val))) return "—";
+        if (key === "purchase_sum") return fmtMoneyRub(val);
         if (key === "min_stock" || key === "formula_proposed_min_stock") return fmtNum(val);
         return fmtPuSnapQty(val);
       }
@@ -3923,6 +4023,49 @@
         });
       }
 
+      function buildKpiSummaryParams() {
+        var p = buildListParams();
+        p.delete("limit");
+        p.delete("offset");
+        p.delete("sort_by");
+        p.delete("sort_dir");
+        return p;
+      }
+
+      function fetchEnrichedKpiTotals(mySeq) {
+        var p = buildKpiSummaryParams();
+        lastFormulaKpiEnriching = true;
+        renderPurchaseSummary();
+        fetch("/api/purchase/summary-totals?" + p.toString(), {
+          credentials: "same-origin",
+        })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              if (!r.ok || !j || j.success === false) {
+                throw new Error((j && j.error) || "HTTP " + r.status);
+              }
+              return j;
+            });
+          })
+          .then(function (j) {
+            if (mySeq !== loadSeq) return;
+            lastFormulaKpiEnriching = false;
+            if (j && j.kpi_totals) {
+              lastKpiTotals = j.kpi_totals;
+              lastKpiTotalsSource = j.kpi_totals_source || "enriched";
+              lastFormulaKpiApproximate = !!j.formula_kpi_approximate;
+            } else if (j && j.too_large) {
+              lastFormulaKpiApproximate = true;
+            }
+            renderPurchaseSummary();
+          })
+          .catch(function () {
+            if (mySeq !== loadSeq) return;
+            lastFormulaKpiEnriching = false;
+            renderPurchaseSummary();
+          });
+      }
+
       function loadData() {
         if (loading) return;
         var mySeq = ++loadSeq;
@@ -3931,7 +4074,12 @@
         syncToPurchaseColumnVisibility();
         loading = true;
         lastColumnTotals = null;
+        lastKpiTotals = null;
         lastColumnTotalsSource = "";
+        lastKpiTotalsSource = "";
+        lastFormulaKpiApproximate = false;
+        lastFormulaKpiEnriching = false;
+        lastToPurchaseActive = false;
         setApplyResetDisabled(true);
         renderPurchaseSummary();
         buildThead();
@@ -3968,11 +4116,19 @@
             total = Number(j.total || 0);
             lastRows = Array.isArray(j.data) ? j.data : [];
             lastColumnTotals = j && j.column_totals ? j.column_totals : null;
+            lastKpiTotals =
+              j && j.kpi_totals ? j.kpi_totals : lastColumnTotals;
             lastColumnTotalsSource = (j && j.column_totals_source) || "";
+            lastKpiTotalsSource = (j && j.kpi_totals_source) || lastColumnTotalsSource;
+            lastFormulaKpiApproximate = !!(j && j.formula_kpi_approximate);
+            lastToPurchaseActive = !!(j && j.to_purchase_active);
             lastPurchaseCacheMeta = j && j.cache ? j.cache : null;
             loading = false;
             setApplyResetDisabled(false);
             renderPurchaseSummary();
+            if (lastFormulaKpiApproximate && !lastToPurchaseActive) {
+              fetchEnrichedKpiTotals(mySeq);
+            }
             buildThead();
             renderTable(lastRows);
             updateTableHint();
@@ -3992,7 +4148,12 @@
             total = 0;
             lastRows = [];
             lastColumnTotals = null;
+            lastKpiTotals = null;
             lastColumnTotalsSource = "";
+            lastKpiTotalsSource = "";
+            lastFormulaKpiApproximate = false;
+            lastFormulaKpiEnriching = false;
+            lastToPurchaseActive = false;
             renderPurchaseSummary();
             buildThead();
             renderTable([]);
@@ -4048,9 +4209,17 @@
       // По правилу datagon-table-filter-apply.mdc: фильтры применяются только
       // по «Применить» / Enter / Esc / «Сбросить». Никаких fetch на каждый input.
       document.getElementById("purchase-apply").addEventListener("click", function () {
+        clearPurchaseToBuyLinkIfExtraChanged();
         page = 1;
         loadData();
       });
+      (function bindPuExtraFilterChange() {
+        var xf = document.getElementById("pu-f-extra-filter");
+        if (!xf) return;
+        xf.addEventListener("change", function () {
+          clearPurchaseToBuyLinkIfExtraChanged();
+        });
+      })();
       document.getElementById("purchase-reset").addEventListener("click", function () {
         resetFilters();
         loadData();
@@ -4334,7 +4503,6 @@
         } catch (e) { columnWidths = {}; }
         try {
           var allowed = new Set(PU_COLS.map(function (p) { return p[0]; }));
-          allowed.add("to_purchase_qty");
           var rawVisible = JSON.parse(localStorage.getItem(userVisibleColsKey()) || "[]");
           if (Array.isArray(rawVisible) && rawVisible.length) {
             visibleCols = new Set(rawVisible.filter(function (k) { return allowed.has(k); }));
@@ -4342,6 +4510,9 @@
           if (!visibleCols.has("code")) visibleCols.add("code");
           if (visibleCols.size && !visibleCols.has("name")) visibleCols.add("name");
           if (!visibleCols.size) visibleCols = new Set(DEFAULT_VISIBLE_KEYS);
+          ["to_purchase_qty", "purchase_sum"].forEach(function (k) {
+            if (allowed.has(k)) visibleCols.add(k);
+          });
         } catch (e) {}
       }
 
