@@ -56,6 +56,23 @@
                   </div>
                 </div>
               </div>
+              <div class="dg-pu-ms-formula-diff-block mt-3" id="dg-pu-ms-formula-diff-block">
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                  <div class="dg-pu-ms-formula-diff-label small text-muted mb-0">
+                    Расхождение: <span class="text-dark">неснижаемый МС</span> ≠ <span class="text-dark">предлагаемый нес.ост.</span>
+                    <span class="d-none d-md-inline"> (по целым штукам)</span>
+                  </div>
+                  <div class="dg-pu-ms-formula-diff-text small fw-semibold mb-0" id="dg-pu-ms-formula-diff-text">—</div>
+                </div>
+                <div
+                  class="dg-pu-ms-formula-diff-track"
+                  id="dg-pu-ms-formula-diff-track"
+                  role="img"
+                  aria-label="Доля позиций с расхождением неснижаемого МС и предлагаемого"
+                >
+                  <div class="dg-pu-ms-formula-diff-marker" id="dg-pu-ms-formula-diff-marker" style="left: 0%"></div>
+                </div>
+              </div>
               <p class="small text-muted mb-0 mt-2" id="dg-pu-summary-hint">
                 Суммы по всем строкам текущего фильтра (все страницы таблицы). Позиции без закупочной цены в МС в рублёвую оценку не входят.
               </p>
@@ -160,7 +177,7 @@
                   </select>
                 </div>
                 <div
-                  class="col-md-3"
+                  class="col-md-2"
                   data-dg-pu-filter-field="pu_manager"
                   data-dg-filter-field-title="Менеджер"
                   data-dg-tooltip="Значение свойства МС «Менеджер поддерживающий товар» (ms_export.manager). Список — из выгрузки МойСклад. Срабатывает по «Применить»."
@@ -171,7 +188,19 @@
                   </select>
                 </div>
                 <div
-                  class="col-md-4"
+                  class="col-md-3"
+                  data-dg-pu-filter-field="pu_ms_formula_diff"
+                  data-dg-filter-field-title="Расхождение НС"
+                  data-dg-tooltip="Только позиции, где неснижаемый остаток в МС (целое) не совпадает с «Предлагаемый нес.ост.» по формуле. Учитываются строки с посчитанной формулой. Срабатывает по «Применить»."
+                >
+                  <label class="form-label" for="pu-f-ms-formula-diff">Расхождение НС</label>
+                  <select class="form-select" id="pu-f-ms-formula-diff">
+                    <option value="" selected>— все —</option>
+                    <option value="1">Только с расхождением</option>
+                  </select>
+                </div>
+                <div
+                  class="col-md-3"
                   data-dg-pu-filter-field="pu_extra_filter"
                   data-dg-filter-field-title="Доп. фильтр"
                   data-dg-tooltip="Один специальный режим за раз (остаток, комплекты, нули, кратность, неполная упаковка). Срабатывает по кнопке «Применить»."

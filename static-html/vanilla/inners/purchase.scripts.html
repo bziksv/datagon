@@ -409,6 +409,7 @@
         no_multiplicity: "0",
         incomplete_pack: "0",
         to_purchase: "0",
+        ms_formula_diff: "0",
       };
 
       /** Переход с «Поставщики» (?supplier=…&to_buy=1): короткая ссылка только пока доп. фильтр = «К закупке». */
@@ -477,6 +478,63 @@
         return label + ": " + fmtPuSnapQty(qty) + " шт.";
       }
 
+      function fmtPuPct(pct) {
+        if (pct == null || !Number.isFinite(Number(pct))) return "—";
+        var x = Number(pct);
+        return x.toLocaleString("ru-RU", { minimumFractionDigits: 0, maximumFractionDigits: 1 }) + "%";
+      }
+
+      function renderPurchaseMsFormulaDiff(t) {
+        var block = document.getElementById("dg-pu-ms-formula-diff-block");
+        var textEl = document.getElementById("dg-pu-ms-formula-diff-text");
+        var marker = document.getElementById("dg-pu-ms-formula-diff-marker");
+        var track = document.getElementById("dg-pu-ms-formula-diff-track");
+        if (!block || !textEl || !marker) return;
+        if (loading) {
+          block.classList.add("is-loading");
+          textEl.textContent = "…";
+          marker.style.left = "0%";
+          if (track) track.title = "";
+          return;
+        }
+        block.classList.remove("is-loading");
+        var pos = Number((t && t.positions_count) || total || 0);
+        var diff = Number((t && t.ms_formula_diff_count) || 0);
+        var pctRaw = t && t.ms_formula_diff_pct != null ? Number(t.ms_formula_diff_pct) : null;
+        var withProp = Number((t && t.ms_formula_with_proposed_count) || 0);
+        if (pos <= 0) {
+          textEl.textContent = "—";
+          marker.style.left = "0%";
+          if (track) track.title = "Нет позиций в фильтре";
+          return;
+        }
+        if (lastFormulaKpiEnriching || lastFormulaKpiApproximate) {
+          textEl.textContent = lastFormulaKpiEnriching ? "пересчёт…" : "~ " + fmtNum(diff) + " из " + fmtNum(pos);
+          marker.style.left = "0%";
+          if (track) {
+            track.title =
+              "Ориентировочно по кэшу SQL; для точной доли дождитесь пересчёта формулы";
+          }
+          return;
+        }
+        var pct = pctRaw != null && Number.isFinite(pctRaw) ? Math.max(0, Math.min(100, pctRaw)) : (pos > 0 ? (100 * diff) / pos : 0);
+        textEl.textContent =
+          fmtNum(diff) + " из " + fmtNum(pos) + " поз. · " + fmtPuPct(pct);
+        marker.style.left = pct + "%";
+        if (track) {
+          track.title =
+            "Позиций с расхождением (неснижаемый МС ≠ предлагаемый, целые шт.): " +
+            fmtNum(diff) +
+            " из " +
+            fmtNum(pos) +
+            " (" +
+            fmtPuPct(pct) +
+            "). С формулой в выборке: " +
+            fmtNum(withProp) +
+            ".";
+        }
+      }
+
       function renderPurchaseSummary() {
         var loadingEl = document.getElementById("dg-pu-summary-loading");
         var kpiRow = document.getElementById("dg-pu-kpi-row");
@@ -496,6 +554,7 @@
           set("dg-pu-kpi-min-stock-qty", "");
           set("dg-pu-kpi-formula-qty", "");
           if (posBadge) posBadge.textContent = "…";
+          renderPurchaseMsFormulaDiff(null);
           return;
         }
         if (loadingEl) loadingEl.classList.add("d-none");
@@ -523,6 +582,7 @@
         }
         set("dg-pu-kpi-stock-qty", fmtPuKpiQtySub("Остаток", t.stock));
         set("dg-pu-kpi-min-stock-qty", fmtPuKpiQtySub("Неснижаемый", t.min_stock));
+        renderPurchaseMsFormulaDiff(t);
         if (hint) {
           var parts = [
             "Суммы по всем строкам текущего фильтра (все страницы), не только по строкам на экране.",
@@ -549,6 +609,19 @@
             );
           } else if (lastKpiTotalsSource === "enriched" || lastColumnTotalsSource === "enriched") {
             parts.push("Предлагаемый нес.ост. пересчитан по формуле для всей выборки.");
+          }
+          var diffN = Number(t.ms_formula_diff_count || 0);
+          var diffPct = t.ms_formula_diff_pct;
+          if (diffN > 0 && diffPct != null) {
+            parts.push(
+              "Расхождение МС и предлагаемого: " +
+                fmtNum(diffN) +
+                " поз. (" +
+                fmtPuPct(diffPct) +
+                " от фильтра)."
+            );
+          } else if (pos > 0 && diffN === 0 && !lastFormulaKpiApproximate && !lastFormulaKpiEnriching) {
+            parts.push("Неснижаемый МС и предлагаемый совпадают (целые шт.) по всей выборке.");
           }
           hint.textContent = parts.join(" ");
         }
@@ -931,7 +1004,13 @@
           no_multiplicity: xf.no_multiplicity,
           incomplete_pack: xf.incomplete_pack,
           to_purchase: xf.to_purchase,
+          ms_formula_diff: readPuMsFormulaDiffSelect(),
         };
+      }
+
+      function readPuMsFormulaDiffSelect() {
+        var sel = document.getElementById("pu-f-ms-formula-diff");
+        return sel && String(sel.value || "").trim() === "1" ? "1" : "0";
       }
 
       function appendFilterParams(p, f) {
@@ -950,6 +1029,7 @@
         if (f.no_multiplicity === "1") p.set("no_multiplicity", "1");
         if (f.incomplete_pack === "1") p.set("incomplete_pack", "1");
         if (f.to_purchase === "1") p.set("to_purchase", "1");
+        if (f.ms_formula_diff === "1") p.set("ms_formula_diff", "1");
         if (isPuSupplierToBuyDeepLink()) {
           p.set("to_buy", "1");
           p.set("to_purchase", "1");
@@ -1072,6 +1152,8 @@
           }
         });
         if (!toBuy) syncPuExtraFilterFromUrlParams(params);
+        var msDiffSel = document.getElementById("pu-f-ms-formula-diff");
+        if (msDiffSel && params.get("ms_formula_diff") === "1") msDiffSel.value = "1";
         var pg = Number(params.get("page") || 1);
         if (Number.isFinite(pg) && pg > 0) page = pg;
         var sb = params.get("sort_by");
@@ -2181,6 +2263,25 @@
                 : "text-success";
       }
 
+      var msApplyRunBlocked = false;
+
+      function syncMsApplyRunButton(batches, meta) {
+        var btn = document.getElementById("dg-pu-apply-formula-min-stock");
+        if (!btn) return;
+        var running =
+          (meta && meta.has_running_batch) ||
+          (batches || []).some(function (b) {
+            return String(b.status) === "running";
+          });
+        msApplyRunBlocked = !!running;
+        btn.disabled = running;
+        btn.setAttribute("aria-disabled", running ? "true" : "false");
+        btn.classList.toggle("disabled", running);
+        btn.title = running
+          ? "Идёт перенос — дождитесь завершения пакета в журнале (второй запуск недоступен)"
+          : "Перенести «Предлагаемый нес.ост.» в неснижаемый остаток МС по текущим фильтрам";
+      }
+
       function loadMsApplyLog() {
         return fetch("/api/purchase/min-stock-apply/log?limit=12", {
           credentials: "same-origin",
@@ -2202,6 +2303,7 @@
             }
             var batches = Array.isArray(x.j.batches) ? x.j.batches : [];
             renderMsApplyLog(batches);
+            syncMsApplyRunButton(batches, x.j);
             var active = null;
             if (msApplyActiveBatchId != null) {
               for (var bi = 0; bi < batches.length; bi++) {
@@ -2314,6 +2416,17 @@
 
       function runPurchaseMinStockApply() {
         var btn = document.getElementById("dg-pu-apply-formula-min-stock");
+        if (btn && (btn.disabled || msApplyRunBlocked)) {
+          if (window.DatagonNotify && window.DatagonNotify.toast) {
+            window.DatagonNotify.toast({
+              type: "warning",
+              message:
+                "Перенос уже выполняется. Дождитесь завершения пакета в журнале ниже.",
+            });
+          }
+          loadMsApplyLog();
+          return;
+        }
         var filters = buildApplyFilterObject();
         var doFetch = function () {
           return fetch("/api/purchase/min-stock-apply/run", {
@@ -2340,6 +2453,12 @@
           setMsApplyStatusFromBatch({ id: j.batch_id, status: "running", rows_updated: 0 });
           msApplyExpandedBatchId = j.batch_id;
           delete msApplyItemsCache[j.batch_id];
+          msApplyRunBlocked = true;
+          if (btn) {
+            btn.disabled = true;
+            btn.setAttribute("aria-disabled", "true");
+            btn.classList.add("disabled");
+          }
           pollMsApplyBatch(j.batch_id);
           loadMsApplyLog();
         };
@@ -2350,6 +2469,7 @@
               message: "Не удалось запустить перенос: " + (e && e.message ? e.message : e),
             });
           }
+          loadMsApplyLog();
         };
         if (window.DatagonNotify && window.DatagonNotify.busyRun && btn) {
           return window.DatagonNotify.busyRun(btn, function () {
@@ -2752,6 +2872,8 @@
         document.getElementById("pu-f-limit").value = "100";
         var xfSel = document.getElementById("pu-f-extra-filter");
         if (xfSel) xfSel.value = "";
+        var msDiffSel = document.getElementById("pu-f-ms-formula-diff");
+        if (msDiffSel) msDiffSel.value = "";
         sortBy = "code";
         sortDir = "asc";
         page = 1;
@@ -2902,11 +3024,12 @@
             ],
           },
           {
-            title: "Перестали сотрудничать, менеджер и доп. фильтр",
+            title: "Перестали сотрудничать, менеджер, расхождение НС и доп. фильтр",
             subtitle: "",
             items: [
               { key: "pu_no_longer_cooperation", title: "Перестали сотрудничать", hint: "Все / Нет / Да (как в МС)" },
               { key: "pu_manager", title: "Менеджер", hint: "Свойство МС «Менеджер поддерживающий товар» (точное совпадение)" },
+              { key: "pu_ms_formula_diff", title: "Расхождение НС", hint: "МС ≠ предлагаемый по формуле (целые шт.)" },
               { key: "pu_extra_filter", title: "Доп. фильтр", hint: "Один режим: остаток, комплекты, нули, кратность, упаковка" },
             ],
           },

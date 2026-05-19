@@ -122,7 +122,7 @@ function buildPurchaseListCacheKey(req, dataRev, formulaFp) {
     const q = req && req.query ? req.query : {};
     const norm = (k) => String(q[k] != null ? q[k] : '').trim();
     return JSON.stringify({
-        v: 6,
+        v: 9,
         data_rev: dataRev,
         formula_fp: formulaFp,
         limit: norm('limit') || '100',
@@ -144,6 +144,7 @@ function buildPurchaseListCacheKey(req, dataRev, formulaFp) {
         to_purchase: norm('to_purchase') || '0',
         to_buy: norm('to_buy') || '0',
         supplier_exact: norm('supplier_exact') || '0',
+        ms_formula_diff: norm('ms_formula_diff') || '0',
     });
 }
 
@@ -428,6 +429,7 @@ function buildPurchaseListWhereFragments(req, opts = {}) {
     const noMultiplicity = String(req.query.no_multiplicity || '0') === '1';
     const incompletePack = String(req.query.incomplete_pack || '0') === '1';
     const toPurchaseOnly = String(req.query.to_purchase || '0') === '1' || toBuyMode;
+    const msFormulaDiffOnly = String(req.query.ms_formula_diff || '0') === '1';
 
     const where = ['1=1'];
     const params = [];
@@ -493,6 +495,10 @@ function buildPurchaseListWhereFragments(req, opts = {}) {
         where.push(`(${SUPPLIER_NEED_QTY_SQL}) > 0`);
     }
 
+    if (msFormulaDiffOnly && !skipToPurchaseSqlFilter && !opts.skipMsFormulaDiffSqlFilter) {
+        where.push(PURCHASE_MS_FORMULA_DIFF_SQL);
+    }
+
     return {
         whereSql: where.join(' AND '),
         whereParams: params,
@@ -500,7 +506,18 @@ function buildPurchaseListWhereFragments(req, opts = {}) {
         toPurchaseOnly,
         toBuyMode,
         supplierExact,
+        msFormulaDiffOnly,
     };
+}
+
+function filterPurchaseItemsByMsFormulaDiff(items) {
+    return (items || []).filter((d) =>
+        purchaseMsFormulaValuesDiffer(d.min_stock, d.formula_proposed_min_stock),
+    );
+}
+
+function purchaseListNeedsFormulaCacheJoin(frag) {
+    return Boolean(frag && (frag.toPurchaseOnly || frag.msFormulaDiffOnly));
 }
 
 function buildPurchaseBaseFromJoin(incompletePack) {
@@ -540,6 +557,13 @@ function purchaseCountQueryParams(frag, formulaFpVal, dataRev, withFormulaCache)
 
 const PURCHASE_MIN_STOCK_SUM_SQL = 'COALESCE(CAST(mse.min_stock AS DECIMAL(20,6)), 0)';
 
+/** Неснижаемый МС (целое) ≠ предлагаемый по кэшу формулы; нужен JOIN `dg_formula_proposed_cache fc`. */
+const PURCHASE_MS_FORMULA_DIFF_SQL = `(
+    fc.proposed IS NOT NULL
+    AND ROUND(COALESCE(CAST(mse.min_stock AS DECIMAL(20,6)), 0))
+        <> ROUND(COALESCE(CAST(fc.proposed AS DECIMAL(20,6)), 0))
+)`;
+
 function buildPurchaseColumnTotalsSql(frag) {
     const fromJoin = buildPurchaseCountFromJoin(frag.incompletePack, true);
     const price = `COALESCE(${PURCHASE_SQL_PRICE_NUM}, 0)`;
@@ -563,7 +587,17 @@ function buildPurchaseColumnTotalsSql(frag) {
             SUM(COALESCE(CAST(mse.stock AS DECIMAL(20,6)), 0) * ${price}) AS stock_value_rub,
             SUM(${PURCHASE_MIN_STOCK_SUM_SQL} * ${price}) AS min_stock_value_rub,
             SUM(COALESCE(CAST(fc.proposed AS DECIMAL(20,6)), 0) * ${price}) AS formula_proposed_value_rub,
-            SUM(CASE WHEN ${PURCHASE_SQL_PRICE_NUM} IS NULL OR ${PURCHASE_SQL_PRICE_NUM} <= 0 THEN 1 ELSE 0 END) AS positions_without_buy_price
+            SUM(CASE WHEN ${PURCHASE_SQL_PRICE_NUM} IS NULL OR ${PURCHASE_SQL_PRICE_NUM} <= 0 THEN 1 ELSE 0 END) AS positions_without_buy_price,
+            SUM(
+                CASE
+                    WHEN fc.proposed IS NOT NULL
+                        AND ROUND(COALESCE(CAST(mse.min_stock AS DECIMAL(20,6)), 0))
+                            <> ROUND(COALESCE(CAST(fc.proposed AS DECIMAL(20,6)), 0))
+                    THEN 1
+                    ELSE 0
+                END
+            ) AS ms_formula_diff_count,
+            SUM(CASE WHEN fc.proposed IS NOT NULL THEN 1 ELSE 0 END) AS ms_formula_with_proposed_count
         ${fromJoin}
         WHERE ${frag.whereSql}`;
 }
@@ -582,6 +616,41 @@ function mapPurchaseColumnTotalsRow(r) {
         min_stock_value_rub: Number(row.min_stock_value_rub || 0),
         formula_proposed_value_rub: Number(row.formula_proposed_value_rub || 0),
         positions_without_buy_price: Number(row.positions_without_buy_price || 0),
+        ...purchaseMsFormulaDiffTotalsFromRow(row),
+    };
+}
+
+function purchaseRoundedStockQty(v) {
+    const n = parsePurchaseNumOrNull(v);
+    return n != null ? Math.round(n) : 0;
+}
+
+function purchaseMsFormulaValuesDiffer(msRaw, formulaRaw) {
+    if (formulaRaw == null) return false;
+    return purchaseRoundedStockQty(msRaw) !== purchaseRoundedStockQty(formulaRaw);
+}
+
+function purchaseMsFormulaDiffTotalsFromRow(row) {
+    const positions = Number(row.positions_count || 0);
+    const diff = Number(row.ms_formula_diff_count || 0);
+    const withProposed = Number(row.ms_formula_with_proposed_count || 0);
+    const pct = positions > 0 ? Math.round((100 * diff) / positions * 100) / 100 : null;
+    return {
+        ms_formula_diff_count: diff,
+        ms_formula_with_proposed_count: withProposed,
+        ms_formula_diff_pct: pct,
+    };
+}
+
+function purchaseMsFormulaDiffTotalsFromCounts(positions, diff, withProposed) {
+    const pos = Number(positions || 0);
+    const d = Number(diff || 0);
+    const wp = Number(withProposed || 0);
+    const pct = pos > 0 ? Math.round((100 * d) / pos * 100) / 100 : null;
+    return {
+        ms_formula_diff_count: d,
+        ms_formula_with_proposed_count: wp,
+        ms_formula_diff_pct: pct,
     };
 }
 
@@ -622,6 +691,8 @@ function sumPurchaseColumnTotalsFromItems(items) {
     let minStockRub = 0;
     let formulaRub = 0;
     let withoutPrice = 0;
+    let msFormulaDiff = 0;
+    let msFormulaWithProposed = 0;
     for (const d of items || []) {
         positions += 1;
         const price = parsePurchaseBuyPriceRub(d.buy_price);
@@ -629,7 +700,11 @@ function sumPurchaseColumnTotalsFromItems(items) {
         const ms = parsePurchaseNumOrNull(d.min_stock);
         if (ms != null) minStock += ms;
         const fp = parsePurchaseNumOrNull(d.formula_proposed_min_stock);
-        if (fp != null) formula += fp;
+        if (fp != null) {
+            formula += fp;
+            msFormulaWithProposed += 1;
+            if (purchaseMsFormulaValuesDiffer(ms, fp)) msFormulaDiff += 1;
+        }
         const st = Number(d.stock || 0);
         stock += st;
         stockRub += purchaseLineValueRub(st, d.buy_price);
@@ -653,6 +728,7 @@ function sumPurchaseColumnTotalsFromItems(items) {
         min_stock_value_rub: minStockRub,
         formula_proposed_value_rub: formulaRub,
         positions_without_buy_price: withoutPrice,
+        ...purchaseMsFormulaDiffTotalsFromCounts(positions, msFormulaDiff, msFormulaWithProposed),
     };
 }
 
@@ -751,7 +827,10 @@ async function loadPurchaseListItemsForFrag(db, appSettings, frag, formulaFpVal,
 }
 
 async function computePurchaseColumnTotalsEnriched(db, appSettings, frag, formulaFpVal, dataRev) {
-    const items = await loadPurchaseListItemsForFrag(db, appSettings, frag, formulaFpVal, dataRev);
+    let items = await loadPurchaseListItemsForFrag(db, appSettings, frag, formulaFpVal, dataRev);
+    if (frag.msFormulaDiffOnly) {
+        items = filterPurchaseItemsByMsFormulaDiff(items);
+    }
     return sumPurchaseColumnTotalsFromItems(items);
 }
 
@@ -779,6 +858,10 @@ async function purchaseListQueryEnrichedSort(db, appSettings, req, frag, runOpts
     let items = await loadPurchaseListItemsForFrag(db, appSettings, frag, formulaFpVal, dataRev);
     if (bench) benchOut.enrich_all_ms = Number(process.hrtime.bigint() - t0) / 1e6;
 
+    if (frag.msFormulaDiffOnly) {
+        items = filterPurchaseItemsByMsFormulaDiff(items);
+    }
+
     items.sort((a, b) => comparePurchaseItemsForSort(a, b, sortKey, sortDesc));
 
     const total = items.length;
@@ -793,6 +876,7 @@ async function purchaseListQueryEnrichedSort(db, appSettings, req, frag, runOpts
         sort_by: sortKey,
         sort_dir: sortDir,
         to_purchase_active: Boolean(frag.toPurchaseOnly),
+        ms_formula_diff_active: Boolean(frag.msFormulaDiffOnly),
         column_totals,
         kpi_totals: column_totals,
         column_totals_source: 'enriched',
@@ -808,13 +892,20 @@ async function purchaseListQueryEnrichedSort(db, appSettings, req, frag, runOpts
  * Режим «К закупке»: отбор после enrich (как в ячейках таблицы), а не только по SQL-кэшу формулы.
  */
 async function purchaseListQueryToPurchaseEnriched(db, appSettings, req, frag, runOpts = {}) {
-    const fragBase = buildPurchaseListWhereFragments(req, { skipToPurchaseSqlFilter: true });
+    const fragBaseOpts = { skipToPurchaseSqlFilter: true };
+    if (frag.msFormulaDiffOnly) fragBaseOpts.skipMsFormulaDiffSqlFilter = true;
+    const fragBase = buildPurchaseListWhereFragments(req, fragBaseOpts);
     const dataRev = await loadPurchaseDataRevisionCached(db);
     const formulaFpVal = buildFormulaFingerprint(appSettings);
     const allItems = await loadPurchaseListItemsForFrag(db, appSettings, fragBase, formulaFpVal, dataRev);
     /** KPI «Сводка по фильтру» — по всей выборке (поставщик, поиск…), не только по строкам «к закупке». */
-    const kpi_totals = sumPurchaseColumnTotalsFromItems(allItems);
+    const kpiSource =
+        frag.msFormulaDiffOnly ? filterPurchaseItemsByMsFormulaDiff(allItems) : allItems;
+    const kpi_totals = sumPurchaseColumnTotalsFromItems(kpiSource);
     let items = allItems.filter((d) => Number(d.to_purchase_qty || 0) > 0);
+    if (frag.msFormulaDiffOnly) {
+        items = filterPurchaseItemsByMsFormulaDiff(items);
+    }
     const limitRaw = parseInt(req.query.limit, 10);
     const offsetRaw = parseInt(req.query.offset, 10);
     const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(1000, limitRaw) : 100;
@@ -835,6 +926,7 @@ async function purchaseListQueryToPurchaseEnriched(db, appSettings, req, frag, r
         sort_by: sortKey,
         sort_dir: sortDir,
         to_purchase_active: true,
+        ms_formula_diff_active: Boolean(frag.msFormulaDiffOnly),
         column_totals,
         kpi_totals,
         data: pageItems,
@@ -866,15 +958,26 @@ async function purchaseListQueryPaged(db, appSettings, req, runOpts = {}) {
     if (frag.toPurchaseOnly) {
         return purchaseListQueryToPurchaseEnriched(db, appSettings, req, frag, runOpts);
     }
-    if (PURCHASE_HEAVY_SORT_KEYS.has(sortKey)) {
-        return purchaseListQueryEnrichedSort(db, appSettings, req, frag, runOpts);
+    if (frag.msFormulaDiffOnly || PURCHASE_HEAVY_SORT_KEYS.has(sortKey)) {
+        const fragLoad = frag.msFormulaDiffOnly
+            ? buildPurchaseListWhereFragments(req, { skipMsFormulaDiffSqlFilter: true })
+            : frag;
+        return purchaseListQueryEnrichedSort(db, appSettings, req, fragLoad, runOpts);
     }
 
     const orderBy = buildPurchaseSqlOrderBy(sortKey, sortDesc);
 
-    const countFromJoin = buildPurchaseCountFromJoin(frag.incompletePack, frag.toPurchaseOnly);
+    const countFromJoin = buildPurchaseCountFromJoin(
+        frag.incompletePack,
+        purchaseListNeedsFormulaCacheJoin(frag) || frag.msFormulaDiffOnly,
+    );
     const countSql = `SELECT COUNT(*) AS cnt ${countFromJoin} WHERE ${frag.whereSql}`;
-    const countParams = purchaseCountQueryParams(frag, formulaFpVal, dataRev, frag.toPurchaseOnly);
+    const countParams = purchaseCountQueryParams(
+        frag,
+        formulaFpVal,
+        dataRev,
+        purchaseListNeedsFormulaCacheJoin(frag) || frag.msFormulaDiffOnly,
+    );
     const listSql = `${buildPurchaseListSelectSql(frag)}
                 WHERE ${frag.whereSql}
                 ORDER BY ${orderBy}
@@ -942,6 +1045,7 @@ async function purchaseListQueryPaged(db, appSettings, req, runOpts = {}) {
         sort_by: sortKey,
         sort_dir: sortDir,
         to_purchase_active: Boolean(frag.toPurchaseOnly),
+        ms_formula_diff_active: Boolean(frag.msFormulaDiffOnly),
         column_totals,
         column_totals_source,
         kpi_totals,
@@ -958,12 +1062,18 @@ async function purchaseSummaryTotalsEnriched(db, appSettings, req) {
     const dataRev = await loadPurchaseDataRevisionCached(db);
     const formulaFpVal = buildFormulaFingerprint(appSettings);
     const frag = buildPurchaseListWhereFragments(req, { skipToPurchaseSqlFilter: true });
-    const countFromJoin = buildPurchaseCountFromJoin(frag.incompletePack, false);
-    const countSql = `SELECT COUNT(*) AS cnt ${countFromJoin} WHERE ${frag.whereSql}`;
-    const countParams = purchaseCountQueryParams(frag, formulaFpVal, dataRev, true);
+    const fragLoad = frag.msFormulaDiffOnly
+        ? buildPurchaseListWhereFragments(req, {
+              skipToPurchaseSqlFilter: true,
+              skipMsFormulaDiffSqlFilter: true,
+          })
+        : frag;
+    const countFromJoin = buildPurchaseCountFromJoin(fragLoad.incompletePack, false);
+    const countSql = `SELECT COUNT(*) AS cnt ${countFromJoin} WHERE ${fragLoad.whereSql}`;
+    const countParams = purchaseCountQueryParams(fragLoad, formulaFpVal, dataRev, true);
     const [countRows] = await db.query(countSql, countParams);
     const total = Number(countRows && countRows[0] ? countRows[0].cnt : 0);
-    if (total > PURCHASE_KPI_ENRICH_MAX_ROWS) {
+    if (!frag.msFormulaDiffOnly && total > PURCHASE_KPI_ENRICH_MAX_ROWS) {
         return {
             success: true,
             total,
@@ -971,10 +1081,27 @@ async function purchaseSummaryTotalsEnriched(db, appSettings, req) {
             formula_kpi_approximate: true,
         };
     }
-    const kpi_totals = await computePurchaseColumnTotalsEnriched(db, appSettings, frag, formulaFpVal, dataRev);
+    const kpi_totals = await computePurchaseColumnTotalsEnriched(
+        db,
+        appSettings,
+        fragLoad,
+        formulaFpVal,
+        dataRev,
+    );
+    const totalOut = frag.msFormulaDiffOnly
+        ? Number(kpi_totals.positions_count || 0)
+        : total;
+    if (frag.msFormulaDiffOnly && totalOut > PURCHASE_KPI_ENRICH_MAX_ROWS) {
+        return {
+            success: true,
+            total: totalOut,
+            too_large: true,
+            formula_kpi_approximate: true,
+        };
+    }
     return {
         success: true,
-        total,
+        total: totalOut,
         kpi_totals,
         kpi_totals_source: 'enriched',
         formula_kpi_approximate: false,
@@ -1061,8 +1188,48 @@ async function ensureSchema(db) {
     schemaReady = true;
 }
 
+/** Размер порции SKU при переносе «пр. нес.ост. → неснижаемый МС». */
+const PURCHASE_MIN_STOCK_APPLY_CHUNK_SIZE = 200;
+
 /** Один активный batch-перенос «пр. нес.ост. → неснижаемый МС» на процесс. */
 let purchaseMinStockApplyRunning = false;
+/** id пакета, который реально выполняется в этом процессе Node (для отличия от «зависших» в БД). */
+let purchaseMinStockApplyActiveBatchId = null;
+
+/**
+ * Пакеты `running` в БД без живого процесса (перезапуск Node, падение) — помечаем failed.
+ * Текущий пакет этого процесса не трогаем.
+ */
+async function reconcileOrphanMinStockApplyBatches(db) {
+    const [rows] = await db.query(
+        `SELECT id FROM dg_purchase_min_stock_apply_batch WHERE status = 'running' ORDER BY id ASC`,
+    );
+    const list = Array.isArray(rows) ? rows : [];
+    let fixed = 0;
+    for (const r of list) {
+        const id = Number(r.id);
+        if (
+            purchaseMinStockApplyRunning &&
+            purchaseMinStockApplyActiveBatchId != null &&
+            id === purchaseMinStockApplyActiveBatchId
+        ) {
+            continue;
+        }
+        await db.query(
+            `UPDATE dg_purchase_min_stock_apply_batch
+             SET status = 'failed',
+                 error_message = ?,
+                 finished_at = CURRENT_TIMESTAMP
+             WHERE id = ? AND status = 'running'`,
+            [
+                'Прервано: сервер перезапущен или задача остановилась. Часть позиций могла уже обновиться — см. журнал пакета.',
+                id,
+            ],
+        );
+        fixed += 1;
+    }
+    return fixed;
+}
 
 function minStockFromFormulaProposed(proposed) {
     const p = Number(proposed);
@@ -1130,7 +1297,10 @@ async function runPurchaseMinStockApplyBatch(db, appSettings, opts = {}) {
     if (!Number.isFinite(batchId) || batchId <= 0) {
         throw new Error('Не указан batchId');
     }
-    const chunkSize = Math.min(150, Math.max(20, Number(opts.chunkSize) || 50));
+    const chunkSize = Math.min(
+        200,
+        Math.max(20, Number(opts.chunkSize) || PURCHASE_MIN_STOCK_APPLY_CHUNK_SIZE),
+    );
     const maxCodes = Math.max(0, Number(opts.maxCodes) || 0);
     const listReq = opts.req && typeof opts.req === 'object' ? opts.req : { query: {} };
 
@@ -1139,7 +1309,10 @@ async function runPurchaseMinStockApplyBatch(db, appSettings, opts = {}) {
     purchaseDataRevCache = { rev: dataRev, ts: Date.now() };
     const formulaFp = buildFormulaFingerprint(appSettings);
     const frag = buildPurchaseListWhereFragments(listReq);
-    const baseFromJoin = buildPurchaseBaseFromJoin(frag.incompletePack);
+    const fragSql = frag.msFormulaDiffOnly
+        ? buildPurchaseListWhereFragments(listReq, { skipMsFormulaDiffSqlFilter: true })
+        : frag;
+    const baseFromJoin = buildPurchaseBaseFromJoin(fragSql.incompletePack);
 
     let offset = 0;
     const counts = { rows_scanned: 0, rows_updated: 0, rows_unchanged: 0, rows_skipped: 0 };
@@ -1163,19 +1336,22 @@ async function runPurchaseMinStockApplyBatch(db, appSettings, opts = {}) {
                 NULL AS formula_cached_proposed,
                 NULL AS formula_cached_windows_json
             ${baseFromJoin}
-            WHERE ${frag.whereSql}
+            WHERE ${fragSql.whereSql}
             ORDER BY mse.code ASC
             LIMIT ? OFFSET ?`;
-        const [rows] = await db.query(listSql, [...frag.whereParams, take, offset]);
+        const [rows] = await db.query(listSql, [...fragSql.whereParams, take, offset]);
         if (!rows || !rows.length) break;
 
-        const pageItems = rows.map((r) => mapPurchaseSqlRowToDataItem(r, { noPayloadForFormula: true }));
+        let pageItems = rows.map((r) => mapPurchaseSqlRowToDataItem(r, { noPayloadForFormula: true }));
         await enrichPurchaseListPage(db, appSettings, pageItems, {
             dataRev,
             formulaFp,
             skipBundleWarmup: true,
             includePayload: false,
         });
+        if (frag.msFormulaDiffOnly) {
+            pageItems = filterPurchaseItemsByMsFormulaDiff(pageItems);
+        }
 
         for (const d of pageItems) {
             const code = String(d.code || '').trim();
@@ -3061,7 +3237,13 @@ function createPurchaseRouter(db, appSettings) {
                 [limit],
             );
             const batches = (rows || []).map(mapMinStockApplyBatchRow).filter(Boolean);
-            return res.json({ success: true, batches });
+            const runningBatch = batches.find((b) => b && b.status === 'running') || null;
+            return res.json({
+                success: true,
+                batches,
+                has_running_batch: Boolean(runningBatch),
+                active_batch_id: runningBatch ? runningBatch.id : null,
+            });
         } catch (e) {
             return res.status(500).json({
                 success: false,
@@ -3170,9 +3352,31 @@ function createPurchaseRouter(db, appSettings) {
         try {
             await ensureSchema(db);
             if (purchaseMinStockApplyRunning) {
+                const activeId =
+                    purchaseMinStockApplyActiveBatchId != null
+                        ? String(purchaseMinStockApplyActiveBatchId)
+                        : '';
                 return res.status(409).json({
                     success: false,
-                    error: 'Уже выполняется другой перенос. Дождитесь завершения.',
+                    error:
+                        'Уже выполняется перенос' +
+                        (activeId ? ' (пакет #' + activeId + ')' : '') +
+                        '. Дождитесь завершения — второй пакет запустить нельзя.',
+                    active_batch_id: purchaseMinStockApplyActiveBatchId,
+                });
+            }
+            await reconcileOrphanMinStockApplyBatches(db);
+            const [[runningRow]] = await db.query(
+                `SELECT id FROM dg_purchase_min_stock_apply_batch WHERE status = 'running' LIMIT 1`,
+            );
+            if (runningRow && runningRow.id != null) {
+                return res.status(409).json({
+                    success: false,
+                    error:
+                        'Не завершён пакет #' +
+                        runningRow.id +
+                        '. Дождитесь окончания переноса — новый запуск недоступен.',
+                    active_batch_id: Number(runningRow.id),
                 });
             }
             const body = req.body && typeof req.body === 'object' ? req.body : {};
@@ -3195,6 +3399,7 @@ function createPurchaseRouter(db, appSettings) {
             }
 
             purchaseMinStockApplyRunning = true;
+            purchaseMinStockApplyActiveBatchId = batchId;
             res.json({ success: true, batch_id: batchId, status: 'running' });
 
             setImmediate(async () => {
@@ -3232,10 +3437,12 @@ function createPurchaseRouter(db, appSettings) {
                     }
                 } finally {
                     purchaseMinStockApplyRunning = false;
+                    purchaseMinStockApplyActiveBatchId = null;
                 }
             });
         } catch (e) {
             purchaseMinStockApplyRunning = false;
+            purchaseMinStockApplyActiveBatchId = null;
             return res.status(500).json({
                 success: false,
                 error: e && e.message ? e.message : 'Не удалось запустить перенос',

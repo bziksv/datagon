@@ -1712,6 +1712,7 @@ Query:
 - `zero_stock_no_transit` — `1`: `stock ≤ 0` и «В пути» ≤ 0 (`COALESCE(ms_entity_details.denorm_in_transit, … JSON из payload …)`).
 - `no_multiplicity` — `1`: в `dg_purchase_overrides` кратность пустая или &lt; 1 шт.
 - `incomplete_pack` — `1`: кратность ≥ 1, `stock ≥ кратность` и остаток **не кратен** кратности (хвост после полных упаковок; `1` шт при кратности `2` **не** попадает). Базовый код с «код-число» и `stock < min(суффикс)` — отсутствие комплекта, в фильтр не входит.
+- `ms_formula_diff` — `1`: только позиции, где **неснижаемый остаток МС** (целое) ≠ **предлагаемый нес.ост.** по формуле после полного enrich (как в шкале «Расхождение» в сводке), а не только по устаревшему SQL-кэшу; строки без посчитанной формулы не попадают. Список строится через enrich всей выборки (`column_totals_source: "enriched"`). На `/purchase.html` — отдельный селект **«Расхождение НС»**. В ответе: `ms_formula_diff_active: true`.
 - `limit` (default 100, max 1000), `offset`.
 - `sort_by` — `code` (default), `article`, `name`, `supplier`, `price_comment`, `buy_price`, `min_stock`, **`formula_proposed_min_stock`**, `automation_price`, `proposed_min_stock`, `min_stock_dg`, `multiplicity`, `stock`, `is_archived`, **`in_transit`**, **`d_15a`**, **`d_15b`**, **`d_30a`**, **`d_30b`**, **`d_60a`**, **`d_60b`**, **`d_90a`**, **`d_90b`**, **`d_180a`**, **`d_180b`**, **`d_365a`**, **`d_365b`**.
 - `sort_dir` — `asc` (default) | `desc`.

@@ -80,7 +80,7 @@ description: Планирование закупок поверх ms_export — 
 
 Полное описание — в [REST API](/docs/api/#закупки):
 
-- `GET /api/purchase` — список товаров с overrides (фильтры, пагинация, сортировка). Доп. режимы (на экране — один селект): **нулевой остаток** (`zero_stock`), **нулевой без ожидания** (`zero_stock_no_transit`, по `inTransit` в payload), **без кратности** (`no_multiplicity`), **неполная упаковка** (`incomplete_pack`, см. API), **только с остатком** (`only_stock`), **комплекты** (`include_bundles`).
+- `GET /api/purchase` — список товаров с overrides (фильтры, пагинация, сортировка). **Расхождение НС** (`ms_formula_diff=1`) — отдельный селект в «Фильтры и действия»: только позиции, где неснижаемый МС ≠ предлагаемый по формуле. Доп. режимы (селект «Доп. фильтр»): **нулевой остаток** (`zero_stock`), **нулевой без ожидания** (`zero_stock_no_transit`), **без кратности** (`no_multiplicity`), **неполная упаковка** (`incomplete_pack`), **только с остатком** (`only_stock`), **комплекты** (`include_bundles`), **к закупке** (`to_purchase`).
 - `POST /api/purchase/override` — сохранить одно значение (`code` + `field` + `value`).
 - `POST /api/purchase/overrides-import` — пакетный импорт CSV для **Нес.остаток Датагон**, **Кратность товара**, **Мин. остаток сч.как 0** (только HTTP; на `/purchase.html` кнопок импорта нет — см. [REST API — Закупки](/docs/api#закупки), подзаголовок `POST /api/purchase/overrides-import`).
 
