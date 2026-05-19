@@ -1350,6 +1350,43 @@
     true
   );
 
+  var FONT_SOURCE_SANS_KEY = "datagon_theme_font_source_sans_3_v1";
+  var FONT_SOURCE_SANS_LINK_ID = "dg-font-source-sans-3-link";
+  var FONT_SOURCE_SANS_HREF =
+    "https://fonts.googleapis.com/css2?family=Source+Sans+3:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap";
+
+  function ensureSourceSans3Stylesheet(enabled) {
+    var link = document.getElementById(FONT_SOURCE_SANS_LINK_ID);
+    if (!enabled) {
+      if (link) link.remove();
+      return;
+    }
+    if (link) return;
+    link = document.createElement("link");
+    link.id = FONT_SOURCE_SANS_LINK_ID;
+    link.rel = "stylesheet";
+    link.href = FONT_SOURCE_SANS_HREF;
+    document.head.appendChild(link);
+  }
+
+  function applySourceSans3Font(enabled) {
+    document.documentElement.classList.toggle("dg-font-source-sans-3", enabled);
+    ensureSourceSans3Stylesheet(enabled);
+  }
+
+  (function bindSourceSans3FontSwitch() {
+    var input = document.getElementById("dg-theme-font-source-sans-3");
+    if (!input) return;
+    var enabled = readBoolSetting(FONT_SOURCE_SANS_KEY, false);
+    input.checked = enabled;
+    applySourceSans3Font(enabled);
+    input.addEventListener("change", function () {
+      var next = Boolean(input.checked);
+      applySourceSans3Font(next);
+      writeBoolSetting(FONT_SOURCE_SANS_KEY, next);
+    });
+  })();
+
   function setActiveSwatch(selector, value, attrName) {
     document.querySelectorAll(selector).forEach(function (sw) {
       var isActive = sw.getAttribute(attrName) === value;
