@@ -69,6 +69,9 @@
         auto_sync_dimensions_enabled: 0,
         auto_sync_dimensions_time: "21:00",
         auto_sync_dimensions_weekdays: "",
+        auto_sync_min_stock_export_enabled: 0,
+        auto_sync_min_stock_export_time: "22:00",
+        auto_sync_min_stock_export_weekdays: "",
         auto_sync_mssales_enabled: 0,
         auto_sync_mssales_time: "07:30",
         auto_sync_mssales_days: 90,
@@ -81,7 +84,10 @@
         auto_sync_purchase_formula_cache_time: "08:30",
         auto_sync_medmarket_enabled: 0,
         auto_sync_medmarket_time: "09:00",
-        auto_sync_medmarket_weekdays: "1,4",
+        auto_sync_medmarket_weekdays: "7",
+        auto_sync_medmarket_fill_enabled: 0,
+        auto_sync_medmarket_fill_time: "09:30",
+        auto_sync_medmarket_fill_weekdays: "1,2,3,4,5,6",
         ms_dimensions_log_retention_days: 180,
         dg_purchase_overrides_log_retention_days: 180,
         auto_sync_runs_retention_days: 180,
@@ -290,6 +296,391 @@
         internal: "Система",
       };
 
+      /** Порядок групп в списке расписания (импорт МС → экспорт МС → остальное). */
+      var AS_CATEGORY_SORT_ORDER = {
+        import_ms: 0,
+        export_ms: 1,
+        cms: 2,
+        marketplace: 3,
+        external: 4,
+        internal: 5,
+      };
+
+      var AS_TIME_CLASH_MAX_DIFF_MIN = 5;
+
+      function escAutoSyncHtml(s) {
+        return String(s || "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/"/g, "&quot;");
+      }
+
+      function getAutoSyncTaskTitle(taskEl) {
+        var lab = taskEl.querySelector(".form-label");
+        if (lab && lab.textContent.trim()) return lab.textContent.trim();
+        var fw = taskEl.querySelector(".fw-semibold.small");
+        if (fw && fw.textContent.trim()) return fw.textContent.trim();
+        return String(taskEl.getAttribute("data-as-task") || "задача");
+      }
+
+      function isAutoSyncTimeStrComplete(s) {
+        return /^\d{2}:\d{2}$/.test(String(s || "").trim());
+      }
+
+      /** Пока в time ещё набирают значение — для сортировки берём последнее сохранённое. */
+      function readAutoSyncTaskTimeStr(taskEl, timeEl) {
+        var raw = timeEl ? String(timeEl.value || "").trim() : "";
+        if (isAutoSyncTimeStrComplete(raw)) return raw.slice(0, 5);
+        var saved = String(taskEl.getAttribute("data-as-schedule-time") || "").trim();
+        if (isAutoSyncTimeStrComplete(saved)) return saved.slice(0, 5);
+        return "00:00";
+      }
+
+      function readAutoSyncTaskScheduleMeta(taskEl) {
+        var cat = taskEl.getAttribute("data-as-category") || "internal";
+        var en = readAutoSyncTaskEnabledFromDom(taskEl);
+        var timeId = taskEl.getAttribute("data-as-time-id");
+        var timeEl = timeId ? document.getElementById(timeId) : null;
+        var timeStr = readAutoSyncTaskTimeStr(taskEl, timeEl);
+        var wdPrefix = taskEl.getAttribute("data-as-weekdays-prefix");
+        var wdCsv = wdPrefix ? collectAutoSyncWeekdayCsv(wdPrefix) : "";
+        var nextMeta = computeAutoSyncNextRunMeta(en, timeStr, wdCsv);
+        return {
+          el: taskEl,
+          task: String(taskEl.getAttribute("data-as-task") || ""),
+          category: cat,
+          title: getAutoSyncTaskTitle(taskEl),
+          enabled: en,
+          timeStr: timeStr,
+          timeMin: timeStrToMinutes(timeStr),
+          weekdaysCsv: wdCsv,
+          nextMeta: nextMeta,
+        };
+      }
+
+      function weekdaysSetsOverlap(csvA, csvB) {
+        var a = parseWeekdaysSetFromCsv(csvA);
+        var b = parseWeekdaysSetFromCsv(csvB);
+        for (var d = 1; d <= 7; d++) {
+          if (a[d] && b[d]) return true;
+        }
+        return false;
+      }
+
+      function findAutoSyncScheduleConflicts(metas) {
+        var enabled = metas.filter(function (m) {
+          return m.enabled;
+        });
+        var out = [];
+        for (var i = 0; i < enabled.length; i++) {
+          for (var j = i + 1; j < enabled.length; j++) {
+            var a = enabled[i];
+            var b = enabled[j];
+            if (!weekdaysSetsOverlap(a.weekdaysCsv, b.weekdaysCsv)) continue;
+            var diff = Math.abs(a.timeMin - b.timeMin);
+            if (diff > AS_TIME_CLASH_MAX_DIFF_MIN) continue;
+            var crossMs =
+              (a.category === "import_ms" && b.category === "export_ms") ||
+              (a.category === "export_ms" && b.category === "import_ms");
+            out.push({
+              a: a,
+              b: b,
+              diffMin: diff,
+              exact: diff === 0,
+              crossMs: crossMs,
+            });
+          }
+        }
+        out.sort(function (x, y) {
+          if (x.crossMs !== y.crossMs) return x.crossMs ? -1 : 1;
+          return x.diffMin - y.diffMin;
+        });
+        return out;
+      }
+
+      function getAutoSyncScheduleScrollRoot() {
+        return document.querySelector(".app-main__outer") || document.scrollingElement || document.documentElement;
+      }
+
+      /** Не дёргать страницу при пересортировке / предупреждениях, пока правят время. */
+      function withAutoSyncScheduleScrollPreserved(fn) {
+        var root = getAutoSyncScheduleScrollRoot();
+        var top = root.scrollTop;
+        var left = root.scrollLeft;
+        var ae = document.activeElement;
+        var focusId = ae && ae.id ? ae.id : "";
+        fn();
+        requestAnimationFrame(function () {
+          root.scrollTop = top;
+          root.scrollLeft = left;
+          if (focusId) {
+            var el = document.getElementById(focusId);
+            if (el) {
+              try {
+                el.focus({ preventScroll: true });
+              } catch (e) {
+                el.focus();
+              }
+            }
+          }
+        });
+      }
+
+      /** task key → { el, crossMs, partners: [{ task, title, timeStr }] } */
+      function buildAutoSyncClashMap(conflicts) {
+        var map = Object.create(null);
+        function register(m, other, c) {
+          var key = m.task;
+          if (!key) return;
+          if (!map[key]) map[key] = { el: m.el, crossMs: false, partners: [] };
+          var entry = map[key];
+          if (c.crossMs) entry.crossMs = true;
+          var dup = entry.partners.some(function (p) {
+            return p.task === other.task;
+          });
+          if (!dup) {
+            entry.partners.push({
+              task: other.task,
+              title: other.title,
+              timeStr: other.timeStr,
+            });
+          }
+        }
+        conflicts.forEach(function (c) {
+          register(c.a, c.b, c);
+          register(c.b, c.a, c);
+        });
+        return map;
+      }
+
+      function formatAutoSyncClashPartnerNames(partners, selfTimeStr) {
+        return partners
+          .map(function (p) {
+            var label = "«" + p.title + "»";
+            if (p.timeStr && p.timeStr === selfTimeStr) label += " (" + p.timeStr + ")";
+            else if (p.timeStr) label += " (" + p.timeStr + ")";
+            return label;
+          })
+          .join(", ");
+      }
+
+      function buildAutoSyncClashCardText(entry, selfTimeStr) {
+        var names = formatAutoSyncClashPartnerNames(entry.partners, selfTimeStr);
+        if (entry.crossMs) {
+          return "Импорт ↔ экспорт в МС: совпадение с " + names;
+        }
+        return "Совпадение времени с " + names;
+      }
+
+      function syncAutoSyncClashOnTaskCard(el, entry, selfMeta) {
+        var host = el.classList.contains("dg-as-export-child")
+          ? el
+          : el.querySelector(".dg-as-task-card") || el;
+        host.classList.remove("dg-as-time-clash", "dg-as-time-clash-cross");
+        var head = el.querySelector(".dg-as-task-head");
+        var badge = head ? head.querySelector(".dg-as-clash-badge") : null;
+        var line = el.querySelector(".dg-as-clash-line");
+        if (!entry) {
+          if (badge) badge.remove();
+          if (line) line.remove();
+          return;
+        }
+        host.classList.add(entry.crossMs ? "dg-as-time-clash-cross" : "dg-as-time-clash");
+        if (!head) return;
+        var text = buildAutoSyncClashCardText(entry, selfMeta ? selfMeta.timeStr : "");
+        var short =
+          entry.crossMs && entry.partners.length === 1
+            ? "импорт ↔ экспорт"
+            : entry.partners.length === 1
+              ? "совпадение времени"
+              : "совпадение (" + entry.partners.length + ")";
+        if (badge) {
+          badge.className = "dg-as-clash-badge" + (entry.crossMs ? " dg-as-clash-cross" : "");
+          badge.textContent = short;
+          badge.title = text;
+        } else {
+          badge = document.createElement("span");
+          badge.className = "dg-as-clash-badge" + (entry.crossMs ? " dg-as-clash-cross" : "");
+          badge.textContent = short;
+          badge.title = text;
+          head.appendChild(badge);
+        }
+        if (line) {
+          line.className =
+            "dg-as-clash-line small" + (entry.crossMs ? " dg-as-clash-line-cross" : "");
+          line.textContent = text;
+        } else {
+          line = document.createElement("div");
+          line.className =
+            "dg-as-clash-line small" + (entry.crossMs ? " dg-as-clash-line-cross" : "");
+          line.textContent = text;
+          head.insertAdjacentElement("afterend", line);
+        }
+      }
+
+      function syncAutoSyncClashUi(clashMap, metasByTask) {
+        document.querySelectorAll(".dg-as-task").forEach(function (el) {
+          var key = String(el.getAttribute("data-as-task") || "");
+          syncAutoSyncClashOnTaskCard(el, key ? clashMap[key] : null, metasByTask[key]);
+        });
+      }
+
+      function renderAutoSyncScheduleConflicts(metas) {
+        var box = document.getElementById("dg-set-auto-sync-conflicts");
+        var conflicts = findAutoSyncScheduleConflicts(metas);
+        if (!box) return;
+        var metasByTask = Object.create(null);
+        metas.forEach(function (m) {
+          if (m.task) metasByTask[m.task] = m;
+        });
+        var clashMap = buildAutoSyncClashMap(conflicts);
+        syncAutoSyncClashUi(clashMap, metasByTask);
+        if (!conflicts.length) {
+          box.classList.add("d-none");
+          box.innerHTML = "";
+          return;
+        }
+        var html =
+          "<strong>⚠ Совпадение времени запуска (МСК)</strong>" +
+          '<p class="small mb-2 mt-1">Очередь автосинка выполняет задачи по одной — при одном слоте они не идут параллельно, но нагрузка на API/БД может наслоиться. Разнесите время, особенно <strong>импорт</strong> и <strong>экспорт</strong> в МойСклад.</p><ul class="small mb-0">';
+        conflicts.forEach(function (c) {
+          var timeNote = c.exact
+            ? "одно и то же время <code>" + escAutoSyncHtml(c.a.timeStr) + "</code>"
+            : "разница " + c.diffMin + " мин (<code>" + escAutoSyncHtml(c.a.timeStr) + "</code> и <code>" + escAutoSyncHtml(c.b.timeStr) + "</code>)";
+          var crossNote = c.crossMs
+            ? ' <span class="text-danger fw-semibold">импорт ↔ экспорт в МС</span>'
+            : "";
+          html +=
+            "<li><strong>" +
+            escAutoSyncHtml(c.a.title) +
+            "</strong> и <strong>" +
+            escAutoSyncHtml(c.b.title) +
+            "</strong> — " +
+            timeNote +
+            crossNote +
+            "</li>";
+        });
+        box.innerHTML = html + "</ul>";
+        box.classList.remove("d-none");
+      }
+
+      function createAutoSyncCategoryHeader(category) {
+        var hdr = document.createElement("div");
+        hdr.className = "col-12 dg-as-category-group-header dg-as-group-" + category;
+        hdr.innerHTML =
+          '<div class="dg-as-group-title">' +
+          escAutoSyncHtml(AS_CATEGORY_LABELS[category] || category) +
+          "</div>";
+        return hdr;
+      }
+
+      function clearAutoSyncScheduleContainer(container) {
+        if (!container) return;
+        while (container.firstChild) container.removeChild(container.firstChild);
+      }
+
+      function sortTasksByCategoryAndTime(container) {
+        if (!container) return [];
+        var tasks = [].slice.call(container.querySelectorAll(":scope > .dg-as-task"));
+        var metas = tasks.map(function (taskEl) {
+          return readAutoSyncTaskScheduleMeta(taskEl);
+        });
+        metas.sort(function (a, b) {
+          var ca = AS_CATEGORY_SORT_ORDER[a.category] != null ? AS_CATEGORY_SORT_ORDER[a.category] : 99;
+          var cb = AS_CATEGORY_SORT_ORDER[b.category] != null ? AS_CATEGORY_SORT_ORDER[b.category] : 99;
+          if (ca !== cb) return ca - cb;
+          if (a.timeMin !== b.timeMin) return a.timeMin - b.timeMin;
+          return a.task.localeCompare(b.task, "ru");
+        });
+        var frag = document.createDocumentFragment();
+        var lastCat = null;
+        metas.forEach(function (m) {
+          if (m.category !== lastCat) {
+            lastCat = m.category;
+            frag.appendChild(createAutoSyncCategoryHeader(m.category));
+          }
+          frag.appendChild(m.el);
+        });
+        clearAutoSyncScheduleContainer(container);
+        container.appendChild(frag);
+        return metas;
+      }
+
+      function sortExportMsTasksByTime(container) {
+        if (!container) return [];
+        var tasks = [].slice.call(container.querySelectorAll(":scope > .dg-as-task"));
+        var metas = tasks.map(function (taskEl) {
+          return readAutoSyncTaskScheduleMeta(taskEl);
+        });
+        var exportMsOrder = { medmarket: 0, medmarket_fill: 1 };
+        metas.sort(function (a, b) {
+          if (a.timeMin !== b.timeMin) return a.timeMin - b.timeMin;
+          var oa = exportMsOrder[a.task] != null ? exportMsOrder[a.task] : 50;
+          var ob = exportMsOrder[b.task] != null ? exportMsOrder[b.task] : 50;
+          if (oa !== ob) return oa - ob;
+          return a.task.localeCompare(b.task, "ru");
+        });
+        var frag = document.createDocumentFragment();
+        metas.forEach(function (m) {
+          frag.appendChild(m.el);
+        });
+        tasks.forEach(function (t) {
+          if (t.parentNode === container) t.remove();
+        });
+        container.appendChild(frag);
+        return metas;
+      }
+
+      function collectAutoSyncScheduleMetasInDomOrder() {
+        var allMetas = [];
+        var list = document.getElementById("dg-set-auto-sync-list");
+        if (list) {
+          [].slice.call(list.querySelectorAll(":scope > .dg-as-task")).forEach(function (taskEl) {
+            allMetas.push(readAutoSyncTaskScheduleMeta(taskEl));
+          });
+        }
+        var exportBody = document.getElementById("dg-set-export-ms-body");
+        if (exportBody) {
+          [].slice.call(exportBody.querySelectorAll(":scope > .dg-as-task")).forEach(function (taskEl) {
+            allMetas.push(readAutoSyncTaskScheduleMeta(taskEl));
+          });
+        }
+        return allMetas;
+      }
+
+      function relocateExportMsTasksFromMainList() {
+        var list = document.getElementById("dg-set-auto-sync-list");
+        var exportBody = document.getElementById("dg-set-export-ms-body");
+        if (!list || !exportBody) return;
+        [].slice.call(list.querySelectorAll('.dg-as-task[data-as-category="export_ms"]')).forEach(function (task) {
+          exportBody.appendChild(task);
+        });
+      }
+
+      /** Полная выгрузка Медмаркет (import) — в блоке «Экспорт в МС», выше fill-linkage. */
+      function relocateMedmarketToExportMsBlock() {
+        var list = document.getElementById("dg-set-auto-sync-list");
+        var exportBody = document.getElementById("dg-set-export-ms-body");
+        if (!list || !exportBody) return;
+        var med = list.querySelector('.dg-as-task[data-as-task="medmarket"]');
+        if (!med) return;
+        var first = exportBody.querySelector(":scope > .dg-as-task");
+        if (first) exportBody.insertBefore(med, first);
+        else exportBody.appendChild(med);
+      }
+
+      function updateAutoSyncTaskBadges(meta) {
+        var catPill = meta.el.querySelector(".dg-as-cat-pill-dynamic");
+        if (catPill) catPill.textContent = AS_CATEGORY_LABELS[meta.category] || meta.category;
+        var badge = meta.el.querySelector(".dg-as-next-badge-dynamic");
+        if (badge) {
+          badge.textContent = "Следующий: " + meta.nextMeta.label;
+          badge.classList.toggle("dg-as-next-off", !meta.enabled);
+          badge.classList.toggle("dg-as-next-soon", meta.enabled && meta.nextMeta.sortKey < 120);
+        }
+        meta.el.setAttribute("data-as-schedule-time", meta.timeStr);
+      }
+
       function getMoscowNowPartsForSchedule() {
         var parts = { date: "", time: "", weekdayMon1Sun7: 1 };
         try {
@@ -378,53 +769,95 @@
         return !!(en && en.checked);
       }
 
-      function refreshAutoSyncScheduleUi() {
-        var list = document.getElementById("dg-set-auto-sync-list");
-        if (list) {
-          var tasks = [].slice.call(list.querySelectorAll(".dg-as-task"));
-          tasks.forEach(function (taskEl) {
-            var cat = taskEl.getAttribute("data-as-category") || "internal";
-            var catPill = taskEl.querySelector(".dg-as-cat-pill-dynamic");
-            if (catPill) catPill.textContent = AS_CATEGORY_LABELS[cat] || cat;
-            var en = readAutoSyncTaskEnabledFromDom(taskEl);
-            var timeId = taskEl.getAttribute("data-as-time-id");
-            var timeEl = timeId ? document.getElementById(timeId) : null;
-            var wdPrefix = taskEl.getAttribute("data-as-weekdays-prefix");
-            var wdCsv = wdPrefix ? collectAutoSyncWeekdayCsv(wdPrefix) : "";
-            var meta = computeAutoSyncNextRunMeta(en, timeEl ? timeEl.value : "00:00", wdCsv);
-            taskEl.setAttribute("data-as-next-sort", String(meta.sortKey));
-            var badge = taskEl.querySelector(".dg-as-next-badge-dynamic");
-            if (badge) {
-              badge.textContent = "Следующий: " + meta.label;
-              badge.classList.toggle("dg-as-next-off", !en);
-              badge.classList.toggle("dg-as-next-soon", en && meta.sortKey < 120);
-            }
-          });
-          tasks.sort(function (a, b) {
-            var sa = Number(a.getAttribute("data-as-next-sort") || "999999999");
-            var sb = Number(b.getAttribute("data-as-next-sort") || "999999999");
-            if (sa !== sb) return sa - sb;
-            return String(a.getAttribute("data-as-task") || "").localeCompare(String(b.getAttribute("data-as-task") || ""));
-          });
-          tasks.forEach(function (t) {
-            list.appendChild(t);
+      var autoSyncTimeCommitTimer = null;
+      /** Пока true — не трогаем DOM расписания (иначе моргает и сбивается ввод). */
+      var autoSyncScheduleTimeEditing = null;
+
+      function isAutoSyncScheduleTimeInput(el) {
+        return (
+          !!el &&
+          el.type === "time" &&
+          !!el.closest("#dg-set-auto-sync-list, #dg-set-export-ms-card, #dg-set-export-ms-body")
+        );
+      }
+
+      function isAutoSyncScheduleUiLockedForTimeEdit() {
+        if (!autoSyncScheduleTimeEditing || !document.body.contains(autoSyncScheduleTimeEditing)) {
+          return false;
+        }
+        var ae = document.activeElement;
+        if (ae === autoSyncScheduleTimeEditing) return true;
+        if (ae && ae.type === "time" && isAutoSyncScheduleTimeInput(ae)) return true;
+        return false;
+      }
+
+      function commitAutoSyncTimeInput(timeInput) {
+        if (!timeInput || timeInput.type !== "time") return;
+        if (!isAutoSyncTimeStrComplete(timeInput.value)) return;
+        var taskEl = timeInput.closest(".dg-as-task");
+        if (taskEl) taskEl.setAttribute("data-as-schedule-time", String(timeInput.value).slice(0, 5));
+        var root = getAutoSyncScheduleScrollRoot();
+        var top = root.scrollTop;
+        var left = root.scrollLeft;
+        refreshAutoSyncScheduleUi({ sort: true, force: true });
+        requestAnimationFrame(function () {
+          root.scrollTop = top;
+          root.scrollLeft = left;
+        });
+      }
+
+      function scheduleAutoSyncTimeCommitAfterLeave(timeInput) {
+        clearTimeout(autoSyncTimeCommitTimer);
+        autoSyncTimeCommitTimer = setTimeout(function () {
+          if (!timeInput || !document.body.contains(timeInput)) {
+            autoSyncScheduleTimeEditing = null;
+            return;
+          }
+          var ae = document.activeElement;
+          if (ae === timeInput) return;
+          if (ae && ae.type === "time" && isAutoSyncScheduleTimeInput(ae)) {
+            autoSyncScheduleTimeEditing = ae;
+            return;
+          }
+          autoSyncScheduleTimeEditing = null;
+          commitAutoSyncTimeInput(timeInput);
+        }, 400);
+      }
+
+      function refreshAutoSyncScheduleUi(opts) {
+        if (!opts || !opts.force) {
+          if (isAutoSyncScheduleUiLockedForTimeEdit()) return;
+        }
+        var doSort = !opts || opts.sort !== false;
+        if (doSort) {
+          relocateExportMsTasksFromMainList();
+          relocateMedmarketToExportMsBlock();
+        }
+        var allMetas = [];
+        if (doSort) {
+          var list = document.getElementById("dg-set-auto-sync-list");
+          if (list) {
+            var listMetas = sortTasksByCategoryAndTime(list);
+            listMetas.forEach(function (m) {
+              updateAutoSyncTaskBadges(m);
+              allMetas.push(m);
+            });
+          }
+          var exportBody = document.getElementById("dg-set-export-ms-body");
+          if (exportBody) {
+            var exportMetas = sortExportMsTasksByTime(exportBody);
+            exportMetas.forEach(function (m) {
+              updateAutoSyncTaskBadges(m);
+              allMetas.push(m);
+            });
+          }
+        } else {
+          allMetas = collectAutoSyncScheduleMetasInDomOrder();
+          allMetas.forEach(function (m) {
+            updateAutoSyncTaskBadges(m);
           });
         }
-        var exportTasks = document.querySelectorAll("#dg-set-export-ms-body .dg-as-task");
-        exportTasks.forEach(function (taskEl) {
-          var en = readAutoSyncTaskEnabledFromDom(taskEl);
-          var timeId = taskEl.getAttribute("data-as-time-id");
-          var timeEl = timeId ? document.getElementById(timeId) : null;
-          var wdPrefix = taskEl.getAttribute("data-as-weekdays-prefix");
-          var wdCsv = wdPrefix ? collectAutoSyncWeekdayCsv(wdPrefix) : "";
-          var meta = computeAutoSyncNextRunMeta(en, timeEl ? timeEl.value : "00:00", wdCsv);
-          var badge = taskEl.querySelector(".dg-as-next-badge-dynamic");
-          if (badge) {
-            badge.textContent = "Следующий: " + meta.label;
-            badge.classList.toggle("dg-as-next-off", !en);
-            badge.classList.toggle("dg-as-next-soon", en && meta.sortKey < 120);
-          }
-        });
+        renderAutoSyncScheduleConflicts(allMetas);
         syncExportMsSectionState();
       }
 
@@ -437,24 +870,53 @@
       }
 
       function bindAutoSyncScheduleUiRefresh() {
-        var list = document.getElementById("dg-set-auto-sync-list");
-        var exportBody = document.getElementById("dg-set-export-ms-body");
-        var roots = [];
-        if (list) roots.push(list);
-        if (exportBody) roots.push(exportBody);
-        roots.forEach(function (root) {
-          root.addEventListener(
+        var scheduleCard = document.getElementById("dg-set-auto-sync-list");
+        if (scheduleCard) scheduleCard = scheduleCard.closest(".card-body");
+        if (scheduleCard) {
+          scheduleCard.addEventListener(
+            "focusin",
+            function (ev) {
+              if (isAutoSyncScheduleTimeInput(ev.target)) {
+                autoSyncScheduleTimeEditing = ev.target;
+                clearTimeout(autoSyncTimeCommitTimer);
+              }
+            },
+            true
+          );
+          scheduleCard.addEventListener(
+            "focusout",
+            function (ev) {
+              if (!isAutoSyncScheduleTimeInput(ev.target)) return;
+              scheduleAutoSyncTimeCommitAfterLeave(ev.target);
+            },
+            true
+          );
+          scheduleCard.addEventListener(
+            "keydown",
+            function (ev) {
+              if (ev.key !== "Enter") return;
+              if (!isAutoSyncScheduleTimeInput(ev.target)) return;
+              clearTimeout(autoSyncTimeCommitTimer);
+              autoSyncScheduleTimeEditing = null;
+              commitAutoSyncTimeInput(ev.target);
+            },
+            true
+          );
+          scheduleCard.addEventListener(
             "change",
             function (ev) {
               var t = ev.target;
               if (!t) return;
-              if (t.type === "checkbox" || t.type === "time") refreshAutoSyncScheduleUi();
+              if (t.type === "time") return;
+              if (t.type === "checkbox") {
+                withAutoSyncScheduleScrollPreserved(function () {
+                  refreshAutoSyncScheduleUi({ sort: true, force: true });
+                });
+              }
             },
             true
           );
-        });
-        var exportMaster = document.getElementById("dg-set-auto_export_ms_en");
-        if (exportMaster) exportMaster.addEventListener("change", refreshAutoSyncScheduleUi);
+        }
       }
 
       function formatUserDateTime(value) {
@@ -512,6 +974,10 @@
         document.getElementById("dg-set-auto_dim_en").checked = Number(merged.auto_sync_dimensions_enabled) === 1;
         set("dg-set-auto_dim_time", merged.auto_sync_dimensions_time || "21:00");
         applyAutoSyncWeekdayChecks("dg-set-auto_dim_wd", merged.auto_sync_dimensions_weekdays);
+        document.getElementById("dg-set-auto_minstock_en").checked =
+          Number(merged.auto_sync_min_stock_export_enabled) === 1;
+        set("dg-set-auto_minstock_time", merged.auto_sync_min_stock_export_time || "22:00");
+        applyAutoSyncWeekdayChecks("dg-set-auto_minstock_wd", merged.auto_sync_min_stock_export_weekdays);
         var mssalesEn = document.getElementById("dg-set-auto_mssales_en");
         if (mssalesEn) mssalesEn.checked = Number(merged.auto_sync_mssales_enabled) === 1;
         set("dg-set-auto_mssales_time", merged.auto_sync_mssales_time || "07:30");
@@ -528,7 +994,21 @@
         var medmarketEn = document.getElementById("dg-set-auto_medmarket_en");
         if (medmarketEn) medmarketEn.checked = Number(merged.auto_sync_medmarket_enabled) === 1;
         set("dg-set-auto_medmarket_time", merged.auto_sync_medmarket_time || "09:00");
-        applyAutoSyncWeekdayChecks("dg-set-auto_medmarket_wd", merged.auto_sync_medmarket_weekdays);
+        applyAutoSyncWeekdayChecks(
+          "dg-set-auto_medmarket_wd",
+          merged.auto_sync_medmarket_weekdays != null && String(merged.auto_sync_medmarket_weekdays).trim() !== ""
+            ? merged.auto_sync_medmarket_weekdays
+            : "7"
+        );
+        var medmarketFillEn = document.getElementById("dg-set-auto_medmarket_fill_en");
+        if (medmarketFillEn) medmarketFillEn.checked = Number(merged.auto_sync_medmarket_fill_enabled) === 1;
+        set("dg-set-auto_medmarket_fill_time", merged.auto_sync_medmarket_fill_time || "09:30");
+        applyAutoSyncWeekdayChecks(
+          "dg-set-auto_medmarket_fill_wd",
+          merged.auto_sync_medmarket_fill_weekdays != null && String(merged.auto_sync_medmarket_fill_weekdays).trim() !== ""
+            ? merged.auto_sync_medmarket_fill_weekdays
+            : "1,2,3,4,5,6"
+        );
         set("dg-set-ms_dimensions_log_retention_days", merged.ms_dimensions_log_retention_days);
         set("dg-set-dg_purchase_overrides_log_retention_days", merged.dg_purchase_overrides_log_retention_days);
         set("dg-set-auto_sync_runs_retention_days", merged.auto_sync_runs_retention_days);
@@ -1483,6 +1963,9 @@
           auto_sync_dimensions_enabled: document.getElementById("dg-set-auto_dim_en").checked,
           auto_sync_dimensions_time: getStr("dg-set-auto_dim_time") || "21:00",
           auto_sync_dimensions_weekdays: collectAutoSyncWeekdayCsv("dg-set-auto_dim_wd"),
+          auto_sync_min_stock_export_enabled: document.getElementById("dg-set-auto_minstock_en").checked,
+          auto_sync_min_stock_export_time: getStr("dg-set-auto_minstock_time") || "22:00",
+          auto_sync_min_stock_export_weekdays: collectAutoSyncWeekdayCsv("dg-set-auto_minstock_wd"),
           auto_sync_mssales_enabled: document.getElementById("dg-set-auto_mssales_en") ? document.getElementById("dg-set-auto_mssales_en").checked : false,
           auto_sync_mssales_time: getStr("dg-set-auto_mssales_time") || "07:30",
           auto_sync_mssales_days: getNum("dg-set-auto_mssales_days", 90),
@@ -1502,6 +1985,11 @@
             : false,
           auto_sync_medmarket_time: getStr("dg-set-auto_medmarket_time") || "09:00",
           auto_sync_medmarket_weekdays: collectAutoSyncWeekdayCsv("dg-set-auto_medmarket_wd"),
+          auto_sync_medmarket_fill_enabled: document.getElementById("dg-set-auto_medmarket_fill_en")
+            ? document.getElementById("dg-set-auto_medmarket_fill_en").checked
+            : false,
+          auto_sync_medmarket_fill_time: getStr("dg-set-auto_medmarket_fill_time") || "09:30",
+          auto_sync_medmarket_fill_weekdays: collectAutoSyncWeekdayCsv("dg-set-auto_medmarket_fill_wd"),
         };
         runSaveWithInlineFeedback({
           sectionId: "auto",
@@ -1516,6 +2004,8 @@
             "auto_sync_export_ms_enabled",
             "auto_sync_dimensions_time",
             "auto_sync_dimensions_weekdays",
+            "auto_sync_min_stock_export_time",
+            "auto_sync_min_stock_export_weekdays",
             "auto_sync_mssales_time",
             "auto_sync_mssales_days",
             "auto_sync_mssales_weekdays",
@@ -1525,6 +2015,8 @@
             "auto_sync_purchase_formula_cache_time",
             "auto_sync_medmarket_time",
             "auto_sync_medmarket_weekdays",
+            "auto_sync_medmarket_fill_time",
+            "auto_sync_medmarket_fill_weekdays",
           ],
         });
       }
@@ -1537,10 +2029,12 @@
         huckster: "Huckster",
         db_size: "Размер БД и диска",
         dimensions: "Габариты МС",
+        min_stock_export: "Неснижаемый остаток МС",
         mssales: "Продажи МС",
         mssales_full: "Продажи МС (полный)",
         purchase_formula_cache: "Закупки: кэш формулы",
         medmarket: "Медмаркет: каталог из МС",
+        medmarket_fill: "Медмаркет: коды в МС (код+тип)",
       };
       function escAutoRunHtml(s) {
         return String(s || "")
@@ -1577,7 +2071,22 @@
           el.scrollIntoView({ behavior: "smooth", block: "nearest" });
         } catch (_) {}
       }
+      function resolveAutoSyncTaskKey(task, btn) {
+        var row = btn && btn.closest ? btn.closest(".dg-as-task") : null;
+        var fromDom = row && row.getAttribute("data-as-task");
+        return String((fromDom && fromDom.trim()) || task || "").trim();
+      }
+
       function runAutoSyncNow(task, label, btnId) {
+        var btn = btnId ? document.getElementById(btnId) : null;
+        task = resolveAutoSyncTaskKey(task, btn);
+        if (!task) {
+          showAutoSyncRunBanner(
+            "err",
+            "<strong>Ошибка</strong><div class=\"small mt-1\">Не удалось определить тип задачи (data-as-task на карточке).</div>"
+          );
+          return;
+        }
         if (autoSyncRunRequestInFlight[task]) {
           showAutoSyncRunBanner(
             "warn",
@@ -1587,7 +2096,6 @@
         }
         autoSyncRunRequestInFlight[task] = true;
         var hint = document.getElementById("dg-set-auto-sync-force-hint");
-        var btn = btnId ? document.getElementById(btnId) : null;
         var prevBtnHtml = btn ? btn.innerHTML : "";
         if (btn) {
           btn.disabled = true;
@@ -1612,7 +2120,12 @@
           })
           .then(function (x) {
             if (!x.r.ok || !x.j.success) {
-              throw new Error((x.j && x.j.error) || "Не удалось запустить автосинхронизацию");
+              var errMsg = (x.j && x.j.error) || "Не удалось запустить автосинхронизацию";
+              if (x.j && x.j.task_received != null && String(x.j.task_received) !== task) {
+                errMsg += " (сервер получил: «" + x.j.task_received + "»)";
+              }
+              if (x.j && x.j.hint) errMsg += ". " + x.j.hint;
+              throw new Error(errMsg);
             }
             var j = x.j || {};
             var timeStr = new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
@@ -2433,6 +2946,8 @@
       }
 
       bindSettingsSectionsCollapse();
+      relocateExportMsTasksFromMainList();
+      relocateMedmarketToExportMsBlock();
       bindAutoSyncScheduleUiRefresh();
       refreshAutoSyncScheduleUi();
 
@@ -2447,12 +2962,21 @@
       document.getElementById("dg-set-auto_huckster_run").addEventListener("click", function () { runAutoSyncNow("huckster", "Huckster", "dg-set-auto_huckster_run"); });
       document.getElementById("dg-set-auto_db_size_run").addEventListener("click", function () { runAutoSyncNow("db_size", "Размер БД и диска", "dg-set-auto_db_size_run"); });
       document.getElementById("dg-set-auto_dim_run").addEventListener("click", function () { runAutoSyncNow("dimensions", "Габариты МС", "dg-set-auto_dim_run"); });
+      document.getElementById("dg-set-auto_minstock_run").addEventListener("click", function () {
+        runAutoSyncNow("min_stock_export", "Неснижаемый остаток МС", "dg-set-auto_minstock_run");
+      });
       var mssalesRunBtn = document.getElementById("dg-set-auto_mssales_run");
       if (mssalesRunBtn) mssalesRunBtn.addEventListener("click", function () { runAutoSyncNow("mssales", "Продажи МС", "dg-set-auto_mssales_run"); });
       var mssalesFullRunBtn = document.getElementById("dg-set-auto_mssales_full_run");
       if (mssalesFullRunBtn) mssalesFullRunBtn.addEventListener("click", function () { runAutoSyncNow("mssales_full", "Продажи МС (полный)", "dg-set-auto_mssales_full_run"); });
       var medmarketRunBtn = document.getElementById("dg-set-auto_medmarket_run");
       if (medmarketRunBtn) medmarketRunBtn.addEventListener("click", function () { runAutoSyncNow("medmarket", "Медмаркет", "dg-set-auto_medmarket_run"); });
+      var medmarketFillRunBtn = document.getElementById("dg-set-auto_medmarket_fill_run");
+      if (medmarketFillRunBtn) {
+        medmarketFillRunBtn.addEventListener("click", function () {
+          runAutoSyncNow("medmarket_fill", "Медмаркет код+тип", "dg-set-auto_medmarket_fill_run");
+        });
+      }
       var purchaseFormulaCacheRunBtn = document.getElementById("dg-set-auto_purchase_formula_cache_run");
       if (purchaseFormulaCacheRunBtn) {
         purchaseFormulaCacheRunBtn.addEventListener("click", function () {

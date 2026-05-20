@@ -53,18 +53,25 @@ async function runCatalogSync(db) {
                     syncState.total > 0
                         ? Math.min(100, Math.round((syncState.processed / syncState.total) * 100))
                         : 0;
-                const all = Number(p.total_all || syncState.total || 0);
-                const cand = Number(p.total || 0);
+                const all = Number(p.total_all || 0);
+                const cand = Number(p.candidates || p.total || 0);
+                const pending = Number(p.total || 0);
+                const skip = Number(p.skipped_already || 0);
                 syncState.message =
-                    cand > 0 && cand < all
-                        ? `Атрибут Медмаркет: ${syncState.processed} / ${cand} карточек с атрибутом в JSON (${pct}%), записано: ${syncState.upserted} (всего в каталоге ${all.toLocaleString('ru-RU')})`
-                        : `Атрибут Медмаркет: ${syncState.processed} / ${syncState.total} (${pct}%), с кодом: ${syncState.upserted}`;
+                    pending > 0
+                        ? `Подтягивание атрибута: ${syncState.processed.toLocaleString('ru-RU')} / ${pending.toLocaleString('ru-RU')} осталось (${pct}%) · записано: ${syncState.upserted.toLocaleString('ru-RU')}${skip > 0 ? ` · уже в БД: ${skip.toLocaleString('ru-RU')}` : ''}`
+                        : skip > 0
+                          ? `Каталог актуален: в ms_export уже ${skip.toLocaleString('ru-RU')} из ${cand.toLocaleString('ru-RU')} с атрибутом в JSON`
+                          : `Атрибут Медмаркет: ${syncState.processed} / ${syncState.total} (${pct}%), записано: ${syncState.upserted}`;
             },
         });
+        const skipDone = Number(result.skipped_already || 0);
         syncState.message =
-            result.candidates != null && result.candidates < result.total_ms
-                ? `Готово: обработано ${result.candidates} карточек с атрибутом в JSON (из ${result.total_ms} в каталоге), записано значений: ${result.upserted}`
-                : `Готово: карточек ${result.total_ms}, с заполненным атрибутом ${result.upserted}`;
+            result.pending === 0 && skipDone > 0
+                ? `Готово: в ms_export уже актуально (${skipDone.toLocaleString('ru-RU')} позиций с атрибутом в JSON)`
+                : result.candidates != null && result.candidates < result.total_ms
+                  ? `Готово: записано ${result.written.toLocaleString('ru-RU')} из ${result.pending.toLocaleString('ru-RU')} оставшихся (всего с атрибутом ${result.candidates.toLocaleString('ru-RU')}, пропущено уже заполненных: ${skipDone.toLocaleString('ru-RU')})`
+                  : `Готово: карточек ${result.total_ms}, с атрибутом ${result.upserted}`;
         syncState.finished_at = new Date().toISOString();
         return { started: true, result };
     } catch (e) {

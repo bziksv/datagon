@@ -524,6 +524,7 @@
         { key: "huckster", title: "Калькуляция Huckster", subtitle: "Расчёт цен по правилам", cfgEnabled: "huckster_enabled", cfgTime: "huckster_time" },
         { key: "db_size", title: "Размер БД и диска", subtitle: "Снимок размеров таблиц БД и разбивка диска по папкам проекта", cfgEnabled: "db_size_enabled", cfgTime: "db_size_time" },
         { key: "dimensions", title: "Габариты МС", subtitle: "Выгрузка пользовательских замеров в МойСклад", cfgEnabled: "dimensions_enabled", cfgTime: "dimensions_time" },
+        { key: "min_stock_export", title: "Неснижаемый остаток МС", subtitle: "Выгрузка ms_export.min_stock → minimumBalance; склад.поз. «Да», не архив", cfgEnabled: "min_stock_export_enabled", cfgTime: "min_stock_export_time" },
         { key: "mssales", title: "Продажи МС", subtitle: "Импорт entity/demand → ms_demand / ms_demand_position", cfgEnabled: "mssales_enabled", cfgTime: "mssales_time" },
         { key: "mssales_full", title: "Продажи МС (полный)", subtitle: "Импорт demand с fresh=true", cfgEnabled: "mssales_full_enabled", cfgTime: "mssales_full_time" },
       ];
@@ -814,20 +815,34 @@
           }
         }
         if (pre) pre.textContent = lines.join("\n");
-        if (foot) {
-          foot.textContent =
-            "Кнопка «Лог» показывает сохранённую строку auto_sync_runs и отказы ms_dimensions_log за интервал started_at…finished_at. Для габаритов — действие «Ошибка МС» на странице «Габариты» → «Журнал изменений габаритов».";
-        }
         var isDim = tt.toLowerCase() === "dimensions";
-        if (isDim && rec.started_at && rec.finished_at && dimWrap && dimBody) {
+        var isMinStock = tt.toLowerCase() === "min_stock_export";
+        if ((isDim || isMinStock) && rec.started_at && rec.finished_at && dimWrap && dimBody) {
           dimWrap.classList.remove("d-none");
-          dimBody.textContent = "Загрузка ms_dimensions_log…";
+          dimBody.textContent = isDim
+            ? "Загрузка ms_dimensions_log…"
+            : "Загрузка ms_min_stock_export_log…";
           var qs = new URLSearchParams();
-          qs.set("action", "sync_ms_error");
           qs.set("limit", "200");
           qs.set("from", new Date(rec.started_at).toISOString());
           qs.set("to", new Date(rec.finished_at).toISOString());
-          fetch("/api/exports/dimensions/log/global?" + qs.toString(), { credentials: "same-origin" })
+          var logUrl = isDim
+            ? "/api/exports/dimensions/log/global?" +
+              new URLSearchParams({
+                action: "sync_ms_error",
+                limit: "200",
+                from: new Date(rec.started_at).toISOString(),
+                to: new Date(rec.finished_at).toISOString(),
+              }).toString()
+            : "/api/processes/min-stock-export-errors?" + qs.toString();
+          if (isDim) {
+            foot.textContent =
+              "Кнопка «Лог» — auto_sync_runs и отказы ms_dimensions_log. Для габаритов — «Ошибка МС» на «Габариты» → «Журнал изменений габаритов».";
+          } else if (foot) {
+            foot.textContent =
+              "Кнопка «Лог» — auto_sync_runs и ошибки ms_min_stock_export_log за интервал запуска.";
+          }
+          fetch(logUrl, { credentials: "same-origin" })
             .then(function (r) {
               return r.json().then(function (j) {
                 return { r: r, j: j };
@@ -836,7 +851,7 @@
             .then(function (x) {
               if (!x.r.ok || !x.j || !x.j.success) {
                 dimBody.textContent =
-                  "Не удалось загрузить ms_dimensions_log: " + String((x.j && x.j.error) || x.r.status || "?");
+                  "Не удалось загрузить журнал: " + String((x.j && x.j.error) || x.r.status || "?");
                 return;
               }
               var rows = Array.isArray(x.j.rows) ? x.j.rows : [];
@@ -846,18 +861,31 @@
                   dimBody.textContent =
                     "За " +
                     dSec +
-                    " с записей «Ошибка МС» нет: выгрузка в МойСклад не успела начаться (прервано перезапуском Node). Это ожидаемо для #" +
+                    " с записей об ошибках нет: выгрузка в МойСклад не успела начаться (прервано перезапуском Node). Это ожидаемо для #" +
                     String(rec.id || "?") +
                     " — не ошибка МС.";
                 } else {
                   dimBody.textContent =
-                    "За интервал этого запуска записей «Ошибка МС» нет (ошибок не было или они вне интервала started_at…finished_at).";
+                    "За интервал этого запуска записей об ошибках нет (ошибок не было или они вне интервала started_at…finished_at).";
                 }
                 return;
               }
               dimBody.textContent = rows
                 .map(function (row) {
-                  var t = row.changed_at ? fmtTimeMsk(row.changed_at) : "—";
+                  var t = row.created_at || row.changed_at ? fmtTimeMsk(row.created_at || row.changed_at) : "—";
+                  if (isMinStock) {
+                    return (
+                      t +
+                      "  " +
+                      row.code +
+                      "  min=" +
+                      (row.min_stock != null ? row.min_stock : "—") +
+                      "  http=" +
+                      (row.http_status != null ? row.http_status : "0") +
+                      ": " +
+                      String(row.error_message || "").trim()
+                    );
+                  }
                   return t + "  " + row.code + "  " + String(row.note || "").trim();
                 })
                 .join("\n");
@@ -912,6 +940,21 @@
             fmtNum(lv.skipped_no_uuid || 0) +
             (lv.last_code ? " · код " + String(lv.last_code).slice(0, 40) : "") +
             (lv.last_message ? " — " + String(lv.last_message).slice(0, 140) : "")
+          );
+        }
+        if (secKey === "min_stock_export") {
+          if (lv.pending) return "Сейчас: " + String(lv.message || "Запуск…");
+          if (!lv.active) return "";
+          return (
+            "Сейчас: " +
+            fmtNum(lv.processed) +
+            "/" +
+            fmtNum(lv.total) +
+            " · ✓ " +
+            fmtNum(lv.ok) +
+            " · × " +
+            fmtNum(lv.err) +
+            (lv.message ? " — " + String(lv.message).slice(0, 160) : "")
           );
         }
         if (lv.pending) return "Сейчас: " + String(lv.message || "Запуск…");

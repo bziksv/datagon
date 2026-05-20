@@ -34,7 +34,7 @@
  *   GET    /api/purchase/log        — журнал изменений полей overrides `min_stock_dg` / `multiplicity` (query: code, limit, offset, field?).
  *   GET    /api/purchase/log/stats  — статистика таблицы `dg_purchase_overrides_log` + retention из app_settings.
  *   POST   /api/purchase/log/cleanup — удалить записи журнала старше N дней (body.days опц.).
- *   POST   /api/purchase/min-stock-apply/run — перенос `formula_proposed_min_stock` → `ms_export.min_stock` по фильтрам списка (batch).
+ *   POST   /api/purchase/min-stock-apply/run — перенос `formula_proposed_min_stock` → `ms_export.min_stock` (колонка «Неснижаемый остаток») по фильтрам списка; только БД Datagon, без API МойСклад.
  *   GET    /api/purchase/min-stock-apply/log — журнал batch-переносов (откат на весь batch).
  *   GET    /api/purchase/min-stock-apply/batch/:id/items — строки пакета (код, было/стало).
  *   POST   /api/purchase/min-stock-apply/revert — откат batch по `batch_id`.
@@ -1188,7 +1188,7 @@ async function ensureSchema(db) {
     schemaReady = true;
 }
 
-/** Размер порции SKU при переносе «пр. нес.ост. → неснижаемый МС». */
+/** Размер порции SKU при переносе «пр. нес.ост. → неснижаемый» (только ms_export в БД). */
 const PURCHASE_MIN_STOCK_APPLY_CHUNK_SIZE = 200;
 
 /** Один активный batch-перенос «пр. нес.ост. → неснижаемый МС» на процесс. */

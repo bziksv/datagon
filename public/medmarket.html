@@ -101,6 +101,18 @@
       min-width: 120px;
       max-width: 100%;
     }
+    .dg-mm-mm-input--empty::placeholder {
+      color: #adb5bd;
+      font-style: italic;
+    }
+    .dg-mm-mm-hint {
+      margin-top: 0.15rem;
+      line-height: 1.2;
+      font-size: 0.7rem;
+      font-style: italic;
+      pointer-events: none;
+      user-select: none;
+    }
     #mm-apply.dg-flt-dirty::after {
       content: " •";
       font-weight: 700;
@@ -817,9 +829,10 @@
                   <label class="form-label" for="mm-f-mapped">Стыковка</label>
                   <select class="form-select" id="mm-f-mapped">
                     <option value="all">Все</option>
-                    <option value="1">Только с кодом Медмаркета</option>
-                    <option value="0">Без кода Медмаркета</option>
+                    <option value="1">Со стыковкой (код+тип)</option>
+                    <option value="0">Без стыковки (код+тип)</option>
                   </select>
+                  <div class="form-text">По сохранённому значению в БД; серая подсказка в таблице — не стыковка.</div>
                 </div>
               </div>
               <div class="mt-3 d-flex flex-wrap gap-2">
@@ -1023,14 +1036,15 @@
         }
       }
 
-      function showActionLog(type, message) {
+      function showActionLog(type, message, asHtml) {
         var box = el("mm-action-log");
         if (!box) return;
         var t = type || "info";
         box.className =
           "alert mt-3 mb-0 alert-" +
           (t === "danger" ? "danger" : t === "success" ? "success" : t === "warning" ? "warning" : "info");
-        box.textContent = String(message || "");
+        if (asHtml) box.innerHTML = String(message || "");
+        else box.textContent = String(message || "");
         box.classList.remove("d-none");
       }
 
@@ -1039,7 +1053,69 @@
         if (box) {
           box.classList.add("d-none");
           box.textContent = "";
+          box.innerHTML = "";
         }
+      }
+
+      function describeAppliedFilters() {
+        var f = applied;
+        var parts = [];
+        if (f.search) parts.push("поиск: «" + f.search + "»");
+        if (f.code) parts.push("код: «" + f.code + "»");
+        if (f.name) parts.push("наименование: «" + f.name + "»");
+        if (f.item_type && f.item_type !== "all") parts.push("тип: " + f.item_type);
+        if (f.medmarket_code) parts.push("код Медмаркета: «" + f.medmarket_code + "»");
+        if (f.mapped === "1") parts.push("стыковка: со стыковкой (код+тип)");
+        else if (f.mapped === "0") parts.push("стыковка: без стыковки (код+тип)");
+        else parts.push("стыковка: все");
+        return parts.length ? parts.join("; ") : "без фильтров (весь каталог)";
+      }
+
+      function formatFillLinkageSummary(j, prefix) {
+        var p = prefix ? prefix + " " : "";
+        var lines = [
+          p + "<strong>Заполнить коды в МойСклад</strong> (атрибут «Код товара для медмаркета», формат код+тип)",
+          "Фильтры: " + describeAppliedFilters(),
+          "По выборке: " + Number(j.total || 0).toLocaleString("ru-RU") + " строк",
+          "К записи в МС: " + Number(j.to_update != null ? j.to_update : j.filled + j.corrected || 0).toLocaleString("ru-RU") +
+            " (новых " + Number(j.filled || 0).toLocaleString("ru-RU") +
+            ", исправить " + Number(j.corrected || 0).toLocaleString("ru-RU") + ")",
+          "Уже со стыковкой: " + Number(j.skipped || 0).toLocaleString("ru-RU") +
+            ", без uuid: " + Number(j.no_uuid || 0).toLocaleString("ru-RU") +
+            (j.empty_code ? ", пустой код: " + Number(j.empty_code).toLocaleString("ru-RU") : ""),
+        ];
+        if (j.dry_run) {
+          lines.push("<em>Пробный просмотр (в МойСклад пока не отправляли).</em>");
+          return lines.join("<br>");
+        }
+        lines.push(
+          "Записано в МойСклад: ✓ " + Number(j.ms_ok || 0).toLocaleString("ru-RU") +
+            ", ошибок: × " + Number(j.ms_failed || 0).toLocaleString("ru-RU") +
+            ", время: " + Number(j.duration_sec || 0).toLocaleString("ru-RU") + " с"
+        );
+        if (j.ms_failed > 0 && j.errors && j.errors.length) {
+          lines.push("<strong>Примеры ошибок:</strong>");
+          j.errors.slice(0, 10).forEach(function (er) {
+            lines.push("• " + (er.code || "?") + " — " + (er.error || "ошибка"));
+          });
+          if (j.errors.length > 10) lines.push("… и ещё " + (j.errors.length - 10));
+        }
+        return lines.join("<br>");
+      }
+
+      function fetchFillLinkage(dryRun) {
+        var q = buildFilterParams();
+        if (dryRun) q.set("dry_run", "1");
+        return fetch("/api/medmarket/fill-linkage-codes?" + q.toString(), {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: "{}",
+        }).then(function (r) {
+          return r.json().then(function (j) {
+            return { ok: r.ok, j: j };
+          });
+        });
       }
 
       function readPendingFilters() {
@@ -1130,7 +1206,7 @@
         }
         var shown = Math.min(limit, Math.max(0, total - (page - 1) * limit));
         var mappedPart =
-          "; с атрибутом в выгрузке: " + mappedInDb.toLocaleString("ru-RU");
+          "; со стыковкой код+тип в каталоге: " + mappedInDb.toLocaleString("ru-RU");
         hint.textContent =
           "Найдено: " +
           total.toLocaleString("ru-RU") +
@@ -1341,16 +1417,29 @@
             else if (key === "name") td.appendChild(renderMmNameCell(r));
             else if (key === "item_type") td.textContent = r.item_type || "";
             else if (key === "medmarket_code") {
+              var mmVal = String(r.medmarket_code || "").trim();
+              var linked = r.linkage_valid === true;
+              var expected = mmBuildLinkageCode(r.code, r.item_type);
               var inp = document.createElement("input");
               inp.type = "text";
-              inp.className = "form-control form-control-sm dg-mm-mm-input";
+              inp.className =
+                "form-control form-control-sm dg-mm-mm-input" +
+                (linked ? "" : " dg-mm-mm-input--empty");
               inp.setAttribute("data-code", r.code || "");
               inp.setAttribute("data-type", r.item_type || "");
-              inp.value = r.medmarket_code || "";
-              inp.placeholder = mmBuildLinkageCode(r.code, r.item_type) || "10088+Товар";
-              inp.title = "Стыковка: код+тип, напр. " + (mmBuildLinkageCode(r.code, r.item_type) || "10088+Товар");
+              inp.value = mmVal;
+              inp.placeholder = linked ? "" : "не задано";
+              inp.title = linked
+                ? "Стыковка код+тип: " + mmVal
+                : "Стыковки нет. Ожидается: " + (expected || "код+Товар");
               inp.autocomplete = "off";
               td.appendChild(inp);
+              if (!linked && expected) {
+                var hint = document.createElement("div");
+                hint.className = "dg-mm-mm-hint small text-muted";
+                hint.textContent = "ожидается: " + expected;
+                td.appendChild(hint);
+              }
             }
             tr.appendChild(td);
           });
@@ -1490,21 +1579,10 @@
             if (!j) return;
             if (j.active) {
               setSyncUiLocked(true);
-              var proc = Number(j.processed || 0);
-              var tot = Number(j.total || 0);
-              var pct = tot > 0 ? Math.min(100, Math.round((proc / tot) * 100)) : 0;
               var msg =
-                "Подтягивание атрибута: " +
-                proc.toLocaleString("ru-RU") +
-                " / " +
-                tot.toLocaleString("ru-RU") +
-                " карточек с атрибутом в JSON (" +
-                pct +
-                "%)" +
-                (j.upserted != null
-                  ? "; записано: " + Number(j.upserted).toLocaleString("ru-RU")
-                  : "") +
-                " — идёт";
+                (j.message && String(j.message).trim()) ||
+                "Подтягивание атрибута… — идёт";
+              if (!/идёт\s*$/i.test(msg)) msg += " — идёт";
               if (hint) hint.textContent = msg;
               showActionLog("info", msg);
               syncPollTimer = setTimeout(pollSyncStatus, 1500);
@@ -1540,39 +1618,80 @@
         }
         var btn = el("mm-fill-linkage");
         var doFetch = function () {
-          showActionLog("info", "Заполняем коды Медмаркета (код+тип) по текущим фильтрам…");
-          return fetch("/api/medmarket/fill-linkage-codes?" + buildFilterParams().toString(), {
-            method: "POST",
-            credentials: "same-origin",
-            headers: { "Content-Type": "application/json" },
-            body: "{}",
-          })
-            .then(function (r) {
-              return r.json().then(function (j) {
-                return { ok: r.ok, j: j };
-              });
-            })
-            .then(function (x) {
-              if (!x.ok || !x.j || x.j.success === false) {
-                throw new Error((x.j && x.j.error) || "Не удалось заполнить коды");
+          showActionLog("info", "Проверяем выборку по фильтрам (без записи в МойСклад)…", false);
+          return fetchFillLinkage(true)
+            .then(function (pre) {
+              if (!pre.ok || !pre.j || pre.j.success === false) {
+                throw new Error((pre.j && pre.j.error) || "Не удалось оценить выборку");
               }
-              var j = x.j;
-              var msg =
-                "Готово: обработано " +
-                Number(j.total || 0).toLocaleString("ru-RU") +
-                ", новых " +
-                Number(j.filled || 0).toLocaleString("ru-RU") +
-                ", исправлено " +
-                Number(j.corrected || 0).toLocaleString("ru-RU") +
-                ", без изменений " +
-                Number(j.skipped || 0).toLocaleString("ru-RU");
-              showActionLog("success", msg);
-              notify("success", msg);
+              var pj = pre.j;
+              showActionLog("info", formatFillLinkageSummary(pj, "План."), true);
+              var toUp = Number(pj.to_update != null ? pj.to_update : 0);
+              if (toUp === 0) {
+                var okMsg = "Нечего записывать: все позиции уже со стыковкой код+тип или без uuid.";
+                showActionLog("success", formatFillLinkageSummary(pj, "Итог.") + "<br>" + okMsg, true);
+                notify("success", okMsg);
+                return null;
+              }
+              if (toUp > 500) {
+                showActionLog(
+                  "warning",
+                  formatFillLinkageSummary(pj, "План.") +
+                    "<br><strong>Внимание:</strong> к записи " +
+                    toUp.toLocaleString("ru-RU") +
+                    " позиций — операция может занять несколько минут. Идёт отправка в МойСклад…",
+                  true
+                );
+              } else {
+                showActionLog("info", formatFillLinkageSummary(pj, "План.") + "<br>Отправка в МойСклад…", true);
+              }
+              var t0 = Date.now();
+              var tick = setInterval(function () {
+                var sec = Math.round((Date.now() - t0) / 1000);
+                showActionLog(
+                  "info",
+                  formatFillLinkageSummary(pj, "План.") + "<br>Идёт запись в МойСклад… прошло " + sec + " с",
+                  true
+                );
+              }, 2000);
+              return fetchFillLinkage(false)
+                .then(function (x) {
+                  clearInterval(tick);
+                  if (!x.ok || !x.j || x.j.success === false) {
+                    throw new Error((x.j && x.j.error) || "Не удалось заполнить коды");
+                  }
+                  return x.j;
+                })
+                .catch(function (e) {
+                  clearInterval(tick);
+                  throw e;
+                });
+            })
+            .then(function (j) {
+              if (!j) return;
+              var shortMsg =
+                "Готово: ✓ " +
+                Number(j.ms_ok || 0).toLocaleString("ru-RU") +
+                ", × " +
+                Number(j.ms_failed || 0).toLocaleString("ru-RU") +
+                " за " +
+                Number(j.duration_sec || 0) +
+                " с";
+              var logType = j.ms_failed > 0 ? "warning" : "success";
+              showActionLog(logType, formatFillLinkageSummary(j, "Итог."), true);
+              notify(logType === "success" ? "success" : "warning", shortMsg);
               return loadData();
             })
             .catch(function (e) {
               var err = e && e.message ? e.message : "Ошибка";
-              showActionLog("danger", err);
+              showActionLog(
+                "danger",
+                "<strong>Ошибка заполнения кодов в МойСклад</strong><br>" +
+                  err +
+                  "<br>Фильтры: " +
+                  describeAppliedFilters(),
+                true
+              );
               notify("danger", err);
             });
         };

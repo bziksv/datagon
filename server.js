@@ -122,6 +122,10 @@ let appSettings = {
     auto_sync_dimensions_enabled: 0,
     auto_sync_dimensions_time: '21:00',
     auto_sync_dimensions_weekdays: '',
+    /** Выгрузка ms_export.min_stock → product.minimumBalance (склад.поз. «Да», не архив). */
+    auto_sync_min_stock_export_enabled: 0,
+    auto_sync_min_stock_export_time: '22:00',
+    auto_sync_min_stock_export_weekdays: '',
     /** Авто-синхронизация продаж МС (entity/demand → ms_demand / ms_demand_position).
      *  По умолчанию выключена. `auto_sync_mssales_days` — окно периода в днях
      *  (от 1 до 5*365); 90 дней — баланс «3 квартала истории / приемлемая
@@ -144,7 +148,11 @@ let appSettings = {
     auto_sync_medmarket_enabled: 0,
     auto_sync_medmarket_time: '09:00',
     /** Пн=1…Вс=7, CSV; по умолчанию пн и чт (раз в ~2 недели — два дня в неделю). */
-    auto_sync_medmarket_weekdays: '1,4',
+    auto_sync_medmarket_weekdays: '7',
+    /** Медмаркет: заполнение код+тип в МойСклад по всему каталогу (fill-linkage-codes). */
+    auto_sync_medmarket_fill_enabled: 0,
+    auto_sync_medmarket_fill_time: '09:30',
+    auto_sync_medmarket_fill_weekdays: '1,2,3,4,5,6',
     /** Формула продаж / предлагаемого неснижаемого, LagerPlus-parity (см. `lib/datagonSalesFormula.js`, карточка товара). */
     sales_formula_replenishment_coef: 1 / 3,
     sales_formula_sales_window_days: 90,
@@ -173,12 +181,17 @@ const exportsHucksterRouterFactory = require('./routes/exportsHuckster');
  *  ещё до того, как app.use('/api/exports/dimensions', ...) создаст router. См.
  *  module.exports.runScheduledSyncMs / getScheduledSyncState. */
 const dimensionsRouterFactory = require('./routes/dimensions');
+const minStockExportMs = require('./lib/datagonMinStockExportMs');
+const medmarketStore = require('./lib/medmarketStore');
 /** MS Sales: программный триггер автосинхронизации (entity/demand → ms_demand).
  *  Прямой импорт нужен здесь же, чтобы processAutoSyncQueue / scheduler могли
  *  стартовать синк без зависимости от Express-роутера. См. module.exports.triggerSync /
  *  getSyncState в routes/msSales.js. */
 const msSalesModule = require('./routes/msSales');
 const medmarketRouterFactory = require('./routes/medmarket');
+const { getAutoSyncTaskKeys } = require('./lib/datagonAutoSyncRegistry');
+/** Whitelist для POST /api/settings/auto-sync-run (фиксируется при старте процесса). */
+const AUTO_SYNC_ALLOWED_TASK_KEYS = new Set(getAutoSyncTaskKeys());
 let pagesRouter = null;
 let matchesRouter = null;
 const autoSyncLastRunByTask = new Map();
@@ -342,6 +355,9 @@ async function initDB() {
             ['auto_sync_dimensions_enabled','0'],
             ['auto_sync_dimensions_time','21:00'],
             ['auto_sync_dimensions_weekdays',''],
+            ['auto_sync_min_stock_export_enabled','0'],
+            ['auto_sync_min_stock_export_time','22:00'],
+            ['auto_sync_min_stock_export_weekdays',''],
             ['auto_sync_mssales_enabled','0'],
             ['auto_sync_mssales_time','07:30'],
             ['auto_sync_mssales_days','90'],
@@ -354,7 +370,10 @@ async function initDB() {
             ['auto_sync_purchase_formula_cache_time','08:30'],
             ['auto_sync_medmarket_enabled','0'],
             ['auto_sync_medmarket_time','09:00'],
-            ['auto_sync_medmarket_weekdays','1,4'],
+            ['auto_sync_medmarket_weekdays','7'],
+            ['auto_sync_medmarket_fill_enabled','0'],
+            ['auto_sync_medmarket_fill_time','09:30'],
+            ['auto_sync_medmarket_fill_weekdays','1,2,3,4,5,6'],
             ['sales_formula_replenishment_coef','0.3333333333333333'],
             ['sales_formula_sales_window_days','90'],
             ['sales_formula_absence_analysis_days','210'],
@@ -1192,6 +1211,12 @@ async function reconcileAutoSyncRunIdsInMemory() {
             autoSyncRunIds.delete('dimensions');
         }
     }
+    if (typeof minStockExportMs.getScheduledSyncState === 'function') {
+        const ms = minStockExportMs.getScheduledSyncState();
+        if (!ms.active && autoSyncRunIds.has('min_stock_export')) {
+            autoSyncRunIds.delete('min_stock_export');
+        }
+    }
 }
 
 async function isAutoSyncTaskRunningInMemory(taskType) {
@@ -1204,6 +1229,9 @@ async function isAutoSyncTaskRunningInMemory(taskType) {
         typeof dimensionsRouterFactory.getScheduledSyncState === 'function'
     ) {
         return Boolean(dimensionsRouterFactory.getScheduledSyncState().active);
+    }
+    if (type === 'min_stock_export' && typeof minStockExportMs.getScheduledSyncState === 'function') {
+        return Boolean(minStockExportMs.getScheduledSyncState().active);
     }
     return false;
 }
@@ -1306,6 +1334,26 @@ function buildAutoSyncTasksLiveForOverview() {
 
     if (hasRun('dimensions') && typeof dimensionsRouterFactory.getScheduledSyncState === 'function') {
         out.dimensions = dimensionsRouterFactory.getScheduledSyncState();
+    }
+
+    if (hasRun('min_stock_export') && typeof minStockExportMs.getScheduledSyncState === 'function') {
+        const st = minStockExportMs.getScheduledSyncState();
+        if (st && st.active) {
+            out.min_stock_export = {
+                active: true,
+                processed: Number(st.processed || 0),
+                total: Number(st.total || 0),
+                ok: Number(st.ok || 0),
+                err: Number(st.err || 0),
+                message: String(st.summary || st.last_message || ''),
+            };
+        } else {
+            out.min_stock_export = {
+                active: true,
+                pending: true,
+                message: 'Ожидание старта выгрузки неснижаемого в МС…',
+            };
+        }
     }
 
     function msSalesLiveOrPending() {
@@ -1646,6 +1694,59 @@ async function processAutoSyncQueue() {
                         'routes/dimensions.js не экспортирует runScheduledSyncMs (обновите код)'
                     );
                 }
+            } else if (task === 'min_stock_export') {
+                console.log('[AUTO SYNC] Queue start: min_stock_export');
+                await startAutoSyncRun('min_stock_export', triggerType);
+                if (typeof minStockExportMs.runScheduledMinStockExportMs === 'function') {
+                    const msRunId = autoSyncRunIds.get('min_stock_export');
+                    let lastMsProgressAt = 0;
+                    const msHooks =
+                        msRunId > 0
+                            ? {
+                                  onRunMessage: (msg) => {
+                                      const now = Date.now();
+                                      if (now - lastMsProgressAt < 2000) return Promise.resolve();
+                                      lastMsProgressAt = now;
+                                      touchAutoSyncRunMessage('min_stock_export', msg).catch(() => {});
+                                      return Promise.resolve();
+                                  },
+                              }
+                            : undefined;
+                    let runResult;
+                    try {
+                        runResult = await minStockExportMs.runScheduledMinStockExportMs(db, triggerType, msHooks);
+                    } catch (e) {
+                        runResult = { started: true, error: e && e.message ? e.message : String(e) };
+                    }
+                    const finalState =
+                        typeof minStockExportMs.getScheduledSyncState === 'function'
+                            ? minStockExportMs.getScheduledSyncState()
+                            : { ok: 0, err: 0, total: 0, summary: '', error: null };
+                    let status = 'failed';
+                    let message;
+                    if (runResult && runResult.started === false && runResult.reason === 'already_running') {
+                        status = 'skipped';
+                        message = 'Выгрузка неснижаемого уже выполняется (пропуск)';
+                    } else if (finalState.error) {
+                        message = (finalState.summary || ('Ошибка: ' + finalState.error)).slice(0, 480);
+                    } else if (Number(finalState.total || 0) === 0) {
+                        status = 'completed';
+                        message = 'Нет позиций для выгрузки';
+                    } else if (Number(finalState.err || 0) === 0) {
+                        status = 'completed';
+                        message = (finalState.summary || '').slice(0, 480);
+                    } else {
+                        message = (finalState.summary || '').slice(0, 480);
+                    }
+                    await finishAutoSyncRun('min_stock_export', status, message);
+                    console.log(`[AUTO SYNC] Queue done: min_stock_export — ${status} (${message})`);
+                } else {
+                    await finishAutoSyncRun(
+                        'min_stock_export',
+                        'failed',
+                        'lib/datagonMinStockExportMs не экспортирует runScheduledMinStockExportMs'
+                    );
+                }
             } else if (task === 'mssales_full') {
                 console.log('[AUTO SYNC] Queue start: mssales_full');
                 await startAutoSyncRun('mssales_full', triggerType);
@@ -1771,6 +1872,48 @@ async function processAutoSyncQueue() {
                 }
                 await finishAutoSyncRun('medmarket', statusMm, messageMm);
                 console.log('[AUTO SYNC] Queue done: medmarket — ' + statusMm);
+            } else if (task === 'medmarket_fill') {
+                console.log('[AUTO SYNC] Queue start: medmarket_fill');
+                await startAutoSyncRun('medmarket_fill', triggerType);
+                let statusFill = 'failed';
+                let messageFill = 'Ошибка заполнения кодов Медмаркет';
+                try {
+                    if (typeof medmarketStore.runScheduledMedmarketFillLinkage !== 'function') {
+                        throw new Error('runScheduledMedmarketFillLinkage недоступен');
+                    }
+                    const fillRunId = autoSyncRunIds.get('medmarket_fill');
+                    let lastFillProgressAt = 0;
+                    const fillHooks =
+                        fillRunId > 0
+                            ? {
+                                  onRunMessage: (msg) => {
+                                      const now = Date.now();
+                                      if (now - lastFillProgressAt < 2000) return Promise.resolve();
+                                      lastFillProgressAt = now;
+                                      return touchAutoSyncRunMessage('medmarket_fill', msg);
+                                  },
+                              }
+                            : undefined;
+                    const result = await medmarketStore.runScheduledMedmarketFillLinkage(db, config, fillHooks);
+                    messageFill = (result.summary || medmarketStore.formatMedmarketFillLinkageSummary(result)).slice(
+                        0,
+                        480,
+                    );
+                    if (Number(result.to_update || 0) === 0) {
+                        statusFill = 'completed';
+                    } else if (Number(result.ms_failed || 0) === 0) {
+                        statusFill = 'completed';
+                    } else if (Number(result.ms_ok || 0) > 0) {
+                        statusFill = 'completed';
+                        messageFill = (`Частично: ${messageFill}`).slice(0, 480);
+                    } else {
+                        statusFill = 'failed';
+                    }
+                } catch (e) {
+                    messageFill = ('Ошибка Медмаркет код+тип: ' + (e && e.message ? e.message : e)).slice(0, 480);
+                }
+                await finishAutoSyncRun('medmarket_fill', statusFill, messageFill);
+                console.log(`[AUTO SYNC] Queue done: medmarket_fill — ${statusFill}`);
             } else if (task === 'mssales') {
                 console.log('[AUTO SYNC] Queue start: mssales');
                 await startAutoSyncRun('mssales', triggerType);
@@ -1857,6 +2000,9 @@ async function processAutoSyncQueue() {
         if (autoSyncRunIds.has('dimensions')) {
             await finishAutoSyncRun('dimensions', 'failed', e.message || 'Ошибка очереди');
         }
+        if (autoSyncRunIds.has('min_stock_export')) {
+            await finishAutoSyncRun('min_stock_export', 'failed', e.message || 'Ошибка очереди');
+        }
         if (autoSyncRunIds.has('mssales')) {
             await finishAutoSyncRun('mssales', 'failed', e.message || 'Ошибка очереди');
         }
@@ -1868,6 +2014,9 @@ async function processAutoSyncQueue() {
         }
         if (autoSyncRunIds.has('medmarket')) {
             await finishAutoSyncRun('medmarket', 'failed', e.message || 'Ошибка очереди');
+        }
+        if (autoSyncRunIds.has('medmarket_fill')) {
+            await finishAutoSyncRun('medmarket_fill', 'failed', e.message || 'Ошибка очереди');
         }
     } finally {
         autoSyncRunnerActive = false;
@@ -1921,6 +2070,14 @@ function startAutoSyncScheduler() {
                     weekdays: parseAutoSyncWeekdaysMon17(appSettings.auto_sync_dimensions_weekdays)
                 },
                 {
+                    type: 'min_stock_export',
+                    enabled:
+                        Number(appSettings.auto_sync_export_ms_enabled || 0) === 1 &&
+                        Number(appSettings.auto_sync_min_stock_export_enabled || 0) === 1,
+                    time: String(appSettings.auto_sync_min_stock_export_time || '22:00').slice(0, 5),
+                    weekdays: parseAutoSyncWeekdaysMon17(appSettings.auto_sync_min_stock_export_weekdays)
+                },
+                {
                     type: 'mssales',
                     enabled: Number(appSettings.auto_sync_mssales_enabled || 0) === 1,
                     time: String(appSettings.auto_sync_mssales_time || '07:30').slice(0, 5),
@@ -1942,6 +2099,12 @@ function startAutoSyncScheduler() {
                     enabled: Number(appSettings.auto_sync_medmarket_enabled || 0) === 1,
                     time: String(appSettings.auto_sync_medmarket_time || '09:00').slice(0, 5),
                     weekdays: parseAutoSyncWeekdaysMon17(appSettings.auto_sync_medmarket_weekdays)
+                },
+                {
+                    type: 'medmarket_fill',
+                    enabled: Number(appSettings.auto_sync_medmarket_fill_enabled || 0) === 1,
+                    time: String(appSettings.auto_sync_medmarket_fill_time || '09:30').slice(0, 5),
+                    weekdays: parseAutoSyncWeekdaysMon17(appSettings.auto_sync_medmarket_fill_weekdays)
                 }
             ];
             for (const t of tasks) {
@@ -2001,6 +2164,9 @@ initDB().then(async () => {
         app.__datagonListening = true;
         app.listen(PORT, () => {
             console.log(`[Server] Running on port ${PORT}`);
+            console.log(
+                `[AUTO SYNC] manual tasks (${AUTO_SYNC_ALLOWED_TASK_KEYS.size}): ${[...AUTO_SYNC_ALLOWED_TASK_KEYS].join(', ')}`
+            );
             for (const task of postInitTasks) {
                 Promise.resolve()
                     .then(() => task())
@@ -2066,11 +2232,18 @@ initDB().then(async () => {
     app.use('/api/specialties', require('./routes/specialties')(db));
     app.post('/api/settings/auto-sync-run', async (req, res) => {
         try {
-            const task = String(req.body?.task || '').trim();
-            const { getAutoSyncTaskKeys } = require('./lib/datagonAutoSyncRegistry');
-            const allowed = new Set(getAutoSyncTaskKeys());
-            if (!allowed.has(task)) {
-                return res.status(400).json({ success: false, error: 'Некорректный тип автосинхронизации' });
+            let task = String(req.body?.task || '').trim();
+            if (task === 'medmarket-fill') task = 'medmarket_fill';
+            if (!AUTO_SYNC_ALLOWED_TASK_KEYS.has(task)) {
+                return res.status(400).json({
+                    success: false,
+                    error: task
+                        ? `Некорректный тип автосинхронизации: «${task}»`
+                        : 'Не указан тип задачи (поле task в теле запроса)',
+                    task_received: task,
+                    hint:
+                        'Если задача новая (medmarket_fill) — перезапустите Node после обновления кода. Допустимые ключи — в реестре lib/datagonAutoSyncRegistry.js.',
+                });
             }
             await reconcileAutoSyncRunIdsInMemory();
             if (await isAutoSyncTaskRunningInMemory(task)) {
@@ -2132,6 +2305,21 @@ initDB().then(async () => {
 
     app.get('/api/sync-status', (req, res) => {
         res.json(syncState);
+    });
+
+    app.get('/api/processes/min-stock-export-errors', async (req, res) => {
+        try {
+            const from = String(req.query.from || '').trim();
+            const to = String(req.query.to || '').trim();
+            const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 200));
+            const rows = await minStockExportMs.listErrorsForRunInterval(db, from || null, to || null, limit);
+            return res.json({ success: true, rows });
+        } catch (e) {
+            return res.status(500).json({
+                success: false,
+                error: e.message || 'Не удалось прочитать журнал выгрузки неснижаемого',
+            });
+        }
     });
 
     app.get('/api/processes/db-size', async (req, res) => {
