@@ -533,20 +533,113 @@
        * Если бэкенд не вернул `sections`, собираем секции из старого `cfg`
        * по hardcoded `AS_TASK_SECTIONS` (back-compat).
        */
+      var AS_PROC_CATEGORY_LABELS = {
+        import_ms: "Импорт из МойСклад",
+        export_ms: "Экспорт в МойСклад",
+        cms: "Импорт из CMS",
+        marketplace: "Маркетплейсы",
+        external: "Внешние сервисы",
+        internal: "Система",
+      };
+
+      function getMoscowNowPartsProc() {
+        var parts = { time: "00:00", weekdayMon1Sun7: 1 };
+        try {
+          var fmt = new Intl.DateTimeFormat("en-GB", {
+            timeZone: "Europe/Moscow",
+            hour: "2-digit",
+            minute: "2-digit",
+            weekday: "short",
+            hour12: false,
+          });
+          var map = Object.create(null);
+          fmt.formatToParts(new Date()).forEach(function (p) {
+            if (p.type !== "literal") map[p.type] = p.value;
+          });
+          parts.time = (map.hour || "00") + ":" + (map.minute || "00");
+          var wd = String(map.weekday || "Mon").slice(0, 3).toLowerCase();
+          var wdMap = { mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6, sun: 7 };
+          parts.weekdayMon1Sun7 = wdMap[wd] || 1;
+        } catch (e) {}
+        return parts;
+      }
+
+      function procWeekdaysSetFromExtras(extras) {
+        var set = Object.create(null);
+        var csv = "";
+        if (Array.isArray(extras)) {
+          extras.forEach(function (e) {
+            var k = String((e && e.key) || "");
+            if (k.endsWith("_weekdays")) csv = String((e && e.value) != null ? e.value : "");
+          });
+        }
+        var s = String(csv).trim();
+        if (!s || s === "ежедневно" || s === "1,2,3,4,5,6,7") {
+          for (var a = 1; a <= 7; a++) set[a] = true;
+          return set;
+        }
+        var ru = { пн: 1, вт: 2, ср: 3, чт: 4, пт: 5, сб: 6, вс: 7 };
+        s.split(/[,;\s]+/).forEach(function (p) {
+          var t = String(p).trim().toLowerCase();
+          if (ru[t]) set[ru[t]] = true;
+          else {
+            var n = parseInt(t, 10);
+            if (n >= 1 && n <= 7) set[n] = true;
+          }
+        });
+        if (!Object.keys(set).length) for (var b = 1; b <= 7; b++) set[b] = true;
+        return set;
+      }
+
+      function procTimeToMin(t) {
+        var p = String(t || "00:00").slice(0, 5).split(":");
+        return (parseInt(p[0], 10) || 0) * 60 + (parseInt(p[1], 10) || 0);
+      }
+
+      function procNextRunSortKey(sec) {
+        if (!sec.enabled) return 999999999;
+        var now = getMoscowNowPartsProc();
+        var targetMin = procTimeToMin(sec.time);
+        var wdSet = procWeekdaysSetFromExtras(sec.extras);
+        var nowMin = procTimeToMin(now.time);
+        for (var add = 0; add <= 8; add++) {
+          var wd = ((now.weekdayMon1Sun7 - 1 + add) % 7) + 1;
+          if (!wdSet[wd]) continue;
+          var deltaMin = add * 24 * 60 + targetMin - nowMin;
+          if (add === 0 && deltaMin <= 0) continue;
+          return deltaMin;
+        }
+        return 999999998;
+      }
+
+      function sortAutoSyncSectionsByNextRun(sections) {
+        return (Array.isArray(sections) ? sections : [])
+          .slice()
+          .sort(function (a, b) {
+            var sa = procNextRunSortKey(a);
+            var sb = procNextRunSortKey(b);
+            if (sa !== sb) return sa - sb;
+            return String(a.key || "").localeCompare(String(b.key || ""));
+          });
+      }
+
       function resolveAutoSyncSections(autoSync) {
         var as = autoSync || {};
         var sections = Array.isArray(as.sections) ? as.sections : null;
         if (sections && sections.length) {
-          return sections.map(function (s) {
-            return {
-              key: String(s.key || ""),
-              title: String(s.title || s.key || ""),
-              subtitle: s.subtitle ? String(s.subtitle) : "",
-              enabled: Boolean(s.enabled),
-              time: s.time != null ? String(s.time) : "—",
-              extras: Array.isArray(s.extras) ? s.extras : []
-            };
-          });
+          return sortAutoSyncSectionsByNextRun(
+            sections.map(function (s) {
+              return {
+                key: String(s.key || ""),
+                title: String(s.title || s.key || ""),
+                subtitle: s.subtitle ? String(s.subtitle) : "",
+                category: String(s.category || "internal"),
+                enabled: Boolean(s.enabled),
+                time: s.time != null ? String(s.time) : "—",
+                extras: Array.isArray(s.extras) ? s.extras : [],
+              };
+            })
+          );
         }
         var cfg = as.config || {};
         return AS_TASK_SECTIONS.map(function (sec) {
@@ -562,15 +655,60 @@
       }
 
       /** Элементы `autoSync.queue` с бэка — `{ type, triggerType }` или строка; для UI только типы по порядку ожидания. */
-      function formatAutoSyncQueueTypes(queue) {
+      function parseAutoSyncQueueItem(item) {
+        if (item && typeof item === "object" && item.type != null) {
+          return {
+            type: String(item.type || "").trim(),
+            triggerType: String(item.triggerType || "schedule").trim() || "schedule",
+          };
+        }
+        return { type: String(item || "").trim(), triggerType: "schedule" };
+      }
+
+      function formatAutoSyncQueueTypes(queue, autoSync) {
         if (!Array.isArray(queue) || !queue.length) return "пусто";
         return queue
           .map(function (item) {
-            if (item && typeof item === "object" && item.type != null) return String(item.type || "").trim();
-            return String(item || "").trim();
+            var p = parseAutoSyncQueueItem(item);
+            if (!p.type) return "";
+            return titleForAutoSyncTaskKey(autoSync, p.type) || p.type;
           })
           .filter(Boolean)
           .join(" → ");
+      }
+
+      /** Позиция в `autoSync.queue` по task_type (только задачи ещё не снятые воркером). */
+      function buildAutoSyncQueueByTask(autoSync) {
+        var out = Object.create(null);
+        var q = autoSync && Array.isArray(autoSync.queue) ? autoSync.queue : [];
+        q.forEach(function (item, idx) {
+          var p = parseAutoSyncQueueItem(item);
+          if (!p.type || out[p.type]) return;
+          out[p.type] = {
+            position: idx + 1,
+            total: q.length,
+            triggerType: p.triggerType,
+          };
+        });
+        return out;
+      }
+
+      function formatQueuedAutoSyncLine(secKey, autoSync, queuedInfo) {
+        var parts = ["В очереди автосинхронизации"];
+        var rt = autoSync && Array.isArray(autoSync.running_tasks) ? autoSync.running_tasks : [];
+        var ahead = rt
+          .filter(function (k) {
+            return String(k || "").trim() && String(k) !== String(secKey);
+          })
+          .map(function (k) {
+            return titleForAutoSyncTaskKey(autoSync, k);
+          })
+          .filter(Boolean);
+        if (ahead.length) parts.push("сейчас выполняется: " + ahead.join(", "));
+        if (queuedInfo && Number(queuedInfo.position) > 1) {
+          parts.push("позиция в очереди: " + queuedInfo.position + " из " + queuedInfo.total);
+        }
+        return parts.join(" · ");
       }
 
       function titleForAutoSyncTaskKey(autoSync, key) {
@@ -600,6 +738,7 @@
         if (s === "running") return '<span class="badge bg-primary">Выполняется</span>';
         if (s === "failed") return '<span class="badge bg-danger">Ошибка</span>';
         if (s === "interrupted") return '<span class="badge bg-warning text-dark">Прервано</span>';
+        if (s === "queued") return '<span class="badge bg-secondary">В очереди</span>';
         if (s === "skipped") return '<span class="badge bg-secondary">Пропущено</span>';
         if (s) return '<span class="badge bg-light text-dark border">' + escapeText(s) + '</span>';
         return '<span class="badge bg-light text-dark border">—</span>';
@@ -622,6 +761,18 @@
           .replace(/"/g, "&quot;");
       }
 
+      function autoSyncRunDurationSec(rec) {
+        if (!rec || !rec.started_at || !rec.finished_at) return null;
+        try {
+          var a = new Date(rec.started_at).getTime();
+          var b = new Date(rec.finished_at).getTime();
+          if (!isFinite(a) || !isFinite(b) || b < a) return null;
+          return Math.round((b - a) / 1000);
+        } catch (_) {
+          return null;
+        }
+      }
+
       function openAutoSyncRunLogModal(runIdStr) {
         var rec = dgProcAsRunLogById[runIdStr];
         var dlg = document.getElementById("dg-proc-as-run-log-dialog");
@@ -635,19 +786,37 @@
         var trig = String(rec.trigger_type || "").trim() || "—";
         var st = String(rec.status || "").trim() || "—";
         if (titleEl) titleEl.textContent = "#" + String(rec.id) + " · " + tt;
+        var msgRaw = String(rec.message || "").trim();
+        var durSec = autoSyncRunDurationSec(rec);
         var lines = [
           "task_type: " + tt,
           "trigger_type: " + trig,
           "status: " + st,
-          "started_at: " + (rec.started_at || "—"),
-          "finished_at: " + (rec.finished_at || "—"),
-          "",
-          String(rec.message || "").trim() || "(пустое сообщение)",
+          "started_at (МСК): " + (rec.started_at ? fmtTimeMsk(rec.started_at) : "—"),
+          "finished_at (МСК): " + (rec.finished_at ? fmtTimeMsk(rec.finished_at) : "—"),
         ];
+        if (durSec != null) lines.push("duration_sec: " + durSec);
+        lines.push("", msgRaw || "(пустое сообщение)");
+        if (
+          st === "interrupted" &&
+          (/перезапуск Node/i.test(msgRaw) || /закрыта при старте сервера/i.test(msgRaw))
+        ) {
+          lines.push("");
+          lines.push(
+            "Пояснение: это не сбой МойСклад — запись закрыта при остановке/перезапуске Node (процесс не вызвал finish)."
+          );
+          if (durSec != null && durSec < 300) {
+            lines.push(
+              "За " +
+                durSec +
+                " с до массовой выгрузки в МС обычно не доходят. Повторите «Запустить сейчас» и не перезапускайте сервер до завершения (~30–90 мин при ~5000 позиций)."
+            );
+          }
+        }
         if (pre) pre.textContent = lines.join("\n");
         if (foot) {
           foot.textContent =
-            "Для «Габариты МС» отказы выгрузки в МойСклад пишутся в таблицу ms_dimensions_log (на странице «Габариты» — «Журнал изменений габаритов», действие «Ошибка МС»). У старых запусков список отказов может быть пуст.";
+            "Кнопка «Лог» показывает сохранённую строку auto_sync_runs и отказы ms_dimensions_log за интервал started_at…finished_at. Для габаритов — действие «Ошибка МС» на странице «Габариты» → «Журнал изменений габаритов».";
         }
         var isDim = tt.toLowerCase() === "dimensions";
         if (isDim && rec.started_at && rec.finished_at && dimWrap && dimBody) {
@@ -672,8 +841,18 @@
               }
               var rows = Array.isArray(x.j.rows) ? x.j.rows : [];
               if (!rows.length) {
-                dimBody.textContent =
-                  "За интервал этого запуска записей «Ошибка МС» нет (запуск до обновления сервера без логирования отказов, либо ошибок не было).";
+                var dSec = autoSyncRunDurationSec(rec);
+                if (String(rec.status || "").toLowerCase() === "interrupted" && dSec != null && dSec < 300) {
+                  dimBody.textContent =
+                    "За " +
+                    dSec +
+                    " с записей «Ошибка МС» нет: выгрузка в МойСклад не успела начаться (прервано перезапуском Node). Это ожидаемо для #" +
+                    String(rec.id || "?") +
+                    " — не ошибка МС.";
+                } else {
+                  dimBody.textContent =
+                    "За интервал этого запуска записей «Ошибка МС» нет (ошибок не было или они вне интервала started_at…finished_at).";
+                }
                 return;
               }
               dimBody.textContent = rows
@@ -788,8 +967,9 @@
         return "";
       }
 
-      function renderAutoSyncSections(sections, runs, isToday, liveByTask) {
+      function renderAutoSyncSections(sections, runs, isToday, liveByTask, autoSync) {
         liveByTask = liveByTask || {};
+        var queueByTask = isToday ? buildAutoSyncQueueByTask(autoSync || {}) : Object.create(null);
         dgProcAsRunLogById = Object.create(null);
         (Array.isArray(runs) ? runs : []).forEach(function (r) {
           if (r && r.id != null) dgProcAsRunLogById[String(r.id)] = r;
@@ -805,10 +985,11 @@
           if (!byTask[k]) byTask[k] = [];
           byTask[k].push(r);
         });
-        var secs = Array.isArray(sections) ? sections : [];
+        var secs = sortAutoSyncSectionsByNextRun(Array.isArray(sections) ? sections : []);
         secs.forEach(function (sec) {
           var block = document.createElement("div");
-          block.className = "dg-proc-as-section";
+          var cat = String(sec.category || "internal");
+          block.className = "dg-proc-as-section dg-proc-as-cat-" + cat.replace(/[^a-z0-9_]/gi, "");
           var enabled = Boolean(sec.enabled);
           var time = sec.time != null ? String(sec.time) : "—";
           var head = document.createElement("div");
@@ -822,7 +1003,9 @@
               })
               .join("");
           }
+          var catLabel = AS_PROC_CATEGORY_LABELS[cat] || cat;
           var titleHtml =
+            '<span class="dg-proc-as-cat-pill me-1">' + escapeText(catLabel) + '</span>' +
             '<span class="dg-proc-as-section-title">' + escapeText(sec.title) + '</span>' +
             (sec.subtitle ? '<span class="dg-proc-as-section-meta">' + escapeText(sec.subtitle) + '</span>' : "") +
             (enabled
@@ -834,16 +1017,66 @@
           block.appendChild(head);
 
           var list = byTask[sec.key] || [];
+          var lvSec = liveByTask[sec.key];
           var runsBox = document.createElement("div");
           runsBox.className = "dg-proc-as-section-runs";
-          if (!list.length) {
+          var hasRunningRow = list.some(function (r) {
+            return String(r.status || "").toLowerCase() === "running";
+          });
+          var liveActive = lvSec && lvSec.active && !lvSec.pending;
+          var queuedInfo = queueByTask[sec.key];
+          var showQueuedRow = Boolean(isToday && queuedInfo && !hasRunningRow && !liveActive);
+          if (liveActive && !hasRunningRow) {
+            var liveNow = document.createElement("div");
+            liveNow.className = "dg-proc-as-run dg-proc-as-run-live border border-primary-subtle rounded px-2 py-2 mb-2";
+            var liveMsg = formatAutoSyncLiveLine(sec.key, lvSec) || "Выполняется сейчас…";
+            liveNow.innerHTML =
+              '<div class="dg-proc-as-run-top d-flex flex-wrap align-items-center gap-2 w-100">' +
+              '<span class="dg-proc-as-run-time">сейчас</span>' +
+              '<span class="dg-proc-as-run-status">' +
+              statusBadgeHtml("running") +
+              " " +
+              triggerBadgeHtml("manual") +
+              "</span></div>" +
+              '<div class="text-muted small mt-1 dg-proc-as-run-msg" style="white-space:normal;word-break:break-word">' +
+              escapeText(liveMsg) +
+              "</div>";
+            if (!list.length && isToday) {
+              var dateHint = document.createElement("div");
+              dateHint.className = "small text-warning mb-2";
+              dateHint.textContent =
+                "Запуски после полуночи МСК — на следующий календарный день: переключите дату сверху, если в журнале пусто.";
+              runsBox.appendChild(dateHint);
+            }
+            runsBox.appendChild(liveNow);
+          }
+          if (showQueuedRow) {
+            var queuedNow = document.createElement("div");
+            queuedNow.className =
+              "dg-proc-as-run dg-proc-as-run-queued border border-secondary-subtle rounded px-2 py-2 mb-2";
+            var queuedMsg = formatQueuedAutoSyncLine(sec.key, autoSync || {}, queuedInfo);
+            queuedNow.innerHTML =
+              '<div class="dg-proc-as-run-top d-flex flex-wrap align-items-center gap-2 w-100">' +
+              '<span class="dg-proc-as-run-time">ожидание</span>' +
+              '<span class="dg-proc-as-run-status">' +
+              statusBadgeHtml("queued") +
+              " " +
+              triggerBadgeHtml(queuedInfo.triggerType) +
+              "</span></div>" +
+              '<div class="text-muted small mt-1 dg-proc-as-run-msg" style="white-space:normal;word-break:break-word">' +
+              escapeText(queuedMsg) +
+              "</div>";
+            runsBox.appendChild(queuedNow);
+          }
+          if (!list.length && !(liveActive && !hasRunningRow) && !showQueuedRow) {
             var empty = document.createElement("div");
             empty.className = "dg-proc-as-section-empty";
             empty.textContent = isToday
               ? "За сегодня запусков ещё не было"
               : "За выбранный день запусков не было";
             runsBox.appendChild(empty);
-          } else {
+          }
+          if (list.length) {
             list.forEach(function (r) {
               var row = document.createElement("div");
               row.className = "dg-proc-as-run";
@@ -986,7 +1219,7 @@
             : "выполняется (тип задачи уточняется — обновите страницу)"
           : "ожидание";
         var q = Array.isArray(autoSync.queue) ? autoSync.queue : [];
-        document.getElementById("dg-proc-as-queue").textContent = formatAutoSyncQueueTypes(q);
+        document.getElementById("dg-proc-as-queue").textContent = formatAutoSyncQueueTypes(q, autoSync);
         var asDayHint = document.getElementById("dg-proc-as-day-hint");
         if (asDayHint) {
           asDayHint.textContent = "запуски за " + moscowDayLabel(overview.forDate || moscowTodayDate());
@@ -999,7 +1232,7 @@
           return hay.indexOf(needle) !== -1;
         });
         var liveByTask = resolveAutoSyncLiveByTask(autoSync);
-        renderAutoSyncSections(resolveAutoSyncSections(autoSync), filteredRuns, isTodayResp, liveByTask);
+        renderAutoSyncSections(resolveAutoSyncSections(autoSync), filteredRuns, isTodayResp, liveByTask, autoSync);
 
         var discEl = document.getElementById("dg-proc-discovery");
         discEl.replaceChildren();

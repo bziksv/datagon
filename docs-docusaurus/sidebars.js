@@ -6,6 +6,7 @@ module.exports = {
     "mysites",
     "myproducts",
     "moysklad",
+    "medmarket",
     "purchase",
     "product",
     "projects",

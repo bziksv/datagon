@@ -790,24 +790,9 @@
       var breakdownMode = "agent";
       /** Пагинация / фильтр «Последние отгрузки» (синхронизируется с GET /api/product/.../recent-shipments). */
       var recentShipState = { page: 1, pageSize: 100, via: "all", bundleCode: "" };
-      /** all | formula — учёт проектов отгрузок (как в настройках формулы). */
-      var salesScopeMode = "all";
+      /** Графики/таблицы — всегда все отгрузки МС; salesByScope.formula — только справка для блока про проекты формулы. */
       var salesByScope = { all: null, formula: null };
       var salesScopeMeta = null;
-
-      function loadSalesScopePreference() {
-        try {
-          var v = String(localStorage.getItem("datagon_product_sales_scope_v1") || "").toLowerCase();
-          if (v === "formula" || v === "all") return v;
-        } catch (e) {}
-        return "all";
-      }
-
-      function saveSalesScopePreference(mode) {
-        try {
-          localStorage.setItem("datagon_product_sales_scope_v1", mode);
-        } catch (e) {}
-      }
 
       function recentSalesQuerySuffix() {
         return (
@@ -821,8 +806,7 @@
             ? "&recent_bundle_code=" + encodeURIComponent(recentShipState.bundleCode)
             : "")
           +
-          "&sales_scope=" +
-          encodeURIComponent(salesScopeMode === "formula" ? "formula" : "all")
+          "&sales_scope=all"
         );
       }
 
@@ -831,26 +815,18 @@
         var pill = document.getElementById("dg-prod-sales-scope-pill");
         var projectsEl = document.getElementById("dg-prod-sales-scope-projects");
         var detailEl = document.getElementById("dg-prod-sales-scope-detail");
-        var available = salesScopeMeta && salesScopeMeta.formula_available && salesByScope.formula;
-        if (banner) banner.classList.toggle("d-none", !available);
-        if (!available) {
+        var showFormulaInfo = salesScopeMeta && salesScopeMeta.formula_available;
+        if (banner) banner.classList.toggle("d-none", !showFormulaInfo);
+        if (!showFormulaInfo) {
           if (pill) pill.classList.add("d-none");
           return;
         }
-        document.querySelectorAll("[data-dg-sales-scope]").forEach(function (btn) {
-          var m = btn.getAttribute("data-dg-sales-scope") || "all";
-          var active = m === salesScopeMode;
-          btn.classList.toggle("btn-primary", active);
-          btn.classList.toggle("btn-outline-secondary", !active);
-          btn.classList.toggle("active", active);
-          btn.setAttribute("aria-pressed", active ? "true" : "false");
-        });
         var names = Array.isArray(salesScopeMeta.formula_project_names)
           ? salesScopeMeta.formula_project_names.filter(Boolean)
           : [];
         if (projectsEl) {
           projectsEl.innerHTML = "";
-          if (salesScopeMode === "formula" && names.length) {
+          if (names.length) {
             projectsEl.classList.remove("d-none");
             names.forEach(function (n) {
               var span = document.createElement("span");
@@ -864,52 +840,24 @@
           }
         }
         if (detailEl) {
-          if (salesScopeMode === "formula") {
-            detailEl.className = "small mt-2 text-primary-emphasis";
-            detailEl.textContent = names.length
-              ? "Сейчас в графиках и таблицах — только отгрузки по " +
-                names.length +
-                " проект" +
-                (names.length === 1 ? "у" : names.length < 5 ? "ам" : "ам") +
-                " из настроек формулы."
-              : "В настройках формулы выбран режим «только проекты», но список пуст — продажи могут быть нулевыми.";
-          } else {
-            detailEl.className = "small mt-2 text-muted";
-            detailEl.textContent =
-              "Сейчас учитываются все проекты отгрузок МС (без фильтра формулы).";
-          }
+          detailEl.className = "small mt-2 text-muted";
+          detailEl.textContent = names.length
+            ? "В формуле закупок и блоке «Формула» учитываются только отгрузки по этим проектам. Графики и таблицы ниже — по всем проведённым отгрузкам МС."
+            : "В настройках формулы выбран режим «только проекты», но список пуст. Графики и таблицы ниже — по всем отгрузкам МС.";
         }
         if (banner) {
-          banner.classList.toggle("dg-prod-sales-scope-banner--formula", salesScopeMode === "formula");
-          banner.classList.toggle("dg-prod-sales-scope-banner--all", salesScopeMode !== "formula");
+          banner.classList.add("dg-prod-sales-scope-banner--formula");
+          banner.classList.remove("dg-prod-sales-scope-banner--all");
         }
         if (pill) {
           pill.classList.remove("d-none");
-          if (salesScopeMode === "formula") {
-            pill.className = "badge rounded-pill dg-prod-sales-scope-pill bg-primary";
-            pill.textContent = names.length
-              ? "Формула · " + names.length + " пр."
-              : "Как в формуле";
-          } else {
-            pill.className = "badge rounded-pill dg-prod-sales-scope-pill bg-secondary";
-            pill.textContent = "Все проекты";
-          }
+          pill.className = "badge rounded-pill dg-prod-sales-scope-pill bg-primary";
+          pill.title =
+            "В формуле закупок — только выбранные проекты; графики продаж ниже — по всем отгрузкам МС";
+          pill.textContent = names.length
+            ? "Формула · " + names.length + " пр."
+            : "Как в формуле";
         }
-      }
-
-      function applySalesScope(mode, code) {
-        if (mode !== "formula") mode = "all";
-        if (mode === "formula" && (!salesByScope.formula || !salesScopeMeta || !salesScopeMeta.formula_available)) {
-          mode = "all";
-        }
-        salesScopeMode = mode;
-        saveSalesScopePreference(mode);
-        syncSalesScopeUi();
-        var sales = mode === "formula" ? salesByScope.formula : salesByScope.all;
-        if (!sales) return;
-        recentShipState.page = 1;
-        renderSales(sales, code);
-        fetchRecentShipmentsOnly();
       }
 
       function syncRecentMetaFromSales(s) {
@@ -1871,15 +1819,8 @@
         salesScopeMeta = payload.sales_scope_meta || null;
         salesByScope.all = payload.sales || null;
         salesByScope.formula = payload.sales_formula_scope || null;
-        salesScopeMode = loadSalesScopePreference();
-        if (salesScopeMode === "formula" && (!salesByScope.formula || !salesScopeMeta || !salesScopeMeta.formula_available)) {
-          salesScopeMode = "all";
-        }
         syncSalesScopeUi();
-        renderSales(
-          salesScopeMode === "formula" && salesByScope.formula ? salesByScope.formula : salesByScope.all,
-          payload.code,
-        );
+        renderSales(salesByScope.all, payload.code);
         if (zeroNoteEl) {
           if (payload.zero_stock && payload.zero_stock.note) {
             zeroNoteEl.textContent = payload.zero_stock.note;
@@ -2009,11 +1950,6 @@
         });
       });
       if (salesApplyBtn) salesApplyBtn.addEventListener("click", function () { loadCard(); });
-      document.querySelectorAll("[data-dg-sales-scope]").forEach(function (btn) {
-        btn.addEventListener("click", function () {
-          applySalesScope(btn.getAttribute("data-dg-sales-scope") || "all", getCode());
-        });
-      });
       initSalesDateInputs();
 
       function bindProductCardCollapse(btnId, bodyId, storageKey) {

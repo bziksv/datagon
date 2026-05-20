@@ -52,6 +52,14 @@ function assemble() {
             PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/moysklad.scripts.html')),
         },
         {
+            out: 'medmarket.html',
+            PAGE_TITLE: 'Медмаркет — Датагон',
+            BODY_ATTRS: 'class="datagon-vanilla-body" data-dg-active-nav="medmarket"',
+            EXTRA_HEAD: read(path.join(vanillaDir, 'inners/medmarket.head.html')),
+            MAIN_INNER: read(path.join(vanillaDir, 'inners/medmarket.inner.html')),
+            PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/medmarket.scripts.html')),
+        },
+        {
             out: 'suppliers.html',
             PAGE_TITLE: 'Поставщики — Датагон',
             BODY_ATTRS: 'class="datagon-vanilla-body" data-dg-active-nav="suppliers"',

@@ -65,8 +65,10 @@
         auto_sync_huckster_time: "06:00",
         auto_sync_db_size_enabled: 1,
         auto_sync_db_size_time: "02:00",
+        auto_sync_export_ms_enabled: 0,
         auto_sync_dimensions_enabled: 0,
         auto_sync_dimensions_time: "21:00",
+        auto_sync_dimensions_weekdays: "",
         auto_sync_mssales_enabled: 0,
         auto_sync_mssales_time: "07:30",
         auto_sync_mssales_days: 90,
@@ -77,6 +79,9 @@
         auto_sync_mssales_full_weekdays: "7",
         auto_sync_purchase_formula_cache_enabled: 0,
         auto_sync_purchase_formula_cache_time: "08:30",
+        auto_sync_medmarket_enabled: 0,
+        auto_sync_medmarket_time: "09:00",
+        auto_sync_medmarket_weekdays: "1,4",
         ms_dimensions_log_retention_days: 180,
         dg_purchase_overrides_log_retention_days: 180,
         auto_sync_runs_retention_days: 180,
@@ -276,6 +281,182 @@
         return keys.join(",");
       }
 
+      var AS_CATEGORY_LABELS = {
+        import_ms: "Импорт из МойСклад",
+        export_ms: "Экспорт в МойСклад",
+        cms: "Импорт из CMS",
+        marketplace: "Маркетплейсы",
+        external: "Внешние сервисы",
+        internal: "Система",
+      };
+
+      function getMoscowNowPartsForSchedule() {
+        var parts = { date: "", time: "", weekdayMon1Sun7: 1 };
+        try {
+          var fmt = new Intl.DateTimeFormat("en-GB", {
+            timeZone: "Europe/Moscow",
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+            weekday: "short",
+            hour12: false,
+          });
+          var map = Object.create(null);
+          fmt.formatToParts(new Date()).forEach(function (p) {
+            if (p.type !== "literal") map[p.type] = p.value;
+          });
+          parts.date = (map.year || "1970") + "-" + (map.month || "01") + "-" + (map.day || "01");
+          parts.time = (map.hour || "00") + ":" + (map.minute || "00");
+          var wd = String(map.weekday || "Mon").slice(0, 3).toLowerCase();
+          var wdMap = { mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6, sun: 7 };
+          parts.weekdayMon1Sun7 = wdMap[wd] || 1;
+        } catch (e) {
+          var d = new Date();
+          parts.time = String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+          var js = d.getDay();
+          parts.weekdayMon1Sun7 = js === 0 ? 7 : js;
+        }
+        return parts;
+      }
+
+      function parseWeekdaysSetFromCsv(csv) {
+        var set = Object.create(null);
+        var s = String(csv == null ? "" : csv).trim();
+        if (!s || s === "1,2,3,4,5,6,7") {
+          for (var a = 1; a <= 7; a++) set[a] = true;
+          return set;
+        }
+        s.split(/[,;\s]+/).forEach(function (p) {
+          var n = parseInt(String(p).trim(), 10);
+          if (n >= 1 && n <= 7) set[n] = true;
+        });
+        if (!Object.keys(set).length) {
+          for (var b = 1; b <= 7; b++) set[b] = true;
+        }
+        return set;
+      }
+
+      function timeStrToMinutes(t) {
+        var p = String(t || "00:00").slice(0, 5).split(":");
+        return (parseInt(p[0], 10) || 0) * 60 + (parseInt(p[1], 10) || 0);
+      }
+
+      function computeAutoSyncNextRunMeta(enabled, timeStr, weekdaysCsv) {
+        if (!enabled) return { sortKey: Number.MAX_SAFE_INTEGER, label: "выкл." };
+        var now = getMoscowNowPartsForSchedule();
+        var targetMin = timeStrToMinutes(timeStr);
+        var wdSet = parseWeekdaysSetFromCsv(weekdaysCsv);
+        var nowMin = timeStrToMinutes(now.time);
+        for (var add = 0; add <= 8; add++) {
+          var wd = ((now.weekdayMon1Sun7 - 1 + add) % 7) + 1;
+          if (!wdSet[wd]) continue;
+          var deltaMin = add * 24 * 60 + targetMin - nowMin;
+          if (add === 0 && deltaMin <= 0) continue;
+          var sortKey = deltaMin;
+          var label;
+          if (add === 0) {
+            if (deltaMin < 60) label = "через " + deltaMin + " мин";
+            else label = "сегодня " + String(timeStr || "").slice(0, 5);
+          } else if (add === 1) {
+            label = "завтра " + String(timeStr || "").slice(0, 5);
+          } else {
+            label = "через " + add + " дн., " + String(timeStr || "").slice(0, 5);
+          }
+          return { sortKey: sortKey, label: label };
+        }
+        return { sortKey: Number.MAX_SAFE_INTEGER, label: "—" };
+      }
+
+      function readAutoSyncTaskEnabledFromDom(taskEl) {
+        var enId = taskEl.getAttribute("data-as-en-id");
+        var masterId = taskEl.getAttribute("data-as-export-master-id");
+        var en = enId ? document.getElementById(enId) : null;
+        var master = masterId ? document.getElementById(masterId) : null;
+        if (master && !master.checked) return false;
+        return !!(en && en.checked);
+      }
+
+      function refreshAutoSyncScheduleUi() {
+        var list = document.getElementById("dg-set-auto-sync-list");
+        if (list) {
+          var tasks = [].slice.call(list.querySelectorAll(".dg-as-task"));
+          tasks.forEach(function (taskEl) {
+            var cat = taskEl.getAttribute("data-as-category") || "internal";
+            var catPill = taskEl.querySelector(".dg-as-cat-pill-dynamic");
+            if (catPill) catPill.textContent = AS_CATEGORY_LABELS[cat] || cat;
+            var en = readAutoSyncTaskEnabledFromDom(taskEl);
+            var timeId = taskEl.getAttribute("data-as-time-id");
+            var timeEl = timeId ? document.getElementById(timeId) : null;
+            var wdPrefix = taskEl.getAttribute("data-as-weekdays-prefix");
+            var wdCsv = wdPrefix ? collectAutoSyncWeekdayCsv(wdPrefix) : "";
+            var meta = computeAutoSyncNextRunMeta(en, timeEl ? timeEl.value : "00:00", wdCsv);
+            taskEl.setAttribute("data-as-next-sort", String(meta.sortKey));
+            var badge = taskEl.querySelector(".dg-as-next-badge-dynamic");
+            if (badge) {
+              badge.textContent = "Следующий: " + meta.label;
+              badge.classList.toggle("dg-as-next-off", !en);
+              badge.classList.toggle("dg-as-next-soon", en && meta.sortKey < 120);
+            }
+          });
+          tasks.sort(function (a, b) {
+            var sa = Number(a.getAttribute("data-as-next-sort") || "999999999");
+            var sb = Number(b.getAttribute("data-as-next-sort") || "999999999");
+            if (sa !== sb) return sa - sb;
+            return String(a.getAttribute("data-as-task") || "").localeCompare(String(b.getAttribute("data-as-task") || ""));
+          });
+          tasks.forEach(function (t) {
+            list.appendChild(t);
+          });
+        }
+        var exportTasks = document.querySelectorAll("#dg-set-export-ms-body .dg-as-task");
+        exportTasks.forEach(function (taskEl) {
+          var en = readAutoSyncTaskEnabledFromDom(taskEl);
+          var timeId = taskEl.getAttribute("data-as-time-id");
+          var timeEl = timeId ? document.getElementById(timeId) : null;
+          var wdPrefix = taskEl.getAttribute("data-as-weekdays-prefix");
+          var wdCsv = wdPrefix ? collectAutoSyncWeekdayCsv(wdPrefix) : "";
+          var meta = computeAutoSyncNextRunMeta(en, timeEl ? timeEl.value : "00:00", wdCsv);
+          var badge = taskEl.querySelector(".dg-as-next-badge-dynamic");
+          if (badge) {
+            badge.textContent = "Следующий: " + meta.label;
+            badge.classList.toggle("dg-as-next-off", !en);
+            badge.classList.toggle("dg-as-next-soon", en && meta.sortKey < 120);
+          }
+        });
+        syncExportMsSectionState();
+      }
+
+      function syncExportMsSectionState() {
+        var master = document.getElementById("dg-set-auto_export_ms_en");
+        var card = document.getElementById("dg-set-export-ms-card");
+        if (!card) return;
+        var on = !!(master && master.checked);
+        card.classList.toggle("dg-as-export-section-off", !on);
+      }
+
+      function bindAutoSyncScheduleUiRefresh() {
+        var list = document.getElementById("dg-set-auto-sync-list");
+        var exportBody = document.getElementById("dg-set-export-ms-body");
+        var roots = [];
+        if (list) roots.push(list);
+        if (exportBody) roots.push(exportBody);
+        roots.forEach(function (root) {
+          root.addEventListener(
+            "change",
+            function (ev) {
+              var t = ev.target;
+              if (!t) return;
+              if (t.type === "checkbox" || t.type === "time") refreshAutoSyncScheduleUi();
+            },
+            true
+          );
+        });
+        var exportMaster = document.getElementById("dg-set-auto_export_ms_en");
+        if (exportMaster) exportMaster.addEventListener("change", refreshAutoSyncScheduleUi);
+      }
+
       function formatUserDateTime(value) {
         if (value == null || value === "") return "—";
         var d = value instanceof Date ? value : new Date(value);
@@ -326,8 +507,11 @@
         set("dg-set-auto_huckster_time", merged.auto_sync_huckster_time || "06:00");
         document.getElementById("dg-set-auto_db_size_en").checked = Number(merged.auto_sync_db_size_enabled) === 1;
         set("dg-set-auto_db_size_time", merged.auto_sync_db_size_time || "02:00");
+        var exportMsEn = document.getElementById("dg-set-auto_export_ms_en");
+        if (exportMsEn) exportMsEn.checked = Number(merged.auto_sync_export_ms_enabled) === 1;
         document.getElementById("dg-set-auto_dim_en").checked = Number(merged.auto_sync_dimensions_enabled) === 1;
         set("dg-set-auto_dim_time", merged.auto_sync_dimensions_time || "21:00");
+        applyAutoSyncWeekdayChecks("dg-set-auto_dim_wd", merged.auto_sync_dimensions_weekdays);
         var mssalesEn = document.getElementById("dg-set-auto_mssales_en");
         if (mssalesEn) mssalesEn.checked = Number(merged.auto_sync_mssales_enabled) === 1;
         set("dg-set-auto_mssales_time", merged.auto_sync_mssales_time || "07:30");
@@ -341,6 +525,10 @@
         var pfcEn = document.getElementById("dg-set-auto_purchase_formula_cache_en");
         if (pfcEn) pfcEn.checked = Number(merged.auto_sync_purchase_formula_cache_enabled) === 1;
         set("dg-set-auto_purchase_formula_cache_time", merged.auto_sync_purchase_formula_cache_time || "08:30");
+        var medmarketEn = document.getElementById("dg-set-auto_medmarket_en");
+        if (medmarketEn) medmarketEn.checked = Number(merged.auto_sync_medmarket_enabled) === 1;
+        set("dg-set-auto_medmarket_time", merged.auto_sync_medmarket_time || "09:00");
+        applyAutoSyncWeekdayChecks("dg-set-auto_medmarket_wd", merged.auto_sync_medmarket_weekdays);
         set("dg-set-ms_dimensions_log_retention_days", merged.ms_dimensions_log_retention_days);
         set("dg-set-dg_purchase_overrides_log_retention_days", merged.dg_purchase_overrides_log_retention_days);
         set("dg-set-auto_sync_runs_retention_days", merged.auto_sync_runs_retention_days);
@@ -404,6 +592,7 @@
         usersPresenceWindowMinutes = getNum("dg-set-auth_online_presence_minutes", 15);
         syncUsersSessionsHeader();
         updateUsersHint();
+        refreshAutoSyncScheduleUi();
       }
 
       function updateUsersHint() {
@@ -1288,8 +1477,12 @@
           auto_sync_huckster_time: getStr("dg-set-auto_huckster_time") || "06:00",
           auto_sync_db_size_enabled: document.getElementById("dg-set-auto_db_size_en").checked,
           auto_sync_db_size_time: getStr("dg-set-auto_db_size_time") || "02:00",
+          auto_sync_export_ms_enabled: document.getElementById("dg-set-auto_export_ms_en")
+            ? document.getElementById("dg-set-auto_export_ms_en").checked
+            : false,
           auto_sync_dimensions_enabled: document.getElementById("dg-set-auto_dim_en").checked,
           auto_sync_dimensions_time: getStr("dg-set-auto_dim_time") || "21:00",
+          auto_sync_dimensions_weekdays: collectAutoSyncWeekdayCsv("dg-set-auto_dim_wd"),
           auto_sync_mssales_enabled: document.getElementById("dg-set-auto_mssales_en") ? document.getElementById("dg-set-auto_mssales_en").checked : false,
           auto_sync_mssales_time: getStr("dg-set-auto_mssales_time") || "07:30",
           auto_sync_mssales_days: getNum("dg-set-auto_mssales_days", 90),
@@ -1304,6 +1497,11 @@
             ? document.getElementById("dg-set-auto_purchase_formula_cache_en").checked
             : false,
           auto_sync_purchase_formula_cache_time: getStr("dg-set-auto_purchase_formula_cache_time") || "08:30",
+          auto_sync_medmarket_enabled: document.getElementById("dg-set-auto_medmarket_en")
+            ? document.getElementById("dg-set-auto_medmarket_en").checked
+            : false,
+          auto_sync_medmarket_time: getStr("dg-set-auto_medmarket_time") || "09:00",
+          auto_sync_medmarket_weekdays: collectAutoSyncWeekdayCsv("dg-set-auto_medmarket_wd"),
         };
         runSaveWithInlineFeedback({
           sectionId: "auto",
@@ -1315,7 +1513,9 @@
             "auto_sync_marketplaces_time",
             "auto_sync_huckster_time",
             "auto_sync_db_size_time",
+            "auto_sync_export_ms_enabled",
             "auto_sync_dimensions_time",
+            "auto_sync_dimensions_weekdays",
             "auto_sync_mssales_time",
             "auto_sync_mssales_days",
             "auto_sync_mssales_weekdays",
@@ -1323,6 +1523,8 @@
             "auto_sync_mssales_full_days",
             "auto_sync_mssales_full_weekdays",
             "auto_sync_purchase_formula_cache_time",
+            "auto_sync_medmarket_time",
+            "auto_sync_medmarket_weekdays",
           ],
         });
       }
@@ -1338,6 +1540,7 @@
         mssales: "Продажи МС",
         mssales_full: "Продажи МС (полный)",
         purchase_formula_cache: "Закупки: кэш формулы",
+        medmarket: "Медмаркет: каталог из МС",
       };
       function escAutoRunHtml(s) {
         return String(s || "")
@@ -2230,6 +2433,8 @@
       }
 
       bindSettingsSectionsCollapse();
+      bindAutoSyncScheduleUiRefresh();
+      refreshAutoSyncScheduleUi();
 
       var saveSalesFormulaBtn = document.getElementById("dg-set-btn-save-sales-formula");
       if (saveSalesFormulaBtn) saveSalesFormulaBtn.addEventListener("click", saveSalesFormula);
@@ -2246,6 +2451,8 @@
       if (mssalesRunBtn) mssalesRunBtn.addEventListener("click", function () { runAutoSyncNow("mssales", "Продажи МС", "dg-set-auto_mssales_run"); });
       var mssalesFullRunBtn = document.getElementById("dg-set-auto_mssales_full_run");
       if (mssalesFullRunBtn) mssalesFullRunBtn.addEventListener("click", function () { runAutoSyncNow("mssales_full", "Продажи МС (полный)", "dg-set-auto_mssales_full_run"); });
+      var medmarketRunBtn = document.getElementById("dg-set-auto_medmarket_run");
+      if (medmarketRunBtn) medmarketRunBtn.addEventListener("click", function () { runAutoSyncNow("medmarket", "Медмаркет", "dg-set-auto_medmarket_run"); });
       var purchaseFormulaCacheRunBtn = document.getElementById("dg-set-auto_purchase_formula_cache_run");
       if (purchaseFormulaCacheRunBtn) {
         purchaseFormulaCacheRunBtn.addEventListener("click", function () {

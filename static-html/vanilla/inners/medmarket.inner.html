@@ -1,0 +1,145 @@
+          <div class="app-page-title">
+            <div class="page-title-wrapper">
+              <div class="page-title-heading">
+                <div class="page-title-icon">
+                  <i class="pe-7s-id icon-gradient bg-tempting-azure"> </i>
+                </div>
+                <div>
+                  Медмаркет
+                  <div class="page-title-subheading">
+                    Код, наименование и тип подтягиваются из МойСклад <strong>по расписанию</strong> (Настройки → Автосинхронизация).
+                    Данные только из атрибута МойСклад <strong>«Код товара для медмаркета»</strong> (как на <a href="/moysklad.html">Мой Склад</a>). Отдельной таблицы нет — колонка в <code>ms_export</code> после синка МС.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2">
+              <div class="d-flex align-items-center">
+                <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
+                <span>Фильтры и действия</span>
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mm-filters-toggle">Свернуть</button>
+            </div>
+            <div class="card-body">
+              <div id="dg-mm-filters-body">
+              <div class="row g-2 align-items-end">
+                <div class="col-md-3">
+                  <label class="form-label" for="mm-f-search">Умный поиск</label>
+                  <input type="search" class="form-control" id="mm-f-search" placeholder="Код, наименование или код Медмаркета" autocomplete="off" />
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label" for="mm-f-code">Код</label>
+                  <input type="text" class="form-control" id="mm-f-code" autocomplete="off" />
+                </div>
+                <div class="col-md-3">
+                  <label class="form-label" for="mm-f-name">Наименование</label>
+                  <input type="text" class="form-control" id="mm-f-name" autocomplete="off" />
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label" for="mm-f-type">Тип</label>
+                  <select class="form-select" id="mm-f-type">
+                    <option value="all">Все</option>
+                    <option value="товар">Товар</option>
+                    <option value="комплект">Комплект</option>
+                    <option value="услуга">Услуга</option>
+                  </select>
+                </div>
+              </div>
+              <div class="row g-2 align-items-end mt-2">
+                <div class="col-md-3">
+                  <label class="form-label" for="mm-f-medmarket-code">Код товара для медмаркета</label>
+                  <input type="text" class="form-control" id="mm-f-medmarket-code" autocomplete="off" />
+                </div>
+                <div class="col-md-3">
+                  <label class="form-label" for="mm-f-mapped">Стыковка</label>
+                  <select class="form-select" id="mm-f-mapped">
+                    <option value="all">Все</option>
+                    <option value="1">Только с кодом Медмаркета</option>
+                    <option value="0">Без кода Медмаркета</option>
+                  </select>
+                </div>
+              </div>
+              <div class="mt-3 d-flex flex-wrap gap-2">
+                <button type="button" class="btn btn-sm btn-primary" id="mm-apply" data-dg-activity-label="Применить фильтры Медмаркет">Применить</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="mm-reset" data-dg-activity-label="Сбросить фильтры Медмаркет">По умолчанию</button>
+                <button type="button" class="btn btn-sm btn-outline-warning" id="mm-sync-catalog" data-dg-activity-label="Подтянуть атрибут Медмаркет из карточек МС" data-dg-notify-start="Подтягиваем атрибут из сохранённых карточек МС…">Подтянуть из карточек МС</button>
+                <button type="button" class="btn btn-sm btn-outline-primary" id="mm-fill-linkage" data-dg-activity-label="Заполнить коды Медмаркета в МойСклад" data-dg-notify-start="Заполняем пустые коды в атрибут МС (код+тип)…">Заполнить коды в МойСклад</button>
+              </div>
+              <p class="small text-muted mt-2 mb-0">
+                После полного синка <a href="/moysklad.html">Мой Склад</a> значения атрибута уже в <code>ms_export</code> — обычно этого достаточно.
+                «Подтянуть из карточек МС» — догонка только по карточкам, где атрибут есть в сохранённом JSON (не весь каталог ~50k+), обычно несколько минут.
+                Редактирование в таблице пишет в тот же атрибут в МойСклад.
+              </p>
+              <p class="small text-muted mb-0" id="mm-sync-hint">
+                Автозапуск по расписанию: <a href="/settings.html">настройки</a> ·
+                <a href="/processes.html">журнал</a>.
+              </p>
+              <div id="mm-action-log" class="alert mt-3 mb-0 d-none" role="status"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex justify-content-between align-items-center gap-2 flex-wrap">
+              <div class="d-flex align-items-center gap-3 flex-grow-1" style="min-width: 0">
+                <div class="d-flex align-items-center flex-shrink-0">
+                  <i class="header-icon pe-7s-box2 icon-gradient bg-tempting-azure me-2"></i>
+                  <span>Выгрузка Медмаркет</span>
+                </div>
+                <div class="dg-mm-header-search" style="flex: 0 1 380px; min-width: 220px">
+                  <div class="input-group input-group-sm">
+                    <span class="input-group-text bg-white text-muted px-2" aria-hidden="true">🔎</span>
+                    <input
+                      type="search"
+                      class="form-control"
+                      id="mm-table-search-mirror"
+                      placeholder="Умный поиск (Enter — применить)"
+                      autocomplete="off"
+                    />
+                  </div>
+                </div>
+              </div>
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mm-widths-toggle" title="Ширина колонок">📏 Ширины</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="mm-table-toggle">Свернуть</button>
+              </div>
+            </div>
+            <div class="card-body" id="mm-table-body">
+              <div class="datagon-columns-toolbox mb-2 d-none" id="dg-mm-toolbox-panels">
+                <div class="datagon-columns-panel" id="dg-mm-widths-panel">
+                  <div class="columns-actions mb-2">
+                    <button type="button" class="btn btn-sm" id="dg-mm-widths-default">Ширины по умолчанию</button>
+                  </div>
+                  <div id="dg-mm-widths-list" class="dg-ms-widths-grid"></div>
+                </div>
+              </div>
+              <div id="dg-mm-table-scroll-outer" class="dg-mp-table-scroll-outer dg-mm-table-scroll-outer">
+                <div class="table-responsive datagon-my-products-table-wrap">
+                  <table class="table table-hover table-striped mb-0 dg-mm-table" id="dg-mm-table-main" style="width:max-content;min-width:100%;table-layout:fixed;border-collapse:collapse">
+                    <colgroup id="dg-mm-colgroup"></colgroup>
+                    <thead id="dg-mm-thead"></thead>
+                    <tbody id="mm-tbody"></tbody>
+                  </table>
+                </div>
+              </div>
+              <div class="mt-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                  <label class="form-label mb-0 small text-muted" for="mm-footer-limit">На странице</label>
+                  <select class="form-select form-select-sm" id="mm-footer-limit" style="width:auto">
+                    <option value="50">50</option>
+                    <option value="100" selected>100</option>
+                    <option value="200">200</option>
+                    <option value="500">500</option>
+                  </select>
+                  <span class="text-muted small" id="mm-table-hint">Найдено: 0; страница 1/1; показано: 0</span>
+                </div>
+                <div class="btn-group" role="group" aria-label="Страницы Медмаркет">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="mm-btn-prev" data-dg-activity-label="Предыдущая страница Медмаркет">Назад</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="mm-btn-next" data-dg-activity-label="Следующая страница Медмаркет">Вперёд</button>
+                </div>
+              </div>
+            </div>
+          </div>

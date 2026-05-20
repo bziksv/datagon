@@ -1,0 +1,1026 @@
+  <script>
+    (function () {
+      var MM_COLS = [
+        ["code", "Код"],
+        ["name", "Наименование"],
+        ["item_type", "Тип"],
+        ["medmarket_code", "Код товара для медмаркета"],
+      ];
+      var COL_MIN = { code: 80, name: 320, item_type: 96, medmarket_code: 200 };
+      var columnWidths = {};
+      var resizeState = null;
+
+      var page = 1;
+      var total = 0;
+      var mappedInDb = 0;
+      var limit = 100;
+      var sortBy = "code";
+      var sortDir = "asc";
+      var loading = false;
+      var syncPollTimer = null;
+      var syncInFlight = false;
+      var syncRunLock = false;
+      var applied = {
+        search: "",
+        code: "",
+        name: "",
+        item_type: "all",
+        medmarket_code: "",
+        mapped: "all",
+      };
+
+      var FLOATING_HEADER_OFFSET_PX = 2;
+      var FLOATING_HEADER_START_EPS_PX = 3;
+      var mmFloatingHeaderRaf = 0;
+      var mmFloatingLastScrollTs = 0;
+
+      function el(id) {
+        return document.getElementById(id);
+      }
+
+      function notify(type, message) {
+        if (window.DatagonNotify && window.DatagonNotify.toast) {
+          window.DatagonNotify.toast({ type: type || "info", message: String(message || "") });
+        }
+      }
+
+      function showActionLog(type, message) {
+        var box = el("mm-action-log");
+        if (!box) return;
+        var t = type || "info";
+        box.className =
+          "alert mt-3 mb-0 alert-" +
+          (t === "danger" ? "danger" : t === "success" ? "success" : t === "warning" ? "warning" : "info");
+        box.textContent = String(message || "");
+        box.classList.remove("d-none");
+      }
+
+      function hideActionLog() {
+        var box = el("mm-action-log");
+        if (box) {
+          box.classList.add("d-none");
+          box.textContent = "";
+        }
+      }
+
+      function readPendingFilters() {
+        return {
+          search: el("mm-f-search").value.trim(),
+          code: el("mm-f-code").value.trim(),
+          name: el("mm-f-name").value.trim(),
+          item_type: el("mm-f-type").value,
+          medmarket_code: el("mm-f-medmarket-code").value.trim(),
+          mapped: el("mm-f-mapped").value,
+        };
+      }
+
+      function filtersDirty() {
+        var p = readPendingFilters();
+        return (
+          p.search !== applied.search ||
+          p.code !== applied.code ||
+          p.name !== applied.name ||
+          p.item_type !== applied.item_type ||
+          p.medmarket_code !== applied.medmarket_code ||
+          p.mapped !== applied.mapped
+        );
+      }
+
+      function syncApplyDirtyUi() {
+        var btn = el("mm-apply");
+        if (!btn) return;
+        if (filtersDirty()) btn.classList.add("dg-flt-dirty");
+        else btn.classList.remove("dg-flt-dirty");
+      }
+
+      function commitFilters() {
+        var p = readPendingFilters();
+        applied.search = p.search;
+        applied.code = p.code;
+        applied.name = p.name;
+        applied.item_type = p.item_type;
+        applied.medmarket_code = p.medmarket_code;
+        applied.mapped = p.mapped;
+        syncApplyDirtyUi();
+      }
+
+      function buildFilterParams() {
+        var f = applied;
+        var p = new URLSearchParams();
+        if (f.search) p.set("search", f.search);
+        if (f.code) p.set("code", f.code);
+        if (f.name) p.set("name", f.name);
+        if (f.item_type && f.item_type !== "all") p.set("item_type", f.item_type);
+        if (f.medmarket_code) p.set("medmarket_code", f.medmarket_code);
+        if (f.mapped === "1" || f.mapped === "0") p.set("mapped", f.mapped);
+        return p;
+      }
+
+      function buildParams() {
+        var p = buildFilterParams();
+        p.set("limit", String(limit));
+        p.set("offset", String((page - 1) * limit));
+        p.set("sort_by", sortBy);
+        p.set("sort_dir", sortDir);
+        return p;
+      }
+
+      function mmLinkageTypeLabel(itemType) {
+        var t = String(itemType || "").trim().toLowerCase();
+        if (t === "комплект") return "Комплект";
+        if (t === "услуга") return "Услуга";
+        return "Товар";
+      }
+
+      function mmBuildLinkageCode(code, itemType) {
+        var c = String(code || "").trim();
+        if (!c) return "";
+        return c + "+" + mmLinkageTypeLabel(itemType);
+      }
+
+      function totalPages() {
+        return Math.max(1, Math.ceil(total / limit) || 1);
+      }
+
+      function updateHint() {
+        var hint = el("mm-table-hint");
+        if (!hint) return;
+        if (loading) {
+          hint.textContent = "Загрузка…";
+          return;
+        }
+        var shown = Math.min(limit, Math.max(0, total - (page - 1) * limit));
+        var mappedPart =
+          "; с атрибутом в выгрузке: " + mappedInDb.toLocaleString("ru-RU");
+        hint.textContent =
+          "Найдено: " +
+          total.toLocaleString("ru-RU") +
+          mappedPart +
+          "; страница " +
+          page +
+          "/" +
+          totalPages() +
+          "; показано: " +
+          shown;
+      }
+
+      function setPagerDisabled(disabled) {
+        ["mm-btn-prev", "mm-btn-next", "mm-footer-limit"].forEach(function (id) {
+          var node = el(id);
+          if (node) node.disabled = !!disabled;
+        });
+      }
+
+      function esc(s) {
+        return String(s == null ? "" : s)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/"/g, "&quot;");
+      }
+
+      function userColWidthKey() {
+        try {
+          var u = String(localStorage.getItem("currentUser") || "guest").trim() || "guest";
+          return "datagon_medmarket_col_widths_v1:" + u;
+        } catch (e) {
+          return "datagon_medmarket_col_widths_v1:guest";
+        }
+      }
+
+      function getColMin(key) {
+        return COL_MIN[key] || 60;
+      }
+
+      function getColWidth(key) {
+        var w = Number(columnWidths[key] || 0);
+        if (Number.isFinite(w) && w > 0) return w;
+        return getColMin(key);
+      }
+
+      function applyColumnWidth(key, px) {
+        var n = Math.max(60, Math.min(700, Math.round(Number(px) || 0)));
+        columnWidths[key] = n;
+        var cg = el("dg-mm-colgroup");
+        if (cg) {
+          var col = cg.querySelector('col[data-col-key="' + key + '"]');
+          if (col) col.style.width = n + "px";
+        }
+        document.querySelectorAll('.dg-mm-table thead th[data-col-key="' + key + '"]').forEach(function (th) {
+          th.style.width = n + "px";
+          th.style.minWidth = n + "px";
+          th.style.maxWidth = n + "px";
+        });
+        document.querySelectorAll('.dg-mm-table tbody td[data-col-key="' + key + '"]').forEach(function (td) {
+          td.style.width = n + "px";
+          td.style.minWidth = n + "px";
+          td.style.maxWidth = n + "px";
+        });
+      }
+
+      function buildColgroupAndThead() {
+        var cg = el("dg-mm-colgroup");
+        var thead = document.getElementById("dg-mm-thead");
+        if (!cg || !thead) return;
+        cg.innerHTML = "";
+        var tr = document.createElement("tr");
+        MM_COLS.forEach(function (pair) {
+          var key = pair[0];
+          var label = pair[1];
+          var w = getColWidth(key);
+          var col = document.createElement("col");
+          col.setAttribute("data-col-key", key);
+          col.style.width = w + "px";
+          cg.appendChild(col);
+          var th = document.createElement("th");
+          th.className = "dg-mm-sortable";
+          th.setAttribute("data-sort", key);
+          th.setAttribute("data-col-key", key);
+          th.textContent = label;
+          th.style.width = w + "px";
+          th.style.minWidth = w + "px";
+          th.style.maxWidth = w + "px";
+          var handle = document.createElement("span");
+          handle.className = "dg-mm-col-resize";
+          handle.setAttribute("data-col-key", key);
+          handle.setAttribute("aria-hidden", "true");
+          th.appendChild(handle);
+          tr.appendChild(th);
+        });
+        thead.innerHTML = "";
+        thead.appendChild(tr);
+        bindResizeHandles();
+        syncSortHeaders();
+      }
+
+      function bindResizeHandles() {
+        document.querySelectorAll(".dg-mm-col-resize").forEach(function (handle) {
+          handle.addEventListener("mousedown", function (ev) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            var key = handle.getAttribute("data-col-key");
+            if (!key) return;
+            resizeState = { key: key, startX: ev.clientX, startW: getColWidth(key) };
+          });
+        });
+      }
+
+      function onResizeMove(ev) {
+        if (!resizeState) return;
+        var dx = ev.clientX - resizeState.startX;
+        applyColumnWidth(resizeState.key, resizeState.startW + dx);
+        mmRefreshFloatingAfterLayout();
+      }
+
+      function onResizeUp() {
+        if (!resizeState) return;
+        try {
+          localStorage.setItem(userColWidthKey(), JSON.stringify(columnWidths || {}));
+        } catch (e) {}
+        resizeState = null;
+      }
+
+      function renderWidthControls() {
+        var list = el("dg-mm-widths-list");
+        if (!list) return;
+        list.innerHTML = "";
+        MM_COLS.forEach(function (pair) {
+          var key = pair[0];
+          var label = pair[1];
+          var wrap = document.createElement("label");
+          var span = document.createElement("span");
+          span.textContent = label;
+          span.style.flex = "1 1 auto";
+          var input = document.createElement("input");
+          input.type = "number";
+          input.className = "form-control form-control-sm";
+          input.min = "60";
+          input.max = "700";
+          input.step = "10";
+          input.value = String(getColWidth(key));
+          input.setAttribute("data-col-key", key);
+          input.addEventListener("change", function () {
+            var k = this.getAttribute("data-col-key");
+            var n = parseInt(this.value, 10);
+            if (!Number.isFinite(n)) return;
+            applyColumnWidth(k, n);
+            try {
+              localStorage.setItem(userColWidthKey(), JSON.stringify(columnWidths || {}));
+            } catch (e) {}
+            this.value = String(getColWidth(k));
+            mmRefreshFloatingAfterLayout();
+          });
+          wrap.appendChild(span);
+          wrap.appendChild(input);
+          list.appendChild(wrap);
+        });
+      }
+
+      function renderMmNameCell(r) {
+        var code = String(r.code || "").trim();
+        var rawName = String(r.name || "").trim();
+        var displayTitle = rawName || "—";
+        if (!code) {
+          var sp = document.createElement("span");
+          sp.textContent = displayTitle;
+          sp.title = rawName || "";
+          return sp;
+        }
+        var nameEl = document.createElement("a");
+        nameEl.href = "/product.html?code=" + encodeURIComponent(code);
+        nameEl.target = "_blank";
+        nameEl.rel = "noopener";
+        nameEl.className = "dg-mm-name-link";
+        nameEl.title = (rawName ? rawName + " · " : "") + "код: " + code + " — открыть карточку";
+        nameEl.textContent = displayTitle;
+        return nameEl;
+      }
+
+      function renderTable(rows) {
+        var tbody = el("mm-tbody");
+        if (!tbody) return;
+        tbody.innerHTML = "";
+        if (!rows || !rows.length) {
+          var tr0 = document.createElement("tr");
+          tr0.innerHTML = '<td colspan="4" class="text-muted text-center py-4">Нет строк</td>';
+          tbody.appendChild(tr0);
+          mmRefreshFloatingAfterLayout();
+          return;
+        }
+        rows.forEach(function (r) {
+          var tr = document.createElement("tr");
+          MM_COLS.forEach(function (pair) {
+            var key = pair[0];
+            var td = document.createElement("td");
+            var w = getColWidth(key);
+            td.setAttribute("data-col-key", key);
+            td.style.width = w + "px";
+            td.style.minWidth = w + "px";
+            td.style.maxWidth = w + "px";
+            td.style.borderRight = "1px solid #f3f5f8";
+            td.style.verticalAlign = "middle";
+            if (key === "code") td.textContent = r.code || "";
+            else if (key === "name") td.appendChild(renderMmNameCell(r));
+            else if (key === "item_type") td.textContent = r.item_type || "";
+            else if (key === "medmarket_code") {
+              var inp = document.createElement("input");
+              inp.type = "text";
+              inp.className = "form-control form-control-sm dg-mm-mm-input";
+              inp.setAttribute("data-code", r.code || "");
+              inp.setAttribute("data-type", r.item_type || "");
+              inp.value = r.medmarket_code || "";
+              inp.placeholder = mmBuildLinkageCode(r.code, r.item_type) || "10088+Товар";
+              inp.title = "Стыковка: код+тип, напр. " + (mmBuildLinkageCode(r.code, r.item_type) || "10088+Товар");
+              inp.autocomplete = "off";
+              td.appendChild(inp);
+            }
+            tr.appendChild(td);
+          });
+          tbody.appendChild(tr);
+        });
+        tbody.querySelectorAll(".dg-mm-mm-input").forEach(function (inp) {
+          inp.addEventListener("change", function () {
+            saveMapping(inp);
+          });
+        });
+        mmRefreshFloatingAfterLayout();
+      }
+
+      function saveMapping(inp) {
+        if (inp.getAttribute("data-mm-saving") === "1") return;
+        var code = inp.getAttribute("data-code") || "";
+        var itemType = inp.getAttribute("data-type") || "";
+        var val = inp.value.trim();
+        inp.setAttribute("data-mm-saving", "1");
+        inp.disabled = true;
+        showActionLog("info", "Сохраняем стыковку " + code + "…");
+        fetch("/api/medmarket/mapping", {
+          method: "PATCH",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            code: code,
+            item_type: itemType,
+            medmarket_code: val,
+          }),
+        })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { ok: r.ok, j: j };
+            });
+          })
+          .then(function (x) {
+            inp.disabled = false;
+            inp.removeAttribute("data-mm-saving");
+            if (!x.ok || !x.j || x.j.success === false) {
+              var err = (x.j && x.j.error) || "Не удалось сохранить";
+              showActionLog("danger", err);
+              notify("danger", err);
+              return;
+            }
+            showActionLog("success", "Сохранено: " + code + (val ? " → " + val : " (очищено)"));
+            notify("success", "Сохранено: " + code);
+          })
+          .catch(function (e) {
+            inp.disabled = false;
+            inp.removeAttribute("data-mm-saving");
+            var err = e && e.message ? e.message : "Ошибка сети";
+            showActionLog("danger", err);
+            notify("danger", err);
+          });
+      }
+
+      function loadData() {
+        if (loading) return Promise.resolve();
+        loading = true;
+        setPagerDisabled(true);
+        updateHint();
+        return fetch("/api/medmarket?" + buildParams().toString(), { credentials: "same-origin" })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { ok: r.ok, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.ok || !x.j || x.j.success === false) {
+              throw new Error((x.j && x.j.error) || "Ошибка загрузки");
+            }
+            total = Number(x.j.total || 0);
+            mappedInDb = Number(x.j.mapped_in_db || 0);
+            if (x.j.sort_by) sortBy = x.j.sort_by;
+            if (x.j.sort_dir) sortDir = x.j.sort_dir;
+            renderTable(x.j.data || []);
+            updateHint();
+            syncSortHeaders();
+          })
+          .catch(function (e) {
+            total = 0;
+            mappedInDb = 0;
+            renderTable([]);
+            updateHint();
+            var err = e && e.message ? e.message : "Ошибка";
+            showActionLog("danger", err);
+            notify("danger", err);
+          })
+          .finally(function () {
+            loading = false;
+            setPagerDisabled(syncInFlight);
+            updateHint();
+          });
+      }
+
+      function syncSortHeaders() {
+        document.querySelectorAll(".dg-mm-sortable").forEach(function (th) {
+          var k = th.getAttribute("data-sort");
+          th.classList.remove("sorted-asc", "sorted-desc");
+          if (k === sortBy) th.classList.add(sortDir === "desc" ? "sorted-desc" : "sorted-asc");
+        });
+      }
+
+      function resetFilters() {
+        el("mm-f-search").value = "";
+        el("mm-f-code").value = "";
+        el("mm-f-name").value = "";
+        el("mm-f-type").value = "all";
+        el("mm-f-medmarket-code").value = "";
+        el("mm-f-mapped").value = "all";
+        var mirror = el("mm-table-search-mirror");
+        if (mirror) mirror.value = "";
+        page = 1;
+        sortBy = "code";
+        sortDir = "asc";
+        commitFilters();
+      }
+
+      function setSyncUiLocked(locked) {
+        syncInFlight = !!locked;
+        var btn = el("mm-sync-catalog");
+        if (btn) btn.disabled = !!locked;
+      }
+
+      function pollSyncStatus() {
+        if (syncPollTimer) {
+          clearTimeout(syncPollTimer);
+          syncPollTimer = null;
+        }
+        fetch("/api/medmarket/sync-status", { credentials: "same-origin" })
+          .then(function (r) {
+            return r.json();
+          })
+          .then(function (j) {
+            var hint = el("mm-sync-hint");
+            if (!j) return;
+            if (j.active) {
+              setSyncUiLocked(true);
+              var proc = Number(j.processed || 0);
+              var tot = Number(j.total || 0);
+              var pct = tot > 0 ? Math.min(100, Math.round((proc / tot) * 100)) : 0;
+              var msg =
+                "Подтягивание атрибута: " +
+                proc.toLocaleString("ru-RU") +
+                " / " +
+                tot.toLocaleString("ru-RU") +
+                " карточек с атрибутом в JSON (" +
+                pct +
+                "%)" +
+                (j.upserted != null
+                  ? "; записано: " + Number(j.upserted).toLocaleString("ru-RU")
+                  : "") +
+                " — идёт";
+              if (hint) hint.textContent = msg;
+              showActionLog("info", msg);
+              syncPollTimer = setTimeout(pollSyncStatus, 1500);
+              return;
+            }
+            setSyncUiLocked(false);
+            syncRunLock = false;
+            if (j.error) {
+              var err = "Ошибка синхронизации: " + j.error;
+              if (hint) hint.textContent = err;
+              showActionLog("danger", err);
+              notify("danger", err);
+            } else if (j.finished_at && j.message && j.message.indexOf("Ошибка") === -1) {
+              if (hint) hint.textContent = j.message;
+              showActionLog("success", j.message);
+              notify("success", j.message);
+              loadData();
+            } else if (hint && !syncInFlight) {
+              hint.textContent =
+                "Автозапуск по расписанию: настройки · журнал на «Процессах».";
+            }
+          })
+          .catch(function () {
+            setSyncUiLocked(false);
+            syncRunLock = false;
+          });
+      }
+
+      function runFillMedmarketLinkage() {
+        if (loading) {
+          notify("warning", "Дождитесь окончания загрузки таблицы");
+          return Promise.resolve();
+        }
+        var btn = el("mm-fill-linkage");
+        var doFetch = function () {
+          showActionLog("info", "Заполняем коды Медмаркета (код+тип) по текущим фильтрам…");
+          return fetch("/api/medmarket/fill-linkage-codes?" + buildFilterParams().toString(), {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: "{}",
+          })
+            .then(function (r) {
+              return r.json().then(function (j) {
+                return { ok: r.ok, j: j };
+              });
+            })
+            .then(function (x) {
+              if (!x.ok || !x.j || x.j.success === false) {
+                throw new Error((x.j && x.j.error) || "Не удалось заполнить коды");
+              }
+              var j = x.j;
+              var msg =
+                "Готово: обработано " +
+                Number(j.total || 0).toLocaleString("ru-RU") +
+                ", новых " +
+                Number(j.filled || 0).toLocaleString("ru-RU") +
+                ", исправлено " +
+                Number(j.corrected || 0).toLocaleString("ru-RU") +
+                ", без изменений " +
+                Number(j.skipped || 0).toLocaleString("ru-RU");
+              showActionLog("success", msg);
+              notify("success", msg);
+              return loadData();
+            })
+            .catch(function (e) {
+              var err = e && e.message ? e.message : "Ошибка";
+              showActionLog("danger", err);
+              notify("danger", err);
+            });
+        };
+        if (window.DatagonNotify && window.DatagonNotify.busyRun && btn) {
+          return window.DatagonNotify.busyRun(btn, doFetch);
+        }
+        return doFetch();
+      }
+
+      function runMedmarketSyncNow() {
+        if (syncRunLock || syncInFlight) {
+          showActionLog("warning", "Синхронизация уже выполняется или только что запущена.");
+          notify("warning", "Синхронизация уже идёт");
+          return Promise.resolve();
+        }
+        var btn = el("mm-sync-catalog");
+        syncRunLock = true;
+        setSyncUiLocked(true);
+        showActionLog("info", "Обновление каталога из МС: ставим задачу в очередь…");
+        var doFetch = function () {
+          return fetch("/api/settings/auto-sync-run", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ task: "medmarket" }),
+          })
+            .then(function (r) {
+              return r.json().then(function (j) {
+                return { r: r, j: j };
+              });
+            })
+            .then(function (x) {
+              if (!x.r.ok || !x.j || x.j.success === false) {
+                throw new Error((x.j && x.j.error) || "Не удалось запустить синхронизацию");
+              }
+              if (x.j.queued === false) {
+                var reason =
+                  x.j.skip_reason === "already_running"
+                    ? "уже выполняется"
+                    : x.j.skip_reason === "already_queued"
+                      ? "уже в очереди"
+                      : x.j.skip_reason || "занято";
+                showActionLog("warning", "Задача не поставлена в очередь: " + reason + ". См. /processes.html");
+                notify("warning", "Медмаркет: " + reason);
+                if (x.j.skip_reason === "already_running") pollSyncStatus();
+                else {
+                  setSyncUiLocked(false);
+                  syncRunLock = false;
+                }
+                return;
+              }
+              showActionLog("success", "Задача medmarket в очереди. Журнал — /processes.html");
+              notify("success", "Синхронизация Медмаркет запущена");
+              pollSyncStatus();
+            })
+            .catch(function (e) {
+              setSyncUiLocked(false);
+              syncRunLock = false;
+              var err = e && e.message ? e.message : "Ошибка запуска";
+              showActionLog("danger", err);
+              notify("danger", err);
+            });
+        };
+        if (window.DatagonNotify && window.DatagonNotify.busyRun && btn) {
+          return window.DatagonNotify.busyRun(btn, doFetch);
+        }
+        return doFetch();
+      }
+
+      function withBusy(btn, label, fn) {
+        if (!btn) return fn();
+        showActionLog("info", label + "…");
+        if (window.DatagonNotify && window.DatagonNotify.busyRun) {
+          return window.DatagonNotify.busyRun(btn, fn);
+        }
+        btn.disabled = true;
+        return Promise.resolve()
+          .then(fn)
+          .finally(function () {
+            btn.disabled = syncInFlight;
+          });
+      }
+
+      function applyFilters() {
+        page = 1;
+        commitFilters();
+        return loadData().then(function () {
+          showActionLog("success", "Фильтры применены.");
+          notify("success", "Таблица обновлена");
+        });
+      }
+
+      function updateMmStickyTopVar() {
+        var app = document.querySelector(".app-container");
+        var header = document.querySelector(".app-header");
+        var fixed = Boolean(app && app.classList && app.classList.contains("fixed-header"));
+        var top = 0;
+        if (fixed && header && header.getBoundingClientRect) {
+          var rect = header.getBoundingClientRect();
+          top = rect && rect.height ? rect.height : 60;
+        }
+        document.documentElement.style.setProperty("--dg-table-sticky-top", top + "px");
+      }
+
+      function getMmStickyTopPx() {
+        var app = document.querySelector(".app-container");
+        var header = document.querySelector(".app-header");
+        var fixed = Boolean(app && app.classList && app.classList.contains("fixed-header"));
+        if (!fixed) return 0;
+        if (!header || !header.getBoundingClientRect) return 60;
+        var rect = header.getBoundingClientRect();
+        var h = rect && rect.height ? rect.height : 60;
+        return h > 0 ? h : 60;
+      }
+
+      function captureMmTheadBaseTop() {
+        var thead = document.getElementById("dg-mm-thead");
+        if (!thead) return;
+        thead.style.transform = "";
+        thead.style.position = "";
+        thead.style.zIndex = "";
+        thead.style.willChange = "";
+        thead.removeAttribute("data-dg-floating");
+        var rect = thead.getBoundingClientRect();
+        var absTop = (window.scrollY || window.pageYOffset || 0) + (rect && rect.top ? rect.top : 0);
+        thead.setAttribute("data-dg-base-top", String(absTop));
+      }
+
+      function updateMmFloatingHeaderFallback() {
+        var thead = document.getElementById("dg-mm-thead");
+        if (!thead) return;
+        var table = thead.closest("table");
+        if (!table || !table.getBoundingClientRect) return;
+        var row = thead.querySelector("tr");
+        if (!row) return;
+
+        var y = window.scrollY || window.pageYOffset || 0;
+        var headerTop = getMmStickyTopPx();
+        var baseTopAbs = Number(thead.getAttribute("data-dg-base-top") || 0);
+        if (!Number.isFinite(baseTopAbs) || baseTopAbs <= 0) return;
+        var tableRect = table.getBoundingClientRect();
+        var tableBottom = tableRect.bottom + y;
+        var rowRect = row.getBoundingClientRect();
+        var rowHeight = rowRect && rowRect.height ? rowRect.height : 0;
+        var headerLine = y + headerTop;
+        var start = baseTopAbs + FLOATING_HEADER_START_EPS_PX;
+        var end = tableBottom - rowHeight;
+        if (headerLine <= start || headerLine >= end) {
+          if (thead.style.transform) {
+            thead.style.transform = "";
+            thead.style.position = "";
+            thead.style.zIndex = "";
+            thead.style.willChange = "";
+            thead.removeAttribute("data-dg-floating");
+          }
+          return;
+        }
+        var zoomAwareOffset = FLOATING_HEADER_OFFSET_PX;
+        var dpr = window.devicePixelRatio || 1;
+        if (Math.abs(dpr - 1) < 0.03) zoomAwareOffset = FLOATING_HEADER_OFFSET_PX - 3;
+        var shift = Math.max(0, headerLine - start - zoomAwareOffset);
+        var shiftPx = Number(shift.toFixed(3));
+        var nextTransform = "translate3d(0," + shiftPx + "px,0)";
+        if (thead.style.transform !== nextTransform) {
+          thead.style.transform = nextTransform;
+          thead.style.position = "relative";
+          thead.style.zIndex = "25";
+          thead.style.willChange = "transform";
+          thead.setAttribute("data-dg-floating", "1");
+        }
+      }
+
+      function mmFloatingHeaderTick(ts) {
+        mmFloatingHeaderRaf = 0;
+        updateMmFloatingHeaderFallback();
+        if (ts - mmFloatingLastScrollTs < 140) {
+          mmFloatingHeaderRaf = requestAnimationFrame(mmFloatingHeaderTick);
+        }
+      }
+
+      function scheduleMmFloatingHeaderUpdate() {
+        mmFloatingLastScrollTs = performance.now();
+        if (mmFloatingHeaderRaf) return;
+        mmFloatingHeaderRaf = requestAnimationFrame(mmFloatingHeaderTick);
+      }
+
+      function onScrollMmFloatingHeader() {
+        scheduleMmFloatingHeaderUpdate();
+      }
+
+      function mmRefreshFloatingAfterLayout() {
+        requestAnimationFrame(function () {
+          captureMmTheadBaseTop();
+          scheduleMmFloatingHeaderUpdate();
+        });
+      }
+
+      function bindHeaderSearchMirror() {
+        var main = el("mm-f-search");
+        var mirror = el("mm-table-search-mirror");
+        if (!main || !mirror) return;
+        var syncing = false;
+        function syncFromMain() {
+          if (syncing) return;
+          syncing = true;
+          mirror.value = main.value;
+          syncing = false;
+          syncApplyDirtyUi();
+        }
+        function syncFromMirror() {
+          if (syncing) return;
+          syncing = true;
+          main.value = mirror.value;
+          syncing = false;
+          syncApplyDirtyUi();
+        }
+        main.addEventListener("input", syncFromMain);
+        mirror.addEventListener("input", syncFromMirror);
+        function onEnter(ev) {
+          if (ev.key !== "Enter") return;
+          ev.preventDefault();
+          el("mm-apply").click();
+        }
+        function onEsc(ev) {
+          if (ev.key !== "Escape") return;
+          main.value = "";
+          mirror.value = "";
+          syncApplyDirtyUi();
+          el("mm-reset").click();
+        }
+        main.addEventListener("keydown", onEnter);
+        main.addEventListener("keydown", onEsc);
+        mirror.addEventListener("keydown", onEnter);
+        mirror.addEventListener("keydown", onEsc);
+      }
+
+      function bindFilterDirtyWatch() {
+        ["mm-f-search", "mm-f-code", "mm-f-name", "mm-f-type", "mm-f-medmarket-code", "mm-f-mapped"].forEach(function (
+          id
+        ) {
+          var node = el(id);
+          if (!node) return;
+          node.addEventListener("input", syncApplyDirtyUi);
+          node.addEventListener("change", syncApplyDirtyUi);
+        });
+      }
+
+      var theadSortRoot = document.getElementById("dg-mm-thead");
+      if (theadSortRoot) {
+        theadSortRoot.addEventListener("click", function (ev) {
+          if (ev.target.closest(".dg-mm-col-resize")) return;
+          if (window.getSelection && window.getSelection().toString().trim()) return;
+          var th = ev.target.closest(".dg-mm-sortable");
+          if (!th || loading) return;
+          var k = th.getAttribute("data-sort");
+          if (!k) return;
+          if (sortBy === k) sortDir = sortDir === "asc" ? "desc" : "asc";
+          else {
+            sortBy = k;
+            sortDir = "asc";
+          }
+          page = 1;
+          loadData();
+        });
+      }
+
+      el("mm-apply").addEventListener("click", function () {
+        withBusy(el("mm-apply"), "Применяем фильтры", applyFilters);
+      });
+      el("mm-reset").addEventListener("click", function () {
+        withBusy(el("mm-reset"), "Сбрасываем фильтры", function () {
+          resetFilters();
+          return loadData().then(function () {
+            hideActionLog();
+            notify("info", "Фильтры сброшены");
+          });
+        });
+      });
+      el("mm-sync-catalog").addEventListener("click", runMedmarketSyncNow);
+      var fillLinkageBtn = el("mm-fill-linkage");
+      if (fillLinkageBtn) fillLinkageBtn.addEventListener("click", runFillMedmarketLinkage);
+      window.addEventListener("mousemove", onResizeMove);
+      window.addEventListener("mouseup", onResizeUp);
+
+      (function columnControls() {
+        var widthsToggle = el("dg-mm-widths-toggle");
+        var widthsPanel = el("dg-mm-widths-panel");
+        var panelsWrap = el("dg-mm-toolbox-panels");
+        if (!widthsToggle || !widthsPanel) return;
+        function syncWrap() {
+          if (!panelsWrap) return;
+          panelsWrap.classList.toggle("d-none", !widthsPanel.classList.contains("open"));
+        }
+        widthsToggle.addEventListener("click", function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          widthsPanel.classList.toggle("open");
+          if (widthsPanel.classList.contains("open")) renderWidthControls();
+          syncWrap();
+        });
+        document.addEventListener("click", function (e) {
+          if (e.target.closest("#dg-mm-widths-panel")) return;
+          if (e.target.closest("#dg-mm-widths-toggle")) return;
+          widthsPanel.classList.remove("open");
+          syncWrap();
+        });
+        var defBtn = el("dg-mm-widths-default");
+        if (defBtn) {
+          defBtn.addEventListener("click", function () {
+            columnWidths = {};
+            try {
+              localStorage.removeItem(userColWidthKey());
+            } catch (e) {}
+            buildColgroupAndThead();
+            loadData();
+            renderWidthControls();
+          });
+        }
+      })();
+      el("mm-btn-prev").addEventListener("click", function () {
+        if (page <= 1 || loading) return;
+        withBusy(el("mm-btn-prev"), "Загружаем предыдущую страницу", function () {
+          page -= 1;
+          return loadData();
+        });
+      });
+      el("mm-btn-next").addEventListener("click", function () {
+        if (page >= totalPages() || loading) return;
+        withBusy(el("mm-btn-next"), "Загружаем следующую страницу", function () {
+          page += 1;
+          return loadData();
+        });
+      });
+      el("mm-footer-limit").addEventListener("change", function () {
+        limit = Number(el("mm-footer-limit").value) || 100;
+        page = 1;
+        withBusy(el("mm-footer-limit"), "Меняем размер страницы", loadData);
+      });
+
+      (function filtersCollapse() {
+        var btn = el("dg-mm-filters-toggle");
+        var body = el("dg-mm-filters-body");
+        var key = "datagon_medmarket_filters_collapsed_v1";
+        if (!btn || !body) return;
+        function apply() {
+          var c = false;
+          try {
+            c = localStorage.getItem(key) === "1";
+          } catch (e) {}
+          body.style.display = c ? "none" : "";
+          btn.textContent = c ? "Развернуть" : "Свернуть";
+        }
+        apply();
+        btn.addEventListener("click", function () {
+          var hidden = body.style.display !== "none";
+          body.style.display = hidden ? "none" : "";
+          btn.textContent = hidden ? "Развернуть" : "Свернуть";
+          try {
+            localStorage.setItem(key, hidden ? "1" : "0");
+          } catch (e) {}
+          mmRefreshFloatingAfterLayout();
+        });
+      })();
+
+      (function tableCollapse() {
+        var btn = el("mm-table-toggle");
+        var body = el("mm-table-body");
+        var key = "dg.mm.table-card.collapsed.v1";
+        if (!btn || !body) return;
+        function apply() {
+          var c = false;
+          try {
+            c = localStorage.getItem(key) === "1";
+          } catch (e) {}
+          body.style.display = c ? "none" : "";
+          btn.textContent = c ? "Развернуть" : "Свернуть";
+        }
+        apply();
+        btn.addEventListener("click", function () {
+          var hidden = body.style.display !== "none";
+          body.style.display = hidden ? "none" : "";
+          btn.textContent = hidden ? "Развернуть" : "Свернуть";
+          try {
+            localStorage.setItem(key, hidden ? "1" : "0");
+          } catch (e) {}
+          mmRefreshFloatingAfterLayout();
+        });
+      })();
+
+      window.addEventListener("scroll", onScrollMmFloatingHeader, { passive: true });
+      window.addEventListener("resize", function () {
+        updateMmStickyTopVar();
+        mmRefreshFloatingAfterLayout();
+      });
+      (function bindMmScrollContainers() {
+        var mainOuter = document.querySelector(".app-main__outer");
+        if (mainOuter && mainOuter.addEventListener) {
+          mainOuter.addEventListener("scroll", onScrollMmFloatingHeader, { passive: true });
+        }
+        var horiz = document.querySelector(".dg-mm-table-scroll-outer, .dg-mp-table-scroll-outer");
+        if (horiz && horiz.addEventListener) {
+          horiz.addEventListener("scroll", onScrollMmFloatingHeader, { passive: true });
+        }
+      })();
+      if (document.fonts && document.fonts.ready) {
+        document.fonts.ready.then(function () {
+          updateMmStickyTopVar();
+          mmRefreshFloatingAfterLayout();
+        });
+      }
+      window.addEventListener("load", function () {
+        updateMmStickyTopVar();
+        mmRefreshFloatingAfterLayout();
+      });
+
+      try {
+        columnWidths = JSON.parse(localStorage.getItem(userColWidthKey()) || "{}") || {};
+      } catch (e) {
+        columnWidths = {};
+      }
+      bindHeaderSearchMirror();
+      bindFilterDirtyWatch();
+      commitFilters();
+      syncApplyDirtyUi();
+      updateMmStickyTopVar();
+      buildColgroupAndThead();
+      loadData();
+      pollSyncStatus();
+    })();
+  </script>

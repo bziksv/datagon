@@ -155,10 +155,12 @@ module.exports = (db, appSettings) => {
             auto_sync_marketplaces_enabled, auto_sync_marketplaces_time,
             auto_sync_huckster_enabled, auto_sync_huckster_time,
             auto_sync_db_size_enabled, auto_sync_db_size_time,
-            auto_sync_dimensions_enabled, auto_sync_dimensions_time,
+            auto_sync_export_ms_enabled,
+            auto_sync_dimensions_enabled, auto_sync_dimensions_time, auto_sync_dimensions_weekdays,
             auto_sync_mssales_enabled, auto_sync_mssales_time, auto_sync_mssales_days, auto_sync_mssales_weekdays,
             auto_sync_mssales_full_enabled, auto_sync_mssales_full_time, auto_sync_mssales_full_days, auto_sync_mssales_full_weekdays,
             auto_sync_purchase_formula_cache_enabled, auto_sync_purchase_formula_cache_time,
+            auto_sync_medmarket_enabled, auto_sync_medmarket_time, auto_sync_medmarket_weekdays,
             discover_max_sitemaps, discover_max_urls, discover_crawl_max_pages, discover_request_delay_ms,
             auth_session_ttl_days, auth_session_user_limit, auth_online_presence_minutes,
             fetch_proxy_enabled, fetch_proxy_list,
@@ -205,8 +207,14 @@ module.exports = (db, appSettings) => {
             if (auto_sync_huckster_time !== undefined) queries.push(['auto_sync_huckster_time', auto_sync_huckster_time || '06:00']);
             if (auto_sync_db_size_enabled !== undefined) queries.push(['auto_sync_db_size_enabled', auto_sync_db_size_enabled ? 1 : 0]);
             if (auto_sync_db_size_time !== undefined) queries.push(['auto_sync_db_size_time', auto_sync_db_size_time || '02:00']);
+            if (auto_sync_export_ms_enabled !== undefined) {
+                queries.push(['auto_sync_export_ms_enabled', auto_sync_export_ms_enabled ? 1 : 0]);
+            }
             if (auto_sync_dimensions_enabled !== undefined) queries.push(['auto_sync_dimensions_enabled', auto_sync_dimensions_enabled ? 1 : 0]);
             if (auto_sync_dimensions_time !== undefined) queries.push(['auto_sync_dimensions_time', auto_sync_dimensions_time || '21:00']);
+            if (auto_sync_dimensions_weekdays !== undefined) {
+                queries.push(['auto_sync_dimensions_weekdays', normalizeAutoSyncWeekdaysCsv(auto_sync_dimensions_weekdays)]);
+            }
             if (auto_sync_mssales_enabled !== undefined) queries.push(['auto_sync_mssales_enabled', auto_sync_mssales_enabled ? 1 : 0]);
             if (auto_sync_mssales_time !== undefined) queries.push(['auto_sync_mssales_time', auto_sync_mssales_time || '07:30']);
             if (auto_sync_mssales_days !== undefined) {
@@ -235,6 +243,15 @@ module.exports = (db, appSettings) => {
             }
             if (auto_sync_purchase_formula_cache_time !== undefined) {
                 queries.push(['auto_sync_purchase_formula_cache_time', auto_sync_purchase_formula_cache_time || '08:30']);
+            }
+            if (auto_sync_medmarket_enabled !== undefined) {
+                queries.push(['auto_sync_medmarket_enabled', auto_sync_medmarket_enabled ? 1 : 0]);
+            }
+            if (auto_sync_medmarket_time !== undefined) {
+                queries.push(['auto_sync_medmarket_time', auto_sync_medmarket_time || '09:00']);
+            }
+            if (auto_sync_medmarket_weekdays !== undefined) {
+                queries.push(['auto_sync_medmarket_weekdays', normalizeAutoSyncWeekdaysCsv(auto_sync_medmarket_weekdays)]);
             }
             if (discover_max_sitemaps !== undefined) queries.push(['discover_max_sitemaps', Math.max(10, Number(discover_max_sitemaps || 200))]);
             if (discover_max_urls !== undefined) queries.push(['discover_max_urls', Math.max(100, Number(discover_max_urls || 50000))]);
@@ -367,8 +384,10 @@ module.exports = (db, appSettings) => {
             if(auto_sync_huckster_time !== undefined) appSettings.auto_sync_huckster_time = auto_sync_huckster_time || '06:00';
             if(auto_sync_db_size_enabled !== undefined) appSettings.auto_sync_db_size_enabled = auto_sync_db_size_enabled ? 1 : 0;
             if(auto_sync_db_size_time !== undefined) appSettings.auto_sync_db_size_time = auto_sync_db_size_time || '02:00';
+            if(auto_sync_export_ms_enabled !== undefined) appSettings.auto_sync_export_ms_enabled = auto_sync_export_ms_enabled ? 1 : 0;
             if(auto_sync_dimensions_enabled !== undefined) appSettings.auto_sync_dimensions_enabled = auto_sync_dimensions_enabled ? 1 : 0;
             if(auto_sync_dimensions_time !== undefined) appSettings.auto_sync_dimensions_time = auto_sync_dimensions_time || '21:00';
+            if(auto_sync_dimensions_weekdays !== undefined) appSettings.auto_sync_dimensions_weekdays = normalizeAutoSyncWeekdaysCsv(auto_sync_dimensions_weekdays);
             if(auto_sync_mssales_enabled !== undefined) appSettings.auto_sync_mssales_enabled = auto_sync_mssales_enabled ? 1 : 0;
             if(auto_sync_mssales_time !== undefined) appSettings.auto_sync_mssales_time = auto_sync_mssales_time || '07:30';
             if(auto_sync_mssales_days !== undefined) appSettings.auto_sync_mssales_days = Math.max(1, Math.min(365 * 5, Number(auto_sync_mssales_days || 90)));
@@ -379,6 +398,9 @@ module.exports = (db, appSettings) => {
             if(auto_sync_mssales_full_weekdays !== undefined) appSettings.auto_sync_mssales_full_weekdays = normalizeAutoSyncWeekdaysCsv(auto_sync_mssales_full_weekdays);
             if(auto_sync_purchase_formula_cache_enabled !== undefined) appSettings.auto_sync_purchase_formula_cache_enabled = auto_sync_purchase_formula_cache_enabled ? 1 : 0;
             if(auto_sync_purchase_formula_cache_time !== undefined) appSettings.auto_sync_purchase_formula_cache_time = auto_sync_purchase_formula_cache_time || '08:30';
+            if(auto_sync_medmarket_enabled !== undefined) appSettings.auto_sync_medmarket_enabled = auto_sync_medmarket_enabled ? 1 : 0;
+            if(auto_sync_medmarket_time !== undefined) appSettings.auto_sync_medmarket_time = auto_sync_medmarket_time || '09:00';
+            if(auto_sync_medmarket_weekdays !== undefined) appSettings.auto_sync_medmarket_weekdays = normalizeAutoSyncWeekdaysCsv(auto_sync_medmarket_weekdays);
             if(discover_max_sitemaps !== undefined) appSettings.discover_max_sitemaps = Math.max(10, Number(discover_max_sitemaps || 200));
             if(discover_max_urls !== undefined) appSettings.discover_max_urls = Math.max(100, Number(discover_max_urls || 50000));
             if(discover_crawl_max_pages !== undefined) appSettings.discover_crawl_max_pages = Math.max(10, Number(discover_crawl_max_pages || 500));

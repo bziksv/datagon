@@ -117,8 +117,11 @@ let appSettings = {
      *  → runScheduledSyncMs (читает все ms_dimensions_measurements с
      *  override+uuid и шлёт PUT в /entity/{product|bundle}/{uuid}).
      */
+    /** Раздел «Экспорт в МС» на /settings.html: мастер-переключатель блока. */
+    auto_sync_export_ms_enabled: 0,
     auto_sync_dimensions_enabled: 0,
     auto_sync_dimensions_time: '21:00',
+    auto_sync_dimensions_weekdays: '',
     /** Авто-синхронизация продаж МС (entity/demand → ms_demand / ms_demand_position).
      *  По умолчанию выключена. `auto_sync_mssales_days` — окно периода в днях
      *  (от 1 до 5*365); 90 дней — баланс «3 квартала истории / приемлемая
@@ -137,6 +140,11 @@ let appSettings = {
     /** Batch: dg_formula_proposed_cache для дефолтной выборки закупок (`routes/purchase.js → runPurchaseFormulaCacheBatch`). */
     auto_sync_purchase_formula_cache_enabled: 0,
     auto_sync_purchase_formula_cache_time: '08:30',
+    /** Медмаркет: обновление каталога из ms_export (код Медмаркета не затирается). */
+    auto_sync_medmarket_enabled: 0,
+    auto_sync_medmarket_time: '09:00',
+    /** Пн=1…Вс=7, CSV; по умолчанию пн и чт (раз в ~2 недели — два дня в неделю). */
+    auto_sync_medmarket_weekdays: '1,4',
     /** Формула продаж / предлагаемого неснижаемого, LagerPlus-parity (см. `lib/datagonSalesFormula.js`, карточка товара). */
     sales_formula_replenishment_coef: 1 / 3,
     sales_formula_sales_window_days: 90,
@@ -170,6 +178,7 @@ const dimensionsRouterFactory = require('./routes/dimensions');
  *  стартовать синк без зависимости от Express-роутера. См. module.exports.triggerSync /
  *  getSyncState в routes/msSales.js. */
 const msSalesModule = require('./routes/msSales');
+const medmarketRouterFactory = require('./routes/medmarket');
 let pagesRouter = null;
 let matchesRouter = null;
 const autoSyncLastRunByTask = new Map();
@@ -329,8 +338,10 @@ async function initDB() {
             ['auto_sync_huckster_time','06:00'],
             ['auto_sync_db_size_enabled','1'],
             ['auto_sync_db_size_time','02:00'],
+            ['auto_sync_export_ms_enabled','0'],
             ['auto_sync_dimensions_enabled','0'],
             ['auto_sync_dimensions_time','21:00'],
+            ['auto_sync_dimensions_weekdays',''],
             ['auto_sync_mssales_enabled','0'],
             ['auto_sync_mssales_time','07:30'],
             ['auto_sync_mssales_days','90'],
@@ -341,6 +352,9 @@ async function initDB() {
             ['auto_sync_mssales_full_weekdays','7'],
             ['auto_sync_purchase_formula_cache_enabled','0'],
             ['auto_sync_purchase_formula_cache_time','08:30'],
+            ['auto_sync_medmarket_enabled','0'],
+            ['auto_sync_medmarket_time','09:00'],
+            ['auto_sync_medmarket_weekdays','1,4'],
             ['sales_formula_replenishment_coef','0.3333333333333333'],
             ['sales_formula_sales_window_days','90'],
             ['sales_formula_absence_analysis_days','210'],
@@ -1151,6 +1165,49 @@ async function getDiskUsageMetrics(forceRefresh = false) {
  * `already_running` — для этого task_type уже идёт запись в `auto_sync_runs` (runner внутри шага).
  * `already_queued` — такой тип уже в `autoSyncQueue` (дождитесь старта).
  */
+/**
+ * Сброс «зомби» в autoSyncRunIds: в памяти задача «running», а в БД строка уже
+ * interrupted/completed (типично после рестарта Node или сбоя без finish).
+ */
+async function reconcileAutoSyncRunIdsInMemory() {
+    if (!autoSyncRunIds.size) return;
+    try {
+        await ensureAutoSyncRunsTable();
+        for (const [taskType, runId] of [...autoSyncRunIds.entries()]) {
+            const [rows] = await db.query(
+                'SELECT status FROM auto_sync_runs WHERE id = ? LIMIT 1',
+                [runId],
+            );
+            const st = rows && rows[0] ? String(rows[0].status || '') : '';
+            if (st !== 'running') {
+                autoSyncRunIds.delete(taskType);
+            }
+        }
+    } catch (e) {
+        console.warn('[AUTO SYNC] reconcileAutoSyncRunIdsInMemory:', e.message || e);
+    }
+    if (typeof dimensionsRouterFactory.getScheduledSyncState === 'function') {
+        const ds = dimensionsRouterFactory.getScheduledSyncState();
+        if (!ds.active && autoSyncRunIds.has('dimensions')) {
+            autoSyncRunIds.delete('dimensions');
+        }
+    }
+}
+
+async function isAutoSyncTaskRunningInMemory(taskType) {
+    const type = String(taskType || '').trim();
+    if (!type) return false;
+    await reconcileAutoSyncRunIdsInMemory();
+    if (autoSyncRunIds.has(type)) return true;
+    if (
+        type === 'dimensions' &&
+        typeof dimensionsRouterFactory.getScheduledSyncState === 'function'
+    ) {
+        return Boolean(dimensionsRouterFactory.getScheduledSyncState().active);
+    }
+    return false;
+}
+
 function enqueueAutoSyncTask(taskType, triggerType = 'schedule') {
     if (!taskType) return { ok: false, reason: 'invalid_task' };
     const type = String(taskType || '').trim();
@@ -1278,6 +1335,23 @@ function buildAutoSyncTasksLiveForOverview() {
         out.mssales_full = msSalesLiveOrPending();
     }
 
+    if (hasRun('medmarket')) {
+        const st =
+            typeof medmarketRouterFactory.getSyncState === 'function'
+                ? medmarketRouterFactory.getSyncState()
+                : null;
+        if (st && st.active) {
+            out.medmarket = {
+                active: true,
+                processed: Number(st.processed || 0),
+                total: Number(st.total || 0),
+                message: String(st.message || ''),
+            };
+        } else {
+            out.medmarket = { active: true, pending: true, message: 'Ожидание обновления каталога Медмаркет…' };
+        }
+    }
+
     return out;
 }
 
@@ -1341,8 +1415,8 @@ async function closeStaleAutoSyncRunsOnStartup() {
              SET status = 'interrupted',
                  message = CONCAT(
                      TRIM(COALESCE(message, '')),
-                     CASE WHEN TRIM(COALESCE(message, '')) = '' THEN '' ELSE ' ' END,
-                     '(запись закрыта при старте сервера: предыдущий процесс не вызвал финиш; если синк шёл — проверьте МойСклад и логи)'
+                     CASE WHEN TRIM(COALESCE(message, '')) = '' THEN '' ELSE ' · ' END,
+                     '[прервано: перезапуск Node]'
                  ),
                  finished_at = NOW()
              WHERE status = 'running' AND finished_at IS NULL`
@@ -1395,6 +1469,7 @@ async function processAutoSyncQueue() {
     if (autoSyncRunnerActive) return;
     autoSyncRunnerActive = true;
     try {
+        await reconcileAutoSyncRunIdsInMemory();
         while (autoSyncQueue.length > 0) {
             const item = autoSyncQueue.shift();
             const task = typeof item === 'string' ? item : item?.type;
@@ -1519,16 +1594,17 @@ async function processAutoSyncQueue() {
                      * подхватывает его как обычный auto_sync раздел.
                      */
                     const dimsRunId = autoSyncRunIds.get('dimensions');
+                    let lastDimProgressMsgAt = 0;
                     const dimHooks =
                         dimsRunId > 0
                             ? {
-                                  onRunMessage: async (msg) => {
-                                      try {
-                                          await db.query('UPDATE auto_sync_runs SET message = ? WHERE id = ?', [
-                                              String(msg || '').slice(0, 2000),
-                                              dimsRunId,
-                                          ]);
-                                      } catch (_) {}
+                                  /** Не блокировать балк габаритов ожиданием удалённой БД (раньше UPDATE каждые 5 позиций). */
+                                  onRunMessage: (msg) => {
+                                      const now = Date.now();
+                                      if (now - lastDimProgressMsgAt < 2000) return Promise.resolve();
+                                      lastDimProgressMsgAt = now;
+                                      touchAutoSyncRunMessage('dimensions', msg).catch(() => {});
+                                      return Promise.resolve();
                                   },
                               }
                             : undefined;
@@ -1665,6 +1741,36 @@ async function processAutoSyncQueue() {
                 }
                 await finishAutoSyncRun('purchase_formula_cache', statusPfc, messagePfc);
                 console.log('[AUTO SYNC] Queue done: purchase_formula_cache — ' + statusPfc);
+            } else if (task === 'medmarket') {
+                console.log('[AUTO SYNC] Queue start: medmarket');
+                await startAutoSyncRun('medmarket', triggerType);
+                let statusMm = 'completed';
+                let messageMm = '';
+                try {
+                    if (typeof medmarketRouterFactory.triggerSync !== 'function') {
+                        throw new Error('triggerSync недоступен');
+                    }
+                    const startRes = await medmarketRouterFactory.triggerSync(db);
+                    if (startRes && startRes.started === false && startRes.reason === 'already_running') {
+                        messageMm = 'Каталог Медмаркет уже обновлялся';
+                    } else {
+                        const st =
+                            typeof medmarketRouterFactory.getSyncState === 'function'
+                                ? medmarketRouterFactory.getSyncState()
+                                : {};
+                        if (st.error) {
+                            statusMm = 'failed';
+                            messageMm = ('Ошибка: ' + st.error).slice(0, 480);
+                        } else {
+                            messageMm = String(st.message || 'Каталог Медмаркет обновлён').slice(0, 480);
+                        }
+                    }
+                } catch (e) {
+                    statusMm = 'failed';
+                    messageMm = ('Ошибка Медмаркет: ' + (e && e.message ? e.message : e)).slice(0, 480);
+                }
+                await finishAutoSyncRun('medmarket', statusMm, messageMm);
+                console.log('[AUTO SYNC] Queue done: medmarket — ' + statusMm);
             } else if (task === 'mssales') {
                 console.log('[AUTO SYNC] Queue start: mssales');
                 await startAutoSyncRun('mssales', triggerType);
@@ -1760,6 +1866,9 @@ async function processAutoSyncQueue() {
         if (autoSyncRunIds.has('purchase_formula_cache')) {
             await finishAutoSyncRun('purchase_formula_cache', 'failed', e.message || 'Ошибка очереди');
         }
+        if (autoSyncRunIds.has('medmarket')) {
+            await finishAutoSyncRun('medmarket', 'failed', e.message || 'Ошибка очереди');
+        }
     } finally {
         autoSyncRunnerActive = false;
         /** Пока runner занят, новые задачи только копятся в очереди; без повторного вызова они бы не стартовали. */
@@ -1805,8 +1914,11 @@ function startAutoSyncScheduler() {
                 },
                 {
                     type: 'dimensions',
-                    enabled: Number(appSettings.auto_sync_dimensions_enabled || 0) === 1,
-                    time: String(appSettings.auto_sync_dimensions_time || '21:00').slice(0, 5)
+                    enabled:
+                        Number(appSettings.auto_sync_export_ms_enabled || 0) === 1 &&
+                        Number(appSettings.auto_sync_dimensions_enabled || 0) === 1,
+                    time: String(appSettings.auto_sync_dimensions_time || '21:00').slice(0, 5),
+                    weekdays: parseAutoSyncWeekdaysMon17(appSettings.auto_sync_dimensions_weekdays)
                 },
                 {
                     type: 'mssales',
@@ -1824,6 +1936,12 @@ function startAutoSyncScheduler() {
                     type: 'purchase_formula_cache',
                     enabled: Number(appSettings.auto_sync_purchase_formula_cache_enabled || 0) === 1,
                     time: String(appSettings.auto_sync_purchase_formula_cache_time || '08:30').slice(0, 5)
+                },
+                {
+                    type: 'medmarket',
+                    enabled: Number(appSettings.auto_sync_medmarket_enabled || 0) === 1,
+                    time: String(appSettings.auto_sync_medmarket_time || '09:00').slice(0, 5),
+                    weekdays: parseAutoSyncWeekdaysMon17(appSettings.auto_sync_medmarket_weekdays)
                 }
             ];
             for (const t of tasks) {
@@ -1859,7 +1977,14 @@ function startUnifiedTaskWatchdog() {
 }
 
 // Инициализация БД и запуск сервера
-initDB().then(() => {
+initDB().then(async () => {
+    /**
+     * Сразу после подключения к БД — закрыть «зомби» running из прошлого процесса.
+     * Нельзя откладывать на DATAGON_STARTUP_DEFER_MS: иначе ручной «Запустить сейчас»
+     * в первую минуту после старта получает interrupted (см. #190: Queue start → через 60 с closeStale).
+     */
+    await closeStaleAutoSyncRunsOnStartup();
+
     // Слушаем порт сразу после БД: регистрация роутов ниже может занимать секунды,
     // а тяжёлый post-init/фон не должен держать пользователя на «белой» странице.
     const publicDirEarly = path.join(__dirname, 'public');
@@ -1947,6 +2072,18 @@ initDB().then(() => {
             if (!allowed.has(task)) {
                 return res.status(400).json({ success: false, error: 'Некорректный тип автосинхронизации' });
             }
+            await reconcileAutoSyncRunIdsInMemory();
+            if (await isAutoSyncTaskRunningInMemory(task)) {
+                return res.json({
+                    success: true,
+                    queued: false,
+                    skip_reason: 'already_running',
+                    task,
+                    queue: autoSyncQueue.map((item) => (typeof item === 'string' ? item : item?.type)).filter(Boolean),
+                    runner_active: Boolean(autoSyncRunnerActive),
+                    running_tasks: Array.from(autoSyncRunIds.keys()),
+                });
+            }
             const enq = enqueueAutoSyncTask(task, 'manual');
             processAutoSyncQueue();
             return res.json({
@@ -2027,6 +2164,7 @@ initDB().then(() => {
 
     app.get('/api/processes/overview', async (req, res) => {
         try {
+            await reconcileAutoSyncRunIdsInMemory();
             const selectedSiteIdRaw = req.query.my_site_id;
             const selectedSiteId = selectedSiteIdRaw ? parseInt(selectedSiteIdRaw, 10) : null;
 
@@ -2327,6 +2465,7 @@ initDB().then(() => {
         console.log(`[startup] тяжёлые фоновые задачи отложены на ${STARTUP_DEFER_MS} мс (DATAGON_STARTUP_DEFER_MS)`);
     }
     app.use('/api/ms', moyskladRouterFactory(db, appSettings, config));
+    app.use('/api/medmarket', medmarketRouterFactory(db));
     app.use('/api/purchase', purchaseRouterFactory(db, appSettings));
     app.use('/api/suppliers', suppliersRouterFactory(db, appSettings));
     app.use('/api/supplier-analysis', supplierAnalysisRouterFactory(db));
@@ -2540,16 +2679,12 @@ initDB().then(() => {
         cleanupAutoSyncRunsByRetentionDays(appSettings.auto_sync_runs_retention_days).catch(() => {});
     }, 12 * 60 * 60 * 1000);
     const bootAutoSync = () => {
-        closeStaleAutoSyncRunsOnStartup()
-            .catch((e) => console.warn('[AUTO SYNC]', e.message || e))
-            .finally(() => {
-                startAutoSyncScheduler();
-                startUnifiedTaskWatchdog();
-                closeAncientRunningAutoSyncRuns().catch(() => {});
-                setInterval(() => {
-                    closeAncientRunningAutoSyncRuns().catch(() => {});
-                }, 6 * 60 * 60 * 1000);
-            });
+        startAutoSyncScheduler();
+        startUnifiedTaskWatchdog();
+        closeAncientRunningAutoSyncRuns().catch(() => {});
+        setInterval(() => {
+            closeAncientRunningAutoSyncRuns().catch(() => {});
+        }, 6 * 60 * 60 * 1000);
     };
     if (STARTUP_DEFER_MS > 0) {
         setTimeout(bootAutoSync, STARTUP_DEFER_MS);

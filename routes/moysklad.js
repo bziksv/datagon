@@ -31,6 +31,8 @@ const MS_ATTRS = [
     '!!Высота (см) КОРОБКА станд. уп.',
     '!!Высота (см) Пакет!',
     '!!Вес (кг)',
+    /** Медмаркет — пользовательский атрибут на карточке товара/комплекта. */
+    'Код товара для медмаркета',
 ];
 
 const jobState = {
@@ -761,6 +763,27 @@ async function ensureMsMinStockColumn(db) {
     msMinStockColumnReady = true;
 }
 
+let msMedmarketColumnReady = false;
+async function ensureMsMedmarketProductCodeColumn(db) {
+    if (msMedmarketColumnReady) return;
+    const [rows] = await db.query(`
+        SELECT COUNT(*) AS cnt
+        FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'ms_export'
+          AND COLUMN_NAME = 'medmarket_product_code'
+    `);
+    if (!rows[0]?.cnt) {
+        await db.query(
+            'ALTER TABLE ms_export ADD COLUMN medmarket_product_code VARCHAR(255) NULL DEFAULT NULL',
+        );
+        await db.query(
+            'ALTER TABLE ms_export ADD INDEX idx_ms_export_medmarket_code (medmarket_product_code(64))',
+        );
+    }
+    msMedmarketColumnReady = true;
+}
+
 function buildExportFilters(query, whereSql, whereParams) {
     const {
         search = '',
@@ -1097,6 +1120,7 @@ async function syncMsExport(db, config, settings = {}) {
 
     await ensureMsArchivedColumn(db);
     await ensureMsMinStockColumn(db);
+    await ensureMsMedmarketProductCodeColumn(db);
     pruneMsSyncLogOldRows(db).catch(() => {});
     addLog('Старт синхронизации');
     addLog('Этап 1/6: метаданные атрибутов');
@@ -1327,6 +1351,7 @@ async function syncMsExport(db, config, settings = {}) {
             stock,
             String(stockDays),
             toBinaryFlag(item.archived),
+            String(getAttrValue(item, attrsMap, 'Код товара для медмаркета') || ''),
             tsLabel,
         ]);
         jobState.processed += 1;
@@ -1368,7 +1393,7 @@ async function syncMsExport(db, config, settings = {}) {
             INSERT INTO ms_export (
                 code, name, manager, content_manager, uuid, type, stock_position, no_longer_cooperation,
                 price_comment, vat, vat_on_product, supplier, supplier2, automation_price,
-                packing_standard, packing_own_box, packing_weight, sale_price, buy_price, min_stock, stock, stock_days, is_archived, updated_label
+                packing_standard, packing_own_box, packing_weight, sale_price, buy_price, min_stock, stock, stock_days, is_archived, medmarket_product_code, updated_label
             ) VALUES ?
         `;
         let insertedRows = 0;
@@ -2110,8 +2135,8 @@ function createMoyskladRouter(db, settings, config) {
                 'stock_position', 'no_longer_cooperation', 'min_stock', 'stock', 'stock_days',
                 'price_comment', 'vat', 'vat_on_product', 'buy_price', 'sale_price',
                 'supplier', 'supplier2', 'automation_price',
-                'packing_standard', 'packing_own_box', 'packing_weight', 'updated_label'
-                , 'uuid', 'is_archived'
+                'packing_standard', 'packing_own_box', 'packing_weight', 'updated_label',
+                'uuid', 'is_archived', 'medmarket_product_code'
             ]);
             const sortField = allowedSortFields.has(String(sort_by)) ? String(sort_by) : 'code';
             const sortDirection = String(sort_dir).toLowerCase() === 'desc' ? 'DESC' : 'ASC';

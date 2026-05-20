@@ -1500,6 +1500,8 @@ async function syncCodeToMs(db, code, options) {
     const persistNoteSuffix = opts.persistNoteSuffix
         ? String(opts.persistNoteSuffix).slice(0, 200)
         : '';
+    const bulkScheduled = Boolean(opts.bulkScheduled);
+    const preloadedRow = opts.preloadedRow && typeof opts.preloadedRow === 'object' ? opts.preloadedRow : null;
 
     let persistedFields = [];
     if (inlineMeasurement) {
@@ -1522,17 +1524,22 @@ async function syncCodeToMs(db, code, options) {
         }
     }
 
-    const [rows] = await db.query(
-        `SELECT mse.uuid AS uuid, mse.type AS type, mse.name AS name,
-                mdm.length_cm, mdm.width_cm, mdm.height_box_cm, mdm.height_bag_cm,
-                mdm.weight_kg, mdm.packing_type
-         FROM ms_export mse
-         LEFT JOIN ms_dimensions_measurements mdm ON mdm.code = mse.code
-         WHERE mse.code = ?
-         LIMIT 1`,
-        [cleanCode],
-    );
-    const r = (Array.isArray(rows) && rows[0]) || null;
+    let r = null;
+    if (preloadedRow) {
+        r = preloadedRow;
+    } else {
+        const [rows] = await db.query(
+            `SELECT mse.uuid AS uuid, mse.type AS type, mse.name AS name,
+                    mdm.length_cm, mdm.width_cm, mdm.height_box_cm, mdm.height_bag_cm,
+                    mdm.weight_kg, mdm.packing_type
+             FROM ms_export mse
+             LEFT JOIN ms_dimensions_measurements mdm ON mdm.code = mse.code
+             WHERE mse.code = ?
+             LIMIT 1`,
+            [cleanCode],
+        );
+        r = (Array.isArray(rows) && rows[0]) || null;
+    }
     if (!r) {
         return {
             success: false,
@@ -1563,7 +1570,7 @@ async function syncCodeToMs(db, code, options) {
             parsedToPersist[k] = parsedDefaults[k];
         }
     }
-    if (Object.keys(parsedToPersist).length > 0) {
+    if (Object.keys(parsedToPersist).length > 0 && !bulkScheduled) {
         try {
             const parsedPersisted = await persistMeasurementFields(db, {
                 code: cleanCode,
@@ -1608,16 +1615,18 @@ async function syncCodeToMs(db, code, options) {
     }
 
     if (result.ok && Array.isArray(result.sent_fields) && result.sent_fields.length > 0) {
-        const note = 'sync_ms entity=' + result.entity_kind + ' http=' + (result.ms_status || 200)
-            + (persistNoteSuffix ? ' ' + persistNoteSuffix : '');
-        for (const f of result.sent_fields) {
-            const v = measurement[f];
-            await db.query(
-                `INSERT INTO ms_dimensions_log
-                    (code, field, old_value, new_value, action, changed_by_user_id, changed_by_name, note)
-                 VALUES (?, ?, NULL, ?, 'sync_ms', ?, ?, ?)`,
-                [cleanCode, f, v != null ? String(v) : null, actorId, actorName, note],
-            );
+        if (!bulkScheduled) {
+            const note = 'sync_ms entity=' + result.entity_kind + ' http=' + (result.ms_status || 200)
+                + (persistNoteSuffix ? ' ' + persistNoteSuffix : '');
+            for (const f of result.sent_fields) {
+                const v = measurement[f];
+                await db.query(
+                    `INSERT INTO ms_dimensions_log
+                        (code, field, old_value, new_value, action, changed_by_user_id, changed_by_name, note)
+                     VALUES (?, ?, NULL, ?, 'sync_ms', ?, ?, ?)`,
+                    [cleanCode, f, v != null ? String(v) : null, actorId, actorName, note],
+                );
+            }
         }
     } else if (!result.ok) {
         /** Одна строка на неуспешный push в МС — для «Процессы» и `ms_dimensions_log`. */
@@ -1758,7 +1767,9 @@ async function runScheduledDimensionsSyncMs(db, triggerType, hooks) {
     try {
         await ensureSchema(db);
         const [rows] = await db.query(
-            `SELECT mdm.code, mse.uuid, mse.name, mse.type
+            `SELECT mdm.code, mse.uuid, mse.name, mse.type,
+                    mdm.length_cm, mdm.width_cm, mdm.height_box_cm, mdm.height_bag_cm,
+                    mdm.weight_kg, mdm.packing_type
              FROM ms_dimensions_measurements mdm
              LEFT JOIN ms_export mse ON mse.code = mdm.code
              WHERE (
@@ -1771,19 +1782,32 @@ async function runScheduledDimensionsSyncMs(db, triggerType, hooks) {
              )
              ORDER BY mdm.measured_at DESC, mdm.code ASC`,
         );
-        const tasks = (Array.isArray(rows) ? rows : []).map((r) => ({
-            code: String(r.code || ''),
-            uuid: r.uuid ? String(r.uuid).trim() : '',
-            name: r.name != null ? String(r.name) : '',
-            type: r.type != null ? String(r.type) : '',
-        })).filter((t) => t.code);
+        const tasks = (Array.isArray(rows) ? rows : [])
+            .map((r) => ({
+                code: String(r.code || ''),
+                uuid: r.uuid ? String(r.uuid).trim() : '',
+                name: r.name != null ? String(r.name) : '',
+                type: r.type != null ? String(r.type) : '',
+                preloadedRow: {
+                    uuid: r.uuid,
+                    type: r.type,
+                    name: r.name,
+                    length_cm: r.length_cm,
+                    width_cm: r.width_cm,
+                    height_box_cm: r.height_box_cm,
+                    height_bag_cm: r.height_bag_cm,
+                    weight_kg: r.weight_kg,
+                    packing_type: r.packing_type,
+                },
+            }))
+            .filter((t) => t.code);
         dimensionsScheduledState.total = tasks.length;
 
         if (hookMsg) {
             await hookMsg(
                 'Габариты МС: старт; позиций ' +
                     tasks.length +
-                    (tasks.length ? ' (обновление этой строки каждые 5 позиций + 60 мс пауза к МС)' : '')
+                    (tasks.length ? ' (прогресс в processes ~раз в 50 позиций; 60 мс пауза к МС)' : '')
             );
         }
 
@@ -1803,6 +1827,8 @@ async function runScheduledDimensionsSyncMs(db, triggerType, hooks) {
                         actorId: null,
                         actorName,
                         persistNoteSuffix,
+                        bulkScheduled: true,
+                        preloadedRow: t.preloadedRow,
                     });
                     if (r && r.success) {
                         dimensionsScheduledState.ok++;
@@ -1828,7 +1854,7 @@ async function runScheduledDimensionsSyncMs(db, triggerType, hooks) {
             }
             if (
                 hookMsg &&
-                (i % 5 === 4 || i === tasks.length - 1 || dimensionsScheduledState.total === 0)
+                (i % 50 === 49 || i === tasks.length - 1 || dimensionsScheduledState.total === 0)
             ) {
                 await hookMsg(
                     'Габариты МС: ' +

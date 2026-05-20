@@ -1,0 +1,2008 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, shrink-to-fit=no" />
+  <script>
+    (function () {
+      try {
+        if (localStorage.getItem("datagon_theme_font_source_sans_3_v1") === "1") {
+          document.documentElement.classList.add("dg-font-source-sans-3");
+          var l = document.createElement("link");
+          l.id = "dg-font-source-sans-3-link";
+          l.rel = "stylesheet";
+          l.href =
+            "https://fonts.googleapis.com/css2?family=Source+Sans+3:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap";
+          document.head.appendChild(l);
+        }
+      } catch (e) {}
+    })();
+  </script>
+  <title>Медмаркет — Датагон</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="stylesheet" href="/static/css/main.989b22a9.css" />
+    <style>
+    body.datagon-vanilla-body[data-dg-active-nav="medmarket"] .app-main__outer,
+    body.datagon-vanilla-body[data-dg-active-nav="medmarket"] .app-main__inner,
+    body.datagon-vanilla-body[data-dg-active-nav="medmarket"] .main-card.card,
+    body.datagon-vanilla-body[data-dg-active-nav="medmarket"] .main-card.card > .card-body {
+      min-width: 0;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+    .dg-mm-table {
+      font-size: 0.8rem;
+      line-height: 1.25;
+      font-variant-numeric: tabular-nums;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="medmarket"] .dg-mm-table-scroll-outer,
+    body.datagon-vanilla-body[data-dg-active-nav="medmarket"] .dg-mp-table-scroll-outer {
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+      box-sizing: border-box;
+      overflow-x: auto;
+      overflow-y: visible;
+      -webkit-overflow-scrolling: touch;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="medmarket"]
+      .dg-mm-table-scroll-outer
+      > .datagon-my-products-table-wrap.table-responsive,
+    body.datagon-vanilla-body[data-dg-active-nav="medmarket"]
+      .dg-mp-table-scroll-outer
+      > .datagon-my-products-table-wrap.table-responsive {
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+      box-sizing: border-box;
+      overflow: visible !important;
+      max-height: none !important;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="medmarket"]
+      .dg-mm-table-scroll-outer
+      > .datagon-my-products-table-wrap
+      > table,
+    body.datagon-vanilla-body[data-dg-active-nav="medmarket"]
+      .dg-mp-table-scroll-outer
+      > .datagon-my-products-table-wrap
+      > table {
+      transform: none !important;
+      filter: none !important;
+      perspective: none !important;
+    }
+    /* Как my-products / moysklad: sticky top 0 на th; сдвиг под app-header — transform на thead в JS */
+    .dg-mm-table thead th {
+      position: sticky !important;
+      top: 0 !important;
+      z-index: 25 !important;
+      background: #f8f9fa !important;
+      border-right: 1px solid #e6e9ee !important;
+      vertical-align: middle;
+      text-align: left;
+      user-select: text;
+      -webkit-user-select: text;
+      cursor: pointer;
+    }
+    .dg-mm-table tbody td {
+      border-right: 1px solid #f3f5f8;
+      vertical-align: middle;
+    }
+    .dg-mm-sortable.sorted-asc::after {
+      content: " ▲";
+      font-size: 0.65em;
+      opacity: 0.6;
+    }
+    .dg-mm-sortable.sorted-desc::after {
+      content: " ▼";
+      font-size: 0.65em;
+      opacity: 0.6;
+    }
+    .dg-mm-mm-input {
+      min-width: 120px;
+      max-width: 100%;
+    }
+    #mm-apply.dg-flt-dirty::after {
+      content: " •";
+      font-weight: 700;
+    }
+    .datagon-columns-toolbox {
+      margin: 0 0 10px 0;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      background: #fafbfc;
+      padding: 8px;
+    }
+    .datagon-columns-panel {
+      margin-top: 8px;
+      border-top: 1px dashed #d1d5db;
+      padding-top: 8px;
+      display: none;
+    }
+    .datagon-columns-panel.open {
+      display: block;
+    }
+    .dg-ms-widths-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 8px;
+    }
+    .dg-ms-widths-grid label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0;
+      font-size: 12px;
+    }
+    .dg-mm-col-resize {
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 8px;
+      height: 100%;
+      cursor: col-resize;
+      user-select: none;
+    }
+    .dg-mm-header-search .form-control {
+      font-size: 0.875rem;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="medmarket"] .dg-mm-name-link {
+      color: #0b5ed7;
+      text-decoration: none;
+      font-weight: 500;
+      word-break: break-word;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="medmarket"] .dg-mm-name-link:hover {
+      text-decoration: underline;
+    }
+  </style>
+
+  <style>
+    /* Один список сайдбара: «ArchitectUI меню» у нижнего края области навигации, без второго блока/ul */
+    .dg-sidebar-nav-scroll {
+      display: flex;
+      flex-direction: column;
+    }
+    .dg-sidebar-nav-measure {
+      flex: 1 1 auto;
+      min-height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+    .dg-sidebar-nav-measure .datagon-nav-shell,
+    .dg-sidebar-nav-measure .vertical-nav-menu {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    /* Только корневой список меню: иначе вложенный ul.metismenu-container (под «Маркетплейсы» и т.п.)
+       получает min-height:100% + flex и растягивается на всю колонку — вертикальная линия темы залезает на соседние пункты. */
+    .dg-sidebar-nav-measure .vertical-nav-menu > .metismenu-container {
+      display: flex;
+      flex-direction: column;
+      flex: 1 1 auto;
+      min-height: 100%;
+      margin-bottom: 0;
+    }
+    /*
+      Подменю «Маркетплейсы»: ArchitectUI скрывает .metismenu-icon у подпунктов и даёт малый padding.
+      Не трогаем узкую полоску без hover — большой padding раздувает li и смещает «left:50%» у всех иконок колонки.
+      При развороте по hover из closed-sidebar класс closed-sidebar не снимается — нужен отдельный селектор с .app-sidebar:hover.
+    */
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible,
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon {
+      display: block !important;
+    }
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link,
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link {
+      padding-left: 3.4375rem !important;
+      position: relative;
+      /* Длинные подписи подпунктов («Проблемы с товарами», «Яндекс Маркет»)
+         не должны обрезаться ellipsis: разрешаем перенос на 2 строки и
+         выравниваем иконку по верхней строке. */
+      white-space: normal !important;
+      line-height: 1.25;
+      align-items: flex-start;
+      padding-top: 0.45rem !important;
+      padding-bottom: 0.45rem !important;
+      padding-right: 0.5rem !important;
+      min-height: 2rem;
+      height: auto !important;
+    }
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible,
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon {
+      top: 0.55rem !important;
+    }
+    .dg-sidebar-architect-item {
+      margin-top: auto;
+    }
+    .dg-sidebar-architect-item .metismenu-link {
+      border-top: 1px solid rgba(0, 0, 0, 0.07);
+      padding-top: 0.65rem;
+    }
+    /* Пункты сайдбара с доступом как у журнала активности (admin / право на пользователей) */
+    .dg-sidebar-nav-restricted .metismenu-link {
+      display: inline-flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.15rem 0.35rem;
+    }
+    .dg-sidebar-nav-restricted .dg-nav-restricted-icon {
+      font-size: 0.7rem;
+      opacity: 0.72;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+    @media (max-width: 991.98px) {
+      /* На мобильном layout не должен наследовать desktop-сдвиг fixed/closed sidebar. */
+      .datagon-vanilla-shell .app-main__outer {
+        margin-left: 0 !important;
+      }
+      .datagon-vanilla-shell .app-footer {
+        left: 0 !important;
+        width: 100% !important;
+      }
+      .datagon-vanilla-shell .app-footer .app-footer__inner {
+        margin-left: 0 !important;
+      }
+      /* На телефонах слой мобильного меню должен перекрывать фиксированный футер. */
+      .datagon-vanilla-shell .sidebar-mobile-overlay {
+        z-index: 1090;
+      }
+      .datagon-vanilla-shell .app-sidebar {
+        z-index: 1100;
+      }
+      .datagon-vanilla-shell .app-footer {
+        z-index: 1080;
+      }
+      .datagon-vanilla-shell.sidebar-mobile-open .app-footer {
+        pointer-events: none;
+        opacity: 0.25;
+      }
+    }
+    /* Source Sans 3 — opt-in из «Параметры макета» (все экраны, в т.ч. Windows). */
+    html.dg-font-source-sans-3 .datagon-vanilla-shell {
+      --bs-body-font-family: "Source Sans 3", -apple-system, BlinkMacSystemFont, "Segoe UI",
+        Roboto, "Helvetica Neue", Arial, sans-serif;
+      --bs-font-sans-serif: var(--bs-body-font-family);
+      font-family: var(--bs-body-font-family);
+    }
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .btn,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .form-control,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .form-select,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .table,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .card,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .page-title-heading,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .vertical-nav-menu a,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .app-header,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .app-sidebar,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .app-main,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .app-footer {
+      font-family: inherit;
+    }
+  </style>
+</head>
+<body class="datagon-vanilla-body" data-dg-active-nav="medmarket">
+  <div class="app-container app-theme-white datagon-shell datagon-vanilla-shell fixed-header fixed-sidebar fixed-footer">
+    <div class="app-header header-shadow">
+      <div class="app-header__logo">
+        <button type="button" class="logo-src datagon-brand" onclick="location.href='/dashboard.html'" title="Открыть дашборд" style="border:0;background:transparent;padding:0;cursor:pointer">Датагон</button>
+        <div class="header__pane ms-auto">
+          <div>
+            <button type="button" class="hamburger hamburger--slider dg-toggle-sidebar" aria-label="Свернуть боковую панель" title="Свернуть боковую панель">
+              <span class="hamburger-box"><span class="hamburger-inner"></span></span>
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="app-header__mobile-menu">
+        <div>
+          <button type="button" class="hamburger hamburger--slider dg-toggle-mobile-sidebar" aria-label="Открыть меню">
+            <span class="hamburger-box"><span class="hamburger-inner"></span></span>
+          </button>
+        </div>
+      </div>
+      <div class="app-header__menu">
+        <span>
+          <button type="button" class="btn btn-primary btn-sm btn-icon btn-icon-only dg-toggle-header-small" aria-label="Доп. меню шапки">
+            <div class="btn-icon-wrapper">
+              <i class="pe-7s-more" style="font-size:1.1rem;line-height:1"></i>
+            </div>
+          </button>
+        </span>
+      </div>
+      <div class="app-header__content">
+        <div class="app-header-left">
+          <div class="search-wrapper">
+            <div class="input-holder">
+              <input type="text" class="search-input" placeholder="Type to search" autocomplete="off" />
+              <button type="button" class="search-icon dg-vanilla-search-docs" aria-label="Открыть документацию" title="Документация">
+                <span></span>
+              </button>
+            </div>
+            <button type="button" class="btn-close dg-vanilla-search-close" aria-label="Закрыть поиск"></button>
+          </div>
+        </div>
+        <div class="app-header-right">
+          <div class="ui-theme-settings ui-theme-settings--header">
+            <button type="button" class="btn btn-link btn-open-options btn-open-options--header" id="TooltipDemoVanilla" aria-label="Параметры темы" title="Параметры темы (полная версия в React-панели)">
+              <i class="pe-7s-config" style="font-size:1.35rem;color:#3f6ad8;line-height:1"></i>
+            </button>
+            <div class="theme-settings__inner">
+              <div class="theme-settings__options-wrapper">
+                <h3 class="themeoptions-heading">Параметры макета</h3>
+                <div class="list-group">
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Фиксированная шапка</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-fixed-header" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Тень шапки</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-header-shadow" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Фиксированный сайдбар</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-fixed-sidebar" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Тень сайдбара</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-sidebar-shadow" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Фиксированный футер</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-fixed-footer" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Шрифт Source Sans 3</h5>
+                    <label class="switch mb-0" title="Удобнее на Windows; сохраняется для всех страниц панели"><input type="checkbox" id="dg-theme-font-source-sans-3"><span class="slider round"></span></label>
+                  </div>
+                </div>
+
+                <h3 class="themeoptions-heading">Параметры заголовка страницы</h3>
+                <div class="list-group">
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Иконка заголовка</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-title-icon" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Подзаголовок страницы</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-title-subheading" checked><span class="slider round"></span></label>
+                  </div>
+                </div>
+
+                <h3 class="themeoptions-heading">Цветовые схемы</h3>
+                <div class="list-group">
+                  <div class="list-group-item">
+                    <h5 class="mb-2">Цветовая схема макета</h5>
+                    <div class="theme-settings-swatches">
+                      <div class="swatch-holder-lg active dg-theme-color-scheme" data-color-scheme="white" style="background:#fff;border:1px solid #dee2e6"></div>
+                      <div class="swatch-holder-lg dg-theme-color-scheme" data-color-scheme="gray" style="background:#868e96"></div>
+                    </div>
+                  </div>
+                </div>
+
+                <h3 class="themeoptions-heading">Параметры сайдбара</h3>
+                <div class="list-group">
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Фоновое изображение сайдбара</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-sidebar-bg-image"><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item">
+                    <h5 class="mb-2">Цвета сайдбара</h5>
+                    <div class="theme-settings-swatches">
+                      <div class="swatch-holder bg-primary dg-theme-sidebar-color" data-color-class="bg-primary"></div><div class="swatch-holder bg-danger dg-theme-sidebar-color" data-color-class="bg-danger"></div><div class="swatch-holder bg-warning dg-theme-sidebar-color" data-color-class="bg-warning"></div><div class="swatch-holder bg-success dg-theme-sidebar-color" data-color-class="bg-success"></div>
+                      <div class="swatch-holder bg-info dg-theme-sidebar-color" data-color-class="bg-info"></div><div class="swatch-holder bg-secondary dg-theme-sidebar-color" data-color-class="bg-secondary"></div><div class="swatch-holder bg-dark dg-theme-sidebar-color" data-color-class="bg-dark"></div><div class="swatch-holder dg-theme-sidebar-color" data-color-class="bg-plum-plate" style="background:#667eea"></div>
+                      <div class="swatch-holder dg-theme-sidebar-color" data-color-class="bg-arielle-smile" style="background:#16d9e3"></div><div class="swatch-holder dg-theme-sidebar-color" data-color-class="bg-ripe-malin" style="background:#f093fb"></div><div class="swatch-holder dg-theme-sidebar-color" data-color-class="bg-night-fade" style="background:#a18cd1"></div><div class="swatch-holder dg-theme-sidebar-color" data-color-class="bg-malibu-beach" style="background:#4facfe"></div>
+                    </div>
+                  </div>
+                </div>
+
+                <h3 class="themeoptions-heading">Параметры шапки</h3>
+                <div class="list-group">
+                  <div class="list-group-item">
+                    <h5 class="mb-2">Цвета шапки</h5>
+                    <div class="theme-settings-swatches">
+                      <div class="swatch-holder bg-primary dg-theme-header-color" data-color-class="bg-primary"></div><div class="swatch-holder bg-danger dg-theme-header-color" data-color-class="bg-danger"></div><div class="swatch-holder bg-warning dg-theme-header-color" data-color-class="bg-warning"></div><div class="swatch-holder bg-success dg-theme-header-color" data-color-class="bg-success"></div>
+                      <div class="swatch-holder bg-info dg-theme-header-color" data-color-class="bg-info"></div><div class="swatch-holder bg-secondary dg-theme-header-color" data-color-class="bg-secondary"></div><div class="swatch-holder bg-dark dg-theme-header-color" data-color-class="bg-dark"></div><div class="swatch-holder dg-theme-header-color" data-color-class="bg-plum-plate" style="background:#667eea"></div>
+                    </div>
+                  </div>
+                </div>
+                <div class="p-2">
+                  <a href="/settings.html" class="btn btn-sm btn-outline-primary w-100">Настройки</a>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="header-dots">
+            <div class="dropdown">
+              <button type="button" class="btn btn-link p-0 me-2 dg-vanilla-dropdown-toggle" style="line-height:0" aria-expanded="false" aria-haspopup="true">
+                <div class="icon-wrapper icon-wrapper-alt rounded-circle">
+                  <div class="icon-wrapper-bg bg-success"></div>
+                  <i class="pe-7s-graph2" style="font-size:23px;color:#3ac47d"></i>
+                </div>
+              </button>
+              <div class="dropdown-menu dropdown-menu-xl rm-pointers p-0" style="min-width: 320px">
+                <div class="dropdown-menu-header">
+                  <div class="dropdown-menu-header-inner bg-premium-dark">
+                    <div class="menu-header-image" style="background-image:url('/assets/utils/images/dropdown-header/abstract4.jpg')"></div>
+                    <div class="menu-header-content text-white">
+                      <h5 class="menu-header-title">Вы в сети</h5>
+                      <h6 class="menu-header-subtitle">Онлайн за окно из настроек</h6>
+                    </div>
+                  </div>
+                </div>
+                <div class="widget-chart">
+                  <div class="widget-chart-content">
+                    <div class="icon-wrapper rounded-circle">
+                      <div class="icon-wrapper-bg opacity-9 bg-focus"></div>
+                      <i class="lnr-users text-white"></i>
+                    </div>
+                    <div class="widget-numbers d-flex flex-column align-items-center text-center" id="dg-vanilla-online-users-wrap">
+                      <span id="dg-vanilla-online-users">—</span>
+                      <span class="opacity-9 fw-normal" style="font-size: 0.72rem; line-height: 1.25; margin-top: 0.15rem" id="dg-vanilla-online-users-unit"></span>
+                    </div>
+                    <div class="widget-subheading pt-2 small text-muted" id="dg-vanilla-online-users-role"></div>
+                    <div class="text-center small px-2 pt-1 pb-1">
+                      <a href="/settings.html#dg-settings-online-presence" class="text-decoration-none">Окно минут</a>
+                    </div>
+                    <div class="widget-description text-muted small px-2 mt-1 mb-0" id="dg-vanilla-online-users-sessions" style="line-height: 1.35"></div>
+                    <div class="widget-description text-muted mt-2 mb-0">
+                      <span class="pe-1 small" id="dg-vanilla-online-users-note"></span>
+                    </div>
+                  </div>
+                  <div class="widget-chart-wrapper">
+                    <div style="height:40px;opacity:.35;background:linear-gradient(90deg,#f7b924 0%,#f7b92455 100%);border-radius:2px;"></div>
+                  </div>
+                </div>
+                <div class="nav-item-divider mt-0"></div>
+                <div class="nav-item-btn text-center pb-3 mb-2">
+                  <button type="button" class="btn btn-sm btn-shine btn-wide btn-pill btn-warning" id="dg-vanilla-online-users-refresh">
+                    <i class="pe-7s-refresh me-2"></i>Обновить
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="header-btn-lg pe-0">
+            <div class="widget-content p-0">
+              <div class="widget-content-wrapper">
+                <div class="widget-content-left d-flex align-items-center gap-1 pe-2">
+                  <span
+                    class="rounded-circle d-inline-flex align-items-center justify-content-center flex-shrink-0 bg-light text-secondary border"
+                    style="width: 42px; height: 42px; border-color: #e2e8f0"
+                    role="img"
+                    aria-label="Профиль"
+                  >
+                    <i class="pe-7s-user" style="font-size: 1.2rem; line-height: 1; opacity: 0.85" aria-hidden="true"></i>
+                  </span>
+                  <button type="button" class="btn btn-link p-0 dg-vanilla-logout d-inline-flex align-items-center justify-content-center text-danger" title="Выйти" aria-label="Выйти из профиля" style="min-width:34px;min-height:34px;line-height:1;border-radius:50%">
+                    <i class="lnr-exit" style="font-size:1.2rem"></i>
+                  </button>
+                </div>
+                <div class="widget-content-left ms-2 header-user-info">
+                  <div class="widget-heading" id="dg-vanilla-user-display-inline">Пользователь</div>
+                  <div class="widget-subheading" id="dg-vanilla-user-role-inline">Пользователь</div>
+                </div>
+                <div class="widget-content-right header-user-info ms-3">
+                  <button type="button" class="btn btn-shadow p-1 btn-sm btn-info" id="Tooltip-1" title="Click for notifications">
+                    <i class="pe-7s-date text-white" style="font-size:20px;line-height:1"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="app-main">
+      <div class="sidebar-mobile-overlay"></div>
+      <div class="app-sidebar sidebar-shadow">
+        <div class="d-flex flex-column h-100 min-h-0">
+          <div class="app-header__logo">
+            <button type="button" class="logo-src datagon-brand" onclick="location.href='/dashboard.html'" title="Открыть дашборд" style="border:0;background:transparent;padding:0;cursor:pointer">Датагон</button>
+            <div class="header__pane ms-auto">
+              <div>
+                <button type="button" class="hamburger hamburger--slider dg-toggle-sidebar" aria-label="Свернуть боковую панель" title="Свернуть боковую панель">
+                  <span class="hamburger-box"><span class="hamburger-inner"></span></span>
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="app-header__mobile-menu">
+            <div>
+              <button type="button" class="hamburger hamburger--slider dg-toggle-mobile-sidebar" aria-label="Открыть меню">
+                <span class="hamburger-box"><span class="hamburger-inner"></span></span>
+              </button>
+            </div>
+          </div>
+          <div class="app-header__menu">
+            <span>
+              <button type="button" class="btn btn-primary btn-sm btn-icon btn-icon-only dg-toggle-header-small" aria-label="Доп. меню шапки">
+                <div class="btn-icon-wrapper">
+                  <i class="pe-7s-more" style="font-size:1.1rem;line-height:1"></i>
+                </div>
+              </button>
+            </span>
+          </div>
+          <div class="custom-scrollbar dg-sidebar-nav-wrap d-flex flex-column min-h-0" style="flex:1 1 0%;min-height:0;max-height:calc(100vh - 80px);overflow-x:hidden">
+            <div class="app-sidebar__inner dg-sidebar-nav-scroll flex-grow-1 min-h-0" style="overflow-y:auto;overflow-x:hidden">
+              <div class="dg-sidebar-nav-measure">
+                <div class="datagon-nav-shell">
+                  <div class="vertical-nav-menu" style="pointer-events:auto;z-index:999;position:relative">
+                    <ul class="metismenu-container">
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="dashboard" href="/dashboard.html"><i class="metismenu-icon pe-7s-rocket"></i>Дашборд</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="my-sites" href="/my-sites.html"><i class="metismenu-icon pe-7s-global"></i>Мои сайты</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="my-products" href="/my-products.html"><i class="metismenu-icon pe-7s-box2"></i>Мои товары (сайты)</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="moysklad" href="/moysklad.html"><i class="metismenu-icon pe-7s-shopbag"></i>Мой Склад (товары)</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="medmarket" href="/medmarket.html" title="Стыковка кода МС с кодом товара для Медмаркета"><i class="metismenu-icon pe-7s-id"></i>Медмаркет</a></li>
+                      <li class="metismenu-item">
+                        <a
+                          href="#"
+                          class="metismenu-link dg-vanilla-submenu-toggle"
+                          aria-expanded="false"
+                          title="Парсинг сайтов конкурентов: проекты, очередь, результаты, сопоставление"
+                        >
+                          <i class="metismenu-icon pe-7s-browser"></i>Парсинг
+                          <i class="metismenu-state-icon pe-7s-angle-down" aria-hidden="true"></i>
+                        </a>
+                        <ul class="metismenu-container dg-vanilla-parse-submenu">
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="projects"
+                              href="/projects.html"
+                              title="Проекты и сайты конкурентов"
+                            >
+                              <i class="metismenu-icon pe-7s-portfolio"></i>Конкуренты
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="queue"
+                              href="/queue.html"
+                              title="Очередь задач парсинга"
+                            >
+                              <i class="metismenu-icon pe-7s-network"></i>Очередь
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="results"
+                              href="/results.html"
+                              title="Результаты парсинга"
+                            >
+                              <i class="metismenu-icon pe-7s-note2"></i>Результаты
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="matches"
+                              href="/matches.html"
+                              title="Сопоставление товаров"
+                            >
+                              <i class="metismenu-icon pe-7s-link"></i>Сопоставление
+                            </a>
+                          </li>
+                        </ul>
+                      </li>
+                      <li class="metismenu-item dg-sidebar-nav-restricted" data-dg-nav-restricted="activity">
+                        <a
+                          class="metismenu-link"
+                          data-nav="processes"
+                          href="/processes.html"
+                          title="Активность/Логи: журнал команды и фоновые процессы (доступ ограничен: администратор или право управления пользователями)"
+                        >
+                          <i class="metismenu-icon pe-7s-timer"></i>Активность/Логи
+                          <i
+                            class="pe-7s-lock dg-nav-restricted-icon"
+                            aria-hidden="true"
+                            title="Пункт меню с ограниченным доступом"
+                          ></i>
+                        </a>
+                      </li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="settings" href="/settings.html"><i class="metismenu-icon pe-7s-config"></i>Настройки</a></li>
+                      <li class="metismenu-item dg-sidebar-architect-item">
+                        <a
+                          class="metismenu-link"
+                          data-nav="architectui-demo"
+                          href="/ref/react-demo-index.html"
+                          title="Каталог разделов React-шаблона ArchitectUI"
+                        >
+                          <i class="metismenu-icon pe-7s-plugin"></i>ArchitectUI
+                        </a>
+                      </li>
+                      <li class="metismenu-item">
+                        <a
+                          href="#"
+                          class="metismenu-link dg-vanilla-submenu-toggle"
+                          aria-expanded="false"
+                          title="Интеграции маркетплейсов: ключи и диагностика выгрузок"
+                        >
+                          <i class="metismenu-icon pe-7s-graph3"></i>Маркетплейсы
+                          <i class="metismenu-state-icon pe-7s-angle-down" aria-hidden="true"></i>
+                        </a>
+                        <ul class="metismenu-container dg-vanilla-mp-submenu">
+                          <!-- Подпункт «Настройки» (data-nav="exports-marketplaces", /exports-marketplaces.html)
+                               скрыт из меню по запросу: ключи API маркетплейсов задаются в /settings.html;
+                               страница остаётся доступной по прямому URL и через ссылки из гайдов
+                               (например, на /exports-marketplaces-issues.html). -->
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-ozon"
+                              href="/exports-marketplaces-ozon.html"
+                              title="Таблица и выгрузка Ozon"
+                            >
+                              <i class="metismenu-icon pe-7s-graph2"></i>Ozon
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-wildberries"
+                              href="/exports-marketplaces-wildberries.html"
+                              title="Таблица и выгрузка Wildberries"
+                            >
+                              <i class="metismenu-icon pe-7s-graph2"></i>Wildberries
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-yandex"
+                              href="/exports-marketplaces-yandex.html"
+                              title="Таблица и выгрузка Яндекс Маркет"
+                            >
+                              <i class="metismenu-icon pe-7s-graph2"></i>Яндекс Маркет
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-huckster"
+                              href="/exports-huckster.html"
+                              title="Интеграция Huckster / e-teleport — матрица UID по магазинам"
+                            >
+                              <i class="metismenu-icon pe-7s-cart"></i>Huckster
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-dimensions"
+                              href="/exports-dimensions.html"
+                              title="Реестр замеров габаритов товаров МойСклад"
+                            >
+                              <i class="metismenu-icon pe-7s-scissors"></i>Габариты
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-issues"
+                              href="/exports-marketplaces-issues.html"
+                              title="Товары МойСклад с проблемами публикации на маркетплейсах"
+                            >
+                              <i class="metismenu-icon pe-7s-attention"></i>Проблемы с товарами
+                            </a>
+                          </li>
+                        </ul>
+                      </li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="ms-sales" href="/ms-sales.html" title="Продажи МС: отгрузки entity/demand, позиции с привязкой к товарам ms_export"><i class="metismenu-icon pe-7s-cash"></i>Продажи МС</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="purchase" href="/purchase.html" title="Закупки товары: планирование, неснижаемые остатки, кратность"><i class="metismenu-icon pe-7s-cart"></i>Закупки товары</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="suppliers" href="/suppliers.html" title="Поставщики: сводка по закупкам и настройки"><i class="metismenu-icon pe-7s-id"></i>Поставщики</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="supplier-analysis" href="/supplier-analysis.html" title="Продажи, оборот и тренды по поставщикам"><i class="metismenu-icon pe-7s-graph2"></i>Анализ поставщиков</a></li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="app-sidebar-bg opacity-06"></div>
+        </div>
+      </div>
+
+      <div class="app-main__outer">
+        <div class="app-main__inner">
+          <div class="app-page-title">
+            <div class="page-title-wrapper">
+              <div class="page-title-heading">
+                <div class="page-title-icon">
+                  <i class="pe-7s-id icon-gradient bg-tempting-azure"> </i>
+                </div>
+                <div>
+                  Медмаркет
+                  <div class="page-title-subheading">
+                    Код, наименование и тип подтягиваются из МойСклад <strong>по расписанию</strong> (Настройки → Автосинхронизация).
+                    Данные только из атрибута МойСклад <strong>«Код товара для медмаркета»</strong> (как на <a href="/moysklad.html">Мой Склад</a>). Отдельной таблицы нет — колонка в <code>ms_export</code> после синка МС.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2">
+              <div class="d-flex align-items-center">
+                <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
+                <span>Фильтры и действия</span>
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mm-filters-toggle">Свернуть</button>
+            </div>
+            <div class="card-body">
+              <div id="dg-mm-filters-body">
+              <div class="row g-2 align-items-end">
+                <div class="col-md-3">
+                  <label class="form-label" for="mm-f-search">Умный поиск</label>
+                  <input type="search" class="form-control" id="mm-f-search" placeholder="Код, наименование или код Медмаркета" autocomplete="off" />
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label" for="mm-f-code">Код</label>
+                  <input type="text" class="form-control" id="mm-f-code" autocomplete="off" />
+                </div>
+                <div class="col-md-3">
+                  <label class="form-label" for="mm-f-name">Наименование</label>
+                  <input type="text" class="form-control" id="mm-f-name" autocomplete="off" />
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label" for="mm-f-type">Тип</label>
+                  <select class="form-select" id="mm-f-type">
+                    <option value="all">Все</option>
+                    <option value="товар">Товар</option>
+                    <option value="комплект">Комплект</option>
+                    <option value="услуга">Услуга</option>
+                  </select>
+                </div>
+              </div>
+              <div class="row g-2 align-items-end mt-2">
+                <div class="col-md-3">
+                  <label class="form-label" for="mm-f-medmarket-code">Код товара для медмаркета</label>
+                  <input type="text" class="form-control" id="mm-f-medmarket-code" autocomplete="off" />
+                </div>
+                <div class="col-md-3">
+                  <label class="form-label" for="mm-f-mapped">Стыковка</label>
+                  <select class="form-select" id="mm-f-mapped">
+                    <option value="all">Все</option>
+                    <option value="1">Только с кодом Медмаркета</option>
+                    <option value="0">Без кода Медмаркета</option>
+                  </select>
+                </div>
+              </div>
+              <div class="mt-3 d-flex flex-wrap gap-2">
+                <button type="button" class="btn btn-sm btn-primary" id="mm-apply" data-dg-activity-label="Применить фильтры Медмаркет">Применить</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="mm-reset" data-dg-activity-label="Сбросить фильтры Медмаркет">По умолчанию</button>
+                <button type="button" class="btn btn-sm btn-outline-warning" id="mm-sync-catalog" data-dg-activity-label="Подтянуть атрибут Медмаркет из карточек МС" data-dg-notify-start="Подтягиваем атрибут из сохранённых карточек МС…">Подтянуть из карточек МС</button>
+                <button type="button" class="btn btn-sm btn-outline-primary" id="mm-fill-linkage" data-dg-activity-label="Заполнить коды Медмаркета в МойСклад" data-dg-notify-start="Заполняем пустые коды в атрибут МС (код+тип)…">Заполнить коды в МойСклад</button>
+              </div>
+              <p class="small text-muted mt-2 mb-0">
+                После полного синка <a href="/moysklad.html">Мой Склад</a> значения атрибута уже в <code>ms_export</code> — обычно этого достаточно.
+                «Подтянуть из карточек МС» — догонка только по карточкам, где атрибут есть в сохранённом JSON (не весь каталог ~50k+), обычно несколько минут.
+                Редактирование в таблице пишет в тот же атрибут в МойСклад.
+              </p>
+              <p class="small text-muted mb-0" id="mm-sync-hint">
+                Автозапуск по расписанию: <a href="/settings.html">настройки</a> ·
+                <a href="/processes.html">журнал</a>.
+              </p>
+              <div id="mm-action-log" class="alert mt-3 mb-0 d-none" role="status"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex justify-content-between align-items-center gap-2 flex-wrap">
+              <div class="d-flex align-items-center gap-3 flex-grow-1" style="min-width: 0">
+                <div class="d-flex align-items-center flex-shrink-0">
+                  <i class="header-icon pe-7s-box2 icon-gradient bg-tempting-azure me-2"></i>
+                  <span>Выгрузка Медмаркет</span>
+                </div>
+                <div class="dg-mm-header-search" style="flex: 0 1 380px; min-width: 220px">
+                  <div class="input-group input-group-sm">
+                    <span class="input-group-text bg-white text-muted px-2" aria-hidden="true">🔎</span>
+                    <input
+                      type="search"
+                      class="form-control"
+                      id="mm-table-search-mirror"
+                      placeholder="Умный поиск (Enter — применить)"
+                      autocomplete="off"
+                    />
+                  </div>
+                </div>
+              </div>
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mm-widths-toggle" title="Ширина колонок">📏 Ширины</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="mm-table-toggle">Свернуть</button>
+              </div>
+            </div>
+            <div class="card-body" id="mm-table-body">
+              <div class="datagon-columns-toolbox mb-2 d-none" id="dg-mm-toolbox-panels">
+                <div class="datagon-columns-panel" id="dg-mm-widths-panel">
+                  <div class="columns-actions mb-2">
+                    <button type="button" class="btn btn-sm" id="dg-mm-widths-default">Ширины по умолчанию</button>
+                  </div>
+                  <div id="dg-mm-widths-list" class="dg-ms-widths-grid"></div>
+                </div>
+              </div>
+              <div id="dg-mm-table-scroll-outer" class="dg-mp-table-scroll-outer dg-mm-table-scroll-outer">
+                <div class="table-responsive datagon-my-products-table-wrap">
+                  <table class="table table-hover table-striped mb-0 dg-mm-table" id="dg-mm-table-main" style="width:max-content;min-width:100%;table-layout:fixed;border-collapse:collapse">
+                    <colgroup id="dg-mm-colgroup"></colgroup>
+                    <thead id="dg-mm-thead"></thead>
+                    <tbody id="mm-tbody"></tbody>
+                  </table>
+                </div>
+              </div>
+              <div class="mt-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                  <label class="form-label mb-0 small text-muted" for="mm-footer-limit">На странице</label>
+                  <select class="form-select form-select-sm" id="mm-footer-limit" style="width:auto">
+                    <option value="50">50</option>
+                    <option value="100" selected>100</option>
+                    <option value="200">200</option>
+                    <option value="500">500</option>
+                  </select>
+                  <span class="text-muted small" id="mm-table-hint">Найдено: 0; страница 1/1; показано: 0</span>
+                </div>
+                <div class="btn-group" role="group" aria-label="Страницы Медмаркет">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="mm-btn-prev" data-dg-activity-label="Предыдущая страница Медмаркет">Назад</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="mm-btn-next" data-dg-activity-label="Следующая страница Медмаркет">Вперёд</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="app-footer">
+          <div class="app-footer__inner">
+            <div class="app-footer-left">
+              <div class="footer-dots">
+                <a href="#" class="dot-btn-wrapper dg-vanilla-footer-toggle" id="PopoverFooter-1" aria-expanded="false" aria-haspopup="true">
+                  <i class="dot-btn-icon lnr-bullhorn icon-gradient bg-mean-fruit"></i>
+                  <div class="badge badge-dot badge-abs badge-dot-sm bg-danger">Notifications</div>
+                </a>
+                <div class="dots-separator"></div>
+                <a href="#" class="dot-btn-wrapper dg-vanilla-footer-toggle" id="PopoverFooter-3" aria-expanded="false" aria-haspopup="true">
+                  <i class="dot-btn-icon lnr-pie-chart icon-gradient bg-love-kiss"></i>
+                  <div class="badge badge-dot badge-abs badge-dot-sm bg-warning">Notifications</div>
+                </a>
+                <div class="dropdown-menu popover-custom popover-custom-xl rm-pointers p-0 dg-vanilla-footer-popover" data-footer-popover="PopoverFooter-1" style="min-width:420px">
+                  <div class="dropdown-menu-header mb-0">
+                    <div class="dropdown-menu-header-inner bg-strong-bliss">
+                      <div class="menu-header-image opacity-1" style="background-image:url('./assets/utils/images/dropdown-header/city2.jpg')"></div>
+                      <div class="menu-header-content text-white">
+                        <h5 class="menu-header-title">Notifications</h5>
+                        <h6 class="menu-header-subtitle">You have <b class="text-warning">21</b> unread messages</h6>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="card-tabs-animated card-tabs-animated-inner">
+                    <ul class="nav nav-justified">
+                      <li class="nav-item"><a href="#" class="nav-link active">Messages</a></li>
+                      <li class="nav-item"><a href="#" class="nav-link">Events</a></li>
+                      <li class="nav-item"><a href="#" class="nav-link">Errors</a></li>
+                    </ul>
+                    <div class="p-3">
+                      <div class="text-muted small">Chat, timeline and system tabs in React version.</div>
+                    </div>
+                  </div>
+                  <div class="nav-item-btn text-center pt-3 pb-3">
+                    <button type="button" class="btn btn-shadow btn-wide btn-pill btn-dark">
+                      <span class="badge badge-dot badge-dot-lg bg-warning badge-pulse me-2"></span>
+                      View All Messages
+                    </button>
+                  </div>
+                </div>
+                <div class="dropdown-menu popover-custom popover-custom-lg rm-pointers p-0 dg-vanilla-footer-popover" data-footer-popover="PopoverFooter-3" style="min-width:380px">
+                  <div class="dropdown-menu-header">
+                    <div class="dropdown-menu-header-inner bg-malibu-beach">
+                      <div class="menu-header-image opacity-2" style="background-image:url('./assets/utils/images/dropdown-header/city2.jpg')"></div>
+                      <div class="menu-header-content text-white">
+                        <div class="avatar-icon-wrapper btn-hover-shine mb-3 avatar-icon-xl">
+                          <div class="avatar-icon rounded">
+                            <img src="./assets/utils/images/avatars/2.jpg" alt="Avatar 6" />
+                          </div>
+                        </div>
+                        <h5 class="menu-header-title">Fancy Statistics</h5>
+                        <h6 class="menu-header-subtitle">Just an example of a slider with some chart widgets inside.</h6>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="p-2">
+                    <div class="card no-shadow widget-chart widget-chart2 text-start p-2 m-1">
+                      <div class="widget-title opacity-6 text-muted text-uppercase">New accounts since 2018</div>
+                      <div class="widget-numbers text-success">78<small class="opacity-5 ps-1">%</small></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/datagon-vanilla.js"></script>
+    <script>
+    (function () {
+      var MM_COLS = [
+        ["code", "Код"],
+        ["name", "Наименование"],
+        ["item_type", "Тип"],
+        ["medmarket_code", "Код товара для медмаркета"],
+      ];
+      var COL_MIN = { code: 80, name: 320, item_type: 96, medmarket_code: 200 };
+      var columnWidths = {};
+      var resizeState = null;
+
+      var page = 1;
+      var total = 0;
+      var mappedInDb = 0;
+      var limit = 100;
+      var sortBy = "code";
+      var sortDir = "asc";
+      var loading = false;
+      var syncPollTimer = null;
+      var syncInFlight = false;
+      var syncRunLock = false;
+      var applied = {
+        search: "",
+        code: "",
+        name: "",
+        item_type: "all",
+        medmarket_code: "",
+        mapped: "all",
+      };
+
+      var FLOATING_HEADER_OFFSET_PX = 2;
+      var FLOATING_HEADER_START_EPS_PX = 3;
+      var mmFloatingHeaderRaf = 0;
+      var mmFloatingLastScrollTs = 0;
+
+      function el(id) {
+        return document.getElementById(id);
+      }
+
+      function notify(type, message) {
+        if (window.DatagonNotify && window.DatagonNotify.toast) {
+          window.DatagonNotify.toast({ type: type || "info", message: String(message || "") });
+        }
+      }
+
+      function showActionLog(type, message) {
+        var box = el("mm-action-log");
+        if (!box) return;
+        var t = type || "info";
+        box.className =
+          "alert mt-3 mb-0 alert-" +
+          (t === "danger" ? "danger" : t === "success" ? "success" : t === "warning" ? "warning" : "info");
+        box.textContent = String(message || "");
+        box.classList.remove("d-none");
+      }
+
+      function hideActionLog() {
+        var box = el("mm-action-log");
+        if (box) {
+          box.classList.add("d-none");
+          box.textContent = "";
+        }
+      }
+
+      function readPendingFilters() {
+        return {
+          search: el("mm-f-search").value.trim(),
+          code: el("mm-f-code").value.trim(),
+          name: el("mm-f-name").value.trim(),
+          item_type: el("mm-f-type").value,
+          medmarket_code: el("mm-f-medmarket-code").value.trim(),
+          mapped: el("mm-f-mapped").value,
+        };
+      }
+
+      function filtersDirty() {
+        var p = readPendingFilters();
+        return (
+          p.search !== applied.search ||
+          p.code !== applied.code ||
+          p.name !== applied.name ||
+          p.item_type !== applied.item_type ||
+          p.medmarket_code !== applied.medmarket_code ||
+          p.mapped !== applied.mapped
+        );
+      }
+
+      function syncApplyDirtyUi() {
+        var btn = el("mm-apply");
+        if (!btn) return;
+        if (filtersDirty()) btn.classList.add("dg-flt-dirty");
+        else btn.classList.remove("dg-flt-dirty");
+      }
+
+      function commitFilters() {
+        var p = readPendingFilters();
+        applied.search = p.search;
+        applied.code = p.code;
+        applied.name = p.name;
+        applied.item_type = p.item_type;
+        applied.medmarket_code = p.medmarket_code;
+        applied.mapped = p.mapped;
+        syncApplyDirtyUi();
+      }
+
+      function buildFilterParams() {
+        var f = applied;
+        var p = new URLSearchParams();
+        if (f.search) p.set("search", f.search);
+        if (f.code) p.set("code", f.code);
+        if (f.name) p.set("name", f.name);
+        if (f.item_type && f.item_type !== "all") p.set("item_type", f.item_type);
+        if (f.medmarket_code) p.set("medmarket_code", f.medmarket_code);
+        if (f.mapped === "1" || f.mapped === "0") p.set("mapped", f.mapped);
+        return p;
+      }
+
+      function buildParams() {
+        var p = buildFilterParams();
+        p.set("limit", String(limit));
+        p.set("offset", String((page - 1) * limit));
+        p.set("sort_by", sortBy);
+        p.set("sort_dir", sortDir);
+        return p;
+      }
+
+      function mmLinkageTypeLabel(itemType) {
+        var t = String(itemType || "").trim().toLowerCase();
+        if (t === "комплект") return "Комплект";
+        if (t === "услуга") return "Услуга";
+        return "Товар";
+      }
+
+      function mmBuildLinkageCode(code, itemType) {
+        var c = String(code || "").trim();
+        if (!c) return "";
+        return c + "+" + mmLinkageTypeLabel(itemType);
+      }
+
+      function totalPages() {
+        return Math.max(1, Math.ceil(total / limit) || 1);
+      }
+
+      function updateHint() {
+        var hint = el("mm-table-hint");
+        if (!hint) return;
+        if (loading) {
+          hint.textContent = "Загрузка…";
+          return;
+        }
+        var shown = Math.min(limit, Math.max(0, total - (page - 1) * limit));
+        var mappedPart =
+          "; с атрибутом в выгрузке: " + mappedInDb.toLocaleString("ru-RU");
+        hint.textContent =
+          "Найдено: " +
+          total.toLocaleString("ru-RU") +
+          mappedPart +
+          "; страница " +
+          page +
+          "/" +
+          totalPages() +
+          "; показано: " +
+          shown;
+      }
+
+      function setPagerDisabled(disabled) {
+        ["mm-btn-prev", "mm-btn-next", "mm-footer-limit"].forEach(function (id) {
+          var node = el(id);
+          if (node) node.disabled = !!disabled;
+        });
+      }
+
+      function esc(s) {
+        return String(s == null ? "" : s)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/"/g, "&quot;");
+      }
+
+      function userColWidthKey() {
+        try {
+          var u = String(localStorage.getItem("currentUser") || "guest").trim() || "guest";
+          return "datagon_medmarket_col_widths_v1:" + u;
+        } catch (e) {
+          return "datagon_medmarket_col_widths_v1:guest";
+        }
+      }
+
+      function getColMin(key) {
+        return COL_MIN[key] || 60;
+      }
+
+      function getColWidth(key) {
+        var w = Number(columnWidths[key] || 0);
+        if (Number.isFinite(w) && w > 0) return w;
+        return getColMin(key);
+      }
+
+      function applyColumnWidth(key, px) {
+        var n = Math.max(60, Math.min(700, Math.round(Number(px) || 0)));
+        columnWidths[key] = n;
+        var cg = el("dg-mm-colgroup");
+        if (cg) {
+          var col = cg.querySelector('col[data-col-key="' + key + '"]');
+          if (col) col.style.width = n + "px";
+        }
+        document.querySelectorAll('.dg-mm-table thead th[data-col-key="' + key + '"]').forEach(function (th) {
+          th.style.width = n + "px";
+          th.style.minWidth = n + "px";
+          th.style.maxWidth = n + "px";
+        });
+        document.querySelectorAll('.dg-mm-table tbody td[data-col-key="' + key + '"]').forEach(function (td) {
+          td.style.width = n + "px";
+          td.style.minWidth = n + "px";
+          td.style.maxWidth = n + "px";
+        });
+      }
+
+      function buildColgroupAndThead() {
+        var cg = el("dg-mm-colgroup");
+        var thead = document.getElementById("dg-mm-thead");
+        if (!cg || !thead) return;
+        cg.innerHTML = "";
+        var tr = document.createElement("tr");
+        MM_COLS.forEach(function (pair) {
+          var key = pair[0];
+          var label = pair[1];
+          var w = getColWidth(key);
+          var col = document.createElement("col");
+          col.setAttribute("data-col-key", key);
+          col.style.width = w + "px";
+          cg.appendChild(col);
+          var th = document.createElement("th");
+          th.className = "dg-mm-sortable";
+          th.setAttribute("data-sort", key);
+          th.setAttribute("data-col-key", key);
+          th.textContent = label;
+          th.style.width = w + "px";
+          th.style.minWidth = w + "px";
+          th.style.maxWidth = w + "px";
+          var handle = document.createElement("span");
+          handle.className = "dg-mm-col-resize";
+          handle.setAttribute("data-col-key", key);
+          handle.setAttribute("aria-hidden", "true");
+          th.appendChild(handle);
+          tr.appendChild(th);
+        });
+        thead.innerHTML = "";
+        thead.appendChild(tr);
+        bindResizeHandles();
+        syncSortHeaders();
+      }
+
+      function bindResizeHandles() {
+        document.querySelectorAll(".dg-mm-col-resize").forEach(function (handle) {
+          handle.addEventListener("mousedown", function (ev) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            var key = handle.getAttribute("data-col-key");
+            if (!key) return;
+            resizeState = { key: key, startX: ev.clientX, startW: getColWidth(key) };
+          });
+        });
+      }
+
+      function onResizeMove(ev) {
+        if (!resizeState) return;
+        var dx = ev.clientX - resizeState.startX;
+        applyColumnWidth(resizeState.key, resizeState.startW + dx);
+        mmRefreshFloatingAfterLayout();
+      }
+
+      function onResizeUp() {
+        if (!resizeState) return;
+        try {
+          localStorage.setItem(userColWidthKey(), JSON.stringify(columnWidths || {}));
+        } catch (e) {}
+        resizeState = null;
+      }
+
+      function renderWidthControls() {
+        var list = el("dg-mm-widths-list");
+        if (!list) return;
+        list.innerHTML = "";
+        MM_COLS.forEach(function (pair) {
+          var key = pair[0];
+          var label = pair[1];
+          var wrap = document.createElement("label");
+          var span = document.createElement("span");
+          span.textContent = label;
+          span.style.flex = "1 1 auto";
+          var input = document.createElement("input");
+          input.type = "number";
+          input.className = "form-control form-control-sm";
+          input.min = "60";
+          input.max = "700";
+          input.step = "10";
+          input.value = String(getColWidth(key));
+          input.setAttribute("data-col-key", key);
+          input.addEventListener("change", function () {
+            var k = this.getAttribute("data-col-key");
+            var n = parseInt(this.value, 10);
+            if (!Number.isFinite(n)) return;
+            applyColumnWidth(k, n);
+            try {
+              localStorage.setItem(userColWidthKey(), JSON.stringify(columnWidths || {}));
+            } catch (e) {}
+            this.value = String(getColWidth(k));
+            mmRefreshFloatingAfterLayout();
+          });
+          wrap.appendChild(span);
+          wrap.appendChild(input);
+          list.appendChild(wrap);
+        });
+      }
+
+      function renderMmNameCell(r) {
+        var code = String(r.code || "").trim();
+        var rawName = String(r.name || "").trim();
+        var displayTitle = rawName || "—";
+        if (!code) {
+          var sp = document.createElement("span");
+          sp.textContent = displayTitle;
+          sp.title = rawName || "";
+          return sp;
+        }
+        var nameEl = document.createElement("a");
+        nameEl.href = "/product.html?code=" + encodeURIComponent(code);
+        nameEl.target = "_blank";
+        nameEl.rel = "noopener";
+        nameEl.className = "dg-mm-name-link";
+        nameEl.title = (rawName ? rawName + " · " : "") + "код: " + code + " — открыть карточку";
+        nameEl.textContent = displayTitle;
+        return nameEl;
+      }
+
+      function renderTable(rows) {
+        var tbody = el("mm-tbody");
+        if (!tbody) return;
+        tbody.innerHTML = "";
+        if (!rows || !rows.length) {
+          var tr0 = document.createElement("tr");
+          tr0.innerHTML = '<td colspan="4" class="text-muted text-center py-4">Нет строк</td>';
+          tbody.appendChild(tr0);
+          mmRefreshFloatingAfterLayout();
+          return;
+        }
+        rows.forEach(function (r) {
+          var tr = document.createElement("tr");
+          MM_COLS.forEach(function (pair) {
+            var key = pair[0];
+            var td = document.createElement("td");
+            var w = getColWidth(key);
+            td.setAttribute("data-col-key", key);
+            td.style.width = w + "px";
+            td.style.minWidth = w + "px";
+            td.style.maxWidth = w + "px";
+            td.style.borderRight = "1px solid #f3f5f8";
+            td.style.verticalAlign = "middle";
+            if (key === "code") td.textContent = r.code || "";
+            else if (key === "name") td.appendChild(renderMmNameCell(r));
+            else if (key === "item_type") td.textContent = r.item_type || "";
+            else if (key === "medmarket_code") {
+              var inp = document.createElement("input");
+              inp.type = "text";
+              inp.className = "form-control form-control-sm dg-mm-mm-input";
+              inp.setAttribute("data-code", r.code || "");
+              inp.setAttribute("data-type", r.item_type || "");
+              inp.value = r.medmarket_code || "";
+              inp.placeholder = mmBuildLinkageCode(r.code, r.item_type) || "10088+Товар";
+              inp.title = "Стыковка: код+тип, напр. " + (mmBuildLinkageCode(r.code, r.item_type) || "10088+Товар");
+              inp.autocomplete = "off";
+              td.appendChild(inp);
+            }
+            tr.appendChild(td);
+          });
+          tbody.appendChild(tr);
+        });
+        tbody.querySelectorAll(".dg-mm-mm-input").forEach(function (inp) {
+          inp.addEventListener("change", function () {
+            saveMapping(inp);
+          });
+        });
+        mmRefreshFloatingAfterLayout();
+      }
+
+      function saveMapping(inp) {
+        if (inp.getAttribute("data-mm-saving") === "1") return;
+        var code = inp.getAttribute("data-code") || "";
+        var itemType = inp.getAttribute("data-type") || "";
+        var val = inp.value.trim();
+        inp.setAttribute("data-mm-saving", "1");
+        inp.disabled = true;
+        showActionLog("info", "Сохраняем стыковку " + code + "…");
+        fetch("/api/medmarket/mapping", {
+          method: "PATCH",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            code: code,
+            item_type: itemType,
+            medmarket_code: val,
+          }),
+        })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { ok: r.ok, j: j };
+            });
+          })
+          .then(function (x) {
+            inp.disabled = false;
+            inp.removeAttribute("data-mm-saving");
+            if (!x.ok || !x.j || x.j.success === false) {
+              var err = (x.j && x.j.error) || "Не удалось сохранить";
+              showActionLog("danger", err);
+              notify("danger", err);
+              return;
+            }
+            showActionLog("success", "Сохранено: " + code + (val ? " → " + val : " (очищено)"));
+            notify("success", "Сохранено: " + code);
+          })
+          .catch(function (e) {
+            inp.disabled = false;
+            inp.removeAttribute("data-mm-saving");
+            var err = e && e.message ? e.message : "Ошибка сети";
+            showActionLog("danger", err);
+            notify("danger", err);
+          });
+      }
+
+      function loadData() {
+        if (loading) return Promise.resolve();
+        loading = true;
+        setPagerDisabled(true);
+        updateHint();
+        return fetch("/api/medmarket?" + buildParams().toString(), { credentials: "same-origin" })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { ok: r.ok, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.ok || !x.j || x.j.success === false) {
+              throw new Error((x.j && x.j.error) || "Ошибка загрузки");
+            }
+            total = Number(x.j.total || 0);
+            mappedInDb = Number(x.j.mapped_in_db || 0);
+            if (x.j.sort_by) sortBy = x.j.sort_by;
+            if (x.j.sort_dir) sortDir = x.j.sort_dir;
+            renderTable(x.j.data || []);
+            updateHint();
+            syncSortHeaders();
+          })
+          .catch(function (e) {
+            total = 0;
+            mappedInDb = 0;
+            renderTable([]);
+            updateHint();
+            var err = e && e.message ? e.message : "Ошибка";
+            showActionLog("danger", err);
+            notify("danger", err);
+          })
+          .finally(function () {
+            loading = false;
+            setPagerDisabled(syncInFlight);
+            updateHint();
+          });
+      }
+
+      function syncSortHeaders() {
+        document.querySelectorAll(".dg-mm-sortable").forEach(function (th) {
+          var k = th.getAttribute("data-sort");
+          th.classList.remove("sorted-asc", "sorted-desc");
+          if (k === sortBy) th.classList.add(sortDir === "desc" ? "sorted-desc" : "sorted-asc");
+        });
+      }
+
+      function resetFilters() {
+        el("mm-f-search").value = "";
+        el("mm-f-code").value = "";
+        el("mm-f-name").value = "";
+        el("mm-f-type").value = "all";
+        el("mm-f-medmarket-code").value = "";
+        el("mm-f-mapped").value = "all";
+        var mirror = el("mm-table-search-mirror");
+        if (mirror) mirror.value = "";
+        page = 1;
+        sortBy = "code";
+        sortDir = "asc";
+        commitFilters();
+      }
+
+      function setSyncUiLocked(locked) {
+        syncInFlight = !!locked;
+        var btn = el("mm-sync-catalog");
+        if (btn) btn.disabled = !!locked;
+      }
+
+      function pollSyncStatus() {
+        if (syncPollTimer) {
+          clearTimeout(syncPollTimer);
+          syncPollTimer = null;
+        }
+        fetch("/api/medmarket/sync-status", { credentials: "same-origin" })
+          .then(function (r) {
+            return r.json();
+          })
+          .then(function (j) {
+            var hint = el("mm-sync-hint");
+            if (!j) return;
+            if (j.active) {
+              setSyncUiLocked(true);
+              var proc = Number(j.processed || 0);
+              var tot = Number(j.total || 0);
+              var pct = tot > 0 ? Math.min(100, Math.round((proc / tot) * 100)) : 0;
+              var msg =
+                "Подтягивание атрибута: " +
+                proc.toLocaleString("ru-RU") +
+                " / " +
+                tot.toLocaleString("ru-RU") +
+                " карточек с атрибутом в JSON (" +
+                pct +
+                "%)" +
+                (j.upserted != null
+                  ? "; записано: " + Number(j.upserted).toLocaleString("ru-RU")
+                  : "") +
+                " — идёт";
+              if (hint) hint.textContent = msg;
+              showActionLog("info", msg);
+              syncPollTimer = setTimeout(pollSyncStatus, 1500);
+              return;
+            }
+            setSyncUiLocked(false);
+            syncRunLock = false;
+            if (j.error) {
+              var err = "Ошибка синхронизации: " + j.error;
+              if (hint) hint.textContent = err;
+              showActionLog("danger", err);
+              notify("danger", err);
+            } else if (j.finished_at && j.message && j.message.indexOf("Ошибка") === -1) {
+              if (hint) hint.textContent = j.message;
+              showActionLog("success", j.message);
+              notify("success", j.message);
+              loadData();
+            } else if (hint && !syncInFlight) {
+              hint.textContent =
+                "Автозапуск по расписанию: настройки · журнал на «Процессах».";
+            }
+          })
+          .catch(function () {
+            setSyncUiLocked(false);
+            syncRunLock = false;
+          });
+      }
+
+      function runFillMedmarketLinkage() {
+        if (loading) {
+          notify("warning", "Дождитесь окончания загрузки таблицы");
+          return Promise.resolve();
+        }
+        var btn = el("mm-fill-linkage");
+        var doFetch = function () {
+          showActionLog("info", "Заполняем коды Медмаркета (код+тип) по текущим фильтрам…");
+          return fetch("/api/medmarket/fill-linkage-codes?" + buildFilterParams().toString(), {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: "{}",
+          })
+            .then(function (r) {
+              return r.json().then(function (j) {
+                return { ok: r.ok, j: j };
+              });
+            })
+            .then(function (x) {
+              if (!x.ok || !x.j || x.j.success === false) {
+                throw new Error((x.j && x.j.error) || "Не удалось заполнить коды");
+              }
+              var j = x.j;
+              var msg =
+                "Готово: обработано " +
+                Number(j.total || 0).toLocaleString("ru-RU") +
+                ", новых " +
+                Number(j.filled || 0).toLocaleString("ru-RU") +
+                ", исправлено " +
+                Number(j.corrected || 0).toLocaleString("ru-RU") +
+                ", без изменений " +
+                Number(j.skipped || 0).toLocaleString("ru-RU");
+              showActionLog("success", msg);
+              notify("success", msg);
+              return loadData();
+            })
+            .catch(function (e) {
+              var err = e && e.message ? e.message : "Ошибка";
+              showActionLog("danger", err);
+              notify("danger", err);
+            });
+        };
+        if (window.DatagonNotify && window.DatagonNotify.busyRun && btn) {
+          return window.DatagonNotify.busyRun(btn, doFetch);
+        }
+        return doFetch();
+      }
+
+      function runMedmarketSyncNow() {
+        if (syncRunLock || syncInFlight) {
+          showActionLog("warning", "Синхронизация уже выполняется или только что запущена.");
+          notify("warning", "Синхронизация уже идёт");
+          return Promise.resolve();
+        }
+        var btn = el("mm-sync-catalog");
+        syncRunLock = true;
+        setSyncUiLocked(true);
+        showActionLog("info", "Обновление каталога из МС: ставим задачу в очередь…");
+        var doFetch = function () {
+          return fetch("/api/settings/auto-sync-run", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ task: "medmarket" }),
+          })
+            .then(function (r) {
+              return r.json().then(function (j) {
+                return { r: r, j: j };
+              });
+            })
+            .then(function (x) {
+              if (!x.r.ok || !x.j || x.j.success === false) {
+                throw new Error((x.j && x.j.error) || "Не удалось запустить синхронизацию");
+              }
+              if (x.j.queued === false) {
+                var reason =
+                  x.j.skip_reason === "already_running"
+                    ? "уже выполняется"
+                    : x.j.skip_reason === "already_queued"
+                      ? "уже в очереди"
+                      : x.j.skip_reason || "занято";
+                showActionLog("warning", "Задача не поставлена в очередь: " + reason + ". См. /processes.html");
+                notify("warning", "Медмаркет: " + reason);
+                if (x.j.skip_reason === "already_running") pollSyncStatus();
+                else {
+                  setSyncUiLocked(false);
+                  syncRunLock = false;
+                }
+                return;
+              }
+              showActionLog("success", "Задача medmarket в очереди. Журнал — /processes.html");
+              notify("success", "Синхронизация Медмаркет запущена");
+              pollSyncStatus();
+            })
+            .catch(function (e) {
+              setSyncUiLocked(false);
+              syncRunLock = false;
+              var err = e && e.message ? e.message : "Ошибка запуска";
+              showActionLog("danger", err);
+              notify("danger", err);
+            });
+        };
+        if (window.DatagonNotify && window.DatagonNotify.busyRun && btn) {
+          return window.DatagonNotify.busyRun(btn, doFetch);
+        }
+        return doFetch();
+      }
+
+      function withBusy(btn, label, fn) {
+        if (!btn) return fn();
+        showActionLog("info", label + "…");
+        if (window.DatagonNotify && window.DatagonNotify.busyRun) {
+          return window.DatagonNotify.busyRun(btn, fn);
+        }
+        btn.disabled = true;
+        return Promise.resolve()
+          .then(fn)
+          .finally(function () {
+            btn.disabled = syncInFlight;
+          });
+      }
+
+      function applyFilters() {
+        page = 1;
+        commitFilters();
+        return loadData().then(function () {
+          showActionLog("success", "Фильтры применены.");
+          notify("success", "Таблица обновлена");
+        });
+      }
+
+      function updateMmStickyTopVar() {
+        var app = document.querySelector(".app-container");
+        var header = document.querySelector(".app-header");
+        var fixed = Boolean(app && app.classList && app.classList.contains("fixed-header"));
+        var top = 0;
+        if (fixed && header && header.getBoundingClientRect) {
+          var rect = header.getBoundingClientRect();
+          top = rect && rect.height ? rect.height : 60;
+        }
+        document.documentElement.style.setProperty("--dg-table-sticky-top", top + "px");
+      }
+
+      function getMmStickyTopPx() {
+        var app = document.querySelector(".app-container");
+        var header = document.querySelector(".app-header");
+        var fixed = Boolean(app && app.classList && app.classList.contains("fixed-header"));
+        if (!fixed) return 0;
+        if (!header || !header.getBoundingClientRect) return 60;
+        var rect = header.getBoundingClientRect();
+        var h = rect && rect.height ? rect.height : 60;
+        return h > 0 ? h : 60;
+      }
+
+      function captureMmTheadBaseTop() {
+        var thead = document.getElementById("dg-mm-thead");
+        if (!thead) return;
+        thead.style.transform = "";
+        thead.style.position = "";
+        thead.style.zIndex = "";
+        thead.style.willChange = "";
+        thead.removeAttribute("data-dg-floating");
+        var rect = thead.getBoundingClientRect();
+        var absTop = (window.scrollY || window.pageYOffset || 0) + (rect && rect.top ? rect.top : 0);
+        thead.setAttribute("data-dg-base-top", String(absTop));
+      }
+
+      function updateMmFloatingHeaderFallback() {
+        var thead = document.getElementById("dg-mm-thead");
+        if (!thead) return;
+        var table = thead.closest("table");
+        if (!table || !table.getBoundingClientRect) return;
+        var row = thead.querySelector("tr");
+        if (!row) return;
+
+        var y = window.scrollY || window.pageYOffset || 0;
+        var headerTop = getMmStickyTopPx();
+        var baseTopAbs = Number(thead.getAttribute("data-dg-base-top") || 0);
+        if (!Number.isFinite(baseTopAbs) || baseTopAbs <= 0) return;
+        var tableRect = table.getBoundingClientRect();
+        var tableBottom = tableRect.bottom + y;
+        var rowRect = row.getBoundingClientRect();
+        var rowHeight = rowRect && rowRect.height ? rowRect.height : 0;
+        var headerLine = y + headerTop;
+        var start = baseTopAbs + FLOATING_HEADER_START_EPS_PX;
+        var end = tableBottom - rowHeight;
+        if (headerLine <= start || headerLine >= end) {
+          if (thead.style.transform) {
+            thead.style.transform = "";
+            thead.style.position = "";
+            thead.style.zIndex = "";
+            thead.style.willChange = "";
+            thead.removeAttribute("data-dg-floating");
+          }
+          return;
+        }
+        var zoomAwareOffset = FLOATING_HEADER_OFFSET_PX;
+        var dpr = window.devicePixelRatio || 1;
+        if (Math.abs(dpr - 1) < 0.03) zoomAwareOffset = FLOATING_HEADER_OFFSET_PX - 3;
+        var shift = Math.max(0, headerLine - start - zoomAwareOffset);
+        var shiftPx = Number(shift.toFixed(3));
+        var nextTransform = "translate3d(0," + shiftPx + "px,0)";
+        if (thead.style.transform !== nextTransform) {
+          thead.style.transform = nextTransform;
+          thead.style.position = "relative";
+          thead.style.zIndex = "25";
+          thead.style.willChange = "transform";
+          thead.setAttribute("data-dg-floating", "1");
+        }
+      }
+
+      function mmFloatingHeaderTick(ts) {
+        mmFloatingHeaderRaf = 0;
+        updateMmFloatingHeaderFallback();
+        if (ts - mmFloatingLastScrollTs < 140) {
+          mmFloatingHeaderRaf = requestAnimationFrame(mmFloatingHeaderTick);
+        }
+      }
+
+      function scheduleMmFloatingHeaderUpdate() {
+        mmFloatingLastScrollTs = performance.now();
+        if (mmFloatingHeaderRaf) return;
+        mmFloatingHeaderRaf = requestAnimationFrame(mmFloatingHeaderTick);
+      }
+
+      function onScrollMmFloatingHeader() {
+        scheduleMmFloatingHeaderUpdate();
+      }
+
+      function mmRefreshFloatingAfterLayout() {
+        requestAnimationFrame(function () {
+          captureMmTheadBaseTop();
+          scheduleMmFloatingHeaderUpdate();
+        });
+      }
+
+      function bindHeaderSearchMirror() {
+        var main = el("mm-f-search");
+        var mirror = el("mm-table-search-mirror");
+        if (!main || !mirror) return;
+        var syncing = false;
+        function syncFromMain() {
+          if (syncing) return;
+          syncing = true;
+          mirror.value = main.value;
+          syncing = false;
+          syncApplyDirtyUi();
+        }
+        function syncFromMirror() {
+          if (syncing) return;
+          syncing = true;
+          main.value = mirror.value;
+          syncing = false;
+          syncApplyDirtyUi();
+        }
+        main.addEventListener("input", syncFromMain);
+        mirror.addEventListener("input", syncFromMirror);
+        function onEnter(ev) {
+          if (ev.key !== "Enter") return;
+          ev.preventDefault();
+          el("mm-apply").click();
+        }
+        function onEsc(ev) {
+          if (ev.key !== "Escape") return;
+          main.value = "";
+          mirror.value = "";
+          syncApplyDirtyUi();
+          el("mm-reset").click();
+        }
+        main.addEventListener("keydown", onEnter);
+        main.addEventListener("keydown", onEsc);
+        mirror.addEventListener("keydown", onEnter);
+        mirror.addEventListener("keydown", onEsc);
+      }
+
+      function bindFilterDirtyWatch() {
+        ["mm-f-search", "mm-f-code", "mm-f-name", "mm-f-type", "mm-f-medmarket-code", "mm-f-mapped"].forEach(function (
+          id
+        ) {
+          var node = el(id);
+          if (!node) return;
+          node.addEventListener("input", syncApplyDirtyUi);
+          node.addEventListener("change", syncApplyDirtyUi);
+        });
+      }
+
+      var theadSortRoot = document.getElementById("dg-mm-thead");
+      if (theadSortRoot) {
+        theadSortRoot.addEventListener("click", function (ev) {
+          if (ev.target.closest(".dg-mm-col-resize")) return;
+          if (window.getSelection && window.getSelection().toString().trim()) return;
+          var th = ev.target.closest(".dg-mm-sortable");
+          if (!th || loading) return;
+          var k = th.getAttribute("data-sort");
+          if (!k) return;
+          if (sortBy === k) sortDir = sortDir === "asc" ? "desc" : "asc";
+          else {
+            sortBy = k;
+            sortDir = "asc";
+          }
+          page = 1;
+          loadData();
+        });
+      }
+
+      el("mm-apply").addEventListener("click", function () {
+        withBusy(el("mm-apply"), "Применяем фильтры", applyFilters);
+      });
+      el("mm-reset").addEventListener("click", function () {
+        withBusy(el("mm-reset"), "Сбрасываем фильтры", function () {
+          resetFilters();
+          return loadData().then(function () {
+            hideActionLog();
+            notify("info", "Фильтры сброшены");
+          });
+        });
+      });
+      el("mm-sync-catalog").addEventListener("click", runMedmarketSyncNow);
+      var fillLinkageBtn = el("mm-fill-linkage");
+      if (fillLinkageBtn) fillLinkageBtn.addEventListener("click", runFillMedmarketLinkage);
+      window.addEventListener("mousemove", onResizeMove);
+      window.addEventListener("mouseup", onResizeUp);
+
+      (function columnControls() {
+        var widthsToggle = el("dg-mm-widths-toggle");
+        var widthsPanel = el("dg-mm-widths-panel");
+        var panelsWrap = el("dg-mm-toolbox-panels");
+        if (!widthsToggle || !widthsPanel) return;
+        function syncWrap() {
+          if (!panelsWrap) return;
+          panelsWrap.classList.toggle("d-none", !widthsPanel.classList.contains("open"));
+        }
+        widthsToggle.addEventListener("click", function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          widthsPanel.classList.toggle("open");
+          if (widthsPanel.classList.contains("open")) renderWidthControls();
+          syncWrap();
+        });
+        document.addEventListener("click", function (e) {
+          if (e.target.closest("#dg-mm-widths-panel")) return;
+          if (e.target.closest("#dg-mm-widths-toggle")) return;
+          widthsPanel.classList.remove("open");
+          syncWrap();
+        });
+        var defBtn = el("dg-mm-widths-default");
+        if (defBtn) {
+          defBtn.addEventListener("click", function () {
+            columnWidths = {};
+            try {
+              localStorage.removeItem(userColWidthKey());
+            } catch (e) {}
+            buildColgroupAndThead();
+            loadData();
+            renderWidthControls();
+          });
+        }
+      })();
+      el("mm-btn-prev").addEventListener("click", function () {
+        if (page <= 1 || loading) return;
+        withBusy(el("mm-btn-prev"), "Загружаем предыдущую страницу", function () {
+          page -= 1;
+          return loadData();
+        });
+      });
+      el("mm-btn-next").addEventListener("click", function () {
+        if (page >= totalPages() || loading) return;
+        withBusy(el("mm-btn-next"), "Загружаем следующую страницу", function () {
+          page += 1;
+          return loadData();
+        });
+      });
+      el("mm-footer-limit").addEventListener("change", function () {
+        limit = Number(el("mm-footer-limit").value) || 100;
+        page = 1;
+        withBusy(el("mm-footer-limit"), "Меняем размер страницы", loadData);
+      });
+
+      (function filtersCollapse() {
+        var btn = el("dg-mm-filters-toggle");
+        var body = el("dg-mm-filters-body");
+        var key = "datagon_medmarket_filters_collapsed_v1";
+        if (!btn || !body) return;
+        function apply() {
+          var c = false;
+          try {
+            c = localStorage.getItem(key) === "1";
+          } catch (e) {}
+          body.style.display = c ? "none" : "";
+          btn.textContent = c ? "Развернуть" : "Свернуть";
+        }
+        apply();
+        btn.addEventListener("click", function () {
+          var hidden = body.style.display !== "none";
+          body.style.display = hidden ? "none" : "";
+          btn.textContent = hidden ? "Развернуть" : "Свернуть";
+          try {
+            localStorage.setItem(key, hidden ? "1" : "0");
+          } catch (e) {}
+          mmRefreshFloatingAfterLayout();
+        });
+      })();
+
+      (function tableCollapse() {
+        var btn = el("mm-table-toggle");
+        var body = el("mm-table-body");
+        var key = "dg.mm.table-card.collapsed.v1";
+        if (!btn || !body) return;
+        function apply() {
+          var c = false;
+          try {
+            c = localStorage.getItem(key) === "1";
+          } catch (e) {}
+          body.style.display = c ? "none" : "";
+          btn.textContent = c ? "Развернуть" : "Свернуть";
+        }
+        apply();
+        btn.addEventListener("click", function () {
+          var hidden = body.style.display !== "none";
+          body.style.display = hidden ? "none" : "";
+          btn.textContent = hidden ? "Развернуть" : "Свернуть";
+          try {
+            localStorage.setItem(key, hidden ? "1" : "0");
+          } catch (e) {}
+          mmRefreshFloatingAfterLayout();
+        });
+      })();
+
+      window.addEventListener("scroll", onScrollMmFloatingHeader, { passive: true });
+      window.addEventListener("resize", function () {
+        updateMmStickyTopVar();
+        mmRefreshFloatingAfterLayout();
+      });
+      (function bindMmScrollContainers() {
+        var mainOuter = document.querySelector(".app-main__outer");
+        if (mainOuter && mainOuter.addEventListener) {
+          mainOuter.addEventListener("scroll", onScrollMmFloatingHeader, { passive: true });
+        }
+        var horiz = document.querySelector(".dg-mm-table-scroll-outer, .dg-mp-table-scroll-outer");
+        if (horiz && horiz.addEventListener) {
+          horiz.addEventListener("scroll", onScrollMmFloatingHeader, { passive: true });
+        }
+      })();
+      if (document.fonts && document.fonts.ready) {
+        document.fonts.ready.then(function () {
+          updateMmStickyTopVar();
+          mmRefreshFloatingAfterLayout();
+        });
+      }
+      window.addEventListener("load", function () {
+        updateMmStickyTopVar();
+        mmRefreshFloatingAfterLayout();
+      });
+
+      try {
+        columnWidths = JSON.parse(localStorage.getItem(userColWidthKey()) || "{}") || {};
+      } catch (e) {
+        columnWidths = {};
+      }
+      bindHeaderSearchMirror();
+      bindFilterDirtyWatch();
+      commitFilters();
+      syncApplyDirtyUi();
+      updateMmStickyTopVar();
+      buildColgroupAndThead();
+      loadData();
+      pollSyncStatus();
+    })();
+  </script>
+
+</body>
+</html>
