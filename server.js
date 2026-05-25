@@ -1188,7 +1188,40 @@ async function getDiskUsageMetrics(forceRefresh = false) {
  * Сброс «зомби» в autoSyncRunIds: в памяти задача «running», а в БД строка уже
  * interrupted/completed (типично после рестарта Node или сбоя без finish).
  */
+/** Закрыть `auto_sync_runs` для moysklad, если синк в памяти уже не active (обрыв MySQL / finish не вызван). */
+async function reconcileMoyskladZombieAutoSyncRuns() {
+    if (typeof moyskladRouterFactory.getJobState !== 'function') return;
+    const js = moyskladRouterFactory.getJobState();
+    if (js && js.active) return;
+    try {
+        await ensureAutoSyncRunsTable();
+        const [rows] = await db.query(
+            `SELECT id FROM auto_sync_runs
+             WHERE task_type = 'moysklad' AND status = 'running' AND finished_at IS NULL`
+        );
+        if (!rows || !rows.length) return;
+        const msg = String(js?.message || '').trim();
+        const status = msg.startsWith('Ошибка') ? 'failed' : 'interrupted';
+        const tail = msg || 'Синхронизация МС в памяти не активна (закрыто reconcile)';
+        for (const row of rows) {
+            await db.query(
+                `UPDATE auto_sync_runs
+                 SET status = ?, message = ?, finished_at = NOW()
+                 WHERE id = ? AND status = 'running'`,
+                [status, tail.slice(0, 480), row.id]
+            );
+        }
+        autoSyncRunIds.delete('moysklad');
+        console.warn(
+            `[AUTO SYNC] reconcileMoyskladZombie: закрыто running-записей moysklad: ${rows.length} (${status})`
+        );
+    } catch (e) {
+        console.warn('[AUTO SYNC] reconcileMoyskladZombie:', e.message || e);
+    }
+}
+
 async function reconcileAutoSyncRunIdsInMemory() {
+    await reconcileMoyskladZombieAutoSyncRuns();
     if (!autoSyncRunIds.size) return;
     try {
         await ensureAutoSyncRunsTable();
@@ -1200,6 +1233,12 @@ async function reconcileAutoSyncRunIdsInMemory() {
             const st = rows && rows[0] ? String(rows[0].status || '') : '';
             if (st !== 'running') {
                 autoSyncRunIds.delete(taskType);
+            } else if (
+                taskType === 'moysklad' &&
+                typeof moyskladRouterFactory.getJobState === 'function' &&
+                !moyskladRouterFactory.getJobState().active
+            ) {
+                await reconcileMoyskladZombieAutoSyncRuns();
             }
         }
     } catch (e) {
@@ -1558,7 +1597,17 @@ async function processAutoSyncQueue() {
                         : { active: false };
                     return !s.active;
                 }, 12 * 60 * 60 * 1000, 1000);
-                await finishAutoSyncRun('moysklad', done ? 'completed' : 'failed', done ? 'Завершено' : 'Таймаут ожидания');
+                const msJob =
+                    typeof moyskladRouterFactory.getJobState === 'function'
+                        ? moyskladRouterFactory.getJobState()
+                        : null;
+                const msMsg = String(msJob?.message || '').trim();
+                const msFailed = !done || msMsg.startsWith('Ошибка');
+                await finishAutoSyncRun(
+                    'moysklad',
+                    msFailed ? 'failed' : 'completed',
+                    (msFailed ? msMsg : 'Завершено') || (done ? 'Завершено' : 'Таймаут ожидания')
+                );
                 console.log('[AUTO SYNC] Queue done: moysklad');
             } else if (task === 'marketplaces') {
                 console.log('[AUTO SYNC] Queue start: marketplaces');
