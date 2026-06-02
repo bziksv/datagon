@@ -12,6 +12,7 @@ const {
     fetchMoyskladPriceTypeNames,
     buildMsHucksterBridgeExport,
 } = require('../lib/hucksterMsBridgeMatrix');
+const { HUCKSTER_MATRIX_LOST_KIND, getHucksterSyncMeta } = require('../lib/hucksterSyncRevision');
 
 const SHOPS_SET_1 = [
     { id: 'ozon', name: 'Ozon', marketplace: 'ozon', shop_id: '139080' },
@@ -39,6 +40,8 @@ const HUCKSTER_UNIT_REQUEST_TIMEOUT_MS = 45000;
 const HUCKSTER_UNIT_RETRY_MAX = 2;
 const HUCKSTER_UNIT_HARD_TIMEOUT_MS = 60000;
 const HUCKSTER_UNIT_SHOP_TIMEOUT_MS = 90000;
+/** ЯМ: после полной пагинации unit/set/get (несколько наборов × несколько страниц) 90s не хватает. */
+const HUCKSTER_UNIT_SHOP_TIMEOUT_YM_MS = 300000;
 const HUCKSTER_SYNC_LOG_FILE = path.join(process.cwd(), 'logs', 'huckster-sync.log');
 const HUCKSTER_SYNC_LOG_MAX_BYTES = 10 * 1024 * 1024; // 10 MB
 const HUCKSTER_SYNC_LOG_ROTATE_KEEP = 5;
@@ -358,6 +361,15 @@ function getRepricerShopTimeoutMs(setKey, shop) {
     return HUCKSTER_REPRICER_SHOP_TIMEOUT_MS;
 }
 
+function getUnitShopTimeoutMs(shop) {
+    const shopId = String((shop && shop.id) || '').trim().toLowerCase();
+    const mp = String((shop && shop.marketplace) || '').trim().toLowerCase();
+    if (shopId === 'ym' || shopId.startsWith('ym_') || mp === 'yandex') {
+        return HUCKSTER_UNIT_SHOP_TIMEOUT_YM_MS;
+    }
+    return HUCKSTER_UNIT_SHOP_TIMEOUT_MS;
+}
+
 /** Только repricer/items/list по одному магазину (без Unit-моделей). Все позиции с uid; «включён в репрайсер» — отдельное поле (раньше выключенные отбрасывались). */
 async function fetchRepricerProductsForShop(shop, sessionId, opts, isStopped, onProgress, setActiveAbortController) {
     /** @type {Map<string, { uid: string, name: string, updatedAt: string, repricerEnabled: boolean }>} */
@@ -472,8 +484,13 @@ async function fetchRepricerProductsForShop(shop, sessionId, opts, isStopped, on
             });
         }
         if (uidFilter && foundFiltered.size >= uidFilter.size) break;
-        offset += limit;
-        if (rows.length < limit) break;
+        const pageLen = rows.length;
+        if (!pageLen) break;
+        offset += pageLen;
+        if (pageLen < limit) {
+            const totalN = Number((payload.cursor || {}).total);
+            if (!(Number.isFinite(totalN) && offset < totalN)) break;
+        }
         throwIfStopped(isStopped);
         await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
@@ -749,10 +766,12 @@ async function fetchAllUnitModelInfo(shop, sessionId, opts, isStopped, unitSetFi
             }
 
             if (uidFilter && foundFiltered.size >= uidFilter.size) break;
-            if (!itemList.length) break;
-            offset += limitGet;
-            if (itemList.length < limitGet) break;
-            if (Number.isFinite(total) && offset >= total) break;
+            const pageLen = itemList.length;
+            if (!pageLen) break;
+            offset += pageLen;
+            if (pageLen < limitGet) {
+                if (!(Number.isFinite(total) && offset < total)) break;
+            }
             throwIfStopped(isStopped);
             await new Promise((r) => setTimeout(r, delayMs));
         }
@@ -925,7 +944,7 @@ function createExportsHucksterRouter(_db, appSettings) {
         return {
             rows,
             total_rows: Math.max(0, rows.length - 1),
-            matrix_kind: 'huckster_lost_v1',
+            matrix_kind: HUCKSTER_MATRIX_LOST_KIND,
         };
     }
 
@@ -992,7 +1011,11 @@ function createExportsHucksterRouter(_db, appSettings) {
                     syncState.active_abort_controller = controller || null;
                 };
                 lastPhase = 'sync_started';
-                await appendHucksterLog('INFO', 'sync_started', { started_at: syncState.started_at, test_uids: opts.test_uids });
+                await appendHucksterLog('INFO', 'sync_started', {
+                    started_at: syncState.started_at,
+                    test_uids: opts.test_uids,
+                    sync_script: getHucksterSyncMeta(),
+                });
                 throwIfStopped(() => syncState.stop_requested);
                 lastPhase = 'huckster_auth';
                 const sessionId = await hucksterAuth(email, password);
@@ -1162,6 +1185,7 @@ function createExportsHucksterRouter(_db, appSettings) {
                         }
                     };
                     try {
+                        const unitShopTimeoutMs = getUnitShopTimeoutMs(item.shop);
                         bucket[item.shop.id] = await withTimeout(
                             enrichProductsWithUnitModels(
                                 item.shop,
@@ -1173,9 +1197,9 @@ function createExportsHucksterRouter(_db, appSettings) {
                                 unitProgress,
                                 setActiveAbortController
                             ),
-                            HUCKSTER_UNIT_SHOP_TIMEOUT_MS,
+                            unitShopTimeoutMs,
                             `Timeout Unit-моделей: ${item.shop.name} (${setLabel}) > ${Math.round(
-                                HUCKSTER_UNIT_SHOP_TIMEOUT_MS / 1000
+                                unitShopTimeoutMs / 1000
                             )}s`
                         );
                     } catch (eUnitShop) {
@@ -1303,6 +1327,7 @@ function createExportsHucksterRouter(_db, appSettings) {
                 syncState.result = {
                     success: true,
                     updated_at: syncedAt,
+                    sync_script: getHucksterSyncMeta(),
                     test_uids: opts.test_uids,
                     sheet_export: set1,
                     sheet_export_rrc: set2,
@@ -1434,7 +1459,7 @@ function createExportsHucksterRouter(_db, appSettings) {
             if (!r.ok && r.code === 'MISSING_CREDS') {
                 return res.status(400).json({ error: 'Не заданы email/password Huckster', code: 'MISSING_CREDS' });
             }
-            return res.json({ success: true, started: true, started_at: r.started_at });
+            return res.json({ success: true, started: true, started_at: r.started_at, sync_script: getHucksterSyncMeta() });
         } catch (e) {
             return res.status(502).json({ error: e.message || String(e), code: 'HUCKSTER_SYNC_FAILED' });
         }
@@ -1451,6 +1476,7 @@ function createExportsHucksterRouter(_db, appSettings) {
             progress: syncState.progress,
             result: syncState.result,
             error: syncState.error,
+            sync_script: getHucksterSyncMeta(),
         });
     });
 
@@ -1463,9 +1489,10 @@ function createExportsHucksterRouter(_db, appSettings) {
                     source: 'snapshot',
                     empty: true,
                     updated_at: null,
+                    sync_script: getHucksterSyncMeta(),
                     sheet_export: { rows: [], total_uids: 0, unit_gap_shop_indexes_by_uid: {} },
                     sheet_export_rrc: { rows: [], total_uids: 0, unit_gap_shop_indexes_by_uid: {} },
-                    sheet_export_lost: { rows: [], total_rows: 0, matrix_kind: 'huckster_lost_v1' },
+                    sheet_export_lost: { rows: [], total_rows: 0, matrix_kind: HUCKSTER_MATRIX_LOST_KIND },
                 });
             }
             return res.json({
@@ -1474,9 +1501,10 @@ function createExportsHucksterRouter(_db, appSettings) {
                 empty: false,
                 updated_at: snap.updated_at || null,
                 stored_at: snap.stored_at || null,
+                sync_script: snap.sync_script || getHucksterSyncMeta(),
                 sheet_export: snap.sheet_export,
                 sheet_export_rrc: snap.sheet_export_rrc,
-                sheet_export_lost: snap.sheet_export_lost || { rows: [], total_rows: 0, matrix_kind: 'huckster_lost_v1' },
+                sheet_export_lost: snap.sheet_export_lost || { rows: [], total_rows: 0, matrix_kind: HUCKSTER_MATRIX_LOST_KIND },
             });
         } catch (e) {
             return res.status(500).json({ success: false, error: e.message || String(e), code: 'SNAPSHOT_READ_FAILED' });
@@ -1565,6 +1593,7 @@ function createExportsHucksterRouter(_db, appSettings) {
             ms_exclude_products_with_bundles: appSettingBool01(appSettings.huckster_ms_exclude_products_with_bundles),
             price_type_options: [],
             defaults: { set1: SHOPS_SET_1, set2: SHOPS_SET_2 },
+            sync_script: getHucksterSyncMeta(),
         });
     });
 

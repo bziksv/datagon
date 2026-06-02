@@ -11,3 +11,5 @@
 | `scripts/purchase-list-sql-bench.cjs` | Замер `GET /api/purchase` (SQL + enrich страницы) без HTTP: `npm run bench:purchase-list-sql` или `node scripts/purchase-list-sql-bench.cjs --sort=formula_proposed_min_stock --iter=3` |
 
 Команды из корня: `npm run docs:capture-screenshots`, `npm run sync:vanilla-public`, `npm run test:datagon-smoke-e2e`, `npm run test:api-http-smoke` (нужны `DATAGON_SMOKE_USER` / `DATAGON_SMOKE_PASSWORD`, сервер `npm start`), `npm run test:huckster-matrix` (без сервера и сети), `npm run check:panel-notify-static` (без сервера), `npm run bench:purchase-list-sql` (прямой MySQL из `config.js`, без поднятого HTTP).
+
+При изменении алгоритмов синка/матриц — bump ревизии в `lib/*SyncRevision.js` и обновление `docs-docusaurus/docs/script-versioning.md` (правило `.cursor/rules/datagon-script-version-revision.mdc`).

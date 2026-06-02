@@ -230,10 +230,13 @@ async function findInRepricer(sessionId, shop, targetUid) {
                 };
             }
         }
-        if (list.length < REPRICER_LIMIT) break;
-        offset += REPRICER_LIMIT;
-        const total = Number(cur.total);
-        if (Number.isFinite(total) && offset >= total) break;
+        const pageLen = list.length;
+        if (!pageLen) break;
+        offset += pageLen;
+        if (pageLen < REPRICER_LIMIT) {
+            const totalN = Number(cur.total);
+            if (!(Number.isFinite(totalN) && offset < totalN)) break;
+        }
         await sleep(DELAY_MS);
     }
     return { hit: false };
@@ -283,9 +286,10 @@ async function scanUnitSetsOnce(sessionId, shop, targetUid, sets) {
                 break;
             }
             if (!itemList.length) break;
-            offset += UNIT_LIMIT;
-            if (itemList.length < UNIT_LIMIT) break;
-            if (Number.isFinite(total) && offset >= total) break;
+            offset += itemList.length;
+            if (itemList.length < UNIT_LIMIT) {
+                if (!(Number.isFinite(total) && offset < total)) break;
+            }
             await sleep(DELAY_MS);
         }
         await sleep(DELAY_MS);

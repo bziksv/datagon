@@ -15,6 +15,7 @@ module.exports = {
     "matches",
     "processes",
     "settings",
+    "script-versioning",
     "api",
     "deploy",
     "architectui-migration",

@@ -1175,6 +1175,11 @@
                 </div>
                 <div>
                   Huckster
+                  <span
+                    class="badge bg-secondary align-middle ms-1 fw-normal d-none"
+                    id="dg-huckster-page-script-ver"
+                    style="font-size: 0.65em; vertical-align: middle"
+                  ></span>
                   <div class="page-title-subheading">
                     Таблицы <strong>Huckster Export</strong> и <strong>Huckster Export RRC</strong> строятся от товаров МойСклад: код МС сопоставляется с UID в Huckster по кабинетам Ozon, WB и ЯМ.
                     В блоке <strong>Наборы</strong> задаются кабинеты для каждого набора и опциональный <strong>Тип цены МойСклад</strong>. Если тип цены выбран, при обновлении остаются только товары, где эта цена больше 0, а в таблицу добавляется колонка с названием цены и её значением.
@@ -1248,6 +1253,7 @@
               <div class="d-flex align-items-center gap-2">
                 <i class="header-icon pe-7s-refresh icon-gradient bg-happy-fisher me-2"></i>
                 <span>Обновление Huckster</span>
+                <span class="badge bg-light text-muted border ms-1 fw-normal d-none" id="dg-huckster-sync-script-ver"></span>
               </div>
               <div class="d-flex align-items-center gap-2">
                 <div class="dropdown">
@@ -1883,6 +1889,52 @@
               var hucksterMatrixPage1 = 1;
               var hucksterMatrixPage2 = 1;
               var hucksterMatrixPageLost = 1;
+              var hucksterSyncScriptMeta = null;
+
+              function formatHucksterSyncScriptLabel(meta) {
+                if (!meta || typeof meta !== "object") return "";
+                var v = String(meta.version || "").trim();
+                var rev = meta.revision != null && meta.revision !== "" ? String(meta.revision) : "";
+                if (!v) return "";
+                return "v" + v + (rev ? " · rev." + rev : "");
+              }
+
+              function renderHucksterSyncScriptBadge(currentMeta, snapshotMeta) {
+                var meta = currentMeta || snapshotMeta || null;
+                var label = formatHucksterSyncScriptLabel(meta);
+                var tipParts = [];
+                if (meta && meta.label) tipParts.push(String(meta.label));
+                if (meta && meta.notes) tipParts.push(String(meta.notes));
+                if (meta && meta.date) tipParts.push("Дата ревизии: " + meta.date);
+                if (snapshotMeta && snapshotMeta.version) {
+                  var snapLabel = formatHucksterSyncScriptLabel(snapshotMeta);
+                  var curLabel = formatHucksterSyncScriptLabel(currentMeta);
+                  if (snapLabel && curLabel && snapLabel !== curLabel) {
+                    tipParts.push("Снапшот в БД собран скриптом " + snapLabel);
+                  }
+                }
+                var tip = tipParts.filter(Boolean).join("\n");
+                ["dg-huckster-page-script-ver", "dg-huckster-sync-script-ver"].forEach(function (id) {
+                  var el = document.getElementById(id);
+                  if (!el) return;
+                  if (!label) {
+                    el.classList.add("d-none");
+                    el.textContent = "";
+                    el.removeAttribute("data-dg-tooltip");
+                    el.removeAttribute("title");
+                    return;
+                  }
+                  el.classList.remove("d-none");
+                  el.textContent = label;
+                  if (tip) {
+                    el.setAttribute("data-dg-tooltip", tip);
+                    el.setAttribute("title", tip);
+                  } else {
+                    el.removeAttribute("data-dg-tooltip");
+                    el.removeAttribute("title");
+                  }
+                });
+              }
 
               function matrixSearchStorageKey(which) {
                 var u = "guest";
@@ -2170,6 +2222,11 @@
                       throw new Error(responseErrorMessage(x, "Не удалось получить статус обновления"));
                     }
                     renderSyncState(x.json);
+                    if (x.json.sync_script) hucksterSyncScriptMeta = x.json.sync_script;
+                    renderHucksterSyncScriptBadge(
+                      hucksterSyncScriptMeta,
+                      x.json.result && x.json.result.sync_script
+                    );
                     if (x.json.active) {
                       setSyncButtonsState(true);
                       if (!syncTimerTick) startTimer(x.json.started_at);
@@ -2217,6 +2274,7 @@
                   var r2 = j.sheet_export_rrc && Array.isArray(j.sheet_export_rrc.rows) ? j.sheet_export_rrc.rows : [];
                   var rLost = j.sheet_export_lost && Array.isArray(j.sheet_export_lost.rows) ? j.sheet_export_lost.rows : [];
                   if (r1.length === 0 && r2.length === 0 && rLost.length === 0) return;
+                  renderHucksterSyncScriptBadge(hucksterSyncScriptMeta || j.sync_script, j.sync_script);
                   setHucksterMatrixFromApi("dg-huckster-table-1", {
                     rows: r1,
                     bridge_row_meta: j.sheet_export && j.sheet_export.bridge_row_meta,
@@ -4568,6 +4626,8 @@
                     hucksterPriceTypeSet1 = String(x.json.price_type_set_1 || "").trim();
                     hucksterPriceTypeSet2 = String(x.json.price_type_set_2 || "").trim();
                     hucksterPriceTypeOptions = Array.isArray(x.json.price_type_options) ? x.json.price_type_options : [];
+                    hucksterSyncScriptMeta = x.json.sync_script || hucksterSyncScriptMeta;
+                    renderHucksterSyncScriptBadge(hucksterSyncScriptMeta);
                     rerenderConfig();
                     applyMsBridgeArchiveFiltersFromServer(x.json);
                     scheduleRefreshMsBridgeArchiveFlagsAndRedraw();
