@@ -6,7 +6,7 @@
 
 | Блок | Источник |
 |------|----------|
-| Основные данные | `ms_export` (синк МС) |
+| Основные данные | `ms_export` (синк МС) + `ms.uom` из `payload_json.uom` (при meta без `name` — разрешение по href через API МС) |
 | Атрибуты МС | `ms_entity_details.payload_json.attributes` |
 | Цены | `ms_entity_details.payload_json.{buyPrice, minPrice, salePrices[]}` (+ `ms_export.buy_price` как fallback) |
 | Остатки и ожидания | `ms_export.stock`, `ms_export.min_stock`, payload `reserve` / `inTransit` (в закупках колонка «Ожидание» = `inTransit` из того же payload) |

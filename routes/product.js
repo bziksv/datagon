@@ -81,6 +81,7 @@ function clampProductStockSnapshotRetentionDays(raw) {
  */
 
 const express = require('express');
+const { resolveUomLabelFromPayload } = require('../lib/msMetaResolve');
 
 /** Не пересобирать `dg_bundle_components` для одного component_code чаще (GET карточки + серия /recent-shipments). */
 const bundleComponentsLastBuiltMs = new Map();
@@ -1631,6 +1632,7 @@ function createProductRouter(db, appSettings) {
             }
             const mse = msRows[0];
             const payload = parsePayloadSafe(mse.payload_json);
+            const uomLabel = await resolveUomLabelFromPayload(payload, { fallback: '' });
 
             const override = poRows && poRows[0] ? poRows[0] : null;
 
@@ -1706,6 +1708,7 @@ function createProductRouter(db, appSettings) {
                 name: mse.name || (payload?.name || ''),
                 description: payload?.description ? String(payload.description) : '',
                 type: mse.type || '',
+                uom: uomLabel,
                 is_archived: Number(mse.is_archived || 0),
                 supplier: mse.supplier || '',
                 supplier2: mse.supplier2 || '',

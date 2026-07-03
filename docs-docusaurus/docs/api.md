@@ -1548,7 +1548,7 @@ Body (любое подмножество): `assigned_user_id`, `comment`, `min_
 - **Склад:** «Альмамед Ожидание».
 - **Организация:** `app_settings.ms_purchase_order_organization_name` (Настройки → «Синхронизация МойСклад», по умолчанию `ООО "АЛЬМАМЕД"`), env `MS_PURCHASE_ORGANIZATION_NAME`, иначе автовыбор единственной «АЛЬМАМЕД» в списке организаций МС; при неоднозначности — `409 AMBIGUOUS_ORGANIZATION`.
 - **Проведено:** `applicable: false` (черновик). Поле «Ожидание» не выставляется.
-- **Позиции:** `quantity` = потребность, `price` в копейках из закупочной цены, `assortment` по `ms_export.uuid` (ед. изм. — по умолчанию из карточки товара в МС, `uom` в позицию не передаётся).
+- **Позиции:** `quantity` = потребность, `price` в копейках из закупочной цены, `assortment` по `ms_export.uuid`; **`vat`** и **`vat_enabled`** — из `ms_export` / `payload_json` (как НДС в карточке товара; напр. 5, 20 или «без НДС»). Ед. изм. — из карточки в МС (`uom` в позицию не передаётся).
 
 Успех: `{ success: true, log_id, order_name, ms_uuid, ms_href, ms_web_href, positions_count, lines_total, skipped_no_uuid[], counterparty_name, store_name, organization_name }`.
 
