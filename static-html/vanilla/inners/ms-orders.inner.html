@@ -1,0 +1,220 @@
+<!-- @inject inner -->
+<div class="app-page-title">
+  <div class="page-title-wrapper">
+    <div class="page-title-heading">
+      <div class="page-title-icon">
+        <i class="pe-7s-note2 icon-gradient bg-mean-fruit"></i>
+      </div>
+      <div>
+        Заказы в МС
+        <div class="page-title-subheading">
+          Заказы покупателей (<code>entity/customerorder</code>) из МойСклад за последние <strong id="dg-mso-page-period-days">…</strong>.
+          Заказы ответственных из списка исключений в <a href="/settings.html">настройках</a> не загружаются и не показываются.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="dg-mso-data-freshness mb-3" id="dg-mso-data-freshness" aria-label="Актуальность данных заказов и остатков МойСклад">
+  <div class="row g-2" id="dg-mso-data-freshness-row">
+    <div class="col-12">
+      <p class="text-muted small mb-0" id="dg-mso-data-freshness-loading">Проверяем актуальность данных…</p>
+    </div>
+  </div>
+</div>
+
+<div class="main-card mb-3 card">
+  <div class="card-header d-flex align-items-center justify-content-between gap-2">
+    <div class="d-flex align-items-center">
+      <i class="header-icon pe-7s-filter icon-gradient bg-plum-plate me-2"></i>
+      <span>Фильтры и действия</span>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+      <div class="dropdown">
+        <button type="button" class="btn btn-sm btn-outline-secondary dg-vanilla-dropdown-toggle" style="line-height: 1; padding: 0.35rem 0.5rem" aria-expanded="false" aria-haspopup="true" id="dg-mso-filter-blocks-btn" data-dg-tooltip="Какие поля фильтров показывать">
+          <i class="pe-7s-config btn-icon-wrapper" style="font-size: 1.1rem" aria-hidden="true"></i>
+        </button>
+        <div class="dropdown-menu dropdown-menu-end rm-pointers p-0 dg-mso-filter-blocks-dropdown" id="dg-mso-filter-blocks-menu" style="width: min(420px, calc(100vw - 1.5rem))">
+          <div class="dropdown-menu-header mb-0">
+            <div class="dropdown-menu-header-inner bg-tempting-azure">
+              <div class="menu-header-content text-white px-3 py-2">
+                <h5 class="menu-header-title mb-0">Поля фильтров</h5>
+              </div>
+            </div>
+          </div>
+          <div class="dg-mso-filter-blocks-scroll" style="max-height: calc(100vh - 10rem); overflow-y: auto;">
+            <div id="dg-mso-filter-blocks-toggles" class="list-group list-group-flush"></div>
+          </div>
+        </div>
+      </div>
+      <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mso-filters-toggle">Свернуть</button>
+    </div>
+  </div>
+  <div class="card-body">
+    <div id="dg-mso-filters-body">
+      <div class="row g-2 align-items-end">
+        <div class="col-md-4" data-dg-mso-filter-field="mso_search">
+          <label class="form-label" for="dg-mso-search">Умный поиск</label>
+          <input type="search" id="dg-mso-search" class="form-control" placeholder="Номер заказа, контрагент, код или товар… (Enter — применить)" autocomplete="off" />
+        </div>
+        <div class="col-md-2" data-dg-mso-filter-field="mso_days">
+          <label class="form-label" for="dg-mso-days">За период</label>
+          <select id="dg-mso-days" class="form-select" title="Не больше периода из настроек «Заказы в МС»">
+            <option value="7">7 дн.</option>
+            <option value="14">14 дн.</option>
+            <option value="30">30 дн.</option>
+            <option value="60">60 дн.</option>
+            <option value="90">90 дн.</option>
+            <option value="180">180 дн.</option>
+            <option value="365">365 дн.</option>
+          </select>
+        </div>
+        <div class="col-md-3" data-dg-mso-filter-field="mso_store">
+          <label class="form-label" for="dg-mso-store-search">Склад</label>
+          <div class="dg-mso-search-select position-relative" id="dg-mso-store-wrap">
+            <input type="search" id="dg-mso-store-search" class="form-control" placeholder="Все склады — введите для поиска…" autocomplete="off" aria-autocomplete="list" aria-controls="dg-mso-store-menu" aria-expanded="false" />
+            <div class="dg-mso-search-select-menu shadow-sm" id="dg-mso-store-menu" role="listbox"></div>
+          </div>
+          <div id="dg-mso-store-hint" class="small text-muted mt-1 d-none"></div>
+        </div>
+        <div class="col-md-3" data-dg-mso-filter-field="mso_agent">
+          <label class="form-label" for="dg-mso-agent-search">Контрагент</label>
+          <div class="dg-mso-search-select position-relative" id="dg-mso-agent-wrap">
+            <input type="search" id="dg-mso-agent-search" class="form-control" placeholder="Все контрагенты — введите для поиска…" autocomplete="off" aria-autocomplete="list" aria-controls="dg-mso-agent-menu" aria-expanded="false" />
+            <div class="dg-mso-search-select-menu shadow-sm" id="dg-mso-agent-menu" role="listbox"></div>
+          </div>
+          <div id="dg-mso-agent-hint" class="small text-muted mt-1 d-none"></div>
+        </div>
+      </div>
+      <div class="row g-2 align-items-end mt-1">
+        <div class="col-md-2" data-dg-mso-filter-field="mso_doc">
+          <label class="form-label" for="dg-mso-doc">Номер заказа</label>
+          <input type="search" id="dg-mso-doc" class="form-control" placeholder="Напр. 00037" autocomplete="off" />
+        </div>
+        <div class="col-md-3" data-dg-mso-filter-field="mso_project">
+          <label class="form-label" for="dg-mso-project-search">Проект</label>
+          <div class="dg-mso-search-select position-relative" id="dg-mso-project-wrap">
+            <input type="search" id="dg-mso-project-search" class="form-control" placeholder="Все проекты — введите для поиска…" autocomplete="off" aria-autocomplete="list" aria-controls="dg-mso-project-menu" aria-expanded="false" />
+            <div class="dg-mso-search-select-menu shadow-sm" id="dg-mso-project-menu" role="listbox"></div>
+          </div>
+          <div id="dg-mso-project-hint" class="small text-muted mt-1 d-none"></div>
+        </div>
+        <div class="col-md-3" data-dg-mso-filter-field="mso_applicable">
+          <label class="form-label" for="dg-mso-applicable-search">Проведённые</label>
+          <div class="dg-mso-search-select position-relative" id="dg-mso-applicable-wrap">
+            <input type="search" id="dg-mso-applicable-search" class="form-control" placeholder="Все — введите для поиска…" autocomplete="off" aria-autocomplete="list" aria-controls="dg-mso-applicable-menu" aria-expanded="false" />
+            <div class="dg-mso-search-select-menu shadow-sm" id="dg-mso-applicable-menu" role="listbox"></div>
+          </div>
+          <div id="dg-mso-applicable-hint" class="small text-muted mt-1 d-none"></div>
+        </div>
+        <div class="col-md-3" data-dg-mso-filter-field="mso_payed">
+          <label class="form-label" for="dg-mso-payed-search">Оплачено</label>
+          <div class="dg-mso-search-select position-relative" id="dg-mso-payed-wrap">
+            <input type="search" id="dg-mso-payed-search" class="form-control" placeholder="Оплачено — введите для поиска…" autocomplete="off" aria-autocomplete="list" aria-controls="dg-mso-payed-menu" aria-expanded="false" />
+            <div class="dg-mso-search-select-menu shadow-sm" id="dg-mso-payed-menu" role="listbox"></div>
+          </div>
+          <div id="dg-mso-payed-hint" class="small text-muted mt-1 d-none"></div>
+        </div>
+        <div class="col-md-3" data-dg-mso-filter-field="mso_shipped">
+          <label class="form-label" for="dg-mso-shipped-search">Отгружено</label>
+          <div class="dg-mso-search-select position-relative" id="dg-mso-shipped-wrap">
+            <input type="search" id="dg-mso-shipped-search" class="form-control" placeholder="Все — введите для поиска…" autocomplete="off" aria-autocomplete="list" aria-controls="dg-mso-shipped-menu" aria-expanded="false" />
+            <div class="dg-mso-search-select-menu shadow-sm" id="dg-mso-shipped-menu" role="listbox"></div>
+          </div>
+          <div id="dg-mso-shipped-hint" class="small text-muted mt-1 d-none"></div>
+        </div>
+        <div class="col-md-3" data-dg-mso-filter-field="mso_stock_status">
+          <label class="form-label" for="dg-mso-stock-status-search">Статус</label>
+          <div class="dg-mso-search-select position-relative" id="dg-mso-stock-status-wrap">
+            <input type="search" id="dg-mso-stock-status-search" class="form-control" placeholder="Все — на складе, частично, нет…" autocomplete="off" aria-autocomplete="list" aria-controls="dg-mso-stock-status-menu" aria-expanded="false" />
+            <div class="dg-mso-search-select-menu shadow-sm" id="dg-mso-stock-status-menu" role="listbox"></div>
+          </div>
+          <div id="dg-mso-stock-status-hint" class="small text-muted mt-1 d-none"></div>
+        </div>
+        <div class="col-md-3" data-dg-mso-filter-field="mso_deleted">
+          <label class="form-label" for="dg-mso-deleted">Удалённые в МС</label>
+          <select id="dg-mso-deleted" class="form-select">
+            <option value="0" selected>Только активные</option>
+            <option value="1">Только удалённые</option>
+            <option value="all">Все</option>
+          </select>
+        </div>
+        <div class="col-md-2" data-dg-mso-filter-field="mso_page_size">
+          <label class="form-label" for="dg-mso-page-size">На странице</label>
+          <select id="dg-mso-page-size" class="form-select">
+            <option value="50">50</option>
+            <option value="100" selected>100</option>
+            <option value="200">200</option>
+          </select>
+        </div>
+      </div>
+      <div class="mt-3 d-flex flex-wrap gap-2" data-dg-mso-filter-field="mso_filter_actions">
+        <button id="dg-mso-apply" type="button" class="btn btn-sm btn-primary" data-dg-notify-start="Применяем фильтры…"><i class="pe-7s-search me-1"></i>Применить</button>
+        <button id="dg-mso-reset" type="button" class="btn btn-sm btn-outline-secondary" data-dg-notify-start="Сбрасываем фильтры…"><i class="pe-7s-refresh me-1"></i>По умолчанию</button>
+        <button id="dg-mso-sync" type="button" class="btn btn-sm btn-outline-success" data-dg-notify-start="Запускаем синхронизацию заказов из МС…"><i class="pe-7s-refresh-2 me-1"></i>Синхронизировать с МС</button>
+        <button type="button" class="btn btn-sm btn-outline-primary dg-mso-filter-preset" data-dg-mso-filter-preset="paid_none" data-dg-notify-start="Фильтр: оплаченные, нет на складе…">Оплаченные, нет на складе</button>
+        <button type="button" class="btn btn-sm btn-outline-primary dg-mso-filter-preset" data-dg-mso-filter-preset="paid_partial" data-dg-notify-start="Фильтр: оплаченные, частично на складе…">Оплаченные, частично на складе</button>
+        <button type="button" class="btn btn-sm btn-outline-primary dg-mso-filter-preset" data-dg-mso-filter-preset="paid_all" data-dg-notify-start="Фильтр: оплаченные, все на складе…">Оплаченные, все на складе</button>
+        <button id="dg-mso-cancel" type="button" class="btn btn-sm btn-outline-warning d-none" data-dg-notify-start="Останавливаем синхронизацию…"><i class="pe-7s-close-circle me-1"></i>Остановить</button>
+      </div>
+      <div id="dg-mso-sync-status" class="dg-mso-sync-status d-none mt-3" role="status"></div>
+      <div id="dg-mso-search-draft-hint" class="alert alert-warning py-2 px-3 mt-3 mb-0 d-none" role="status"></div>
+    </div>
+  </div>
+</div>
+
+<div class="main-card mb-3 card">
+  <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+    <div class="d-flex align-items-center gap-3 flex-grow-1" style="min-width: 0;">
+      <div class="d-flex align-items-center flex-shrink-0">
+        <i class="header-icon pe-7s-note2 icon-gradient bg-grow-early me-2"></i>
+        <span>Заказы в МС</span>
+      </div>
+      <div class="dg-mso-header-search" style="flex: 0 1 380px; min-width: 220px;">
+        <div class="input-group input-group-sm">
+          <span class="input-group-text bg-white text-muted px-2" aria-hidden="true">🔎</span>
+          <input type="search" id="dg-mso-table-search-mirror" class="form-control" placeholder="Умный поиск (Enter — применить)" autocomplete="off" />
+        </div>
+      </div>
+      <div class="dg-mso-status-line text-muted small" id="dg-mso-status">—</div>
+    </div>
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+      <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mso-columns-toggle">🧩 Столбцы</button>
+      <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mso-widths-toggle">📏 Ширины</button>
+      <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mso-table-toggle">Свернуть</button>
+    </div>
+  </div>
+  <div class="card-body" id="dg-mso-table-body">
+    <div class="datagon-columns-toolbox mb-2 d-none" id="dg-mso-toolbox-panels">
+      <div class="datagon-columns-panel" id="dg-mso-columns-panel">
+        <div class="columns-actions mb-2">
+          <button type="button" class="btn btn-sm" id="dg-mso-columns-all">Выделить все</button>
+          <button type="button" class="btn btn-sm" id="dg-mso-columns-none">Снять все</button>
+          <button type="button" class="btn btn-sm" id="dg-mso-columns-default">По умолчанию</button>
+        </div>
+        <div id="dg-mso-columns-list" class="columns-grid"></div>
+      </div>
+      <div class="datagon-columns-panel" id="dg-mso-widths-panel">
+        <div class="columns-actions mb-2">
+          <button type="button" class="btn btn-sm" id="dg-mso-widths-default">По умолчанию</button>
+        </div>
+        <div id="dg-mso-widths-list" class="dg-mso-widths-grid"></div>
+      </div>
+    </div>
+    <table class="dg-mso-table" id="dg-mso-table">
+      <thead id="dg-mso-thead"></thead>
+      <tbody id="dg-mso-tbody"></tbody>
+    </table>
+    <div class="dg-mso-empty d-none" id="dg-mso-empty-msg">
+      Нет данных. Нажмите «Синхронизировать с МС», чтобы загрузить заказы за последние 30 дней.
+    </div>
+    <div class="dg-mso-pagination">
+      <div class="dg-mso-status-line"><span id="dg-mso-pagination-status">—</span></div>
+      <div class="ms-auto d-flex gap-2">
+        <button id="dg-mso-page-prev" class="btn btn-sm btn-outline-secondary" type="button">Назад</button>
+        <button id="dg-mso-page-next" class="btn btn-sm btn-outline-secondary" type="button">Вперёд</button>
+      </div>
+    </div>
+  </div>
+</div>

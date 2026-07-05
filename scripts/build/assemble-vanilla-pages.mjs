@@ -302,15 +302,20 @@ function assemble() {
             PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/exports-dimensions.scripts.html')),
         },
         {
-            // MS Sales — отдельная страница «Продажи МС»: тянет entity/demand
-            // из МС API, хранит документы и позиции локально с привязкой к
-            // ms_export. См. routes/msSales.js, docs api.md (раздел «Продажи МС»).
             out: 'ms-sales.html',
             PAGE_TITLE: 'Продажи МС — Датагон',
             BODY_ATTRS: 'class="datagon-vanilla-body" data-dg-active-nav="ms-sales"',
             EXTRA_HEAD: read(path.join(vanillaDir, 'inners/ms-sales.head.html')),
             MAIN_INNER: read(path.join(vanillaDir, 'inners/ms-sales.inner.html')),
             PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/ms-sales.scripts.html')),
+        },
+        {
+            out: 'ms-orders.html',
+            PAGE_TITLE: 'Заказы в МС — Датагон',
+            BODY_ATTRS: 'class="datagon-vanilla-body" data-dg-active-nav="ms-orders"',
+            EXTRA_HEAD: read(path.join(vanillaDir, 'inners/ms-orders.head.html')),
+            MAIN_INNER: read(path.join(vanillaDir, 'inners/ms-orders.inner.html')),
+            PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/ms-orders.scripts.html')),
         },
     ];
 

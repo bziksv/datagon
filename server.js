@@ -53,6 +53,9 @@ let appSettings = {
     ms_sync_delay_ms: 0,
     /** Организация в заказе поставщику (страница «Поставщики» → МС). */
     ms_purchase_order_organization_name: 'ООО "АЛЬМАМЕД"',
+    ms_orders_exclude_owner_names: 'Новикова И.\nНовикова Ирина',
+    /** Окно синка и списка на /ms-orders.html (дней, 1..365). */
+    ms_orders_sync_days: 30,
     sync_mode: 'always',
     log_retention_days: 7,
     results_retention_days: 120,
@@ -67,6 +70,9 @@ let appSettings = {
     auto_sync_myproducts_time: '03:00',
     auto_sync_moysklad_enabled: 0,
     auto_sync_moysklad_time: '04:00',
+    auto_sync_ms_orders_enabled: 0,
+    auto_sync_ms_orders_time: '08:00',
+    auto_sync_ms_orders_weekdays: '',
     discover_max_sitemaps: 200,
     discover_max_urls: 50000,
     discover_crawl_max_pages: 500,
@@ -188,6 +194,7 @@ const medmarketStore = require('./lib/medmarketStore');
  *  стартовать синк без зависимости от Express-роутера. См. module.exports.triggerSync /
  *  getSyncState в routes/msSales.js. */
 const msSalesModule = require('./routes/msSales');
+const msOrdersModule = require('./routes/msOrders');
 const medmarketRouterFactory = require('./routes/medmarket');
 const { getAutoSyncTaskKeys } = require('./lib/datagonAutoSyncRegistry');
 /** Whitelist для POST /api/settings/auto-sync-run (фиксируется при старте процесса). */
@@ -314,8 +321,11 @@ async function initDB() {
             ['default_limit','100'],['parse_batch_size','50'],['page_delay_ms','0'],
             ['sync_batch_size','500'],['sync_delay_ms','2000'],['sync_mode','always'],['log_retention_days','7'],['results_retention_days','120'],['ms_dimensions_log_retention_days','180'],['dg_purchase_overrides_log_retention_days','180'],['auto_sync_runs_retention_days','180'],['product_stock_snapshot_retention_days','365'],
             ['ms_sync_page_limit','1000'],['ms_sync_delay_ms','0'],['ms_purchase_order_organization_name','ООО "АЛЬМАМЕД"'],
+            ['ms_orders_exclude_owner_names','Новикова И.\nНовикова Ирина'],
+            ['ms_orders_sync_days','30'],
             ['auto_sync_myproducts_enabled','0'],['auto_sync_myproducts_time','03:00'],
             ['auto_sync_moysklad_enabled','0'],['auto_sync_moysklad_time','04:00'],
+            ['auto_sync_ms_orders_enabled','0'],['auto_sync_ms_orders_time','08:00'],['auto_sync_ms_orders_weekdays',''],
             ['discover_max_sitemaps','200'],['discover_max_urls','50000'],
             ['discover_crawl_max_pages','500'],['discover_request_delay_ms','100'],
             ['auth_session_ttl_days','14'],['auth_session_user_limit','1'],
@@ -1422,6 +1432,24 @@ function buildAutoSyncTasksLiveForOverview() {
         out.mssales_full = msSalesLiveOrPending();
     }
 
+    if (hasRun('ms_orders')) {
+        const st = typeof msOrdersModule.getSyncState === 'function' ? msOrdersModule.getSyncState() : null;
+        if (st && st.active) {
+            out.ms_orders = {
+                active: true,
+                fetched_orders: Number(st.fetched_orders || 0),
+                total_orders: Number(st.total_orders || 0),
+                saved_orders: Number(st.saved_orders || 0),
+                saved_positions: Number(st.saved_positions || 0),
+                skipped_excluded: Number(st.skipped_excluded || 0),
+                message: String(st.message || ''),
+                days: Number(st.days || 0),
+            };
+        } else {
+            out.ms_orders = { active: true, pending: true, message: 'Ожидание старта импорта заказов МС…' };
+        }
+    }
+
     if (hasRun('medmarket')) {
         const st =
             typeof medmarketRouterFactory.getSyncState === 'function'
@@ -2027,6 +2055,64 @@ async function processAutoSyncQueue() {
                     await finishAutoSyncRun('mssales', status, message);
                     console.log('[AUTO SYNC] Queue done: mssales — ' + status + ' (' + message + ')');
                 }
+            } else if (task === 'ms_orders') {
+                console.log('[AUTO SYNC] Queue start: ms_orders');
+                await startAutoSyncRun('ms_orders', triggerType);
+                const daysOrd = Math.max(1, Math.min(365, Number(appSettings.ms_orders_sync_days || 30)));
+                let startResOrd = { started: false };
+                if (typeof msOrdersModule.triggerSync === 'function') {
+                    try {
+                        startResOrd = await msOrdersModule.triggerSync(db, appSettings, {
+                            days: daysOrd,
+                            awaitCompletion: true,
+                        });
+                    } catch (e) {
+                        startResOrd = { started: false, error: e && e.message ? e.message : String(e) };
+                    }
+                }
+                if (startResOrd && startResOrd.started === false && startResOrd.reason !== 'already_running') {
+                    await finishAutoSyncRun('ms_orders', 'failed',
+                        startResOrd.error || startResOrd.reason || 'Не удалось запустить синхронизацию заказов МС');
+                    console.log('[AUTO SYNC] Queue done: ms_orders — failed (start)');
+                } else {
+                    let timedOutOrd = false;
+                    let finalStateOrd;
+                    if (startResOrd && startResOrd.started === false && startResOrd.reason === 'already_running') {
+                        timedOutOrd = !(await waitUntil(() => {
+                            const s = typeof msOrdersModule.getSyncState === 'function'
+                                ? msOrdersModule.getSyncState()
+                                : { active: false };
+                            return !s.active;
+                        }, 12 * 60 * 60 * 1000, 1000));
+                        finalStateOrd = typeof msOrdersModule.getSyncState === 'function'
+                            ? msOrdersModule.getSyncState()
+                            : { active: false };
+                    } else {
+                        finalStateOrd = (startResOrd && startResOrd.status) || (typeof msOrdersModule.getSyncState === 'function'
+                            ? msOrdersModule.getSyncState()
+                            : { active: false });
+                    }
+                    let statusOrd = 'failed';
+                    let messageOrd;
+                    if (timedOutOrd) {
+                        messageOrd = 'Таймаут ожидания (12 ч)';
+                    } else if (finalStateOrd.last_error) {
+                        messageOrd = ('Ошибка: ' + finalStateOrd.last_error).slice(0, 480);
+                    } else {
+                        statusOrd = 'completed';
+                        messageOrd = (
+                            'Окно ' + daysOrd + ' дн., заказов ' +
+                            (finalStateOrd.fetched_orders || 0) + '/' + (finalStateOrd.total_orders || 0) +
+                            ', сохранено ' + (finalStateOrd.saved_orders || 0) +
+                            ', позиций ' + (finalStateOrd.saved_positions || 0) +
+                            (finalStateOrd.skipped_excluded
+                                ? ', пропущено ' + finalStateOrd.skipped_excluded
+                                : '')
+                        ).slice(0, 480);
+                    }
+                    await finishAutoSyncRun('ms_orders', statusOrd, messageOrd);
+                    console.log('[AUTO SYNC] Queue done: ms_orders — ' + statusOrd + ' (' + messageOrd + ')');
+                }
             }
         }
     } catch (e) {
@@ -2057,6 +2143,9 @@ async function processAutoSyncQueue() {
         }
         if (autoSyncRunIds.has('mssales_full')) {
             await finishAutoSyncRun('mssales_full', 'failed', e.message || 'Ошибка очереди');
+        }
+        if (autoSyncRunIds.has('ms_orders')) {
+            await finishAutoSyncRun('ms_orders', 'failed', e.message || 'Ошибка очереди');
         }
         if (autoSyncRunIds.has('purchase_formula_cache')) {
             await finishAutoSyncRun('purchase_formula_cache', 'failed', e.message || 'Ошибка очереди');
@@ -2094,6 +2183,12 @@ function startAutoSyncScheduler() {
                     type: 'moysklad',
                     enabled: Number(appSettings.auto_sync_moysklad_enabled || 0) === 1,
                     time: String(appSettings.auto_sync_moysklad_time || '04:00').slice(0, 5)
+                },
+                {
+                    type: 'ms_orders',
+                    enabled: Number(appSettings.auto_sync_ms_orders_enabled || 0) === 1,
+                    time: String(appSettings.auto_sync_ms_orders_time || '08:00').slice(0, 5),
+                    weekdays: parseAutoSyncWeekdaysMon17(appSettings.auto_sync_ms_orders_weekdays),
                 },
                 {
                     type: 'marketplaces',
@@ -2332,6 +2427,8 @@ initDB().then(async () => {
         // См. routes/msSales.js и docs api.md (раздел «Продажи МС»).
         const { createMsSalesRouter } = require('./routes/msSales');
         app.use('/api/ms-sales', createMsSalesRouter(db, appSettings));
+        const { createMsOrdersRouter } = require('./routes/msOrders');
+        app.use('/api/ms-orders', createMsOrdersRouter(db, appSettings));
     }
     pagesRouter = pagesRouterFactory(db, appSettings);
     app.use('/api/pages', pagesRouter);
@@ -2480,6 +2577,10 @@ initDB().then(async () => {
                     myproducts_time: String(appSettings.auto_sync_myproducts_time || '03:00'),
                     moysklad_enabled: Number(appSettings.auto_sync_moysklad_enabled || 0) === 1,
                     moysklad_time: String(appSettings.auto_sync_moysklad_time || '04:00'),
+                    ms_orders_enabled: Number(appSettings.auto_sync_ms_orders_enabled || 0) === 1,
+                    ms_orders_time: String(appSettings.auto_sync_ms_orders_time || '08:00'),
+                    ms_orders_days: Number(appSettings.ms_orders_sync_days || 30),
+                    ms_orders_weekdays: String(appSettings.auto_sync_ms_orders_weekdays || ''),
                     marketplaces_enabled: Number(appSettings.auto_sync_marketplaces_enabled || 0) === 1,
                     marketplaces_time: String(appSettings.auto_sync_marketplaces_time || '05:00'),
                     huckster_enabled: Number(appSettings.auto_sync_huckster_enabled || 0) === 1,

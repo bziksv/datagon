@@ -149,9 +149,10 @@ module.exports = (db, appSettings) => {
     router.post('/', async (req, res) => {
         const {
             default_limit, parse_batch_size, page_delay_ms, sync_batch_size, sync_delay_ms, sync_mode, log_retention_days, results_retention_days, ms_dimensions_log_retention_days, dg_purchase_overrides_log_retention_days, auto_sync_runs_retention_days, product_stock_snapshot_retention_days,
-            ms_sync_page_limit, ms_sync_delay_ms, ms_purchase_order_organization_name,
+            ms_sync_page_limit, ms_sync_delay_ms, ms_purchase_order_organization_name, ms_orders_exclude_owner_names, ms_orders_sync_days,
             auto_sync_myproducts_enabled, auto_sync_myproducts_time,
             auto_sync_moysklad_enabled, auto_sync_moysklad_time,
+            auto_sync_ms_orders_enabled, auto_sync_ms_orders_time, auto_sync_ms_orders_weekdays,
             auto_sync_marketplaces_enabled, auto_sync_marketplaces_time,
             auto_sync_huckster_enabled, auto_sync_huckster_time,
             auto_sync_db_size_enabled, auto_sync_db_size_time,
@@ -188,6 +189,16 @@ module.exports = (db, appSettings) => {
                     String(ms_purchase_order_organization_name || '').trim().slice(0, 255),
                 ]);
             }
+            if (ms_orders_exclude_owner_names !== undefined) {
+                queries.push([
+                    'ms_orders_exclude_owner_names',
+                    String(ms_orders_exclude_owner_names || '').trim().slice(0, 2000),
+                ]);
+            }
+            if (ms_orders_sync_days !== undefined) {
+                const v = Math.max(1, Math.min(365, Math.round(Number(ms_orders_sync_days || 30))));
+                queries.push(['ms_orders_sync_days', String(v)]);
+            }
             if (log_retention_days !== undefined) queries.push(['log_retention_days', Number(log_retention_days || 7)]);
             if (results_retention_days !== undefined) queries.push(['results_retention_days', Number(results_retention_days || 120)]);
             if (ms_dimensions_log_retention_days !== undefined) queries.push(['ms_dimensions_log_retention_days', Number(ms_dimensions_log_retention_days || 180)]);
@@ -203,6 +214,11 @@ module.exports = (db, appSettings) => {
             if (auto_sync_myproducts_time !== undefined) queries.push(['auto_sync_myproducts_time', auto_sync_myproducts_time || '03:00']);
             if (auto_sync_moysklad_enabled !== undefined) queries.push(['auto_sync_moysklad_enabled', auto_sync_moysklad_enabled ? 1 : 0]);
             if (auto_sync_moysklad_time !== undefined) queries.push(['auto_sync_moysklad_time', auto_sync_moysklad_time || '04:00']);
+            if (auto_sync_ms_orders_enabled !== undefined) queries.push(['auto_sync_ms_orders_enabled', auto_sync_ms_orders_enabled ? 1 : 0]);
+            if (auto_sync_ms_orders_time !== undefined) queries.push(['auto_sync_ms_orders_time', auto_sync_ms_orders_time || '08:00']);
+            if (auto_sync_ms_orders_weekdays !== undefined) {
+                queries.push(['auto_sync_ms_orders_weekdays', String(auto_sync_ms_orders_weekdays || '').trim()]);
+            }
             if (auto_sync_marketplaces_enabled !== undefined) queries.push(['auto_sync_marketplaces_enabled', auto_sync_marketplaces_enabled ? 1 : 0]);
             if (auto_sync_marketplaces_time !== undefined) queries.push(['auto_sync_marketplaces_time', auto_sync_marketplaces_time || '05:00']);
             if (auto_sync_huckster_enabled !== undefined) queries.push(['auto_sync_huckster_enabled', auto_sync_huckster_enabled ? 1 : 0]);
@@ -388,6 +404,14 @@ module.exports = (db, appSettings) => {
                     .trim()
                     .slice(0, 255);
             }
+            if (ms_orders_exclude_owner_names !== undefined) {
+                appSettings.ms_orders_exclude_owner_names = String(ms_orders_exclude_owner_names || '')
+                    .trim()
+                    .slice(0, 2000);
+            }
+            if (ms_orders_sync_days !== undefined) {
+                appSettings.ms_orders_sync_days = Math.max(1, Math.min(365, Math.round(Number(ms_orders_sync_days || 30))));
+            }
             if(sync_mode) appSettings.sync_mode = sync_mode;
             if(log_retention_days !== undefined) appSettings.log_retention_days = parseInt(log_retention_days);
             if(results_retention_days !== undefined) appSettings.results_retention_days = parseInt(results_retention_days);
@@ -404,6 +428,11 @@ module.exports = (db, appSettings) => {
             if(auto_sync_myproducts_time !== undefined) appSettings.auto_sync_myproducts_time = auto_sync_myproducts_time || '03:00';
             if(auto_sync_moysklad_enabled !== undefined) appSettings.auto_sync_moysklad_enabled = auto_sync_moysklad_enabled ? 1 : 0;
             if(auto_sync_moysklad_time !== undefined) appSettings.auto_sync_moysklad_time = auto_sync_moysklad_time || '04:00';
+            if(auto_sync_ms_orders_enabled !== undefined) appSettings.auto_sync_ms_orders_enabled = auto_sync_ms_orders_enabled ? 1 : 0;
+            if(auto_sync_ms_orders_time !== undefined) appSettings.auto_sync_ms_orders_time = auto_sync_ms_orders_time || '08:00';
+            if(auto_sync_ms_orders_weekdays !== undefined) {
+                appSettings.auto_sync_ms_orders_weekdays = String(auto_sync_ms_orders_weekdays || '').trim();
+            }
             if(auto_sync_marketplaces_enabled !== undefined) appSettings.auto_sync_marketplaces_enabled = auto_sync_marketplaces_enabled ? 1 : 0;
             if(auto_sync_marketplaces_time !== undefined) appSettings.auto_sync_marketplaces_time = auto_sync_marketplaces_time || '05:00';
             if(auto_sync_huckster_enabled !== undefined) appSettings.auto_sync_huckster_enabled = auto_sync_huckster_enabled ? 1 : 0;

@@ -1,0 +1,382 @@
+<!-- @inject head -->
+<style>
+  /**
+   * MS Sales — соответствие baseline `moysklad`:
+   *   • sticky thead → top: var(--dg-mso-sticky-top, 0)
+   *     (значение выставляет syncStickyTopVar() в ms-orders.scripts.html
+   *      по реальной высоте `.app-header.fixed-header`).
+   *   • НЕ ставим overflow-x/y на обёртки — таблица помещается без скролла,
+   *     любой `overflow: auto` на родителе ломает sticky на <th>
+   *     (см. правило datagon-table-behavior-lock.mdc).
+   *   • Кнопки «🧩 Столбцы» / «📏 Ширины» в card-header и панели
+   *     `.datagon-columns-toolbox` / `.datagon-columns-panel` — стили общие
+   *     с moysklad (определены в теме); локально дополняем grid-сеткой ширин.
+   */
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: auto;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-table thead th {
+    position: sticky;
+    top: var(--dg-mso-sticky-top, 0);
+    z-index: 25;
+    background: #f8f9fa;
+    border-bottom: 1px solid #e6e9ee;
+    border-right: 1px solid #e6e9ee;
+    padding: 8px 10px;
+    font-weight: 600;
+    font-size: 0.85rem;
+    text-align: left;
+    white-space: nowrap;
+    user-select: text;
+    -webkit-user-select: text;
+    cursor: pointer;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-table thead th[data-sort]::after {
+    content: '';
+    margin-left: 4px;
+    color: #adb5bd;
+    font-weight: 400;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-table thead th[data-sort-active="asc"]::after { content: ' ▲'; color: #495057; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-table thead th[data-sort-active="desc"]::after { content: ' ▼'; color: #495057; }
+
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-table tbody td {
+    border-bottom: 1px solid #f3f5f8;
+    border-right: 1px solid #f3f5f8;
+    padding: 6px 10px;
+    font-size: 0.85rem;
+    vertical-align: middle;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-table tbody tr:hover {
+    background: #f7f9fc;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-row-toggle {
+    cursor: pointer;
+    user-select: none;
+    color: #3f6ad8;
+    font-weight: 600;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-positions-row > td {
+    background: #fcfcfd;
+    padding: 0;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-positions-inner {
+    padding: 12px 16px;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-positions-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: auto;
+    font-size: 0.83rem;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-positions-table th,
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-positions-table td {
+    border-bottom: 1px solid #ebedf2;
+    padding: 5px 8px;
+    text-align: left;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-positions-table th {
+    background: #f1f3f5;
+    font-weight: 600;
+  }
+
+  /* Бейджи привязки позиции к ms_export */
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-link-badge {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-left: 6px;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-link-resolved { background: #e6f6ed; color: #1f7a48; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-link-unresolved { background: #fde6ec; color: #a01737; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-link-bundle { background: #eef4ff; color: #2c4ba0; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-link-variant { background: #fff7d6; color: #8a6d00; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-link-service,
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-link-unknown { background: #f1f3f5; color: #495057; }
+
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-not-applicable {
+    color: #adb5bd;
+    text-decoration: line-through;
+  }
+  /**
+   * Soft-delete: документ удалён в МойСклад, но локально сохранён для истории.
+   * Подсветка строки — по аналогии с moysklad (`tr.table-danger`), но сюда не
+   * попадает Bootstrap-каскад (`.dg-mso-table` без класса `.table`), поэтому
+   * красим явно. `:hover` чуть темнее, чтобы понятно выделялась строка под
+   * курсором, не теряя контекст «удалена».
+   */
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-table tbody tr.dg-mso-deleted-row > td {
+    background: #fbe2e4;
+    color: #7a1e2a;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-table tbody tr.dg-mso-deleted-row:hover > td {
+    background: #f4cdd1;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-pagination {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-top: 12px;
+    font-size: 0.85rem;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-empty {
+    padding: 24px;
+    text-align: center;
+    color: #6c757d;
+    font-size: 0.9rem;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-sync-status {
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    line-height: 1.45;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-sync-status.dg-mso-sync-info { background: #eef4ff; color: #2c4ba0; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-sync-status.dg-mso-sync-ok { background: #e6f6ed; color: #1f7a48; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-sync-status.dg-mso-sync-warn { background: #fff7d6; color: #8a6d00; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-sync-status.dg-mso-sync-err { background: #fde6ec; color: #a01737; }
+
+  /* Актуальность данных (как на /suppliers.html) */
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-data-freshness .dg-mso-fresh-card {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    padding: 12px 14px;
+    border-radius: 12px;
+    border: 1px solid #e5e7eb;
+    background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+    min-height: 88px;
+    height: 100%;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-fresh-card::before {
+    content: "";
+    flex-shrink: 0;
+    width: 4px;
+    align-self: stretch;
+    border-radius: 4px;
+    background: #94a3b8;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-fresh-card.dg-mso-fresh-ok::before { background: #22c55e; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-fresh-card.dg-mso-fresh-stale::before { background: #f59e0b; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-fresh-card.dg-mso-fresh-running::before { background: #3b82f6; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-fresh-card.dg-mso-fresh-failed::before { background: #ef4444; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-fresh-card.dg-mso-fresh-unknown::before { background: #94a3b8; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-fresh-icon {
+    flex-shrink: 0;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-fresh-ok .dg-mso-fresh-icon { background: #dcfce7; color: #15803d; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-fresh-stale .dg-mso-fresh-icon { background: #fef3c7; color: #b45309; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-fresh-running .dg-mso-fresh-icon { background: #dbeafe; color: #1d4ed8; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-fresh-failed .dg-mso-fresh-icon { background: #fee2e2; color: #b91c1c; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-fresh-unknown .dg-mso-fresh-icon { background: #f1f5f9; color: #64748b; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-fresh-title {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: #1e293b;
+    line-height: 1.3;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-fresh-when {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #0f172a;
+    margin-bottom: 2px;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-fresh-meta {
+    font-size: 0.75rem;
+    color: #64748b;
+    line-height: 1.35;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-fresh-badge {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+  }
+
+  /* Карточка с деталями закази в раскрывающейся строке */
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-demand-card {
+    background: #fff;
+    border: 1px solid #e6e9ee;
+    border-radius: 6px;
+    padding: 12px 14px;
+    margin-bottom: 12px;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-demand-card-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    flex-wrap: wrap;
+    border-bottom: 1px solid #f1f3f5;
+    padding-bottom: 8px;
+    margin-bottom: 8px;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-demand-card-title { font-size: 0.95rem; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-demand-card-status {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-doc-link {
+    font-size: 0.8rem;
+    color: #3f6ad8;
+    text-decoration: none;
+    margin-left: 4px;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-doc-link:hover { text-decoration: underline; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    line-height: 1.4;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-badge-ok { background: #e6f6ed; color: #1f7a48; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-badge-warn { background: #fff7d6; color: #8a6d00; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-badge-info { background: #eef4ff; color: #2c4ba0; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-badge-muted { background: #f1f3f5; color: #495057; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-dl {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 4px 16px;
+    font-size: 0.83rem;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-dl-row {
+    display: flex;
+    gap: 8px;
+    padding: 3px 0;
+    border-bottom: 1px dashed #f1f3f5;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-dl-label {
+    color: #6c757d;
+    flex: 0 0 130px;
+    white-space: nowrap;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-dl-value {
+    flex: 1 1 auto;
+    color: #212529;
+    word-break: break-word;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-attrs {
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid #f1f3f5;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-attrs-title {
+    font-size: 0.78rem;
+    color: #6c757d;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 6px;
+  }
+
+  /* Сетка панели «📏 Ширины» — соответствие визуальному эталону moysklad. */
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-widths-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 6px 12px;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-widths-grid label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 0;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-widths-grid input[type="number"] {
+    flex: 0 0 90px;
+  }
+
+  /* Контрагент — combobox с умным поиском внутри выпадающего списка */
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-search-select-menu {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 1050;
+    max-height: 280px;
+    overflow-y: auto;
+    background: #fff;
+    border: 1px solid #dee2e6;
+    border-radius: 0.25rem;
+    margin-top: 2px;
+    display: none;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-search-select-menu.is-open {
+    display: block;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-search-select-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    border: 0;
+    background: transparent;
+    padding: 6px 10px;
+    font-size: 0.875rem;
+    cursor: pointer;
+    color: inherit;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-search-select-item:hover,
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-search-select-item:focus {
+    background: #f8f9fa;
+    outline: none;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-search-select-count {
+    color: #6c757d;
+    font-size: 0.8rem;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-search-select-empty {
+    padding: 8px 10px;
+    color: #6c757d;
+    font-size: 0.85rem;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-search-select-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 6px 10px;
+    border-bottom: 1px solid #eee;
+    background: #fafbfc;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-search-select-toolbar .btn-link {
+    font-size: 0.8rem;
+    padding: 0;
+    text-decoration: none;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-search-select-check {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    width: 100%;
+    margin: 0;
+    padding: 6px 10px;
+    cursor: pointer;
+    font-size: 0.875rem;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-search-select-check:hover {
+    background: #f8f9fa;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-search-select-check input {
+    margin-top: 0.2rem;
+    flex-shrink: 0;
+  }
+</style>

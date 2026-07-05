@@ -356,6 +356,32 @@
           </div>
 
           <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center">
+              <i class="header-icon pe-7s-note2 icon-gradient bg-love-kiss me-2"> </i>
+              <span>Заказы в МС</span>
+            </div>
+            <div class="card-body">
+              <p class="small text-muted">Страница <a href="/ms-orders.html">«Заказы в МС»</a>: заказы покупателей за выбранный период (синхронизация и список). Указанные ответственные не синкаются и не показываются в списке.</p>
+              <div class="row g-2">
+                <div class="col-md-4">
+                  <label class="form-label" for="dg-set-ms_orders_sync_days">Период синхронизации и списка, дней</label>
+                  <input type="number" class="form-control" id="dg-set-ms_orders_sync_days" min="1" max="365" step="1" value="30" style="max-width:130px" />
+                  <div class="form-text">Сколько дней назад загружать заказы из МойСклад и показывать в таблице (от 1 до 365).</div>
+                </div>
+                <div class="col-12">
+                  <label class="form-label" for="dg-set-ms_orders_exclude_owner_names">Исключить ответственных (владелец-сотрудник)</label>
+                  <textarea class="form-control font-monospace" id="dg-set-ms_orders_exclude_owner_names" rows="3" placeholder="Новикова И."></textarea>
+                  <div class="form-text">По одному имени на строку или через запятую. Сопоставление без учёта регистра, по подстроке (например, «Новикова»).</div>
+                </div>
+              </div>
+              <div class="mt-3">
+                <button type="button" class="btn btn-success" id="dg-set-btn-save-ms-orders" data-dg-notify-start="Сохраняем настройки заказов МС…">Сохранить</button>
+              </div>
+              <div id="dg-set-ms-orders-save-msg" class="alert mt-3 mb-0 d-none" role="status"></div>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card">
             <div class="card-header d-flex align-items-center flex-wrap gap-2">
               <i class="header-icon pe-7s-calculator icon-gradient bg-mean-fruit me-2"> </i>
               <span class="flex-grow-1">Формула продаж / закупки</span>
@@ -630,6 +656,48 @@
                     «тот же код-число» в <code>ms_export</code> (ручная фиксация за тот же день не перезаписывается).
                     <em>«Лимит страницы»</em> и <em>«Задержка»</em> ниже в настройках МС. Прогресс и статус —
                     на <a href="/processes.html">«Логи фоновых процессов»</a> (секция «МойСклад: ms_export (МСК)»).
+                  </p>
+                                  </div>
+                </div>
+
+                <div class="col-12 dg-as-task" data-as-task="ms_orders" data-as-category="import_ms" data-as-en-id="dg-set-auto_ms_orders_en" data-as-time-id="dg-set-auto_ms_orders_time" data-as-weekdays-prefix="dg-set-auto_ms_orders_wd">
+                  <div class="dg-as-task-card dg-as-cat-import_ms">
+                    <div class="dg-as-task-head">
+                      <span class="dg-as-cat-pill dg-as-cat-pill-dynamic"></span>
+                      <span class="dg-as-next-badge dg-as-next-badge-dynamic"></span>
+                    </div>
+                  <label class="form-label">Заказы в МС: импорт customerorder (МСК)</label>
+                  <div class="d-flex gap-2 align-items-center flex-wrap">
+                    <input type="checkbox" id="dg-set-auto_ms_orders_en" />
+                    <span>Включить</span>
+                    <input type="time" class="form-control" id="dg-set-auto_ms_orders_time" style="max-width:140px" />
+                    <button type="button" class="btn btn-outline-primary btn-sm" id="dg-set-auto_ms_orders_run" data-dg-activity-label="Принудительно запустить импорт заказов МС" data-dg-notify-start="Ставим в очередь импорт заказов МС…">
+                      Запустить сейчас
+                    </button>
+                  </div>
+                  <div class="mt-2">
+                    <div class="form-label small text-muted mb-1">Дни недели (МСК)</div>
+                    <div class="d-flex flex-wrap gap-2 align-items-center">
+                      <label class="form-check form-check-inline mb-0 small"><input type="checkbox" class="form-check-input" id="dg-set-auto_ms_orders_wd_1" /> пн</label>
+                      <label class="form-check form-check-inline mb-0 small"><input type="checkbox" class="form-check-input" id="dg-set-auto_ms_orders_wd_2" /> вт</label>
+                      <label class="form-check form-check-inline mb-0 small"><input type="checkbox" class="form-check-input" id="dg-set-auto_ms_orders_wd_3" /> ср</label>
+                      <label class="form-check form-check-inline mb-0 small"><input type="checkbox" class="form-check-input" id="dg-set-auto_ms_orders_wd_4" /> чт</label>
+                      <label class="form-check form-check-inline mb-0 small"><input type="checkbox" class="form-check-input" id="dg-set-auto_ms_orders_wd_5" /> пт</label>
+                      <label class="form-check form-check-inline mb-0 small"><input type="checkbox" class="form-check-input" id="dg-set-auto_ms_orders_wd_6" /> сб</label>
+                      <label class="form-check form-check-inline mb-0 small"><input type="checkbox" class="form-check-input" id="dg-set-auto_ms_orders_wd_7" /> вс</label>
+                    </div>
+                    <div class="text-muted" style="font-size: 11px;">Пусто в БД или все семь галочек — каждый день.</div>
+                  </div>
+                  <p class="small text-muted mb-0 mt-1">
+                    Импорт заказов покупателей из МойСклад в
+                    <code>ms_customer_order</code> для страницы
+                    <a href="/ms-orders.html">«Заказы в МС»</a>.
+                    Период (дней) и список исключённых ответственных — в карточке
+                    «Заказы в МС» ниже на этой странице (<code>ms_orders_sync_days</code>,
+                    <code>ms_orders_exclude_owner_names</code>).
+                    Прогресс и журнал — на <a href="/processes.html">«Логи фоновых процессов»</a>
+                    (раздел «Заказы в МС»). Остановка — кнопка «Остановить» на
+                    <a href="/ms-orders.html">«Заказы в МС»</a>.
                   </p>
                                   </div>
                 </div>

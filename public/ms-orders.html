@@ -1,0 +1,4387 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, shrink-to-fit=no" />
+  <script>
+    (function () {
+      try {
+        if (localStorage.getItem("datagon_theme_font_source_sans_3_v1") === "1") {
+          document.documentElement.classList.add("dg-font-source-sans-3");
+          var l = document.createElement("link");
+          l.id = "dg-font-source-sans-3-link";
+          l.rel = "stylesheet";
+          l.href =
+            "https://fonts.googleapis.com/css2?family=Source+Sans+3:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap";
+          document.head.appendChild(l);
+        }
+      } catch (e) {}
+    })();
+  </script>
+  <title>Заказы в МС — Датагон</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="stylesheet" href="/static/css/main.989b22a9.css" />
+  <!-- @inject head -->
+<style>
+  /**
+   * MS Sales — соответствие baseline `moysklad`:
+   *   • sticky thead → top: var(--dg-mso-sticky-top, 0)
+   *     (значение выставляет syncStickyTopVar() в ms-orders.scripts.html
+   *      по реальной высоте `.app-header.fixed-header`).
+   *   • НЕ ставим overflow-x/y на обёртки — таблица помещается без скролла,
+   *     любой `overflow: auto` на родителе ломает sticky на <th>
+   *     (см. правило datagon-table-behavior-lock.mdc).
+   *   • Кнопки «🧩 Столбцы» / «📏 Ширины» в card-header и панели
+   *     `.datagon-columns-toolbox` / `.datagon-columns-panel` — стили общие
+   *     с moysklad (определены в теме); локально дополняем grid-сеткой ширин.
+   */
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: auto;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-table thead th {
+    position: sticky;
+    top: var(--dg-mso-sticky-top, 0);
+    z-index: 25;
+    background: #f8f9fa;
+    border-bottom: 1px solid #e6e9ee;
+    border-right: 1px solid #e6e9ee;
+    padding: 8px 10px;
+    font-weight: 600;
+    font-size: 0.85rem;
+    text-align: left;
+    white-space: nowrap;
+    user-select: text;
+    -webkit-user-select: text;
+    cursor: pointer;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-table thead th[data-sort]::after {
+    content: '';
+    margin-left: 4px;
+    color: #adb5bd;
+    font-weight: 400;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-table thead th[data-sort-active="asc"]::after { content: ' ▲'; color: #495057; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-table thead th[data-sort-active="desc"]::after { content: ' ▼'; color: #495057; }
+
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-table tbody td {
+    border-bottom: 1px solid #f3f5f8;
+    border-right: 1px solid #f3f5f8;
+    padding: 6px 10px;
+    font-size: 0.85rem;
+    vertical-align: middle;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-table tbody tr:hover {
+    background: #f7f9fc;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-row-toggle {
+    cursor: pointer;
+    user-select: none;
+    color: #3f6ad8;
+    font-weight: 600;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-positions-row > td {
+    background: #fcfcfd;
+    padding: 0;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-positions-inner {
+    padding: 12px 16px;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-positions-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: auto;
+    font-size: 0.83rem;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-positions-table th,
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-positions-table td {
+    border-bottom: 1px solid #ebedf2;
+    padding: 5px 8px;
+    text-align: left;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-positions-table th {
+    background: #f1f3f5;
+    font-weight: 600;
+  }
+
+  /* Бейджи привязки позиции к ms_export */
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-link-badge {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-left: 6px;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-link-resolved { background: #e6f6ed; color: #1f7a48; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-link-unresolved { background: #fde6ec; color: #a01737; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-link-bundle { background: #eef4ff; color: #2c4ba0; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-link-variant { background: #fff7d6; color: #8a6d00; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-link-service,
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-link-unknown { background: #f1f3f5; color: #495057; }
+
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-not-applicable {
+    color: #adb5bd;
+    text-decoration: line-through;
+  }
+  /**
+   * Soft-delete: документ удалён в МойСклад, но локально сохранён для истории.
+   * Подсветка строки — по аналогии с moysklad (`tr.table-danger`), но сюда не
+   * попадает Bootstrap-каскад (`.dg-mso-table` без класса `.table`), поэтому
+   * красим явно. `:hover` чуть темнее, чтобы понятно выделялась строка под
+   * курсором, не теряя контекст «удалена».
+   */
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-table tbody tr.dg-mso-deleted-row > td {
+    background: #fbe2e4;
+    color: #7a1e2a;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-table tbody tr.dg-mso-deleted-row:hover > td {
+    background: #f4cdd1;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-pagination {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-top: 12px;
+    font-size: 0.85rem;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-empty {
+    padding: 24px;
+    text-align: center;
+    color: #6c757d;
+    font-size: 0.9rem;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-sync-status {
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    line-height: 1.45;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-sync-status.dg-mso-sync-info { background: #eef4ff; color: #2c4ba0; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-sync-status.dg-mso-sync-ok { background: #e6f6ed; color: #1f7a48; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-sync-status.dg-mso-sync-warn { background: #fff7d6; color: #8a6d00; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-sync-status.dg-mso-sync-err { background: #fde6ec; color: #a01737; }
+
+  /* Актуальность данных (как на /suppliers.html) */
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-data-freshness .dg-mso-fresh-card {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    padding: 12px 14px;
+    border-radius: 12px;
+    border: 1px solid #e5e7eb;
+    background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+    min-height: 88px;
+    height: 100%;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-fresh-card::before {
+    content: "";
+    flex-shrink: 0;
+    width: 4px;
+    align-self: stretch;
+    border-radius: 4px;
+    background: #94a3b8;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-fresh-card.dg-mso-fresh-ok::before { background: #22c55e; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-fresh-card.dg-mso-fresh-stale::before { background: #f59e0b; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-fresh-card.dg-mso-fresh-running::before { background: #3b82f6; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-fresh-card.dg-mso-fresh-failed::before { background: #ef4444; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-fresh-card.dg-mso-fresh-unknown::before { background: #94a3b8; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-fresh-icon {
+    flex-shrink: 0;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-fresh-ok .dg-mso-fresh-icon { background: #dcfce7; color: #15803d; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-fresh-stale .dg-mso-fresh-icon { background: #fef3c7; color: #b45309; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-fresh-running .dg-mso-fresh-icon { background: #dbeafe; color: #1d4ed8; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-fresh-failed .dg-mso-fresh-icon { background: #fee2e2; color: #b91c1c; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-fresh-unknown .dg-mso-fresh-icon { background: #f1f5f9; color: #64748b; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-fresh-title {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: #1e293b;
+    line-height: 1.3;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-fresh-when {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #0f172a;
+    margin-bottom: 2px;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-fresh-meta {
+    font-size: 0.75rem;
+    color: #64748b;
+    line-height: 1.35;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-fresh-badge {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+  }
+
+  /* Карточка с деталями закази в раскрывающейся строке */
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-demand-card {
+    background: #fff;
+    border: 1px solid #e6e9ee;
+    border-radius: 6px;
+    padding: 12px 14px;
+    margin-bottom: 12px;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-demand-card-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    flex-wrap: wrap;
+    border-bottom: 1px solid #f1f3f5;
+    padding-bottom: 8px;
+    margin-bottom: 8px;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-demand-card-title { font-size: 0.95rem; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-demand-card-status {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-doc-link {
+    font-size: 0.8rem;
+    color: #3f6ad8;
+    text-decoration: none;
+    margin-left: 4px;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-doc-link:hover { text-decoration: underline; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    line-height: 1.4;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-badge-ok { background: #e6f6ed; color: #1f7a48; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-badge-warn { background: #fff7d6; color: #8a6d00; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-badge-info { background: #eef4ff; color: #2c4ba0; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-badge-muted { background: #f1f3f5; color: #495057; }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-dl {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 4px 16px;
+    font-size: 0.83rem;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-dl-row {
+    display: flex;
+    gap: 8px;
+    padding: 3px 0;
+    border-bottom: 1px dashed #f1f3f5;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-dl-label {
+    color: #6c757d;
+    flex: 0 0 130px;
+    white-space: nowrap;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-dl-value {
+    flex: 1 1 auto;
+    color: #212529;
+    word-break: break-word;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-attrs {
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid #f1f3f5;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-attrs-title {
+    font-size: 0.78rem;
+    color: #6c757d;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 6px;
+  }
+
+  /* Сетка панели «📏 Ширины» — соответствие визуальному эталону moysklad. */
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-widths-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 6px 12px;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-widths-grid label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 0;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-widths-grid input[type="number"] {
+    flex: 0 0 90px;
+  }
+
+  /* Контрагент — combobox с умным поиском внутри выпадающего списка */
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-search-select-menu {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 1050;
+    max-height: 280px;
+    overflow-y: auto;
+    background: #fff;
+    border: 1px solid #dee2e6;
+    border-radius: 0.25rem;
+    margin-top: 2px;
+    display: none;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-search-select-menu.is-open {
+    display: block;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-search-select-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    border: 0;
+    background: transparent;
+    padding: 6px 10px;
+    font-size: 0.875rem;
+    cursor: pointer;
+    color: inherit;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-search-select-item:hover,
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-search-select-item:focus {
+    background: #f8f9fa;
+    outline: none;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-search-select-count {
+    color: #6c757d;
+    font-size: 0.8rem;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-search-select-empty {
+    padding: 8px 10px;
+    color: #6c757d;
+    font-size: 0.85rem;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-search-select-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 6px 10px;
+    border-bottom: 1px solid #eee;
+    background: #fafbfc;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-search-select-toolbar .btn-link {
+    font-size: 0.8rem;
+    padding: 0;
+    text-decoration: none;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-search-select-check {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    width: 100%;
+    margin: 0;
+    padding: 6px 10px;
+    cursor: pointer;
+    font-size: 0.875rem;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-search-select-check:hover {
+    background: #f8f9fa;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ms-orders"] .dg-mso-search-select-check input {
+    margin-top: 0.2rem;
+    flex-shrink: 0;
+  }
+</style>
+
+  <style>
+    /* Один список сайдбара: «ArchitectUI меню» у нижнего края области навигации, без второго блока/ul */
+    .dg-sidebar-nav-scroll {
+      display: flex;
+      flex-direction: column;
+    }
+    .dg-sidebar-nav-measure {
+      flex: 1 1 auto;
+      min-height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+    .dg-sidebar-nav-measure .datagon-nav-shell,
+    .dg-sidebar-nav-measure .vertical-nav-menu {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    /* Только корневой список меню: иначе вложенный ul.metismenu-container (под «Маркетплейсы» и т.п.)
+       получает min-height:100% + flex и растягивается на всю колонку — вертикальная линия темы залезает на соседние пункты. */
+    .dg-sidebar-nav-measure .vertical-nav-menu > .metismenu-container {
+      display: flex;
+      flex-direction: column;
+      flex: 1 1 auto;
+      min-height: 100%;
+      margin-bottom: 0;
+    }
+    /*
+      Подменю «Маркетплейсы»: ArchitectUI скрывает .metismenu-icon у подпунктов и даёт малый padding.
+      Не трогаем узкую полоску без hover — большой padding раздувает li и смещает «left:50%» у всех иконок колонки.
+      При развороте по hover из closed-sidebar класс closed-sidebar не снимается — нужен отдельный селектор с .app-sidebar:hover.
+    */
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible,
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon {
+      display: block !important;
+    }
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link,
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link {
+      padding-left: 3.4375rem !important;
+      position: relative;
+      /* Длинные подписи подпунктов («Проблемы с товарами», «Яндекс Маркет»)
+         не должны обрезаться ellipsis: разрешаем перенос на 2 строки и
+         выравниваем иконку по верхней строке. */
+      white-space: normal !important;
+      line-height: 1.25;
+      align-items: flex-start;
+      padding-top: 0.45rem !important;
+      padding-bottom: 0.45rem !important;
+      padding-right: 0.5rem !important;
+      min-height: 2rem;
+      height: auto !important;
+    }
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible,
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon {
+      top: 0.55rem !important;
+    }
+    .dg-sidebar-architect-item {
+      margin-top: auto;
+    }
+    .dg-sidebar-architect-item .metismenu-link {
+      border-top: 1px solid rgba(0, 0, 0, 0.07);
+      padding-top: 0.65rem;
+    }
+    /* Пункты сайдбара с доступом как у журнала активности (admin / право на пользователей) */
+    .dg-sidebar-nav-restricted .metismenu-link {
+      display: inline-flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.15rem 0.35rem;
+    }
+    .dg-sidebar-nav-restricted .dg-nav-restricted-icon {
+      font-size: 0.7rem;
+      opacity: 0.72;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+    @media (max-width: 991.98px) {
+      /* На мобильном layout не должен наследовать desktop-сдвиг fixed/closed sidebar. */
+      .datagon-vanilla-shell .app-main__outer {
+        margin-left: 0 !important;
+      }
+      .datagon-vanilla-shell .app-footer {
+        left: 0 !important;
+        width: 100% !important;
+      }
+      .datagon-vanilla-shell .app-footer .app-footer__inner {
+        margin-left: 0 !important;
+      }
+      /* На телефонах слой мобильного меню должен перекрывать фиксированный футер. */
+      .datagon-vanilla-shell .sidebar-mobile-overlay {
+        z-index: 1090;
+      }
+      .datagon-vanilla-shell .app-sidebar {
+        z-index: 1100;
+      }
+      .datagon-vanilla-shell .app-footer {
+        z-index: 1080;
+      }
+      .datagon-vanilla-shell.sidebar-mobile-open .app-footer {
+        pointer-events: none;
+        opacity: 0.25;
+      }
+    }
+    /* Source Sans 3 — opt-in из «Параметры макета» (все экраны, в т.ч. Windows). */
+    html.dg-font-source-sans-3 .datagon-vanilla-shell {
+      --bs-body-font-family: "Source Sans 3", -apple-system, BlinkMacSystemFont, "Segoe UI",
+        Roboto, "Helvetica Neue", Arial, sans-serif;
+      --bs-font-sans-serif: var(--bs-body-font-family);
+      font-family: var(--bs-body-font-family);
+    }
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .btn,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .form-control,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .form-select,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .table,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .card,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .page-title-heading,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .vertical-nav-menu a,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .app-header,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .app-sidebar,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .app-main,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .app-footer {
+      font-family: inherit;
+    }
+  </style>
+</head>
+<body class="datagon-vanilla-body" data-dg-active-nav="ms-orders">
+  <div class="app-container app-theme-white datagon-shell datagon-vanilla-shell fixed-header fixed-sidebar fixed-footer">
+    <div class="app-header header-shadow">
+      <div class="app-header__logo">
+        <button type="button" class="logo-src datagon-brand" onclick="location.href='/dashboard.html'" title="Открыть дашборд" style="border:0;background:transparent;padding:0;cursor:pointer">Датагон</button>
+        <div class="header__pane ms-auto">
+          <div>
+            <button type="button" class="hamburger hamburger--slider dg-toggle-sidebar" aria-label="Свернуть боковую панель" title="Свернуть боковую панель">
+              <span class="hamburger-box"><span class="hamburger-inner"></span></span>
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="app-header__mobile-menu">
+        <div>
+          <button type="button" class="hamburger hamburger--slider dg-toggle-mobile-sidebar" aria-label="Открыть меню">
+            <span class="hamburger-box"><span class="hamburger-inner"></span></span>
+          </button>
+        </div>
+      </div>
+      <div class="app-header__menu">
+        <span>
+          <button type="button" class="btn btn-primary btn-sm btn-icon btn-icon-only dg-toggle-header-small" aria-label="Доп. меню шапки">
+            <div class="btn-icon-wrapper">
+              <i class="pe-7s-more" style="font-size:1.1rem;line-height:1"></i>
+            </div>
+          </button>
+        </span>
+      </div>
+      <div class="app-header__content">
+        <div class="app-header-left">
+          <div class="search-wrapper">
+            <div class="input-holder">
+              <input type="text" class="search-input" placeholder="Type to search" autocomplete="off" />
+              <button type="button" class="search-icon dg-vanilla-search-docs" aria-label="Открыть документацию" title="Документация">
+                <span></span>
+              </button>
+            </div>
+            <button type="button" class="btn-close dg-vanilla-search-close" aria-label="Закрыть поиск"></button>
+          </div>
+        </div>
+        <div class="app-header-right">
+          <div class="ui-theme-settings ui-theme-settings--header">
+            <button type="button" class="btn btn-link btn-open-options btn-open-options--header" id="TooltipDemoVanilla" aria-label="Параметры темы" title="Параметры темы (полная версия в React-панели)">
+              <i class="pe-7s-config" style="font-size:1.35rem;color:#3f6ad8;line-height:1"></i>
+            </button>
+            <div class="theme-settings__inner">
+              <div class="theme-settings__options-wrapper">
+                <h3 class="themeoptions-heading">Параметры макета</h3>
+                <div class="list-group">
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Фиксированная шапка</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-fixed-header" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Тень шапки</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-header-shadow" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Фиксированный сайдбар</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-fixed-sidebar" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Тень сайдбара</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-sidebar-shadow" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Фиксированный футер</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-fixed-footer" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Шрифт Source Sans 3</h5>
+                    <label class="switch mb-0" title="Удобнее на Windows; сохраняется для всех страниц панели"><input type="checkbox" id="dg-theme-font-source-sans-3"><span class="slider round"></span></label>
+                  </div>
+                </div>
+
+                <h3 class="themeoptions-heading">Параметры заголовка страницы</h3>
+                <div class="list-group">
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Иконка заголовка</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-title-icon" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Подзаголовок страницы</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-title-subheading" checked><span class="slider round"></span></label>
+                  </div>
+                </div>
+
+                <h3 class="themeoptions-heading">Цветовые схемы</h3>
+                <div class="list-group">
+                  <div class="list-group-item">
+                    <h5 class="mb-2">Цветовая схема макета</h5>
+                    <div class="theme-settings-swatches">
+                      <div class="swatch-holder-lg active dg-theme-color-scheme" data-color-scheme="white" style="background:#fff;border:1px solid #dee2e6"></div>
+                      <div class="swatch-holder-lg dg-theme-color-scheme" data-color-scheme="gray" style="background:#868e96"></div>
+                    </div>
+                  </div>
+                </div>
+
+                <h3 class="themeoptions-heading">Параметры сайдбара</h3>
+                <div class="list-group">
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Фоновое изображение сайдбара</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-sidebar-bg-image"><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item">
+                    <h5 class="mb-2">Цвета сайдбара</h5>
+                    <div class="theme-settings-swatches">
+                      <div class="swatch-holder bg-primary dg-theme-sidebar-color" data-color-class="bg-primary"></div><div class="swatch-holder bg-danger dg-theme-sidebar-color" data-color-class="bg-danger"></div><div class="swatch-holder bg-warning dg-theme-sidebar-color" data-color-class="bg-warning"></div><div class="swatch-holder bg-success dg-theme-sidebar-color" data-color-class="bg-success"></div>
+                      <div class="swatch-holder bg-info dg-theme-sidebar-color" data-color-class="bg-info"></div><div class="swatch-holder bg-secondary dg-theme-sidebar-color" data-color-class="bg-secondary"></div><div class="swatch-holder bg-dark dg-theme-sidebar-color" data-color-class="bg-dark"></div><div class="swatch-holder dg-theme-sidebar-color" data-color-class="bg-plum-plate" style="background:#667eea"></div>
+                      <div class="swatch-holder dg-theme-sidebar-color" data-color-class="bg-arielle-smile" style="background:#16d9e3"></div><div class="swatch-holder dg-theme-sidebar-color" data-color-class="bg-ripe-malin" style="background:#f093fb"></div><div class="swatch-holder dg-theme-sidebar-color" data-color-class="bg-night-fade" style="background:#a18cd1"></div><div class="swatch-holder dg-theme-sidebar-color" data-color-class="bg-malibu-beach" style="background:#4facfe"></div>
+                    </div>
+                  </div>
+                </div>
+
+                <h3 class="themeoptions-heading">Параметры шапки</h3>
+                <div class="list-group">
+                  <div class="list-group-item">
+                    <h5 class="mb-2">Цвета шапки</h5>
+                    <div class="theme-settings-swatches">
+                      <div class="swatch-holder bg-primary dg-theme-header-color" data-color-class="bg-primary"></div><div class="swatch-holder bg-danger dg-theme-header-color" data-color-class="bg-danger"></div><div class="swatch-holder bg-warning dg-theme-header-color" data-color-class="bg-warning"></div><div class="swatch-holder bg-success dg-theme-header-color" data-color-class="bg-success"></div>
+                      <div class="swatch-holder bg-info dg-theme-header-color" data-color-class="bg-info"></div><div class="swatch-holder bg-secondary dg-theme-header-color" data-color-class="bg-secondary"></div><div class="swatch-holder bg-dark dg-theme-header-color" data-color-class="bg-dark"></div><div class="swatch-holder dg-theme-header-color" data-color-class="bg-plum-plate" style="background:#667eea"></div>
+                    </div>
+                  </div>
+                </div>
+                <div class="p-2">
+                  <a href="/settings.html" class="btn btn-sm btn-outline-primary w-100">Настройки</a>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="header-dots">
+            <div class="dropdown">
+              <button type="button" class="btn btn-link p-0 me-2 dg-vanilla-dropdown-toggle" style="line-height:0" aria-expanded="false" aria-haspopup="true">
+                <div class="icon-wrapper icon-wrapper-alt rounded-circle">
+                  <div class="icon-wrapper-bg bg-success"></div>
+                  <i class="pe-7s-graph2" style="font-size:23px;color:#3ac47d"></i>
+                </div>
+              </button>
+              <div class="dropdown-menu dropdown-menu-xl rm-pointers p-0" style="min-width: 320px">
+                <div class="dropdown-menu-header">
+                  <div class="dropdown-menu-header-inner bg-premium-dark">
+                    <div class="menu-header-image" style="background-image:url('/assets/utils/images/dropdown-header/abstract4.jpg')"></div>
+                    <div class="menu-header-content text-white">
+                      <h5 class="menu-header-title">Вы в сети</h5>
+                      <h6 class="menu-header-subtitle">Онлайн за окно из настроек</h6>
+                    </div>
+                  </div>
+                </div>
+                <div class="widget-chart">
+                  <div class="widget-chart-content">
+                    <div class="icon-wrapper rounded-circle">
+                      <div class="icon-wrapper-bg opacity-9 bg-focus"></div>
+                      <i class="lnr-users text-white"></i>
+                    </div>
+                    <div class="widget-numbers d-flex flex-column align-items-center text-center" id="dg-vanilla-online-users-wrap">
+                      <span id="dg-vanilla-online-users">—</span>
+                      <span class="opacity-9 fw-normal" style="font-size: 0.72rem; line-height: 1.25; margin-top: 0.15rem" id="dg-vanilla-online-users-unit"></span>
+                    </div>
+                    <div class="widget-subheading pt-2 small text-muted" id="dg-vanilla-online-users-role"></div>
+                    <div class="text-center small px-2 pt-1 pb-1">
+                      <a href="/settings.html#dg-settings-online-presence" class="text-decoration-none">Окно минут</a>
+                    </div>
+                    <div class="widget-description text-muted small px-2 mt-1 mb-0" id="dg-vanilla-online-users-sessions" style="line-height: 1.35"></div>
+                    <div class="widget-description text-muted mt-2 mb-0">
+                      <span class="pe-1 small" id="dg-vanilla-online-users-note"></span>
+                    </div>
+                  </div>
+                  <div class="widget-chart-wrapper">
+                    <div style="height:40px;opacity:.35;background:linear-gradient(90deg,#f7b924 0%,#f7b92455 100%);border-radius:2px;"></div>
+                  </div>
+                </div>
+                <div class="nav-item-divider mt-0"></div>
+                <div class="nav-item-btn text-center pb-3 mb-2">
+                  <button type="button" class="btn btn-sm btn-shine btn-wide btn-pill btn-warning" id="dg-vanilla-online-users-refresh">
+                    <i class="pe-7s-refresh me-2"></i>Обновить
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="header-btn-lg pe-0">
+            <div class="widget-content p-0">
+              <div class="widget-content-wrapper">
+                <div class="widget-content-left d-flex align-items-center gap-1 pe-2">
+                  <span
+                    class="rounded-circle d-inline-flex align-items-center justify-content-center flex-shrink-0 bg-light text-secondary border"
+                    style="width: 42px; height: 42px; border-color: #e2e8f0"
+                    role="img"
+                    aria-label="Профиль"
+                  >
+                    <i class="pe-7s-user" style="font-size: 1.2rem; line-height: 1; opacity: 0.85" aria-hidden="true"></i>
+                  </span>
+                  <button type="button" class="btn btn-link p-0 dg-vanilla-logout d-inline-flex align-items-center justify-content-center text-danger" title="Выйти" aria-label="Выйти из профиля" style="min-width:34px;min-height:34px;line-height:1;border-radius:50%">
+                    <i class="lnr-exit" style="font-size:1.2rem"></i>
+                  </button>
+                </div>
+                <div class="widget-content-left ms-2 header-user-info">
+                  <div class="widget-heading" id="dg-vanilla-user-display-inline">Пользователь</div>
+                  <div class="widget-subheading" id="dg-vanilla-user-role-inline">Пользователь</div>
+                </div>
+                <div class="widget-content-right header-user-info ms-3">
+                  <button type="button" class="btn btn-shadow p-1 btn-sm btn-info" id="Tooltip-1" title="Click for notifications">
+                    <i class="pe-7s-date text-white" style="font-size:20px;line-height:1"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="app-main">
+      <div class="sidebar-mobile-overlay"></div>
+      <div class="app-sidebar sidebar-shadow">
+        <div class="d-flex flex-column h-100 min-h-0">
+          <div class="app-header__logo">
+            <button type="button" class="logo-src datagon-brand" onclick="location.href='/dashboard.html'" title="Открыть дашборд" style="border:0;background:transparent;padding:0;cursor:pointer">Датагон</button>
+            <div class="header__pane ms-auto">
+              <div>
+                <button type="button" class="hamburger hamburger--slider dg-toggle-sidebar" aria-label="Свернуть боковую панель" title="Свернуть боковую панель">
+                  <span class="hamburger-box"><span class="hamburger-inner"></span></span>
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="app-header__mobile-menu">
+            <div>
+              <button type="button" class="hamburger hamburger--slider dg-toggle-mobile-sidebar" aria-label="Открыть меню">
+                <span class="hamburger-box"><span class="hamburger-inner"></span></span>
+              </button>
+            </div>
+          </div>
+          <div class="app-header__menu">
+            <span>
+              <button type="button" class="btn btn-primary btn-sm btn-icon btn-icon-only dg-toggle-header-small" aria-label="Доп. меню шапки">
+                <div class="btn-icon-wrapper">
+                  <i class="pe-7s-more" style="font-size:1.1rem;line-height:1"></i>
+                </div>
+              </button>
+            </span>
+          </div>
+          <div class="custom-scrollbar dg-sidebar-nav-wrap d-flex flex-column min-h-0" style="flex:1 1 0%;min-height:0;max-height:calc(100vh - 80px);overflow-x:hidden">
+            <div class="app-sidebar__inner dg-sidebar-nav-scroll flex-grow-1 min-h-0" style="overflow-y:auto;overflow-x:hidden">
+              <div class="dg-sidebar-nav-measure">
+                <div class="datagon-nav-shell">
+                  <div class="vertical-nav-menu" style="pointer-events:auto;z-index:999;position:relative">
+                    <ul class="metismenu-container">
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="dashboard" href="/dashboard.html"><i class="metismenu-icon pe-7s-rocket"></i>Дашборд</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="my-sites" href="/my-sites.html"><i class="metismenu-icon pe-7s-global"></i>Мои сайты</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="my-products" href="/my-products.html"><i class="metismenu-icon pe-7s-box2"></i>Мои товары (сайты)</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="moysklad" href="/moysklad.html"><i class="metismenu-icon pe-7s-shopbag"></i>Мой Склад (товары)</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="medmarket" href="/medmarket.html" title="Стыковка кода МС с кодом товара для Медмаркета"><i class="metismenu-icon pe-7s-id"></i>Медмаркет</a></li>
+                      <li class="metismenu-item">
+                        <a
+                          href="#"
+                          class="metismenu-link dg-vanilla-submenu-toggle"
+                          aria-expanded="false"
+                          title="Парсинг сайтов конкурентов: проекты, очередь, результаты, сопоставление"
+                        >
+                          <i class="metismenu-icon pe-7s-browser"></i>Парсинг
+                          <i class="metismenu-state-icon pe-7s-angle-down" aria-hidden="true"></i>
+                        </a>
+                        <ul class="metismenu-container dg-vanilla-parse-submenu">
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="projects"
+                              href="/projects.html"
+                              title="Проекты и сайты конкурентов"
+                            >
+                              <i class="metismenu-icon pe-7s-portfolio"></i>Конкуренты
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="queue"
+                              href="/queue.html"
+                              title="Очередь задач парсинга"
+                            >
+                              <i class="metismenu-icon pe-7s-network"></i>Очередь
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="results"
+                              href="/results.html"
+                              title="Результаты парсинга"
+                            >
+                              <i class="metismenu-icon pe-7s-note2"></i>Результаты
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="matches"
+                              href="/matches.html"
+                              title="Сопоставление товаров"
+                            >
+                              <i class="metismenu-icon pe-7s-link"></i>Сопоставление
+                            </a>
+                          </li>
+                        </ul>
+                      </li>
+                      <li class="metismenu-item dg-sidebar-nav-restricted" data-dg-nav-restricted="activity">
+                        <a
+                          class="metismenu-link"
+                          data-nav="processes"
+                          href="/processes.html"
+                          title="Активность/Логи: журнал команды и фоновые процессы (доступ ограничен: администратор или право управления пользователями)"
+                        >
+                          <i class="metismenu-icon pe-7s-timer"></i>Активность/Логи
+                          <i
+                            class="pe-7s-lock dg-nav-restricted-icon"
+                            aria-hidden="true"
+                            title="Пункт меню с ограниченным доступом"
+                          ></i>
+                        </a>
+                      </li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="settings" href="/settings.html"><i class="metismenu-icon pe-7s-config"></i>Настройки</a></li>
+                      <li class="metismenu-item dg-sidebar-architect-item">
+                        <a
+                          class="metismenu-link"
+                          data-nav="architectui-demo"
+                          href="/ref/react-demo-index.html"
+                          title="Каталог разделов React-шаблона ArchitectUI"
+                        >
+                          <i class="metismenu-icon pe-7s-plugin"></i>ArchitectUI
+                        </a>
+                      </li>
+                      <li class="metismenu-item">
+                        <a
+                          href="#"
+                          class="metismenu-link dg-vanilla-submenu-toggle"
+                          aria-expanded="false"
+                          title="Интеграции маркетплейсов: ключи и диагностика выгрузок"
+                        >
+                          <i class="metismenu-icon pe-7s-graph3"></i>Маркетплейсы
+                          <i class="metismenu-state-icon pe-7s-angle-down" aria-hidden="true"></i>
+                        </a>
+                        <ul class="metismenu-container dg-vanilla-mp-submenu">
+                          <!-- Подпункт «Настройки» (data-nav="exports-marketplaces", /exports-marketplaces.html)
+                               скрыт из меню по запросу: ключи API маркетплейсов задаются в /settings.html;
+                               страница остаётся доступной по прямому URL и через ссылки из гайдов
+                               (например, на /exports-marketplaces-issues.html). -->
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-ozon"
+                              href="/exports-marketplaces-ozon.html"
+                              title="Таблица и выгрузка Ozon"
+                            >
+                              <i class="metismenu-icon pe-7s-graph2"></i>Ozon
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-wildberries"
+                              href="/exports-marketplaces-wildberries.html"
+                              title="Таблица и выгрузка Wildberries"
+                            >
+                              <i class="metismenu-icon pe-7s-graph2"></i>Wildberries
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-yandex"
+                              href="/exports-marketplaces-yandex.html"
+                              title="Таблица и выгрузка Яндекс Маркет"
+                            >
+                              <i class="metismenu-icon pe-7s-graph2"></i>Яндекс Маркет
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-huckster"
+                              href="/exports-huckster.html"
+                              title="Интеграция Huckster / e-teleport — матрица UID по магазинам"
+                            >
+                              <i class="metismenu-icon pe-7s-cart"></i>Huckster
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-dimensions"
+                              href="/exports-dimensions.html"
+                              title="Реестр замеров габаритов товаров МойСклад"
+                            >
+                              <i class="metismenu-icon pe-7s-scissors"></i>Габариты
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-issues"
+                              href="/exports-marketplaces-issues.html"
+                              title="Товары МойСклад с проблемами публикации на маркетплейсах"
+                            >
+                              <i class="metismenu-icon pe-7s-attention"></i>Проблемы с товарами
+                            </a>
+                          </li>
+                        </ul>
+                      </li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="ms-orders" href="/ms-orders.html" title="Заказы покупателей entity/customerorder из МойСклад (30 дней)"><i class="metismenu-icon pe-7s-note2"></i>Заказы в МС</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="ms-sales" href="/ms-sales.html" title="Продажи МС: отгрузки entity/demand, позиции с привязкой к товарам ms_export"><i class="metismenu-icon pe-7s-cash"></i>Продажи МС</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="purchase" href="/purchase.html" title="Закупки товары: планирование, неснижаемые остатки, кратность"><i class="metismenu-icon pe-7s-cart"></i>Закупки товары</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="suppliers" href="/suppliers.html" title="Поставщики: сводка по закупкам и настройки"><i class="metismenu-icon pe-7s-id"></i>Поставщики</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="supplier-analysis" href="/supplier-analysis.html" title="Продажи, оборот и тренды по поставщикам"><i class="metismenu-icon pe-7s-graph2"></i>Анализ поставщиков</a></li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="app-sidebar-bg opacity-06"></div>
+        </div>
+      </div>
+
+      <div class="app-main__outer">
+        <div class="app-main__inner">
+<!-- @inject inner -->
+<div class="app-page-title">
+  <div class="page-title-wrapper">
+    <div class="page-title-heading">
+      <div class="page-title-icon">
+        <i class="pe-7s-note2 icon-gradient bg-mean-fruit"></i>
+      </div>
+      <div>
+        Заказы в МС
+        <div class="page-title-subheading">
+          Заказы покупателей (<code>entity/customerorder</code>) из МойСклад за последние <strong id="dg-mso-page-period-days">…</strong>.
+          Заказы ответственных из списка исключений в <a href="/settings.html">настройках</a> не загружаются и не показываются.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="dg-mso-data-freshness mb-3" id="dg-mso-data-freshness" aria-label="Актуальность данных заказов и остатков МойСклад">
+  <div class="row g-2" id="dg-mso-data-freshness-row">
+    <div class="col-12">
+      <p class="text-muted small mb-0" id="dg-mso-data-freshness-loading">Проверяем актуальность данных…</p>
+    </div>
+  </div>
+</div>
+
+<div class="main-card mb-3 card">
+  <div class="card-header d-flex align-items-center justify-content-between gap-2">
+    <div class="d-flex align-items-center">
+      <i class="header-icon pe-7s-filter icon-gradient bg-plum-plate me-2"></i>
+      <span>Фильтры и действия</span>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+      <div class="dropdown">
+        <button type="button" class="btn btn-sm btn-outline-secondary dg-vanilla-dropdown-toggle" style="line-height: 1; padding: 0.35rem 0.5rem" aria-expanded="false" aria-haspopup="true" id="dg-mso-filter-blocks-btn" data-dg-tooltip="Какие поля фильтров показывать">
+          <i class="pe-7s-config btn-icon-wrapper" style="font-size: 1.1rem" aria-hidden="true"></i>
+        </button>
+        <div class="dropdown-menu dropdown-menu-end rm-pointers p-0 dg-mso-filter-blocks-dropdown" id="dg-mso-filter-blocks-menu" style="width: min(420px, calc(100vw - 1.5rem))">
+          <div class="dropdown-menu-header mb-0">
+            <div class="dropdown-menu-header-inner bg-tempting-azure">
+              <div class="menu-header-content text-white px-3 py-2">
+                <h5 class="menu-header-title mb-0">Поля фильтров</h5>
+              </div>
+            </div>
+          </div>
+          <div class="dg-mso-filter-blocks-scroll" style="max-height: calc(100vh - 10rem); overflow-y: auto;">
+            <div id="dg-mso-filter-blocks-toggles" class="list-group list-group-flush"></div>
+          </div>
+        </div>
+      </div>
+      <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mso-filters-toggle">Свернуть</button>
+    </div>
+  </div>
+  <div class="card-body">
+    <div id="dg-mso-filters-body">
+      <div class="row g-2 align-items-end">
+        <div class="col-md-4" data-dg-mso-filter-field="mso_search">
+          <label class="form-label" for="dg-mso-search">Умный поиск</label>
+          <input type="search" id="dg-mso-search" class="form-control" placeholder="Номер заказа, контрагент, код или товар… (Enter — применить)" autocomplete="off" />
+        </div>
+        <div class="col-md-2" data-dg-mso-filter-field="mso_days">
+          <label class="form-label" for="dg-mso-days">За период</label>
+          <select id="dg-mso-days" class="form-select" title="Не больше периода из настроек «Заказы в МС»">
+            <option value="7">7 дн.</option>
+            <option value="14">14 дн.</option>
+            <option value="30">30 дн.</option>
+            <option value="60">60 дн.</option>
+            <option value="90">90 дн.</option>
+            <option value="180">180 дн.</option>
+            <option value="365">365 дн.</option>
+          </select>
+        </div>
+        <div class="col-md-3" data-dg-mso-filter-field="mso_store">
+          <label class="form-label" for="dg-mso-store-search">Склад</label>
+          <div class="dg-mso-search-select position-relative" id="dg-mso-store-wrap">
+            <input type="search" id="dg-mso-store-search" class="form-control" placeholder="Все склады — введите для поиска…" autocomplete="off" aria-autocomplete="list" aria-controls="dg-mso-store-menu" aria-expanded="false" />
+            <div class="dg-mso-search-select-menu shadow-sm" id="dg-mso-store-menu" role="listbox"></div>
+          </div>
+          <div id="dg-mso-store-hint" class="small text-muted mt-1 d-none"></div>
+        </div>
+        <div class="col-md-3" data-dg-mso-filter-field="mso_agent">
+          <label class="form-label" for="dg-mso-agent-search">Контрагент</label>
+          <div class="dg-mso-search-select position-relative" id="dg-mso-agent-wrap">
+            <input type="search" id="dg-mso-agent-search" class="form-control" placeholder="Все контрагенты — введите для поиска…" autocomplete="off" aria-autocomplete="list" aria-controls="dg-mso-agent-menu" aria-expanded="false" />
+            <div class="dg-mso-search-select-menu shadow-sm" id="dg-mso-agent-menu" role="listbox"></div>
+          </div>
+          <div id="dg-mso-agent-hint" class="small text-muted mt-1 d-none"></div>
+        </div>
+      </div>
+      <div class="row g-2 align-items-end mt-1">
+        <div class="col-md-2" data-dg-mso-filter-field="mso_doc">
+          <label class="form-label" for="dg-mso-doc">Номер заказа</label>
+          <input type="search" id="dg-mso-doc" class="form-control" placeholder="Напр. 00037" autocomplete="off" />
+        </div>
+        <div class="col-md-3" data-dg-mso-filter-field="mso_project">
+          <label class="form-label" for="dg-mso-project-search">Проект</label>
+          <div class="dg-mso-search-select position-relative" id="dg-mso-project-wrap">
+            <input type="search" id="dg-mso-project-search" class="form-control" placeholder="Все проекты — введите для поиска…" autocomplete="off" aria-autocomplete="list" aria-controls="dg-mso-project-menu" aria-expanded="false" />
+            <div class="dg-mso-search-select-menu shadow-sm" id="dg-mso-project-menu" role="listbox"></div>
+          </div>
+          <div id="dg-mso-project-hint" class="small text-muted mt-1 d-none"></div>
+        </div>
+        <div class="col-md-3" data-dg-mso-filter-field="mso_applicable">
+          <label class="form-label" for="dg-mso-applicable-search">Проведённые</label>
+          <div class="dg-mso-search-select position-relative" id="dg-mso-applicable-wrap">
+            <input type="search" id="dg-mso-applicable-search" class="form-control" placeholder="Все — введите для поиска…" autocomplete="off" aria-autocomplete="list" aria-controls="dg-mso-applicable-menu" aria-expanded="false" />
+            <div class="dg-mso-search-select-menu shadow-sm" id="dg-mso-applicable-menu" role="listbox"></div>
+          </div>
+          <div id="dg-mso-applicable-hint" class="small text-muted mt-1 d-none"></div>
+        </div>
+        <div class="col-md-3" data-dg-mso-filter-field="mso_payed">
+          <label class="form-label" for="dg-mso-payed-search">Оплачено</label>
+          <div class="dg-mso-search-select position-relative" id="dg-mso-payed-wrap">
+            <input type="search" id="dg-mso-payed-search" class="form-control" placeholder="Оплачено — введите для поиска…" autocomplete="off" aria-autocomplete="list" aria-controls="dg-mso-payed-menu" aria-expanded="false" />
+            <div class="dg-mso-search-select-menu shadow-sm" id="dg-mso-payed-menu" role="listbox"></div>
+          </div>
+          <div id="dg-mso-payed-hint" class="small text-muted mt-1 d-none"></div>
+        </div>
+        <div class="col-md-3" data-dg-mso-filter-field="mso_shipped">
+          <label class="form-label" for="dg-mso-shipped-search">Отгружено</label>
+          <div class="dg-mso-search-select position-relative" id="dg-mso-shipped-wrap">
+            <input type="search" id="dg-mso-shipped-search" class="form-control" placeholder="Все — введите для поиска…" autocomplete="off" aria-autocomplete="list" aria-controls="dg-mso-shipped-menu" aria-expanded="false" />
+            <div class="dg-mso-search-select-menu shadow-sm" id="dg-mso-shipped-menu" role="listbox"></div>
+          </div>
+          <div id="dg-mso-shipped-hint" class="small text-muted mt-1 d-none"></div>
+        </div>
+        <div class="col-md-3" data-dg-mso-filter-field="mso_stock_status">
+          <label class="form-label" for="dg-mso-stock-status-search">Статус</label>
+          <div class="dg-mso-search-select position-relative" id="dg-mso-stock-status-wrap">
+            <input type="search" id="dg-mso-stock-status-search" class="form-control" placeholder="Все — на складе, частично, нет…" autocomplete="off" aria-autocomplete="list" aria-controls="dg-mso-stock-status-menu" aria-expanded="false" />
+            <div class="dg-mso-search-select-menu shadow-sm" id="dg-mso-stock-status-menu" role="listbox"></div>
+          </div>
+          <div id="dg-mso-stock-status-hint" class="small text-muted mt-1 d-none"></div>
+        </div>
+        <div class="col-md-3" data-dg-mso-filter-field="mso_deleted">
+          <label class="form-label" for="dg-mso-deleted">Удалённые в МС</label>
+          <select id="dg-mso-deleted" class="form-select">
+            <option value="0" selected>Только активные</option>
+            <option value="1">Только удалённые</option>
+            <option value="all">Все</option>
+          </select>
+        </div>
+        <div class="col-md-2" data-dg-mso-filter-field="mso_page_size">
+          <label class="form-label" for="dg-mso-page-size">На странице</label>
+          <select id="dg-mso-page-size" class="form-select">
+            <option value="50">50</option>
+            <option value="100" selected>100</option>
+            <option value="200">200</option>
+          </select>
+        </div>
+      </div>
+      <div class="mt-3 d-flex flex-wrap gap-2" data-dg-mso-filter-field="mso_filter_actions">
+        <button id="dg-mso-apply" type="button" class="btn btn-sm btn-primary" data-dg-notify-start="Применяем фильтры…"><i class="pe-7s-search me-1"></i>Применить</button>
+        <button id="dg-mso-reset" type="button" class="btn btn-sm btn-outline-secondary" data-dg-notify-start="Сбрасываем фильтры…"><i class="pe-7s-refresh me-1"></i>По умолчанию</button>
+        <button id="dg-mso-sync" type="button" class="btn btn-sm btn-outline-success" data-dg-notify-start="Запускаем синхронизацию заказов из МС…"><i class="pe-7s-refresh-2 me-1"></i>Синхронизировать с МС</button>
+        <button type="button" class="btn btn-sm btn-outline-primary dg-mso-filter-preset" data-dg-mso-filter-preset="paid_none" data-dg-notify-start="Фильтр: оплаченные, нет на складе…">Оплаченные, нет на складе</button>
+        <button type="button" class="btn btn-sm btn-outline-primary dg-mso-filter-preset" data-dg-mso-filter-preset="paid_partial" data-dg-notify-start="Фильтр: оплаченные, частично на складе…">Оплаченные, частично на складе</button>
+        <button type="button" class="btn btn-sm btn-outline-primary dg-mso-filter-preset" data-dg-mso-filter-preset="paid_all" data-dg-notify-start="Фильтр: оплаченные, все на складе…">Оплаченные, все на складе</button>
+        <button id="dg-mso-cancel" type="button" class="btn btn-sm btn-outline-warning d-none" data-dg-notify-start="Останавливаем синхронизацию…"><i class="pe-7s-close-circle me-1"></i>Остановить</button>
+      </div>
+      <div id="dg-mso-sync-status" class="dg-mso-sync-status d-none mt-3" role="status"></div>
+      <div id="dg-mso-search-draft-hint" class="alert alert-warning py-2 px-3 mt-3 mb-0 d-none" role="status"></div>
+    </div>
+  </div>
+</div>
+
+<div class="main-card mb-3 card">
+  <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+    <div class="d-flex align-items-center gap-3 flex-grow-1" style="min-width: 0;">
+      <div class="d-flex align-items-center flex-shrink-0">
+        <i class="header-icon pe-7s-note2 icon-gradient bg-grow-early me-2"></i>
+        <span>Заказы в МС</span>
+      </div>
+      <div class="dg-mso-header-search" style="flex: 0 1 380px; min-width: 220px;">
+        <div class="input-group input-group-sm">
+          <span class="input-group-text bg-white text-muted px-2" aria-hidden="true">🔎</span>
+          <input type="search" id="dg-mso-table-search-mirror" class="form-control" placeholder="Умный поиск (Enter — применить)" autocomplete="off" />
+        </div>
+      </div>
+      <div class="dg-mso-status-line text-muted small" id="dg-mso-status">—</div>
+    </div>
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+      <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mso-columns-toggle">🧩 Столбцы</button>
+      <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mso-widths-toggle">📏 Ширины</button>
+      <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mso-table-toggle">Свернуть</button>
+    </div>
+  </div>
+  <div class="card-body" id="dg-mso-table-body">
+    <div class="datagon-columns-toolbox mb-2 d-none" id="dg-mso-toolbox-panels">
+      <div class="datagon-columns-panel" id="dg-mso-columns-panel">
+        <div class="columns-actions mb-2">
+          <button type="button" class="btn btn-sm" id="dg-mso-columns-all">Выделить все</button>
+          <button type="button" class="btn btn-sm" id="dg-mso-columns-none">Снять все</button>
+          <button type="button" class="btn btn-sm" id="dg-mso-columns-default">По умолчанию</button>
+        </div>
+        <div id="dg-mso-columns-list" class="columns-grid"></div>
+      </div>
+      <div class="datagon-columns-panel" id="dg-mso-widths-panel">
+        <div class="columns-actions mb-2">
+          <button type="button" class="btn btn-sm" id="dg-mso-widths-default">По умолчанию</button>
+        </div>
+        <div id="dg-mso-widths-list" class="dg-mso-widths-grid"></div>
+      </div>
+    </div>
+    <table class="dg-mso-table" id="dg-mso-table">
+      <thead id="dg-mso-thead"></thead>
+      <tbody id="dg-mso-tbody"></tbody>
+    </table>
+    <div class="dg-mso-empty d-none" id="dg-mso-empty-msg">
+      Нет данных. Нажмите «Синхронизировать с МС», чтобы загрузить заказы за последние 30 дней.
+    </div>
+    <div class="dg-mso-pagination">
+      <div class="dg-mso-status-line"><span id="dg-mso-pagination-status">—</span></div>
+      <div class="ms-auto d-flex gap-2">
+        <button id="dg-mso-page-prev" class="btn btn-sm btn-outline-secondary" type="button">Назад</button>
+        <button id="dg-mso-page-next" class="btn btn-sm btn-outline-secondary" type="button">Вперёд</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+        </div>
+
+        <div class="app-footer">
+          <div class="app-footer__inner">
+            <div class="app-footer-left">
+              <div class="footer-dots">
+                <a href="#" class="dot-btn-wrapper dg-vanilla-footer-toggle" id="PopoverFooter-1" aria-expanded="false" aria-haspopup="true">
+                  <i class="dot-btn-icon lnr-bullhorn icon-gradient bg-mean-fruit"></i>
+                  <div class="badge badge-dot badge-abs badge-dot-sm bg-danger">Notifications</div>
+                </a>
+                <div class="dots-separator"></div>
+                <a href="#" class="dot-btn-wrapper dg-vanilla-footer-toggle" id="PopoverFooter-3" aria-expanded="false" aria-haspopup="true">
+                  <i class="dot-btn-icon lnr-pie-chart icon-gradient bg-love-kiss"></i>
+                  <div class="badge badge-dot badge-abs badge-dot-sm bg-warning">Notifications</div>
+                </a>
+                <div class="dropdown-menu popover-custom popover-custom-xl rm-pointers p-0 dg-vanilla-footer-popover" data-footer-popover="PopoverFooter-1" style="min-width:420px">
+                  <div class="dropdown-menu-header mb-0">
+                    <div class="dropdown-menu-header-inner bg-strong-bliss">
+                      <div class="menu-header-image opacity-1" style="background-image:url('./assets/utils/images/dropdown-header/city2.jpg')"></div>
+                      <div class="menu-header-content text-white">
+                        <h5 class="menu-header-title">Notifications</h5>
+                        <h6 class="menu-header-subtitle">You have <b class="text-warning">21</b> unread messages</h6>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="card-tabs-animated card-tabs-animated-inner">
+                    <ul class="nav nav-justified">
+                      <li class="nav-item"><a href="#" class="nav-link active">Messages</a></li>
+                      <li class="nav-item"><a href="#" class="nav-link">Events</a></li>
+                      <li class="nav-item"><a href="#" class="nav-link">Errors</a></li>
+                    </ul>
+                    <div class="p-3">
+                      <div class="text-muted small">Chat, timeline and system tabs in React version.</div>
+                    </div>
+                  </div>
+                  <div class="nav-item-btn text-center pt-3 pb-3">
+                    <button type="button" class="btn btn-shadow btn-wide btn-pill btn-dark">
+                      <span class="badge badge-dot badge-dot-lg bg-warning badge-pulse me-2"></span>
+                      View All Messages
+                    </button>
+                  </div>
+                </div>
+                <div class="dropdown-menu popover-custom popover-custom-lg rm-pointers p-0 dg-vanilla-footer-popover" data-footer-popover="PopoverFooter-3" style="min-width:380px">
+                  <div class="dropdown-menu-header">
+                    <div class="dropdown-menu-header-inner bg-malibu-beach">
+                      <div class="menu-header-image opacity-2" style="background-image:url('./assets/utils/images/dropdown-header/city2.jpg')"></div>
+                      <div class="menu-header-content text-white">
+                        <div class="avatar-icon-wrapper btn-hover-shine mb-3 avatar-icon-xl">
+                          <div class="avatar-icon rounded">
+                            <img src="./assets/utils/images/avatars/2.jpg" alt="Avatar 6" />
+                          </div>
+                        </div>
+                        <h5 class="menu-header-title">Fancy Statistics</h5>
+                        <h6 class="menu-header-subtitle">Just an example of a slider with some chart widgets inside.</h6>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="p-2">
+                    <div class="card no-shadow widget-chart widget-chart2 text-start p-2 m-1">
+                      <div class="widget-title opacity-6 text-muted text-uppercase">New accounts since 2018</div>
+                      <div class="widget-numbers text-success">78<small class="opacity-5 ps-1">%</small></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/datagon-vanilla.js"></script>
+  <!-- @inject scripts -->
+<script>
+/**
+ * MS Sales — соответствует baseline moysklad:
+ *   • один источник истины MSO_COLS (для thead, tbody, панелей `🧩 Столбцы`
+ *     и `📏 Ширины`);
+ *   • видимость и ширины — отдельные ключи в localStorage;
+ *   • панели колонок и ширин в `.datagon-columns-toolbox` под card-header,
+ *     открываются по кнопкам справа в card-header;
+ *   • поиск-зеркало в card-header — двусторонний sync с #dg-mso-search;
+ *   • sticky `<th>` под `.app-header` через локальную переменную
+ *     `--dg-mso-sticky-top`, без overflow на обёртках;
+ *   • Применить — единственный способ запустить fetch (datagon-table-filter-apply.mdc);
+ *   • DatagonFilterFieldsVisibility — шестерёнка с auto-discovery полей.
+ */
+(function () {
+  'use strict';
+  if (window.__dgMsOrdersBooted) return;
+
+  /* ============================ Константы / ключи ============================ */
+
+  var STORAGE_FILTERS = 'datagon_ms_orders_filters_v1';
+  var FILTERS_COLLAPSED_KEY = 'datagon_ms_orders_filters_collapsed_v1';
+  var TABLE_COLLAPSED_KEY = 'dg.ms-orders.table-card.collapsed.v1';
+  var VISIBLE_COLS_KEY = 'dg.ms-orders.visible-cols.v1';
+  var COL_WIDTHS_KEY = 'dg.ms-orders.col-widths.v1';
+  /** Новые колонки — дописываются в сохранённую видимость после «Позиций». */
+  var APPEND_VISIBLE_COL_KEYS = ['stock_positions', 'stock_status'];
+
+  var DEFAULTS = Object.freeze({
+    search: '', docName: '', days: 30, storeUuids: [], agentUuids: [], projectUuids: [],
+    applicableValues: ['1'], payStatusValues: ['paid'], shipStatusValues: ['partial', 'none'], stockStatusValues: [], deleted: '0',
+    pageSize: 100, sortBy: 'moment', sortDir: 'desc', page: 1
+  });
+
+  var MS_ORDERS_DAY_OPTIONS = [7, 14, 30, 60, 90, 180, 365];
+
+  /**
+   * MSO_COLS — единственный источник истины для:
+   *   • <thead> (buildThead);
+   *   • <tbody> (renderTable);
+   *   • панели «🧩 Столбцы» (renderColumnControls);
+   *   • панели «📏 Ширины» (renderWidthControls).
+   *
+   * Поля:
+   *   key       — ключ колонки (для localStorage и сортировки);
+   *   label     — подпись в шапке;
+   *   render    — fn(row) → HTML/строка для <td>;
+   *   sort      — серверный sort_by (если null — несортируемая);
+   *   align     — 'left' | 'right' (numeric);
+   *   minWidth  — минимальная ширина при ручной настройке (px);
+   *   defWidth  — стартовая ширина (px) для панели «Ширины».
+   */
+  var MSO_COLS = [
+    { key: 'expander', label: '', render: function (r) {
+        var open = state.expandedOrders.has(r.uuid);
+        return '<span class="dg-mso-row-toggle" data-dg-mso-toggle="1" title="Показать позиции">'
+          + (open ? '▼' : '▶') + '</span>';
+      }, sort: null, align: 'left', minWidth: 28, defWidth: 30 },
+    { key: 'moment', label: 'Дата', render: function (r) { return escapeHtml(fmtDateTime(r.moment)); },
+      sort: 'moment', align: 'left', minWidth: 110, defWidth: 130 },
+    { key: 'doc_name', label: 'Номер заказа', render: function (r) {
+        var html = escapeHtml(r.doc_name);
+        if (!r.applicable) html += ' <span class="badge bg-secondary">черновик</span>';
+        if (r.deleted_at) {
+          var title = 'Удалена в МойСклад. Локально сохранена для истории. Помечено: ' +
+            escapeAttr(fmtDateTime(r.deleted_at));
+          html += ' <span class="badge bg-danger" title="' + title + '">Удалена из МС</span>';
+        }
+        return html;
+      }, sort: 'doc_name', align: 'left', minWidth: 120, defWidth: 160 },
+    { key: 'agent', label: 'Контрагент', render: function (r) { return escapeHtml(r.agent_name || '—'); },
+      sort: 'agent', align: 'left', minWidth: 160, defWidth: 240 },
+    { key: 'store', label: 'Склад', render: function (r) { return escapeHtml(r.store_name || '—'); },
+      sort: 'store', align: 'left', minWidth: 120, defWidth: 160 },
+    { key: 'organization', label: 'Организация', render: function (r) { return escapeHtml(r.organization_name || ''); },
+      sort: null, align: 'left', minWidth: 140, defWidth: 200 },
+    { key: 'positions_count', label: 'Позиций', render: function (r) { return Number(r.positions_count || 0); },
+      sort: 'positions_count', align: 'right', minWidth: 70, defWidth: 90 },
+    { key: 'stock_positions', label: 'Позиций на складе', render: fmtStockPositionsCell,
+      sort: 'stock_ok', align: 'right', minWidth: 110, defWidth: 130 },
+    { key: 'stock_status', label: 'Статус', render: fmtStockStatusCell,
+      sort: 'stock_status', align: 'left', minWidth: 130, defWidth: 160 },
+    { key: 'sum', label: 'Сумма (₽)', render: function (r) { return escapeHtml(fmtMoney(r.sum)); },
+      sort: 'sum', align: 'right', minWidth: 100, defWidth: 130 },
+    { key: 'payed_sum', label: 'Оплачено', render: function (r) { return fmtPayShipCell(r.payed_sum, r.sum); },
+      sort: 'payed', align: 'right', minWidth: 110, defWidth: 130 },
+    { key: 'shipped_sum', label: 'Отгружено', render: function (r) { return fmtPayShipCell(r.shipped_sum, r.sum); },
+      sort: 'shipped', align: 'right', minWidth: 110, defWidth: 130 },
+    { key: 'owner', label: 'Владелец-сотрудник', render: function (r) { return escapeHtml(r.owner_name || '—'); },
+      sort: 'owner', align: 'left', minWidth: 140, defWidth: 180 }
+  ];
+  var DEFAULT_VISIBLE_KEYS = MSO_COLS.map(function (c) { return c.key; });
+
+  var state = {
+    applied: Object.assign({}, DEFAULTS),
+    pending: Object.assign({}, DEFAULTS),
+    total: 0,
+    rows: [],
+    expandedOrders: new Set(),
+    positionsCache: Object.create(null),
+    positionsFetchGen: Object.create(null),
+    loading: false,
+    syncTimer: null,
+    listFetchGen: 0,
+    syncDaysLimit: 30,
+    visibleCols: new Set(DEFAULT_VISIBLE_KEYS),
+    columnWidths: {},
+    agentCatalog: [],
+    projectCatalog: [],
+    storeCatalog: []
+  };
+
+  var projectPendingSet = new Set();
+  var storePendingSet = new Set();
+  var agentPendingSet = new Set();
+  var applicablePendingSet = new Set(['1']);
+  var payStatusPendingSet = new Set(['paid']);
+  var shipStatusPendingSet = new Set(['partial', 'none']);
+  var stockStatusPendingSet = new Set();
+
+  var APPLICABLE_OPTIONS = [
+    { value: '1', label: 'Проведённые' },
+    { value: '0', label: 'Непроведённые (черновики)' }
+  ];
+
+  var PAY_STATUS_OPTIONS = [
+    { value: 'paid', label: 'Оплачено' },
+    { value: 'partial', label: 'Частично оплачено' },
+    { value: 'none', label: 'Не оплачено' }
+  ];
+
+  var SHIP_STATUS_OPTIONS = [
+    { value: 'shipped', label: 'Отгружено' },
+    { value: 'partial', label: 'Частично отгружено' },
+    { value: 'none', label: 'Не отгружено' }
+  ];
+
+  var STOCK_STATUS_OPTIONS = [
+    { value: 'all', label: 'Все на складе' },
+    { value: 'partial', label: 'Частично на складе' },
+    { value: 'none', label: 'Нет на складе' },
+    { value: 'none_pending', label: 'Отгружено (не проверяется)' }
+  ];
+
+  var FILTER_PRESETS = {
+    paid_none: {
+      label: 'Оплаченные, нет на складе',
+      payStatusValues: ['paid'],
+      stockStatusValues: ['none']
+    },
+    paid_partial: {
+      label: 'Оплаченные, частично на складе',
+      payStatusValues: ['paid'],
+      stockStatusValues: ['partial']
+    },
+    paid_all: {
+      label: 'Оплаченные, все на складе',
+      payStatusValues: ['paid'],
+      stockStatusValues: ['all']
+    }
+  };
+
+  function normalizeSnap(s) {
+    s = Object.assign({}, DEFAULTS, s || {});
+    if (s.storeUuid && (!s.storeUuids || !s.storeUuids.length)) {
+      s.storeUuids = s.storeUuid ? [String(s.storeUuid).trim().toLowerCase()] : [];
+    }
+    if (!Array.isArray(s.storeUuids)) s.storeUuids = [];
+    s.storeUuids = s.storeUuids.map(function (u) { return String(u || '').trim().toLowerCase(); }).filter(Boolean);
+    delete s.storeUuid;
+    if (s.agentUuid && (!s.agentUuids || !s.agentUuids.length)) {
+      s.agentUuids = s.agentUuid ? [String(s.agentUuid).trim().toLowerCase()] : [];
+    }
+    if (!Array.isArray(s.agentUuids)) s.agentUuids = [];
+    s.agentUuids = s.agentUuids.map(function (u) { return String(u || '').trim().toLowerCase(); }).filter(Boolean);
+    delete s.agentUuid;
+    if (s.projectUuid && (!s.projectUuids || !s.projectUuids.length)) {
+      s.projectUuids = s.projectUuid ? [String(s.projectUuid).trim().toLowerCase()] : [];
+    }
+    if (!Array.isArray(s.projectUuids)) s.projectUuids = [];
+    s.projectUuids = s.projectUuids.map(function (u) { return String(u || '').trim().toLowerCase(); }).filter(Boolean);
+    delete s.projectUuid;
+    if (state.syncDaysLimit > 0) {
+      s.days = Math.max(1, Math.min(state.syncDaysLimit, Number(s.days) || DEFAULTS.days));
+    }
+    if (s.applicable != null && String(s.applicable) !== '' && (!s.applicableValues || !s.applicableValues.length)) {
+      if (String(s.applicable) === '1') s.applicableValues = ['1'];
+      else if (String(s.applicable) === '0') s.applicableValues = ['0'];
+      else s.applicableValues = [];
+    }
+    if (s.applicable === '') s.applicableValues = [];
+    if (!Array.isArray(s.applicableValues)) s.applicableValues = DEFAULTS.applicableValues.slice();
+    s.applicableValues = s.applicableValues.map(function (v) { return String(v); }).filter(function (v) {
+      return v === '0' || v === '1';
+    });
+    delete s.applicable;
+    if (!Array.isArray(s.payStatusValues)) s.payStatusValues = DEFAULTS.payStatusValues.slice();
+    s.payStatusValues = s.payStatusValues.map(function (v) { return String(v).trim().toLowerCase(); }).filter(function (v) {
+      return v === 'paid' || v === 'partial' || v === 'none';
+    });
+    if (!Array.isArray(s.shipStatusValues)) s.shipStatusValues = DEFAULTS.shipStatusValues.slice();
+    s.shipStatusValues = s.shipStatusValues.map(function (v) { return String(v).trim().toLowerCase(); }).filter(function (v) {
+      return v === 'shipped' || v === 'partial' || v === 'none';
+    });
+    if (!Array.isArray(s.stockStatusValues)) s.stockStatusValues = DEFAULTS.stockStatusValues.slice();
+    s.stockStatusValues = s.stockStatusValues.map(function (v) { return String(v).trim().toLowerCase(); }).filter(function (v) {
+      return v === 'all' || v === 'partial' || v === 'none' || v === 'none_pending';
+    });
+    s.search = String(s.search || '').trim();
+    s.docName = String(s.docName || '').trim();
+    return s;
+  }
+
+  function setStockStatusPendingValues(values) {
+    stockStatusPendingSet = new Set((values || []).map(function (v) {
+      return String(v).trim().toLowerCase();
+    }).filter(function (v) {
+      return v === 'all' || v === 'partial' || v === 'none' || v === 'none_pending';
+    }));
+  }
+
+  function readStockStatusValuesFromUi() {
+    return Array.from(stockStatusPendingSet);
+  }
+
+  function isStockStatusFilterAll(values) {
+    var arr = values || [];
+    return !arr.length || arr.length >= STOCK_STATUS_OPTIONS.length;
+  }
+
+  function setShipStatusPendingValues(values) {
+    shipStatusPendingSet = new Set((values || []).map(function (v) {
+      return String(v).trim().toLowerCase();
+    }).filter(function (v) { return v === 'shipped' || v === 'partial' || v === 'none'; }));
+  }
+
+  function readShipStatusValuesFromUi() {
+    return Array.from(shipStatusPendingSet);
+  }
+
+  function isShipStatusFilterAll(values) {
+    var arr = values || [];
+    return !arr.length || arr.length >= SHIP_STATUS_OPTIONS.length;
+  }
+
+  function setPayStatusPendingValues(values) {
+    payStatusPendingSet = new Set((values || []).map(function (v) {
+      return String(v).trim().toLowerCase();
+    }).filter(function (v) { return v === 'paid' || v === 'partial' || v === 'none'; }));
+  }
+
+  function readPayStatusValuesFromUi() {
+    return Array.from(payStatusPendingSet);
+  }
+
+  function isPayStatusFilterAll(values) {
+    var arr = values || [];
+    return !arr.length || arr.length >= PAY_STATUS_OPTIONS.length;
+  }
+
+  function setApplicablePendingValues(values) {
+    applicablePendingSet = new Set((values || []).map(function (v) {
+      return String(v);
+    }).filter(function (v) { return v === '0' || v === '1'; }));
+  }
+
+  function readApplicableValuesFromUi() {
+    return Array.from(applicablePendingSet);
+  }
+
+  function isApplicableFilterAll(values) {
+    var arr = values || [];
+    return !arr.length || arr.length >= APPLICABLE_OPTIONS.length;
+  }
+
+  function setStorePendingUuids(uuids) {
+    storePendingSet = new Set((uuids || []).map(function (u) {
+      return String(u || '').trim().toLowerCase();
+    }).filter(Boolean));
+  }
+
+  function readStoreUuidsFromUi() {
+    return Array.from(storePendingSet);
+  }
+
+  function setAgentPendingUuids(uuids) {
+    agentPendingSet = new Set((uuids || []).map(function (u) {
+      return String(u || '').trim().toLowerCase();
+    }).filter(Boolean));
+  }
+
+  function readAgentUuidsFromUi() {
+    return Array.from(agentPendingSet);
+  }
+
+  function setProjectPendingUuids(uuids) {
+    projectPendingSet = new Set((uuids || []).map(function (u) {
+      return String(u || '').trim().toLowerCase();
+    }).filter(Boolean));
+  }
+
+  function readProjectUuidsFromUi() {
+    return Array.from(projectPendingSet);
+  }
+
+  function $(id) { return document.getElementById(id); }
+
+  function fmtPayShipCell(payedOrShipped, sum) {
+    var p = Number(payedOrShipped || 0);
+    var s = Number(sum || 0);
+    if (!Number.isFinite(s) || s <= 0) return escapeHtml(fmtMoney(p));
+    if (p >= s - 0.005) return '<span class="dg-mso-badge dg-mso-badge-ok">' + escapeHtml(fmtMoney(p)) + '</span>';
+    if (p > 0) return '<span class="dg-mso-badge dg-mso-badge-warn">' + escapeHtml(fmtMoney(p)) + '</span>';
+    return '<span class="dg-mso-badge dg-mso-badge-muted">0</span>';
+  }
+  function fmtStockPositionsCell(r) {
+    var pending = Number(r.stock_pending_count || 0);
+    var ok = Number(r.stock_ok_count || 0);
+    if (pending <= 0) return '<span class="dg-mso-badge dg-mso-badge-muted">—</span>';
+    var txt = ok + ' / ' + pending;
+    if (ok >= pending) return '<span class="dg-mso-badge dg-mso-badge-ok">' + escapeHtml(txt) + '</span>';
+    if (ok > 0) return '<span class="dg-mso-badge dg-mso-badge-warn">' + escapeHtml(txt) + '</span>';
+    return '<span class="dg-mso-badge dg-mso-badge-muted">' + escapeHtml(txt) + '</span>';
+  }
+  function fmtStockStatusCell(r) {
+    var key = r.stock_status_key || '';
+    var label = r.stock_status || '—';
+    if (key === 'none_pending') return '<span class="dg-mso-badge dg-mso-badge-muted">—</span>';
+    if (key === 'all') return '<span class="dg-mso-badge dg-mso-badge-ok">' + escapeHtml(label) + '</span>';
+    if (key === 'partial') return '<span class="dg-mso-badge dg-mso-badge-warn">' + escapeHtml(label) + '</span>';
+    return '<span class="dg-mso-badge dg-mso-badge-muted">' + escapeHtml(label) + '</span>';
+  }
+  function fmtMoney(v) {
+    if (v == null) return '';
+    var n = Number(v);
+    if (!Number.isFinite(n)) return String(v);
+    return n.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  function fmtQty(v) {
+    if (v == null || v === '') return '';
+    var n = Number(v);
+    if (!Number.isFinite(n)) return String(v);
+    return n % 1 === 0 ? n.toFixed(0) : n.toFixed(3).replace(/\.?0+$/, '');
+  }
+  function fmtDateTime(iso) {
+    if (!iso) return '';
+    try {
+      var d = new Date(iso);
+      if (isNaN(d.getTime())) return '';
+      return d.toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit',
+        hour: '2-digit', minute: '2-digit' });
+    } catch (_) { return String(iso); }
+  }
+  function escapeHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c];
+    });
+  }
+  function escapeAttr(s) { return escapeHtml(s); }
+
+  /* ============================ Sticky-top var ============================ */
+
+  /**
+   * Выставляет --dg-mso-sticky-top в реальную высоту `.app-header.fixed-header`.
+   * Иначе sticky-th прилипает к 0/60px и шапка визуально «смещена ниже» под
+   * фиксированным app-header. Аналог `updateStickyTopVar()` в moysklad.scripts.html
+   * и `syncStickyTopVar()` в exports-marketplaces-shop.scripts.html.
+   */
+  function syncStickyTopVar() {
+    var top = 0;
+    var app = document.querySelector('.app-container');
+    var header = document.querySelector('.app-header');
+    var fixed = Boolean(app && app.classList && app.classList.contains('fixed-header'));
+    if (fixed && header && header.getBoundingClientRect) {
+      var rect = header.getBoundingClientRect();
+      top = rect && rect.height ? Math.round(rect.height) : 60;
+    }
+    document.documentElement.style.setProperty('--dg-mso-sticky-top', top + 'px');
+  }
+  function bindStickyTopVar() {
+    syncStickyTopVar();
+    window.addEventListener('resize', syncStickyTopVar);
+    if (typeof ResizeObserver === 'function') {
+      var header = document.querySelector('.app-header');
+      if (header) {
+        try { new ResizeObserver(syncStickyTopVar).observe(header); } catch (_) {}
+      }
+    }
+    if (document.fonts && document.fonts.ready && document.fonts.ready.then) {
+      document.fonts.ready.then(syncStickyTopVar).catch(function () {});
+    }
+    window.addEventListener('load', syncStickyTopVar);
+  }
+
+  /* ============================ State / form ============================ */
+
+  function loadFromStorage() {
+    try {
+      var raw = window.localStorage.getItem(STORAGE_FILTERS);
+      if (!raw) return null;
+      var obj = JSON.parse(raw);
+      if (obj && typeof obj === 'object') return obj;
+    } catch (_) {}
+    return null;
+  }
+  function saveToStorage(snap) {
+    try { window.localStorage.setItem(STORAGE_FILTERS, JSON.stringify(snap)); } catch (_) {}
+  }
+
+  function applyToForm(s) {
+    s = normalizeSnap(s);
+    if ($('dg-mso-search')) $('dg-mso-search').value = s.search;
+    if ($('dg-mso-doc')) $('dg-mso-doc').value = s.docName;
+    if ($('dg-mso-days')) $('dg-mso-days').value = String(s.days);
+    setStorePendingUuids(s.storeUuids);
+    syncStoreSearchSummary();
+    setAgentPendingUuids(s.agentUuids);
+    syncAgentSearchSummary();
+    setProjectPendingUuids(s.projectUuids);
+    syncProjectSearchSummary();
+    setApplicablePendingValues(s.applicableValues);
+    syncApplicableSearchSummary();
+    setPayStatusPendingValues(s.payStatusValues);
+    syncPayStatusSearchSummary();
+    setShipStatusPendingValues(s.shipStatusValues);
+    syncShipStatusSearchSummary();
+    setStockStatusPendingValues(s.stockStatusValues);
+    syncStockStatusSearchSummary();
+    if ($('dg-mso-deleted')) $('dg-mso-deleted').value = s.deleted;
+    if ($('dg-mso-page-size')) $('dg-mso-page-size').value = String(s.pageSize);
+    if ($('dg-mso-table-search-mirror')) $('dg-mso-table-search-mirror').value = s.search;
+    syncQuickPresetButtons();
+  }
+
+  function readSearchFromDom() {
+    var top = $('dg-mso-search');
+    var mirror = $('dg-mso-table-search-mirror');
+    var a = top ? String(top.value || '').trim() : '';
+    var b = mirror ? String(mirror.value || '').trim() : '';
+    return a || b || '';
+  }
+
+  function getUnifiedSearch() {
+    var v = readSearchFromDom();
+    var top = $('dg-mso-search');
+    var mirror = $('dg-mso-table-search-mirror');
+    if (top) top.value = v;
+    if (mirror) mirror.value = v;
+    return v;
+  }
+
+  function readDraftSearch() {
+    var top = $('dg-mso-search');
+    var mirror = $('dg-mso-table-search-mirror');
+    var a = top ? String(top.value || '').trim() : '';
+    var b = mirror ? String(mirror.value || '').trim() : '';
+    if (a && b && a !== b) return b.length >= a.length ? b : a;
+    return a || b;
+  }
+
+  function filtersSnapshotForCompare(s) {
+    s = normalizeSnap(s || {});
+    return JSON.stringify({
+      search: s.search || '',
+      docName: s.docName || '',
+      days: s.days,
+      storeUuids: s.storeUuids || [],
+      agentUuids: s.agentUuids || [],
+      projectUuids: s.projectUuids || [],
+      applicableValues: s.applicableValues || [],
+      payStatusValues: s.payStatusValues || [],
+      shipStatusValues: s.shipStatusValues || [],
+      stockStatusValues: s.stockStatusValues || [],
+      deleted: s.deleted || '',
+      pageSize: s.pageSize
+    });
+  }
+
+  function syncSearchDraftHint() {
+    var el = $('dg-mso-search-draft-hint');
+    if (!el) return;
+    var draft = readDraftSearch();
+    var applied = String(state.applied.search || '').trim();
+    if (draft && draft !== applied) {
+      el.classList.remove('d-none');
+      el.innerHTML = '<strong>Поиск не применён.</strong> Введено «' + escapeHtml(draft) +
+        '» — нажмите <kbd>Enter</kbd> или кнопку <strong>Применить</strong>.';
+    } else {
+      el.classList.add('d-none');
+      el.innerHTML = '';
+    }
+  }
+
+  function syncApplyDirtyButton() {
+    var btn = $('dg-mso-apply');
+    if (!btn) return;
+    var pendingSnap = readFromForm();
+    var dirty = filtersSnapshotForCompare(pendingSnap) !== filtersSnapshotForCompare(state.applied);
+    btn.innerHTML = dirty
+      ? '<i class="pe-7s-search me-1"></i>Применить •'
+      : '<i class="pe-7s-search me-1"></i>Применить';
+    btn.classList.toggle('dg-flt-dirty', dirty);
+    syncSearchDraftHint();
+  }
+
+  function readFromForm() {
+    return {
+      search: getUnifiedSearch(),
+      docName: ($('dg-mso-doc') && $('dg-mso-doc').value || '').trim(),
+      days: parseInt($('dg-mso-days') ? $('dg-mso-days').value : DEFAULTS.days, 10) || DEFAULTS.days,
+      storeUuids: readStoreUuidsFromUi(),
+      agentUuids: readAgentUuidsFromUi(),
+      projectUuids: readProjectUuidsFromUi(),
+      applicableValues: readApplicableValuesFromUi(),
+      payStatusValues: readPayStatusValuesFromUi(),
+      shipStatusValues: readShipStatusValuesFromUi(),
+      stockStatusValues: readStockStatusValuesFromUi(),
+      deleted: $('dg-mso-deleted') ? $('dg-mso-deleted').value : DEFAULTS.deleted,
+      pageSize: parseInt($('dg-mso-page-size') ? $('dg-mso-page-size').value : DEFAULTS.pageSize, 10) || DEFAULTS.pageSize,
+      sortBy: state.pending.sortBy,
+      sortDir: state.pending.sortDir,
+      page: state.pending.page
+    };
+  }
+
+  function commitFilters(opts) {
+    var searchVal = readSearchFromDom();
+    var snap = normalizeSnap(readFromForm());
+    snap.search = searchVal;
+    if (searchVal && /^\d+$/.test(searchVal) && !String(snap.docName || '').trim()) {
+      snap.docName = searchVal;
+    }
+    if (!opts || opts.resetPage !== false) snap.page = 1;
+    state.pending = snap;
+    state.applied = Object.assign({}, snap);
+    applyToForm(state.applied);
+    saveToStorage({
+      search: state.applied.search, docName: state.applied.docName, days: state.applied.days,
+      storeUuids: state.applied.storeUuids, agentUuids: state.applied.agentUuids,
+      projectUuids: state.applied.projectUuids,
+      applicableValues: state.applied.applicableValues,
+      payStatusValues: state.applied.payStatusValues,
+      shipStatusValues: state.applied.shipStatusValues,
+      stockStatusValues: state.applied.stockStatusValues,
+      deleted: state.applied.deleted,
+      pageSize: state.applied.pageSize,
+      sortBy: state.applied.sortBy, sortDir: state.applied.sortDir
+    });
+    fetchList(Object.assign({}, state.applied));
+    fetchFilters();
+    syncApplyDirtyButton();
+    if (searchVal && window.DatagonNotify && window.DatagonNotify.toast) {
+      window.DatagonNotify.toast({ type: 'info', message: 'Поиск: «' + searchVal + '»', duration: 2400 });
+    }
+  }
+
+  function resetFilters() {
+    var base = Object.assign({}, DEFAULTS, { days: state.syncDaysLimit || DEFAULTS.days });
+    state.pending = Object.assign({}, base);
+    state.applied = Object.assign({}, base);
+    applyToForm(base);
+    saveToStorage(base);
+    fetchList(Object.assign({}, state.applied));
+    fetchFilters();
+    syncApplyDirtyButton();
+  }
+
+  function arraysEqual(a, b) {
+    if (!a || !b || a.length !== b.length) return false;
+    for (var i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+    return true;
+  }
+
+  function syncQuickPresetButtons() {
+    var pay = readPayStatusValuesFromUi();
+    var stock = readStockStatusValuesFromUi();
+    document.querySelectorAll('[data-dg-mso-filter-preset]').forEach(function (btn) {
+      var key = btn.getAttribute('data-dg-mso-filter-preset');
+      var preset = FILTER_PRESETS[key];
+      var active = !!(preset &&
+        arraysEqual(pay, preset.payStatusValues) &&
+        arraysEqual(stock, preset.stockStatusValues));
+      btn.classList.toggle('active', active);
+      btn.classList.toggle('btn-primary', active);
+      btn.classList.toggle('btn-outline-primary', !active);
+    });
+  }
+
+  function applyFilterPreset(key) {
+    var preset = FILTER_PRESETS[key];
+    if (!preset) return;
+    getUnifiedSearch();
+    var snap = normalizeSnap(readFromForm());
+    snap.payStatusValues = preset.payStatusValues.slice();
+    snap.stockStatusValues = preset.stockStatusValues.slice();
+    snap.page = 1;
+    state.pending = snap;
+    applyToForm(snap);
+    state.applied = Object.assign({}, snap);
+    saveToStorage({
+      search: state.applied.search, docName: state.applied.docName, days: state.applied.days,
+      storeUuids: state.applied.storeUuids, agentUuids: state.applied.agentUuids,
+      projectUuids: state.applied.projectUuids,
+      applicableValues: state.applied.applicableValues,
+      payStatusValues: state.applied.payStatusValues,
+      shipStatusValues: state.applied.shipStatusValues,
+      stockStatusValues: state.applied.stockStatusValues,
+      deleted: state.applied.deleted,
+      pageSize: state.applied.pageSize,
+      sortBy: state.applied.sortBy, sortDir: state.applied.sortDir
+    });
+    fetchList(Object.assign({}, state.applied));
+    fetchFilters();
+    syncApplyDirtyButton();
+    if (window.DatagonNotify && window.DatagonNotify.toast) {
+      window.DatagonNotify.toast({ type: 'info', message: preset.label });
+    }
+  }
+
+  function bindFilterPresets() {
+    document.querySelectorAll('[data-dg-mso-filter-preset]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        applyFilterPreset(btn.getAttribute('data-dg-mso-filter-preset'));
+      });
+    });
+  }
+
+  /* ============================ Visible cols / widths ============================ */
+
+  function loadVisibleCols() {
+    try {
+      var raw = window.localStorage.getItem(VISIBLE_COLS_KEY);
+      if (!raw) return null;
+      var arr = JSON.parse(raw);
+      if (Array.isArray(arr) && arr.length) {
+        var allowed = new Set(MSO_COLS.map(function (c) { return c.key; }));
+        var keys = arr.filter(function (k) { return allowed.has(k); });
+        APPEND_VISIBLE_COL_KEYS.forEach(function (k) {
+          if (!allowed.has(k) || keys.indexOf(k) >= 0) return;
+          var posIdx = keys.indexOf('positions_count');
+          if (posIdx >= 0) keys.splice(posIdx + 1, 0, k);
+          else keys.push(k);
+        });
+        return keys;
+      }
+    } catch (_) {}
+    return null;
+  }
+  function saveVisibleCols() {
+    try {
+      window.localStorage.setItem(VISIBLE_COLS_KEY, JSON.stringify(Array.from(state.visibleCols)));
+    } catch (_) {}
+  }
+  function loadWidths() {
+    try {
+      var raw = window.localStorage.getItem(COL_WIDTHS_KEY);
+      if (raw) {
+        var obj = JSON.parse(raw);
+        if (obj && typeof obj === 'object') return obj;
+      }
+    } catch (_) {}
+    return {};
+  }
+  function saveWidths() {
+    try { window.localStorage.setItem(COL_WIDTHS_KEY, JSON.stringify(state.columnWidths || {})); } catch (_) {}
+  }
+  function getColMin(key) {
+    for (var i = 0; i < MSO_COLS.length; i++) if (MSO_COLS[i].key === key) return MSO_COLS[i].minWidth || 60;
+    return 60;
+  }
+  function getColDef(key) {
+    for (var i = 0; i < MSO_COLS.length; i++) if (MSO_COLS[i].key === key) return MSO_COLS[i].defWidth || MSO_COLS[i].minWidth || 100;
+    return 100;
+  }
+
+  function applyColumnWidths() {
+    var thead = $('dg-mso-thead');
+    var tbody = $('dg-mso-tbody');
+    if (!thead) return;
+    var visibleKeys = visibleColsArray();
+    var headRow = thead.rows && thead.rows[0];
+    if (!headRow) return;
+    visibleKeys.forEach(function (key, idx) {
+      var th = headRow.cells[idx];
+      if (!th) return;
+      var w = state.columnWidths[key];
+      if (w && Number.isFinite(Number(w))) {
+        var px = Math.max(getColMin(key), Math.min(700, Number(w))) + 'px';
+        th.style.minWidth = px;
+        th.style.width = px;
+      } else {
+        th.style.minWidth = '';
+        th.style.width = '';
+      }
+    });
+    if (tbody) {
+      Array.prototype.forEach.call(tbody.rows, function (tr) {
+        if (!tr.cells || tr.classList.contains('dg-mso-positions-row')) return;
+        visibleKeys.forEach(function (key, idx) {
+          var td = tr.cells[idx];
+          if (!td) return;
+          var w = state.columnWidths[key];
+          if (w && Number.isFinite(Number(w))) {
+            var px = Math.max(getColMin(key), Math.min(700, Number(w))) + 'px';
+            td.style.minWidth = px;
+            td.style.width = px;
+          } else {
+            td.style.minWidth = '';
+            td.style.width = '';
+          }
+        });
+      });
+    }
+  }
+
+  function visibleColsArray() {
+    return MSO_COLS.map(function (c) { return c.key; }).filter(function (k) { return state.visibleCols.has(k); });
+  }
+  function visibleColsCount() { return visibleColsArray().length; }
+
+  /* ============================ Period (days) from settings ============================ */
+
+  function renderDaysFilterSelect(limit) {
+    var sel = $('dg-mso-days');
+    if (!sel) return;
+    limit = Math.max(1, Math.min(365, Number(limit) || 30));
+    var values = MS_ORDERS_DAY_OPTIONS.filter(function (d) { return d <= limit; });
+    if (values.indexOf(limit) < 0) values.push(limit);
+    values.sort(function (a, b) { return a - b; });
+    var prev = String(sel.value || state.applied.days || limit);
+    sel.innerHTML = values.map(function (d) {
+      return '<option value="' + d + '">' + d + ' дн.</option>';
+    }).join('');
+    if (values.indexOf(Number(prev)) >= 0) sel.value = prev;
+    else sel.value = String(limit);
+    sel.title = 'Не больше ' + limit + ' дн. (настройка «Заказы в МС»)';
+  }
+
+  function updatePagePeriodHint(days) {
+    var d = Math.max(1, Math.min(365, Number(days) || 30));
+    var el = document.getElementById('dg-mso-page-period-days');
+    if (el) el.textContent = d + ' дн.';
+  }
+
+  function applyFiltersFromStorageOrSettings() {
+    var stored = loadFromStorage();
+    var baseDays = state.syncDaysLimit || DEFAULTS.days;
+    var snap = stored
+      ? normalizeSnap(stored)
+      : normalizeSnap(Object.assign({}, DEFAULTS, { days: baseDays }));
+    if (stored && (!stored.shipStatusValues || !stored.shipStatusValues.length)) {
+      snap.shipStatusValues = DEFAULTS.shipStatusValues.slice();
+    }
+    state.applied = Object.assign({}, DEFAULTS, snap);
+    state.pending = Object.assign({}, state.applied);
+    applyToForm(state.applied);
+    syncApplyDirtyButton();
+    updatePagePeriodHint(state.syncDaysLimit);
+    renderStatus();
+  }
+
+  function applySyncDaysLimit(limit) {
+    state.syncDaysLimit = Math.max(1, Math.min(365, Number(limit) || 30));
+    renderDaysFilterSelect(state.syncDaysLimit);
+    state.applied = normalizeSnap(state.applied);
+    state.pending = normalizeSnap(state.pending);
+    if ($('dg-mso-days')) $('dg-mso-days').value = String(state.applied.days);
+    updatePagePeriodHint(state.syncDaysLimit);
+  }
+
+  function loadMsOrdersConfig(done) {
+    fetch('/api/ms-orders/config', { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) {
+        if (data && data.success) applySyncDaysLimit(data.sync_days || data.max_days || 30);
+      })
+      .catch(function () {})
+      .finally(function () { if (typeof done === 'function') done(); });
+  }
+
+  /* ============================ Fetch list / filters ============================ */
+
+  function mergeLiveSearchIntoSnap(snap) {
+    snap = normalizeSnap(snap || state.applied);
+    var live = readSearchFromDom();
+    if (live) snap.search = live;
+    var docEl = $('dg-mso-doc');
+    var docLive = docEl ? String(docEl.value || '').trim() : '';
+    if (docLive) snap.docName = docLive;
+    else if (live && /^\d+$/.test(live)) snap.docName = live;
+    return snap;
+  }
+
+  function buildQuery(appliedSnap) {
+    var a = mergeLiveSearchIntoSnap(appliedSnap);
+    var qs = new URLSearchParams();
+    var offset = Math.max(0, (a.page - 1) * a.pageSize);
+    qs.set('limit', String(a.pageSize));
+    qs.set('offset', String(offset));
+    qs.set('days', String(a.days));
+    var searchQ = String(a.search || '').trim();
+    if (searchQ) qs.set('search', searchQ);
+    if (a.docName) qs.set('doc_name', a.docName);
+    if (a.storeUuids && a.storeUuids.length) qs.set('store_uuids', a.storeUuids.join(','));
+    if (a.agentUuids && a.agentUuids.length) qs.set('agent_uuids', a.agentUuids.join(','));
+    if (a.projectUuids && a.projectUuids.length) qs.set('project_uuids', a.projectUuids.join(','));
+    var av = a.applicableValues || [];
+    if (av.length === 1) qs.set('applicable', av[0]);
+    var ps = a.payStatusValues || [];
+    if (ps.length && ps.length < PAY_STATUS_OPTIONS.length) qs.set('pay_statuses', ps.join(','));
+    var ss = a.shipStatusValues || [];
+    if (ss.length && ss.length < SHIP_STATUS_OPTIONS.length) qs.set('ship_statuses', ss.join(','));
+    var sts = a.stockStatusValues || [];
+    if (sts.length && sts.length < STOCK_STATUS_OPTIONS.length) qs.set('stock_statuses', sts.join(','));
+    if (a.deleted === '1' || a.deleted === 'all') qs.set('deleted', a.deleted);
+    qs.set('sort_by', a.sortBy);
+    qs.set('sort_dir', a.sortDir);
+    return qs.toString();
+  }
+
+  function setMssListBusy(dis) {
+    ['dg-mso-page-prev', 'dg-mso-page-next'].forEach(function (id) {
+      var el = $(id);
+      if (el) el.disabled = !!dis;
+    });
+  }
+
+  function finishListFetch(gen) {
+    if (gen !== state.listFetchGen) return;
+    state.loading = false;
+    setMssListBusy(false);
+    renderStatus();
+  }
+
+  function hasNarrowingFilters(applied) {
+    var a = applied || state.applied || {};
+    if (String(a.search || '').trim() || String(a.docName || '').trim()) return true;
+    if ((a.storeUuids || []).length || (a.agentUuids || []).length || (a.projectUuids || []).length) return true;
+    if ((a.applicableValues || []).length === 1) return true;
+    var ps = a.payStatusValues || [];
+    if (ps.length && ps.length < PAY_STATUS_OPTIONS.length) return true;
+    var ss = a.shipStatusValues || [];
+    if (ss.length && ss.length < SHIP_STATUS_OPTIONS.length) return true;
+    var sts = a.stockStatusValues || [];
+    if (sts.length && sts.length < STOCK_STATUS_OPTIONS.length) return true;
+    if (a.deleted === '1' || a.deleted === 'all') return true;
+    return false;
+  }
+
+  function filterRowsBySearch(rows, search) {
+    var q = String(search || '').trim().toLowerCase();
+    if (!q) return rows || [];
+    var exactNum = /^\d+$/.test(q);
+    return (rows || []).filter(function (r) {
+      var doc = String(r.doc_name || '').trim().toLowerCase();
+      if (exactNum && doc === q) return true;
+      if (exactNum && doc.indexOf(q) >= 0) return true;
+      var parts = [
+        r.doc_name, r.agent_name, r.store_name, r.owner_name,
+        r.organization_name, r.project_name, r.state_name
+      ];
+      for (var i = 0; i < parts.length; i++) {
+        if (String(parts[i] || '').toLowerCase().indexOf(q) >= 0) return true;
+      }
+      return false;
+    });
+  }
+
+  function fetchList(appliedSnap) {
+    var querySnap = mergeLiveSearchIntoSnap(appliedSnap || state.applied);
+    state.applied = Object.assign({}, state.applied, {
+      search: querySnap.search,
+      docName: querySnap.docName
+    });
+    state.pending = Object.assign({}, state.pending, {
+      search: querySnap.search,
+      docName: querySnap.docName
+    });
+    var expectedSearch = String(querySnap.search || querySnap.docName || '').trim();
+    var gen = ++state.listFetchGen;
+    state.loading = true;
+    setMssListBusy(true);
+    var queryStr = buildQuery(querySnap);
+    var timeoutId = window.setTimeout(function () {
+      if (gen !== state.listFetchGen || !state.loading) return;
+      state.rows = state.rows || [];
+      state.total = Number(state.total || 0);
+      var emptyMsg = $('dg-mso-empty-msg');
+      if (emptyMsg && !state.rows.length) {
+        emptyMsg.textContent = 'Таймаут загрузки списка. Нажмите «По умолчанию» или обновите страницу.';
+        emptyMsg.classList.remove('d-none');
+      }
+      finishListFetch(gen);
+    }, 45000);
+    fetch('/api/ms-orders/list?' + queryStr, {
+      credentials: 'same-origin',
+      headers: { Accept: 'application/json' }
+    })
+      .then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      })
+      .then(function (data) {
+        if (gen !== state.listFetchGen) return;
+        if (!data || !data.success) throw new Error((data && data.error) || 'Ошибка загрузки');
+        state.total = Number(data.total || 0);
+        state.rows = Array.isArray(data.rows) ? data.rows : [];
+        if (expectedSearch) {
+          var filtered = filterRowsBySearch(state.rows, expectedSearch);
+          if (filtered.length !== state.rows.length) {
+            state.rows = filtered;
+            state.total = filtered.length;
+          } else if (Number(data.total || 0) > filtered.length && filtered.length <= querySnap.pageSize) {
+            state.total = filtered.length;
+          }
+        }
+        state.expandedOrders.clear();
+        state.positionsCache = Object.create(null);
+        renderTable();
+        renderSortIndicators();
+      })
+      .catch(function (err) {
+        if (gen !== state.listFetchGen) return;
+        state.rows = [];
+        state.total = 0;
+        renderTable();
+        var emptyMsg = $('dg-mso-empty-msg');
+        if (emptyMsg) {
+          emptyMsg.textContent = 'Не удалось загрузить список: ' + (err && err.message ? err.message : 'неизвестная ошибка');
+          emptyMsg.classList.remove('d-none');
+        }
+      })
+      .finally(function () {
+        window.clearTimeout(timeoutId);
+        finishListFetch(gen);
+      });
+  }
+
+  /* ============================ Agent multi search-select ============================ */
+
+  var AGENT_MENU_MAX = 80;
+
+  function agentLabel(a) {
+    return (a && a.name) ? a.name : '—';
+  }
+
+  function normalizeAgentQuery(q) {
+    return String(q || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  }
+
+  function agentMatchesQuery(a, qNorm, tokens) {
+    if (!qNorm) return true;
+    var name = normalizeAgentQuery(a.name);
+    var uuid = String(a.uuid || '').toLowerCase();
+    if (uuid.indexOf(qNorm) >= 0) return true;
+    for (var i = 0; i < tokens.length; i++) {
+      if (name.indexOf(tokens[i]) < 0) return false;
+    }
+    return tokens.length > 0;
+  }
+
+  function findAgentByUuid(uuid) {
+    if (!uuid) return null;
+    var list = state.agentCatalog || [];
+    var u = String(uuid).toLowerCase();
+    for (var i = 0; i < list.length; i++) {
+      if (String(list[i].uuid || '').toLowerCase() === u) return list[i];
+    }
+    return null;
+  }
+
+  function filterAgents(query) {
+    var qNorm = normalizeAgentQuery(query);
+    var tokens = qNorm ? qNorm.split(' ').filter(Boolean) : [];
+    var list = state.agentCatalog || [];
+    var out = [];
+    for (var i = 0; i < list.length; i++) {
+      if (agentMatchesQuery(list[i], qNorm, tokens)) out.push(list[i]);
+    }
+    out.sort(function (a, b) {
+      return agentLabel(a).localeCompare(agentLabel(b), 'ru');
+    });
+    return out;
+  }
+
+  function closeAgentMenu() {
+    var menu = $('dg-mso-agent-menu');
+    var inp = $('dg-mso-agent-search');
+    if (menu) menu.classList.remove('is-open');
+    if (inp) inp.setAttribute('aria-expanded', 'false');
+  }
+
+  function openAgentMenu() {
+    var menu = $('dg-mso-agent-menu');
+    var inp = $('dg-mso-agent-search');
+    if (menu) menu.classList.add('is-open');
+    if (inp) inp.setAttribute('aria-expanded', 'true');
+  }
+
+  function syncAgentSearchSummary() {
+    var inp = $('dg-mso-agent-search');
+    var hint = $('dg-mso-agent-hint');
+    if (!inp) return;
+    var uuids = readAgentUuidsFromUi();
+    if (!uuids.length) {
+      inp.value = '';
+      if (hint) { hint.classList.add('d-none'); hint.textContent = ''; }
+      return;
+    }
+    if (uuids.length === 1) {
+      var one = findAgentByUuid(uuids[0]);
+      inp.value = one ? agentLabel(one) : uuids[0];
+      if (hint) { hint.classList.add('d-none'); hint.textContent = ''; }
+      return;
+    }
+    inp.value = 'Выбрано контрагентов: ' + uuids.length;
+    if (hint) {
+      hint.textContent = uuids.map(function (u) {
+        var ag = findAgentByUuid(u);
+        return ag ? agentLabel(ag) : u;
+      }).join(', ');
+      hint.classList.remove('d-none');
+    }
+  }
+
+  function renderAgentMenu(query) {
+    var menu = $('dg-mso-agent-menu');
+    if (!menu) return;
+    var q = String(query || '');
+    var filtered = filterAgents(q);
+    var total = filtered.length;
+    var show = filtered.slice(0, AGENT_MENU_MAX);
+    var html = '<div class="dg-mso-search-select-toolbar">' +
+      '<button type="button" class="btn btn-link btn-sm" data-dg-mso-agent-action="clear">Снять все</button>' +
+      '<button type="button" class="btn btn-link btn-sm" data-dg-mso-agent-action="pick-visible">Выбрать в списке</button>' +
+      '</div>';
+    for (var i = 0; i < show.length; i++) {
+      var ag = show[i];
+      var u = String(ag.uuid || '').toLowerCase();
+      var checked = agentPendingSet.has(u) ? ' checked' : '';
+      html += '<label class="dg-mso-search-select-check">' +
+        '<input type="checkbox" data-dg-mso-agent-uuid="' + escapeAttr(u) + '"' + checked + ' />' +
+        '<span>' + escapeHtml(agentLabel(ag)) +
+        ' <span class="dg-mso-search-select-count">(' + (ag.count || 0) + ')</span></span></label>';
+    }
+    if (total > AGENT_MENU_MAX) {
+      html += '<div class="dg-mso-search-select-empty">Показано ' + AGENT_MENU_MAX + ' из ' +
+        total + ' — уточните запрос</div>';
+    } else if (!total && q.trim()) {
+      html += '<div class="dg-mso-search-select-empty">Ничего не найдено</div>';
+    } else if (!total) {
+      html += '<div class="dg-mso-search-select-empty">Контрагенты не найдены за период</div>';
+    }
+    menu.innerHTML = html;
+  }
+
+  function setAgentCatalog(agents) {
+    state.agentCatalog = Array.isArray(agents) ? agents.slice() : [];
+    syncAgentSearchSummary();
+  }
+
+  function bindAgentSearchSelect() {
+    var wrap = $('dg-mso-agent-wrap');
+    var inp = $('dg-mso-agent-search');
+    var menu = $('dg-mso-agent-menu');
+    if (!inp || !menu) return;
+
+    inp.addEventListener('focus', function () {
+      inp.value = '';
+      renderAgentMenu('');
+      openAgentMenu();
+    });
+    inp.addEventListener('input', function () {
+      renderAgentMenu(inp.value);
+      openAgentMenu();
+    });
+    inp.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        syncAgentSearchSummary();
+        closeAgentMenu();
+      }
+    });
+
+    menu.addEventListener('mousedown', function (e) {
+      var actionBtn = e.target && e.target.closest && e.target.closest('[data-dg-mso-agent-action]');
+      if (actionBtn) {
+        e.preventDefault();
+        var action = actionBtn.getAttribute('data-dg-mso-agent-action');
+        if (action === 'clear') {
+          agentPendingSet.clear();
+        } else if (action === 'pick-visible') {
+          menu.querySelectorAll('input[type="checkbox"][data-dg-mso-agent-uuid]').forEach(function (cb) {
+            var u = String(cb.getAttribute('data-dg-mso-agent-uuid') || '').toLowerCase();
+            if (u) agentPendingSet.add(u);
+            cb.checked = true;
+          });
+        }
+        renderAgentMenu(inp.value);
+        return;
+      }
+      var label = e.target && e.target.closest && e.target.closest('label.dg-mso-search-select-check');
+      if (!label) return;
+      e.preventDefault();
+      var cb = label.querySelector('input[type="checkbox"][data-dg-mso-agent-uuid]');
+      if (!cb) return;
+      cb.checked = !cb.checked;
+      var uuid = String(cb.getAttribute('data-dg-mso-agent-uuid') || '').toLowerCase();
+      if (cb.checked) agentPendingSet.add(uuid);
+      else agentPendingSet.delete(uuid);
+      renderAgentMenu(inp.value);
+    });
+
+    inp.addEventListener('blur', function () {
+      setTimeout(function () {
+        if (wrap && !wrap.contains(document.activeElement)) {
+          syncAgentSearchSummary();
+          closeAgentMenu();
+        }
+      }, 120);
+    });
+
+    document.addEventListener('click', function (e) {
+      if (wrap && !wrap.contains(e.target)) closeAgentMenu();
+    });
+  }
+
+  /* ============================ Store multi search-select ============================ */
+
+  var STORE_MENU_MAX = 80;
+
+  function storeLabel(st) {
+    return (st && st.name) ? st.name : '—';
+  }
+
+  function findStoreByUuid(uuid) {
+    if (!uuid) return null;
+    var list = state.storeCatalog || [];
+    var u = String(uuid).toLowerCase();
+    for (var i = 0; i < list.length; i++) {
+      if (String(list[i].uuid || '').toLowerCase() === u) return list[i];
+    }
+    return null;
+  }
+
+  function filterStores(query) {
+    var qNorm = normalizeAgentQuery(query);
+    var tokens = qNorm ? qNorm.split(' ').filter(Boolean) : [];
+    var list = state.storeCatalog || [];
+    var out = [];
+    for (var i = 0; i < list.length; i++) {
+      if (agentMatchesQuery(list[i], qNorm, tokens)) out.push(list[i]);
+    }
+    out.sort(function (a, b) {
+      return storeLabel(a).localeCompare(storeLabel(b), 'ru');
+    });
+    return out;
+  }
+
+  function closeStoreMenu() {
+    var menu = $('dg-mso-store-menu');
+    var inp = $('dg-mso-store-search');
+    if (menu) menu.classList.remove('is-open');
+    if (inp) inp.setAttribute('aria-expanded', 'false');
+  }
+
+  function openStoreMenu() {
+    var menu = $('dg-mso-store-menu');
+    var inp = $('dg-mso-store-search');
+    if (menu) menu.classList.add('is-open');
+    if (inp) inp.setAttribute('aria-expanded', 'true');
+  }
+
+  function syncStoreSearchSummary() {
+    var inp = $('dg-mso-store-search');
+    var hint = $('dg-mso-store-hint');
+    if (!inp) return;
+    var uuids = readStoreUuidsFromUi();
+    if (!uuids.length) {
+      inp.value = '';
+      if (hint) { hint.classList.add('d-none'); hint.textContent = ''; }
+      return;
+    }
+    if (uuids.length === 1) {
+      var one = findStoreByUuid(uuids[0]);
+      inp.value = one ? storeLabel(one) : uuids[0];
+      if (hint) { hint.classList.add('d-none'); hint.textContent = ''; }
+      return;
+    }
+    inp.value = 'Выбрано складов: ' + uuids.length;
+    if (hint) {
+      hint.textContent = uuids.map(function (u) {
+        var st = findStoreByUuid(u);
+        return st ? storeLabel(st) : u;
+      }).join(', ');
+      hint.classList.remove('d-none');
+    }
+  }
+
+  function renderStoreMenu(query) {
+    var menu = $('dg-mso-store-menu');
+    if (!menu) return;
+    var q = String(query || '');
+    var filtered = filterStores(q);
+    var total = filtered.length;
+    var show = filtered.slice(0, STORE_MENU_MAX);
+    var html = '<div class="dg-mso-search-select-toolbar">' +
+      '<button type="button" class="btn btn-link btn-sm" data-dg-mso-store-action="clear">Снять все</button>' +
+      '<button type="button" class="btn btn-link btn-sm" data-dg-mso-store-action="pick-visible">Выбрать в списке</button>' +
+      '</div>';
+    for (var i = 0; i < show.length; i++) {
+      var st = show[i];
+      var u = String(st.uuid || '').toLowerCase();
+      var checked = storePendingSet.has(u) ? ' checked' : '';
+      html += '<label class="dg-mso-search-select-check">' +
+        '<input type="checkbox" data-dg-mso-store-uuid="' + escapeAttr(u) + '"' + checked + ' />' +
+        '<span>' + escapeHtml(storeLabel(st)) +
+        ' <span class="dg-mso-search-select-count">(' + (st.count || 0) + ')</span></span></label>';
+    }
+    if (total > STORE_MENU_MAX) {
+      html += '<div class="dg-mso-search-select-empty">Показано ' + STORE_MENU_MAX + ' из ' +
+        total + ' — уточните запрос</div>';
+    } else if (!total && q.trim()) {
+      html += '<div class="dg-mso-search-select-empty">Ничего не найдено</div>';
+    } else if (!total) {
+      html += '<div class="dg-mso-search-select-empty">Склады не найдены за период</div>';
+    }
+    menu.innerHTML = html;
+  }
+
+  function setStoreCatalog(stores) {
+    state.storeCatalog = Array.isArray(stores) ? stores.slice() : [];
+    syncStoreSearchSummary();
+  }
+
+  function bindStoreSearchSelect() {
+    var wrap = $('dg-mso-store-wrap');
+    var inp = $('dg-mso-store-search');
+    var menu = $('dg-mso-store-menu');
+    if (!inp || !menu) return;
+
+    inp.addEventListener('focus', function () {
+      inp.value = '';
+      renderStoreMenu('');
+      openStoreMenu();
+    });
+    inp.addEventListener('input', function () {
+      renderStoreMenu(inp.value);
+      openStoreMenu();
+    });
+    inp.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        syncStoreSearchSummary();
+        closeStoreMenu();
+      }
+    });
+
+    menu.addEventListener('mousedown', function (e) {
+      var actionBtn = e.target && e.target.closest && e.target.closest('[data-dg-mso-store-action]');
+      if (actionBtn) {
+        e.preventDefault();
+        var action = actionBtn.getAttribute('data-dg-mso-store-action');
+        if (action === 'clear') {
+          storePendingSet.clear();
+        } else if (action === 'pick-visible') {
+          menu.querySelectorAll('input[type="checkbox"][data-dg-mso-store-uuid]').forEach(function (cb) {
+            var u = String(cb.getAttribute('data-dg-mso-store-uuid') || '').toLowerCase();
+            if (u) storePendingSet.add(u);
+            cb.checked = true;
+          });
+        }
+        renderStoreMenu(inp.value);
+        return;
+      }
+      var label = e.target && e.target.closest && e.target.closest('label.dg-mso-search-select-check');
+      if (!label) return;
+      e.preventDefault();
+      var cb = label.querySelector('input[type="checkbox"][data-dg-mso-store-uuid]');
+      if (!cb) return;
+      cb.checked = !cb.checked;
+      var uuid = String(cb.getAttribute('data-dg-mso-store-uuid') || '').toLowerCase();
+      if (cb.checked) storePendingSet.add(uuid);
+      else storePendingSet.delete(uuid);
+      renderStoreMenu(inp.value);
+    });
+
+    inp.addEventListener('blur', function () {
+      setTimeout(function () {
+        if (wrap && !wrap.contains(document.activeElement)) {
+          syncStoreSearchSummary();
+          closeStoreMenu();
+        }
+      }, 120);
+    });
+
+    document.addEventListener('click', function (e) {
+      if (wrap && !wrap.contains(e.target)) closeStoreMenu();
+    });
+  }
+
+  /* ============================ Project multi search-select ============================ */
+
+  var PROJECT_MENU_MAX = 80;
+
+  function projectLabel(p) {
+    return (p && p.name) ? p.name : '—';
+  }
+
+  function findProjectByUuid(uuid) {
+    if (!uuid) return null;
+    var list = state.projectCatalog || [];
+    var u = String(uuid).toLowerCase();
+    for (var i = 0; i < list.length; i++) {
+      if (String(list[i].uuid || '').toLowerCase() === u) return list[i];
+    }
+    return null;
+  }
+
+  function filterProjects(query) {
+    var qNorm = normalizeAgentQuery(query);
+    var tokens = qNorm ? qNorm.split(' ').filter(Boolean) : [];
+    var list = state.projectCatalog || [];
+    var out = [];
+    for (var i = 0; i < list.length; i++) {
+      if (agentMatchesQuery(list[i], qNorm, tokens)) out.push(list[i]);
+    }
+    out.sort(function (a, b) {
+      return projectLabel(a).localeCompare(projectLabel(b), 'ru');
+    });
+    return out;
+  }
+
+  function closeProjectMenu() {
+    var menu = $('dg-mso-project-menu');
+    var inp = $('dg-mso-project-search');
+    if (menu) menu.classList.remove('is-open');
+    if (inp) inp.setAttribute('aria-expanded', 'false');
+  }
+
+  function openProjectMenu() {
+    var menu = $('dg-mso-project-menu');
+    var inp = $('dg-mso-project-search');
+    if (menu) menu.classList.add('is-open');
+    if (inp) inp.setAttribute('aria-expanded', 'true');
+  }
+
+  function syncProjectSearchSummary() {
+    var inp = $('dg-mso-project-search');
+    var hint = $('dg-mso-project-hint');
+    if (!inp) return;
+    var uuids = readProjectUuidsFromUi();
+    if (!uuids.length) {
+      inp.value = '';
+      if (hint) { hint.classList.add('d-none'); hint.textContent = ''; }
+      return;
+    }
+    if (uuids.length === 1) {
+      var one = findProjectByUuid(uuids[0]);
+      inp.value = one ? projectLabel(one) : uuids[0];
+      if (hint) { hint.classList.add('d-none'); hint.textContent = ''; }
+      return;
+    }
+    inp.value = 'Выбрано проектов: ' + uuids.length;
+    if (hint) {
+      hint.textContent = uuids.map(function (u) {
+        var p = findProjectByUuid(u);
+        return p ? projectLabel(p) : u;
+      }).join(', ');
+      hint.classList.remove('d-none');
+    }
+  }
+
+  function renderProjectMenu(query) {
+    var menu = $('dg-mso-project-menu');
+    if (!menu) return;
+    var q = String(query || '');
+    var filtered = filterProjects(q);
+    var total = filtered.length;
+    var show = filtered.slice(0, PROJECT_MENU_MAX);
+    var html = '<div class="dg-mso-search-select-toolbar">' +
+      '<button type="button" class="btn btn-link btn-sm" data-dg-mso-project-action="clear">Снять все</button>' +
+      '<button type="button" class="btn btn-link btn-sm" data-dg-mso-project-action="pick-visible">Выбрать в списке</button>' +
+      '</div>';
+    for (var i = 0; i < show.length; i++) {
+      var p = show[i];
+      var u = String(p.uuid || '').toLowerCase();
+      var checked = projectPendingSet.has(u) ? ' checked' : '';
+      html += '<label class="dg-mso-search-select-check">' +
+        '<input type="checkbox" data-dg-mso-project-uuid="' + escapeAttr(u) + '"' + checked + ' />' +
+        '<span>' + escapeHtml(projectLabel(p)) +
+        ' <span class="dg-mso-search-select-count">(' + (p.count || 0) + ')</span></span></label>';
+    }
+    if (total > PROJECT_MENU_MAX) {
+      html += '<div class="dg-mso-search-select-empty">Показано ' + PROJECT_MENU_MAX + ' из ' +
+        total + ' — уточните запрос</div>';
+    } else if (!total && q.trim()) {
+      html += '<div class="dg-mso-search-select-empty">Ничего не найдено</div>';
+    } else if (!total) {
+      html += '<div class="dg-mso-search-select-empty">Проекты не найдены за период</div>';
+    }
+    menu.innerHTML = html;
+  }
+
+  function setProjectCatalog(projects) {
+    state.projectCatalog = Array.isArray(projects) ? projects.slice() : [];
+    syncProjectSearchSummary();
+  }
+
+  function bindProjectSearchSelect() {
+    var wrap = $('dg-mso-project-wrap');
+    var inp = $('dg-mso-project-search');
+    var menu = $('dg-mso-project-menu');
+    if (!inp || !menu) return;
+
+    inp.addEventListener('focus', function () {
+      inp.value = '';
+      renderProjectMenu('');
+      openProjectMenu();
+    });
+    inp.addEventListener('input', function () {
+      renderProjectMenu(inp.value);
+      openProjectMenu();
+    });
+    inp.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        syncProjectSearchSummary();
+        closeProjectMenu();
+      }
+    });
+
+    menu.addEventListener('mousedown', function (e) {
+      var actionBtn = e.target && e.target.closest && e.target.closest('[data-dg-mso-project-action]');
+      if (actionBtn) {
+        e.preventDefault();
+        var action = actionBtn.getAttribute('data-dg-mso-project-action');
+        if (action === 'clear') {
+          projectPendingSet.clear();
+        } else if (action === 'pick-visible') {
+          menu.querySelectorAll('input[type="checkbox"][data-dg-mso-project-uuid]').forEach(function (cb) {
+            var u = String(cb.getAttribute('data-dg-mso-project-uuid') || '').toLowerCase();
+            if (u) projectPendingSet.add(u);
+            cb.checked = true;
+          });
+        }
+        renderProjectMenu(inp.value);
+        return;
+      }
+      var label = e.target && e.target.closest && e.target.closest('label.dg-mso-search-select-check');
+      if (!label) return;
+      e.preventDefault();
+      var cb = label.querySelector('input[type="checkbox"][data-dg-mso-project-uuid]');
+      if (!cb) return;
+      cb.checked = !cb.checked;
+      var uuid = String(cb.getAttribute('data-dg-mso-project-uuid') || '').toLowerCase();
+      if (cb.checked) projectPendingSet.add(uuid);
+      else projectPendingSet.delete(uuid);
+      renderProjectMenu(inp.value);
+    });
+
+    inp.addEventListener('blur', function () {
+      setTimeout(function () {
+        if (wrap && !wrap.contains(document.activeElement)) {
+          syncProjectSearchSummary();
+          closeProjectMenu();
+        }
+      }, 120);
+    });
+
+    document.addEventListener('click', function (e) {
+      if (wrap && !wrap.contains(e.target)) closeProjectMenu();
+    });
+  }
+
+  /* ============================ Applicable multi search-select ============================ */
+
+  function applicableLabel(opt) {
+    return (opt && opt.label) ? opt.label : '—';
+  }
+
+  function findApplicableOption(value) {
+    var v = String(value);
+    for (var i = 0; i < APPLICABLE_OPTIONS.length; i++) {
+      if (APPLICABLE_OPTIONS[i].value === v) return APPLICABLE_OPTIONS[i];
+    }
+    return null;
+  }
+
+  function filterApplicableOptions(query) {
+    var qNorm = normalizeAgentQuery(query);
+    if (!qNorm) return APPLICABLE_OPTIONS.slice();
+    var tokens = qNorm.split(' ').filter(Boolean);
+    return APPLICABLE_OPTIONS.filter(function (opt) {
+      return agentMatchesQuery({ name: opt.label, uuid: opt.value }, qNorm, tokens);
+    });
+  }
+
+  function closeApplicableMenu() {
+    var menu = $('dg-mso-applicable-menu');
+    var inp = $('dg-mso-applicable-search');
+    if (menu) menu.classList.remove('is-open');
+    if (inp) inp.setAttribute('aria-expanded', 'false');
+  }
+
+  function openApplicableMenu() {
+    var menu = $('dg-mso-applicable-menu');
+    var inp = $('dg-mso-applicable-search');
+    if (menu) menu.classList.add('is-open');
+    if (inp) inp.setAttribute('aria-expanded', 'true');
+  }
+
+  function syncApplicableSearchSummary() {
+    var inp = $('dg-mso-applicable-search');
+    var hint = $('dg-mso-applicable-hint');
+    if (!inp) return;
+    var values = readApplicableValuesFromUi();
+    if (isApplicableFilterAll(values)) {
+      inp.value = '';
+      inp.placeholder = 'Все — проведённые и черновики';
+      if (hint) { hint.classList.add('d-none'); hint.textContent = ''; }
+      return;
+    }
+    inp.placeholder = 'Все — введите для поиска…';
+    if (values.length === 1) {
+      var one = findApplicableOption(values[0]);
+      inp.value = one ? applicableLabel(one) : values[0];
+      if (hint) { hint.classList.add('d-none'); hint.textContent = ''; }
+      return;
+    }
+    inp.value = 'Выбрано: ' + values.length;
+    if (hint) {
+      hint.textContent = values.map(function (v) {
+        var o = findApplicableOption(v);
+        return o ? applicableLabel(o) : v;
+      }).join(', ');
+      hint.classList.remove('d-none');
+    }
+  }
+
+  function renderApplicableMenu(query) {
+    var menu = $('dg-mso-applicable-menu');
+    if (!menu) return;
+    var filtered = filterApplicableOptions(query);
+    var html = '<div class="dg-mso-search-select-toolbar">' +
+      '<button type="button" class="btn btn-link btn-sm" data-dg-mso-applicable-action="clear">Снять все</button>' +
+      '<button type="button" class="btn btn-link btn-sm" data-dg-mso-applicable-action="pick-visible">Выбрать в списке</button>' +
+      '</div>';
+    for (var i = 0; i < filtered.length; i++) {
+      var opt = filtered[i];
+      var checked = applicablePendingSet.has(opt.value) ? ' checked' : '';
+      html += '<label class="dg-mso-search-select-check">' +
+        '<input type="checkbox" data-dg-mso-applicable-value="' + escapeAttr(opt.value) + '"' + checked + ' />' +
+        '<span>' + escapeHtml(applicableLabel(opt)) + '</span></label>';
+    }
+    if (!filtered.length && String(query || '').trim()) {
+      html += '<div class="dg-mso-search-select-empty">Ничего не найдено</div>';
+    }
+    menu.innerHTML = html;
+  }
+
+  function bindApplicableSearchSelect() {
+    var wrap = $('dg-mso-applicable-wrap');
+    var inp = $('dg-mso-applicable-search');
+    var menu = $('dg-mso-applicable-menu');
+    if (!inp || !menu) return;
+
+    inp.addEventListener('focus', function () {
+      inp.value = '';
+      renderApplicableMenu('');
+      openApplicableMenu();
+    });
+    inp.addEventListener('input', function () {
+      renderApplicableMenu(inp.value);
+      openApplicableMenu();
+    });
+    inp.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        syncApplicableSearchSummary();
+        closeApplicableMenu();
+      }
+    });
+
+    menu.addEventListener('mousedown', function (e) {
+      var actionBtn = e.target && e.target.closest && e.target.closest('[data-dg-mso-applicable-action]');
+      if (actionBtn) {
+        e.preventDefault();
+        var action = actionBtn.getAttribute('data-dg-mso-applicable-action');
+        if (action === 'clear') {
+          applicablePendingSet.clear();
+        } else if (action === 'pick-visible') {
+          menu.querySelectorAll('input[type="checkbox"][data-dg-mso-applicable-value]').forEach(function (cb) {
+            var v = String(cb.getAttribute('data-dg-mso-applicable-value') || '');
+            if (v === '0' || v === '1') applicablePendingSet.add(v);
+            cb.checked = true;
+          });
+        }
+        renderApplicableMenu(inp.value);
+        return;
+      }
+      var label = e.target && e.target.closest && e.target.closest('label.dg-mso-search-select-check');
+      if (!label) return;
+      e.preventDefault();
+      var cb = label.querySelector('input[type="checkbox"][data-dg-mso-applicable-value]');
+      if (!cb) return;
+      cb.checked = !cb.checked;
+      var val = String(cb.getAttribute('data-dg-mso-applicable-value') || '');
+      if (cb.checked) applicablePendingSet.add(val);
+      else applicablePendingSet.delete(val);
+      renderApplicableMenu(inp.value);
+    });
+
+    inp.addEventListener('blur', function () {
+      setTimeout(function () {
+        if (wrap && !wrap.contains(document.activeElement)) {
+          syncApplicableSearchSummary();
+          closeApplicableMenu();
+        }
+      }, 120);
+    });
+
+    document.addEventListener('click', function (e) {
+      if (wrap && !wrap.contains(e.target)) closeApplicableMenu();
+    });
+  }
+
+  /* ============================ Pay status multi search-select ============================ */
+
+  function payStatusLabel(opt) {
+    return (opt && opt.label) ? opt.label : '—';
+  }
+
+  function findPayStatusOption(value) {
+    var v = String(value);
+    for (var i = 0; i < PAY_STATUS_OPTIONS.length; i++) {
+      if (PAY_STATUS_OPTIONS[i].value === v) return PAY_STATUS_OPTIONS[i];
+    }
+    return null;
+  }
+
+  function filterPayStatusOptions(query) {
+    var qNorm = normalizeAgentQuery(query);
+    if (!qNorm) return PAY_STATUS_OPTIONS.slice();
+    var tokens = qNorm.split(' ').filter(Boolean);
+    return PAY_STATUS_OPTIONS.filter(function (opt) {
+      return agentMatchesQuery({ name: opt.label, uuid: opt.value }, qNorm, tokens);
+    });
+  }
+
+  function closePayStatusMenu() {
+    var menu = $('dg-mso-payed-menu');
+    var inp = $('dg-mso-payed-search');
+    if (menu) menu.classList.remove('is-open');
+    if (inp) inp.setAttribute('aria-expanded', 'false');
+  }
+
+  function openPayStatusMenu() {
+    var menu = $('dg-mso-payed-menu');
+    var inp = $('dg-mso-payed-search');
+    if (menu) menu.classList.add('is-open');
+    if (inp) inp.setAttribute('aria-expanded', 'true');
+  }
+
+  function syncPayStatusSearchSummary() {
+    var inp = $('dg-mso-payed-search');
+    var hint = $('dg-mso-payed-hint');
+    if (!inp) return;
+    var values = readPayStatusValuesFromUi();
+    if (isPayStatusFilterAll(values)) {
+      inp.value = '';
+      inp.placeholder = 'Все — оплачено, частично, не оплачено';
+      if (hint) { hint.classList.add('d-none'); hint.textContent = ''; }
+      return;
+    }
+    inp.placeholder = 'Оплачено — введите для поиска…';
+    if (values.length === 1) {
+      var one = findPayStatusOption(values[0]);
+      inp.value = one ? payStatusLabel(one) : values[0];
+      if (hint) { hint.classList.add('d-none'); hint.textContent = ''; }
+      return;
+    }
+    inp.value = 'Выбрано: ' + values.length;
+    if (hint) {
+      hint.textContent = values.map(function (v) {
+        var o = findPayStatusOption(v);
+        return o ? payStatusLabel(o) : v;
+      }).join(', ');
+      hint.classList.remove('d-none');
+    }
+  }
+
+  function renderPayStatusMenu(query) {
+    var menu = $('dg-mso-payed-menu');
+    if (!menu) return;
+    var filtered = filterPayStatusOptions(query);
+    var html = '<div class="dg-mso-search-select-toolbar">' +
+      '<button type="button" class="btn btn-link btn-sm" data-dg-mso-payed-action="clear">Снять все</button>' +
+      '<button type="button" class="btn btn-link btn-sm" data-dg-mso-payed-action="pick-visible">Выбрать в списке</button>' +
+      '</div>';
+    for (var i = 0; i < filtered.length; i++) {
+      var opt = filtered[i];
+      var checked = payStatusPendingSet.has(opt.value) ? ' checked' : '';
+      html += '<label class="dg-mso-search-select-check">' +
+        '<input type="checkbox" data-dg-mso-payed-value="' + escapeAttr(opt.value) + '"' + checked + ' />' +
+        '<span>' + escapeHtml(payStatusLabel(opt)) + '</span></label>';
+    }
+    if (!filtered.length && String(query || '').trim()) {
+      html += '<div class="dg-mso-search-select-empty">Ничего не найдено</div>';
+    }
+    menu.innerHTML = html;
+  }
+
+  function bindPayStatusSearchSelect() {
+    var wrap = $('dg-mso-payed-wrap');
+    var inp = $('dg-mso-payed-search');
+    var menu = $('dg-mso-payed-menu');
+    if (!inp || !menu) return;
+
+    inp.addEventListener('focus', function () {
+      inp.value = '';
+      renderPayStatusMenu('');
+      openPayStatusMenu();
+    });
+    inp.addEventListener('input', function () {
+      renderPayStatusMenu(inp.value);
+      openPayStatusMenu();
+    });
+    inp.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        syncPayStatusSearchSummary();
+        closePayStatusMenu();
+      }
+    });
+
+    menu.addEventListener('mousedown', function (e) {
+      var actionBtn = e.target && e.target.closest && e.target.closest('[data-dg-mso-payed-action]');
+      if (actionBtn) {
+        e.preventDefault();
+        var action = actionBtn.getAttribute('data-dg-mso-payed-action');
+        if (action === 'clear') {
+          payStatusPendingSet.clear();
+        } else if (action === 'pick-visible') {
+          menu.querySelectorAll('input[type="checkbox"][data-dg-mso-payed-value]').forEach(function (cb) {
+            var v = String(cb.getAttribute('data-dg-mso-payed-value') || '');
+            if (v === 'paid' || v === 'partial' || v === 'none') payStatusPendingSet.add(v);
+            cb.checked = true;
+          });
+        }
+        renderPayStatusMenu(inp.value);
+        return;
+      }
+      var label = e.target && e.target.closest && e.target.closest('label.dg-mso-search-select-check');
+      if (!label) return;
+      e.preventDefault();
+      var cb = label.querySelector('input[type="checkbox"][data-dg-mso-payed-value]');
+      if (!cb) return;
+      cb.checked = !cb.checked;
+      var val = String(cb.getAttribute('data-dg-mso-payed-value') || '');
+      if (cb.checked) payStatusPendingSet.add(val);
+      else payStatusPendingSet.delete(val);
+      renderPayStatusMenu(inp.value);
+    });
+
+    inp.addEventListener('blur', function () {
+      setTimeout(function () {
+        if (wrap && !wrap.contains(document.activeElement)) {
+          syncPayStatusSearchSummary();
+          closePayStatusMenu();
+        }
+      }, 120);
+    });
+
+    document.addEventListener('click', function (e) {
+      if (wrap && !wrap.contains(e.target)) closePayStatusMenu();
+    });
+  }
+
+  /* ============================ Ship status multi search-select ============================ */
+
+  function shipStatusLabel(opt) {
+    return (opt && opt.label) ? opt.label : '—';
+  }
+
+  function findShipStatusOption(value) {
+    var v = String(value);
+    for (var i = 0; i < SHIP_STATUS_OPTIONS.length; i++) {
+      if (SHIP_STATUS_OPTIONS[i].value === v) return SHIP_STATUS_OPTIONS[i];
+    }
+    return null;
+  }
+
+  function filterShipStatusOptions(query) {
+    var qNorm = normalizeAgentQuery(query);
+    if (!qNorm) return SHIP_STATUS_OPTIONS.slice();
+    var tokens = qNorm.split(' ').filter(Boolean);
+    return SHIP_STATUS_OPTIONS.filter(function (opt) {
+      return agentMatchesQuery({ name: opt.label, uuid: opt.value }, qNorm, tokens);
+    });
+  }
+
+  function closeShipStatusMenu() {
+    var menu = $('dg-mso-shipped-menu');
+    var inp = $('dg-mso-shipped-search');
+    if (menu) menu.classList.remove('is-open');
+    if (inp) inp.setAttribute('aria-expanded', 'false');
+  }
+
+  function openShipStatusMenu() {
+    var menu = $('dg-mso-shipped-menu');
+    var inp = $('dg-mso-shipped-search');
+    if (menu) menu.classList.add('is-open');
+    if (inp) inp.setAttribute('aria-expanded', 'true');
+  }
+
+  function syncShipStatusSearchSummary() {
+    var inp = $('dg-mso-shipped-search');
+    var hint = $('dg-mso-shipped-hint');
+    if (!inp) return;
+    var values = readShipStatusValuesFromUi();
+    if (isShipStatusFilterAll(values)) {
+      inp.value = '';
+      inp.placeholder = 'Все — отгружено, частично, не отгружено';
+      if (hint) { hint.classList.add('d-none'); hint.textContent = ''; }
+      return;
+    }
+    inp.placeholder = 'Отгружено — введите для поиска…';
+    if (values.length === 1) {
+      var one = findShipStatusOption(values[0]);
+      inp.value = one ? shipStatusLabel(one) : values[0];
+      if (hint) { hint.classList.add('d-none'); hint.textContent = ''; }
+      return;
+    }
+    inp.value = 'Выбрано: ' + values.length;
+    if (hint) {
+      hint.textContent = values.map(function (v) {
+        var o = findShipStatusOption(v);
+        return o ? shipStatusLabel(o) : v;
+      }).join(', ');
+      hint.classList.remove('d-none');
+    }
+  }
+
+  function renderShipStatusMenu(query) {
+    var menu = $('dg-mso-shipped-menu');
+    if (!menu) return;
+    var filtered = filterShipStatusOptions(query);
+    var html = '<div class="dg-mso-search-select-toolbar">' +
+      '<button type="button" class="btn btn-link btn-sm" data-dg-mso-shipped-action="clear">Все (без фильтра)</button>' +
+      '<button type="button" class="btn btn-link btn-sm" data-dg-mso-shipped-action="pick-visible">Выбрать в списке</button>' +
+      '</div>';
+    for (var i = 0; i < filtered.length; i++) {
+      var opt = filtered[i];
+      var checked = shipStatusPendingSet.has(opt.value) ? ' checked' : '';
+      html += '<label class="dg-mso-search-select-check">' +
+        '<input type="checkbox" data-dg-mso-shipped-value="' + escapeAttr(opt.value) + '"' + checked + ' />' +
+        '<span>' + escapeHtml(shipStatusLabel(opt)) + '</span></label>';
+    }
+    if (!filtered.length && String(query || '').trim()) {
+      html += '<div class="dg-mso-search-select-empty">Ничего не найдено</div>';
+    }
+    menu.innerHTML = html;
+  }
+
+  function bindShipStatusSearchSelect() {
+    var wrap = $('dg-mso-shipped-wrap');
+    var inp = $('dg-mso-shipped-search');
+    var menu = $('dg-mso-shipped-menu');
+    if (!inp || !menu) return;
+
+    inp.addEventListener('focus', function () {
+      inp.value = '';
+      renderShipStatusMenu('');
+      openShipStatusMenu();
+    });
+    inp.addEventListener('input', function () {
+      renderShipStatusMenu(inp.value);
+      openShipStatusMenu();
+    });
+    inp.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        syncShipStatusSearchSummary();
+        closeShipStatusMenu();
+      }
+    });
+
+    menu.addEventListener('mousedown', function (e) {
+      var actionBtn = e.target && e.target.closest && e.target.closest('[data-dg-mso-shipped-action]');
+      if (actionBtn) {
+        e.preventDefault();
+        var action = actionBtn.getAttribute('data-dg-mso-shipped-action');
+        if (action === 'clear') {
+          shipStatusPendingSet = new Set(SHIP_STATUS_OPTIONS.map(function (o) { return o.value; }));
+        } else if (action === 'pick-visible') {
+          menu.querySelectorAll('input[type="checkbox"][data-dg-mso-shipped-value]').forEach(function (cb) {
+            var v = String(cb.getAttribute('data-dg-mso-shipped-value') || '');
+            if (v === 'shipped' || v === 'partial' || v === 'none') shipStatusPendingSet.add(v);
+            cb.checked = true;
+          });
+        }
+        renderShipStatusMenu(inp.value);
+        return;
+      }
+      var label = e.target && e.target.closest && e.target.closest('label.dg-mso-search-select-check');
+      if (!label) return;
+      e.preventDefault();
+      var cb = label.querySelector('input[type="checkbox"][data-dg-mso-shipped-value]');
+      if (!cb) return;
+      cb.checked = !cb.checked;
+      var val = String(cb.getAttribute('data-dg-mso-shipped-value') || '');
+      if (cb.checked) shipStatusPendingSet.add(val);
+      else shipStatusPendingSet.delete(val);
+      renderShipStatusMenu(inp.value);
+    });
+
+    inp.addEventListener('blur', function () {
+      setTimeout(function () {
+        if (wrap && !wrap.contains(document.activeElement)) {
+          syncShipStatusSearchSummary();
+          closeShipStatusMenu();
+        }
+      }, 120);
+    });
+
+    document.addEventListener('click', function (e) {
+      if (wrap && !wrap.contains(e.target)) closeShipStatusMenu();
+    });
+  }
+
+  /* ============================ Stock status multi search-select ============================ */
+
+  function stockStatusLabel(opt) {
+    return (opt && opt.label) ? opt.label : '—';
+  }
+
+  function findStockStatusOption(value) {
+    var v = String(value);
+    for (var i = 0; i < STOCK_STATUS_OPTIONS.length; i++) {
+      if (STOCK_STATUS_OPTIONS[i].value === v) return STOCK_STATUS_OPTIONS[i];
+    }
+    return null;
+  }
+
+  function filterStockStatusOptions(query) {
+    var qNorm = normalizeAgentQuery(query);
+    if (!qNorm) return STOCK_STATUS_OPTIONS.slice();
+    var tokens = qNorm.split(' ').filter(Boolean);
+    return STOCK_STATUS_OPTIONS.filter(function (opt) {
+      return agentMatchesQuery({ name: opt.label, uuid: opt.value }, qNorm, tokens);
+    });
+  }
+
+  function closeStockStatusMenu() {
+    var menu = $('dg-mso-stock-status-menu');
+    var inp = $('dg-mso-stock-status-search');
+    if (menu) menu.classList.remove('is-open');
+    if (inp) inp.setAttribute('aria-expanded', 'false');
+  }
+
+  function openStockStatusMenu() {
+    var menu = $('dg-mso-stock-status-menu');
+    var inp = $('dg-mso-stock-status-search');
+    if (menu) menu.classList.add('is-open');
+    if (inp) inp.setAttribute('aria-expanded', 'true');
+  }
+
+  function syncStockStatusSearchSummary() {
+    var inp = $('dg-mso-stock-status-search');
+    var hint = $('dg-mso-stock-status-hint');
+    if (!inp) return;
+    var values = readStockStatusValuesFromUi();
+    if (isStockStatusFilterAll(values)) {
+      inp.value = '';
+      inp.placeholder = 'Все — на складе, частично, нет…';
+      if (hint) { hint.classList.add('d-none'); hint.textContent = ''; }
+      return;
+    }
+    inp.placeholder = 'Статус — введите для поиска…';
+    if (values.length === 1) {
+      var one = findStockStatusOption(values[0]);
+      inp.value = one ? stockStatusLabel(one) : values[0];
+      if (hint) { hint.classList.add('d-none'); hint.textContent = ''; }
+      return;
+    }
+    inp.value = 'Выбрано: ' + values.length;
+    if (hint) {
+      hint.textContent = values.map(function (v) {
+        var o = findStockStatusOption(v);
+        return o ? stockStatusLabel(o) : v;
+      }).join(', ');
+      hint.classList.remove('d-none');
+    }
+  }
+
+  function renderStockStatusMenu(query) {
+    var menu = $('dg-mso-stock-status-menu');
+    if (!menu) return;
+    var filtered = filterStockStatusOptions(query);
+    var html = '<div class="dg-mso-search-select-toolbar">' +
+      '<button type="button" class="btn btn-link btn-sm" data-dg-mso-stock-status-action="clear">Снять все</button>' +
+      '<button type="button" class="btn btn-link btn-sm" data-dg-mso-stock-status-action="pick-visible">Выбрать в списке</button>' +
+      '</div>';
+    for (var i = 0; i < filtered.length; i++) {
+      var opt = filtered[i];
+      var checked = stockStatusPendingSet.has(opt.value) ? ' checked' : '';
+      html += '<label class="dg-mso-search-select-check">' +
+        '<input type="checkbox" data-dg-mso-stock-status-value="' + escapeAttr(opt.value) + '"' + checked + ' />' +
+        '<span>' + escapeHtml(stockStatusLabel(opt)) + '</span></label>';
+    }
+    if (!filtered.length && String(query || '').trim()) {
+      html += '<div class="dg-mso-search-select-empty">Ничего не найдено</div>';
+    }
+    menu.innerHTML = html;
+  }
+
+  function bindStockStatusSearchSelect() {
+    var wrap = $('dg-mso-stock-status-wrap');
+    var inp = $('dg-mso-stock-status-search');
+    var menu = $('dg-mso-stock-status-menu');
+    if (!inp || !menu) return;
+
+    inp.addEventListener('focus', function () {
+      inp.value = '';
+      renderStockStatusMenu('');
+      openStockStatusMenu();
+    });
+    inp.addEventListener('input', function () {
+      renderStockStatusMenu(inp.value);
+      openStockStatusMenu();
+    });
+    inp.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        syncStockStatusSearchSummary();
+        closeStockStatusMenu();
+      }
+    });
+
+    menu.addEventListener('mousedown', function (e) {
+      var actionBtn = e.target && e.target.closest && e.target.closest('[data-dg-mso-stock-status-action]');
+      if (actionBtn) {
+        e.preventDefault();
+        var action = actionBtn.getAttribute('data-dg-mso-stock-status-action');
+        if (action === 'clear') {
+          stockStatusPendingSet.clear();
+        } else if (action === 'pick-visible') {
+          menu.querySelectorAll('input[type="checkbox"][data-dg-mso-stock-status-value]').forEach(function (cb) {
+            var v = String(cb.getAttribute('data-dg-mso-stock-status-value') || '');
+            if (v === 'all' || v === 'partial' || v === 'none' || v === 'none_pending') stockStatusPendingSet.add(v);
+            cb.checked = true;
+          });
+        }
+        renderStockStatusMenu(inp.value);
+        return;
+      }
+      var label = e.target && e.target.closest && e.target.closest('label.dg-mso-search-select-check');
+      if (!label) return;
+      e.preventDefault();
+      var cb = label.querySelector('input[type="checkbox"][data-dg-mso-stock-status-value]');
+      if (!cb) return;
+      cb.checked = !cb.checked;
+      var val = String(cb.getAttribute('data-dg-mso-stock-status-value') || '');
+      if (cb.checked) stockStatusPendingSet.add(val);
+      else stockStatusPendingSet.delete(val);
+      renderStockStatusMenu(inp.value);
+    });
+
+    inp.addEventListener('blur', function () {
+      setTimeout(function () {
+        if (wrap && !wrap.contains(document.activeElement)) {
+          syncStockStatusSearchSummary();
+          closeStockStatusMenu();
+        }
+      }, 120);
+    });
+
+    document.addEventListener('click', function (e) {
+      if (wrap && !wrap.contains(e.target)) closeStockStatusMenu();
+    });
+  }
+
+  function fetchFilters() {
+    var qs = new URLSearchParams();
+    qs.set('days', String(state.applied.days));
+    fetch('/api/ms-orders/filters?' + qs.toString(), {
+      credentials: 'same-origin',
+      headers: { Accept: 'application/json' }
+    })
+      .then(function (r) { return r.ok ? r.json() : { success: false }; })
+      .then(function (data) {
+        if (!data || !data.success) return;
+        setStoreCatalog(data.stores || []);
+        setStorePendingUuids(state.applied.storeUuids);
+        syncStoreSearchSummary();
+        setAgentCatalog(data.agents || []);
+        setAgentPendingUuids(state.applied.agentUuids);
+        syncAgentSearchSummary();
+        setProjectCatalog(data.projects || []);
+        setProjectPendingUuids(state.applied.projectUuids);
+        syncProjectSearchSummary();
+      })
+      .catch(function () {});
+  }
+
+  /* ============================ Render: thead / tbody ============================ */
+
+  function buildThead() {
+    var thead = $('dg-mso-thead');
+    if (!thead) return;
+    var keys = visibleColsArray();
+    var html = '<tr>';
+    keys.forEach(function (key) {
+      var col = null;
+      for (var i = 0; i < MSO_COLS.length; i++) if (MSO_COLS[i].key === key) { col = MSO_COLS[i]; break; }
+      if (!col) return;
+      var attrs = '';
+      if (col.sort) attrs += ' data-sort="' + escapeAttr(col.sort) + '"';
+      if (col.align === 'right') attrs += ' class="dg-mso-num"';
+      html += '<th' + attrs + '>' + escapeHtml(col.label) + '</th>';
+    });
+    html += '</tr>';
+    thead.innerHTML = html;
+    renderSortIndicators();
+    applyColumnWidths();
+  }
+
+  function renderTable() {
+    var tbody = $('dg-mso-tbody');
+    var empty = $('dg-mso-empty-msg');
+    if (!tbody) return;
+    if (!state.rows.length) {
+      tbody.innerHTML = '';
+      if (empty) {
+        empty.classList.remove('d-none');
+        if (!state.loading && Number(state.total || 0) === 0) {
+          empty.textContent = hasNarrowingFilters()
+            ? 'Нет заказов по текущим фильтрам. Нажмите «По умолчанию» или ослабьте фильтры (например «Отгружено» → все три пункта).'
+            : 'Нет данных. Нажмите «Синхронизировать с МС», чтобы загрузить заказы за последние 30 дней.';
+        }
+      }
+      return;
+    }
+    if (empty) empty.classList.add('d-none');
+
+    var keys = visibleColsArray();
+    var cols = keys.map(function (k) {
+      for (var i = 0; i < MSO_COLS.length; i++) if (MSO_COLS[i].key === k) return MSO_COLS[i];
+      return null;
+    }).filter(Boolean);
+
+    var html = '';
+    for (var i = 0; i < state.rows.length; i++) {
+      var r = state.rows[i];
+      var classes = [];
+      if (!r.applicable) classes.push('dg-mso-not-applicable');
+      if (r.deleted_at) classes.push('table-danger', 'dg-mso-deleted-row');
+      var trClass = classes.join(' ');
+      html += '<tr class="' + trClass + '" data-uuid="' + escapeAttr(r.uuid) + '">';
+      for (var j = 0; j < cols.length; j++) {
+        var col = cols[j];
+        var content;
+        try { content = col.render(r); } catch (_e) { content = ''; }
+        if (content == null) content = '';
+        var td = '<td';
+        if (col.align === 'right') td += ' class="dg-mso-num"';
+        td += '>' + content + '</td>';
+        html += td;
+      }
+      html += '</tr>';
+    }
+    tbody.innerHTML = html;
+    applyColumnWidths();
+    restoreExpandedOrders();
+  }
+
+  function renderSortIndicators() {
+    var ths = document.querySelectorAll('#dg-mso-thead th[data-sort]');
+    for (var i = 0; i < ths.length; i++) {
+      var th = ths[i];
+      var key = th.getAttribute('data-sort');
+      th.removeAttribute('data-sort-active');
+      if (key === state.applied.sortBy) {
+        th.setAttribute('data-sort-active', state.applied.sortDir === 'asc' ? 'asc' : 'desc');
+      }
+    }
+  }
+
+  function renderStatus() {
+    var line = $('dg-mso-pagination-status');
+    if (!line) return;
+    var a = state.applied;
+    var totalPages = Math.max(1, Math.ceil(state.total / a.pageSize));
+    var page = Math.min(a.page, totalPages);
+    line.textContent = 'Найдено: ' + state.total + '; страница ' + page + '/' + totalPages
+      + '; показано: ' + state.rows.length
+      + (a.search ? ('; поиск: «' + a.search + '»') : '');
+    var draftSearch = readDraftSearch();
+    if (draftSearch && draftSearch !== (a.search || '')) {
+      line.textContent += '; черновик поиска: «' + draftSearch + '» — Enter или «Применить»';
+    }
+    var prev = $('dg-mso-page-prev');
+    var next = $('dg-mso-page-next');
+    if (prev) prev.disabled = state.loading || page <= 1;
+    if (next) next.disabled = state.loading || page >= totalPages;
+    var headerStatus = $('dg-mso-status');
+    if (headerStatus) {
+      var sumAll = state.rows.reduce(function (acc, r) { return acc + Number(r.sum || 0); }, 0);
+      var extra = a.search ? ('; поиск: «' + a.search + '»') : '';
+      headerStatus.textContent = 'на странице — отгрузок: ' + state.rows.length +
+        ', сумма: ' + fmtMoney(sumAll) + ' ₽' + extra;
+    }
+    syncSearchDraftHint();
+  }
+
+  /* ============================ Positions row (expand) ============================ */
+
+  function linkBadge(p) {
+    var kind = String(p.assortment_kind || 'unknown').toLowerCase();
+    if (p.ms_export_resolved && p.ms_export_code) {
+      var label = 'товар';
+      if (kind === 'bundle') label = 'комплект';
+      else if (kind === 'variant') label = 'вариант';
+      return '<span class="dg-mso-link-badge dg-mso-link-resolved" title="Привязан к ms_export.code = ' +
+        escapeAttr(p.ms_export_code) + '">' + escapeHtml(label) + ' • ' + escapeHtml(p.ms_export_code) + '</span>';
+    }
+    if (kind === 'bundle') return '<span class="dg-mso-link-badge dg-mso-link-bundle" title="Комплект, не найден в ms_export">комплект (нет в ms_export)</span>';
+    if (kind === 'variant') return '<span class="dg-mso-link-badge dg-mso-link-variant" title="Вариант товара, родительский product не найден в ms_export">вариант (нет резолва)</span>';
+    if (kind === 'service') return '<span class="dg-mso-link-badge dg-mso-link-service">услуга</span>';
+    return '<span class="dg-mso-link-badge dg-mso-link-unresolved">не привязано</span>';
+  }
+
+  function buildAddressLine(addr) {
+    if (!addr || typeof addr !== 'object') return '';
+    var parts = [];
+    if (addr.postalCode) parts.push(String(addr.postalCode));
+    if (addr.country && addr.country.name) parts.push(String(addr.country.name));
+    if (addr.region && addr.region.name) parts.push(String(addr.region.name));
+    if (addr.city) parts.push(String(addr.city));
+    if (addr.street) parts.push('ул. ' + String(addr.street));
+    if (addr.house) parts.push('д. ' + String(addr.house));
+    if (addr.apartment) parts.push('кв./офис ' + String(addr.apartment));
+    if (addr.addInfo) parts.push(String(addr.addInfo));
+    return parts.join(', ');
+  }
+  function dl(label, value) {
+    if (value == null || value === '' || value === false) return '';
+    return '<div class="dg-mso-dl-row">'
+      + '<div class="dg-mso-dl-label">' + escapeHtml(label) + '</div>'
+      + '<div class="dg-mso-dl-value">' + escapeHtml(String(value)) + '</div>'
+      + '</div>';
+  }
+
+  function renderDemandHeader(d) {
+    if (!d) return '';
+    var statusBadges = '';
+    statusBadges += d.applicable
+      ? '<span class="dg-mso-badge dg-mso-badge-ok">Проведено</span>'
+      : '<span class="dg-mso-badge dg-mso-badge-muted">Не проведено</span>';
+    if (d.state_name) statusBadges += '<span class="dg-mso-badge dg-mso-badge-info">' + escapeHtml(d.state_name) + '</span>';
+    var sumNum = Number(d.sum || 0);
+    var payedNum = Number(d.payed_sum || 0);
+    if (sumNum > 0) {
+      if (payedNum >= sumNum - 0.005) statusBadges += '<span class="dg-mso-badge dg-mso-badge-ok">Оплачено</span>';
+      else if (payedNum > 0) statusBadges += '<span class="dg-mso-badge dg-mso-badge-warn">Частично оплачено: ' + fmtMoney(payedNum) + ' / ' + fmtMoney(sumNum) + ' ₽</span>';
+      else statusBadges += '<span class="dg-mso-badge dg-mso-badge-warn">Не оплачено</span>';
+    }
+    var addrLine = d.shipment_address || buildAddressLine(d.shipment_address_full);
+    var currencyLine = '';
+    if (d.currency_name || d.currency_iso_code) {
+      currencyLine = (d.currency_name || '') + (d.currency_iso_code ? ' (' + d.currency_iso_code + ')' : '');
+      if (d.currency_rate && Number(d.currency_rate) !== 1) currencyLine += ' • курс ' + d.currency_rate;
+    }
+    var vatLine = '';
+    if (d.vat_enabled === true) {
+      vatLine = (d.vat_included ? 'НДС включён' : 'НДС сверху');
+      if (d.vat_sum != null) vatLine += ' • сумма НДС: ' + fmtMoney(d.vat_sum) + ' ₽';
+    } else if (d.vat_enabled === false) vatLine = 'Без НДС';
+
+    var attrsHtml = '';
+    if (Array.isArray(d.attributes) && d.attributes.length) {
+      attrsHtml = '<div class="dg-mso-attrs">' +
+        '<div class="dg-mso-attrs-title">Дополнительные поля документа</div>' +
+        d.attributes.map(function (a) {
+          return '<div class="dg-mso-dl-row">'
+            + '<div class="dg-mso-dl-label">' + escapeHtml(a.name || '') + '</div>'
+            + '<div class="dg-mso-dl-value">' + escapeHtml(a.value || '') + '</div>'
+            + '</div>';
+        }).join('') + '</div>';
+    }
+    var shippedNum = Number(d.shipped_sum || 0);
+    if (sumNum > 0) {
+      if (shippedNum >= sumNum - 0.005) statusBadges += '<span class="dg-mso-badge dg-mso-badge-ok">Отгружено</span>';
+      else if (shippedNum > 0) statusBadges += '<span class="dg-mso-badge dg-mso-badge-warn">Частично отгружено: ' + fmtMoney(shippedNum) + ' / ' + fmtMoney(sumNum) + ' ₽</span>';
+    }
+    var docLink = d.uuid ? ('<a href="https://online.moysklad.ru/app/#customerorder/edit?id=' + escapeAttr(d.uuid) +
+      '" target="_blank" rel="noopener" class="dg-mso-doc-link">↗ Открыть в МС</a>') : '';
+
+    return '<div class="dg-mso-demand-card">'
+      + '<div class="dg-mso-demand-card-head">'
+      + '<div class="dg-mso-demand-card-title"><b>Заказ №' + escapeHtml(d.doc_name || '') + '</b> от '
+      + escapeHtml(fmtDateTime(d.moment)) + '</div>'
+      + '<div class="dg-mso-demand-card-status">' + statusBadges + ' ' + docLink + '</div>'
+      + '</div>'
+      + '<div class="dg-mso-dl">'
+      + dl('Организация', d.organization_name) + dl('Контрагент', d.agent_name) + dl('Склад', d.store_name)
+      + dl('Ответственный', d.owner_name)
+      + dl('Оплачено', fmtMoney(payedNum) + ' ₽')
+      + dl('Отгружено', fmtMoney(shippedNum) + ' ₽')
+      + dl('Сумма', fmtMoney(sumNum) + ' ₽')
+      + dl('Проект', d.project_name)
+      + '</div>' + attrsHtml + '</div>';
+  }
+
+  function fmtShippedQtyCell(p) {
+    var q = Number(p.quantity || 0);
+    var s = Number(p.shipped || 0);
+    var txt = fmtQty(s);
+    if (!Number.isFinite(q) || q <= 0) return escapeHtml(txt);
+    if (s >= q - 0.0001) {
+      return '<span class="dg-mso-badge dg-mso-badge-ok" title="полностью">' + escapeHtml(txt) + '</span>';
+    }
+    if (s > 0) {
+      return '<span class="dg-mso-badge dg-mso-badge-warn" title="из ' + escapeAttr(fmtQty(q)) + '">'
+        + escapeHtml(txt) + '</span>';
+    }
+    return '<span class="dg-mso-badge dg-mso-badge-muted">0</span>';
+  }
+
+  function renderPositionsRow(order, positions) {
+    var rowsHtml = (positions || []).map(function (p, idx) {
+      var badge = p.resolved
+        ? '<span class="dg-mso-link-badge dg-mso-link-resolved">товар</span>'
+        : '<span class="dg-mso-link-badge dg-mso-link-unresolved">не привязано</span>';
+      return '<tr>'
+        + '<td>' + (idx + 1) + '</td>'
+        + '<td>' + escapeHtml(p.code || '—') + '</td>'
+        + '<td>' + escapeHtml(p.name || '') + ' ' + badge + '</td>'
+        + '<td class="dg-mso-num">' + escapeHtml(fmtQty(p.quantity)) + '</td>'
+        + '<td class="dg-mso-num">' + escapeHtml(fmtMoney(p.price)) + '</td>'
+        + '<td class="dg-mso-num">' + fmtShippedQtyCell(p) + '</td>'
+        + '<td class="dg-mso-num">' + escapeHtml(fmtMoney(p.sum)) + '</td>'
+        + '<td>' + (p.stock != null ? fmtQty(p.stock) : '—') + '</td>'
+        + '</tr>';
+    }).join('');
+    return '<div class="dg-mso-positions-inner">'
+      + renderDemandHeader(order)
+      + '<div class="mb-2 text-muted">Позиций: <b>' + (positions ? positions.length : 0) + '</b></div>'
+      + '<table class="dg-mso-positions-table">'
+      + '<thead><tr>'
+      + '<th>#</th><th>Код МС</th><th>Название (привязка)</th>'
+      + '<th class="dg-mso-num">Кол-во</th><th class="dg-mso-num">Цена (₽)</th>'
+      + '<th class="dg-mso-num">Отгружено</th><th class="dg-mso-num">Сумма (₽)</th>'
+      + '<th>Текущ. остаток</th></tr></thead>'
+      + '<tbody>' + (rowsHtml || '<tr><td colspan="8" class="dg-mso-empty">Нет позиций</td></tr>') + '</tbody>'
+      + '</table></div>';
+  }
+
+  function findOrderRow(uuid) {
+    var tbody = $('dg-mso-tbody');
+    if (!tbody) return null;
+    return tbody.querySelector('tr[data-uuid="' + uuid + '"]');
+  }
+
+  function findPositionsRow(uuid) {
+    var tbody = $('dg-mso-tbody');
+    if (!tbody) return null;
+    return tbody.querySelector('tr.dg-mso-positions-row[data-positions-of="' + uuid + '"]');
+  }
+
+  function updateExpandCaret(tr, expanded) {
+    if (!tr) return;
+    var caret = tr.querySelector('[data-dg-mso-toggle]');
+    if (caret) caret.textContent = expanded ? '▼' : '▶';
+  }
+
+  function loadOrderPositions(uuid, insert, colspan) {
+    var cached = state.positionsCache[uuid];
+    if (cached) {
+      insert.innerHTML = '<td colspan="' + colspan + '">' + renderPositionsRow(cached.order, cached.rows) + '</td>';
+      return;
+    }
+    var gen = (state.positionsFetchGen[uuid] || 0) + 1;
+    state.positionsFetchGen[uuid] = gen;
+
+    function showRetryError(msg) {
+      if (gen !== state.positionsFetchGen[uuid]) return;
+      if (!insert.parentNode) return;
+      insert.innerHTML = '<td colspan="' + colspan + '"><div class="dg-mso-positions-inner text-danger">'
+        + 'Не удалось загрузить позиции: ' + escapeHtml(msg)
+        + ' <button type="button" class="btn btn-sm btn-link p-0 align-baseline" data-dg-mso-retry-pos="'
+        + escapeAttr(uuid) + '">Повторить</button></div></td>';
+    }
+
+    function doFetch(attempt) {
+      fetch('/api/ms-orders/' + encodeURIComponent(uuid) + '/positions', {
+        credentials: 'same-origin', headers: { Accept: 'application/json' }
+      })
+        .then(function (r) {
+          if (!r.ok) {
+            return r.json().catch(function () { return null; }).then(function (d) {
+              throw new Error((d && d.error) || ('HTTP ' + r.status));
+            });
+          }
+          return r.json();
+        })
+        .then(function (data) {
+          if (gen !== state.positionsFetchGen[uuid]) return;
+          if (!state.expandedOrders.has(uuid)) {
+            if (insert.parentNode) insert.remove();
+            return;
+          }
+          if (!data || !data.success) throw new Error((data && data.error) || 'Ошибка позиций');
+          state.positionsCache[uuid] = { order: data.order, rows: data.positions || [] };
+          if (!insert.parentNode) return;
+          insert.innerHTML = '<td colspan="' + colspan + '">' + renderPositionsRow(data.order, data.positions || []) + '</td>';
+        })
+        .catch(function (err) {
+          if (gen !== state.positionsFetchGen[uuid]) return;
+          if (!insert.parentNode) return;
+          var msg = (err && err.message) || 'unknown';
+          if (attempt < 2 && msg === 'Failed to fetch') {
+            var inner = insert.querySelector('.dg-mso-positions-inner');
+            if (inner) inner.textContent = 'Повтор загрузки позиций…';
+            window.setTimeout(function () { doFetch(attempt + 1); }, 800);
+            return;
+          }
+          showRetryError(msg);
+        });
+    }
+    doFetch(1);
+  }
+
+  function insertPositionsRowAfter(tr, uuid) {
+    var colspan = visibleColsCount();
+    var existing = findPositionsRow(uuid);
+    if (existing) existing.remove();
+
+    var insert = document.createElement('tr');
+    insert.className = 'dg-mso-positions-row';
+    insert.setAttribute('data-positions-of', uuid);
+    insert.innerHTML = '<td colspan="' + colspan + '"><div class="dg-mso-positions-inner text-muted">Загрузка позиций…</div></td>';
+    tr.parentNode.insertBefore(insert, tr.nextSibling);
+    loadOrderPositions(uuid, insert, colspan);
+  }
+
+  function restoreExpandedOrders() {
+    if (!state.expandedOrders.size) return;
+    var stale = [];
+    state.expandedOrders.forEach(function (uuid) {
+      var tr = findOrderRow(uuid);
+      if (!tr) {
+        stale.push(uuid);
+        return;
+      }
+      updateExpandCaret(tr, true);
+      if (!findPositionsRow(uuid)) insertPositionsRowAfter(tr, uuid);
+    });
+    stale.forEach(function (uuid) { state.expandedOrders.delete(uuid); });
+  }
+
+  function togglePositions(uuid, tr) {
+    if (state.expandedOrders.has(uuid)) {
+      var posRow = findPositionsRow(uuid);
+      if (posRow) posRow.remove();
+      state.expandedOrders.delete(uuid);
+      updateExpandCaret(tr, false);
+      return;
+    }
+    state.expandedOrders.add(uuid);
+    updateExpandCaret(tr, true);
+    insertPositionsRowAfter(tr, uuid);
+  }
+
+  /* ============================ Columns / widths panels ============================ */
+
+  function renderColumnControls() {
+    var list = $('dg-mso-columns-list');
+    if (!list) return;
+    list.innerHTML = '';
+    MSO_COLS.forEach(function (col) {
+      if (col.key === 'expander') return;
+      var wrap = document.createElement('label');
+      var cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = state.visibleCols.has(col.key);
+      cb.setAttribute('data-col-key', col.key);
+      cb.addEventListener('change', function () {
+        var key = this.getAttribute('data-col-key');
+        if (this.checked) state.visibleCols.add(key);
+        else if (visibleColsCount() > 2) state.visibleCols.delete(key);
+        else this.checked = true;
+        saveVisibleCols();
+        buildThead();
+        renderTable();
+      });
+      var span = document.createElement('span');
+      span.textContent = ' ' + col.label;
+      wrap.appendChild(cb);
+      wrap.appendChild(span);
+      list.appendChild(wrap);
+    });
+  }
+
+  function renderWidthControls() {
+    var list = $('dg-mso-widths-list');
+    if (!list) return;
+    list.innerHTML = '';
+    MSO_COLS.forEach(function (col) {
+      if (col.key === 'expander') return;
+      var current = Number(state.columnWidths[col.key] || 0);
+      if (!Number.isFinite(current) || current <= 0) current = getColDef(col.key);
+      var wrap = document.createElement('label');
+      var span = document.createElement('span');
+      span.textContent = col.label;
+      span.style.flex = '1 1 auto';
+      span.style.overflow = 'hidden';
+      span.style.textOverflow = 'ellipsis';
+      span.style.whiteSpace = 'nowrap';
+      var input = document.createElement('input');
+      input.type = 'number';
+      input.className = 'form-control form-control-sm';
+      input.min = String(getColMin(col.key));
+      input.max = '700';
+      input.step = '10';
+      input.value = String(current);
+      input.setAttribute('data-col-key', col.key);
+      input.addEventListener('change', function () {
+        var k = this.getAttribute('data-col-key');
+        var n = parseInt(this.value, 10);
+        if (!Number.isFinite(n)) { this.value = String(state.columnWidths[k] || getColDef(k)); return; }
+        n = Math.max(getColMin(k), Math.min(700, n));
+        state.columnWidths[k] = n;
+        saveWidths();
+        applyColumnWidths();
+        this.value = String(n);
+      });
+      wrap.appendChild(span);
+      wrap.appendChild(input);
+      list.appendChild(wrap);
+    });
+  }
+
+  /* ============================ Data freshness (как /suppliers.html) ============================ */
+
+  function freshStatusClass(status) {
+    var s = String(status || 'unknown');
+    if (s === 'ok' || s === 'stale' || s === 'running' || s === 'failed') return 'dg-mso-fresh-' + s;
+    return 'dg-mso-fresh-unknown';
+  }
+
+  function freshStatusIcon(status) {
+    if (status === 'ok') return '✓';
+    if (status === 'stale') return '!';
+    if (status === 'running') return '↻';
+    if (status === 'failed') return '✕';
+    return '?';
+  }
+
+  function freshStatusBadge(status) {
+    if (status === 'ok') return '<span class="badge bg-success dg-mso-fresh-badge">Сегодня</span>';
+    if (status === 'stale') return '<span class="badge bg-warning text-dark dg-mso-fresh-badge">Внимание</span>';
+    if (status === 'running') return '<span class="badge bg-primary dg-mso-fresh-badge">Идёт</span>';
+    if (status === 'failed') return '<span class="badge bg-danger dg-mso-fresh-badge">Ошибка</span>';
+    return '<span class="badge bg-secondary dg-mso-fresh-badge">Нет данных</span>';
+  }
+
+  function renderDataFreshness(payload) {
+    var row = $('dg-mso-data-freshness-row');
+    var loading = $('dg-mso-data-freshness-loading');
+    if (!row) return;
+    if (loading) loading.remove();
+    var sources = (payload && payload.sources) || [];
+    if (!sources.length) {
+      row.innerHTML = '<div class="col-12"><p class="text-muted small mb-0">Не удалось получить сведения об обновлении данных.</p></div>';
+      return;
+    }
+    row.innerHTML = sources.map(function (src) {
+      var st = src.status || 'unknown';
+      var cls = freshStatusClass(st);
+      var when = src.finished_at_msk
+        ? 'Обновлено: ' + src.finished_at_msk + ' (МСК)'
+        : 'Дата последнего обновления неизвестна';
+      var meta = [];
+      if (src.trigger_label) meta.push('Запуск: ' + src.trigger_label);
+      if (st === 'running') meta.push('Синхронизация выполняется…');
+      if (src.key === 'ms_orders' && src.detail) {
+        if (src.detail.orders_in_db != null) meta.push('Заказов в базе: ' + src.detail.orders_in_db);
+        if (src.detail.last_sync_orders != null && src.detail.last_sync_positions != null) {
+          meta.push('Последний импорт: ' + src.detail.last_sync_orders + ' заказов, ' + src.detail.last_sync_positions + ' поз.');
+        }
+      }
+      if (src.key === 'moysklad' && src.detail && src.detail.zero_stock_log_batch_at_msk) {
+        meta.push('Журнал нулевых остатков: ' + src.detail.zero_stock_log_batch_at_msk + ' (МСК)');
+      }
+      if (src.key === 'moysklad' && src.detail) {
+        var syncAt = src.detail.moysklad_sync_finished_at_msk;
+        var touchAt = src.detail.ms_export_max_synced_at_msk;
+        if (syncAt && touchAt && touchAt !== syncAt) {
+          meta.push('Частичные правки каталога: ' + touchAt + ' (МСК)');
+        }
+      }
+      if (src.key === 'moysklad') {
+        meta.push('Колонка «Позиций на складе» — остаток на складе заказа (из ms_export_stock_by_store после синка МС)');
+      }
+      if (src.message_short && st !== 'ok') meta.push(src.message_short);
+      var title = escapeHtml(src.title || '');
+      return '<div class="col-lg-6">' +
+        '<article class="dg-mso-fresh-card ' + cls + '" data-dg-mso-fresh-key="' + escapeAttr(src.key || '') + '">' +
+        '<div class="dg-mso-fresh-icon" aria-hidden="true">' + freshStatusIcon(st) + '</div>' +
+        '<div class="flex-grow-1 min-width-0">' +
+        '<div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-1">' +
+        '<div class="dg-mso-fresh-title">' + title + '</div>' + freshStatusBadge(st) +
+        '</div>' +
+        '<div class="dg-mso-fresh-when">' + escapeHtml(when) + '</div>' +
+        (meta.length ? '<div class="dg-mso-fresh-meta">' + meta.map(function (m) { return escapeHtml(m); }).join(' · ') + '</div>' : '') +
+        '</div></article></div>';
+    }).join('');
+  }
+
+  function loadDataFreshness() {
+    return fetch('/api/ms-orders/data-freshness', {
+      credentials: 'same-origin',
+      headers: { Accept: 'application/json' }
+    })
+      .then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      })
+      .then(function (j) {
+        if (!j || j.success === false) throw new Error((j && j.error) || 'Ошибка');
+        renderDataFreshness(j);
+      })
+      .catch(function (err) {
+        var row = $('dg-mso-data-freshness-row');
+        if (row) {
+          row.innerHTML = '<div class="col-12"><p class="text-danger small mb-0">Актуальность данных: ' +
+            escapeHtml(err && err.message ? err.message : 'unknown') + '</p></div>';
+        }
+      });
+  }
+
+  /* ============================ Sync (background job) ============================ */
+
+  function setSyncStatus(kind, html) {
+    var el = $('dg-mso-sync-status');
+    if (!el) return;
+    el.className = 'dg-mso-sync-status dg-mso-sync-' + kind + ' mt-3';
+    el.innerHTML = html;
+    el.classList.remove('d-none');
+  }
+
+  function startSyncPolling() {
+    if (state.syncTimer) return;
+    state.syncTimer = window.setInterval(function () {
+      fetch('/api/ms-orders/sync-status', {
+        credentials: 'same-origin', headers: { Accept: 'application/json' }
+      })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (data) {
+          if (!data || !data.success) return;
+          var s = data.status || {};
+          if (s.active) {
+            $('dg-mso-cancel') && $('dg-mso-cancel').classList.remove('d-none');
+            $('dg-mso-sync') && ($('dg-mso-sync').disabled = true);
+            loadDataFreshness();
+            var pct = s.total_orders > 0 ? Math.round((s.fetched_orders / s.total_orders) * 100) : 0;
+            setSyncStatus('info',
+              '<b>Синхронизация:</b> ' + escapeHtml(s.message || '') +
+              ' <span class="ms-2">' + pct + '%</span>' +
+              (s.cancel_requested ? ' <span class="ms-2">⏳ останавливается…</span>' : ''));
+          } else {
+            stopSyncPolling();
+            $('dg-mso-cancel') && $('dg-mso-cancel').classList.add('d-none');
+            $('dg-mso-sync') && ($('dg-mso-sync').disabled = false);
+            var hasError = !!s.last_error;
+            var kind = hasError ? 'err' : 'ok';
+            var title = hasError ? 'Ошибка.' : 'Готово.';
+            setSyncStatus(kind,
+              '<b>' + title + '</b> ' +
+              'Заказов: ' + (s.fetched_orders || 0) + '/' + (s.total_orders || 0) +
+              ', сохранено: ' + (s.saved_orders || 0) +
+              ', позиций: ' + (s.saved_positions || 0) +
+              (s.skipped_excluded ? ', пропущено (исключённые): ' + s.skipped_excluded : '') +
+              (s.last_error ? '<br />' + escapeHtml(s.last_error) : ''));
+            fetchList();
+            fetchFilters();
+            loadDataFreshness();
+          }
+        })
+        .catch(function () {});
+    }, 1500);
+  }
+  function stopSyncPolling() {
+    if (state.syncTimer) { window.clearInterval(state.syncTimer); state.syncTimer = null; }
+  }
+  function startSync() {
+    var days = state.syncDaysLimit || parseInt($('dg-mso-days') && $('dg-mso-days').value, 10) || DEFAULTS.days;
+    if (!window.confirm('Запустить синхронизацию заказов покупателей (entity/customerorder) из МС за последние ' + days + ' дней?\n\nЗаказы ответственных из списка исключений в настройках не загружаются.')) return;
+    setSyncStatus('info', '<b>Запуск…</b>');
+    fetch('/api/ms-orders/sync', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ days: days })
+    })
+      .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
+      .then(function (out) {
+        if (!out.ok || !out.data || !out.data.success) throw new Error((out.data && out.data.error) || 'HTTP error');
+        startSyncPolling();
+      })
+      .catch(function (err) {
+        setSyncStatus('err', '<b>Ошибка запуска:</b> ' + escapeHtml(err && err.message ? err.message : 'unknown'));
+      });
+  }
+  function cancelSync() {
+    fetch('/api/ms-orders/sync-cancel', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: '{}'
+    }).catch(function () {});
+  }
+  function reresolve() {
+    if (!window.confirm('Перепривязать все непривязанные позиции к ms_export по uuid? Полезно после полного синка МойСклад.')) return;
+    setSyncStatus('info', '<b>Перепривязка…</b>');
+    fetch('/api/ms-orders/reresolve', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: '{}'
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (!data || !data.success) throw new Error((data && data.error) || 'unknown');
+        var kind = data.unresolved > 0 ? 'warn' : 'ok';
+        setSyncStatus(kind, '<b>Готово.</b> Привязано позиций: ' + (data.affected || 0) +
+          ', осталось без привязки: ' + (data.unresolved || 0));
+        fetchList();
+      })
+      .catch(function (err) {
+        setSyncStatus('err', '<b>Ошибка:</b> ' + escapeHtml(err && err.message ? err.message : 'unknown'));
+      });
+  }
+
+  /* ============================ Bindings ============================ */
+
+  function bindHeaderSearchMirror() {
+    var top = $('dg-mso-search');
+    var mirror = $('dg-mso-table-search-mirror');
+    if (!top || !mirror) return;
+    var syncing = false;
+    function copy(from, to) {
+      if (syncing) return;
+      if (to.value === from.value) return;
+      syncing = true;
+      try {
+        to.value = from.value;
+        try {
+          to.dispatchEvent(new Event('input', { bubbles: true }));
+        } catch (_) {}
+      } finally {
+        syncing = false;
+      }
+    }
+    top.addEventListener('input', function () { copy(top, mirror); syncApplyDirtyButton(); });
+    mirror.addEventListener('input', function () { copy(mirror, top); syncApplyDirtyButton(); });
+    var applyTimer = null;
+    function applySearch() {
+      if (applyTimer) window.clearTimeout(applyTimer);
+      applyTimer = window.setTimeout(function () {
+        applyTimer = null;
+        commitFilters();
+      }, 0);
+    }
+    function bindKeys(el) {
+      el.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          applySearch();
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          el.value = '';
+          copy(el, el === top ? mirror : top);
+          applySearch();
+        }
+      });
+      el.addEventListener('search', function () {
+        copy(el, el === top ? mirror : top);
+        applySearch();
+      });
+    }
+    bindKeys(top);
+    bindKeys(mirror);
+  }
+
+  function bindCollapse(btnId, bodyId, key) {
+    var btn = $(btnId);
+    var body = $(bodyId);
+    if (!btn || !body) return;
+    var collapsed = false;
+    try { collapsed = window.localStorage.getItem(key) === '1'; } catch (_) {}
+    function apply() {
+      body.style.display = collapsed ? 'none' : '';
+      btn.textContent = collapsed ? 'Развернуть' : 'Свернуть';
+    }
+    apply();
+    btn.addEventListener('click', function () {
+      collapsed = !collapsed;
+      try { window.localStorage.setItem(key, collapsed ? '1' : '0'); } catch (_) {}
+      apply();
+    });
+  }
+
+  function bindColumnPanels() {
+    var colsToggle = $('dg-mso-columns-toggle');
+    var widthsToggle = $('dg-mso-widths-toggle');
+    var colsPanel = $('dg-mso-columns-panel');
+    var widthsPanel = $('dg-mso-widths-panel');
+    var wrap = $('dg-mso-toolbox-panels');
+    function syncWrap() {
+      if (!wrap) return;
+      var open = (colsPanel && colsPanel.classList.contains('open')) ||
+                 (widthsPanel && widthsPanel.classList.contains('open'));
+      wrap.classList.toggle('d-none', !open);
+    }
+    if (colsToggle && colsPanel) {
+      colsToggle.addEventListener('click', function (e) {
+        e.preventDefault(); e.stopPropagation();
+        colsPanel.classList.toggle('open');
+        if (widthsPanel) widthsPanel.classList.remove('open');
+        if (colsPanel.classList.contains('open')) renderColumnControls();
+        syncWrap();
+      });
+    }
+    if (widthsToggle && widthsPanel) {
+      widthsToggle.addEventListener('click', function (e) {
+        e.preventDefault(); e.stopPropagation();
+        widthsPanel.classList.toggle('open');
+        if (colsPanel) colsPanel.classList.remove('open');
+        if (widthsPanel.classList.contains('open')) renderWidthControls();
+        syncWrap();
+      });
+    }
+    document.addEventListener('click', function (e) {
+      if (!colsPanel && !widthsPanel) return;
+      if (e.target.closest('#dg-mso-columns-panel')) return;
+      if (e.target.closest('#dg-mso-columns-toggle')) return;
+      if (e.target.closest('#dg-mso-widths-panel')) return;
+      if (e.target.closest('#dg-mso-widths-toggle')) return;
+      if (colsPanel) colsPanel.classList.remove('open');
+      if (widthsPanel) widthsPanel.classList.remove('open');
+      syncWrap();
+    });
+
+    var allBtn = $('dg-mso-columns-all');
+    var noneBtn = $('dg-mso-columns-none');
+    var defBtn = $('dg-mso-columns-default');
+    var widthsDef = $('dg-mso-widths-default');
+    if (allBtn) allBtn.addEventListener('click', function () {
+      state.visibleCols = new Set(MSO_COLS.map(function (c) { return c.key; }));
+      saveVisibleCols(); renderColumnControls(); buildThead(); renderTable();
+    });
+    if (noneBtn) noneBtn.addEventListener('click', function () {
+      state.visibleCols = new Set(['expander', 'doc_name']);
+      saveVisibleCols(); renderColumnControls(); buildThead(); renderTable();
+    });
+    if (defBtn) defBtn.addEventListener('click', function () {
+      state.visibleCols = new Set(DEFAULT_VISIBLE_KEYS);
+      saveVisibleCols(); renderColumnControls(); buildThead(); renderTable();
+    });
+    if (widthsDef) widthsDef.addEventListener('click', function () {
+      state.columnWidths = {};
+      saveWidths(); applyColumnWidths(); renderWidthControls();
+    });
+  }
+
+  function bindSortHandlers() {
+    var thead = $('dg-mso-thead');
+    if (!thead) return;
+    thead.addEventListener('click', function (e) {
+      var th = e.target && e.target.closest && e.target.closest('th[data-sort]');
+      if (!th) return;
+      var sel = window.getSelection && window.getSelection();
+      if (sel && String(sel.toString()).trim().length > 0) return;
+      var key = th.getAttribute('data-sort');
+      if (state.applied.sortBy === key) {
+        state.applied.sortDir = state.applied.sortDir === 'asc' ? 'desc' : 'asc';
+      } else {
+        state.applied.sortBy = key;
+        state.applied.sortDir = 'asc';
+      }
+      state.pending.sortBy = state.applied.sortBy;
+      state.pending.sortDir = state.applied.sortDir;
+      state.applied.page = 1;
+      state.pending.page = 1;
+      fetchList();
+    });
+  }
+
+  function bindPagination() {
+    if ($('dg-mso-page-prev')) $('dg-mso-page-prev').addEventListener('click', function () {
+      if (state.applied.page > 1) {
+        state.applied.page -= 1;
+        state.pending.page = state.applied.page;
+        fetchList();
+      }
+    });
+    if ($('dg-mso-page-next')) $('dg-mso-page-next').addEventListener('click', function () {
+      var totalPages = Math.max(1, Math.ceil(state.total / state.applied.pageSize));
+      if (state.applied.page < totalPages) {
+        state.applied.page += 1;
+        state.pending.page = state.applied.page;
+        fetchList();
+      }
+    });
+  }
+
+  function bindControls() {
+    document.addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter' && e.key !== 'NumpadEnter') return;
+      var t = e.target;
+      if (!t || !t.id) return;
+      if (t.id !== 'dg-mso-search' && t.id !== 'dg-mso-table-search-mirror') return;
+      e.preventDefault();
+      e.stopPropagation();
+      commitFilters();
+    }, true);
+    if ($('dg-mso-apply')) {
+      $('dg-mso-apply').addEventListener('click', function (e) {
+        e.preventDefault();
+        commitFilters();
+      });
+    }
+    if ($('dg-mso-reset')) $('dg-mso-reset').addEventListener('click', function () { resetFilters(); });
+    if ($('dg-mso-sync')) $('dg-mso-sync').addEventListener('click', startSync);
+    if ($('dg-mso-cancel')) $('dg-mso-cancel').addEventListener('click', cancelSync);
+    var doc = $('dg-mso-doc');
+    if (doc) {
+      doc.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); commitFilters(); }
+        else if (e.key === 'Escape') { e.preventDefault(); doc.value = ''; commitFilters(); }
+      });
+    }
+  }
+
+  function bindTbody() {
+    var tbody = $('dg-mso-tbody');
+    if (!tbody) return;
+    tbody.addEventListener('click', function (e) {
+      var retryBtn = e.target && e.target.closest && e.target.closest('[data-dg-mso-retry-pos]');
+      if (retryBtn) {
+        e.preventDefault();
+        var uuid = retryBtn.getAttribute('data-dg-mso-retry-pos');
+        var posRow = findPositionsRow(uuid);
+        var tr = findOrderRow(uuid);
+        if (!uuid || !posRow || !tr) return;
+        delete state.positionsCache[uuid];
+        posRow.innerHTML = '<td colspan="' + visibleColsCount() + '"><div class="dg-mso-positions-inner text-muted">Загрузка позиций…</div></td>';
+        loadOrderPositions(uuid, posRow, visibleColsCount());
+        return;
+      }
+      var caret = e.target && e.target.closest && e.target.closest('[data-dg-mso-toggle]');
+      if (!caret) return;
+      var tr = caret.closest('tr[data-uuid]');
+      if (!tr) return;
+      togglePositions(tr.getAttribute('data-uuid'), tr);
+    });
+  }
+
+  /* ============================ Filter fields visibility ============================ */
+
+  function initFilterFieldsVisibility() {
+    if (!window.DatagonFilterFieldsVisibility ||
+        typeof window.DatagonFilterFieldsVisibility.init !== 'function') return;
+    window.DatagonFilterFieldsVisibility.init({
+      storageKeyPrefix: 'datagon_ms_orders_filter_blocks_v1',
+      attr: 'data-dg-mso-filter-field',
+      togglesRootId: 'dg-mso-filter-blocks-toggles',
+      fieldGroups: [
+        { title: 'Поиск и период', items: [
+          { key: 'mso_search', title: 'Умный поиск' },
+          { key: 'mso_doc', title: 'Номер заказа' },
+          { key: 'mso_days', title: 'За период' },
+          { key: 'mso_page_size', title: 'На странице' }
+        ]},
+        { title: 'Фильтры списка', items: [
+          { key: 'mso_store', title: 'Склад' },
+          { key: 'mso_agent', title: 'Контрагент' },
+          { key: 'mso_project', title: 'Проект' },
+          { key: 'mso_applicable', title: 'Проведённые' },
+          { key: 'mso_payed', title: 'Оплачено' },
+          { key: 'mso_shipped', title: 'Отгружено' },
+          { key: 'mso_stock_status', title: 'Статус' },
+          { key: 'mso_deleted', title: 'Удалённые в МС' }
+        ]},
+        { title: 'Действия', items: [
+          { key: 'mso_filter_actions', title: 'Кнопки действий' }
+        ]}
+      ]
+    });
+  }
+
+  function bindFilterDirtyListeners() {
+    var body = $('dg-mso-filters-body');
+    if (!body) return;
+    body.addEventListener('input', syncApplyDirtyButton);
+    body.addEventListener('change', syncApplyDirtyButton);
+  }
+
+  /* ============================ Init ============================ */
+
+  function init() {
+    try {
+      renderDaysFilterSelect(365);
+      var savedVis = loadVisibleCols();
+      state.visibleCols = new Set(savedVis && savedVis.length ? savedVis : DEFAULT_VISIBLE_KEYS);
+      /** expander всегда виден — иначе негде нажимать «развернуть позиции». */
+      state.visibleCols.add('expander');
+      state.columnWidths = loadWidths();
+
+      bindControls();
+      bindFilterPresets();
+      bindStoreSearchSelect();
+      bindAgentSearchSelect();
+      bindProjectSearchSelect();
+      bindApplicableSearchSelect();
+      bindPayStatusSearchSelect();
+      bindShipStatusSearchSelect();
+      bindStockStatusSearchSelect();
+      bindCollapse('dg-mso-filters-toggle', 'dg-mso-filters-body', FILTERS_COLLAPSED_KEY);
+      bindCollapse('dg-mso-table-toggle', 'dg-mso-table-body', TABLE_COLLAPSED_KEY);
+      bindHeaderSearchMirror();
+      bindFilterDirtyListeners();
+      bindSortHandlers();
+      bindPagination();
+      bindTbody();
+      bindColumnPanels();
+      initFilterFieldsVisibility();
+      bindStickyTopVar();
+
+      buildThead();
+      loadMsOrdersConfig(function () {
+        if (state.listFetchGen === 0) {
+          applyFiltersFromStorageOrSettings();
+          syncSearchDraftHint();
+          fetchList(Object.assign({}, state.applied));
+        } else {
+          syncSearchDraftHint();
+        }
+        fetchFilters();
+      });
+      loadDataFreshness();
+
+      /** Если синк уже идёт (например, после рефреша страницы) — подхватим polling. */
+      fetch('/api/ms-orders/sync-status', { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (data) {
+          if (data && data.success && data.status && data.status.active) startSyncPolling();
+        })
+        .catch(function () {});
+
+      window.__dgMsOrdersBooted = true;
+    } catch (err) {
+      console.error('[ms-orders] init failed:', err);
+      var emptyMsg = $('dg-mso-empty-msg');
+      if (emptyMsg) {
+        emptyMsg.textContent = 'Ошибка загрузки страницы: ' + (err && err.message ? err.message : String(err));
+        emptyMsg.classList.remove('d-none');
+      }
+      var freshLoad = $('dg-mso-data-freshness-loading');
+      if (freshLoad) {
+        freshLoad.textContent = 'Не удалось инициализировать страницу — обновите (Cmd+Shift+R) или откройте консоль (F12).';
+      }
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
+</script>
+
+</body>
+</html>

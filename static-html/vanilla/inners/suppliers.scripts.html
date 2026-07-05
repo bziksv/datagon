@@ -977,6 +977,13 @@
             if (src.key === "moysklad" && src.detail && src.detail.zero_stock_log_batch_at_msk) {
               meta.push("Журнал нулевых остатков: " + src.detail.zero_stock_log_batch_at_msk + " (МСК)");
             }
+            if (src.key === "moysklad" && src.detail) {
+              var syncAt = src.detail.moysklad_sync_finished_at_msk;
+              var touchAt = src.detail.ms_export_max_synced_at_msk;
+              if (syncAt && touchAt && touchAt !== syncAt) {
+                meta.push("Частичные правки каталога: " + touchAt + " (МСК)");
+              }
+            }
             if (src.key !== "moysklad" && src.detail && src.detail.ms_demand_max_updated_at) {
               var d = src.detail.ms_demand_max_updated_at;
               try {

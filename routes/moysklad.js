@@ -2,6 +2,10 @@ const express = require('express');
 const axios = require('axios');
 const { computeMsEntityPurchaseDenorm } = require('../lib/datagonMsEntityPurchaseDenorm');
 const { syncZeroStockLogAfterMoyskladExport, syncProductStockSnapshotsAfterMoyskladExport } = require('./product');
+const {
+    replaceMsExportStockByStoreFromReport,
+    buildAssortmentUuidToCodeMap,
+} = require('../lib/msExportStockByStore');
 
 const router = express.Router();
 
@@ -1227,6 +1231,26 @@ async function syncMsExport(db, config, settings = {}) {
         stockMap.set(code, { stock, stockDays, salePrice, inTransit, reserve });
     }
     addLog(`Остатков загружено: ${stockMap.size}`);
+
+    addLog('Этап 4b/6: остатки по складам report/stock/bystore');
+    jobState.message = 'Загрузка остатков по складам...';
+    try {
+        const uuidToCode = buildAssortmentUuidToCodeMap(products, bundles);
+        const byStoreRows = await fetchPaged(`${BASE_URL}/report/stock/bystore`, headers, {
+            groupBy: 'variant',
+            pageLimit: settings.ms_sync_page_limit,
+            delayMs: settings.ms_sync_delay_ms,
+            onProgress: ({ loaded, total }) => {
+                jobState.message = total > 0
+                    ? `Остатки по складам: ${loaded}/${total}`
+                    : `Остатки по складам: ${loaded}`;
+            },
+        });
+        const { rows: byStoreRowsSaved } = await replaceMsExportStockByStoreFromReport(db, byStoreRows, uuidToCode);
+        addLog(`Остатков по складам в БД: ${byStoreRowsSaved} (code×store, для «Заказы в МС»)`);
+    } catch (e) {
+        addLog(`Остатки по складам: ошибка — ${e && e.message ? e.message : String(e)}`);
+    }
 
     const all = [...products, ...bundles];
     jobState.total = all.length;

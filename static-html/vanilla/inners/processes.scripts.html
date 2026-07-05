@@ -520,6 +520,7 @@
       var AS_TASK_SECTIONS = [
         { key: "myproducts", title: "Мои товары", subtitle: "Импорт из CMS магазинов", cfgEnabled: "myproducts_enabled", cfgTime: "myproducts_time" },
         { key: "moysklad", title: "МойСклад: ms_export (МСК)", subtitle: "Номенклатура, остатки, неснижаемый из МС; после сохранения ms_export — журнал нулевых остатков за сегодня (склад.поз. «Да», не архив). Не импорт отгрузок.", cfgEnabled: "moysklad_enabled", cfgTime: "moysklad_time" },
+        { key: "ms_orders", title: "Заказы в МС", subtitle: "Импорт customerorder → ms_customer_order", cfgEnabled: "ms_orders_enabled", cfgTime: "ms_orders_time" },
         { key: "marketplaces", title: "Маркетплейсы", subtitle: "Ozon · WB · Я.Маркет", cfgEnabled: "marketplaces_enabled", cfgTime: "marketplaces_time" },
         { key: "huckster", title: "Калькуляция Huckster", subtitle: "Расчёт цен по правилам", cfgEnabled: "huckster_enabled", cfgTime: "huckster_time" },
         { key: "db_size", title: "Размер БД и диска", subtitle: "Снимок размеров таблиц БД и разбивка диска по папкам проекта", cfgEnabled: "db_size_enabled", cfgTime: "db_size_time" },
@@ -1005,6 +1006,20 @@
               sp +
               daysStr +
               (tail ? " — " + tail : "")
+          );
+        }
+        if (secKey === "ms_orders") {
+          var fo = fmtNum(lv.fetched_orders || 0);
+          var to = fmtNum(lv.total_orders || 0);
+          var so = fmtNum(lv.saved_orders || 0);
+          var sp2 = fmtNum(lv.saved_positions || 0);
+          var daysO = Number(lv.days || 0);
+          var daysOStr = daysO ? " · окно " + daysO + " дн." : "";
+          var tailO = String(lv.message || "").slice(0, 160);
+          return (
+            "Сейчас: заказов " + fo + "/" + to +
+            " · сохранено " + so + " · позиций " + sp2 +
+            daysOStr + (tailO ? " — " + tailO : "")
           );
         }
         return "";

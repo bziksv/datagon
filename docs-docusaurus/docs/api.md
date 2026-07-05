@@ -71,6 +71,7 @@ description: Справочник REST-эндпоинтов p.datagon.ru (осн
 - `/api/exports/marketplaces` -> `routes/exportsMarketplaces.js`
 - `/api/exports/dimensions` -> `routes/dimensions.js`
 - `/api/ms-sales` -> `routes/msSales.js` (Продажи МС: отгрузки `entity/demand` + позиции с привязкой к `ms_export`)
+- `/api/ms-orders` -> `routes/msOrders.js` (Заказы в МС: `entity/customerorder`, окно **30 дней**, исключение ответственных из `app_settings`)
 - `/api/suppliers` -> `routes/suppliers.js` (Поставщики: агрегат по `ms_export` + `dg_supplier_settings`; `GET /`, `GET /assignees`, `GET /ms-order-log`, `GET /ms-order-log/:logId`, `GET /export/supplier`, `GET /export/purchaser`, `POST /:supplierKey/send-ms-order`, `PATCH /:supplierKey`)
 - `/api/supplier-analysis` -> `routes/supplierAnalysis.js` (Анализ поставщиков: продажи из `ms_demand` + `ms_export.supplier`; `GET /projects`, `/overview`, `/ranking`, `/highlights`, `/trend`, `/products`, `/export`, `/data-freshness`; фильтр `project_mode` / `project_uuids`)
 - `/api/purchase` -> `routes/purchase.js` (Закупки: `GET` список — SQL `ORDER BY` + пагинация, enrich страницы; `POST /override`, `POST /overrides-import`, журнал overrides: `GET /log`, `GET /log/stats`, `POST /log/cleanup`; перенос «Предлагаемый нес.ост.» → `ms_export.min_stock` (только БД): `POST /min-stock-apply/run`, …; выгрузка в МС — `auto_sync_min_stock_export` / `lib/datagonMinStockExportMs.js`)
@@ -200,7 +201,7 @@ Body (пример):
 
 Принудительно поставить одну задачу автосинхронизации в общую очередь расписания, не дожидаясь времени запуска. Используется кнопками «Запустить сейчас» в `settings.html`.
 
-Body: `{ "task": "myproducts" | "moysklad" | "marketplaces" | "huckster" | "db_size" | "dimensions" | "min_stock_export" | "mssales" | "mssales_full" | "purchase_formula_cache" | "medmarket" | "medmarket_fill" }`. Whitelist допустимых значений берётся из единого реестра `lib/datagonAutoSyncRegistry.js → getAutoSyncTaskKeys()` (см. правило `datagon-auto-sync-registry.mdc`); чтобы добавить задачу — расширьте `AUTO_SYNC_TASKS` в реестре. Запись в `auto_sync_runs` создаётся с `trigger_type = "manual"`. Для `dimensions` запускается тот же балк-синк, что и по расписанию (см. описание `auto_sync_dimensions_*` выше), но с `actor='Авто-синхронизация (вручную)'` в журнале. Для `mssales` — тот же `triggerSync(db, { days })` с `days = appSettings.auto_sync_mssales_days` (см. ниже). Для **`mssales_full`** — `triggerSync(db, { days: appSettings.auto_sync_mssales_full_days, fresh: true })`. Для **`purchase_formula_cache`** — `runPurchaseFormulaCacheBatch(db, appSettings)` (дефолтные фильтры закупок, чанками без RAM-снимка). Для **`medmarket`** — `routes/medmarket.js → triggerSync(db)` (каталог из `ms_export`).
+Body: `{ "task": "myproducts" | "moysklad" | "ms_orders" | "marketplaces" | "huckster" | "db_size" | "dimensions" | "min_stock_export" | "mssales" | "mssales_full" | "purchase_formula_cache" | "medmarket" | "medmarket_fill" }`. Whitelist допустимых значений берётся из единого реестра `lib/datagonAutoSyncRegistry.js → getAutoSyncTaskKeys()` (см. правило `datagon-auto-sync-registry.mdc`); чтобы добавить задачу — расширьте `AUTO_SYNC_TASKS` в реестре. Запись в `auto_sync_runs` создаётся с `trigger_type = "manual"`. Для `dimensions` запускается тот же балк-синк, что и по расписанию (см. описание `auto_sync_dimensions_*` выше), но с `actor='Авто-синхронизация (вручную)'` в журнале. Для `mssales` — тот же `triggerSync(db, { days })` с `days = appSettings.auto_sync_mssales_days` (см. ниже). Для **`ms_orders`** — `routes/msOrders.js → triggerSync(db, appSettings, { days: ms_orders_sync_days, awaitCompletion: true })`. Для **`mssales_full`** — `triggerSync(db, { days: appSettings.auto_sync_mssales_full_days, fresh: true })`. Для **`purchase_formula_cache`** — `runPurchaseFormulaCacheBatch(db, appSettings)` (дефолтные фильтры закупок, чанками без RAM-снимка). Для **`medmarket`** — `routes/medmarket.js → triggerSync(db)` (каталог из `ms_export`).
 
 Ответ `{ "success": true, "queued": true|false, "skip_reason": null|"already_running"|"already_queued"|"invalid_task", "task", "queue", "runner_active", "running_tasks" }`. Поле **`running_tasks`** — массив строк `task_type`, у которых в этот момент есть незавершённая запись в `auto_sync_runs` (**что реально крутится в воркере**); удобно показывать в UI вместе с `runner_active`. Поле **`queued: false`** означает, что задача **не** добавлена в очередь (дубликат или такой тип уже выполняется); в этом случае в **`skip_reason`** — причина. Успешная постановка не гарантирует мгновенный старт: если в этот момент уже крутится **другая** задача очереди, исполнение отложится до её завершения (сервер сам вызовет обработчик снова). На `/settings.html` тот же ответ показывается **плашкой** в карточке «Автосинхронизация по расписанию» (текст очереди, занятость воркера, время ответа), чтобы не гадать, «уехало» ли нажатие.
 
@@ -1327,7 +1328,7 @@ Body (JSON): `email`, `password` (обязательны), опциональн�
 - `search` — **умный поиск по товарам в позициях отгрузки**: подстрока по `ms_demand_position.ms_export_code`, `code_at_moment`, `name_at_moment` и `ms_export.name` (для резолвленных позиций). Реализован через `EXISTS`, чтобы не дублировать строки в выдаче.
 - `doc_name` — фильтр по номеру документа (`ms_demand.doc_name`). По умолчанию подстрока (`LIKE '%X%'`); если в значении есть `%` или `_` — используется как готовый LIKE-паттерн.
 - `store_uuid` — фильтр по складу.
-- `agent_uuid` — фильтр по контрагенту.
+- `agent_uuids` — фильтр по одному или нескольким контрагентам (CSV UUID; legacy: `agent_uuid`).
 - `project_uuid` — фильтр по проекту (`ms_demand.project_uuid`).
 - `applicable` — `1` (по умолчанию: только проведённые) | `0` (только черновики) | пусто (все).
 - `deleted` — `0` (по умолчанию: только активные, без soft-deleted) | `1` (только помеченные удалёнными в МС) | `all` (без фильтра по `deleted_at`).
@@ -1402,6 +1403,61 @@ Body (JSON): `email`, `password` (обязательны), опциональн�
 - В матрице доступа (`lib/datagonPageRegistry.js`) — `pageKey: 'ms-sales'`, `htmlFile: 'ms-sales.html'`, `navSlug: 'ms-sales'`. API-префикс `/ms-sales` подчиняется тому же режиму (`hidden` / `view` / `full`); в режиме `view` POST-эндпоинты (`/sync`, `/sync-cancel`, `/reresolve`) автоматически блокируются.
 - Меню: пункт «Продажи МС» в подменю «Маркетплейсы» — последний пункт после «Сводка и синхронизация».
 - Фронтенд: `static-html/vanilla/inners/ms-sales.{head,inner,scripts}.html` — две карточки (фильтры + таблица отгрузок с разворачивающимися позициями), поиск-зеркало в шапке таблицы.
+
+## Заказы в МС
+
+Страница `/ms-orders.html`, роутер `routes/msOrders.js`. Заказы покупателей (`GET /entity/customerorder`) за период **`ms_orders_sync_days`** (настройки, 1..365, default **30**). Заказы с ответственными из **`ms_orders_exclude_owner_names`** (настройки) не синкаются и не показываются.
+
+### Таблицы
+
+- `ms_customer_order` — заголовки: `moment`, `agent_*`, `store_*`, `organization_*`, `project_*`, `state_*`, `owner_*`, `sum_minor`, `payed_sum_minor`, `shipped_sum_minor`, `positions_count`, `payload_json`, `deleted_at`.
+- `ms_customer_order_position` — позиции с резолвом до `ms_export` (как у продаж МС).
+- `ms_export_stock_by_store` — остатки по `(code, store_uuid)` из **`report/stock/bystore`** при полном синке МойСклад (для колонки «Статус» / «Позиций на складе» на заказах).
+
+### Настройки
+
+- **`ms_orders_sync_days`** — окно синхронизации и списка (дней, 1..365, default **30**). Карточка на `/settings.html` → «Заказы в МС».
+- **`ms_orders_exclude_owner_names`** — строка: имена владельцев-сотрудников через перевод строки или запятую (default **`Новикова И.`**). Сопоставление без учёта регистра, по подстроке. Карточка на `/settings.html` → «Заказы в МС».
+
+### GET `/api/ms-orders/config`
+
+`{ success, sync_days, max_days }` — текущий лимит периода из `ms_orders_sync_days` (для UI `/ms-orders.html`).
+
+### GET `/api/ms-orders/list`
+
+Query: `days` (max = **`ms_orders_sync_days`**), `search` (умный поиск: **номер заказа** `doc_name`, **контрагент** `agent_name` или код/наименование товара в позициях), `doc_name`, `store_uuids` (CSV UUID, несколько складов; legacy: `store_uuid`), `agent_uuids` (CSV UUID, несколько контрагентов; legacy: `agent_uuid`), `project_uuids` (CSV UUID, несколько проектов; legacy: `project_uuid`), `applicable` или `applicable_values` (`0` / `1` через запятую; одно значение — фильтр, оба или пусто — все), `pay_statuses` (`paid` | `partial` | `none`; по умолчанию на UI — только `paid`), `ship_statuses` (`shipped` | `partial` | `none`; по умолчанию на UI — все), `stock_statuses` (`all` | `partial` | `none` | `none_pending` — статус остатков по позициям; по умолчанию на UI — все), `deleted`, `limit`, `offset`, `sort_by` (`moment|doc_name|agent|store|owner|positions_count|stock_ok|stock_status|sum|payed|shipped`), `sort_dir`.
+
+Ответ `rows[]`: базовые поля как у продаж МС + **`payed_sum`**, **`shipped_sum`**, **`owner_name`**, **`payed_pct`**, **`shipped_pct`**, **`stock_ok_count`** / **`stock_pending_count`** (позиции с достаточным остатком **на складе заказа** `store_uuid` из `ms_export_stock_by_store`; если у заказа склад не задан — суммарный `ms_export.stock`), **`stock_status`** (`нет на складе` | `частично на складе` | `все на складе` | `—` если нечего отгружать) (рубли и проценты от суммы).
+
+### GET `/api/ms-orders/data-freshness`
+
+Сводка актуальности для блока на `/ms-orders.html` (формат как `GET /api/suppliers/data-freshness`): `{ success, as_of_msk, sources[] }`.
+
+Источники:
+- **`ms_orders`** — импорт `customerorder` (ручной синк; `MAX(fetched_at/updated_at)` по `ms_customer_order`, статус job при активном синке).
+- **`moysklad`** — каталог и остатки `ms_export` (для колонки «Позиций на складе»; те же данные, что на `/suppliers.html`).
+
+Статус **`ok`** = обновление сегодня по МСК, **`stale`** = устарело, **`running`** = синк идёт.
+
+### GET `/api/ms-orders/filters?days=30`
+
+Справочники складов/контрагентов/проектов (с учётом исключённых ответственных).
+
+### GET `/api/ms-orders/:uuid/positions`
+
+`{ success, order, positions[] }` — в каждой позиции: `code`, `name`, `quantity`, **`shipped`** (отгружено из МС, поле `shipped` позиции заказа), `price`, `sum`, `resolved`, `stock`.
+
+### POST `/api/ms-orders/sync`
+
+Body: `{ days }` (max = **`ms_orders_sync_days`**; если не передано — используется значение из настроек). Фоновый импорт из МС: сначала **лёгкий list** без `positions`, затем детали (`GET /entity/customerorder/{id}` с expand позиций) **только** для заказов, не попавших под исключение ответственных (`ms_orders_exclude_owner_names`). Заказы исключённых считаются в `skipped_excluded`, но позиции для них не запрашиваются.
+
+### GET `/api/ms-orders/sync-status` · POST `/api/ms-orders/sync-cancel`
+
+Статус и остановка фонового job (как у продаж МС). В `status`: `fetched_orders` / `total_orders` (прогресс обхода list в МС), `saved_orders` (записано в БД), `saved_positions`, `skipped_excluded`.
+
+### Доступ
+
+`pageKey: 'ms-orders'`, API-префикс `/ms-orders`. Пункт меню «Заказы в МС» после «Продажи МС».
 
 ## Глобальная синхронизация (server.js)
 
@@ -1513,7 +1569,7 @@ Query: `days`, `search`, `project_mode`, `project_uuids` (как в ranking). О
 
 Свежесть данных для плашки над блоком «Команда и закупки» на `/suppliers.html`. Без query.
 
-Ответ: `{ success, as_of_msk, sources: [{ key, title, status: ok|stale|running|failed|unknown, is_today_msk, finished_at_msk, trigger_label, message_short, detail }] }` — два источника: `moysklad` (каталог/остатки МС + журнал нулевых остатков; технически `ms_export` + `dg_product_zero_stock_log`, по `auto_sync_runs` и `MAX(synced_at)` / `MAX(created_at)`), `mssales` или `mssales_full` (импорт отгрузок; подпись `title`: «Продажи МойСклад: отгрузки за период» / «…полная выгрузка отгрузок»). **ok** — обновление было **сегодня** по календарю **МСК**; иначе **stale** (внимание).
+Ответ: `{ success, as_of_msk, sources: [{ key, title, status: ok|stale|running|failed|unknown, is_today_msk, finished_at_msk, trigger_label, message_short, detail }] }` — два источника: `moysklad` (каталог/остатки МС + журнал нулевых остатков; **«Обновлено»** — `finished_at` последнего **completed** `auto_sync_runs` для `moysklad`, не `MAX(ms_export.synced_at)` — последнее касание строк каталога), `mssales` или `mssales_full` (импорт отгрузок; подпись `title`: «Продажи МойСклад: отгрузки за период» / «…полная выгрузка отгрузок»). **ok** — обновление было **сегодня** по календарю **МСК**; иначе **stale** (внимание).
 
 ### GET `/api/suppliers/analytics`
 

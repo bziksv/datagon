@@ -55,10 +55,15 @@
         ms_sync_page_limit: 1000,
         ms_sync_delay_ms: 0,
         ms_purchase_order_organization_name: 'ООО "АЛЬМАМЕД"',
+        ms_orders_exclude_owner_names: 'Новикова И.\nНовикова Ирина',
+        ms_orders_sync_days: 30,
         auto_sync_myproducts_enabled: 0,
         auto_sync_myproducts_time: "03:00",
         auto_sync_moysklad_enabled: 0,
         auto_sync_moysklad_time: "04:00",
+        auto_sync_ms_orders_enabled: 0,
+        auto_sync_ms_orders_time: "08:00",
+        auto_sync_ms_orders_weekdays: "",
         auto_sync_marketplaces_enabled: 0,
         auto_sync_marketplaces_time: "05:00",
         auto_sync_huckster_enabled: 0,
@@ -959,10 +964,16 @@
           "dg-set-ms_purchase_order_organization_name",
           merged.ms_purchase_order_organization_name || 'ООО "АЛЬМАМЕД"',
         );
+        set("dg-set-ms_orders_exclude_owner_names", merged.ms_orders_exclude_owner_names || "Новикова И.\nНовикова Ирина");
+        set("dg-set-ms_orders_sync_days", String(Number(merged.ms_orders_sync_days || 30)));
         document.getElementById("dg-set-auto_my_en").checked = Number(merged.auto_sync_myproducts_enabled) === 1;
         set("dg-set-auto_my_time", merged.auto_sync_myproducts_time || "03:00");
         document.getElementById("dg-set-auto_ms_en").checked = Number(merged.auto_sync_moysklad_enabled) === 1;
         set("dg-set-auto_ms_time", merged.auto_sync_moysklad_time || "04:00");
+        var msOrdersAutoEn = document.getElementById("dg-set-auto_ms_orders_en");
+        if (msOrdersAutoEn) msOrdersAutoEn.checked = Number(merged.auto_sync_ms_orders_enabled) === 1;
+        set("dg-set-auto_ms_orders_time", merged.auto_sync_ms_orders_time || "08:00");
+        applyAutoSyncWeekdayChecks("dg-set-auto_ms_orders_wd", merged.auto_sync_ms_orders_weekdays);
         document.getElementById("dg-set-auto_market_en").checked = Number(merged.auto_sync_marketplaces_enabled) === 1;
         set("dg-set-auto_market_time", merged.auto_sync_marketplaces_time || "05:00");
         document.getElementById("dg-set-auto_huckster_en").checked = Number(merged.auto_sync_huckster_enabled) === 1;
@@ -1951,6 +1962,11 @@
           auto_sync_myproducts_time: getStr("dg-set-auto_my_time") || "03:00",
           auto_sync_moysklad_enabled: document.getElementById("dg-set-auto_ms_en").checked,
           auto_sync_moysklad_time: getStr("dg-set-auto_ms_time") || "04:00",
+          auto_sync_ms_orders_enabled: document.getElementById("dg-set-auto_ms_orders_en")
+            ? document.getElementById("dg-set-auto_ms_orders_en").checked
+            : false,
+          auto_sync_ms_orders_time: getStr("dg-set-auto_ms_orders_time") || "08:00",
+          auto_sync_ms_orders_weekdays: collectAutoSyncWeekdayCsv("dg-set-auto_ms_orders_wd"),
           auto_sync_marketplaces_enabled: document.getElementById("dg-set-auto_market_en").checked,
           auto_sync_marketplaces_time: getStr("dg-set-auto_market_time") || "05:00",
           auto_sync_huckster_enabled: document.getElementById("dg-set-auto_huckster_en").checked,
@@ -1998,6 +2014,8 @@
           verifyKeys: [
             "auto_sync_myproducts_time",
             "auto_sync_moysklad_time",
+            "auto_sync_ms_orders_time",
+            "auto_sync_ms_orders_weekdays",
             "auto_sync_marketplaces_time",
             "auto_sync_huckster_time",
             "auto_sync_db_size_time",
@@ -2025,6 +2043,7 @@
       var AUTO_RUN_TASK_LABELS = {
         myproducts: "Мои товары",
         moysklad: "МойСклад (ms_export)",
+        ms_orders: "Заказы в МС",
         marketplaces: "Маркетплейсы",
         huckster: "Huckster",
         db_size: "Размер БД и диска",
@@ -2781,10 +2800,28 @@
       });
       document.getElementById("dg-set-edit-save").addEventListener("click", saveEditedUser);
       document.getElementById("dg-set-edit-cancel").addEventListener("click", closeEditUser);
+      function saveMsOrdersSettings() {
+        runSaveWithInlineFeedback({
+          sectionId: "ms-orders",
+          payload: {
+            ms_orders_exclude_owner_names: String(
+              document.getElementById("dg-set-ms_orders_exclude_owner_names") &&
+                document.getElementById("dg-set-ms_orders_exclude_owner_names").value
+                ? document.getElementById("dg-set-ms_orders_exclude_owner_names").value
+                : ""
+            ).trim(),
+            ms_orders_sync_days: getNum("dg-set-ms_orders_sync_days", 30),
+          },
+          okText: "Настройки «Заказы в МС» сохранены",
+          verifyKeys: ["ms_orders_exclude_owner_names", "ms_orders_sync_days"],
+        });
+      }
+
       document.getElementById("dg-set-btn-save-general").addEventListener("click", saveGeneral);
       document.getElementById("dg-set-btn-save-sessions").addEventListener("click", saveSessionsAndOnline);
       document.getElementById("dg-set-btn-save-myproducts").addEventListener("click", saveMyProductsSync);
       document.getElementById("dg-set-btn-save-ms").addEventListener("click", saveMoyskladSync);
+      document.getElementById("dg-set-btn-save-ms-orders").addEventListener("click", saveMsOrdersSettings);
       (function initSalesFormulaProjectsUi() {
         var wrap = document.getElementById("dg-set-sales-formula-projects-wrap");
         var listEl = document.getElementById("dg-set-sales-formula-projects-list");
@@ -2958,6 +2995,8 @@
       document.getElementById("dg-set-btn-save-auto").addEventListener("click", saveAutoSync);
       document.getElementById("dg-set-auto_my_run").addEventListener("click", function () { runAutoSyncNow("myproducts", "Мои товары", "dg-set-auto_my_run"); });
       document.getElementById("dg-set-auto_ms_run").addEventListener("click", function () { runAutoSyncNow("moysklad", "МойСклад (ms_export)", "dg-set-auto_ms_run"); });
+      var msOrdersAutoRun = document.getElementById("dg-set-auto_ms_orders_run");
+      if (msOrdersAutoRun) msOrdersAutoRun.addEventListener("click", function () { runAutoSyncNow("ms_orders", "Заказы в МС", "dg-set-auto_ms_orders_run"); });
       document.getElementById("dg-set-auto_market_run").addEventListener("click", function () { runAutoSyncNow("marketplaces", "Маркетплейсы", "dg-set-auto_market_run"); });
       document.getElementById("dg-set-auto_huckster_run").addEventListener("click", function () { runAutoSyncNow("huckster", "Huckster", "dg-set-auto_huckster_run"); });
       document.getElementById("dg-set-auto_db_size_run").addEventListener("click", function () { runAutoSyncNow("db_size", "Размер БД и диска", "dg-set-auto_db_size_run"); });

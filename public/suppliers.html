@@ -1184,6 +1184,7 @@
                           </li>
                         </ul>
                       </li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="ms-orders" href="/ms-orders.html" title="Заказы покупателей entity/customerorder из МойСклад (30 дней)"><i class="metismenu-icon pe-7s-note2"></i>Заказы в МС</a></li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="ms-sales" href="/ms-sales.html" title="Продажи МС: отгрузки entity/demand, позиции с привязкой к товарам ms_export"><i class="metismenu-icon pe-7s-cash"></i>Продажи МС</a></li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="purchase" href="/purchase.html" title="Закупки товары: планирование, неснижаемые остатки, кратность"><i class="metismenu-icon pe-7s-cart"></i>Закупки товары</a></li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="suppliers" href="/suppliers.html" title="Поставщики: сводка по закупкам и настройки"><i class="metismenu-icon pe-7s-id"></i>Поставщики</a></li>
@@ -2549,6 +2550,13 @@
             if (st === "running") meta.push("Синхронизация выполняется…");
             if (src.key === "moysklad" && src.detail && src.detail.zero_stock_log_batch_at_msk) {
               meta.push("Журнал нулевых остатков: " + src.detail.zero_stock_log_batch_at_msk + " (МСК)");
+            }
+            if (src.key === "moysklad" && src.detail) {
+              var syncAt = src.detail.moysklad_sync_finished_at_msk;
+              var touchAt = src.detail.ms_export_max_synced_at_msk;
+              if (syncAt && touchAt && touchAt !== syncAt) {
+                meta.push("Частичные правки каталога: " + touchAt + " (МСК)");
+              }
             }
             if (src.key !== "moysklad" && src.detail && src.detail.ms_demand_max_updated_at) {
               var d = src.detail.ms_demand_max_updated_at;

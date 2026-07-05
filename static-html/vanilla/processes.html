@@ -756,6 +756,7 @@
                           </li>
                         </ul>
                       </li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="ms-orders" href="/ms-orders.html" title="Заказы покупателей entity/customerorder из МойСклад (30 дней)"><i class="metismenu-icon pe-7s-note2"></i>Заказы в МС</a></li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="ms-sales" href="/ms-sales.html" title="Продажи МС: отгрузки entity/demand, позиции с привязкой к товарам ms_export"><i class="metismenu-icon pe-7s-cash"></i>Продажи МС</a></li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="purchase" href="/purchase.html" title="Закупки товары: планирование, неснижаемые остатки, кратность"><i class="metismenu-icon pe-7s-cart"></i>Закупки товары</a></li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="suppliers" href="/suppliers.html" title="Поставщики: сводка по закупкам и настройки"><i class="metismenu-icon pe-7s-id"></i>Поставщики</a></li>
@@ -1769,6 +1770,7 @@
       var AS_TASK_SECTIONS = [
         { key: "myproducts", title: "Мои товары", subtitle: "Импорт из CMS магазинов", cfgEnabled: "myproducts_enabled", cfgTime: "myproducts_time" },
         { key: "moysklad", title: "МойСклад: ms_export (МСК)", subtitle: "Номенклатура, остатки, неснижаемый из МС; после сохранения ms_export — журнал нулевых остатков за сегодня (склад.поз. «Да», не архив). Не импорт отгрузок.", cfgEnabled: "moysklad_enabled", cfgTime: "moysklad_time" },
+        { key: "ms_orders", title: "Заказы в МС", subtitle: "Импорт customerorder → ms_customer_order", cfgEnabled: "ms_orders_enabled", cfgTime: "ms_orders_time" },
         { key: "marketplaces", title: "Маркетплейсы", subtitle: "Ozon · WB · Я.Маркет", cfgEnabled: "marketplaces_enabled", cfgTime: "marketplaces_time" },
         { key: "huckster", title: "Калькуляция Huckster", subtitle: "Расчёт цен по правилам", cfgEnabled: "huckster_enabled", cfgTime: "huckster_time" },
         { key: "db_size", title: "Размер БД и диска", subtitle: "Снимок размеров таблиц БД и разбивка диска по папкам проекта", cfgEnabled: "db_size_enabled", cfgTime: "db_size_time" },
@@ -2254,6 +2256,20 @@
               sp +
               daysStr +
               (tail ? " — " + tail : "")
+          );
+        }
+        if (secKey === "ms_orders") {
+          var fo = fmtNum(lv.fetched_orders || 0);
+          var to = fmtNum(lv.total_orders || 0);
+          var so = fmtNum(lv.saved_orders || 0);
+          var sp2 = fmtNum(lv.saved_positions || 0);
+          var daysO = Number(lv.days || 0);
+          var daysOStr = daysO ? " · окно " + daysO + " дн." : "";
+          var tailO = String(lv.message || "").slice(0, 160);
+          return (
+            "Сейчас: заказов " + fo + "/" + to +
+            " · сохранено " + so + " · позиций " + sp2 +
+            daysOStr + (tailO ? " — " + tailO : "")
           );
         }
         return "";
