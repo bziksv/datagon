@@ -987,16 +987,22 @@ function createMsOrdersRouter(db, appSettingsRef = {}) {
                 wheres.push(`o.project_uuid IN (${projectUuids.map(() => '?').join(',')})`);
                 params.push(...projectUuids);
             }
+            const hasTextSearch = !!(search || docName);
             if (applicableValues.length === 1) {
                 wheres.push('o.applicable = ?');
                 params.push(Number(applicableValues[0]));
             }
-            const payStatusWhere = buildPayStatusWhere(payStatuses);
-            if (payStatusWhere.sql) wheres.push(payStatusWhere.sql.replace(/^ AND /, ''));
-            const shipStatusWhere = buildShipStatusWhere(shipStatuses);
-            if (shipStatusWhere.sql) wheres.push(shipStatusWhere.sql.replace(/^ AND /, ''));
-            const stockStatusWhere = buildStockStatusWhere(stockStatuses);
-            if (stockStatusWhere.sql) wheres.push(stockStatusWhere.sql.replace(/^ AND /, ''));
+            let payStatusWhere = { sql: '', params: [], needsStockJoin: false };
+            let shipStatusWhere = { sql: '', params: [], needsStockJoin: false };
+            let stockStatusWhere = { sql: '', params: [], needsStockJoin: false };
+            if (!hasTextSearch) {
+                payStatusWhere = buildPayStatusWhere(payStatuses);
+                if (payStatusWhere.sql) wheres.push(payStatusWhere.sql.replace(/^ AND /, ''));
+                shipStatusWhere = buildShipStatusWhere(shipStatuses);
+                if (shipStatusWhere.sql) wheres.push(shipStatusWhere.sql.replace(/^ AND /, ''));
+                stockStatusWhere = buildStockStatusWhere(stockStatuses);
+                if (stockStatusWhere.sql) wheres.push(stockStatusWhere.sql.replace(/^ AND /, ''));
+            }
             if (deleted === '1') wheres.push('o.deleted_at IS NOT NULL');
             else if (deleted !== 'all') wheres.push('o.deleted_at IS NULL');
 
@@ -1035,6 +1041,7 @@ function createMsOrdersRouter(db, appSettingsRef = {}) {
                 max_days: getMsOrdersSyncDaysLimit(appSettings),
                 sync_days: getMsOrdersSyncDaysLimit(appSettings),
                 filter_search: search || '',
+                search_relaxed_filters: hasTextSearch,
                 rows: (rows || []).map(mapOrderListRow),
             });
         } catch (e) {

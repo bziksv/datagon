@@ -15,6 +15,8 @@
         ["buy_price", "Закупочная цена", { center: true }],
         ["min_stock", "Неснижаемый остаток", { center: true }],
         ["formula_proposed_min_stock", "Предлагаемый нес.ост.", { center: true }],
+        ["formula_ms_diff_qty", "Разница в шт", { center: true }],
+        ["formula_ms_diff_sum", "Разница в сумме", { center: true }],
         ["automation_price", "Автоматизация цены", { center: true, hideInToPurchaseMode: true }],
         ["min_stock_dg", "Нес.остаток Датагон", { center: true, editable: true }],
         ["multiplicity", "Кратность товара", { center: true, editable: true }],
@@ -50,6 +52,10 @@
         min_stock: "Неснижаемый остаток из МС (minimumBalance). Участвует в расчёте «К закупке».",
         formula_proposed_min_stock:
           "Предлагаемый неснижаемый по формуле продаж (кэш dg_formula_proposed_cache). Не подменяет МС в расчёте «К закупке».",
+        formula_ms_diff_qty:
+          "Разница в шт: округлённый «Предлагаемый нес.ост.» − округлённый неснижаемый МС. Без формулы — прочерк.",
+        formula_ms_diff_sum:
+          "Разница в сумме: «Разница в шт» × закупочная цена. Без формулы или без цены — прочерк.",
         automation_price: "Автоматизация цены из МС.",
         min_stock_dg:
           "Override «Нес.остаток Датагон» (редактируется здесь). В формуле продаж — нижняя граница предложения, не baseline.",
@@ -95,6 +101,8 @@
       var PU_SUM_COL_KEYS = new Set([
         "min_stock",
         "formula_proposed_min_stock",
+        "formula_ms_diff_qty",
+        "formula_ms_diff_sum",
         "stock",
         "in_transit",
         "to_purchase_qty",
@@ -103,7 +111,8 @@
 
       var SORTABLE = new Set([
         "code", "article", "name", "supplier", "price_comment", "buy_price",
-        "min_stock", "formula_proposed_min_stock", "automation_price",
+        "min_stock", "formula_proposed_min_stock", "formula_ms_diff_qty", "formula_ms_diff_sum",
+        "automation_price",
         "min_stock_dg", "multiplicity",
         "stock", "is_archived", "in_transit",
         "d_15a", "d_15b", "d_30a", "d_30b",
@@ -117,6 +126,7 @@
       /** Паритет с `PURCHASE_HEAVY_SORT_KEYS` в `routes/purchase.js`. */
       var PURCHASE_HEAVY_SORT = new Set([
         "formula_proposed_min_stock",
+        "formula_ms_diff_qty", "formula_ms_diff_sum",
         "d_15a", "d_15b", "d_30a", "d_30b",
         "d_60a", "d_60b", "d_90a", "d_90b", "d_180a", "d_180b", "d_365a", "d_365b",
       ]);
@@ -251,6 +261,8 @@
         buy_price: 100,
         min_stock: 70,
         formula_proposed_min_stock: 70,
+        formula_ms_diff_qty: 76,
+        formula_ms_diff_sum: 100,
         automation_price: 70,
         min_stock_dg: 70,
         multiplicity: 70,
@@ -1585,6 +1597,39 @@
           fp.textContent = fpn != null && fpn !== "" && Number.isFinite(Number(fpn)) ? fmtNum(fpn) : "—";
           return fp;
         }
+        if (key === "formula_ms_diff_qty") {
+          var spDiffQty = document.createElement("span");
+          var diffQty = r.formula_ms_diff_qty;
+          if (diffQty == null || diffQty === "" || !Number.isFinite(Number(diffQty))) {
+            var fpv = r.formula_proposed_min_stock;
+            if (fpv != null && fpv !== "" && Number.isFinite(Number(fpv))) {
+              diffQty = Math.round(Number(fpv)) - Math.round(Number(r.min_stock || 0));
+            }
+          }
+          spDiffQty.textContent =
+            diffQty != null && diffQty !== "" && Number.isFinite(Number(diffQty)) ? fmtNum(diffQty) : "—";
+          return spDiffQty;
+        }
+        if (key === "formula_ms_diff_sum") {
+          var spDiffSum = document.createElement("span");
+          spDiffSum.className = "dg-pu-formula-ms-diff-sum";
+          var diffSum = r.formula_ms_diff_sum;
+          if (diffSum == null || diffSum === "" || !Number.isFinite(Number(diffSum))) {
+            var fpv2 = r.formula_proposed_min_stock;
+            if (fpv2 != null && fpv2 !== "" && Number.isFinite(Number(fpv2))) {
+              var dq = Math.round(Number(fpv2)) - Math.round(Number(r.min_stock || 0));
+              var bp = String(r.buy_price || "").trim();
+              if (bp) {
+                var p = Number(bp.replace(/[^\d.,-]/g, "").replace(",", "."));
+                if (Number.isFinite(p) && p > 0) diffSum = dq * p;
+              }
+            }
+          }
+          var nDiffSum = diffSum != null && diffSum !== "" ? Number(diffSum) : null;
+          spDiffSum.textContent =
+            nDiffSum != null && Number.isFinite(nDiffSum) ? fmtMoneyRub(nDiffSum) : "—";
+          return spDiffSum;
+        }
         if (key === "stock") {
           var s2 = document.createElement("span");
           s2.textContent = fmtNum(r.stock);
@@ -1828,8 +1873,8 @@
 
       function formatPuColumnTotal(key, val) {
         if (val == null || !Number.isFinite(Number(val))) return "—";
-        if (key === "purchase_sum") return fmtMoneyRub(val);
-        if (key === "min_stock" || key === "formula_proposed_min_stock") return fmtNum(val);
+        if (key === "min_stock" || key === "formula_proposed_min_stock" || key === "formula_ms_diff_qty") return fmtNum(val);
+        if (key === "purchase_sum" || key === "formula_ms_diff_sum") return fmtMoneyRub(val);
         return fmtPuSnapQty(val);
       }
 
@@ -3204,7 +3249,7 @@
           if (!visibleCols.has("code")) visibleCols.add("code");
           if (visibleCols.size && !visibleCols.has("name")) visibleCols.add("name");
           if (!visibleCols.size) visibleCols = new Set(DEFAULT_VISIBLE_KEYS);
-          ["to_purchase_qty", "purchase_sum"].forEach(function (k) {
+          ["to_purchase_qty", "purchase_sum", "formula_ms_diff_qty", "formula_ms_diff_sum"].forEach(function (k) {
             if (allowed.has(k)) visibleCols.add(k);
           });
         } catch (e) {}

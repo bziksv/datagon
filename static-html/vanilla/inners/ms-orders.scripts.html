@@ -551,7 +551,11 @@
     fetchFilters();
     syncApplyDirtyButton();
     if (searchVal && window.DatagonNotify && window.DatagonNotify.toast) {
-      window.DatagonNotify.toast({ type: 'info', message: 'Поиск: «' + searchVal + '»', duration: 2400 });
+      window.DatagonNotify.toast({
+        type: 'info',
+        message: 'Поиск: «' + searchVal + '» (без фильтров оплаты, отгрузки и статуса остатков)',
+        duration: 3200
+      });
     }
   }
 
@@ -781,6 +785,11 @@
 
   /* ============================ Fetch list / filters ============================ */
 
+  function hasActiveTextSearch(snap) {
+    var s = snap || state.applied || {};
+    return !!(String(s.search || '').trim() || String(s.docName || '').trim());
+  }
+
   function mergeLiveSearchIntoSnap(snap) {
     snap = normalizeSnap(snap || state.applied);
     var live = readSearchFromDom();
@@ -800,19 +809,23 @@
     qs.set('offset', String(offset));
     qs.set('days', String(a.days));
     var searchQ = String(a.search || '').trim();
+    var docQ = String(a.docName || '').trim();
+    var textSearch = !!(searchQ || docQ);
     if (searchQ) qs.set('search', searchQ);
-    if (a.docName) qs.set('doc_name', a.docName);
+    if (docQ) qs.set('doc_name', docQ);
     if (a.storeUuids && a.storeUuids.length) qs.set('store_uuids', a.storeUuids.join(','));
     if (a.agentUuids && a.agentUuids.length) qs.set('agent_uuids', a.agentUuids.join(','));
     if (a.projectUuids && a.projectUuids.length) qs.set('project_uuids', a.projectUuids.join(','));
     var av = a.applicableValues || [];
     if (av.length === 1) qs.set('applicable', av[0]);
-    var ps = a.payStatusValues || [];
-    if (ps.length && ps.length < PAY_STATUS_OPTIONS.length) qs.set('pay_statuses', ps.join(','));
-    var ss = a.shipStatusValues || [];
-    if (ss.length && ss.length < SHIP_STATUS_OPTIONS.length) qs.set('ship_statuses', ss.join(','));
-    var sts = a.stockStatusValues || [];
-    if (sts.length && sts.length < STOCK_STATUS_OPTIONS.length) qs.set('stock_statuses', sts.join(','));
+    if (!textSearch) {
+      var ps = a.payStatusValues || [];
+      if (ps.length && ps.length < PAY_STATUS_OPTIONS.length) qs.set('pay_statuses', ps.join(','));
+      var ss = a.shipStatusValues || [];
+      if (ss.length && ss.length < SHIP_STATUS_OPTIONS.length) qs.set('ship_statuses', ss.join(','));
+      var sts = a.stockStatusValues || [];
+      if (sts.length && sts.length < STOCK_STATUS_OPTIONS.length) qs.set('stock_statuses', sts.join(','));
+    }
     if (a.deleted === '1' || a.deleted === 'all') qs.set('deleted', a.deleted);
     qs.set('sort_by', a.sortBy);
     qs.set('sort_dir', a.sortDir);
@@ -2194,9 +2207,13 @@
     var a = state.applied;
     var totalPages = Math.max(1, Math.ceil(state.total / a.pageSize));
     var page = Math.min(a.page, totalPages);
+    var searchLabel = String(a.search || a.docName || '').trim();
     line.textContent = 'Найдено: ' + state.total + '; страница ' + page + '/' + totalPages
       + '; показано: ' + state.rows.length
-      + (a.search ? ('; поиск: «' + a.search + '»') : '');
+      + (searchLabel ? ('; поиск: «' + searchLabel + '»') : '');
+    if (hasActiveTextSearch(a)) {
+      line.textContent += '; без фильтров оплаты/отгрузки/остатков';
+    }
     var draftSearch = readDraftSearch();
     if (draftSearch && draftSearch !== (a.search || '')) {
       line.textContent += '; черновик поиска: «' + draftSearch + '» — Enter или «Применить»';
@@ -2208,7 +2225,9 @@
     var headerStatus = $('dg-mso-status');
     if (headerStatus) {
       var sumAll = state.rows.reduce(function (acc, r) { return acc + Number(r.sum || 0); }, 0);
-      var extra = a.search ? ('; поиск: «' + a.search + '»') : '';
+      var searchLabel = String(a.search || a.docName || '').trim();
+      var extra = searchLabel ? ('; поиск: «' + searchLabel + '»') : '';
+      if (hasActiveTextSearch(a)) extra += '; без фильтров оплаты/отгрузки/остатков';
       headerStatus.textContent = 'на странице — отгрузок: ' + state.rows.length +
         ', сумма: ' + fmtMoney(sumAll) + ' ₽' + extra;
     }

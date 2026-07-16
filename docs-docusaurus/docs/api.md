@@ -1427,6 +1427,8 @@ Body (JSON): `email`, `password` (обязательны), опциональн�
 
 Query: `days` (max = **`ms_orders_sync_days`**), `search` (умный поиск: **номер заказа** `doc_name`, **контрагент** `agent_name` или код/наименование товара в позициях), `doc_name`, `store_uuids` (CSV UUID, несколько складов; legacy: `store_uuid`), `agent_uuids` (CSV UUID, несколько контрагентов; legacy: `agent_uuid`), `project_uuids` (CSV UUID, несколько проектов; legacy: `project_uuid`), `applicable` или `applicable_values` (`0` / `1` через запятую; одно значение — фильтр, оба или пусто — все), `pay_statuses` (`paid` | `partial` | `none`; по умолчанию на UI — только `paid`), `ship_statuses` (`shipped` | `partial` | `none`; по умолчанию на UI — все), `stock_statuses` (`all` | `partial` | `none` | `none_pending` — статус остатков по позициям; по умолчанию на UI — все), `deleted`, `limit`, `offset`, `sort_by` (`moment|doc_name|agent|store|owner|positions_count|stock_ok|stock_status|sum|payed|shipped`), `sort_dir`.
 
+Если задан **`search`** или **`doc_name`**, фильтры **`pay_statuses`**, **`ship_statuses`** и **`stock_statuses`** **не применяются** (чтобы предустановленные «Оплачено» / «Отгружено» не скрывали найденный заказ). В ответе: `search_relaxed_filters: true`. Фильтры склада, контрагента, проекта, «Проведённые» и «Удалённые» по-прежнему действуют.
+
 Ответ `rows[]`: базовые поля как у продаж МС + **`payed_sum`**, **`shipped_sum`**, **`owner_name`**, **`payed_pct`**, **`shipped_pct`**, **`stock_ok_count`** / **`stock_pending_count`** (позиции с достаточным остатком **на складе заказа** `store_uuid` из `ms_export_stock_by_store`; если у заказа склад не задан — суммарный `ms_export.stock`), **`stock_status`** (`нет на складе` | `частично на складе` | `все на складе` | `—` если нечего отгружать) (рубли и проценты от суммы).
 
 ### GET `/api/ms-orders/data-freshness`
@@ -1769,7 +1771,7 @@ Query: `limit` (default 12, max 50). Ответ: `{ "success", "batches": [ { "i
 
 Query:
 
-- `search` — подстрока по `code`, `name`, `supplier`, `supplier2` (case-insensitive).
+- `search` — умный поиск (case-insensitive): `code`, **`ms_entity_details.denorm_article`** (артикул МС), `name`, `supplier`, `supplier2`. **Несколько слов через пробел** — каждое слово должно встретиться (AND) хотя бы в одном из полей; группы через `|` — OR; префиксы `code:`, `name:`, `supplier:`, `article:`. Для артикула с дефисами дополнительно «компактный» вариант без `-`/`_`/пробелов (`A27541` ↔ `A-27541`) по коду и артикулу.
 - `manager` — **точное** совпадение с `TRIM(ms_export.manager)` (свойство МС «Менеджер поддерживающий товар»; на `/purchase.html` — выбор из списка `GET /api/purchase/managers`).
 
 Ответ `GET /api/purchase` дополнительно содержит **`kpi_totals`** (для сводки; при `to_purchase` / `to_buy` — по **полному** фильтру, не только по строкам «к закупке») и **`column_totals`** (для строки «Σ по фильтру» внизу таблицы) с полями **`stock_value_rub`**, **`min_stock_value_rub`**, **`formula_proposed_value_rub`** (Σ количество × закупочная цена из МС) и **`positions_without_buy_price`**. При выборке &gt; 2500 поз. без режима «К закупке»: `formula_kpi_approximate: true` — ориентировочный «Предлагаемый нес.ост.» из SQL; фронт догружает **`GET /api/purchase/summary-totals`**. Карточка «Сводка по фильтру» на `/purchase.html` показывает эти три суммы.
@@ -1788,14 +1790,14 @@ Query:
 - `incomplete_pack` — `1`: кратность ≥ 1, `stock ≥ кратность` и остаток **не кратен** кратности (хвост после полных упаковок; `1` шт при кратности `2` **не** попадает). Базовый код с «код-число» и `stock < min(суффикс)` — отсутствие комплекта, в фильтр не входит.
 - `ms_formula_diff` — `1`: только позиции, где **неснижаемый остаток МС** (целое) ≠ **предлагаемый нес.ост.** по формуле после полного enrich (как в шкале «Расхождение» в сводке), а не только по устаревшему SQL-кэшу; строки без посчитанной формулы не попадают. Список строится через enrich всей выборки (`column_totals_source: "enriched"`). На `/purchase.html` — отдельный селект **«Расхождение НС»**. В ответе: `ms_formula_diff_active: true`.
 - `limit` (default 100, max 1000), `offset`.
-- `sort_by` — `code` (default), `article`, `name`, `supplier`, `price_comment`, `buy_price`, `min_stock`, **`formula_proposed_min_stock`**, `automation_price`, `proposed_min_stock`, `min_stock_dg`, `multiplicity`, `stock`, `is_archived`, **`in_transit`**, **`d_15a`**, **`d_15b`**, **`d_30a`**, **`d_30b`**, **`d_60a`**, **`d_60b`**, **`d_90a`**, **`d_90b`**, **`d_180a`**, **`d_180b`**, **`d_365a`**, **`d_365b`**.
+- `sort_by` — `code` (default), `article`, `name`, `supplier`, `price_comment`, `buy_price`, `min_stock`, **`formula_proposed_min_stock`**, **`formula_ms_diff_qty`**, **`formula_ms_diff_sum`**, `automation_price`, `proposed_min_stock`, `min_stock_dg`, `multiplicity`, `stock`, `is_archived`, **`in_transit`**, **`d_15a`**, **`d_15b`**, **`d_30a`**, **`d_30b`**, **`d_60a`**, **`d_60b`**, **`d_90a`**, **`d_90b`**, **`d_180a`**, **`d_180b`**, **`d_365a`**, **`d_365b`**.
 - `sort_dir` — `asc` (default) | `desc`.
 
 Сортировка по **`formula_proposed_min_stock`** и **`d_*`** в SQL использует поля из **`dg_formula_proposed_cache`**; без кэша — NULL в ключе сортировки (см. выше). Остальные `sort_by` мапятся на колонки `ms_export` / `dg_purchase_overrides` / `med.denorm_article` и т.д. (см. `buildPurchaseSqlOrderBy` в `routes/purchase.js`).
 
 Локальный замер без HTTP: `npm run bench:purchase-list-sql` (скрипт `scripts/purchase-list-sql-bench.cjs`, читает `config.js` и вызывает тот же `purchaseListQueryPaged`).
 
-Ответ: **`column_totals`** — суммы по **всем** строкам текущего фильтра (не только текущая страница): `positions_count` (число позиций, должно совпадать с `total`), `min_stock`, `formula_proposed_min_stock`, `stock`, `in_transit`, `to_purchase_qty`. Источник: `column_totals_source` — `enriched` (после пересчёта формулы и «К закупке», как в ячейках; обязательно при `to_purchase` / `to_buy`) или `sql` (только для очень больших выборок без режима «К закупке»). На `/purchase.html` — строка **«Σ по фильтру»** внизу таблицы.
+Ответ: **`column_totals`** — суммы по **всем** строкам текущего фильтра (не только текущая страница): `positions_count` (число позиций, должно совпадать с `total`), `min_stock`, `formula_proposed_min_stock`, **`formula_ms_diff_qty`**, **`formula_ms_diff_sum`**, `stock`, `in_transit`, `to_purchase_qty`. Источник: `column_totals_source` — `enriched` (после пересчёта формулы и «К закупке», как в ячейках; обязательно при `to_purchase` / `to_buy`) или `sql` (только для очень больших выборок без режима «К закупке»). На `/purchase.html` — строка **«Σ по фильтру»** внизу таблицы.
 
 ```json
 {
@@ -1810,6 +1812,8 @@ Query:
     "positions_count": 1234,
     "min_stock": 1200,
     "formula_proposed_min_stock": 980,
+    "formula_ms_diff_qty": 45,
+    "formula_ms_diff_sum": 125000.5,
     "stock": 5400,
     "in_transit": 320,
     "to_purchase_qty": 150
@@ -1822,6 +1826,8 @@ Query:
       "buy_price": "12 345,67 ₽",
       "min_stock": "10.000",
       "formula_proposed_min_stock": 12,
+      "formula_ms_diff_qty": 2,
+      "formula_ms_diff_sum": 24691.34,
       "automation_price": "Авто",
       "proposed_min_stock": null,
       "min_stock_dg": "5.000",

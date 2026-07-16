@@ -90,6 +90,8 @@ const purchaseListResponseCache = new Map();
 /** Сортировки, зависящие от `dg_formula_proposed_cache` / тяжёлого enrich. */
 const PURCHASE_HEAVY_SORT_KEYS = new Set([
     'formula_proposed_min_stock',
+    'formula_ms_diff_qty',
+    'formula_ms_diff_sum',
     'd_15a',
     'd_15b',
     'd_30a',
@@ -306,6 +308,8 @@ const PURCHASE_SORT_KEYS = new Set([
     'stock',
     'is_archived',
     'formula_proposed_min_stock',
+    'formula_ms_diff_qty',
+    'formula_ms_diff_sum',
     'in_transit',
     'd_15a',
     'd_15b',
@@ -407,6 +411,90 @@ function buildPurchaseSqlOrderBy(sortKey, sortDesc) {
     }
 }
 
+function tokenizePurchaseSearchGroup(group) {
+    const tokens = [];
+    const re = /"([^"]+)"|(\S+)/g;
+    let m;
+    while ((m = re.exec(String(group || ''))) !== null) {
+        const v = (m[1] || m[2] || '').trim();
+        if (v) tokens.push(v);
+    }
+    return tokens;
+}
+
+/** Один token → OR по code / article / name / supplier; compact для кода и артикула. */
+function appendPurchaseSearchTokenClause(andClauses, params, rawToken) {
+    const needle = String(rawToken || '').trim().toLowerCase();
+    if (!needle) return;
+    const v = `%${needle}%`;
+    const tokenClauses = [
+        'LOWER(mse.code) LIKE ?',
+        'LOWER(mse.name) LIKE ?',
+        'LOWER(mse.supplier) LIKE ?',
+        'LOWER(mse.supplier2) LIKE ?',
+        "LOWER(COALESCE(med.denorm_article, '')) LIKE ?",
+    ];
+    params.push(v, v, v, v, v);
+    const compact = needle.replace(/[\s\-_/]+/g, '');
+    if (compact && compact !== needle) {
+        const vc = `%${compact}%`;
+        tokenClauses.push(
+            "REPLACE(REPLACE(REPLACE(LOWER(mse.code), '-', ''), '_', ''), ' ', '') LIKE ?",
+            "REPLACE(REPLACE(REPLACE(LOWER(COALESCE(med.denorm_article, '')), '-', ''), '_', ''), ' ', '') LIKE ?",
+        );
+        params.push(vc, vc);
+    }
+    andClauses.push(`(${tokenClauses.join(' OR ')})`);
+}
+
+/**
+ * Умный поиск закупок: слова через пробел — AND (как moysklad `buildSmartSearchClause`);
+ * группы через `|` — OR. Каждое слово ищется в code / article / name / supplier.
+ * @returns {{ sql: string, params: any[] } | null}
+ */
+function buildPurchaseSearchWhere(search) {
+    const raw = String(search || '').trim();
+    if (!raw) return null;
+    const groups = raw.split('|').map((x) => x.trim()).filter(Boolean);
+    if (!groups.length) return null;
+    const orClauses = [];
+    const params = [];
+    for (const group of groups) {
+        const tokens = tokenizePurchaseSearchGroup(group);
+        if (!tokens.length) continue;
+        const andClauses = [];
+        for (const token of tokens) {
+            const idx = token.indexOf(':');
+            if (idx > 0) {
+                const key = token.slice(0, idx).toLowerCase();
+                const value = token.slice(idx + 1).trim();
+                if (!value) continue;
+                const v = `%${value.toLowerCase()}%`;
+                if (key === 'sku' || key === 'code') {
+                    andClauses.push('LOWER(mse.code) LIKE ?');
+                    params.push(v);
+                } else if (key === 'name') {
+                    andClauses.push('LOWER(mse.name) LIKE ?');
+                    params.push(v);
+                } else if (key === 'supplier') {
+                    andClauses.push('(LOWER(mse.supplier) LIKE ? OR LOWER(mse.supplier2) LIKE ?)');
+                    params.push(v, v);
+                } else if (key === 'article' || key === 'sku_article') {
+                    andClauses.push("LOWER(COALESCE(med.denorm_article, '')) LIKE ?");
+                    params.push(v);
+                } else {
+                    appendPurchaseSearchTokenClause(andClauses, params, token);
+                }
+            } else {
+                appendPurchaseSearchTokenClause(andClauses, params, token);
+            }
+        }
+        if (andClauses.length) orClauses.push(`(${andClauses.join(' AND ')})`);
+    }
+    if (!orClauses.length) return null;
+    return { sql: `(${orClauses.join(' OR ')})`, params };
+}
+
 /**
  * WHERE для списка закупок (как раньше в `purchaseListBuildBaseSnapshot`).
  * @returns {{ whereSql: string, whereParams: any[], incompletePack: boolean }}
@@ -443,9 +531,11 @@ function buildPurchaseListWhereFragments(req, opts = {}) {
     if (!includeBundles) where.push("(mse.type IS NULL OR LOWER(mse.type) NOT LIKE '%комплект%')");
 
     if (search) {
-        const v = `%${search.toLowerCase()}%`;
-        where.push('(LOWER(mse.code) LIKE ? OR LOWER(mse.name) LIKE ? OR LOWER(mse.supplier) LIKE ? OR LOWER(mse.supplier2) LIKE ?)');
-        params.push(v, v, v, v);
+        const searchWhere = buildPurchaseSearchWhere(search);
+        if (searchWhere) {
+            where.push(searchWhere.sql);
+            params.push(...searchWhere.params);
+        }
     }
 
     if (supplier) {
@@ -597,7 +687,27 @@ function buildPurchaseColumnTotalsSql(frag) {
                     ELSE 0
                 END
             ) AS ms_formula_diff_count,
-            SUM(CASE WHEN fc.proposed IS NOT NULL THEN 1 ELSE 0 END) AS ms_formula_with_proposed_count
+            SUM(CASE WHEN fc.proposed IS NOT NULL THEN 1 ELSE 0 END) AS ms_formula_with_proposed_count,
+            SUM(
+                CASE
+                    WHEN fc.proposed IS NOT NULL THEN
+                        ROUND(COALESCE(CAST(fc.proposed AS DECIMAL(20,6)), 0))
+                        - ROUND(COALESCE(CAST(mse.min_stock AS DECIMAL(20,6)), 0))
+                    ELSE 0
+                END
+            ) AS formula_ms_diff_qty_total,
+            SUM(
+                CASE
+                    WHEN fc.proposed IS NOT NULL
+                        AND ${PURCHASE_SQL_PRICE_NUM} IS NOT NULL
+                        AND ${PURCHASE_SQL_PRICE_NUM} > 0
+                    THEN (
+                        ROUND(COALESCE(CAST(fc.proposed AS DECIMAL(20,6)), 0))
+                        - ROUND(COALESCE(CAST(mse.min_stock AS DECIMAL(20,6)), 0))
+                    ) * ${PURCHASE_SQL_PRICE_NUM}
+                    ELSE 0
+                END
+            ) AS formula_ms_diff_sum_total
         ${fromJoin}
         WHERE ${frag.whereSql}`;
 }
@@ -616,6 +726,8 @@ function mapPurchaseColumnTotalsRow(r) {
         min_stock_value_rub: Number(row.min_stock_value_rub || 0),
         formula_proposed_value_rub: Number(row.formula_proposed_value_rub || 0),
         positions_without_buy_price: Number(row.positions_without_buy_price || 0),
+        formula_ms_diff_qty: Number(row.formula_ms_diff_qty_total || 0),
+        formula_ms_diff_sum: Number(row.formula_ms_diff_sum_total || 0),
         ...purchaseMsFormulaDiffTotalsFromRow(row),
     };
 }
@@ -628,6 +740,18 @@ function purchaseRoundedStockQty(v) {
 function purchaseMsFormulaValuesDiffer(msRaw, formulaRaw) {
     if (formulaRaw == null) return false;
     return purchaseRoundedStockQty(msRaw) !== purchaseRoundedStockQty(formulaRaw);
+}
+
+function computeFormulaMsDiffQty(d) {
+    const fp = parsePurchaseNumOrNull(d && d.formula_proposed_min_stock);
+    if (fp == null) return null;
+    return purchaseRoundedStockQty(fp) - purchaseRoundedStockQty(d.min_stock);
+}
+
+function computeFormulaMsDiffSum(d) {
+    const qty = computeFormulaMsDiffQty(d);
+    if (qty == null) return null;
+    return purchaseLineValueRub(qty, d.buy_price);
 }
 
 function purchaseMsFormulaDiffTotalsFromRow(row) {
@@ -693,6 +817,8 @@ function sumPurchaseColumnTotalsFromItems(items) {
     let withoutPrice = 0;
     let msFormulaDiff = 0;
     let msFormulaWithProposed = 0;
+    let formulaMsDiffQty = 0;
+    let formulaMsDiffSum = 0;
     for (const d of items || []) {
         positions += 1;
         const price = parsePurchaseBuyPriceRub(d.buy_price);
@@ -715,6 +841,10 @@ function sumPurchaseColumnTotalsFromItems(items) {
         const needQty = Number(d.to_purchase_qty || 0);
         toPurchase += needQty;
         purchaseSum += purchaseLineValueRub(needQty, d.buy_price);
+        const diffQty = computeFormulaMsDiffQty(d);
+        if (diffQty != null) formulaMsDiffQty += diffQty;
+        const diffSum = computeFormulaMsDiffSum(d);
+        if (diffSum != null) formulaMsDiffSum += diffSum;
     }
     return {
         positions_count: positions,
@@ -728,6 +858,8 @@ function sumPurchaseColumnTotalsFromItems(items) {
         min_stock_value_rub: minStockRub,
         formula_proposed_value_rub: formulaRub,
         positions_without_buy_price: withoutPrice,
+        formula_ms_diff_qty: formulaMsDiffQty,
+        formula_ms_diff_sum: formulaMsDiffSum,
         ...purchaseMsFormulaDiffTotalsFromCounts(positions, msFormulaDiff, msFormulaWithProposed),
     };
 }
@@ -760,6 +892,10 @@ function purchaseItemSortValue(d, sortKey) {
             return Number(d.stock || 0);
         case 'formula_proposed_min_stock':
             return parsePurchaseNumOrNull(d.formula_proposed_min_stock);
+        case 'formula_ms_diff_qty':
+            return computeFormulaMsDiffQty(d);
+        case 'formula_ms_diff_sum':
+            return computeFormulaMsDiffSum(d);
         case 'in_transit':
             return parsePurchaseNumOrNull(d.in_transit);
         case 'is_archived':
@@ -1921,6 +2057,8 @@ function attachPurchaseNeedFields(items) {
         d.purchase_target_stock = purchaseTargetStock(d);
         d.to_purchase_qty = computePurchaseNeedQty(d);
         d.purchase_sum = purchaseLineValueRub(d.to_purchase_qty, d.buy_price);
+        d.formula_ms_diff_qty = computeFormulaMsDiffQty(d);
+        d.formula_ms_diff_sum = computeFormulaMsDiffSum(d);
     }
 }
 
