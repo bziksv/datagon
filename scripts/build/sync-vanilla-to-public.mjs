@@ -149,6 +149,7 @@ const publishNames = [
   'doc-screenshots/moysklad-sample.html',
   'doc-screenshots/settings-sample.html',
   'datagon-vanilla.js',
+  'datagon-legal.js',
 ];
 
 for (const name of publishNames) {

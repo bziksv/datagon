@@ -100,6 +100,7 @@ Hard refresh browser cache after deploy:
   - В логе при старте локально должна быть строка: `[AUTO SYNC] scheduler ВЫКЛЮЧЕН …`.
 - **`DATAGON_STARTUP_DEFER_MS`** — отсрочка тяжёлых фоновых задач после старта (default 60000 мс).
 - **`MS_TOKEN`** (или поле в `config.js`) — не коммитьте в публичный git; на сервере используйте `.env`, переменные systemd/pm2 или секрет-хранилище.
+- **Юридические страницы** (`/legal/privacy.html`, `/legal/cookies.html`, `/legal/recommendation.html`) отдаются **без авторизации**. Исходники ODT — `rules/`; пересборка HTML: `npm run build:legal-html`. Cookie-баннер (как на titlo.ru) показывается **только неавторизованным**; ссылки на политики — в подвале панели и на `/login.html`.
 - **Пароль БД** — только на машине приложения; в `deploy/` nginx **не** хранит креды MySQL для Node (MySQL обычно на `127.0.0.1` или внутренней сети).
 - После смены env — **рестарт** процесса Node, иначе `process.env` останется старым.
 

@@ -2310,7 +2310,7 @@ initDB().then(async () => {
     // а тяжёлый post-init/фон не должен держать пользователя на «белой» странице.
     const publicDirEarly = path.join(__dirname, 'public');
     app.use('/static', express.static(path.join(publicDirEarly, 'static'), { maxAge: '1d', fallthrough: true }));
-    app.get(['/login.html', '/favicon.svg', '/favicon.ico', '/datagon-vanilla.js'], (req, res, next) => {
+    app.get(['/login.html', '/favicon.svg', '/favicon.ico', '/datagon-vanilla.js', '/datagon-legal.js'], (req, res, next) => {
         if (req.method !== 'GET' && req.method !== 'HEAD') return next();
         const base = req.path === '/favicon.ico' ? 'favicon.svg' : req.path.replace(/^\//, '');
         const file = path.join(publicDirEarly, base);
@@ -2864,7 +2864,7 @@ initDB().then(async () => {
     const publicDir = path.join(__dirname, 'public');
     /** CSS/JS/favicon — без проверки сессии и без ожидания пула MySQL (иначе «белая» страница при занятом пуле). */
     app.use('/static', express.static(path.join(publicDir, 'static'), { maxAge: '1d', fallthrough: true }));
-    app.get(['/datagon-vanilla.js', '/favicon.svg', '/favicon.ico'], (req, res, next) => {
+    app.get(['/datagon-vanilla.js', '/datagon-legal.js', '/favicon.svg', '/favicon.ico'], (req, res, next) => {
         if (req.method !== 'GET' && req.method !== 'HEAD') return next();
         const base = req.path === '/favicon.ico' ? 'favicon.svg' : req.path.replace(/^\//, '');
         const file = path.join(publicDir, base);
@@ -2882,6 +2882,10 @@ initDB().then(async () => {
             return next();
         }
         if (raw.startsWith('/docs') || raw.startsWith('/architectui-react-pro')) {
+            return next();
+        }
+        /** Юридические страницы (политики) — без авторизации. */
+        if (raw.startsWith('/legal/')) {
             return next();
         }
         const leaf = raw.slice(raw.lastIndexOf('/') + 1).toLowerCase();

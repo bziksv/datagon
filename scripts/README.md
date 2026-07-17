@@ -3,7 +3,7 @@
 | Папка | Назначение |
 |-------|------------|
 | `docs-docusaurus/e2e/` + `playwright.config.mjs` | Съёмка PNG для справки (`npm run docs:capture-screenshots` из корня) |
-| `scripts/build/` | Сборка vanilla HTML (`assemble-vanilla-pages.mjs`, `sync-vanilla-to-public.mjs`) |
+| `scripts/build/` | Сборка vanilla HTML (`assemble-vanilla-pages.mjs`, `sync-vanilla-to-public.mjs`); юридические страницы из ODT: `odt-policies-to-legal-html.mjs` → `npm run build:legal-html` (`rules/*.odt` → `public/legal/*.html`) |
 | `scripts/qa/` | Smoke-проверки Playwright и HTTP API (`api-http-smoke.mjs`); логика матрицы Huckster без API (`huckster-matrix-build-verify.mjs`) |
 | `scripts/check-panel-notify-static.mjs` | Статика: в `public/*.html` есть `datagon-vanilla.js` + `datagon-vanilla-shell`, счётчик `data-dg-notify-start`. Запуск: `npm run check:panel-notify-static` (после `npm run sync:vanilla-public`) |
 | `scripts/test-page-fetch-proxy-classify.js` | Ручная отладка: загрузка страницы с учётом прокси и эвристики классификации карточки (`node scripts/test-page-fetch-proxy-classify.js`, см. файл) |
