@@ -205,6 +205,8 @@ Body: `{ "task": "myproducts" | "moysklad" | "ms_orders" | "marketplaces" | "huc
 
 Ответ `{ "success": true, "queued": true|false, "skip_reason": null|"already_running"|"already_queued"|"invalid_task", "task", "queue", "runner_active", "running_tasks" }`. Поле **`running_tasks`** — массив строк `task_type`, у которых в этот момент есть незавершённая запись в `auto_sync_runs` (**что реально крутится в воркере**); удобно показывать в UI вместе с `runner_active`. Поле **`queued: false`** означает, что задача **не** добавлена в очередь (дубликат или такой тип уже выполняется); в этом случае в **`skip_reason`** — причина. Успешная постановка не гарантирует мгновенный старт: если в этот момент уже крутится **другая** задача очереди, исполнение отложится до её завершения (сервер сам вызовет обработчик снова). На `/settings.html` тот же ответ показывается **плашкой** в карточке «Автосинхронизация по расписанию» (текст очереди, занятость воркера, время ответа), чтобы не гадать, «уехало» ли нажатие.
 
+**Локально:** при `DATAGON_AUTO_SYNC_SCHEDULER=off` (`npm run dev:local`) этот endpoint **работает** (ручной запуск), а тики расписания в `startAutoSyncScheduler` — нет. На проде scheduler включён. См. [Деплой](/docs/deploy).
+
 ### GET `/api/processes/min-stock-export-errors`
 
 Ошибки выгрузки неснижаемого за интервал запуска (`ms_min_stock_export_log`). Query: `from`, `to` (ISO), `limit` (по умолчанию 200). Используется модалкой «Лог» на `/processes.html` для `task_type=min_stock_export`.
