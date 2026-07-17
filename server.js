@@ -17,6 +17,16 @@ const postInitTasks = [];
 /** Тяжёлые фоновые задачи после listen — не сразу, чтобы HTML/API успели ответить (пул MySQL 10 conn). */
 const STARTUP_DEFER_MS = Math.max(0, Number(process.env.DATAGON_STARTUP_DEFER_MS || 60000));
 
+/**
+ * DATAGON_AUTO_SYNC_SCHEDULER=off — режим «только по кнопке» для локальной разработки:
+ * не запускать расписание автосинков и не трогать чужие running-записи в общей БД
+ * (closeStale/closeAncient). Ручной «Запустить сейчас» (POST /api/settings/auto-sync-run)
+ * продолжает работать. На проде переменную не задавать (по умолчанию scheduler включён).
+ */
+const AUTO_SYNC_SCHEDULER_DISABLED = ['0', 'off', 'false', 'no'].includes(
+    String(process.env.DATAGON_AUTO_SYNC_SCHEDULER || '').trim().toLowerCase()
+);
+
 function promiseWithTimeout(promise, ms, label) {
     const tag = label || 'timeout';
     let timer;
@@ -2289,8 +2299,12 @@ initDB().then(async () => {
      * Сразу после подключения к БД — закрыть «зомби» running из прошлого процесса.
      * Нельзя откладывать на DATAGON_STARTUP_DEFER_MS: иначе ручной «Запустить сейчас»
      * в первую минуту после старта получает interrupted (см. #190: Queue start → через 60 с closeStale).
+     * При DATAGON_AUTO_SYNC_SCHEDULER=off пропускаем: локальный процесс с общей БД
+     * не должен помечать «прервано» задачи, которые реально выполняет прод.
      */
-    await closeStaleAutoSyncRunsOnStartup();
+    if (!AUTO_SYNC_SCHEDULER_DISABLED) {
+        await closeStaleAutoSyncRunsOnStartup();
+    }
 
     // Слушаем порт сразу после БД: регистрация роутов ниже может занимать секунды,
     // а тяжёлый post-init/фон не должен держать пользователя на «белой» странице.
@@ -3024,7 +3038,11 @@ initDB().then(async () => {
             closeAncientRunningAutoSyncRuns().catch(() => {});
         }, 6 * 60 * 60 * 1000);
     };
-    if (STARTUP_DEFER_MS > 0) {
+    if (AUTO_SYNC_SCHEDULER_DISABLED) {
+        console.log(
+            '[AUTO SYNC] scheduler ВЫКЛЮЧЕН (DATAGON_AUTO_SYNC_SCHEDULER=off) — задачи только вручную («Запустить сейчас»)'
+        );
+    } else if (STARTUP_DEFER_MS > 0) {
         setTimeout(bootAutoSync, STARTUP_DEFER_MS);
     } else {
         bootAutoSync();
