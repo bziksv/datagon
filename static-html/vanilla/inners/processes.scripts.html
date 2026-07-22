@@ -217,7 +217,8 @@
         (users || []).forEach(function (u) {
           var o = document.createElement("option");
           o.value = String(u.id);
-          o.textContent = (u.full_name || u.username || "#" + u.id).trim();
+          var base = (u.full_name || u.username || "#" + u.id).trim();
+          o.textContent = Number(u.is_archived || 0) === 1 ? base + " (архивный)" : base;
           sel.appendChild(o);
         });
         if (prev && [].some.call(sel.options, function (x) { return x.value === prev; })) sel.value = prev;
@@ -260,7 +261,9 @@
           badge.className = "badge bg-light text-dark border dg-act-badge";
           badge.textContent = kindTitle(r.kind);
           var who = document.createElement("strong");
-          who.textContent = (r.full_name || r.username || "Пользователь #" + r.user_id).trim();
+          var whoBase = (r.full_name || r.username || "Пользователь #" + r.user_id).trim();
+          who.textContent =
+            Number(r.is_archived || 0) === 1 ? whoBase + " (архивный)" : whoBase;
           var when = document.createElement("span");
           when.className = "text-muted small ms-auto";
           when.textContent = fmtDateTime(r.created_at);
@@ -276,6 +279,9 @@
               var o = JSON.parse(r.detail);
               if (o && typeof o === "object") {
                 if (o.action === "user_create") {
+                  if (o.username) bits.push("логин: «" + String(o.username) + "»");
+                  if (o.full_name) bits.push(String(o.full_name));
+                } else if (o.action === "user_archive" || o.action === "user_unarchive") {
                   if (o.username) bits.push("логин: «" + String(o.username) + "»");
                   if (o.full_name) bits.push(String(o.full_name));
                 } else if (o.action === "user_delete") {

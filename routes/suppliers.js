@@ -407,6 +407,7 @@ function mapSupplierRow(r, salesRankCtx) {
         supplier_name: r.supplier_name || r.supplier_key,
         assigned_user_id: r.assigned_user_id != null ? Number(r.assigned_user_id) : null,
         assigned_user_name: r.assigned_user_name || '',
+        assigned_user_is_archived: Number(r.assigned_user_is_archived || 0) === 1 ? 1 : 0,
         comment: r.comment || '',
         min_purchase_sum: r.min_purchase_sum != null ? Number(r.min_purchase_sum) : null,
         warehouse_fill_pct: r.warehouse_fill_pct != null ? Number(r.warehouse_fill_pct) : null,
@@ -470,27 +471,35 @@ module.exports = function suppliersRouterFactory(db, appSettings = {}) {
                 const formulaFp = buildFormulaFingerprint(appSettings);
                 const aggSql = buildSupplierAggregatesSubquery(formulaFp, dataRev);
                 [rows] = await db.query(
-                    `SELECT DISTINCT u.id, u.username, u.full_name
+                    `SELECT DISTINCT u.id, u.username, u.full_name, COALESCE(u.is_archived, 0) AS is_archived
                        FROM (${aggSql}) agg
                       INNER JOIN dg_supplier_settings ss ON ss.supplier_key = agg.supplier_key
                       INNER JOIN users u ON u.id = ss.assigned_user_id
                       WHERE ss.assigned_user_id IS NOT NULL
-                      ORDER BY COALESCE(NULLIF(TRIM(u.full_name), ''), u.username) ASC`,
+                      ORDER BY COALESCE(u.is_archived, 0) ASC,
+                               COALESCE(NULLIF(TRIM(u.full_name), ''), u.username) ASC`,
                 );
             } else {
                 [rows] = await db.query(
-                    `SELECT id, username, full_name
+                    `SELECT id, username, full_name, COALESCE(is_archived, 0) AS is_archived
                        FROM users
+                      WHERE COALESCE(is_archived, 0) = 0
                       ORDER BY COALESCE(NULLIF(TRIM(full_name), ''), username) ASC`,
                 );
             }
             res.json({
-                data: (rows || []).map((u) => ({
-                    id: u.id,
-                    username: u.username,
-                    full_name: u.full_name || '',
-                    label: String(u.full_name || u.username || '').trim() || String(u.username),
-                })),
+                data: (rows || []).map((u) => {
+                    const base =
+                        String(u.full_name || u.username || '').trim() || String(u.username || '');
+                    const archived = Number(u.is_archived) === 1;
+                    return {
+                        id: u.id,
+                        username: u.username,
+                        full_name: u.full_name || '',
+                        is_archived: archived ? 1 : 0,
+                        label: archived ? `${base} (архивный)` : base,
+                    };
+                }),
             });
         } catch (e) {
             console.error('[suppliers] assignees', e);
@@ -588,7 +597,12 @@ module.exports = function suppliersRouterFactory(db, appSettings = {}) {
                     ss.auto_mailing_enabled,
                     ss.mailing_text,
                     ss.updated_at AS settings_updated_at,
-                    COALESCE(NULLIF(TRIM(u.full_name), ''), u.username, '') AS assigned_user_name,
+                    COALESCE(NULLIF(TRIM(u.full_name), ''), u.username, '') AS assigned_user_name_base,
+                    COALESCE(u.is_archived, 0) AS assigned_user_is_archived,
+                    CONCAT(
+                        COALESCE(NULLIF(TRIM(u.full_name), ''), u.username, ''),
+                        CASE WHEN COALESCE(u.is_archived, 0) = 1 THEN ' (архивный)' ELSE '' END
+                    ) AS assigned_user_name,
                     ms_last.last_ms_order_at,
                     ms_last.last_ms_order_name,
                     ms_last.last_ms_order_by,
@@ -669,7 +683,10 @@ module.exports = function suppliersRouterFactory(db, appSettings = {}) {
                     COALESCE(ss.assigned_user_id, 0) AS assignee_id,
                     CASE
                         WHEN ss.assigned_user_id IS NULL THEN '(не назначен)'
-                        ELSE COALESCE(NULLIF(TRIM(u.full_name), ''), u.username, CONCAT('ID ', ss.assigned_user_id))
+                        ELSE CONCAT(
+                            COALESCE(NULLIF(TRIM(u.full_name), ''), u.username, CONCAT('ID ', ss.assigned_user_id)),
+                            CASE WHEN COALESCE(u.is_archived, 0) = 1 THEN ' (архивный)' ELSE '' END
+                        )
                     END AS assignee_label,
                     COUNT(*) AS suppliers_count,
                     SUM(agg.products_total) AS products_total,
@@ -938,8 +955,16 @@ module.exports = function suppliersRouterFactory(db, appSettings = {}) {
                     if (!Number.isFinite(id) || id < 1) {
                         return res.status(400).json({ error: 'Некорректный сотрудник' });
                     }
-                    const [u] = await db.query('SELECT id FROM users WHERE id = ? LIMIT 1', [id]);
+                    const [u] = await db.query(
+                        'SELECT id, COALESCE(is_archived, 0) AS is_archived FROM users WHERE id = ? LIMIT 1',
+                        [id]
+                    );
                     if (!u.length) return res.status(400).json({ error: 'Пользователь не найден' });
+                    if (Number(u[0].is_archived) === 1) {
+                        return res.status(400).json({
+                            error: 'Нельзя назначить архивного пользователя. Сначала восстановите его в настройках.',
+                        });
+                    }
                     fields.assigned_user_id = id;
                 }
             }
@@ -1000,7 +1025,12 @@ module.exports = function suppliersRouterFactory(db, appSettings = {}) {
             }
 
             const [[row]] = await db.query(
-                `SELECT ss.*, COALESCE(NULLIF(TRIM(u.full_name), ''), u.username, '') AS assigned_user_name
+                `SELECT ss.*,
+                        COALESCE(u.is_archived, 0) AS assigned_user_is_archived,
+                        CONCAT(
+                            COALESCE(NULLIF(TRIM(u.full_name), ''), u.username, ''),
+                            CASE WHEN COALESCE(u.is_archived, 0) = 1 THEN ' (архивный)' ELSE '' END
+                        ) AS assigned_user_name
                    FROM dg_supplier_settings ss
                    LEFT JOIN users u ON u.id = ss.assigned_user_id
                   WHERE ss.supplier_key = ?

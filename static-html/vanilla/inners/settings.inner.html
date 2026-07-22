@@ -23,11 +23,23 @@
             </div>
             <div class="card-body">
               <div class="datagon-users-panel">
-                <p class="small text-muted">Admin может выдавать отдельное право: создание новых пользователей.</p>
+                <p class="small text-muted">
+                  Admin может выдавать отдельное право: создание новых пользователей.
+                  Вместо удаления используйте <strong>архив</strong>: назначения (поставщики и т.п.) сохраняются,
+                  вход в панель для архивного пользователя закрыт.
+                </p>
                 <div class="row g-2 mb-2">
-                  <div class="col-md-6">
+                  <div class="col-md-5">
                     <label class="form-label" for="dg-set-users-search">Умный поиск</label>
                     <input type="text" class="form-control" id="dg-set-users-search" placeholder='id:12 username:admin или просто текст' autocomplete="off" />
+                  </div>
+                  <div class="col-md-2">
+                    <label class="form-label" for="dg-set-users-filter-status">Статус</label>
+                    <select class="form-select" id="dg-set-users-filter-status">
+                      <option value="active" selected>Активные</option>
+                      <option value="archived">Архив</option>
+                      <option value="all">Все</option>
+                    </select>
                   </div>
                   <div class="col-md-2">
                     <label class="form-label" for="dg-set-users-filter-can">Право создавать</label>
@@ -37,7 +49,7 @@
                       <option value="0">Запрещено</option>
                     </select>
                   </div>
-                  <div class="col-md-2">
+                  <div class="col-md-1">
                     <label class="form-label" for="dg-set-users-sess-min">Сессий от</label>
                     <input
                       type="number"
@@ -105,6 +117,7 @@
                         <th>ID</th>
                         <th>Имя Фамилия</th>
                         <th>Логин</th>
+                        <th>Статус</th>
                         <th>Специальность</th>
                         <th>Создание пользователей</th>
                         <th

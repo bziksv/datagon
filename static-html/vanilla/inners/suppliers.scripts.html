@@ -1877,25 +1877,83 @@
         });
       }
 
+      function assigneeBaseLabel(nameOrLabel) {
+        return String(nameOrLabel || "")
+          .trim()
+          .replace(/\s*\(архивный\)\s*$/i, "");
+      }
+
+      function assigneeOptionLabel(nameOrLabel, archived) {
+        var base = assigneeBaseLabel(nameOrLabel);
+        if (!base) return archived ? "(архивный)" : "—";
+        return archived ? base + " (архивный)" : base;
+      }
+
       function buildAssigneeSelect(row, selectedId) {
+        var archived = Number(row.assigned_user_is_archived || 0) === 1;
+        var wrap = document.createElement("div");
+        wrap.className = "dg-sp-assignee-wrap";
         var sel = document.createElement("select");
         sel.className = "form-select form-select-sm dg-sp-cell-input";
+        if (archived) sel.classList.add("dg-sp-assignee-archived");
         var opt0 = document.createElement("option");
         opt0.value = "";
         opt0.textContent = "—";
         sel.appendChild(opt0);
+        var seen = {};
         (state.assignees || []).forEach(function (u) {
           var o = document.createElement("option");
           o.value = String(u.id);
           o.textContent = u.label || u.username;
+          if (Number(u.is_archived || 0) === 1) o.disabled = true;
           if (selectedId != null && Number(selectedId) === Number(u.id)) o.selected = true;
           sel.appendChild(o);
+          seen[String(u.id)] = true;
         });
+        if (selectedId != null && !seen[String(selectedId)]) {
+          var oCur = document.createElement("option");
+          oCur.value = String(selectedId);
+          oCur.textContent = assigneeOptionLabel(
+            row.assigned_user_name || ("ID " + selectedId),
+            archived
+          );
+          oCur.selected = true;
+          sel.appendChild(oCur);
+        } else if (archived && selectedId != null && seen[String(selectedId)]) {
+          var optSel = sel.querySelector('option[value="' + String(selectedId) + '"]');
+          if (optSel) optSel.textContent = assigneeOptionLabel(optSel.textContent, true);
+        }
+        if (archived) {
+          sel.title =
+            "Сотрудник в архиве — вход закрыт; можно сменить на активного или снять назначение";
+        }
         sel.addEventListener("change", function () {
           var v = sel.value ? parseInt(sel.value, 10) : null;
           patchSupplier(row.supplier_key, { assigned_user_id: v })
             .then(function () {
               row.assigned_user_id = v;
+              if (v == null) {
+                row.assigned_user_name = "";
+                row.assigned_user_is_archived = 0;
+              } else {
+                var picked = null;
+                (state.assignees || []).some(function (u) {
+                  if (Number(u.id) === Number(v)) {
+                    picked = u;
+                    return true;
+                  }
+                  return false;
+                });
+                row.assigned_user_is_archived = picked && Number(picked.is_archived || 0) === 1 ? 1 : 0;
+                row.assigned_user_name = picked
+                  ? assigneeOptionLabel(picked.label || picked.username, row.assigned_user_is_archived === 1)
+                  : "";
+              }
+              var parent = wrap.parentNode;
+              if (parent) {
+                var next = buildAssigneeSelect(row, row.assigned_user_id);
+                parent.replaceChild(next, wrap);
+              }
               loadFilterAssignees();
               loadAnalytics();
               if (window.DatagonNotify && window.DatagonNotify.toast) {
@@ -1908,7 +1966,15 @@
               }
             });
         });
-        return sel;
+        wrap.appendChild(sel);
+        if (archived) {
+          var badge = document.createElement("span");
+          badge.className = "badge bg-secondary dg-sp-assignee-arch-badge";
+          badge.textContent = "арх.";
+          badge.title = "Архивный сотрудник";
+          wrap.appendChild(badge);
+        }
+        return wrap;
       }
 
       function bindEditableNumericInput(row, field, getVal, opts) {

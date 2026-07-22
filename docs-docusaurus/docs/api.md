@@ -102,7 +102,7 @@ Body:
 
 ### Прочие маршруты `routes/auth.js`
 
-Используются панелью и админкой (после входа): `GET /api/auth/me`, `GET /api/auth/sessions-overview`, `POST /api/auth/sync-session-cookie`, `POST /api/auth/logout`, CRUD пользователей (`GET/POST /api/auth/users`, `PUT/DELETE /api/auth/users/:id`, `PUT /api/auth/users/:id/permissions`, `POST /api/auth/users/:id/revoke-sessions`). **`GET /api/auth/users`** (список с сессиями) доступен **admin** и пользователям с флагом **`can_manage_users`** (остальные операции по пользователям по-прежнему в основном только admin — см. код `routes/auth.js`). Детали полей — в коде роутера.
+Используются панелью и админкой (после входа): `GET /api/auth/me`, `GET /api/auth/sessions-overview`, `POST /api/auth/sync-session-cookie`, `POST /api/auth/logout`, CRUD пользователей (`GET/POST /api/auth/users`, `PUT/DELETE /api/auth/users/:id`, `PUT /api/auth/users/:id/permissions`, `POST /api/auth/users/:id/revoke-sessions`, **`POST /api/auth/users/:id/archive`**, **`POST /api/auth/users/:id/unarchive`**). **`GET /api/auth/users`** (список с сессиями) доступен **admin** и пользователям с флагом **`can_manage_users`** (остальные операции по пользователям по-прежнему в основном только admin — см. код `routes/auth.js`). В списке пользователей есть поле **`is_archived`** (`0`/`1`). Архивный пользователь **не может войти** (`POST /api/auth/login` → 403) и его действующие сессии отзываются; назначения (например, сотрудник на поставщике) **сохраняются**, в UI помечаются суффиксом «(архивный)». Жёсткое `DELETE` лучше не использовать без нужды — предпочтителен архив. Детали полей — в коде роутера.
 
 Ответы `GET /api/auth/me` и `POST /api/auth/login` (успех) дополнительно содержат: `specialty_id`, `specialty_name`, `page_modes` — объект «ключ раздела» → `hidden` | `view` | `full` (см. `lib/datagonPageRegistry.js`), а также **`redirect_after_login`** — безопасный путь (`/…html`) для редиректа после входа: учитывается желаемый `then` только если страница не скрыта для пользователя; иначе — первая доступная страница или `/no-access.html`, если матрица закрыла всё (чтобы не зацикливать `/login.html` ↔ `/dashboard.html`). Для `GET /api/auth/me` можно передать query **`?then=/path.html`** (как на странице логина); для `POST /api/auth/login` — поле **`then`** в JSON-теле. При создании/редактировании пользователя можно передать `specialty_id` в теле `POST /api/auth/users` и `PUT /api/auth/users/:id`.
 
@@ -1589,9 +1589,11 @@ Query: `search`, `assigned_user` (опционально: пусто — все;
 
 ### GET `/api/suppliers/assignees`
 
-Список пользователей `{ id, username, full_name, label }` для select «Привязан сотрудник» в таблице.
+Список пользователей `{ id, username, full_name, label, is_archived }` для select «Привязан сотрудник» в таблице.
 
-Query: `scope` — `all` (по умолчанию, все пользователи) или `assigned` / `in_use` (только те, у кого уже есть привязка к поставщику из каталога страницы — для фильтра на `/suppliers.html`).
+Query: `scope` — `all` (по умолчанию, **только активные** пользователи) или `assigned` / `in_use` (уже привязанные к поставщику — для фильтра; архивные тоже попадают в список с `label` «… (архивный)»). Назначить нового архивного нельзя (`PATCH` → 400).
+
+В списке поставщиков `assigned_user_name` для архивного сотрудника тоже с суффиксом « (архивный)».
 
 ### PATCH `/api/suppliers/:supplierKey`
 

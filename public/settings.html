@@ -868,11 +868,23 @@
             </div>
             <div class="card-body">
               <div class="datagon-users-panel">
-                <p class="small text-muted">Admin может выдавать отдельное право: создание новых пользователей.</p>
+                <p class="small text-muted">
+                  Admin может выдавать отдельное право: создание новых пользователей.
+                  Вместо удаления используйте <strong>архив</strong>: назначения (поставщики и т.п.) сохраняются,
+                  вход в панель для архивного пользователя закрыт.
+                </p>
                 <div class="row g-2 mb-2">
-                  <div class="col-md-6">
+                  <div class="col-md-5">
                     <label class="form-label" for="dg-set-users-search">Умный поиск</label>
                     <input type="text" class="form-control" id="dg-set-users-search" placeholder='id:12 username:admin или просто текст' autocomplete="off" />
+                  </div>
+                  <div class="col-md-2">
+                    <label class="form-label" for="dg-set-users-filter-status">Статус</label>
+                    <select class="form-select" id="dg-set-users-filter-status">
+                      <option value="active" selected>Активные</option>
+                      <option value="archived">Архив</option>
+                      <option value="all">Все</option>
+                    </select>
                   </div>
                   <div class="col-md-2">
                     <label class="form-label" for="dg-set-users-filter-can">Право создавать</label>
@@ -882,7 +894,7 @@
                       <option value="0">Запрещено</option>
                     </select>
                   </div>
-                  <div class="col-md-2">
+                  <div class="col-md-1">
                     <label class="form-label" for="dg-set-users-sess-min">Сессий от</label>
                     <input
                       type="number"
@@ -950,6 +962,7 @@
                         <th>ID</th>
                         <th>Имя Фамилия</th>
                         <th>Логин</th>
+                        <th>Статус</th>
                         <th>Специальность</th>
                         <th>Создание пользователей</th>
                         <th
@@ -3582,7 +3595,7 @@
         var can = canManageUsers();
         var umiShell = isSettingsUsersManagerShell();
         syncSpecAdminVisibility();
-        ["dg-set-users-search", "dg-set-users-filter-can", "dg-set-users-sess-min", "dg-set-users-sess-max"].forEach(function (id) {
+        ["dg-set-users-search", "dg-set-users-filter-status", "dg-set-users-filter-can", "dg-set-users-sess-min", "dg-set-users-sess-max"].forEach(function (id) {
           document.getElementById(id).disabled = !adm && !umiShell;
         });
         ["dg-set-new-fullname", "dg-set-new-username", "dg-set-new-specialty", "dg-set-new-password", "dg-set-new-pw-toggle", "dg-set-new-pw-copy", "dg-set-btn-random-new-pw", "dg-set-btn-add-user"].forEach(function (id) {
@@ -3621,10 +3634,14 @@
         var needle = String(document.getElementById("dg-set-users-search").value || "")
           .trim()
           .toLowerCase();
+        var statusF = (document.getElementById("dg-set-users-filter-status") || {}).value || "active";
         var canF = document.getElementById("dg-set-users-filter-can").value;
         var smin = document.getElementById("dg-set-users-sess-min").value;
         var smax = document.getElementById("dg-set-users-sess-max").value;
         return users.filter(function (u) {
+          var archived = Number(u.is_archived || 0) === 1;
+          if (statusF === "active" && archived) return false;
+          if (statusF === "archived" && !archived) return false;
           var haystack = (
             String(u.id || "") +
             " " +
@@ -3632,7 +3649,9 @@
             " " +
             String(u.username || "") +
             " " +
-            String(u.specialty_name || "")
+            String(u.specialty_name || "") +
+            " " +
+            (archived ? "архив архивный" : "активный")
           ).toLowerCase();
           if (needle && haystack.indexOf(needle) === -1) return false;
           var canManage = u.username === "admin" || Number(u.can_manage_users || 0) === 1 ? "1" : "0";
@@ -3653,7 +3672,7 @@
         if (usersLoadForbidden) {
           var trf = document.createElement("tr");
           var tdf = document.createElement("td");
-          tdf.colSpan = 9;
+          tdf.colSpan = 10;
           tdf.className = "text-muted";
           tdf.textContent = "Список пользователей доступен только пользователю admin";
           trf.appendChild(tdf);
@@ -3664,7 +3683,7 @@
         if (!list.length) {
           var tr0 = document.createElement("tr");
           var td0 = document.createElement("td");
-          td0.colSpan = 9;
+          td0.colSpan = 10;
           td0.className = "text-muted";
           td0.textContent = loadingUsers ? "Загрузка..." : "Пользователи не найдены";
           tr0.appendChild(td0);
@@ -3672,7 +3691,9 @@
           return;
         }
         list.forEach(function (u) {
+          var archived = Number(u.is_archived || 0) === 1;
           var tr = document.createElement("tr");
+          if (archived) tr.className = "table-secondary text-muted";
           [["id"], ["full_name", "username"], ["username"]].forEach(function (keys, idx) {
             var td = document.createElement("td");
             if (idx === 1) {
@@ -3695,11 +3716,18 @@
             }
             tr.appendChild(td);
           });
+          var tdStatus = document.createElement("td");
+          tdStatus.className = "text-nowrap";
+          var badge = document.createElement("span");
+          badge.className = archived ? "badge bg-secondary" : "badge bg-success";
+          badge.textContent = archived ? "Архивный" : "Активный";
+          tdStatus.appendChild(badge);
+          tr.appendChild(tdStatus);
           var tdSpec = document.createElement("td");
           tdSpec.className = "text-nowrap";
           var selRow = document.createElement("select");
           selRow.className = "form-select form-select-sm";
-          selRow.disabled = u.username === "admin" || !isAdmin();
+          selRow.disabled = u.username === "admin" || !isAdmin() || archived;
           specList.forEach(function (sp) {
             var o = document.createElement("option");
             o.value = String(sp.id);
@@ -3708,7 +3736,7 @@
             selRow.appendChild(o);
           });
           selRow.addEventListener("change", function () {
-            if (!isAdmin() || u.username === "admin") return;
+            if (!isAdmin() || u.username === "admin" || archived) return;
             var sid = parseInt(selRow.value, 10);
             if (!Number.isFinite(sid)) return;
             fetch("/api/auth/users/" + u.id, {
@@ -3743,9 +3771,9 @@
           var cb = document.createElement("input");
           cb.type = "checkbox";
           cb.checked = u.username === "admin" || Number(u.can_manage_users || 0) === 1;
-          cb.disabled = u.username === "admin" || !isAdmin();
+          cb.disabled = u.username === "admin" || !isAdmin() || archived;
           cb.addEventListener("change", function () {
-            if (!isAdmin()) return;
+            if (!isAdmin() || archived) return;
             updatePermission(u, cb.checked);
           });
           var spm = document.createElement("span");
@@ -3784,38 +3812,71 @@
           var tdAct = document.createElement("td");
           tdAct.className = "text-nowrap datagon-users-row-actions";
           if (isAdmin()) {
-            var bLogin = document.createElement("button");
-            bLogin.type = "button";
-            bLogin.className = "btn btn-info btn-sm me-1 mb-1";
-            bLogin.setAttribute("data-dg-no-activity", "1");
-            bLogin.textContent = "Войти как";
-            bLogin.addEventListener("click", function () {
-              loginAsUser(u.username);
-            });
+            if (!archived) {
+              var bLogin = document.createElement("button");
+              bLogin.type = "button";
+              bLogin.className = "btn btn-info btn-sm me-1 mb-1";
+              bLogin.setAttribute("data-dg-no-activity", "1");
+              bLogin.textContent = "Войти как";
+              bLogin.addEventListener("click", function () {
+                loginAsUser(u.username);
+              });
+              tdAct.appendChild(bLogin);
+            }
             var bEdit = document.createElement("button");
             bEdit.type = "button";
             bEdit.className = "btn btn-secondary btn-sm me-1 mb-1";
             bEdit.setAttribute("data-dg-no-activity", "1");
             bEdit.textContent = "Редактировать";
             bEdit.addEventListener("click", function () {
-              openEditUser({ id: u.id, username: u.username, full_name: u.full_name || "" });
+              openEditUser({
+                id: u.id,
+                username: u.username,
+                full_name: u.full_name || "",
+                specialty_id: u.specialty_id,
+              });
             });
-            var bRev = document.createElement("button");
-            bRev.type = "button";
-            bRev.className = "btn btn-warning btn-sm me-1 mb-1";
-            bRev.setAttribute("data-dg-no-activity", "1");
-            bRev.textContent = "Сбросить сессии";
-            bRev.addEventListener("click", function () {
-              revokeSessions(u);
-            });
-            tdAct.appendChild(bLogin);
             tdAct.appendChild(bEdit);
-            tdAct.appendChild(bRev);
+            if (!archived) {
+              var bRev = document.createElement("button");
+              bRev.type = "button";
+              bRev.className = "btn btn-warning btn-sm me-1 mb-1";
+              bRev.setAttribute("data-dg-no-activity", "1");
+              bRev.textContent = "Сбросить сессии";
+              bRev.addEventListener("click", function () {
+                revokeSessions(u);
+              });
+              tdAct.appendChild(bRev);
+            }
             if (u.username !== "admin") {
+              if (archived) {
+                var bUn = document.createElement("button");
+                bUn.type = "button";
+                bUn.className = "btn btn-success btn-sm me-1 mb-1";
+                bUn.setAttribute("data-dg-no-activity", "1");
+                bUn.setAttribute("data-dg-notify-start", "Восстанавливаем пользователя из архива…");
+                bUn.textContent = "Из архива";
+                bUn.addEventListener("click", function () {
+                  unarchiveUser(u);
+                });
+                tdAct.appendChild(bUn);
+              } else {
+                var bArch = document.createElement("button");
+                bArch.type = "button";
+                bArch.className = "btn btn-outline-secondary btn-sm me-1 mb-1";
+                bArch.setAttribute("data-dg-no-activity", "1");
+                bArch.setAttribute("data-dg-notify-start", "Переносим пользователя в архив…");
+                bArch.textContent = "В архив";
+                bArch.addEventListener("click", function () {
+                  archiveUser(u);
+                });
+                tdAct.appendChild(bArch);
+              }
               var bDel = document.createElement("button");
               bDel.type = "button";
-              bDel.className = "btn btn-danger btn-sm mb-1";
+              bDel.className = "btn btn-outline-danger btn-sm mb-1";
               bDel.setAttribute("data-dg-no-activity", "1");
+              bDel.title = "Жёсткое удаление. Предпочтительнее архив — назначения не ломаются.";
               bDel.textContent = "Удалить";
               bDel.addEventListener("click", function () {
                 deleteUser(u);
@@ -3824,7 +3885,7 @@
             } else {
               var spx = document.createElement("span");
               spx.className = "small text-muted";
-              spx.textContent = "Удаление отключено";
+              spx.textContent = "Архив/удаление отключены";
               tdAct.appendChild(spx);
             }
           } else {
@@ -4800,8 +4861,100 @@
           });
       }
 
+      function archiveUser(user) {
+        if (
+          !window.confirm(
+            'Перенести пользователя "' +
+              user.username +
+              '" в архив?\n\nВход будет запрещён, назначения (поставщики и др.) сохранятся.'
+          )
+        ) {
+          return;
+        }
+        var run = function () {
+          return fetch("/api/auth/users/" + user.id + "/archive", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: authHeaders(false),
+          })
+            .then(function (r) {
+              return r.json().then(function (j) {
+                return { r: r, j: j };
+              });
+            })
+            .then(function (x) {
+              if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Не удалось архивировать");
+              if (window.DatagonNotify && window.DatagonNotify.toast) {
+                window.DatagonNotify.toast({ type: "success", message: "Пользователь в архиве" });
+              } else {
+                alert("Пользователь в архиве");
+              }
+              loadUsers();
+            })
+            .catch(function (e) {
+              if (window.DatagonNotify && window.DatagonNotify.toast) {
+                window.DatagonNotify.toast({ type: "danger", message: e.message || "Ошибка архивации" });
+              } else {
+                alert(e.message || "Ошибка архивации");
+              }
+            });
+        };
+        if (window.DatagonNotify && window.DatagonNotify.busyRun) {
+          var btn = document.activeElement;
+          window.DatagonNotify.busyRun(btn && btn.tagName === "BUTTON" ? btn : null, run);
+        } else {
+          run();
+        }
+      }
+
+      function unarchiveUser(user) {
+        if (!window.confirm('Восстановить пользователя "' + user.username + '" из архива?')) return;
+        var run = function () {
+          return fetch("/api/auth/users/" + user.id + "/unarchive", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: authHeaders(false),
+          })
+            .then(function (r) {
+              return r.json().then(function (j) {
+                return { r: r, j: j };
+              });
+            })
+            .then(function (x) {
+              if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Не удалось восстановить");
+              if (window.DatagonNotify && window.DatagonNotify.toast) {
+                window.DatagonNotify.toast({ type: "success", message: "Пользователь восстановлен" });
+              } else {
+                alert("Пользователь восстановлен");
+              }
+              loadUsers();
+            })
+            .catch(function (e) {
+              if (window.DatagonNotify && window.DatagonNotify.toast) {
+                window.DatagonNotify.toast({ type: "danger", message: e.message || "Ошибка восстановления" });
+              } else {
+                alert(e.message || "Ошибка восстановления");
+              }
+            });
+        };
+        if (window.DatagonNotify && window.DatagonNotify.busyRun) {
+          var btn = document.activeElement;
+          window.DatagonNotify.busyRun(btn && btn.tagName === "BUTTON" ? btn : null, run);
+        } else {
+          run();
+        }
+      }
+
       function deleteUser(user) {
-        if (!window.confirm('Удалить пользователя "' + user.username + '"?')) return;
+        if (
+          !window.confirm(
+            'Жёстко удалить пользователя "' +
+              user.username +
+              '"?\n\nЛучше используйте «В архив»: иначе могут пострадать назначения и история.\nУдаление необратимо.'
+          )
+        ) {
+          return;
+        }
         fetch("/api/auth/users/" + user.id, {
           method: "DELETE",
           credentials: "same-origin",
@@ -4969,7 +5122,7 @@
       });
       document.getElementById("dg-set-btn-add-user").addEventListener("click", createUser);
       document.getElementById("dg-set-btn-refresh-users").addEventListener("click", loadUsers);
-      ["dg-set-users-search", "dg-set-users-filter-can", "dg-set-users-sess-min", "dg-set-users-sess-max"].forEach(function (id) {
+      ["dg-set-users-search", "dg-set-users-filter-status", "dg-set-users-filter-can", "dg-set-users-sess-min", "dg-set-users-sess-max"].forEach(function (id) {
         document.getElementById(id).addEventListener("input", renderUsers);
         document.getElementById(id).addEventListener("change", renderUsers);
       });

@@ -102,7 +102,9 @@ module.exports = (db) => {
             }
             const whereSql = wh.join(' AND ');
             const [users] = await db.query(
-                'SELECT id, username, full_name FROM users ORDER BY username ASC'
+                `SELECT id, username, full_name, COALESCE(is_archived, 0) AS is_archived
+                 FROM users
+                 ORDER BY COALESCE(is_archived, 0) ASC, username ASC`
             );
             const [sectionRows] = await db.query(
                 `SELECT DISTINCT e.section AS section
@@ -120,7 +122,7 @@ module.exports = (db) => {
             const total = Number(cntRows[0]?.c) || 0;
             const [rows] = await db.query(
                 `SELECT e.id, e.user_id, e.kind, e.section, e.label, e.detail, e.created_at,
-                        u.username, u.full_name
+                        u.username, u.full_name, COALESCE(u.is_archived, 0) AS is_archived
                  FROM dg_activity_events e
                  JOIN users u ON u.id = e.user_id
                  WHERE ${whereSql}

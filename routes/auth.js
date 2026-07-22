@@ -61,10 +61,21 @@ module.exports = (db, appSettings = {}) => {
                 'ALTER TABLE users ADD COLUMN created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP AFTER password_hash'
             );
         }
+        const [archivedCols] = await db.query("SHOW COLUMNS FROM users LIKE 'is_archived'");
+        if (!archivedCols.length) {
+            await db.query(
+                'ALTER TABLE users ADD COLUMN is_archived TINYINT(1) NOT NULL DEFAULT 0 AFTER can_manage_users'
+            );
+        }
         await db.query(`
             UPDATE users
             SET can_manage_users = 1
             WHERE username = 'admin'
+        `);
+        await db.query(`
+            UPDATE users
+            SET is_archived = 0
+            WHERE username = 'admin' AND COALESCE(is_archived, 0) = 1
         `);
         authSchemaReady = true;
     }
@@ -97,7 +108,9 @@ module.exports = (db, appSettings = {}) => {
         const tokenHash = sha256(t);
         const [rows] = await db.query(
             `
-            SELECT u.id, u.username, u.full_name, u.can_manage_users, u.specialty_id, sp.name AS specialty_name, s.id AS session_id
+            SELECT u.id, u.username, u.full_name, u.can_manage_users, u.specialty_id,
+                   COALESCE(u.is_archived, 0) AS is_archived,
+                   sp.name AS specialty_name, s.id AS session_id
             FROM auth_sessions s
             JOIN users u ON u.id = s.user_id
             LEFT JOIN specialties sp ON sp.id = u.specialty_id
@@ -110,6 +123,12 @@ module.exports = (db, appSettings = {}) => {
         );
         if (!rows.length) return null;
         const actor = rows[0];
+        if (Number(actor.is_archived) === 1) {
+            await db.query('UPDATE auth_sessions SET revoked = 1 WHERE user_id = ? AND revoked = 0', [
+                actor.id,
+            ]);
+            return null;
+        }
         db.query('UPDATE auth_sessions SET last_seen_at = NOW() WHERE id = ?', [actor.session_id]).catch(() => {});
         let page_modes = {};
         try {
@@ -286,7 +305,8 @@ module.exports = (db, appSettings = {}) => {
                     `
                     SELECT COUNT(*) AS cnt
                     FROM users u
-                    WHERE EXISTS (
+                    WHERE COALESCE(u.is_archived, 0) = 0
+                      AND EXISTS (
                         SELECT 1 FROM auth_sessions s
                         WHERE s.user_id = u.id AND s.revoked = 0 AND s.expires_at > NOW()
                     )
@@ -368,6 +388,7 @@ module.exports = (db, appSettings = {}) => {
                     u.username,
                     u.full_name,
                     u.can_manage_users,
+                    COALESCE(u.is_archived, 0) AS is_archived,
                     u.specialty_id,
                     sp.name AS specialty_name,
                     u.created_at,
@@ -474,6 +495,95 @@ module.exports = (db, appSettings = {}) => {
         }
     });
 
+    router.post('/users/:id/archive', async (req, res) => {
+        const isAdmin = await isAdminActor(req);
+        if (!isAdmin) return res.status(403).json({ error: 'Только admin может архивировать пользователей' });
+
+        const id = parseInt(req.params.id, 10);
+        if (!Number.isFinite(id)) {
+            return res.status(400).json({ error: 'Некорректный id пользователя' });
+        }
+        try {
+            await ensureAuthSchema();
+            const [rows] = await db.query(
+                'SELECT id, username, full_name, COALESCE(is_archived, 0) AS is_archived FROM users WHERE id = ?',
+                [id]
+            );
+            if (!rows.length) return res.status(404).json({ error: 'Пользователь не найден' });
+            const target = rows[0];
+            if (target.username === 'admin') {
+                return res.status(400).json({ error: 'Нельзя архивировать встроенного пользователя admin' });
+            }
+            if (Number(target.is_archived) === 1) {
+                return res.json({ success: true, already: true });
+            }
+            const actor = await getActor(req);
+            if (actor && Number(actor.id) === id) {
+                return res.status(400).json({ error: 'Нельзя архивировать свою текущую учётную запись' });
+            }
+            await db.query('UPDATE users SET is_archived = 1 WHERE id = ?', [id]);
+            await db.query('UPDATE auth_sessions SET revoked = 1 WHERE user_id = ? AND revoked = 0', [id]);
+            if (actor && actor.id) {
+                await recordDatagonActivity(db, {
+                    userId: actor.id,
+                    kind: 'ui',
+                    section: 'settings',
+                    label: `Пользователь в архиве: логин «${target.username}», имя «${target.full_name || target.username}»`,
+                    detail: JSON.stringify({
+                        action: 'user_archive',
+                        user_id: target.id,
+                        username: target.username,
+                        full_name: target.full_name || null,
+                    }),
+                });
+            }
+            return res.json({ success: true });
+        } catch (e) {
+            return res.status(500).json({ error: e.message });
+        }
+    });
+
+    router.post('/users/:id/unarchive', async (req, res) => {
+        const isAdmin = await isAdminActor(req);
+        if (!isAdmin) return res.status(403).json({ error: 'Только admin может восстанавливать пользователей из архива' });
+
+        const id = parseInt(req.params.id, 10);
+        if (!Number.isFinite(id)) {
+            return res.status(400).json({ error: 'Некорректный id пользователя' });
+        }
+        try {
+            await ensureAuthSchema();
+            const [rows] = await db.query(
+                'SELECT id, username, full_name, COALESCE(is_archived, 0) AS is_archived FROM users WHERE id = ?',
+                [id]
+            );
+            if (!rows.length) return res.status(404).json({ error: 'Пользователь не найден' });
+            const target = rows[0];
+            if (Number(target.is_archived) !== 1) {
+                return res.json({ success: true, already: true });
+            }
+            await db.query('UPDATE users SET is_archived = 0 WHERE id = ?', [id]);
+            const actor = await getActor(req);
+            if (actor && actor.id) {
+                await recordDatagonActivity(db, {
+                    userId: actor.id,
+                    kind: 'ui',
+                    section: 'settings',
+                    label: `Пользователь восстановлен из архива: логин «${target.username}», имя «${target.full_name || target.username}»`,
+                    detail: JSON.stringify({
+                        action: 'user_unarchive',
+                        user_id: target.id,
+                        username: target.username,
+                        full_name: target.full_name || null,
+                    }),
+                });
+            }
+            return res.json({ success: true });
+        } catch (e) {
+            return res.status(500).json({ error: e.message });
+        }
+    });
+
     router.delete('/users/:id', async (req, res) => {
         const isAdmin = await isAdminActor(req);
         if (!isAdmin) return res.status(403).json({ error: 'Только admin может удалять пользователей' });
@@ -483,17 +593,24 @@ module.exports = (db, appSettings = {}) => {
             return res.status(400).json({ error: 'Некорректный id пользователя' });
         }
         try {
-            const [rows] = await db.query('SELECT id, username, full_name FROM users WHERE id = ?', [id]);
+            const [rows] = await db.query(
+                'SELECT id, username, full_name, COALESCE(is_archived, 0) AS is_archived FROM users WHERE id = ?',
+                [id]
+            );
             if (!rows.length) {
                 return res.status(404).json({ error: 'Пользователь не найден' });
             }
             if (rows[0].username === 'admin') {
                 return res.status(400).json({ error: 'Нельзя удалить встроенного пользователя admin' });
             }
-            const [countRows] = await db.query('SELECT COUNT(*) AS cnt FROM users');
-            const totalUsers = Number(countRows[0]?.cnt || 0);
-            if (totalUsers <= 1) {
-                return res.status(400).json({ error: 'Должен остаться хотя бы один пользователь' });
+            if (Number(rows[0].is_archived) !== 1) {
+                const [countRows] = await db.query(
+                    'SELECT COUNT(*) AS cnt FROM users WHERE COALESCE(is_archived, 0) = 0'
+                );
+                const totalUsers = Number(countRows[0]?.cnt || 0);
+                if (totalUsers <= 1) {
+                    return res.status(400).json({ error: 'Должен остаться хотя бы один активный пользователь' });
+                }
             }
             const delUser = rows[0];
             const actor = await getActor(req);
@@ -593,6 +710,11 @@ module.exports = (db, appSettings = {}) => {
                 return res.status(401).json({ error: 'Неверный логин или пароль' });
             }
             const user = users[0];
+            if (Number(user.is_archived) === 1) {
+                return res.status(403).json({
+                    error: 'Учётная запись в архиве. Вход запрещён.',
+                });
+            }
             const { ttlDays, userLimit } = getSessionPolicy();
 
             if (user.username !== 'admin') {
