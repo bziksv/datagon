@@ -66,6 +66,12 @@
         auto_sync_ms_orders_weekdays: "",
         auto_sync_marketplaces_enabled: 0,
         auto_sync_marketplaces_time: "05:00",
+        auto_sync_marketplaces_ozon_enabled: 0,
+        auto_sync_marketplaces_ozon_time: "06:00",
+        auto_sync_marketplaces_wb_enabled: 0,
+        auto_sync_marketplaces_wb_time: "06:25",
+        auto_sync_marketplaces_ym_enabled: 0,
+        auto_sync_marketplaces_ym_time: "06:50",
         auto_sync_huckster_enabled: 0,
         auto_sync_huckster_time: "06:00",
         auto_sync_db_size_enabled: 1,
@@ -974,8 +980,12 @@
         if (msOrdersAutoEn) msOrdersAutoEn.checked = Number(merged.auto_sync_ms_orders_enabled) === 1;
         set("dg-set-auto_ms_orders_time", merged.auto_sync_ms_orders_time || "08:00");
         applyAutoSyncWeekdayChecks("dg-set-auto_ms_orders_wd", merged.auto_sync_ms_orders_weekdays);
-        document.getElementById("dg-set-auto_market_en").checked = Number(merged.auto_sync_marketplaces_enabled) === 1;
-        set("dg-set-auto_market_time", merged.auto_sync_marketplaces_time || "05:00");
+        document.getElementById("dg-set-auto_market_ozon_en").checked = Number(merged.auto_sync_marketplaces_ozon_enabled) === 1;
+        set("dg-set-auto_market_ozon_time", merged.auto_sync_marketplaces_ozon_time || "06:00");
+        document.getElementById("dg-set-auto_market_wb_en").checked = Number(merged.auto_sync_marketplaces_wb_enabled) === 1;
+        set("dg-set-auto_market_wb_time", merged.auto_sync_marketplaces_wb_time || "06:25");
+        document.getElementById("dg-set-auto_market_ym_en").checked = Number(merged.auto_sync_marketplaces_ym_enabled) === 1;
+        set("dg-set-auto_market_ym_time", merged.auto_sync_marketplaces_ym_time || "06:50");
         document.getElementById("dg-set-auto_huckster_en").checked = Number(merged.auto_sync_huckster_enabled) === 1;
         set("dg-set-auto_huckster_time", merged.auto_sync_huckster_time || "06:00");
         document.getElementById("dg-set-auto_db_size_en").checked = Number(merged.auto_sync_db_size_enabled) === 1;
@@ -2085,8 +2095,12 @@
             : false,
           auto_sync_ms_orders_time: getStr("dg-set-auto_ms_orders_time") || "08:00",
           auto_sync_ms_orders_weekdays: collectAutoSyncWeekdayCsv("dg-set-auto_ms_orders_wd"),
-          auto_sync_marketplaces_enabled: document.getElementById("dg-set-auto_market_en").checked,
-          auto_sync_marketplaces_time: getStr("dg-set-auto_market_time") || "05:00",
+          auto_sync_marketplaces_ozon_enabled: document.getElementById("dg-set-auto_market_ozon_en").checked,
+          auto_sync_marketplaces_ozon_time: getStr("dg-set-auto_market_ozon_time") || "06:00",
+          auto_sync_marketplaces_wb_enabled: document.getElementById("dg-set-auto_market_wb_en").checked,
+          auto_sync_marketplaces_wb_time: getStr("dg-set-auto_market_wb_time") || "06:25",
+          auto_sync_marketplaces_ym_enabled: document.getElementById("dg-set-auto_market_ym_en").checked,
+          auto_sync_marketplaces_ym_time: getStr("dg-set-auto_market_ym_time") || "06:50",
           auto_sync_huckster_enabled: document.getElementById("dg-set-auto_huckster_en").checked,
           auto_sync_huckster_time: getStr("dg-set-auto_huckster_time") || "06:00",
           auto_sync_db_size_enabled: document.getElementById("dg-set-auto_db_size_en").checked,
@@ -2134,7 +2148,9 @@
             "auto_sync_moysklad_time",
             "auto_sync_ms_orders_time",
             "auto_sync_ms_orders_weekdays",
-            "auto_sync_marketplaces_time",
+            "auto_sync_marketplaces_ozon_time",
+            "auto_sync_marketplaces_wb_time",
+            "auto_sync_marketplaces_ym_time",
             "auto_sync_huckster_time",
             "auto_sync_db_size_time",
             "auto_sync_export_ms_enabled",
@@ -2162,7 +2178,10 @@
         myproducts: "Мои товары",
         moysklad: "МойСклад (ms_export)",
         ms_orders: "Заказы в МС",
-        marketplaces: "Маркетплейсы",
+        marketplaces: "Маркетплейсы (все)",
+        marketplaces_ozon: "Ozon",
+        marketplaces_wb: "Wildberries",
+        marketplaces_ym: "Яндекс Маркет",
         huckster: "Huckster",
         db_size: "Размер БД и диска",
         dimensions: "Габариты МС",
@@ -3209,7 +3228,9 @@
       document.getElementById("dg-set-auto_ms_run").addEventListener("click", function () { runAutoSyncNow("moysklad", "МойСклад (ms_export)", "dg-set-auto_ms_run"); });
       var msOrdersAutoRun = document.getElementById("dg-set-auto_ms_orders_run");
       if (msOrdersAutoRun) msOrdersAutoRun.addEventListener("click", function () { runAutoSyncNow("ms_orders", "Заказы в МС", "dg-set-auto_ms_orders_run"); });
-      document.getElementById("dg-set-auto_market_run").addEventListener("click", function () { runAutoSyncNow("marketplaces", "Маркетплейсы", "dg-set-auto_market_run"); });
+      document.getElementById("dg-set-auto_market_ozon_run").addEventListener("click", function () { runAutoSyncNow("marketplaces_ozon", "Ozon", "dg-set-auto_market_ozon_run"); });
+      document.getElementById("dg-set-auto_market_wb_run").addEventListener("click", function () { runAutoSyncNow("marketplaces_wb", "Wildberries", "dg-set-auto_market_wb_run"); });
+      document.getElementById("dg-set-auto_market_ym_run").addEventListener("click", function () { runAutoSyncNow("marketplaces_ym", "Яндекс Маркет", "dg-set-auto_market_ym_run"); });
       document.getElementById("dg-set-auto_huckster_run").addEventListener("click", function () { runAutoSyncNow("huckster", "Huckster", "dg-set-auto_huckster_run"); });
       document.getElementById("dg-set-auto_db_size_run").addEventListener("click", function () { runAutoSyncNow("db_size", "Размер БД и диска", "dg-set-auto_db_size_run"); });
       document.getElementById("dg-set-auto_dim_run").addEventListener("click", function () { runAutoSyncNow("dimensions", "Габариты МС", "dg-set-auto_dim_run"); });

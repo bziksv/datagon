@@ -403,6 +403,7 @@
             var FILTER_MANAGER_KEY = 'dg.mpu.flt.manager.v1';
             var FILTER_CONTENT_MGR_KEY = 'dg.mpu.flt.cmgr.v1';
             var FILTER_EXCLUDE_BUNDLE_COMPONENTS_KEY = 'dg.mpu.flt.excludeBundleComponents.v1';
+            var FILTER_STOCK_POSITIVE_KEY = 'dg.mpu.flt.stockPositive.v1';
             var FILTER_SMART_COLUMNS_KEY = 'dg.mpu.flt.smartColumns.v1';
             // Базовый «паспорт МС» — эти колонки остаются всегда, когда smart-режим
             // активен. Меняется только набор колонок маркетплейсов (см. ниже).
@@ -509,6 +510,7 @@
             var elFltManager = document.getElementById('dg-mpu-flt-manager');
             var elFltCmgr = document.getElementById('dg-mpu-flt-cmgr');
             var elFltExcludeBundleComp = document.getElementById('dg-mpu-flt-exclude-bundle-components');
+            var elFltStockPositive = document.getElementById('dg-mpu-flt-stock-positive');
             var elFltSmartCols = document.getElementById('dg-mpu-flt-smart-columns');
             var elFltReset = document.getElementById('dg-mpu-flt-reset');
             var elFltApply = document.getElementById('dg-mpu-flt-apply');
@@ -553,17 +555,22 @@
                 return !!defaultValue;
             }
             var initialExcludeBundleComponents = readBoolWithDefault(FILTER_EXCLUDE_BUNDLE_COMPONENTS_KEY, true);
+            var initialStockPositive = readBoolWithDefault(FILTER_STOCK_POSITIVE_KEY, false);
             var initialSmartColumns = readBoolWithDefault(FILTER_SMART_COLUMNS_KEY, true);
             var initialFilters = {
                 manager: readStr(FILTER_MANAGER_KEY),
                 content_manager: readStr(FILTER_CONTENT_MGR_KEY),
                 exclude_bundle_components: initialExcludeBundleComponents,
+                stock_positive: initialStockPositive,
                 smart_columns: initialSmartColumns,
             };
             // Стартовое значение чекбокса синхронизируем с фактическим стейтом (а не
             // только с разметкой `checked`, которая верна только при первом запуске).
             if (elFltExcludeBundleComp) {
                 elFltExcludeBundleComp.checked = !!initialExcludeBundleComponents;
+            }
+            if (elFltStockPositive) {
+                elFltStockPositive.checked = !!initialStockPositive;
             }
             if (elFltSmartCols) {
                 elFltSmartCols.checked = !!initialSmartColumns;
@@ -585,6 +592,7 @@
                 // точное совпадение строк manager/content_manager (пусто = «все»).
                 // exclude_bundle_components — серверный фильтр (передаётся в URL),
                 // ниже в commitFilters() при изменении тригерится перезапрос.
+                // stock_positive — клиентский: только строки с ms_stock > 0 (дефолт выкл).
                 // smart_columns — клиентский фильтр видимости колонок (см.
                 // visibleHeaders + isSmartColumnsActive ниже): на «проблемных» scope
                 // оставляет только базовые колонки МС и колонки, относящиеся к
@@ -593,6 +601,7 @@
                     manager: initialFilters.manager,
                     content_manager: initialFilters.content_manager,
                     exclude_bundle_components: !!initialFilters.exclude_bundle_components,
+                    stock_positive: !!initialFilters.stock_positive,
                     smart_columns: !!initialFilters.smart_columns,
                 },
                 /** Пока идёт fetch списка с API — блокируем «Применить» и пагинацию. */
@@ -604,6 +613,7 @@
                         manager: initialFilters.manager,
                         content_manager: initialFilters.content_manager,
                         exclude_bundle_components: !!initialFilters.exclude_bundle_components,
+                        stock_positive: !!initialFilters.stock_positive,
                         smart_columns: !!initialFilters.smart_columns,
                     },
                 },
@@ -617,6 +627,7 @@
                 if (String(pf.manager || '') !== String(af.manager || '')) return true;
                 if (String(pf.content_manager || '') !== String(af.content_manager || '')) return true;
                 if (Boolean(pf.exclude_bundle_components) !== Boolean(af.exclude_bundle_components)) return true;
+                if (Boolean(pf.stock_positive) !== Boolean(af.stock_positive)) return true;
                 if (Boolean(pf.smart_columns) !== Boolean(af.smart_columns)) return true;
                 return false;
             }
@@ -860,7 +871,7 @@
                 }
                 return out;
             }
-            /** Ключи колонок с подсвечиваемым расхождением. При наличии измерений МС
+            /** Ключи колонок с подсвечиваемым расхождением. При наличии габаритов из атрибутов МС
              * сверка идёт МС ↔ маркетплейсы; иначе — между маркетплейсами (старая логика). */
             function dimsMismatchHighlightKeys(row) {
                 if (!row) return Object.create(null);
@@ -868,7 +879,7 @@
                 return dimsMismatchHighlightKeysAcrossMps(row);
             }
 
-            // ---- Расширенные фильтры (manager / content_manager) + умный поиск ----
+            // ---- Расширенные фильтры (manager / content_manager / stock) + умный поиск ----
             function passesAdvancedFilters(row) {
                 var f = state.filters || {};
                 if (f.manager) {
@@ -876,6 +887,10 @@
                 }
                 if (f.content_manager) {
                     if (String(row.content_manager || '').trim() !== String(f.content_manager).trim()) return false;
+                }
+                if (f.stock_positive) {
+                    var stockN = Number(row.ms_stock);
+                    if (!Number.isFinite(stockN) || stockN <= 0) return false;
                 }
                 return true;
             }
@@ -1543,16 +1558,19 @@
                 var scopeChanged = state.pending.scope !== state.scope;
                 var pendingExcludeBundle = !!(state.pending.filters && state.pending.filters.exclude_bundle_components);
                 var bundleChanged = pendingExcludeBundle !== !!state.filters.exclude_bundle_components;
+                var pendingStockPositive = !!(state.pending.filters && state.pending.filters.stock_positive);
                 var pendingSmartCols = !!(state.pending.filters && state.pending.filters.smart_columns);
                 state.scope = String(state.pending.scope || 'all');
                 state.search = String(state.pending.search || '');
                 state.filters.manager = String((state.pending.filters && state.pending.filters.manager) || '');
                 state.filters.content_manager = String((state.pending.filters && state.pending.filters.content_manager) || '');
                 state.filters.exclude_bundle_components = pendingExcludeBundle;
+                state.filters.stock_positive = pendingStockPositive;
                 state.filters.smart_columns = pendingSmartCols;
                 writeStr(FILTER_MANAGER_KEY, state.filters.manager);
                 writeStr(FILTER_CONTENT_MGR_KEY, state.filters.content_manager);
                 writeStr(FILTER_EXCLUDE_BUNDLE_COMPONENTS_KEY, state.filters.exclude_bundle_components ? '1' : '0');
+                writeStr(FILTER_STOCK_POSITIVE_KEY, state.filters.stock_positive ? '1' : '0');
                 writeStr(FILTER_SMART_COLUMNS_KEY, state.filters.smart_columns ? '1' : '0');
                 setTitleByScope();
                 refreshDirtyIndicator();
@@ -1578,11 +1596,13 @@
                 state.pending.filters.manager = '';
                 state.pending.filters.content_manager = '';
                 state.pending.filters.exclude_bundle_components = true;
+                state.pending.filters.stock_positive = false;
                 state.pending.filters.smart_columns = true;
                 if (elSearch) elSearch.value = '';
                 if (elFltManager) elFltManager.value = '';
                 if (elFltCmgr) elFltCmgr.value = '';
                 if (elFltExcludeBundleComp) elFltExcludeBundleComp.checked = true;
+                if (elFltStockPositive) elFltStockPositive.checked = false;
                 if (elFltSmartCols) elFltSmartCols.checked = true;
                 for (var i = 0; i < scopeInputs.length; i++) {
                     scopeInputs[i].checked = scopeInputs[i].value === 'all';
@@ -1666,6 +1686,12 @@
             if (elFltExcludeBundleComp) {
                 elFltExcludeBundleComp.addEventListener('change', function () {
                     state.pending.filters.exclude_bundle_components = !!elFltExcludeBundleComp.checked;
+                    refreshDirtyIndicator();
+                });
+            }
+            if (elFltStockPositive) {
+                elFltStockPositive.addEventListener('change', function () {
+                    state.pending.filters.stock_positive = !!elFltStockPositive.checked;
                     refreshDirtyIndicator();
                 });
             }
@@ -2190,6 +2216,9 @@
                         items: [
                             { key: 'manager', title: 'Менеджер', hint: 'Селектор менеджера в карточке «Фильтры и действия»' },
                             { key: 'cmgr', title: 'Контент-менеджер', hint: 'Селектор контент-менеджера в карточке «Фильтры и действия»' },
+                            { key: 'exclude_bundle_components', title: 'Исключить товары из комплектов', hint: 'Серверный фильтр; дефолт включён' },
+                            { key: 'smart_columns', title: 'Умное скрытие столбцов', hint: 'Под выбранный проблемный scope; дефолт включён' },
+                            { key: 'stock_positive', title: 'Показывать товары с остатком', hint: 'Клиентский: только Остаток по МС > 0; дефолт выкл' },
                         ],
                     },
                     {

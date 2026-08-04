@@ -123,6 +123,12 @@ let appSettings = {
     mp_ozon_include_archived: 0,
     auto_sync_marketplaces_enabled: 0,
     auto_sync_marketplaces_time: '05:00',
+    auto_sync_marketplaces_ozon_enabled: 0,
+    auto_sync_marketplaces_ozon_time: '06:00',
+    auto_sync_marketplaces_wb_enabled: 0,
+    auto_sync_marketplaces_wb_time: '06:25',
+    auto_sync_marketplaces_ym_enabled: 0,
+    auto_sync_marketplaces_ym_time: '06:50',
     auto_sync_huckster_enabled: 0,
     auto_sync_huckster_time: '06:00',
     auto_sync_db_size_enabled: 1,
@@ -208,7 +214,11 @@ const msOrdersModule = require('./routes/msOrders');
 const medmarketRouterFactory = require('./routes/medmarket');
 const { getAutoSyncTaskKeys } = require('./lib/datagonAutoSyncRegistry');
 /** Whitelist для POST /api/settings/auto-sync-run (фиксируется при старте процесса). */
-const AUTO_SYNC_ALLOWED_TASK_KEYS = new Set(getAutoSyncTaskKeys());
+const AUTO_SYNC_ALLOWED_TASK_KEYS = new Set([
+    ...getAutoSyncTaskKeys(),
+    /** Legacy: ручной запуск всех трёх площадок одним task (не в расписании). */
+    'marketplaces',
+]);
 let pagesRouter = null;
 let matchesRouter = null;
 const autoSyncLastRunByTask = new Map();
@@ -367,6 +377,12 @@ async function initDB() {
             ['mp_ozon_include_archived','0'],
             ['auto_sync_marketplaces_enabled','0'],
             ['auto_sync_marketplaces_time','05:00'],
+            ['auto_sync_marketplaces_ozon_enabled','0'],
+            ['auto_sync_marketplaces_ozon_time','06:00'],
+            ['auto_sync_marketplaces_wb_enabled','0'],
+            ['auto_sync_marketplaces_wb_time','06:25'],
+            ['auto_sync_marketplaces_ym_enabled','0'],
+            ['auto_sync_marketplaces_ym_time','06:50'],
             ['auto_sync_huckster_enabled','0'],
             ['auto_sync_huckster_time','06:00'],
             ['auto_sync_db_size_enabled','1'],
@@ -427,6 +443,54 @@ async function initDB() {
             }
         });
         console.log('[Settings] Loaded', appSettings);
+
+        // Разовое разбиение «Маркетплейсы» → Ozon / WB / Я.Маркет: если старое
+        // расписание было включено, а новые ключи ещё дефолтные (0) — переносим
+        // enabled и разносим слоты по времени, чтобы не бить API одновременно.
+        try {
+            const [migRows] = await db.query(
+                "SELECT setting_value FROM app_settings WHERE setting_key = 'auto_sync_marketplaces_split_v1' LIMIT 1"
+            );
+            if (!migRows.length) {
+                const legacyOn = Number(appSettings.auto_sync_marketplaces_enabled || 0) === 1;
+                if (legacyOn) {
+                    const base = String(appSettings.auto_sync_marketplaces_time || '06:00').slice(0, 5);
+                    const [hh, mm] = base.split(':').map((x) => parseInt(x, 10) || 0);
+                    const addMin = (h, m, add) => {
+                        let t = h * 60 + m + add;
+                        t = ((t % (24 * 60)) + 24 * 60) % (24 * 60);
+                        const nh = Math.floor(t / 60);
+                        const nm = t % 60;
+                        return `${String(nh).padStart(2, '0')}:${String(nm).padStart(2, '0')}`;
+                    };
+                    const seeds = [
+                        ['auto_sync_marketplaces_ozon_enabled', '1'],
+                        ['auto_sync_marketplaces_ozon_time', addMin(hh, mm, 0)],
+                        ['auto_sync_marketplaces_wb_enabled', '1'],
+                        ['auto_sync_marketplaces_wb_time', addMin(hh, mm, 25)],
+                        ['auto_sync_marketplaces_ym_enabled', '1'],
+                        ['auto_sync_marketplaces_ym_time', addMin(hh, mm, 50)],
+                        ['auto_sync_marketplaces_enabled', '0'],
+                    ];
+                    for (const [k, v] of seeds) {
+                        await db.query(
+                            'INSERT INTO app_settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value=?',
+                            [k, v, v]
+                        );
+                        if (Object.prototype.hasOwnProperty.call(appSettings, k)) {
+                            appSettings[k] = k.endsWith('_enabled') ? parseInt(v, 10) : v;
+                        }
+                    }
+                    console.log('[Settings] Migrated marketplaces auto-sync → ozon/wb/ym (split v1)');
+                }
+                await db.query(
+                    "INSERT INTO app_settings (setting_key, setting_value) VALUES ('auto_sync_marketplaces_split_v1', '1') ON DUPLICATE KEY UPDATE setting_value='1'"
+                );
+            }
+        } catch (eMig) {
+            console.error('[Settings] marketplaces split migration failed:', eMig && eMig.message);
+        }
+
         // Не блокировать app.listen: на большой `pages` UPDATE может ждать metadata lock минутами.
         postInitTasks.push(async () => {
             try {
@@ -1343,14 +1407,23 @@ function buildAutoSyncTasksLiveForOverview() {
         }
     }
 
-    if (hasRun('marketplaces')) {
+    const fillMpLive = (outKey, pendingMsg) => {
+        if (!hasRun(outKey)) return;
         const st =
             typeof exportsMarketplacesRouterFactory.getSyncState === 'function'
                 ? exportsMarketplacesRouterFactory.getSyncState()
                 : null;
         if (st && st.active) {
             const pm = st.perMarket || {};
-            const per_market_summary = ['ozon', 'wb', 'ym']
+            const keys =
+                outKey === 'marketplaces_ozon'
+                    ? ['ozon']
+                    : outKey === 'marketplaces_wb'
+                      ? ['wb']
+                      : outKey === 'marketplaces_ym'
+                        ? ['ym']
+                        : ['ozon', 'wb', 'ym'];
+            const per_market_summary = keys
                 .map((k) => {
                     const x = pm[k] || {};
                     const label = k === 'wb' ? 'WB' : k === 'ym' ? 'Я.Маркет' : 'Ozon';
@@ -1360,15 +1433,19 @@ function buildAutoSyncTasksLiveForOverview() {
                     return s;
                 })
                 .join(' · ');
-            out.marketplaces = {
+            out[outKey] = {
                 active: true,
                 message: String(st.message || ''),
                 per_market_summary,
             };
         } else {
-            out.marketplaces = { active: true, pending: true, message: 'Ожидание обновления маркетплейсов…' };
+            out[outKey] = { active: true, pending: true, message: pendingMsg };
         }
-    }
+    };
+    fillMpLive('marketplaces', 'Ожидание обновления маркетплейсов…');
+    fillMpLive('marketplaces_ozon', 'Ожидание обновления Ozon…');
+    fillMpLive('marketplaces_wb', 'Ожидание обновления Wildberries…');
+    fillMpLive('marketplaces_ym', 'Ожидание обновления Я.Маркет…');
 
     if (hasRun('huckster')) {
         const st =
@@ -1647,30 +1724,69 @@ async function processAutoSyncQueue() {
                     (msFailed ? msMsg : 'Завершено') || (done ? 'Завершено' : 'Таймаут ожидания')
                 );
                 console.log('[AUTO SYNC] Queue done: moysklad');
-            } else if (task === 'marketplaces') {
-                console.log('[AUTO SYNC] Queue start: marketplaces');
-                await startAutoSyncRun('marketplaces', triggerType);
+            } else if (
+                task === 'marketplaces'
+                || task === 'marketplaces_ozon'
+                || task === 'marketplaces_wb'
+                || task === 'marketplaces_ym'
+            ) {
+                const MP_TASK_SHOP = {
+                    marketplaces: 'all',
+                    marketplaces_ozon: 'ozon',
+                    marketplaces_wb: 'wb',
+                    marketplaces_ym: 'ym',
+                };
+                const MP_TASK_SLOT_KEY = {
+                    marketplaces: 'auto_sync_marketplaces_time',
+                    marketplaces_ozon: 'auto_sync_marketplaces_ozon_time',
+                    marketplaces_wb: 'auto_sync_marketplaces_wb_time',
+                    marketplaces_ym: 'auto_sync_marketplaces_ym_time',
+                };
+                const shopKind = MP_TASK_SHOP[task] || 'all';
+                const slotKey = MP_TASK_SLOT_KEY[task] || 'auto_sync_marketplaces_time';
+                console.log(`[AUTO SYNC] Queue start: ${task} (shop=${shopKind})`);
+                await startAutoSyncRun(task, triggerType);
                 if (typeof exportsMarketplacesRouterFactory.triggerSync === 'function') {
                     const slot =
                         triggerType === 'schedule'
-                            ? String(appSettings.auto_sync_marketplaces_time || '05:00').slice(0, 5)
+                            ? String(appSettings[slotKey] || '06:00').slice(0, 5)
                             : '';
-                    const startRes = await exportsMarketplacesRouterFactory.triggerSync('all', {
+                    const startRes = await exportsMarketplacesRouterFactory.triggerSync(shopKind, {
                         triggerType,
                         scheduleSlotTime: slot,
                     });
                     if (startRes && startRes.started === false && startRes.reason !== 'already_running') {
-                        throw new Error(startRes.error || startRes.reason || 'Не удалось запустить обновление маркетплейсов');
+                        throw new Error(
+                            startRes.error || startRes.reason || 'Не удалось запустить обновление маркетплейса'
+                        );
                     }
                 }
                 const done = await waitUntil(() => {
-                    const s = typeof exportsMarketplacesRouterFactory.getSyncState === 'function'
-                        ? exportsMarketplacesRouterFactory.getSyncState()
-                        : { active: false };
+                    const s =
+                        typeof exportsMarketplacesRouterFactory.getSyncState === 'function'
+                            ? exportsMarketplacesRouterFactory.getSyncState()
+                            : { active: false };
                     return !s.active;
                 }, 12 * 60 * 60 * 1000, 1000);
-                await finishAutoSyncRun('marketplaces', done ? 'completed' : 'failed', done ? 'Завершено' : 'Таймаут ожидания');
-                console.log('[AUTO SYNC] Queue done: marketplaces');
+                const finalState =
+                    typeof exportsMarketplacesRouterFactory.getSyncState === 'function'
+                        ? exportsMarketplacesRouterFactory.getSyncState()
+                        : { active: false, message: '', resultStatus: null, perMarket: {} };
+                let status = 'failed';
+                let message;
+                if (!done) {
+                    message = 'Таймаут ожидания (12 ч)';
+                } else {
+                    const rs = String(finalState.resultStatus || '');
+                    if (rs === 'completed') status = 'completed';
+                    else if (rs === 'partial') status = 'failed';
+                    else status = 'failed';
+                    message =
+                        String(finalState.message || '').trim()
+                        || (status === 'completed' ? 'Завершено' : 'Ошибка обновления маркетплейса');
+                }
+                await finishAutoSyncRun(task, status, message.slice(0, 480));
+                console.log(`[AUTO SYNC] Queue done: ${task} — ${status} (${message})`);
             } else if (task === 'huckster') {
                 console.log('[AUTO SYNC] Queue start: huckster');
                 await startAutoSyncRun('huckster', triggerType);
@@ -2136,6 +2252,15 @@ async function processAutoSyncQueue() {
         if (autoSyncRunIds.has('marketplaces')) {
             await finishAutoSyncRun('marketplaces', 'failed', e.message || 'Ошибка очереди');
         }
+        if (autoSyncRunIds.has('marketplaces_ozon')) {
+            await finishAutoSyncRun('marketplaces_ozon', 'failed', e.message || 'Ошибка очереди');
+        }
+        if (autoSyncRunIds.has('marketplaces_wb')) {
+            await finishAutoSyncRun('marketplaces_wb', 'failed', e.message || 'Ошибка очереди');
+        }
+        if (autoSyncRunIds.has('marketplaces_ym')) {
+            await finishAutoSyncRun('marketplaces_ym', 'failed', e.message || 'Ошибка очереди');
+        }
         if (autoSyncRunIds.has('huckster')) {
             await finishAutoSyncRun('huckster', 'failed', e.message || 'Ошибка очереди');
         }
@@ -2201,10 +2326,22 @@ function startAutoSyncScheduler() {
                     weekdays: parseAutoSyncWeekdaysMon17(appSettings.auto_sync_ms_orders_weekdays),
                 },
                 {
-                    type: 'marketplaces',
-                    enabled: Number(appSettings.auto_sync_marketplaces_enabled || 0) === 1,
-                    time: String(appSettings.auto_sync_marketplaces_time || '05:00').slice(0, 5)
+                    type: 'marketplaces_ozon',
+                    enabled: Number(appSettings.auto_sync_marketplaces_ozon_enabled || 0) === 1,
+                    time: String(appSettings.auto_sync_marketplaces_ozon_time || '06:00').slice(0, 5),
                 },
+                {
+                    type: 'marketplaces_wb',
+                    enabled: Number(appSettings.auto_sync_marketplaces_wb_enabled || 0) === 1,
+                    time: String(appSettings.auto_sync_marketplaces_wb_time || '06:25').slice(0, 5),
+                },
+                {
+                    type: 'marketplaces_ym',
+                    enabled: Number(appSettings.auto_sync_marketplaces_ym_enabled || 0) === 1,
+                    time: String(appSettings.auto_sync_marketplaces_ym_time || '06:50').slice(0, 5),
+                },
+                // legacy `marketplaces` (все три сразу) — не в расписании; остаётся только
+                // для ручного POST auto-sync-run / старых клиентов.
                 {
                     type: 'huckster',
                     enabled: Number(appSettings.auto_sync_huckster_enabled || 0) === 1,
@@ -2598,6 +2735,12 @@ initDB().then(async () => {
                     ms_orders_weekdays: String(appSettings.auto_sync_ms_orders_weekdays || ''),
                     marketplaces_enabled: Number(appSettings.auto_sync_marketplaces_enabled || 0) === 1,
                     marketplaces_time: String(appSettings.auto_sync_marketplaces_time || '05:00'),
+                    marketplaces_ozon_enabled: Number(appSettings.auto_sync_marketplaces_ozon_enabled || 0) === 1,
+                    marketplaces_ozon_time: String(appSettings.auto_sync_marketplaces_ozon_time || '06:00'),
+                    marketplaces_wb_enabled: Number(appSettings.auto_sync_marketplaces_wb_enabled || 0) === 1,
+                    marketplaces_wb_time: String(appSettings.auto_sync_marketplaces_wb_time || '06:25'),
+                    marketplaces_ym_enabled: Number(appSettings.auto_sync_marketplaces_ym_enabled || 0) === 1,
+                    marketplaces_ym_time: String(appSettings.auto_sync_marketplaces_ym_time || '06:50'),
                     huckster_enabled: Number(appSettings.auto_sync_huckster_enabled || 0) === 1,
                     huckster_time: String(appSettings.auto_sync_huckster_time || '06:00'),
                     db_size_enabled: Number(appSettings.auto_sync_db_size_enabled ?? 1) === 1,

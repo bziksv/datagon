@@ -721,24 +721,73 @@
                                   </div>
                 </div>
 
-                <div class="col-12 dg-as-task" data-as-task="marketplaces" data-as-category="marketplace" data-as-en-id="dg-set-auto_market_en" data-as-time-id="dg-set-auto_market_time">
+                <div class="col-12 dg-as-task" data-as-task="marketplaces_ozon" data-as-category="marketplace" data-as-en-id="dg-set-auto_market_ozon_en" data-as-time-id="dg-set-auto_market_ozon_time">
                   <div class="dg-as-task-card dg-as-cat-marketplace">
                     <div class="dg-as-task-head">
                       <span class="dg-as-cat-pill dg-as-cat-pill-dynamic"></span>
                       <span class="dg-as-next-badge dg-as-next-badge-dynamic"></span>
                     </div>
-                  <label class="form-label">Маркетплейсы: время запуска (МСК)</label>
+                  <label class="form-label">Ozon: время запуска (МСК)</label>
                   <div class="d-flex gap-2 align-items-center">
-                    <input type="checkbox" id="dg-set-auto_market_en" />
+                    <input type="checkbox" id="dg-set-auto_market_ozon_en" />
                     <span>Включить</span>
-                    <input type="time" class="form-control" id="dg-set-auto_market_time" style="max-width:140px" />
-                    <button type="button" class="btn btn-outline-primary btn-sm" id="dg-set-auto_market_run" data-dg-activity-label="Принудительно запустить автосинхронизацию маркетплейсов" data-dg-notify-start="Ставим в очередь синхронизацию маркетплейсов…">
+                    <input type="time" class="form-control" id="dg-set-auto_market_ozon_time" style="max-width:140px" />
+                    <button type="button" class="btn btn-outline-primary btn-sm" id="dg-set-auto_market_ozon_run" data-dg-activity-label="Запустить синхронизацию Ozon" data-dg-notify-start="Ставим в очередь синхронизацию Ozon…">
                       Запустить сейчас
                     </button>
                   </div>
                   <p class="small text-muted mb-0 mt-1">
-                    После успешного ночного (или ручного) обновления маркетплейсов автоматически пишется снимок для страницы
-                    <a href="/exports-marketplaces-issues.html">«Проблемы с товарами»</a> (фильтр «есть проблемы», исключить комплекты): дата, слот <code class="small">HH:mm</code> из этого поля, число строк и разбивка по менеджерам / контент-менеджерам.
+                    Отдельный снапшот Ozon в <code>marketplace_export_rows</code>. Журнал шагов —
+                    <code>logs/marketplace-ozon-sync.log</code>; статус и запуски — на
+                    <a href="/processes.html">«Логи фоновых процессов»</a> (секция Ozon).
+                    После успеха пишется снимок для
+                    <a href="/exports-marketplaces-issues.html">«Проблемы с товарами»</a>.
+                  </p>
+                                  </div>
+                </div>
+
+                <div class="col-12 dg-as-task" data-as-task="marketplaces_wb" data-as-category="marketplace" data-as-en-id="dg-set-auto_market_wb_en" data-as-time-id="dg-set-auto_market_wb_time">
+                  <div class="dg-as-task-card dg-as-cat-marketplace">
+                    <div class="dg-as-task-head">
+                      <span class="dg-as-cat-pill dg-as-cat-pill-dynamic"></span>
+                      <span class="dg-as-next-badge dg-as-next-badge-dynamic"></span>
+                    </div>
+                  <label class="form-label">Wildberries: время запуска (МСК)</label>
+                  <div class="d-flex gap-2 align-items-center">
+                    <input type="checkbox" id="dg-set-auto_market_wb_en" />
+                    <span>Включить</span>
+                    <input type="time" class="form-control" id="dg-set-auto_market_wb_time" style="max-width:140px" />
+                    <button type="button" class="btn btn-outline-primary btn-sm" id="dg-set-auto_market_wb_run" data-dg-activity-label="Запустить синхронизацию Wildberries" data-dg-notify-start="Ставим в очередь синхронизацию Wildberries…">
+                      Запустить сейчас
+                    </button>
+                  </div>
+                  <p class="small text-muted mb-0 mt-1">
+                    Отдельный снапшот WB. Журнал —
+                    <code>logs/marketplace-wb-sync.log</code>; секция на
+                    <a href="/processes.html">processes</a>. После успеха — снимок «Проблемы с товарами».
+                  </p>
+                                  </div>
+                </div>
+
+                <div class="col-12 dg-as-task" data-as-task="marketplaces_ym" data-as-category="marketplace" data-as-en-id="dg-set-auto_market_ym_en" data-as-time-id="dg-set-auto_market_ym_time">
+                  <div class="dg-as-task-card dg-as-cat-marketplace">
+                    <div class="dg-as-task-head">
+                      <span class="dg-as-cat-pill dg-as-cat-pill-dynamic"></span>
+                      <span class="dg-as-next-badge dg-as-next-badge-dynamic"></span>
+                    </div>
+                  <label class="form-label">Яндекс Маркет: время запуска (МСК)</label>
+                  <div class="d-flex gap-2 align-items-center">
+                    <input type="checkbox" id="dg-set-auto_market_ym_en" />
+                    <span>Включить</span>
+                    <input type="time" class="form-control" id="dg-set-auto_market_ym_time" style="max-width:140px" />
+                    <button type="button" class="btn btn-outline-primary btn-sm" id="dg-set-auto_market_ym_run" data-dg-activity-label="Запустить синхронизацию Яндекс Маркет" data-dg-notify-start="Ставим в очередь синхронизацию Я.Маркет…">
+                      Запустить сейчас
+                    </button>
+                  </div>
+                  <p class="small text-muted mb-0 mt-1">
+                    Отдельный снапшот Я.Маркет (рекомендуется слот позже Ozon/WB, чтобы не упираться в rate limit 420).
+                    Журнал — <code>logs/marketplace-ym-sync.log</code>; секция на
+                    <a href="/processes.html">processes</a>. После успеха — снимок «Проблемы с товарами».
                   </p>
                                   </div>
                 </div>

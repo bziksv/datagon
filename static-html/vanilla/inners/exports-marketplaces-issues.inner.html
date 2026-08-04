@@ -42,7 +42,7 @@
                     <strong class="text-body">Состояние гайда</strong> — развёрнутость панели и блоков шагов 1–3, ключи <code class="small">datagon_mp_issues_workflow_*</code> в <code class="small">localStorage</code>. На данные в МойСклад и снапшоты не влияет.
                   </li>
                   <li class="mb-2">
-                    <strong class="text-body">Фильтры и видимость полей</strong> — селекты менеджеров, scope, чекбокс «Исключить товары из комплектов» (<code class="small">dg.mpu.flt.excludeBundleComponents.v1</code>, дефолт включён), ползунок «Умное скрытие столбцов под выбранный фильтр» (<code class="small">dg.mpu.flt.smartColumns.v1</code>, дефолт включён), настройки шестерёнки «Поля фильтров» (<code class="small">datagon_mpu_filter_fields_v1</code>).
+                    <strong class="text-body">Фильтры и видимость полей</strong> — селекты менеджеров, scope, чекбокс «Исключить товары из комплектов» (<code class="small">dg.mpu.flt.excludeBundleComponents.v1</code>, дефолт включён), ползунок «Умное скрытие столбцов под выбранный фильтр» (<code class="small">dg.mpu.flt.smartColumns.v1</code>, дефолт включён), ползунок «Показывать товары с остатком» (<code class="small">dg.mpu.flt.stockPositive.v1</code>, дефолт выкл — только <em>Остаток по МС &gt; 0</em>), настройки шестерёнки «Поля фильтров» (<code class="small">datagon_mpu_filter_fields_v1</code>).
                   </li>
                   <li class="mb-0">
                     <strong class="text-body">Таблица</strong> — какие колонки показаны и ширины в пикселях (<code class="small">dg.mpu.colvisible.v5</code>, <code class="small">dg.mpu.colwidths.v2</code>). По умолчанию включены <strong>все</strong> колонки — «Код МС», «Название МС», «Менеджер», «Контент-менеджер», «НДС МС», «Остаток по МС», габариты МС (<em>Длина, Ширина, Высота — коробка, Высота — пакет (см), Вес (кг)</em> — из <code class="small">ms_dimensions_measurements</code>, страница <a href="/exports-dimensions.html">Габариты</a>), «Синхронизация МС» и полный паспорт каждого маркетплейса (<em>код, название, НДС, остаток, длина / ширина / высота / вес, кабинет, покупателю, обновлено</em>). Кнопка <strong>«Столбцы по умолчанию»</strong> возвращает именно это состояние «все включены». Лишние колонки можно скрыть через <strong>🧩 Столбцы</strong>. Полное наименование МС и ссылки на маркетплейсы — по клику на «Название МС» (карточка МойСклад).
@@ -270,6 +270,14 @@
                     <input class="form-check-input" type="checkbox" role="switch" id="dg-mpu-flt-smart-columns" checked>
                     <label class="form-check-label small" for="dg-mpu-flt-smart-columns" data-dg-tooltip="Когда включено и выбран «Нет на Ozon/Wildberries/Я.Маркет», «Не совпадает НДС» или «Разные габариты» — в таблице остаются только базовые колонки МойСклад (Код, Название, Менеджер, Контент-менеджер, НДС, Остаток, Синхронизация) и колонки, относящиеся к выбранной проблеме. На фильтрах «Все товары», «Есть проблемы», «Нет ни на одном» ползунок ничего не меняет. По умолчанию включено.">
                       Умное скрытие столбцов под выбранный фильтр
+                    </label>
+                  </div>
+                </div>
+                <div class="col-12" data-dg-mpu-filter-field="stock_positive" data-dg-filter-field-title="Показывать товары с остатком">
+                  <div class="form-check form-switch mb-0">
+                    <input class="form-check-input" type="checkbox" role="switch" id="dg-mpu-flt-stock-positive">
+                    <label class="form-check-label small" for="dg-mpu-flt-stock-positive" data-dg-tooltip="Оставить только строки, у которых «Остаток по МС» &gt; 0. По умолчанию выключено — в таблице видны и нулевые остатки. Срабатывает после «Применить».">
+                      Показывать товары с остатком
                     </label>
                   </div>
                 </div>

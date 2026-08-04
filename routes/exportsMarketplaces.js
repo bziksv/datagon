@@ -298,31 +298,81 @@ const syncState = {
     startedAt: null,
     finishedAt: null,
     message: '',
+    /** Итог последнего прогона: completed|failed|partial — для auto_sync_runs. */
+    resultStatus: null,
     perMarket: {
-        ozon: { status: 'idle', count: 0, error: '' },
-        wb: { status: 'idle', count: 0, error: '' },
-        ym: { status: 'idle', count: 0, error: '' },
+        ozon: { status: 'idle', count: 0, error: '', updatedAt: '' },
+        wb: { status: 'idle', count: 0, error: '', updatedAt: '' },
+        ym: { status: 'idle', count: 0, error: '', updatedAt: '' },
     },
 };
+
+/** Честный текст для UI / auto_sync_runs: по каждой площадке ✓/×, без голого «Завершено». */
+function summarizeMarketplacesSync(perMarket, kinds) {
+    const labels = { ozon: 'Ozon', wb: 'WB', ym: 'Я.Маркет' };
+    const list = Array.isArray(kinds) && kinds.length ? kinds : ['ozon', 'wb', 'ym'];
+    const parts = [];
+    let failed = 0;
+    let ok = 0;
+    for (const k of list) {
+        const x = (perMarket && perMarket[k]) || {};
+        const label = labels[k] || k;
+        if (x.status === 'completed') {
+            ok += 1;
+            const n = Number(x.count) || 0;
+            const ts = x.updatedAt ? ` @${x.updatedAt}` : '';
+            parts.push(`${label}: ✓ ${n}${ts}`);
+        } else if (x.status === 'failed') {
+            failed += 1;
+            const err = String(x.error || 'ошибка').replace(/\s+/g, ' ').trim().slice(0, 120);
+            parts.push(`${label}: × ${err}`);
+        } else {
+            parts.push(`${label}: ${x.status || '—'}`);
+        }
+    }
+    const head =
+        failed === 0
+            ? 'Завершено'
+            : ok === 0
+              ? 'Ошибка'
+              : 'Частично';
+    return `${head}: ${parts.join(' · ')}`.slice(0, 480);
+}
+
+function marketplacesResultStatus(perMarket, kinds) {
+    const list = Array.isArray(kinds) && kinds.length ? kinds : ['ozon', 'wb', 'ym'];
+    let failed = 0;
+    let ok = 0;
+    for (const k of list) {
+        const st = (perMarket && perMarket[k] && perMarket[k].status) || '';
+        if (st === 'completed') ok += 1;
+        else if (st === 'failed') failed += 1;
+    }
+    if (failed === 0 && ok > 0) return 'completed';
+    if (ok === 0 && failed > 0) return 'failed';
+    if (failed > 0 && ok > 0) return 'partial';
+    return 'failed';
+}
 
 function resetSyncState() {
     syncState.active = true;
     syncState.startedAt = new Date().toISOString();
     syncState.finishedAt = null;
+    syncState.resultStatus = null;
     syncState.message = 'Запуск обновления маркетплейсов...';
     syncState.perMarket = {
-        ozon: { status: 'pending', count: 0, error: '' },
-        wb: { status: 'pending', count: 0, error: '' },
-        ym: { status: 'pending', count: 0, error: '' },
+        ozon: { status: 'pending', count: 0, error: '', updatedAt: '' },
+        wb: { status: 'pending', count: 0, error: '', updatedAt: '' },
+        ym: { status: 'pending', count: 0, error: '', updatedAt: '' },
     };
 }
 
 module.exports = function exportsMarketplacesRouter(db, appSettings) {
     const router = express.Router();
-    // На чистом стенде LEFT JOIN ms_dimensions_measurements в `/issues` падает,
-    // если таблица ещё не создана. ensureSchema идемпотентен (CREATE TABLE IF NOT EXISTS),
-    // запускаем его в фоне при инициализации этого роутера, чтобы не зависеть
-    // от порядка mount'a с `/api/exports/dimensions` в server.js.
+    // На чистом стенде ensureSchema для `ms_dimensions_measurements` идемпотентен
+    // (CREATE TABLE IF NOT EXISTS). Запускаем в фоне при инициализации роутера,
+    // чтобы не зависеть от порядка mount'a с `/api/exports/dimensions` в server.js
+    // (таблица нужна странице «Габариты», не SELECT `/issues`).
     try {
         const { ensureSchema: ensureDimensionsSchema } = require('./dimensions');
         if (typeof ensureDimensionsSchema === 'function') {
@@ -730,8 +780,8 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
             const labelByKind = { ozon: 'Ozon', wb: 'Wildberries', ym: 'Я.Маркет' };
             const mpName = labelByKind[kind] || kind.toUpperCase();
             let friendly;
-            if (apiStatus === 429) {
-                friendly = `${mpName} вернул 429 (rate limit) — превышен лимит запросов в минуту. Подождите 1–2 минуты и попробуйте снова. Если повторяется — увеличьте паузу в «Настройки → Маркетплейсы → задержка между запросами».`;
+            if (apiStatus === 429 || apiStatus === 420) {
+                friendly = `${mpName} вернул ${apiStatus} (rate limit) — превышен лимит запросов. Подождите 1–2 минуты и попробуйте снова. Если повторяется — увеличьте паузу в «Настройки → Маркетплейсы → задержка между запросами».`;
             } else if (apiStatus && apiStatus >= 500) {
                 friendly = `${mpName} вернул ${apiStatus}${apiMsg ? `: ${apiMsg}` : ''} (временный сбой на стороне маркетплейса). Попробуйте ещё раз через минуту.`;
             } else if (apiStatus) {
@@ -829,20 +879,27 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
                     const res = await runSingleRefresh(k);
                     syncState.perMarket[k] = {
                         status: 'completed',
-                        count: Number(res.persisted || 0),
+                        count: Number(res.persisted || res.count || 0),
+                        updatedAt: res.updatedAt || '',
                         error: '',
                     };
                 } catch (eOne) {
+                    console.error(
+                        `[exports/marketplaces] refresh ${k} failed:`,
+                        eOne && eOne.stack ? eOne.stack : eOne
+                    );
                     syncState.perMarket[k] = {
                         status: 'failed',
                         count: 0,
+                        updatedAt: '',
                         error: eOne.message || String(eOne),
                     };
                 }
             }
             syncState.active = false;
             syncState.finishedAt = new Date().toISOString();
-            syncState.message = 'Обновление маркетплейсов завершено';
+            syncState.message = summarizeMarketplacesSync(syncState.perMarket, kinds);
+            syncState.resultStatus = marketplacesResultStatus(syncState.perMarket, kinds);
             try {
                 const m = autoMeta && typeof autoMeta === 'object' ? autoMeta : {};
                 await appendMarketplaceIssuesSnapshot(db, appSettings, {
@@ -1114,7 +1171,7 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
     }
 
     /** Есть ли у МС хотя бы одно числовое значение габарита/веса (источник —
-     * ms_dimensions_measurements, см. /issues SELECT). */
+     * атрибуты карточки МС из `ms_entity_details.payload_json`, см. /issues). */
     function issuesRowHasMsDims(row) {
         return (
             parseExportDimNumber(row.ms_length) != null
@@ -1159,7 +1216,7 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
      * Расхождение габаритов между маркетплейсами: товар есть минимум на двух площадках,
      * и по хотя бы одной оси (длина/ширина/высота/вес) обе отдают число и оно расходится
      * с допуском ISSUES_DIM_EPS. Используется как fallback, если у МС нет ни одного
-     * измерения в `ms_dimensions_measurements`.
+     * числа в атрибутах габаритов карточки.
      */
     function issuesRowDimsMismatchAcrossMps(row) {
         const keys = [];
@@ -1227,6 +1284,99 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
     }
 
     /**
+     * Габариты МС для `/issues`: те же доп. поля карточки, что уходят в МС с
+     * `/exports-dimensions.html` («↗ В МС»). Имена атрибутов — паритет с
+     * `DIMENSION_ATTRS` / `FIELD_TO_MS_ATTR` в `routes/dimensions.js`.
+     * Источник — `ms_entity_details.payload_json.attributes`, не таблица замеров
+     * `ms_dimensions_measurements` (там может быть только тип упаковки + вес).
+     */
+    const ISSUES_MS_DIM_ATTRS = [
+        { key: 'ms_length', attr: '!!Длина (см) КОРОБКА/Пакет станд. уп.' },
+        { key: 'ms_width', attr: '!!Ширина (см) КОРОБКА/Пакет станд. уп.' },
+        { key: 'ms_height_box', attr: '!!Высота (см) КОРОБКА станд. уп.' },
+        { key: 'ms_height_bag', attr: '!!Высота (см) Пакет!' },
+        { key: 'ms_weight', attr: '!!Вес (кг)' },
+    ];
+
+    function extractIssuesMsDimAttr(payload, attrName) {
+        if (!payload || !Array.isArray(payload.attributes)) return '';
+        const a = payload.attributes.find((x) => x && x.name === attrName);
+        if (!a) return '';
+        const v = a.value;
+        if (v == null) return '';
+        if (typeof v === 'object') {
+            if (typeof v.name === 'string') return v.name;
+            return '';
+        }
+        return String(v);
+    }
+
+    function parseIssuesEntityPayload(raw) {
+        if (raw == null) return null;
+        if (typeof raw === 'object') return raw;
+        try {
+            const o = JSON.parse(String(raw));
+            return o && typeof o === 'object' ? o : null;
+        } catch (_) {
+            return null;
+        }
+    }
+
+    function formatIssuesMsDimValue(v) {
+        if (v == null) return null;
+        const s = String(v).trim();
+        if (!s) return null;
+        const n = parseFloat(s.replace(',', '.'));
+        if (!Number.isFinite(n)) return null;
+        return n.toFixed(1);
+    }
+
+    /** Подмешивает ms_length/… из полных карточек МС (чанками, без JOIN огромного JSON). */
+    async function attachIssuesMsDimsFromEntityDetails(dbConn, rows) {
+        const list = rows || [];
+        for (const r of list) {
+            for (const def of ISSUES_MS_DIM_ATTRS) r[def.key] = null;
+        }
+        const uuids = [];
+        const seen = new Set();
+        for (const r of list) {
+            const u = String(r && r.uuid != null ? r.uuid : '').trim();
+            if (!u || seen.has(u)) continue;
+            seen.add(u);
+            uuids.push(u);
+        }
+        if (!uuids.length || !dbConn || typeof dbConn.query !== 'function') return;
+
+        const byUuid = new Map();
+        const CHUNK = 250;
+        for (let i = 0; i < uuids.length; i += CHUNK) {
+            const chunk = uuids.slice(i, i + CHUNK);
+            const [drows] = await dbConn.query(
+                'SELECT uuid, payload_json FROM ms_entity_details WHERE uuid IN (?)',
+                [chunk]
+            );
+            for (const d of drows || []) {
+                const uid = String(d && d.uuid != null ? d.uuid : '').trim();
+                if (!uid) continue;
+                const payload = parseIssuesEntityPayload(d.payload_json);
+                const dims = {};
+                for (const def of ISSUES_MS_DIM_ATTRS) {
+                    dims[def.key] = formatIssuesMsDimValue(extractIssuesMsDimAttr(payload, def.attr));
+                }
+                byUuid.set(uid, dims);
+            }
+        }
+        for (const r of list) {
+            const uid = String(r && r.uuid != null ? r.uuid : '').trim();
+            const dims = byUuid.get(uid);
+            if (!dims) continue;
+            for (const def of ISSUES_MS_DIM_ATTRS) {
+                r[def.key] = dims[def.key];
+            }
+        }
+    }
+
+    /**
      * Общая выборка строк для `/issues` и для ежедневного снимка (после синка маркетплейсов).
      * `scope` — уже нормализованный ключ (all|any|all3|ozon|wb|ym|vat_mismatch|dims_mismatch).
      */
@@ -1242,12 +1392,6 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
                     m.content_manager AS content_manager,
                     DATE_FORMAT(m.synced_at, '%d.%m.%Y %H:%i') AS synced_at,
                     m.stock          AS ms_stock,
-
-                    md.length_cm     AS ms_length,
-                    md.width_cm      AS ms_width,
-                    md.height_box_cm AS ms_height_box,
-                    md.height_bag_cm AS ms_height_bag,
-                    md.weight_kg     AS ms_weight,
 
                     ozon.external_id AS ozon_code,
                     ozon.name        AS ozon_name,
@@ -1285,8 +1429,6 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
                     ym.buyer_url     AS ym_buyer_url,
                     COALESCE(NULLIF(ym.updated_label, ''), DATE_FORMAT(ym.updated_at, '%d.%m.%Y %H:%i')) AS ym_updated
                 FROM ms_export m
-                LEFT JOIN ms_dimensions_measurements md
-                    ON md.code = m.code
                 LEFT JOIN marketplace_export_rows ozon
                     ON ozon.marketplace = 'ozon' AND ozon.external_id = m.code
                 LEFT JOIN marketplace_export_rows wb
@@ -1322,20 +1464,7 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
             }
         }
 
-        // Габариты МС в БД хранятся как DECIMAL(10,2) / DECIMAL(10,3) — MySQL отдаёт
-        // их строками "31.00" / "1.000". В UI достаточно одного знака после точки
-        // (см. таблицу /exports-marketplaces-issues.html). Округляем и форматируем
-        // здесь, чтобы и API-контракт, и любая интеграция получали короткие
-        // строки "31.0" / "1.0" / "0.0", а не сырые DECIMAL.
-        const MS_DIM_KEYS = ['ms_length', 'ms_width', 'ms_height_box', 'ms_height_bag', 'ms_weight'];
-        const formatMsDimValue = (v) => {
-            if (v == null) return null;
-            const s = String(v).trim();
-            if (!s) return null;
-            const n = parseFloat(s.replace(',', '.'));
-            if (!Number.isFinite(n)) return v;
-            return n.toFixed(1);
-        };
+        await attachIssuesMsDimsFromEntityDetails(dbConn, rows || []);
 
         for (const r of rows || []) {
             if (Object.prototype.hasOwnProperty.call(r, 'ozon_vat')) {
@@ -1347,20 +1476,13 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
             if (Object.prototype.hasOwnProperty.call(r, 'ym_vat')) {
                 r.ym_vat = prettifyMarketplaceVat('ym', r.ym_vat);
             }
-            for (const k of MS_DIM_KEYS) {
-                if (Object.prototype.hasOwnProperty.call(r, k)) {
-                    r[k] = formatMsDimValue(r[k]);
-                }
-            }
         }
 
         if (scope === 'vat_mismatch') {
             rows = (rows || []).filter((r) => issuesRowVatMismatch(r));
         } else if (scope === 'dims_mismatch') {
-            // При наличии измерений в `ms_dimensions_measurements` сверяемся с МС
-            // (с учётом двойной высоты МС: коробка ИЛИ пакет). Иначе — старая
-            // логика «между маркетплейсами», чтобы не терять строки, у которых
-            // ещё нет данных МС.
+            // При наличии чисел в атрибутах габаритов карточки МС сверяемся с ними
+            // (двойная высота: коробка ИЛИ пакет). Иначе — «между маркетплейсами».
             rows = (rows || []).filter((r) => issuesRowDimsMismatch(r));
         }
 
@@ -1424,14 +1546,12 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
      *   ozon|wb|ym     — нет на конкретном маркетплейсе.
      *   vat_mismatch   — товар есть на маркетплейсе, но нормализованный НДС МС ≠ НДС этой площадки.
      *   dims_mismatch  — расхождение габаритов (длина/ширина/высота/вес).
-     *                    Если для строки есть измерения МС в `ms_dimensions_measurements`
-     *                    (хотя бы одно числовое значение из length_cm/width_cm/
-     *                    height_box_cm/height_bag_cm/weight_kg), сверка идёт МС ↔
-     *                    маркетплейсы (высота МС двойная: совпадение высоты площадки
-     *                    хотя бы с коробкой ИЛИ с пакетом считаем match). Если
-     *                    измерений МС нет — fallback на старую логику «между
-     *                    маркетплейсами»: товар есть минимум на двух площадках, по
-     *                    оси L/W/H/вес обе отдают число и оно расходится.
+     *                    Если у строки в атрибутах карточки МС есть хотя бы одно
+     *                    числовое значение (`!!Длина…` / `!!Ширина…` /
+     *                    `!!Высота…КОРОБКА` / `!!Высота…Пакет!` / `!!Вес (кг)`),
+     *                    сверка идёт МС ↔ маркетплейсы (высота МС двойная: совпадение
+     *                    высоты площадки хотя бы с коробкой ИЛИ с пакетом = match).
+     *                    Если атрибутов МС нет — fallback «между маркетплейсами».
      */
     router.get('/issues', async (req, res) => {
         try {

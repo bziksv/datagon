@@ -527,7 +527,9 @@
         { key: "myproducts", title: "Мои товары", subtitle: "Импорт из CMS магазинов", cfgEnabled: "myproducts_enabled", cfgTime: "myproducts_time" },
         { key: "moysklad", title: "МойСклад: ms_export (МСК)", subtitle: "Номенклатура, остатки, неснижаемый из МС; после сохранения ms_export — журнал нулевых остатков за сегодня (склад.поз. «Да», не архив). Не импорт отгрузок.", cfgEnabled: "moysklad_enabled", cfgTime: "moysklad_time" },
         { key: "ms_orders", title: "Заказы в МС", subtitle: "Импорт customerorder → ms_customer_order", cfgEnabled: "ms_orders_enabled", cfgTime: "ms_orders_time" },
-        { key: "marketplaces", title: "Маркетплейсы", subtitle: "Ozon · WB · Я.Маркет", cfgEnabled: "marketplaces_enabled", cfgTime: "marketplaces_time" },
+        { key: "marketplaces_ozon", title: "Ozon", subtitle: "Снапшот Ozon", cfgEnabled: "marketplaces_ozon_enabled", cfgTime: "marketplaces_ozon_time" },
+        { key: "marketplaces_wb", title: "Wildberries", subtitle: "Снапшот WB", cfgEnabled: "marketplaces_wb_enabled", cfgTime: "marketplaces_wb_time" },
+        { key: "marketplaces_ym", title: "Яндекс Маркет", subtitle: "Снапшот Я.Маркет", cfgEnabled: "marketplaces_ym_enabled", cfgTime: "marketplaces_ym_time" },
         { key: "huckster", title: "Калькуляция Huckster", subtitle: "Расчёт цен по правилам", cfgEnabled: "huckster_enabled", cfgTime: "huckster_time" },
         { key: "db_size", title: "Размер БД и диска", subtitle: "Снимок размеров таблиц БД и разбивка диска по папкам проекта", cfgEnabled: "db_size_enabled", cfgTime: "db_size_time" },
         { key: "dimensions", title: "Габариты МС", subtitle: "Выгрузка пользовательских замеров в МойСклад", cfgEnabled: "dimensions_enabled", cfgTime: "dimensions_time" },
@@ -973,7 +975,7 @@
           line += String(lv.message || "").slice(0, 220);
           return line;
         }
-        if (secKey === "marketplaces") {
+        if (secKey === "marketplaces" || secKey === "marketplaces_ozon" || secKey === "marketplaces_wb" || secKey === "marketplaces_ym") {
           var m = String(lv.message || "").slice(0, 140);
           var p = lv.per_market_summary ? String(lv.per_market_summary).slice(0, 240) : "";
           return ("Сейчас: " + m + (p ? " · " + p : "")).trim();

@@ -719,6 +719,73 @@
     return tdCom;
   }
 
+  function rowDisplayId(row) {
+    return row && row.channel_num != null ? row.channel_num : row && row.id != null ? row.id : "—";
+  }
+
+  var confirmState = { resolve: null };
+
+  function closeNpConfirm(ok) {
+    var overlay = el("dg-np-confirm-overlay");
+    if (overlay) {
+      overlay.style.display = "none";
+      overlay.setAttribute("aria-hidden", "true");
+    }
+    var resolve = confirmState.resolve;
+    confirmState.resolve = null;
+    if (typeof resolve === "function") resolve(!!ok);
+  }
+
+  function openNpConfirm(opts) {
+    var o = opts || {};
+    return new Promise(function (resolve) {
+      if (confirmState.resolve) closeNpConfirm(false);
+      confirmState.resolve = resolve;
+      var title = el("dg-np-confirm-title");
+      var text = el("dg-np-confirm-text");
+      var okBtn = el("dg-np-confirm-ok");
+      if (title) title.textContent = o.title || "Удалить?";
+      if (text) text.textContent = o.message || "Действие нельзя отменить.";
+      if (okBtn) {
+        okBtn.textContent = o.okLabel || "Удалить";
+        if (o.notifyStart) okBtn.setAttribute("data-dg-notify-start", o.notifyStart);
+        else okBtn.setAttribute("data-dg-notify-start", "Удаляем…");
+      }
+      var overlay = el("dg-np-confirm-overlay");
+      if (!overlay) {
+        resolve(window.confirm(o.message || "Удалить?"));
+        return;
+      }
+      overlay.style.display = "flex";
+      overlay.setAttribute("aria-hidden", "false");
+      if (okBtn) {
+        try {
+          okBtn.focus();
+        } catch (_) {}
+      }
+    });
+  }
+
+  function bindNpConfirmUi() {
+    var cancel = el("dg-np-confirm-cancel");
+    var ok = el("dg-np-confirm-ok");
+    var backdrop = el("dg-np-confirm-backdrop");
+    if (cancel) cancel.addEventListener("click", function () { closeNpConfirm(false); });
+    if (ok) ok.addEventListener("click", function () { closeNpConfirm(true); });
+    if (backdrop) backdrop.addEventListener("click", function () { closeNpConfirm(false); });
+    document.addEventListener("keydown", function (e) {
+      var overlay = el("dg-np-confirm-overlay");
+      if (!overlay || overlay.style.display === "none") return;
+      if (e.key === "Escape") {
+        e.preventDefault();
+        closeNpConfirm(false);
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        closeNpConfirm(true);
+      }
+    });
+  }
+
   function makeDeleteActions(row, opts) {
     var options = opts || {};
     var tdAct = document.createElement("td");
@@ -762,23 +829,44 @@
     bDel.title = "Удалить";
     bDel.setAttribute("data-dg-no-activity", "1");
     bDel.addEventListener("click", function () {
-      if (!window.confirm("Удалить запись #" + row.id + "?")) return;
-      fetch("/api/exports/new-products/" + row.id, {
-        method: "DELETE",
-        credentials: "same-origin",
-        headers: authHeaders(false),
-      })
-        .then(function (r) {
-          return r.json().then(function (j) {
-            if (!r.ok) throw new Error((j && j.error) || "HTTP " + r.status);
+      var label = String(row.title || row.article || row.product_code || "").trim();
+      var msg =
+        "Удалить запись №" +
+        rowDisplayId(row) +
+        (label ? " («" + label + "»)" : "") +
+        "? Действие нельзя отменить.";
+      openNpConfirm({ title: "Удалить товар?", message: msg }).then(function (ok) {
+        if (!ok) return;
+        var run = function () {
+          return fetch("/api/exports/new-products/" + row.id, {
+            method: "DELETE",
+            credentials: "same-origin",
+            headers: authHeaders(false),
+          })
+            .then(function (r) {
+              return r.json().then(function (j) {
+                if (!r.ok) throw new Error((j && j.error) || "HTTP " + r.status);
+              });
+            })
+            .then(function () {
+              if (window.DatagonNotify && window.DatagonNotify.toast) {
+                window.DatagonNotify.toast({ type: "success", message: "Удалено" });
+              }
+              load();
+            });
+        };
+        if (window.DatagonNotify && window.DatagonNotify.busyRun) {
+          window.DatagonNotify.busyRun(bDel, run).catch(function (e) {
+            if (window.DatagonNotify && window.DatagonNotify.toast) {
+              window.DatagonNotify.toast({ type: "danger", message: e.message || "Ошибка" });
+            }
           });
-        })
-        .then(function () {
-          load();
-        })
-        .catch(function (e) {
-          alert(e.message || "Ошибка удаления");
-        });
+        } else {
+          run().catch(function (e) {
+            alert(e.message || "Ошибка удаления");
+          });
+        }
+      });
     });
     tdAct.appendChild(bDel);
     return tdAct;
@@ -1413,30 +1501,40 @@
     bDel.className = "btn btn-outline-danger btn-sm";
     bDel.textContent = "×";
     bDel.title = "Удалить комплект";
-    bDel.setAttribute("data-dg-notify-start", "Удаляем комплект…");
+    bDel.setAttribute("data-dg-no-activity", "1");
     bDel.addEventListener("click", function () {
-      var run = function () {
-        return kitApi(parent.id, "DELETE", "/" + kit.id).then(function () {
-          parent.kits = (parent.kits || []).filter(function (k) {
-            return k.id !== kit.id;
+      var kitLabel = String(kit.title || kit.article || kit.product_code || "").trim();
+      var msg =
+        "Удалить комплект" +
+        (kitLabel ? " «" + kitLabel + "»" : "") +
+        " у товара №" +
+        rowDisplayId(parent) +
+        "?";
+      openNpConfirm({ title: "Удалить комплект?", message: msg }).then(function (ok) {
+        if (!ok) return;
+        var run = function () {
+          return kitApi(parent.id, "DELETE", "/" + kit.id).then(function () {
+            parent.kits = (parent.kits || []).filter(function (k) {
+              return k.id !== kit.id;
+            });
+            renderTable();
+            if (window.DatagonNotify && window.DatagonNotify.toast) {
+              window.DatagonNotify.toast({ type: "success", message: "Комплект удалён" });
+            }
           });
-          renderTable();
-          if (window.DatagonNotify && window.DatagonNotify.toast) {
-            window.DatagonNotify.toast({ type: "success", message: "Комплект удалён" });
-          }
-        });
-      };
-      if (window.DatagonNotify && window.DatagonNotify.busyRun) {
-        window.DatagonNotify.busyRun(bDel, run).catch(function (e) {
-          if (window.DatagonNotify && window.DatagonNotify.toast) {
-            window.DatagonNotify.toast({ type: "danger", message: e.message || "Ошибка" });
-          }
-        });
-      } else {
-        run().catch(function (e) {
-          alert(e.message || "Ошибка");
-        });
-      }
+        };
+        if (window.DatagonNotify && window.DatagonNotify.busyRun) {
+          window.DatagonNotify.busyRun(bDel, run).catch(function (e) {
+            if (window.DatagonNotify && window.DatagonNotify.toast) {
+              window.DatagonNotify.toast({ type: "danger", message: e.message || "Ошибка" });
+            }
+          });
+        } else {
+          run().catch(function (e) {
+            alert(e.message || "Ошибка");
+          });
+        }
+      });
     });
     tdAct.appendChild(bDel);
     tr.appendChild(tdAct);
@@ -2070,6 +2168,7 @@
     bindCollapse("dg-np-filters-toggle", "dg-np-filters-body", FILTERS_KEY);
     bindCollapse("dg-np-table-toggle", "dg-np-table-body", TABLE_KEY);
     bindNpLogUi();
+    bindNpConfirmUi();
 
     document.querySelectorAll("#dg-np-tabs [data-dg-np-channel]").forEach(function (btn) {
       btn.addEventListener("click", function () {

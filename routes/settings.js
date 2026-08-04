@@ -154,6 +154,9 @@ module.exports = (db, appSettings) => {
             auto_sync_moysklad_enabled, auto_sync_moysklad_time,
             auto_sync_ms_orders_enabled, auto_sync_ms_orders_time, auto_sync_ms_orders_weekdays,
             auto_sync_marketplaces_enabled, auto_sync_marketplaces_time,
+            auto_sync_marketplaces_ozon_enabled, auto_sync_marketplaces_ozon_time,
+            auto_sync_marketplaces_wb_enabled, auto_sync_marketplaces_wb_time,
+            auto_sync_marketplaces_ym_enabled, auto_sync_marketplaces_ym_time,
             auto_sync_huckster_enabled, auto_sync_huckster_time,
             auto_sync_db_size_enabled, auto_sync_db_size_time,
             auto_sync_export_ms_enabled,
@@ -221,6 +224,12 @@ module.exports = (db, appSettings) => {
             }
             if (auto_sync_marketplaces_enabled !== undefined) queries.push(['auto_sync_marketplaces_enabled', auto_sync_marketplaces_enabled ? 1 : 0]);
             if (auto_sync_marketplaces_time !== undefined) queries.push(['auto_sync_marketplaces_time', auto_sync_marketplaces_time || '05:00']);
+            if (auto_sync_marketplaces_ozon_enabled !== undefined) queries.push(['auto_sync_marketplaces_ozon_enabled', auto_sync_marketplaces_ozon_enabled ? 1 : 0]);
+            if (auto_sync_marketplaces_ozon_time !== undefined) queries.push(['auto_sync_marketplaces_ozon_time', auto_sync_marketplaces_ozon_time || '06:00']);
+            if (auto_sync_marketplaces_wb_enabled !== undefined) queries.push(['auto_sync_marketplaces_wb_enabled', auto_sync_marketplaces_wb_enabled ? 1 : 0]);
+            if (auto_sync_marketplaces_wb_time !== undefined) queries.push(['auto_sync_marketplaces_wb_time', auto_sync_marketplaces_wb_time || '06:25']);
+            if (auto_sync_marketplaces_ym_enabled !== undefined) queries.push(['auto_sync_marketplaces_ym_enabled', auto_sync_marketplaces_ym_enabled ? 1 : 0]);
+            if (auto_sync_marketplaces_ym_time !== undefined) queries.push(['auto_sync_marketplaces_ym_time', auto_sync_marketplaces_ym_time || '06:50']);
             if (auto_sync_huckster_enabled !== undefined) queries.push(['auto_sync_huckster_enabled', auto_sync_huckster_enabled ? 1 : 0]);
             if (auto_sync_huckster_time !== undefined) queries.push(['auto_sync_huckster_time', auto_sync_huckster_time || '06:00']);
             if (auto_sync_db_size_enabled !== undefined) queries.push(['auto_sync_db_size_enabled', auto_sync_db_size_enabled ? 1 : 0]);
@@ -435,6 +444,12 @@ module.exports = (db, appSettings) => {
             }
             if(auto_sync_marketplaces_enabled !== undefined) appSettings.auto_sync_marketplaces_enabled = auto_sync_marketplaces_enabled ? 1 : 0;
             if(auto_sync_marketplaces_time !== undefined) appSettings.auto_sync_marketplaces_time = auto_sync_marketplaces_time || '05:00';
+            if(auto_sync_marketplaces_ozon_enabled !== undefined) appSettings.auto_sync_marketplaces_ozon_enabled = auto_sync_marketplaces_ozon_enabled ? 1 : 0;
+            if(auto_sync_marketplaces_ozon_time !== undefined) appSettings.auto_sync_marketplaces_ozon_time = auto_sync_marketplaces_ozon_time || '06:00';
+            if(auto_sync_marketplaces_wb_enabled !== undefined) appSettings.auto_sync_marketplaces_wb_enabled = auto_sync_marketplaces_wb_enabled ? 1 : 0;
+            if(auto_sync_marketplaces_wb_time !== undefined) appSettings.auto_sync_marketplaces_wb_time = auto_sync_marketplaces_wb_time || '06:25';
+            if(auto_sync_marketplaces_ym_enabled !== undefined) appSettings.auto_sync_marketplaces_ym_enabled = auto_sync_marketplaces_ym_enabled ? 1 : 0;
+            if(auto_sync_marketplaces_ym_time !== undefined) appSettings.auto_sync_marketplaces_ym_time = auto_sync_marketplaces_ym_time || '06:50';
             if(auto_sync_huckster_enabled !== undefined) appSettings.auto_sync_huckster_enabled = auto_sync_huckster_enabled ? 1 : 0;
             if(auto_sync_huckster_time !== undefined) appSettings.auto_sync_huckster_time = auto_sync_huckster_time || '06:00';
             if(auto_sync_db_size_enabled !== undefined) appSettings.auto_sync_db_size_enabled = auto_sync_db_size_enabled ? 1 : 0;
