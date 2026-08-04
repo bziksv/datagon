@@ -1840,7 +1840,8 @@
       id === "dg-sa-table" ||
       /** Маркетплейсы → Габариты: свои стили в exports-dimensions.head.html + локальный JS sticky-top. */
       id === "dg-dim-table" ||
-      id === "dg-mm-table-main"
+      id === "dg-mm-table-main" ||
+      id === "dg-np-table"
     )
       return true;
     return false;

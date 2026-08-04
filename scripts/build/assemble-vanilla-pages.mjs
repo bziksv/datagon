@@ -302,6 +302,14 @@ function assemble() {
             PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/exports-dimensions.scripts.html')),
         },
         {
+            out: 'exports-new-products.html',
+            PAGE_TITLE: 'Маркетплейсы — Новые товары — Датагон',
+            BODY_ATTRS: 'class="datagon-vanilla-body" data-dg-active-nav="exports-new-products"',
+            EXTRA_HEAD: read(path.join(vanillaDir, 'inners/exports-new-products.head.html')),
+            MAIN_INNER: read(path.join(vanillaDir, 'inners/exports-new-products.inner.html')),
+            PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/exports-new-products.scripts.html')),
+        },
+        {
             out: 'ms-sales.html',
             PAGE_TITLE: 'Продажи МС — Датагон',
             BODY_ATTRS: 'class="datagon-vanilla-body" data-dg-active-nav="ms-sales"',

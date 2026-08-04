@@ -70,6 +70,8 @@ description: Справочник REST-эндпоинтов p.datagon.ru (осн
 - `/api/medmarket` -> `routes/medmarket.js` (Медмаркет: стыковка `code`+тип (`10088+Товар`); `GET /`, `GET /sync-status`, `POST /sync`, `PATCH /mapping`, `POST /import`, `POST /fill-linkage-codes`)
 - `/api/exports/marketplaces` -> `routes/exportsMarketplaces.js`
 - `/api/exports/dimensions` -> `routes/dimensions.js`
+- `/api/exports/new-products` -> `routes/exportsNewProducts.js`
+- `/api/exports/huckster` -> `routes/exportsHuckster.js`
 - `/api/ms-sales` -> `routes/msSales.js` (Продажи МС: отгрузки `entity/demand` + позиции с привязкой к `ms_export`)
 - `/api/ms-orders` -> `routes/msOrders.js` (Заказы в МС: `entity/customerorder`, окно **30 дней**, исключение ответственных из `app_settings`)
 - `/api/suppliers` -> `routes/suppliers.js` (Поставщики: агрегат по `ms_export` + `dg_supplier_settings`; `GET /`, `GET /assignees`, `GET /ms-order-log`, `GET /ms-order-log/:logId`, `GET /export/supplier`, `GET /export/purchaser`, `POST /:supplierKey/send-ms-order`, `PATCH /:supplierKey`)
@@ -1167,6 +1169,67 @@ Body (JSON):
 Удалить замер по коду (откатывает «Кто замерял» / «Дата замера» в пустое значение и все габариты обнуляются). Действие фиксируется в `ms_dimensions_log` строкой `action='delete'`.
 
 Ответ: `{ success: true, code }`.
+
+## Exports / Новые товары
+
+Префикс: `/api/exports/new-products`. Экран: `/exports-new-products.html` (подменю **Маркетплейсы**). Две вкладки UI: **Альмамед** (`channel=almamed`) и **Маркеты** (`channel=marketplaces`). Таблица `dg_new_products` (создаётся при первом запросе).
+
+Доступ по матрице страницы **`exports-new-products`** (как дочерняя маркетплейсов наследует скрытие родителя `exports-marketplaces`, если у дочерней нет явного `view`/`full`).
+
+Статусы Альмамед: `new` | `not_added` | `in_progress` | `added` | `revision` | `review` | `transferred` (скрыт).  
+Статусы маркетов: `new` | `not_added` | `added` | `revision` | `not_cooperate` | `in_bundle` | `removed` (скрыт).
+
+**Альмамед:** новый товар — `new`. Когда заполнены обязательные поля (**артикул**, **название**, **цена Альмамед**, **ссылка поставщика**, **приоритет**) → `not_added`. Контент: `in_progress` → `added`; замечания — `revision` + `comment`.
+
+**Размещение на маркеты:** строки из Альмамед со статусом `added` (и legacy `transferred`) или с флагами **`sell_on_markets=1`** / **`has_kits=1`** через `POST /sync-markets-queue` и при каждом `PATCH` Альмамед-строки с этими флагами. Аналогичные поля (менеджер, ответственный, приоритет, артикул/код, название, цена, `has_kits`) копируются/обновляются в строку `channel=marketplaces` (`source_almamed_id`). **ID разные:** Альмамед и маркеты — отдельные строки одной таблицы (`dg_new_products`); у каждой вкладки своя нумерация `channel_num` (1, 2, 3…), не общий auto-increment. В UI колонка ID показывает `channel_num`; связь `← Альм. #N` / `→ Марк. #N` тоже по номерам вкладки (`source_almamed_id` / `markets_product_id` — внутренние PK). Из МС (по **коду** или **артикулу**, когда товар уже есть в `ms_export`) подтягиваются **код МС**, штрихкод, НДС, **габариты** (`ms_dimensions_measurements`: длина/ширина/высота коробки/пакета, вес), ссылка РУ. Размещение Ozon/WB/ЯМ — по `marketplace_export_rows.external_id` (= код МС); в UI зелёные бейджи кликабельны (`buyer_url` / `cabinet_url` → `placement_*_url`). Обязательные: приоритет, код, артикул, название для маркетов, штрихкод, цена на маркеты, **длина / ширина / высота / вес** (отдельные колонки), НДС, ссылка на РУ. Пустые → `new`; все заполнены → `not_added`; на всех трёх МП → `added`. Комментарий → `revision`; очистка комментария → снова `added` (если на всех МП) или `new`/`not_added`. Ручные: `not_cooperate`, `in_bundle`. Кнопка **«Убрать размещенные»** → `POST /remove-placed` (status `added` → `removed`).
+
+**Комплекты:** колонка Альмамед **«Комплект»** (`has_kits`). На маркетах при `has_kits=1` — кнопка **«+ Комплект»**; комплекты — вложенные строки. У комплекта редактируются: код, артикул, название, штрихкод, цена, статус, комментарий, длина/ширина/высота/вес, НДС, ссылка на РУ (менеджер/дата/приоритет/ответственный — как у товара). API: `POST/PATCH/DELETE /api/exports/new-products/:id/kits[/:kitId]`.
+
+### GET `/api/exports/new-products`
+
+Query: `channel`, `search`, `status`, `priority`, `brand`, `responsible` (id | `none`), `manager` (id | `none`), `limit` (default 100), `offset`, `sort_by`, `sort_dir`. Без `status` — без `transferred` (Альмамед) / `removed` (маркеты). В ответе: `missing_required`, `incomplete_count`, `required_fields`, поля размещения/габаритов для маркетов, для Альмамед — `sell_on_markets`, `has_kits`; для маркетов — `has_kits`, `kits[]`.
+
+### POST `/api/exports/new-products`
+
+Создать строку. Body: `channel`, `title` (≤128), опционально поля таблицы (в т.ч. markets-поля).
+
+### PATCH `/api/exports/new-products/:id`
+
+Частичное обновление + авто-статус по каналу. Для Альмамед: `sell_on_markets`, `has_kits` (0/1). При любом из флагов =1 поля синхронизируются во вкладку маркетов. Ответ: `data`, `missing_required`, `auto_status_changed`, `markets_sync`.
+
+### POST `/api/exports/new-products/:id/kits`
+
+Добавить комплект к строке маркетов (`has_kits` обязателен). Body: `{ title? }`. Ответ: `{ success, data: { id, parent_product_id, title, sort_order } }`.
+
+### PATCH `/api/exports/new-products/:id/kits/:kitId`
+
+Обновить название комплекта. Body: `{ title }`.
+
+### DELETE `/api/exports/new-products/:id/kits/:kitId`
+
+Удалить комплект.
+
+### GET `/api/exports/new-products/:id/log`
+
+Журнал изменений строки (`dg_new_products_log`): кто / когда / поле / было→стало. Query: `limit` (default 100), `offset`, `field?`. Пишется при `POST`/`PATCH`/`DELETE` товара, комплектах и `distribute` (source `distribute`). В UI — кнопка **🕘 Лог** у ID.
+
+### DELETE `/api/exports/new-products/:id`
+
+### POST `/api/exports/new-products/distribute`
+
+Раздать ответственных поровну. Body: `{ channel, scope?: "unassigned"|"all", user_ids?: number[] }`.
+
+### POST `/api/exports/new-products/sync-markets-queue`
+
+Обновить очередь маркетов из Альмамед (`added` / legacy `transferred` / `sell_on_markets=1` / `has_kits=1`) + МС + снапшоты МП. Ответ: `from_almamed`, `updated`, `skipped_all_mp`, `duration_sec`.
+
+### POST `/api/exports/new-products/remove-placed`
+
+Убрать размещённые (status `added` → `removed`). Body/query: `dry_run`.
+
+### GET `/api/exports/new-products/assignees` · `GET /meta`
+
+`assignees`: `managers[]` — специальность **«Менеджер маркетплейсов»** (колонка/фильтр «Менеджер товара»); `responsibles[]` — только **«Контент-Менеджер»** (колонка/фильтр «Ответственный»); `data` = `managers` (back-compat). Meta — `statuses_almamed`, `statuses_marketplaces`, `required_fields_marketplaces`.
 
 ## Exports / Huckster
 

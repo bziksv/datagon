@@ -1,0 +1,3301 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, shrink-to-fit=no" />
+  <script>
+    (function () {
+      try {
+        if (localStorage.getItem("datagon_theme_font_source_sans_3_v1") === "1") {
+          document.documentElement.classList.add("dg-font-source-sans-3");
+          var l = document.createElement("link");
+          l.id = "dg-font-source-sans-3-link";
+          l.rel = "stylesheet";
+          l.href =
+            "https://fonts.googleapis.com/css2?family=Source+Sans+3:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap";
+          document.head.appendChild(l);
+        }
+      } catch (e) {}
+    })();
+  </script>
+  <title>Маркетплейсы — Новые товары — Датагон</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="stylesheet" href="/static/css/main.989b22a9.css" />
+  <style>
+  /* Паритет с my-products.head.html — wide-таблица в карточке */
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .app-main__outer,
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .app-main__inner,
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .main-card.card,
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .main-card.card > .card-body {
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+  .dg-np-tabs .nav-link { cursor: pointer; }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-mp-table {
+    font-size: 0.8rem;
+    line-height: 1.25;
+    font-variant-numeric: tabular-nums;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-mp-table-scroll-outer {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    overflow-x: auto;
+    overflow-y: visible;
+    -webkit-overflow-scrolling: touch;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"]
+    .dg-mp-table-scroll-outer
+    > .datagon-my-products-table-wrap.table-responsive {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    overflow: visible !important;
+    max-height: none !important;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"]
+    .dg-mp-table-scroll-outer
+    > .datagon-my-products-table-wrap.table-responsive,
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"]
+    .dg-mp-table-scroll-outer
+    > .datagon-my-products-table-wrap.table-responsive
+    > table {
+    transform: none !important;
+    filter: none !important;
+    perspective: none !important;
+  }
+  /* Шапка как у dg-mp-table (my-products): фон #f8f9fa, сетка #e6e9ee / #f3f5f8, th по центру */
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-mp-table thead th {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 20 !important;
+    background: #f8f9fa !important;
+    border-right: 1px solid #e6e9ee !important;
+    vertical-align: middle;
+    text-align: center;
+    user-select: text;
+    -webkit-user-select: text;
+    white-space: nowrap;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-mp-table thead th.dg-np-sortable {
+    cursor: pointer;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-mp-table thead th.dg-np-sortable:hover {
+    background: #eef1f4 !important;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-sortable.sorted-asc::after {
+    content: " ▲";
+    font-size: 0.65em;
+    opacity: 0.6;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-sortable.sorted-desc::after {
+    content: " ▼";
+    font-size: 0.65em;
+    opacity: 0.6;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-mp-table tbody td {
+    border-right: 1px solid #f3f5f8;
+    vertical-align: middle;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-cell {
+    position: relative;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-cell-text {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 280px;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-copy {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    padding: 0 4px;
+    line-height: 1.4;
+    font-size: 10px;
+    opacity: 0;
+    pointer-events: none;
+    z-index: 2;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-cell:hover .dg-np-copy {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-mp-table .form-select-sm,
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-mp-table .form-control-sm {
+    font-size: 0.8rem;
+    min-width: 72px;
+    max-width: 200px;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-prio-important {
+    color: #b02a37;
+    font-weight: 600;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-prio-low {
+    color: #6c757d;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-required-empty .form-control,
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-required-empty .form-select {
+    border-color: #dc3545;
+    background-color: #fff5f5;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-required-empty::after {
+    content: attr(data-dg-np-miss);
+    display: block;
+    font-size: 0.65rem;
+    color: #b02a37;
+    margin-top: 2px;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-place-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-place-badges .badge {
+    font-weight: 500;
+    font-size: 0.7rem;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] tr.dg-np-kit-row > td {
+    background: #f7f9fc;
+    border-top-style: dashed;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] tr.dg-np-kit-row .dg-np-kit-mark {
+    padding-left: 1.25rem;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-actions {
+    white-space: nowrap;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-id-cell {
+    white-space: nowrap;
+    vertical-align: middle;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-id-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    flex-wrap: nowrap;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-id-row .dg-np-id-num {
+    font-variant-numeric: tabular-nums;
+    min-width: 1.25rem;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-id-crosslink {
+    display: block;
+    font-size: 0.68rem;
+    line-height: 1.15;
+    margin-top: 2px;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-id-crosslink:hover {
+    text-decoration: underline;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-id-row .dg-np-copy {
+    opacity: 0.55;
+    position: static;
+    margin: 0;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-id-cell:hover .dg-np-copy {
+    opacity: 1;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-log-btn {
+    font-size: 0.7rem;
+    padding: 0.12rem 0.4rem;
+    line-height: 1.2;
+    margin: 0;
+    flex-shrink: 0;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-url-group {
+    flex-wrap: nowrap;
+    width: 100%;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-url-group .btn {
+    flex: 0 0 auto;
+    padding-left: 0.45rem;
+    padding-right: 0.45rem;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-log-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1080;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-log-overlay .dg-np-log-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.45);
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-log-overlay .dg-np-log-panel {
+    position: relative;
+    z-index: 1;
+    width: min(920px, 100%);
+    max-height: min(80vh, 720px);
+    display: flex;
+    flex-direction: column;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-log-body {
+    max-height: min(64vh, 560px);
+    overflow: auto;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-log-body table {
+    margin: 0;
+    font-size: 0.85rem;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-log-body thead th {
+    position: sticky;
+    top: 0;
+    background: #f8f9fa;
+    z-index: 1;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-log-old {
+    color: #b02a37;
+    text-decoration: line-through;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-log-arrow {
+    margin: 0 0.35rem;
+    color: #6c757d;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-log-new {
+    color: #146c43;
+    font-weight: 500;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-log-action {
+    font-size: 0.72rem;
+    padding: 0.15rem 0.4rem;
+  }
+</style>
+
+  <style>
+    /* Один список сайдбара: «ArchitectUI меню» у нижнего края области навигации, без второго блока/ul */
+    .dg-sidebar-nav-scroll {
+      display: flex;
+      flex-direction: column;
+    }
+    .dg-sidebar-nav-measure {
+      flex: 1 1 auto;
+      min-height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+    .dg-sidebar-nav-measure .datagon-nav-shell,
+    .dg-sidebar-nav-measure .vertical-nav-menu {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    /* Только корневой список меню: иначе вложенный ul.metismenu-container (под «Маркетплейсы» и т.п.)
+       получает min-height:100% + flex и растягивается на всю колонку — вертикальная линия темы залезает на соседние пункты. */
+    .dg-sidebar-nav-measure .vertical-nav-menu > .metismenu-container {
+      display: flex;
+      flex-direction: column;
+      flex: 1 1 auto;
+      min-height: 100%;
+      margin-bottom: 0;
+    }
+    /*
+      Подменю «Маркетплейсы»: ArchitectUI скрывает .metismenu-icon у подпунктов и даёт малый padding.
+      Не трогаем узкую полоску без hover — большой padding раздувает li и смещает «left:50%» у всех иконок колонки.
+      При развороте по hover из closed-sidebar класс closed-sidebar не снимается — нужен отдельный селектор с .app-sidebar:hover.
+    */
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible,
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon {
+      display: block !important;
+    }
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link,
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link {
+      padding-left: 3.4375rem !important;
+      position: relative;
+      /* Длинные подписи подпунктов («Проблемы с товарами», «Яндекс Маркет»)
+         не должны обрезаться ellipsis: разрешаем перенос на 2 строки и
+         выравниваем иконку по верхней строке. */
+      white-space: normal !important;
+      line-height: 1.25;
+      align-items: flex-start;
+      padding-top: 0.45rem !important;
+      padding-bottom: 0.45rem !important;
+      padding-right: 0.5rem !important;
+      min-height: 2rem;
+      height: auto !important;
+    }
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible,
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon {
+      top: 0.55rem !important;
+    }
+    .dg-sidebar-architect-item {
+      margin-top: auto;
+    }
+    .dg-sidebar-architect-item .metismenu-link {
+      border-top: 1px solid rgba(0, 0, 0, 0.07);
+      padding-top: 0.65rem;
+    }
+    /* Пункты сайдбара с доступом как у журнала активности (admin / право на пользователей) */
+    .dg-sidebar-nav-restricted .metismenu-link {
+      display: inline-flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.15rem 0.35rem;
+    }
+    .dg-sidebar-nav-restricted .dg-nav-restricted-icon {
+      font-size: 0.7rem;
+      opacity: 0.72;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+    .datagon-vanilla-shell .app-footer .app-footer__inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .datagon-vanilla-shell .app-footer-right {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 6px 12px;
+      padding: 4px 8px 4px 12px;
+      max-width: min(100%, 540px);
+      margin-left: auto;
+    }
+    .datagon-vanilla-shell .dg-footer-legal-link {
+      font-size: 11px;
+      line-height: 1.25;
+      color: #6c757d;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    .datagon-vanilla-shell .dg-footer-legal-link:hover {
+      color: #2f5de0;
+      text-decoration: underline;
+    }
+    @media (max-width: 991.98px) {
+      /* На мобильном layout не должен наследовать desktop-сдвиг fixed/closed sidebar. */
+      .datagon-vanilla-shell .app-main__outer {
+        margin-left: 0 !important;
+      }
+      .datagon-vanilla-shell .app-footer {
+        left: 0 !important;
+        width: 100% !important;
+      }
+      .datagon-vanilla-shell .app-footer .app-footer__inner {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-left: 0 !important;
+      }
+      /* На телефонах слой мобильного меню должен перекрывать фиксированный футер. */
+      .datagon-vanilla-shell .sidebar-mobile-overlay {
+        z-index: 1090;
+      }
+      .datagon-vanilla-shell .app-sidebar {
+        z-index: 1100;
+      }
+      .datagon-vanilla-shell .app-footer {
+        z-index: 1080;
+      }
+      .datagon-vanilla-shell.sidebar-mobile-open .app-footer {
+        pointer-events: none;
+        opacity: 0.25;
+      }
+    }
+    /* Source Sans 3 — opt-in из «Параметры макета» (все экраны, в т.ч. Windows). */
+    html.dg-font-source-sans-3 .datagon-vanilla-shell {
+      --bs-body-font-family: "Source Sans 3", -apple-system, BlinkMacSystemFont, "Segoe UI",
+        Roboto, "Helvetica Neue", Arial, sans-serif;
+      --bs-font-sans-serif: var(--bs-body-font-family);
+      font-family: var(--bs-body-font-family);
+    }
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .btn,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .form-control,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .form-select,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .table,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .card,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .page-title-heading,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .vertical-nav-menu a,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .app-header,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .app-sidebar,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .app-main,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .app-footer {
+      font-family: inherit;
+    }
+  </style>
+</head>
+<body class="datagon-vanilla-body" data-dg-active-nav="exports-new-products">
+  <div class="app-container app-theme-white datagon-shell datagon-vanilla-shell fixed-header fixed-sidebar fixed-footer">
+    <div class="app-header header-shadow">
+      <div class="app-header__logo">
+        <button type="button" class="logo-src datagon-brand" onclick="location.href='/dashboard.html'" title="Открыть дашборд" style="border:0;background:transparent;padding:0;cursor:pointer">Датагон</button>
+        <div class="header__pane ms-auto">
+          <div>
+            <button type="button" class="hamburger hamburger--slider dg-toggle-sidebar" aria-label="Свернуть боковую панель" title="Свернуть боковую панель">
+              <span class="hamburger-box"><span class="hamburger-inner"></span></span>
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="app-header__mobile-menu">
+        <div>
+          <button type="button" class="hamburger hamburger--slider dg-toggle-mobile-sidebar" aria-label="Открыть меню">
+            <span class="hamburger-box"><span class="hamburger-inner"></span></span>
+          </button>
+        </div>
+      </div>
+      <div class="app-header__menu">
+        <span>
+          <button type="button" class="btn btn-primary btn-sm btn-icon btn-icon-only dg-toggle-header-small" aria-label="Доп. меню шапки">
+            <div class="btn-icon-wrapper">
+              <i class="pe-7s-more" style="font-size:1.1rem;line-height:1"></i>
+            </div>
+          </button>
+        </span>
+      </div>
+      <div class="app-header__content">
+        <div class="app-header-left">
+          <div class="search-wrapper">
+            <div class="input-holder">
+              <input type="text" class="search-input" placeholder="Type to search" autocomplete="off" />
+              <button type="button" class="search-icon dg-vanilla-search-docs" aria-label="Открыть документацию" title="Документация">
+                <span></span>
+              </button>
+            </div>
+            <button type="button" class="btn-close dg-vanilla-search-close" aria-label="Закрыть поиск"></button>
+          </div>
+        </div>
+        <div class="app-header-right">
+          <div class="ui-theme-settings ui-theme-settings--header">
+            <button type="button" class="btn btn-link btn-open-options btn-open-options--header" id="TooltipDemoVanilla" aria-label="Параметры темы" title="Параметры темы (полная версия в React-панели)">
+              <i class="pe-7s-config" style="font-size:1.35rem;color:#3f6ad8;line-height:1"></i>
+            </button>
+            <div class="theme-settings__inner">
+              <div class="theme-settings__options-wrapper">
+                <h3 class="themeoptions-heading">Параметры макета</h3>
+                <div class="list-group">
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Фиксированная шапка</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-fixed-header" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Тень шапки</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-header-shadow" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Фиксированный сайдбар</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-fixed-sidebar" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Тень сайдбара</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-sidebar-shadow" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Фиксированный футер</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-fixed-footer" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Шрифт Source Sans 3</h5>
+                    <label class="switch mb-0" title="Удобнее на Windows; сохраняется для всех страниц панели"><input type="checkbox" id="dg-theme-font-source-sans-3"><span class="slider round"></span></label>
+                  </div>
+                </div>
+
+                <h3 class="themeoptions-heading">Параметры заголовка страницы</h3>
+                <div class="list-group">
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Иконка заголовка</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-title-icon" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Подзаголовок страницы</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-title-subheading" checked><span class="slider round"></span></label>
+                  </div>
+                </div>
+
+                <h3 class="themeoptions-heading">Цветовые схемы</h3>
+                <div class="list-group">
+                  <div class="list-group-item">
+                    <h5 class="mb-2">Цветовая схема макета</h5>
+                    <div class="theme-settings-swatches">
+                      <div class="swatch-holder-lg active dg-theme-color-scheme" data-color-scheme="white" style="background:#fff;border:1px solid #dee2e6"></div>
+                      <div class="swatch-holder-lg dg-theme-color-scheme" data-color-scheme="gray" style="background:#868e96"></div>
+                    </div>
+                  </div>
+                </div>
+
+                <h3 class="themeoptions-heading">Параметры сайдбара</h3>
+                <div class="list-group">
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Фоновое изображение сайдбара</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-sidebar-bg-image"><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item">
+                    <h5 class="mb-2">Цвета сайдбара</h5>
+                    <div class="theme-settings-swatches">
+                      <div class="swatch-holder bg-primary dg-theme-sidebar-color" data-color-class="bg-primary"></div><div class="swatch-holder bg-danger dg-theme-sidebar-color" data-color-class="bg-danger"></div><div class="swatch-holder bg-warning dg-theme-sidebar-color" data-color-class="bg-warning"></div><div class="swatch-holder bg-success dg-theme-sidebar-color" data-color-class="bg-success"></div>
+                      <div class="swatch-holder bg-info dg-theme-sidebar-color" data-color-class="bg-info"></div><div class="swatch-holder bg-secondary dg-theme-sidebar-color" data-color-class="bg-secondary"></div><div class="swatch-holder bg-dark dg-theme-sidebar-color" data-color-class="bg-dark"></div><div class="swatch-holder dg-theme-sidebar-color" data-color-class="bg-plum-plate" style="background:#667eea"></div>
+                      <div class="swatch-holder dg-theme-sidebar-color" data-color-class="bg-arielle-smile" style="background:#16d9e3"></div><div class="swatch-holder dg-theme-sidebar-color" data-color-class="bg-ripe-malin" style="background:#f093fb"></div><div class="swatch-holder dg-theme-sidebar-color" data-color-class="bg-night-fade" style="background:#a18cd1"></div><div class="swatch-holder dg-theme-sidebar-color" data-color-class="bg-malibu-beach" style="background:#4facfe"></div>
+                    </div>
+                  </div>
+                </div>
+
+                <h3 class="themeoptions-heading">Параметры шапки</h3>
+                <div class="list-group">
+                  <div class="list-group-item">
+                    <h5 class="mb-2">Цвета шапки</h5>
+                    <div class="theme-settings-swatches">
+                      <div class="swatch-holder bg-primary dg-theme-header-color" data-color-class="bg-primary"></div><div class="swatch-holder bg-danger dg-theme-header-color" data-color-class="bg-danger"></div><div class="swatch-holder bg-warning dg-theme-header-color" data-color-class="bg-warning"></div><div class="swatch-holder bg-success dg-theme-header-color" data-color-class="bg-success"></div>
+                      <div class="swatch-holder bg-info dg-theme-header-color" data-color-class="bg-info"></div><div class="swatch-holder bg-secondary dg-theme-header-color" data-color-class="bg-secondary"></div><div class="swatch-holder bg-dark dg-theme-header-color" data-color-class="bg-dark"></div><div class="swatch-holder dg-theme-header-color" data-color-class="bg-plum-plate" style="background:#667eea"></div>
+                    </div>
+                  </div>
+                </div>
+                <div class="p-2">
+                  <a href="/settings.html" class="btn btn-sm btn-outline-primary w-100">Настройки</a>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="header-dots">
+            <div class="dropdown">
+              <button type="button" class="btn btn-link p-0 me-2 dg-vanilla-dropdown-toggle" style="line-height:0" aria-expanded="false" aria-haspopup="true">
+                <div class="icon-wrapper icon-wrapper-alt rounded-circle">
+                  <div class="icon-wrapper-bg bg-success"></div>
+                  <i class="pe-7s-graph2" style="font-size:23px;color:#3ac47d"></i>
+                </div>
+              </button>
+              <div class="dropdown-menu dropdown-menu-xl rm-pointers p-0" style="min-width: 320px">
+                <div class="dropdown-menu-header">
+                  <div class="dropdown-menu-header-inner bg-premium-dark">
+                    <div class="menu-header-image" style="background-image:url('/assets/utils/images/dropdown-header/abstract4.jpg')"></div>
+                    <div class="menu-header-content text-white">
+                      <h5 class="menu-header-title">Вы в сети</h5>
+                      <h6 class="menu-header-subtitle">Онлайн за окно из настроек</h6>
+                    </div>
+                  </div>
+                </div>
+                <div class="widget-chart">
+                  <div class="widget-chart-content">
+                    <div class="icon-wrapper rounded-circle">
+                      <div class="icon-wrapper-bg opacity-9 bg-focus"></div>
+                      <i class="lnr-users text-white"></i>
+                    </div>
+                    <div class="widget-numbers d-flex flex-column align-items-center text-center" id="dg-vanilla-online-users-wrap">
+                      <span id="dg-vanilla-online-users">—</span>
+                      <span class="opacity-9 fw-normal" style="font-size: 0.72rem; line-height: 1.25; margin-top: 0.15rem" id="dg-vanilla-online-users-unit"></span>
+                    </div>
+                    <div class="widget-subheading pt-2 small text-muted" id="dg-vanilla-online-users-role"></div>
+                    <div class="text-center small px-2 pt-1 pb-1">
+                      <a href="/settings.html#dg-settings-online-presence" class="text-decoration-none">Окно минут</a>
+                    </div>
+                    <div class="widget-description text-muted small px-2 mt-1 mb-0" id="dg-vanilla-online-users-sessions" style="line-height: 1.35"></div>
+                    <div class="widget-description text-muted mt-2 mb-0">
+                      <span class="pe-1 small" id="dg-vanilla-online-users-note"></span>
+                    </div>
+                  </div>
+                  <div class="widget-chart-wrapper">
+                    <div style="height:40px;opacity:.35;background:linear-gradient(90deg,#f7b924 0%,#f7b92455 100%);border-radius:2px;"></div>
+                  </div>
+                </div>
+                <div class="nav-item-divider mt-0"></div>
+                <div class="nav-item-btn text-center pb-3 mb-2">
+                  <button type="button" class="btn btn-sm btn-shine btn-wide btn-pill btn-warning" id="dg-vanilla-online-users-refresh">
+                    <i class="pe-7s-refresh me-2"></i>Обновить
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="header-btn-lg pe-0">
+            <div class="widget-content p-0">
+              <div class="widget-content-wrapper">
+                <div class="widget-content-left d-flex align-items-center gap-1 pe-2">
+                  <span
+                    class="rounded-circle d-inline-flex align-items-center justify-content-center flex-shrink-0 bg-light text-secondary border"
+                    style="width: 42px; height: 42px; border-color: #e2e8f0"
+                    role="img"
+                    aria-label="Профиль"
+                  >
+                    <i class="pe-7s-user" style="font-size: 1.2rem; line-height: 1; opacity: 0.85" aria-hidden="true"></i>
+                  </span>
+                  <button type="button" class="btn btn-link p-0 dg-vanilla-logout d-inline-flex align-items-center justify-content-center text-danger" title="Выйти" aria-label="Выйти из профиля" style="min-width:34px;min-height:34px;line-height:1;border-radius:50%">
+                    <i class="lnr-exit" style="font-size:1.2rem"></i>
+                  </button>
+                </div>
+                <div class="widget-content-left ms-2 header-user-info">
+                  <div class="widget-heading" id="dg-vanilla-user-display-inline">Пользователь</div>
+                  <div class="widget-subheading" id="dg-vanilla-user-role-inline">Пользователь</div>
+                </div>
+                <div class="widget-content-right header-user-info ms-3">
+                  <button type="button" class="btn btn-shadow p-1 btn-sm btn-info" id="Tooltip-1" title="Click for notifications">
+                    <i class="pe-7s-date text-white" style="font-size:20px;line-height:1"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="app-main">
+      <div class="sidebar-mobile-overlay"></div>
+      <div class="app-sidebar sidebar-shadow">
+        <div class="d-flex flex-column h-100 min-h-0">
+          <div class="app-header__logo">
+            <button type="button" class="logo-src datagon-brand" onclick="location.href='/dashboard.html'" title="Открыть дашборд" style="border:0;background:transparent;padding:0;cursor:pointer">Датагон</button>
+            <div class="header__pane ms-auto">
+              <div>
+                <button type="button" class="hamburger hamburger--slider dg-toggle-sidebar" aria-label="Свернуть боковую панель" title="Свернуть боковую панель">
+                  <span class="hamburger-box"><span class="hamburger-inner"></span></span>
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="app-header__mobile-menu">
+            <div>
+              <button type="button" class="hamburger hamburger--slider dg-toggle-mobile-sidebar" aria-label="Открыть меню">
+                <span class="hamburger-box"><span class="hamburger-inner"></span></span>
+              </button>
+            </div>
+          </div>
+          <div class="app-header__menu">
+            <span>
+              <button type="button" class="btn btn-primary btn-sm btn-icon btn-icon-only dg-toggle-header-small" aria-label="Доп. меню шапки">
+                <div class="btn-icon-wrapper">
+                  <i class="pe-7s-more" style="font-size:1.1rem;line-height:1"></i>
+                </div>
+              </button>
+            </span>
+          </div>
+          <div class="custom-scrollbar dg-sidebar-nav-wrap d-flex flex-column min-h-0" style="flex:1 1 0%;min-height:0;max-height:calc(100vh - 80px);overflow-x:hidden">
+            <div class="app-sidebar__inner dg-sidebar-nav-scroll flex-grow-1 min-h-0" style="overflow-y:auto;overflow-x:hidden">
+              <div class="dg-sidebar-nav-measure">
+                <div class="datagon-nav-shell">
+                  <div class="vertical-nav-menu" style="pointer-events:auto;z-index:999;position:relative">
+                    <ul class="metismenu-container">
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="dashboard" href="/dashboard.html"><i class="metismenu-icon pe-7s-rocket"></i>Дашборд</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="my-sites" href="/my-sites.html"><i class="metismenu-icon pe-7s-global"></i>Мои сайты</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="my-products" href="/my-products.html"><i class="metismenu-icon pe-7s-box2"></i>Мои товары (сайты)</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="moysklad" href="/moysklad.html"><i class="metismenu-icon pe-7s-shopbag"></i>Мой Склад (товары)</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="medmarket" href="/medmarket.html" title="Стыковка кода МС с кодом товара для Медмаркета"><i class="metismenu-icon pe-7s-id"></i>Медмаркет</a></li>
+                      <li class="metismenu-item">
+                        <a
+                          href="#"
+                          class="metismenu-link dg-vanilla-submenu-toggle"
+                          aria-expanded="false"
+                          title="Парсинг сайтов конкурентов: проекты, очередь, результаты, сопоставление"
+                        >
+                          <i class="metismenu-icon pe-7s-browser"></i>Парсинг
+                          <i class="metismenu-state-icon pe-7s-angle-down" aria-hidden="true"></i>
+                        </a>
+                        <ul class="metismenu-container dg-vanilla-parse-submenu">
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="projects"
+                              href="/projects.html"
+                              title="Проекты и сайты конкурентов"
+                            >
+                              <i class="metismenu-icon pe-7s-portfolio"></i>Конкуренты
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="queue"
+                              href="/queue.html"
+                              title="Очередь задач парсинга"
+                            >
+                              <i class="metismenu-icon pe-7s-network"></i>Очередь
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="results"
+                              href="/results.html"
+                              title="Результаты парсинга"
+                            >
+                              <i class="metismenu-icon pe-7s-note2"></i>Результаты
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="matches"
+                              href="/matches.html"
+                              title="Сопоставление товаров"
+                            >
+                              <i class="metismenu-icon pe-7s-link"></i>Сопоставление
+                            </a>
+                          </li>
+                        </ul>
+                      </li>
+                      <li class="metismenu-item dg-sidebar-nav-restricted" data-dg-nav-restricted="activity">
+                        <a
+                          class="metismenu-link"
+                          data-nav="processes"
+                          href="/processes.html"
+                          title="Активность/Логи: журнал команды и фоновые процессы (доступ ограничен: администратор или право управления пользователями)"
+                        >
+                          <i class="metismenu-icon pe-7s-timer"></i>Активность/Логи
+                          <i
+                            class="pe-7s-lock dg-nav-restricted-icon"
+                            aria-hidden="true"
+                            title="Пункт меню с ограниченным доступом"
+                          ></i>
+                        </a>
+                      </li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="settings" href="/settings.html"><i class="metismenu-icon pe-7s-config"></i>Настройки</a></li>
+                      <li class="metismenu-item dg-sidebar-architect-item">
+                        <a
+                          class="metismenu-link"
+                          data-nav="architectui-demo"
+                          href="/ref/react-demo-index.html"
+                          title="Каталог разделов React-шаблона ArchitectUI"
+                        >
+                          <i class="metismenu-icon pe-7s-plugin"></i>ArchitectUI
+                        </a>
+                      </li>
+                      <li class="metismenu-item">
+                        <a
+                          href="#"
+                          class="metismenu-link dg-vanilla-submenu-toggle"
+                          aria-expanded="false"
+                          title="Интеграции маркетплейсов: ключи и диагностика выгрузок"
+                        >
+                          <i class="metismenu-icon pe-7s-graph3"></i>Маркетплейсы
+                          <i class="metismenu-state-icon pe-7s-angle-down" aria-hidden="true"></i>
+                        </a>
+                        <ul class="metismenu-container dg-vanilla-mp-submenu">
+                          <!-- Подпункт «Настройки» (data-nav="exports-marketplaces", /exports-marketplaces.html)
+                               скрыт из меню по запросу: ключи API маркетплейсов задаются в /settings.html;
+                               страница остаётся доступной по прямому URL и через ссылки из гайдов
+                               (например, на /exports-marketplaces-issues.html). -->
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-ozon"
+                              href="/exports-marketplaces-ozon.html"
+                              title="Таблица и выгрузка Ozon"
+                            >
+                              <i class="metismenu-icon pe-7s-graph2"></i>Ozon
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-wildberries"
+                              href="/exports-marketplaces-wildberries.html"
+                              title="Таблица и выгрузка Wildberries"
+                            >
+                              <i class="metismenu-icon pe-7s-graph2"></i>Wildberries
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-yandex"
+                              href="/exports-marketplaces-yandex.html"
+                              title="Таблица и выгрузка Яндекс Маркет"
+                            >
+                              <i class="metismenu-icon pe-7s-graph2"></i>Яндекс Маркет
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-huckster"
+                              href="/exports-huckster.html"
+                              title="Интеграция Huckster / e-teleport — матрица UID по магазинам"
+                            >
+                              <i class="metismenu-icon pe-7s-cart"></i>Huckster
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-dimensions"
+                              href="/exports-dimensions.html"
+                              title="Реестр замеров габаритов товаров МойСклад"
+                            >
+                              <i class="metismenu-icon pe-7s-scissors"></i>Габариты
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-issues"
+                              href="/exports-marketplaces-issues.html"
+                              title="Товары МойСклад с проблемами публикации на маркетплейсах"
+                            >
+                              <i class="metismenu-icon pe-7s-attention"></i>Проблемы с товарами
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-new-products"
+                              href="/exports-new-products.html"
+                              title="Очередь новых товаров: Альмамед и Маркеты"
+                            >
+                              <i class="metismenu-icon pe-7s-plus"></i>Новые товары
+                            </a>
+                          </li>
+                        </ul>
+                      </li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="ms-orders" href="/ms-orders.html" title="Заказы покупателей entity/customerorder из МойСклад (30 дней)"><i class="metismenu-icon pe-7s-note2"></i>Заказы в МС</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="ms-sales" href="/ms-sales.html" title="Продажи МС: отгрузки entity/demand, позиции с привязкой к товарам ms_export"><i class="metismenu-icon pe-7s-cash"></i>Продажи МС</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="purchase" href="/purchase.html" title="Закупки товары: планирование, неснижаемые остатки, кратность"><i class="metismenu-icon pe-7s-cart"></i>Закупки товары</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="suppliers" href="/suppliers.html" title="Поставщики: сводка по закупкам и настройки"><i class="metismenu-icon pe-7s-id"></i>Поставщики</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="supplier-analysis" href="/supplier-analysis.html" title="Продажи, оборот и тренды по поставщикам"><i class="metismenu-icon pe-7s-graph2"></i>Анализ поставщиков</a></li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="app-sidebar-bg opacity-06"></div>
+        </div>
+      </div>
+
+      <div class="app-main__outer">
+        <div class="app-main__inner">
+          <div class="app-page-title">
+            <div class="page-title-wrapper">
+              <div class="page-title-heading">
+                <div class="page-title-icon">
+                  <i class="pe-7s-plus icon-gradient bg-happy-itmeo"> </i>
+                </div>
+                <div>
+                  Новые товары
+                  <div class="page-title-subheading">
+                    Очередь: размещение на Альмамед и на маркетплейсы (Ozon / WB / Я.Маркет).
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <ul class="nav nav-tabs dg-np-tabs mb-3" id="dg-np-tabs" role="tablist">
+            <li class="nav-item">
+              <button type="button" class="nav-link active" data-dg-np-channel="almamed" id="dg-np-tab-almamed">Альмамед</button>
+            </li>
+            <li class="nav-item">
+              <button type="button" class="nav-link" data-dg-np-channel="marketplaces" id="dg-np-tab-markets">Размещение на маркеты</button>
+            </li>
+          </ul>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+              <div class="d-flex align-items-center">
+                <i class="header-icon pe-7s-filter icon-gradient bg-happy-fisher me-2"> </i>
+                <span>Фильтры и действия</span>
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-np-filters-toggle">Свернуть</button>
+            </div>
+            <div class="card-body" id="dg-np-filters-body">
+              <div class="row g-2 align-items-end">
+                <div class="col-md-3">
+                  <label class="form-label" for="dg-np-search">Умный поиск</label>
+                  <input type="search" class="form-control" id="dg-np-search" placeholder="Название, артикул, бренд, ссылка…" autocomplete="off" />
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label" for="dg-np-f-responsible">Ответственный</label>
+                  <select class="form-select" id="dg-np-f-responsible">
+                    <option value="">Все</option>
+                    <option value="none">Не назначен</option>
+                  </select>
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label" for="dg-np-f-manager">Менеджер</label>
+                  <select class="form-select" id="dg-np-f-manager">
+                    <option value="">Все</option>
+                    <option value="none">Не назначен</option>
+                  </select>
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label" for="dg-np-f-priority">Приоритет</label>
+                  <select class="form-select" id="dg-np-f-priority">
+                    <option value="">Все</option>
+                    <option value="important">Важный</option>
+                    <option value="normal">Обычный</option>
+                    <option value="low">Не важный</option>
+                  </select>
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label" for="dg-np-f-status">Статус</label>
+                  <select class="form-select" id="dg-np-f-status">
+                    <option value="">Все</option>
+                  </select>
+                </div>
+                <div class="col-md-1">
+                  <label class="form-label" for="dg-np-f-brand">Бренд</label>
+                  <input type="text" class="form-control" id="dg-np-f-brand" placeholder="…" autocomplete="off" />
+                </div>
+              </div>
+              <div class="mt-3 d-flex flex-wrap gap-2 align-items-center">
+                <button type="button" class="btn btn-sm btn-primary" id="dg-np-apply" data-dg-notify-start="Применяем фильтры…">Применить</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-np-reset" data-dg-notify-start="Сбрасываем фильтры…">По умолчанию</button>
+                <button type="button" class="btn btn-sm btn-success" id="dg-np-add" data-dg-notify-start="Добавляем строку…">Добавить товар</button>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-primary"
+                  id="dg-np-distribute"
+                  data-dg-notify-start="Раздаём без ответственного…"
+                  title="Поровну между контент-менеджерами строки без ответственного"
+                >
+                  Раздать поровну (без ответственного)
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-info d-none"
+                  id="dg-np-sync-markets"
+                  data-dg-notify-start="Обновляем очередь маркетов…"
+                  title="Подтянуть из Альмамед (статус «Добавлен») + МС + снапшоты Ozon/WB/ЯМ"
+                >
+                  Обновить очередь маркетов
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-warning d-none"
+                  id="dg-np-remove-placed"
+                  data-dg-notify-start="Убираем размещённые…"
+                  title="Убрать из таблицы все со статусом «Добавлен» после проверки"
+                >
+                  Убрать размещенные
+                </button>
+              </div>
+              <div id="dg-np-action-log" class="alert mt-3 mb-0 d-none" role="status"></div>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex justify-content-between gap-2 flex-wrap align-items-center">
+              <div class="d-flex align-items-center gap-3 flex-grow-1 min-width-0">
+                <div class="d-flex align-items-center flex-shrink-0">
+                  <i class="header-icon pe-7s-menu icon-gradient bg-happy-fisher me-2"> </i>
+                  <span id="dg-np-table-title">Выгрузка Альмамед</span>
+                </div>
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-np-table-toggle">Свернуть</button>
+            </div>
+            <div class="card-body" id="dg-np-table-body">
+              <p class="small text-muted mb-2" id="dg-np-hint">
+                Статус <b>Новый</b> → автоматически <b>Не добавлен</b>, когда заполнены: артикул, название, цена Альмамед, ссылка поставщика, приоритет
+                (пустые подсвечены). Контент: <b>В работе</b> → <b>Добавлен</b>; замечания — <b>На доработке</b> + комментарий.
+              </p>
+              <div
+                class="dg-mp-table-scroll-outer"
+                style="width:100%;max-width:100%;min-width:0;overflow-x:auto;overflow-y:visible;-webkit-overflow-scrolling:touch"
+              >
+                <div
+                  class="table-responsive datagon-my-products-table-wrap"
+                  style="display:block;width:100%;max-width:100%;min-width:0;overflow:visible;position:relative"
+                >
+                  <table
+                    id="dg-np-table"
+                    class="table table-hover table-striped mb-0 datagon-my-products-table dg-mp-table"
+                    style="width:max-content;min-width:min(100%,2200px);max-width:none;table-layout:fixed;border-collapse:collapse;border-spacing:0"
+                  >
+                    <thead id="dg-np-thead"></thead>
+                    <tbody id="dg-np-tbody"></tbody>
+                  </table>
+                </div>
+              </div>
+              <p class="text-muted mb-0 mt-2" id="dg-np-page-status">Найдено: 0; страница 1/1; показано: 0</p>
+              <div class="mt-2 d-flex flex-wrap justify-content-between align-items-center gap-2" id="dg-np-pager">
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                  <label class="form-label mb-0 small text-muted" for="dg-np-page-size">На странице</label>
+                  <select class="form-select form-select-sm" id="dg-np-page-size" style="width: auto">
+                    <option value="50">50</option>
+                    <option value="100" selected>100</option>
+                    <option value="200">200</option>
+                  </select>
+                </div>
+                <div class="btn-group" role="group" aria-label="Страницы новых товаров">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-np-prev">Назад</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-np-next">Вперёд</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-np-log-overlay" class="dg-np-log-overlay" style="display: none" aria-hidden="true">
+            <div class="dg-np-log-backdrop" id="dg-np-log-backdrop"></div>
+            <div class="dg-np-log-panel card shadow-lg border-0">
+              <div class="card-header d-flex align-items-center justify-content-between gap-2">
+                <div class="d-flex flex-column" style="min-width: 0">
+                  <div class="fw-semibold" id="dg-np-log-title">Журнал изменений</div>
+                  <div class="text-muted small" id="dg-np-log-subtitle"></div>
+                </div>
+                <div class="d-flex align-items-center gap-2 flex-shrink-0">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-np-log-refresh" data-dg-notify-start="Обновляем журнал…">Обновить</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-np-log-close">Закрыть</button>
+                </div>
+              </div>
+              <div class="card-body p-0">
+                <div class="dg-np-log-body" id="dg-np-log-body">
+                  <div class="text-muted small text-center py-4">Загрузка журнала…</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="app-footer">
+          <div class="app-footer__inner">
+            <div class="app-footer-left">
+              <div class="footer-dots">
+                <a href="#" class="dot-btn-wrapper dg-vanilla-footer-toggle" id="PopoverFooter-1" aria-expanded="false" aria-haspopup="true">
+                  <i class="dot-btn-icon lnr-bullhorn icon-gradient bg-mean-fruit"></i>
+                  <div class="badge badge-dot badge-abs badge-dot-sm bg-danger">Notifications</div>
+                </a>
+                <div class="dots-separator"></div>
+                <a href="#" class="dot-btn-wrapper dg-vanilla-footer-toggle" id="PopoverFooter-3" aria-expanded="false" aria-haspopup="true">
+                  <i class="dot-btn-icon lnr-pie-chart icon-gradient bg-love-kiss"></i>
+                  <div class="badge badge-dot badge-abs badge-dot-sm bg-warning">Notifications</div>
+                </a>
+                <div class="dropdown-menu popover-custom popover-custom-xl rm-pointers p-0 dg-vanilla-footer-popover" data-footer-popover="PopoverFooter-1" style="min-width:420px">
+                  <div class="dropdown-menu-header mb-0">
+                    <div class="dropdown-menu-header-inner bg-strong-bliss">
+                      <div class="menu-header-image opacity-1" style="background-image:url('./assets/utils/images/dropdown-header/city2.jpg')"></div>
+                      <div class="menu-header-content text-white">
+                        <h5 class="menu-header-title">Notifications</h5>
+                        <h6 class="menu-header-subtitle">You have <b class="text-warning">21</b> unread messages</h6>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="card-tabs-animated card-tabs-animated-inner">
+                    <ul class="nav nav-justified">
+                      <li class="nav-item"><a href="#" class="nav-link active">Messages</a></li>
+                      <li class="nav-item"><a href="#" class="nav-link">Events</a></li>
+                      <li class="nav-item"><a href="#" class="nav-link">Errors</a></li>
+                    </ul>
+                    <div class="p-3">
+                      <div class="text-muted small">Chat, timeline and system tabs in React version.</div>
+                    </div>
+                  </div>
+                  <div class="nav-item-btn text-center pt-3 pb-3">
+                    <button type="button" class="btn btn-shadow btn-wide btn-pill btn-dark">
+                      <span class="badge badge-dot badge-dot-lg bg-warning badge-pulse me-2"></span>
+                      View All Messages
+                    </button>
+                  </div>
+                </div>
+                <div class="dropdown-menu popover-custom popover-custom-lg rm-pointers p-0 dg-vanilla-footer-popover" data-footer-popover="PopoverFooter-3" style="min-width:380px">
+                  <div class="dropdown-menu-header">
+                    <div class="dropdown-menu-header-inner bg-malibu-beach">
+                      <div class="menu-header-image opacity-2" style="background-image:url('./assets/utils/images/dropdown-header/city2.jpg')"></div>
+                      <div class="menu-header-content text-white">
+                        <div class="avatar-icon-wrapper btn-hover-shine mb-3 avatar-icon-xl">
+                          <div class="avatar-icon rounded">
+                            <img src="./assets/utils/images/avatars/2.jpg" alt="Avatar 6" />
+                          </div>
+                        </div>
+                        <h5 class="menu-header-title">Fancy Statistics</h5>
+                        <h6 class="menu-header-subtitle">Just an example of a slider with some chart widgets inside.</h6>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="p-2">
+                    <div class="card no-shadow widget-chart widget-chart2 text-start p-2 m-1">
+                      <div class="widget-title opacity-6 text-muted text-uppercase">New accounts since 2018</div>
+                      <div class="widget-numbers text-success">78<small class="opacity-5 ps-1">%</small></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="app-footer-right">
+              <a class="dg-footer-legal-link" href="/legal/privacy.html" target="_blank" rel="noopener">Политика обработки персональных данных</a>
+              <a class="dg-footer-legal-link" href="/legal/cookies.html" target="_blank" rel="noopener">Политика использования cookie-файлов</a>
+              <a class="dg-footer-legal-link" href="/legal/recommendation.html" target="_blank" rel="noopener">Правила применения рекомендательных технологий</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/datagon-legal.js"></script>
+  <script src="/datagon-vanilla.js"></script>
+  <script>
+(function () {
+  "use strict";
+
+  var FILTERS_KEY = "datagon_np_filters_collapsed_v1";
+  var TABLE_KEY = "dg.np.table-card.collapsed.v1";
+  var CHANNEL_KEY = "dg.np.channel.v1";
+
+  var state = {
+    channel: "almamed",
+    rows: [],
+    total: 0,
+    limit: 100,
+    offset: 0,
+    sort_by: "priority",
+    sort_dir: "asc",
+    search: "",
+    status: "",
+    priority: "",
+    brand: "",
+    responsible: "",
+    manager: "",
+    pending: {
+      search: "",
+      status: "",
+      priority: "",
+      brand: "",
+      responsible: "",
+      manager: "",
+    },
+    assignees: [],
+    managers: [],
+    responsibles: [],
+    loading: false,
+  };
+
+  var STATUS_OPTS_ALMAMED = [
+    { key: "new", label: "Новый" },
+    { key: "not_added", label: "Не добавлен" },
+    { key: "in_progress", label: "В работе" },
+    { key: "added", label: "Добавлен" },
+    { key: "revision", label: "На доработке" },
+    { key: "review", label: "На проверку" },
+  ];
+  var STATUS_OPTS_MARKETS = [
+    { key: "new", label: "Новый" },
+    { key: "not_added", label: "Не добавлен" },
+    { key: "added", label: "Добавлен" },
+    { key: "revision", label: "На доработке" },
+    { key: "not_cooperate", label: "Не сотрудничаем" },
+    { key: "in_bundle", label: "В составе комплекта" },
+  ];
+  var PRIORITY_OPTS = [
+    { key: "important", label: "Важный" },
+    { key: "normal", label: "Обычный" },
+    { key: "low", label: "Не важный" },
+  ];
+  function getStatusOpts() {
+    return state.channel === "marketplaces" ? STATUS_OPTS_MARKETS : STATUS_OPTS_ALMAMED;
+  }
+
+  function colCount() {
+    return state.channel === "marketplaces" ? 21 : 17;
+  }
+
+  function authHeaders(json) {
+    var h = {};
+    if (json) h["Content-Type"] = "application/json";
+    try {
+      var t = localStorage.getItem("authToken");
+      if (t) h["x-auth-token"] = t;
+    } catch (_) {}
+    return h;
+  }
+
+  function el(id) {
+    return document.getElementById(id);
+  }
+
+  function showLog(kind, html) {
+    var box = el("dg-np-action-log");
+    if (!box) return;
+    box.className = "alert mt-3 mb-0 alert-" + (kind || "info");
+    box.innerHTML = html;
+    box.classList.remove("d-none");
+    if (box.dataset) box.dataset.dgNpAutoWarn = "";
+  }
+
+  function fmtDt(v) {
+    if (!v) return "—";
+    try {
+      var d = new Date(v);
+      if (isNaN(d.getTime())) return String(v);
+      return d.toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" });
+    } catch (_) {
+      return String(v);
+    }
+  }
+
+  function fmtMoney(v) {
+    if (v == null || v === "" || !Number.isFinite(Number(v))) return "";
+    var n = Number(v);
+    if (window.DatagonFmt && window.DatagonFmt.formatNumber) {
+      if (Math.abs(n - Math.round(n)) < 1e-9) {
+        return window.DatagonFmt.formatInteger(n);
+      }
+      return window.DatagonFmt.formatNumber(n, { maxFractionDigits: 2, minFractionDigits: 0 });
+    }
+    var abs = Math.abs(Math.round(n));
+    var s = String(abs).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+    return (n < 0 ? "-" : "") + s;
+  }
+
+  function parsePriceInput(raw) {
+    if (window.DatagonFmt && window.DatagonFmt.parseNumberInput) {
+      return window.DatagonFmt.parseNumberInput(raw);
+    }
+    var s = String(raw == null ? "" : raw).trim();
+    if (!s) return null;
+    s = s.replace(/\s/g, "").replace(",", ".");
+    var n = Number(s);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  /** Живой формат тысяч пробелами: 1 → 10 → 100 → 1 000 → 10 000 */
+  function formatPriceTyping(raw) {
+    var s = String(raw == null ? "" : raw);
+    if (!s.trim()) return "";
+    var neg = /^\s*-/.test(s);
+    s = s.replace(/[^\d.,]/g, "");
+    if (!s) return neg ? "-" : "";
+    var sep = s.indexOf(",") >= 0 ? "," : s.indexOf(".") >= 0 ? "." : "";
+    var intPart = s;
+    var frac = "";
+    if (sep) {
+      var i = s.indexOf(sep);
+      intPart = s.slice(0, i);
+      frac = s.slice(i + 1).replace(/\D/g, "").slice(0, 2);
+    }
+    intPart = intPart.replace(/\D/g, "");
+    if (!intPart && !frac && !sep) return neg ? "-" : "";
+    var formatted = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+    if (sep) formatted += "," + frac;
+    return (neg ? "-" : "") + formatted;
+  }
+
+  function bindPriceLiveFormat(inp) {
+    inp.addEventListener("input", function () {
+      var start = inp.selectionStart;
+      var before = String(inp.value || "");
+      var next = formatPriceTyping(before);
+      if (next === before) return;
+      var digitsBefore = before.slice(0, start).replace(/\D/g, "").length;
+      inp.value = next;
+      var pos = 0;
+      var seen = 0;
+      while (pos < next.length && seen < digitsBefore) {
+        if (/\d/.test(next.charAt(pos))) seen += 1;
+        pos += 1;
+      }
+      try {
+        inp.setSelectionRange(pos, pos);
+      } catch (_) {}
+    });
+  }
+
+  function copyText(text) {
+    var t = String(text == null ? "" : text);
+    if (!t) return;
+    var done = function () {
+      if (window.DatagonNotify && window.DatagonNotify.toast) {
+        window.DatagonNotify.toast({ type: "success", message: "Скопировано" });
+      }
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(t).then(done).catch(function () {
+        fallbackCopy(t);
+        done();
+      });
+    } else {
+      fallbackCopy(t);
+      done();
+    }
+  }
+
+  function fallbackCopy(t) {
+    var ta = document.createElement("textarea");
+    ta.value = t;
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      document.execCommand("copy");
+    } catch (_) {}
+    document.body.removeChild(ta);
+  }
+
+  function makeCopyCell(text, opts) {
+    var o = opts || {};
+    var td = document.createElement("td");
+    td.className = "dg-np-cell" + (o.extraClass ? " " + o.extraClass : "");
+    var span = document.createElement("span");
+    span.className = "dg-np-cell-text" + (o.wrap ? " dg-np-wrap" : "");
+    span.textContent = text == null || text === "" ? "—" : String(text);
+    span.title = text == null ? "" : String(text);
+    td.appendChild(span);
+    if (text != null && String(text).trim() !== "") {
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "btn btn-outline-secondary btn-sm dg-np-copy";
+      btn.textContent = "⧉";
+      btn.title = "Копировать";
+      btn.setAttribute("data-dg-no-activity", "1");
+      btn.addEventListener("click", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        copyText(text);
+      });
+      td.appendChild(btn);
+    }
+    return td;
+  }
+
+  function makeIdCell(row) {
+    var td = document.createElement("td");
+    td.className = "dg-np-cell dg-np-id-cell";
+    var wrap = document.createElement("div");
+    wrap.className = "dg-np-id-row";
+    var displayId = row.channel_num != null ? row.channel_num : row.id;
+    var span = document.createElement("span");
+    span.className = "dg-np-cell-text dg-np-id-num";
+    span.textContent = String(displayId);
+    span.title =
+      "№ " +
+      displayId +
+      " на этой вкладке (внутренний id " +
+      row.id +
+      ")";
+    wrap.appendChild(span);
+    var logBtn = document.createElement("button");
+    logBtn.type = "button";
+    logBtn.className = "btn btn-outline-secondary btn-sm dg-np-log-btn";
+    logBtn.textContent = "Лог";
+    logBtn.title = "Журнал изменений строки";
+    logBtn.setAttribute("data-dg-np-log-id", String(row.id));
+    logBtn.setAttribute(
+      "data-dg-np-log-label",
+      String(row.title || row.article || row.product_code || "#" + displayId)
+    );
+    logBtn.setAttribute("data-dg-notify-start", "Открываем журнал…");
+    wrap.appendChild(logBtn);
+    td.appendChild(wrap);
+
+    var linkedChannel = null;
+    var linkedLabel = "";
+    if (row.channel === "marketplaces" && row.source_almamed_id) {
+      linkedChannel = "almamed";
+      var almNum =
+        row.source_almamed_channel_num != null ? row.source_almamed_channel_num : row.source_almamed_id;
+      linkedLabel = "← Альм. #" + almNum;
+    } else if (row.channel === "almamed" && row.markets_product_id) {
+      linkedChannel = "marketplaces";
+      var mkNum = row.markets_channel_num != null ? row.markets_channel_num : row.markets_product_id;
+      linkedLabel = "→ Марк. #" + mkNum;
+    }
+    if (linkedChannel && linkedLabel) {
+      var focusNum =
+        linkedChannel === "almamed"
+          ? row.source_almamed_channel_num != null
+            ? row.source_almamed_channel_num
+            : null
+          : row.markets_channel_num != null
+            ? row.markets_channel_num
+            : null;
+      var link = document.createElement("button");
+      link.type = "button";
+      link.className = "btn btn-link btn-sm p-0 dg-np-id-crosslink";
+      link.textContent = linkedLabel;
+      link.title =
+        "Открыть только этот товар на другой вкладке (с комплектами, если есть)";
+      link.setAttribute("data-dg-no-activity", "1");
+      link.addEventListener("click", function () {
+        setChannel(linkedChannel, { focusChannelNum: focusNum });
+      });
+      td.appendChild(link);
+    }
+    return td;
+  }
+
+  function userSelect(selectedId, includeEmpty, list) {
+    var sel = document.createElement("select");
+    sel.className = "form-select form-select-sm";
+    if (includeEmpty !== false) {
+      var o0 = document.createElement("option");
+      o0.value = "";
+      o0.textContent = "—";
+      sel.appendChild(o0);
+    }
+    var source = Array.isArray(list) ? list : state.managers || [];
+    var hasSelected = false;
+    source.forEach(function (u) {
+      var o = document.createElement("option");
+      o.value = String(u.id);
+      o.textContent = u.label || u.username;
+      if (selectedId != null && Number(selectedId) === Number(u.id)) {
+        o.selected = true;
+        hasSelected = true;
+      }
+      sel.appendChild(o);
+    });
+    // если выбранный пользователь уже не в группе — показать его отдельно
+    if (selectedId != null && !hasSelected) {
+      var oX = document.createElement("option");
+      oX.value = String(selectedId);
+      oX.textContent = "ID " + selectedId + " (вне группы)";
+      oX.selected = true;
+      sel.appendChild(oX);
+    }
+    return sel;
+  }
+
+  function fillAssigneeFilters() {
+    var fill = function (id, list) {
+      var sel = el(id);
+      if (!sel) return;
+      var cur = sel.value;
+      while (sel.options.length > 2) sel.remove(2);
+      (list || []).forEach(function (u) {
+        var o = document.createElement("option");
+        o.value = String(u.id);
+        o.textContent = u.label || u.username;
+        sel.appendChild(o);
+      });
+      if (cur) sel.value = cur;
+    };
+    fill("dg-np-f-manager", state.managers);
+    fill("dg-np-f-responsible", state.responsibles);
+  }
+
+  function fillStatusFilter() {
+    var sel = el("dg-np-f-status");
+    if (!sel) return;
+    var cur = sel.value || state.pending.status || state.status || "";
+    while (sel.options.length > 1) sel.remove(1);
+    getStatusOpts().forEach(function (p) {
+      var o = document.createElement("option");
+      o.value = p.key;
+      o.textContent = p.label;
+      sel.appendChild(o);
+    });
+    var valid = cur === "" || getStatusOpts().some(function (p) {
+      return p.key === cur;
+    });
+    var next = valid ? cur : "";
+    sel.value = next;
+    if (!valid && cur) {
+      state.status = "";
+      state.pending.status = "";
+    }
+  }
+
+  function syncTabUi() {
+    var isMp = state.channel === "marketplaces";
+    document.querySelectorAll("#dg-np-tabs [data-dg-np-channel]").forEach(function (btn) {
+      btn.classList.toggle("active", btn.getAttribute("data-dg-np-channel") === state.channel);
+    });
+    var title = el("dg-np-table-title");
+    if (title) {
+      title.textContent = isMp ? "Выгрузка Размещение на маркеты" : "Выгрузка Альмамед";
+    }
+    var hint = el("dg-np-hint");
+    if (hint) {
+      if (isMp) {
+        hint.innerHTML =
+          "Статус <b>Новый</b> → автоматически <b>Не добавлен</b>, когда заполнены обязательные поля " +
+          "(код, артикул, название, штрихкод, цена, длина/ширина/высота/вес, НДС, ссылка на РУ, приоритет; пустые подсвечены). " +
+          "После появления товара в МС (по артикулу) подтягиваются код МС и габариты из измерений; зелёные бейджи в «Размещении» — ссылки на карточку МП. " +
+          "Размещение на всех МП (Ozon / WB / Я.М) → <b>Добавлен</b>. Комментарий → <b>На доработке</b>. " +
+          "«Не сотрудничаем» и «В составе комплекта» — ручные статусы. " +
+          "«Обновить очередь маркетов» подтягивает из Альмамед («Добавлен»), МС и снапшотов. " +
+          "У вкладок своя нумерация 1, 2, 3… (не общий счётчик); связь: «← Альм. #…» / «→ Марк. #…» под номером. " +
+          "«Убрать размещенные» убирает строки со статусом «Добавлен» после проверки.";
+      } else {
+        hint.innerHTML =
+          "Статус <b>Новый</b> → автоматически <b>Не добавлен</b>, когда заполнены: артикул, название, цена Альмамед, ссылка поставщика, приоритет " +
+          "(пустые подсвечены). Контент: <b>В работе</b> → <b>Добавлен</b>; замечания — <b>На доработке</b> + комментарий. " +
+          "Галочки «Маркеты»/«Комплект» создают <b>отдельную</b> строку на вкладке маркетов со <b>своей</b> нумерацией 1, 2…; связь «→ Марк. #…» под номером.";
+      }
+    }
+    var btnSync = el("dg-np-sync-markets");
+    var btnRemove = el("dg-np-remove-placed");
+    if (btnSync) btnSync.classList.toggle("d-none", !isMp);
+    if (btnRemove) btnRemove.classList.toggle("d-none", !isMp);
+    fillStatusFilter();
+  }
+
+  function readPendingFromForm() {
+    state.pending.search = String((el("dg-np-search") || {}).value || "").trim();
+    state.pending.status = String((el("dg-np-f-status") || {}).value || "");
+    state.pending.priority = String((el("dg-np-f-priority") || {}).value || "");
+    state.pending.brand = String((el("dg-np-f-brand") || {}).value || "").trim();
+    state.pending.responsible = String((el("dg-np-f-responsible") || {}).value || "");
+    state.pending.manager = String((el("dg-np-f-manager") || {}).value || "");
+  }
+
+  function commitFilters() {
+    readPendingFromForm();
+    state.search = state.pending.search;
+    state.status = state.pending.status;
+    state.priority = state.pending.priority;
+    state.brand = state.pending.brand;
+    state.responsible = state.pending.responsible;
+    state.manager = state.pending.manager;
+    state.offset = 0;
+    load();
+  }
+
+  function resetFilters() {
+    el("dg-np-search").value = "";
+    el("dg-np-f-status").value = "";
+    el("dg-np-f-priority").value = "";
+    el("dg-np-f-brand").value = "";
+    el("dg-np-f-responsible").value = "";
+    el("dg-np-f-manager").value = "";
+    commitFilters();
+  }
+
+  function patchRow(id, payload) {
+    return fetch("/api/exports/new-products/" + id, {
+      method: "PATCH",
+      credentials: "same-origin",
+      headers: authHeaders(true),
+      body: JSON.stringify(payload),
+    }).then(function (r) {
+      return r.json().then(function (j) {
+        if (!r.ok) throw new Error((j && j.error) || "HTTP " + r.status);
+        return j;
+      });
+    });
+  }
+
+  function missingKeys(row) {
+    var list = (row && row.missing_required) || [];
+    var set = {};
+    list.forEach(function (m) {
+      if (m && m.key) set[m.key] = m.label || m.key;
+    });
+    return set;
+  }
+
+  function markRequired(td, key, missMap) {
+    if (!td) return;
+    if (missMap && missMap[key]) {
+      td.classList.add("dg-np-required-empty");
+      td.setAttribute("data-dg-np-miss", "не заполнено");
+    } else {
+      td.classList.remove("dg-np-required-empty");
+      td.removeAttribute("data-dg-np-miss");
+    }
+  }
+
+  function notifyMissing(row, opts) {
+    var o = opts || {};
+    var miss = (row && row.missing_required) || [];
+    if (!miss.length) {
+      if (o.readyToast && window.DatagonNotify && window.DatagonNotify.toast) {
+        window.DatagonNotify.toast({
+          type: "success",
+          message: "Все обязательные поля заполнены → «Не добавлен»",
+        });
+      }
+      return;
+    }
+    var labels = miss.map(function (m) {
+      return m.label || m.key;
+    });
+    var msg = "Не заполнены: " + labels.join(", ");
+    if (window.DatagonNotify && window.DatagonNotify.toast) {
+      window.DatagonNotify.toast({ type: "warning", message: msg });
+    }
+  }
+
+  function applyPatched(row, j) {
+    Object.assign(row, j.data || {});
+    // всегда перерисовываем: снять/поставить «не заполнено» и обновить статус
+    renderTable();
+    if (row.missing_required && row.missing_required.length) {
+      notifyMissing(row);
+    } else if (j.auto_status_changed && row.status === "not_added") {
+      notifyMissing(row, { readyToast: true });
+    }
+    return row;
+  }
+
+  function appendSortableTh(tr, c) {
+    var th = document.createElement("th");
+    th.textContent = c.label;
+    if (c.sort) {
+      th.className = "dg-np-sortable";
+      if (state.sort_by === c.key) {
+        th.classList.add(state.sort_dir === "asc" ? "sorted-asc" : "sorted-desc");
+      }
+      th.addEventListener("click", function () {
+        if (window.getSelection && String(window.getSelection()).trim()) return;
+        if (state.sort_by === c.key) state.sort_dir = state.sort_dir === "asc" ? "desc" : "asc";
+        else {
+          state.sort_by = c.key;
+          state.sort_dir = c.key === "priority" ? "asc" : "desc";
+        }
+        load();
+      });
+    }
+    tr.appendChild(th);
+  }
+
+  function buildThead() {
+    var thead = el("dg-np-thead");
+    thead.replaceChildren();
+    var tr = document.createElement("tr");
+    var cols;
+    if (state.channel === "marketplaces") {
+      cols = [
+        { key: "id", label: "ID", sort: true },
+        { key: "product_manager_name", label: "Менеджер товара", sort: true },
+        { key: "created_at", label: "Дата добавления", sort: true },
+        { key: "priority", label: "Приоритет", sort: true },
+        { key: "responsible_name", label: "Ответственный", sort: true },
+        { key: "product_code", label: "Код", sort: true },
+        { key: "article", label: "Артикул", sort: true },
+        { key: "title", label: "Название для маркета", sort: true },
+        { key: "barcode", label: "Штрихкод", sort: false },
+        { key: "price_markets", label: "Цена на маркеты", sort: true },
+        { key: "status", label: "Статус", sort: true },
+        { key: "placement", label: "Размещение", sort: false },
+        { key: "comment", label: "Комментарий", sort: false },
+        { key: "placement_date", label: "Дата размещения", sort: true },
+        { key: "length_cm", label: "Длина, см", sort: false },
+        { key: "width_cm", label: "Ширина, см", sort: false },
+        { key: "height_cm", label: "Высота, см", sort: false },
+        { key: "weight_kg", label: "Вес, кг", sort: false },
+        { key: "vat", label: "НДС", sort: false },
+        { key: "ru_url", label: "Ссылка на РУ", sort: false },
+        { key: "_actions", label: "", sort: false },
+      ];
+    } else {
+      cols = [
+        { key: "id", label: "ID", sort: true },
+        { key: "product_manager_name", label: "Менеджер товара", sort: true },
+        { key: "created_at", label: "Дата в таблице", sort: true },
+        { key: "responsible_name", label: "Ответственный", sort: true },
+        { key: "sell_on_markets", label: "Маркеты", sort: false },
+        { key: "has_kits", label: "Комплект", sort: false },
+        { key: "article", label: "Артикул", sort: true },
+        { key: "title", label: "Название", sort: true },
+        { key: "price_almamed", label: "Цена Альмамед", sort: true },
+        { key: "supplier_url", label: "Ссылка поставщика", sort: false },
+        { key: "brand", label: "Бренд", sort: true },
+        { key: "priority", label: "Приоритет", sort: true },
+        { key: "status", label: "Статус", sort: true },
+        { key: "comment", label: "Комментарий", sort: false },
+        { key: "almamed_added_at", label: "Дата на Альмамед", sort: true },
+        { key: "almamed_url", label: "Ссылка Альмамед", sort: false },
+        { key: "_actions", label: "", sort: false },
+      ];
+    }
+    cols.forEach(function (c) {
+      appendSortableTh(tr, c);
+    });
+    thead.appendChild(tr);
+  }
+
+  /** Поле URL + кнопка открыть справа (не под инпутом). */
+  function appendUrlField(td, inp, href) {
+    var group = document.createElement("div");
+    group.className = "input-group input-group-sm dg-np-url-group";
+    group.appendChild(inp);
+    if (href) {
+      var a = document.createElement("a");
+      a.href = href;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      a.className = "btn btn-outline-secondary";
+      a.title = "Открыть ссылку";
+      a.textContent = "↗";
+      a.setAttribute("data-dg-no-activity", "1");
+      group.appendChild(a);
+    }
+    td.appendChild(group);
+  }
+
+  function bindTextSave(inp, row, field, maxLen) {
+    inp.addEventListener("change", function () {
+      var v = String(inp.value || "").trim();
+      if (maxLen && v.length > maxLen) v = v.slice(0, maxLen);
+      var payload = {};
+      payload[field] = v;
+      patchRow(row.id, payload)
+        .then(function (j) {
+          applyPatched(row, j);
+          if (!(row.missing_required && row.missing_required.length) && window.DatagonNotify && window.DatagonNotify.toast) {
+            window.DatagonNotify.toast({ type: "success", message: "Сохранено" });
+          }
+        })
+        .catch(function (e) {
+          if (window.DatagonNotify && window.DatagonNotify.toast) {
+            window.DatagonNotify.toast({ type: "danger", message: e.message || "Ошибка" });
+          }
+          load();
+        });
+    });
+  }
+
+  function bindPriceSave(inp, row, field) {
+    bindPriceLiveFormat(inp);
+    inp.addEventListener("change", function () {
+      var n = parsePriceInput(inp.value);
+      if (String(inp.value || "").trim() !== "" && n == null) {
+        if (window.DatagonNotify && window.DatagonNotify.toast) {
+          window.DatagonNotify.toast({ type: "warning", message: "Некорректная цена" });
+        }
+        inp.value = row[field] != null ? fmtMoney(row[field]) : "";
+        return;
+      }
+      var payload = {};
+      payload[field] = n;
+      patchRow(row.id, payload)
+        .then(function (j) {
+          applyPatched(row, j);
+        })
+        .catch(function (e) {
+          if (window.DatagonNotify && window.DatagonNotify.toast) {
+            window.DatagonNotify.toast({ type: "danger", message: e.message || "Ошибка" });
+          }
+          load();
+        });
+    });
+  }
+
+  function makePrioritySelect(row, missMap) {
+    var tdPrio = document.createElement("td");
+    tdPrio.className = "dg-np-cell";
+    markRequired(tdPrio, "priority", missMap);
+    var selPrio = document.createElement("select");
+    selPrio.className = "form-select form-select-sm";
+    PRIORITY_OPTS.forEach(function (p) {
+      var o = document.createElement("option");
+      o.value = p.key;
+      o.textContent = p.label;
+      if (row.priority === p.key) o.selected = true;
+      selPrio.appendChild(o);
+    });
+    if (row.priority === "important") selPrio.classList.add("dg-np-prio-important");
+    if (row.priority === "low") selPrio.classList.add("dg-np-prio-low");
+    selPrio.addEventListener("change", function () {
+      patchRow(row.id, { priority: selPrio.value })
+        .then(function (j) {
+          applyPatched(row, j);
+          renderTable();
+        })
+        .catch(function (e) {
+          alert(e.message || "Ошибка");
+          load();
+        });
+    });
+    tdPrio.appendChild(selPrio);
+    return tdPrio;
+  }
+
+  function makeStatusSelect(row) {
+    var tdSt = document.createElement("td");
+    tdSt.className = "dg-np-cell";
+    var selSt = document.createElement("select");
+    selSt.className = "form-select form-select-sm";
+    getStatusOpts().forEach(function (p) {
+      var o = document.createElement("option");
+      o.value = p.key;
+      o.textContent = p.label;
+      if (row.status === p.key) o.selected = true;
+      selSt.appendChild(o);
+    });
+    selSt.addEventListener("change", function () {
+      var next = selSt.value;
+      var payload = { status: next };
+      if (next === "revision" && !String(row.comment || "").trim()) {
+        var c = window.prompt("Комментарий для статуса «На доработке» (обязательно):", row.comment || "");
+        if (c == null) {
+          load();
+          return;
+        }
+        payload.comment = String(c).trim();
+        if (!payload.comment) {
+          alert("Комментарий обязателен");
+          load();
+          return;
+        }
+      }
+      patchRow(row.id, payload)
+        .then(function (j) {
+          applyPatched(row, j);
+          renderTable();
+        })
+        .catch(function (e) {
+          alert(e.message || "Ошибка");
+          load();
+        });
+    });
+    tdSt.appendChild(selSt);
+    return tdSt;
+  }
+
+  function makeCommentCell(row) {
+    var tdCom = document.createElement("td");
+    tdCom.className = "dg-np-cell";
+    var ta = document.createElement("textarea");
+    ta.className = "form-control form-control-sm";
+    ta.rows = 2;
+    ta.value = row.comment || "";
+    bindTextSave(ta, row, "comment", 65535);
+    tdCom.appendChild(ta);
+    return tdCom;
+  }
+
+  function makeDeleteActions(row, opts) {
+    var options = opts || {};
+    var tdAct = document.createElement("td");
+    tdAct.className = "text-nowrap dg-np-actions";
+    if (options.addKit) {
+      var bKit = document.createElement("button");
+      bKit.type = "button";
+      bKit.className = "btn btn-outline-primary btn-sm me-1";
+      bKit.textContent = "+ Комплект";
+      bKit.title = "Добавить комплект к товару (общие поля + своё название)";
+      bKit.setAttribute("data-dg-notify-start", "Добавляем комплект…");
+      bKit.addEventListener("click", function () {
+        var run = function () {
+          return kitApi(row.id, "POST", "", { title: "" }).then(function (j) {
+            if (!Array.isArray(row.kits)) row.kits = [];
+            if (j.data) row.kits.push(j.data);
+            renderTable();
+            if (window.DatagonNotify && window.DatagonNotify.toast) {
+              window.DatagonNotify.toast({ type: "success", message: "Комплект добавлен" });
+            }
+          });
+        };
+        if (window.DatagonNotify && window.DatagonNotify.busyRun) {
+          window.DatagonNotify.busyRun(bKit, run).catch(function (e) {
+            if (window.DatagonNotify && window.DatagonNotify.toast) {
+              window.DatagonNotify.toast({ type: "danger", message: e.message || "Ошибка" });
+            }
+          });
+        } else {
+          run().catch(function (e) {
+            alert(e.message || "Ошибка");
+          });
+        }
+      });
+      tdAct.appendChild(bKit);
+    }
+    var bDel = document.createElement("button");
+    bDel.type = "button";
+    bDel.className = "btn btn-outline-danger btn-sm";
+    bDel.textContent = "×";
+    bDel.title = "Удалить";
+    bDel.setAttribute("data-dg-no-activity", "1");
+    bDel.addEventListener("click", function () {
+      if (!window.confirm("Удалить запись #" + row.id + "?")) return;
+      fetch("/api/exports/new-products/" + row.id, {
+        method: "DELETE",
+        credentials: "same-origin",
+        headers: authHeaders(false),
+      })
+        .then(function (r) {
+          return r.json().then(function (j) {
+            if (!r.ok) throw new Error((j && j.error) || "HTTP " + r.status);
+          });
+        })
+        .then(function () {
+          load();
+        })
+        .catch(function (e) {
+          alert(e.message || "Ошибка удаления");
+        });
+    });
+    tdAct.appendChild(bDel);
+    return tdAct;
+  }
+
+  function bindNumSave(inp, row, field) {
+    inp.addEventListener("change", function () {
+      var raw = String(inp.value || "").trim().replace(/\s/g, "").replace(",", ".");
+      var n = raw === "" ? null : Number(raw);
+      if (raw !== "" && !Number.isFinite(n)) {
+        if (window.DatagonNotify && window.DatagonNotify.toast) {
+          window.DatagonNotify.toast({ type: "warning", message: "Некорректное число" });
+        }
+        inp.value = row[field] != null ? String(row[field]) : "";
+        return;
+      }
+      var payload = {};
+      payload[field] = n;
+      patchRow(row.id, payload)
+        .then(function (j) {
+          applyPatched(row, j);
+          if (row[field] != null) inp.value = String(row[field]);
+        })
+        .catch(function (e) {
+          if (window.DatagonNotify && window.DatagonNotify.toast) {
+            window.DatagonNotify.toast({ type: "danger", message: e.message || "Ошибка" });
+          }
+          load();
+        });
+    });
+  }
+
+  function makeDimCell(row, field, missMap, placeholder) {
+    var td = document.createElement("td");
+    td.className = "dg-np-cell";
+    markRequired(td, field, missMap);
+    var inp = document.createElement("input");
+    inp.type = "text";
+    inp.inputMode = "decimal";
+    inp.className = "form-control form-control-sm text-end";
+    inp.value = row[field] != null ? String(row[field]) : "";
+    inp.placeholder = placeholder || "";
+    inp.setAttribute("data-dg-no-activity", "1");
+    bindNumSave(inp, row, field);
+    td.appendChild(inp);
+    return td;
+  }
+
+  function makePlacementCell(row) {
+    var td = document.createElement("td");
+    td.className = "dg-np-cell text-nowrap";
+    [
+      { label: "Ozon", on: row.placement_ozon, url: row.placement_ozon_url },
+      { label: "WB", on: row.placement_wb, url: row.placement_wb_url },
+      { label: "ЯМ", on: row.placement_ym, url: row.placement_ym_url },
+    ].forEach(function (b) {
+      var url = String(b.url || "").trim();
+      if (b.on && url) {
+        var a = document.createElement("a");
+        a.className = "badge me-1 bg-success text-decoration-none";
+        a.href = url;
+        a.target = "_blank";
+        a.rel = "noopener noreferrer";
+        a.textContent = b.label;
+        a.title = "Открыть карточку на " + b.label;
+        a.setAttribute("data-dg-no-activity", "1");
+        td.appendChild(a);
+      } else {
+        var span = document.createElement("span");
+        span.className = "badge me-1 " + (b.on ? "bg-success" : "bg-secondary");
+        span.textContent = b.label;
+        if (b.on) span.title = "Есть в выгрузке МП, ссылка ещё не подтянута";
+        td.appendChild(span);
+      }
+    });
+    return td;
+  }
+
+  function renderAlmamedRow(row) {
+    var tr = document.createElement("tr");
+    var missMap = missingKeys(row);
+
+    tr.appendChild(makeIdCell(row));
+
+    var tdMgr = document.createElement("td");
+    tdMgr.className = "dg-np-cell";
+    var selMgr = userSelect(row.product_manager_user_id, true, state.managers);
+      selMgr.addEventListener("change", function () {
+        var v = selMgr.value ? parseInt(selMgr.value, 10) : null;
+        patchRow(row.id, { product_manager_user_id: v })
+          .then(function (j) {
+            applyPatched(row, j);
+          })
+          .catch(function (e) {
+            alert(e.message || "Ошибка");
+            load();
+          });
+      });
+      tdMgr.appendChild(selMgr);
+      tr.appendChild(tdMgr);
+
+      tr.appendChild(makeCopyCell(fmtDt(row.created_at)));
+
+      var tdResp = document.createElement("td");
+      tdResp.className = "dg-np-cell";
+      var selResp = userSelect(row.responsible_user_id, true, state.responsibles);
+    selResp.addEventListener("change", function () {
+      var v = selResp.value ? parseInt(selResp.value, 10) : null;
+      patchRow(row.id, { responsible_user_id: v })
+        .then(function (j) {
+          applyPatched(row, j);
+        })
+        .catch(function (e) {
+          alert(e.message || "Ошибка");
+          load();
+        });
+    });
+    tdResp.appendChild(selResp);
+    tr.appendChild(tdResp);
+
+    var tdSell = document.createElement("td");
+    tdSell.className = "dg-np-cell text-center";
+    var chkSell = document.createElement("input");
+    chkSell.type = "checkbox";
+    chkSell.className = "form-check-input";
+    chkSell.checked = !!row.sell_on_markets;
+    chkSell.title = "Перенести аналогичные поля во вкладку «Размещение на маркеты»";
+    chkSell.setAttribute("data-dg-no-activity", "1");
+    chkSell.addEventListener("change", function () {
+      var on = chkSell.checked ? 1 : 0;
+      patchRow(row.id, { sell_on_markets: on })
+        .then(function (j) {
+          applyPatched(row, j);
+          var ms = j && j.markets_sync;
+          if (on) {
+            if (ms && ms.error) {
+              if (window.DatagonNotify && window.DatagonNotify.toast) {
+                window.DatagonNotify.toast({ type: "danger", message: ms.error });
+              }
+            } else if (ms && ms.reason === "no_code") {
+              if (window.DatagonNotify && window.DatagonNotify.toast) {
+                window.DatagonNotify.toast({
+                  type: "warning",
+                  message: "Сначала укажите артикул — без него в маркеты не поставить",
+                });
+              }
+            } else if (ms && ms.reason === "already_on_all_mp") {
+              if (window.DatagonNotify && window.DatagonNotify.toast) {
+                window.DatagonNotify.toast({
+                  type: "info",
+                  message: "Код уже на всех маркетплейсах — в очередь не добавлен",
+                });
+              }
+            } else if (ms && (ms.created || ms.updated)) {
+              if (window.DatagonNotify && window.DatagonNotify.toast) {
+                window.DatagonNotify.toast({
+                  type: "success",
+                  message: ms.created ? "Добавлено в «Размещение на маркеты»" : "Обновлено в «Размещение на маркеты»",
+                });
+              }
+            }
+          }
+        })
+        .catch(function (e) {
+          chkSell.checked = !on;
+          if (window.DatagonNotify && window.DatagonNotify.toast) {
+            window.DatagonNotify.toast({ type: "danger", message: e.message || "Ошибка" });
+          }
+        });
+    });
+    tdSell.appendChild(chkSell);
+    tr.appendChild(tdSell);
+
+    var tdKitsFlag = document.createElement("td");
+    tdKitsFlag.className = "dg-np-cell text-center";
+    var chkKits = document.createElement("input");
+    chkKits.type = "checkbox";
+    chkKits.className = "form-check-input";
+    chkKits.checked = !!row.has_kits;
+    chkKits.title = "На вкладке «Размещение на маркеты» можно добавить комплекты с отдельными названиями";
+    chkKits.setAttribute("data-dg-no-activity", "1");
+    chkKits.addEventListener("change", function () {
+      var on = chkKits.checked ? 1 : 0;
+      patchRow(row.id, { has_kits: on })
+        .then(function (j) {
+          applyPatched(row, j);
+          var ms = j && j.markets_sync;
+          if (on) {
+            if (ms && ms.error) {
+              if (window.DatagonNotify && window.DatagonNotify.toast) {
+                window.DatagonNotify.toast({ type: "danger", message: ms.error });
+              }
+            } else if (ms && ms.reason === "no_code") {
+              if (window.DatagonNotify && window.DatagonNotify.toast) {
+                window.DatagonNotify.toast({
+                  type: "warning",
+                  message: "Укажите артикул — без него строка маркетов не создастся",
+                });
+              }
+            } else if (ms && (ms.created || ms.updated)) {
+              if (window.DatagonNotify && window.DatagonNotify.toast) {
+                window.DatagonNotify.toast({
+                  type: "success",
+                  message: "Флаг комплектов перенесён на «Размещение на маркеты»",
+                });
+              }
+            }
+          }
+        })
+        .catch(function (e) {
+          chkKits.checked = !on;
+          if (window.DatagonNotify && window.DatagonNotify.toast) {
+            window.DatagonNotify.toast({ type: "danger", message: e.message || "Ошибка" });
+          }
+        });
+    });
+    tdKitsFlag.appendChild(chkKits);
+    tr.appendChild(tdKitsFlag);
+
+    var tdArt = document.createElement("td");
+    tdArt.className = "dg-np-cell";
+    markRequired(tdArt, "article", missMap);
+    var inpArt = document.createElement("input");
+    inpArt.type = "text";
+    inpArt.className = "form-control form-control-sm";
+    inpArt.value = row.article || "";
+    inpArt.placeholder = "или стандартный SKU";
+    bindTextSave(inpArt, row, "article", 128);
+    tdArt.appendChild(inpArt);
+    tr.appendChild(tdArt);
+
+    var tdTitle = document.createElement("td");
+    tdTitle.className = "dg-np-cell";
+    markRequired(tdTitle, "title", missMap);
+    var inpTitle = document.createElement("input");
+    inpTitle.type = "text";
+    inpTitle.className = "form-control form-control-sm";
+    inpTitle.maxLength = 128;
+    inpTitle.value = row.title || "";
+    inpTitle.title = "Макс. 128 символов";
+    bindTextSave(inpTitle, row, "title", 128);
+    tdTitle.appendChild(inpTitle);
+    tr.appendChild(tdTitle);
+
+    var tdPrice = document.createElement("td");
+    tdPrice.className = "dg-np-cell";
+    markRequired(tdPrice, "price_almamed", missMap);
+    var inpPrice = document.createElement("input");
+    inpPrice.type = "text";
+    inpPrice.className = "form-control form-control-sm text-end";
+    inpPrice.value = row.price_almamed != null ? fmtMoney(row.price_almamed) : "";
+    bindPriceSave(inpPrice, row, "price_almamed");
+    tdPrice.appendChild(inpPrice);
+    tr.appendChild(tdPrice);
+
+    var tdUrl = document.createElement("td");
+    tdUrl.className = "dg-np-cell";
+    markRequired(tdUrl, "supplier_url", missMap);
+    var inpUrl = document.createElement("input");
+    inpUrl.type = "url";
+    inpUrl.className = "form-control form-control-sm";
+    inpUrl.value = row.supplier_url || "";
+    inpUrl.placeholder = "https://…";
+    bindTextSave(inpUrl, row, "supplier_url", 2048);
+    appendUrlField(tdUrl, inpUrl, row.supplier_url || "");
+    tr.appendChild(tdUrl);
+
+    var tdBrand = document.createElement("td");
+    tdBrand.className = "dg-np-cell";
+    var inpBrand = document.createElement("input");
+    inpBrand.type = "text";
+    inpBrand.className = "form-control form-control-sm";
+    inpBrand.value = row.brand || "";
+    bindTextSave(inpBrand, row, "brand", 255);
+    tdBrand.appendChild(inpBrand);
+    tr.appendChild(tdBrand);
+
+    tr.appendChild(makePrioritySelect(row, missMap));
+    tr.appendChild(makeStatusSelect(row));
+    tr.appendChild(makeCommentCell(row));
+    tr.appendChild(makeCopyCell(fmtDt(row.almamed_added_at)));
+
+    var tdAlUrl = document.createElement("td");
+    tdAlUrl.className = "dg-np-cell";
+    var inpAl = document.createElement("input");
+    inpAl.type = "url";
+    inpAl.className = "form-control form-control-sm";
+    inpAl.value = row.almamed_url || "";
+    bindTextSave(inpAl, row, "almamed_url", 2048);
+    tdAlUrl.appendChild(inpAl);
+    tr.appendChild(tdAlUrl);
+
+    tr.appendChild(makeDeleteActions(row));
+    return tr;
+  }
+
+  function renderMarketsRow(row) {
+    var tr = document.createElement("tr");
+    var missMap = missingKeys(row);
+
+    tr.appendChild(makeIdCell(row));
+
+    var tdMgr = document.createElement("td");
+    tdMgr.className = "dg-np-cell";
+    var selMgr = userSelect(row.product_manager_user_id, true, state.managers);
+    selMgr.addEventListener("change", function () {
+      var v = selMgr.value ? parseInt(selMgr.value, 10) : null;
+      patchRow(row.id, { product_manager_user_id: v })
+        .then(function (j) {
+          applyPatched(row, j);
+        })
+        .catch(function (e) {
+          alert(e.message || "Ошибка");
+          load();
+        });
+    });
+    tdMgr.appendChild(selMgr);
+    tr.appendChild(tdMgr);
+
+    tr.appendChild(makeCopyCell(fmtDt(row.created_at)));
+    tr.appendChild(makePrioritySelect(row, missMap));
+
+    var tdResp = document.createElement("td");
+    tdResp.className = "dg-np-cell";
+    var selResp = userSelect(row.responsible_user_id, true, state.responsibles);
+    selResp.addEventListener("change", function () {
+      var v = selResp.value ? parseInt(selResp.value, 10) : null;
+      patchRow(row.id, { responsible_user_id: v })
+        .then(function (j) {
+          applyPatched(row, j);
+        })
+        .catch(function (e) {
+          alert(e.message || "Ошибка");
+          load();
+        });
+    });
+    tdResp.appendChild(selResp);
+    tr.appendChild(tdResp);
+
+    var tdCode = document.createElement("td");
+    tdCode.className = "dg-np-cell";
+    markRequired(tdCode, "product_code", missMap);
+    var inpCode = document.createElement("input");
+    inpCode.type = "text";
+    inpCode.className = "form-control form-control-sm";
+    inpCode.value = row.product_code || "";
+    bindTextSave(inpCode, row, "product_code", 128);
+    tdCode.appendChild(inpCode);
+    tr.appendChild(tdCode);
+
+    var tdArt = document.createElement("td");
+    tdArt.className = "dg-np-cell";
+    markRequired(tdArt, "article", missMap);
+    var inpArt = document.createElement("input");
+    inpArt.type = "text";
+    inpArt.className = "form-control form-control-sm";
+    inpArt.value = row.article || "";
+    bindTextSave(inpArt, row, "article", 128);
+    tdArt.appendChild(inpArt);
+    tr.appendChild(tdArt);
+
+    var tdTitle = document.createElement("td");
+    tdTitle.className = "dg-np-cell";
+    markRequired(tdTitle, "title", missMap);
+    var inpTitle = document.createElement("input");
+    inpTitle.type = "text";
+    inpTitle.className = "form-control form-control-sm";
+    inpTitle.maxLength = 128;
+    inpTitle.value = row.title || "";
+    bindTextSave(inpTitle, row, "title", 128);
+    tdTitle.appendChild(inpTitle);
+    tr.appendChild(tdTitle);
+
+    var tdBarcode = document.createElement("td");
+    tdBarcode.className = "dg-np-cell";
+    markRequired(tdBarcode, "barcode", missMap);
+    var inpBarcode = document.createElement("input");
+    inpBarcode.type = "text";
+    inpBarcode.className = "form-control form-control-sm";
+    inpBarcode.value = row.barcode || "";
+    bindTextSave(inpBarcode, row, "barcode", 512);
+    tdBarcode.appendChild(inpBarcode);
+    tr.appendChild(tdBarcode);
+
+    var tdPrice = document.createElement("td");
+    tdPrice.className = "dg-np-cell";
+    markRequired(tdPrice, "price_markets", missMap);
+    var inpPrice = document.createElement("input");
+    inpPrice.type = "text";
+    inpPrice.className = "form-control form-control-sm text-end";
+    inpPrice.value = row.price_markets != null ? fmtMoney(row.price_markets) : "";
+    bindPriceSave(inpPrice, row, "price_markets");
+    tdPrice.appendChild(inpPrice);
+    tr.appendChild(tdPrice);
+
+    tr.appendChild(makeStatusSelect(row));
+    tr.appendChild(makePlacementCell(row));
+    tr.appendChild(makeCommentCell(row));
+    tr.appendChild(makeCopyCell(fmtDt(row.placement_date)));
+
+    tr.appendChild(makeDimCell(row, "length_cm", missMap, "см"));
+    tr.appendChild(makeDimCell(row, "width_cm", missMap, "см"));
+    tr.appendChild(makeDimCell(row, "height_cm", missMap, "см"));
+    tr.appendChild(makeDimCell(row, "weight_kg", missMap, "кг"));
+
+    var tdVat = document.createElement("td");
+    tdVat.className = "dg-np-cell";
+    markRequired(tdVat, "vat", missMap);
+    var inpVat = document.createElement("input");
+    inpVat.type = "text";
+    inpVat.className = "form-control form-control-sm";
+    inpVat.value = row.vat || "";
+    bindTextSave(inpVat, row, "vat", 64);
+    tdVat.appendChild(inpVat);
+    tr.appendChild(tdVat);
+
+    var tdRu = document.createElement("td");
+    tdRu.className = "dg-np-cell";
+    markRequired(tdRu, "ru_url", missMap);
+    var inpRu = document.createElement("input");
+    inpRu.type = "url";
+    inpRu.className = "form-control form-control-sm";
+    inpRu.value = row.ru_url || "";
+    inpRu.placeholder = "https://…";
+    bindTextSave(inpRu, row, "ru_url", 2048);
+    appendUrlField(tdRu, inpRu, row.ru_url || "");
+    tr.appendChild(tdRu);
+
+    tr.appendChild(makeDeleteActions(row, { addKit: !!row.has_kits }));
+    return tr;
+  }
+
+  function kitApi(parentId, method, pathSuffix, body) {
+    var url = "/api/exports/new-products/" + parentId + "/kits" + (pathSuffix || "");
+    var opts = {
+      method: method || "GET",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+    };
+    if (body != null) opts.body = JSON.stringify(body);
+    return fetch(url, opts).then(function (r) {
+      return r.json().then(function (j) {
+        if (!r.ok || (j && j.success === false)) {
+          throw new Error((j && (j.error || j.message)) || "HTTP " + r.status);
+        }
+        return j;
+      });
+    });
+  }
+
+  function mutedCell(text, opts) {
+    var td = document.createElement("td");
+    td.className = "dg-np-cell dg-np-kit-inherited";
+    if (opts && opts.title) td.title = opts.title;
+    var span = document.createElement("span");
+    span.className = "text-muted small";
+    span.textContent = text == null || text === "" ? "—" : String(text);
+    td.appendChild(span);
+    return td;
+  }
+
+  function bindKitFieldSave(inp, parent, kit, field, opts) {
+    var o = opts || {};
+    inp.addEventListener("change", function () {
+      var payload = {};
+      if (o.price) {
+        var n = parsePriceInput(inp.value);
+        if (String(inp.value || "").trim() !== "" && n == null) {
+          if (window.DatagonNotify && window.DatagonNotify.toast) {
+            window.DatagonNotify.toast({ type: "warning", message: "Некорректная цена" });
+          }
+          return;
+        }
+        payload[field] = n;
+        if (n != null) inp.value = fmtMoney(n);
+      } else if (o.num) {
+        var raw = String(inp.value || "").trim().replace(/\s/g, "").replace(",", ".");
+        var nn = raw === "" ? null : Number(raw);
+        if (raw !== "" && !Number.isFinite(nn)) {
+          if (window.DatagonNotify && window.DatagonNotify.toast) {
+            window.DatagonNotify.toast({ type: "warning", message: "Некорректное число" });
+          }
+          inp.value = kit[field] != null ? String(kit[field]) : "";
+          return;
+        }
+        payload[field] = nn;
+        if (nn != null) inp.value = String(nn);
+      } else {
+        var v = String(inp.value || "").trim();
+        if (o.maxLen && v.length > o.maxLen) v = v.slice(0, o.maxLen);
+        payload[field] = v;
+      }
+      kitApi(parent.id, "PATCH", "/" + kit.id, payload)
+        .then(function (j) {
+          if (j.data) Object.assign(kit, j.data);
+          if (window.DatagonNotify && window.DatagonNotify.toast) {
+            window.DatagonNotify.toast({ type: "success", message: "Комплект сохранён" });
+          }
+        })
+        .catch(function (e) {
+          if (window.DatagonNotify && window.DatagonNotify.toast) {
+            window.DatagonNotify.toast({ type: "danger", message: e.message || "Ошибка" });
+          }
+        });
+    });
+  }
+
+  /** Комплект — вложенная строка: менеджер/дата/приоритет/ответственный как у товара; остальное редактируется. */
+  function renderMarketsKitRow(parent, kit) {
+    var tr = document.createElement("tr");
+    tr.className = "dg-np-kit-row";
+    tr.setAttribute("data-dg-kit-parent", String(parent.id));
+    tr.setAttribute("data-dg-kit-id", String(kit.id));
+
+    var tdId = document.createElement("td");
+    tdId.className = "dg-np-cell dg-np-kit-mark";
+    tdId.innerHTML = '<span class="badge bg-light text-primary border">↳ комплект</span>';
+    tr.appendChild(tdId);
+
+    tr.appendChild(mutedCell(parent.product_manager_name || "—", { title: "Как у товара" }));
+    tr.appendChild(mutedCell(fmtDt(parent.created_at), { title: "Как у товара" }));
+    tr.appendChild(
+      mutedCell(parent.priority_label || parent.priority || "—", { title: "Как у товара" })
+    );
+    tr.appendChild(mutedCell(parent.responsible_name || "—", { title: "Как у товара" }));
+
+    function kitTextCell(field, maxLen, placeholder) {
+      var td = document.createElement("td");
+      td.className = "dg-np-cell";
+      var inp = document.createElement("input");
+      inp.type = "text";
+      inp.className = "form-control form-control-sm";
+      if (placeholder) inp.placeholder = placeholder;
+      if (maxLen) inp.maxLength = maxLen;
+      inp.value = kit[field] || "";
+      inp.setAttribute("data-dg-no-activity", "1");
+      bindKitFieldSave(inp, parent, kit, field, { maxLen: maxLen });
+      td.appendChild(inp);
+      return td;
+    }
+
+    tr.appendChild(kitTextCell("product_code", 128, "Код"));
+    tr.appendChild(kitTextCell("article", 128, "Артикул"));
+    tr.appendChild(kitTextCell("title", 255, "Название комплекта"));
+    tr.appendChild(kitTextCell("barcode", 512, "Штрихкод"));
+
+    var tdPrice = document.createElement("td");
+    tdPrice.className = "dg-np-cell";
+    var inpPrice = document.createElement("input");
+    inpPrice.type = "text";
+    inpPrice.className = "form-control form-control-sm text-end";
+    inpPrice.value = kit.price_markets != null ? fmtMoney(kit.price_markets) : "";
+    inpPrice.setAttribute("data-dg-no-activity", "1");
+    bindPriceLiveFormat(inpPrice);
+    bindKitFieldSave(inpPrice, parent, kit, "price_markets", { price: true });
+    tdPrice.appendChild(inpPrice);
+    tr.appendChild(tdPrice);
+
+    var tdStatus = document.createElement("td");
+    tdStatus.className = "dg-np-cell";
+    var selSt = document.createElement("select");
+    selSt.className = "form-select form-select-sm";
+    STATUS_OPTS_MARKETS.forEach(function (o) {
+      var opt = document.createElement("option");
+      opt.value = o.key;
+      opt.textContent = o.label;
+      if (String(kit.status || "new") === o.key) opt.selected = true;
+      selSt.appendChild(opt);
+    });
+    selSt.setAttribute("data-dg-no-activity", "1");
+    selSt.addEventListener("change", function () {
+      kitApi(parent.id, "PATCH", "/" + kit.id, { status: selSt.value })
+        .then(function (j) {
+          if (j.data) Object.assign(kit, j.data);
+          if (window.DatagonNotify && window.DatagonNotify.toast) {
+            window.DatagonNotify.toast({ type: "success", message: "Статус комплекта сохранён" });
+          }
+        })
+        .catch(function (e) {
+          if (window.DatagonNotify && window.DatagonNotify.toast) {
+            window.DatagonNotify.toast({ type: "danger", message: e.message || "Ошибка" });
+          }
+          load();
+        });
+    });
+    tdStatus.appendChild(selSt);
+    tr.appendChild(tdStatus);
+
+    var tdPlace = document.createElement("td");
+    tdPlace.className = "dg-np-cell dg-np-kit-inherited";
+    tdPlace.innerHTML = '<span class="text-muted small">—</span>';
+    tr.appendChild(tdPlace);
+
+    var tdCom = document.createElement("td");
+    tdCom.className = "dg-np-cell";
+    var ta = document.createElement("textarea");
+    ta.className = "form-control form-control-sm";
+    ta.rows = 2;
+    ta.value = kit.comment || "";
+    ta.setAttribute("data-dg-no-activity", "1");
+    bindKitFieldSave(ta, parent, kit, "comment", { maxLen: 65535 });
+    tdCom.appendChild(ta);
+    tr.appendChild(tdCom);
+
+    tr.appendChild(mutedCell("—", { title: "Дата размещения — у товара" }));
+
+    function kitNumCell(field, placeholder) {
+      var td = document.createElement("td");
+      td.className = "dg-np-cell";
+      var inp = document.createElement("input");
+      inp.type = "text";
+      inp.inputMode = "decimal";
+      inp.className = "form-control form-control-sm text-end";
+      inp.placeholder = placeholder || "";
+      inp.value = kit[field] != null ? String(kit[field]) : "";
+      inp.setAttribute("data-dg-no-activity", "1");
+      bindKitFieldSave(inp, parent, kit, field, { num: true });
+      td.appendChild(inp);
+      return td;
+    }
+    tr.appendChild(kitNumCell("length_cm", "см"));
+    tr.appendChild(kitNumCell("width_cm", "см"));
+    tr.appendChild(kitNumCell("height_cm", "см"));
+    tr.appendChild(kitNumCell("weight_kg", "кг"));
+    tr.appendChild(kitTextCell("vat", 64, "НДС"));
+    tr.appendChild(kitTextCell("ru_url", 2048, "https://…"));
+
+    var tdAct = document.createElement("td");
+    tdAct.className = "text-nowrap";
+    var bDel = document.createElement("button");
+    bDel.type = "button";
+    bDel.className = "btn btn-outline-danger btn-sm";
+    bDel.textContent = "×";
+    bDel.title = "Удалить комплект";
+    bDel.setAttribute("data-dg-notify-start", "Удаляем комплект…");
+    bDel.addEventListener("click", function () {
+      var run = function () {
+        return kitApi(parent.id, "DELETE", "/" + kit.id).then(function () {
+          parent.kits = (parent.kits || []).filter(function (k) {
+            return k.id !== kit.id;
+          });
+          renderTable();
+          if (window.DatagonNotify && window.DatagonNotify.toast) {
+            window.DatagonNotify.toast({ type: "success", message: "Комплект удалён" });
+          }
+        });
+      };
+      if (window.DatagonNotify && window.DatagonNotify.busyRun) {
+        window.DatagonNotify.busyRun(bDel, run).catch(function (e) {
+          if (window.DatagonNotify && window.DatagonNotify.toast) {
+            window.DatagonNotify.toast({ type: "danger", message: e.message || "Ошибка" });
+          }
+        });
+      } else {
+        run().catch(function (e) {
+          alert(e.message || "Ошибка");
+        });
+      }
+    });
+    tdAct.appendChild(bDel);
+    tr.appendChild(tdAct);
+    return tr;
+  }
+
+  function renderTable() {
+    buildThead();
+    var tbody = el("dg-np-tbody");
+    tbody.replaceChildren();
+    if (!state.rows.length) {
+      var tr0 = document.createElement("tr");
+      var td0 = document.createElement("td");
+      td0.colSpan = colCount();
+      td0.className = "text-muted";
+      td0.textContent = state.loading ? "Загрузка…" : "Нет записей — добавьте товар или смените фильтры";
+      tr0.appendChild(td0);
+      tbody.appendChild(tr0);
+      updatePager();
+      return;
+    }
+    state.rows.forEach(function (row) {
+      if (state.channel === "marketplaces") {
+        tbody.appendChild(renderMarketsRow(row));
+        if (row.has_kits && Array.isArray(row.kits)) {
+          row.kits.forEach(function (kit) {
+            tbody.appendChild(renderMarketsKitRow(row, kit));
+          });
+        }
+      } else {
+        tbody.appendChild(renderAlmamedRow(row));
+      }
+    });
+    updatePager();
+    refreshIncompleteBanner();
+  }
+
+  function refreshIncompleteBanner() {
+    var n = 0;
+    (state.rows || []).forEach(function (r) {
+      if (r.missing_required && r.missing_required.length) n += 1;
+    });
+    var box = el("dg-np-action-log");
+    if (!box) return;
+    if (!n) {
+      if (box.dataset.dgNpAutoWarn === "1") {
+        box.classList.add("d-none");
+        box.dataset.dgNpAutoWarn = "";
+      }
+      return;
+    }
+    if (!box.classList.contains("d-none") && box.dataset.dgNpAutoWarn !== "1") return;
+    var fieldsHint =
+      state.channel === "marketplaces"
+        ? "код, артикул, название, штрихкод, цена, длина/ширина/высота/вес, НДС, ссылка на РУ, приоритет"
+        : "артикул, название, цена, ссылка, приоритет";
+    showLog(
+      "warning",
+      "На странице <b>" +
+        n +
+        "</b> строк(и) с незаполненными обязательными полями (" +
+        fieldsHint +
+        "). Ячейки подсвечены."
+    );
+    box.dataset.dgNpAutoWarn = "1";
+  }
+
+  function updatePager() {
+    var pages = Math.max(1, Math.ceil(state.total / state.limit) || 1);
+    var page = Math.floor(state.offset / state.limit) + 1;
+    var shown = state.rows.length;
+    var st = el("dg-np-page-status");
+    if (st) {
+      st.textContent =
+        "Найдено: " + state.total + "; страница " + page + "/" + pages + "; показано: " + shown;
+    }
+    var prev = el("dg-np-prev");
+    var next = el("dg-np-next");
+    if (prev) prev.disabled = state.offset <= 0;
+    if (next) next.disabled = state.offset + state.limit >= state.total;
+  }
+
+  function load() {
+    state.loading = true;
+    renderTable();
+    var p = new URLSearchParams();
+    p.set("channel", state.channel);
+    p.set("limit", String(state.limit));
+    p.set("offset", String(state.offset));
+    p.set("sort_by", state.sort_by);
+    p.set("sort_dir", state.sort_dir);
+    if (state.search) p.set("search", state.search);
+    if (state.status) p.set("status", state.status);
+    if (state.priority) p.set("priority", state.priority);
+    if (state.brand) p.set("brand", state.brand);
+    if (state.responsible) p.set("responsible", state.responsible);
+    if (state.manager) p.set("manager", state.manager);
+    return fetch("/api/exports/new-products?" + p.toString(), {
+      credentials: "same-origin",
+      headers: authHeaders(false),
+    })
+      .then(function (r) {
+        return r.json().then(function (j) {
+          if (!r.ok) throw new Error((j && j.error) || "HTTP " + r.status);
+          return j;
+        });
+      })
+      .then(function (j) {
+        state.rows = j.data || [];
+        state.total = Number(j.total || 0);
+        state.loading = false;
+        renderTable();
+      })
+      .catch(function (e) {
+        state.loading = false;
+        state.rows = [];
+        renderTable();
+        showLog("danger", e.message || "Ошибка загрузки");
+      });
+  }
+
+  function loadAssignees() {
+    return fetch("/api/exports/new-products/assignees", {
+      credentials: "same-origin",
+      headers: authHeaders(false),
+    })
+      .then(function (r) {
+        return r.json();
+      })
+      .then(function (j) {
+        state.managers = (j && j.managers) || (j && j.data) || [];
+        state.responsibles = (j && j.responsibles) || [];
+        state.assignees = state.managers;
+        fillAssigneeFilters();
+      })
+      .catch(function () {
+        state.managers = [];
+        state.responsibles = [];
+        state.assignees = [];
+      });
+  }
+
+  function addRow() {
+    var run = function () {
+      var body = {
+        channel: state.channel,
+        title: "",
+        priority: "normal",
+        status: "new",
+      };
+      return fetch("/api/exports/new-products", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: authHeaders(true),
+        body: JSON.stringify(body),
+      })
+        .then(function (r) {
+          return r.json().then(function (j) {
+            if (!r.ok) throw new Error((j && j.error) || "HTTP " + r.status);
+            return j;
+          });
+        })
+        .then(function (j) {
+          var id = j && j.data && j.data.id ? "#" + j.data.id : "";
+          showLog("success", "Строка добавлена" + (id ? " " + id : "") + " (статус «Новый»). Заполните обязательные поля в таблице.");
+          if (window.DatagonNotify && window.DatagonNotify.toast) {
+            window.DatagonNotify.toast({ type: "success", message: "Товар добавлен" + (id ? " " + id : "") });
+          }
+          state.offset = 0;
+          load();
+        })
+        .catch(function (e) {
+          showLog("danger", e.message || "Ошибка");
+          if (window.DatagonNotify && window.DatagonNotify.toast) {
+            window.DatagonNotify.toast({ type: "danger", message: e.message || "Ошибка" });
+          }
+        });
+    };
+    if (window.DatagonNotify && window.DatagonNotify.busyRun) {
+      window.DatagonNotify.busyRun(el("dg-np-add"), run);
+    } else run();
+  }
+
+  function syncMarketsQueue() {
+    var t0 = Date.now();
+    var tick = null;
+    var filtersLine = "Канал: <b>Размещение на маркеты</b>";
+    showLog(
+      "warning",
+      "Обновление очереди маркетов…<br>" +
+        filtersLine +
+        "<br>Подтягиваем из Альмамед (transferred), МС и снапшотов Ozon/WB/ЯМ<br>" +
+        '<span id="dg-np-sync-tick">идёт, прошло 0 с…</span>'
+    );
+    tick = setInterval(function () {
+      var elTick = el("dg-np-sync-tick");
+      if (elTick) {
+        elTick.textContent = "идёт, прошло " + Math.round((Date.now() - t0) / 1000) + " с…";
+      }
+    }, 1000);
+
+    var run = function () {
+      return fetch("/api/exports/new-products/sync-markets-queue", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: authHeaders(true),
+        body: JSON.stringify({}),
+      })
+        .then(function (r) {
+          return r.json().then(function (j) {
+            if (!r.ok) throw new Error((j && j.error) || "HTTP " + r.status);
+            return j;
+          });
+        })
+        .then(function (j) {
+          if (tick) clearInterval(tick);
+          var sec = j.duration_sec != null ? j.duration_sec : Math.round((Date.now() - t0) / 1000);
+          showLog(
+            "success",
+            "Итог обновления очереди маркетов<br>" +
+              filtersLine +
+              "<br>Новых из Альмамед: <b>" +
+              (j.from_almamed || 0) +
+              "</b>; обновлено строк: <b>" +
+              (j.updated || 0) +
+              "</b>; уже на всех МП (пропуск): <b>" +
+              (j.skipped_all_mp || 0) +
+              "</b>; длительность: <b>" +
+              sec +
+              "</b> с"
+          );
+          load();
+        })
+        .catch(function (e) {
+          if (tick) clearInterval(tick);
+          showLog("danger", "Ошибка обновления очереди: " + (e.message || "unknown") + "<br>" + filtersLine);
+        });
+    };
+    if (window.DatagonNotify && window.DatagonNotify.busyRun) {
+      window.DatagonNotify.busyRun(el("dg-np-sync-markets"), run);
+    } else run();
+  }
+
+  function removePlaced() {
+    if (
+      !window.confirm(
+        "Убрать из таблицы все строки со статусом «Добавлен» (размещение на маркетах)?\nДелайте после проверки."
+      )
+    ) {
+      return;
+    }
+    var t0 = Date.now();
+    var tick = null;
+    var filtersLine = "Канал: <b>Размещение на маркеты</b>; статус: <b>Добавлен</b>";
+
+    showLog("warning", "Preflight: считаем строки «Добавлен»…<br>" + filtersLine);
+
+    var run = function () {
+      return fetch("/api/exports/new-products/remove-placed", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: authHeaders(true),
+        body: JSON.stringify({ dry_run: 1 }),
+      })
+        .then(function (r) {
+          return r.json().then(function (j) {
+            if (!r.ok) throw new Error((j && j.error) || "HTTP " + r.status);
+            return j;
+          });
+        })
+        .then(function (pre) {
+          var would = Number(pre.would_remove != null ? pre.would_remove : pre.total || 0);
+          showLog(
+            "warning",
+            "Убираем размещённые…<br>" +
+              filtersLine +
+              "<br>К удалению из таблицы: <b>" +
+              would +
+              "</b><br>" +
+              '<span id="dg-np-remove-tick">идёт, прошло 0 с…</span>'
+          );
+          tick = setInterval(function () {
+            var elTick = el("dg-np-remove-tick");
+            if (elTick) {
+              elTick.textContent = "идёт, прошло " + Math.round((Date.now() - t0) / 1000) + " с…";
+            }
+          }, 1000);
+          if (!would) {
+            if (tick) clearInterval(tick);
+            showLog("info", "Нет товаров со статусом «Добавлен» для удаления из таблицы.<br>" + filtersLine);
+            return null;
+          }
+          return fetch("/api/exports/new-products/remove-placed", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: authHeaders(true),
+            body: JSON.stringify({}),
+          }).then(function (r) {
+            return r.json().then(function (j) {
+              if (!r.ok) throw new Error((j && j.error) || "HTTP " + r.status);
+              return j;
+            });
+          });
+        })
+        .then(function (j) {
+          if (tick) clearInterval(tick);
+          if (!j) return;
+          var sec = j.duration_sec != null ? j.duration_sec : Math.round((Date.now() - t0) / 1000);
+          showLog(
+            "success",
+            "Итог «Убрать размещенные»<br>" +
+              filtersLine +
+              "<br>Всего «Добавлен»: <b>" +
+              (j.total || 0) +
+              "</b>; убрано из таблицы ✓: <b>" +
+              (j.removed || 0) +
+              "</b>; длительность: <b>" +
+              sec +
+              "</b> с"
+          );
+          load();
+        })
+        .catch(function (e) {
+          if (tick) clearInterval(tick);
+          showLog("danger", "Ошибка: " + (e.message || "unknown") + "<br>" + filtersLine);
+        });
+    };
+    if (window.DatagonNotify && window.DatagonNotify.busyRun) {
+      window.DatagonNotify.busyRun(el("dg-np-remove-placed"), run);
+    } else run();
+  }
+
+  function distribute() {
+    if (
+      !window.confirm(
+        "Раздать поровну строки без ответственного между контент-менеджерами?"
+      )
+    ) {
+      return;
+    }
+    var t0 = Date.now();
+    showLog(
+      "warning",
+      "Раздаём ответственных… канал: <b>" +
+        (state.channel === "marketplaces" ? "Размещение на маркеты" : "Альмамед") +
+        "</b>, только без ответственного."
+    );
+    var run = function () {
+      return fetch("/api/exports/new-products/distribute", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: authHeaders(true),
+        body: JSON.stringify({ channel: state.channel, scope: "unassigned" }),
+      })
+        .then(function (r) {
+          return r.json().then(function (j) {
+            if (!r.ok) throw new Error((j && j.error) || "HTTP " + r.status);
+            return j;
+          });
+        })
+        .then(function (j) {
+          var sec = Math.round((Date.now() - t0) / 1000);
+          showLog(
+            "success",
+            "Раздано: <b>" +
+              (j.assigned || 0) +
+              "</b> строк на <b>" +
+              (j.users || 0) +
+              "</b> пользователей · " +
+              sec +
+              " с"
+          );
+          load();
+        })
+        .catch(function (e) {
+          showLog("danger", e.message || "Ошибка раздачи");
+        });
+    };
+    if (window.DatagonNotify && window.DatagonNotify.busyRun) {
+      window.DatagonNotify.busyRun(el("dg-np-distribute"), run);
+    } else run();
+  }
+
+  function bindCollapse(btnId, bodyId, key) {
+    var btn = el(btnId);
+    var body = el(bodyId);
+    if (!btn || !body) return;
+    function apply(collapsed) {
+      body.style.display = collapsed ? "none" : "";
+      btn.textContent = collapsed ? "Развернуть" : "Свернуть";
+      try {
+        localStorage.setItem(key, collapsed ? "1" : "0");
+      } catch (_) {}
+    }
+    var start = false;
+    try {
+      start = localStorage.getItem(key) === "1";
+    } catch (_) {}
+    apply(start);
+    btn.addEventListener("click", function () {
+      apply(body.style.display !== "none");
+    });
+  }
+
+  function setChannel(ch, opts) {
+    var o = opts || {};
+    state.channel = ch === "marketplaces" ? "marketplaces" : "almamed";
+    try {
+      localStorage.setItem(CHANNEL_KEY, state.channel);
+    } catch (_) {}
+    state.offset = 0;
+    syncTabUi();
+
+    if (o.focusChannelNum != null && Number.isFinite(Number(o.focusChannelNum))) {
+      var q = "id:" + Number(o.focusChannelNum);
+      if (el("dg-np-search")) el("dg-np-search").value = q;
+      if (el("dg-np-f-status")) el("dg-np-f-status").value = "";
+      if (el("dg-np-f-priority")) el("dg-np-f-priority").value = "";
+      if (el("dg-np-f-brand")) el("dg-np-f-brand").value = "";
+      if (el("dg-np-f-responsible")) el("dg-np-f-responsible").value = "";
+      if (el("dg-np-f-manager")) el("dg-np-f-manager").value = "";
+      // развернуть фильтры, чтобы было видно активный поиск
+      try {
+        var filtersBody = el("dg-np-filters-body");
+        var filtersToggle = el("dg-np-filters-toggle");
+        if (filtersBody && filtersBody.style.display === "none") {
+          filtersBody.style.display = "";
+          if (filtersToggle) filtersToggle.textContent = "Свернуть";
+          localStorage.setItem(FILTERS_KEY, "0");
+        }
+      } catch (_) {}
+      commitFilters();
+      return;
+    }
+
+    load();
+  }
+
+  function escapeHtml(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  var logState = { productId: null, label: "", limit: 100, offset: 0, total: 0 };
+
+  function npLogActionLabel(action) {
+    var map = {
+      set: "Изменение",
+      create: "Создание",
+      delete: "Удаление",
+      kit_add: "Комплект +",
+      kit_set: "Комплект",
+      kit_delete: "Комплект −",
+    };
+    return map[action] || action || "set";
+  }
+
+  function closeNpLog() {
+    var overlay = el("dg-np-log-overlay");
+    if (!overlay) return;
+    overlay.style.display = "none";
+    overlay.setAttribute("aria-hidden", "true");
+  }
+
+  function openNpLog(productId, label) {
+    logState.productId = productId;
+    logState.label = label || "#" + productId;
+    logState.offset = 0;
+    var overlay = el("dg-np-log-overlay");
+    var titleEl = el("dg-np-log-title");
+    var subEl = el("dg-np-log-subtitle");
+    if (titleEl) titleEl.textContent = "Журнал изменений #" + productId;
+    if (subEl) subEl.textContent = logState.label;
+    if (overlay) {
+      overlay.style.display = "flex";
+      overlay.setAttribute("aria-hidden", "false");
+    }
+    loadNpLog();
+  }
+
+  function renderNpLogPager() {
+    var pages = Math.max(1, Math.ceil((logState.total || 0) / logState.limit) || 1);
+    var page = Math.floor(logState.offset / logState.limit) + 1;
+    var prevDisabled = logState.offset <= 0 ? " disabled" : "";
+    var nextDisabled = logState.offset + logState.limit >= logState.total ? " disabled" : "";
+    return (
+      '<div class="dg-np-log-pager d-flex align-items-center justify-content-between gap-2 px-3 py-2 border-top">' +
+      '<span class="small text-muted">Найдено: ' +
+      logState.total +
+      "; страница " +
+      page +
+      "/" +
+      pages +
+      "</span>" +
+      '<div class="btn-group">' +
+      '<button type="button" class="btn btn-sm btn-outline-secondary dg-np-log-prev"' +
+      prevDisabled +
+      ">Назад</button>" +
+      '<button type="button" class="btn btn-sm btn-outline-secondary dg-np-log-next"' +
+      nextDisabled +
+      ">Вперёд</button>" +
+      "</div></div>"
+    );
+  }
+
+  function loadNpLog() {
+    var body = el("dg-np-log-body");
+    if (!body || !logState.productId) return;
+    body.innerHTML = '<div class="text-muted small text-center py-4">Загрузка журнала…</div>';
+    var qs = new URLSearchParams();
+    qs.set("limit", String(logState.limit));
+    qs.set("offset", String(logState.offset));
+    fetch("/api/exports/new-products/" + logState.productId + "/log?" + qs.toString(), {
+      credentials: "same-origin",
+      headers: authHeaders(false),
+    })
+      .then(function (r) {
+        return r.json().then(function (j) {
+          if (!r.ok || (j && j.success === false)) {
+            throw new Error((j && j.error) || "HTTP " + r.status);
+          }
+          return j;
+        });
+      })
+      .then(function (j) {
+        logState.total = Number(j.total || 0);
+        var rows = j.rows || [];
+        if (!rows.length) {
+          body.innerHTML =
+            '<div class="text-muted small text-center py-4">Журнал пуст: по этой строке ещё не было изменений.</div>' +
+            renderNpLogPager();
+          return;
+        }
+        var html =
+          '<div class="table-responsive"><table class="table table-sm mb-0"><thead><tr>' +
+          "<th>Когда</th><th>Кто</th><th>Действие</th><th>Поле</th><th>Было → Стало</th>" +
+          "</tr></thead><tbody>";
+        rows.forEach(function (r) {
+          var when = r.changed_at
+            ? String(r.changed_at).replace("T", " ").replace(/\.\d+Z?$/, "").slice(0, 19)
+            : "—";
+          var who = escapeHtml(r.changed_by_name || "—");
+          var field = escapeHtml(r.field_label || r.field || "—");
+          if (r.kit_id) field += ' <span class="text-muted">#kit' + r.kit_id + "</span>";
+          var oldVal =
+            r.old_value == null
+              ? '<span class="text-muted">∅</span>'
+              : '<span class="dg-np-log-old">' + escapeHtml(r.old_value) + "</span>";
+          var newVal =
+            r.new_value == null
+              ? '<span class="text-muted">∅</span>'
+              : '<span class="dg-np-log-new">' + escapeHtml(r.new_value) + "</span>";
+          html +=
+            "<tr>" +
+            "<td class=\"text-nowrap small\">" +
+            escapeHtml(when) +
+            "</td>" +
+            "<td>" +
+            who +
+            "</td>" +
+            '<td><span class="badge bg-light text-dark border dg-np-log-action">' +
+            escapeHtml(npLogActionLabel(r.action)) +
+            "</span></td>" +
+            "<td>" +
+            field +
+            "</td>" +
+            "<td>" +
+            oldVal +
+            '<span class="dg-np-log-arrow">→</span>' +
+            newVal +
+            "</td>" +
+            "</tr>";
+        });
+        html += "</tbody></table></div>" + renderNpLogPager();
+        body.innerHTML = html;
+      })
+      .catch(function (e) {
+        body.innerHTML =
+          '<div class="text-danger small text-center py-4">' +
+          escapeHtml(e.message || "Ошибка загрузки журнала") +
+          "</div>";
+      });
+  }
+
+  function bindNpLogUi() {
+    document.addEventListener("click", function (ev) {
+      var btn = ev.target && ev.target.closest && ev.target.closest(".dg-np-log-btn");
+      if (btn) {
+        ev.preventDefault();
+        var id = parseInt(btn.getAttribute("data-dg-np-log-id") || "", 10);
+        var label = btn.getAttribute("data-dg-np-log-label") || "";
+        if (Number.isFinite(id) && id > 0) openNpLog(id, label);
+        return;
+      }
+      var prev = ev.target && ev.target.closest && ev.target.closest(".dg-np-log-prev");
+      if (prev && logState.productId) {
+        logState.offset = Math.max(0, logState.offset - logState.limit);
+        loadNpLog();
+        return;
+      }
+      var next = ev.target && ev.target.closest && ev.target.closest(".dg-np-log-next");
+      if (next && logState.productId) {
+        if (logState.offset + logState.limit < logState.total) {
+          logState.offset += logState.limit;
+          loadNpLog();
+        }
+      }
+    });
+    var closeBtn = el("dg-np-log-close");
+    if (closeBtn) closeBtn.addEventListener("click", closeNpLog);
+    var refreshBtn = el("dg-np-log-refresh");
+    if (refreshBtn) refreshBtn.addEventListener("click", loadNpLog);
+    var backdrop = el("dg-np-log-backdrop");
+    if (backdrop) backdrop.addEventListener("click", closeNpLog);
+    document.addEventListener("keydown", function (ev) {
+      if (ev.key !== "Escape") return;
+      var overlay = el("dg-np-log-overlay");
+      if (overlay && overlay.style.display !== "none") closeNpLog();
+    });
+  }
+
+  function init() {
+    try {
+      var saved = localStorage.getItem(CHANNEL_KEY);
+      if (saved === "marketplaces" || saved === "almamed") state.channel = saved;
+    } catch (_) {}
+    syncTabUi();
+    bindCollapse("dg-np-filters-toggle", "dg-np-filters-body", FILTERS_KEY);
+    bindCollapse("dg-np-table-toggle", "dg-np-table-body", TABLE_KEY);
+    bindNpLogUi();
+
+    document.querySelectorAll("#dg-np-tabs [data-dg-np-channel]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        setChannel(btn.getAttribute("data-dg-np-channel"));
+      });
+    });
+
+    el("dg-np-apply").addEventListener("click", commitFilters);
+    el("dg-np-reset").addEventListener("click", resetFilters);
+    el("dg-np-add").addEventListener("click", addRow);
+    el("dg-np-distribute").addEventListener("click", distribute);
+    var btnSync = el("dg-np-sync-markets");
+    if (btnSync) btnSync.addEventListener("click", syncMarketsQueue);
+    var btnRemove = el("dg-np-remove-placed");
+    if (btnRemove) btnRemove.addEventListener("click", removePlaced);
+    el("dg-np-search").addEventListener("keydown", function (e) {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        commitFilters();
+      }
+      if (e.key === "Escape") {
+        el("dg-np-search").value = "";
+        commitFilters();
+      }
+    });
+    el("dg-np-page-size").addEventListener("change", function () {
+      state.limit = parseInt(el("dg-np-page-size").value, 10) || 100;
+      state.offset = 0;
+      load();
+    });
+    el("dg-np-prev").addEventListener("click", function () {
+      state.offset = Math.max(0, state.offset - state.limit);
+      load();
+    });
+    el("dg-np-next").addEventListener("click", function () {
+      state.offset = state.offset + state.limit;
+      load();
+    });
+
+    loadAssignees().then(load);
+  }
+
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
+  else init();
+})();
+</script>
+
+</body>
+</html>

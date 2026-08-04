@@ -1,0 +1,180 @@
+          <div class="app-page-title">
+            <div class="page-title-wrapper">
+              <div class="page-title-heading">
+                <div class="page-title-icon">
+                  <i class="pe-7s-plus icon-gradient bg-happy-itmeo"> </i>
+                </div>
+                <div>
+                  Новые товары
+                  <div class="page-title-subheading">
+                    Очередь: размещение на Альмамед и на маркетплейсы (Ozon / WB / Я.Маркет).
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <ul class="nav nav-tabs dg-np-tabs mb-3" id="dg-np-tabs" role="tablist">
+            <li class="nav-item">
+              <button type="button" class="nav-link active" data-dg-np-channel="almamed" id="dg-np-tab-almamed">Альмамед</button>
+            </li>
+            <li class="nav-item">
+              <button type="button" class="nav-link" data-dg-np-channel="marketplaces" id="dg-np-tab-markets">Размещение на маркеты</button>
+            </li>
+          </ul>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+              <div class="d-flex align-items-center">
+                <i class="header-icon pe-7s-filter icon-gradient bg-happy-fisher me-2"> </i>
+                <span>Фильтры и действия</span>
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-np-filters-toggle">Свернуть</button>
+            </div>
+            <div class="card-body" id="dg-np-filters-body">
+              <div class="row g-2 align-items-end">
+                <div class="col-md-3">
+                  <label class="form-label" for="dg-np-search">Умный поиск</label>
+                  <input type="search" class="form-control" id="dg-np-search" placeholder="Название, артикул, бренд, ссылка…" autocomplete="off" />
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label" for="dg-np-f-responsible">Ответственный</label>
+                  <select class="form-select" id="dg-np-f-responsible">
+                    <option value="">Все</option>
+                    <option value="none">Не назначен</option>
+                  </select>
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label" for="dg-np-f-manager">Менеджер</label>
+                  <select class="form-select" id="dg-np-f-manager">
+                    <option value="">Все</option>
+                    <option value="none">Не назначен</option>
+                  </select>
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label" for="dg-np-f-priority">Приоритет</label>
+                  <select class="form-select" id="dg-np-f-priority">
+                    <option value="">Все</option>
+                    <option value="important">Важный</option>
+                    <option value="normal">Обычный</option>
+                    <option value="low">Не важный</option>
+                  </select>
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label" for="dg-np-f-status">Статус</label>
+                  <select class="form-select" id="dg-np-f-status">
+                    <option value="">Все</option>
+                  </select>
+                </div>
+                <div class="col-md-1">
+                  <label class="form-label" for="dg-np-f-brand">Бренд</label>
+                  <input type="text" class="form-control" id="dg-np-f-brand" placeholder="…" autocomplete="off" />
+                </div>
+              </div>
+              <div class="mt-3 d-flex flex-wrap gap-2 align-items-center">
+                <button type="button" class="btn btn-sm btn-primary" id="dg-np-apply" data-dg-notify-start="Применяем фильтры…">Применить</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-np-reset" data-dg-notify-start="Сбрасываем фильтры…">По умолчанию</button>
+                <button type="button" class="btn btn-sm btn-success" id="dg-np-add" data-dg-notify-start="Добавляем строку…">Добавить товар</button>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-primary"
+                  id="dg-np-distribute"
+                  data-dg-notify-start="Раздаём без ответственного…"
+                  title="Поровну между контент-менеджерами строки без ответственного"
+                >
+                  Раздать поровну (без ответственного)
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-info d-none"
+                  id="dg-np-sync-markets"
+                  data-dg-notify-start="Обновляем очередь маркетов…"
+                  title="Подтянуть из Альмамед (статус «Добавлен») + МС + снапшоты Ozon/WB/ЯМ"
+                >
+                  Обновить очередь маркетов
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-warning d-none"
+                  id="dg-np-remove-placed"
+                  data-dg-notify-start="Убираем размещённые…"
+                  title="Убрать из таблицы все со статусом «Добавлен» после проверки"
+                >
+                  Убрать размещенные
+                </button>
+              </div>
+              <div id="dg-np-action-log" class="alert mt-3 mb-0 d-none" role="status"></div>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex justify-content-between gap-2 flex-wrap align-items-center">
+              <div class="d-flex align-items-center gap-3 flex-grow-1 min-width-0">
+                <div class="d-flex align-items-center flex-shrink-0">
+                  <i class="header-icon pe-7s-menu icon-gradient bg-happy-fisher me-2"> </i>
+                  <span id="dg-np-table-title">Выгрузка Альмамед</span>
+                </div>
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-np-table-toggle">Свернуть</button>
+            </div>
+            <div class="card-body" id="dg-np-table-body">
+              <p class="small text-muted mb-2" id="dg-np-hint">
+                Статус <b>Новый</b> → автоматически <b>Не добавлен</b>, когда заполнены: артикул, название, цена Альмамед, ссылка поставщика, приоритет
+                (пустые подсвечены). Контент: <b>В работе</b> → <b>Добавлен</b>; замечания — <b>На доработке</b> + комментарий.
+              </p>
+              <div
+                class="dg-mp-table-scroll-outer"
+                style="width:100%;max-width:100%;min-width:0;overflow-x:auto;overflow-y:visible;-webkit-overflow-scrolling:touch"
+              >
+                <div
+                  class="table-responsive datagon-my-products-table-wrap"
+                  style="display:block;width:100%;max-width:100%;min-width:0;overflow:visible;position:relative"
+                >
+                  <table
+                    id="dg-np-table"
+                    class="table table-hover table-striped mb-0 datagon-my-products-table dg-mp-table"
+                    style="width:max-content;min-width:min(100%,2200px);max-width:none;table-layout:fixed;border-collapse:collapse;border-spacing:0"
+                  >
+                    <thead id="dg-np-thead"></thead>
+                    <tbody id="dg-np-tbody"></tbody>
+                  </table>
+                </div>
+              </div>
+              <p class="text-muted mb-0 mt-2" id="dg-np-page-status">Найдено: 0; страница 1/1; показано: 0</p>
+              <div class="mt-2 d-flex flex-wrap justify-content-between align-items-center gap-2" id="dg-np-pager">
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                  <label class="form-label mb-0 small text-muted" for="dg-np-page-size">На странице</label>
+                  <select class="form-select form-select-sm" id="dg-np-page-size" style="width: auto">
+                    <option value="50">50</option>
+                    <option value="100" selected>100</option>
+                    <option value="200">200</option>
+                  </select>
+                </div>
+                <div class="btn-group" role="group" aria-label="Страницы новых товаров">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-np-prev">Назад</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-np-next">Вперёд</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-np-log-overlay" class="dg-np-log-overlay" style="display: none" aria-hidden="true">
+            <div class="dg-np-log-backdrop" id="dg-np-log-backdrop"></div>
+            <div class="dg-np-log-panel card shadow-lg border-0">
+              <div class="card-header d-flex align-items-center justify-content-between gap-2">
+                <div class="d-flex flex-column" style="min-width: 0">
+                  <div class="fw-semibold" id="dg-np-log-title">Журнал изменений</div>
+                  <div class="text-muted small" id="dg-np-log-subtitle"></div>
+                </div>
+                <div class="d-flex align-items-center gap-2 flex-shrink-0">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-np-log-refresh" data-dg-notify-start="Обновляем журнал…">Обновить</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-np-log-close">Закрыть</button>
+                </div>
+              </div>
+              <div class="card-body p-0">
+                <div class="dg-np-log-body" id="dg-np-log-body">
+                  <div class="text-muted small text-center py-4">Загрузка журнала…</div>
+                </div>
+              </div>
+            </div>
+          </div>

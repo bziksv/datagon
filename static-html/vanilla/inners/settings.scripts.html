@@ -1124,10 +1124,11 @@
       }
 
       function fillSpecialtySelects() {
-        var ids = ["dg-set-new-specialty", "dg-set-spec-matrix-id", "dg-set-edit-specialty"];
-        ids.forEach(function (id) {
+        var createIds = ["dg-set-new-specialty", "dg-set-spec-matrix-id", "dg-set-edit-specialty"];
+        createIds.forEach(function (id) {
           var el = document.getElementById(id);
           if (!el || el.tagName !== "SELECT") return;
+          var prev = el.value;
           el.replaceChildren();
           specList.forEach(function (sp) {
             var o = document.createElement("option");
@@ -1135,7 +1136,82 @@
             o.textContent = sp.name + (sp.users_count != null ? " (" + sp.users_count + ")" : "");
             el.appendChild(o);
           });
+          if (prev && Array.prototype.some.call(el.options, function (op) { return op.value === prev; })) {
+            el.value = prev;
+          }
         });
+        var flt = document.getElementById("dg-set-users-filter-specialty");
+        if (flt && flt.tagName === "SELECT") {
+          var prevF = flt.value || "all";
+          flt.replaceChildren();
+          var oAll = document.createElement("option");
+          oAll.value = "all";
+          oAll.textContent = "Все";
+          flt.appendChild(oAll);
+          var oNone = document.createElement("option");
+          oNone.value = "none";
+          oNone.textContent = "Без специальности";
+          flt.appendChild(oNone);
+          specList.forEach(function (sp) {
+            var o = document.createElement("option");
+            o.value = String(sp.id);
+            o.textContent = sp.name + (sp.users_count != null ? " (" + sp.users_count + ")" : "");
+            flt.appendChild(o);
+          });
+          if (prevF && Array.prototype.some.call(flt.options, function (op) { return op.value === prevF; })) {
+            flt.value = prevF;
+          } else {
+            flt.value = "all";
+          }
+        }
+      }
+
+      function userMatchesSmartQuery(u, query) {
+        var q = String(query || "").trim().toLowerCase();
+        if (!q) return true;
+        var archived = Number(u.is_archived || 0) === 1;
+        var fields = {
+          id: String(u.id || ""),
+          username: String(u.username || "").toLowerCase(),
+          name: String(u.full_name || "").toLowerCase(),
+          full_name: String(u.full_name || "").toLowerCase(),
+          specialty: String(u.specialty_name || "").toLowerCase(),
+          status: archived ? "архивный архив" : "активный",
+        };
+        var re = /([a-z_]+):(?:"([^"]*)"|(\S+))|(\S+)/gi;
+        var m;
+        var bare = [];
+        var keyedOk = true;
+        while ((m = re.exec(q)) !== null) {
+          if (m[1]) {
+            var key = String(m[1] || "").toLowerCase();
+            var val = String(m[2] != null ? m[2] : m[3] || "").toLowerCase();
+            var map = {
+              id: "id",
+              username: "username",
+              login: "username",
+              name: "name",
+              full_name: "full_name",
+              specialty: "specialty",
+              status: "status",
+            };
+            var fk = map[key];
+            if (!fk) {
+              bare.push(key + ":" + val);
+              continue;
+            }
+            if (String(fields[fk]).indexOf(val) === -1) keyedOk = false;
+          } else if (m[4]) {
+            bare.push(String(m[4]).toLowerCase());
+          }
+        }
+        if (!keyedOk) return false;
+        if (!bare.length) return true;
+        var hay = [fields.id, fields.username, fields.name, fields.specialty, fields.status].join(" ");
+        for (var i = 0; i < bare.length; i++) {
+          if (hay.indexOf(bare[i]) === -1) return false;
+        }
+        return true;
       }
 
       function loadSpecPageDefsOnce() {
@@ -1407,8 +1483,9 @@
         var can = canManageUsers();
         var umiShell = isSettingsUsersManagerShell();
         syncSpecAdminVisibility();
-        ["dg-set-users-search", "dg-set-users-filter-status", "dg-set-users-filter-can", "dg-set-users-sess-min", "dg-set-users-sess-max"].forEach(function (id) {
-          document.getElementById(id).disabled = !adm && !umiShell;
+        ["dg-set-users-search", "dg-set-users-filter-status", "dg-set-users-filter-can", "dg-set-users-filter-specialty", "dg-set-users-sess-min", "dg-set-users-sess-max"].forEach(function (id) {
+          var node = document.getElementById(id);
+          if (node) node.disabled = !adm && !umiShell;
         });
         ["dg-set-new-fullname", "dg-set-new-username", "dg-set-new-specialty", "dg-set-new-password", "dg-set-new-pw-toggle", "dg-set-new-pw-copy", "dg-set-btn-random-new-pw", "dg-set-btn-add-user"].forEach(function (id) {
           var node = document.getElementById(id);
@@ -1443,31 +1520,24 @@
       }
 
       function filteredUsersList() {
-        var needle = String(document.getElementById("dg-set-users-search").value || "")
-          .trim()
-          .toLowerCase();
+        var needle = String(document.getElementById("dg-set-users-search").value || "").trim();
         var statusF = (document.getElementById("dg-set-users-filter-status") || {}).value || "active";
-        var canF = document.getElementById("dg-set-users-filter-can").value;
-        var smin = document.getElementById("dg-set-users-sess-min").value;
-        var smax = document.getElementById("dg-set-users-sess-max").value;
+        var canF = (document.getElementById("dg-set-users-filter-can") || {}).value || "all";
+        var specF = (document.getElementById("dg-set-users-filter-specialty") || {}).value || "all";
+        var smin = (document.getElementById("dg-set-users-sess-min") || {}).value || "";
+        var smax = (document.getElementById("dg-set-users-sess-max") || {}).value || "";
         return users.filter(function (u) {
           var archived = Number(u.is_archived || 0) === 1;
           if (statusF === "active" && archived) return false;
           if (statusF === "archived" && !archived) return false;
-          var haystack = (
-            String(u.id || "") +
-            " " +
-            String(u.full_name || "") +
-            " " +
-            String(u.username || "") +
-            " " +
-            String(u.specialty_name || "") +
-            " " +
-            (archived ? "архив архивный" : "активный")
-          ).toLowerCase();
-          if (needle && haystack.indexOf(needle) === -1) return false;
+          if (!userMatchesSmartQuery(u, needle)) return false;
           var canManage = u.username === "admin" || Number(u.can_manage_users || 0) === 1 ? "1" : "0";
           if (canF !== "all" && canManage !== canF) return false;
+          if (specF === "none") {
+            if (u.specialty_id != null && String(u.specialty_id) !== "" && Number(u.specialty_id) > 0) return false;
+          } else if (specF !== "all") {
+            if (String(u.specialty_id || "") !== String(specF)) return false;
+          }
           var activeSessions = userSessionsOnlineCount(u);
           var min = Number(smin || "");
           var max = Number(smax || "");
@@ -2934,9 +3004,11 @@
       });
       document.getElementById("dg-set-btn-add-user").addEventListener("click", createUser);
       document.getElementById("dg-set-btn-refresh-users").addEventListener("click", loadUsers);
-      ["dg-set-users-search", "dg-set-users-filter-status", "dg-set-users-filter-can", "dg-set-users-sess-min", "dg-set-users-sess-max"].forEach(function (id) {
-        document.getElementById(id).addEventListener("input", renderUsers);
-        document.getElementById(id).addEventListener("change", renderUsers);
+      ["dg-set-users-search", "dg-set-users-filter-status", "dg-set-users-filter-can", "dg-set-users-filter-specialty", "dg-set-users-sess-min", "dg-set-users-sess-max"].forEach(function (id) {
+        var node = document.getElementById(id);
+        if (!node) return;
+        node.addEventListener("input", renderUsers);
+        node.addEventListener("change", renderUsers);
       });
       document.getElementById("dg-set-edit-save").addEventListener("click", saveEditedUser);
       document.getElementById("dg-set-edit-cancel").addEventListener("click", closeEditUser);
