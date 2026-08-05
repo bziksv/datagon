@@ -1217,6 +1217,12 @@ Query: `channel`, `search`, `status`, `priority`, `brand`, `responsible` (id | `
 
 ### DELETE `/api/exports/new-products/:id`
 
+Мягкое удаление: `status = removed` (не hard `DELETE`). Для Альмамед каскадом уводит в удалённые связанные строки маркетов (`source_almamed_id`). Ответ: `{ soft_deleted, cascaded_markets }`. Смотреть корзину: `GET /?status=removed`.
+
+### POST `/api/exports/new-products/:id/restore`
+
+Восстановить из удалённых (`removed` → `new`). Если у Альмамед снова `sell_on_markets`/`has_kits` — upsert в маркеты (в т.ч. оживляет ранее удалённую связанную строку).
+
 ### POST `/api/exports/new-products/distribute`
 
 Раздать ответственных поровну. Body: `{ channel, scope?: "unassigned"|"all", user_ids?: number[] }`.

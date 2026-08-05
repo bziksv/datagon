@@ -1265,6 +1265,7 @@
     { key: "not_cooperate", label: "Не сотрудничаем" },
     { key: "in_bundle", label: "В составе комплекта" },
   ];
+  var STATUS_FILTER_EXTRA = [{ key: "removed", label: "Удалённые" }];
   var PRIORITY_OPTS = [
     { key: "important", label: "Важный" },
     { key: "normal", label: "Обычный" },
@@ -1283,6 +1284,9 @@
   ];
   function getStatusOpts() {
     return state.channel === "marketplaces" ? STATUS_OPTS_MARKETS : STATUS_OPTS_ALMAMED;
+  }
+  function getStatusFilterOpts() {
+    return getStatusOpts().concat(STATUS_FILTER_EXTRA);
   }
 
   function colCount() {
@@ -1567,13 +1571,13 @@
     if (!sel) return;
     var cur = sel.value || state.pending.status || state.status || "";
     while (sel.options.length > 1) sel.remove(1);
-    getStatusOpts().forEach(function (p) {
+    getStatusFilterOpts().forEach(function (p) {
       var o = document.createElement("option");
       o.value = p.key;
       o.textContent = p.label;
       sel.appendChild(o);
     });
-    var valid = cur === "" || getStatusOpts().some(function (p) {
+    var valid = cur === "" || getStatusFilterOpts().some(function (p) {
       return p.key === cur;
     });
     var next = valid ? cur : "";
@@ -2076,7 +2080,7 @@
     var options = opts || {};
     var tdAct = document.createElement("td");
     tdAct.className = "text-nowrap dg-np-actions";
-    if (options.addKit) {
+    if (options.addKit && row.status !== "removed") {
       var bKit = document.createElement("button");
       bKit.type = "button";
       bKit.className = "btn btn-outline-primary btn-sm me-1";
@@ -2108,20 +2112,77 @@
       });
       tdAct.appendChild(bKit);
     }
+
+    if (row.status === "removed") {
+      var bRest = document.createElement("button");
+      bRest.type = "button";
+      bRest.className = "btn btn-outline-success btn-sm";
+      bRest.textContent = "↩";
+      bRest.title = "Восстановить из удалённых";
+      bRest.setAttribute("data-dg-notify-start", "Восстанавливаем…");
+      bRest.addEventListener("click", function () {
+        var run = function () {
+          return fetch("/api/exports/new-products/" + row.id + "/restore", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: authHeaders(false),
+          })
+            .then(function (r) {
+              return r.json().then(function (j) {
+                if (!r.ok || (j && j.success === false)) {
+                  throw new Error((j && j.error) || "HTTP " + r.status);
+                }
+                return j;
+              });
+            })
+            .then(function () {
+              if (window.DatagonNotify && window.DatagonNotify.toast) {
+                window.DatagonNotify.toast({ type: "success", message: "Восстановлено" });
+              }
+              load();
+            });
+        };
+        if (window.DatagonNotify && window.DatagonNotify.busyRun) {
+          window.DatagonNotify.busyRun(bRest, run).catch(function (e) {
+            if (window.DatagonNotify && window.DatagonNotify.toast) {
+              window.DatagonNotify.toast({ type: "danger", message: e.message || "Ошибка" });
+            }
+          });
+        } else {
+          run().catch(function (e) {
+            alert(e.message || "Ошибка");
+          });
+        }
+      });
+      tdAct.appendChild(bRest);
+      return tdAct;
+    }
+
     var bDel = document.createElement("button");
     bDel.type = "button";
     bDel.className = "btn btn-outline-danger btn-sm";
     bDel.textContent = "×";
-    bDel.title = "Удалить";
+    bDel.title = "В удалённые (фильтр «Удалённые»)";
     bDel.setAttribute("data-dg-no-activity", "1");
     bDel.addEventListener("click", function () {
       var label = String(row.title || row.article || row.product_code || "").trim();
+      var cascadeHint =
+        row.channel === "almamed"
+          ? " Связанные строки на вкладке «Размещение на маркеты» тоже уйдут в удалённые."
+          : "";
       var msg =
-        "Удалить запись №" +
+        "Переместить в «Удалённые» запись №" +
         rowDisplayId(row) +
         (label ? " («" + label + "»)" : "") +
-        "? Действие нельзя отменить.";
-      openNpConfirm({ title: "Удалить товар?", message: msg }).then(function (ok) {
+        "?" +
+        cascadeHint +
+        " Потом можно найти фильтром статуса «Удалённые» и восстановить.";
+      openNpConfirm({
+        title: "В удалённые?",
+        message: msg,
+        okLabel: "В удалённые",
+        notifyStart: "Переносим в удалённые…",
+      }).then(function (ok) {
         if (!ok) return;
         var run = function () {
           return fetch("/api/exports/new-products/" + row.id, {
@@ -2132,11 +2193,19 @@
             .then(function (r) {
               return r.json().then(function (j) {
                 if (!r.ok) throw new Error((j && j.error) || "HTTP " + r.status);
+                return j;
               });
             })
-            .then(function () {
+            .then(function (j) {
+              var casc = j && j.cascaded_markets ? Number(j.cascaded_markets) : 0;
               if (window.DatagonNotify && window.DatagonNotify.toast) {
-                window.DatagonNotify.toast({ type: "success", message: "Удалено" });
+                window.DatagonNotify.toast({
+                  type: "success",
+                  message:
+                    casc > 0
+                      ? "В удалённые (+" + casc + " на маркетах)"
+                      : "Перенесено в удалённые",
+                });
               }
               load();
             });

@@ -61,7 +61,7 @@ const STATUS_LABELS = {
     transferred: 'Передан в МС',
     not_cooperate: 'Не сотрудничаем',
     in_bundle: 'В составе комплекта',
-    removed: 'Убран',
+    removed: 'Удалённые',
 };
 const PRIORITY_LABELS = {
     important: 'Важный',
@@ -614,8 +614,9 @@ module.exports = function exportsNewProductsRouterFactory(db, config) {
             } else if (channel === 'marketplaces') {
                 where.push("status <> 'removed'");
             } else {
-                // переданные в МС не показываем в очереди Альмамед
+                // переданные в МС и удалённые не показываем в очереди Альмамед
                 where.push("status <> 'transferred'");
+                where.push("status <> 'removed'");
             }
             if (priority && PRIORITIES.has(priority)) {
                 where.push('priority = ?');
@@ -1325,13 +1326,16 @@ module.exports = function exportsNewProductsRouterFactory(db, config) {
             if (!Number.isFinite(id) || id < 1) return res.status(400).json({ error: 'Некорректный id' });
             const [[cur]] = await db.query('SELECT * FROM dg_new_products WHERE id = ? LIMIT 1', [id]);
             if (!cur) return res.status(404).json({ error: 'Запись не найдена' });
+            if (String(cur.status) === 'removed') {
+                return res.status(400).json({ error: 'Запись уже в удалённых' });
+            }
             try {
                 await insertProductLog(db, {
                     productId: id,
                     channel: cur.channel || 'almamed',
                     field: '_row',
                     oldValue: clipLogVal(cur.title || cur.article || '#' + id),
-                    newValue: null,
+                    newValue: 'удалено',
                     action: 'delete',
                     source: 'ui',
                     actor: req.datagonActor,
@@ -1339,12 +1343,63 @@ module.exports = function exportsNewProductsRouterFactory(db, config) {
             } catch (le) {
                 console.warn('[new-products] delete log', le);
             }
-            const [r] = await db.query('DELETE FROM dg_new_products WHERE id = ?', [id]);
-            if (!r.affectedRows) return res.status(404).json({ error: 'Запись не найдена' });
-            await db.query('DELETE FROM dg_new_product_kits WHERE parent_product_id = ?', [id]);
-            res.json({ success: true });
+            const result = await markets.softRemoveProduct(db, cur, { cascadeFromAlmamed: true });
+            res.json({
+                success: true,
+                soft_deleted: true,
+                cascaded_markets: result.cascaded || 0,
+            });
         } catch (e) {
             res.status(500).json({ error: e.message || 'Ошибка удаления' });
+        }
+    });
+
+    /** Восстановить из «Удалённые» (status removed → new). */
+    router.post('/:id/restore', async (req, res) => {
+        try {
+            await ensureSchema(db);
+            const id = parseInt(req.params.id, 10);
+            if (!Number.isFinite(id) || id < 1) return res.status(400).json({ error: 'Некорректный id' });
+            const [[cur]] = await db.query('SELECT * FROM dg_new_products WHERE id = ? LIMIT 1', [id]);
+            if (!cur) return res.status(404).json({ error: 'Запись не найдена' });
+            if (String(cur.status) !== 'removed') {
+                return res.status(400).json({ error: 'Восстановить можно только удалённую запись' });
+            }
+            await markets.softRestoreProduct(db, cur);
+            try {
+                await insertProductLog(db, {
+                    productId: id,
+                    channel: cur.channel || 'almamed',
+                    field: '_row',
+                    oldValue: 'удалено',
+                    newValue: 'восстановлено',
+                    action: 'restore',
+                    source: 'ui',
+                    actor: req.datagonActor,
+                });
+            } catch (le) {
+                console.warn('[new-products] restore log', le);
+            }
+            let marketsSync = null;
+            const [[row]] = await db.query('SELECT * FROM dg_new_products WHERE id = ? LIMIT 1', [id]);
+            if (
+                row &&
+                row.channel === 'almamed' &&
+                (Number(row.sell_on_markets) === 1 || Number(row.has_kits) === 1)
+            ) {
+                try {
+                    marketsSync = await markets.upsertMarketsFromAlmamed(db, row, { syncFields: true });
+                } catch (se) {
+                    marketsSync = { error: se.message || 'Ошибка синхронизации маркетов' };
+                }
+            }
+            const mapped = mapRow(row);
+            if (mapped.channel === 'marketplaces') {
+                await markets.attachKitsToMapped(db, [mapped]);
+            }
+            res.json({ success: true, data: mapped, markets_sync: marketsSync });
+        } catch (e) {
+            res.status(500).json({ error: e.message || 'Ошибка восстановления' });
         }
     });
 
