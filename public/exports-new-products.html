@@ -1664,6 +1664,22 @@
     });
   }
 
+  /** Очередь PATCH по id — галочки «Маркеты»+«Комплект» не улетают параллельно. */
+  var patchQueues = Object.create(null);
+  function patchRowQueued(id, payload) {
+    var key = String(id);
+    var prev = patchQueues[key] || Promise.resolve();
+    var next = prev
+      .catch(function () {
+        /* previous error already handled by caller */
+      })
+      .then(function () {
+        return patchRow(id, payload);
+      });
+    patchQueues[key] = next;
+    return next;
+  }
+
   function missingKeys(row) {
     var list = (row && row.missing_required) || [];
     var set = {};
@@ -2267,7 +2283,7 @@
     chkSell.setAttribute("data-dg-no-activity", "1");
     chkSell.addEventListener("change", function () {
       var on = chkSell.checked ? 1 : 0;
-      patchRow(row.id, { sell_on_markets: on })
+      patchRowQueued(row.id, { sell_on_markets: on })
         .then(function (j) {
           applyPatched(row, j);
           var ms = j && j.markets_sync;
@@ -2320,7 +2336,7 @@
     chkKits.setAttribute("data-dg-no-activity", "1");
     chkKits.addEventListener("change", function () {
       var on = chkKits.checked ? 1 : 0;
-      patchRow(row.id, { has_kits: on })
+      patchRowQueued(row.id, { has_kits: on })
         .then(function (j) {
           applyPatched(row, j);
           var ms = j && j.markets_sync;
