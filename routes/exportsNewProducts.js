@@ -46,6 +46,8 @@ const SORT_KEYS = new Set([
     'almamed_added_at',
     'placement_date',
     'updated_at',
+    'infographic',
+    'photo',
 ]);
 
 const PRIORITY_ORDER_SQL = `FIELD(priority, 'important', 'normal', 'low')`;
@@ -99,6 +101,8 @@ const FIELD_LOG_LABELS = {
     placement_wb: 'Размещение WB',
     placement_ym: 'Размещение ЯМ',
     placement_date: 'Дата размещения',
+    infographic: 'Инфографика',
+    photo: 'Фото',
     kit_title: 'Название комплекта',
     _row: 'Строка',
 };
@@ -205,6 +209,12 @@ function formatFieldForLog(field, value, channel) {
             return markets.MARKETS_STATUS_LABELS[value] || STATUS_LABELS[value] || String(value);
         }
         return STATUS_LABELS[value] || String(value);
+    }
+    if (field === 'infographic') {
+        return markets.INFOGRAPHIC_LABELS[value] || String(value);
+    }
+    if (field === 'photo') {
+        return markets.PHOTO_LABELS[value] || String(value);
     }
     if (field === 'sell_on_markets' || field === 'has_kits' || String(field).startsWith('placement_')) {
         const on = value === true || value === 1 || String(value) === '1';
@@ -449,6 +459,10 @@ function mapRow(r) {
         placement_wb_url: r.placement_wb_url || '',
         placement_ym_url: r.placement_ym_url || '',
         placement_date: r.placement_date || null,
+        infographic: r.infographic || '',
+        infographic_label: markets.INFOGRAPHIC_LABELS[r.infographic] || '',
+        photo: r.photo || '',
+        photo_label: markets.PHOTO_LABELS[r.photo] || '',
         source_almamed_id: r.source_almamed_id != null ? Number(r.source_almamed_id) : null,
         markets_product_id: r.markets_product_id != null ? Number(r.markets_product_id) : null,
         markets_channel_num: r.markets_channel_num != null ? Number(r.markets_channel_num) : null,
@@ -503,6 +517,14 @@ module.exports = function exportsNewProductsRouterFactory(db, config) {
                     .map((k) => ({ key: k, label: markets.MARKETS_STATUS_LABELS[k] })),
                 required_fields: REQUIRED_KEYS,
                 required_fields_marketplaces: markets.MARKETS_REQUIRED,
+                infographic_options: Object.keys(markets.INFOGRAPHIC_LABELS).map((k) => ({
+                    key: k,
+                    label: markets.INFOGRAPHIC_LABELS[k],
+                })),
+                photo_options: Object.keys(markets.PHOTO_LABELS).map((k) => ({
+                    key: k,
+                    label: markets.PHOTO_LABELS[k],
+                })),
             });
         } catch (e) {
             res.status(500).json({ error: e.message || 'Ошибка meta' });
@@ -851,6 +873,24 @@ module.exports = function exportsNewProductsRouterFactory(db, config) {
             if ('weight_kg' in body) fields.weight_kg = markets.parseNum(body.weight_kg);
             if ('vat' in body) fields.vat = clip(body.vat, 64) || null;
             if ('ru_url' in body) fields.ru_url = clip(body.ru_url, 2048) || null;
+            if ('infographic' in body && channel === 'marketplaces') {
+                if (body.infographic == null || body.infographic === '') {
+                    fields.infographic = null;
+                } else {
+                    const ig = markets.normInfographic(body.infographic);
+                    if (!ig) return res.status(400).json({ error: 'Некорректное значение «Инфографика»' });
+                    fields.infographic = ig;
+                }
+            }
+            if ('photo' in body && channel === 'marketplaces') {
+                if (body.photo == null || body.photo === '') {
+                    fields.photo = null;
+                } else {
+                    const ph = markets.normPhoto(body.photo);
+                    if (!ph) return res.status(400).json({ error: 'Некорректное значение «Фото»' });
+                    fields.photo = ph;
+                }
+            }
 
             if (
                 !('dimensions_text' in body) &&

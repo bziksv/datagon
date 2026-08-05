@@ -1270,12 +1270,23 @@
     { key: "normal", label: "Обычный" },
     { key: "low", label: "Не важный" },
   ];
+  var INFOGRAPHIC_OPTS = [
+    { key: "yes", label: "Есть" },
+    { key: "old", label: "Старая" },
+    { key: "no", label: "Нет" },
+  ];
+  var PHOTO_OPTS = [
+    { key: "updated", label: "Обновлено" },
+    { key: "need_shoot", label: "Нужно отснять" },
+    { key: "need_reshoot", label: "Нужно переснять" },
+    { key: "in_package", label: "Товар в упаковке" },
+  ];
   function getStatusOpts() {
     return state.channel === "marketplaces" ? STATUS_OPTS_MARKETS : STATUS_OPTS_ALMAMED;
   }
 
   function colCount() {
-    return state.channel === "marketplaces" ? 21 : 17;
+    return state.channel === "marketplaces" ? 23 : 17;
   }
 
   function authHeaders(json) {
@@ -1747,6 +1758,8 @@
         { key: "status", label: "Статус", sort: true },
         { key: "placement", label: "Размещение", sort: false },
         { key: "comment", label: "Комментарий", sort: false },
+        { key: "infographic", label: "Инфографика", sort: true },
+        { key: "photo", label: "Фото", sort: true },
         { key: "placement_date", label: "Дата размещения", sort: true },
         { key: "length_cm", label: "Длина, см", sort: false },
         { key: "width_cm", label: "Ширина, см", sort: false },
@@ -1920,6 +1933,48 @@
     });
     tdSt.appendChild(selSt);
     return tdSt;
+  }
+
+  function makeEnumSelect(row, field, options, emptyLabel) {
+    var td = document.createElement("td");
+    td.className = "dg-np-cell";
+    var sel = document.createElement("select");
+    sel.className = "form-select form-select-sm";
+    var o0 = document.createElement("option");
+    o0.value = "";
+    o0.textContent = emptyLabel || "—";
+    sel.appendChild(o0);
+    var cur = String(row[field] || "");
+    (options || []).forEach(function (p) {
+      var o = document.createElement("option");
+      o.value = p.key;
+      o.textContent = p.label;
+      if (cur === p.key) o.selected = true;
+      sel.appendChild(o);
+    });
+    if (cur && !options.some(function (p) { return p.key === cur; })) {
+      var oX = document.createElement("option");
+      oX.value = cur;
+      oX.textContent = cur;
+      oX.selected = true;
+      sel.appendChild(oX);
+    }
+    sel.addEventListener("change", function () {
+      var payload = {};
+      payload[field] = sel.value || null;
+      patchRow(row.id, payload)
+        .then(function (j) {
+          applyPatched(row, j);
+        })
+        .catch(function (e) {
+          if (window.DatagonNotify && window.DatagonNotify.toast) {
+            window.DatagonNotify.toast({ type: "danger", message: e.message || "Ошибка" });
+          }
+          load();
+        });
+    });
+    td.appendChild(sel);
+    return td;
   }
 
   function makeCommentCell(row) {
@@ -2480,6 +2535,8 @@
     tr.appendChild(makeStatusSelect(row));
     tr.appendChild(makePlacementCell(row));
     tr.appendChild(makeCommentCell(row));
+    tr.appendChild(makeEnumSelect(row, "infographic", INFOGRAPHIC_OPTS, "—"));
+    tr.appendChild(makeEnumSelect(row, "photo", PHOTO_OPTS, "—"));
     tr.appendChild(makeCopyCell(fmtDt(row.placement_date)));
 
     tr.appendChild(makeDimCell(row, "length_cm", missMap, "см"));
@@ -2686,6 +2743,8 @@
     tdCom.appendChild(ta);
     tr.appendChild(tdCom);
 
+    tr.appendChild(mutedCell("—", { title: "Инфографика — у товара" }));
+    tr.appendChild(mutedCell("—", { title: "Фото — у товара" }));
     tr.appendChild(mutedCell("—", { title: "Дата размещения — у товара" }));
 
     function kitNumCell(field, placeholder) {
