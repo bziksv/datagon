@@ -130,7 +130,8 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    max-width: 280px;
+    width: 100%;
+    max-width: 100%;
   }
   body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-click-copy {
     cursor: copy;
@@ -155,11 +156,22 @@
     opacity: 1;
     pointer-events: auto;
   }
+  /* Ширина колонки (📏 Ширины / colgroup) должна растягивать поля, а не упираться в 200px */
   body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-mp-table .form-select-sm,
   body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-mp-table .form-control-sm {
     font-size: 0.8rem;
-    min-width: 72px;
-    max-width: 200px;
+    min-width: 0;
+    width: 100%;
+    max-width: none;
+    box-sizing: border-box;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-mp-table textarea.dg-np-title-field {
+    min-height: 2.75rem;
+    height: 2.75rem;
+    line-height: 1.25;
+    resize: vertical;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
   }
   body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-prio-important {
     color: #b02a37;
@@ -182,7 +194,8 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    max-width: 280px;
+    width: 100%;
+    max-width: 100%;
     color: #0d6efd;
     text-decoration: none;
   }
@@ -343,6 +356,12 @@
   body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-url-group {
     flex-wrap: nowrap;
     width: 100%;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-url-group .form-control {
+    flex: 1 1 auto;
+    width: 1%;
+    min-width: 0;
+    max-width: none;
   }
   body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-url-group .btn {
     flex: 0 0 auto;

@@ -17,6 +17,7 @@ const express = require('express');
 const axios = require('axios');
 const config = require('../config');
 const mpIssuesRowFilters = require('../lib/mpIssuesRowFilters');
+const { computeMsEntityDimsDenorm } = require('../lib/datagonMsEntityDimsDenorm');
 
 const MS_BASE_URL = 'https://api.moysklad.ru/api/remap/1.2';
 const MS_ATTR_META_TTL_MS = 60 * 60 * 1000; /** 1 час — параритет с moysklad.js */
@@ -391,7 +392,20 @@ function mapDimensionListRow(r, payloadJsonOverride) {
     } else if (payloadJsonOverride != null) {
         payload = parsePayloadSafe(payloadJsonOverride);
     }
-    const dimsMs = buildDimensionsFromPayload(payload);
+    let dimsMs = buildDimensionsFromPayload(payload);
+    /** Если payload не грузили — берём денорм габаритов МС (быстрый list / problem SQL). */
+    if (!payload) {
+        const fromDenorm = {
+            packing_type: r.denorm_dim_packing_type != null ? String(r.denorm_dim_packing_type) : '',
+            length_cm: r.denorm_dim_length_cm != null ? String(r.denorm_dim_length_cm) : '',
+            width_cm: r.denorm_dim_width_cm != null ? String(r.denorm_dim_width_cm) : '',
+            height_box_cm: r.denorm_dim_height_box_cm != null ? String(r.denorm_dim_height_box_cm) : '',
+            height_bag_cm: r.denorm_dim_height_bag_cm != null ? String(r.denorm_dim_height_bag_cm) : '',
+            weight_kg: r.denorm_dim_weight_kg != null ? String(r.denorm_dim_weight_kg) : '',
+        };
+        const hasAny = Object.keys(fromDenorm).some((k) => fromDenorm[k] !== '');
+        if (hasAny) dimsMs = fromDenorm;
+    }
     const measurement = rowToMeasurement({
         length_cm: r.m_length_cm,
         width_cm: r.m_width_cm,
@@ -734,7 +748,36 @@ function setDimListPostFilterCache(key, payload) {
     }
 }
 
-/** SQL: не сканируем позиции с полностью заполненным override в mdm (не могут быть «проблемными»). */
+/** SQL: позиция «неполная» по эффективным габаритам COALESCE(override mdm, denorm МС). */
+function sqlWhereIncompleteEffectiveDims() {
+    const pt = `LOWER(COALESCE(NULLIF(TRIM(mdm.packing_type), ''), NULLIF(TRIM(med.denorm_dim_packing_type), ''), ''))`;
+    const len = 'COALESCE(mdm.length_cm, med.denorm_dim_length_cm)';
+    const wid = 'COALESCE(mdm.width_cm, med.denorm_dim_width_cm)';
+    const hbox = 'COALESCE(mdm.height_box_cm, med.denorm_dim_height_box_cm)';
+    const hbag = 'COALESCE(mdm.height_bag_cm, med.denorm_dim_height_bag_cm)';
+    const wgt = 'COALESCE(mdm.weight_kg, med.denorm_dim_weight_kg)';
+    return ` AND NOT (
+        ${pt} <> ''
+        AND ${len} IS NOT NULL AND ${wid} IS NOT NULL AND ${wgt} IS NOT NULL
+        AND (
+            (${pt} LIKE '%пакет%' AND ${hbag} IS NOT NULL)
+            OR (
+                (${pt} LIKE '%короб%' OR ${pt} LIKE '%гофр%')
+                AND ${hbox} IS NOT NULL
+            )
+            OR (${pt} LIKE '%сво%' AND ${hbox} IS NOT NULL)
+            OR (
+                ${pt} NOT LIKE '%пакет%'
+                AND ${pt} NOT LIKE '%короб%'
+                AND ${pt} NOT LIKE '%гофр%'
+                AND ${pt} NOT LIKE '%сво%'
+                AND (${hbox} IS NOT NULL OR ${hbag} IS NOT NULL)
+            )
+        )
+    )`;
+}
+
+/** SQL: не сканируем позиции с полностью заполненным override в mdm (legacy chunked scan). */
 function sqlWhereExcludeCompleteMdmForProblemStock() {
     return ` AND NOT (
         mdm.packing_type IS NOT NULL AND TRIM(mdm.packing_type) <> ''
@@ -819,7 +862,13 @@ const SELECT_DIM_PROBLEM_SCAN = `SELECT
                     mdm.height_bag_cm AS m_height_bag_cm,
                     mdm.weight_kg AS m_weight_kg,
                     mdm.packing_type AS m_packing_type,
-                    med.denorm_article AS denorm_article`;
+                    med.denorm_article AS denorm_article,
+                    med.denorm_dim_packing_type AS denorm_dim_packing_type,
+                    med.denorm_dim_length_cm AS denorm_dim_length_cm,
+                    med.denorm_dim_width_cm AS denorm_dim_width_cm,
+                    med.denorm_dim_height_box_cm AS denorm_dim_height_box_cm,
+                    med.denorm_dim_height_bag_cm AS denorm_dim_height_bag_cm,
+                    med.denorm_dim_weight_kg AS denorm_dim_weight_kg`;
 
 const FROM_DIM_SLIM = `
                 FROM ms_export mse
@@ -978,7 +1027,87 @@ async function ensureSchema(db) {
             INDEX idx_dim_log_field (field)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     `);
+
+    /** Денорм габаритов МС на ms_entity_details — SQL-фильтр «проблемные» без скана payload. */
+    await ensureColumn(db, 'ms_entity_details', 'denorm_dim_packing_type', 'VARCHAR(255) NULL');
+    await ensureColumn(db, 'ms_entity_details', 'denorm_dim_length_cm', 'DECIMAL(10,2) NULL');
+    await ensureColumn(db, 'ms_entity_details', 'denorm_dim_width_cm', 'DECIMAL(10,2) NULL');
+    await ensureColumn(db, 'ms_entity_details', 'denorm_dim_height_box_cm', 'DECIMAL(10,2) NULL');
+    await ensureColumn(db, 'ms_entity_details', 'denorm_dim_height_bag_cm', 'DECIMAL(10,2) NULL');
+    await ensureColumn(db, 'ms_entity_details', 'denorm_dim_weight_kg', 'DECIMAL(10,3) NULL');
+    await ensureColumn(db, 'ms_entity_details', 'denorm_dims_at', 'TIMESTAMP NULL DEFAULT NULL');
+
     schemaReady = true;
+}
+
+/**
+ * Разовый/догоняющий backfill денорма габаритов из payload_json.
+ * @returns {{ updated: number, remaining: number }}
+ */
+async function backfillMsDimsDenorm(db, { limit = 2000 } = {}) {
+    const take = Math.max(1, Math.min(10000, Number(limit) || 2000));
+    const [rows] = await db.query(
+        `SELECT uuid, payload_json
+           FROM ms_entity_details
+          WHERE denorm_dims_at IS NULL
+            AND payload_json IS NOT NULL
+            AND payload_json <> ''
+          LIMIT ?`,
+        [take],
+    );
+    let updated = 0;
+    for (const row of rows || []) {
+        let entity = null;
+        try {
+            entity = JSON.parse(row.payload_json);
+        } catch (_) {
+            entity = null;
+        }
+        const dd = computeMsEntityDimsDenorm(entity);
+        await db.query(
+            `UPDATE ms_entity_details SET
+                denorm_dim_packing_type = ?,
+                denorm_dim_length_cm = ?,
+                denorm_dim_width_cm = ?,
+                denorm_dim_height_box_cm = ?,
+                denorm_dim_height_bag_cm = ?,
+                denorm_dim_weight_kg = ?,
+                denorm_dims_at = CURRENT_TIMESTAMP
+              WHERE uuid = ?`,
+            [
+                dd.denorm_dim_packing_type,
+                dd.denorm_dim_length_cm,
+                dd.denorm_dim_width_cm,
+                dd.denorm_dim_height_box_cm,
+                dd.denorm_dim_height_bag_cm,
+                dd.denorm_dim_weight_kg,
+                row.uuid,
+            ],
+        );
+        updated += 1;
+    }
+    const [[st]] = await db.query(
+        `SELECT COUNT(*) AS remaining
+           FROM ms_entity_details
+          WHERE denorm_dims_at IS NULL
+            AND payload_json IS NOT NULL
+            AND payload_json <> ''`,
+    );
+    return { updated, remaining: Number((st && st.remaining) || 0) };
+}
+
+async function dimsDenormCoverageOk(db) {
+    const [[st]] = await db.query(
+        `SELECT
+            SUM(denorm_dims_at IS NOT NULL) AS done,
+            SUM(payload_json IS NOT NULL AND payload_json <> '') AS with_payload,
+            COUNT(*) AS total
+           FROM ms_entity_details`,
+    );
+    const done = Number((st && st.done) || 0);
+    const withPayload = Number((st && st.with_payload) || 0);
+    if (withPayload <= 0) return true;
+    return done / withPayload >= 0.95;
 }
 
 function numericOrNull(v) {
@@ -1933,6 +2062,12 @@ function createDimensionsRouter(db, appSettings = {}) {
             const selectNarrow = `SELECT
                     mse.code AS code,
                     med.denorm_article AS denorm_article,
+                    med.denorm_dim_packing_type AS denorm_dim_packing_type,
+                    med.denorm_dim_length_cm AS denorm_dim_length_cm,
+                    med.denorm_dim_width_cm AS denorm_dim_width_cm,
+                    med.denorm_dim_height_box_cm AS denorm_dim_height_box_cm,
+                    med.denorm_dim_height_bag_cm AS denorm_dim_height_bag_cm,
+                    med.denorm_dim_weight_kg AS denorm_dim_weight_kg,
                     mse.name AS name,
                     mse.type AS type,
                     mse.uuid AS uuid,
@@ -2017,7 +2152,53 @@ function createDimensionsRouter(db, appSettings = {}) {
                 });
             }
 
-            /** Пост-фильтр: vat_mismatch / dims_mismatch / «проблемные товары». */
+            /**
+             * «Проблемные»: при готовом денорме габаритов МС — обычный COUNT/LIMIT в SQL
+             * (без скана 50k payload). Иначе — legacy chunked post-filter.
+             */
+            if (problemStock) {
+                const denormOk = await dimsDenormCoverageOk(db);
+                if (denormOk) {
+                    const whereProblem = `${whereFull}${sqlWhereIncompleteEffectiveDims()}`;
+                    const [countRows] = await db.query(
+                        `SELECT COUNT(*) AS total ${fromCore} ${whereProblem}`,
+                        baseParams,
+                    );
+                    const total = Number((countRows && countRows[0] && countRows[0].total) || 0);
+                    /** Без payload_json — габариты МС из denorm_*; override из mdm. */
+                    const selectProblem = selectNarrow.replace(
+                        /,\s*med\.payload_json AS payload_json/,
+                        '',
+                    );
+                    const [rows] = await db.query(
+                        `${selectProblem}\n                 ${fromCore}\n                 ${whereProblem}\n                 ORDER BY ${orderBy}\n                 LIMIT ? OFFSET ?`,
+                        baseParams.concat([limit, offset]),
+                    );
+                    const out = (rows || []).map((r) => {
+                        const mapped = mapDimensionListRow(r, null);
+                        const cells = computeProblemCellsForRow(mapped);
+                        if (cells) mapped.problem_cells = cells;
+                        return mapped;
+                    });
+                    return res.json({
+                        success: true,
+                        rows: out,
+                        total,
+                        limit,
+                        offset,
+                        sort_by: sortBy,
+                        sort_dir: sortDir,
+                        mp_scope: mpScope,
+                        problem_profile: problemProfile || null,
+                        exclude_has_bundle: excludeHasBundle,
+                        post_filtered: false,
+                        dims_denorm: true,
+                        dimension_attrs: DIMENSION_ATTRS.map((d) => ({ key: d.key, label: d.label, attr: d.attr })),
+                    });
+                }
+            }
+
+            /** Пост-фильтр: vat_mismatch / dims_mismatch / «проблемные товары» (legacy). */
             const cacheKey = buildDimListPostFilterCacheKey(req.query);
             let outOnly;
             let postFilterMemoryTruncated = false;

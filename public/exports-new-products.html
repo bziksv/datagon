@@ -153,7 +153,8 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    max-width: 280px;
+    width: 100%;
+    max-width: 100%;
   }
   body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-click-copy {
     cursor: copy;
@@ -178,11 +179,22 @@
     opacity: 1;
     pointer-events: auto;
   }
+  /* Ширина колонки (📏 Ширины / colgroup) должна растягивать поля, а не упираться в 200px */
   body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-mp-table .form-select-sm,
   body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-mp-table .form-control-sm {
     font-size: 0.8rem;
-    min-width: 72px;
-    max-width: 200px;
+    min-width: 0;
+    width: 100%;
+    max-width: none;
+    box-sizing: border-box;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-mp-table textarea.dg-np-title-field {
+    min-height: 2.75rem;
+    height: 2.75rem;
+    line-height: 1.25;
+    resize: vertical;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
   }
   body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-prio-important {
     color: #b02a37;
@@ -205,7 +217,8 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    max-width: 280px;
+    width: 100%;
+    max-width: 100%;
     color: #0d6efd;
     text-decoration: none;
   }
@@ -366,6 +379,12 @@
   body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-url-group {
     flex-wrap: nowrap;
     width: 100%;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-url-group .form-control {
+    flex: 1 1 auto;
+    width: 1%;
+    min-width: 0;
+    max-width: none;
   }
   body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-url-group .btn {
     flex: 0 0 auto;
@@ -1672,41 +1691,52 @@
       tr.appendChild(td);
     });
   }
+  function resolvedColWidthPx(key) {
+    var w = Number(state.columnWidths[key]);
+    if (!Number.isFinite(w) || w <= 0) w = getColDef(key);
+    return Math.max(getColMin(key), Math.min(700, Math.round(w)));
+  }
+
+  /** Ширины через <colgroup> + th/td (как shop/moysklad): шапка и тело всегда в одной колонке. */
   function applyColumnWidths() {
+    var table = el("dg-np-table");
     var thead = el("dg-np-thead");
     var tbody = el("dg-np-tbody");
-    if (!thead) return;
+    if (!table || !thead) return;
     var visibleKeys = visibleColsArray();
-    var headRow = thead.rows && thead.rows[0];
-    if (!headRow) return;
-    visibleKeys.forEach(function (key, idx) {
-      var th = headRow.cells[idx];
-      if (!th) return;
-      var w = state.columnWidths[key];
-      if (w && Number.isFinite(Number(w))) {
-        var px = Math.max(getColMin(key), Math.min(700, Number(w))) + "px";
-        th.style.minWidth = px;
-        th.style.width = px;
-      } else {
-        th.style.minWidth = "";
-        th.style.width = "";
-      }
+    var existing = table.querySelector(":scope > colgroup");
+    if (existing) existing.parentNode.removeChild(existing);
+    var cg = document.createElement("colgroup");
+    visibleKeys.forEach(function (key) {
+      var col = document.createElement("col");
+      var px = resolvedColWidthPx(key) + "px";
+      col.style.width = px;
+      col.setAttribute("data-col-key", key);
+      cg.appendChild(col);
     });
+    table.insertBefore(cg, table.firstElementChild);
+
+    var headRow = thead.rows && thead.rows[0];
+    if (headRow) {
+      visibleKeys.forEach(function (key, idx) {
+        var th = headRow.cells[idx];
+        if (!th) return;
+        var px = resolvedColWidthPx(key) + "px";
+        th.style.width = px;
+        th.style.minWidth = px;
+        th.style.maxWidth = px;
+      });
+    }
     if (tbody) {
       Array.prototype.forEach.call(tbody.rows, function (tr) {
         if (!tr.cells) return;
         visibleKeys.forEach(function (key, idx) {
           var td = tr.cells[idx];
           if (!td) return;
-          var w = state.columnWidths[key];
-          if (w && Number.isFinite(Number(w))) {
-            var px = Math.max(getColMin(key), Math.min(700, Number(w))) + "px";
-            td.style.minWidth = px;
-            td.style.width = px;
-          } else {
-            td.style.minWidth = "";
-            td.style.width = "";
-          }
+          var px = resolvedColWidthPx(key) + "px";
+          td.style.width = px;
+          td.style.minWidth = px;
+          td.style.maxWidth = px;
         });
       });
     }
@@ -3155,9 +3185,9 @@
     var tdTitle = document.createElement("td");
     tdTitle.className = "dg-np-cell";
     markRequired(tdTitle, "title", missMap);
-    var inpTitle = document.createElement("input");
-    inpTitle.type = "text";
-    inpTitle.className = "form-control form-control-sm";
+    var inpTitle = document.createElement("textarea");
+    inpTitle.className = "form-control form-control-sm dg-np-title-field";
+    inpTitle.rows = 2;
     inpTitle.maxLength = 128;
     inpTitle.value = row.title || "";
     inpTitle.title = "Макс. 128 символов";
@@ -3278,9 +3308,9 @@
     var tdTitle = document.createElement("td");
     tdTitle.className = "dg-np-cell";
     markRequired(tdTitle, "title", missMap);
-    var inpTitle = document.createElement("input");
-    inpTitle.type = "text";
-    inpTitle.className = "form-control form-control-sm";
+    var inpTitle = document.createElement("textarea");
+    inpTitle.className = "form-control form-control-sm dg-np-title-field";
+    inpTitle.rows = 2;
     inpTitle.maxLength = 128;
     inpTitle.value = row.title || "";
     bindTextSave(inpTitle, row, "title", 128);
@@ -3454,7 +3484,20 @@
 
     tr.appendChild(kitTextCell("product_code", 128, "Код"));
     tr.appendChild(kitTextCell("article", 128, "Артикул"));
-    tr.appendChild(kitTextCell("title", 255, "Название комплекта"));
+    (function () {
+      var td = document.createElement("td");
+      td.className = "dg-np-cell";
+      var ta = document.createElement("textarea");
+      ta.className = "form-control form-control-sm dg-np-title-field";
+      ta.rows = 2;
+      ta.maxLength = 255;
+      ta.placeholder = "Название комплекта";
+      ta.value = kit.title || "";
+      ta.setAttribute("data-dg-no-activity", "1");
+      bindKitFieldSave(ta, parent, kit, "title", { maxLen: 255 });
+      td.appendChild(ta);
+      tr.appendChild(td);
+    })();
     tr.appendChild(kitTextCell("barcode", 512, "Штрихкод"));
 
     var tdPrice = document.createElement("td");
@@ -3499,11 +3542,7 @@
     tdStatus.appendChild(selSt);
     tr.appendChild(tdStatus);
 
-    var tdPlace = document.createElement("td");
-    tdPlace.className = "dg-np-cell dg-np-kit-inherited";
-    tdPlace.innerHTML = '<span class="text-muted small">—</span>';
-    tr.appendChild(tdPlace);
-
+    /* Порядок ячеек = NP_COLS_MARKETS (как у renderMarketsRow), иначе pruneHiddenCells съезжает. */
     var tdCom = document.createElement("td");
     tdCom.className = "dg-np-cell";
     var ta = document.createElement("textarea");
@@ -3515,8 +3554,6 @@
     tdCom.appendChild(ta);
     tr.appendChild(tdCom);
 
-    tr.appendChild(mutedCell("—", { title: "Инфографика — у товара" }));
-    tr.appendChild(mutedCell("—", { title: "Фото — у товара" }));
     tr.appendChild(mutedCell("—", { title: "Дата размещения — у товара" }));
 
     function kitNumCell(field, placeholder) {

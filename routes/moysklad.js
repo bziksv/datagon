@@ -1,6 +1,7 @@
 const express = require('express');
 const axios = require('axios');
 const { computeMsEntityPurchaseDenorm } = require('../lib/datagonMsEntityPurchaseDenorm');
+const { computeMsEntityDimsDenorm } = require('../lib/datagonMsEntityDimsDenorm');
 const { syncZeroStockLogAfterMoyskladExport, syncProductStockSnapshotsAfterMoyskladExport } = require('./product');
 const {
     replaceMsExportStockByStoreFromReport,
@@ -389,6 +390,13 @@ async function ensureMsEntityDetailsTable(db) {
         'ALTER TABLE ms_entity_details ADD COLUMN denorm_in_transit DECIMAL(18,6) NULL',
         'ALTER TABLE ms_entity_details ADD COLUMN denorm_pack_qty_auto DECIMAL(18,6) NULL',
         'ALTER TABLE ms_entity_details ADD COLUMN denorm_market_price_rub DECIMAL(18,4) NULL',
+        'ALTER TABLE ms_entity_details ADD COLUMN denorm_dim_packing_type VARCHAR(255) NULL',
+        'ALTER TABLE ms_entity_details ADD COLUMN denorm_dim_length_cm DECIMAL(10,2) NULL',
+        'ALTER TABLE ms_entity_details ADD COLUMN denorm_dim_width_cm DECIMAL(10,2) NULL',
+        'ALTER TABLE ms_entity_details ADD COLUMN denorm_dim_height_box_cm DECIMAL(10,2) NULL',
+        'ALTER TABLE ms_entity_details ADD COLUMN denorm_dim_height_bag_cm DECIMAL(10,2) NULL',
+        'ALTER TABLE ms_entity_details ADD COLUMN denorm_dim_weight_kg DECIMAL(10,3) NULL',
+        'ALTER TABLE ms_entity_details ADD COLUMN denorm_dims_at TIMESTAMP NULL DEFAULT NULL',
     ];
     for (const sql of alters) {
         try {
@@ -437,7 +445,9 @@ async function saveMoyskladEntityDetails(db, entities, source = 'sync', onProgre
     const chunkSize = 100;
     const safeSource = String(source || 'sync').slice(0, 32);
     const insertSql = `INSERT INTO ms_entity_details (uuid, code, kind, name, payload_json, source,
-            denorm_article, denorm_in_transit, denorm_pack_qty_auto, denorm_market_price_rub)
+            denorm_article, denorm_in_transit, denorm_pack_qty_auto, denorm_market_price_rub,
+            denorm_dim_packing_type, denorm_dim_length_cm, denorm_dim_width_cm,
+            denorm_dim_height_box_cm, denorm_dim_height_bag_cm, denorm_dim_weight_kg, denorm_dims_at)
         VALUES ?
         ON DUPLICATE KEY UPDATE
            code = VALUES(code),
@@ -449,6 +459,13 @@ async function saveMoyskladEntityDetails(db, entities, source = 'sync', onProgre
            denorm_in_transit = VALUES(denorm_in_transit),
            denorm_pack_qty_auto = VALUES(denorm_pack_qty_auto),
            denorm_market_price_rub = VALUES(denorm_market_price_rub),
+           denorm_dim_packing_type = VALUES(denorm_dim_packing_type),
+           denorm_dim_length_cm = VALUES(denorm_dim_length_cm),
+           denorm_dim_width_cm = VALUES(denorm_dim_width_cm),
+           denorm_dim_height_box_cm = VALUES(denorm_dim_height_box_cm),
+           denorm_dim_height_bag_cm = VALUES(denorm_dim_height_bag_cm),
+           denorm_dim_weight_kg = VALUES(denorm_dim_weight_kg),
+           denorm_dims_at = VALUES(denorm_dims_at),
            fetched_at = CURRENT_TIMESTAMP`;
     // `total` оцениваем по входному списку (включая возможные пустые/без uuid).
     // Прогресс-лог: каждые ~5% или ~50 батчей (что чаще). На старте — сразу
@@ -491,6 +508,7 @@ async function saveMoyskladEntityDetails(db, entities, source = 'sync', onProgre
         }
         if (!payload) continue;
         const dn = computeMsEntityPurchaseDenorm(entity);
+        const dd = computeMsEntityDimsDenorm(entity);
         buffer.push([
             uuid,
             code,
@@ -502,6 +520,13 @@ async function saveMoyskladEntityDetails(db, entities, source = 'sync', onProgre
             dn.denorm_in_transit,
             dn.denorm_pack_qty_auto,
             dn.denorm_market_price_rub,
+            dd.denorm_dim_packing_type,
+            dd.denorm_dim_length_cm,
+            dd.denorm_dim_width_cm,
+            dd.denorm_dim_height_box_cm,
+            dd.denorm_dim_height_bag_cm,
+            dd.denorm_dim_weight_kg,
+            new Date(),
         ]);
         if (buffer.length >= chunkSize) {
             await flush();
