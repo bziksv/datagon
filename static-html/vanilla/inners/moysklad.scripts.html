@@ -744,6 +744,45 @@
         ov.setAttribute("aria-hidden", "true");
       }
 
+      /** Deep-link: ?open_uuid=… — открыть карточку после загрузки списка (из «Новые товары» и т.п.). */
+      var pendingOpenUuid = "";
+      try {
+        pendingOpenUuid = String(new URLSearchParams(window.location.search).get("open_uuid") || "").trim();
+      } catch (eOpen) {
+        pendingOpenUuid = "";
+      }
+
+      function maybeOpenDetailFromUrl(rows) {
+        var u = pendingOpenUuid;
+        if (!u) return;
+        pendingOpenUuid = "";
+        try {
+          var params = new URLSearchParams(window.location.search);
+          if (params.has("open_uuid")) {
+            params.delete("open_uuid");
+            var qs = params.toString();
+            var next = window.location.pathname + (qs ? "?" + qs : "") + window.location.hash;
+            window.history.replaceState({}, "", next);
+          }
+        } catch (eStrip) {
+          /* ignore */
+        }
+        var list = Array.isArray(rows) ? rows : [];
+        var hit = null;
+        for (var i = 0; i < list.length; i++) {
+          if (String(list[i].uuid || "").trim() === u) {
+            hit = list[i];
+            break;
+          }
+        }
+        if (hit) {
+          openMsDetailModal(hit.uuid, hit.code, hit.name, hit.type);
+          return;
+        }
+        // Строки нет в текущей выборке (фильтры) — всё равно открыть по uuid.
+        openMsDetailModal(u, "", "", "");
+      }
+
       function trimLinkHref(raw) {
         return String(raw || "").replace(/[)\].,;:!?]+$/g, "");
       }
@@ -1375,6 +1414,7 @@
             updateTableHint();
             syncUrlFromState();
             persistMoyskladFilterForm();
+            maybeOpenDetailFromUrl(raw);
             var ds = document.getElementById("dg-status");
             if (ds) {
               ds.style.display = "none";

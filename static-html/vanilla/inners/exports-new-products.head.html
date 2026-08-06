@@ -9,6 +9,51 @@
     box-sizing: border-box;
   }
   .dg-np-tabs .nav-link { cursor: pointer; }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .datagon-columns-toolbox {
+    margin: 0 0 10px 0;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    background: #fafbfc;
+    padding: 8px;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .datagon-columns-panel {
+    margin-top: 8px;
+    border-top: 1px dashed #d1d5db;
+    padding-top: 8px;
+    display: none;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .datagon-columns-panel.open {
+    display: block;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .datagon-columns-panel .columns-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 6px 10px;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] #dg-np-columns-panel.datagon-columns-panel label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    margin: 0;
+    cursor: pointer;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-widths-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 6px 12px;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-widths-grid label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    font-size: 12px;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-widths-grid input[type="number"] {
+    width: 88px;
+    flex: 0 0 auto;
+  }
   body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-mp-table {
     font-size: 0.8rem;
     line-height: 1.25;
@@ -87,6 +132,14 @@
     white-space: nowrap;
     max-width: 280px;
   }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-click-copy {
+    cursor: copy;
+    user-select: text;
+    -webkit-user-select: text;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-click-copy:hover {
+    color: #0a58ca;
+  }
   body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-copy {
     position: absolute;
     top: 2px;
@@ -120,6 +173,27 @@
     border-color: #dc3545;
     background-color: #fff5f5;
   }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-required-empty .dg-np-cell-text,
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-required-empty .dg-np-readonly-link {
+    color: #b02a37;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-readonly-link {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 280px;
+    color: #0d6efd;
+    text-decoration: none;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-readonly-link:hover {
+    text-decoration: underline;
+    color: #0a58ca;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-cell-text {
+    user-select: text;
+    -webkit-user-select: text;
+  }
   body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-required-empty::after {
     content: attr(data-dg-np-miss);
     display: block;
@@ -149,24 +223,75 @@
   body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-id-cell {
     white-space: nowrap;
     vertical-align: middle;
+    min-width: 7.5rem;
   }
   body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-id-row {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
+    gap: 5px;
     flex-wrap: nowrap;
   }
   body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-id-row .dg-np-id-num {
     font-variant-numeric: tabular-nums;
-    min-width: 1.25rem;
+    font-weight: 600;
+    min-width: 1.1rem;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-links-cell {
+    vertical-align: middle;
+    min-width: 7.5rem;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-presence {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    max-width: 11rem;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-presence-row {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 3px;
+    align-items: center;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-presence-badge {
+    font-weight: 500;
+    font-size: 0.62rem;
+    line-height: 1.2;
+    padding: 0.18rem 0.32rem;
+    border: 1px solid transparent;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-presence-off {
+    background: #e9ecef;
+    color: #6c757d;
+    border-color: #dee2e6;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-presence-on {
+    background: #198754;
+    color: #fff;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] a.dg-np-presence-on {
+    cursor: pointer;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] a.dg-np-presence-on:hover {
+    filter: brightness(1.08);
+    color: #fff;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-presence-btn {
+    border: 1px solid transparent;
+    cursor: pointer;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-presence-btn:hover {
+    filter: brightness(1.08);
   }
   body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-id-crosslink {
-    display: block;
-    font-size: 0.68rem;
-    line-height: 1.15;
-    margin-top: 2px;
+    display: inline;
+    font-size: 0.7rem;
+    line-height: 1.2;
+    margin: 0;
+    padding: 0 !important;
+    vertical-align: baseline;
     text-decoration: none;
     white-space: nowrap;
+    flex-shrink: 0;
   }
   body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-id-crosslink:hover {
     text-decoration: underline;
@@ -185,6 +310,35 @@
     line-height: 1.2;
     margin: 0;
     flex-shrink: 0;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-field-cell {
+    position: relative;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-field-log-btn {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    z-index: 3;
+    opacity: 0;
+    pointer-events: none;
+    font-size: 0.6rem;
+    line-height: 1;
+    padding: 0.12rem 0.28rem;
+    border: 1px solid #ced4da;
+    border-radius: 0.25rem;
+    background: #fff;
+    color: #495057;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-field-cell:hover .dg-np-field-log-btn,
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-field-log-btn:focus {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-field-log-btn:hover {
+    background: #f8f9fa;
+    color: #0d6efd;
+    border-color: #86b7fe;
   }
   body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-url-group {
     flex-wrap: nowrap;
@@ -265,5 +419,46 @@
     position: relative;
     z-index: 1;
     width: min(420px, 100%);
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-ms-detail-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    background: rgba(15, 23, 42, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.75rem;
+    box-sizing: border-box;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-ms-detail-panel {
+    width: 100%;
+    max-width: 920px;
+    max-height: 92vh;
+    overflow: hidden;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-ms-detail-kv {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8rem;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-ms-detail-kv th,
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-ms-detail-kv td {
+    border: 1px solid #e6e9ee;
+    padding: 0.35rem 0.5rem;
+    vertical-align: top;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-ms-detail-kv th {
+    width: 32%;
+    background: #f8fafc;
+    font-weight: 600;
+    color: #334155;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-ms-detail-kv td a {
+    word-break: break-all;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] button.dg-np-presence-badge {
+    border: 1px solid transparent;
+    cursor: pointer;
   }
 </style>

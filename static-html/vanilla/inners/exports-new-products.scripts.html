@@ -32,6 +32,8 @@
     managers: [],
     responsibles: [],
     loading: false,
+    visibleCols: new Set(),
+    columnWidths: {},
   };
 
   var STATUS_OPTS_ALMAMED = [
@@ -56,26 +58,201 @@
     { key: "normal", label: "Обычный" },
     { key: "low", label: "Не важный" },
   ];
-  var INFOGRAPHIC_OPTS = [
-    { key: "yes", label: "Есть" },
-    { key: "old", label: "Старая" },
-    { key: "no", label: "Нет" },
+
+  /**
+   * Единый источник колонок (thead / tbody / 🧩 Столбцы / 📏 Ширины) — по каналу.
+   * locked: нельзя снять в панели «Столбцы».
+   */
+  var NP_COLS_ALMAMED = [
+    { key: "id", label: "ID", sort: true, locked: true, minWidth: 120, defWidth: 150 },
+    { key: "links", label: "Связь", sort: false, minWidth: 90, defWidth: 120 },
+    { key: "product_manager_name", label: "Менеджер товара", sort: true, minWidth: 120, defWidth: 160 },
+    { key: "created_at", label: "Дата в таблице", sort: true, minWidth: 110, defWidth: 140 },
+    { key: "responsible_name", label: "Ответственный", sort: true, minWidth: 120, defWidth: 160 },
+    { key: "sell_on_markets", label: "Маркеты", sort: false, minWidth: 70, defWidth: 80 },
+    { key: "has_kits", label: "Комплект", sort: false, minWidth: 70, defWidth: 80 },
+    { key: "article", label: "Артикул", sort: true, minWidth: 90, defWidth: 120 },
+    { key: "title", label: "Название", sort: true, minWidth: 140, defWidth: 200 },
+    { key: "price_almamed", label: "Цена Альмамед", sort: true, minWidth: 90, defWidth: 110 },
+    { key: "supplier_url", label: "Ссылка поставщика", sort: false, minWidth: 140, defWidth: 200 },
+    { key: "brand", label: "Бренд", sort: true, minWidth: 90, defWidth: 120 },
+    { key: "priority", label: "Приоритет", sort: true, minWidth: 90, defWidth: 110 },
+    { key: "status", label: "Статус", sort: true, minWidth: 100, defWidth: 130 },
+    { key: "comment", label: "Комментарий", sort: false, minWidth: 120, defWidth: 180 },
+    { key: "almamed_added_at", label: "Дата на Альмамед", sort: true, minWidth: 110, defWidth: 140 },
+    { key: "_actions", label: "", sort: false, locked: true, minWidth: 70, defWidth: 90 },
   ];
-  var PHOTO_OPTS = [
-    { key: "updated", label: "Обновлено" },
-    { key: "need_shoot", label: "Нужно отснять" },
-    { key: "need_reshoot", label: "Нужно переснять" },
-    { key: "in_package", label: "Товар в упаковке" },
+  var NP_COLS_MARKETS = [
+    { key: "id", label: "ID", sort: true, locked: true, minWidth: 120, defWidth: 150 },
+    { key: "links", label: "Связь", sort: false, minWidth: 90, defWidth: 120 },
+    { key: "product_manager_name", label: "Менеджер товара", sort: true, minWidth: 120, defWidth: 160 },
+    { key: "created_at", label: "Дата добавления", sort: true, minWidth: 110, defWidth: 140 },
+    { key: "priority", label: "Приоритет", sort: true, minWidth: 90, defWidth: 110 },
+    { key: "responsible_name", label: "Ответственный", sort: true, minWidth: 120, defWidth: 160 },
+    { key: "product_code", label: "Код", sort: true, minWidth: 80, defWidth: 110 },
+    { key: "article", label: "Артикул", sort: true, minWidth: 90, defWidth: 120 },
+    { key: "title", label: "Название для маркета", sort: true, minWidth: 140, defWidth: 200 },
+    { key: "barcode", label: "Штрихкод", sort: false, minWidth: 100, defWidth: 140 },
+    { key: "price_markets", label: "Цена на маркеты", sort: true, minWidth: 90, defWidth: 120 },
+    { key: "status", label: "Статус", sort: true, minWidth: 100, defWidth: 130 },
+    { key: "comment", label: "Комментарий", sort: false, minWidth: 120, defWidth: 180 },
+    { key: "placement_date", label: "Дата размещения", sort: true, minWidth: 110, defWidth: 140 },
+    { key: "length_cm", label: "Длина, см", sort: false, minWidth: 70, defWidth: 90 },
+    { key: "width_cm", label: "Ширина, см", sort: false, minWidth: 70, defWidth: 90 },
+    { key: "height_cm", label: "Высота, см", sort: false, minWidth: 70, defWidth: 90 },
+    { key: "weight_kg", label: "Вес, кг", sort: false, minWidth: 70, defWidth: 90 },
+    { key: "vat", label: "НДС", sort: false, minWidth: 70, defWidth: 90 },
+    { key: "ru_url", label: "Ссылка на РУ", sort: false, minWidth: 120, defWidth: 180 },
+    { key: "_actions", label: "", sort: false, locked: true, minWidth: 90, defWidth: 110 },
   ];
+
+  function currentCols() {
+    return state.channel === "marketplaces" ? NP_COLS_MARKETS : NP_COLS_ALMAMED;
+  }
+  function defaultVisibleKeys() {
+    return currentCols().map(function (c) {
+      return c.key;
+    });
+  }
+  function visibleColsKey() {
+    return "dg.np.visible-cols.v1:" + state.channel;
+  }
+  function colWidthsKey() {
+    return "dg.np.col-widths.v1:" + state.channel;
+  }
+  function visibleColsArray() {
+    return currentCols()
+      .map(function (c) {
+        return c.key;
+      })
+      .filter(function (k) {
+        return state.visibleCols.has(k);
+      });
+  }
+  function colCount() {
+    return visibleColsArray().length || 1;
+  }
+  function getColDef(key) {
+    var cols = currentCols();
+    for (var i = 0; i < cols.length; i++) {
+      if (cols[i].key === key) return cols[i].defWidth || cols[i].minWidth || 100;
+    }
+    return 100;
+  }
+  function getColMin(key) {
+    var cols = currentCols();
+    for (var i = 0; i < cols.length; i++) {
+      if (cols[i].key === key) return cols[i].minWidth || 60;
+    }
+    return 60;
+  }
+  function getColMeta(key) {
+    var cols = currentCols();
+    for (var i = 0; i < cols.length; i++) if (cols[i].key === key) return cols[i];
+    return null;
+  }
+  function saveVisibleCols() {
+    try {
+      localStorage.setItem(visibleColsKey(), JSON.stringify(Array.from(state.visibleCols)));
+    } catch (_) {}
+  }
+  function saveWidths() {
+    try {
+      localStorage.setItem(colWidthsKey(), JSON.stringify(state.columnWidths || {}));
+    } catch (_) {}
+  }
+  function loadVisibleColsForChannel() {
+    var allowed = new Set(defaultVisibleKeys());
+    var loaded = null;
+    try {
+      loaded = JSON.parse(localStorage.getItem(visibleColsKey()) || "null");
+    } catch (_) {
+      loaded = null;
+    }
+    var next = new Set();
+    if (Array.isArray(loaded) && loaded.length) {
+      loaded.forEach(function (k) {
+        if (allowed.has(k)) next.add(k);
+      });
+    }
+    if (!next.size) next = new Set(defaultVisibleKeys());
+    currentCols().forEach(function (c) {
+      if (c.locked) next.add(c.key);
+    });
+    state.visibleCols = next;
+  }
+  function loadWidthsForChannel() {
+    var out = {};
+    try {
+      var raw = JSON.parse(localStorage.getItem(colWidthsKey()) || "{}");
+      if (raw && typeof raw === "object") out = raw;
+    } catch (_) {}
+    state.columnWidths = out;
+  }
+  function appendVisibleCells(tr, cells) {
+    visibleColsArray().forEach(function (key) {
+      if (cells[key]) tr.appendChild(cells[key]);
+    });
+  }
+  /** Оставляет в <tr> только видимые ячейки (порядок = currentCols). */
+  function pruneHiddenCells(tr) {
+    var cols = currentCols();
+    var keep = [];
+    for (var i = 0; i < cols.length; i++) {
+      var td = tr.cells[i];
+      if (!td) continue;
+      if (state.visibleCols.has(cols[i].key)) keep.push(td);
+    }
+    while (tr.firstChild) tr.removeChild(tr.firstChild);
+    keep.forEach(function (td) {
+      tr.appendChild(td);
+    });
+  }
+  function applyColumnWidths() {
+    var thead = el("dg-np-thead");
+    var tbody = el("dg-np-tbody");
+    if (!thead) return;
+    var visibleKeys = visibleColsArray();
+    var headRow = thead.rows && thead.rows[0];
+    if (!headRow) return;
+    visibleKeys.forEach(function (key, idx) {
+      var th = headRow.cells[idx];
+      if (!th) return;
+      var w = state.columnWidths[key];
+      if (w && Number.isFinite(Number(w))) {
+        var px = Math.max(getColMin(key), Math.min(700, Number(w))) + "px";
+        th.style.minWidth = px;
+        th.style.width = px;
+      } else {
+        th.style.minWidth = "";
+        th.style.width = "";
+      }
+    });
+    if (tbody) {
+      Array.prototype.forEach.call(tbody.rows, function (tr) {
+        if (!tr.cells) return;
+        visibleKeys.forEach(function (key, idx) {
+          var td = tr.cells[idx];
+          if (!td) return;
+          var w = state.columnWidths[key];
+          if (w && Number.isFinite(Number(w))) {
+            var px = Math.max(getColMin(key), Math.min(700, Number(w))) + "px";
+            td.style.minWidth = px;
+            td.style.width = px;
+          } else {
+            td.style.minWidth = "";
+            td.style.width = "";
+          }
+        });
+      });
+    }
+  }
+
   function getStatusOpts() {
     return state.channel === "marketplaces" ? STATUS_OPTS_MARKETS : STATUS_OPTS_ALMAMED;
   }
   function getStatusFilterOpts() {
     return getStatusOpts().concat(STATUS_FILTER_EXTRA);
-  }
-
-  function colCount() {
-    return state.channel === "marketplaces" ? 23 : 17;
   }
 
   function authHeaders(json) {
@@ -213,12 +390,35 @@
     var o = opts || {};
     var td = document.createElement("td");
     td.className = "dg-np-cell" + (o.extraClass ? " " + o.extraClass : "");
-    var span = document.createElement("span");
-    span.className = "dg-np-cell-text" + (o.wrap ? " dg-np-wrap" : "");
-    span.textContent = text == null || text === "" ? "—" : String(text);
-    span.title = text == null ? "" : String(text);
-    td.appendChild(span);
-    if (text != null && String(text).trim() !== "") {
+    var raw = text == null || text === "" ? "" : String(text);
+    var valueNode;
+    if (o.href && raw) {
+      valueNode = document.createElement("a");
+      valueNode.href = o.href;
+      valueNode.target = "_blank";
+      valueNode.rel = "noopener noreferrer";
+      valueNode.className =
+        "dg-np-cell-text dg-np-readonly-link dg-np-click-copy" + (o.wrap ? " dg-np-wrap" : "");
+      valueNode.textContent = raw;
+      valueNode.title = "Клик — копировать; Ctrl+клик — открыть";
+      valueNode.setAttribute("data-dg-no-activity", "1");
+    } else {
+      valueNode = document.createElement("span");
+      valueNode.className = "dg-np-cell-text" + (raw ? " dg-np-click-copy" : "") + (o.wrap ? " dg-np-wrap" : "");
+      valueNode.textContent = raw ? raw : "—";
+      valueNode.title = raw ? "Клик — копировать" : "";
+    }
+    if (raw) {
+      valueNode.addEventListener("click", function (e) {
+        // Выделение текста — не мешаем обычному копированию Cmd/Ctrl+C
+        var sel = window.getSelection && window.getSelection();
+        if (sel && String(sel.toString() || "").trim()) return;
+        // Ссылка: Ctrl/Cmd/средняя кнопка — открыть как обычно
+        if (o.href && (e.metaKey || e.ctrlKey || e.button === 1)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        copyText(raw);
+      });
       var btn = document.createElement("button");
       btn.type = "button";
       btn.className = "btn btn-outline-secondary btn-sm dg-np-copy";
@@ -228,10 +428,338 @@
       btn.addEventListener("click", function (e) {
         e.preventDefault();
         e.stopPropagation();
-        copyText(text);
+        copyText(raw);
       });
+      td.appendChild(valueNode);
       td.appendChild(btn);
+    } else {
+      td.appendChild(valueNode);
     }
+    if (o.missKey) markRequired(td, o.missKey, o.missMap);
+    if (o.row && o.field) attachFieldLog(td, o.row, o.field);
+    return td;
+  }
+
+  var FIELD_LOG_LABELS_UI = {
+    product_manager_user_id: "Менеджер товара",
+    responsible_user_id: "Ответственный",
+    sell_on_markets: "Маркеты",
+    has_kits: "Комплект",
+    article: "Артикул",
+    title: "Название",
+    price_almamed: "Цена Альмамед",
+    supplier_url: "Ссылка поставщика",
+    brand: "Бренд",
+    priority: "Приоритет",
+    status: "Статус",
+    comment: "Комментарий",
+    almamed_url: "Ссылка Альмамед",
+    product_code: "Код",
+    barcode: "Штрихкод",
+    price_markets: "Цена на маркеты",
+    length_cm: "Длина, см",
+    width_cm: "Ширина, см",
+    height_cm: "Высота, см",
+    weight_kg: "Вес, кг",
+    vat: "НДС",
+    ru_url: "Ссылка на РУ",
+  };
+
+  /** Микрокнопка «лог» при наведении на ячейку — журнал только по этому полю. */
+  function attachFieldLog(td, row, field) {
+    if (!td || !row || !field) return td;
+    td.classList.add("dg-np-field-cell");
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "dg-np-field-log-btn";
+    btn.textContent = "лог";
+    var flabel = FIELD_LOG_LABELS_UI[field] || field;
+    btn.title = "Журнал изменений: " + flabel;
+    btn.setAttribute("data-dg-np-log-id", String(row.id));
+    btn.setAttribute("data-dg-np-log-field", field);
+    btn.setAttribute("data-dg-np-log-field-label", flabel);
+    btn.setAttribute(
+      "data-dg-np-log-label",
+      String(row.title || row.article || row.product_code || "#" + (row.channel_num != null ? row.channel_num : row.id))
+    );
+    btn.setAttribute("data-dg-no-activity", "1");
+    td.appendChild(btn);
+    return td;
+  }
+
+  function msOpenInWebHref(uuid, typeMs) {
+    var u = String(uuid || "").trim();
+    if (!u) return "";
+    var t = String(typeMs || "").toLowerCase();
+    if (t.indexOf("комплект") >= 0) {
+      return "https://online.moysklad.ru/app/#bundle/edit?id=" + encodeURIComponent(u);
+    }
+    return "https://online.moysklad.ru/app/#good/edit?id=" + encodeURIComponent(u);
+  }
+  function msKindQueryParam(typeMs) {
+    var t = String(typeMs || "").toLowerCase();
+    if (t.indexOf("комплект") >= 0) return "bundle";
+    return "product";
+  }
+  function closeMsDetailModal() {
+    var ov = document.getElementById("dg-ms-detail-overlay");
+    if (!ov) return;
+    ov.style.display = "none";
+    ov.setAttribute("aria-hidden", "true");
+  }
+  function trimMsLinkHref(raw) {
+    return String(raw || "").replace(/[)\].,;:!?]+$/g, "");
+  }
+  function isDangerousMsLinkHref(href) {
+    var low = String(href || "").trim().toLowerCase();
+    return (
+      low.indexOf("javascript:") === 0 ||
+      low.indexOf("data:") === 0 ||
+      low.indexOf("vbscript:") === 0
+    );
+  }
+  function appendMsTextWithAutoLinks(el, raw) {
+    var s = String(raw == null ? "" : raw);
+    el.textContent = "";
+    if (!s) return;
+    var re =
+      /(https?:\/\/[^\s<>"'`]+)|(www\.[^\s<>"'`]+)|([a-z][a-z0-9+.-]*:\/\/[^\s<>"'`]+)|(mailto:[^\s<>"'`]+)|(tel:\+?[^\s<>"'`]+)/gi;
+    var last = 0;
+    var m;
+    while ((m = re.exec(s)) !== null) {
+      if (m.index > last) el.appendChild(document.createTextNode(s.slice(last, m.index)));
+      var full = m[0];
+      var href = trimMsLinkHref(full);
+      var display = href;
+      if (!href) {
+        last = m.index + full.length;
+        continue;
+      }
+      if (/^www\./i.test(href)) href = "https://" + href;
+      if (href.length < 4 || isDangerousMsLinkHref(href)) {
+        el.appendChild(document.createTextNode(full));
+        last = m.index + full.length;
+        continue;
+      }
+      var a = document.createElement("a");
+      a.href = href;
+      a.className = "text-break";
+      a.textContent = display;
+      var low = href.toLowerCase();
+      if (low.indexOf("http:") === 0 || low.indexOf("https:") === 0 || low.indexOf("ftp:") === 0) {
+        a.target = "_blank";
+        a.rel = "noopener noreferrer";
+      }
+      el.appendChild(a);
+      last = m.index + full.length;
+    }
+    if (last < s.length) el.appendChild(document.createTextNode(s.slice(last)));
+  }
+  function renderMsDetailBlocks(blocks) {
+    var body = document.getElementById("dg-ms-detail-body");
+    if (!body) return;
+    body.innerHTML = "";
+    if (!blocks || !blocks.length) {
+      body.textContent = "Нет данных.";
+      return;
+    }
+    blocks.forEach(function (blk) {
+      if (blk.title) {
+        var h = document.createElement("div");
+        h.className = "fw-semibold mb-2 mt-2";
+        h.style.fontSize = "0.9rem";
+        h.textContent = blk.title;
+        body.appendChild(h);
+      }
+      var tbl = document.createElement("table");
+      tbl.className = "dg-ms-detail-kv mb-3";
+      (blk.rows || []).forEach(function (row) {
+        var tr = document.createElement("tr");
+        var th = document.createElement("th");
+        th.textContent = row.label || "";
+        var td = document.createElement("td");
+        td.style.whiteSpace = "pre-wrap";
+        td.style.wordBreak = "break-word";
+        appendMsTextWithAutoLinks(td, row.value == null ? "" : String(row.value));
+        tr.appendChild(th);
+        tr.appendChild(td);
+        tbl.appendChild(tr);
+      });
+      body.appendChild(tbl);
+    });
+  }
+  function openMsDetailModal(uuid, code, nameText, typeMs) {
+    var u = String(uuid || "").trim();
+    var ov = document.getElementById("dg-ms-detail-overlay");
+    var titleEl = document.getElementById("dg-ms-detail-title");
+    var body = document.getElementById("dg-ms-detail-body");
+    var openMs = document.getElementById("dg-ms-detail-open-ms");
+    if (!ov || !titleEl || !body) return;
+    if (!u) return;
+    titleEl.textContent = nameText || code || "Товар МойСклад";
+    body.innerHTML = '<p class="text-muted mb-0">Загрузка…</p>';
+    if (openMs) {
+      openMs.classList.add("d-none");
+      openMs.href = "#";
+    }
+    ov.style.display = "flex";
+    ov.setAttribute("aria-hidden", "false");
+    var q =
+      "/api/ms/detail/" + encodeURIComponent(u) + "?kind=" + encodeURIComponent(msKindQueryParam(typeMs));
+    fetch(q, { credentials: "same-origin" })
+      .then(function (r) {
+        return r.json().then(function (j) {
+          return { ok: r.ok, st: r.status, j: j };
+        });
+      })
+      .then(function (x) {
+        if (!x.ok) {
+          body.innerHTML =
+            '<p class="text-danger mb-0">' +
+            String(x.j && x.j.error ? x.j.error : "Ошибка " + x.st) +
+            "</p>";
+          return;
+        }
+        var j = x.j || {};
+        if (openMs) {
+          var hrefMs = j.webHref || msOpenInWebHref(u, typeMs);
+          if (hrefMs) {
+            openMs.href = hrefMs;
+            openMs.classList.remove("d-none");
+          }
+        }
+        renderMsDetailBlocks(j.blocks);
+      })
+      .catch(function () {
+        body.innerHTML = '<p class="text-danger mb-0">Сеть недоступна</p>';
+      });
+  }
+  function bindMsDetailModal() {
+    var ov = document.getElementById("dg-ms-detail-overlay");
+    var closeBtn = document.getElementById("dg-ms-detail-close");
+    var panel = ov ? ov.querySelector(".dg-ms-detail-panel") : null;
+    if (closeBtn) closeBtn.addEventListener("click", closeMsDetailModal);
+    if (ov) {
+      ov.addEventListener("click", function (e) {
+        if (e.target === ov) closeMsDetailModal();
+      });
+    }
+    if (panel) {
+      panel.addEventListener("click", function (e) {
+        e.stopPropagation();
+      });
+    }
+    document.addEventListener("keydown", function (e) {
+      if (e.key !== "Escape") return;
+      if (ov && ov.style.display !== "none") closeMsDetailModal();
+    });
+  }
+
+  function makePresenceBadges(row) {
+    var wrap = document.createElement("div");
+    wrap.className = "dg-np-presence";
+    var p = row.presence || {};
+    var rowCatalog = [
+      {
+        key: "my",
+        label: "Мои",
+        on: !!p.my_products,
+        title: p.my_products
+          ? "Есть в «Мои товары» (импорт из CMS магазинов)" + (p.my_sku ? ": " + p.my_sku : "")
+          : "Нет в «Мои товары» — появится после импорта CMS (~20:40)",
+      },
+      {
+        key: "ms",
+        label: "МС",
+        on: !!p.ms,
+        title: p.ms
+          ? "Есть в МойСклад" +
+            (p.ms_code ? " (код " + p.ms_code + ")" : "") +
+            " — клик: карточка товара"
+          : "Нет в выгрузке МойСклад (ms_export)",
+        msUuid: p.ms_uuid || row.ms_product_uuid || "",
+        msCode: p.ms_code || row.product_code || "",
+        msName: row.title || "",
+      },
+    ];
+    var rowMarkets = [
+      {
+        key: "ozon",
+        label: "Ozon",
+        on: !!(p.ozon || row.placement_ozon),
+        url: p.ozon_url || row.placement_ozon_url || "",
+        title: "Ozon: " + (p.ozon || row.placement_ozon ? "есть в выгрузке МП" : "нет в выгрузке"),
+      },
+      {
+        key: "wb",
+        label: "WB",
+        on: !!(p.wb || row.placement_wb),
+        url: p.wb_url || row.placement_wb_url || "",
+        title: "Wildberries: " + (p.wb || row.placement_wb ? "есть в выгрузке МП" : "нет в выгрузке"),
+      },
+      {
+        key: "ym",
+        label: "ЯМ",
+        on: !!(p.ym || row.placement_ym),
+        url: p.ym_url || row.placement_ym_url || "",
+        title: "Я.Маркет: " + (p.ym || row.placement_ym ? "есть в выгрузке МП" : "нет в выгрузке"),
+      },
+    ];
+
+    function appendBadgeRow(items) {
+      var line = document.createElement("div");
+      line.className = "dg-np-presence-row";
+      items.forEach(function (b) {
+        var cls = "badge dg-np-presence-badge " + (b.on ? "dg-np-presence-on" : "dg-np-presence-off");
+        var node;
+        if (b.key === "ms" && b.on && b.msUuid) {
+          node = document.createElement("button");
+          node.type = "button";
+          node.className = cls;
+          node.setAttribute("data-dg-no-activity", "1");
+          node.setAttribute("data-dg-notify-start", "Открываем карточку МС…");
+          node.addEventListener("click", function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            openMsDetailModal(b.msUuid, b.msCode, b.msName, "");
+          });
+        } else if (b.on && b.url) {
+          node = document.createElement("a");
+          node.className = cls + " text-decoration-none";
+          node.href = b.url;
+          node.target = "_blank";
+          node.rel = "noopener noreferrer";
+          node.setAttribute("data-dg-no-activity", "1");
+        } else {
+          node = document.createElement("span");
+          node.className = cls;
+        }
+        node.textContent = b.label;
+        node.title = b.title;
+        line.appendChild(node);
+      });
+      wrap.appendChild(line);
+    }
+
+    var almUrl = String(row.almamed_url || (row.presence && row.presence.my_url) || "").trim();
+    rowCatalog.push({
+      key: "alm",
+      label: "АЛЬ",
+      on: !!almUrl,
+      url: almUrl,
+      title: almUrl ? "Открыть на Альмамед" : "Нет ссылки на Альмамед",
+    });
+
+    appendBadgeRow(rowCatalog);
+    appendBadgeRow(rowMarkets);
+    return wrap;
+  }
+
+  /** Отдельная колонка «Связь»: Мои / МС / Ozon / WB / ЯМ. */
+  function makeLinksCell(row) {
+    var td = document.createElement("td");
+    td.className = "dg-np-cell dg-np-links-cell";
+    td.appendChild(makePresenceBadges(row));
     return td;
   }
 
@@ -251,10 +779,11 @@
       row.id +
       ")";
     wrap.appendChild(span);
+
     var logBtn = document.createElement("button");
     logBtn.type = "button";
     logBtn.className = "btn btn-outline-secondary btn-sm dg-np-log-btn";
-    logBtn.textContent = "Лог";
+    logBtn.textContent = "лог";
     logBtn.title = "Журнал изменений строки";
     logBtn.setAttribute("data-dg-np-log-id", String(row.id));
     logBtn.setAttribute(
@@ -263,41 +792,36 @@
     );
     logBtn.setAttribute("data-dg-notify-start", "Открываем журнал…");
     wrap.appendChild(logBtn);
-    td.appendChild(wrap);
 
     var linkedChannel = null;
     var linkedLabel = "";
+    var focusNum = null;
     if (row.channel === "marketplaces" && row.source_almamed_id) {
       linkedChannel = "almamed";
-      var almNum =
-        row.source_almamed_channel_num != null ? row.source_almamed_channel_num : row.source_almamed_id;
-      linkedLabel = "← Альм. #" + almNum;
+      focusNum = row.source_almamed_channel_num != null ? row.source_almamed_channel_num : null;
+      linkedLabel =
+        "Альм #" +
+        (row.source_almamed_channel_num != null ? row.source_almamed_channel_num : row.source_almamed_id);
     } else if (row.channel === "almamed" && row.markets_product_id) {
       linkedChannel = "marketplaces";
-      var mkNum = row.markets_channel_num != null ? row.markets_channel_num : row.markets_product_id;
-      linkedLabel = "→ Марк. #" + mkNum;
+      focusNum = row.markets_channel_num != null ? row.markets_channel_num : null;
+      linkedLabel =
+        "Марк #" + (row.markets_channel_num != null ? row.markets_channel_num : row.markets_product_id);
     }
     if (linkedChannel && linkedLabel) {
-      var focusNum =
-        linkedChannel === "almamed"
-          ? row.source_almamed_channel_num != null
-            ? row.source_almamed_channel_num
-            : null
-          : row.markets_channel_num != null
-            ? row.markets_channel_num
-            : null;
       var link = document.createElement("button");
       link.type = "button";
       link.className = "btn btn-link btn-sm p-0 dg-np-id-crosslink";
       link.textContent = linkedLabel;
-      link.title =
-        "Открыть только этот товар на другой вкладке (с комплектами, если есть)";
+      link.title = "Открыть связанную строку на другой вкладке";
       link.setAttribute("data-dg-no-activity", "1");
       link.addEventListener("click", function () {
         setChannel(linkedChannel, { focusChannelNum: focusNum });
       });
-      td.appendChild(link);
+      wrap.appendChild(link);
     }
+
+    td.appendChild(wrap);
     return td;
   }
 
@@ -355,6 +879,10 @@
     var sel = el("dg-np-f-status");
     if (!sel) return;
     var cur = sel.value || state.pending.status || state.status || "";
+    if (sel.options.length) {
+      sel.options[0].textContent = "Все (кроме удалённых)";
+      sel.options[0].value = "";
+    }
     while (sel.options.length > 1) sel.remove(1);
     getStatusFilterOpts().forEach(function (p) {
       var o = document.createElement("option");
@@ -388,7 +916,8 @@
         hint.innerHTML =
           "Статус <b>Новый</b> → автоматически <b>Не добавлен</b>, когда заполнены обязательные поля " +
           "(код, артикул, название, штрихкод, цена, длина/ширина/высота/вес, НДС, ссылка на РУ, приоритет; пустые подсвечены). " +
-          "После появления товара в МС (по артикулу) подтягиваются код МС и габариты из измерений; зелёные бейджи в «Размещении» — ссылки на карточку МП. " +
+          "После появления товара в МС (по артикулу) подтягиваются код МС, штрихкод, НДС и ссылка на РУ; " +
+          "длина/ширина/высота/вес заполняют менеджеры вручную. Зелёные бейджи в «Связи» — ссылки на карточку МП. " +
           "Размещение на всех МП (Ozon / WB / Я.М) → <b>Добавлен</b>. Комментарий → <b>На доработке</b>. " +
           "«Не сотрудничаем» и «В составе комплекта» — ручные статусы. " +
           "«Обновить очередь маркетов» подтягивает из Альмамед («Добавлен»), МС и снапшотов. " +
@@ -439,8 +968,11 @@
     commitFilters();
   }
 
+  /** Хвост всех PATCH — при смене вкладки load() ждёт его (иначе вспышка старого ответственного). */
+  var almamedPatchTail = Promise.resolve();
+  var loadSeq = 0;
   function patchRow(id, payload) {
-    return fetch("/api/exports/new-products/" + id, {
+    var p = fetch("/api/exports/new-products/" + id, {
       method: "PATCH",
       credentials: "same-origin",
       headers: authHeaders(true),
@@ -451,6 +983,12 @@
         return j;
       });
     });
+    almamedPatchTail = almamedPatchTail
+      .catch(function () {})
+      .then(function () {
+        return p;
+      });
+    return p;
   }
 
   /** Очередь PATCH по id — галочки «Маркеты»+«Комплект» не улетают параллельно. */
@@ -467,6 +1005,18 @@
       });
     patchQueues[key] = next;
     return next;
+  }
+  function afterAlmamedMarketsSync(j) {
+    var ms = j && j.markets_sync;
+    if (!ms || ms.error || ms.reason === "no_code") return;
+    if (ms.updated || ms.created) {
+      if (window.DatagonNotify && window.DatagonNotify.toast) {
+        window.DatagonNotify.toast({
+          type: "success",
+          message: ms.created ? "Синхронизировано с маркетами (новая строка)" : "Синхронизировано с маркетами",
+        });
+      }
+    }
   }
 
   function missingKeys(row) {
@@ -512,7 +1062,11 @@
 
   function applyPatched(row, j) {
     Object.assign(row, j.data || {});
-    // всегда перерисовываем: снять/поставить «не заполнено» и обновить статус
+    // Если уже ушли на другую вкладку / другой load — не перерисовываем чужой список по старой ссылке.
+    var stillVisible = (state.rows || []).some(function (r) {
+      return r && Number(r.id) === Number(row.id);
+    });
+    if (!stillVisible) return row;
     renderTable();
     if (row.missing_required && row.missing_required.length) {
       notifyMissing(row);
@@ -547,58 +1101,17 @@
     var thead = el("dg-np-thead");
     thead.replaceChildren();
     var tr = document.createElement("tr");
-    var cols;
-    if (state.channel === "marketplaces") {
-      cols = [
-        { key: "id", label: "ID", sort: true },
-        { key: "product_manager_name", label: "Менеджер товара", sort: true },
-        { key: "created_at", label: "Дата добавления", sort: true },
-        { key: "priority", label: "Приоритет", sort: true },
-        { key: "responsible_name", label: "Ответственный", sort: true },
-        { key: "product_code", label: "Код", sort: true },
-        { key: "article", label: "Артикул", sort: true },
-        { key: "title", label: "Название для маркета", sort: true },
-        { key: "barcode", label: "Штрихкод", sort: false },
-        { key: "price_markets", label: "Цена на маркеты", sort: true },
-        { key: "status", label: "Статус", sort: true },
-        { key: "placement", label: "Размещение", sort: false },
-        { key: "comment", label: "Комментарий", sort: false },
-        { key: "infographic", label: "Инфографика", sort: true },
-        { key: "photo", label: "Фото", sort: true },
-        { key: "placement_date", label: "Дата размещения", sort: true },
-        { key: "length_cm", label: "Длина, см", sort: false },
-        { key: "width_cm", label: "Ширина, см", sort: false },
-        { key: "height_cm", label: "Высота, см", sort: false },
-        { key: "weight_kg", label: "Вес, кг", sort: false },
-        { key: "vat", label: "НДС", sort: false },
-        { key: "ru_url", label: "Ссылка на РУ", sort: false },
-        { key: "_actions", label: "", sort: false },
-      ];
-    } else {
-      cols = [
-        { key: "id", label: "ID", sort: true },
-        { key: "product_manager_name", label: "Менеджер товара", sort: true },
-        { key: "created_at", label: "Дата в таблице", sort: true },
-        { key: "responsible_name", label: "Ответственный", sort: true },
-        { key: "sell_on_markets", label: "Маркеты", sort: false },
-        { key: "has_kits", label: "Комплект", sort: false },
-        { key: "article", label: "Артикул", sort: true },
-        { key: "title", label: "Название", sort: true },
-        { key: "price_almamed", label: "Цена Альмамед", sort: true },
-        { key: "supplier_url", label: "Ссылка поставщика", sort: false },
-        { key: "brand", label: "Бренд", sort: true },
-        { key: "priority", label: "Приоритет", sort: true },
-        { key: "status", label: "Статус", sort: true },
-        { key: "comment", label: "Комментарий", sort: false },
-        { key: "almamed_added_at", label: "Дата на Альмамед", sort: true },
-        { key: "almamed_url", label: "Ссылка Альмамед", sort: false },
-        { key: "_actions", label: "", sort: false },
-      ];
-    }
-    cols.forEach(function (c) {
-      appendSortableTh(tr, c);
+    visibleColsArray().forEach(function (key) {
+      var meta = getColMeta(key);
+      if (!meta) return;
+      appendSortableTh(tr, {
+        key: meta.key,
+        label: meta.label,
+        sort: !!meta.sort,
+      });
     });
     thead.appendChild(tr);
+    applyColumnWidths();
   }
 
   /** Поле URL + кнопка открыть справа (не под инпутом). */
@@ -687,6 +1200,7 @@
       patchRow(row.id, { priority: selPrio.value })
         .then(function (j) {
           applyPatched(row, j);
+          if (state.channel === "almamed") afterAlmamedMarketsSync(j);
           renderTable();
         })
         .catch(function (e) {
@@ -695,7 +1209,7 @@
         });
     });
     tdPrio.appendChild(selPrio);
-    return tdPrio;
+    return attachFieldLog(tdPrio, row, "priority");
   }
 
   function makeStatusSelect(row) {
@@ -737,49 +1251,7 @@
         });
     });
     tdSt.appendChild(selSt);
-    return tdSt;
-  }
-
-  function makeEnumSelect(row, field, options, emptyLabel) {
-    var td = document.createElement("td");
-    td.className = "dg-np-cell";
-    var sel = document.createElement("select");
-    sel.className = "form-select form-select-sm";
-    var o0 = document.createElement("option");
-    o0.value = "";
-    o0.textContent = emptyLabel || "—";
-    sel.appendChild(o0);
-    var cur = String(row[field] || "");
-    (options || []).forEach(function (p) {
-      var o = document.createElement("option");
-      o.value = p.key;
-      o.textContent = p.label;
-      if (cur === p.key) o.selected = true;
-      sel.appendChild(o);
-    });
-    if (cur && !options.some(function (p) { return p.key === cur; })) {
-      var oX = document.createElement("option");
-      oX.value = cur;
-      oX.textContent = cur;
-      oX.selected = true;
-      sel.appendChild(oX);
-    }
-    sel.addEventListener("change", function () {
-      var payload = {};
-      payload[field] = sel.value || null;
-      patchRow(row.id, payload)
-        .then(function (j) {
-          applyPatched(row, j);
-        })
-        .catch(function (e) {
-          if (window.DatagonNotify && window.DatagonNotify.toast) {
-            window.DatagonNotify.toast({ type: "danger", message: e.message || "Ошибка" });
-          }
-          load();
-        });
-    });
-    td.appendChild(sel);
-    return td;
+    return attachFieldLog(tdSt, row, "status");
   }
 
   function makeCommentCell(row) {
@@ -791,7 +1263,7 @@
     ta.value = row.comment || "";
     bindTextSave(ta, row, "comment", 65535);
     tdCom.appendChild(ta);
-    return tdCom;
+    return attachFieldLog(tdCom, row, "comment");
   }
 
   function rowDisplayId(row) {
@@ -1052,37 +1524,7 @@
     inp.setAttribute("data-dg-no-activity", "1");
     bindNumSave(inp, row, field);
     td.appendChild(inp);
-    return td;
-  }
-
-  function makePlacementCell(row) {
-    var td = document.createElement("td");
-    td.className = "dg-np-cell text-nowrap";
-    [
-      { label: "Ozon", on: row.placement_ozon, url: row.placement_ozon_url },
-      { label: "WB", on: row.placement_wb, url: row.placement_wb_url },
-      { label: "ЯМ", on: row.placement_ym, url: row.placement_ym_url },
-    ].forEach(function (b) {
-      var url = String(b.url || "").trim();
-      if (b.on && url) {
-        var a = document.createElement("a");
-        a.className = "badge me-1 bg-success text-decoration-none";
-        a.href = url;
-        a.target = "_blank";
-        a.rel = "noopener noreferrer";
-        a.textContent = b.label;
-        a.title = "Открыть карточку на " + b.label;
-        a.setAttribute("data-dg-no-activity", "1");
-        td.appendChild(a);
-      } else {
-        var span = document.createElement("span");
-        span.className = "badge me-1 " + (b.on ? "bg-success" : "bg-secondary");
-        span.textContent = b.label;
-        if (b.on) span.title = "Есть в выгрузке МП, ссылка ещё не подтянута";
-        td.appendChild(span);
-      }
-    });
-    return td;
+    return attachFieldLog(td, row, field);
   }
 
   function renderAlmamedRow(row) {
@@ -1090,15 +1532,17 @@
     var missMap = missingKeys(row);
 
     tr.appendChild(makeIdCell(row));
+    tr.appendChild(makeLinksCell(row));
 
     var tdMgr = document.createElement("td");
     tdMgr.className = "dg-np-cell";
     var selMgr = userSelect(row.product_manager_user_id, true, state.managers);
       selMgr.addEventListener("change", function () {
         var v = selMgr.value ? parseInt(selMgr.value, 10) : null;
-        patchRow(row.id, { product_manager_user_id: v })
+        patchRowQueued(row.id, { product_manager_user_id: v })
           .then(function (j) {
             applyPatched(row, j);
+            afterAlmamedMarketsSync(j);
           })
           .catch(function (e) {
             alert(e.message || "Ошибка");
@@ -1106,6 +1550,7 @@
           });
       });
       tdMgr.appendChild(selMgr);
+      attachFieldLog(tdMgr, row, "product_manager_user_id");
       tr.appendChild(tdMgr);
 
       tr.appendChild(makeCopyCell(fmtDt(row.created_at)));
@@ -1115,9 +1560,10 @@
       var selResp = userSelect(row.responsible_user_id, true, state.responsibles);
     selResp.addEventListener("change", function () {
       var v = selResp.value ? parseInt(selResp.value, 10) : null;
-      patchRow(row.id, { responsible_user_id: v })
+      patchRowQueued(row.id, { responsible_user_id: v })
         .then(function (j) {
           applyPatched(row, j);
+          afterAlmamedMarketsSync(j);
         })
         .catch(function (e) {
           alert(e.message || "Ошибка");
@@ -1125,6 +1571,7 @@
         });
     });
     tdResp.appendChild(selResp);
+    attachFieldLog(tdResp, row, "responsible_user_id");
     tr.appendChild(tdResp);
 
     var tdSell = document.createElement("td");
@@ -1178,6 +1625,7 @@
         });
     });
     tdSell.appendChild(chkSell);
+    attachFieldLog(tdSell, row, "sell_on_markets");
     tr.appendChild(tdSell);
 
     var tdKitsFlag = document.createElement("td");
@@ -1224,6 +1672,7 @@
         });
     });
     tdKitsFlag.appendChild(chkKits);
+    attachFieldLog(tdKitsFlag, row, "has_kits");
     tr.appendChild(tdKitsFlag);
 
     var tdArt = document.createElement("td");
@@ -1236,6 +1685,7 @@
     inpArt.placeholder = "или стандартный SKU";
     bindTextSave(inpArt, row, "article", 128);
     tdArt.appendChild(inpArt);
+    attachFieldLog(tdArt, row, "article");
     tr.appendChild(tdArt);
 
     var tdTitle = document.createElement("td");
@@ -1249,6 +1699,7 @@
     inpTitle.title = "Макс. 128 символов";
     bindTextSave(inpTitle, row, "title", 128);
     tdTitle.appendChild(inpTitle);
+    attachFieldLog(tdTitle, row, "title");
     tr.appendChild(tdTitle);
 
     var tdPrice = document.createElement("td");
@@ -1260,6 +1711,7 @@
     inpPrice.value = row.price_almamed != null ? fmtMoney(row.price_almamed) : "";
     bindPriceSave(inpPrice, row, "price_almamed");
     tdPrice.appendChild(inpPrice);
+    attachFieldLog(tdPrice, row, "price_almamed");
     tr.appendChild(tdPrice);
 
     var tdUrl = document.createElement("td");
@@ -1272,6 +1724,7 @@
     inpUrl.placeholder = "https://…";
     bindTextSave(inpUrl, row, "supplier_url", 2048);
     appendUrlField(tdUrl, inpUrl, row.supplier_url || "");
+    attachFieldLog(tdUrl, row, "supplier_url");
     tr.appendChild(tdUrl);
 
     var tdBrand = document.createElement("td");
@@ -1282,6 +1735,7 @@
     inpBrand.value = row.brand || "";
     bindTextSave(inpBrand, row, "brand", 255);
     tdBrand.appendChild(inpBrand);
+    attachFieldLog(tdBrand, row, "brand");
     tr.appendChild(tdBrand);
 
     tr.appendChild(makePrioritySelect(row, missMap));
@@ -1289,17 +1743,8 @@
     tr.appendChild(makeCommentCell(row));
     tr.appendChild(makeCopyCell(fmtDt(row.almamed_added_at)));
 
-    var tdAlUrl = document.createElement("td");
-    tdAlUrl.className = "dg-np-cell";
-    var inpAl = document.createElement("input");
-    inpAl.type = "url";
-    inpAl.className = "form-control form-control-sm";
-    inpAl.value = row.almamed_url || "";
-    bindTextSave(inpAl, row, "almamed_url", 2048);
-    tdAlUrl.appendChild(inpAl);
-    tr.appendChild(tdAlUrl);
-
     tr.appendChild(makeDeleteActions(row));
+    pruneHiddenCells(tr);
     return tr;
   }
 
@@ -1308,6 +1753,7 @@
     var missMap = missingKeys(row);
 
     tr.appendChild(makeIdCell(row));
+    tr.appendChild(makeLinksCell(row));
 
     var tdMgr = document.createElement("td");
     tdMgr.className = "dg-np-cell";
@@ -1324,6 +1770,7 @@
         });
     });
     tdMgr.appendChild(selMgr);
+    attachFieldLog(tdMgr, row, "product_manager_user_id");
     tr.appendChild(tdMgr);
 
     tr.appendChild(makeCopyCell(fmtDt(row.created_at)));
@@ -1344,29 +1791,25 @@
         });
     });
     tdResp.appendChild(selResp);
+    attachFieldLog(tdResp, row, "responsible_user_id");
     tr.appendChild(tdResp);
 
-    var tdCode = document.createElement("td");
-    tdCode.className = "dg-np-cell";
-    markRequired(tdCode, "product_code", missMap);
-    var inpCode = document.createElement("input");
-    inpCode.type = "text";
-    inpCode.className = "form-control form-control-sm";
-    inpCode.value = row.product_code || "";
-    bindTextSave(inpCode, row, "product_code", 128);
-    tdCode.appendChild(inpCode);
-    tr.appendChild(tdCode);
-
-    var tdArt = document.createElement("td");
-    tdArt.className = "dg-np-cell";
-    markRequired(tdArt, "article", missMap);
-    var inpArt = document.createElement("input");
-    inpArt.type = "text";
-    inpArt.className = "form-control form-control-sm";
-    inpArt.value = row.article || "";
-    bindTextSave(inpArt, row, "article", 128);
-    tdArt.appendChild(inpArt);
-    tr.appendChild(tdArt);
+    tr.appendChild(
+      makeCopyCell(row.product_code, {
+        missKey: "product_code",
+        missMap: missMap,
+        row: row,
+        field: "product_code",
+      })
+    );
+    tr.appendChild(
+      makeCopyCell(row.article, {
+        missKey: "article",
+        missMap: missMap,
+        row: row,
+        field: "article",
+      })
+    );
 
     var tdTitle = document.createElement("td");
     tdTitle.className = "dg-np-cell";
@@ -1378,18 +1821,17 @@
     inpTitle.value = row.title || "";
     bindTextSave(inpTitle, row, "title", 128);
     tdTitle.appendChild(inpTitle);
+    attachFieldLog(tdTitle, row, "title");
     tr.appendChild(tdTitle);
 
-    var tdBarcode = document.createElement("td");
-    tdBarcode.className = "dg-np-cell";
-    markRequired(tdBarcode, "barcode", missMap);
-    var inpBarcode = document.createElement("input");
-    inpBarcode.type = "text";
-    inpBarcode.className = "form-control form-control-sm";
-    inpBarcode.value = row.barcode || "";
-    bindTextSave(inpBarcode, row, "barcode", 512);
-    tdBarcode.appendChild(inpBarcode);
-    tr.appendChild(tdBarcode);
+    tr.appendChild(
+      makeCopyCell(row.barcode, {
+        missKey: "barcode",
+        missMap: missMap,
+        row: row,
+        field: "barcode",
+      })
+    );
 
     var tdPrice = document.createElement("td");
     tdPrice.className = "dg-np-cell";
@@ -1400,13 +1842,11 @@
     inpPrice.value = row.price_markets != null ? fmtMoney(row.price_markets) : "";
     bindPriceSave(inpPrice, row, "price_markets");
     tdPrice.appendChild(inpPrice);
+    attachFieldLog(tdPrice, row, "price_markets");
     tr.appendChild(tdPrice);
 
     tr.appendChild(makeStatusSelect(row));
-    tr.appendChild(makePlacementCell(row));
     tr.appendChild(makeCommentCell(row));
-    tr.appendChild(makeEnumSelect(row, "infographic", INFOGRAPHIC_OPTS, "—"));
-    tr.appendChild(makeEnumSelect(row, "photo", PHOTO_OPTS, "—"));
     tr.appendChild(makeCopyCell(fmtDt(row.placement_date)));
 
     tr.appendChild(makeDimCell(row, "length_cm", missMap, "см"));
@@ -1414,30 +1854,27 @@
     tr.appendChild(makeDimCell(row, "height_cm", missMap, "см"));
     tr.appendChild(makeDimCell(row, "weight_kg", missMap, "кг"));
 
-    var tdVat = document.createElement("td");
-    tdVat.className = "dg-np-cell";
-    markRequired(tdVat, "vat", missMap);
-    var inpVat = document.createElement("input");
-    inpVat.type = "text";
-    inpVat.className = "form-control form-control-sm";
-    inpVat.value = row.vat || "";
-    bindTextSave(inpVat, row, "vat", 64);
-    tdVat.appendChild(inpVat);
-    tr.appendChild(tdVat);
-
-    var tdRu = document.createElement("td");
-    tdRu.className = "dg-np-cell";
-    markRequired(tdRu, "ru_url", missMap);
-    var inpRu = document.createElement("input");
-    inpRu.type = "url";
-    inpRu.className = "form-control form-control-sm";
-    inpRu.value = row.ru_url || "";
-    inpRu.placeholder = "https://…";
-    bindTextSave(inpRu, row, "ru_url", 2048);
-    appendUrlField(tdRu, inpRu, row.ru_url || "");
-    tr.appendChild(tdRu);
+    tr.appendChild(
+      makeCopyCell(row.vat, {
+        missKey: "vat",
+        missMap: missMap,
+        row: row,
+        field: "vat",
+      })
+    );
+    tr.appendChild(
+      makeCopyCell(row.ru_url, {
+        missKey: "ru_url",
+        missMap: missMap,
+        row: row,
+        field: "ru_url",
+        href: row.ru_url || "",
+        wrap: true,
+      })
+    );
 
     tr.appendChild(makeDeleteActions(row, { addKit: !!row.has_kits }));
+    pruneHiddenCells(tr);
     return tr;
   }
 
@@ -1527,6 +1964,7 @@
     tdId.className = "dg-np-cell dg-np-kit-mark";
     tdId.innerHTML = '<span class="badge bg-light text-primary border">↳ комплект</span>';
     tr.appendChild(tdId);
+    tr.appendChild(mutedCell("—", { title: "Связи — у товара" }));
 
     tr.appendChild(mutedCell(parent.product_manager_name || "—", { title: "Как у товара" }));
     tr.appendChild(mutedCell(fmtDt(parent.created_at), { title: "Как у товара" }));
@@ -1682,6 +2120,7 @@
     });
     tdAct.appendChild(bDel);
     tr.appendChild(tdAct);
+    pruneHiddenCells(tr);
     return tr;
   }
 
@@ -1714,6 +2153,7 @@
     });
     updatePager();
     refreshIncompleteBanner();
+    applyColumnWidths();
   }
 
   function refreshIncompleteBanner() {
@@ -1762,10 +2202,12 @@
   }
 
   function load() {
+    var seq = ++loadSeq;
+    var channelAtStart = state.channel;
     state.loading = true;
     renderTable();
     var p = new URLSearchParams();
-    p.set("channel", state.channel);
+    p.set("channel", channelAtStart);
     p.set("limit", String(state.limit));
     p.set("offset", String(state.offset));
     p.set("sort_by", state.sort_by);
@@ -1787,12 +2229,14 @@
         });
       })
       .then(function (j) {
+        if (seq !== loadSeq || state.channel !== channelAtStart) return;
         state.rows = j.data || [];
         state.total = Number(j.total || 0);
         state.loading = false;
         renderTable();
       })
       .catch(function (e) {
+        if (seq !== loadSeq || state.channel !== channelAtStart) return;
         state.loading = false;
         state.rows = [];
         renderTable();
@@ -2083,38 +2527,208 @@
     });
   }
 
+  function renderColumnControls() {
+    var list = el("dg-np-columns-list");
+    if (!list) return;
+    list.replaceChildren();
+    currentCols().forEach(function (col) {
+      if (col.key === "_actions" && !col.label) {
+        /* actions always locked — still show as «Действия» */
+      }
+      var wrap = document.createElement("label");
+      var cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = state.visibleCols.has(col.key);
+      cb.disabled = !!col.locked;
+      cb.setAttribute("data-col-key", col.key);
+      cb.addEventListener("change", function () {
+        var key = this.getAttribute("data-col-key");
+        var meta = getColMeta(key);
+        if (meta && meta.locked) {
+          this.checked = true;
+          return;
+        }
+        if (this.checked) state.visibleCols.add(key);
+        else if (visibleColsArray().length > 2) state.visibleCols.delete(key);
+        else this.checked = true;
+        saveVisibleCols();
+        renderTable();
+      });
+      var span = document.createElement("span");
+      span.textContent = " " + (col.label || (col.key === "_actions" ? "Действия" : col.key));
+      wrap.appendChild(cb);
+      wrap.appendChild(span);
+      list.appendChild(wrap);
+    });
+  }
+
+  function renderWidthControls() {
+    var list = el("dg-np-widths-list");
+    if (!list) return;
+    list.replaceChildren();
+    currentCols().forEach(function (col) {
+      var current = Number(state.columnWidths[col.key] || 0);
+      if (!Number.isFinite(current) || current <= 0) current = getColDef(col.key);
+      var wrap = document.createElement("label");
+      var span = document.createElement("span");
+      span.textContent = col.label || (col.key === "_actions" ? "Действия" : col.key);
+      span.style.flex = "1 1 auto";
+      span.style.overflow = "hidden";
+      span.style.textOverflow = "ellipsis";
+      span.style.whiteSpace = "nowrap";
+      var input = document.createElement("input");
+      input.type = "number";
+      input.className = "form-control form-control-sm";
+      input.min = String(getColMin(col.key));
+      input.max = "700";
+      input.step = "10";
+      input.value = String(current);
+      input.setAttribute("data-col-key", col.key);
+      input.addEventListener("change", function () {
+        var k = this.getAttribute("data-col-key");
+        var n = parseInt(this.value, 10);
+        if (!Number.isFinite(n)) {
+          this.value = String(state.columnWidths[k] || getColDef(k));
+          return;
+        }
+        n = Math.max(getColMin(k), Math.min(700, n));
+        state.columnWidths[k] = n;
+        saveWidths();
+        applyColumnWidths();
+        this.value = String(n);
+      });
+      wrap.appendChild(span);
+      wrap.appendChild(input);
+      list.appendChild(wrap);
+    });
+  }
+
+  function bindColumnPanels() {
+    var colsToggle = el("dg-np-columns-toggle");
+    var widthsToggle = el("dg-np-widths-toggle");
+    var colsPanel = el("dg-np-columns-panel");
+    var widthsPanel = el("dg-np-widths-panel");
+    var wrap = el("dg-np-toolbox-panels");
+    function syncWrap() {
+      if (!wrap) return;
+      var open =
+        (colsPanel && colsPanel.classList.contains("open")) ||
+        (widthsPanel && widthsPanel.classList.contains("open"));
+      wrap.classList.toggle("d-none", !open);
+    }
+    if (colsToggle && colsPanel) {
+      colsToggle.addEventListener("click", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        colsPanel.classList.toggle("open");
+        if (widthsPanel) widthsPanel.classList.remove("open");
+        if (colsPanel.classList.contains("open")) renderColumnControls();
+        syncWrap();
+      });
+    }
+    if (widthsToggle && widthsPanel) {
+      widthsToggle.addEventListener("click", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        widthsPanel.classList.toggle("open");
+        if (colsPanel) colsPanel.classList.remove("open");
+        if (widthsPanel.classList.contains("open")) renderWidthControls();
+        syncWrap();
+      });
+    }
+    document.addEventListener("click", function (e) {
+      if (!colsPanel && !widthsPanel) return;
+      if (e.target.closest("#dg-np-columns-panel")) return;
+      if (e.target.closest("#dg-np-columns-toggle")) return;
+      if (e.target.closest("#dg-np-widths-panel")) return;
+      if (e.target.closest("#dg-np-widths-toggle")) return;
+      if (colsPanel) colsPanel.classList.remove("open");
+      if (widthsPanel) widthsPanel.classList.remove("open");
+      syncWrap();
+    });
+
+    var allBtn = el("dg-np-columns-all");
+    var noneBtn = el("dg-np-columns-none");
+    var defBtn = el("dg-np-columns-default");
+    var widthsDef = el("dg-np-widths-default");
+    if (allBtn)
+      allBtn.addEventListener("click", function () {
+        state.visibleCols = new Set(defaultVisibleKeys());
+        saveVisibleCols();
+        renderColumnControls();
+        renderTable();
+      });
+    if (noneBtn)
+      noneBtn.addEventListener("click", function () {
+        var next = new Set();
+        currentCols().forEach(function (c) {
+          if (c.locked) next.add(c.key);
+        });
+        if (!next.has("id")) next.add("id");
+        if (!next.has("title") && getColMeta("title")) next.add("title");
+        else if (!next.has("article") && getColMeta("article")) next.add("article");
+        state.visibleCols = next;
+        saveVisibleCols();
+        renderColumnControls();
+        renderTable();
+      });
+    if (defBtn)
+      defBtn.addEventListener("click", function () {
+        state.visibleCols = new Set(defaultVisibleKeys());
+        saveVisibleCols();
+        renderColumnControls();
+        renderTable();
+      });
+    if (widthsDef)
+      widthsDef.addEventListener("click", function () {
+        state.columnWidths = {};
+        saveWidths();
+        applyColumnWidths();
+        renderWidthControls();
+      });
+  }
+
   function setChannel(ch, opts) {
     var o = opts || {};
     state.channel = ch === "marketplaces" ? "marketplaces" : "almamed";
     try {
       localStorage.setItem(CHANNEL_KEY, state.channel);
     } catch (_) {}
+    loadVisibleColsForChannel();
+    loadWidthsForChannel();
     state.offset = 0;
+    // Не оставляем чужие/устаревшие строки на экране на время ожидания PATCH + load.
+    state.rows = [];
+    state.loading = true;
     syncTabUi();
+    renderTable();
 
-    if (o.focusChannelNum != null && Number.isFinite(Number(o.focusChannelNum))) {
-      var q = "id:" + Number(o.focusChannelNum);
-      if (el("dg-np-search")) el("dg-np-search").value = q;
-      if (el("dg-np-f-status")) el("dg-np-f-status").value = "";
-      if (el("dg-np-f-priority")) el("dg-np-f-priority").value = "";
-      if (el("dg-np-f-brand")) el("dg-np-f-brand").value = "";
-      if (el("dg-np-f-responsible")) el("dg-np-f-responsible").value = "";
-      if (el("dg-np-f-manager")) el("dg-np-f-manager").value = "";
-      // развернуть фильтры, чтобы было видно активный поиск
-      try {
-        var filtersBody = el("dg-np-filters-body");
-        var filtersToggle = el("dg-np-filters-toggle");
-        if (filtersBody && filtersBody.style.display === "none") {
-          filtersBody.style.display = "";
-          if (filtersToggle) filtersToggle.textContent = "Свернуть";
-          localStorage.setItem(FILTERS_KEY, "0");
-        }
-      } catch (_) {}
-      commitFilters();
-      return;
+    function finish() {
+      if (o.focusChannelNum != null && Number.isFinite(Number(o.focusChannelNum))) {
+        var q = "id:" + Number(o.focusChannelNum);
+        if (el("dg-np-search")) el("dg-np-search").value = q;
+        if (el("dg-np-f-status")) el("dg-np-f-status").value = "";
+        if (el("dg-np-f-priority")) el("dg-np-f-priority").value = "";
+        if (el("dg-np-f-brand")) el("dg-np-f-brand").value = "";
+        if (el("dg-np-f-responsible")) el("dg-np-f-responsible").value = "";
+        if (el("dg-np-f-manager")) el("dg-np-f-manager").value = "";
+        try {
+          var filtersBody = el("dg-np-filters-body");
+          var filtersToggle = el("dg-np-filters-toggle");
+          if (filtersBody && filtersBody.style.display === "none") {
+            filtersBody.style.display = "";
+            if (filtersToggle) filtersToggle.textContent = "Свернуть";
+            localStorage.setItem(FILTERS_KEY, "0");
+          }
+        } catch (_) {}
+        commitFilters();
+        return;
+      }
+      load();
     }
 
-    load();
+    // Ждём незавершённые PATCH на любой вкладке — иначе при быстром «туда-сюда» вспыхивает старое значение.
+    almamedPatchTail.catch(function () {}).then(finish);
   }
 
   function escapeHtml(s) {
@@ -2125,7 +2739,7 @@
       .replace(/"/g, "&quot;");
   }
 
-  var logState = { productId: null, label: "", limit: 100, offset: 0, total: 0 };
+  var logState = { productId: null, label: "", field: "", fieldLabel: "", limit: 100, offset: 0, total: 0 };
 
   function npLogActionLabel(action) {
     var map = {
@@ -2139,6 +2753,16 @@
     return map[action] || action || "set";
   }
 
+  function npLogWhoLabel(r) {
+    var name = String((r && r.changed_by_name) || "").trim();
+    var src = String((r && r.source) || "").trim();
+    if (src === "ms_enrich") return name ? name + " · МС" : "система · МС";
+    if (src === "import_match") return name ? name + " · импорт" : "система · импорт";
+    if (name) return name;
+    if (src && src !== "ui") return "система · " + src;
+    return "—";
+  }
+
   function closeNpLog() {
     var overlay = el("dg-np-log-overlay");
     if (!overlay) return;
@@ -2146,15 +2770,25 @@
     overlay.setAttribute("aria-hidden", "true");
   }
 
-  function openNpLog(productId, label) {
+  function openNpLog(productId, label, field, fieldLabel) {
     logState.productId = productId;
     logState.label = label || "#" + productId;
+    logState.field = field ? String(field) : "";
+    logState.fieldLabel = fieldLabel ? String(fieldLabel) : FIELD_LOG_LABELS_UI[logState.field] || logState.field;
     logState.offset = 0;
     var overlay = el("dg-np-log-overlay");
     var titleEl = el("dg-np-log-title");
     var subEl = el("dg-np-log-subtitle");
-    if (titleEl) titleEl.textContent = "Журнал изменений #" + productId;
-    if (subEl) subEl.textContent = logState.label;
+    if (titleEl) {
+      titleEl.textContent = logState.field
+        ? "Журнал: " + (logState.fieldLabel || logState.field)
+        : "Журнал изменений #" + productId;
+    }
+    if (subEl) {
+      subEl.textContent = logState.field
+        ? "#" + productId + " · " + logState.label
+        : logState.label;
+    }
     if (overlay) {
       overlay.style.display = "flex";
       overlay.setAttribute("aria-hidden", "false");
@@ -2194,6 +2828,7 @@
     var qs = new URLSearchParams();
     qs.set("limit", String(logState.limit));
     qs.set("offset", String(logState.offset));
+    if (logState.field) qs.set("field", logState.field);
     fetch("/api/exports/new-products/" + logState.productId + "/log?" + qs.toString(), {
       credentials: "same-origin",
       headers: authHeaders(false),
@@ -2211,19 +2846,28 @@
         var rows = j.rows || [];
         if (!rows.length) {
           body.innerHTML =
-            '<div class="text-muted small text-center py-4">Журнал пуст: по этой строке ещё не было изменений.</div>' +
+            '<div class="text-muted small text-center py-4">' +
+            (logState.field
+              ? "По полю «" +
+                escapeHtml(logState.fieldLabel || logState.field) +
+                "» изменений ещё не было."
+              : "Журнал пуст: по этой строке ещё не было изменений.") +
+            "</div>" +
             renderNpLogPager();
           return;
         }
+        var showFieldCol = !logState.field;
         var html =
           '<div class="table-responsive"><table class="table table-sm mb-0"><thead><tr>' +
-          "<th>Когда</th><th>Кто</th><th>Действие</th><th>Поле</th><th>Было → Стало</th>" +
+          "<th>Когда</th><th>Кто</th><th>Действие</th>" +
+          (showFieldCol ? "<th>Поле</th>" : "") +
+          "<th>Было → Стало</th>" +
           "</tr></thead><tbody>";
         rows.forEach(function (r) {
           var when = r.changed_at
             ? String(r.changed_at).replace("T", " ").replace(/\.\d+Z?$/, "").slice(0, 19)
             : "—";
-          var who = escapeHtml(r.changed_by_name || "—");
+          var who = escapeHtml(npLogWhoLabel(r));
           var field = escapeHtml(r.field_label || r.field || "—");
           if (r.kit_id) field += ' <span class="text-muted">#kit' + r.kit_id + "</span>";
           var oldVal =
@@ -2234,6 +2878,10 @@
             r.new_value == null
               ? '<span class="text-muted">∅</span>'
               : '<span class="dg-np-log-new">' + escapeHtml(r.new_value) + "</span>";
+          var note =
+            r.note && String(r.note).trim()
+              ? '<div class="small text-muted mt-1">' + escapeHtml(r.note) + "</div>"
+              : "";
           html +=
             "<tr>" +
             "<td class=\"text-nowrap small\">" +
@@ -2245,13 +2893,12 @@
             '<td><span class="badge bg-light text-dark border dg-np-log-action">' +
             escapeHtml(npLogActionLabel(r.action)) +
             "</span></td>" +
-            "<td>" +
-            field +
-            "</td>" +
+            (showFieldCol ? "<td>" + field + "</td>" : "") +
             "<td>" +
             oldVal +
             '<span class="dg-np-log-arrow">→</span>' +
             newVal +
+            note +
             "</td>" +
             "</tr>";
         });
@@ -2268,12 +2915,23 @@
 
   function bindNpLogUi() {
     document.addEventListener("click", function (ev) {
+      var fieldBtn = ev.target && ev.target.closest && ev.target.closest(".dg-np-field-log-btn");
+      if (fieldBtn) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        var fid = parseInt(fieldBtn.getAttribute("data-dg-np-log-id") || "", 10);
+        var flabel = fieldBtn.getAttribute("data-dg-np-log-label") || "";
+        var fkey = fieldBtn.getAttribute("data-dg-np-log-field") || "";
+        var fflabel = fieldBtn.getAttribute("data-dg-np-log-field-label") || "";
+        if (Number.isFinite(fid) && fid > 0 && fkey) openNpLog(fid, flabel, fkey, fflabel);
+        return;
+      }
       var btn = ev.target && ev.target.closest && ev.target.closest(".dg-np-log-btn");
       if (btn) {
         ev.preventDefault();
         var id = parseInt(btn.getAttribute("data-dg-np-log-id") || "", 10);
         var label = btn.getAttribute("data-dg-np-log-label") || "";
-        if (Number.isFinite(id) && id > 0) openNpLog(id, label);
+        if (Number.isFinite(id) && id > 0) openNpLog(id, label, "", "");
         return;
       }
       var prev = ev.target && ev.target.closest && ev.target.closest(".dg-np-log-prev");
@@ -2308,11 +2966,15 @@
       var saved = localStorage.getItem(CHANNEL_KEY);
       if (saved === "marketplaces" || saved === "almamed") state.channel = saved;
     } catch (_) {}
+    loadVisibleColsForChannel();
+    loadWidthsForChannel();
     syncTabUi();
     bindCollapse("dg-np-filters-toggle", "dg-np-filters-body", FILTERS_KEY);
     bindCollapse("dg-np-table-toggle", "dg-np-table-body", TABLE_KEY);
+    bindColumnPanels();
     bindNpLogUi();
     bindNpConfirmUi();
+    bindMsDetailModal();
 
     document.querySelectorAll("#dg-np-tabs [data-dg-np-channel]").forEach(function (btn) {
       btn.addEventListener("click", function () {

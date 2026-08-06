@@ -7,7 +7,10 @@
  * Статусы:
  *  - new → not_added автоматически, когда заполнены обязательные поля менеджера;
  *  - in_progress / added / revision — руками контента;
- *  - review — опционально (дата на Альмамед);
+ *  - review — опционально;
+ *  - almamed_added_at («Дата на Альмамед») — при первой связи с «Мои товары»
+ *    (my_products после импорта CMS); также при ручном статусе «Добавлен», если ещё пусто;
+ *    МС (ms_export) дату не ставит;
  *  - transferred/removed — закрытые строки (скрыты из списка по умолчанию).
  */
 
@@ -680,6 +683,9 @@ module.exports = function exportsNewProductsRouterFactory(db, config) {
             const mapped = (rows || []).map(mapRow);
             await markets.attachKitsToMapped(db, mapped);
             await markets.attachCrossChannelLinks(db, mapped);
+            await markets.attachPresenceBadges(db, mapped);
+            await markets.stampAlmamedAddedAtFromPresence(db, mapped);
+            await markets.enrichMarketsRowsFromMs(db, mapped);
             const incomplete = mapped.filter((r) => r.missing_required && r.missing_required.length).length;
 
             res.json({
@@ -758,7 +764,7 @@ module.exports = function exportsNewProductsRouterFactory(db, config) {
             }
 
             let almamedAddedAt = null;
-            if (status === 'review') almamedAddedAt = new Date();
+            if (status === 'added') almamedAddedAt = new Date();
 
             const channelNum = await markets.allocChannelNum(db, channel);
             const [ins] = await db.query(
@@ -983,7 +989,7 @@ module.exports = function exportsNewProductsRouterFactory(db, config) {
                 return res.status(400).json({ error: 'Для статуса «На доработке» нужен комментарий' });
             }
 
-            if (nextStatus === 'review' && cur.status !== 'review' && !cur.almamed_added_at) {
+            if (nextStatus === 'added' && cur.status !== 'added' && !cur.almamed_added_at) {
                 fields.almamed_added_at = new Date();
             }
 
