@@ -1632,10 +1632,32 @@ async function closeStaleAutoSyncRunsOnStartup() {
     }
 }
 
-/** Если запись осталась running дольше суток — вероятно сбой без рестарта; закрываем. */
+/** Если запись осталась running дольше суток — вероятно сбой без рестарта; закрываем.
+ *  Маркетплейсы/Huckster обычно укладываются в минуты — для них порог короче (2 ч). */
 async function closeAncientRunningAutoSyncRuns() {
     try {
         await ensureAutoSyncRunsTable();
+        const [rMp] = await db.query(
+            `UPDATE auto_sync_runs
+             SET status = 'failed',
+                 message = CONCAT(
+                     TRIM(COALESCE(message, '')),
+                     CASE WHEN TRIM(COALESCE(message, '')) = '' THEN '' ELSE ' ' END,
+                     '(авто: running дольше 2 ч без финиша — вероятно зависание синка)'
+                 ),
+                 finished_at = NOW()
+             WHERE status = 'running'
+               AND finished_at IS NULL
+               AND task_type IN (
+                 'marketplaces', 'marketplaces_ozon', 'marketplaces_wb', 'marketplaces_ym',
+                 'huckster', 'medmarket', 'medmarket_fill', 'db_size', 'min_stock_export'
+               )
+               AND started_at < DATE_SUB(NOW(), INTERVAL 2 HOUR)`
+        );
+        const nMp = Number(rMp?.affectedRows || 0);
+        if (nMp > 0) {
+            console.warn(`[AUTO SYNC] Принудительно закрыто «вечных» running маркетплейсов/лёгких задач (>2ч): ${nMp}`);
+        }
         const [r] = await db.query(
             `UPDATE auto_sync_runs
              SET status = 'failed',

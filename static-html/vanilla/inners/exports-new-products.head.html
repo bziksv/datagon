@@ -102,6 +102,11 @@
     -webkit-user-select: text;
     white-space: nowrap;
   }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-mp-table thead th.dg-np-th-wrap {
+    white-space: pre-line;
+    line-height: 1.15;
+    max-width: 5.5rem;
+  }
   body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-mp-table thead th.dg-np-sortable {
     cursor: pointer;
   }
@@ -231,7 +236,35 @@
     padding-left: 1.25rem;
   }
   body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-actions {
+    width: 1%;
     white-space: nowrap;
+    vertical-align: middle;
+    overflow: visible;
+    text-align: center;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-actions-stack {
+    display: inline-flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    width: max-content;
+    max-width: 100%;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-actions-stack .btn {
+    width: auto !important;
+    max-width: none;
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-actions-stack .btn.dg-np-btn-del {
+    width: 2rem !important;
+    min-width: 2rem !important;
+    max-width: 2rem !important;
+    padding-left: 0.25rem !important;
+    padding-right: 0.25rem !important;
+    line-height: 1.2;
   }
   body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-id-cell {
     white-space: nowrap;
@@ -251,26 +284,89 @@
   }
   body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-links-cell {
     vertical-align: middle;
-    min-width: 7.5rem;
+    min-width: 12rem;
+    overflow: visible !important;
+    padding-left: 0.4rem;
+    padding-right: 0.45rem;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-manager-checked-cell {
+    vertical-align: middle;
+    text-align: center;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-manager-checked-cell .form-check-input {
+    width: 1.1rem;
+    height: 1.1rem;
+    cursor: pointer;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-placement-dates-cell {
+    vertical-align: middle;
+    font-size: 0.72rem;
+    line-height: 1.25;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-placement-dates {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 6.5rem;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-placement-dates-row {
+    display: grid;
+    grid-template-columns: 2.4rem 1fr;
+    gap: 0.35rem;
+    align-items: baseline;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-placement-dates-lab {
+    font-weight: 600;
+    color: #6c757d;
+    text-transform: uppercase;
+    font-size: 0.62rem;
+    letter-spacing: 0.02em;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-placement-dates-row.is-on .dg-np-placement-dates-lab {
+    color: #198754;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-placement-dates-val {
+    font-variant-numeric: tabular-nums;
+    color: #495057;
+    white-space: nowrap;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-placement-dates-row.is-off .dg-np-placement-dates-val {
+    color: #adb5bd;
   }
   body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-presence {
     display: flex;
     flex-direction: column;
-    gap: 3px;
-    max-width: 11rem;
+    align-items: stretch;
+    gap: 4px;
+    width: max-content;
+    max-width: none;
   }
   body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-presence-row {
-    display: flex;
-    flex-wrap: nowrap;
+    display: grid;
+    grid-template-columns: repeat(4, 2.45rem);
     gap: 3px;
-    align-items: center;
+    align-items: stretch;
+    justify-content: start;
   }
   body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-presence-badge {
-    font-weight: 500;
-    font-size: 0.62rem;
-    line-height: 1.2;
-    padding: 0.18rem 0.32rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 1.4rem;
+    margin: 0;
+    font-weight: 600;
+    font-size: 0.58rem;
+    line-height: 1;
+    letter-spacing: 0.01em;
+    text-transform: uppercase;
+    text-align: center;
+    padding: 0.2rem 0.08rem;
+    border-radius: 0.35rem;
     border: 1px solid transparent;
+    overflow: visible;
+    white-space: nowrap;
   }
   body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-presence-off {
     background: #e9ecef;
@@ -438,6 +534,15 @@
     position: relative;
     z-index: 1;
     width: min(420px, 100%);
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-confirm-overlay .dg-np-bulk-panel {
+    width: min(720px, 100%);
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] #dg-np-bulk-text {
+    font-size: 0.85rem;
+    line-height: 1.35;
+    resize: vertical;
+    min-height: 220px;
   }
   body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-ms-detail-overlay {
     position: fixed;

@@ -5152,6 +5152,26 @@
                 });
               }
 
+              (function applySearchFromUrl() {
+                try {
+                  var q = new URLSearchParams(window.location.search || "");
+                  var s = String(q.get("search") || q.get("code") || "").trim();
+                  if (!s) return;
+                  if (smart1) {
+                    smart1.value = s;
+                    resetHucksterMatrixPage(1);
+                    persistMatrixSearch(1);
+                    scheduleRedrawHucksterSearch(1);
+                  }
+                  if (smart2) {
+                    smart2.value = s;
+                    resetHucksterMatrixPage(2);
+                    persistMatrixSearch(2);
+                    scheduleRedrawHucksterSearch(2);
+                  }
+                } catch (e) {}
+              })();
+
               [1, 2, "lost"].forEach(function (which) {
                 var limitEl = document.getElementById("dg-huckster-page-limit-" + which);
                 if (limitEl) {

@@ -125,6 +125,11 @@
     -webkit-user-select: text;
     white-space: nowrap;
   }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-mp-table thead th.dg-np-th-wrap {
+    white-space: pre-line;
+    line-height: 1.15;
+    max-width: 5.5rem;
+  }
   body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-mp-table thead th.dg-np-sortable {
     cursor: pointer;
   }
@@ -254,7 +259,35 @@
     padding-left: 1.25rem;
   }
   body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-actions {
+    width: 1%;
     white-space: nowrap;
+    vertical-align: middle;
+    overflow: visible;
+    text-align: center;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-actions-stack {
+    display: inline-flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    width: max-content;
+    max-width: 100%;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-actions-stack .btn {
+    width: auto !important;
+    max-width: none;
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-actions-stack .btn.dg-np-btn-del {
+    width: 2rem !important;
+    min-width: 2rem !important;
+    max-width: 2rem !important;
+    padding-left: 0.25rem !important;
+    padding-right: 0.25rem !important;
+    line-height: 1.2;
   }
   body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-id-cell {
     white-space: nowrap;
@@ -274,26 +307,89 @@
   }
   body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-links-cell {
     vertical-align: middle;
-    min-width: 7.5rem;
+    min-width: 12rem;
+    overflow: visible !important;
+    padding-left: 0.4rem;
+    padding-right: 0.45rem;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-manager-checked-cell {
+    vertical-align: middle;
+    text-align: center;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-manager-checked-cell .form-check-input {
+    width: 1.1rem;
+    height: 1.1rem;
+    cursor: pointer;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-placement-dates-cell {
+    vertical-align: middle;
+    font-size: 0.72rem;
+    line-height: 1.25;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-placement-dates {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 6.5rem;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-placement-dates-row {
+    display: grid;
+    grid-template-columns: 2.4rem 1fr;
+    gap: 0.35rem;
+    align-items: baseline;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-placement-dates-lab {
+    font-weight: 600;
+    color: #6c757d;
+    text-transform: uppercase;
+    font-size: 0.62rem;
+    letter-spacing: 0.02em;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-placement-dates-row.is-on .dg-np-placement-dates-lab {
+    color: #198754;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-placement-dates-val {
+    font-variant-numeric: tabular-nums;
+    color: #495057;
+    white-space: nowrap;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-placement-dates-row.is-off .dg-np-placement-dates-val {
+    color: #adb5bd;
   }
   body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-presence {
     display: flex;
     flex-direction: column;
-    gap: 3px;
-    max-width: 11rem;
+    align-items: stretch;
+    gap: 4px;
+    width: max-content;
+    max-width: none;
   }
   body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-presence-row {
-    display: flex;
-    flex-wrap: nowrap;
+    display: grid;
+    grid-template-columns: repeat(4, 2.45rem);
     gap: 3px;
-    align-items: center;
+    align-items: stretch;
+    justify-content: start;
   }
   body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-presence-badge {
-    font-weight: 500;
-    font-size: 0.62rem;
-    line-height: 1.2;
-    padding: 0.18rem 0.32rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 1.4rem;
+    margin: 0;
+    font-weight: 600;
+    font-size: 0.58rem;
+    line-height: 1;
+    letter-spacing: 0.01em;
+    text-transform: uppercase;
+    text-align: center;
+    padding: 0.2rem 0.08rem;
+    border-radius: 0.35rem;
     border: 1px solid transparent;
+    overflow: visible;
+    white-space: nowrap;
   }
   body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-presence-off {
     background: #e9ecef;
@@ -461,6 +557,15 @@
     position: relative;
     z-index: 1;
     width: min(420px, 100%);
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-confirm-overlay .dg-np-bulk-panel {
+    width: min(720px, 100%);
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] #dg-np-bulk-text {
+    font-size: 0.85rem;
+    line-height: 1.35;
+    resize: vertical;
+    min-height: 220px;
   }
   body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-ms-detail-overlay {
     position: fixed;
@@ -1230,6 +1335,15 @@
                 <button type="button" class="btn btn-sm btn-success" id="dg-np-add" data-dg-notify-start="Добавляем строку…">Добавить товар</button>
                 <button
                   type="button"
+                  class="btn btn-sm btn-outline-success"
+                  id="dg-np-add-bulk"
+                  data-dg-notify-start="Открываем массовое добавление…"
+                  title="Формат: артикул;название — по одной строке"
+                >
+                  Массовое добавление
+                </button>
+                <button
+                  type="button"
                   class="btn btn-sm btn-outline-primary"
                   id="dg-np-distribute"
                   data-dg-notify-start="Раздаём без ответственного…"
@@ -1402,6 +1516,34 @@
             </div>
           </div>
 
+          <div id="dg-np-bulk-overlay" class="dg-np-confirm-overlay" style="display: none" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="dg-np-bulk-title">
+            <div class="dg-np-confirm-backdrop" id="dg-np-bulk-backdrop"></div>
+            <div class="dg-np-confirm-panel dg-np-bulk-panel card shadow-lg border-0">
+              <div class="card-header d-flex align-items-center justify-content-between gap-2">
+                <div class="fw-semibold" id="dg-np-bulk-title">Массовое добавление</div>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-np-bulk-close" data-dg-no-activity="1" aria-label="Закрыть">Закрыть</button>
+              </div>
+              <div class="card-body">
+                <p class="small text-muted mb-2">
+                  По одной строке: <code>артикул;название</code>. Разделитель — первая <code>;</code>. Пустые строки пропускаются.
+                </p>
+                <label class="form-label" for="dg-np-bulk-text">Список товаров</label>
+                <textarea
+                  id="dg-np-bulk-text"
+                  class="form-control font-monospace"
+                  rows="12"
+                  placeholder="5345762436;Контактная линза Air Optix Plus HydraGlyde, 3pk (R:=8,6 D:=-01,75)&#10;5345762435;Контактная линза Air Optix Plus HydraGlyde, 3pk (R:=8,6 D:=-01,75)"
+                  data-dg-no-activity="1"
+                ></textarea>
+                <p class="small text-muted mt-2 mb-0" id="dg-np-bulk-hint">Добавление в текущую вкладку. Лимит — 500 строк за раз.</p>
+              </div>
+              <div class="card-footer d-flex justify-content-end gap-2 flex-wrap bg-white border-top-0">
+                <button type="button" class="btn btn-outline-secondary" id="dg-np-bulk-cancel" data-dg-no-activity="1">Отмена</button>
+                <button type="button" class="btn btn-success" id="dg-np-bulk-submit" data-dg-notify-start="Добавляем товары…">Добавить</button>
+              </div>
+            </div>
+          </div>
+
         </div>
 
         <div class="app-footer">
@@ -1514,6 +1656,8 @@
     assignees: [],
     managers: [],
     responsibles: [],
+    canEditHuckster: null,
+    canSetVerified: null,
     loading: false,
     visibleCols: new Set(),
     columnWidths: {},
@@ -1526,12 +1670,16 @@
     { key: "added", label: "Добавлен" },
     { key: "revision", label: "На доработке" },
     { key: "review", label: "На проверку" },
+    { key: "verified", label: "Проверен" },
   ];
   var STATUS_OPTS_MARKETS = [
     { key: "new", label: "Новый" },
     { key: "not_added", label: "Не добавлен" },
+    { key: "in_progress", label: "В работе" },
     { key: "added", label: "Добавлен" },
     { key: "revision", label: "На доработке" },
+    { key: "review", label: "На проверку" },
+    { key: "verified", label: "Проверен" },
     { key: "not_cooperate", label: "Не сотрудничаем" },
     { key: "in_bundle", label: "В составе комплекта" },
   ];
@@ -1541,6 +1689,21 @@
     { key: "normal", label: "Обычный" },
     { key: "low", label: "Не важный" },
   ];
+  var INFOGRAPHIC_OPTS = [
+    { key: "yes", label: "Есть" },
+    { key: "old", label: "Старая" },
+    { key: "no", label: "Нет" },
+  ];
+  var HUCKSTER_OPTS = [
+    { key: "yes", label: "Добавлено" },
+    { key: "no", label: "Не добавлено" },
+  ];
+  var PHOTO_OPTS = [
+    { key: "updated", label: "Обновлено" },
+    { key: "need_shoot", label: "Нужно отснять" },
+    { key: "need_reshoot", label: "Нужно переснять" },
+    { key: "in_package", label: "Товар в упаковке" },
+  ];
 
   /**
    * Единый источник колонок (thead / tbody / 🧩 Столбцы / 📏 Ширины) — по каналу.
@@ -1548,7 +1711,7 @@
    */
   var NP_COLS_ALMAMED = [
     { key: "id", label: "ID", sort: true, locked: true, minWidth: 120, defWidth: 150 },
-    { key: "links", label: "Связь", sort: false, minWidth: 90, defWidth: 120 },
+    { key: "links", label: "Связь", sort: false, minWidth: 190, defWidth: 200 },
     { key: "product_manager_name", label: "Менеджер товара", sort: true, minWidth: 120, defWidth: 160 },
     { key: "created_at", label: "Дата в таблице", sort: true, minWidth: 110, defWidth: 140 },
     { key: "responsible_name", label: "Ответственный", sort: true, minWidth: 120, defWidth: 160 },
@@ -1556,18 +1719,21 @@
     { key: "has_kits", label: "Комплект", sort: false, minWidth: 70, defWidth: 80 },
     { key: "article", label: "Артикул", sort: true, minWidth: 90, defWidth: 120 },
     { key: "title", label: "Название", sort: true, minWidth: 140, defWidth: 200 },
-    { key: "price_almamed", label: "Цена Альмамед", sort: true, minWidth: 90, defWidth: 110 },
-    { key: "supplier_url", label: "Ссылка поставщика", sort: false, minWidth: 140, defWidth: 200 },
+    { key: "price_almamed", label: "Цена\nАльмамед", sort: true, minWidth: 72, defWidth: 88 },
+    { key: "supplier_url", label: "Ссылка\nпоставщика", sort: false, minWidth: 120, defWidth: 160 },
     { key: "brand", label: "Бренд", sort: true, minWidth: 90, defWidth: 120 },
     { key: "priority", label: "Приоритет", sort: true, minWidth: 90, defWidth: 110 },
     { key: "status", label: "Статус", sort: true, minWidth: 100, defWidth: 130 },
-    { key: "comment", label: "Комментарий", sort: false, minWidth: 120, defWidth: 180 },
+    { key: "comment", label: "Комментарий\nконтент", sort: false, minWidth: 100, defWidth: 140 },
     { key: "almamed_added_at", label: "Дата на Альмамед", sort: true, minWidth: 110, defWidth: 140 },
-    { key: "_actions", label: "", sort: false, locked: true, minWidth: 70, defWidth: 90 },
+    { key: "manager_checked", label: "Проверено\nменеджером", sort: false, minWidth: 72, defWidth: 88 },
+    { key: "manager_comment", label: "Комментарий\nменеджер", sort: false, minWidth: 100, defWidth: 140 },
+    { key: "_actions", label: " ", sort: false, locked: true, minWidth: 48, defWidth: 56, maxWidth: 64 },
   ];
   var NP_COLS_MARKETS = [
     { key: "id", label: "ID", sort: true, locked: true, minWidth: 120, defWidth: 150 },
-    { key: "links", label: "Связь", sort: false, minWidth: 90, defWidth: 120 },
+    { key: "links", label: "Связь", sort: false, minWidth: 190, defWidth: 200 },
+    { key: "huckster", label: "Huckster", sort: true, minWidth: 110, defWidth: 130 },
     { key: "product_manager_name", label: "Менеджер товара", sort: true, minWidth: 120, defWidth: 160 },
     { key: "created_at", label: "Дата добавления", sort: true, minWidth: 110, defWidth: 140 },
     { key: "priority", label: "Приоритет", sort: true, minWidth: 90, defWidth: 110 },
@@ -1578,15 +1744,19 @@
     { key: "barcode", label: "Штрихкод", sort: false, minWidth: 100, defWidth: 140 },
     { key: "price_markets", label: "Цена на маркеты", sort: true, minWidth: 90, defWidth: 120 },
     { key: "status", label: "Статус", sort: true, minWidth: 100, defWidth: 130 },
-    { key: "comment", label: "Комментарий", sort: false, minWidth: 120, defWidth: 180 },
-    { key: "placement_date", label: "Дата размещения", sort: true, minWidth: 110, defWidth: 140 },
+    { key: "comment", label: "Комментарий\nконтент", sort: false, minWidth: 100, defWidth: 140 },
+    { key: "infographic", label: "Инфографика", sort: true, minWidth: 100, defWidth: 120 },
+    { key: "photo", label: "Фото", sort: true, minWidth: 120, defWidth: 150 },
+    { key: "placement_date", label: "Дата размещения", sort: true, minWidth: 120, defWidth: 148 },
     { key: "length_cm", label: "Длина, см", sort: false, minWidth: 70, defWidth: 90 },
     { key: "width_cm", label: "Ширина, см", sort: false, minWidth: 70, defWidth: 90 },
     { key: "height_cm", label: "Высота, см", sort: false, minWidth: 70, defWidth: 90 },
     { key: "weight_kg", label: "Вес, кг", sort: false, minWidth: 70, defWidth: 90 },
     { key: "vat", label: "НДС", sort: false, minWidth: 70, defWidth: 90 },
     { key: "ru_url", label: "Ссылка на РУ", sort: false, minWidth: 120, defWidth: 180 },
-    { key: "_actions", label: "", sort: false, locked: true, minWidth: 90, defWidth: 110 },
+    { key: "manager_checked", label: "Проверено\nменеджером", sort: false, minWidth: 72, defWidth: 88 },
+    { key: "manager_comment", label: "Комментарий\nменеджер", sort: false, minWidth: 100, defWidth: 140 },
+    { key: "_actions", label: "Действия", sort: false, locked: true, minWidth: 130, defWidth: 150, maxWidth: 200 },
   ];
 
   function currentCols() {
@@ -1691,10 +1861,17 @@
       tr.appendChild(td);
     });
   }
+  function getColMax(key) {
+    var cols = currentCols();
+    for (var i = 0; i < cols.length; i++) {
+      if (cols[i].key === key && cols[i].maxWidth) return cols[i].maxWidth;
+    }
+    return 700;
+  }
   function resolvedColWidthPx(key) {
     var w = Number(state.columnWidths[key]);
     if (!Number.isFinite(w) || w <= 0) w = getColDef(key);
-    return Math.max(getColMin(key), Math.min(700, Math.round(w)));
+    return Math.max(getColMin(key), Math.min(getColMax(key), Math.round(w)));
   }
 
   /** Ширины через <colgroup> + th/td (как shop/moysklad): шапка и тело всегда в одной колонке. */
@@ -1781,6 +1958,69 @@
     } catch (_) {
       return String(v);
     }
+  }
+
+  function fmtDtShort(v) {
+    if (!v) return "—";
+    try {
+      var d = new Date(v);
+      if (isNaN(d.getTime())) return String(v);
+      return d.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" });
+    } catch (_) {
+      return String(v);
+    }
+  }
+
+  /** Колонка «Дата размещения»: когда товар появился на Ozon / WB / ЯМ. */
+  function makePlacementDatesCell(row) {
+    var td = document.createElement("td");
+    td.className = "dg-np-cell dg-np-placement-dates-cell";
+    var wrap = document.createElement("div");
+    wrap.className = "dg-np-placement-dates";
+    var lines = [
+      { key: "ozon", label: "Ozon", on: !!(row.placement_ozon || (row.presence && row.presence.ozon)), at: row.placement_ozon_at },
+      { key: "wb", label: "WB", on: !!(row.placement_wb || (row.presence && row.presence.wb)), at: row.placement_wb_at },
+      { key: "ym", label: "ЯМ", on: !!(row.placement_ym || (row.presence && row.presence.ym)), at: row.placement_ym_at },
+    ];
+    var any = false;
+    lines.forEach(function (ln) {
+      var rowEl = document.createElement("div");
+      rowEl.className = "dg-np-placement-dates-row" + (ln.on ? " is-on" : " is-off");
+      var lab = document.createElement("span");
+      lab.className = "dg-np-placement-dates-lab";
+      lab.textContent = ln.label;
+      var val = document.createElement("span");
+      val.className = "dg-np-placement-dates-val";
+      if (ln.on && ln.at) {
+        val.textContent = fmtDtShort(ln.at);
+        any = true;
+      } else if (ln.on) {
+        val.textContent = "есть";
+        val.title = "Есть в выгрузке МП, точная дата первого появления ещё не зафиксирована";
+        any = true;
+      } else {
+        val.textContent = "—";
+      }
+      rowEl.appendChild(lab);
+      rowEl.appendChild(val);
+      wrap.appendChild(rowEl);
+    });
+    if (!any && row.placement_date) {
+      var legacy = document.createElement("div");
+      legacy.className = "dg-np-placement-dates-row is-on";
+      legacy.title = "Общая дата размещения (legacy)";
+      var labL = document.createElement("span");
+      labL.className = "dg-np-placement-dates-lab";
+      labL.textContent = "Все";
+      var valL = document.createElement("span");
+      valL.className = "dg-np-placement-dates-val";
+      valL.textContent = fmtDtShort(row.placement_date);
+      legacy.appendChild(labL);
+      legacy.appendChild(valL);
+      wrap.appendChild(legacy);
+    }
+    td.appendChild(wrap);
+    return td;
   }
 
   function fmtMoney(v) {
@@ -1946,7 +2186,8 @@
     brand: "Бренд",
     priority: "Приоритет",
     status: "Статус",
-    comment: "Комментарий",
+    comment: "Комментарий контент",
+    manager_comment: "Комментарий менеджер",
     almamed_url: "Ссылка Альмамед",
     product_code: "Код",
     barcode: "Штрихкод",
@@ -1957,6 +2198,10 @@
     weight_kg: "Вес, кг",
     vat: "НДС",
     ru_url: "Ссылка на РУ",
+    infographic: "Инфографика",
+    photo: "Фото",
+    huckster: "Huckster",
+    manager_checked: "Проверено менеджером",
   };
 
   /** Микрокнопка «лог» при наведении на ячейку — журнал только по этому полю. */
@@ -2217,7 +2462,7 @@
             e.stopPropagation();
             openMsDetailModal(b.msUuid, b.msCode, b.msName, "");
           });
-        } else if (b.on && b.url) {
+        } else if (b.url && (b.on || b.forceLink)) {
           node = document.createElement("a");
           node.className = cls + " text-decoration-none";
           node.href = b.url;
@@ -2244,16 +2489,92 @@
       title: almUrl ? "Открыть на Альмамед" : "Нет ссылки на Альмамед",
     });
 
+    var hkCode = String(row.product_code || row.article || "").trim();
+    var hkOn = !!(p.huckster || row.huckster === "yes" || row.huckster_added);
+    if (hkCode) {
+      rowMarkets.push({
+        key: "hk",
+        label: "HK",
+        on: hkOn,
+        forceLink: true,
+        url: "/exports-huckster.html?search=" + encodeURIComponent(hkCode),
+        title: hkOn
+          ? "Есть в Huckster / отмечено «Добавлено» — открыть матрицу"
+          : "Нет в Huckster (снапшот) — открыть поиск на странице",
+      });
+    }
+
     appendBadgeRow(rowCatalog);
     appendBadgeRow(rowMarkets);
     return wrap;
   }
 
-  /** Отдельная колонка «Связь»: Мои / МС / Ozon / WB / ЯМ. */
+  /** Отдельная колонка «Связь»: Мои / МС / Ozon / WB / ЯМ / HK. */
   function makeLinksCell(row) {
     var td = document.createElement("td");
     td.className = "dg-np-cell dg-np-links-cell";
     td.appendChild(makePresenceBadges(row));
+    return td;
+  }
+
+  function canEditHuckster() {
+    if (state.canEditHuckster === true) return true;
+    if (state.canEditHuckster === false) return false;
+    try {
+      if (localStorage.getItem("isAdmin") === "true") return true;
+      if (localStorage.getItem("canManageUsers") === "true") return true;
+      var s = String(localStorage.getItem("datagonSpecialtyNameV1") || "").trim();
+      return s === "Менеджер маркетплейсов" || s === "Полный доступ";
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function makeHucksterCell(row) {
+    var td = document.createElement("td");
+    td.className = "dg-np-cell";
+    var editable = canEditHuckster();
+    var cur = String(row.huckster || "").trim();
+    if (cur !== "yes" && cur !== "no") cur = "no";
+
+    if (!editable) {
+      var span = document.createElement("span");
+      span.className = "badge " + (cur === "yes" ? "bg-success" : "bg-secondary");
+      span.textContent = cur === "yes" ? "Добавлено" : "Не добавлено";
+      span.title = "Менять может только менеджер маркетплейсов";
+      td.appendChild(span);
+      td.classList.add("text-center");
+      return td;
+    }
+
+    var sel = document.createElement("select");
+    sel.className = "form-select form-select-sm";
+    sel.setAttribute("data-dg-no-activity", "1");
+    HUCKSTER_OPTS.forEach(function (p) {
+      var o = document.createElement("option");
+      o.value = p.key;
+      o.textContent = p.label;
+      if (cur === p.key) o.selected = true;
+      sel.appendChild(o);
+    });
+    sel.addEventListener("change", function () {
+      var payload = { huckster: sel.value || "no" };
+      patchRow(row.id, payload)
+        .then(function (j) {
+          applyPatched(row, j);
+          if (window.DatagonNotify && window.DatagonNotify.toast) {
+            window.DatagonNotify.toast({ type: "success", message: "Huckster сохранён" });
+          }
+        })
+        .catch(function (e) {
+          if (window.DatagonNotify && window.DatagonNotify.toast) {
+            window.DatagonNotify.toast({ type: "danger", message: e.message || "Ошибка" });
+          }
+          load();
+        });
+    });
+    td.appendChild(sel);
+    attachFieldLog(td, row, "huckster");
     return td;
   }
 
@@ -2408,20 +2729,19 @@
     if (hint) {
       if (isMp) {
         hint.innerHTML =
-          "Статус <b>Новый</b> → автоматически <b>Не добавлен</b>, когда заполнены обязательные поля " +
-          "(код, артикул, название, штрихкод, цена, длина/ширина/высота/вес, НДС, ссылка на РУ, приоритет; пустые подсвечены). " +
-          "После появления товара в МС (по артикулу) подтягиваются код МС, штрихкод, НДС и ссылка на РУ; " +
-          "длина/ширина/высота/вес заполняют менеджеры вручную. Зелёные бейджи в «Связи» — ссылки на карточку МП. " +
-          "Размещение на всех МП (Ozon / WB / Я.М) → <b>Добавлен</b>. Комментарий → <b>На доработке</b>. " +
-          "«Не сотрудничаем» и «В составе комплекта» — ручные статусы. " +
-          "«Обновить очередь маркетов» подтягивает из Альмамед («Добавлен»), МС и снапшотов. " +
-          "У вкладок своя нумерация 1, 2, 3… (не общий счётчик); связь: «← Альм. #…» / «→ Марк. #…» под номером. " +
+          "Workflow: <b>Новый</b> → контент <b>В работе</b> → <b>На проверку</b>. " +
+          "Менеджер: галочка <b>Проверено менеджером</b> и поле <b>Комментарий менеджер</b> (если не ок). " +
+          "Статус <b>Проверен</b> — только после галочки и только у admin / Полный доступ. " +
+          "Авто: заполненные обязательные поля → <b>Не добавлен</b>; на всех МП → <b>Добавлен</b> (не трогает «В работе» / «На проверку» / «Проверен»). " +
+          "«Не сотрудничаем» / «В составе комплекта» — ручные. " +
           "«Убрать размещенные» убирает строки со статусом «Добавлен» после проверки.";
       } else {
         hint.innerHTML =
-          "Статус <b>Новый</b> → автоматически <b>Не добавлен</b>, когда заполнены: артикул, название, цена Альмамед, ссылка поставщика, приоритет " +
-          "(пустые подсвечены). Контент: <b>В работе</b> → <b>Добавлен</b>; замечания — <b>На доработке</b> + комментарий. " +
-          "Галочки «Маркеты»/«Комплект» создают <b>отдельную</b> строку на вкладке маркетов со <b>своей</b> нумерацией 1, 2…; связь «→ Марк. #…» под номером.";
+          "Workflow: <b>Новый</b> → контент <b>В работе</b> → <b>На проверку</b>. " +
+          "Менеджер — галочка <b>Проверено менеджером</b> и <b>Комментарий менеджер</b>. " +
+          "<b>Проверен</b> ставит проверка контента (admin / Полный доступ) только при галочке. " +
+          "Авто: заполнены артикул, название, цена, ссылка, приоритет → <b>Не добавлен</b>. " +
+          "Галочки «Маркеты»/«Комплект» создают строку на вкладке маркетов.";
       }
     }
     var btnSync = el("dg-np-sync-markets");
@@ -2573,6 +2893,9 @@
   function appendSortableTh(tr, c) {
     var th = document.createElement("th");
     th.textContent = c.label;
+    if (c.label && String(c.label).indexOf("\n") !== -1) {
+      th.classList.add("dg-np-th-wrap");
+    }
     if (c.sort) {
       th.className = "dg-np-sortable";
       if (state.sort_by === c.key) {
@@ -2711,16 +3034,47 @@
     tdSt.className = "dg-np-cell";
     var selSt = document.createElement("select");
     selSt.className = "form-select form-select-sm";
+    selSt.setAttribute("data-dg-notify-start", "Сохраняем статус…");
+    var mgrOk = !!row.manager_checked;
+    var canVerified = state.canSetVerified === true;
     getStatusOpts().forEach(function (p) {
       var o = document.createElement("option");
       o.value = p.key;
       o.textContent = p.label;
       if (row.status === p.key) o.selected = true;
+      if (p.key === "verified") {
+        if (!mgrOk) {
+          o.disabled = true;
+          o.title = "Сначала галочка «Проверено менеджером»";
+        } else if (!canVerified && row.status !== "verified") {
+          o.disabled = true;
+          o.title = "Статус «Проверен» ставит проверка контента (admin / Полный доступ)";
+        }
+      }
       selSt.appendChild(o);
     });
+    if (row.status === "verified" && !Array.prototype.some.call(selSt.options, function (opt) { return opt.value === "verified" && opt.selected; })) {
+      var oCur = document.createElement("option");
+      oCur.value = "verified";
+      oCur.textContent = "Проверен";
+      oCur.selected = true;
+      selSt.appendChild(oCur);
+    }
     selSt.addEventListener("change", function () {
       var next = selSt.value;
       var payload = { status: next };
+      if (next === "verified") {
+        if (!row.manager_checked) {
+          alert("Сначала нужна галочка «Проверено менеджером»");
+          load();
+          return;
+        }
+        if (state.canSetVerified !== true) {
+          alert("Статус «Проверен» может поставить только проверка контента");
+          load();
+          return;
+        }
+      }
       if (next === "revision" && !String(row.comment || "").trim()) {
         var c = window.prompt("Комментарий для статуса «На доработке» (обязательно):", row.comment || "");
         if (c == null) {
@@ -2748,16 +3102,105 @@
     return attachFieldLog(tdSt, row, "status");
   }
 
+  function makeManagerCheckedCell(row) {
+    var td = document.createElement("td");
+    td.className = "dg-np-cell text-center dg-np-manager-checked-cell";
+    var chk = document.createElement("input");
+    chk.type = "checkbox";
+    chk.className = "form-check-input m-0";
+    chk.checked = !!row.manager_checked;
+    chk.title = row.manager_checked
+      ? "Проверено менеджером" + (row.manager_checked_at ? " · " + fmtDt(row.manager_checked_at) : "")
+      : "Отметить после проверки менеджером. Если не ок — оставьте комментарий";
+    chk.setAttribute("data-dg-notify-start", "Сохраняем «Проверено менеджером»…");
+    chk.addEventListener("change", function () {
+      var on = chk.checked ? 1 : 0;
+      if (!on && String(row.status) === "verified") {
+        if (!window.confirm("Снять галочку? Статус «Проверен» вернётся на «На проверку».")) {
+          chk.checked = true;
+          return;
+        }
+      }
+      patchRow(row.id, { manager_checked: on })
+        .then(function (j) {
+          applyPatched(row, j);
+          renderTable();
+        })
+        .catch(function (e) {
+          chk.checked = !on;
+          alert(e.message || "Ошибка");
+          load();
+        });
+    });
+    td.appendChild(chk);
+    return attachFieldLog(td, row, "manager_checked");
+  }
+
+  function makeEnumSelect(row, field, options, emptyLabel) {
+    var td = document.createElement("td");
+    td.className = "dg-np-cell";
+    var sel = document.createElement("select");
+    sel.className = "form-select form-select-sm";
+    sel.setAttribute("data-dg-no-activity", "1");
+    var o0 = document.createElement("option");
+    o0.value = "";
+    o0.textContent = emptyLabel || "—";
+    sel.appendChild(o0);
+    var cur = String(row[field] || "");
+    (options || []).forEach(function (p) {
+      var o = document.createElement("option");
+      o.value = p.key;
+      o.textContent = p.label;
+      if (cur === p.key) o.selected = true;
+      sel.appendChild(o);
+    });
+    if (cur && !options.some(function (p) { return p.key === cur; })) {
+      var oX = document.createElement("option");
+      oX.value = cur;
+      oX.textContent = cur;
+      oX.selected = true;
+      sel.appendChild(oX);
+    }
+    sel.addEventListener("change", function () {
+      var payload = {};
+      payload[field] = sel.value || null;
+      patchRow(row.id, payload)
+        .then(function (j) {
+          applyPatched(row, j);
+          if (window.DatagonNotify && window.DatagonNotify.toast) {
+            window.DatagonNotify.toast({ type: "success", message: "Сохранено" });
+          }
+        })
+        .catch(function (e) {
+          if (window.DatagonNotify && window.DatagonNotify.toast) {
+            window.DatagonNotify.toast({ type: "danger", message: e.message || "Ошибка" });
+          }
+          load();
+        });
+    });
+    td.appendChild(sel);
+    attachFieldLog(td, row, field);
+    return td;
+  }
+
   function makeCommentCell(row) {
+    return makeTextAreaFieldCell(row, "comment");
+  }
+
+  function makeManagerCommentCell(row) {
+    return makeTextAreaFieldCell(row, "manager_comment");
+  }
+
+  function makeTextAreaFieldCell(row, field) {
     var tdCom = document.createElement("td");
     tdCom.className = "dg-np-cell";
     var ta = document.createElement("textarea");
     ta.className = "form-control form-control-sm";
     ta.rows = 2;
-    ta.value = row.comment || "";
-    bindTextSave(ta, row, "comment", 65535);
+    ta.value = row[field] || "";
+    bindTextSave(ta, row, field, 65535);
     tdCom.appendChild(ta);
-    return attachFieldLog(tdCom, row, "comment");
+    return attachFieldLog(tdCom, row, field);
   }
 
   function rowDisplayId(row) {
@@ -2830,11 +3273,13 @@
   function makeDeleteActions(row, opts) {
     var options = opts || {};
     var tdAct = document.createElement("td");
-    tdAct.className = "text-nowrap dg-np-actions";
+    tdAct.className = "dg-np-cell dg-np-actions";
+    var stack = document.createElement("div");
+    stack.className = "dg-np-actions-stack";
     if (options.addKit && row.status !== "removed") {
       var bKit = document.createElement("button");
       bKit.type = "button";
-      bKit.className = "btn btn-outline-primary btn-sm me-1";
+      bKit.className = "btn btn-outline-primary btn-sm";
       bKit.textContent = "+ Комплект";
       bKit.title = "Добавить комплект к товару (общие поля + своё название)";
       bKit.setAttribute("data-dg-notify-start", "Добавляем комплект…");
@@ -2861,7 +3306,7 @@
           });
         }
       });
-      tdAct.appendChild(bKit);
+      stack.appendChild(bKit);
     }
 
     if (row.status === "removed") {
@@ -2905,13 +3350,14 @@
           });
         }
       });
-      tdAct.appendChild(bRest);
+      stack.appendChild(bRest);
+      tdAct.appendChild(stack);
       return tdAct;
     }
 
     var bDel = document.createElement("button");
     bDel.type = "button";
-    bDel.className = "btn btn-outline-danger btn-sm";
+    bDel.className = "btn btn-outline-danger btn-sm dg-np-btn-del";
     bDel.textContent = "×";
     bDel.title = "В удалённые (фильтр «Удалённые»)";
     bDel.setAttribute("data-dg-no-activity", "1");
@@ -2974,7 +3420,8 @@
         }
       });
     });
-    tdAct.appendChild(bDel);
+    stack.appendChild(bDel);
+    tdAct.appendChild(stack);
     return tdAct;
   }
 
@@ -3236,6 +3683,8 @@
     tr.appendChild(makeStatusSelect(row));
     tr.appendChild(makeCommentCell(row));
     tr.appendChild(makeCopyCell(fmtDt(row.almamed_added_at)));
+    tr.appendChild(makeManagerCheckedCell(row));
+    tr.appendChild(makeManagerCommentCell(row));
 
     tr.appendChild(makeDeleteActions(row));
     pruneHiddenCells(tr);
@@ -3248,6 +3697,7 @@
 
     tr.appendChild(makeIdCell(row));
     tr.appendChild(makeLinksCell(row));
+    tr.appendChild(makeHucksterCell(row));
 
     var tdMgr = document.createElement("td");
     tdMgr.className = "dg-np-cell";
@@ -3341,7 +3791,9 @@
 
     tr.appendChild(makeStatusSelect(row));
     tr.appendChild(makeCommentCell(row));
-    tr.appendChild(makeCopyCell(fmtDt(row.placement_date)));
+    tr.appendChild(makeEnumSelect(row, "infographic", INFOGRAPHIC_OPTS, "—"));
+    tr.appendChild(makeEnumSelect(row, "photo", PHOTO_OPTS, "—"));
+    tr.appendChild(makePlacementDatesCell(row));
 
     tr.appendChild(makeDimCell(row, "length_cm", missMap, "см"));
     tr.appendChild(makeDimCell(row, "width_cm", missMap, "см"));
@@ -3367,6 +3819,8 @@
       })
     );
 
+    tr.appendChild(makeManagerCheckedCell(row));
+    tr.appendChild(makeManagerCommentCell(row));
     tr.appendChild(makeDeleteActions(row, { addKit: !!row.has_kits }));
     pruneHiddenCells(tr);
     return tr;
@@ -3447,7 +3901,7 @@
     });
   }
 
-  /** Комплект — вложенная строка: менеджер/дата/приоритет/ответственный как у товара; остальное редактируется. */
+  /** Комплект: артикул / штрихкод / НДС — только просмотр; РУ — с товара в Датагоне (родитель). */
   function renderMarketsKitRow(parent, kit) {
     var tr = document.createElement("tr");
     tr.className = "dg-np-kit-row";
@@ -3459,6 +3913,11 @@
     tdId.innerHTML = '<span class="badge bg-light text-primary border">↳ комплект</span>';
     tr.appendChild(tdId);
     tr.appendChild(mutedCell("—", { title: "Связи — у товара" }));
+    tr.appendChild(
+      mutedCell(parent.huckster === "yes" ? "Добавлено" : "Не добавлено", {
+        title: "Huckster — у товара (меняет менеджер маркетплейсов)",
+      })
+    );
 
     tr.appendChild(mutedCell(parent.product_manager_name || "—", { title: "Как у товара" }));
     tr.appendChild(mutedCell(fmtDt(parent.created_at), { title: "Как у товара" }));
@@ -3483,7 +3942,7 @@
     }
 
     tr.appendChild(kitTextCell("product_code", 128, "Код"));
-    tr.appendChild(kitTextCell("article", 128, "Артикул"));
+    tr.appendChild(mutedCell(kit.article || "—", { title: "Артикул комплекта — только просмотр" }));
     (function () {
       var td = document.createElement("td");
       td.className = "dg-np-cell";
@@ -3498,7 +3957,7 @@
       td.appendChild(ta);
       tr.appendChild(td);
     })();
-    tr.appendChild(kitTextCell("barcode", 512, "Штрихкод"));
+    tr.appendChild(mutedCell(kit.barcode || "—", { title: "Штрихкод комплекта — только просмотр" }));
 
     var tdPrice = document.createElement("td");
     tdPrice.className = "dg-np-cell";
@@ -3554,6 +4013,8 @@
     tdCom.appendChild(ta);
     tr.appendChild(tdCom);
 
+    tr.appendChild(mutedCell("—", { title: "Инфографика — у товара" }));
+    tr.appendChild(mutedCell("—", { title: "Фото — у товара" }));
     tr.appendChild(mutedCell("—", { title: "Дата размещения — у товара" }));
 
     function kitNumCell(field, placeholder) {
@@ -3574,14 +4035,24 @@
     tr.appendChild(kitNumCell("width_cm", "см"));
     tr.appendChild(kitNumCell("height_cm", "см"));
     tr.appendChild(kitNumCell("weight_kg", "кг"));
-    tr.appendChild(kitTextCell("vat", 64, "НДС"));
-    tr.appendChild(kitTextCell("ru_url", 2048, "https://…"));
+    tr.appendChild(mutedCell(kit.vat || "—", { title: "НДС комплекта — только просмотр" }));
+    tr.appendChild(
+      makeCopyCell(parent.ru_url || "", {
+        href: parent.ru_url || "",
+        wrap: true,
+        title: "Ссылка на РУ с товара в Датагоне (родитель)",
+      })
+    );
+    tr.appendChild(mutedCell("—", { title: "Проверено менеджером — у товара" }));
+    tr.appendChild(mutedCell("—", { title: "Комментарий менеджер — у товара" }));
 
     var tdAct = document.createElement("td");
-    tdAct.className = "text-nowrap";
+    tdAct.className = "dg-np-cell dg-np-actions";
+    var stack = document.createElement("div");
+    stack.className = "dg-np-actions-stack";
     var bDel = document.createElement("button");
     bDel.type = "button";
-    bDel.className = "btn btn-outline-danger btn-sm";
+    bDel.className = "btn btn-outline-danger btn-sm dg-np-btn-del";
     bDel.textContent = "×";
     bDel.title = "Удалить комплект";
     bDel.setAttribute("data-dg-no-activity", "1");
@@ -3619,7 +4090,8 @@
         }
       });
     });
-    tdAct.appendChild(bDel);
+    stack.appendChild(bDel);
+    tdAct.appendChild(stack);
     tr.appendChild(tdAct);
     pruneHiddenCells(tr);
     return tr;
@@ -3733,6 +4205,8 @@
         if (seq !== loadSeq || state.channel !== channelAtStart) return;
         state.rows = j.data || [];
         state.total = Number(j.total || 0);
+        if (typeof j.can_edit_huckster === "boolean") state.canEditHuckster = j.can_edit_huckster;
+        if (typeof j.can_set_verified === "boolean") state.canSetVerified = j.can_set_verified;
         state.loading = false;
         renderTable();
       })
@@ -3805,6 +4279,172 @@
     if (window.DatagonNotify && window.DatagonNotify.busyRun) {
       window.DatagonNotify.busyRun(el("dg-np-add"), run);
     } else run();
+  }
+
+  function openBulkAddModal() {
+    var overlay = el("dg-np-bulk-overlay");
+    var ta = el("dg-np-bulk-text");
+    var hint = el("dg-np-bulk-hint");
+    if (!overlay) return;
+    if (hint) {
+      hint.textContent =
+        "Добавление во вкладку «" +
+        (state.channel === "marketplaces" ? "Размещение на маркеты" : "Альмамед") +
+        "». Формат: артикул;название. Лимит — 500 строк.";
+    }
+    overlay.style.display = "flex";
+    overlay.setAttribute("aria-hidden", "false");
+    if (ta) {
+      try {
+        ta.focus();
+      } catch (_) {}
+    }
+  }
+
+  function closeBulkAddModal() {
+    var overlay = el("dg-np-bulk-overlay");
+    if (!overlay) return;
+    overlay.style.display = "none";
+    overlay.setAttribute("aria-hidden", "true");
+  }
+
+  function submitBulkAdd() {
+    var ta = el("dg-np-bulk-text");
+    var text = ta ? String(ta.value || "") : "";
+    if (!String(text).trim()) {
+      if (window.DatagonNotify && window.DatagonNotify.toast) {
+        window.DatagonNotify.toast({ type: "warning", message: "Вставьте строки вида артикул;название" });
+      }
+      return;
+    }
+    var channelLabel = state.channel === "marketplaces" ? "Размещение на маркеты" : "Альмамед";
+    var filtersLine = "Канал: <b>" + channelLabel + "</b>";
+    var t0 = Date.now();
+    var tick = null;
+    var lineCount = text.split(/\r?\n/).filter(function (l) {
+      return String(l || "").trim();
+    }).length;
+    showLog(
+      "warning",
+      "Массовое добавление…<br>" +
+        filtersLine +
+        "<br>Строк во вводе (непустых): <b>" +
+        lineCount +
+        "</b><br>" +
+        '<span id="dg-np-bulk-tick">идёт, прошло 0 с…</span>'
+    );
+    tick = setInterval(function () {
+      var elTick = el("dg-np-bulk-tick");
+      if (elTick) {
+        elTick.textContent = "идёт, прошло " + Math.round((Date.now() - t0) / 1000) + " с…";
+      }
+    }, 1000);
+
+    var run = function () {
+      return fetch("/api/exports/new-products/bulk", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: authHeaders(true),
+        body: JSON.stringify({ channel: state.channel, text: text }),
+      })
+        .then(function (r) {
+          return r.json().then(function (j) {
+            if (!r.ok || (j && j.success === false && j.created == null)) {
+              throw new Error((j && j.error) || "HTTP " + r.status);
+            }
+            return j;
+          });
+        })
+        .then(function (j) {
+          if (tick) clearInterval(tick);
+          var errs = Array.isArray(j.errors) ? j.errors : [];
+          var errHtml = "";
+          if (errs.length) {
+            errHtml =
+              "<br><ul class=\"mb-0 mt-2\">" +
+              errs
+                .slice(0, 20)
+                .map(function (e) {
+                  return (
+                    "<li>стр. " +
+                    (e.line || "?") +
+                    (e.code ? " («" + String(e.code).replace(/</g, "&lt;") + "»)" : "") +
+                    ": " +
+                    String(e.error || "").replace(/</g, "&lt;") +
+                    "</li>"
+                  );
+                })
+                .join("") +
+              "</ul>";
+          }
+          var kind = j.created > 0 ? (errs.length ? "warning" : "success") : "danger";
+          showLog(
+            kind,
+            "Массовое добавление завершено<br>" +
+              filtersLine +
+              "<br>К записи: <b>" +
+              (j.total != null ? j.total : "—") +
+              "</b>; создано: <b>" +
+              (j.created != null ? j.created : 0) +
+              "</b>; ошибок/пропусков: <b>" +
+              (j.skipped != null ? j.skipped : errs.length) +
+              "</b>; длительность: <b>" +
+              (j.duration_sec != null ? j.duration_sec : Math.round((Date.now() - t0) / 1000)) +
+              " с</b>" +
+              errHtml
+          );
+          if (window.DatagonNotify && window.DatagonNotify.toast) {
+            window.DatagonNotify.toast({
+              type: kind === "success" ? "success" : kind === "warning" ? "warning" : "danger",
+              message: "Добавлено: " + (j.created || 0) + (errs.length ? "; ошибок: " + errs.length : ""),
+            });
+          }
+          if (j.created > 0) {
+            if (ta) ta.value = "";
+            closeBulkAddModal();
+            state.offset = 0;
+            load();
+          }
+        })
+        .catch(function (e) {
+          if (tick) clearInterval(tick);
+          showLog(
+            "danger",
+            "Ошибка массового добавления: " +
+              (e.message || "unknown") +
+              "<br>" +
+              filtersLine +
+              "<br>Прошло " +
+              Math.round((Date.now() - t0) / 1000) +
+              " с"
+          );
+          if (window.DatagonNotify && window.DatagonNotify.toast) {
+            window.DatagonNotify.toast({ type: "danger", message: e.message || "Ошибка" });
+          }
+        });
+    };
+    var btn = el("dg-np-bulk-submit");
+    if (window.DatagonNotify && window.DatagonNotify.busyRun && btn) {
+      window.DatagonNotify.busyRun(btn, run);
+    } else run();
+  }
+
+  function bindBulkAddUi() {
+    var openBtn = el("dg-np-add-bulk");
+    if (openBtn) openBtn.addEventListener("click", openBulkAddModal);
+    var cancel = el("dg-np-bulk-cancel");
+    var close = el("dg-np-bulk-close");
+    var backdrop = el("dg-np-bulk-backdrop");
+    var submit = el("dg-np-bulk-submit");
+    if (cancel) cancel.addEventListener("click", closeBulkAddModal);
+    if (close) close.addEventListener("click", closeBulkAddModal);
+    if (backdrop) backdrop.addEventListener("click", closeBulkAddModal);
+    if (submit) submit.addEventListener("click", submitBulkAdd);
+    document.addEventListener("keydown", function (e) {
+      if (e.key !== "Escape") return;
+      var overlay = el("dg-np-bulk-overlay");
+      if (overlay && overlay.style.display === "flex") closeBulkAddModal();
+    });
   }
 
   function syncMarketsQueue() {
@@ -4092,7 +4732,7 @@
           this.value = String(state.columnWidths[k] || getColDef(k));
           return;
         }
-        n = Math.max(getColMin(k), Math.min(700, n));
+        n = Math.max(getColMin(k), Math.min(getColMax(k), n));
         state.columnWidths[k] = n;
         saveWidths();
         applyColumnWidths();
@@ -4486,6 +5126,7 @@
     el("dg-np-apply").addEventListener("click", commitFilters);
     el("dg-np-reset").addEventListener("click", resetFilters);
     el("dg-np-add").addEventListener("click", addRow);
+    bindBulkAddUi();
     el("dg-np-distribute").addEventListener("click", distribute);
     var btnSync = el("dg-np-sync-markets");
     if (btnSync) btnSync.addEventListener("click", syncMarketsQueue);
@@ -4515,7 +5156,9 @@
       load();
     });
 
-    loadAssignees().then(load);
+    // Параллельно: assignees не должны блокировать таблицу.
+    loadAssignees();
+    load();
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);

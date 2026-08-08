@@ -77,6 +77,15 @@
                 <button type="button" class="btn btn-sm btn-success" id="dg-np-add" data-dg-notify-start="Добавляем строку…">Добавить товар</button>
                 <button
                   type="button"
+                  class="btn btn-sm btn-outline-success"
+                  id="dg-np-add-bulk"
+                  data-dg-notify-start="Открываем массовое добавление…"
+                  title="Формат: артикул;название — по одной строке"
+                >
+                  Массовое добавление
+                </button>
+                <button
+                  type="button"
                   class="btn btn-sm btn-outline-primary"
                   id="dg-np-distribute"
                   data-dg-notify-start="Раздаём без ответственного…"
@@ -245,6 +254,34 @@
               <div class="card-footer d-flex justify-content-end gap-2 flex-wrap bg-white border-top-0">
                 <button type="button" class="btn btn-outline-secondary" id="dg-np-confirm-cancel" data-dg-no-activity="1">Отмена</button>
                 <button type="button" class="btn btn-danger" id="dg-np-confirm-ok" data-dg-notify-start="Удаляем…">Удалить</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-np-bulk-overlay" class="dg-np-confirm-overlay" style="display: none" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="dg-np-bulk-title">
+            <div class="dg-np-confirm-backdrop" id="dg-np-bulk-backdrop"></div>
+            <div class="dg-np-confirm-panel dg-np-bulk-panel card shadow-lg border-0">
+              <div class="card-header d-flex align-items-center justify-content-between gap-2">
+                <div class="fw-semibold" id="dg-np-bulk-title">Массовое добавление</div>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-np-bulk-close" data-dg-no-activity="1" aria-label="Закрыть">Закрыть</button>
+              </div>
+              <div class="card-body">
+                <p class="small text-muted mb-2">
+                  По одной строке: <code>артикул;название</code>. Разделитель — первая <code>;</code>. Пустые строки пропускаются.
+                </p>
+                <label class="form-label" for="dg-np-bulk-text">Список товаров</label>
+                <textarea
+                  id="dg-np-bulk-text"
+                  class="form-control font-monospace"
+                  rows="12"
+                  placeholder="5345762436;Контактная линза Air Optix Plus HydraGlyde, 3pk (R:=8,6 D:=-01,75)&#10;5345762435;Контактная линза Air Optix Plus HydraGlyde, 3pk (R:=8,6 D:=-01,75)"
+                  data-dg-no-activity="1"
+                ></textarea>
+                <p class="small text-muted mt-2 mb-0" id="dg-np-bulk-hint">Добавление в текущую вкладку. Лимит — 500 строк за раз.</p>
+              </div>
+              <div class="card-footer d-flex justify-content-end gap-2 flex-wrap bg-white border-top-0">
+                <button type="button" class="btn btn-outline-secondary" id="dg-np-bulk-cancel" data-dg-no-activity="1">Отмена</button>
+                <button type="button" class="btn btn-success" id="dg-np-bulk-submit" data-dg-notify-start="Добавляем товары…">Добавить</button>
               </div>
             </div>
           </div>

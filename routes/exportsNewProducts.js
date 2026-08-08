@@ -4,14 +4,17 @@
  * Маркетплейсы → Новые товары: очередь на заведение карточек (Альмамед / маркеты).
  * Таблица `dg_new_products`, channel = almamed | marketplaces.
  *
- * Статусы:
- *  - new → not_added автоматически, когда заполнены обязательные поля менеджера;
- *  - in_progress / added / revision — руками контента;
- *  - review — опционально;
- *  - almamed_added_at («Дата на Альмамед») — при первой связи с «Мои товары»
- *    (my_products после импорта CMS); также при ручном статусе «Добавлен», если ещё пусто;
- *    МС (ms_export) дату не ставит;
- *  - transferred/removed — закрытые строки (скрыты из списка по умолчанию).
+ * Статусы (обе вкладки):
+ *  - new — товар добавлен в таблицу;
+ *  - in_progress — контент в работе;
+ *  - review — «На проверку» (контент закончил; «Проверен» сами выбрать не могут);
+ *  - verified — «Проверен» (после проверки контента), только если manager_checked=1
+ *    и роль admin / can_manage_users / «Полный доступ»;
+ *  - manager_checked — галочка «Проверено менеджером» (менеджеры по своей части);
+ *  - new ↔ not_added — авто по обязательным полям (Альмамед); на маркетах — new/not_added/added
+ *    по заполненности/наличию на МП, не трогает workflow-статусы;
+ *  - revision / added / not_cooperate / in_bundle — по сценарию;
+ *  - transferred/removed — закрытые строки.
  */
 
 const express = require('express');
@@ -26,6 +29,7 @@ const STATUSES = new Set([
     'added',
     'revision',
     'review',
+    'verified',
     'transferred',
     'not_cooperate',
     'in_bundle',
@@ -48,9 +52,13 @@ const SORT_KEYS = new Set([
     'responsible_name',
     'almamed_added_at',
     'placement_date',
+    'placement_ozon_at',
+    'placement_wb_at',
+    'placement_ym_at',
     'updated_at',
     'infographic',
     'photo',
+    'huckster',
 ]);
 
 const PRIORITY_ORDER_SQL = `FIELD(priority, 'important', 'normal', 'low')`;
@@ -61,6 +69,7 @@ const STATUS_LABELS = {
     added: 'Добавлен',
     revision: 'На доработке',
     review: 'На проверку',
+    verified: 'Проверен',
     transferred: 'Передан в МС',
     not_cooperate: 'Не сотрудничаем',
     in_bundle: 'В составе комплекта',
@@ -87,7 +96,8 @@ const FIELD_LOG_LABELS = {
     brand: 'Бренд',
     priority: 'Приоритет',
     status: 'Статус',
-    comment: 'Комментарий',
+    comment: 'Комментарий контент',
+    manager_comment: 'Комментарий менеджер',
     almamed_added_at: 'Дата на Альмамед',
     almamed_url: 'Ссылка Альмамед',
     product_code: 'Код',
@@ -103,9 +113,14 @@ const FIELD_LOG_LABELS = {
     placement_ozon: 'Размещение Ozon',
     placement_wb: 'Размещение WB',
     placement_ym: 'Размещение ЯМ',
+    placement_ozon_at: 'Дата на Ozon',
+    placement_wb_at: 'Дата на WB',
+    placement_ym_at: 'Дата на ЯМ',
     placement_date: 'Дата размещения',
     infographic: 'Инфографика',
     photo: 'Фото',
+    huckster: 'Huckster',
+    manager_checked: 'Проверено менеджером',
     kit_title: 'Название комплекта',
     _row: 'Строка',
 };
@@ -121,6 +136,37 @@ const REQUIRED_KEYS = [
     { key: 'supplier_url', label: 'Ссылка на сайт поставщика' },
     { key: 'priority', label: 'Приоритет' },
 ];
+
+const HUCKSTER_EDITOR_SPECIALTY = 'Менеджер маркетплейсов';
+
+function actorCanEditHuckster(actor) {
+    if (!actor) return false;
+    if (actor.username === 'admin') return true;
+    if (actor.can_manage_users === true) return true;
+    const spec = String(actor.specialty_name || '').trim();
+    if (spec === HUCKSTER_EDITOR_SPECIALTY) return true;
+    if (spec === 'Полный доступ') return true;
+    return false;
+}
+
+/** Статус «Проверен» — финальная проверка контента (не менеджеры товара). */
+function actorCanSetVerified(actor) {
+    if (!actor) return false;
+    if (actor.username === 'admin') return true;
+    if (actor.can_manage_users === true) return true;
+    const spec = String(actor.specialty_name || '').trim();
+    if (spec === 'Полный доступ') return true;
+    return false;
+}
+
+function truthyFlag(v) {
+    if (v === true || v === 1 || v === '1') return true;
+    if (v === false || v === 0 || v === '0' || v == null || v === '') return false;
+    const s = String(v).trim().toLowerCase();
+    if (s === 'true' || s === 'yes' || s === 'on') return true;
+    if (s === 'false' || s === 'no' || s === 'off') return false;
+    return !!v;
+}
 
 let schemaReady = false;
 
@@ -187,6 +233,10 @@ async function ensureSchema(db) {
             INDEX idx_np_log_action (action)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
+    await ensureColumn(db, 'dg_new_products', 'manager_checked', 'TINYINT(1) NOT NULL DEFAULT 0');
+    await ensureColumn(db, 'dg_new_products', 'manager_checked_at', 'DATETIME NULL');
+    await ensureColumn(db, 'dg_new_products', 'manager_checked_by_user_id', 'INT NULL');
+    await ensureColumn(db, 'dg_new_products', 'manager_comment', 'TEXT NULL');
     schemaReady = true;
 }
 
@@ -205,6 +255,9 @@ function clipLogVal(v) {
 }
 
 function formatFieldForLog(field, value, channel) {
+    if (field === 'manager_checked') {
+        return truthyFlag(value) ? 'Да' : 'Нет';
+    }
     if (value == null || value === '') return null;
     if (field === 'priority') return PRIORITY_LABELS[value] || String(value);
     if (field === 'status') {
@@ -215,6 +268,9 @@ function formatFieldForLog(field, value, channel) {
     }
     if (field === 'infographic') {
         return markets.INFOGRAPHIC_LABELS[value] || String(value);
+    }
+    if (field === 'huckster') {
+        return markets.HUCKSTER_LABELS[value] || String(value);
     }
     if (field === 'photo') {
         return markets.PHOTO_LABELS[value] || String(value);
@@ -461,11 +517,22 @@ function mapRow(r) {
         placement_ozon_url: r.placement_ozon_url || '',
         placement_wb_url: r.placement_wb_url || '',
         placement_ym_url: r.placement_ym_url || '',
+        placement_ozon_at: r.placement_ozon_at || null,
+        placement_wb_at: r.placement_wb_at || null,
+        placement_ym_at: r.placement_ym_at || null,
         placement_date: r.placement_date || null,
         infographic: r.infographic || '',
         infographic_label: markets.INFOGRAPHIC_LABELS[r.infographic] || '',
         photo: r.photo || '',
         photo_label: markets.PHOTO_LABELS[r.photo] || '',
+        huckster: r.huckster || '',
+        huckster_label: markets.HUCKSTER_LABELS[r.huckster] || '',
+        huckster_added: String(r.huckster || '') === 'yes',
+        manager_checked: Number(r.manager_checked) === 1,
+        manager_checked_at: r.manager_checked_at || null,
+        manager_checked_by_user_id:
+            r.manager_checked_by_user_id != null ? Number(r.manager_checked_by_user_id) : null,
+        manager_comment: r.manager_comment || '',
         source_almamed_id: r.source_almamed_id != null ? Number(r.source_almamed_id) : null,
         markets_product_id: r.markets_product_id != null ? Number(r.markets_product_id) : null,
         markets_channel_num: r.markets_channel_num != null ? Number(r.markets_channel_num) : null,
@@ -514,15 +581,28 @@ module.exports = function exportsNewProductsRouterFactory(db, config) {
                     'added',
                     'revision',
                     'review',
+                    'verified',
                 ].map((k) => ({ key: k, label: STATUS_LABELS[k] })),
-                statuses_marketplaces: Object.keys(markets.MARKETS_STATUS_LABELS)
-                    .filter((k) => k !== 'removed')
-                    .map((k) => ({ key: k, label: markets.MARKETS_STATUS_LABELS[k] })),
+                statuses_marketplaces: [
+                    'new',
+                    'not_added',
+                    'in_progress',
+                    'added',
+                    'revision',
+                    'review',
+                    'verified',
+                    'not_cooperate',
+                    'in_bundle',
+                ].map((k) => ({ key: k, label: markets.MARKETS_STATUS_LABELS[k] || STATUS_LABELS[k] })),
                 required_fields: REQUIRED_KEYS,
                 required_fields_marketplaces: markets.MARKETS_REQUIRED,
                 infographic_options: Object.keys(markets.INFOGRAPHIC_LABELS).map((k) => ({
                     key: k,
                     label: markets.INFOGRAPHIC_LABELS[k],
+                })),
+                huckster_options: Object.keys(markets.HUCKSTER_LABELS).map((k) => ({
+                    key: k,
+                    label: markets.HUCKSTER_LABELS[k],
                 })),
                 photo_options: Object.keys(markets.PHOTO_LABELS).map((k) => ({
                     key: k,
@@ -654,10 +734,10 @@ module.exports = function exportsNewProductsRouterFactory(db, config) {
                     params.push(idNum, idNum);
                 } else {
                     where.push(
-                        `(title LIKE ? OR article LIKE ? OR brand LIKE ? OR supplier_url LIKE ? OR comment LIKE ? OR product_manager_name LIKE ? OR responsible_name LIKE ? OR COALESCE(product_code,'') LIKE ? OR COALESCE(barcode,'') LIKE ? OR COALESCE(ru_url,'') LIKE ? OR CAST(COALESCE(channel_num, id) AS CHAR) LIKE ?)`
+                        `(title LIKE ? OR article LIKE ? OR brand LIKE ? OR supplier_url LIKE ? OR comment LIKE ? OR COALESCE(manager_comment,'') LIKE ? OR product_manager_name LIKE ? OR responsible_name LIKE ? OR COALESCE(product_code,'') LIKE ? OR COALESCE(barcode,'') LIKE ? OR COALESCE(ru_url,'') LIKE ? OR CAST(COALESCE(channel_num, id) AS CHAR) LIKE ?)`
                     );
                     const like = `%${search}%`;
-                    params.push(like, like, like, like, like, like, like, like, like, like, like);
+                    params.push(like, like, like, like, like, like, like, like, like, like, like, like);
                 }
             }
 
@@ -697,6 +777,8 @@ module.exports = function exportsNewProductsRouterFactory(db, config) {
                 channel,
                 incomplete_count: incomplete,
                 required_fields: channel === 'marketplaces' ? markets.MARKETS_REQUIRED : REQUIRED_KEYS,
+                can_edit_huckster: actorCanEditHuckster(req.datagonActor),
+                can_set_verified: actorCanSetVerified(req.datagonActor),
                 applied_filters: {
                     search,
                     status: status || '',
@@ -834,6 +916,164 @@ module.exports = function exportsNewProductsRouterFactory(db, config) {
         }
     });
 
+    /**
+     * Массовое добавление: строки «артикул;название» (разделитель — первая `;`).
+     * Body: { channel, text } или { channel, lines: [{article,title},…] }.
+     */
+    router.post('/bulk', async (req, res) => {
+        const t0 = Date.now();
+        try {
+            await ensureSchema(db);
+            const body = req.body && typeof req.body === 'object' ? req.body : {};
+            const channel = normChannel(body.channel);
+            const actor = req.datagonActor;
+            const MAX_LINES = 500;
+
+            const parsed = [];
+            const errors = [];
+            let rawLines = [];
+            if (Array.isArray(body.lines)) {
+                rawLines = body.lines.map((x, i) => {
+                    if (x && typeof x === 'object') {
+                        return {
+                            lineNo: i + 1,
+                            article: String(x.article || '').trim(),
+                            title: String(x.title || '').trim(),
+                        };
+                    }
+                    return { lineNo: i + 1, raw: String(x == null ? '' : x) };
+                });
+            } else {
+                const text = String(body.text != null ? body.text : body.urls_text || '');
+                text.split(/\r?\n/).forEach((line, i) => {
+                    rawLines.push({ lineNo: i + 1, raw: line });
+                });
+            }
+
+            for (const item of rawLines) {
+                if (parsed.length >= MAX_LINES) {
+                    errors.push({
+                        line: item.lineNo,
+                        error: `Лимит ${MAX_LINES} строк за один запрос`,
+                    });
+                    break;
+                }
+                let article = '';
+                let title = '';
+                if (item.article != null || item.title != null) {
+                    article = clip(item.article, 128);
+                    title = clip(item.title, 128);
+                } else {
+                    const raw = String(item.raw || '').trim();
+                    if (!raw || raw.startsWith('#')) continue;
+                    const sep = raw.indexOf(';');
+                    if (sep < 0) {
+                        errors.push({
+                            line: item.lineNo,
+                            code: raw.slice(0, 64),
+                            error: 'Нет разделителя «;» (формат: артикул;название)',
+                        });
+                        continue;
+                    }
+                    article = clip(raw.slice(0, sep).trim(), 128);
+                    title = clip(raw.slice(sep + 1).trim(), 128);
+                }
+                if (!article) {
+                    errors.push({ line: item.lineNo, error: 'Пустой артикул' });
+                    continue;
+                }
+                if (!title) {
+                    errors.push({
+                        line: item.lineNo,
+                        code: article,
+                        error: 'Пустое название после «;»',
+                    });
+                    continue;
+                }
+                parsed.push({ lineNo: item.lineNo, article, title });
+            }
+
+            if (!parsed.length) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Нет корректных строк для добавления',
+                    total: rawLines.length,
+                    created: 0,
+                    skipped: errors.length,
+                    errors: errors.slice(0, 20),
+                    duration_sec: Math.round((Date.now() - t0) / 1000),
+                });
+            }
+
+            let created = 0;
+            const createdIds = [];
+            for (const row of parsed) {
+                try {
+                    const status = 'new';
+                    const channelNum = await markets.allocChannelNum(db, channel);
+                    const [ins] = await db.query(
+                        `INSERT INTO dg_new_products (
+                            channel, channel_num, product_manager_user_id, product_manager_name,
+                            responsible_user_id, responsible_name, article, title, price_almamed,
+                            supplier_url, brand, priority, status, comment, almamed_added_at, almamed_url,
+                            product_code, barcode, price_markets, dimensions_text, length_cm, width_cm, height_cm, weight_kg,
+                            vat, ru_url, created_by_user_id
+                         ) VALUES (?, ?, NULL, NULL, NULL, NULL, ?, ?, NULL, NULL, NULL, 'normal', ?, NULL, NULL, NULL,
+                            NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, ?)`,
+                        [
+                            channel,
+                            channelNum,
+                            row.article,
+                            row.title,
+                            status,
+                            actor && actor.id != null ? Number(actor.id) : null,
+                        ]
+                    );
+                    created += 1;
+                    createdIds.push(ins.insertId);
+                    try {
+                        await insertProductLog(db, {
+                            productId: ins.insertId,
+                            channel,
+                            field: '_row',
+                            oldValue: null,
+                            newValue: clipLogVal(row.title || row.article || '#' + ins.insertId),
+                            action: 'create',
+                            source: 'bulk',
+                            actor,
+                            note: 'Массовое добавление',
+                        });
+                    } catch (le) {
+                        console.warn('[new-products] bulk create log', le);
+                    }
+                } catch (ie) {
+                    errors.push({
+                        line: row.lineNo,
+                        code: row.article,
+                        error: (ie && ie.message) || 'Ошибка вставки',
+                    });
+                }
+            }
+
+            const durationSec = Math.round((Date.now() - t0) / 1000);
+            res.json({
+                success: true,
+                channel,
+                total: parsed.length,
+                to_create: parsed.length,
+                created,
+                skipped: errors.length,
+                created_ids: createdIds.slice(0, 50),
+                errors: errors.slice(0, 20),
+                duration_sec: durationSec,
+                dry_run: false,
+            });
+        } catch (e) {
+            console.error('[new-products] POST /bulk', e);
+            res.status(500).json({ error: e.message || 'Ошибка массового добавления' });
+        }
+    });
+
     router.patch('/:id', async (req, res) => {
         try {
             await ensureSchema(db);
@@ -858,6 +1098,9 @@ module.exports = function exportsNewProductsRouterFactory(db, config) {
             if ('priority' in body) fields.priority = normPriority(body.priority);
             if ('almamed_url' in body) fields.almamed_url = clip(body.almamed_url, 2048) || null;
             if ('comment' in body) fields.comment = clip(body.comment, 65535) || null;
+            if ('manager_comment' in body) {
+                fields.manager_comment = clip(body.manager_comment, 65535) || null;
+            }
             if ('sell_on_markets' in body && channel === 'almamed') {
                 fields.sell_on_markets =
                     body.sell_on_markets === true ||
@@ -898,6 +1141,21 @@ module.exports = function exportsNewProductsRouterFactory(db, config) {
                     fields.photo = ph;
                 }
             }
+            if ('huckster' in body && channel === 'marketplaces') {
+                if (!actorCanEditHuckster(req.datagonActor)) {
+                    return res.status(403).json({
+                        error: 'Менять «Huckster» может только менеджер маркетплейсов',
+                        code: 'HUCKSTER_FORBIDDEN',
+                    });
+                }
+                if (body.huckster == null || body.huckster === '') {
+                    fields.huckster = null;
+                } else {
+                    const hk = markets.normHuckster(body.huckster);
+                    if (!hk) return res.status(400).json({ error: 'Некорректное значение «Huckster»' });
+                    fields.huckster = hk;
+                }
+            }
 
             if (
                 !('dimensions_text' in body) &&
@@ -933,6 +1191,24 @@ module.exports = function exportsNewProductsRouterFactory(db, config) {
                 if (channel === 'marketplaces' && !markets.MARKETS_STATUSES.has(st)) {
                     return res.status(400).json({ error: 'Некорректный статус для маркетов' });
                 }
+                if (st === 'verified') {
+                    if (!actorCanSetVerified(req.datagonActor)) {
+                        return res.status(403).json({
+                            error: 'Статус «Проверен» может поставить только проверка контента (admin / Полный доступ)',
+                            code: 'VERIFIED_FORBIDDEN',
+                        });
+                    }
+                    const mgrOk =
+                        'manager_checked' in fields
+                            ? Number(fields.manager_checked) === 1
+                            : Number(cur.manager_checked) === 1;
+                    if (!mgrOk) {
+                        return res.status(400).json({
+                            error: 'Сначала нужна галочка «Проверено менеджером»',
+                            code: 'MANAGER_CHECK_REQUIRED',
+                        });
+                    }
+                }
                 nextStatus = st;
                 statusExplicit = true;
                 fields.status = st;
@@ -960,6 +1236,8 @@ module.exports = function exportsNewProductsRouterFactory(db, config) {
                 placement_ozon: cur.placement_ozon,
                 placement_wb: cur.placement_wb,
                 placement_ym: cur.placement_ym,
+                manager_checked:
+                    'manager_checked' in fields ? fields.manager_checked : cur.manager_checked,
             };
 
             if (channel === 'marketplaces') {
@@ -984,9 +1262,43 @@ module.exports = function exportsNewProductsRouterFactory(db, config) {
                 }
             }
 
+            if ('manager_checked' in body) {
+                const on = truthyFlag(body.manager_checked);
+                fields.manager_checked = on ? 1 : 0;
+                if (on) {
+                    fields.manager_checked_at = new Date();
+                    const actor = req.datagonActor;
+                    fields.manager_checked_by_user_id =
+                        actor && actor.id != null && Number.isFinite(Number(actor.id))
+                            ? Number(actor.id)
+                            : null;
+                } else {
+                    fields.manager_checked_at = null;
+                    fields.manager_checked_by_user_id = null;
+                    // Снятие галочки с уже «Проверен» — возвращаем на проверку.
+                    if (String(nextStatus) === 'verified' && !statusExplicit) {
+                        nextStatus = 'review';
+                        fields.status = 'review';
+                    }
+                }
+            }
+
             const nextComment = 'comment' in fields ? fields.comment : cur.comment;
             if (nextStatus === 'revision' && !String(nextComment || '').trim() && statusExplicit) {
                 return res.status(400).json({ error: 'Для статуса «На доработке» нужен комментарий' });
+            }
+
+            if (nextStatus === 'verified') {
+                const mgrOk =
+                    'manager_checked' in fields
+                        ? Number(fields.manager_checked) === 1
+                        : Number(cur.manager_checked) === 1;
+                if (!mgrOk) {
+                    return res.status(400).json({
+                        error: 'Сначала нужна галочка «Проверено менеджером»',
+                        code: 'MANAGER_CHECK_REQUIRED',
+                    });
+                }
             }
 
             if (nextStatus === 'added' && cur.status !== 'added' && !cur.almamed_added_at) {
@@ -1075,6 +1387,7 @@ module.exports = function exportsNewProductsRouterFactory(db, config) {
             );
             const seedCode = clip(body.product_code != null ? body.product_code : parent.product_code, 128) || null;
             const seedArticle = clip(body.article != null ? body.article : parent.article, 128) || null;
+            const seedRu = clip(parent.ru_url, 2048) || null;
             const [ins] = await db.query(
                 `INSERT INTO dg_new_product_kits (
                     parent_product_id, title, sort_order,
@@ -1093,12 +1406,14 @@ module.exports = function exportsNewProductsRouterFactory(db, config) {
                     null,
                     null,
                     null,
-                    null,
+                    seedRu,
                 ]
             );
             const [[kit]] = await db.query('SELECT * FROM dg_new_product_kits WHERE id = ? LIMIT 1', [
                 ins.insertId,
             ]);
+            const mapped = markets.mapKitRow(kit);
+            mapped.ru_url = String(parent.ru_url || '').trim();
             try {
                 await insertProductLog(db, {
                     productId: parentId,
@@ -1114,7 +1429,7 @@ module.exports = function exportsNewProductsRouterFactory(db, config) {
             } catch (le) {
                 console.warn('[new-products] kit add log', le);
             }
-            res.json({ success: true, data: markets.mapKitRow(kit) });
+            res.json({ success: true, data: mapped });
         } catch (e) {
             console.error('[new-products] POST kits', e);
             res.status(500).json({ error: e.message || 'Ошибка добавления комплекта' });
@@ -1138,8 +1453,8 @@ module.exports = function exportsNewProductsRouterFactory(db, config) {
             const fields = {};
             if ('title' in body) fields.title = clip(body.title, 255);
             if ('product_code' in body) fields.product_code = clip(body.product_code, 128) || null;
-            if ('article' in body) fields.article = clip(body.article, 128) || null;
-            if ('barcode' in body) fields.barcode = clip(body.barcode, 512) || null;
+            // article / barcode / vat / ru_url у комплекта не редактируются:
+            // артикул/штрихкод/НДС — только просмотр; РУ всегда с родительского товара в Датагоне.
             if ('price_markets' in body) fields.price_markets = parsePrice(body.price_markets);
             if ('comment' in body) fields.comment = clip(body.comment, 65535) || null;
             if ('dimensions_text' in body) fields.dimensions_text = clip(body.dimensions_text, 512) || null;
@@ -1147,8 +1462,6 @@ module.exports = function exportsNewProductsRouterFactory(db, config) {
             if ('width_cm' in body) fields.width_cm = markets.parseNum(body.width_cm);
             if ('height_cm' in body) fields.height_cm = markets.parseNum(body.height_cm);
             if ('weight_kg' in body) fields.weight_kg = markets.parseNum(body.weight_kg);
-            if ('vat' in body) fields.vat = clip(body.vat, 64) || null;
-            if ('ru_url' in body) fields.ru_url = clip(body.ru_url, 2048) || null;
             if ('status' in body) {
                 const st = normStatus(body.status);
                 if (!st || !markets.MARKETS_STATUSES.has(st) || st === 'removed') {
@@ -1201,7 +1514,13 @@ module.exports = function exportsNewProductsRouterFactory(db, config) {
             const [[updated]] = await db.query('SELECT * FROM dg_new_product_kits WHERE id = ? LIMIT 1', [
                 kitId,
             ]);
-            res.json({ success: true, data: markets.mapKitRow(updated) });
+            const [[parent]] = await db.query(
+                'SELECT ru_url FROM dg_new_products WHERE id = ? LIMIT 1',
+                [parentId]
+            );
+            const mapped = markets.mapKitRow(updated);
+            mapped.ru_url = String((parent && parent.ru_url) || '').trim();
+            res.json({ success: true, data: mapped });
         } catch (e) {
             console.error('[new-products] PATCH kit', e);
             res.status(500).json({ error: e.message || 'Ошибка сохранения комплекта' });
