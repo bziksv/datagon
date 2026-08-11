@@ -1347,7 +1347,7 @@
                   class="btn btn-sm btn-outline-primary"
                   id="dg-np-distribute"
                   data-dg-notify-start="Раздаём без ответственного…"
-                  title="Поровну между контент-менеджерами строки без ответственного"
+                  title="Поровну блоками подряд: похожие SKU в пачке остаются у одного контент-менеджера"
                 >
                   Раздать поровну (без ответственного)
                 </button>
@@ -4599,7 +4599,7 @@
   function distribute() {
     if (
       !window.confirm(
-        "Раздать поровну строки без ответственного между контент-менеджерами?"
+        "Раздать строки без ответственного между контент-менеджерами поровну блоками подряд (похожие SKU в пачке — одному человеку)?"
       )
     ) {
       return;
@@ -4607,7 +4607,7 @@
     var t0 = Date.now();
     showLog(
       "warning",
-      "Раздаём ответственных… канал: <b>" +
+      "Раздаём ответственных блоками подряд… канал: <b>" +
         (state.channel === "marketplaces" ? "Размещение на маркеты" : "Альмамед") +
         "</b>, только без ответственного."
     );
@@ -4628,7 +4628,7 @@
           var sec = Math.round((Date.now() - t0) / 1000);
           showLog(
             "success",
-            "Раздано: <b>" +
+            "Раздано блоками подряд: <b>" +
               (j.assigned || 0) +
               "</b> строк на <b>" +
               (j.users || 0) +
@@ -4868,8 +4868,12 @@
       load();
     }
 
-    // Ждём незавершённые PATCH на любой вкладке — иначе при быстром «туда-сюда» вспыхивает старое значение.
-    almamedPatchTail.catch(function () {}).then(finish);
+    // Ждём незавершённые PATCH, но не дольше 2 с — иначе зависший PATCH навечно оставляет «Загрузка…».
+    var patchWait = almamedPatchTail.catch(function () {});
+    var patchCap = new Promise(function (resolve) {
+      setTimeout(resolve, 2000);
+    });
+    Promise.race([patchWait, patchCap]).then(finish);
   }
 
   function escapeHtml(s) {

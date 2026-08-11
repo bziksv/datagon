@@ -765,7 +765,9 @@ module.exports = function exportsNewProductsRouterFactory(db, config) {
             await markets.attachCrossChannelLinks(db, mapped);
             await markets.attachPresenceBadges(db, mapped);
             await markets.stampAlmamedAddedAtFromPresence(db, mapped);
-            await markets.enrichMarketsRowsFromMs(db, mapped);
+            // Не зовём enrichMarketsRowsFromMs на GET списка: N×SQL + UPDATE/лог на каждую
+            // недозаполненную строку маркетов держали ответ 30–60+ с («вечная Загрузка…»).
+            // Обогащение из МС — на sync-markets-queue / точечных PATCH / upsert из Альмамед.
             const incomplete = mapped.filter((r) => r.missing_required && r.missing_required.length).length;
 
             res.json({
@@ -1729,7 +1731,10 @@ module.exports = function exportsNewProductsRouterFactory(db, config) {
     });
 
     /**
-     * Раздать поровну строки без ответственного (или scope=all / unassigned) между активными пользователями.
+     * Раздать поровну строки без ответственного (или scope=all / unassigned) между активными
+     * контент-менеджерами. Не round-robin по одной строке, а **подряд идущие блоки** в порядке
+     * списка (приоритет, id): похожие SKU, внесённые пачкой, остаются у одного человека —
+     * удобнее копировать поля при отличии в одной характеристике.
      * Body: { channel, scope?: 'unassigned'|'all', user_ids?: number[] }
      */
     router.post('/distribute', async (req, res) => {
@@ -1778,33 +1783,41 @@ module.exports = function exportsNewProductsRouterFactory(db, config) {
             }
 
             const actor = req.datagonActor;
+            const m = users.length;
+            const n = rows.length;
             let assigned = 0;
-            for (let i = 0; i < rows.length; i++) {
-                const u = users[i % users.length];
+            let rowIdx = 0;
+            for (let uIdx = 0; uIdx < m && rowIdx < n; uIdx++) {
+                const remainingRows = n - rowIdx;
+                const remainingUsers = m - uIdx;
+                const chunk = Math.ceil(remainingRows / remainingUsers);
+                const u = users[uIdx];
                 const name = String(u.full_name || u.username || '').trim() || String(u.username);
-                const before = rows[i];
-                await db.query(
-                    `UPDATE dg_new_products
-                        SET responsible_user_id = ?, responsible_name = ?
-                      WHERE id = ?`,
-                    [u.id, name, rows[i].id]
-                );
-                try {
-                    await logProductFieldChanges(db, {
-                        productId: rows[i].id,
-                        channel,
-                        before,
-                        fields: {
-                            responsible_user_id: u.id,
-                            responsible_name: name,
-                        },
-                        actor,
-                        source: 'distribute',
-                    });
-                } catch (le) {
-                    console.warn('[new-products] distribute log', le);
+                for (let k = 0; k < chunk && rowIdx < n; k++, rowIdx++) {
+                    const before = rows[rowIdx];
+                    await db.query(
+                        `UPDATE dg_new_products
+                            SET responsible_user_id = ?, responsible_name = ?
+                          WHERE id = ?`,
+                        [u.id, name, before.id]
+                    );
+                    try {
+                        await logProductFieldChanges(db, {
+                            productId: before.id,
+                            channel,
+                            before,
+                            fields: {
+                                responsible_user_id: u.id,
+                                responsible_name: name,
+                            },
+                            actor,
+                            source: 'distribute',
+                        });
+                    } catch (le) {
+                        console.warn('[new-products] distribute log', le);
+                    }
+                    assigned += 1;
                 }
-                assigned += 1;
             }
 
             res.json({
@@ -1813,6 +1826,7 @@ module.exports = function exportsNewProductsRouterFactory(db, config) {
                 users: users.length,
                 channel,
                 scope: scope === 'all' ? 'all' : 'unassigned',
+                mode: 'contiguous_blocks',
             });
         } catch (e) {
             console.error('[new-products] distribute', e);

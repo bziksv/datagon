@@ -1191,6 +1191,7 @@ Body (JSON):
 
 Query: `channel`, `search`, `status`, `priority`, `brand`, `responsible` (id | `none`), `manager` (id | `none`), `limit` (default 100), `offset`, `sort_by`, `sort_dir`. Без `status` — без `transferred` (Альмамед) / `removed` (маркеты). В ответе: `missing_required`, `incomplete_count`, `required_fields`, поля размещения/габаритов для маркетов, для Альмамед — `sell_on_markets`, `has_kits`; для маркетов — `has_kits`, `kits[]`.
 
+Список **не** делает тяжёлое `enrichMarketsRowsFromMs` (N×SQL + запись в БД/журнал на каждую недозаполненную строку маркетов) — иначе GET «Размещение на маркеты» уходил в десятки секунд. Подтягивание кода/штрихкода/НДС/РУ/цены из МС — при upsert из Альмамед, «Обновить очередь маркетов» и точечных операциях, не на каждом открытии таблицы.
 В каждой строке также **`presence`** (колонка **«Связь»** после ID): `my_products` (SKU в `my_products` после импорта CMS «Мои товары»), `ms` (код/артикул в `ms_export`), `ozon`/`wb`/`ym` + URL из `marketplace_export_rows`, **`huckster`** (код найден хотя бы в одном кабинете снапшота Huckster `sheet_export` / `sheet_export_rrc`, `bridge_row_meta.cabinets ≠ bad`; кэш ~90 с). На вкладке **Альмамед** (часто только артикул `A-…`) бейджи МП/HK резолвятся через **код МС** из `ms_export` (и `offer_id`/`vendor_code`/`shop_sku`), а не только по артикулу строки. На вкладке **Маркеты** — колонка **Huckster** (селект **Добавлено** / **Не добавлено**, поле `huckster` в `dg_new_products`) сразу после «Связь»; менять может только специальность **«Менеджер маркетплейсов»** (также `admin` / `can_manage_users` / «Полный доступ»). API: `PATCH` с `huckster`, иначе `403 HUCKSTER_FORBIDDEN`. Бейдж **HK** в «Связь» — по снапшоту матрицы + ссылка на `/exports-huckster.html?search=<код>`.
 
 **`almamed_added_at` («Дата на Альмамед»):** при первой связи строки Альмамед с **`my_products`** (бейдж «Мои» после импорта CMS ~20:40) — проставляется автоматически при `GET` списка (один раз). Связь только с МС (`ms_export`) дату **не** ставит. Также при ручном статусе **«Добавлен»**, если поле ещё пусто. Раньше ошибочно ставилась только при статусе «На проверку».
@@ -1237,7 +1238,7 @@ Query: `channel`, `search`, `status`, `priority`, `brand`, `responsible` (id | `
 
 ### POST `/api/exports/new-products/distribute`
 
-Раздать ответственных поровну. Body: `{ channel, scope?: "unassigned"|"all", user_ids?: number[] }`.
+Раздать ответственных поровну **подряд идущими блоками** (не чередуя по одной строке): список без ответственного (или `scope=all`) сортируется как на экране (приоритет, `id`), затем делится на N почти равных непрерывных кусков по числу контент-менеджеров — чтобы пачка похожих SKU (отличие в одной характеристике) оставалась у одного человека для копирования полей. Ответ: `assigned`, `users`, `channel`, `scope`, `mode: "contiguous_blocks"`. Body: `{ channel, scope?: "unassigned"|"all", user_ids?: number[] }`.
 
 ### POST `/api/exports/new-products/sync-markets-queue`
 
