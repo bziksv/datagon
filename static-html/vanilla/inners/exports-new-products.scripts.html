@@ -3267,7 +3267,16 @@
       .replace(/"/g, "&quot;");
   }
 
-  var logState = { productId: null, label: "", field: "", fieldLabel: "", limit: 100, offset: 0, total: 0 };
+  var logState = {
+    productId: null,
+    label: "",
+    field: "",
+    fieldLabel: "",
+    fieldFallbackNote: "",
+    limit: 100,
+    offset: 0,
+    total: 0,
+  };
 
   function npLogActionLabel(action) {
     var map = {
@@ -3303,6 +3312,7 @@
     logState.label = label || "#" + productId;
     logState.field = field ? String(field) : "";
     logState.fieldLabel = fieldLabel ? String(fieldLabel) : FIELD_LOG_LABELS_UI[logState.field] || logState.field;
+    logState.fieldFallbackNote = "";
     logState.offset = 0;
     var overlay = el("dg-np-log-overlay");
     var titleEl = el("dg-np-log-title");
@@ -3324,13 +3334,31 @@
     loadNpLog();
   }
 
+  function syncNpLogTitle() {
+    var titleEl = el("dg-np-log-title");
+    var subEl = el("dg-np-log-subtitle");
+    if (titleEl) {
+      titleEl.textContent = logState.field
+        ? "Журнал: " + (logState.fieldLabel || logState.field)
+        : "Журнал изменений #" + logState.productId;
+    }
+    if (subEl) {
+      subEl.textContent = logState.field
+        ? "#" + logState.productId + " · " + logState.label
+        : logState.label;
+    }
+  }
+
   function renderNpLogPager() {
     var pages = Math.max(1, Math.ceil((logState.total || 0) / logState.limit) || 1);
     var page = Math.floor(logState.offset / logState.limit) + 1;
     var prevDisabled = logState.offset <= 0 ? " disabled" : "";
     var nextDisabled = logState.offset + logState.limit >= logState.total ? " disabled" : "";
+    var filterBtn = logState.field
+      ? '<button type="button" class="btn btn-sm btn-outline-primary dg-np-log-all-fields">Все поля строки</button>'
+      : "";
     return (
-      '<div class="dg-np-log-pager d-flex align-items-center justify-content-between gap-2 px-3 py-2 border-top">' +
+      '<div class="dg-np-log-pager d-flex align-items-center justify-content-between gap-2 px-3 py-2 border-top flex-wrap">' +
       '<span class="small text-muted">Найдено: ' +
       logState.total +
       "; страница " +
@@ -3338,6 +3366,8 @@
       "/" +
       pages +
       "</span>" +
+      '<div class="d-flex align-items-center gap-2 flex-wrap">' +
+      filterBtn +
       '<div class="btn-group">' +
       '<button type="button" class="btn btn-sm btn-outline-secondary dg-np-log-prev"' +
       prevDisabled +
@@ -3345,7 +3375,7 @@
       '<button type="button" class="btn btn-sm btn-outline-secondary dg-np-log-next"' +
       nextDisabled +
       ">Вперёд</button>" +
-      "</div></div>"
+      "</div></div></div>"
     );
   }
 
@@ -3372,20 +3402,39 @@
       .then(function (j) {
         logState.total = Number(j.total || 0);
         var rows = j.rows || [];
+        // Мини-«лог» на ячейке фильтрует одно поле. Если по нему пусто —
+        // сразу показываем весь журнал строки (не заставляем кликать по каждому полю).
+        if (!rows.length && logState.field && logState.offset === 0) {
+          var emptyField = logState.fieldLabel || logState.field;
+          logState.fieldFallbackNote =
+            "По полю «" + emptyField + "» изменений нет — показан весь журнал строки.";
+          logState.field = "";
+          logState.fieldLabel = "";
+          syncNpLogTitle();
+          return loadNpLog();
+        }
+        var noteHtml = logState.fieldFallbackNote
+          ? '<div class="alert alert-warning py-2 px-3 mb-0 rounded-0 small">' +
+            escapeHtml(logState.fieldFallbackNote) +
+            ' <button type="button" class="btn btn-link btn-sm p-0 align-baseline dg-np-log-all-fields">Сбросить фильтр</button></div>'
+          : logState.field
+            ? '<div class="alert alert-info py-2 px-3 mb-0 rounded-0 small">Фильтр: <b>' +
+              escapeHtml(logState.fieldLabel || logState.field) +
+              '</b>. <button type="button" class="btn btn-link btn-sm p-0 align-baseline dg-np-log-all-fields">Показать все поля</button></div>'
+            : "";
         if (!rows.length) {
           body.innerHTML =
+            noteHtml +
             '<div class="text-muted small text-center py-4">' +
-            (logState.field
-              ? "По полю «" +
-                escapeHtml(logState.fieldLabel || logState.field) +
-                "» изменений ещё не было."
-              : "Журнал пуст: по этой строке ещё не было изменений.") +
+            "Журнал пуст: по этой строке ещё не было записанных изменений " +
+            "(кнопка «лог» в колонке ID — полный журнал; мини-«лог» на ячейке — только одно поле)." +
             "</div>" +
             renderNpLogPager();
           return;
         }
         var showFieldCol = !logState.field;
         var html =
+          noteHtml +
           '<div class="table-responsive"><table class="table table-sm mb-0"><thead><tr>' +
           "<th>Когда</th><th>Кто</th><th>Действие</th>" +
           (showFieldCol ? "<th>Поле</th>" : "") +
@@ -3465,6 +3514,16 @@
       var prev = ev.target && ev.target.closest && ev.target.closest(".dg-np-log-prev");
       if (prev && logState.productId) {
         logState.offset = Math.max(0, logState.offset - logState.limit);
+        loadNpLog();
+        return;
+      }
+      var allFields = ev.target && ev.target.closest && ev.target.closest(".dg-np-log-all-fields");
+      if (allFields && logState.productId) {
+        logState.field = "";
+        logState.fieldLabel = "";
+        logState.fieldFallbackNote = "";
+        logState.offset = 0;
+        syncNpLogTitle();
         loadNpLog();
         return;
       }

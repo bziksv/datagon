@@ -1802,19 +1802,45 @@ module.exports = function exportsNewProductsRouterFactory(db, config) {
                           WHERE id = ?`,
                         [u.id, name, before.id]
                     );
-                    // С Альмамеда сразу зеркалим на связанную строку «Размещение на маркеты»,
-                    // если там ещё пусто — иначе раздача «не видна» на второй вкладке.
                     if (channel === 'almamed') {
-                        const [mir] = await db.query(
-                            `UPDATE dg_new_products
-                                SET responsible_user_id = ?, responsible_name = ?
+                        const [mirRows] = await db.query(
+                            `SELECT id, responsible_user_id, responsible_name, channel
+                               FROM dg_new_products
                               WHERE channel = 'marketplaces'
                                 AND source_almamed_id = ?
                                 AND responsible_user_id IS NULL
                                 AND status <> 'transferred'`,
-                            [u.id, name, before.id]
+                            [before.id]
                         );
-                        mirroredToMarkets += Number(mir && mir.affectedRows) || 0;
+                        if (mirRows && mirRows.length) {
+                            const [mir] = await db.query(
+                                `UPDATE dg_new_products
+                                    SET responsible_user_id = ?, responsible_name = ?
+                                  WHERE channel = 'marketplaces'
+                                    AND source_almamed_id = ?
+                                    AND responsible_user_id IS NULL
+                                    AND status <> 'transferred'`,
+                                [u.id, name, before.id]
+                            );
+                            mirroredToMarkets += Number(mir && mir.affectedRows) || 0;
+                            for (const mr of mirRows) {
+                                try {
+                                    await logProductFieldChanges(db, {
+                                        productId: mr.id,
+                                        channel: 'marketplaces',
+                                        before: mr,
+                                        fields: {
+                                            responsible_user_id: u.id,
+                                            responsible_name: name,
+                                        },
+                                        actor,
+                                        source: 'distribute',
+                                    });
+                                } catch (mle) {
+                                    console.warn('[new-products] distribute markets log', mle);
+                                }
+                            }
+                        }
                     }
                     try {
                         await logProductFieldChanges(db, {
