@@ -4626,16 +4626,24 @@
         })
         .then(function (j) {
           var sec = Math.round((Date.now() - t0) / 1000);
-          showLog(
-            "success",
-            "Раздано блоками подряд: <b>" +
-              (j.assigned || 0) +
-              "</b> строк на <b>" +
-              (j.users || 0) +
-              "</b> пользователей · " +
-              sec +
-              " с"
-          );
+          var chLabel = state.channel === "marketplaces" ? "Размещение на маркеты" : "Альмамед";
+          var msg =
+            "Раздано блоками подряд на вкладке <b>" +
+            chLabel +
+            "</b>: <b>" +
+            (j.assigned || 0) +
+            "</b> строк на <b>" +
+            (j.users || 0) +
+            "</b> пользователей · " +
+            sec +
+            " с";
+          if (j.mirrored_to_markets > 0) {
+            msg +=
+              "<br>На «Размещение на маркеты» скопировано ответственных: <b>" +
+              j.mirrored_to_markets +
+              "</b> (где было пусто).";
+          }
+          showLog("success", msg);
           load();
         })
         .catch(function (e) {

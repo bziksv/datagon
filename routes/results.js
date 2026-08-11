@@ -57,11 +57,27 @@ function scheduleResultsPricesPscBackfill(db) {
     if (resultsPricesPscBackfilled || resultsPricesPscBackfillPromise) return;
     resultsPricesPscBackfillPromise = (async () => {
         try {
-            await db.query(
-                `UPDATE prices pr
-                 INNER JOIN pages pg ON pg.id = pr.page_id
-                 SET pr.page_status_cached = pg.status`
-            );
+            // Чанками: полный UPDATE JOIN по ~100k prices блокирует SELECT списка.
+            // Multi-table UPDATE в MySQL не принимает LIMIT — через подвыборку id.
+            const chunk = 2000;
+            for (;;) {
+                const [r] = await db.query(
+                    `UPDATE prices pr
+                     INNER JOIN (
+                        SELECT pr2.id AS pid, pg.status AS st
+                          FROM prices pr2
+                          INNER JOIN pages pg ON pg.id = pr2.page_id
+                         WHERE pr2.page_status_cached IS NULL
+                            OR pr2.page_status_cached <> pg.status
+                         LIMIT ?
+                     ) x ON x.pid = pr.id
+                     SET pr.page_status_cached = x.st`,
+                    [chunk]
+                );
+                const n = Number(r && r.affectedRows) || 0;
+                if (n < 1) break;
+                await new Promise((resolve) => setTimeout(resolve, 50));
+            }
             resultsPricesPscBackfilled = true;
         } catch (e) {
             console.warn('[results] page_status_cached backfill:', e.message);
@@ -336,7 +352,12 @@ module.exports = (db, settings) => {
             const joinFrom =
                 'FROM prices pr JOIN projects p ON pr.project_id = p.id LEFT JOIN pages pg ON pr.page_id = pg.id WHERE 1=1';
             let qCond = '';
-            let qc = `SELECT COUNT(*) as total FROM prices pr LEFT JOIN pages pg ON pr.page_id = pg.id WHERE 1=1`;
+            // Без фильтра по статусу страницы JOIN pages в COUNT не нужен — на ~100k это заметно.
+            const needPagesForCount =
+                !!(page_status && ['pending', 'processing', 'done', 'error'].includes(String(page_status).toLowerCase()));
+            let qc = needPagesForCount
+                ? `SELECT COUNT(*) as total FROM prices pr LEFT JOIN pages pg ON pr.page_id = pg.id WHERE 1=1`
+                : `SELECT COUNT(*) as total FROM prices pr WHERE 1=1`;
             let p = [], pc = [];
             
             if (project_id && project_id !== 'all') { 

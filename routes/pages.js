@@ -39,6 +39,55 @@ module.exports = (db, settings) => {
         pagesQueueIndexReady = true;
     }
 
+    /**
+     * URL страниц с confirmed-матчем.
+     * Идём от product_matches + индексы prices(project_id, sku|name) — БЕЗ CREATE INDEX на GET
+     * и БЕЗ коррелированного EXISTS (он вешал очередь на минуты).
+     */
+    async function loadMatchedUrlSet(projectId) {
+        const paramsSku = [];
+        const paramsName = [];
+        let skuSql = `
+            SELECT DISTINCT pr.project_id, pr.url
+              FROM product_matches pm
+              INNER JOIN prices pr
+                ON pr.project_id = pm.competitor_site_id
+               AND pm.competitor_sku = pr.sku
+             WHERE pm.status = 'confirmed'
+               AND pm.competitor_sku IS NOT NULL AND pm.competitor_sku <> ''`;
+        let nameSql = `
+            SELECT DISTINCT pr.project_id, pr.url
+              FROM product_matches pm
+              INNER JOIN prices pr
+                ON pr.project_id = pm.competitor_site_id
+               AND pm.competitor_name = pr.product_name
+             WHERE pm.status = 'confirmed'
+               AND (pm.competitor_sku IS NULL OR pm.competitor_sku = '')`;
+        if (projectId && projectId !== 'all') {
+            skuSql += ' AND pm.competitor_site_id = ?';
+            nameSql += ' AND pm.competitor_site_id = ?';
+            paramsSku.push(projectId);
+            paramsName.push(projectId);
+        }
+        const [[skuRows], [nameRows]] = await Promise.all([
+            db.query(skuSql, paramsSku),
+            db.query(nameSql, paramsName)
+        ]);
+        const byProject = new Map();
+        for (const row of [...(skuRows || []), ...(nameRows || [])]) {
+            const pid = Number(row.project_id);
+            const url = String(row.url || '');
+            if (!Number.isFinite(pid) || !url) continue;
+            if (!byProject.has(pid)) byProject.set(pid, new Set());
+            byProject.get(pid).add(url);
+        }
+        return byProject;
+    }
+
+    function sqlInPlaceholders(n) {
+        return Array.from({ length: n }, () => '?').join(',');
+    }
+
     async function ensurePagesAddedFromColumn() {
         if (pagesAddedFromReady) return;
         try {
@@ -998,62 +1047,91 @@ module.exports = (db, settings) => {
                 ensurePagesAddedFromColumn(),
                 ensurePagesAddedAtColumn(),
                 ensurePagesStatusColumnSupportsSitemap(),
-                cleanupDiscoveredUrlsWithQuery()
+                ensurePagesQueueIndex(),
             ]);
+            // cleanup не ждём на GET — иначе первый запрос после рестарта может висеть на DELETE.
+            void cleanupDiscoveredUrlsWithQuery();
+
             const { project_id, status, type, search, matched, limit, offset, sort_by, sort_dir } = req.query;
             const l = parseInt(limit) || (settings.default_limit || 100);
             const o = parseInt(offset) || 0;
             const sortDir = String(sort_dir || 'desc').toLowerCase() === 'asc' ? 'ASC' : 'DESC';
             const sortFieldMap = {
-                id: 'id',
-                project_id: 'project_id',
-                page_type: 'page_type',
-                url: 'url',
-                added_from: 'added_from',
-                added_at: 'added_at',
-                status: 'status',
-                parsed_at: 'parsed_at'
+                id: 'pg.id',
+                project_id: 'pg.project_id',
+                page_type: 'pg.page_type',
+                url: 'pg.url',
+                added_from: 'pg.added_from',
+                added_at: 'pg.added_at',
+                status: 'pg.status',
+                parsed_at: 'pg.parsed_at'
             };
-            const sortField = sortFieldMap[String(sort_by || 'id')] || 'id';
-            
-            let q = `
-                SELECT pg.*
-                FROM pages pg
-                WHERE 1=1
-            `;
-            let qc = 'SELECT COUNT(*) as total FROM pages WHERE 1=1';
-            let p = [], pc = [];
+            const sortField = sortFieldMap[String(sort_by || 'id')] || 'pg.id';
 
-            if (project_id && project_id !== 'all') { 
-                q += ' AND project_id = ?'; qc += ' AND project_id = ?'; 
-                p.push(project_id); pc.push(project_id); 
+            // matched=1/0: сначала набор URL из матчей (быстро по sku/name), потом pages … AND url IN (…)
+            // без коррелированного EXISTS и без CREATE INDEX на GET.
+            let matchedUrlList = null;
+            if (matched === '1' || matched === '0') {
+                const byProject = await loadMatchedUrlSet(project_id);
+                const urls = new Set();
+                if (project_id && project_id !== 'all') {
+                    const set = byProject.get(Number(project_id));
+                    if (set) for (const u of set) urls.add(u);
+                } else {
+                    for (const set of byProject.values()) for (const u of set) urls.add(u);
+                }
+                matchedUrlList = Array.from(urls);
+                if (matched === '1' && !matchedUrlList.length) {
+                    return res.json({ data: [], total: 0 });
+                }
             }
-            if (status) { 
-                q += ' AND status = ?'; qc += ' AND status = ?'; 
-                p.push(status); pc.push(status); 
+
+            let q = 'SELECT pg.* FROM pages pg WHERE 1=1';
+            let qc = 'SELECT COUNT(*) as total FROM pages pg WHERE 1=1';
+            let p = [];
+            let pc = [];
+
+            if (project_id && project_id !== 'all') {
+                q += ' AND pg.project_id = ?';
+                qc += ' AND pg.project_id = ?';
+                p.push(project_id);
+                pc.push(project_id);
             }
-            if (type && type !== 'all') { 
-                q += ' AND page_type = ?'; qc += ' AND page_type = ?'; 
-                p.push(type); pc.push(type); 
+            if (status) {
+                q += ' AND pg.status = ?';
+                qc += ' AND pg.status = ?';
+                p.push(status);
+                pc.push(status);
             }
-            if (matched === '1') {
-                q += ' AND EXISTS(SELECT 1 FROM prices pr JOIN product_matches pm ON pm.status = "confirmed" AND pm.competitor_site_id = pr.project_id AND ((pm.competitor_sku IS NOT NULL AND pm.competitor_sku <> "" AND pm.competitor_sku = pr.sku) OR pm.competitor_name = pr.product_name) WHERE pr.project_id = pg.project_id AND pr.url = pg.url LIMIT 1)';
-                qc += ' AND EXISTS(SELECT 1 FROM prices pr JOIN product_matches pm ON pm.status = "confirmed" AND pm.competitor_site_id = pr.project_id AND ((pm.competitor_sku IS NOT NULL AND pm.competitor_sku <> "" AND pm.competitor_sku = pr.sku) OR pm.competitor_name = pr.product_name) WHERE pr.project_id = pages.project_id AND pr.url = pages.url LIMIT 1)';
-            } else if (matched === '0') {
-                q += ' AND NOT EXISTS(SELECT 1 FROM prices pr JOIN product_matches pm ON pm.status = "confirmed" AND pm.competitor_site_id = pr.project_id AND ((pm.competitor_sku IS NOT NULL AND pm.competitor_sku <> "" AND pm.competitor_sku = pr.sku) OR pm.competitor_name = pr.product_name) WHERE pr.project_id = pg.project_id AND pr.url = pg.url LIMIT 1)';
-                qc += ' AND NOT EXISTS(SELECT 1 FROM prices pr JOIN product_matches pm ON pm.status = "confirmed" AND pm.competitor_site_id = pr.project_id AND ((pm.competitor_sku IS NOT NULL AND pm.competitor_sku <> "" AND pm.competitor_sku = pr.sku) OR pm.competitor_name = pr.product_name) WHERE pr.project_id = pages.project_id AND pr.url = pages.url LIMIT 1)';
+            if (type && type !== 'all') {
+                q += ' AND pg.page_type = ?';
+                qc += ' AND pg.page_type = ?';
+                p.push(type);
+                pc.push(type);
             }
-            
-            // Логика поиска по URL
             if (search) {
                 const searchVal = `%${search}%`;
-                q += ' AND url LIKE ?'; 
-                qc += ' AND url LIKE ?'; 
-                p.push(searchVal); 
-                pc.push(searchVal); 
+                q += ' AND pg.url LIKE ?';
+                qc += ' AND pg.url LIKE ?';
+                p.push(searchVal);
+                pc.push(searchVal);
             }
 
-            q += ` ORDER BY ${sortField} ${sortDir}, id DESC LIMIT ? OFFSET ?`;
+            if (matched === '1' && matchedUrlList) {
+                const ph = sqlInPlaceholders(matchedUrlList.length);
+                q += ` AND pg.url IN (${ph})`;
+                qc += ` AND pg.url IN (${ph})`;
+                p.push(...matchedUrlList);
+                pc.push(...matchedUrlList);
+            } else if (matched === '0' && matchedUrlList && matchedUrlList.length) {
+                const ph = sqlInPlaceholders(matchedUrlList.length);
+                q += ` AND pg.url NOT IN (${ph})`;
+                qc += ` AND pg.url NOT IN (${ph})`;
+                p.push(...matchedUrlList);
+                pc.push(...matchedUrlList);
+            }
+
+            q += ` ORDER BY ${sortField} ${sortDir}, pg.id DESC LIMIT ? OFFSET ?`;
             p.push(l, o);
 
             const [[rows], [count]] = await Promise.all([db.query(q, p), db.query(qc, pc)]);
@@ -1112,7 +1190,7 @@ module.exports = (db, settings) => {
      * Условия для массовых reset/clear: верхние фильтры + фильтры строки таблицы (как в UI очереди).
      * @returns {{ parts: string[], p: unknown[], narrow: boolean }}
      */
-    function buildBulkQueueWhereParts(body, modeFiltered) {
+    async function buildBulkQueueWhereParts(body, modeFiltered) {
         const {
             project_id,
             status,
@@ -1184,14 +1262,27 @@ module.exports = (db, settings) => {
         const tfM = modeFiltered && tf_matched != null ? String(tf_matched) : 'all';
         const topM = modeFiltered && matched != null ? String(matched) : 'all';
         const effM = tfM === '1' || tfM === '0' ? tfM : topM === '1' || topM === '0' ? topM : 'all';
-        if (effM === '1') {
-            parts.push(
-                'EXISTS(SELECT 1 FROM prices pr JOIN product_matches pm ON pm.status = "confirmed" AND pm.competitor_site_id = pr.project_id AND ((pm.competitor_sku IS NOT NULL AND pm.competitor_sku <> "" AND pm.competitor_sku = pr.sku) OR pm.competitor_name = pr.product_name) WHERE pr.project_id = pages.project_id AND pr.url = pages.url LIMIT 1)'
-            );
-        } else if (effM === '0') {
-            parts.push(
-                'NOT EXISTS(SELECT 1 FROM prices pr JOIN product_matches pm ON pm.status = "confirmed" AND pm.competitor_site_id = pr.project_id AND ((pm.competitor_sku IS NOT NULL AND pm.competitor_sku <> "" AND pm.competitor_sku = pr.sku) OR pm.competitor_name = pr.product_name) WHERE pr.project_id = pages.project_id AND pr.url = pages.url LIMIT 1)'
-            );
+        if (effM === '1' || effM === '0') {
+            const byProject = await loadMatchedUrlSet(project_id);
+            const urls = new Set();
+            if (project_id && project_id !== 'all') {
+                const set = byProject.get(Number(project_id));
+                if (set) for (const u of set) urls.add(u);
+            } else {
+                for (const set of byProject.values()) for (const u of set) urls.add(u);
+            }
+            const list = Array.from(urls);
+            if (effM === '1') {
+                if (!list.length) {
+                    parts.push('0=1');
+                } else {
+                    parts.push(`url IN (${sqlInPlaceholders(list.length)})`);
+                    p.push(...list);
+                }
+            } else if (list.length) {
+                parts.push(`url NOT IN (${sqlInPlaceholders(list.length)})`);
+                p.push(...list);
+            }
         }
 
         const narrow =
@@ -1213,7 +1304,7 @@ module.exports = (db, settings) => {
         try {
             await ensurePagesQueueIndex();
             const modeFiltered = String(req.body?.mode || '') === 'filtered';
-            const { parts, p, narrow } = buildBulkQueueWhereParts(req.body, modeFiltered);
+            const { parts, p, narrow } = await buildBulkQueueWhereParts(req.body, modeFiltered);
             if (modeFiltered && !narrow) {
                 return res.status(400).json({
                     error:
@@ -1249,7 +1340,7 @@ module.exports = (db, settings) => {
         try {
             await ensurePagesQueueIndex();
             const modeFiltered = String(req.body?.mode || '') === 'filtered';
-            const { parts, p, narrow } = buildBulkQueueWhereParts(req.body, modeFiltered);
+            const { parts, p, narrow } = await buildBulkQueueWhereParts(req.body, modeFiltered);
             if (modeFiltered && !narrow) {
                 return res.status(400).json({
                     error:

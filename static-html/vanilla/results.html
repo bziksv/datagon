@@ -1681,7 +1681,6 @@
 
       function loadResults(opts) {
         opts = opts || {};
-        if (loading) return;
         var showSkeleton = opts.showSkeleton !== false;
         var gen = ++loadResultsGeneration;
         if (searchReloadTimer) {
@@ -1717,6 +1716,8 @@
             var data = x.j.data || x.j.rows || [];
             rows = Array.isArray(data) ? data : [];
             total = Number(x.j.total || 0);
+            loading = false;
+            setResultsListBusy(false);
             if (tbodyRefresh) tbodyRefresh.classList.remove("dg-res-tbody-refreshing");
             renderTable();
             syncUrl();
@@ -1725,9 +1726,11 @@
           .catch(function (e) {
             if (e.name === "AbortError") return;
             if (gen !== loadResultsGeneration) return;
-            if (tbodyRefresh) tbodyRefresh.classList.remove("dg-res-tbody-refreshing");
             rows = [];
             total = 0;
+            loading = false;
+            setResultsListBusy(false);
+            if (tbodyRefresh) tbodyRefresh.classList.remove("dg-res-tbody-refreshing");
             renderTable();
             showErr(e.message || "Не удалось загрузить результаты");
           })
@@ -1736,8 +1739,12 @@
               resultsFetchAbortController = null;
             }
             if (gen !== loadResultsGeneration) return;
-            loading = false;
-            setResultsListBusy(false);
+            // На случай раннего выхода: не оставляем вечный «Загрузка…».
+            if (loading) {
+              loading = false;
+              setResultsListBusy(false);
+              renderTable();
+            }
             updateHints({});
           });
       }

@@ -1786,6 +1786,7 @@ module.exports = function exportsNewProductsRouterFactory(db, config) {
             const m = users.length;
             const n = rows.length;
             let assigned = 0;
+            let mirroredToMarkets = 0;
             let rowIdx = 0;
             for (let uIdx = 0; uIdx < m && rowIdx < n; uIdx++) {
                 const remainingRows = n - rowIdx;
@@ -1801,6 +1802,20 @@ module.exports = function exportsNewProductsRouterFactory(db, config) {
                           WHERE id = ?`,
                         [u.id, name, before.id]
                     );
+                    // С Альмамеда сразу зеркалим на связанную строку «Размещение на маркеты»,
+                    // если там ещё пусто — иначе раздача «не видна» на второй вкладке.
+                    if (channel === 'almamed') {
+                        const [mir] = await db.query(
+                            `UPDATE dg_new_products
+                                SET responsible_user_id = ?, responsible_name = ?
+                              WHERE channel = 'marketplaces'
+                                AND source_almamed_id = ?
+                                AND responsible_user_id IS NULL
+                                AND status <> 'transferred'`,
+                            [u.id, name, before.id]
+                        );
+                        mirroredToMarkets += Number(mir && mir.affectedRows) || 0;
+                    }
                     try {
                         await logProductFieldChanges(db, {
                             productId: before.id,
@@ -1827,6 +1842,7 @@ module.exports = function exportsNewProductsRouterFactory(db, config) {
                 channel,
                 scope: scope === 'all' ? 'all' : 'unassigned',
                 mode: 'contiguous_blocks',
+                mirrored_to_markets: mirroredToMarkets,
             });
         } catch (e) {
             console.error('[new-products] distribute', e);

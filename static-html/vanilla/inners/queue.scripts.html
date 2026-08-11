@@ -910,7 +910,6 @@
 
       function loadPages(opts) {
         var silent = Boolean(opts && opts.silent);
-        if (!silent && loading) return;
         if (searchLoadDebounce) {
           clearTimeout(searchLoadDebounce);
           searchLoadDebounce = null;
@@ -933,6 +932,10 @@
             var data = json.data || json.rows || [];
             rows = Array.isArray(data) ? data : [];
             total = Number(json.total || 0);
+            if (!silent) {
+              loading = false;
+              setQueueFilterBusy(false);
+            }
             renderTable();
             syncUrl();
             refreshDiscoveryStatus(activeProjectId());
@@ -943,17 +946,20 @@
             if (!silent) {
               rows = [];
               total = 0;
+              loading = false;
+              setQueueFilterBusy(false);
               renderTable();
               showLoadErr(e.message || "Ошибка загрузки очереди");
               qRefreshFloatingAfterLayout();
             }
           })
           .finally(function () {
-            if (!silent) {
+            if (!silent && loading) {
               loading = false;
               setQueueFilterBusy(false);
-              updatePager();
+              renderTable();
             }
+            if (!silent) updatePager();
           });
       }
 

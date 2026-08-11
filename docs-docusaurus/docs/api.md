@@ -277,6 +277,8 @@ Query:
 - `status`
 - `type`
 - `search`
+- `matched` (`1` / `0` / пусто) — фильтр по confirmed-сопоставлению: сначала набор URL из `product_matches`⋈`prices` (по sku/name), затем `pages.url IN (…)` / `NOT IN` — без коррелированного EXISTS и без `CREATE INDEX` на GET
+- `sort_by` / `sort_dir`
 - `limit`
 - `offset`
 
