@@ -768,6 +768,14 @@ module.exports = function exportsNewProductsRouterFactory(db, config) {
             // Не зовём enrichMarketsRowsFromMs на GET списка: N×SQL + UPDATE/лог на каждую
             // недозаполненную строку маркетов держали ответ 30–60+ с («вечная Загрузка…»).
             // Обогащение из МС — на sync-markets-queue / точечных PATCH / upsert из Альмамед.
+            // Лёгкая ретрозапись в журнал (название/ответственный уже в строке, лога не было).
+            if (channel === 'marketplaces') {
+                try {
+                    await markets.backfillMissingMsEnrichLogs(db, mapped);
+                } catch (be) {
+                    console.warn('[new-products] backfill markets logs', be && be.message);
+                }
+            }
             const incomplete = mapped.filter((r) => r.missing_required && r.missing_required.length).length;
 
             res.json({
