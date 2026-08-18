@@ -37,11 +37,14 @@ const HUCKSTER_REPRICER_SHOP_TIMEOUT_MS = 90000;
 const HUCKSTER_REPRICER_SHOP_TIMEOUT_YM_SET1_MS = 180000;
 const HUCKSTER_POSTPROCESS_TIMEOUT_MS = 90000;
 const HUCKSTER_UNIT_REQUEST_TIMEOUT_MS = 45000;
-const HUCKSTER_UNIT_RETRY_MAX = 2;
+/** ЯМ: одна страница unit/set/get часто 20–40+ с; 45s рвёт набор и обнуляет весь кабинет. */
+const HUCKSTER_UNIT_REQUEST_TIMEOUT_YM_MS = 180000;
+const HUCKSTER_UNIT_RETRY_MAX = 3;
 const HUCKSTER_UNIT_HARD_TIMEOUT_MS = 60000;
+const HUCKSTER_UNIT_HARD_TIMEOUT_YM_MS = 200000;
 const HUCKSTER_UNIT_SHOP_TIMEOUT_MS = 90000;
-/** ЯМ: после полной пагинации unit/set/get (несколько наборов × несколько страниц) 90s не хватает. */
-const HUCKSTER_UNIT_SHOP_TIMEOUT_YM_MS = 300000;
+/** ЯМ Unit: 4 набора × полная пагинация + ретраи; 300s мало. */
+const HUCKSTER_UNIT_SHOP_TIMEOUT_YM_MS = 600000;
 const HUCKSTER_SYNC_LOG_FILE = path.join(process.cwd(), 'logs', 'huckster-sync.log');
 const HUCKSTER_SYNC_LOG_MAX_BYTES = 10 * 1024 * 1024; // 10 MB
 const HUCKSTER_SYNC_LOG_ROTATE_KEEP = 5;
@@ -361,13 +364,25 @@ function getRepricerShopTimeoutMs(setKey, shop) {
     return HUCKSTER_REPRICER_SHOP_TIMEOUT_MS;
 }
 
-function getUnitShopTimeoutMs(shop) {
+function isYandexHucksterShop(shop) {
     const shopId = String((shop && shop.id) || '').trim().toLowerCase();
     const mp = String((shop && shop.marketplace) || '').trim().toLowerCase();
-    if (shopId === 'ym' || shopId.startsWith('ym_') || mp === 'yandex') {
-        return HUCKSTER_UNIT_SHOP_TIMEOUT_YM_MS;
-    }
+    return shopId === 'ym' || shopId.startsWith('ym_') || mp === 'yandex';
+}
+
+function getUnitShopTimeoutMs(shop) {
+    if (isYandexHucksterShop(shop)) return HUCKSTER_UNIT_SHOP_TIMEOUT_YM_MS;
     return HUCKSTER_UNIT_SHOP_TIMEOUT_MS;
+}
+
+function getUnitRequestTimeoutMs(shop) {
+    if (isYandexHucksterShop(shop)) return HUCKSTER_UNIT_REQUEST_TIMEOUT_YM_MS;
+    return HUCKSTER_UNIT_REQUEST_TIMEOUT_MS;
+}
+
+function getUnitHardTimeoutMs(shop) {
+    if (isYandexHucksterShop(shop)) return HUCKSTER_UNIT_HARD_TIMEOUT_YM_MS;
+    return HUCKSTER_UNIT_HARD_TIMEOUT_MS;
 }
 
 /** Только repricer/items/list по одному магазину (без Unit-моделей). Все позиции с uid; «включён в репрайсер» — отдельное поле (раньше выключенные отбрасывались). */
@@ -526,13 +541,22 @@ async function enrichProductsWithUnitModels(shop, sessionId, products, opts, isS
         info = null;
     }
     const list = Array.isArray(products) ? products : [];
+    const namesByUidLc = new Map();
+    if (info && info.uidToNames instanceof Map) {
+        for (const [u, ns] of info.uidToNames.entries()) {
+            const k = String(u || '').trim().toLowerCase();
+            if (!k || !(ns instanceof Set) || ns.size === 0) continue;
+            if (!namesByUidLc.has(k)) namesByUidLc.set(k, new Set());
+            for (const n of ns) namesByUidLc.get(k).add(n);
+        }
+    }
     return list.map((p) => {
         const uid = String(p.uid || '');
         let inUnit = null;
         let unitModelNames = '';
         if (info != null) {
-            inUnit = info.uidSet.has(uid);
-            const ns = info.uidToNames.get(uid);
+            const ns = namesByUidLc.get(uid.trim().toLowerCase());
+            inUnit = Boolean(ns && ns.size > 0);
             unitModelNames =
                 ns && ns.size > 0
                     ? Array.from(ns).sort((a, b) => a.localeCompare(b, 'ru', { numeric: true })).join('; ')
@@ -603,19 +627,21 @@ async function fetchAllUnitModelInfo(shop, sessionId, opts, isStopped, unitSetFi
     };
     async function postUnit(url, payload, titleForLog) {
         const maxAttempts = HUCKSTER_UNIT_RETRY_MAX;
+        const requestTimeoutMs = getUnitRequestTimeoutMs(shop);
+        const hardTimeoutMs = getUnitHardTimeoutMs(shop);
         let lastErr = null;
         for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
             const startedAt = Date.now();
             const hardTimer = setTimeout(() => {
                 /* no-op marker timer for logs */
-            }, HUCKSTER_UNIT_HARD_TIMEOUT_MS);
+            }, hardTimeoutMs);
             try {
                 const controller = new AbortController();
                 if (typeof setActiveAbortController === 'function') setActiveAbortController(controller);
-                const killer = setTimeout(() => controller.abort(), HUCKSTER_UNIT_HARD_TIMEOUT_MS);
+                const killer = setTimeout(() => controller.abort(), hardTimeoutMs);
                 try {
                     const resp = await axios.post(url, payload, {
-                        timeout: HUCKSTER_UNIT_REQUEST_TIMEOUT_MS,
+                        timeout: requestTimeoutMs,
                         headers,
                         signal: controller.signal,
                     });
@@ -743,17 +769,44 @@ async function fetchAllUnitModelInfo(shop, sessionId, opts, isStopped, unitSetFi
                     uid_filter_total: uidFilter ? uidFilter.size : 0,
                 });
             }
-            const gr = await postUnit(
-                'https://wbs.e-teleport.ru/markets/integrations/unit/set/get',
-                {
-                    marketplace: shop.marketplace,
-                    shop_id: shop.shop_id,
-                    set_id: setId,
-                    limit: limitGet,
+            let gr;
+            try {
+                gr = await postUnit(
+                    'https://wbs.e-teleport.ru/markets/integrations/unit/set/get',
+                    {
+                        marketplace: shop.marketplace,
+                        shop_id: shop.shop_id,
+                        set_id: setId,
+                        limit: limitGet,
+                        offset,
+                    },
+                    `unit/set/get set_id=${setId} offset=${offset}`
+                );
+            } catch (eGet) {
+                const msg = eGet && eGet.message ? eGet.message : String(eGet);
+                console.warn(
+                    '[huckster] unit/set/get set_id=%s offset=%s skipped after retries %s/%s: %s (уже собрано UID: %s)',
+                    setId,
                     offset,
-                },
-                `unit/set/get set_id=${setId} offset=${offset}`
-            );
+                    shop.marketplace,
+                    shop.shop_id,
+                    msg,
+                    uidSet.size
+                );
+                if (typeof onProgress === 'function') {
+                    onProgress({
+                        phase: 'set_skip',
+                        set_id: setId,
+                        set_label: setLabel,
+                        set_index: setIndex,
+                        set_total: setList.length,
+                        offset,
+                        error: msg,
+                        uid_found: uidSet.size,
+                    });
+                }
+                break;
+            }
             const gp = gr && gr.data ? gr.data : {};
             if (gp.error) {
                 console.warn(
@@ -1217,13 +1270,16 @@ function createExportsHucksterRouter(_db, appSettings) {
                         );
                     } catch (eUnitShop) {
                         const msg = eUnitShop && eUnitShop.message ? eUnitShop.message : String(eUnitShop);
-                        syncState.status_text = `Ошибка Unit-моделей: ${item.shop.name} (${setLabel}) — ${msg}`;
+                        syncState.status_text = `Ошибка Unit-моделей: ${item.shop.name} (${setLabel}) — ${msg}; оставляем Repricer без моделей`;
                         await appendHucksterLog('ERROR', 'unit_shop_failed', {
                             set: item.set,
                             shop_id: item.shop.id,
                             error: msg,
                         });
-                        throw eUnitShop;
+                        // Не валим весь sync: Repricer уже собран; модели для этого кабинета останутся пустыми.
+                        if (!Array.isArray(bucket[item.shop.id])) {
+                            bucket[item.shop.id] = Array.isArray(raw) ? raw : [];
+                        }
                     }
                     await appendHucksterLog('INFO', 'unit_shop_done', {
                         set: item.set,
