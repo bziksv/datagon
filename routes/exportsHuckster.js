@@ -379,7 +379,18 @@ async function fetchRepricerProductsForShop(shop, sessionId, opts, isStopped, on
     const maxOffset = Math.max(0, Number(opts.max_offset_per_shop || 0));
     const delayMs = Math.max(HUCKSTER_DELAY_MS_MIN, Number(opts.delay_ms || HUCKSTER_DELAY_MS_DEFAULT));
     const uidFilter = opts.uid_filter instanceof Set ? opts.uid_filter : null;
+    const uidFilterLc = uidFilter
+        ? new Set(Array.from(uidFilter).map((v) => String(v || '').trim().toLowerCase()).filter(Boolean))
+        : null;
     const foundFiltered = new Set();
+    function uidFilterHit(values) {
+        if (!uidFilterLc) return true;
+        for (const v of values) {
+            const k = String(v || '').trim().toLowerCase();
+            if (k && uidFilterLc.has(k)) return true;
+        }
+        return false;
+    }
     async function postRepricer(payload, titleForLog) {
         const maxAttempts = HUCKSTER_REPRICER_RETRY_MAX;
         let lastErr = null;
@@ -463,15 +474,14 @@ async function fetchRepricerProductsForShop(shop, sessionId, opts, isStopped, on
         for (const x of rows) {
             const uid = String(getRepricerField(x, 'uid', 'Uid') || '').trim();
             if (!uid) continue;
-            if (uidFilter) {
+            if (uidFilterLc) {
                 const alts = extractRepricerAltMatchIds(x, uid);
-                const hit =
-                    uidFilter.has(uid) || alts.some((a) => uidFilter.has(String(a || '').trim()));
+                const hit = uidFilterHit([uid, ...alts]);
                 if (!hit) continue;
-                if (uidFilter.has(uid)) foundFiltered.add(uid);
+                if (uidFilterLc.has(String(uid).toLowerCase())) foundFiltered.add(String(uid).toLowerCase());
                 for (const a of alts) {
-                    const t = String(a || '').trim();
-                    if (t && uidFilter.has(t)) foundFiltered.add(t);
+                    const t = String(a || '').trim().toLowerCase();
+                    if (t && uidFilterLc.has(t)) foundFiltered.add(t);
                 }
             }
             byUid.set(uid, {
@@ -483,7 +493,7 @@ async function fetchRepricerProductsForShop(shop, sessionId, opts, isStopped, on
                 mpSku: String(getRepricerField(x, 'sku', 'Sku') ?? x.sku ?? '').trim(),
             });
         }
-        if (uidFilter && foundFiltered.size >= uidFilter.size) break;
+        if (uidFilterLc && foundFiltered.size >= uidFilterLc.size) break;
         const pageLen = rows.length;
         if (!pageLen) break;
         offset += pageLen;
@@ -582,6 +592,9 @@ async function fetchAllUnitModelInfo(shop, sessionId, opts, isStopped, unitSetFi
     const delayMs = Math.max(HUCKSTER_DELAY_MS_MIN, Number(opts.delay_ms || HUCKSTER_DELAY_MS_DEFAULT));
     const limitGet = HUCKSTER_UNIT_PAGE_LIMIT;
     const uidFilter = opts.uid_filter instanceof Set ? opts.uid_filter : null;
+    const uidFilterLc = uidFilter
+        ? new Set(Array.from(uidFilter).map((v) => String(v || '').trim().toLowerCase()).filter(Boolean))
+        : null;
     const foundFiltered = new Set();
     const headers = {
         Accept: 'application/json',
@@ -650,9 +663,9 @@ async function fetchAllUnitModelInfo(shop, sessionId, opts, isStopped, unitSetFi
     function noteUidInSet(uid, setLabel) {
         const u = String(uid || '').trim();
         if (!u) return;
-        if (uidFilter && !uidFilter.has(u)) return;
+        if (uidFilterLc && !uidFilterLc.has(u.toLowerCase())) return;
         uidSet.add(u);
-        if (uidFilter) foundFiltered.add(u);
+        if (uidFilterLc) foundFiltered.add(u.toLowerCase());
         const label = String(setLabel || '').trim() || `#`;
         if (!uidToNames.has(u)) uidToNames.set(u, new Set());
         uidToNames.get(u).add(label);
@@ -765,7 +778,7 @@ async function fetchAllUnitModelInfo(shop, sessionId, opts, isStopped, unitSetFi
                 if (u) noteUidInSet(u, setLabel);
             }
 
-            if (uidFilter && foundFiltered.size >= uidFilter.size) break;
+            if (uidFilterLc && foundFiltered.size >= uidFilterLc.size) break;
             const pageLen = itemList.length;
             if (!pageLen) break;
             offset += pageLen;
@@ -776,7 +789,7 @@ async function fetchAllUnitModelInfo(shop, sessionId, opts, isStopped, unitSetFi
             await new Promise((r) => setTimeout(r, delayMs));
         }
         /* eslint-enable no-await-in-loop */
-        if (uidFilter && foundFiltered.size >= uidFilter.size) break;
+        if (uidFilterLc && foundFiltered.size >= uidFilterLc.size) break;
     }
     return { uidSet, uidToNames };
 }
