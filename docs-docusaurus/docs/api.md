@@ -1272,7 +1272,7 @@ Query: `channel`, `search`, `status`, `priority`, `brand`, `responsible` (id | `
 
 Старые снапшоты наборов 1/2 с первой колонкой **«Обновлено (repricer)»** UI отображает по прежней сетке (UID × кабинеты).
 
-Ежедневный запуск по расписанию (МСК): флаги **`auto_sync_huckster_enabled`** / **`auto_sync_huckster_time`** в `POST /api/settings` — см. раздел [Settings](#settings); реализация в `server.js` (очередь `auto_sync_runs`, тип задачи `huckster`).
+Ежедневный запуск по расписанию (МСК): флаги **`auto_sync_huckster_enabled`** / **`auto_sync_huckster_time`** в `POST /api/settings` — см. раздел [Settings](#settings); реализация в `server.js` (очередь `auto_sync_runs`, тип задачи `huckster`). В `auto_sync_runs`: **`completed`** только если снапшот сохранён **и** нет предупреждений Unit; при таймауте/`set/get` fail по кабинету статус **`failed`**, а в `message` — «Снапшот сохранён …, но ошибки (N): …» (кнопка «Лог» на `/processes.html` показывает этот текст, не только файл `logs/huckster-sync.log`).
 
 ### POST `/api/exports/huckster/sync`
 

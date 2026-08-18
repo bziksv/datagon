@@ -1846,8 +1846,24 @@ async function processAutoSyncQueue() {
                     const text = finalState.error.error || 'неизвестная ошибка';
                     message = `Ошибка${ph}${code}: ${text}`.slice(0, 480);
                 } else if (finalState.result_success && finalState.snapshot_saved_at) {
-                    status = 'completed';
-                    message = `Снапшот сохранён ${finalState.snapshot_saved_at}`;
+                    const warns = Array.isArray(finalState.warnings) ? finalState.warnings : [];
+                    if (warns.length > 0 || finalState.has_warnings) {
+                        // Снапшот есть, но Unit/др. частичные сбои — не зелёный «Завершено».
+                        status = 'failed';
+                        const detail = warns
+                            .map((w) => String((w && (w.message || w.code)) || '').trim())
+                            .filter(Boolean)
+                            .slice(0, 6)
+                            .join('; ');
+                        message = (
+                            `Снапшот сохранён ${finalState.snapshot_saved_at}, но ошибки (${warns.length || '?'}): ${
+                                detail || finalState.status_text || 'см. logs/huckster-sync.log'
+                            }`
+                        ).slice(0, 480);
+                    } else {
+                        status = 'completed';
+                        message = `Снапшот сохранён ${finalState.snapshot_saved_at}`;
+                    }
                 } else if (finalState.result_success) {
                     message = 'Матрицы собраны, но снапшот не сохранён в БД (см. logs/huckster-sync.log)';
                 } else {

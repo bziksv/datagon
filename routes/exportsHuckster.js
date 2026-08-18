@@ -523,7 +523,17 @@ async function fetchRepricerProductsForShop(shop, sessionId, opts, isStopped, on
 }
 
 /** Дописать inUnitModel и названия Unit-наборов к уже загруженному списку repricer. `unitSetFilter` — только наборы list, для которых вернётся true (например только «Онлайн калькулятор» для Export). */
-async function enrichProductsWithUnitModels(shop, sessionId, products, opts, isStopped, unitSetFilter, onUnitProgress, setActiveAbortController) {
+async function enrichProductsWithUnitModels(
+    shop,
+    sessionId,
+    products,
+    opts,
+    isStopped,
+    unitSetFilter,
+    onUnitProgress,
+    setActiveAbortController,
+    onUnitIssue
+) {
     throwIfStopped(isStopped);
     let info = null;
     try {
@@ -537,8 +547,22 @@ async function enrichProductsWithUnitModels(shop, sessionId, products, opts, isS
             setActiveAbortController
         );
     } catch (e) {
-        console.warn('[huckster] unit economy models:', e && e.message ? e.message : e);
+        const msg = e && e.message ? e.message : String(e);
+        console.warn('[huckster] unit economy models:', msg);
+        if (typeof onUnitIssue === 'function') {
+            onUnitIssue({
+                code: 'UNIT_FETCH_FAILED',
+                marketplace: String(shop.marketplace || ''),
+                shop_id: String(shop.shop_id || ''),
+                message: msg,
+            });
+        }
         info = null;
+    }
+    if (info && Array.isArray(info.issues) && typeof onUnitIssue === 'function') {
+        for (const iss of info.issues) {
+            if (iss) onUnitIssue(iss);
+        }
     }
     const list = Array.isArray(products) ? products : [];
     const namesByUidLc = new Map();
@@ -613,6 +637,8 @@ function extractUnitSetDisplayName(st, setId) {
 async function fetchAllUnitModelInfo(shop, sessionId, opts, isStopped, unitSetFilter, onProgress, setActiveAbortController) {
     const uidSet = new Set();
     const uidToNames = new Map();
+    /** @type {Array<{ code: string, set_id?: string, set_label?: string, message: string, marketplace?: string, shop_id?: string }>} */
+    const issues = [];
     const delayMs = Math.max(HUCKSTER_DELAY_MS_MIN, Number(opts.delay_ms || HUCKSTER_DELAY_MS_DEFAULT));
     const limitGet = HUCKSTER_UNIT_PAGE_LIMIT;
     const uidFilter = opts.uid_filter instanceof Set ? opts.uid_filter : null;
@@ -793,6 +819,14 @@ async function fetchAllUnitModelInfo(shop, sessionId, opts, isStopped, unitSetFi
                     msg,
                     uidSet.size
                 );
+                issues.push({
+                    code: 'UNIT_SET_GET_FAILED',
+                    marketplace: String(shop.marketplace || ''),
+                    shop_id: String(shop.shop_id || ''),
+                    set_id: setId,
+                    set_label: setLabel,
+                    message: `set/get ${setLabel || setId} offset=${offset}: ${msg}`,
+                });
                 if (typeof onProgress === 'function') {
                     onProgress({
                         phase: 'set_skip',
@@ -809,11 +843,16 @@ async function fetchAllUnitModelInfo(shop, sessionId, opts, isStopped, unitSetFi
             }
             const gp = gr && gr.data ? gr.data : {};
             if (gp.error) {
-                console.warn(
-                    '[huckster] unit/set/get set_id=%s: %s',
-                    setId,
-                    gp.error.message || JSON.stringify(gp.error)
-                );
+                const em = gp.error.message || JSON.stringify(gp.error);
+                console.warn('[huckster] unit/set/get set_id=%s: %s', setId, em);
+                issues.push({
+                    code: 'UNIT_SET_GET_API_ERROR',
+                    marketplace: String(shop.marketplace || ''),
+                    shop_id: String(shop.shop_id || ''),
+                    set_id: setId,
+                    set_label: setLabel,
+                    message: `set/get ${setLabel || setId}: ${em}`,
+                });
                 break;
             }
             const res = gp.result || {};
@@ -844,7 +883,7 @@ async function fetchAllUnitModelInfo(shop, sessionId, opts, isStopped, unitSetFi
         /* eslint-enable no-await-in-loop */
         if (uidFilterLc && foundFiltered.size >= uidFilterLc.size) break;
     }
-    return { uidSet, uidToNames };
+    return { uidSet, uidToNames, issues };
 }
 
 function createExportsHucksterRouter(_db, appSettings) {
@@ -864,9 +903,11 @@ function createExportsHucksterRouter(_db, appSettings) {
         },
         result: null,
         error: null,
+        /** Частичные сбои (Unit timeout / set skip) — не маскировать completed на /processes.html. */
+        warnings: [],
         // ISO-время фактического сохранения снапшота в huckster_matrix_snapshots.
         // Используется server.js / processAutoSyncQueue, чтобы пометить запуск
-        // completed только если снапшот реально записался, а не просто IIFE завершилась.
+        // completed только если снапшот реально записался и нет warnings.
         snapshot_saved_at: null,
         active_abort_controller: null,
     };
@@ -1049,6 +1090,7 @@ function createExportsHucksterRouter(_db, appSettings) {
         syncState.finished_at = null;
         syncState.error = null;
         syncState.result = null;
+        syncState.warnings = [];
         syncState.status_text = opts.test_uids.length
             ? `Аутентификация Huckster (тест UID: ${opts.test_uids.join(', ')})...`
             : 'Аутентификация Huckster...';
@@ -1252,6 +1294,21 @@ function createExportsHucksterRouter(_db, appSettings) {
                     };
                     try {
                         const unitShopTimeoutMs = getUnitShopTimeoutMs(item.shop);
+                        const onUnitIssue = (issue) => {
+                            if (!issue || typeof issue !== 'object') return;
+                            const row = {
+                                code: String(issue.code || 'UNIT_ISSUE'),
+                                shop_id: String(item.shop.id || ''),
+                                shop_name: String(item.shop.name || ''),
+                                set: item.set,
+                                marketplace: String(issue.marketplace || item.shop.marketplace || ''),
+                                set_id: issue.set_id != null ? String(issue.set_id) : '',
+                                set_label: issue.set_label != null ? String(issue.set_label) : '',
+                                message: String(issue.message || issue.code || 'Unit issue'),
+                            };
+                            syncState.warnings.push(row);
+                            appendHucksterLog('WARN', 'unit_issue', row);
+                        };
                         bucket[item.shop.id] = await withTimeout(
                             enrichProductsWithUnitModels(
                                 item.shop,
@@ -1261,7 +1318,8 @@ function createExportsHucksterRouter(_db, appSettings) {
                                 () => syncState.stop_requested,
                                 item.set === 'set1' ? set1UnitFilter : null,
                                 unitProgress,
-                                setActiveAbortController
+                                setActiveAbortController,
+                                onUnitIssue
                             ),
                             unitShopTimeoutMs,
                             `Timeout Unit-моделей: ${item.shop.name} (${setLabel}) > ${Math.round(
@@ -1271,6 +1329,17 @@ function createExportsHucksterRouter(_db, appSettings) {
                     } catch (eUnitShop) {
                         const msg = eUnitShop && eUnitShop.message ? eUnitShop.message : String(eUnitShop);
                         syncState.status_text = `Ошибка Unit-моделей: ${item.shop.name} (${setLabel}) — ${msg}; оставляем Repricer без моделей`;
+                        const warnRow = {
+                            code: 'UNIT_SHOP_FAILED',
+                            shop_id: String(item.shop.id || ''),
+                            shop_name: String(item.shop.name || ''),
+                            set: item.set,
+                            marketplace: String(item.shop.marketplace || ''),
+                            set_id: '',
+                            set_label: '',
+                            message: `${item.shop.name}: ${msg}`,
+                        };
+                        syncState.warnings.push(warnRow);
                         await appendHucksterLog('ERROR', 'unit_shop_failed', {
                             set: item.set,
                             shop_id: item.shop.id,
@@ -1393,6 +1462,7 @@ function createExportsHucksterRouter(_db, appSettings) {
                     lost_rows: Number(sheetLost.total_rows || 0),
                 });
                 syncState.error = null;
+                const warnList = Array.isArray(syncState.warnings) ? syncState.warnings.slice() : [];
                 syncState.result = {
                     success: true,
                     updated_at: syncedAt,
@@ -1401,15 +1471,20 @@ function createExportsHucksterRouter(_db, appSettings) {
                     sheet_export: set1,
                     sheet_export_rrc: set2,
                     sheet_export_lost: sheetLost,
+                    warnings: warnList,
+                    has_warnings: warnList.length > 0,
                 };
                 syncState.status_text = opts.test_uids.length
                     ? `Тест Huckster завершён: ${opts.test_uids.join(', ')}.`
-                    : 'Обновление Huckster завершено.';
+                    : warnList.length
+                      ? `Обновление Huckster завершено с ошибками Unit (${warnList.length}).`
+                      : 'Обновление Huckster завершено.';
                 await appendHucksterLog('INFO', 'sync_completed', {
                     finished_at: new Date().toISOString(),
                     set1_rows: Number(set1.total_rows || 0),
                     set2_rows: Number(set2.total_rows || 0),
                     lost_rows: Number(sheetLost.total_rows || 0),
+                    warnings_count: warnList.length,
                 });
                 if (!opts.test_uids.length) {
                     lastPhase = 'snapshot_save';
@@ -1482,8 +1557,8 @@ function createExportsHucksterRouter(_db, appSettings) {
     createExportsHucksterRouter.getSyncState = function getHucksterSyncState() {
         // Расширенный снимок состояния — нужен server.js / processAutoSyncQueue,
         // чтобы помечать запись auto_sync_runs honestly:
-        //   completed — только если result.success === true и snapshot_saved_at не null;
-        //   failed    — если есть error (auth/repricer/snapshot_save/HUCKSTER_STOPPED).
+        //   completed — только если result.success === true, snapshot_saved_at не null и нет warnings;
+        //   failed    — error ИЛИ снапшот с warnings (Unit timeout и т.п. — не маскировать зелёным «ок»).
         // `progress` / `stop_requested` — для /api/processes/overview → tasks_live.huckster.
         let progressCopy = null;
         try {
@@ -1491,6 +1566,7 @@ function createExportsHucksterRouter(_db, appSettings) {
         } catch (_) {
             progressCopy = syncState.progress || null;
         }
+        const warnings = Array.isArray(syncState.warnings) ? syncState.warnings.slice(0, 30) : [];
         return {
             active: syncState.active,
             started_at: syncState.started_at,
@@ -1499,6 +1575,8 @@ function createExportsHucksterRouter(_db, appSettings) {
             error: syncState.error,
             result_success: !!(syncState.result && syncState.result.success),
             snapshot_saved_at: syncState.snapshot_saved_at,
+            warnings,
+            has_warnings: warnings.length > 0,
             stop_requested: !!syncState.stop_requested,
             progress: progressCopy,
         };
