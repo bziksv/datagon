@@ -86,8 +86,9 @@
     box.innerHTML =
       '<p class="dg-legal-consent__text">Мы используем cookie для оптимизации работы сайта и анализа посещаемости. ' +
       "Используя сайт, вы соглашаетесь с " +
-      '<a href="/legal/cookies.html" target="_blank" rel="noopener">политикой cookie-файлов</a> и ' +
-      '<a href="/legal/privacy.html" target="_blank" rel="noopener">политикой обработки персональных данных</a>.</p>' +
+      '<a href="/legal/cookies.html" target="_blank" rel="noopener">политикой cookie-файлов</a>, ' +
+      '<a href="/legal/privacy.html" target="_blank" rel="noopener">политикой обработки персональных данных</a> и ' +
+      '<a href="/legal/consent.html" target="_blank" rel="noopener">согласием на обработку ПДн</a>.</p>' +
       '<button type="button" class="dg-legal-consent__btn" id="dg-legal-consent-accept">Принять</button>';
     document.body.appendChild(box);
     var btn = document.getElementById("dg-legal-consent-accept");
