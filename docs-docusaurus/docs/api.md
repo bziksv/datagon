@@ -1180,6 +1180,10 @@ Body (JSON):
 
 Доступ по матрице страницы **`exports-new-products`** (как дочерняя маркетплейсов наследует скрытие родителя `exports-marketplaces`, если у дочерней нет явного `view`/`full`).
 
+### Регламент / инструкция МП
+
+Страница **`/exports-marketplaces-reglament.html`** (ключ матрицы **`exports-marketplaces-reglament`**, пункт меню **Маркетплейсы → Инструкция**): статический HTML-регламент «от поиска товара до склада» (скриншоты в `/mp-assets/sellerstats/`). Отдельного API нет; доступ как у дочерних страниц маркетплейсов (наследование скрытия от `exports-marketplaces`).
+
 Статусы Альмамед: `new` | `not_added` | `in_progress` | `added` | `revision` | `review` | `transferred` (скрыт).  
 Статусы маркетов: `new` | `not_added` | `added` | `revision` | `not_cooperate` | `in_bundle` | `removed` (скрыт).
 

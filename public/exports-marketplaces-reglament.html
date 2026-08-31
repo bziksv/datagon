@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Регламент МП: от поиска товара до склада — Датагон</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600;8..60,700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #f7f4ef;
+      --surface: #fffdf9;
+      --ink: #1c1916;
+      --muted: #5c554c;
+      --line: #ddd4c8;
+      --accent: #0f5c5c;
+      --accent-soft: #e4f1f0;
+      --warn: #8a3b12;
+      --warn-bg: #f8ebe3;
+      --ok: #1d5a32;
+      --ok-bg: #e6f2ea;
+      --max: 52rem;
+      --nav: 15.5rem;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--bg);
+      font-family: "Manrope", sans-serif;
+      font-size: 16px;
+      line-height: 1.55;
+    }
+    h1, h2, h3 {
+      font-family: "Source Serif 4", Georgia, serif;
+      font-weight: 600;
+      line-height: 1.25;
+      margin: 0 0 0.6em;
+    }
+    h1 { font-size: 2rem; }
+    h2 {
+      font-size: 1.45rem;
+      padding-top: 0.5rem;
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 0.45rem;
+      margin-top: 2.4rem;
+    }
+    h3 { font-size: 1.1rem; margin-top: 1.5rem; color: var(--accent); }
+    p { margin: 0 0 0.9em; }
+    a { color: var(--accent); }
+    strong { font-weight: 700; }
+    code {
+      font-size: 0.9em;
+      background: var(--accent-soft);
+      padding: 0.1em 0.35em;
+      border-radius: 3px;
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: var(--nav) minmax(0, var(--max));
+      gap: 2.5rem;
+      max-width: calc(var(--nav) + var(--max) + 5rem);
+      margin: 0 auto;
+      padding: 2rem 1.25rem 4rem;
+      align-items: start;
+    }
+    .toc {
+      position: sticky;
+      top: 1rem;
+      max-height: calc(100vh - 2rem);
+      overflow: auto;
+      font-size: 0.82rem;
+      line-height: 1.4;
+      padding: 1rem;
+      background: var(--surface);
+      border: 1px solid var(--line);
+    }
+    .toc strong {
+      display: block;
+      font-size: 0.75rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 0.7rem;
+    }
+    .toc ol {
+      margin: 0;
+      padding-left: 1.1rem;
+    }
+    .toc li { margin: 0.28rem 0; }
+    .toc a {
+      color: var(--ink);
+      text-decoration: none;
+    }
+    .toc a:hover { color: var(--accent); text-decoration: underline; }
+    .doc {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      padding: 2rem 2.1rem 2.5rem;
+    }
+    .meta {
+      color: var(--muted);
+      font-size: 0.92rem;
+      margin-bottom: 1.5rem;
+    }
+    .meta span { margin-right: 1rem; white-space: nowrap; }
+    .lede {
+      font-size: 1.05rem;
+      color: var(--muted);
+      max-width: 40rem;
+    }
+    .flow {
+      display: grid;
+      gap: 0.45rem;
+      margin: 1.2rem 0 1.6rem;
+      padding: 0;
+      list-style: none;
+      counter-reset: step;
+    }
+    .flow li {
+      counter-increment: step;
+      display: flex;
+      flex-direction: row;
+      flex-wrap: nowrap;
+      gap: 0.75rem;
+      align-items: flex-start;
+      padding: 0.65rem 0.75rem;
+      background: var(--bg);
+      border-left: 3px solid var(--accent);
+    }
+    .flow li::before {
+      content: counter(step);
+      flex: 0 0 1.5rem;
+      font-weight: 700;
+      color: var(--accent);
+      line-height: 1.55;
+    }
+    .flow li > span {
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.92rem;
+      margin: 0.8rem 0 1.3rem;
+    }
+    th, td {
+      border: 1px solid var(--line);
+      padding: 0.5rem 0.6rem;
+      vertical-align: top;
+      text-align: left;
+    }
+    th {
+      background: var(--bg);
+      font-weight: 600;
+    }
+    ul.check {
+      list-style: none;
+      padding: 0;
+      margin: 0.4rem 0 1rem;
+    }
+    ul.check li {
+      position: relative;
+      padding: 0.25rem 0 0.25rem 1.5rem;
+    }
+    ul.check li::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0.45rem;
+      width: 0.85rem;
+      height: 0.85rem;
+      border: 1.5px solid var(--muted);
+      border-radius: 2px;
+    }
+    .callout {
+      margin: 1rem 0 1.4rem;
+      padding: 0.85rem 1rem;
+      border: 1px solid var(--line);
+      background: var(--bg);
+    }
+    .callout.gate {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+    }
+    .callout.ban {
+      border-color: #d4a58a;
+      background: var(--warn-bg);
+      color: var(--warn);
+    }
+    .callout.ok {
+      border-color: #9bc4a8;
+      background: var(--ok-bg);
+    }
+    .callout strong.label {
+      display: block;
+      font-size: 0.75rem;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      margin-bottom: 0.35rem;
+    }
+    .ban strong.label, .gate strong.label, .ok strong.label { color: inherit; }
+    ol.steps { padding-left: 1.25rem; }
+    ol.steps li { margin: 0.35rem 0; }
+    .muted { color: var(--muted); }
+    .shot-grid {
+      display: grid;
+      gap: 1.25rem;
+      margin: 1.2rem 0 1.6rem;
+    }
+    figure.shot {
+      margin: 0;
+      padding: 0.75rem;
+      background: var(--bg);
+      border: 1px solid var(--line);
+    }
+    figure.shot img {
+      display: block;
+      width: 100%;
+      height: auto;
+      max-width: 100%;
+    }
+    figure.shot figcaption {
+      margin-top: 0.55rem;
+      font-size: 0.88rem;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+    figure.shot figcaption strong {
+      color: var(--ink);
+      font-weight: 600;
+    }
+    footer.doc-foot {
+      margin-top: 2.5rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--line);
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+    @media (max-width: 900px) {
+      .layout {
+        grid-template-columns: 1fr;
+        padding: 1rem 0.75rem 3rem;
+      }
+      .toc {
+        position: static;
+        max-height: none;
+      }
+      .doc { padding: 1.35rem 1.1rem 2rem; }
+      h1 { font-size: 1.55rem; }
+    }
+    @media print {
+      body { background: #fff; }
+      .layout { display: block; max-width: none; padding: 0; }
+      .toc { break-after: page; position: static; border: none; }
+      .doc { border: none; padding: 0; }
+      a { color: inherit; text-decoration: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <nav class="toc" aria-label="Оглавление">
+      <strong>Оглавление</strong>
+      <ol>
+        <li><a href="#why">1. Зачем эта инструкция</a></li>
+        <li><a href="#flow">2. Схема процесса</a></li>
+        <li><a href="#roles">3. Роли</a></li>
+        <li><a href="#entry">4. Выбор входа</a></li>
+        <li><a href="#entry-a">5. Вход A — SellerStats</a></li>
+        <li><a href="#entry-b">6. Вход B — Витрина МП</a></li>
+        <li><a href="#entry-c">7. Вход C — Прайс действующего</a></li>
+        <li><a href="#supplier">8. Поставщик</a></li>
+        <li><a href="#select">9. Отбор товара</a></li>
+        <li><a href="#table">10. Таблица новинок</a></li>
+        <li><a href="#gate">11. Гейт руководителя</a></li>
+        <li><a href="#after">12. После согласования</a></li>
+        <li><a href="#warehouse">13. Оплата и склад</a></li>
+        <li><a href="#statuses">14. Статусы</a></li>
+        <li><a href="#mistakes">15. Типовые ошибки</a></li>
+        <li><a href="#app-ms">Прил. A — Мой Склад</a></li>
+        <li><a href="#app-ss">Прил. B — SellerStats</a></li>
+        <li><a href="#app-approve">Прил. C — На утверждение</a></li>
+      </ol>
+    </nav>
+
+    <article class="doc">
+      <header>
+        <p class="meta" style="margin-bottom:0.75rem">
+          <a href="/exports-new-products.html">← Новые товары</a>
+          <span>·</span>
+          <a href="/dashboard.html">Панель Датагон</a>
+        </p>
+        <h1>Регламент МП: от поиска товара до поступления на склад</h1>
+        <p class="meta">
+          <span>Альмамед</span>
+          <span>Версия 1.0</span>
+          <span>31.08.2026</span>
+        </p>
+        <p class="lede">Единая последовательная инструкция для сотрудников маркетплейсов. Заменяет три разрозненных документа («поиск на МП», «расширение у действующих», «SellerStats»). Финиш процесса — товар оприходован на складе.</p>
+      </header>
+
+      <section id="why">
+        <h2>1. Зачем эта инструкция</h2>
+        <p>Раньше сотрудники описывали каждый свой кусок: кто-то витрину, кто-то SellerStats, кто-то работу с действующим поставщиком. Получались обрывы (до таблицы / до оплаты) и разные правила (когда запрашивать РУ, какая таблица, где заканчивается работа менеджера).</p>
+        <div class="callout gate">
+          <strong class="label">Главное правило</strong>
+          Один процесс · три входа (A / B / C) · одна таблица новинок · один хвост до склада. Менеджер МП владеет строкой пайплайна от старта до статуса «На складе» (или отказа).
+        </div>
+      </section>
+
+      <section id="flow">
+        <h2>2. Схема процесса (A→Z)</h2>
+        <ol class="flow">
+          <li><span><strong>Старт:</strong> задача → проверка дубля в реестре → выбор входа A/B/C</span></li>
+          <li><span><strong>Вход:</strong> SellerStats <em>или</em> витрина МП <em>или</em> прайс действующего</span></li>
+          <li><span><strong>Поставщик:</strong> приоритет канала + чек-лист условий + запрос РУ</span></li>
+          <li><span><strong>Отбор:</strong> стоп-факторы + слои спроса L1/L2/L3 + экономика</span></li>
+          <li><span><strong>Таблица новинок:</strong> статус «На согласовании»</span></li>
+          <li><span><strong>Гейт руководителя:</strong> утверждено / отклонено / частично</span></li>
+          <li><span><strong>Исполнение:</strong> счёт → сайт Альмамед → Мой Склад → карточки МП → «Готово к оплате»</span></li>
+          <li><span><strong>Финал:</strong> оплата → отгрузка → приёмка → «На складе»</span></li>
+        </ol>
+        <p class="muted">Ветвления только на выборе входа и при эскалациях. После утверждения путь для всех одинаковый.</p>
+      </section>
+
+      <section id="roles">
+        <h2>3. Роли</h2>
+        <table>
+          <thead>
+            <tr><th>Роль</th><th>Зона</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><strong>МП</strong> — менеджер МП</td><td>Сквозной владелец строки: вход, поставщик, таблица, координация хвоста, закрытие после приёмки</td></tr>
+            <tr><td><strong>РУК</strong> — руководитель</td><td>Гейт ввода в ассортимент; новый поставщик; спорные случаи; правило цен; выгрузка с сайта</td></tr>
+            <tr><td><strong>КОН</strong> — контент</td><td>Артикулы (если нет), сайт Альмамед, карточки МП</td></tr>
+            <tr><td><strong>СКЛ</strong> — склад</td><td>Приёмка, акты расхождений, оприходование</td></tr>
+            <tr><td><strong>БУХ</strong> — бухгалтерия</td><td>Оплата счёта, платёжное поручение</td></tr>
+          </tbody>
+        </table>
+        <h3>Эскалация к руководителю обязательна, если</h3>
+        <ul>
+          <li>новый поставщик (нет истории закупок);</li>
+          <li>запрет продаж на МП при сильном спросе;</li>
+          <li>проблемы с РУ (нет / не бьётся с моделью / просрочено);</li>
+          <li>маржа ниже утверждённого порога;</li>
+          <li>дубль: позицию уже ведёт коллега;</li>
+          <li>срыв поставки после оплаты.</li>
+        </ul>
+      </section>
+
+      <section id="entry">
+        <h2>4. Как выбрать вход</h2>
+        <table>
+          <thead>
+            <tr><th>Ситуация</th><th>Вход</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Плановый поиск хитов / новых брендов</td><td><strong>A</strong> (SellerStats), затем точечно <strong>B</strong></td></tr>
+            <tr><td>Дали ссылку на карточку МП</td><td><strong>B</strong></td></tr>
+            <tr><td>Расширить ассортимент у уже нашего поставщика</td><td><strong>C</strong></td></tr>
+            <tr><td>Нашли бренд в аналитике — проверить полку</td><td><strong>A → B</strong></td></tr>
+            <tr><td>Товар новый, поставщика ещё нет</td><td><strong>A</strong> или <strong>B</strong></td></tr>
+          </tbody>
+        </table>
+        <div class="callout ban">
+          <strong class="label">Запрещено</strong>
+          Вести три «личных» процесса и три Google-таблицы. Черновик у себя — можно; в работу и на согласование — только единый реестр новинок.
+        </div>
+      </section>
+
+      <section id="entry-a">
+        <h2>5. Вход A — SellerStats</h2>
+        <p><strong>Когда:</strong> нужны цифры продаж/выручки, плановый поиск новинок.<br />
+        <strong>Не когда:</strong> уже есть свежий прайс действующего (сначала C); точечная задача «вот ссылка» (B).</p>
+        <ol class="steps">
+          <li>Раздел «Аналитика WB + Ozon + ЯМ».</li>
+          <li>Категория / подкатегория по смыслу задачи (аптека и целевые ветки).</li>
+          <li>Сортировка по продажам или выручке за <strong>90 и 30</strong> дней (7 дней — только тренд).</li>
+          <li>Отобрать кандидатов в «Свой список» (буфер).</li>
+          <li>Зафиксировать бренд, ссылки, продажи/выручку, цену.</li>
+          <li>Проверить дубль (сайт / Мой Склад / реестр новинок).</li>
+          <li>Перейти к блоку «Поставщик».</li>
+        </ol>
+        <div class="callout ban">
+          <strong class="label">Не делать</strong>
+          Выбирать подкатегорию только потому, что «там больше всего товаров» — часто это перегретая ниша.
+        </div>
+        <p class="muted">Скриншоты UI и видео — в <a href="#app-ss">приложении B</a>.</p>
+      </section>
+
+      <section id="entry-b">
+        <h2>6. Вход B — Витрина маркетплейса</h2>
+        <p><strong>Когда:</strong> конкретная карточка; проверка полки глазами покупателя; нет доступа к SellerStats.<br />
+        <strong>Не когда:</strong> единственный метод массового «что продавать» без цифр; расширение у своего поставщика (C).</p>
+        <ol class="steps">
+          <li>Каталог → категория → подкатегория (пример: Ozon → Аптека).</li>
+          <li>Отобрать товары, которых нет в ассортименте компании.</li>
+          <li>По карточке зафиксировать: рейтинг, отзывы, число продавцов, мин/макс цену, ссылку.</li>
+          <li>Усилить оценку спросом (Wordstat; при возможности SellerStats) — см. блок 9.</li>
+          <li>Перейти к поиску официального поставщика.</li>
+        </ol>
+      </section>
+
+      <section id="entry-c">
+        <h2>7. Вход C — Прайс действующего поставщика</h2>
+        <p><strong>Когда:</strong> поставщик уже в работе; нужно расширить матрицу без поиска нового юрлица.<br />
+        <strong>Не когда:</strong> на нужные SKU запрет МП или пустой прайс по нише — уходить в A/B.</p>
+        <ol class="steps">
+          <li>Запросить актуальный прайс.</li>
+          <li>Уточнить возможность продажи на МП (в том числе по <em>новым</em> позициям).</li>
+          <li>Отобрать позиции, которые ранее не закупались.</li>
+          <li>Проверить спрос (Wordstat + цены конкурентов на МП; желательно сверка с SellerStats).</li>
+          <li>Сразу в единую таблицу новинок (не в личный файл).</li>
+        </ol>
+      </section>
+
+      <section id="supplier">
+        <h2>8. Поставщик — чек-лист</h2>
+        <h3>Приоритет канала</h3>
+        <ol class="steps">
+          <li>Действующий (уже в Мой Склад / история закупок).</li>
+          <li>Официальный: производитель → дистрибьютор / импортёр.</li>
+          <li>Иначе — эскалация руководителю.</li>
+        </ol>
+        <div class="callout ban">
+          <strong class="label">Важно</strong>
+          Продавец на карточке Ozon/WB ≠ поставщик. Сначала бренд и официальный канал.
+        </div>
+        <h3>Первый контакт — запросить</h3>
+        <ul class="check">
+          <li>Прайс или КП по целевым SKU</li>
+          <li>Можно ли продавать на Ozon / Wildberries / другие МП и какие ограничения</li>
+          <li>Регистрационное удостоверение (если товар подлежит) — статус: получено / запрошено / не требуется</li>
+        </ul>
+        <h3>Обязательный минимум до статуса «На согласовании»</h3>
+        <table>
+          <thead><tr><th>Блок</th><th>Что зафиксировать</th></tr></thead>
+          <tbody>
+            <tr><td>Контрагент</td><td>Название, роль (производитель/дистрибьютор), контакты, «уже наш?»</td></tr>
+            <tr><td>Коммерция</td><td>Цены, MOQ / мин. сумма, срок поставки, оплата, упаковка</td></tr>
+            <tr><td>МП</td><td>Разрешено / запрещено / ограничения (РРЦ, квоты)</td></tr>
+            <tr><td>Регуляторика</td><td>РУ (файл или статус запроса), Честный знак — да/нет</td></tr>
+            <tr><td>Качество</td><td>Срок годности при отгрузке, брак/возврат, гарантия, комплектация</td></tr>
+            <tr><td>Логистика</td><td>Доставка до нашего склада, кто платит</td></tr>
+          </tbody>
+        </table>
+        <p>Молчание поставщика <strong>более 3 рабочих дней</strong> — сменить статус («нет ответа»), повторить запрос или искать другой канал. Не держать вечно в «ожидании».</p>
+        <h3>После утверждения руководителем</h3>
+        <ul class="check">
+          <li>Счёт только на утверждённые позиции</li>
+          <li>Актуальные РУ на эти модели</li>
+          <li>Подтверждение комплектации</li>
+          <li>Сверка: счёт ↔ РУ ↔ строка таблицы (расхождение = стоп)</li>
+        </ul>
+      </section>
+
+      <section id="select">
+        <h2>9. Отбор товара — чек-лист</h2>
+        <h3>Стоп-факторы (не в «На согласовании»)</h3>
+        <ul>
+          <li>Уже есть у нас (сайт / Мой Склад) — тот же бренд и модель.</li>
+          <li>Уже в реестре новинок у коллеги («на согласовании» / «в работе»).</li>
+          <li>Письменный запрет МП (без эскалации РУК).</li>
+          <li>Нужно РУ, а его нет и не запрошено.</li>
+          <li>Неясны модель / фасовка / бренд.</li>
+        </ul>
+        <h3>Три слоя спроса (вместе)</h3>
+        <table>
+          <thead><tr><th>Слой</th><th>Источник</th><th>Что смотреть</th></tr></thead>
+          <tbody>
+            <tr><td><strong>L1</strong></td><td>SellerStats</td><td>Продажи/выручка за 90 и 30 дней</td></tr>
+            <tr><td><strong>L2</strong></td><td>Яндекс.Вордстат</td><td>Частотность по модели / запросу</td></tr>
+            <tr><td><strong>L3</strong></td><td>Карточка МП</td><td>Рейтинг (ориентир ≥ 4.5), отзывы, число продавцов, мин–макс цена</td></tr>
+          </tbody>
+        </table>
+        <p>Для «На согласовании» минимум: <strong>L2 + L3</strong>. L1 обязателен на входе A; на B/C — желателен (если нет — пометка «L1 н/д, риск выше»).</p>
+        <h3>Экономика</h3>
+        <ul class="check">
+          <li>Закупочная цена известна</li>
+          <li>Понятен коридор цен на МП</li>
+          <li>Понятен порядок MOQ / суммы первой закупки</li>
+          <li>Черновая маржа не ниже порога руководителя (см. <a href="#app-approve">прил. C</a>)</li>
+        </ul>
+        <h3>Итог по кандидату</h3>
+        <table>
+          <thead><tr><th>Статус</th><th>Когда</th></tr></thead>
+          <tbody>
+            <tr><td>На согласование</td><td>Нет стоп-факторов, слои и условия собраны</td></tr>
+            <tr><td>Черновик</td><td>Ждём прайс / РУ / ответ, товар перспективен</td></tr>
+            <tr><td>Отказ</td><td>Стоп-фактор или слабые все слои</td></tr>
+            <tr><td>Эскалация</td><td>Сильный спрос, но блок по РУ / МП / марже / новому поставщику</td></tr>
+          </tbody>
+        </table>
+        <p>В комментарии к строке: <em>почему берём</em> (1–2 сигнала) · <em>главный риск</em> · <em>вход A/B/C</em>.</p>
+      </section>
+
+      <section id="table">
+        <h2>10. Единая таблица новинок</h2>
+        <p>Один реестр на всех. Одна строка = один SKU (бренд + модель + фасовка). Личные Google Sheets — только черновик.</p>
+        <h3>Статусы строки</h3>
+        <p>Черновик → На согласовании → <strong>Утверждено / Отклонено</strong> → В работе → На складе (или Отмена).</p>
+        <h3>Обязательные поля для «На согласовании»</h3>
+        <table>
+          <thead><tr><th>Блок</th><th>Поля</th></tr></thead>
+          <tbody>
+            <tr><td>Служебные</td><td>Дата, менеджер-владелец, статус, вход A/B/C</td></tr>
+            <tr><td>Товар</td><td>Наименование, бренд, фасовка, ссылка на Ozon (если есть)</td></tr>
+            <tr><td>Спрос</td><td>Wordstat; SS 90/30 (или «н/д»); мин/макс цена МП; «почему берём»</td></tr>
+            <tr><td>Поставщик</td><td>Название, тип (действующий/новый), ссылка на прайс + дата, закупка, MOQ, МП разрешены?, статус РУ, комментарий по условиям</td></tr>
+          </tbody>
+        </table>
+        <p>После утверждения в той же строке (или на листе «Контент» / «Исполнение») ведутся: счёт, артикул, цены сайта и МП, штрихкод, даты оплаты / отгрузки / приёмки.</p>
+        <div class="callout ban">
+          <strong class="label">Запрещено</strong>
+          Удалять отклонённые строки. Статус «Отклонено» + причина — для антидублей и обучения.
+        </div>
+      </section>
+
+      <section id="gate">
+        <h2>11. Гейт руководителя</h2>
+        <ul>
+          <li><strong>Утверждено</strong> — статус «В работе», дальше блок 12 только по утверждённым SKU.</li>
+          <li><strong>Отклонено</strong> — причина в реестре, конец или доработка и повторный заход.</li>
+          <li><strong>Частично</strong> — в работу только отмеченные позиции.</li>
+        </ul>
+        <div class="callout gate">
+          <strong class="label">Гейт</strong>
+          Руководитель смотрит строку только в статусе «На согласовании» с заполненным минимумом. Ориентир ответа: 2–5 рабочих дней (утверждается, см. прил. C).
+        </div>
+      </section>
+
+      <section id="after">
+        <h2>12. После согласования (до «Готово к оплате»)</h2>
+        <p>Статус строки: <strong>В работе</strong>. Порядок строгий — без прыжков.</p>
+        <ol class="steps">
+          <li><strong>Счёт + РУ + комплектация</strong> (МП) — только утверждённые SKU; сверка счёт ↔ РУ ↔ таблица.</li>
+          <li><strong>Лист «Контент»</strong> (МП): цена для сайта Альмамед (по правилу РУК), РУ, артикул (из счёта / с сайта / «присвоить контенту»).</li>
+          <li><strong>Сайт Альмамед</strong> (контент) — позиция размещена, артикул записан.</li>
+          <li><strong>Выгрузка с сайта</strong> (запрос МП → выдаёт РУК) → карточка в <strong>Мой Склад</strong> (поля — <a href="#app-ms">прил. A</a>).</li>
+          <li><strong>Штрихкод + итоговая цена МП</strong> (МП) — без этого контент не стартует карточки МП.</li>
+          <li><strong>Карточки на МП</strong> (контент) → короткая приёмка МП-менеджером.</li>
+          <li><strong>Отметка «Готово к оплате»</strong> (МП) — все гейты выше закрыты, счёт актуален.</li>
+        </ol>
+        <div class="callout ban">
+          <strong class="label">Запрещённые прыжки</strong>
+          Оплата до карточек МП · Мой Склад до артикула с сайта · карточки МП без штрихкода и цены · позиции в счёте, не утверждённые руководителем.
+        </div>
+      </section>
+
+      <section id="warehouse">
+        <h2>13. Оплата → отгрузка → приёмка на склад</h2>
+        <ol class="steps">
+          <li><strong>Оплата:</strong> МП передаёт пакет (счёт, ID строк, «карточки готовы», при необходимости ОК РУК) → бухгалтерия платит.</li>
+          <li><strong>ПП / подтверждение оплаты</strong> уходит поставщику; дата оплаты — в реестре.</li>
+          <li><strong>Отгрузка:</strong> ETA, состав = счёту, ТК/доставка; <strong>склад предупреждён</strong>.</li>
+          <li><strong>Трекинг</strong> срока; при срыве — эскалация.</li>
+          <li><strong>Приёмка (склад):</strong> количество, наименования, брак, комплектация, срок годности, маркировка (если нужна) → оприходование в Мой Склад.</li>
+          <li><strong>Статус «На складе»</strong> ставит МП только после оприходования.</li>
+        </ol>
+        <h3>Исходы приёмки</h3>
+        <table>
+          <thead><tr><th>Исход</th><th>Действие</th></tr></thead>
+          <tbody>
+            <tr><td>Всё сходится</td><td>Оприходовать → «На складе»</td></tr>
+            <tr><td>Недогруз / пересорт</td><td>Акт · претензия поставщику · строку не закрывать полностью</td></tr>
+            <tr><td>Брак</td><td>Акт · не продавать · возврат по условиям</td></tr>
+            <tr><td>Излишек</td><td>Не оприходовать без согласования РУК</td></tr>
+          </tbody>
+        </table>
+        <div class="callout ok">
+          <strong class="label">Финиш регламента</strong>
+          Процесс «поиск → склад» завершён на статусе «На складе». Запуск витрины / FBO — по отдельному операционному регламенту МП.
+        </div>
+      </section>
+
+      <section id="statuses">
+        <h2>14. Сводка статусов пайплайна</h2>
+        <table>
+          <thead><tr><th>Статус</th><th>Смысл</th><th>Кто</th></tr></thead>
+          <tbody>
+            <tr><td>Черновик</td><td>Собираем данные</td><td>МП</td></tr>
+            <tr><td>На согласовании</td><td>Минимум заполнен, ждём РУК</td><td>МП → РУК</td></tr>
+            <tr><td>Утверждено</td><td>Можно исполнение</td><td>РУК</td></tr>
+            <tr><td>Отклонено</td><td>Отказ с причиной</td><td>РУК</td></tr>
+            <tr><td>В работе</td><td>Счёт / сайт / МС / карточки</td><td>МП + КОН</td></tr>
+            <tr><td>Готово к оплате</td><td>Гейты исполнения закрыты</td><td>МП</td></tr>
+            <tr><td>Ожидает отгрузку / В пути</td><td>После оплаты</td><td>МП</td></tr>
+            <tr><td>На складе</td><td>Оприходовано</td><td>МП по факту СКЛ</td></tr>
+            <tr><td>Отмена</td><td>Сняли в процессе</td><td>МП / РУК</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="mistakes">
+        <h2>15. Типовые ошибки (не повторять)</h2>
+        <ul>
+          <li>Считать работу законченной после «внесли в таблицу и ждём».</li>
+          <li>Вести личную Google-таблицу вместо единого реестра.</li>
+          <li>Принимать продавца МП за официального поставщика.</li>
+          <li>Оценивать спрос только по «много отзывов / высокий рейтинг».</li>
+          <li>Выбирать нишу «где больше всего товаров» в SellerStats.</li>
+          <li>Тащить на согласование без статуса РУ и без ответа про МП.</li>
+          <li>Платить до готовности карточек на МП.</li>
+          <li>Считать закупку закрытой по оплате без приёмки на складе.</li>
+          <li>Отгружать, не предупредив склад.</li>
+          <li>Заводить в счёт позиции, которые руководитель не утверждал.</li>
+        </ul>
+      </section>
+
+      <section id="app-ms">
+        <h2>Приложение A. Поля карточки «Мой Склад»</h2>
+        <ol class="steps">
+          <li>Поставщик</li>
+          <li>Код / артикул</li>
+          <li>Единица измерения</li>
+          <li>НДС</li>
+          <li>Неснижаемый остаток (по правилу РУК/склада)</li>
+          <li>Регистрационное удостоверение</li>
+          <li>Автоматизация цены (по принятому правилу)</li>
+          <li>Количество в упаковке (если продаётся упаковками)</li>
+          <li>Отметка «Складская позиция»</li>
+          <li>Менеджер, который завёл товар</li>
+          <li>Менеджер сопровождения</li>
+          <li>Закупочная цена</li>
+        </ol>
+      </section>
+
+      <section id="app-ss">
+        <h2>Приложение B. SellerStats</h2>
+        <p>Сервис: <a href="https://sellerstats.ru/cabinet/ym/products/" target="_blank" rel="noopener noreferrer">sellerstats.ru — аналитика WB + Ozon + ЯМ</a></p>
+        <p>Видеоинструкция по работе с сервисом: <a href="https://drive.google.com/file/d/1ZHAkiYiioOAFoRml-OnupUV3Aq4YI5Fw/view?usp=sharing" target="_blank" rel="noopener noreferrer">Google Drive</a></p>
+        <p class="muted">Ниже — скриншоты из исходной инструкции (путь входа A). Бизнес-правила — в блоке 5; здесь только «куда кликать».</p>
+
+        <h3>Куда заходить и как выбрать категорию</h3>
+        <div class="shot-grid">
+          <figure class="shot">
+            <img src="mp-assets/sellerstats/image5.png" alt="Меню SellerStats: Аналитика WB+Ozon+ЯМ → Категории" loading="lazy" />
+            <figcaption><strong>1.</strong> «Аналитика WB + Ozon + ЯМ» → <strong>Категории</strong>.</figcaption>
+          </figure>
+          <figure class="shot">
+            <img src="mp-assets/sellerstats/image7.png" alt="Вкладка Все категории" loading="lazy" />
+            <figcaption><strong>2.</strong> Откройте <strong>Все категории</strong> (не только рубрикатор).</figcaption>
+          </figure>
+          <figure class="shot">
+            <img src="mp-assets/sellerstats/image2.png" alt="Поиск категории Аптека" loading="lazy" />
+            <figcaption><strong>3.</strong> В фильтре «Название» введите нишу (пример: <strong>аптека</strong>) и откройте нужную категорию.</figcaption>
+          </figure>
+          <figure class="shot">
+            <img src="mp-assets/sellerstats/image8.png" alt="Подкатегория Медицинские приборы, вкладка Товары" loading="lazy" />
+            <figcaption><strong>4.</strong> Выберите подкатегорию по задаче (пример: «Медицинские приборы») → вкладка <strong>Товары</strong>.</figcaption>
+          </figure>
+        </div>
+
+        <h3>Сортировка, отбор, «Свой список»</h3>
+        <div class="shot-grid">
+          <figure class="shot">
+            <img src="mp-assets/sellerstats/image3.png" alt="Таблица товаров, сортировка по продажам" loading="lazy" />
+            <figcaption><strong>5.</strong> Сортируйте по <strong>продажам</strong> или <strong>выручке</strong> (смотрите 90 и 30 дней; 7 дней — только тренд).</figcaption>
+          </figure>
+          <figure class="shot">
+            <img src="mp-assets/sellerstats/image9.png" alt="Выбранный товар и кнопка В мой список" loading="lazy" />
+            <figcaption><strong>6.</strong> Выделите кандидата → <strong>В мой список</strong> (буфер до реестра новинок).</figcaption>
+          </figure>
+          <figure class="shot">
+            <img src="mp-assets/sellerstats/image1.png" alt="Диалог выбора списка" loading="lazy" />
+            <figcaption><strong>7.</strong> Выберите свой рабочий список. Личные списки — только буфер; единый реестр новинок — отдельно (см. блок 10).</figcaption>
+          </figure>
+          <figure class="shot">
+            <img src="mp-assets/sellerstats/image4.png" alt="Раздел Мои списки" loading="lazy" />
+            <figcaption><strong>8.</strong> Позже: меню аналитики → <strong>Мои списки</strong> — все отобранные позиции.</figcaption>
+          </figure>
+        </div>
+
+        <h3>Что смотреть в сводке перед поиском поставщика</h3>
+        <div class="shot-grid">
+          <figure class="shot">
+            <img src="mp-assets/sellerstats/image6.png" alt="Сводка товара: бренд, продавец, продажи, ссылка на Ozon" loading="lazy" />
+            <figcaption><strong>9.</strong> В сводке зафиксируйте <strong>бренд</strong>, продавца (это не поставщик), продажи/выручку, цену и ссылку на карточку МП («перейти») — дальше блок «Поставщик».</figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <section id="app-approve">
+        <h2>Приложение C. Утверждает руководитель</h2>
+        <p>Заполняется один раз и обновляется при изменении политики:</p>
+        <table>
+          <thead><tr><th>Параметр</th><th>Значение</th></tr></thead>
+          <tbody>
+            <tr><td>Минимальная целевая маржа, %</td><td>___________</td></tr>
+            <tr><td>Ориентир рейтинга МП</td><td>≥ 4.5 (или иное: _____)</td></tr>
+            <tr><td>SLA ответа по таблице новинок</td><td>_____ раб. дней</td></tr>
+            <tr><td>SLA повторного контакта с молчащим поставщиком</td><td>3 раб. дня (или иное: _____)</td></tr>
+            <tr><td>Правило цены сайта Альмамед</td><td>___________</td></tr>
+            <tr><td>Правило цены МП</td><td>___________</td></tr>
+            <tr><td>Ссылка на единый реестр новинок</td><td>___________</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <footer class="doc-foot">
+        <p>Версия 1.0 · 31.08.2026 · Собрано из трёх исходных инструкций МП с устранением противоречий и доведением процесса до приёмки на склад.</p>
+        <p>Источники: «Поиск товара на маркетплейсах»; «Порядок расширения ассортимента у действующих поставщиков»; «Инструкция по поиску поставщиков (SellerStats)».</p>
+      </footer>
+    </article>
+  </div>
+</body>
+</html>

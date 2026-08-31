@@ -957,7 +957,9 @@
       nk === "exports-marketplaces-wildberries" ||
       nk === "exports-marketplaces-yandex" ||
       nk === "exports-marketplaces-issues" ||
-      nk === "exports-dimensions";
+      nk === "exports-dimensions" ||
+      nk === "exports-new-products" ||
+      nk === "exports-marketplaces-reglament";
     var parentMode = pm["exports-marketplaces"];
     if (mpChild && (pm[nk] === "full" || pm[nk] === "view")) return String(pm[nk]);
     if (parentMode === "hidden" && (nk === "exports-marketplaces" || mpChild)) return "hidden";
