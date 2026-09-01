@@ -1182,7 +1182,7 @@ Body (JSON):
 
 ### Регламент / инструкция МП
 
-Страница **`/exports-marketplaces-reglament.html`** (ключ матрицы **`exports-marketplaces-reglament`**, пункт меню **Маркетплейсы → Инструкция**): статический HTML-регламент «от поиска товара до склада» (скриншоты в `/mp-assets/sellerstats/`). Отдельного API нет; доступ как у дочерних страниц маркетплейсов (наследование скрытия от `exports-marketplaces`).
+Страница **`/exports-marketplaces-reglament.html`** (ключ матрицы **`exports-marketplaces-reglament`**, пункт меню **Маркетплейсы → Инструкция**): статический HTML-регламент v1.1 «от поиска товара до склада» — входы SellerStats / KeyCollector / Датагон (Анализ поставщиков) / витрина МП; скриншоты в `/mp-assets/sellerstats|keycollector|datagon-sa|purchase/`. Отдельного API нет; доступ как у дочерних страниц маркетплейсов (наследование скрытия от `exports-marketplaces`).
 
 Статусы Альмамед: `new` | `not_added` | `in_progress` | `added` | `revision` | `review` | `transferred` (скрыт).  
 Статусы маркетов: `new` | `not_added` | `added` | `revision` | `not_cooperate` | `in_bundle` | `removed` (скрыт).
