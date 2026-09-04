@@ -48,7 +48,7 @@
  */
 
 const express = require('express');
-const { parseFormulaSettings, pickMarketPriceRub, computeSalesFormula, applyMinStockDgFloor } = require('../lib/datagonSalesFormula');
+const { parseFormulaSettings, pickMarketPriceRub, computeSalesFormula, applyMinStockDgFloor, loadSupplierReplenishmentDaysMap } = require('../lib/datagonSalesFormula');
 const { msDemandProjectFilterClause } = require('../lib/datagonSalesFormulaDemandFilter');
 const {
     ensureZeroStockSchema,
@@ -60,6 +60,8 @@ const { mergeAbsenceDistinctForFormula } = require('../lib/datagonZeroStockAbsen
 const {
     loadPurchaseDataRevision,
     buildFormulaFingerprint,
+    buildEffectiveFormulaFingerprint,
+    sqlFormulaCacheJoinOnMsExport,
     ensureFormulaProposedCacheSchema,
 } = require('../lib/datagonFormulaProposedCache');
 const {
@@ -623,9 +625,7 @@ function buildPurchaseCountFromJoin(incompletePack, withFormulaCache) {
     const bundleJoin = incompletePack
         ? `LEFT JOIN (${MS_EXPORT_BUNDLE_MIN_SUFFIX_SUBSQL}) bb ON bb.base_code = mse.code`
         : '';
-    const fcJoin = withFormulaCache
-        ? `LEFT JOIN dg_formula_proposed_cache fc ON fc.code = mse.code AND fc.formula_fp = ? AND fc.data_rev = ?`
-        : '';
+    const fcJoin = withFormulaCache ? sqlFormulaCacheJoinOnMsExport() : '';
     return `
                 FROM ms_export mse
                 LEFT JOIN dg_purchase_overrides po ON po.code = mse.code
@@ -640,7 +640,8 @@ function buildPurchaseCountFromJoin(incompletePack, withFormulaCache) {
  */
 function purchaseCountQueryParams(frag, formulaFpVal, dataRev, withFormulaCache) {
     if (withFormulaCache) {
-        return [formulaFpVal, dataRev, ...(frag.whereParams || [])];
+        // sqlFormulaCacheJoinOnMsExport: data_rev, formula_fp base
+        return [dataRev, formulaFpVal, ...(frag.whereParams || [])];
     }
     return [...(frag.whereParams || [])];
 }
@@ -942,14 +943,13 @@ function buildPurchaseListSelectSql(frag) {
                     fc.proposed AS formula_cached_proposed,
                     fc.windows_json AS formula_cached_windows_json
                 ${baseFromJoin}
-                LEFT JOIN dg_formula_proposed_cache fc
-                  ON fc.code = mse.code AND fc.formula_fp = ? AND fc.data_rev = ?`;
+                ${sqlFormulaCacheJoinOnMsExport()}`;
 }
 
 async function loadPurchaseListItemsForFrag(db, appSettings, frag, formulaFpVal, dataRev, loadOpts = {}) {
     const listSql = `${buildPurchaseListSelectSql(frag)}
                 WHERE ${frag.whereSql}`;
-    const listParams = [formulaFpVal, dataRev, ...(frag.whereParams || [])];
+    const listParams = [dataRev, formulaFpVal, ...(frag.whereParams || [])];
     const [rows] = await db.query(listSql, listParams);
     const items = (rows || []).map((r) => mapPurchaseSqlRowToDataItem(r, { noPayloadForFormula: !loadOpts.includePayload }));
     await enrichPurchaseListPage(db, appSettings, items, {
@@ -1118,7 +1118,7 @@ async function purchaseListQueryPaged(db, appSettings, req, runOpts = {}) {
                 WHERE ${frag.whereSql}
                 ORDER BY ${orderBy}
                 LIMIT ? OFFSET ?`;
-    const listParams = [formulaFpVal, dataRev, ...frag.whereParams, limit, offset];
+    const listParams = [dataRev, formulaFpVal, ...frag.whereParams, limit, offset];
     const totalsSql = buildPurchaseColumnTotalsSql(frag);
     const totalsParams = purchaseCountQueryParams(frag, formulaFpVal, dataRev, true);
 
@@ -1894,13 +1894,11 @@ async function loadMsPayloadRowsForCodes(db, codes, formulaMeta, loadOpts = {}) 
     for (let i = 0; i < list.length; i += PURCHASE_CODES_SQL_CHUNK) {
         const part = list.slice(i, i + PURCHASE_CODES_SQL_CHUNK);
         const ph = part.map(() => '?').join(',');
-        const fcJoin = useFc
-            ? `LEFT JOIN dg_formula_proposed_cache fc ON fc.code = mse.code AND fc.formula_fp = ? AND fc.data_rev = ?`
-            : '';
+        const fcJoin = useFc ? sqlFormulaCacheJoinOnMsExport() : '';
         const fcSel = useFc
             ? ', fc.proposed AS formula_cached_proposed, fc.windows_json AS formula_cached_windows_json'
             : ', NULL AS formula_cached_proposed, NULL AS formula_cached_windows_json';
-        const params = useFc ? [fp, rev, ...part] : [...part];
+        const params = useFc ? [rev, fp, ...part] : [...part];
         const [rows] = await db.query(
             `SELECT
                     mse.code, mse.name, mse.supplier, mse.supplier2, mse.uuid, mse.type,
@@ -2355,9 +2353,10 @@ async function enrichPurchaseRowsWithFormula(db, appSettings, sqlRows, data, opt
     const mode = opts.mode || 'all';
     if (!data.length) return;
 
-    const formulaCfg = parseFormulaSettings(appSettings);
-    const W = formulaCfg.salesWindowDays;
-    const absenceWin = formulaCfg.absenceAnalysisDays;
+    const formulaCfgGlobal = parseFormulaSettings(appSettings);
+    const W = formulaCfgGlobal.salesWindowDays;
+    const absenceWin = formulaCfgGlobal.absenceAnalysisDays;
+    const supplierRdMap = await loadSupplierReplenishmentDaysMap(db);
 
     const codes = [...new Set(data.map((d) => String(d.code || '').trim()).filter(Boolean))];
     if (!codes.length) return;
@@ -2593,6 +2592,11 @@ async function enrichPurchaseRowsWithFormula(db, appSettings, sqlRows, data, opt
             if (cachedFormula != null) {
                 d.formula_proposed_min_stock = applyMinStockDgFloor(cachedFormula, d.min_stock_dg);
             } else {
+                const supplierKey = String(d.supplier || '').trim();
+                const ovDays = supplierRdMap.has(supplierKey) ? supplierRdMap.get(supplierKey) : null;
+                const formulaCfg = parseFormulaSettings(appSettings, {
+                    replenishmentDaysOverride: ovDays,
+                });
                 const fr = computeSalesFormula({
                     settings: formulaCfg,
                     sumQty,
@@ -2605,6 +2609,8 @@ async function enrichPurchaseRowsWithFormula(db, appSettings, sqlRows, data, opt
                     prevBaselineSource,
                 });
                 d.formula_proposed_min_stock = applyMinStockDgFloor(fr.proposed_min_stock, d.min_stock_dg);
+                d.replenishment_days_effective = formulaCfg.replenishmentDays;
+                d.replenishment_source = formulaCfg.replenishmentSource || 'global';
             }
         }
 
@@ -2689,17 +2695,20 @@ async function loadPurchaseFormulaCacheStatus(db, appSettings, req) {
     const countSql = `SELECT COUNT(*) AS cnt ${countFromJoin} WHERE ${frag.whereSql}`;
     const countParams = purchaseCountQueryParams(frag, formulaFp, dataRev, frag.toPurchaseOnly);
     const baseFromJoin = buildPurchaseBaseFromJoin(frag.incompletePack);
+    const cacheJoin = sqlFormulaCacheJoinOnMsExport().replace(
+        /LEFT JOIN dg_formula_proposed_cache/g,
+        'INNER JOIN dg_formula_proposed_cache',
+    );
     const cacheSql = `SELECT COUNT(*) AS cnt ${baseFromJoin}
-                INNER JOIN dg_formula_proposed_cache fc
-                  ON fc.code = mse.code AND fc.formula_fp = ? AND fc.data_rev = ?
+                ${cacheJoin}
                 WHERE ${frag.whereSql}`;
     const cacheAnyRevSql = `SELECT COUNT(*) AS cnt ${baseFromJoin}
                 INNER JOIN dg_formula_proposed_cache fc
-                  ON fc.code = mse.code AND fc.formula_fp = ?
+                  ON fc.code = mse.code AND fc.formula_fp LIKE CONCAT(?, '|rd:%')
                 WHERE ${frag.whereSql}`;
     const cacheStaleRevSql = `SELECT COUNT(*) AS cnt ${baseFromJoin}
                 INNER JOIN dg_formula_proposed_cache fc
-                  ON fc.code = mse.code AND fc.formula_fp = ? AND fc.data_rev <> ?
+                  ON fc.code = mse.code AND fc.formula_fp LIKE CONCAT(?, '|rd:%') AND fc.data_rev <> ?
                 WHERE ${frag.whereSql}`;
     let selectionTotal = 0;
     let cachedRows = 0;
@@ -2708,7 +2717,7 @@ async function loadPurchaseFormulaCacheStatus(db, appSettings, req) {
     try {
         const [[countRows], [cacheHitRows], [cacheAnyRows], [cacheStaleRows]] = await Promise.all([
             db.query(countSql, countParams),
-            db.query(cacheSql, [formulaFp, dataRev, ...frag.whereParams]),
+            db.query(cacheSql, [dataRev, formulaFp, ...frag.whereParams]),
             db.query(cacheAnyRevSql, [formulaFp, ...frag.whereParams]),
             db.query(cacheStaleRevSql, [formulaFp, dataRev, ...frag.whereParams]),
         ]);
@@ -2803,7 +2812,7 @@ async function upsertFormulaCacheFromPageItems(db, appSettings, pageItems, dataR
     if (!pageItems || !pageItems.length) return 0;
     await ensureFormulaProposedCacheSchema(db);
     const rev = dataRev != null ? String(dataRev) : await loadPurchaseDataRevisionCached(db);
-    const fp = formulaFp != null ? String(formulaFp) : buildFormulaFingerprint(appSettings);
+    const supplierRdMap = await loadSupplierReplenishmentDaysMap(db);
     let n = 0;
     for (const d of pageItems) {
         const code = String(d.code || '').trim();
@@ -2811,6 +2820,9 @@ async function upsertFormulaCacheFromPageItems(db, appSettings, pageItems, dataR
         const proposed = d.formula_proposed_min_stock;
         if (proposed == null || !Number.isFinite(Number(proposed))) continue;
         const wj = serializeWindowsSnapshot(d);
+        const supplierKey = String(d.supplier || '').trim();
+        const ovDays = supplierRdMap.has(supplierKey) ? supplierRdMap.get(supplierKey) : null;
+        const fp = buildEffectiveFormulaFingerprint(appSettings, ovDays);
         await db.query(
             `INSERT INTO dg_formula_proposed_cache (code, proposed, formula_fp, data_rev, windows_json)
              VALUES (?, ?, ?, ?, ?)

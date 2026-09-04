@@ -23,6 +23,32 @@
   <link rel="stylesheet" href="/static/css/main.989b22a9.css" />
     <style>
     .dg-ms-table { font-size: 0.8rem; line-height: 1.25; font-variant-numeric: tabular-nums; }
+    /* Плашки сводки: одна высота ряда (подсказка у «Сумма…» не поднимает только две карточки) */
+    body.datagon-vanilla-body[data-dg-active-nav="moysklad"] .dg-ms-stats-row {
+      margin-bottom: 1rem;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="moysklad"] .dg-ms-stat-card {
+      display: flex;
+      flex-direction: column;
+      min-height: 100%;
+      box-sizing: border-box;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="moysklad"] .dg-ms-stat-label {
+      flex: 0 0 auto;
+      min-height: 1.35em;
+      line-height: 1.35;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="moysklad"] .dg-ms-stat-hint {
+      flex: 1 1 auto;
+      min-height: 2.5em;
+      margin-bottom: 0.35rem;
+      font-size: 0.75rem;
+      line-height: 1.25;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="moysklad"] .dg-ms-stat-value {
+      margin-top: auto;
+      line-height: 1.2;
+    }
     .datagon-my-products-table-wrap.table-responsive {
       overflow: visible !important;
       max-height: none !important;
@@ -131,7 +157,8 @@
     .dg-ms-detail-overlay {
       position: fixed;
       inset: 0;
-      z-index: 2000;
+      /* выше fixed-sidebar (11–13) и mobile sidebar (1100); оверлей монтируется на body */
+      z-index: 12000;
       background: rgba(15, 23, 42, 0.45);
       display: flex;
       align-items: center;
@@ -144,6 +171,36 @@
       max-width: 920px;
       max-height: 92vh;
       overflow: hidden;
+      min-width: 0;
+    }
+    /* Шапка карточки МС: grid minmax(0,1fr)+auto — надёжнее flex+text-truncate в теме ArchitectUI */
+    .dg-ms-detail-panel > .card-header.dg-ms-detail-hdr {
+      display: grid !important;
+      grid-template-columns: minmax(0, 1fr) auto;
+      column-gap: 0.75rem;
+      align-items: center;
+      min-width: 0;
+      overflow: hidden;
+    }
+    .dg-ms-detail-hdr-title {
+      margin: 0;
+      min-width: 0;
+      max-width: 100%;
+      overflow: hidden !important;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-weight: 600;
+      line-height: 1.3;
+    }
+    .dg-ms-detail-hdr-actions {
+      display: flex;
+      flex-wrap: nowrap;
+      align-items: center;
+      gap: 0.5rem;
+      flex-shrink: 0;
+      z-index: 1;
+      position: relative;
+      background: inherit;
     }
     .dg-ms-detail-kv {
       width: 100%;
@@ -995,31 +1052,33 @@
             </div>
           </div>
 
-          <div class="row">
-            <div class="col-6 col-md-3">
-              <div class="card mb-3 card-body text-center">
-                <div class="text-muted"><i class="pe-7s-menu me-1"></i>Всего в выборке</div>
-                <h3 class="mb-0" style="font-variant-numeric: tabular-nums" id="st-total">0</h3>
+          <div class="row g-3 dg-ms-stats-row align-items-stretch">
+            <div class="col-6 col-md-3 d-flex">
+              <div class="card mb-0 card-body text-center dg-ms-stat-card w-100">
+                <div class="text-muted dg-ms-stat-label"><i class="pe-7s-menu me-1"></i>Всего в выборке</div>
+                <div class="text-muted small dg-ms-stat-hint" aria-hidden="true">&nbsp;</div>
+                <h3 class="mb-0 dg-ms-stat-value" style="font-variant-numeric: tabular-nums" id="st-total">0</h3>
               </div>
             </div>
-            <div class="col-6 col-md-3">
-              <div class="card mb-3 card-body text-center">
-                <div class="text-muted"><i class="pe-7s-box1 me-1"></i>Товары / Комплекты</div>
-                <h3 class="mb-0" style="font-variant-numeric: tabular-nums" id="st-pb">0 / 0</h3>
+            <div class="col-6 col-md-3 d-flex">
+              <div class="card mb-0 card-body text-center dg-ms-stat-card w-100">
+                <div class="text-muted dg-ms-stat-label"><i class="pe-7s-box1 me-1"></i>Товары / Комплекты</div>
+                <div class="text-muted small dg-ms-stat-hint" aria-hidden="true">&nbsp;</div>
+                <h3 class="mb-0 dg-ms-stat-value" style="font-variant-numeric: tabular-nums" id="st-pb">0 / 0</h3>
               </div>
             </div>
-            <div class="col-6 col-md-3">
-              <div class="card mb-3 card-body text-center">
-                <div class="text-muted"><i class="pe-7s-cash me-1"></i>Сумма по товарам</div>
-                <div class="text-muted small mb-1" style="font-size: 0.75rem; line-height: 1.25">остаток × закуп, только «Товар»</div>
-                <h3 class="mb-0" style="font-variant-numeric: tabular-nums" id="st-val-products">0 ₽</h3>
+            <div class="col-6 col-md-3 d-flex">
+              <div class="card mb-0 card-body text-center dg-ms-stat-card w-100">
+                <div class="text-muted dg-ms-stat-label"><i class="pe-7s-cash me-1"></i>Сумма по товарам</div>
+                <div class="text-muted small dg-ms-stat-hint">остаток × закуп, только «Товар»</div>
+                <h3 class="mb-0 dg-ms-stat-value" style="font-variant-numeric: tabular-nums" id="st-val-products">0 ₽</h3>
               </div>
             </div>
-            <div class="col-6 col-md-3">
-              <div class="card mb-3 card-body text-center">
-                <div class="text-muted"><i class="pe-7s-cash me-1"></i>Сумма по комплектам</div>
-                <div class="text-muted small mb-1" style="font-size: 0.75rem; line-height: 1.25">остаток × закуп, только «Комплект»</div>
-                <h3 class="mb-0" style="font-variant-numeric: tabular-nums" id="st-val-bundles">0 ₽</h3>
+            <div class="col-6 col-md-3 d-flex">
+              <div class="card mb-0 card-body text-center dg-ms-stat-card w-100">
+                <div class="text-muted dg-ms-stat-label"><i class="pe-7s-cash me-1"></i>Сумма по комплектам</div>
+                <div class="text-muted small dg-ms-stat-hint">остаток × закуп, только «Комплект»</div>
+                <h3 class="mb-0 dg-ms-stat-value" style="font-variant-numeric: tabular-nums" id="st-val-bundles">0 ₽</h3>
               </div>
             </div>
           </div>
@@ -1111,11 +1170,11 @@
           <!-- Карточка товара МойСклад (lazy по клику на наименование) -->
           <div id="dg-ms-detail-overlay" class="dg-ms-detail-overlay" style="display: none" aria-hidden="true">
             <div class="dg-ms-detail-panel card shadow-lg border-0">
-              <div class="card-header d-flex align-items-center justify-content-between gap-2">
-                <div class="fw-semibold text-truncate" id="dg-ms-detail-title">Карточка МойСклад</div>
-                <div class="d-flex align-items-center gap-2 flex-shrink-0">
-                  <a class="btn btn-sm btn-outline-primary d-none" id="dg-ms-detail-open-ms" href="#" target="_blank" rel="noopener noreferrer">Открыть в МойСклад</a>
-                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-ms-detail-close" aria-label="Закрыть">Закрыть</button>
+              <div class="card-header dg-ms-detail-hdr">
+                <div id="dg-ms-detail-title" class="dg-ms-detail-hdr-title">Карточка МойСклад</div>
+                <div class="dg-ms-detail-hdr-actions">
+                  <a class="btn btn-sm btn-outline-primary d-none text-nowrap" id="dg-ms-detail-open-ms" href="#" target="_blank" rel="noopener noreferrer">Открыть в МойСклад</a>
+                  <button type="button" class="btn btn-sm btn-outline-secondary text-nowrap" id="dg-ms-detail-close" aria-label="Закрыть">Закрыть</button>
                 </div>
               </div>
               <div class="card-body" style="max-height: min(78vh, 720px); overflow-y: auto">
@@ -1953,6 +2012,16 @@
         ov.setAttribute("aria-hidden", "true");
       }
 
+      /** fixed-sidebar: .app-main__outer z-index:9 < .app-sidebar (11+) — оверлей внутри main уходит под меню. */
+      function mountMsDetailOverlayToBody() {
+        var ov = document.getElementById("dg-ms-detail-overlay");
+        if (!ov) return null;
+        if (ov.parentNode !== document.body) {
+          document.body.appendChild(ov);
+        }
+        return ov;
+      }
+
       /** Deep-link: ?open_uuid=… — открыть карточку после загрузки списка (из «Новые товары» и т.п.). */
       var pendingOpenUuid = "";
       try {
@@ -2093,13 +2162,14 @@
 
       function openMsDetailModal(uuid, code, nameText, typeMs) {
         var u = String(uuid || "").trim();
-        var ov = document.getElementById("dg-ms-detail-overlay");
+        var ov = mountMsDetailOverlayToBody();
         var titleEl = document.getElementById("dg-ms-detail-title");
         var body = document.getElementById("dg-ms-detail-body");
         var openMs = document.getElementById("dg-ms-detail-open-ms");
         if (!ov || !titleEl || !body) return;
         if (!u) return;
         titleEl.textContent = nameText || "Товар МойСклад";
+        titleEl.setAttribute("title", nameText || "Товар МойСклад");
         body.innerHTML = '<p class="text-muted mb-0">Загрузка…</p>';
         if (openMs) {
           openMs.classList.add("d-none");

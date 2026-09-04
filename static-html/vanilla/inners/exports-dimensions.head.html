@@ -220,9 +220,43 @@
       border-top: 1px solid #e9ecef;
       background: #fff;
     }
+    /* Поиск в шапке реестра + кнопки: одна строка если влезает, иначе wrap.
+       Не форсировать actions на 100% ширины — на ~1400px получается «дырявая»
+       вторая строка с кнопками справа и ощущение, что всё плывёт. */
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-table-card > .card-header {
+      display: flex;
+      flex-direction: row;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px 12px;
+      row-gap: 8px;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-table-card-title-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex: 1 1 320px;
+      min-width: 0;
+      max-width: 100%;
+    }
     body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-header-search {
-      flex: 0 1 380px;
-      min-width: 220px;
+      flex: 1 1 240px;
+      min-width: 180px;
+      max-width: 360px;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-table-card-actions {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      flex: 0 1 auto;
+      justify-content: flex-end;
+      max-width: 100%;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-table-card-actions > .btn {
+      flex: 0 0 auto;
+      margin: 0;
     }
     body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-status-hint:empty {
       display: none !important;
@@ -730,12 +764,42 @@
     body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-edits-chart-wrap {
       position: relative;
       width: 100%;
-      min-height: 220px;
+      /* Высоту задаёт JS только когда есть данные; иначе пустая дыра ~220px. */
+      min-height: 0;
       max-height: min(560px, 72vh);
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-edits-chart-wrap.is-empty {
+      display: none;
     }
     body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] #dg-dim-edits-chart-canvas {
       display: block;
       width: 100% !important;
       height: 100% !important;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] #dg-dim-edits-chart-meta:empty {
+      display: none;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] #dg-dim-edits-chart-empty {
+      margin-top: 0;
+    }
+    /* Периоды графика — в card-body (не в card-header): тема ArchitectUI
+       держит .card-header горизонтальным flex; вторая строка в шапке
+       «плыла» рядом с заголовком / уезжала от «Свернуть». */
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-edits-chart-title {
+      flex: 1 1 auto;
+      min-width: 0;
+      max-width: 100%;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-edits-chart-actions {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      min-width: 0;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-edits-chart-actions > .btn {
+      flex: 0 0 auto;
+      margin: 0;
     }
   </style>

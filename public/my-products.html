@@ -43,6 +43,26 @@
       max-width: 100%;
       box-sizing: border-box;
     }
+    /* Плашки сводки: одна высота ряда (длинный заголовок не «прыгает») */
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-stats-row {
+      margin-bottom: 1rem;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-stat-card {
+      display: flex;
+      flex-direction: column;
+      min-height: 100%;
+      box-sizing: border-box;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-stat-label {
+      flex: 1 1 auto;
+      min-height: 2.75em;
+      line-height: 1.35;
+      margin-bottom: 0.35rem;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-stat-value {
+      margin-top: auto;
+      line-height: 1.2;
+    }
     .dg-mp-table { font-size: 0.8rem; line-height: 1.25; font-variant-numeric: tabular-nums; }
     /* Как moysklad.inner: горизонтальный скролл на внешнем блоке, внутри — overflow visible для sticky */
     body.datagon-vanilla-body[data-dg-active-nav="my-products"] .dg-mp-table-scroll-outer {
@@ -1065,35 +1085,35 @@
             </div>
           </div>
 
-          <div class="row row-cols-1 row-cols-md-2 row-cols-xl-5">
-            <div class="col">
-              <div class="card mb-3 card-body">
-                <div class="text-muted"><i class="pe-7s-box2 me-1"></i>Всего активных</div>
-                <h3 class="mb-0" id="mp-st-active">—</h3>
+          <div class="row row-cols-1 row-cols-md-2 row-cols-xl-5 g-3 dg-mp-stats-row align-items-stretch">
+            <div class="col d-flex">
+              <div class="card mb-0 card-body dg-mp-stat-card w-100">
+                <div class="text-muted dg-mp-stat-label"><i class="pe-7s-box2 me-1"></i>Всего активных</div>
+                <h3 class="mb-0 dg-mp-stat-value" id="mp-st-active">—</h3>
               </div>
             </div>
-            <div class="col">
-              <div class="card mb-3 card-body">
-                <div class="text-muted"><i class="pe-7s-link me-1"></i>Связано с МойСклад</div>
-                <h3 class="mb-0" id="mp-st-linked">—</h3>
+            <div class="col d-flex">
+              <div class="card mb-0 card-body dg-mp-stat-card w-100">
+                <div class="text-muted dg-mp-stat-label"><i class="pe-7s-link me-1"></i>Связано с МойСклад</div>
+                <h3 class="mb-0 dg-mp-stat-value" id="mp-st-linked">—</h3>
               </div>
             </div>
-            <div class="col">
-              <div class="card mb-3 card-body">
-                <div class="text-muted"><i class="pe-7s-unlink me-1"></i>Без связи</div>
-                <h3 class="mb-0" id="mp-st-unlinked">—</h3>
+            <div class="col d-flex">
+              <div class="card mb-0 card-body dg-mp-stat-card w-100">
+                <div class="text-muted dg-mp-stat-label"><i class="pe-7s-unlink me-1"></i>Без связи</div>
+                <h3 class="mb-0 dg-mp-stat-value" id="mp-st-unlinked">—</h3>
               </div>
             </div>
-            <div class="col">
-              <div class="card mb-3 card-body">
-                <div class="text-muted"><i class="pe-7s-close-circle me-1"></i>Выключено на источнике</div>
-                <h3 class="mb-0" id="mp-st-disabled">—</h3>
+            <div class="col d-flex">
+              <div class="card mb-0 card-body dg-mp-stat-card w-100">
+                <div class="text-muted dg-mp-stat-label"><i class="pe-7s-close-circle me-1"></i>Выключено на источнике</div>
+                <h3 class="mb-0 dg-mp-stat-value" id="mp-st-disabled">—</h3>
               </div>
             </div>
-            <div class="col">
-              <div class="card mb-3 card-body">
-                <div class="text-muted"><i class="pe-7s-attention me-1"></i>Исчезнувшие</div>
-                <h3 class="mb-0" id="mp-st-disappeared">—</h3>
+            <div class="col d-flex">
+              <div class="card mb-0 card-body dg-mp-stat-card w-100">
+                <div class="text-muted dg-mp-stat-label"><i class="pe-7s-attention me-1"></i>Исчезнувшие</div>
+                <h3 class="mb-0 dg-mp-stat-value" id="mp-st-disappeared">—</h3>
               </div>
             </div>
           </div>

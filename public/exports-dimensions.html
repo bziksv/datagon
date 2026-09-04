@@ -244,9 +244,43 @@
       border-top: 1px solid #e9ecef;
       background: #fff;
     }
+    /* Поиск в шапке реестра + кнопки: одна строка если влезает, иначе wrap.
+       Не форсировать actions на 100% ширины — на ~1400px получается «дырявая»
+       вторая строка с кнопками справа и ощущение, что всё плывёт. */
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-table-card > .card-header {
+      display: flex;
+      flex-direction: row;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px 12px;
+      row-gap: 8px;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-table-card-title-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex: 1 1 320px;
+      min-width: 0;
+      max-width: 100%;
+    }
     body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-header-search {
-      flex: 0 1 380px;
-      min-width: 220px;
+      flex: 1 1 240px;
+      min-width: 180px;
+      max-width: 360px;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-table-card-actions {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      flex: 0 1 auto;
+      justify-content: flex-end;
+      max-width: 100%;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-table-card-actions > .btn {
+      flex: 0 0 auto;
+      margin: 0;
     }
     body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-status-hint:empty {
       display: none !important;
@@ -754,13 +788,43 @@
     body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-edits-chart-wrap {
       position: relative;
       width: 100%;
-      min-height: 220px;
+      /* Высоту задаёт JS только когда есть данные; иначе пустая дыра ~220px. */
+      min-height: 0;
       max-height: min(560px, 72vh);
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-edits-chart-wrap.is-empty {
+      display: none;
     }
     body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] #dg-dim-edits-chart-canvas {
       display: block;
       width: 100% !important;
       height: 100% !important;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] #dg-dim-edits-chart-meta:empty {
+      display: none;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] #dg-dim-edits-chart-empty {
+      margin-top: 0;
+    }
+    /* Периоды графика — в card-body (не в card-header): тема ArchitectUI
+       держит .card-header горизонтальным flex; вторая строка в шапке
+       «плыла» рядом с заголовком / уезжала от «Свернуть». */
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-edits-chart-title {
+      flex: 1 1 auto;
+      min-width: 0;
+      max-width: 100%;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-edits-chart-actions {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      min-width: 0;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav='exports-dimensions'] .dg-dim-edits-chart-actions > .btn {
+      flex: 0 0 auto;
+      margin: 0;
     }
   </style>
 
@@ -1438,20 +1502,21 @@
 
           <div class="main-card mb-3 card" id="dg-dim-edits-chart-card">
             <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
-              <div class="d-flex align-items-center gap-2 min-w-0">
-                <i class="header-icon pe-7s-graph2 icon-gradient bg-tempting-azure"></i>
-                <div>
+              <div class="d-flex align-items-center gap-2 min-w-0 dg-dim-edits-chart-title">
+                <i class="header-icon pe-7s-graph2 icon-gradient bg-tempting-azure flex-shrink-0"></i>
+                <div class="min-w-0">
                   <span class="fw-semibold">Правки габаритов по сотрудникам</span>
                   <div class="small text-muted" id="dg-dim-edits-chart-subtitle">За период…</div>
                 </div>
               </div>
-              <div class="d-flex align-items-center gap-2 flex-wrap">
-                <div class="btn-group btn-group-sm" role="group" aria-label="Период графика">
-                  <button type="button" class="btn btn-outline-primary active" data-dg-dim-edits-period="current_month">Тек. месяц</button>
-                  <button type="button" class="btn btn-outline-secondary" data-dg-dim-edits-period="prev_month">Прош. месяц</button>
-                  <button type="button" class="btn btn-outline-secondary" data-dg-dim-edits-period="7">7 дн.</button>
-                  <button type="button" class="btn btn-outline-secondary" data-dg-dim-edits-period="30">30 дн.</button>
-                </div>
+              <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0" id="dg-dim-edits-chart-toggle">Свернуть</button>
+            </div>
+            <div class="card-body" id="dg-dim-edits-chart-body">
+              <div class="d-flex align-items-center gap-2 flex-wrap dg-dim-edits-chart-actions mb-2" role="group" aria-label="Период и действия графика">
+                <button type="button" class="btn btn-sm btn-outline-primary active" data-dg-dim-edits-period="current_month">Тек. месяц</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-dg-dim-edits-period="prev_month">Прош. месяц</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-dg-dim-edits-period="7">7 дн.</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-dg-dim-edits-period="30">30 дн.</button>
                 <button
                   type="button"
                   class="btn btn-sm btn-outline-secondary"
@@ -1461,15 +1526,12 @@
                 >
                   Обновить
                 </button>
-                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-dim-edits-chart-toggle">Свернуть</button>
               </div>
-            </div>
-            <div class="card-body" id="dg-dim-edits-chart-body">
               <p class="text-muted small mb-2" id="dg-dim-edits-chart-meta"></p>
-              <div class="dg-dim-edits-chart-wrap">
+              <div class="text-muted small mb-0 d-none" id="dg-dim-edits-chart-empty">Нет правок в журнале за выбранный период.</div>
+              <div class="dg-dim-edits-chart-wrap is-empty">
                 <canvas id="dg-dim-edits-chart-canvas" height="220"></canvas>
               </div>
-              <div class="text-muted small mt-2 d-none" id="dg-dim-edits-chart-empty">Нет правок в журнале за выбранный период.</div>
             </div>
           </div>
 
@@ -1485,7 +1547,7 @@
             </div>
             <div class="card-body" id="dg-dim-filters-body">
               <div class="row g-2 align-items-end">
-                <div class="col-md-5">
+                <div class="col-12 col-xl-5">
                   <label class="form-label" for="dg-dim-f-search">Умный поиск</label>
                   <input
                     type="text"
@@ -1496,7 +1558,7 @@
                     data-dg-tooltip="Ищет по полям: код, артикул, наименование. Мульти-токен через пробел = AND."
                   />
                 </div>
-                <div class="col-md-2">
+                <div class="col-6 col-md-4 col-xl-2">
                   <label class="form-label" for="dg-dim-f-type">Тип</label>
                   <select class="form-select" id="dg-dim-f-type">
                     <option value="all">Все</option>
@@ -1504,7 +1566,7 @@
                     <option value="комплект">Комплект</option>
                   </select>
                 </div>
-                <div class="col-md-3">
+                <div class="col-6 col-md-4 col-xl-3">
                   <label class="form-label" for="dg-dim-f-measure-scope">Замер</label>
                   <select class="form-select" id="dg-dim-f-measure-scope">
                     <option value="all">Все позиции</option>
@@ -1512,7 +1574,7 @@
                     <option value="with">С замером</option>
                   </select>
                 </div>
-                <div class="col-md-2">
+                <div class="col-6 col-md-4 col-xl-2">
                   <label class="form-label" for="dg-dim-f-limit">На странице</label>
                   <select class="form-select" id="dg-dim-f-limit">
                     <option value="50">50</option>
@@ -1593,9 +1655,9 @@
             </div>
           </div>
 
-          <div class="main-card mb-3 card">
+          <div class="main-card mb-3 card dg-dim-table-card">
             <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
-              <div class="d-flex align-items-center gap-3 flex-grow-1" style="min-width: 0">
+              <div class="d-flex align-items-center gap-3 dg-dim-table-card-title-row">
                 <div class="d-flex align-items-center flex-shrink-0">
                   <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"></i>
                   <span>Реестр замеров габаритов</span>
@@ -1607,14 +1669,14 @@
                       type="search"
                       class="form-control"
                       id="dg-dim-table-search-mirror"
-                      placeholder="Умный поиск: код или наименование (Enter — применить)"
+                      placeholder="Код или наименование"
                       autocomplete="off"
                       data-dg-tooltip="Зеркало умного поиска из карточки «Фильтры и действия». Enter — применить, Esc — очистить."
                     />
                   </div>
                 </div>
               </div>
-              <div class="d-flex align-items-center gap-2 flex-wrap">
+              <div class="d-flex align-items-center gap-2 flex-wrap dg-dim-table-card-actions">
                 <button
                   type="button"
                   class="btn btn-sm btn-outline-primary"
@@ -2279,8 +2341,8 @@
         {
           key: 'name',
           label: 'Наименование',
-          width: 360,
-          minW: 180,
+          width: 280,
+          minW: 160,
           sortable: true,
           isNumeric: false,
           cellClass: 'dg-dim-cell-name',
@@ -2453,12 +2515,19 @@
           var allowed = arr.filter(function (k) { return DIM_COL_KEYS.indexOf(k) !== -1; });
           if (allowed.length === 0) return defaultVisibleCols();
           var set = new Set(allowed);
-          DIM_COL_KEYS.forEach(function (k) {
-            set.add(k);
-          });
-          return new Set(DIM_COL_KEYS.filter(function (k) {
-            return set.has(k);
-          }));
+          /** Новые колонки схемы (которых не было в прошлом fingerprint) — показать. */
+          var schemaKey = VISIBLE_COLS_KEY + ':schema';
+          var schemaNow = DIM_COL_KEYS.join(',');
+          var schemaPrev = '';
+          try { schemaPrev = String(localStorage.getItem(schemaKey) || ''); } catch (e0) {}
+          if (schemaPrev && schemaPrev !== schemaNow) {
+            var prevKeys = schemaPrev.split(',');
+            DIM_COL_KEYS.forEach(function (k) {
+              if (prevKeys.indexOf(k) === -1) set.add(k);
+            });
+          }
+          try { localStorage.setItem(schemaKey, schemaNow); } catch (e1) {}
+          return set;
         } catch (e) {
           return defaultVisibleCols();
         }
@@ -2533,18 +2602,6 @@
           var th = thead.querySelector('th[data-dg-col-key="' + key + '"]');
           if (th) applyColCellWidth(th, w);
         }
-        var cols = getVisibleColsList();
-        var colIdx = -1;
-        for (var i = 0; i < cols.length; i++) {
-          if (cols[i].key === key) { colIdx = i; break; }
-        }
-        if (colIdx >= 0) {
-          document.querySelectorAll('#dg-dim-tbody tr').forEach(function (tr) {
-            if (tr.cells.length === 1 && tr.cells[0].colSpan > 1) return;
-            var td = tr.children[colIdx];
-            if (td) applyColCellWidth(td, w);
-          });
-        }
         dimRefreshFloatingAfterLayout();
       }
 
@@ -2587,14 +2644,8 @@
       }
 
       function applyBodyColumnWidths() {
-        var cols = getVisibleColsList();
-        document.querySelectorAll('#dg-dim-tbody tr').forEach(function (tr) {
-          if (tr.cells.length === 1 && tr.cells[0].colSpan > 1) return;
-          for (var j = 0; j < cols.length; j++) {
-            var td = tr.children[j];
-            if (td) applyColCellWidth(td, getColWidth(cols[j]));
-          }
-        });
+        /** Ширины колонок — только через `<colgroup>` + `table-layout: fixed`
+         *  (см. datagon-table-behavior-lock.mdc: не суммировать minWidth на каждый td). */
       }
 
       function getVisibleColsList() {
@@ -4870,7 +4921,10 @@
             editsChartInstance = null;
           }
           canvas.style.display = 'none';
-          if (wrap) wrap.style.minHeight = '120px';
+          if (wrap) {
+            wrap.style.minHeight = '';
+            wrap.classList.add('is-empty');
+          }
           if (emptyEl) emptyEl.classList.remove('d-none');
           return;
         }
@@ -4878,7 +4932,10 @@
         canvas.style.display = '';
         if (emptyEl) emptyEl.classList.add('d-none');
         var chartH = Math.max(220, Math.min(560, employees.length * 34 + 48));
-        if (wrap) wrap.style.minHeight = chartH + 'px';
+        if (wrap) {
+          wrap.classList.remove('is-empty');
+          wrap.style.minHeight = chartH + 'px';
+        }
 
         var labels = employees.map(function (e) { return String(e.name || 'Не указан'); });
         var values = employees.map(function (e) { return Number(e.products_edited || 0); });

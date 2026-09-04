@@ -6,6 +6,18 @@ description: Подробно — подключение БД Bitrix/Webasyst, �
 
 Раздел **`/my-sites.html`** — учёт **источников** собственного каталога: подключение к **внешней MySQL** (магазин на Bitrix, Webasyst и т.д.), проверка чтения полей и **синхронизация** данных в локальную таблицу Datagon **`my_products`**. Без рабочих источников неполноценны «Мои товары», сопоставление и часть отчётов по конкурентам.
 
+## Карточки экрана и «Свернуть / Развернуть»
+
+На странице три карточки; у каждой кнопка **`Свернуть` / `Развернуть`** стоит **в `card-header` справа** (эталон moysklad), скрывается только `card-body`, заголовок остаётся:
+
+| Карточка | Кнопка | `card-body` | Ключ `localStorage` |
+|----------|--------|-------------|---------------------|
+| **Добавить мой сайт** (форма нового / редактирования) | `#ms-form-collapse` | `#dg-msites-add-body` | `mysites_add_form_collapsed_v1` |
+| **Фильтры и действия** | `#dg-msites-filters-toggle` | `#dg-msites-filters-body` | `datagon_my_sites_filters_collapsed_v1` |
+| **Список сайтов** | `#dg-msites-table-toggle` | `#dg-msites-table-body` | `dg.my-sites.table-card.collapsed.v1` |
+
+Кнопка **«Изменить»** в строке таблицы принудительно **разворачивает** форму (`expandAddFormCard`), чтобы поля редактирования были видны.
+
 <blockquote class="dg-doc-tip">
 <strong>Снимок интерфейса.</strong> PNG обновляют: <code>npm run docs:capture-screenshots</code> (с <code>DOCS_USER</code> и <code>DOCS_PASSWORD</code> — с живой панели; без входа — с макета <code>/doc-screenshots/mysites-sample.html</code>) и <code>npm run docs:docusaurus:build</code>. Для этого экрана — полная страница в кадре (см. <a href="./capture-screenshots.md">съёмка</a>).
 </blockquote>

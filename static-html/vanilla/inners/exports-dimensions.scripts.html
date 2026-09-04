@@ -354,8 +354,8 @@
         {
           key: 'name',
           label: 'Наименование',
-          width: 360,
-          minW: 180,
+          width: 280,
+          minW: 160,
           sortable: true,
           isNumeric: false,
           cellClass: 'dg-dim-cell-name',
@@ -528,12 +528,19 @@
           var allowed = arr.filter(function (k) { return DIM_COL_KEYS.indexOf(k) !== -1; });
           if (allowed.length === 0) return defaultVisibleCols();
           var set = new Set(allowed);
-          DIM_COL_KEYS.forEach(function (k) {
-            set.add(k);
-          });
-          return new Set(DIM_COL_KEYS.filter(function (k) {
-            return set.has(k);
-          }));
+          /** Новые колонки схемы (которых не было в прошлом fingerprint) — показать. */
+          var schemaKey = VISIBLE_COLS_KEY + ':schema';
+          var schemaNow = DIM_COL_KEYS.join(',');
+          var schemaPrev = '';
+          try { schemaPrev = String(localStorage.getItem(schemaKey) || ''); } catch (e0) {}
+          if (schemaPrev && schemaPrev !== schemaNow) {
+            var prevKeys = schemaPrev.split(',');
+            DIM_COL_KEYS.forEach(function (k) {
+              if (prevKeys.indexOf(k) === -1) set.add(k);
+            });
+          }
+          try { localStorage.setItem(schemaKey, schemaNow); } catch (e1) {}
+          return set;
         } catch (e) {
           return defaultVisibleCols();
         }
@@ -608,18 +615,6 @@
           var th = thead.querySelector('th[data-dg-col-key="' + key + '"]');
           if (th) applyColCellWidth(th, w);
         }
-        var cols = getVisibleColsList();
-        var colIdx = -1;
-        for (var i = 0; i < cols.length; i++) {
-          if (cols[i].key === key) { colIdx = i; break; }
-        }
-        if (colIdx >= 0) {
-          document.querySelectorAll('#dg-dim-tbody tr').forEach(function (tr) {
-            if (tr.cells.length === 1 && tr.cells[0].colSpan > 1) return;
-            var td = tr.children[colIdx];
-            if (td) applyColCellWidth(td, w);
-          });
-        }
         dimRefreshFloatingAfterLayout();
       }
 
@@ -662,14 +657,8 @@
       }
 
       function applyBodyColumnWidths() {
-        var cols = getVisibleColsList();
-        document.querySelectorAll('#dg-dim-tbody tr').forEach(function (tr) {
-          if (tr.cells.length === 1 && tr.cells[0].colSpan > 1) return;
-          for (var j = 0; j < cols.length; j++) {
-            var td = tr.children[j];
-            if (td) applyColCellWidth(td, getColWidth(cols[j]));
-          }
-        });
+        /** Ширины колонок — только через `<colgroup>` + `table-layout: fixed`
+         *  (см. datagon-table-behavior-lock.mdc: не суммировать minWidth на каждый td). */
       }
 
       function getVisibleColsList() {
@@ -2945,7 +2934,10 @@
             editsChartInstance = null;
           }
           canvas.style.display = 'none';
-          if (wrap) wrap.style.minHeight = '120px';
+          if (wrap) {
+            wrap.style.minHeight = '';
+            wrap.classList.add('is-empty');
+          }
           if (emptyEl) emptyEl.classList.remove('d-none');
           return;
         }
@@ -2953,7 +2945,10 @@
         canvas.style.display = '';
         if (emptyEl) emptyEl.classList.add('d-none');
         var chartH = Math.max(220, Math.min(560, employees.length * 34 + 48));
-        if (wrap) wrap.style.minHeight = chartH + 'px';
+        if (wrap) {
+          wrap.classList.remove('is-empty');
+          wrap.style.minHeight = chartH + 'px';
+        }
 
         var labels = employees.map(function (e) { return String(e.name || 'Не указан'); });
         var values = employees.map(function (e) { return Number(e.products_edited || 0); });

@@ -1,5 +1,31 @@
   <style>
     .dg-ms-table { font-size: 0.8rem; line-height: 1.25; font-variant-numeric: tabular-nums; }
+    /* Плашки сводки: одна высота ряда (подсказка у «Сумма…» не поднимает только две карточки) */
+    body.datagon-vanilla-body[data-dg-active-nav="moysklad"] .dg-ms-stats-row {
+      margin-bottom: 1rem;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="moysklad"] .dg-ms-stat-card {
+      display: flex;
+      flex-direction: column;
+      min-height: 100%;
+      box-sizing: border-box;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="moysklad"] .dg-ms-stat-label {
+      flex: 0 0 auto;
+      min-height: 1.35em;
+      line-height: 1.35;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="moysklad"] .dg-ms-stat-hint {
+      flex: 1 1 auto;
+      min-height: 2.5em;
+      margin-bottom: 0.35rem;
+      font-size: 0.75rem;
+      line-height: 1.25;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="moysklad"] .dg-ms-stat-value {
+      margin-top: auto;
+      line-height: 1.2;
+    }
     .datagon-my-products-table-wrap.table-responsive {
       overflow: visible !important;
       max-height: none !important;
@@ -108,7 +134,8 @@
     .dg-ms-detail-overlay {
       position: fixed;
       inset: 0;
-      z-index: 2000;
+      /* выше fixed-sidebar (11–13) и mobile sidebar (1100); оверлей монтируется на body */
+      z-index: 12000;
       background: rgba(15, 23, 42, 0.45);
       display: flex;
       align-items: center;
@@ -121,6 +148,36 @@
       max-width: 920px;
       max-height: 92vh;
       overflow: hidden;
+      min-width: 0;
+    }
+    /* Шапка карточки МС: grid minmax(0,1fr)+auto — надёжнее flex+text-truncate в теме ArchitectUI */
+    .dg-ms-detail-panel > .card-header.dg-ms-detail-hdr {
+      display: grid !important;
+      grid-template-columns: minmax(0, 1fr) auto;
+      column-gap: 0.75rem;
+      align-items: center;
+      min-width: 0;
+      overflow: hidden;
+    }
+    .dg-ms-detail-hdr-title {
+      margin: 0;
+      min-width: 0;
+      max-width: 100%;
+      overflow: hidden !important;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-weight: 600;
+      line-height: 1.3;
+    }
+    .dg-ms-detail-hdr-actions {
+      display: flex;
+      flex-wrap: nowrap;
+      align-items: center;
+      gap: 0.5rem;
+      flex-shrink: 0;
+      z-index: 1;
+      position: relative;
+      background: inherit;
     }
     .dg-ms-detail-kv {
       width: 100%;

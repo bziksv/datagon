@@ -16,20 +16,21 @@
 
           <div class="main-card mb-3 card" id="dg-dim-edits-chart-card">
             <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
-              <div class="d-flex align-items-center gap-2 min-w-0">
-                <i class="header-icon pe-7s-graph2 icon-gradient bg-tempting-azure"></i>
-                <div>
+              <div class="d-flex align-items-center gap-2 min-w-0 dg-dim-edits-chart-title">
+                <i class="header-icon pe-7s-graph2 icon-gradient bg-tempting-azure flex-shrink-0"></i>
+                <div class="min-w-0">
                   <span class="fw-semibold">Правки габаритов по сотрудникам</span>
                   <div class="small text-muted" id="dg-dim-edits-chart-subtitle">За период…</div>
                 </div>
               </div>
-              <div class="d-flex align-items-center gap-2 flex-wrap">
-                <div class="btn-group btn-group-sm" role="group" aria-label="Период графика">
-                  <button type="button" class="btn btn-outline-primary active" data-dg-dim-edits-period="current_month">Тек. месяц</button>
-                  <button type="button" class="btn btn-outline-secondary" data-dg-dim-edits-period="prev_month">Прош. месяц</button>
-                  <button type="button" class="btn btn-outline-secondary" data-dg-dim-edits-period="7">7 дн.</button>
-                  <button type="button" class="btn btn-outline-secondary" data-dg-dim-edits-period="30">30 дн.</button>
-                </div>
+              <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0" id="dg-dim-edits-chart-toggle">Свернуть</button>
+            </div>
+            <div class="card-body" id="dg-dim-edits-chart-body">
+              <div class="d-flex align-items-center gap-2 flex-wrap dg-dim-edits-chart-actions mb-2" role="group" aria-label="Период и действия графика">
+                <button type="button" class="btn btn-sm btn-outline-primary active" data-dg-dim-edits-period="current_month">Тек. месяц</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-dg-dim-edits-period="prev_month">Прош. месяц</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-dg-dim-edits-period="7">7 дн.</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-dg-dim-edits-period="30">30 дн.</button>
                 <button
                   type="button"
                   class="btn btn-sm btn-outline-secondary"
@@ -39,15 +40,12 @@
                 >
                   Обновить
                 </button>
-                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-dim-edits-chart-toggle">Свернуть</button>
               </div>
-            </div>
-            <div class="card-body" id="dg-dim-edits-chart-body">
               <p class="text-muted small mb-2" id="dg-dim-edits-chart-meta"></p>
-              <div class="dg-dim-edits-chart-wrap">
+              <div class="text-muted small mb-0 d-none" id="dg-dim-edits-chart-empty">Нет правок в журнале за выбранный период.</div>
+              <div class="dg-dim-edits-chart-wrap is-empty">
                 <canvas id="dg-dim-edits-chart-canvas" height="220"></canvas>
               </div>
-              <div class="text-muted small mt-2 d-none" id="dg-dim-edits-chart-empty">Нет правок в журнале за выбранный период.</div>
             </div>
           </div>
 
@@ -63,7 +61,7 @@
             </div>
             <div class="card-body" id="dg-dim-filters-body">
               <div class="row g-2 align-items-end">
-                <div class="col-md-5">
+                <div class="col-12 col-xl-5">
                   <label class="form-label" for="dg-dim-f-search">Умный поиск</label>
                   <input
                     type="text"
@@ -74,7 +72,7 @@
                     data-dg-tooltip="Ищет по полям: код, артикул, наименование. Мульти-токен через пробел = AND."
                   />
                 </div>
-                <div class="col-md-2">
+                <div class="col-6 col-md-4 col-xl-2">
                   <label class="form-label" for="dg-dim-f-type">Тип</label>
                   <select class="form-select" id="dg-dim-f-type">
                     <option value="all">Все</option>
@@ -82,7 +80,7 @@
                     <option value="комплект">Комплект</option>
                   </select>
                 </div>
-                <div class="col-md-3">
+                <div class="col-6 col-md-4 col-xl-3">
                   <label class="form-label" for="dg-dim-f-measure-scope">Замер</label>
                   <select class="form-select" id="dg-dim-f-measure-scope">
                     <option value="all">Все позиции</option>
@@ -90,7 +88,7 @@
                     <option value="with">С замером</option>
                   </select>
                 </div>
-                <div class="col-md-2">
+                <div class="col-6 col-md-4 col-xl-2">
                   <label class="form-label" for="dg-dim-f-limit">На странице</label>
                   <select class="form-select" id="dg-dim-f-limit">
                     <option value="50">50</option>
@@ -171,9 +169,9 @@
             </div>
           </div>
 
-          <div class="main-card mb-3 card">
+          <div class="main-card mb-3 card dg-dim-table-card">
             <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
-              <div class="d-flex align-items-center gap-3 flex-grow-1" style="min-width: 0">
+              <div class="d-flex align-items-center gap-3 dg-dim-table-card-title-row">
                 <div class="d-flex align-items-center flex-shrink-0">
                   <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"></i>
                   <span>Реестр замеров габаритов</span>
@@ -185,14 +183,14 @@
                       type="search"
                       class="form-control"
                       id="dg-dim-table-search-mirror"
-                      placeholder="Умный поиск: код или наименование (Enter — применить)"
+                      placeholder="Код или наименование"
                       autocomplete="off"
                       data-dg-tooltip="Зеркало умного поиска из карточки «Фильтры и действия». Enter — применить, Esc — очистить."
                     />
                   </div>
                 </div>
               </div>
-              <div class="d-flex align-items-center gap-2 flex-wrap">
+              <div class="d-flex align-items-center gap-2 flex-wrap dg-dim-table-card-actions">
                 <button
                   type="button"
                   class="btn btn-sm btn-outline-primary"

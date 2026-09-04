@@ -167,9 +167,19 @@ Body (пример):
 - **`auto_sync_purchase_formula_cache_enabled`** / **`auto_sync_purchase_formula_cache_time`** — batch-заполнение **`dg_formula_proposed_cache`** для дефолтной выборки закупок (`routes/purchase.js → runPurchaseFormulaCacheBatch`). `task_type='purchase_formula_cache'` в `auto_sync_runs`; журнал на `/processes.html`. Кнопка «Запустить сейчас» и «Пересчитать кэш» на `/purchase.html` — `POST /api/settings/auto-sync-run` с `task: "purchase_formula_cache"`.
 - **`auto_sync_medmarket_enabled`** / **`auto_sync_medmarket_time`** / **`auto_sync_medmarket_weekdays`** — **полная выгрузка** атрибута «Код товара для медмаркета» из `ms_entity_details` → `ms_export.medmarket_product_code` (импорт, не запись в МС). МСК, по умолчанию `09:00`, дни **`7` (только вс)**. `task_type='medmarket'`.
 - **`auto_sync_medmarket_fill_enabled`** / **`auto_sync_medmarket_fill_time`** / **`auto_sync_medmarket_fill_weekdays`** — запись канонического **`код+Тип`** в атрибут МС и `ms_export` (как `POST /api/medmarket/fill-linkage-codes` без фильтров). Очередь «к записи» — только позиции с неверным/устаревшим форматом (~10–12 тыс., в основном регистр); ~46 тыс. уже со стыковкой пропускаются. МСК, по умолчанию **`09:30`**, дни **`1,2,3,4,5,6` (пн–сб, без вс)**. `task_type='medmarket_fill'`. Прогресс: `N/всего; ✓; ×` в `auto_sync_runs.message`.
-- **`sales_formula_replenishment_coef`**, **`sales_formula_sales_window_days`** (W — «Продажи за период», сумма и средний спрос для формулы v2), **`sales_formula_absence_analysis_days`** (A — дни отсутствия в логе за окно), **`sales_formula_project_mode`** (`all` | `selected`), **`sales_formula_project_uuids`** (CSV `project_uuid` из `ms_demand`; при `selected` в сумму продаж для формулы и колонок `d_*a` входят только отгрузки выбранных проектов), **`sales_formula_base_qty`**, **`sales_formula_rare_base_qty`**, **`sales_formula_rare_avg_max`** (legacy, в v2 не используется), **`sales_formula_expensive_rare_threshold_rub`**, **`sales_formula_expensive_rare_min_qty`**, **`sales_formula_max_change_coef`**, **`sales_formula_incomplete_pack_pct`** — **формула продаж** на карточке товара (`GET /api/product/:code` → `formula`). Логика в `lib/datagonSalesFormula.js` (v2: сумма за W + упущенные, ×k **без** прибавки `sales_formula_base_qty` / `sales_formula_expensive_rare_min_qty`; редкий/дорогой; кратность + `incomplete_pack_pct`: хвост ≤ % — вниз до кратности, хвост > % — вверх; при положительном черновике ×k **или** при ненулевой сумме с учётом отсутствий при кратности из закупок ≥ 1 шт (в т.ч. при k=0) итог **не ниже** кратности из закупок; при дроби &lt; 1 шт после шагов кратности/макс. скачка — `rare_base_qty` / `expensive_rare_min_qty`; скачок). **Эффективный минимум редкого базиса и защита от нулевого итога при ненулевой сумме с учётом отсутствий при k=0 и кратности закупок &lt; 1 шт:** не ниже `max(1, sales_formula_rare_base_qty)` (предупреждение в `formula.warnings`). UI — `/settings.html`.
-- **`auto_sync_runs_retention_days`** — срок хранения строк в **`auto_sync_runs`** (журнал запусков автосинхронизации на `/processes.html`, кнопка «Лог»; по умолчанию **180**). Автоочистка в `server.js` удаляет только записи с непустым `finished_at` старше N дней (при старте и каждые 12 ч). UI: карточка **«Журнал запусков автосинхронизации»** на `/settings.html` (`GET /api/settings/auto-sync-runs/stats`, `POST /api/settings/auto-sync-runs/cleanup`).
+- **`sales_formula_replenishment_days`** (основной UI: «Пополнение, дней»), **`sales_formula_replenishment_coef`** (legacy/синхрон = дни÷W), **`sales_formula_sales_window_days`** (W — «Продажи за период», сумма и средний спрос для формулы v2), **`sales_formula_absence_analysis_days`** (A — дни отсутствия в логе за окно), **`sales_formula_project_mode`** (`all` | `selected`), **`sales_formula_project_uuids`** (CSV `project_uuid` из `ms_demand`; при `selected` в сумму продаж для формулы и колонок `d_*a` входят только отгрузки выбранных проектов), **`sales_formula_base_qty`**, **`sales_formula_rare_base_qty`**, **`sales_formula_rare_avg_max`** (legacy, в v2 не используется), **`sales_formula_expensive_rare_threshold_rub`**, **`sales_formula_expensive_rare_min_qty`**, **`sales_formula_max_change_coef`**, **`sales_formula_incomplete_pack_pct`** — **формула продаж** на карточке товара (`GET /api/product/:code` → `formula`). Логика в `lib/datagonSalesFormula.js` (v2: сумма за W + упущенные, ×(дни÷W) **без** прибавки `sales_formula_base_qty` / `sales_formula_expensive_rare_min_qty`; редкий/дорогой; кратность + `incomplete_pack_pct`). **Оверрайд по поставщику:** `dg_supplier_settings.replenishment_days` (если задано) сильнее глобальных дней; правит только `admin` на `/suppliers.html`. В `formula` ответ: `replenishment_source` = `global` | `supplier`, `replenishment_days_effective`. Кэш `dg_formula_proposed_cache.formula_fp` = base + `|rd:g` или `|rd:N`. UI глобали — `/settings.html`.
+- **`auto_sync_runs_retention_days`** — срок хранения строк в **`auto_sync_runs`** (журнал запусков автосинхронизации на `/processes.html`, кнопка «Лог»; по умолчанию **180**). Автоочистка в `server.js` удаляет только записи с непустым `finished_at` старше N дней (при старте и каждые 12 ч). UI: карточка **«Журнал запусков автосинхронизации»** на `/settings.html` (`GET /api/settings/auto-sync-runs/stats`, `POST /api/settings/auto-sync-runs/cleanup`). На каждой карточке расписания — кнопка **«Лог»** → модалка с днём МСК (`GET /api/settings/auto-sync-runs?task=&date=`).
 - **`product_stock_snapshot_retention_days`** — срок хранения дневных снимков **`ms_export.stock`** в **`dg_product_stock_snapshot`** (очистка при каждом успешном полном синке МС; по умолчанию **365**, диапазон **30…3650**). UI: карточка **«Снимки остатка МС (карточка товара)»** на `/settings.html` (`sectionId='stock-snap-retention'`).
+
+### GET `/api/settings/auto-sync-runs`
+
+Журнал запусков **одной** задачи автосинка за календарный день (МСК). Для модалки «Лог» на `/settings.html`.
+
+Query:
+- `task` — ключ из `AUTO_SYNC_TASKS` (`moysklad`, `mssales`, `dimensions`, …); обязателен
+- `date` — `YYYY-MM-DD` (день по МСК); по умолчанию сегодня МСК
+
+Ответ: `{ success, task, date, moscow_today, total, data: [{ id, task_type, trigger_type, started_at, finished_at, status, message }] }`.
 
 ### GET `/api/settings/auto-sync-runs/stats`
 
@@ -281,6 +291,10 @@ Query:
 - `sort_by` / `sort_dir`
 - `limit`
 - `offset`
+
+В каждой строке `data[]` дополнительно:
+- `is_matched` (`0`/`1`) — confirmed-сопоставление;
+- `product_name` — последнее имя товара конкурента из `prices` по `page_id` (пустая строка, если ещё не парсили). UI очереди показывает имя перед ссылкой в колонке «Товар / URL».
 
 ### POST `/api/pages/bulk`
 Массовое добавление URL в очередь.
@@ -1178,6 +1192,8 @@ Body (JSON):
 
 Префикс: `/api/exports/new-products`. Экран: `/exports-new-products.html` (подменю **Маркетплейсы**). Две вкладки UI: **Альмамед** (`channel=almamed`) и **Маркеты** (`channel=marketplaces`). Таблица `dg_new_products` (создаётся при первом запросе).
 
+**UI / wide-таблица (lock):** плавающая шапка — `#dg-np-float-host` (`position: fixed` клон thead), **не** `translate3d` на живом `#dg-np-thead` (тяжёлая таблица; shop-схема Ozon сюда не копировать). Ширины — только `<colgroup>`, `table-layout: auto`. Контракт: `.cursor/rules/datagon-table-behavior-lock.mdc` (раздел «Новые товары»).
+
 Доступ по матрице страницы **`exports-new-products`** (как дочерняя маркетплейсов наследует скрытие родителя `exports-marketplaces`, если у дочерней нет явного `view`/`full`).
 
 ### Регламент / инструкция МП
@@ -1613,13 +1629,15 @@ Body: `{ days }` (max = **`ms_orders_sync_days`**; если не передан�
 
 ## Поставщики
 
-Страница `/suppliers.html`, роутер `routes/suppliers.js`. В список попадают **уникальные** значения `ms_export.supplier`, у которых есть хотя бы один товар: `stock_position = Да`, `type` не комплект, `no_longer_cooperation` не «Да», `is_archived = 0`. Настройки по поставщику — `dg_supplier_settings` (PK = `supplier_key` = trim(`supplier`)). История снимков наполняемости — `dg_supplier_fill_history` (запись при сохранении `stock_fill_pct` через PATCH).
+Страница `/suppliers.html`, роутер `routes/suppliers.js`. В список попадают **уникальные** значения `ms_export.supplier`, у которых есть хотя бы один товар: `stock_position = Да`, `type` не комплект, `no_longer_cooperation` не «Да», `is_archived = 0`. Настройки по поставщику — `dg_supplier_settings` (PK = `supplier_key` = trim(`supplier`)). История снимков наполняемости — `dg_supplier_fill_history` (запись при сохранении `stock_fill_pct` через PATCH). Поле **`replenishment_days`** (nullable INT) — индивидуальный горизонт «Пополнение, дней» для формулы неснижаемого: если задано, перекрывает глобальный `sales_formula_replenishment_days` (`k = дни÷W`). **Редактирование только у `username === admin`** (UI скрыт, `PATCH` → 403); расчёт формулы использует значение для всех ролей.
 
 **Позиция «к закупке» (шт):** `max(0, min_stock МС − stock − in_transit)` — только поле «Неснижаемый остаток» из `ms_export`, без override и без формулы. **Сумма закупки:** сумма `need_qty × buy_price` по строкам с `need_qty > 0`. **Наполняемость % (Кол-во Несн/Несниж сумм./Ост.факт/%):** в ячейке `кол-во SKU с неснижаемым &gt; 0 / Σ неснижаемый (шт) / Σ остаток факт (шт) / %`; неснижаемый на SKU = `COALESCE(override, кэш формулы, min_stock МС)`; `%` = `100 × Σ остаток ÷ Σ неснижаемый`. Подсветка: &lt;70% — красный, 70–90% — жёлтый, ≥90% — зелёный.
 
 ## Анализ поставщиков
 
 Страница `/supplier-analysis.html`, роутер `routes/supplierAnalysis.js`. Тот же каталог SKU, что на `/suppliers.html` (`sqlSupplierProductWhere`). Продажи — суммы по `ms_demand_position` (отгрузки МС, `applicable=1`, не удалённые), привязка к поставщику через `ms_export.code`. Сравнение периодов: текущее окно `days` и предыдущее такое же окно.
+
+**Профиль отсутствия / рек. пополнение** (`lib/datagonSupplierAbsenceProfile.js`): по `dg_product_zero_stock_log` строятся эпизоды нуля на каждый `code`, плюс продажи за период → `recommended_replenishment_days` на SKU = **max(макс. простой, ср. эпизод, max(глобаль, оверрайд поставщика))** — короткий нуль не даёт «рек. 1» и не занижает уже заданные дни поставщика; на поставщика — sales-weighted **P90**. **В формулу неснижаемого рекомендация сама не входит** — только после «Применить» в `dg_supplier_settings.replenishment_days` (или глобаль). Цепочка формулы: **supplier override → global** (`k = дни÷W`). Пороги бейджей: долгий ≥14 дн., частый короткий ≥3 эпизода со ср. длиной ≤3.
 
 Фильтр проектов отгрузок (только для продаж): `project_mode` (`all` | `selected`, default `all`), `project_uuids` — список UUID через запятую (при `selected` без UUID продажи не учитываются). **Выручка, маржа и Δ выручки** в `/overview` считаются только по отгрузкам выбранных проектов. Маржа: `sum_minor` позиции − закупка из `ms_export` × кол-во (не выше суммы строки). Остатки и каталог SKU от фильтра не зависят.
 
@@ -1637,13 +1655,13 @@ Query: `days` (7–365, default 90), `project_mode`, `project_uuids`. Ответ
 
 ### GET `/api/supplier-analysis/highlights`
 
-Query: `days`. Ответ: `{ needs_attention, top_revenue, top_growth, weak }` — до 8 поставщиков в каждом блоке (сигналы `signals`, `attention_score`).
+Query: `days`. Ответ: `{ needs_attention, top_revenue, top_growth, weak, chronic_absence, flicker_absence }` — до 8 поставщиков в каждом блоке (сигналы `signals`, `attention_score`; блоки отсутствия — по `chronic_sku_count` / `flicker_sku_count`).
 
 ### GET `/api/supplier-analysis/ranking`
 
 Query: `days`, `new_stock_days` (7–180, default 30), `project_mode`, `project_uuids`, `focus` (`all`|`develop`|`problem`), `search`, `limit`, `offset`, `sort_by`, `sort_dir`.
 
-В каждой строке: `skus_warehouse` (= складские SKU в каталоге), `skus_total` (все SKU поставщика в МС), `stock_value_rub`, `turnover_monthly` (коэффициент; в UI ×100 = % остатка в месяц: (выручка/остаток ₽) ÷ (days÷30)), `sales_revenue`, `skus_new_on_stock`, `new_avg_days_on_stock` (среднее число дней с первого остатка > 0 у новинок), `skus_ineffective` (залежалые: остаток, 0 продаж, не новинка), `sales_revenue`, `signals[]`, `portfolio_tag` (для подсветок/фильтра `focus`, опционально). Сортировка по умолчанию: `sales_revenue` desc (№1 в таблице — поставщик с наибольшими продажами за период).
+В каждой строке: `skus_warehouse` (= складские SKU в каталоге), `skus_total` (все SKU поставщика в МС), `stock_value_rub`, `turnover_monthly` (коэффициент; в UI ×100 = % остатка в месяц: (выручка/остаток ₽) ÷ (days÷30)), `sales_revenue`, `skus_new_on_stock`, `new_avg_days_on_stock` (среднее число дней с первого остатка > 0 у новинок), `skus_ineffective` (залежалые: остаток, 0 продаж, не новинка), `recommended_replenishment_days`, `chronic_sku_count`, `flicker_sku_count`, `absence_sku_count`, `chronic_max_streak_days`, `signals[]`, `portfolio_tag` (для подсветок/фильтра `focus`, опционально). Сортировка по умолчанию: `sales_revenue` desc (№1 в таблице — поставщик с наибольшими продажами за период).
 
 ### GET `/api/supplier-analysis/trend`
 
@@ -1651,7 +1669,7 @@ Query: `supplier_key`, `months` (3–24, default 12), `project_mode`, `project_u
 
 ### GET `/api/supplier-analysis/products`
 
-Query: `supplier_key`, `days`, `new_stock_days` (для `stale`/`new`), `mode` (`all`|`warehouse`|`catalog`|`all_skus`|`total`|`leaders`|`laggards`|`stale`|`new`|`weak`), `limit` (до 500 для `warehouse`/`all_skus`), `project_mode`, `project_uuids`. **`warehouse`** / `catalog` — SKU складская (`sqlSupplierProductWhere`: не архив, не «перестали сотрудничать», складская «Да»). **`all_skus`** / `total` — все SKU поставщика (`sqlSupplierAllSkusWhere`: без архива и «перестали сотрудничать», комплекты исключены). **`stale`** / `laggards` — остаток > 0, 0 продаж, не новинка. **`new`** — остаток > 0, первый остаток в пределах `new_stock_days`. **`weak`** — есть продажи, но `sales_qty` < 25% медианы. Ответ каталога: `total`, `truncated`, в строке `is_warehouse`, `stock_position`, `stock`, **`in_transit`** (ожидание / в пути: `ms_entity_details.denorm_in_transit` или `payload.inTransit`, как на закупках).
+Query: `supplier_key`, `days`, `new_stock_days` (для `stale`/`new`), `mode` (`all`|`warehouse`|`catalog`|`all_skus`|`total`|`leaders`|`laggards`|`stale`|`new`|`weak`|`absence`), `limit` (до 500 для `warehouse`/`all_skus`), `project_mode`, `project_uuids`. **`warehouse`** / `catalog` — SKU складская (`sqlSupplierProductWhere`: не архив, не «перестали сотрудничать», складская «Да»). **`all_skus`** / `total` — все SKU поставщика (`sqlSupplierAllSkusWhere`: без архива и «перестали сотрудничать», комплекты исключены). **`stale`** / `laggards` — остаток > 0, 0 продаж, не новинка. **`new`** — остаток > 0, первый остаток в пределах `new_stock_days`. **`weak`** — есть продажи, но `sales_qty` < 25% медианы. **`absence`** — SKU с эпизодами нуля / рек. днями: `absent_days`, `episode_count`, `max_streak_days`, `avg_episode_days`, `recommended_replenishment_days`, `chronic`, `flicker`, `sales_*`; в ответе также `rollup` по поставщику. Ответ каталога: `total`, `truncated`, в строке `is_warehouse`, `stock_position`, `stock`, **`in_transit`** (ожидание / в пути: `ms_entity_details.denorm_in_transit` или `payload.inTransit`, как на закупках).
 
 ### GET `/api/supplier-analysis/export`
 
@@ -1677,7 +1695,7 @@ Query: `days`, `search`, `project_mode`, `project_uuids` (как в ranking). О
 
 Query: `search`, `assigned_user` (опционально: пусто — все; `none` — без привязки; иначе `id` пользователя из `/assignees`), `attention_only=1` — поставщики «требуют внимания»: `products_to_purchase > 0`, `total_purchase_sum > 0`, сумма ≥ `min_purchase_sum` (если мин. задан), и без успешного заказа в МС ≥30 дн. (или никогда), `limit` (default 100), `offset`, `sort_by` (`supplier_name`, `sales_rank`, `products_total`, `products_to_purchase`, `total_purchase_sum`, `min_purchase_sum`, `warehouse_fill_pct`, `stock_fill_pct`, `assigned_user_name`, `last_ms_order_at`), `sort_dir`. Для `sales_rank`: `asc` — лидеры сверху (место 1…), `desc` — слабые продажи сверху.
 
-Ответ: `{ success, data[], total, limit, offset, applied_filters, procurement_attention_thresholds?, sales_rank_period_days, sales_rank_total, cache? }`. В каждой строке: агрегаты + `dg_supplier_settings` + `last_ms_order_at`, `last_ms_order_name`, `last_ms_order_by`, `procurement_attention: { level, code, label, days_since }`, рейтинг продаж за `sales_rank_period_days` (90): `sales_rank` (место), `sales_rank_total`, `sales_revenue_90d` — та же сортировка, что `GET /api/supplier-analysis/ranking?days=90` (выручка отгрузок МС по всем проектам, DESC).
+Ответ: `{ success, data[], total, limit, offset, applied_filters, procurement_attention_thresholds?, sales_rank_period_days, sales_rank_total, cache? }`. В каждой строке: агрегаты + `dg_supplier_settings` + `last_ms_order_at`, `last_ms_order_name`, `last_ms_order_by`, `procurement_attention: { level, code, label, days_since }`, рейтинг продаж за `sales_rank_period_days` (90): `sales_rank` (место), `sales_rank_total`, `sales_revenue_90d` — та же сортировка, что `GET /api/supplier-analysis/ranking?days=90` (выручка отгрузок МС по всем проектам, DESC). Также **`recommended_replenishment_days`** (и счётчики `absence_sku_count` / `chronic_sku_count` / `flicker_sku_count`) — рекомендация по логу нулей за 90 дн. (см. анализ поставщиков); на UI у поля «Пополнение, дней» — «рек. N» и «Применить» (только admin).
 
 ### GET `/api/suppliers/assignees`
 
@@ -1689,7 +1707,7 @@ Query: `scope` — `all` (по умолчанию, **только активны
 
 ### PATCH `/api/suppliers/:supplierKey`
 
-Body (любое подмножество): `assigned_user_id`, `comment`, `min_purchase_sum`, `warehouse_fill_pct`, `stock_fill_pct`, `auto_mailing_enabled`, `mailing_text`. При изменении `stock_fill_pct` — INSERT в `dg_supplier_fill_history`.
+Body (любое подмножество): `assigned_user_id`, `comment`, `min_purchase_sum`, `warehouse_fill_pct`, `stock_fill_pct`, `auto_mailing_enabled`, `mailing_text`, **`replenishment_days`** (`null`/пусто = как в Настройках; `0…3650` = оверрайд). Поле **`replenishment_days`** принимается **только** если актор `username === 'admin'`, иначе **403**. При изменении `stock_fill_pct` — INSERT в `dg_supplier_fill_history`.
 
 ### POST `/api/suppliers/:supplierKey/send-ms-order`
 

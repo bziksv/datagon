@@ -738,23 +738,27 @@
         });
       }
 
-      function appendHighlightedUrl(a, urlValue, needle) {
-        var source = String(urlValue || "");
+      function appendHighlightedText(el, textValue, needle) {
+        var source = String(textValue || "");
         var n = String(needle || "").trim();
         if (!n) {
-          a.textContent = source;
+          el.textContent = source;
           return;
         }
         var idx = source.toLowerCase().indexOf(n.toLowerCase());
         if (idx === -1) {
-          a.textContent = source;
+          el.textContent = source;
           return;
         }
-        a.appendChild(document.createTextNode(source.slice(0, idx)));
+        el.appendChild(document.createTextNode(source.slice(0, idx)));
         var mark = document.createElement("mark");
         mark.textContent = source.slice(idx, idx + n.length);
-        a.appendChild(mark);
-        a.appendChild(document.createTextNode(source.slice(idx + n.length)));
+        el.appendChild(mark);
+        el.appendChild(document.createTextNode(source.slice(idx + n.length)));
+      }
+
+      function appendHighlightedUrl(a, urlValue, needle) {
+        appendHighlightedText(a, urlValue, needle);
       }
 
       function projectName(id) {
@@ -806,12 +810,25 @@
           if (matched) tr.className = "table-success";
           var canRun = ["sitemap", "pending", "error"].includes(String(r.status || "").toLowerCase());
           var tdUrl = document.createElement("td");
-          tdUrl.style.maxWidth = "320px";
-          tdUrl.className = "text-truncate";
+          tdUrl.style.maxWidth = "420px";
+          tdUrl.style.whiteSpace = "normal";
+          var productName = String(r.product_name || "").trim();
+          if (productName) {
+            var nameEl = document.createElement("div");
+            nameEl.className = "fw-semibold text-body";
+            nameEl.style.lineHeight = "1.25";
+            nameEl.style.marginBottom = "2px";
+            nameEl.style.wordBreak = "break-word";
+            appendHighlightedText(nameEl, productName, searchNeedle);
+            tdUrl.appendChild(nameEl);
+          }
           var link = document.createElement("a");
           link.href = r.url || "#";
           link.target = "_blank";
           link.rel = "noopener noreferrer";
+          link.className = "d-inline-block text-truncate";
+          link.style.maxWidth = "100%";
+          link.title = String(r.url || "");
           appendHighlightedUrl(link, r.url, searchNeedle);
           tdUrl.appendChild(link);
           var st = String(r.status || "").toLowerCase();

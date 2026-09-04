@@ -496,6 +496,7 @@
         if (!table) return;
         var thead = table.querySelector("thead");
         if (!thead) return;
+        if (!thead.id) thead.id = "dg-mp-thead";
         if (!state.headers.length) {
           thead.innerHTML = '<tr><th class="text-muted">Нет колонок</th></tr>';
           return;
@@ -581,6 +582,13 @@
         renderTableHead();
         var shown = renderTableBody();
         renderPaginationControls(shown);
+        // После перерисовки строк высота/позиция thead меняется — base-top
+        // надо снять заново (в rAF, когда layout стабилен), иначе JS-floating
+        // держит старое смещение и первая строка оказывается под шапкой.
+        requestAnimationFrame(function () {
+          if (typeof shopCaptureTheadBaseTop === "function") shopCaptureTheadBaseTop();
+          if (typeof shopScheduleFloatingHeader === "function") shopScheduleFloatingHeader();
+        });
       }
 
       function applyApiPayload(payload) {
@@ -857,13 +865,113 @@
         }
       }
 
-      // ---- Floating header ----
-      // Реализован через CSS `position: sticky; top: var(--dg-table-sticky-top)`
-      // на каждом <th> (см. exports-marketplaces.head.html). Это эталон от moysklad.scripts.html
-      // строка ~1060: native sticky точнее JS translate3d и не «съезжает» при позднем layout.
-      // CSS-переменная --dg-table-sticky-top — высота app-header. На странице маркетплейсов
-      // глобальный datagon-vanilla.js#initGlobalTableBaseline её не выставляет (наша таблица
-      // в shouldSkipGlobalTableBaseline), поэтому считаем сами и слушаем resize.
+      // ---- Floating header (как /moysklad.html / issues): горизонтальный скролл в карточке,
+      // вертикальная «липкость» под app-header через translate3d на #dg-mp-thead.
+      var SHOP_FLOATING_HEADER_OFFSET_PX = 2;
+      var SHOP_FLOATING_HEADER_START_EPS_PX = 3;
+      var shopFloatingHeaderRaf = 0;
+      var shopFloatingLastScrollTs = 0;
+
+      function getShopStickyTopPx() {
+        var app = document.querySelector(".app-container");
+        var header = document.querySelector(".app-header");
+        var fixed = Boolean(app && app.classList && app.classList.contains("fixed-header"));
+        if (!fixed) return 0;
+        if (!header || !header.getBoundingClientRect) return 60;
+        var rect = header.getBoundingClientRect();
+        var h = rect && rect.height ? rect.height : 60;
+        return h > 0 ? h : 60;
+      }
+
+      function shopCaptureTheadBaseTop() {
+        var thead = document.getElementById("dg-mp-thead");
+        if (!thead) return;
+        thead.style.transform = "";
+        thead.style.position = "";
+        thead.style.zIndex = "";
+        thead.style.willChange = "";
+        thead.removeAttribute("data-dg-floating");
+        var rect = thead.getBoundingClientRect();
+        var absTop = (window.scrollY || window.pageYOffset || 0) + (rect && rect.top ? rect.top : 0);
+        thead.setAttribute("data-dg-base-top", String(absTop));
+      }
+
+      function updateShopFloatingHeaderFallback() {
+        var thead = document.getElementById("dg-mp-thead");
+        if (!thead) return;
+        var table = thead.closest("table");
+        if (!table || !table.getBoundingClientRect) return;
+        var row = thead.querySelector("tr");
+        if (!row) return;
+
+        var y = window.scrollY || window.pageYOffset || 0;
+        var headerTop = getShopStickyTopPx();
+        var baseTopAbs = Number(thead.getAttribute("data-dg-base-top") || 0);
+        if (!Number.isFinite(baseTopAbs) || baseTopAbs <= 0) return;
+        var tableRect = table.getBoundingClientRect();
+        var tableBottom = tableRect.bottom + y;
+        var rowRect = row.getBoundingClientRect();
+        var rowHeight = rowRect && rowRect.height ? rowRect.height : 0;
+        var headerLine = y + headerTop;
+        var start = baseTopAbs + SHOP_FLOATING_HEADER_START_EPS_PX;
+        var end = tableBottom - rowHeight;
+        if (headerLine <= start || headerLine >= end) {
+          if (thead.style.transform) {
+            thead.style.transform = "";
+            thead.style.position = "";
+            thead.style.zIndex = "";
+            thead.style.willChange = "";
+            thead.removeAttribute("data-dg-floating");
+          }
+          return;
+        }
+        var zoomAwareOffset = SHOP_FLOATING_HEADER_OFFSET_PX;
+        var dpr = window.devicePixelRatio || 1;
+        if (Math.abs(dpr - 1) < 0.03) zoomAwareOffset = SHOP_FLOATING_HEADER_OFFSET_PX - 3;
+        var shift = Math.max(0, headerLine - start - zoomAwareOffset);
+        var shiftPx = Number(shift.toFixed(3));
+        var nextTransform = "translate3d(0," + shiftPx + "px,0)";
+        if (thead.style.transform !== nextTransform) {
+          thead.style.transform = nextTransform;
+          thead.style.position = "relative";
+          thead.style.zIndex = "25";
+          thead.style.willChange = "transform";
+          thead.setAttribute("data-dg-floating", "1");
+        }
+      }
+
+      function shopFloatingHeaderTick(ts) {
+        shopFloatingHeaderRaf = 0;
+        updateShopFloatingHeaderFallback();
+        if (ts - shopFloatingLastScrollTs < 140) {
+          shopFloatingHeaderRaf = requestAnimationFrame(shopFloatingHeaderTick);
+        }
+      }
+
+      function shopScheduleFloatingHeader() {
+        shopFloatingLastScrollTs = performance.now ? performance.now() : Date.now();
+        if (!shopFloatingHeaderRaf) {
+          shopFloatingHeaderRaf = requestAnimationFrame(shopFloatingHeaderTick);
+        }
+      }
+
+      function bindShopFloatingHeader() {
+        shopCaptureTheadBaseTop();
+        var onScroll = function () {
+          shopScheduleFloatingHeader();
+        };
+        window.addEventListener("scroll", onScroll, { passive: true });
+        var outerMain = document.querySelector(".app-main__outer");
+        if (outerMain) outerMain.addEventListener("scroll", onScroll, { passive: true });
+        var horiz = document.getElementById("dg-mp-table-scroll-outer");
+        if (horiz) horiz.addEventListener("scroll", onScroll, { passive: true });
+        window.addEventListener("resize", function () {
+          shopCaptureTheadBaseTop();
+          shopScheduleFloatingHeader();
+        }, { passive: true });
+      }
+
+      // ---- Sticky top var (совместимость / issues-стиль) ----
       function syncStickyTopVar() {
         var app = document.querySelector(".app-container");
         var header = document.querySelector(".app-header");
@@ -878,8 +986,6 @@
       function bindStickyTopVar() {
         syncStickyTopVar();
         window.addEventListener("resize", syncStickyTopVar);
-        // app-header может перерисовываться позже (тема ArchitectUI инициализируется
-        // после load); реагируем на изменения DOM в нём.
         var hdr = document.querySelector(".app-header");
         if (hdr && window.ResizeObserver) {
           try {
@@ -1229,6 +1335,7 @@
       state.filters.content_manager = readStr(FILTER_CONTENT_MGR_KEY);
       bindControls();
       bindStickyTopVar();
+      bindShopFloatingHeader();
       loadWbTokenBanner();
       loadSavedSnapshot();
 

@@ -1699,6 +1699,17 @@
           },
         ],
         [
+          "replenishment_days",
+          "Пополнение, дней",
+          {
+            center: true,
+            editable: true,
+            adminOnly: true,
+            thTip:
+              "Индивидуальный горизонт пополнения для формулы неснижаемого (перекрывает Настройки). Пусто = как в «Формула продаж». Под полем — «рек. N» из эпизодов нулевого остатка + продаж (P90 по SKU за 90 дн.) и кнопка «Применить». Менять может только суперадмин (admin).",
+          },
+        ],
+        [
           "stock_fill_pct",
           "Наполняемость % (Кол-во Несн/Несниж сумм./Ост.факт/%)",
           {
@@ -1787,15 +1798,28 @@
       var COL_OPTS = {};
       SP_COLS.forEach(function (p) { COL_OPTS[p[0]] = p[2] || {}; });
 
+      function isSpSuperAdmin() {
+        try {
+          return String(window.localStorage.getItem("currentUser") || "") === "admin";
+        } catch (e) {
+          return false;
+        }
+      }
+
+      var SP_COLS_EFFECTIVE = SP_COLS.filter(function (p) {
+        var o = p[2] || {};
+        return !(o.adminOnly && !isSpSuperAdmin());
+      });
+
       var SORTABLE = new Set([
         "supplier_name", "sales_rank", "products_total", "products_to_purchase",
         "products_zero_stock_to_buy", "products_zero_stock_to_buy_pct",
-        "total_purchase_sum", "min_purchase_sum", "stock_fill_pct",
+        "total_purchase_sum", "min_purchase_sum", "replenishment_days", "stock_fill_pct",
         "assigned_user_name", "last_ms_order_at",
       ]);
       var SORT_KEY_REMAP = { assigned_user: "assigned_user_name" };
 
-      var DEFAULT_VISIBLE = SP_COLS.map(function (p) { return p[0]; });
+      var DEFAULT_VISIBLE = SP_COLS_EFFECTIVE.map(function (p) { return p[0]; });
 
       var COL_MIN = {
         row_num: 44,
@@ -1804,6 +1828,7 @@
         assigned_user: 150,
         comment: 160,
         min_purchase_sum: 110,
+        replenishment_days: 100,
         stock_fill_pct: 260,
         products_total: 100,
         products_to_purchase: 120,
@@ -1828,6 +1853,7 @@
         pending: { search: "", assigned_user: "", attention_only: false },
         attentionThresholds: { warn_days: 30, danger_days: 60 },
         salesRankTotal: null,
+        globalReplenishmentDays: 30,
         total: 0,
         rows: [],
         assignees: [],
@@ -3321,7 +3347,11 @@
             arr = JSON.parse(raw);
             if (!Array.isArray(arr) || !arr.length) arr = DEFAULT_VISIBLE.slice();
           }
-          arr = arr.filter(function (k) { return COL_OPTS[k]; });
+          arr = arr.filter(function (k) {
+            if (!COL_OPTS[k]) return false;
+            if (COL_OPTS[k].adminOnly && !isSpSuperAdmin()) return false;
+            return true;
+          });
           DEFAULT_VISIBLE.forEach(function (k) {
             if (arr.indexOf(k) < 0) arr.push(k);
           });
@@ -3503,6 +3533,9 @@
             state.salesRankTotal =
               j && j.sales_rank_total != null ? Number(j.sales_rank_total) : null;
             state.salesRankError = j && j.sales_rank_error ? String(j.sales_rank_error) : "";
+            if (j && j.global_replenishment_days != null && Number.isFinite(Number(j.global_replenishment_days))) {
+              state.globalReplenishmentDays = Math.round(Number(j.global_replenishment_days));
+            }
             setStatus("");
             renderTable();
             updateFooter();
@@ -3639,9 +3672,10 @@
         var o = opts || {};
         var inp = document.createElement("input");
         inp.type = "text";
-        inp.inputMode = "decimal";
+        inp.inputMode = o.integer ? "numeric" : "decimal";
         inp.className = "form-control form-control-sm dg-sp-cell-input text-end";
         inp.autocomplete = "off";
+        var saving = false;
         function syncDisplay() {
           var v = getVal(row);
           if (v == null || v === "" || !Number.isFinite(Number(v))) inp.value = "";
@@ -3653,23 +3687,54 @@
           var v = parseRuNumberInput(inp.value);
           inp.value = v != null ? String(v) : "";
         });
-        inp.addEventListener("blur", syncDisplay);
+        // blur только форматирует из row; не затирает ввод до optimistic update в change
+        inp.addEventListener("blur", function () {
+          if (saving) return;
+          syncDisplay();
+        });
         inp.addEventListener("change", function () {
           var n = parseRuNumberInput(inp.value);
+          if (o.integer && n != null) n = Math.round(n);
+          var prev = getVal(row);
+          var same =
+            ((prev == null || prev === "") && n == null) ||
+            (prev != null && n != null && Number(prev) === Number(n));
+          if (same) {
+            syncDisplay();
+            return;
+          }
           var payload = {};
           payload[field] = n == null ? null : n;
+          saving = true;
+          row[field] = n == null ? null : n;
+          syncDisplay();
           patchSupplier(row.supplier_key, payload)
-            .then(function () {
+            .then(function (j) {
+              if (j && j.settings && Object.prototype.hasOwnProperty.call(j.settings, field)) {
+                var sv = j.settings[field];
+                if (sv == null || sv === "") row[field] = null;
+                else {
+                  var nv = o.integer ? Math.round(Number(sv)) : Number(sv);
+                  row[field] = Number.isFinite(nv) ? nv : null;
+                }
+              }
+              syncDisplay();
               if (window.DatagonNotify && window.DatagonNotify.toast) {
                 window.DatagonNotify.toast({ type: "success", message: "Сохранено" });
               }
-              load();
+              // Лёгкие поля не требуют полного reload списка (тяжело + риск stale cache).
+              if (field === "stock_fill_pct") load();
+              else loadAnalytics();
             })
             .catch(function (e) {
+              row[field] = prev;
               syncDisplay();
               if (window.DatagonNotify && window.DatagonNotify.toast) {
                 window.DatagonNotify.toast({ type: "danger", message: e.message || "Ошибка" });
               }
+            })
+            .then(function () {
+              saving = false;
             });
         });
         return inp;
@@ -3771,6 +3836,91 @@
           return bindEditableNumericInput(row, "min_purchase_sum", function (r) {
             return r.min_purchase_sum;
           }, { integer: true });
+        }
+        if (key === "replenishment_days") {
+          function effectiveReplenishmentDays(r) {
+            if (r.replenishment_days != null && r.replenishment_days !== "" && Number.isFinite(Number(r.replenishment_days))) {
+              return Math.round(Number(r.replenishment_days));
+            }
+            var g = state.globalReplenishmentDays;
+            return g != null && Number.isFinite(Number(g)) ? Math.round(Number(g)) : 30;
+          }
+          function shouldShowRecommend(r) {
+            if (r.recommended_replenishment_days == null || r.recommended_replenishment_days === "") return false;
+            var rec = Math.round(Number(r.recommended_replenishment_days));
+            if (!Number.isFinite(rec)) return false;
+            return rec !== effectiveReplenishmentDays(r);
+          }
+          if (!isSpSuperAdmin()) {
+            var ro = document.createElement("div");
+            ro.className = "dg-sp-replenish-cell small";
+            var cur = row.replenishment_days;
+            ro.textContent = cur != null && Number.isFinite(Number(cur)) ? fmtNum(cur, { integer: true }) : "—";
+            if (shouldShowRecommend(row)) {
+              var hintRo = document.createElement("div");
+              hintRo.className = "text-muted";
+              hintRo.style.fontSize = "11px";
+              hintRo.textContent = "рек. " + fmtNum(row.recommended_replenishment_days, { integer: true });
+              ro.appendChild(hintRo);
+            }
+            return ro;
+          }
+          var wrap = document.createElement("div");
+          wrap.className = "dg-sp-replenish-cell";
+          var inp = bindEditableNumericInput(row, "replenishment_days", function (r) {
+            return r.replenishment_days;
+          }, { integer: true });
+          wrap.appendChild(inp);
+          if (shouldShowRecommend(row)) {
+            var rec = Math.round(Number(row.recommended_replenishment_days));
+            var rowHint = document.createElement("div");
+            rowHint.className = "d-flex align-items-center gap-1 mt-1 flex-wrap";
+            var hint = document.createElement("span");
+            hint.className = "text-muted";
+            hint.style.fontSize = "11px";
+            var eff = effectiveReplenishmentDays(row);
+            hint.textContent = "рек. " + fmtNum(rec, { integer: true });
+            hint.title =
+              (rec > eff ? "выше" : "ниже") +
+              " текущего (" +
+              eff +
+              " дн.)" +
+              (row.chronic_sku_count > 0 ? "; долгих SKU: " + row.chronic_sku_count : "") +
+              (row.flicker_sku_count > 0 ? "; частых коротких: " + row.flicker_sku_count : "");
+            rowHint.appendChild(hint);
+            var btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "btn btn-link btn-sm p-0";
+            btn.style.fontSize = "11px";
+            btn.textContent = "Применить";
+            btn.setAttribute("data-dg-notify-start", "Подставляем рекомендованные дни…");
+            btn.addEventListener("click", function (ev) {
+              ev.preventDefault();
+              ev.stopPropagation();
+              var prev = row.replenishment_days;
+              row.replenishment_days = rec;
+              inp.value = String(rec);
+              patchSupplier(row.supplier_key, { replenishment_days: rec })
+                .then(function () {
+                  if (window.DatagonNotify && window.DatagonNotify.toast) {
+                    window.DatagonNotify.toast({
+                      type: "success",
+                      message: "Пополнение: " + rec + " дн.",
+                    });
+                  }
+                  load();
+                })
+                .catch(function (e) {
+                  row.replenishment_days = prev;
+                  if (window.DatagonNotify && window.DatagonNotify.toast) {
+                    window.DatagonNotify.toast({ type: "danger", message: e.message || "Ошибка" });
+                  }
+                });
+            });
+            rowHint.appendChild(btn);
+            wrap.appendChild(rowHint);
+          }
+          return wrap;
         }
         if (key === "stock_fill_pct") {
           return renderStockFillTriplet(row);
@@ -4011,7 +4161,7 @@
         function renderColumnControls() {
           if (!colList) return;
           colList.innerHTML = "";
-          SP_COLS.forEach(function (p) {
+          SP_COLS_EFFECTIVE.forEach(function (p) {
             var key = p[0];
             var label = document.createElement("label");
             var cb = document.createElement("input");
@@ -4036,7 +4186,7 @@
         function renderWidthControls() {
           if (!widthList) return;
           widthList.innerHTML = "";
-          SP_COLS.forEach(function (p) {
+          SP_COLS_EFFECTIVE.forEach(function (p) {
             var key = p[0];
             var label = document.createElement("label");
             label.textContent = p[1];

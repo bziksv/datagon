@@ -191,6 +191,50 @@ module.exports = (db, settings) => {
         }
     }
 
+    /** Последнее имя товара конкурента из prices (по page_id) — для колонки «Товар / URL» в очереди. */
+    async function attachPageProductNames(rows) {
+        if (!Array.isArray(rows) || rows.length === 0) return;
+        const ids = [];
+        const seen = new Set();
+        for (const row of rows) {
+            const id = Number(row.id);
+            row.product_name = row.product_name != null ? String(row.product_name) : '';
+            if (!Number.isFinite(id) || id <= 0 || seen.has(id)) continue;
+            seen.add(id);
+            ids.push(id);
+        }
+        if (!ids.length) return;
+        const namesByPage = new Map();
+        const chunkSize = 200;
+        for (let i = 0; i < ids.length; i += chunkSize) {
+            const slice = ids.slice(i, i + chunkSize);
+            const ph = slice.map(() => '?').join(', ');
+            const [prows] = await db.query(
+                `
+                SELECT pr.page_id, pr.product_name
+                FROM prices pr
+                INNER JOIN (
+                    SELECT page_id, MAX(id) AS max_id
+                    FROM prices
+                    WHERE page_id IN (${ph})
+                    GROUP BY page_id
+                ) latest ON latest.max_id = pr.id
+                `,
+                slice
+            );
+            for (const p of prows || []) {
+                const pid = Number(p.page_id);
+                const name = String(p.product_name || '').trim();
+                if (Number.isFinite(pid) && name) namesByPage.set(pid, name);
+            }
+        }
+        for (const row of rows) {
+            const id = Number(row.id);
+            if (namesByPage.has(id)) row.product_name = namesByPage.get(id);
+            else if (!row.product_name) row.product_name = '';
+        }
+    }
+
     async function ensureDiscoverySchema() {
         if (discoverySchemaReady) return;
         try {
@@ -1143,6 +1187,7 @@ module.exports = (db, settings) => {
             } else {
                 await attachPageMatchedFlags(rows);
             }
+            await attachPageProductNames(rows);
 
             res.json({ data: rows, total: count[0].total });
         } catch (e) {

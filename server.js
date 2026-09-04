@@ -175,7 +175,8 @@ let appSettings = {
     auto_sync_medmarket_fill_enabled: 0,
     auto_sync_medmarket_fill_time: '09:30',
     auto_sync_medmarket_fill_weekdays: '1,2,3,4,5,6',
-    /** Формула продаж / предлагаемого неснижаемого, LagerPlus-parity (см. `lib/datagonSalesFormula.js`, карточка товара). */
+    /** Формула продаж / предлагаемого неснижаемого (см. `lib/datagonSalesFormula.js`). UI — дни пополнения; coef = days/W. */
+    sales_formula_replenishment_days: 30,
     sales_formula_replenishment_coef: 1 / 3,
     sales_formula_sales_window_days: 90,
     sales_formula_absence_analysis_days: 210,
@@ -410,6 +411,7 @@ async function initDB() {
             ['auto_sync_medmarket_fill_enabled','0'],
             ['auto_sync_medmarket_fill_time','09:30'],
             ['auto_sync_medmarket_fill_weekdays','1,2,3,4,5,6'],
+            ['sales_formula_replenishment_days','30'],
             ['sales_formula_replenishment_coef','0.3333333333333333'],
             ['sales_formula_sales_window_days','90'],
             ['sales_formula_absence_analysis_days','210'],
@@ -3002,7 +3004,7 @@ initDB().then(async () => {
     app.use('/api/medmarket', medmarketRouterFactory(db));
     app.use('/api/purchase', purchaseRouterFactory(db, appSettings));
     app.use('/api/suppliers', suppliersRouterFactory(db, appSettings));
-    app.use('/api/supplier-analysis', supplierAnalysisRouterFactory(db));
+    app.use('/api/supplier-analysis', supplierAnalysisRouterFactory(db, appSettings));
     app.use('/api/product', productRouterFactory(db, appSettings));
     
     // Алиас для совместимости, если фронт стучится сюда

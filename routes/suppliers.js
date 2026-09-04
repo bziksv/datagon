@@ -35,6 +35,8 @@ const {
     sqlSupplierProductWhere,
 } = require('../lib/datagonSuppliersSql');
 const { loadPurchaseDataRevision, buildFormulaFingerprint } = require('../lib/datagonFormulaProposedCache');
+const { loadSupplierAbsenceRollupMap } = require('../lib/datagonSupplierAbsenceProfile');
+const { parseFormulaSettings } = require('../lib/datagonSalesFormula');
 const {
     loadSupplierExportRows,
     buildSupplierForSupplierSpreadsheet,
@@ -63,6 +65,7 @@ const SORT_KEYS = new Set([
     'purchase_pieces_total',
     'total_purchase_sum',
     'min_purchase_sum',
+    'replenishment_days',
     'warehouse_fill_pct',
     'stock_fill_pct',
     'assigned_user_name',
@@ -85,10 +88,19 @@ async function ensureSuppliersSchema(db) {
             stock_fill_pct_recorded_at TIMESTAMP NULL DEFAULT NULL,
             auto_mailing_enabled TINYINT(1) NOT NULL DEFAULT 0,
             mailing_text TEXT NULL,
+            replenishment_days INT NULL DEFAULT NULL,
             updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             INDEX idx_dg_supplier_assigned (assigned_user_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     `);
+    try {
+        await db.query(
+            `ALTER TABLE dg_supplier_settings ADD COLUMN replenishment_days INT NULL DEFAULT NULL`,
+        );
+    } catch (e) {
+        const msg = String((e && e.message) || e);
+        if (!/Duplicate column name/i.test(msg)) throw e;
+    }
     await db.query(`
         CREATE TABLE IF NOT EXISTS dg_supplier_fill_history (
             id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -121,7 +133,7 @@ function normalizeSupplierKey(raw) {
 function buildListCacheKey(req) {
     const q = req.query || {};
     return JSON.stringify({
-        v: 9,
+        v: 10,
         search: String(q.search || '').trim().toLowerCase(),
         assigned_user: normalizeAssignedUserFilter(q.assigned_user),
         attention_only: String(q.attention_only || q.procurement_attention || '') === '1' ? '1' : '0',
@@ -172,7 +184,7 @@ function buildSupplierOuterWhere(search, assignedUserRaw) {
 
 function buildAnalyticsCacheKey(search, assignedUserRaw) {
     return JSON.stringify({
-        v: 9,
+        v: 10,
         search: String(search || '').trim().toLowerCase(),
         assigned_user: normalizeAssignedUserFilter(assignedUserRaw),
     });
@@ -238,8 +250,12 @@ function buildSupplierAggregatesSubquery(formulaFp, dataRev) {
     const rev = String(dataRev || '');
     const fcJoin =
         fp && rev
-            ? `LEFT JOIN dg_formula_proposed_cache fc ON fc.code = mse.code AND fc.formula_fp = '${fp.replace(/'/g, "''")}' AND fc.data_rev = '${rev.replace(/'/g, "''")}'`
-            : 'LEFT JOIN dg_formula_proposed_cache fc ON fc.code = mse.code';
+            ? `LEFT JOIN dg_supplier_settings ss_rd ON ss_rd.supplier_key = TRIM(mse.supplier)
+        LEFT JOIN dg_formula_proposed_cache fc
+          ON fc.code = mse.code AND fc.data_rev = '${rev.replace(/'/g, "''")}'
+          AND fc.formula_fp = CONCAT('${fp.replace(/'/g, "''")}', '|', IF(ss_rd.replenishment_days IS NULL, 'rd:g', CONCAT('rd:', CAST(ROUND(ss_rd.replenishment_days) AS CHAR))))`
+            : `LEFT JOIN dg_supplier_settings ss_rd ON ss_rd.supplier_key = TRIM(mse.supplier)
+        LEFT JOIN dg_formula_proposed_cache fc ON fc.code = mse.code`;
     return `
         SELECT
             TRIM(mse.supplier) AS supplier_key,
@@ -302,6 +318,8 @@ function buildOrderBy(sortBy, sortDesc) {
             return num('agg.total_purchase_sum');
         case 'min_purchase_sum':
             return num('ss.min_purchase_sum');
+        case 'replenishment_days':
+            return num('ss.replenishment_days');
         case 'warehouse_fill_pct':
             return num('ss.warehouse_fill_pct');
         case 'stock_fill_pct':
@@ -411,6 +429,22 @@ function mapSupplierRow(r, salesRankCtx) {
         comment: r.comment || '',
         min_purchase_sum: r.min_purchase_sum != null ? Number(r.min_purchase_sum) : null,
         warehouse_fill_pct: r.warehouse_fill_pct != null ? Number(r.warehouse_fill_pct) : null,
+        replenishment_days: (() => {
+            if (r.replenishment_days == null || r.replenishment_days === '') return null;
+            const d = Math.round(Number(r.replenishment_days));
+            return Number.isFinite(d) ? Math.max(0, Math.min(3650, d)) : null;
+        })(),
+        recommended_replenishment_days: (() => {
+            if (r.recommended_replenishment_days == null || r.recommended_replenishment_days === '') {
+                return null;
+            }
+            const d = Math.round(Number(r.recommended_replenishment_days));
+            return Number.isFinite(d) ? Math.max(0, Math.min(3650, d)) : null;
+        })(),
+        absence_sku_count: Number(r.absence_sku_count || 0),
+        chronic_sku_count: Number(r.chronic_sku_count || 0),
+        flicker_sku_count: Number(r.flicker_sku_count || 0),
+        chronic_max_streak_days: Number(r.chronic_max_streak_days || 0),
         min_stock_total: minStockTotal,
         stock_total: stockTotal,
         min_stock_positions_count: Number(r.min_stock_positions_count || 0),
@@ -592,6 +626,7 @@ module.exports = function suppliersRouterFactory(db, appSettings = {}) {
                     ss.comment,
                     ss.min_purchase_sum,
                     ss.warehouse_fill_pct,
+                    ss.replenishment_days,
                     ss.stock_fill_pct AS settings_stock_fill_pct,
                     ss.stock_fill_pct_recorded_at,
                     ss.auto_mailing_enabled,
@@ -623,7 +658,30 @@ module.exports = function suppliersRouterFactory(db, appSettings = {}) {
                 db.query(listSql, [...params, ...sales90.params, limit, offset]),
             ]);
             const total = Number(countRows[0]?.total || 0);
-            const data = (listRows || []).map((r) => mapSupplierRow(r, salesRankCtx));
+            let data = (listRows || []).map((r) => mapSupplierRow(r, salesRankCtx));
+            try {
+                const absPack = await loadSupplierAbsenceRollupMap(db, 90, null, appSettings);
+                const absMap = absPack.map || {};
+                data = data.map((row) => {
+                    const abs = absMap[row.supplier_key];
+                    if (!abs) return row;
+                    row.recommended_replenishment_days = abs.recommended_replenishment_days;
+                    row.absence_sku_count = abs.absence_sku_count || 0;
+                    row.chronic_sku_count = abs.chronic_sku_count || 0;
+                    row.flicker_sku_count = abs.flicker_sku_count || 0;
+                    row.chronic_max_streak_days = abs.chronic_max_streak_days || 0;
+                    return row;
+                });
+            } catch (absErr) {
+                console.warn('[suppliers] absence recommend:', (absErr && absErr.message) || absErr);
+            }
+
+            let globalReplenishmentDays = 30;
+            try {
+                globalReplenishmentDays = parseFormulaSettings(appSettings).replenishmentDays;
+            } catch (_e) {
+                /* keep 30 */
+            }
 
             const payload = {
                 success: true,
@@ -633,6 +691,7 @@ module.exports = function suppliersRouterFactory(db, appSettings = {}) {
                 offset,
                 sort_by: sortBy,
                 sort_dir: sortDesc ? 'desc' : 'asc',
+                global_replenishment_days: globalReplenishmentDays,
                 applied_filters: {
                     search: searchApplied,
                     assigned_user: assignedUserApplied,
@@ -940,7 +999,6 @@ module.exports = function suppliersRouterFactory(db, appSettings = {}) {
     router.patch('/:supplierKey', async (req, res) => {
         try {
             await ensureSuppliersSchema(db);
-            invalidateSuppliersListCache();
             const supplierKey = normalizeSupplierKey(decodeURIComponent(req.params.supplierKey || ''));
             if (!supplierKey) return res.status(400).json({ error: 'Пустой ключ поставщика' });
 
@@ -986,6 +1044,23 @@ module.exports = function suppliersRouterFactory(db, appSettings = {}) {
                 fields.auto_mailing_enabled = body.auto_mailing_enabled ? 1 : 0;
             }
             if ('mailing_text' in body) fields.mailing_text = String(body.mailing_text || '').slice(0, 65535);
+            if ('replenishment_days' in body) {
+                const actor = req.datagonActor || null;
+                if (!actor || actor.username !== 'admin') {
+                    return res.status(403).json({
+                        error: 'Пополнение, дней у поставщика может менять только суперадмин (admin).',
+                    });
+                }
+                if (body.replenishment_days === null || body.replenishment_days === '') {
+                    fields.replenishment_days = null;
+                } else {
+                    const d = Math.round(Number(body.replenishment_days));
+                    if (!Number.isFinite(d) || d < 0 || d > 3650) {
+                        return res.status(400).json({ error: 'Пополнение, дней: целое число 0…3650 или пусто' });
+                    }
+                    fields.replenishment_days = d;
+                }
+            }
 
             if (!Object.keys(fields).length) {
                 return res.status(400).json({ error: 'Нет полей для сохранения' });
@@ -1000,6 +1075,8 @@ module.exports = function suppliersRouterFactory(db, appSettings = {}) {
                  ON DUPLICATE KEY UPDATE ${placeholders}`,
                 [supplierKey, ...vals, ...vals],
             );
+            // После записи: иначе параллельный GET успевает заново положить в кэш старую строку.
+            invalidateSuppliersListCache();
 
             if ('stock_fill_pct' in fields) {
                 const dataRev = await loadPurchaseDataRevision(db);

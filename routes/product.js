@@ -1,6 +1,6 @@
 'use strict';
 
-const { parseFormulaSettings, pickMarketPriceRub, computeSalesFormula, applyMinStockDgFloor } = require('../lib/datagonSalesFormula');
+const { parseFormulaSettings, pickMarketPriceRub, computeSalesFormula, applyMinStockDgFloor, loadSupplierReplenishmentDaysForKey } = require('../lib/datagonSalesFormula');
 const {
     msDemandProjectFilterClause,
     describeSalesFormulaProjectFilter,
@@ -1640,7 +1640,18 @@ function createProductRouter(db, appSettings) {
             await maybeRefreshBundleComponentsForProductView(db, code, isBundleProduct);
             const includeViaBundles = !isBundleProduct;
 
-            const formulaCfg = parseFormulaSettings(appSettings);
+            const supplierLabel = buildSupplierLabel(mse.supplier, mse.supplier2);
+            const article = payload && typeof payload.article === 'string' ? payload.article : '';
+
+            const prices = extractPrices(payload);
+            if (!prices.length && mse.buy_price) {
+                prices.push({ kind: 'buy', name: 'Закупочная цена', value: mse.buy_price, currency: 'RUB' });
+            }
+
+            const supplierReplenishmentDays = await loadSupplierReplenishmentDaysForKey(db, mse.supplier);
+            const formulaCfg = parseFormulaSettings(appSettings, {
+                replenishmentDaysOverride: supplierReplenishmentDays,
+            });
             const projUuids = salesFormulaProjectUuids(appSettings);
             const projNameMap =
                 projUuids.length > 0 ? await loadMsDemandProjectNameMap(db, projUuids) : null;
@@ -1690,14 +1701,6 @@ function createProductRouter(db, appSettings) {
                 loadZeroStockDistinctDays(db, code, formulaCfg.absenceAnalysisDays),
                 loadStockSnapshots(db, code, stockSnapDays),
             ]);
-
-            const supplierLabel = buildSupplierLabel(mse.supplier, mse.supplier2);
-            const article = payload && typeof payload.article === 'string' ? payload.article : '';
-
-            const prices = extractPrices(payload);
-            if (!prices.length && mse.buy_price) {
-                prices.push({ kind: 'buy', name: 'Закупочная цена', value: mse.buy_price, currency: 'RUB' });
-            }
 
             const stockBlock = extractStock(mse, payload);
 
@@ -1825,7 +1828,9 @@ function createProductRouter(db, appSettings) {
             }
 
             try {
-                await upsertFormulaProposedFromProduct(db, appSettings, code, proposedFloored, windowsJson);
+                await upsertFormulaProposedFromProduct(db, appSettings, code, proposedFloored, windowsJson, {
+                    replenishmentDaysOverride: supplierReplenishmentDays,
+                });
             } catch (e) {
                 console.warn('[product] dg_formula_proposed_cache upsert:', (e && e.message) || e);
             }
@@ -1833,11 +1838,13 @@ function createProductRouter(db, appSettings) {
             const formulaPayload = {
                 proposed_min_stock: formulaResult.proposed_min_stock,
                 settings_effective: formulaCfg,
+                replenishment_days_effective: formulaCfg.replenishmentDays,
+                replenishment_source: formulaCfg.replenishmentSource || 'global',
                 inputs: formulaResult.inputs,
                 warnings: formulaResult.warnings,
                 detail: formulaResult.detail,
                 note:
-                    'Сумма с учётом отсутствий × «Коэффициент пополнения» (без прибавки «Базовый запас» и «Базовый для дорогих»); редкий товар — ранний выход в «Базовый запас для товаров с редкими продажами» по фактической сумме за «Продажи за период», затем не ниже кратности из закупок при кратности ≥ 1; нередкая ветка — кратность и «Процент от упаковки»; «Макс. изменение» только на повышение. Подробности — «Формула этапами» и блок подсказки в настройках.',
+                    'Сумма с учётом отсутствий × (дни пополнения ÷ период продаж); дни могут быть заданы у поставщика (только admin). Редкий товар — ранний выход в базовый запас для редких; далее кратность и % упаковки; макс. изменение только на повышение.',
             };
 
             res.json({

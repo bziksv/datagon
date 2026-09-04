@@ -115,6 +115,7 @@
         mp_wb_delay_other_ms: 1600,
         mp_yandex_delay_ms: 280,
         mp_ozon_include_archived: 0,
+        sales_formula_replenishment_days: 30,
         sales_formula_replenishment_coef: 0.3333333333333333,
         sales_formula_sales_window_days: 90,
         sales_formula_absence_analysis_days: 210,
@@ -1047,10 +1048,19 @@
         set("dg-set-mp_yandex_delay_ms", merged.mp_yandex_delay_ms || 280);
         document.getElementById("dg-set-mp_ozon_include_archived").checked = Number(merged.mp_ozon_include_archived) === 1;
         set(
-          "dg-set-sales_formula_replenishment_coef",
-          merged.sales_formula_replenishment_coef != null && merged.sales_formula_replenishment_coef !== ""
-            ? String(merged.sales_formula_replenishment_coef)
-            : String(defaults.sales_formula_replenishment_coef)
+          "dg-set-sales_formula_replenishment_days",
+          (function () {
+            var W = Number(merged.sales_formula_sales_window_days);
+            if (!Number.isFinite(W) || W < 1) W = Number(defaults.sales_formula_sales_window_days) || 90;
+            var rawDays = merged.sales_formula_replenishment_days;
+            if (rawDays != null && String(rawDays).trim() !== "") {
+              var d = Math.round(Number(rawDays));
+              if (Number.isFinite(d)) return String(Math.max(0, Math.min(3650, d)));
+            }
+            var c = Number(merged.sales_formula_replenishment_coef);
+            if (!Number.isFinite(c)) c = Number(defaults.sales_formula_replenishment_coef) || 1 / 3;
+            return String(Math.max(0, Math.min(3650, Math.round(c * W))));
+          })()
         );
         set("dg-set-sales_formula_sales_window_days", merged.sales_formula_sales_window_days != null ? String(merged.sales_formula_sales_window_days) : "90");
         set(
@@ -1966,9 +1976,18 @@
       }
 
       function saveSalesFormula() {
+        var W = getNum("dg-set-sales_formula_sales_window_days", 90);
+        if (!Number.isFinite(W) || W < 7) W = 90;
+        if (W > 730) W = 730;
+        var days = getNum("dg-set-sales_formula_replenishment_days", 30);
+        if (!Number.isFinite(days) || days < 0) days = 30;
+        if (days > 3650) days = 3650;
+        days = Math.round(days);
+        var coef = W > 0 ? days / W : 0;
         var payload = {
-          sales_formula_replenishment_coef: getFloat("dg-set-sales_formula_replenishment_coef", 1 / 3),
-          sales_formula_sales_window_days: getNum("dg-set-sales_formula_sales_window_days", 90),
+          sales_formula_replenishment_days: days,
+          sales_formula_replenishment_coef: coef,
+          sales_formula_sales_window_days: W,
           sales_formula_absence_analysis_days: getNum("dg-set-sales_formula_absence_analysis_days", 210),
           sales_formula_base_qty: getNum("dg-set-sales_formula_base_qty", 2),
           sales_formula_rare_base_qty: getNum("dg-set-sales_formula_rare_base_qty", 2),
@@ -2231,6 +2250,150 @@
         var row = btn && btn.closest ? btn.closest(".dg-as-task") : null;
         var fromDom = row && row.getAttribute("data-as-task");
         return String((fromDom && fromDom.trim()) || task || "").trim();
+      }
+
+      var asLogState = { task: "", title: "" };
+
+      function moscowTodayInputValue() {
+        try {
+          return new Intl.DateTimeFormat("en-CA", {
+            timeZone: "Europe/Moscow",
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+          }).format(new Date());
+        } catch (_) {
+          var d = new Date();
+          return d.toISOString().slice(0, 10);
+        }
+      }
+
+      function fmtAsLogTime(v) {
+        if (!v) return "—";
+        try {
+          return new Intl.DateTimeFormat("ru-RU", {
+            timeZone: "Europe/Moscow",
+            day: "2-digit",
+            month: "2-digit",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+          }).format(new Date(v));
+        } catch (_) {
+          return String(v);
+        }
+      }
+
+      function asLogStatusBadge(st) {
+        var s = String(st || "").toLowerCase();
+        var cls = "bg-secondary";
+        if (s === "completed" || s === "done") cls = "bg-success";
+        else if (s === "failed" || s === "error") cls = "bg-danger";
+        else if (s === "running") cls = "bg-info";
+        else if (s === "queued") cls = "bg-secondary";
+        else if (s === "interrupted" || s === "partial") cls = "bg-warning text-dark";
+        return '<span class="badge ' + cls + '">' + escAutoRunHtml(s || "—") + "</span>";
+      }
+
+      function renderAsLogRuns(rows) {
+        var body = document.getElementById("dg-set-as-log-body");
+        if (!body) return;
+        body.replaceChildren();
+        if (!rows || !rows.length) {
+          var empty = document.createElement("p");
+          empty.className = "text-muted mb-0";
+          empty.textContent = "За выбранный день запусков этой задачи не было.";
+          body.appendChild(empty);
+          return;
+        }
+        rows.forEach(function (r) {
+          var box = document.createElement("div");
+          box.className = "dg-set-as-log-run";
+          var top = document.createElement("div");
+          top.className = "d-flex flex-wrap align-items-center gap-2";
+          top.innerHTML =
+            '<span class="text-muted">#' +
+            escAutoRunHtml(String(r.id)) +
+            "</span>" +
+            asLogStatusBadge(r.status) +
+            '<span class="badge bg-light text-dark border">' +
+            escAutoRunHtml(String(r.trigger_type || "—")) +
+            "</span>" +
+            '<span class="small">' +
+            escAutoRunHtml(fmtAsLogTime(r.started_at)) +
+            " → " +
+            escAutoRunHtml(r.finished_at ? fmtAsLogTime(r.finished_at) : "ещё идёт") +
+            "</span>";
+          box.appendChild(top);
+          var pre = document.createElement("pre");
+          pre.textContent = String(r.message || "").trim() || "(пустое сообщение)";
+          box.appendChild(pre);
+          body.appendChild(box);
+        });
+      }
+
+      function loadAsLogForSelectedDate() {
+        var dateEl = document.getElementById("dg-set-as-log-date");
+        var body = document.getElementById("dg-set-as-log-body");
+        var loadBtn = document.getElementById("dg-set-as-log-load");
+        if (!asLogState.task || !dateEl || !body) return;
+        var day = String(dateEl.value || "").trim() || moscowTodayInputValue();
+        dateEl.value = day;
+        body.innerHTML = '<p class="text-muted mb-0">Загрузка…</p>';
+        if (loadBtn) loadBtn.disabled = true;
+        var qs = new URLSearchParams();
+        qs.set("task", asLogState.task);
+        qs.set("date", day);
+        var procLink = document.getElementById("dg-set-as-log-processes-link");
+        if (procLink) procLink.href = "/processes.html?forDate=" + encodeURIComponent(day);
+        fetch("/api/settings/auto-sync-runs?" + qs.toString(), { credentials: "same-origin" })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok || !x.j || x.j.success === false) {
+              throw new Error((x.j && x.j.error) || "HTTP " + x.r.status);
+            }
+            if (x.j.moscow_today && dateEl.max !== x.j.moscow_today) {
+              dateEl.max = x.j.moscow_today;
+            }
+            renderAsLogRuns(x.j.data || []);
+          })
+          .catch(function (e) {
+            body.innerHTML =
+              '<p class="text-danger mb-0">' + escAutoRunHtml((e && e.message) || "Ошибка загрузки") + "</p>";
+          })
+          .finally(function () {
+            if (loadBtn) loadBtn.disabled = false;
+          });
+      }
+
+      function openAsLogModal(task, title) {
+        var dlg = document.getElementById("dg-set-as-log-dialog");
+        var titleEl = document.getElementById("dg-set-as-log-d-title");
+        var dateEl = document.getElementById("dg-set-as-log-date");
+        if (!dlg || !task) return;
+        asLogState.task = task;
+        asLogState.title = title || task;
+        if (titleEl) titleEl.textContent = "Лог: " + asLogState.title;
+        if (dateEl) {
+          var today = moscowTodayInputValue();
+          dateEl.max = today;
+          if (!dateEl.value) dateEl.value = today;
+        }
+        if (typeof dlg.showModal === "function") dlg.showModal();
+        else dlg.setAttribute("open", "open");
+        loadAsLogForSelectedDate();
+      }
+
+      function closeAsLogModal() {
+        var dlg = document.getElementById("dg-set-as-log-dialog");
+        if (!dlg) return;
+        if (typeof dlg.close === "function") dlg.close();
+        else dlg.removeAttribute("open");
       }
 
       function runAutoSyncNow(task, label, btnId) {
@@ -3224,6 +3387,36 @@
       document.getElementById("dg-set-btn-save-marketplaces").addEventListener("click", saveMarketplacesSettings);
       document.getElementById("dg-set-btn-sync-marketplaces-now").addEventListener("click", syncMarketplacesNow);
       document.getElementById("dg-set-btn-save-auto").addEventListener("click", saveAutoSync);
+      document.addEventListener("click", function (ev) {
+        var logBtn = ev.target && ev.target.closest ? ev.target.closest(".dg-set-as-log-btn") : null;
+        if (!logBtn) return;
+        var row = logBtn.closest(".dg-as-task");
+        var task = row && row.getAttribute("data-as-task");
+        if (!task) return;
+        var labelEl = row.querySelector("label.form-label");
+        var title = labelEl ? String(labelEl.textContent || "").trim() : task;
+        openAsLogModal(task, title || task);
+      });
+      var asLogClose = document.getElementById("dg-set-as-log-d-close");
+      if (asLogClose) asLogClose.addEventListener("click", closeAsLogModal);
+      var asLogLoad = document.getElementById("dg-set-as-log-load");
+      if (asLogLoad) asLogLoad.addEventListener("click", loadAsLogForSelectedDate);
+      var asLogDate = document.getElementById("dg-set-as-log-date");
+      if (asLogDate) {
+        asLogDate.addEventListener("change", loadAsLogForSelectedDate);
+        asLogDate.addEventListener("keydown", function (e) {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            loadAsLogForSelectedDate();
+          }
+        });
+      }
+      var asLogDlg = document.getElementById("dg-set-as-log-dialog");
+      if (asLogDlg) {
+        asLogDlg.addEventListener("click", function (e) {
+          if (e.target === asLogDlg) closeAsLogModal();
+        });
+      }
       document.getElementById("dg-set-auto_my_run").addEventListener("click", function () { runAutoSyncNow("myproducts", "Мои товары", "dg-set-auto_my_run"); });
       document.getElementById("dg-set-auto_ms_run").addEventListener("click", function () { runAutoSyncNow("moysklad", "МойСклад (ms_export)", "dg-set-auto_ms_run"); });
       var msOrdersAutoRun = document.getElementById("dg-set-auto_ms_orders_run");

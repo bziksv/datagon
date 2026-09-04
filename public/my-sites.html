@@ -733,12 +733,10 @@
                   <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
                   <span id="ms-form-card-title">Добавить мой сайт</span>
                 </div>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="ms-form-collapse" data-dg-tooltip="Свернуть/развернуть форму добавления или редактирования сайта">Свернуть</button>
               </div>
-              <div class="card-body">
+              <div class="card-body" id="dg-msites-add-body">
                 <input type="hidden" id="ms-editing-id" value="" />
-                <div class="d-flex justify-content-end mb-2">
-                  <button type="button" class="btn btn-sm btn-outline-secondary" id="ms-form-collapse">Свернуть</button>
-                </div>
                 <div id="ms-form-panel">
                   <div class="row g-2">
                     <div class="col-md-4">
@@ -1612,13 +1610,7 @@
               document.getElementById("ms-form-card-title").textContent = "Редактировать подключение";
               document.getElementById("ms-btn-save").textContent = "Сохранить изменения";
               document.getElementById("ms-btn-cancel-edit").style.display = "";
-              var panel = document.getElementById("ms-form-panel");
-              var body = document.getElementById("ms-form-collapse").closest(".card-body");
-              try {
-                localStorage.setItem(COLLAPSE_KEY, "0");
-              } catch (e) {}
-              document.getElementById("ms-form-panel").style.display = "";
-              document.getElementById("ms-form-collapse").textContent = "Свернуть";
+              expandAddFormCard();
             })
           );
           btnRow.appendChild(
@@ -1915,15 +1907,15 @@
 
       document.getElementById("ms-cms_type").addEventListener("change", toggleCmsRows);
 
-      document.getElementById("ms-form-collapse").addEventListener("click", function () {
-        var panel = document.getElementById("ms-form-panel");
-        var hidden = panel.style.display === "none";
-        panel.style.display = hidden ? "" : "none";
-        this.textContent = hidden ? "Свернуть" : "Развернуть";
+      function expandAddFormCard() {
+        var body = document.getElementById("dg-msites-add-body");
+        var btn = document.getElementById("ms-form-collapse");
+        if (body) body.style.display = "";
+        if (btn) btn.textContent = "Свернуть";
         try {
-          localStorage.setItem(COLLAPSE_KEY, hidden ? "0" : "1");
+          localStorage.setItem(COLLAPSE_KEY, "0");
         } catch (e) {}
-      });
+      }
 
       document.getElementById("ms-btn-save").addEventListener("click", function () {
         if (!validateForm()) return;
@@ -1994,15 +1986,6 @@
         document.getElementById("ms-preview-card").style.display = "none";
       });
 
-      (function initCollapse() {
-        try {
-          if (localStorage.getItem(COLLAPSE_KEY) === "1") {
-            document.getElementById("ms-form-panel").style.display = "none";
-            document.getElementById("ms-form-collapse").textContent = "Развернуть";
-          }
-        } catch (e) {}
-      })();
-
       (function mySitesFilterFieldVisibility() {
         var FIELD_GROUPS = [
           {
@@ -2049,8 +2032,8 @@
       loadMySites();
       loadSiteStats();
 
-      // «Свернуть/Развернуть» для card-body «Фильтры и действия» — по эталону moysklad.
-      (function bindCardCollapse(btnId, bodyId, storageKey) {
+      // «Свернуть/Развернуть» card-body — эталон moysklad (кнопка в card-header).
+      function bindCardCollapse(btnId, bodyId, storageKey) {
         var btn = document.getElementById(btnId);
         var body = document.getElementById(bodyId);
         if (!btn || !body) return;
@@ -2072,32 +2055,10 @@
           btn.textContent = hidden ? "Свернуть" : "Развернуть";
           try { localStorage.setItem(storageKey, hidden ? "0" : "1"); } catch (e) {}
         });
-      })("dg-msites-filters-toggle", "dg-msites-filters-body", "datagon_my_sites_filters_collapsed_v1");
-
-      // «Свернуть/Развернуть» для card-body «Список сайтов».
-      (function bindCardCollapse(btnId, bodyId, storageKey) {
-        var btn = document.getElementById(btnId);
-        var body = document.getElementById(bodyId);
-        if (!btn || !body) return;
-        function apply() {
-          var c = false;
-          try { c = localStorage.getItem(storageKey) === "1"; } catch (e) {}
-          if (c) {
-            body.style.display = "none";
-            btn.textContent = "Развернуть";
-          } else {
-            body.style.display = "";
-            btn.textContent = "Свернуть";
-          }
-        }
-        apply();
-        btn.addEventListener("click", function () {
-          var hidden = body.style.display === "none";
-          body.style.display = hidden ? "" : "none";
-          btn.textContent = hidden ? "Свернуть" : "Развернуть";
-          try { localStorage.setItem(storageKey, hidden ? "0" : "1"); } catch (e) {}
-        });
-      })("dg-msites-table-toggle", "dg-msites-table-body", "dg.my-sites.table-card.collapsed.v1");
+      }
+      bindCardCollapse("ms-form-collapse", "dg-msites-add-body", COLLAPSE_KEY);
+      bindCardCollapse("dg-msites-filters-toggle", "dg-msites-filters-body", "datagon_my_sites_filters_collapsed_v1");
+      bindCardCollapse("dg-msites-table-toggle", "dg-msites-table-body", "dg.my-sites.table-card.collapsed.v1");
 
       // Зеркало умного поиска в шапке карточки «Список сайтов» — синхрон с #ms-smart.
       (function bindHeaderSearchMirror() {

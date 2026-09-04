@@ -172,7 +172,7 @@ module.exports = (db, appSettings) => {
             fetch_proxy_enabled, fetch_proxy_list,
             ozon_client_id, ozon_api_key, wb_api_key, wb_token_type, ym_api_key, ym_campaign_id, ym_business_id,
             mp_ozon_delay_ms, mp_wb_delay_cards_ms, mp_wb_delay_other_ms, mp_yandex_delay_ms, mp_ozon_include_archived,
-            sales_formula_replenishment_coef, sales_formula_sales_window_days, sales_formula_absence_analysis_days,
+            sales_formula_replenishment_days, sales_formula_replenishment_coef, sales_formula_sales_window_days, sales_formula_absence_analysis_days,
             sales_formula_base_qty, sales_formula_rare_base_qty, sales_formula_rare_avg_max, sales_formula_expensive_rare_threshold_rub,
             sales_formula_expensive_rare_min_qty, sales_formula_max_change_coef, sales_formula_incomplete_pack_pct,
             sales_formula_project_mode, sales_formula_project_uuids
@@ -339,10 +339,24 @@ module.exports = (db, appSettings) => {
             if (mp_yandex_delay_ms !== undefined) queries.push(['mp_yandex_delay_ms', Math.max(200, Number(mp_yandex_delay_ms || 280))]);
             if (mp_ozon_include_archived !== undefined) queries.push(['mp_ozon_include_archived', mp_ozon_include_archived ? 1 : 0]);
 
-            if (sales_formula_replenishment_coef !== undefined) {
-                const c = Number(sales_formula_replenishment_coef);
-                const v = Number.isFinite(c) ? Math.max(0, Math.min(1000, c)) : 1 / 3;
-                queries.push(['sales_formula_replenishment_coef', String(v)]);
+            if (sales_formula_replenishment_days !== undefined || sales_formula_replenishment_coef !== undefined) {
+                const wRaw =
+                    sales_formula_sales_window_days !== undefined
+                        ? Number(sales_formula_sales_window_days)
+                        : Number(appSettings.sales_formula_sales_window_days || 90);
+                const W = Math.max(7, Math.min(730, Math.round(Number.isFinite(wRaw) ? wRaw : 90)));
+                let days;
+                if (sales_formula_replenishment_days !== undefined) {
+                    const d = Math.round(Number(sales_formula_replenishment_days));
+                    days = Number.isFinite(d) ? Math.max(0, Math.min(3650, d)) : 30;
+                } else {
+                    const c = Number(sales_formula_replenishment_coef);
+                    const coef = Number.isFinite(c) ? Math.max(0, Math.min(1000, c)) : 1 / 3;
+                    days = Math.max(0, Math.min(3650, Math.round(coef * W)));
+                }
+                const coef = W > 0 ? days / W : 0;
+                queries.push(['sales_formula_replenishment_days', String(days)]);
+                queries.push(['sales_formula_replenishment_coef', String(coef)]);
             }
             if (sales_formula_sales_window_days !== undefined) {
                 const w = Math.max(7, Math.min(730, Math.round(Number(sales_formula_sales_window_days || 90))));
@@ -513,9 +527,24 @@ module.exports = (db, appSettings) => {
             if (mp_yandex_delay_ms !== undefined) appSettings.mp_yandex_delay_ms = Math.max(200, Number(mp_yandex_delay_ms || 280));
             if (mp_ozon_include_archived !== undefined) appSettings.mp_ozon_include_archived = mp_ozon_include_archived ? 1 : 0;
 
-            if (sales_formula_replenishment_coef !== undefined) {
-                const c = Number(sales_formula_replenishment_coef);
-                appSettings.sales_formula_replenishment_coef = Number.isFinite(c) ? Math.max(0, Math.min(1000, c)) : 1 / 3;
+            if (sales_formula_replenishment_days !== undefined || sales_formula_replenishment_coef !== undefined) {
+                const wRaw =
+                    sales_formula_sales_window_days !== undefined
+                        ? Number(sales_formula_sales_window_days)
+                        : Number(appSettings.sales_formula_sales_window_days || 90);
+                const W = Math.max(7, Math.min(730, Math.round(Number.isFinite(wRaw) ? wRaw : 90)));
+                let days;
+                if (sales_formula_replenishment_days !== undefined) {
+                    const d = Math.round(Number(sales_formula_replenishment_days));
+                    days = Number.isFinite(d) ? Math.max(0, Math.min(3650, d)) : 30;
+                } else {
+                    const c = Number(sales_formula_replenishment_coef);
+                    const coef = Number.isFinite(c) ? Math.max(0, Math.min(1000, c)) : 1 / 3;
+                    days = Math.max(0, Math.min(3650, Math.round(coef * W)));
+                }
+                const coef = W > 0 ? days / W : 0;
+                appSettings.sales_formula_replenishment_days = days;
+                appSettings.sales_formula_replenishment_coef = coef;
             }
             if (sales_formula_sales_window_days !== undefined) {
                 appSettings.sales_formula_sales_window_days = Math.max(7, Math.min(730, Math.round(Number(sales_formula_sales_window_days || 90))));
@@ -557,6 +586,75 @@ module.exports = (db, appSettings) => {
 
             res.json({ success: true });
         } catch (e) { res.status(500).json({ error: e.message }); }
+    });
+
+    function moscowDateOfTs(ts) {
+        if (!ts) return '';
+        try {
+            return new Intl.DateTimeFormat('en-CA', {
+                timeZone: 'Europe/Moscow',
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+            }).format(new Date(ts));
+        } catch (_) {
+            return '';
+        }
+    }
+
+    function moscowTodayYmd() {
+        return moscowDateOfTs(new Date());
+    }
+
+    /**
+     * Журнал запусков одной задачи автосинка за календарный день МСК.
+     * Query: task=<key из AUTO_SYNC_TASKS>, date=YYYY-MM-DD (по умолчанию сегодня МСК).
+     */
+    router.get('/auto-sync-runs', async (req, res) => {
+        try {
+            await ensureAutoSyncRunsTableLocal();
+            let getAutoSyncTaskKeys = () => [];
+            try {
+                ({ getAutoSyncTaskKeys } = require('../lib/datagonAutoSyncRegistry'));
+            } catch (_) {}
+            const allowed = new Set(getAutoSyncTaskKeys());
+            const task = String(req.query.task || '').trim();
+            if (!task || !allowed.has(task)) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Неизвестный task. Ожидается ключ из реестра автосинхронизации.',
+                });
+            }
+            const today = moscowTodayYmd();
+            let forDate = String(req.query.date || '').trim();
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(forDate)) forDate = today;
+            const [runs] = await db.query(
+                `SELECT id, task_type, trigger_type, started_at, finished_at, status, message
+                 FROM auto_sync_runs
+                 WHERE task_type = ?
+                   AND started_at >= DATE_SUB(?, INTERVAL 1 DAY)
+                   AND started_at < DATE_ADD(?, INTERVAL 2 DAY)
+                 ORDER BY id DESC
+                 LIMIT 200`,
+                [task, forDate, forDate]
+            );
+            const data = (Array.isArray(runs) ? runs : []).filter(
+                (r) => moscowDateOfTs(r.started_at) === forDate
+            );
+            return res.json({
+                success: true,
+                task,
+                date: forDate,
+                moscow_today: today,
+                total: data.length,
+                data,
+            });
+        } catch (e) {
+            return res.status(500).json({
+                success: false,
+                error: e && e.message ? e.message : 'Не удалось загрузить журнал auto_sync_runs',
+            });
+        }
     });
 
     router.get('/auto-sync-runs/stats', async (_req, res) => {

@@ -1476,6 +1476,25 @@
                 <div id="dg-sa-detail-view-summary" class="dg-sa-detail-view">
                 <div class="dg-sa-detail-blocks row g-3">
                   <div class="col-12">
+                    <div class="card dg-sa-detail-block border-info-subtle">
+                      <div class="card-header py-2 bg-info-subtle d-flex flex-wrap justify-content-between gap-2">
+                        <div>
+                          <div class="fw-semibold small">Отсутствие и рек. пополнение <span class="text-muted fw-normal" id="dg-sa-detail-absence-count"></span></div>
+                          <div class="text-muted small" id="dg-sa-detail-absence-rollup">Эпизоды нулевого остатка по SKU → рекомендация дней пополнения (с учётом продаж)</div>
+                        </div>
+                        <a class="btn btn-sm btn-outline-primary" id="dg-sa-detail-absence-suppliers" href="/suppliers.html" target="_blank" rel="noopener">Открыть в Поставщиках</a>
+                      </div>
+                      <div class="card-body p-0">
+                        <div class="table-responsive dg-sa-detail-table-wrap dg-sa-detail-table-wrap-scroll">
+                          <table class="table table-sm table-hover mb-0 dg-sa-detail-mini-table">
+                            <thead class="table-light" id="dg-sa-detail-absence-thead"></thead>
+                            <tbody id="dg-sa-detail-absence"></tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="col-12">
                     <div class="card dg-sa-detail-block border-danger-subtle">
                       <div class="card-header py-2 bg-danger-subtle">
                         <div class="fw-semibold small">Залежалые</div>
@@ -2547,6 +2566,34 @@
           },
         ],
         [
+          "recommended_replenishment_days",
+          "Рек. пополнение, дн.",
+          {
+            center: true,
+            headerLines: ["Рек. пополнение", "дн."],
+            thTip:
+              "Рекомендация дней пополнения (sales-weighted P90 по SKU): из эпизодов нулевого остатка и продаж. Подставляется вручную на /suppliers.html.",
+          },
+        ],
+        [
+          "chronic_sku_count",
+          "Долгие провалы SKU",
+          {
+            center: true,
+            headerLines: ["Долгие", "провалы"],
+            thTip: "Число SKU с непрерывным нулём ≥ 14 дн. за период анализа.",
+          },
+        ],
+        [
+          "flicker_sku_count",
+          "Частые короткие SKU",
+          {
+            center: true,
+            headerLines: ["Частые", "короткие"],
+            thTip: "Число SKU с ≥3 короткими эпизодами нуля (средняя длина ≤ 3 дн.).",
+          },
+        ],
+        [
           "turnover_monthly",
           "Оборач. / мес., %",
           {
@@ -2596,6 +2643,9 @@
         min_stock_sum: 88,
         formula_proposed_sum: 120,
         min_stock_dg_sum: 110,
+        recommended_replenishment_days: 100,
+        chronic_sku_count: 80,
+        flicker_sku_count: 80,
         turnover_monthly: 100,
         skus_new_on_stock: 100,
         skus_ineffective: 80,
@@ -2992,6 +3042,16 @@
             return '<td class="text-end">' + fmtQty(r.formula_proposed_sum) + "</td>";
           case "min_stock_dg_sum":
             return '<td class="text-end">' + fmtQty(r.min_stock_dg_sum) + "</td>";
+          case "recommended_replenishment_days":
+            return (
+              '<td class="text-end dg-sa-cell-drill" title="Сводка: таблица SKU с рекомендациями">' +
+              (r.recommended_replenishment_days != null ? fmtQty(r.recommended_replenishment_days) : "—") +
+              "</td>"
+            );
+          case "chronic_sku_count":
+            return '<td class="text-end">' + fmtQty(r.chronic_sku_count) + "</td>";
+          case "flicker_sku_count":
+            return '<td class="text-end">' + fmtQty(r.flicker_sku_count) + "</td>";
           case "turnover_monthly":
             return '<td class="text-end">' + fmtTurnoverMonthlyPct(r.turnover_monthly) + "</td>";
           case "skus_new_on_stock":
@@ -3019,12 +3079,31 @@
         }
         primary.addEventListener("input", function () { sync(primary, mirror); });
         mirror.addEventListener("input", function () { sync(mirror, primary); });
+        function applySearchNow() {
+          state.pending.search = String(mirror.value || "").trim();
+          primary.value = mirror.value;
+          if (applyBtn) applyBtn.click();
+          else commitFilters();
+        }
         function onEnter(ev) {
           if (ev.key !== "Enter") return;
           ev.preventDefault();
-          if (applyBtn) applyBtn.click();
+          applySearchNow();
+        }
+        function onEsc(ev) {
+          if (ev.key !== "Escape") return;
+          ev.preventDefault();
+          mirror.value = "";
+          primary.value = "";
+          state.pending.search = "";
+          commitFilters();
         }
         mirror.addEventListener("keydown", onEnter);
+        mirror.addEventListener("keydown", onEsc);
+        // Уход с поля после ввода = применить (иначе кажется, что поиск «не работает»)
+        mirror.addEventListener("change", function () {
+          applySearchNow();
+        });
         mirror.addEventListener("search", function () {
           if (mirror.value === "") {
             primary.value = "";
@@ -3362,6 +3441,9 @@
         gross_margin_est: "Оценка валовой маржи (выручка − закупка проданного).",
         margin_pct: "Маржа в % от выручки.",
         days_on_stock: "Сколько дней SKU числится на складе (оценка Datagon).",
+        recommended_replenishment_days: "Рекомендуемые дни пополнения по эпизодам нулевого остатка (и продажам).",
+        max_streak_days: "Самый длинный непрерывный нуль за период, дней.",
+        flags: "Долгий провал (≥14 дн.) / частые короткие эпизоды.",
       };
 
       var SA_DETAIL_COLS_EXT = [
@@ -3374,6 +3456,17 @@
         ["sales_revenue", "Продажи ₽", { type: "number", align: "end", thTip: SA_DETAIL_TH.sales_revenue }],
         ["gross_margin_est", "Маржа", { type: "number", align: "end", thTip: SA_DETAIL_TH.gross_margin_est }],
         ["margin_pct", "Маржа %", { type: "number", align: "end", thTip: SA_DETAIL_TH.margin_pct }],
+        [
+          "recommended_replenishment_days",
+          "Рек. дн.",
+          { type: "number", align: "end", headerLines: ["Рек.", "дн."], thTip: SA_DETAIL_TH.recommended_replenishment_days },
+        ],
+        [
+          "max_streak_days",
+          "Макс. простой",
+          { type: "number", align: "end", headerLines: ["Макс.", "простой"], thTip: SA_DETAIL_TH.max_streak_days },
+        ],
+        ["flags", "Тип", { thTip: SA_DETAIL_TH.flags }],
         ["days_on_stock", "Дней на складе", { type: "number", align: "end", thTip: SA_DETAIL_TH.days_on_stock }],
       ];
       var SA_DETAIL_COLS_SIMPLE = [
@@ -3398,6 +3491,18 @@
         ["days_on_stock", "Дней на складе", { type: "number", align: "end", thTip: SA_DETAIL_TH.days_on_stock }],
       ];
       var SA_DETAIL_COLS_WEAK = SA_DETAIL_COLS_SIMPLE;
+      var SA_DETAIL_COLS_ABSENCE = [
+        ["code", "Код", { thTip: SA_DETAIL_TH.code }],
+        ["name", "Наименование", { nameCol: true, thTip: "Код из лога; имя подставляется при наличии в каталоге" }],
+        ["recommended_replenishment_days", "Рек. дн.", { type: "number", align: "end", thTip: "Рекомендуемые дни пополнения по эпизодам нуля" }],
+        ["max_streak_days", "Макс. простой", { type: "number", align: "end", thTip: "Самый длинный непрерывный нуль, дней" }],
+        ["episode_count", "Эпизоды", { type: "number", align: "end", thTip: "Число эпизодов отсутствия за период" }],
+        ["avg_episode_days", "Ср. эпизод", { type: "number", align: "end", thTip: "Средняя длина эпизода, дней" }],
+        ["absent_days", "Дней нуля", { type: "number", align: "end", thTip: "DISTINCT дней нуля за период" }],
+        ["sales_qty", "Продажи шт.", { type: "number", align: "end", thTip: SA_DETAIL_TH.sales_qty }],
+        ["sales_revenue", "Продажи ₽", { type: "number", align: "end", thTip: SA_DETAIL_TH.sales_revenue }],
+        ["flags", "Тип", { thTip: "Долгий провал / частые короткие" }],
+      ];
 
       var SA_DETAIL_WIDTH_DEFAULTS = {
         ext: {
@@ -3410,6 +3515,9 @@
           sales_revenue: 88,
           gross_margin_est: 80,
           margin_pct: 68,
+          recommended_replenishment_days: 64,
+          max_streak_days: 72,
+          flags: 90,
           days_on_stock: 76,
         },
         simple: { code: 80, name: 200, stock: 64, in_transit: 64, sales_qty: 68, sales_revenue: 88 },
@@ -3472,6 +3580,14 @@
           cols: SA_DETAIL_COLS_WEAK,
           defaultSort: { by: "sales_revenue", dir: "desc" },
           emptyText: "Нет SKU с продажами ниже медианы поставщика",
+        },
+        absence: {
+          cacheKey: "absence",
+          tbodyId: "dg-sa-detail-absence",
+          theadId: "dg-sa-detail-absence-thead",
+          cols: SA_DETAIL_COLS_ABSENCE,
+          defaultSort: { by: "recommended_replenishment_days", dir: "desc" },
+          emptyText: "Нет SKU с днями нулевого остатка в логе за период",
         },
       };
 
@@ -3730,6 +3846,32 @@
               (p.days_on_stock != null && Number(p.days_on_stock) > 0 ? fmtQty(p.days_on_stock) : "—") +
               "</td>"
             );
+          case "recommended_replenishment_days":
+            return (
+              '<td class="text-end">' +
+              (p.recommended_replenishment_days != null ? fmtQty(p.recommended_replenishment_days) : "—") +
+              "</td>"
+            );
+          case "max_streak_days":
+            return '<td class="text-end">' + fmtQty(p.max_streak_days) + "</td>";
+          case "episode_count":
+            return '<td class="text-end">' + fmtQty(p.episode_count) + "</td>";
+          case "avg_episode_days":
+            return (
+              '<td class="text-end">' +
+              (p.avg_episode_days != null ? String(p.avg_episode_days) : "—") +
+              "</td>"
+            );
+          case "absent_days":
+            return '<td class="text-end">' + fmtQty(p.absent_days) + "</td>";
+          case "flags":
+            return (
+              '<td class="small">' +
+              (p.chronic ? '<span class="badge bg-danger me-1">долгий</span>' : "") +
+              (p.flicker ? '<span class="badge bg-warning text-dark">частый</span>' : "") +
+              (!p.chronic && !p.flicker ? "—" : "") +
+              "</td>"
+            );
           default:
             return '<td>—</td>';
         }
@@ -3971,7 +4113,7 @@
           if (viewMode === "summary" && row) sig.innerHTML = signalBadges(row.signals);
           else if (viewMode === "warehouse")
             sig.innerHTML =
-              '<span class="text-muted small">Клик по числу «SKU складская» — таблица с продажами и остатками по каждому SKU</span>';
+              '<span class="text-muted small">Складские SKU: остатки, продажи и рек. дни пополнения по каждому коду</span>';
           else if (viewMode === "all_skus")
             sig.innerHTML =
               '<span class="text-muted small">Сначала позиции без «складская», затем складские с полными показателями</span>';
@@ -3981,6 +4123,37 @@
         }
       }
 
+      function mergeAbsenceIntoSkuRows(skuRows, absenceRows) {
+        var map = {};
+        (absenceRows || []).forEach(function (a) {
+          if (!a || !a.code) return;
+          map[String(a.code)] = a;
+        });
+        return (skuRows || []).map(function (p) {
+          var a = map[String(p.code || "")];
+          if (!a) {
+            return Object.assign({}, p, {
+              recommended_replenishment_days: null,
+              max_streak_days: null,
+              episode_count: null,
+              avg_episode_days: null,
+              absent_days: null,
+              chronic: false,
+              flicker: false,
+            });
+          }
+          return Object.assign({}, p, {
+            recommended_replenishment_days: a.recommended_replenishment_days,
+            max_streak_days: a.max_streak_days,
+            episode_count: a.episode_count,
+            avg_episode_days: a.avg_episode_days,
+            absent_days: a.absent_days,
+            chronic: !!a.chronic,
+            flicker: !!a.flicker,
+          });
+        });
+      }
+
       function loadDetailContent(key, name, viewMode, loadSeq) {
         syncDetailPanels(viewMode);
         updateDetailChrome(key, name, viewMode);
@@ -3988,15 +4161,18 @@
 
         if (viewMode === "warehouse") {
           setDetailTbodyLoading("dg-sa-detail-warehouse-ext", SA_DETAIL_COLS_EXT.length);
-          fetchProducts(key, "warehouse", 500)
-            .then(function (payload) {
+          Promise.all([fetchProducts(key, "warehouse", 500), fetchProducts(key, "absence", 500)])
+            .then(function (parts) {
               if (loadSeq !== detailLoadSeq || state.selectedKey !== key) return;
+              var payload = parts[0] || {};
+              var absRows = (parts[1] && parts[1].rows) || [];
+              var rows = mergeAbsenceIntoSkuRows(payload.rows || [], absRows);
               setDetailBlockCount(
                 "dg-sa-detail-warehouse-ext-count",
                 payload,
                 supplierRow && (supplierRow.skus_warehouse != null ? supplierRow.skus_warehouse : supplierRow.products_total)
               );
-              setDetailRows("warehouse_ext", (payload && payload.rows) || []);
+              setDetailRows("warehouse_ext", rows);
             })
             .catch(function (err) {
               if (loadSeq !== detailLoadSeq || state.selectedKey !== key) return;
@@ -4008,10 +4184,12 @@
         if (viewMode === "all_skus") {
           setDetailTbodyLoading("dg-sa-detail-non-warehouse", SA_DETAIL_COLS_SIMPLE.length);
           setDetailTbodyLoading("dg-sa-detail-warehouse-in-all", SA_DETAIL_COLS_EXT.length);
-          fetchProducts(key, "all_skus", 500)
-            .then(function (payload) {
+          Promise.all([fetchProducts(key, "all_skus", 500), fetchProducts(key, "absence", 500)])
+            .then(function (parts) {
               if (loadSeq !== detailLoadSeq || state.selectedKey !== key) return;
-              var rows = (payload && payload.rows) || [];
+              var payload = parts[0] || {};
+              var absRows = (parts[1] && parts[1].rows) || [];
+              var rows = mergeAbsenceIntoSkuRows(payload.rows || [], absRows);
               var nonWh = rows.filter(function (p) {
                 return !p.is_warehouse;
               });
@@ -4042,19 +4220,44 @@
           if (loadSeq !== detailLoadSeq || state.selectedKey !== key) return;
           loadTrendChart(Chart);
         });
-        ["dg-sa-detail-stale", "dg-sa-detail-new", "dg-sa-detail-weak"].forEach(function (id) {
+        ["dg-sa-detail-absence", "dg-sa-detail-stale", "dg-sa-detail-new", "dg-sa-detail-weak"].forEach(function (id) {
           var el = document.getElementById(id);
-          if (el) el.innerHTML = '<tr><td colspan="6" class="text-muted">Загрузка…</td></tr>';
+          if (el) el.innerHTML = '<tr><td colspan="10" class="text-muted">Загрузка…</td></tr>';
         });
+        var absLink = document.getElementById("dg-sa-detail-absence-suppliers");
+        if (absLink) absLink.href = suppliersHref(name || key);
         Promise.all([
+          fetchProducts(key, "absence", 100),
           fetchProducts(key, "stale", 25),
           fetchProducts(key, "new", 25),
           fetchProducts(key, "weak", 25),
         ]).then(function (parts) {
           if (loadSeq !== detailLoadSeq || state.selectedKey !== key) return;
-          var stale = (parts[0] && parts[0].rows) || [];
-          var fresh = (parts[1] && parts[1].rows) || [];
-          var weak = (parts[2] && parts[2].rows) || [];
+          var absencePayload = parts[0] || {};
+          var absence = absencePayload.rows || [];
+          var stale = (parts[1] && parts[1].rows) || [];
+          var fresh = (parts[2] && parts[2].rows) || [];
+          var weak = (parts[3] && parts[3].rows) || [];
+          var roll = absencePayload.rollup;
+          var rollEl = document.getElementById("dg-sa-detail-absence-rollup");
+          if (rollEl) {
+            if (roll && roll.recommended_replenishment_days != null) {
+              rollEl.textContent =
+                "Рек. поставщику: " +
+                roll.recommended_replenishment_days +
+                " дн. · долгих SKU: " +
+                (roll.chronic_sku_count || 0) +
+                " · частых коротких: " +
+                (roll.flicker_sku_count || 0) +
+                " · SKU с нулём: " +
+                (roll.absence_sku_count || 0);
+            } else {
+              rollEl.textContent =
+                "Эпизоды нулевого остатка по SKU → рекомендация дней пополнения (с учётом продаж)";
+            }
+          }
+          setDetailBlockCount("dg-sa-detail-absence-count", absencePayload, absence.length);
+          setDetailRows("absence", absence);
           setDetailRows("stale", stale);
           setDetailRows("new", fresh);
           setDetailRows("weak", weak);
@@ -4119,8 +4322,21 @@
           })
           .then(function (j) {
             if (!j || !j.success) throw new Error((j && j.error) || "Ошибка");
-            state.total = j.total || 0;
-            state.rows = j.rows || [];
+            var rows = j.rows || [];
+            // Страховка: если бэкенд по какой-то причине не отфильтровал — режем по применённому search.
+            if (state.search) {
+              var q = String(state.search).toLowerCase();
+              var before = rows.length;
+              rows = rows.filter(function (r) {
+                return String((r && r.supplier_name) || "")
+                  .toLowerCase()
+                  .indexOf(q) >= 0;
+              });
+              state.total = rows.length !== before ? rows.length : j.total || 0;
+            } else {
+              state.total = j.total || 0;
+            }
+            state.rows = rows;
             renderTable();
           });
       }

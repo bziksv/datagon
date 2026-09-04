@@ -744,6 +744,16 @@
         ov.setAttribute("aria-hidden", "true");
       }
 
+      /** fixed-sidebar: .app-main__outer z-index:9 < .app-sidebar (11+) — оверлей внутри main уходит под меню. */
+      function mountMsDetailOverlayToBody() {
+        var ov = document.getElementById("dg-ms-detail-overlay");
+        if (!ov) return null;
+        if (ov.parentNode !== document.body) {
+          document.body.appendChild(ov);
+        }
+        return ov;
+      }
+
       /** Deep-link: ?open_uuid=… — открыть карточку после загрузки списка (из «Новые товары» и т.п.). */
       var pendingOpenUuid = "";
       try {
@@ -884,13 +894,14 @@
 
       function openMsDetailModal(uuid, code, nameText, typeMs) {
         var u = String(uuid || "").trim();
-        var ov = document.getElementById("dg-ms-detail-overlay");
+        var ov = mountMsDetailOverlayToBody();
         var titleEl = document.getElementById("dg-ms-detail-title");
         var body = document.getElementById("dg-ms-detail-body");
         var openMs = document.getElementById("dg-ms-detail-open-ms");
         if (!ov || !titleEl || !body) return;
         if (!u) return;
         titleEl.textContent = nameText || "Товар МойСклад";
+        titleEl.setAttribute("title", nameText || "Товар МойСклад");
         body.innerHTML = '<p class="text-muted mb-0">Загрузка…</p>';
         if (openMs) {
           openMs.classList.add("d-none");

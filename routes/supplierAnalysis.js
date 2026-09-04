@@ -38,6 +38,10 @@ const {
     msDemandProjectFilterFromQuery,
     loadMsDemandProjectNameMap,
 } = require('../lib/datagonSalesFormulaDemandFilter');
+const {
+    loadSupplierAbsenceRollupMap,
+    loadSupplierAbsenceSkus,
+} = require('../lib/datagonSupplierAbsenceProfile');
 
 const CACHE_TTL_MS = 90 * 1000;
 const responseCache = new Map();
@@ -66,6 +70,11 @@ const RANKING_SORT = new Set([
     'formula_proposed_sum',
     'gross_margin_est',
     'margin_pct',
+    'recommended_replenishment_days',
+    'chronic_sku_count',
+    'flicker_sku_count',
+    'absence_sku_count',
+    'chronic_max_streak_days',
 ]);
 
 const PORTFOLIO_FOCUS = new Set(['all', 'develop', 'problem']);
@@ -321,6 +330,49 @@ function mapRankingRow(r, ctx) {
     return row;
 }
 
+function attachAbsenceProfile(row, absenceMap) {
+    const sk = row && row.supplier_key ? String(row.supplier_key) : '';
+    const abs = (absenceMap && sk && absenceMap[sk]) || null;
+    row.recommended_replenishment_days = abs ? abs.recommended_replenishment_days : null;
+    row.absence_sku_count = abs ? abs.absence_sku_count : 0;
+    row.absence_days_sum = abs ? abs.absence_days_sum : 0;
+    row.absence_episode_count = abs ? abs.absence_episode_count : 0;
+    row.absence_avg_episode_days = abs ? abs.absence_avg_episode_days : 0;
+    row.chronic_sku_count = abs ? abs.chronic_sku_count : 0;
+    row.chronic_max_streak_days = abs ? abs.chronic_max_streak_days : 0;
+    row.flicker_sku_count = abs ? abs.flicker_sku_count : 0;
+    row.absence_top_problem_skus = abs ? abs.top_problem_skus || [] : [];
+    if (abs && abs.recommended_replenishment_days != null) {
+        const signals = Array.isArray(row.signals) ? row.signals.slice() : [];
+        if (abs.chronic_sku_count > 0) {
+            signals.push({
+                code: 'chronic_absence',
+                level: 'danger',
+                text:
+                    'Долгие провалы: ' +
+                    abs.chronic_sku_count +
+                    ' SKU (макс. ' +
+                    abs.chronic_max_streak_days +
+                    ' дн.)',
+            });
+        }
+        if (abs.flicker_sku_count > 0) {
+            signals.push({
+                code: 'flicker_absence',
+                level: 'warning',
+                text: 'Частые короткие: ' + abs.flicker_sku_count + ' SKU',
+            });
+        }
+        signals.push({
+            code: 'replenishment_recommend',
+            level: 'info',
+            text: 'Рек. пополнение: ' + abs.recommended_replenishment_days + ' дн.',
+        });
+        row.signals = signals;
+    }
+    return row;
+}
+
 function matchesPortfolioFocus(row, focus) {
     if (focus === 'develop') {
         return (
@@ -338,7 +390,7 @@ function matchesPortfolioFocus(row, focus) {
     return true;
 }
 
-module.exports = function supplierAnalysisRouterFactory(db) {
+module.exports = function supplierAnalysisRouterFactory(db, appSettings = {}) {
     const router = express.Router();
 
     /** GET /api/supplier-analysis/projects — проекты из отгрузок за период (для фильтра продаж). */
@@ -585,7 +637,9 @@ module.exports = function supplierAnalysisRouterFactory(db) {
             const catalogSql = catalogBySupplierSubquery(newStockDays);
             const mapCtx = { days, newStockDays };
 
-            const searchSql = search ? ' AND LOWER(supplier_name) LIKE ? ' : '';
+            const searchSql = search
+                ? ' AND c.supplier_name COLLATE utf8mb4_unicode_ci LIKE ? '
+                : '';
             const searchParam = search ? `%${search}%` : null;
 
             const innerSql =
@@ -596,6 +650,13 @@ module.exports = function supplierAnalysisRouterFactory(db) {
                 salesRankingQueryParams(days, pf.params, searchParam),
             );
             let rows = (rawRows || []).map((r) => mapRankingRow(r, mapCtx));
+            try {
+                const absPack = await loadSupplierAbsenceRollupMap(db, days, pf, appSettings);
+                const absMap = absPack.map || {};
+                rows = rows.map((r) => attachAbsenceProfile(r, absMap));
+            } catch (absErr) {
+                console.warn('[supplier-analysis] absence profile:', (absErr && absErr.message) || absErr);
+            }
             rows = rows.filter((r) => matchesPortfolioFocus(r, focus));
 
             const total = rows.length;
@@ -695,11 +756,46 @@ module.exports = function supplierAnalysisRouterFactory(db) {
             const days = clampInt(req.query.days, 7, 365, 90);
             const newStockDays = clampInt(req.query.new_stock_days, 7, 180, 30);
             const mode = String(req.query.mode || 'all').toLowerCase();
+            const pf = msDemandProjectFilterFromQuery(req.query);
+
+            if (mode === 'absence') {
+                const limit = clampInt(req.query.limit, 1, 500, 200);
+                const pack = await loadSupplierAbsenceSkus(db, supplierKey, days, pf, appSettings);
+                let rows = pack.rows || [];
+                const codes = rows.map((r) => r.code).filter(Boolean);
+                if (codes.length) {
+                    const ph = codes.map(() => '?').join(',');
+                    const [nameRows] = await db.query(
+                        `SELECT code, name FROM ms_export WHERE code IN (${ph})`,
+                        codes,
+                    );
+                    const nameMap = new Map(
+                        (nameRows || []).map((r) => [String(r.code || ''), String(r.name || '')]),
+                    );
+                    rows = rows.map((r) => ({
+                        ...r,
+                        name: nameMap.get(r.code) || '',
+                    }));
+                }
+                const out = rows.slice(0, limit);
+                return res.json({
+                    success: true,
+                    supplier_key: supplierKey,
+                    days,
+                    mode: 'absence',
+                    rollup: pack.rollup,
+                    meta: pack.meta,
+                    total: rows.length,
+                    truncated: rows.length > out.length,
+                    rows: out,
+                    cache: pack.cache,
+                });
+            }
+
             const catalogListMode = mode === 'warehouse' || mode === 'catalog' || mode === 'all_skus' || mode === 'total';
             const limitMax = catalogListMode ? 500 : 200;
             const limitDefault = catalogListMode ? 300 : 50;
             const limit = clampInt(req.query.limit, 1, limitMax, limitDefault);
-            const pf = msDemandProjectFilterFromQuery(req.query);
             const snapSql = firstPositiveStockByCodeSubquery(Math.max(newStockDays + 30, 120));
             const productWhereSql =
                 mode === 'all_skus' || mode === 'total'
@@ -863,7 +959,14 @@ module.exports = function supplierAnalysisRouterFactory(db) {
                 salesRankingQueryParams(days, pf.params),
             );
 
-            const rows = (rawRows || []).map((r) => mapRankingRow(r, mapCtx));
+            let rows = (rawRows || []).map((r) => mapRankingRow(r, mapCtx));
+            try {
+                const absPack = await loadSupplierAbsenceRollupMap(db, days, pf, appSettings);
+                const absMap = absPack.map || {};
+                rows = rows.map((r) => attachAbsenceProfile(r, absMap));
+            } catch (absErr) {
+                console.warn('[supplier-analysis] highlights absence:', (absErr && absErr.message) || absErr);
+            }
             const needs_attention = rows
                 .filter((r) => r.attention_score >= 25)
                 .sort((a, b) => b.attention_score - a.attention_score)
@@ -896,6 +999,19 @@ module.exports = function supplierAnalysisRouterFactory(db) {
                 })
                 .slice(0, 8);
 
+            const chronic_absence = rows
+                .filter((r) => num(r.chronic_sku_count) > 0)
+                .sort(
+                    (a, b) =>
+                        num(b.chronic_max_streak_days) - num(a.chronic_max_streak_days) ||
+                        num(b.chronic_sku_count) - num(a.chronic_sku_count),
+                )
+                .slice(0, 8);
+            const flicker_absence = rows
+                .filter((r) => num(r.flicker_sku_count) > 0)
+                .sort((a, b) => num(b.flicker_sku_count) - num(a.flicker_sku_count))
+                .slice(0, 8);
+
             const project_filter = await projectFilterMeta(db, pf);
             const payload = {
                 success: true,
@@ -907,6 +1023,8 @@ module.exports = function supplierAnalysisRouterFactory(db) {
                 top_revenue,
                 top_growth,
                 weak,
+                chronic_absence,
+                flicker_absence,
             };
             cacheSet(cacheKey, payload);
             res.json(payload);
@@ -927,8 +1045,10 @@ module.exports = function supplierAnalysisRouterFactory(db) {
             pf.sql,
         );
         const catalogSql = catalogBySupplierSubquery(newStockDays);
-        const searchSql = search ? ' AND LOWER(supplier_name) LIKE ? ' : '';
-        const searchParam = search ? `%${search.toLowerCase()}%` : null;
+        const searchSql = search
+            ? ' AND c.supplier_name COLLATE utf8mb4_unicode_ci LIKE ? '
+            : '';
+        const searchParam = search ? `%${search}%` : null;
         const innerSql = supplierRankingSelectSql(catalogSql, curSql, prevSql) + ` WHERE 1=1 ${searchSql}`;
         const params = salesRankingQueryParams(days, pf.params, searchParam);
         const [rawRows] = await db.query(innerSql, params);

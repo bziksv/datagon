@@ -2092,7 +2092,7 @@
 
     document.addEventListener('click', function (e) {
       if (wrap && !wrap.contains(e.target)) closeStockStatusMenu();
-    });
+      });
   }
 
   function fetchFilters() {
@@ -2414,9 +2414,9 @@
     }
 
     function doFetch(attempt) {
-      fetch('/api/ms-orders/' + encodeURIComponent(uuid) + '/positions', {
-        credentials: 'same-origin', headers: { Accept: 'application/json' }
-      })
+    fetch('/api/ms-orders/' + encodeURIComponent(uuid) + '/positions', {
+      credentials: 'same-origin', headers: { Accept: 'application/json' }
+    })
         .then(function (r) {
           if (!r.ok) {
             return r.json().catch(function () { return null; }).then(function (d) {
@@ -2425,18 +2425,18 @@
           }
           return r.json();
         })
-        .then(function (data) {
+      .then(function (data) {
           if (gen !== state.positionsFetchGen[uuid]) return;
           if (!state.expandedOrders.has(uuid)) {
             if (insert.parentNode) insert.remove();
             return;
           }
-          if (!data || !data.success) throw new Error((data && data.error) || 'Ошибка позиций');
+        if (!data || !data.success) throw new Error((data && data.error) || 'Ошибка позиций');
           state.positionsCache[uuid] = { order: data.order, rows: data.positions || [] };
           if (!insert.parentNode) return;
           insert.innerHTML = '<td colspan="' + colspan + '">' + renderPositionsRow(data.order, data.positions || []) + '</td>';
-        })
-        .catch(function (err) {
+      })
+      .catch(function (err) {
           if (gen !== state.positionsFetchGen[uuid]) return;
           if (!insert.parentNode) return;
           var msg = (err && err.message) || 'unknown';
@@ -2658,7 +2658,7 @@
           row.innerHTML = '<div class="col-12"><p class="text-danger small mb-0">Актуальность данных: ' +
             escapeHtml(err && err.message ? err.message : 'unknown') + '</p></div>';
         }
-      });
+    });
   }
 
   /* ============================ Sync (background job) ============================ */
@@ -3029,13 +3029,13 @@
   function init() {
     try {
       renderDaysFilterSelect(365);
-      var savedVis = loadVisibleCols();
-      state.visibleCols = new Set(savedVis && savedVis.length ? savedVis : DEFAULT_VISIBLE_KEYS);
-      /** expander всегда виден — иначе негде нажимать «развернуть позиции». */
-      state.visibleCols.add('expander');
-      state.columnWidths = loadWidths();
+    var savedVis = loadVisibleCols();
+    state.visibleCols = new Set(savedVis && savedVis.length ? savedVis : DEFAULT_VISIBLE_KEYS);
+    /** expander всегда виден — иначе негде нажимать «развернуть позиции». */
+    state.visibleCols.add('expander');
+    state.columnWidths = loadWidths();
 
-      bindControls();
+    bindControls();
       bindFilterPresets();
       bindStoreSearchSelect();
       bindAgentSearchSelect();
@@ -3044,18 +3044,18 @@
       bindPayStatusSearchSelect();
       bindShipStatusSearchSelect();
       bindStockStatusSearchSelect();
-      bindCollapse('dg-mso-filters-toggle', 'dg-mso-filters-body', FILTERS_COLLAPSED_KEY);
-      bindCollapse('dg-mso-table-toggle', 'dg-mso-table-body', TABLE_COLLAPSED_KEY);
-      bindHeaderSearchMirror();
+    bindCollapse('dg-mso-filters-toggle', 'dg-mso-filters-body', FILTERS_COLLAPSED_KEY);
+    bindCollapse('dg-mso-table-toggle', 'dg-mso-table-body', TABLE_COLLAPSED_KEY);
+    bindHeaderSearchMirror();
       bindFilterDirtyListeners();
-      bindSortHandlers();
-      bindPagination();
-      bindTbody();
-      bindColumnPanels();
-      initFilterFieldsVisibility();
-      bindStickyTopVar();
+    bindSortHandlers();
+    bindPagination();
+    bindTbody();
+    bindColumnPanels();
+    initFilterFieldsVisibility();
+    bindStickyTopVar();
 
-      buildThead();
+    buildThead();
       loadMsOrdersConfig(function () {
         if (state.listFetchGen === 0) {
           applyFiltersFromStorageOrSettings();
@@ -3064,17 +3064,17 @@
         } else {
           syncSearchDraftHint();
         }
-        fetchFilters();
+    fetchFilters();
       });
       loadDataFreshness();
 
-      /** Если синк уже идёт (например, после рефреша страницы) — подхватим polling. */
-      fetch('/api/ms-orders/sync-status', { credentials: 'same-origin', headers: { Accept: 'application/json' } })
-        .then(function (r) { return r.ok ? r.json() : null; })
-        .then(function (data) {
-          if (data && data.success && data.status && data.status.active) startSyncPolling();
-        })
-        .catch(function () {});
+    /** Если синк уже идёт (например, после рефреша страницы) — подхватим polling. */
+    fetch('/api/ms-orders/sync-status', { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) {
+        if (data && data.success && data.status && data.status.active) startSyncPolling();
+      })
+      .catch(function () {});
 
       window.__dgMsOrdersBooted = true;
     } catch (err) {

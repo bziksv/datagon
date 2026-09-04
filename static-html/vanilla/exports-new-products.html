@@ -81,6 +81,9 @@
     font-size: 0.8rem;
     line-height: 1.25;
     font-variant-numeric: tabular-nums;
+    /* Как Huckster/shop: auto + colgroup/ширины. fixed + translate3d на thead
+       рвёт выравнивание колонок. */
+    table-layout: auto;
   }
   body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-mp-table-scroll-outer {
     width: 100%;
@@ -112,23 +115,63 @@
     filter: none !important;
     perspective: none !important;
   }
-  /* Шапка как у dg-mp-table (my-products): фон #f8f9fa, сетка #e6e9ee / #f3f5f8, th по центру */
+  /* Шапка таблицы: CSS sticky запрещён (overflow-x на scroll-outer ломает sticky).
+     Плаванье — лёгкий #dg-np-float-host (position:fixed клон), не translate3d
+     на живом thead (на тяжёлой таблице даёт отставание). */
   body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-mp-table thead th {
-    position: sticky !important;
-    top: 0 !important;
-    z-index: 20 !important;
+    position: static !important;
+    top: auto !important;
+    z-index: 25;
     background: #f8f9fa !important;
     border-right: 1px solid #e6e9ee !important;
+    border-bottom: 1px solid #e6e9ee;
     vertical-align: middle;
     text-align: center;
     user-select: text;
     -webkit-user-select: text;
     white-space: nowrap;
+    padding: 0.35rem 0.45rem;
+    line-height: 1.2;
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-mp-table thead[data-dg-floating="1"] th {
+    visibility: hidden;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] #dg-np-float-host {
+    position: fixed;
+    z-index: 25;
+    display: none;
+    overflow: hidden;
+    pointer-events: none;
+    background: #f8f9fa;
+    box-shadow: 0 1px 0 #e6e9ee;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] #dg-np-float-host table {
+    margin: 0;
+    pointer-events: auto;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] #dg-np-float-host thead th {
+    position: static !important;
+    background: #f8f9fa !important;
+    border-right: 1px solid #e6e9ee !important;
+    border-bottom: 1px solid #e6e9ee;
+    vertical-align: middle;
+    text-align: center;
+    user-select: text;
+    -webkit-user-select: text;
+    white-space: nowrap;
+    padding: 0.35rem 0.45rem;
+    line-height: 1.2;
+    font-size: 0.75rem;
+    font-weight: 600;
   }
   body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-mp-table thead th.dg-np-th-wrap {
     white-space: pre-line;
     line-height: 1.15;
-    max-width: 5.5rem;
+    /* Не max-width: иначе «Проверено/менеджером» ломается на 3–4 строки
+       и раздувает всю шапку (~75px). Ширина — из <colgroup>. */
+    max-width: none;
   }
   body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-mp-table thead th.dg-np-sortable {
     cursor: pointer;
@@ -570,7 +613,7 @@
   body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-ms-detail-overlay {
     position: fixed;
     inset: 0;
-    z-index: 2000;
+    z-index: 12000;
     background: rgba(15, 23, 42, 0.45);
     display: flex;
     align-items: center;
@@ -1436,6 +1479,7 @@
                 (пустые подсвечены). Контент: <b>В работе</b> → <b>Добавлен</b>; замечания — <b>На доработке</b> + комментарий.
               </p>
               <div
+                id="dg-np-table-scroll-outer"
                 class="dg-mp-table-scroll-outer"
                 style="width:100%;max-width:100%;min-width:0;overflow-x:auto;overflow-y:visible;-webkit-overflow-scrolling:touch"
               >
@@ -1446,7 +1490,7 @@
                   <table
                     id="dg-np-table"
                     class="table table-hover table-striped mb-0 datagon-my-products-table dg-mp-table"
-                    style="width:max-content;min-width:min(100%,2200px);max-width:none;table-layout:fixed;border-collapse:collapse;border-spacing:0"
+                    style="width:max-content;min-width:min(100%,2200px);max-width:none;table-layout:auto;border-collapse:collapse;border-spacing:0"
                   >
                     <thead id="dg-np-thead"></thead>
                     <tbody id="dg-np-tbody"></tbody>
@@ -1730,15 +1774,15 @@
     { key: "has_kits", label: "Комплект", sort: false, minWidth: 70, defWidth: 80 },
     { key: "article", label: "Артикул", sort: true, minWidth: 90, defWidth: 120 },
     { key: "title", label: "Название", sort: true, minWidth: 140, defWidth: 200 },
-    { key: "price_almamed", label: "Цена\nАльмамед", sort: true, minWidth: 72, defWidth: 88 },
+    { key: "price_almamed", label: "Цена\nАльмамед", sort: true, minWidth: 88, defWidth: 100 },
     { key: "supplier_url", label: "Ссылка\nпоставщика", sort: false, minWidth: 120, defWidth: 160 },
     { key: "brand", label: "Бренд", sort: true, minWidth: 90, defWidth: 120 },
     { key: "priority", label: "Приоритет", sort: true, minWidth: 90, defWidth: 110 },
     { key: "status", label: "Статус", sort: true, minWidth: 100, defWidth: 130 },
-    { key: "comment", label: "Комментарий\nконтент", sort: false, minWidth: 100, defWidth: 140 },
+    { key: "comment", label: "Комментарий\nконтент", sort: false, minWidth: 110, defWidth: 140 },
     { key: "almamed_added_at", label: "Дата на Альмамед", sort: true, minWidth: 110, defWidth: 140 },
-    { key: "manager_checked", label: "Проверено\nменеджером", sort: false, minWidth: 72, defWidth: 88 },
-    { key: "manager_comment", label: "Комментарий\nменеджер", sort: false, minWidth: 100, defWidth: 140 },
+    { key: "manager_checked", label: "Проверено\nменеджером", sort: false, minWidth: 100, defWidth: 110 },
+    { key: "manager_comment", label: "Комментарий\nменеджер", sort: false, minWidth: 110, defWidth: 140 },
     { key: "_actions", label: " ", sort: false, locked: true, minWidth: 48, defWidth: 56, maxWidth: 64 },
   ];
   var NP_COLS_MARKETS = [
@@ -1765,8 +1809,8 @@
     { key: "weight_kg", label: "Вес, кг", sort: false, minWidth: 70, defWidth: 90 },
     { key: "vat", label: "НДС", sort: false, minWidth: 70, defWidth: 90 },
     { key: "ru_url", label: "Ссылка на РУ", sort: false, minWidth: 120, defWidth: 180 },
-    { key: "manager_checked", label: "Проверено\nменеджером", sort: false, minWidth: 72, defWidth: 88 },
-    { key: "manager_comment", label: "Комментарий\nменеджер", sort: false, minWidth: 100, defWidth: 140 },
+    { key: "manager_checked", label: "Проверено\nменеджером", sort: false, minWidth: 100, defWidth: 110 },
+    { key: "manager_comment", label: "Комментарий\nменеджер", sort: false, minWidth: 110, defWidth: 140 },
     { key: "_actions", label: "Действия", sort: false, locked: true, minWidth: 130, defWidth: 150, maxWidth: 200 },
   ];
 
@@ -1885,12 +1929,11 @@
     return Math.max(getColMin(key), Math.min(getColMax(key), Math.round(w)));
   }
 
-  /** Ширины через <colgroup> + th/td (как shop/moysklad): шапка и тело всегда в одной колонке. */
+  /** Ширины только через <colgroup> (как shop): не вешать min/max на каждый td —
+   *  иначе суммарный min-width раздувает таблицу и шапку. */
   function applyColumnWidths() {
     var table = el("dg-np-table");
-    var thead = el("dg-np-thead");
-    var tbody = el("dg-np-tbody");
-    if (!table || !thead) return;
+    if (!table) return;
     var visibleKeys = visibleColsArray();
     var existing = table.querySelector(":scope > colgroup");
     if (existing) existing.parentNode.removeChild(existing);
@@ -1903,31 +1946,6 @@
       cg.appendChild(col);
     });
     table.insertBefore(cg, table.firstElementChild);
-
-    var headRow = thead.rows && thead.rows[0];
-    if (headRow) {
-      visibleKeys.forEach(function (key, idx) {
-        var th = headRow.cells[idx];
-        if (!th) return;
-        var px = resolvedColWidthPx(key) + "px";
-        th.style.width = px;
-        th.style.minWidth = px;
-        th.style.maxWidth = px;
-      });
-    }
-    if (tbody) {
-      Array.prototype.forEach.call(tbody.rows, function (tr) {
-        if (!tr.cells) return;
-        visibleKeys.forEach(function (key, idx) {
-          var td = tr.cells[idx];
-          if (!td) return;
-          var px = resolvedColWidthPx(key) + "px";
-          td.style.width = px;
-          td.style.minWidth = px;
-          td.style.maxWidth = px;
-        });
-      });
-    }
   }
 
   function getStatusOpts() {
@@ -2257,6 +2275,12 @@
     ov.style.display = "none";
     ov.setAttribute("aria-hidden", "true");
   }
+  function mountMsDetailOverlayToBody() {
+    var ov = document.getElementById("dg-ms-detail-overlay");
+    if (!ov) return null;
+    if (ov.parentNode !== document.body) document.body.appendChild(ov);
+    return ov;
+  }
   function trimMsLinkHref(raw) {
     return String(raw || "").replace(/[)\].,;:!?]+$/g, "");
   }
@@ -2340,7 +2364,7 @@
   }
   function openMsDetailModal(uuid, code, nameText, typeMs) {
     var u = String(uuid || "").trim();
-    var ov = document.getElementById("dg-ms-detail-overlay");
+    var ov = mountMsDetailOverlayToBody();
     var titleEl = document.getElementById("dg-ms-detail-title");
     var body = document.getElementById("dg-ms-detail-body");
     var openMs = document.getElementById("dg-ms-detail-open-ms");
@@ -2908,7 +2932,7 @@
       th.classList.add("dg-np-th-wrap");
     }
     if (c.sort) {
-      th.className = "dg-np-sortable";
+      th.classList.add("dg-np-sortable");
       if (state.sort_by === c.key) {
         th.classList.add(state.sort_dir === "asc" ? "sorted-asc" : "sorted-desc");
       }
@@ -4121,6 +4145,7 @@
       tr0.appendChild(td0);
       tbody.appendChild(tr0);
       updatePager();
+      scheduleNpFloatingHeaderRebase();
       return;
     }
     state.rows.forEach(function (row) {
@@ -4138,6 +4163,7 @@
     updatePager();
     refreshIncompleteBanner();
     applyColumnWidths();
+    scheduleNpFloatingHeaderRebase();
   }
 
   function refreshIncompleteBanner() {
@@ -4676,6 +4702,7 @@
       try {
         localStorage.setItem(key, collapsed ? "1" : "0");
       } catch (_) {}
+      scheduleNpFloatingHeaderRebase();
     }
     var start = false;
     try {
@@ -4685,6 +4712,194 @@
     btn.addEventListener("click", function () {
       apply(body.style.display !== "none");
     });
+  }
+
+  /* Плавающая шапка «Новые товары»:
+     НЕ translate3d на живом #dg-np-thead (таблица с select/бейджами → отставание
+     и дёрганье при скролле, в отличие от лёгкой Ozon).
+     Вместо этого — лёгкий position:fixed клон шапки под app-header.
+     Оригинал при «липкости» только visibility:hidden (место в таблице сохраняется). */
+  var NP_FLOATING_HEADER_START_EPS_PX = 3;
+  var npFloat = {
+    stickyTop: 60,
+    baseTopAbs: 0,
+    tableBottomAbs: 0,
+    rowHeight: 0,
+    boxLeft: 0,
+    boxWidth: 0,
+    ready: false,
+  };
+  var npFloatRaf = 0;
+
+  function refreshNpStickyTopPx() {
+    var app = document.querySelector(".app-container");
+    var header = document.querySelector(".app-header");
+    var fixed = Boolean(app && app.classList && app.classList.contains("fixed-header"));
+    if (!fixed) {
+      npFloat.stickyTop = 0;
+      return 0;
+    }
+    if (!header || !header.getBoundingClientRect) {
+      npFloat.stickyTop = 60;
+      return 60;
+    }
+    var rect = header.getBoundingClientRect();
+    var h = rect && rect.height ? rect.height : 60;
+    npFloat.stickyTop = h > 0 ? h : 60;
+    return npFloat.stickyTop;
+  }
+
+  function npGetScrollY() {
+    return window.scrollY || window.pageYOffset || 0;
+  }
+
+  function ensureNpFloatHost() {
+    var host = el("dg-np-float-host");
+    if (host) return host;
+    host = document.createElement("div");
+    host.id = "dg-np-float-host";
+    host.setAttribute("aria-hidden", "true");
+    host.addEventListener("click", function (e) {
+      var th = e.target && e.target.closest ? e.target.closest("th.dg-np-sortable") : null;
+      if (!th) return;
+      if (window.getSelection && String(window.getSelection()).trim()) return;
+      var tr = th.parentNode;
+      if (!tr) return;
+      var idx = Array.prototype.indexOf.call(tr.children, th);
+      if (idx < 0) return;
+      var mainThead = el("dg-np-thead");
+      var mainTr = mainThead && mainThead.querySelector("tr");
+      var mainTh = mainTr && mainTr.children[idx];
+      if (mainTh) mainTh.click();
+    });
+    document.body.appendChild(host);
+    return host;
+  }
+
+  function rebuildNpFloatClone() {
+    var host = ensureNpFloatHost();
+    var table = el("dg-np-table");
+    var thead = el("dg-np-thead");
+    if (!host || !table || !thead || !thead.querySelector("tr")) {
+      if (host) host.style.display = "none";
+      return;
+    }
+    var cg = table.querySelector(":scope > colgroup");
+    var inner = document.createElement("div");
+    inner.id = "dg-np-float-inner";
+    var t = document.createElement("table");
+    t.className = table.className;
+    t.setAttribute("style", table.getAttribute("style") || "");
+    if (cg) t.appendChild(cg.cloneNode(true));
+    t.appendChild(thead.cloneNode(true));
+    inner.replaceChildren(t);
+    host.replaceChildren(inner);
+  }
+
+  function hideNpFloatHost() {
+    var host = el("dg-np-float-host");
+    var thead = el("dg-np-thead");
+    if (host && host.style.display !== "none") host.style.display = "none";
+    if (thead) thead.removeAttribute("data-dg-floating");
+  }
+
+  function npCaptureFloatMetrics() {
+    var thead = el("dg-np-thead");
+    var table = el("dg-np-table");
+    if (!thead || !table) {
+      npFloat.ready = false;
+      hideNpFloatHost();
+      return;
+    }
+    // Сброс transform со старой схемы (если остался в DOM после прошлых билдов).
+    thead.style.transform = "";
+    thead.style.position = "";
+    thead.style.zIndex = "";
+    thead.style.willChange = "";
+    thead.removeAttribute("data-dg-floating");
+    refreshNpStickyTopPx();
+    var y = npGetScrollY();
+    var headRect = thead.getBoundingClientRect();
+    var tableRect = table.getBoundingClientRect();
+    npFloat.baseTopAbs = y + (headRect && headRect.top ? headRect.top : 0);
+    npFloat.tableBottomAbs = y + (tableRect && tableRect.bottom ? tableRect.bottom : 0);
+    npFloat.rowHeight = headRect && headRect.height ? headRect.height : 0;
+    var scrollOuter = el("dg-np-table-scroll-outer");
+    var box = scrollOuter || table;
+    var boxRect = box.getBoundingClientRect();
+    npFloat.boxLeft = boxRect && boxRect.left ? boxRect.left : 0;
+    npFloat.boxWidth = boxRect && boxRect.width ? boxRect.width : 0;
+    npFloat.ready = npFloat.baseTopAbs > 0 && npFloat.tableBottomAbs > npFloat.baseTopAbs;
+    rebuildNpFloatClone();
+  }
+
+  function updateNpFloatHeader() {
+    var host = el("dg-np-float-host");
+    var thead = el("dg-np-thead");
+    var scrollOuter = el("dg-np-table-scroll-outer");
+    if (!host || !thead || !npFloat.ready) return;
+
+    var y = npGetScrollY();
+    var headerTop = npFloat.stickyTop;
+    var headerLine = y + headerTop;
+    var start = npFloat.baseTopAbs + NP_FLOATING_HEADER_START_EPS_PX;
+    var end = npFloat.tableBottomAbs - npFloat.rowHeight;
+    if (headerLine <= start || headerLine >= end) {
+      hideNpFloatHost();
+      return;
+    }
+
+    var sx = scrollOuter ? scrollOuter.scrollLeft || 0 : 0;
+    host.style.top = headerTop + "px";
+    host.style.left = npFloat.boxLeft + "px";
+    host.style.width = npFloat.boxWidth + "px";
+    host.style.display = "block";
+    var inner = el("dg-np-float-inner");
+    if (inner) {
+      var next = "translate3d(" + -sx + "px,0,0)";
+      if (inner.style.transform !== next) inner.style.transform = next;
+    }
+    if (thead.getAttribute("data-dg-floating") !== "1") {
+      thead.setAttribute("data-dg-floating", "1");
+    }
+  }
+
+  function npScheduleFloatHeader() {
+    if (npFloatRaf) return;
+    npFloatRaf = requestAnimationFrame(function () {
+      npFloatRaf = 0;
+      updateNpFloatHeader();
+    });
+  }
+
+  function scheduleNpFloatingHeaderRebase() {
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        npCaptureFloatMetrics();
+        updateNpFloatHeader();
+      });
+    });
+  }
+
+  function bindNpFloatingHeader() {
+    ensureNpFloatHost();
+    npCaptureFloatMetrics();
+    updateNpFloatHeader();
+    var onScroll = function () {
+      npScheduleFloatHeader();
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    var outerMain = document.querySelector(".app-main__outer");
+    if (outerMain) outerMain.addEventListener("scroll", onScroll, { passive: true });
+    var horiz = el("dg-np-table-scroll-outer");
+    if (horiz) horiz.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener(
+      "resize",
+      function () {
+        scheduleNpFloatingHeaderRebase();
+      },
+      { passive: true }
+    );
   }
 
   function renderColumnControls() {
@@ -5196,6 +5411,7 @@
     syncTabUi();
     bindCollapse("dg-np-filters-toggle", "dg-np-filters-body", FILTERS_KEY);
     bindCollapse("dg-np-table-toggle", "dg-np-table-body", TABLE_KEY);
+    bindNpFloatingHeader();
     bindColumnPanels();
     bindNpLogUi();
     bindNpConfirmUi();

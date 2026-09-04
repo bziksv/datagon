@@ -58,6 +58,9 @@
     font-size: 0.8rem;
     line-height: 1.25;
     font-variant-numeric: tabular-nums;
+    /* Как Huckster/shop: auto + colgroup/ширины. fixed + translate3d на thead
+       рвёт выравнивание колонок. */
+    table-layout: auto;
   }
   body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-mp-table-scroll-outer {
     width: 100%;
@@ -89,23 +92,63 @@
     filter: none !important;
     perspective: none !important;
   }
-  /* Шапка как у dg-mp-table (my-products): фон #f8f9fa, сетка #e6e9ee / #f3f5f8, th по центру */
+  /* Шапка таблицы: CSS sticky запрещён (overflow-x на scroll-outer ломает sticky).
+     Плаванье — лёгкий #dg-np-float-host (position:fixed клон), не translate3d
+     на живом thead (на тяжёлой таблице даёт отставание). */
   body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-mp-table thead th {
-    position: sticky !important;
-    top: 0 !important;
-    z-index: 20 !important;
+    position: static !important;
+    top: auto !important;
+    z-index: 25;
     background: #f8f9fa !important;
     border-right: 1px solid #e6e9ee !important;
+    border-bottom: 1px solid #e6e9ee;
     vertical-align: middle;
     text-align: center;
     user-select: text;
     -webkit-user-select: text;
     white-space: nowrap;
+    padding: 0.35rem 0.45rem;
+    line-height: 1.2;
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-mp-table thead[data-dg-floating="1"] th {
+    visibility: hidden;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] #dg-np-float-host {
+    position: fixed;
+    z-index: 25;
+    display: none;
+    overflow: hidden;
+    pointer-events: none;
+    background: #f8f9fa;
+    box-shadow: 0 1px 0 #e6e9ee;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] #dg-np-float-host table {
+    margin: 0;
+    pointer-events: auto;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] #dg-np-float-host thead th {
+    position: static !important;
+    background: #f8f9fa !important;
+    border-right: 1px solid #e6e9ee !important;
+    border-bottom: 1px solid #e6e9ee;
+    vertical-align: middle;
+    text-align: center;
+    user-select: text;
+    -webkit-user-select: text;
+    white-space: nowrap;
+    padding: 0.35rem 0.45rem;
+    line-height: 1.2;
+    font-size: 0.75rem;
+    font-weight: 600;
   }
   body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-mp-table thead th.dg-np-th-wrap {
     white-space: pre-line;
     line-height: 1.15;
-    max-width: 5.5rem;
+    /* Не max-width: иначе «Проверено/менеджером» ломается на 3–4 строки
+       и раздувает всю шапку (~75px). Ширина — из <colgroup>. */
+    max-width: none;
   }
   body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-mp-table thead th.dg-np-sortable {
     cursor: pointer;
@@ -547,7 +590,7 @@
   body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-ms-detail-overlay {
     position: fixed;
     inset: 0;
-    z-index: 2000;
+    z-index: 12000;
     background: rgba(15, 23, 42, 0.45);
     display: flex;
     align-items: center;
