@@ -1536,16 +1536,16 @@
           });
       }
 
-      function applySmartSearchFromInput() {
-        var raw = document.getElementById("mp-f-smart").value;
+      /** Синк #mp-f-smart → apiSearch (+ site:/status: токены). Без load — для «Применить» и Enter. */
+      function syncSmartSearchFromInput() {
+        var smartEl = document.getElementById("mp-f-smart");
+        var raw = smartEl ? smartEl.value : "";
         var parsed = parseSmartSearch(raw);
         if (parsed.site) {
           var sel = document.getElementById("f-site");
-          var ok = false;
           for (var i = 0; i < sel.options.length; i++) {
             if (String(sel.options[i].value) === String(parsed.site)) {
               sel.selectedIndex = i;
-              ok = true;
               break;
             }
           }
@@ -1558,14 +1558,38 @@
             document.getElementById("mp-f-status").value = "0";
         }
         apiSearch = parsed.search || "";
-        offset = 0;
         updateSubtitle();
         updateSyncSiteButton();
+      }
+
+      function applySmartSearchFromInput() {
+        offset = 0;
+        syncSmartSearchFromInput();
+        try {
+          localStorage.setItem(
+            userSortKey(),
+            JSON.stringify({
+              sort_by: document.getElementById("mp-f-sort-by").value,
+              sort_dir: document.getElementById("mp-f-sort-dir").value,
+            })
+          );
+        } catch (e) {}
+        persistMyProductsFilterForm();
         load();
+      }
+
+      function syncHeaderSearchMirrorFromPrimary() {
+        var primary = document.getElementById("mp-f-smart");
+        var mirror = document.getElementById("dg-mp-table-search-mirror");
+        if (!primary || !mirror) return;
+        if (mirror.value !== primary.value) mirror.value = primary.value;
       }
 
       document.getElementById("btn-apply").addEventListener("click", function () {
         offset = 0;
+        // Раньше «Применить»/Enter в зеркале шапки не обновляли apiSearch —
+        // в поле могло быть «40499», а в API уходил старый search из URL.
+        syncSmartSearchFromInput();
         try {
           localStorage.setItem(
             userSortKey(),
@@ -1667,7 +1691,9 @@
       document.getElementById("mp-f-smart").addEventListener("keydown", function (e) {
         if (e.key === "Enter") {
           e.preventDefault();
-          applySmartSearchFromInput();
+          var btn = document.getElementById("btn-apply");
+          if (btn) btn.click();
+          else applySmartSearchFromInput();
         }
       });
 
@@ -2011,6 +2037,7 @@
         await loadSites();
         parseUrlToForm();
         mergeMyProductsPrefsFromStorage();
+        syncHeaderSearchMirrorFromPrimary();
         updateSubtitle();
         updateSyncSiteButton();
         updateSortHeaders();
