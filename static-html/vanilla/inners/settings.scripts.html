@@ -117,6 +117,7 @@
         mp_ozon_include_archived: 0,
         sales_formula_replenishment_days: 30,
         sales_formula_replenishment_coef: 0.3333333333333333,
+        sales_formula_sku_replenishment_enabled: 1,
         sales_formula_sales_window_days: 90,
         sales_formula_absence_analysis_days: 210,
         sales_formula_base_qty: 2,
@@ -1062,6 +1063,13 @@
             return String(Math.max(0, Math.min(3650, Math.round(c * W))));
           })()
         );
+        (function () {
+          var el = document.getElementById("dg-set-sales_formula_sku_replenishment_enabled");
+          if (!el) return;
+          var v = merged.sales_formula_sku_replenishment_enabled;
+          if (v === undefined || v === null || v === "") el.checked = true;
+          else el.checked = Number(v) === 1 || v === true || v === "1" || v === "true";
+        })();
         set("dg-set-sales_formula_sales_window_days", merged.sales_formula_sales_window_days != null ? String(merged.sales_formula_sales_window_days) : "90");
         set(
           "dg-set-sales_formula_absence_analysis_days",
@@ -1987,6 +1995,10 @@
         var payload = {
           sales_formula_replenishment_days: days,
           sales_formula_replenishment_coef: coef,
+          sales_formula_sku_replenishment_enabled: document.getElementById("dg-set-sales_formula_sku_replenishment_enabled") &&
+            document.getElementById("dg-set-sales_formula_sku_replenishment_enabled").checked
+            ? 1
+            : 0,
           sales_formula_sales_window_days: W,
           sales_formula_absence_analysis_days: getNum("dg-set-sales_formula_absence_analysis_days", 210),
           sales_formula_base_qty: getNum("dg-set-sales_formula_base_qty", 2),

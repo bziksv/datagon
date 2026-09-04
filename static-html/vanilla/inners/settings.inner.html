@@ -416,16 +416,30 @@
             <div class="card-body">
               <p class="small text-muted mb-3">
                 Задают предлагаемый неснижаемый на
-                <a href="/product.html" target="_blank" rel="noopener">карточке товара</a>.
-                «Пополнение, дней» — на сколько дней запаса целимся; периоды ниже — за какое окно смотрим продажи и дни без остатка.
+                <a href="/product.html" target="_blank" rel="noopener">карточке товара</a>
+                и в
+                <a href="/purchase.html" target="_blank" rel="noopener">закупках</a>.
+                Два рычага против нуля на складе (разные роли, не дубль одной поправки):
+                <strong>анализ отсутствий</strong> — оценка упущенных продаж в спросе;
+                <strong>рек. дни по товарам</strong> — более длинный горизонт запаса при длинных простоях.
+                Вместе дают более жёсткий предлагаемый нес.остаток.
               </p>
               <div class="row g-2">
                 <div
                   class="col-md-4 dg-set-formula-tt"
-                  data-dg-tooltip="На сколько дней запаса считаем неснижаемый от спроса (с учётом дней без остатка)."
+                  data-dg-tooltip="Базовый горизонт запаса в днях (k = дни ÷ период продаж). Ниже этого рек. дни по SKU не опускаются."
                 >
                   <label class="form-label" for="dg-set-sales_formula_replenishment_days">Пополнение, дней</label>
                   <input type="number" class="form-control" id="dg-set-sales_formula_replenishment_days" min="0" max="3650" step="1" />
+                </div>
+                <div
+                  class="col-md-8 dg-set-formula-tt d-flex align-items-end"
+                  data-dg-tooltip="Рычаг горизонта: при длинных нулях поднимает дни пополнения у конкретного SKU выше базы (не ниже «Пополнение, дней»). Это не то же самое, что «Анализ отсутствий» (там — упущенные шт в спросе). Вместе усиливают запас против нуля — намеренно, не дубль. На /purchase.html — колонка «Рек. пополнение»."
+                >
+                  <div class="form-check mb-2">
+                    <input type="checkbox" class="form-check-input" id="dg-set-sales_formula_sku_replenishment_enabled" checked />
+                    <label class="form-check-label" for="dg-set-sales_formula_sku_replenishment_enabled">Рек. дни пополнения по товарам (из отсутствий)</label>
+                  </div>
                 </div>
                 <div
                   class="col-md-4 dg-set-formula-tt"
@@ -436,7 +450,7 @@
                 </div>
                 <div
                   class="col-md-4 dg-set-formula-tt"
-                  data-dg-tooltip="За сколько дней считаем дни нулевого остатка (оценка упущенных продаж)."
+                  data-dg-tooltip="Рычаг спроса: за сколько дней считаем дни нуля и оценку упущенных продаж (дни×ср.спрос), которые прибавляются к продажам. Это не удлинение горизонта — горизонт меняет «Пополнение, дней» / галка рек. дней. Вместе с рек. днями дают более жёсткий запас против нуля."
                 >
                   <label class="form-label" for="dg-set-sales_formula_absence_analysis_days">Анализ отсутствий, дней</label>
                   <input type="number" class="form-control" id="dg-set-sales_formula_absence_analysis_days" min="7" max="1095" step="1" />

@@ -178,6 +178,8 @@ let appSettings = {
     /** Формула продаж / предлагаемого неснижаемого (см. `lib/datagonSalesFormula.js`). UI — дни пополнения; coef = days/W. */
     sales_formula_replenishment_days: 30,
     sales_formula_replenishment_coef: 1 / 3,
+    /** 1 = авто-подъём дней пополнения по SKU из эпизодов нуля (закупки / карточка). */
+    sales_formula_sku_replenishment_enabled: 1,
     sales_formula_sales_window_days: 90,
     sales_formula_absence_analysis_days: 210,
     sales_formula_base_qty: 2,
@@ -413,6 +415,7 @@ async function initDB() {
             ['auto_sync_medmarket_fill_weekdays','1,2,3,4,5,6'],
             ['sales_formula_replenishment_days','30'],
             ['sales_formula_replenishment_coef','0.3333333333333333'],
+            ['sales_formula_sku_replenishment_enabled','1'],
             ['sales_formula_sales_window_days','90'],
             ['sales_formula_absence_analysis_days','210'],
             ['sales_formula_base_qty','2'],

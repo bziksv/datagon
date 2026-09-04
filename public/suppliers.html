@@ -1706,7 +1706,7 @@
             editable: true,
             adminOnly: true,
             thTip:
-              "Индивидуальный горизонт пополнения для формулы неснижаемого (перекрывает Настройки). Пусто = как в «Формула продаж». Под полем — «рек. N» из эпизодов нулевого остатка + продаж (P90 по SKU за 90 дн.) и кнопка «Применить». Менять может только суперадмин (admin).",
+              "Индивидуальный горизонт пополнения для формулы неснижаемого (перекрывает Настройки, но ниже рек. дней по отдельному SKU на /purchase.html). Пусто = глобаль из «Формула продаж». Менять может только суперадмин (admin).",
           },
         ],
         [
@@ -3838,89 +3838,16 @@
           }, { integer: true });
         }
         if (key === "replenishment_days") {
-          function effectiveReplenishmentDays(r) {
-            if (r.replenishment_days != null && r.replenishment_days !== "" && Number.isFinite(Number(r.replenishment_days))) {
-              return Math.round(Number(r.replenishment_days));
-            }
-            var g = state.globalReplenishmentDays;
-            return g != null && Number.isFinite(Number(g)) ? Math.round(Number(g)) : 30;
-          }
-          function shouldShowRecommend(r) {
-            if (r.recommended_replenishment_days == null || r.recommended_replenishment_days === "") return false;
-            var rec = Math.round(Number(r.recommended_replenishment_days));
-            if (!Number.isFinite(rec)) return false;
-            return rec !== effectiveReplenishmentDays(r);
-          }
           if (!isSpSuperAdmin()) {
             var ro = document.createElement("div");
             ro.className = "dg-sp-replenish-cell small";
             var cur = row.replenishment_days;
             ro.textContent = cur != null && Number.isFinite(Number(cur)) ? fmtNum(cur, { integer: true }) : "—";
-            if (shouldShowRecommend(row)) {
-              var hintRo = document.createElement("div");
-              hintRo.className = "text-muted";
-              hintRo.style.fontSize = "11px";
-              hintRo.textContent = "рек. " + fmtNum(row.recommended_replenishment_days, { integer: true });
-              ro.appendChild(hintRo);
-            }
             return ro;
           }
-          var wrap = document.createElement("div");
-          wrap.className = "dg-sp-replenish-cell";
-          var inp = bindEditableNumericInput(row, "replenishment_days", function (r) {
+          return bindEditableNumericInput(row, "replenishment_days", function (r) {
             return r.replenishment_days;
           }, { integer: true });
-          wrap.appendChild(inp);
-          if (shouldShowRecommend(row)) {
-            var rec = Math.round(Number(row.recommended_replenishment_days));
-            var rowHint = document.createElement("div");
-            rowHint.className = "d-flex align-items-center gap-1 mt-1 flex-wrap";
-            var hint = document.createElement("span");
-            hint.className = "text-muted";
-            hint.style.fontSize = "11px";
-            var eff = effectiveReplenishmentDays(row);
-            hint.textContent = "рек. " + fmtNum(rec, { integer: true });
-            hint.title =
-              (rec > eff ? "выше" : "ниже") +
-              " текущего (" +
-              eff +
-              " дн.)" +
-              (row.chronic_sku_count > 0 ? "; долгих SKU: " + row.chronic_sku_count : "") +
-              (row.flicker_sku_count > 0 ? "; частых коротких: " + row.flicker_sku_count : "");
-            rowHint.appendChild(hint);
-            var btn = document.createElement("button");
-            btn.type = "button";
-            btn.className = "btn btn-link btn-sm p-0";
-            btn.style.fontSize = "11px";
-            btn.textContent = "Применить";
-            btn.setAttribute("data-dg-notify-start", "Подставляем рекомендованные дни…");
-            btn.addEventListener("click", function (ev) {
-              ev.preventDefault();
-              ev.stopPropagation();
-              var prev = row.replenishment_days;
-              row.replenishment_days = rec;
-              inp.value = String(rec);
-              patchSupplier(row.supplier_key, { replenishment_days: rec })
-                .then(function () {
-                  if (window.DatagonNotify && window.DatagonNotify.toast) {
-                    window.DatagonNotify.toast({
-                      type: "success",
-                      message: "Пополнение: " + rec + " дн.",
-                    });
-                  }
-                  load();
-                })
-                .catch(function (e) {
-                  row.replenishment_days = prev;
-                  if (window.DatagonNotify && window.DatagonNotify.toast) {
-                    window.DatagonNotify.toast({ type: "danger", message: e.message || "Ошибка" });
-                  }
-                });
-            });
-            rowHint.appendChild(btn);
-            wrap.appendChild(rowHint);
-          }
-          return wrap;
         }
         if (key === "stock_fill_pct") {
           return renderStockFillTriplet(row);

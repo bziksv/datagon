@@ -1,6 +1,6 @@
 'use strict';
 
-const { parseFormulaSettings, pickMarketPriceRub, computeSalesFormula, applyMinStockDgFloor, loadSupplierReplenishmentDaysForKey } = require('../lib/datagonSalesFormula');
+const { parseFormulaSettings, pickMarketPriceRub, computeSalesFormula, applyMinStockDgFloor, loadSupplierReplenishmentDaysForKey, resolveEffectiveReplenishment } = require('../lib/datagonSalesFormula');
 const {
     msDemandProjectFilterClause,
     describeSalesFormulaProjectFilter,
@@ -21,6 +21,7 @@ function projectFilterForSalesScope(appSettings, scope) {
 }
 const { mergeAbsenceDistinctForFormula } = require('../lib/datagonZeroStockAbsence');
 const { upsertFormulaProposedFromProduct } = require('../lib/datagonFormulaProposedCache');
+const { loadSkuRecommendedDaysByCodes } = require('../lib/datagonSupplierAbsenceProfile');
 const {
     computePurchaseWindowSnapshotForItems,
     serializeWindowsSnapshot,
@@ -1649,8 +1650,19 @@ function createProductRouter(db, appSettings) {
             }
 
             const supplierReplenishmentDays = await loadSupplierReplenishmentDaysForKey(db, mse.supplier);
+            const skuRecMap = await loadSkuRecommendedDaysByCodes(db, [code], appSettings);
+            const skuAbs = skuRecMap.get(code);
+            const skuRecommendDays =
+                skuAbs && skuAbs.recommended_replenishment_days != null
+                    ? skuAbs.recommended_replenishment_days
+                    : null;
+            const resolvedRep = resolveEffectiveReplenishment(appSettings, {
+                supplierDays: supplierReplenishmentDays,
+                skuRecommendDays,
+            });
             const formulaCfg = parseFormulaSettings(appSettings, {
-                replenishmentDaysOverride: supplierReplenishmentDays,
+                replenishmentDaysOverride: resolvedRep.replenishmentDays,
+                replenishmentSourceHint: resolvedRep.replenishmentSource,
             });
             const projUuids = salesFormulaProjectUuids(appSettings);
             const projNameMap =
@@ -1829,7 +1841,8 @@ function createProductRouter(db, appSettings) {
 
             try {
                 await upsertFormulaProposedFromProduct(db, appSettings, code, proposedFloored, windowsJson, {
-                    replenishmentDaysOverride: supplierReplenishmentDays,
+                    replenishmentDaysOverride: resolvedRep.replenishmentDays,
+                    replenishmentSource: resolvedRep.replenishmentSource,
                 });
             } catch (e) {
                 console.warn('[product] dg_formula_proposed_cache upsert:', (e && e.message) || e);
@@ -1840,11 +1853,12 @@ function createProductRouter(db, appSettings) {
                 settings_effective: formulaCfg,
                 replenishment_days_effective: formulaCfg.replenishmentDays,
                 replenishment_source: formulaCfg.replenishmentSource || 'global',
+                recommended_replenishment_days: skuRecommendDays,
                 inputs: formulaResult.inputs,
                 warnings: formulaResult.warnings,
                 detail: formulaResult.detail,
                 note:
-                    'Сумма с учётом отсутствий × (дни пополнения ÷ период продаж); дни могут быть заданы у поставщика (только admin). Редкий товар — ранний выход в базовый запас для редких; далее кратность и % упаковки; макс. изменение только на повышение.',
+                    'Сумма с учётом отсутствий × (дни пополнения ÷ период продаж); дни: рек. по SKU (эпизоды нуля) → оверрайд поставщика → глобаль. Редкий товар — ранний выход в базовый запас для редких; далее кратность и % упаковки; макс. изменение только на повышение.',
             };
 
             res.json({

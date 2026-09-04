@@ -70,7 +70,6 @@ const RANKING_SORT = new Set([
     'formula_proposed_sum',
     'gross_margin_est',
     'margin_pct',
-    'recommended_replenishment_days',
     'chronic_sku_count',
     'flicker_sku_count',
     'absence_sku_count',
@@ -333,7 +332,6 @@ function mapRankingRow(r, ctx) {
 function attachAbsenceProfile(row, absenceMap) {
     const sk = row && row.supplier_key ? String(row.supplier_key) : '';
     const abs = (absenceMap && sk && absenceMap[sk]) || null;
-    row.recommended_replenishment_days = abs ? abs.recommended_replenishment_days : null;
     row.absence_sku_count = abs ? abs.absence_sku_count : 0;
     row.absence_days_sum = abs ? abs.absence_days_sum : 0;
     row.absence_episode_count = abs ? abs.absence_episode_count : 0;
@@ -342,7 +340,7 @@ function attachAbsenceProfile(row, absenceMap) {
     row.chronic_max_streak_days = abs ? abs.chronic_max_streak_days : 0;
     row.flicker_sku_count = abs ? abs.flicker_sku_count : 0;
     row.absence_top_problem_skus = abs ? abs.top_problem_skus || [] : [];
-    if (abs && abs.recommended_replenishment_days != null) {
+    if (abs && (abs.chronic_sku_count > 0 || abs.flicker_sku_count > 0 || abs.absence_sku_count > 0)) {
         const signals = Array.isArray(row.signals) ? row.signals.slice() : [];
         if (abs.chronic_sku_count > 0) {
             signals.push({
@@ -363,11 +361,6 @@ function attachAbsenceProfile(row, absenceMap) {
                 text: 'Частые короткие: ' + abs.flicker_sku_count + ' SKU',
             });
         }
-        signals.push({
-            code: 'replenishment_recommend',
-            level: 'info',
-            text: 'Рек. пополнение: ' + abs.recommended_replenishment_days + ' дн.',
-        });
         row.signals = signals;
     }
     return row;

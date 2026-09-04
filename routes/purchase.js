@@ -48,7 +48,7 @@
  */
 
 const express = require('express');
-const { parseFormulaSettings, pickMarketPriceRub, computeSalesFormula, applyMinStockDgFloor, loadSupplierReplenishmentDaysMap } = require('../lib/datagonSalesFormula');
+const { parseFormulaSettings, pickMarketPriceRub, computeSalesFormula, applyMinStockDgFloor, loadSupplierReplenishmentDaysMap, resolveEffectiveReplenishment } = require('../lib/datagonSalesFormula');
 const { msDemandProjectFilterClause } = require('../lib/datagonSalesFormulaDemandFilter');
 const {
     ensureZeroStockSchema,
@@ -70,6 +70,7 @@ const {
     serializeWindowsSnapshot,
 } = require('../lib/datagonPurchaseWindowSnapshot');
 const { SUPPLIER_NEED_QTY_SQL, SUPPLIER_IN_TRANSIT_SQL } = require('../lib/datagonSuppliersSql');
+const { loadSkuRecommendedDaysByCodes } = require('../lib/datagonSupplierAbsenceProfile');
 
 /** Макс. уникальных кодов на странице, для которых выполняется прогрев составов комплектов. */
 const PURCHASE_BUNDLE_WARM_MAX_CODES = 600;
@@ -92,6 +93,7 @@ const purchaseListResponseCache = new Map();
 /** Сортировки, зависящие от `dg_formula_proposed_cache` / тяжёлого enrich. */
 const PURCHASE_HEAVY_SORT_KEYS = new Set([
     'formula_proposed_min_stock',
+    'recommended_replenishment_days',
     'formula_ms_diff_qty',
     'formula_ms_diff_sum',
     'd_15a',
@@ -310,6 +312,7 @@ const PURCHASE_SORT_KEYS = new Set([
     'stock',
     'is_archived',
     'formula_proposed_min_stock',
+    'recommended_replenishment_days',
     'formula_ms_diff_qty',
     'formula_ms_diff_sum',
     'in_transit',
@@ -893,6 +896,8 @@ function purchaseItemSortValue(d, sortKey) {
             return Number(d.stock || 0);
         case 'formula_proposed_min_stock':
             return parsePurchaseNumOrNull(d.formula_proposed_min_stock);
+        case 'recommended_replenishment_days':
+            return parsePurchaseNumOrNull(d.recommended_replenishment_days);
         case 'formula_ms_diff_qty':
             return computeFormulaMsDiffQty(d);
         case 'formula_ms_diff_sum':
@@ -941,6 +946,7 @@ function buildPurchaseListSelectSql(frag) {
                     med.denorm_pack_qty_auto,
                     med.denorm_market_price_rub,
                     fc.proposed AS formula_cached_proposed,
+                    fc.formula_fp AS formula_cached_fp,
                     fc.windows_json AS formula_cached_windows_json
                 ${baseFromJoin}
                 ${sqlFormulaCacheJoinOnMsExport()}`;
@@ -1896,8 +1902,8 @@ async function loadMsPayloadRowsForCodes(db, codes, formulaMeta, loadOpts = {}) 
         const ph = part.map(() => '?').join(',');
         const fcJoin = useFc ? sqlFormulaCacheJoinOnMsExport() : '';
         const fcSel = useFc
-            ? ', fc.proposed AS formula_cached_proposed, fc.windows_json AS formula_cached_windows_json'
-            : ', NULL AS formula_cached_proposed, NULL AS formula_cached_windows_json';
+            ? ', fc.proposed AS formula_cached_proposed, fc.formula_fp AS formula_cached_fp, fc.windows_json AS formula_cached_windows_json'
+            : ', NULL AS formula_cached_proposed, NULL AS formula_cached_fp, NULL AS formula_cached_windows_json';
         const params = useFc ? [rev, fp, ...part] : [...part];
         const [rows] = await db.query(
             `SELECT
@@ -2010,6 +2016,7 @@ function mapPurchaseSqlRowToDataItem(r, opts = {}) {
             const n = Number(raw);
             return Number.isFinite(n) ? n : null;
         })(),
+        formula_cached_fp: r.formula_cached_fp != null ? String(r.formula_cached_fp) : null,
         d_15a: 0,
         d_15b: 0,
         d_30a: 0,
@@ -2361,6 +2368,8 @@ async function enrichPurchaseRowsWithFormula(db, appSettings, sqlRows, data, opt
     const codes = [...new Set(data.map((d) => String(d.code || '').trim()).filter(Boolean))];
     if (!codes.length) return;
 
+    const skuRecMap = await loadSkuRecommendedDaysByCodes(db, codes, appSettings);
+
     if (purchaseBundleEmptyWarmAt.size > 40000) {
         const cut = Date.now() - PURCHASE_BUNDLE_EMPTY_NEGATIVE_MS;
         for (const [k, t] of purchaseBundleEmptyWarmAt) {
@@ -2585,32 +2594,76 @@ async function enrichPurchaseRowsWithFormula(db, appSettings, sqlRows, data, opt
         }
 
         if (mode !== 'windows_only') {
-            const cachedFormula =
-                d.formula_proposed_min_stock != null && Number.isFinite(Number(d.formula_proposed_min_stock))
-                    ? Number(d.formula_proposed_min_stock)
+            const supplierKey = String(d.supplier || '').trim();
+            const ovDays = supplierRdMap.has(supplierKey) ? supplierRdMap.get(supplierKey) : null;
+            const skuAbs = skuRecMap.get(codeKey) || null;
+            const skuRecDays =
+                skuAbs && skuAbs.recommended_replenishment_days != null
+                    ? skuAbs.recommended_replenishment_days
                     : null;
-            if (cachedFormula != null) {
-                d.formula_proposed_min_stock = applyMinStockDgFloor(cachedFormula, d.min_stock_dg);
+            const resolved = resolveEffectiveReplenishment(appSettings, {
+                supplierDays: ovDays,
+                skuRecommendDays: skuRecDays,
+            });
+            d.recommended_replenishment_days = skuRecDays;
+            d.replenishment_days_effective = resolved.replenishmentDays;
+            d.replenishment_source = resolved.replenishmentSource || 'global';
+
+            const formulaCfg = parseFormulaSettings(appSettings, {
+                replenishmentDaysOverride: resolved.replenishmentDays,
+                replenishmentSourceHint: resolved.replenishmentSource,
+            });
+            const formulaArgs = {
+                sumQty,
+                sumQtyAbsenceWindow: sumQtyAbs,
+                absenceDistinctDays: absencePack.effective,
+                marketPriceRub,
+                multiplicity,
+                stockQty: d.stock,
+                prevBaseline,
+                prevBaselineSource,
+            };
+            // Всегда считаем на странице: нужны поля разбивки (спрос / база / прирост от рек. дней).
+            const fr = computeSalesFormula({
+                settings: formulaCfg,
+                ...formulaArgs,
+            });
+            d.formula_proposed_min_stock = applyMinStockDgFloor(fr.proposed_min_stock, d.min_stock_dg);
+            const inp = fr.inputs || {};
+            d.formula_sum_qty_window = inp.sum_qty_window;
+            d.formula_adjusted_sales_sum = inp.adjusted_sales_sum;
+            d.formula_missed_sales_equiv = inp.missed_sales_equiv;
+            d.formula_draft_core =
+                inp.draft_core != null
+                    ? inp.draft_core
+                    : inp.draft_pre_pack != null
+                      ? inp.draft_pre_pack
+                      : null;
+            d.formula_rare_short_circuit = Boolean(inp.rare_short_circuit);
+            d.formula_sales_window_days = inp.sales_window_days;
+
+            const baseCfg = parseFormulaSettings(appSettings, {
+                replenishmentDaysOverride: ovDays,
+            });
+            d.formula_base_replenishment_days = baseCfg.replenishmentDays;
+            if (
+                resolved.replenishmentSource === 'sku' &&
+                Number(resolved.replenishmentDays) > Number(baseCfg.replenishmentDays)
+            ) {
+                const frBase = computeSalesFormula({
+                    settings: baseCfg,
+                    ...formulaArgs,
+                });
+                d.formula_proposed_at_base_days = applyMinStockDgFloor(
+                    frBase.proposed_min_stock,
+                    d.min_stock_dg,
+                );
+                const uplift =
+                    Number(d.formula_proposed_min_stock) - Number(d.formula_proposed_at_base_days);
+                d.formula_uplift_from_rec_days = Number.isFinite(uplift) ? uplift : null;
             } else {
-                const supplierKey = String(d.supplier || '').trim();
-                const ovDays = supplierRdMap.has(supplierKey) ? supplierRdMap.get(supplierKey) : null;
-                const formulaCfg = parseFormulaSettings(appSettings, {
-                    replenishmentDaysOverride: ovDays,
-                });
-                const fr = computeSalesFormula({
-                    settings: formulaCfg,
-                    sumQty,
-                    sumQtyAbsenceWindow: sumQtyAbs,
-                    absenceDistinctDays: absencePack.effective,
-                    marketPriceRub,
-                    multiplicity,
-                    stockQty: d.stock,
-                    prevBaseline,
-                    prevBaselineSource,
-                });
-                d.formula_proposed_min_stock = applyMinStockDgFloor(fr.proposed_min_stock, d.min_stock_dg);
-                d.replenishment_days_effective = formulaCfg.replenishmentDays;
-                d.replenishment_source = formulaCfg.replenishmentSource || 'global';
+                d.formula_proposed_at_base_days = d.formula_proposed_min_stock;
+                d.formula_uplift_from_rec_days = 0;
             }
         }
 
@@ -2813,6 +2866,8 @@ async function upsertFormulaCacheFromPageItems(db, appSettings, pageItems, dataR
     await ensureFormulaProposedCacheSchema(db);
     const rev = dataRev != null ? String(dataRev) : await loadPurchaseDataRevisionCached(db);
     const supplierRdMap = await loadSupplierReplenishmentDaysMap(db);
+    const codes = pageItems.map((d) => String(d.code || '').trim()).filter(Boolean);
+    const skuRecMap = await loadSkuRecommendedDaysByCodes(db, codes, appSettings);
     let n = 0;
     for (const d of pageItems) {
         const code = String(d.code || '').trim();
@@ -2822,7 +2877,19 @@ async function upsertFormulaCacheFromPageItems(db, appSettings, pageItems, dataR
         const wj = serializeWindowsSnapshot(d);
         const supplierKey = String(d.supplier || '').trim();
         const ovDays = supplierRdMap.has(supplierKey) ? supplierRdMap.get(supplierKey) : null;
-        const fp = buildEffectiveFormulaFingerprint(appSettings, ovDays);
+        const skuAbs = skuRecMap.get(code);
+        const skuRecDays =
+            skuAbs && skuAbs.recommended_replenishment_days != null
+                ? skuAbs.recommended_replenishment_days
+                : null;
+        const resolved = resolveEffectiveReplenishment(appSettings, {
+            supplierDays: ovDays,
+            skuRecommendDays: skuRecDays,
+        });
+        const fp = buildEffectiveFormulaFingerprint(appSettings, {
+            replenishmentDays: resolved.replenishmentDays,
+            replenishmentSource: resolved.replenishmentSource,
+        });
         await db.query(
             `INSERT INTO dg_formula_proposed_cache (code, proposed, formula_fp, data_rev, windows_json)
              VALUES (?, ?, ?, ?, ?)

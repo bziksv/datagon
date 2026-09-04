@@ -1616,6 +1616,7 @@
         ["buy_price", "Закупочная цена", { center: true }],
         ["min_stock", "Неснижаемый остаток", { center: true }],
         ["formula_proposed_min_stock", "Предлагаемый нес.ост.", { center: true }],
+        ["recommended_replenishment_days", "Рек. пополнение, дн.", { center: true }],
         ["formula_ms_diff_qty", "Разница в шт", { center: true }],
         ["formula_ms_diff_sum", "Разница в сумме", { center: true }],
         ["automation_price", "Автоматизация цены", { center: true, hideInToPurchaseMode: true }],
@@ -1652,7 +1653,9 @@
         buy_price: "Закупочная цена из МойСклад (строка в ms_export.buy_price).",
         min_stock: "Неснижаемый остаток из МС (minimumBalance). Участвует в расчёте «К закупке».",
         formula_proposed_min_stock:
-          "Предлагаемый неснижаемый по формуле продаж (кэш dg_formula_proposed_cache). Не подменяет МС в расчёте «К закупке».",
+          "Предлагаемый неснижаемый. Под числом: сколько было бы на базовых днях и сколько добавили рек. дни. Упущенные (анализ отсутствий) и рек. дни — разные рычаги против нуля на складе, не дубль одной поправки.",
+        recommended_replenishment_days:
+          "Рек. дни горизонта по эпизодам нуля. В формуле поднимают k (если выше базы). Отдельно от «упущенных» в спросе — вместе усиливают запас против отсутствия.",
         formula_ms_diff_qty:
           "Разница в шт: округлённый «Предлагаемый нес.ост.» − округлённый неснижаемый МС. Без формулы — прочерк.",
         formula_ms_diff_sum:
@@ -1712,7 +1715,7 @@
 
       var SORTABLE = new Set([
         "code", "article", "name", "supplier", "price_comment", "buy_price",
-        "min_stock", "formula_proposed_min_stock", "formula_ms_diff_qty", "formula_ms_diff_sum",
+        "min_stock", "formula_proposed_min_stock", "recommended_replenishment_days", "formula_ms_diff_qty", "formula_ms_diff_sum",
         "automation_price",
         "min_stock_dg", "multiplicity",
         "stock", "is_archived", "in_transit",
@@ -1727,6 +1730,7 @@
       /** Паритет с `PURCHASE_HEAVY_SORT_KEYS` в `routes/purchase.js`. */
       var PURCHASE_HEAVY_SORT = new Set([
         "formula_proposed_min_stock",
+        "recommended_replenishment_days",
         "formula_ms_diff_qty", "formula_ms_diff_sum",
         "d_15a", "d_15b", "d_30a", "d_30b",
         "d_60a", "d_60b", "d_90a", "d_90b", "d_180a", "d_180b", "d_365a", "d_365b",
@@ -1862,6 +1866,7 @@
         buy_price: 100,
         min_stock: 70,
         formula_proposed_min_stock: 70,
+        recommended_replenishment_days: 72,
         formula_ms_diff_qty: 76,
         formula_ms_diff_sum: 100,
         automation_price: 70,
@@ -3189,14 +3194,135 @@
           return spAb;
         }
         if (key === "formula_proposed_min_stock") {
-          var fp = document.createElement("span");
-          fp.setAttribute(
-            "data-dg-tooltip",
-            "Расчёт «Формула продаж» (как на карточке товара): те же периоды A и W (поле «Продажи за период, дней» в настройках) и ключи app_settings; при заданном в БД override proposed_min_stock он участвует в расчёте как опорный неснижаемый. «Нес.остаток Датагон» не входит в baseline формулы; если задан > 0, показанное значение не ниже него."
-          );
+          var wrapFp = document.createElement("div");
+          wrapFp.className = "dg-pu-formula-proposed-cell";
+          var fp = document.createElement("div");
           var fpn = r.formula_proposed_min_stock;
           fp.textContent = fpn != null && fpn !== "" && Number.isFinite(Number(fpn)) ? fmtNum(fpn) : "—";
-          return fp;
+
+          var adj =
+            r.formula_adjusted_sales_sum != null && Number.isFinite(Number(r.formula_adjusted_sales_sum))
+              ? Number(r.formula_adjusted_sales_sum)
+              : null;
+          var salesW =
+            r.formula_sum_qty_window != null && Number.isFinite(Number(r.formula_sum_qty_window))
+              ? Number(r.formula_sum_qty_window)
+              : null;
+          var missed =
+            r.formula_missed_sales_equiv != null && Number.isFinite(Number(r.formula_missed_sales_equiv))
+              ? Number(r.formula_missed_sales_equiv)
+              : null;
+          var draft =
+            r.formula_draft_core != null && Number.isFinite(Number(r.formula_draft_core))
+              ? Number(r.formula_draft_core)
+              : null;
+          var daysEff =
+            r.replenishment_days_effective != null && Number.isFinite(Number(r.replenishment_days_effective))
+              ? Math.round(Number(r.replenishment_days_effective))
+              : null;
+          var daysBase =
+            r.formula_base_replenishment_days != null && Number.isFinite(Number(r.formula_base_replenishment_days))
+              ? Math.round(Number(r.formula_base_replenishment_days))
+              : null;
+          var atBase =
+            r.formula_proposed_at_base_days != null && Number.isFinite(Number(r.formula_proposed_at_base_days))
+              ? Number(r.formula_proposed_at_base_days)
+              : null;
+          var uplift =
+            r.formula_uplift_from_rec_days != null && Number.isFinite(Number(r.formula_uplift_from_rec_days))
+              ? Number(r.formula_uplift_from_rec_days)
+              : null;
+          var Wf =
+            r.formula_sales_window_days != null && Number.isFinite(Number(r.formula_sales_window_days))
+              ? Math.round(Number(r.formula_sales_window_days))
+              : null;
+
+          var tipParts = [];
+          if (r.formula_rare_short_circuit) {
+            tipParts.push("Редкий товар: сразу базовый запас для редких (без умножения на дни).");
+          } else if (
+            r.replenishment_source === "sku" &&
+            atBase != null &&
+            uplift != null &&
+            Math.abs(uplift) >= 0.5
+          ) {
+            tipParts.push(
+              "Итог " +
+                fmtNum(fpn) +
+                " шт = " +
+                fmtNum(atBase) +
+                " на " +
+                (daysBase != null ? daysBase : "—") +
+                " дн. (продажи) + " +
+                (uplift > 0 ? "+" : "") +
+                fmtNum(uplift) +
+                " из‑за рек. " +
+                (daysEff != null ? daysEff : "—") +
+                " дн."
+            );
+          } else {
+            tipParts.push(
+              "Итог " +
+                (fpn != null && Number.isFinite(Number(fpn)) ? fmtNum(fpn) : "—") +
+                " шт на " +
+                (daysEff != null ? daysEff : "—") +
+                " дн. пополнения."
+            );
+          }
+          if (!r.formula_rare_short_circuit && salesW != null) {
+            tipParts.push(
+              "Продажи за период: " +
+                fmtNum(Math.round(salesW)) +
+                " шт" +
+                (missed != null && missed >= 0.5 ? ", упущенные ≈ " + fmtNum(Math.round(missed)) : "") +
+                "."
+            );
+          }
+          tipParts.push(
+            "Упущенные (спрос) и рек. дни (горизонт) — разные рычаги против нуля; вместе дают более жёсткий запас, не дубль одной поправки."
+          );
+          wrapFp.setAttribute("data-dg-tooltip", tipParts.join(" "));
+
+          wrapFp.appendChild(fp);
+          if (fpn != null && Number.isFinite(Number(fpn)) && !r.formula_rare_short_circuit && atBase != null) {
+            var sub = document.createElement("div");
+            sub.className = "text-muted";
+            sub.style.fontSize = "11px";
+            sub.style.lineHeight = "1.2";
+            // Один формат для всех строк: сколько было бы на базовых днях и что добавили рек. дни.
+            var line =
+              "на " +
+              (daysBase != null ? daysBase : "—") +
+              " дн.: " +
+              fmtNum(atBase);
+            if (uplift != null && Math.abs(uplift) >= 0.5) {
+              line +=
+                " · " +
+                (uplift > 0 ? "+" : "") +
+                fmtNum(uplift) +
+                " рек." +
+                (daysEff != null && daysBase != null && daysEff !== daysBase ? " (" + daysEff + " дн.)" : "");
+            } else if (daysEff != null && daysBase != null && daysEff > daysBase) {
+              line += " · рек. " + daysEff + " дн. без прироста";
+            }
+            sub.textContent = line;
+            wrapFp.appendChild(sub);
+          }
+          return wrapFp;
+        }
+        if (key === "recommended_replenishment_days") {
+          var spRd = document.createElement("span");
+          var rdn = r.recommended_replenishment_days;
+          spRd.textContent =
+            rdn != null && rdn !== "" && Number.isFinite(Number(rdn)) ? fmtNum(rdn) : "—";
+          var tipRd = "Рек. дни по эпизодам нуля для этого кода.";
+          if (r.replenishment_source === "sku") {
+            tipRd += " Уже в формуле (выше базы).";
+          } else if (rdn != null && Number.isFinite(Number(rdn))) {
+            tipRd += " Не выше базы — в формуле база (поставщик/глобаль).";
+          }
+          spRd.setAttribute("data-dg-tooltip", tipRd);
+          return spRd;
         }
         if (key === "formula_ms_diff_qty") {
           var spDiffQty = document.createElement("span");

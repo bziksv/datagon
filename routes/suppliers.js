@@ -250,12 +250,10 @@ function buildSupplierAggregatesSubquery(formulaFp, dataRev) {
     const rev = String(dataRev || '');
     const fcJoin =
         fp && rev
-            ? `LEFT JOIN dg_supplier_settings ss_rd ON ss_rd.supplier_key = TRIM(mse.supplier)
-        LEFT JOIN dg_formula_proposed_cache fc
+            ? `LEFT JOIN dg_formula_proposed_cache fc
           ON fc.code = mse.code AND fc.data_rev = '${rev.replace(/'/g, "''")}'
-          AND fc.formula_fp = CONCAT('${fp.replace(/'/g, "''")}', '|', IF(ss_rd.replenishment_days IS NULL, 'rd:g', CONCAT('rd:', CAST(ROUND(ss_rd.replenishment_days) AS CHAR))))`
-            : `LEFT JOIN dg_supplier_settings ss_rd ON ss_rd.supplier_key = TRIM(mse.supplier)
-        LEFT JOIN dg_formula_proposed_cache fc ON fc.code = mse.code`;
+          AND fc.formula_fp LIKE CONCAT('${fp.replace(/'/g, "''")}', '|rd:%')`
+            : `LEFT JOIN dg_formula_proposed_cache fc ON fc.code = mse.code`;
     return `
         SELECT
             TRIM(mse.supplier) AS supplier_key,

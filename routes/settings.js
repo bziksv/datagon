@@ -172,7 +172,8 @@ module.exports = (db, appSettings) => {
             fetch_proxy_enabled, fetch_proxy_list,
             ozon_client_id, ozon_api_key, wb_api_key, wb_token_type, ym_api_key, ym_campaign_id, ym_business_id,
             mp_ozon_delay_ms, mp_wb_delay_cards_ms, mp_wb_delay_other_ms, mp_yandex_delay_ms, mp_ozon_include_archived,
-            sales_formula_replenishment_days, sales_formula_replenishment_coef, sales_formula_sales_window_days, sales_formula_absence_analysis_days,
+            sales_formula_replenishment_days, sales_formula_replenishment_coef, sales_formula_sku_replenishment_enabled,
+            sales_formula_sales_window_days, sales_formula_absence_analysis_days,
             sales_formula_base_qty, sales_formula_rare_base_qty, sales_formula_rare_avg_max, sales_formula_expensive_rare_threshold_rub,
             sales_formula_expensive_rare_min_qty, sales_formula_max_change_coef, sales_formula_incomplete_pack_pct,
             sales_formula_project_mode, sales_formula_project_uuids
@@ -357,6 +358,12 @@ module.exports = (db, appSettings) => {
                 const coef = W > 0 ? days / W : 0;
                 queries.push(['sales_formula_replenishment_days', String(days)]);
                 queries.push(['sales_formula_replenishment_coef', String(coef)]);
+            }
+            if (sales_formula_sku_replenishment_enabled !== undefined) {
+                queries.push([
+                    'sales_formula_sku_replenishment_enabled',
+                    sales_formula_sku_replenishment_enabled ? 1 : 0,
+                ]);
             }
             if (sales_formula_sales_window_days !== undefined) {
                 const w = Math.max(7, Math.min(730, Math.round(Number(sales_formula_sales_window_days || 90))));
@@ -545,6 +552,9 @@ module.exports = (db, appSettings) => {
                 const coef = W > 0 ? days / W : 0;
                 appSettings.sales_formula_replenishment_days = days;
                 appSettings.sales_formula_replenishment_coef = coef;
+            }
+            if (sales_formula_sku_replenishment_enabled !== undefined) {
+                appSettings.sales_formula_sku_replenishment_enabled = sales_formula_sku_replenishment_enabled ? 1 : 0;
             }
             if (sales_formula_sales_window_days !== undefined) {
                 appSettings.sales_formula_sales_window_days = Math.max(7, Math.min(730, Math.round(Number(sales_formula_sales_window_days || 90))));

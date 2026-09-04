@@ -818,16 +818,6 @@
           },
         ],
         [
-          "recommended_replenishment_days",
-          "Рек. пополнение, дн.",
-          {
-            center: true,
-            headerLines: ["Рек. пополнение", "дн."],
-            thTip:
-              "Рекомендация дней пополнения (sales-weighted P90 по SKU): из эпизодов нулевого остатка и продаж. Подставляется вручную на /suppliers.html.",
-          },
-        ],
-        [
           "chronic_sku_count",
           "Долгие провалы SKU",
           {
@@ -895,7 +885,6 @@
         min_stock_sum: 88,
         formula_proposed_sum: 120,
         min_stock_dg_sum: 110,
-        recommended_replenishment_days: 100,
         chronic_sku_count: 80,
         flicker_sku_count: 80,
         turnover_monthly: 100,
@@ -1294,12 +1283,6 @@
             return '<td class="text-end">' + fmtQty(r.formula_proposed_sum) + "</td>";
           case "min_stock_dg_sum":
             return '<td class="text-end">' + fmtQty(r.min_stock_dg_sum) + "</td>";
-          case "recommended_replenishment_days":
-            return (
-              '<td class="text-end dg-sa-cell-drill" title="Сводка: таблица SKU с рекомендациями">' +
-              (r.recommended_replenishment_days != null ? fmtQty(r.recommended_replenishment_days) : "—") +
-              "</td>"
-            );
           case "chronic_sku_count":
             return '<td class="text-end">' + fmtQty(r.chronic_sku_count) + "</td>";
           case "flicker_sku_count":
@@ -1693,7 +1676,6 @@
         gross_margin_est: "Оценка валовой маржи (выручка − закупка проданного).",
         margin_pct: "Маржа в % от выручки.",
         days_on_stock: "Сколько дней SKU числится на складе (оценка Datagon).",
-        recommended_replenishment_days: "Рекомендуемые дни пополнения по эпизодам нулевого остатка (и продажам).",
         max_streak_days: "Самый длинный непрерывный нуль за период, дней.",
         flags: "Долгий провал (≥14 дн.) / частые короткие эпизоды.",
       };
@@ -1708,11 +1690,6 @@
         ["sales_revenue", "Продажи ₽", { type: "number", align: "end", thTip: SA_DETAIL_TH.sales_revenue }],
         ["gross_margin_est", "Маржа", { type: "number", align: "end", thTip: SA_DETAIL_TH.gross_margin_est }],
         ["margin_pct", "Маржа %", { type: "number", align: "end", thTip: SA_DETAIL_TH.margin_pct }],
-        [
-          "recommended_replenishment_days",
-          "Рек. дн.",
-          { type: "number", align: "end", headerLines: ["Рек.", "дн."], thTip: SA_DETAIL_TH.recommended_replenishment_days },
-        ],
         [
           "max_streak_days",
           "Макс. простой",
@@ -1746,7 +1723,6 @@
       var SA_DETAIL_COLS_ABSENCE = [
         ["code", "Код", { thTip: SA_DETAIL_TH.code }],
         ["name", "Наименование", { nameCol: true, thTip: "Код из лога; имя подставляется при наличии в каталоге" }],
-        ["recommended_replenishment_days", "Рек. дн.", { type: "number", align: "end", thTip: "Рекомендуемые дни пополнения по эпизодам нуля" }],
         ["max_streak_days", "Макс. простой", { type: "number", align: "end", thTip: "Самый длинный непрерывный нуль, дней" }],
         ["episode_count", "Эпизоды", { type: "number", align: "end", thTip: "Число эпизодов отсутствия за период" }],
         ["avg_episode_days", "Ср. эпизод", { type: "number", align: "end", thTip: "Средняя длина эпизода, дней" }],
@@ -1767,7 +1743,6 @@
           sales_revenue: 88,
           gross_margin_est: 80,
           margin_pct: 68,
-          recommended_replenishment_days: 64,
           max_streak_days: 72,
           flags: 90,
           days_on_stock: 76,
@@ -1838,7 +1813,7 @@
           tbodyId: "dg-sa-detail-absence",
           theadId: "dg-sa-detail-absence-thead",
           cols: SA_DETAIL_COLS_ABSENCE,
-          defaultSort: { by: "recommended_replenishment_days", dir: "desc" },
+          defaultSort: { by: "max_streak_days", dir: "desc" },
           emptyText: "Нет SKU с днями нулевого остатка в логе за период",
         },
       };
@@ -2096,12 +2071,6 @@
             return (
               '<td class="text-end">' +
               (p.days_on_stock != null && Number(p.days_on_stock) > 0 ? fmtQty(p.days_on_stock) : "—") +
-              "</td>"
-            );
-          case "recommended_replenishment_days":
-            return (
-              '<td class="text-end">' +
-              (p.recommended_replenishment_days != null ? fmtQty(p.recommended_replenishment_days) : "—") +
               "</td>"
             );
           case "max_streak_days":
@@ -2365,7 +2334,7 @@
           if (viewMode === "summary" && row) sig.innerHTML = signalBadges(row.signals);
           else if (viewMode === "warehouse")
             sig.innerHTML =
-              '<span class="text-muted small">Складские SKU: остатки, продажи и рек. дни пополнения по каждому коду</span>';
+              '<span class="text-muted small">Складские SKU: остатки, продажи и эпизоды нулевого остатка по каждому коду</span>';
           else if (viewMode === "all_skus")
             sig.innerHTML =
               '<span class="text-muted small">Сначала позиции без «складская», затем складские с полными показателями</span>';
@@ -2385,7 +2354,6 @@
           var a = map[String(p.code || "")];
           if (!a) {
             return Object.assign({}, p, {
-              recommended_replenishment_days: null,
               max_streak_days: null,
               episode_count: null,
               avg_episode_days: null,
@@ -2395,7 +2363,6 @@
             });
           }
           return Object.assign({}, p, {
-            recommended_replenishment_days: a.recommended_replenishment_days,
             max_streak_days: a.max_streak_days,
             episode_count: a.episode_count,
             avg_episode_days: a.avg_episode_days,
@@ -2493,19 +2460,19 @@
           var roll = absencePayload.rollup;
           var rollEl = document.getElementById("dg-sa-detail-absence-rollup");
           if (rollEl) {
-            if (roll && roll.recommended_replenishment_days != null) {
+            if (roll && (roll.chronic_sku_count > 0 || roll.flicker_sku_count > 0 || roll.absence_sku_count > 0)) {
               rollEl.textContent =
-                "Рек. поставщику: " +
-                roll.recommended_replenishment_days +
-                " дн. · долгих SKU: " +
+                "Долгих SKU: " +
                 (roll.chronic_sku_count || 0) +
                 " · частых коротких: " +
                 (roll.flicker_sku_count || 0) +
                 " · SKU с нулём: " +
-                (roll.absence_sku_count || 0);
+                (roll.absence_sku_count || 0) +
+                (roll.chronic_max_streak_days
+                  ? " · макс. простой: " + roll.chronic_max_streak_days + " дн."
+                  : "");
             } else {
-              rollEl.textContent =
-                "Эпизоды нулевого остатка по SKU → рекомендация дней пополнения (с учётом продаж)";
+              rollEl.textContent = "Эпизоды нулевого остатка по SKU за период анализа";
             }
           }
           setDetailBlockCount("dg-sa-detail-absence-count", absencePayload, absence.length);
