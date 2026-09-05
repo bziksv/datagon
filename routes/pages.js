@@ -75,12 +75,20 @@ module.exports = (db, settings) => {
 
     /**
      * URL страниц с confirmed-матчем.
-     * Идём от product_matches + индексы prices(project_id, sku|name) — БЕЗ CREATE INDEX на GET
-     * и БЕЗ коррелированного EXISTS (он вешал очередь на минуты).
+     * Идём от product_matches + индексы prices(project_id, sku) — БЕЗ CREATE INDEX на GET
+     * и БЕЗ OR по названию (он вешал пул соединений на минуты).
      */
+    let matchedUrlSetCache = { key: '', ts: 0, data: null };
     async function loadMatchedUrlSet(projectId) {
+        const cacheKey = projectId && projectId !== 'all' ? String(projectId) : 'all';
+        if (
+            matchedUrlSetCache.data &&
+            matchedUrlSetCache.key === cacheKey &&
+            Date.now() - matchedUrlSetCache.ts < 60000
+        ) {
+            return matchedUrlSetCache.data;
+        }
         const paramsSku = [];
-        const paramsName = [];
         let skuSql = `
             SELECT DISTINCT pr.project_id, pr.url
               FROM product_matches pm
@@ -89,32 +97,20 @@ module.exports = (db, settings) => {
                AND pm.competitor_sku = pr.sku
              WHERE pm.status = 'confirmed'
                AND pm.competitor_sku IS NOT NULL AND pm.competitor_sku <> ''`;
-        let nameSql = `
-            SELECT DISTINCT pr.project_id, pr.url
-              FROM product_matches pm
-              INNER JOIN prices pr
-                ON pr.project_id = pm.competitor_site_id
-               AND pm.competitor_name = pr.product_name
-             WHERE pm.status = 'confirmed'
-               AND (pm.competitor_sku IS NULL OR pm.competitor_sku = '')`;
         if (projectId && projectId !== 'all') {
             skuSql += ' AND pm.competitor_site_id = ?';
-            nameSql += ' AND pm.competitor_site_id = ?';
             paramsSku.push(projectId);
-            paramsName.push(projectId);
         }
-        const [[skuRows], [nameRows]] = await Promise.all([
-            db.query(skuSql, paramsSku),
-            db.query(nameSql, paramsName)
-        ]);
+        const [skuRows] = await db.query(skuSql, paramsSku);
         const byProject = new Map();
-        for (const row of [...(skuRows || []), ...(nameRows || [])]) {
+        for (const row of skuRows || []) {
             const pid = Number(row.project_id);
             const url = String(row.url || '');
             if (!Number.isFinite(pid) || !url) continue;
             if (!byProject.has(pid)) byProject.set(pid, new Set());
             byProject.get(pid).add(url);
         }
+        matchedUrlSetCache = { key: cacheKey, ts: Date.now(), data: byProject };
         return byProject;
     }
 
@@ -205,10 +201,9 @@ module.exports = (db, settings) => {
                 FROM prices pr
                 INNER JOIN product_matches pm ON pm.status = 'confirmed'
                     AND pm.competitor_site_id = pr.project_id
-                    AND (
-                        (pm.competitor_sku IS NOT NULL AND pm.competitor_sku <> '' AND pm.competitor_sku = pr.sku)
-                        OR pm.competitor_name = pr.product_name
-                    )
+                    AND pm.competitor_sku IS NOT NULL
+                    AND pm.competitor_sku <> ''
+                    AND pm.competitor_sku = pr.sku
                 WHERE (pr.project_id, pr.url) IN (${placeholders})
                 `,
                 flat

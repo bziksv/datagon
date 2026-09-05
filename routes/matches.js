@@ -2240,91 +2240,117 @@ module.exports = (db, settings) => {
 
             const compBySku = new Map();
             const compByName = new Map();
-            if (compSiteIds.length && compSkus.length) {
-                // Только по SKU страницы — без OR по длинным названиям (они раздували scan prices).
-                const params = [...compSiteIds, ...compSkus];
-                const [compRows] = await db.query(
-                    `SELECT p.project_id, p.sku, p.product_name, p.price, p.currency, p.url, p.parsed_at, p.id
-                     FROM prices p
-                     WHERE p.project_id IN (${compSiteIds.map(() => '?').join(',')})
-                       AND p.sku IN (${compSkus.map(() => '?').join(',')})
-                     ORDER BY p.parsed_at DESC, p.id DESC
-                     LIMIT 2000`,
-                    params
-                );
-                for (const r of compRows) {
-                    const sku = String(r.sku || '').trim();
-                    if (sku) {
-                        const keySku = `${r.project_id}||${sku}`;
-                        if (!compBySku.has(keySku)) compBySku.set(keySku, r);
-                    }
-                }
-            } else if (compSiteIds.length && compNames.length) {
-                const params = [...compSiteIds, ...compNames];
-                const [compRows] = await db.query(
-                    `SELECT p.project_id, p.sku, p.product_name, p.price, p.currency, p.url, p.parsed_at, p.id
-                     FROM prices p
-                     WHERE p.project_id IN (${compSiteIds.map(() => '?').join(',')})
-                       AND p.product_name IN (${compNames.map(() => '?').join(',')})
-                     ORDER BY p.parsed_at DESC, p.id DESC
-                     LIMIT 2000`,
-                    params
-                );
-                for (const r of compRows) {
-                    const name = String(r.product_name || '').trim();
-                    if (name) {
-                        const keyName = `${r.project_id}||${name}`;
-                        if (!compByName.has(keyName)) compByName.set(keyName, r);
-                    }
-                }
-            }
-
             const myBySku = new Map();
             const myByName = new Map();
-            if (mySiteIds.length && (mySkus.length || myNames.length)) {
-                const whereParts = [];
-                const params = [...mySiteIds];
-                if (mySkus.length) {
-                    whereParts.push(`mp.sku IN (${mySkus.map(() => '?').join(',')})`);
-                    params.push(...mySkus);
-                }
-                if (myNames.length) {
-                    whereParts.push(`mp.name IN (${myNames.map(() => '?').join(',')})`);
-                    params.push(...myNames);
-                }
-                const [myRows] = await db.query(
-                    `SELECT mp.site_id, mp.sku, mp.name, mp.price, mp.currency, mp.source_url, mp.source_id, mp.updated_at, mp.id
-                     FROM my_products mp
-                     WHERE mp.is_active = 1
-                       AND mp.site_id IN (${mySiteIds.map(() => '?').join(',')})
-                       AND (${whereParts.join(' OR ')})
-                     ORDER BY mp.updated_at DESC, mp.id DESC`,
-                    params
-                );
-                for (const r of myRows) {
-                    const sku = String(r.sku || '').trim();
-                    const name = String(r.name || '').trim();
-                    if (sku) {
-                        const keySku = `${r.site_id}||${sku}`;
-                        if (!myBySku.has(keySku)) myBySku.set(keySku, r);
-                    }
-                    if (name) {
-                        const keyName = `${r.site_id}||${name}`;
-                        if (!myByName.has(keyName)) myByName.set(keyName, r);
-                    }
-                }
-            }
-
             const mySiteMeta = new Map();
-            if (mySiteIds.length) {
-                const [siteRows] = await db.query(
-                    `SELECT id, domain, cms_type
-                     FROM my_sites
-                     WHERE id IN (${mySiteIds.map(() => '?').join(',')})`,
-                    mySiteIds
+
+            const enrichJobs = [];
+            if (compSiteIds.length && compSkus.length) {
+                enrichJobs.push(
+                    (async () => {
+                        const params = [...compSiteIds, ...compSkus];
+                        const [compRows] = await db.query(
+                            `SELECT p.project_id, p.sku, p.product_name, p.price, p.currency, p.url, p.parsed_at, p.id
+                             FROM prices p
+                             WHERE p.project_id IN (${compSiteIds.map(() => '?').join(',')})
+                               AND p.sku IN (${compSkus.map(() => '?').join(',')})
+                             ORDER BY p.parsed_at DESC, p.id DESC
+                             LIMIT 2000`,
+                            params
+                        );
+                        for (const r of compRows) {
+                            const sku = String(r.sku || '').trim();
+                            if (sku) {
+                                const keySku = `${r.project_id}||${sku}`;
+                                if (!compBySku.has(keySku)) compBySku.set(keySku, r);
+                            }
+                        }
+                    })()
                 );
-                siteRows.forEach((s) => mySiteMeta.set(Number(s.id), s));
+            } else if (compSiteIds.length && compNames.length) {
+                enrichJobs.push(
+                    (async () => {
+                        const params = [...compSiteIds, ...compNames];
+                        const [compRows] = await db.query(
+                            `SELECT p.project_id, p.sku, p.product_name, p.price, p.currency, p.url, p.parsed_at, p.id
+                             FROM prices p
+                             WHERE p.project_id IN (${compSiteIds.map(() => '?').join(',')})
+                               AND p.product_name IN (${compNames.map(() => '?').join(',')})
+                             ORDER BY p.parsed_at DESC, p.id DESC
+                             LIMIT 2000`,
+                            params
+                        );
+                        for (const r of compRows) {
+                            const name = String(r.product_name || '').trim();
+                            if (name) {
+                                const keyName = `${r.project_id}||${name}`;
+                                if (!compByName.has(keyName)) compByName.set(keyName, r);
+                            }
+                        }
+                    })()
+                );
             }
+            if (mySiteIds.length && mySkus.length) {
+                enrichJobs.push(
+                    (async () => {
+                        const params = [...mySiteIds, ...mySkus];
+                        const [myRows] = await db.query(
+                            `SELECT mp.site_id, mp.sku, mp.name, mp.price, mp.currency, mp.source_url, mp.source_id, mp.updated_at, mp.id
+                             FROM my_products mp
+                             WHERE mp.is_active = 1
+                               AND mp.site_id IN (${mySiteIds.map(() => '?').join(',')})
+                               AND mp.sku IN (${mySkus.map(() => '?').join(',')})
+                             ORDER BY mp.updated_at DESC, mp.id DESC
+                             LIMIT 2000`,
+                            params
+                        );
+                        for (const r of myRows) {
+                            const sku = String(r.sku || '').trim();
+                            if (sku) {
+                                const keySku = `${r.site_id}||${sku}`;
+                                if (!myBySku.has(keySku)) myBySku.set(keySku, r);
+                            }
+                        }
+                    })()
+                );
+            } else if (mySiteIds.length && myNames.length) {
+                enrichJobs.push(
+                    (async () => {
+                        const params = [...mySiteIds, ...myNames];
+                        const [myRows] = await db.query(
+                            `SELECT mp.site_id, mp.sku, mp.name, mp.price, mp.currency, mp.source_url, mp.source_id, mp.updated_at, mp.id
+                             FROM my_products mp
+                             WHERE mp.is_active = 1
+                               AND mp.site_id IN (${mySiteIds.map(() => '?').join(',')})
+                               AND mp.name IN (${myNames.map(() => '?').join(',')})
+                             ORDER BY mp.updated_at DESC, mp.id DESC
+                             LIMIT 2000`,
+                            params
+                        );
+                        for (const r of myRows) {
+                            const name = String(r.name || '').trim();
+                            if (name) {
+                                const keyName = `${r.site_id}||${name}`;
+                                if (!myByName.has(keyName)) myByName.set(keyName, r);
+                            }
+                        }
+                    })()
+                );
+            }
+            if (mySiteIds.length) {
+                enrichJobs.push(
+                    (async () => {
+                        const [siteRows] = await db.query(
+                            `SELECT id, domain, cms_type
+                             FROM my_sites
+                             WHERE id IN (${mySiteIds.map(() => '?').join(',')})`,
+                            mySiteIds
+                        );
+                        siteRows.forEach((s) => mySiteMeta.set(Number(s.id), s));
+                    })()
+                );
+            }
+            if (enrichJobs.length) await Promise.all(enrichJobs);
 
             const merged = rows.map((m) => {
                 const compSku = String(m.competitor_sku || '').trim();
