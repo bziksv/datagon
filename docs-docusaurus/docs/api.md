@@ -330,12 +330,12 @@ Body:
 { "url": "https://...", "project_id": 1 }
 ```
 
-### POST `/api/pages/refresh-results`
-Взять URL из последних результатов и вернуть их в очередь.
+### POST `/api/parse/refresh-results`
+Вернуть в очередь URL из **результатов по текущим фильтрам** (тот же смысл статуса, что в списке: `COALESCE(pages.status, prices.page_status_cached)`). Обновляет `pages.status=pending` и `prices.page_status_cached`.
 
 Body (пример):
 ```json
-{ "project_id": "all", "limit": 100 }
+{ "project_id": 4, "page_status": "error", "search": "" }
 ```
 
 ### POST `/api/pages/discover-start`
@@ -360,6 +360,7 @@ Query:
 - `search` — подстрока по `sku`, `product_name`, `url` (и `pages.url` при join)
 - `matched` — `1` только сопоставленные / `0` только без подтверждённого матча (фильтр через `IN`/`NOT IN` от подтверждённых `product_matches`, не построчный `EXISTS`)
 - для строк ответа дополнительно: `match_partners[]` (`my_sku`, `my_product_name`, `my_site_name`, …), `match_my_sku` / `match_my_name` / `match_my_site` (первая пара)
+- `page_status`, `page_error` (`pages.last_error`) — в UI бейдж «Ошибка» показывает человекочитаемую подсказку по наведению
 - `limit` — максимум **1500** строк на запрос (сверху зажимается на сервере; раньше до 25000 можно было положить Node по памяти).
 - `offset`
 

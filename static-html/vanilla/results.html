@@ -177,6 +177,23 @@
       pointer-events: none;
       transition: opacity 0.12s ease-out;
     }
+    body.datagon-vanilla-body[data-dg-active-nav="results"] .dg-res-match-cell {
+      vertical-align: top;
+      min-width: 11rem;
+      max-width: 18rem;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="results"] a.dg-res-match-link {
+      color: inherit;
+      text-decoration: none;
+      display: block;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="results"] a.dg-res-match-link:hover {
+      color: #3f6ad8;
+      text-decoration: none;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="results"] a.dg-res-match-link:hover .text-muted {
+      color: #3f6ad8 !important;
+    }
   </style>
 
   <style>
@@ -900,7 +917,7 @@
               <div class="row g-2">
                 <div class="col-md-4" data-dg-res-filter-field="smart">
                   <label class="form-label" for="dg-res-f-search">Умный поиск</label>
-                  <input type="text" class="form-control" id="dg-res-f-search" placeholder='Подстрока в SKU или названии товара; при «Применить»: project:2, status:done' autocomplete="off" />
+                  <input type="text" class="form-control" id="dg-res-f-search" placeholder='SKU, название или URL; при «Применить»: project:2, status:done, url:gka100pz' autocomplete="off" />
                 </div>
                 <div class="col-md-2" data-dg-res-filter-field="project">
                   <label class="form-label" for="dg-res-f-project">Проект</label>
@@ -952,7 +969,7 @@
               <div class="mt-3 d-flex flex-wrap gap-2" data-dg-res-filter-field="filter_actions">
                 <button type="button" class="btn btn-sm btn-primary" id="results-apply" data-dg-tooltip="Применить фильтры и обновить таблицу. Сохраняет выбранные значения для следующего визита." data-dg-notify-start="Применяем фильтры результатов…"><i class="pe-7s-search me-1"></i>Применить</button>
                 <button type="button" class="btn btn-sm btn-outline-secondary" id="results-default" data-dg-tooltip="Сбросить фильтры к значениям по умолчанию и очистить сохранённые настройки этой страницы." data-dg-notify-start="Сбрасываем фильтры результатов…"><i class="pe-7s-refresh me-1"></i>По умолчанию</button>
-                <button type="button" class="btn btn-sm btn-outline-success" id="results-reparse-all" title="Добавить отфильтрованные результаты в очередь повторного парсинга" data-dg-notify-start="Ставим отфильтрованные в очередь перепарсинга…"><i class="pe-7s-refresh-2 me-1"></i>В очередь на перепарсинг</button>
+                <button type="button" class="btn btn-sm btn-outline-success" id="results-reparse-all" title="Повторный парсинг отфильтрованных: обновит артикулы и цены в результатах" data-dg-notify-start="Ставим отфильтрованные в очередь перепарсинга…"><i class="pe-7s-refresh-2 me-1"></i>В очередь на перепарсинг (обновит артикула и цены)</button>
                 <button type="button" class="btn btn-sm btn-outline-danger" id="results-clear-history" title="Очистить историю результатов по текущему проекту" data-dg-notify-start="Очищаем историю результатов…"><i class="pe-7s-trash me-1"></i>Очистить историю</button>
               </div>
               </div>
@@ -1167,6 +1184,28 @@
       var resultsFloatingHeaderRaf = 0;
       var resultsFloatingLastScrollTs = 0;
       var loadResultsGeneration = 0;
+
+      function humanizePageError(raw) {
+        var msg = String(raw || "").trim();
+        if (!msg) return "Парсинг завершился с ошибкой (текст не сохранён).";
+        if (/deadlock/i.test(msg) || /временный сбой записи/i.test(msg)) {
+          return "Временный сбой записи в базу (конфликт потоков). Страницу нужно перепарсить ещё раз — это не ошибка сайта.";
+        }
+        if (/No price and no OOS/i.test(msg)) {
+          return "На странице не нашли ни цену, ни статус «под заказ». Часто это не карточка товара или не сработали селекторы.";
+        }
+        if (/status code 404|\b404\b/i.test(msg)) return "Страница на сайте не найдена (404).";
+        if (/status code 403|\b403\b/i.test(msg)) return "Сайт запретил доступ (403).";
+        if (/status code 429|\b429\b/i.test(msg)) return "Сайт ограничил частоту запросов (429). Попробуйте позже.";
+        if (/status code 5\d\d/i.test(msg)) return "Сайт временно недоступен (ошибка сервера).";
+        if (/timeout|ETIMEDOUT|ECONNABORTED/i.test(msg)) return "Сайт не ответил вовремя.";
+        if (/ECONNRESET|socket hang up/i.test(msg)) return "Соединение с сайтом оборвалось.";
+        if (/ENOTFOUND/i.test(msg)) return "Не удалось найти сайт (DNS).";
+        if (/restart|прерван|Server restart|перезапуск/i.test(msg)) {
+          return "Парсинг прерван (перезапуск сервера). Поставьте снова в очередь.";
+        }
+        return msg.length > 220 ? msg.slice(0, 217) + "…" : msg;
+      }
 
       function storageScope() {
         var userId = window.__DG_USER_ID__ || window.__USER_ID__ || "anon";
@@ -1584,12 +1623,82 @@
           var tdSku = document.createElement("td");
           tdSku.textContent = r.sku || "-";
           var tdMat = document.createElement("td");
+          tdMat.className = "dg-res-match-cell";
           if (matched) {
             var badge = document.createElement("span");
             badge.className = "badge bg-success";
             badge.textContent = "Сопоставлено";
             tdMat.appendChild(badge);
-          } else tdMat.textContent = "-";
+            var partners = Array.isArray(r.match_partners) ? r.match_partners : [];
+            if (!partners.length && (r.match_my_sku || r.match_my_name)) {
+              partners = [
+                {
+                  my_sku: r.match_my_sku,
+                  my_product_name: r.match_my_name,
+                  my_site_name: r.match_my_site,
+                  my_site_id: r.match_my_site_id,
+                },
+              ];
+            }
+            if (partners.length) {
+              var maxShow = Math.min(partners.length, 2);
+              for (var pi = 0; pi < maxShow; pi++) {
+                var p = partners[pi] || {};
+                var block = document.createElement("div");
+                block.className = "small mt-1 dg-res-match-partner";
+                var siteLine = String(p.my_site_name || "").trim();
+                var skuLine = String(p.my_sku || "").trim();
+                var nameLine = String(p.my_product_name || "").trim();
+                var href =
+                  "/matches.html?status=confirmed" +
+                  (p.my_site_id
+                    ? "&my_site_id=" +
+                      encodeURIComponent(String(p.my_site_id)) +
+                      "&list_my_site_id=" +
+                      encodeURIComponent(String(p.my_site_id))
+                    : "") +
+                  (r.project_id ? "&list_competitor_id=" + encodeURIComponent(String(r.project_id)) : "") +
+                  (skuLine ? "&list_smart=" + encodeURIComponent(skuLine) : "");
+                var a = document.createElement("a");
+                a.href = href;
+                a.target = "_blank";
+                a.rel = "noopener noreferrer";
+                a.className = "dg-res-match-link";
+                a.title =
+                  "Открыть подтверждённую пару в Совпадениях: " +
+                  [siteLine, skuLine, nameLine].filter(Boolean).join(" · ");
+                var t1 = document.createElement("div");
+                t1.className = "fw-semibold";
+                t1.textContent = skuLine ? "Наш: " + skuLine : "Наш товар";
+                a.appendChild(t1);
+                if (nameLine) {
+                  var t2 = document.createElement("div");
+                  t2.className = "text-muted";
+                  t2.textContent = nameLine.length > 72 ? nameLine.slice(0, 69) + "…" : nameLine;
+                  a.appendChild(t2);
+                }
+                if (siteLine) {
+                  var t3 = document.createElement("div");
+                  t3.className = "text-muted";
+                  t3.textContent = siteLine;
+                  a.appendChild(t3);
+                }
+                block.appendChild(a);
+                tdMat.appendChild(block);
+              }
+              if (partners.length > maxShow) {
+                var more = document.createElement("div");
+                more.className = "small text-muted mt-1";
+                more.textContent = "ещё " + (partners.length - maxShow);
+                tdMat.appendChild(more);
+              }
+            } else {
+              var unk = document.createElement("div");
+              unk.className = "small text-muted mt-1";
+              unk.textContent = "пара не найдена";
+              tdMat.appendChild(unk);
+            }
+          } else tdMat.textContent = "—";
           var tdParse = document.createElement("td");
           if (pageStatus === "pending") {
             var w = document.createElement("span");
@@ -1610,6 +1719,8 @@
             var er = document.createElement("span");
             er.className = "badge bg-danger";
             er.textContent = "Ошибка";
+            er.style.cursor = "help";
+            er.setAttribute("data-dg-tooltip", humanizePageError(r.page_error || r.last_error));
             tdParse.appendChild(er);
           } else if (!pageStatus) {
             var nx = document.createElement("span");
@@ -1637,12 +1748,18 @@
               " " +
               (r.currency || "RUB");
           var tdUrl = document.createElement("td");
-          var a = document.createElement("a");
-          a.href = r.page_url || r.url || "#";
-          a.target = "_blank";
-          a.rel = "noopener noreferrer";
-          a.textContent = "Открыть";
-          tdUrl.appendChild(a);
+          var pageUrl = String(r.page_url || r.url || "").trim();
+          if (pageUrl) {
+            var a = document.createElement("a");
+            a.href = pageUrl;
+            a.target = "_blank";
+            a.rel = "noopener noreferrer";
+            a.textContent = pageUrl;
+            a.title = pageUrl;
+            tdUrl.appendChild(a);
+          } else {
+            tdUrl.textContent = "—";
+          }
           var tdAct = document.createElement("td");
           tdAct.className = "text-nowrap";
           var btnRe = document.createElement("button");
@@ -1803,7 +1920,7 @@
           var value = t.slice(idx + 1).replace(/^"(.*)"$/, "$1").trim();
           if (key === "project" || key === "project_id") next.project_id = value;
           else if (key === "status" || key === "page_status") next.page_status = value;
-          else if (key === "code" || key === "sku" || key === "name") free.push(value);
+          else if (key === "code" || key === "sku" || key === "name" || key === "url") free.push(value);
           else free.push(value);
         });
         next.search = free.join(" ").trim();
@@ -2212,28 +2329,47 @@
       function reparseAll() {
         if (!window.confirm("Добавить в очередь URL из результатов по текущим фильтрам?")) return;
         var f = readApiFilters();
-        fetch("/api/parse/refresh-results", {
-          method: "POST",
-          credentials: "same-origin",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            project_id: f.project_id === "all" ? null : f.project_id,
-            page_status: f.page_status || null,
-            search: f.search || null,
-          }),
-        })
-          .then(function (r) {
-            return r.json().then(function (j) {
-              return { r: r, j: j };
+        var btn = document.getElementById("results-reparse-all");
+        var run = function () {
+          return fetch("/api/parse/refresh-results", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              project_id: f.project_id === "all" ? null : f.project_id,
+              page_status: f.page_status || null,
+              search: f.search || null,
+            }),
+          })
+            .then(function (r) {
+              return r.json().then(function (j) {
+                return { r: r, j: j };
+              });
+            })
+            .then(function (x) {
+              if (!x.r.ok || !x.j.success) throw new Error(x.j.error || x.j.message || "Не удалось поставить в очередь");
+              var msg = x.j.message || "URL добавлены в очередь";
+              if (window.DatagonNotify && window.DatagonNotify.toast) {
+                window.DatagonNotify.toast({ type: "success", message: msg });
+              } else {
+                alert(msg);
+              }
+              return loadResults({ showSkeleton: false });
+            })
+            .catch(function (e) {
+              var err = e.message || String(e);
+              if (window.DatagonNotify && window.DatagonNotify.toast) {
+                window.DatagonNotify.toast({ type: "danger", message: err });
+              } else {
+                alert(err);
+              }
             });
-          })
-          .then(function (x) {
-            if (!x.r.ok || !x.j.success) throw new Error(x.j.error || x.j.message || "Не удалось поставить в очередь");
-            alert(x.j.message || "URL добавлены в очередь");
-          })
-          .catch(function (e) {
-            alert(e.message || String(e));
-          });
+        };
+        if (window.DatagonNotify && window.DatagonNotify.busyRun && btn) {
+          window.DatagonNotify.busyRun(btn, run);
+        } else {
+          run();
+        }
       }
 
       function reparseOne(r) {

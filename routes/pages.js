@@ -12,6 +12,7 @@ const {
 } = require('../lib/datagonPageParseCache');
 const { upsertPriceForPage } = require('../lib/datagonPricesUpsert');
 const { canonicalizeSiteUrl, httpTwinOfHttps } = require('../lib/datagonUrlCanon');
+const { isMysqlDeadlock } = require('../lib/mysqlDeadlockRetry');
 
 module.exports = (db, settings) => {
     ensureProjectFetchProxyColumns(db).catch(() => {});
@@ -365,7 +366,7 @@ module.exports = (db, settings) => {
 
     function getPrimaryProductText($) {
         const sectionSelectors = [
-            '.product-card', '.product-detail', '.product-page', '.catalog-detail',
+            '.product-info', '.product-card', '.product-detail', '.product-page', '.catalog-detail',
             '.detail', '.item-detail', '.bx_catalog_item', 'main'
         ];
         for (const s of sectionSelectors) {
@@ -423,14 +424,39 @@ module.exports = (db, settings) => {
 
     function detectInStockByText($) {
         const targetText = getPrimaryProductText($);
+        // Только явные сигналы наличия. «В корзину»/«Купить» на dealmed есть и при «Ожидается поставка».
         const inStockSignals = [
             /в наличии(?:\s+\d+)?(?:\s+шт\.?)?/i,
-            /в наличии много/i,
-            /в корзин/i,
-            /добавить в корзин/i,
-            /купить/i
+            /в наличии много/i
         ];
         return inStockSignals.some((re) => re.test(targetText));
+    }
+
+    /**
+     * Цена из CSS-селектора: text или content/data-* (Bitrix meta[itemprop=price] часто без текста).
+     */
+    function readPriceCandidateFromSelector($, selector) {
+        const el = $(String(selector || '').trim()).first();
+        if (!el.length) return '';
+        const attr =
+            el.attr('content') ||
+            el.attr('data-price') ||
+            el.attr('data-value') ||
+            el.attr('value') ||
+            '';
+        const fromAttr = String(attr || '').trim();
+        if (fromAttr) return fromAttr;
+        return String(el.text() || '').trim();
+    }
+
+    function parsePriceNumber(priceTxt) {
+        if (!priceTxt) return NaN;
+        return parseFloat(
+            String(priceTxt)
+                .replace(/[\s\u00A0\u202F]/g, '')
+                .replace(/[^0-9,.]/g, '')
+                .replace(',', '.')
+        );
     }
 
     function extractPriceFromTextFallback($) {
@@ -547,18 +573,11 @@ module.exports = (db, settings) => {
             
             let type = 'product';
             let priceTxt = '';
-            for (let s of pr.selector_price.split(',')) { 
-                priceTxt = $(s.trim()).first().text().trim(); 
-                if(priceTxt) break; 
+            for (let s of String(pr.selector_price || '').split(',')) {
+                priceTxt = readPriceCandidateFromSelector($, s);
+                if (priceTxt) break;
             }
-            let price = priceTxt
-                ? parseFloat(
-                      String(priceTxt)
-                          .replace(/[\s\u00A0\u202F]/g, '')
-                          .replace(/[^0-9,.]/g, '')
-                          .replace(',', '.')
-                  )
-                : NaN;
+            let price = parsePriceNumber(priceTxt);
             if (isNaN(price) || Number(price) <= 0) {
                 const fallbackPrice = extractPriceFromTextFallback($);
                 if (!isNaN(fallbackPrice) && fallbackPrice > 0) price = fallbackPrice;
@@ -572,14 +591,16 @@ module.exports = (db, settings) => {
             const hasOosByText = detectOosByText($, pr.selector_oos);
             const hasHardOosByText = detectHardOosByText($);
             const hasInStockByText = detectInStockByText($);
-            // Приоритет для текущего режима:
-            // 1) Если есть валидная цена — считаем "в наличии" (цена важнее).
-            // 2) Иначе если есть in-stock сигнал — "в наличии".
-            // 3) Иначе учитываем OOS сигналы.
+            // Приоритет:
+            // 1) валидная цена → не OOS (цена важнее);
+            // 2) явный OOS (селектор/«ожидается поставка»/…) → OOS;
+            // 3) явный «в наличии» → не OOS;
+            // «В корзину» больше не считается наличием — на dealmed кнопка есть и при ожидании поставки.
             const hasOos = hasPrice
                 ? false
-                : (hasInStockByText ? false : (hasHardOosByText || hasOosBySelector || hasOosByText));
-            
+                : (hasHardOosByText || hasOosBySelector || hasOosByText)
+                    ? true
+                    : false;            
             type = detectPageType($, pageRow.url, pr, hasPrice, hasOos, hasInStockByText, html);
             
             await db.query('UPDATE pages SET page_type = ? WHERE id = ?', [type, pageRow.id]);
@@ -637,16 +658,19 @@ module.exports = (db, settings) => {
             } else {
                 throw new Error('No price and no OOS status');
             }
-            
-            // status/parsed_at уже в updatePageParseCache; дубль на случай старых колонок без кэша
-            await db.query('UPDATE pages SET status = "done", parsed_at = NOW(), last_error = NULL WHERE id = ?', [pageRow.id]);
+            // status=done уже выставлен в updatePageParseCache (с retry на deadlock)
         } catch (e) {
             const msg = String((e && e.message) || e || '');
+            // Deadlock / сеть / антибот — не липкий error: вернуть в очередь
             const retryLater =
+                isMysqlDeadlock(e) ||
                 /\b403\b|\b429\b|\b401\b|ECONNRESET|ETIMEDOUT|ECONNABORTED|ENOTFOUND|socket hang up/i.test(msg);
             if (retryLater) {
+                const note = isMysqlDeadlock(e)
+                    ? 'Временный сбой записи в базу (deadlock), повтор в очереди'
+                    : msg.substring(0, 255);
                 await db.query('UPDATE pages SET status = "pending", last_error = ?, parsed_at = NOW() WHERE id = ?', [
-                    msg.substring(0, 255),
+                    note.substring(0, 255),
                     pageRow.id
                 ]);
             } else {
@@ -668,6 +692,16 @@ module.exports = (db, settings) => {
             await ensurePagesStatusColumnSupportsSitemap();
             await ensurePagesParseCacheColumns(db);
             await cleanupDiscoveredUrlsWithQuery();
+            // Старые deadlock-error: не держим как «Ошибка», сразу снова в очередь
+            try {
+                await db.query(
+                    `UPDATE pages
+                        SET status = 'pending', last_error = NULL
+                      WHERE status = 'error'
+                        AND last_error LIKE '%Deadlock%'
+                      LIMIT 500`
+                );
+            } catch (_) {}
             const batchSize = Math.max(1, Number(settings.parse_batch_size || 10));
             await db.query(
                 'UPDATE pages SET status = "pending" WHERE id IN (SELECT id FROM (SELECT id FROM pages WHERE status = "sitemap" ORDER BY id ASC LIMIT ?) t)',
@@ -1533,6 +1567,13 @@ module.exports = (db, settings) => {
                     const pg = rows[0];
                     if (pg.status !== 'processing') {
                         await db.query('UPDATE pages SET status = "pending", last_error = NULL, parsed_at = NULL WHERE id = ?', [pg.id]);
+                        await db.query('UPDATE prices SET page_status_cached = "pending" WHERE page_id = ?', [pg.id]);
+                        try {
+                            const resultsRoute = require('./results');
+                            if (typeof resultsRoute.invalidateResultsListCache === 'function') {
+                                resultsRoute.invalidateResultsListCache();
+                            }
+                        } catch (_) {}
                         return res.json({ success: true, message: 'Страница возвращена в очередь', id: pg.id });
                     }
                     const [queuedById] = await db.query(
@@ -1552,6 +1593,13 @@ module.exports = (db, settings) => {
             if (existing.length > 0) {
                 if (existing[0].status !== 'processing') {
                     await db.query('UPDATE pages SET status = "pending", last_error = NULL, parsed_at = NULL WHERE id = ?', [existing[0].id]);
+                    await db.query('UPDATE prices SET page_status_cached = "pending" WHERE page_id = ?', [existing[0].id]);
+                    try {
+                        const resultsRoute = require('./results');
+                        if (typeof resultsRoute.invalidateResultsListCache === 'function') {
+                            resultsRoute.invalidateResultsListCache();
+                        }
+                    } catch (_) {}
                     res.json({ success: true, message: 'Страница возвращена в очередь', id: existing[0].id });
                 } else {
                     const [queued] = await db.query(
@@ -1580,55 +1628,118 @@ module.exports = (db, settings) => {
             await ensurePagesAddedFromColumn();
             await ensurePagesAddedAtColumn();
             const { project_id, page_status, search } = req.body;
-            
+            const pageStatusExpr = 'COALESCE(pg.status, pr.page_status_cached)';
+
             let qUrls = `
-                SELECT DISTINCT pr.url, pr.project_id
+                SELECT DISTINCT
+                    pr.page_id AS page_id,
+                    COALESCE(pg.url, pr.url) AS url,
+                    pr.project_id AS project_id
                 FROM prices pr
                 LEFT JOIN pages pg ON pg.id = pr.page_id
-                WHERE 1=1
+                WHERE pr.page_id IS NOT NULL
             `;
             let pUrls = [];
-            
+
             if (project_id && project_id !== 'all') {
                 qUrls += ' AND pr.project_id = ?';
                 pUrls.push(project_id);
             }
             if (page_status && ['pending', 'processing', 'done', 'error'].includes(String(page_status).toLowerCase())) {
-                qUrls += ' AND pg.status = ?';
+                qUrls += ` AND ${pageStatusExpr} = ?`;
                 pUrls.push(String(page_status).toLowerCase());
             }
             if (search && String(search).trim()) {
                 const val = `%${String(search).trim()}%`;
-                qUrls += ' AND (pr.sku LIKE ? OR pr.product_name LIKE ?)';
-                pUrls.push(val, val);
+                qUrls += ' AND (pr.sku LIKE ? OR pr.product_name LIKE ? OR pr.url LIKE ? OR COALESCE(pg.url, \'\') LIKE ?)';
+                pUrls.push(val, val, val, val);
             }
             qUrls += ' ORDER BY pr.id DESC';
-            
-            const [recentUrls] = await db.query(qUrls, pUrls);
-            if (recentUrls.length === 0) return res.json({ message: 'Нет результатов' });
 
-            let addedCount = 0;
+            const [recentUrls] = await db.query(qUrls, pUrls);
+            if (!recentUrls.length) {
+                return res.json({ success: true, added: 0, message: 'Нет результатов по текущим фильтрам' });
+            }
+
+            const pageIds = [
+                ...new Set(
+                    recentUrls
+                        .map((r) => Number(r.page_id))
+                        .filter((id) => Number.isFinite(id) && id > 0)
+                ),
+            ];
+
+            let reset = 0;
+            const chunk = 500;
+            for (let i = 0; i < pageIds.length; i += chunk) {
+                const slice = pageIds.slice(i, i + chunk);
+                const ph = slice.map(() => '?').join(',');
+                const [u] = await db.query(
+                    `UPDATE pages
+                        SET status = 'pending', last_error = NULL, parsed_at = NULL
+                      WHERE id IN (${ph})
+                        AND status <> 'processing'`,
+                    slice
+                );
+                reset += Number(u && u.affectedRows) || 0;
+                // Триггер синхронизации кэша на проде часто недоступен — пишем явно
+                await db.query(
+                    `UPDATE prices SET page_status_cached = 'pending' WHERE page_id IN (${ph})`,
+                    slice
+                );
+            }
+
+            // URL без page_id (на всякий) — старый путь
+            let addedOrphans = 0;
             for (const item of recentUrls) {
+                if (item.page_id) continue;
                 const normalizedUrl = normalizeQueueUrl(item.url);
-                if (!normalizedUrl) continue;
-                const [existing] = await db.query('SELECT id, status FROM pages WHERE url = ? AND project_id = ?', [normalizedUrl, item.project_id]);
-                if (existing.length > 0) {
+                if (!normalizedUrl || !item.project_id) continue;
+                const [existing] = await db.query(
+                    'SELECT id, status FROM pages WHERE url = ? AND project_id = ?',
+                    [normalizedUrl, item.project_id]
+                );
+                if (existing.length) {
                     if (existing[0].status !== 'processing') {
-                        await db.query('UPDATE pages SET status = "pending", last_error = NULL, parsed_at = NULL WHERE id = ?', [existing[0].id]);
-                        addedCount++;
-                    } else {
                         await db.query(
-                            'INSERT INTO pages (project_id, url, status, page_type, added_from) VALUES (?, ?, "pending", "unknown", "Ручной")',
-                            [item.project_id, normalizedUrl]
+                            'UPDATE pages SET status = "pending", last_error = NULL, parsed_at = NULL WHERE id = ?',
+                            [existing[0].id]
                         );
-                        addedCount++;
+                        await db.query('UPDATE prices SET page_status_cached = "pending" WHERE page_id = ?', [
+                            existing[0].id,
+                        ]);
+                        addedOrphans++;
                     }
                 } else {
-                    await db.query('INSERT INTO pages (project_id, url, status, page_type, added_from) VALUES (?, ?, "pending", "unknown", "Ручной")', [item.project_id, normalizedUrl]);
-                    addedCount++;
+                    const [ins] = await db.query(
+                        'INSERT INTO pages (project_id, url, status, page_type, added_from) VALUES (?, ?, "pending", "unknown", "Ручной")',
+                        [item.project_id, normalizedUrl]
+                    );
+                    addedOrphans++;
+                    if (ins && ins.insertId) {
+                        await db.query('UPDATE prices SET page_id = ?, page_status_cached = "pending" WHERE url = ? AND project_id = ?', [
+                            ins.insertId,
+                            normalizedUrl,
+                            item.project_id,
+                        ]);
+                    }
                 }
             }
-            res.json({ success: true, message: `В очередь добавлено: ${addedCount}` });
+
+            try {
+                const resultsRoute = require('./results');
+                if (typeof resultsRoute.invalidateResultsListCache === 'function') {
+                    resultsRoute.invalidateResultsListCache();
+                }
+            } catch (_) {}
+
+            const total = reset + addedOrphans;
+            res.json({
+                success: true,
+                added: total,
+                reset,
+                message: `В очередь на перепарсинг: ${total}`,
+            });
         } catch (e) {
             res.status(500).json({ error: e.message });
         }

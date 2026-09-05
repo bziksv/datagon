@@ -2012,6 +2012,8 @@
         if (statusFilter && statusFilter !== "pending") params.set("status", statusFilter);
         if (searchMode && searchMode !== "all") params.set("mode", searchMode);
         if (productSearch) params.set("product_search", productSearch);
+        var listSmart = String(document.getElementById("dg-matches-smart-filter").value || "").trim();
+        if (listSmart) params.set("list_smart", listSmart);
         if (matchesPage > 1) params.set("matches_page", String(matchesPage));
         if (matchesLimit !== 100) params.set("matches_limit", String(matchesLimit));
         var mqPage = Number(state.manualQueuePage || 1);
@@ -2122,6 +2124,7 @@
           status: p.get("status") || "",
           mode: p.get("mode") || "",
           product_search: p.get("product_search") || "",
+          list_smart: p.get("list_smart") || "",
           matches_page: Number(p.get("matches_page") || 1),
           matches_limit: Number(p.get("matches_limit") || 100),
           manual_queue_page: Number(p.get("manual_queue_page") || 1),
@@ -3011,7 +3014,9 @@
           var cidM = String(prefs.list_competitor_site_id).trim();
           if (cidM && listCompetitorOptionExists(compSelMerge, cidM)) compSelMerge.value = cidM;
         }
-        if (prefs.smart != null) document.getElementById("dg-matches-smart-filter").value = String(prefs.smart);
+        // Deep-link из Результатов (`list_smart`) важнее сохранённого «Умный фильтр по списку».
+        if (miss("list_smart") && prefs.smart != null)
+          document.getElementById("dg-matches-smart-filter").value = String(prefs.smart);
         if (miss("status") && prefs.status_filter != null)
           document.getElementById("dg-matches-status-filter").value = String(prefs.status_filter);
         if (miss("matches_limit") && prefs.limit != null) {
@@ -3021,9 +3026,11 @@
             document.getElementById("dg-matches-limit").value = String(l);
           }
         }
-        if (prefs.my_sku != null) document.getElementById("dg-matches-tf-my-sku").value = String(prefs.my_sku);
-        if (prefs.competitor_sku != null)
-          document.getElementById("dg-matches-tf-comp-sku").value = String(prefs.competitor_sku);
+        if (miss("list_smart")) {
+          if (prefs.my_sku != null) document.getElementById("dg-matches-tf-my-sku").value = String(prefs.my_sku);
+          if (prefs.competitor_sku != null)
+            document.getElementById("dg-matches-tf-comp-sku").value = String(prefs.competitor_sku);
+        }
         if (prefs.match_type != null) document.getElementById("dg-matches-tf-match-type").value = String(prefs.match_type);
         if (prefs.tf_status != null) document.getElementById("dg-matches-tf-status").value = String(prefs.tf_status);
         if (prefs.conf_min != null) document.getElementById("dg-matches-tf-conf-min").value = String(prefs.conf_min);
@@ -3656,6 +3663,8 @@
         var gen = loadMatchesGen;
         if (showLoader) {
           state.loadingMatches = true;
+          state.matches = [];
+          state.matchesTotal = 0;
           setMatchesListFetchBusy(true);
           renderMatchesTable();
         }
@@ -3672,9 +3681,11 @@
         var compF = document.getElementById("dg-matches-list-competitor");
         var compId = compF && String(compF.value || "").trim();
         if (compId) q.set("competitor_site_id", compId);
+        var smartTerm = String(document.getElementById("dg-matches-smart-filter").value || "").trim();
+        if (smartTerm) q.set("search", smartTerm);
         var fetchOpts = { credentials: "same-origin" };
         try {
-          if (typeof AbortSignal !== "undefined" && AbortSignal.timeout) fetchOpts.signal = AbortSignal.timeout(120000);
+          if (typeof AbortSignal !== "undefined" && AbortSignal.timeout) fetchOpts.signal = AbortSignal.timeout(45000);
         } catch (eSig) {}
         fetch("/api/matches/list?" + q.toString(), fetchOpts)
           .then(function (r) {
@@ -3692,7 +3703,7 @@
             if (gen !== loadMatchesGen) return;
             if (e && (e.name === "AbortError" || /aborted|timeout/i.test(String(e.message || ""))))
               alert(
-                "Сервер не ответил за 2 минуты при загрузке совпадений. Частая причина — долгие операции с индексами в БД; перезапустите сервер и откройте страницу снова."
+                "Сервер не ответил за 45 с при загрузке совпадений. Обновите вкладку; если снова долго — перезапустите Node (dev:local / pm2)."
               );
             else alert(e.message || "Не удалось загрузить сопоставления");
             state.matches = [];
@@ -4479,6 +4490,11 @@
           var mqReasonEl = document.getElementById("dg-manual-queue-reason");
           if (mqReasonEl) mqReasonEl.value = state.manualQueueReason || "";
           mergeMatchesListPrefsFromStorage();
+          if (up.list_smart) {
+            document.getElementById("dg-matches-smart-filter").value = up.list_smart;
+            document.getElementById("dg-matches-tf-my-sku").value = "";
+            document.getElementById("dg-matches-tf-comp-sku").value = "";
+          }
           fillListCompetitorSelect();
           var compElInit = document.getElementById("dg-matches-list-competitor");
           if (compElInit && up.list_competitor_id && listCompetitorOptionExists(compElInit, up.list_competitor_id))

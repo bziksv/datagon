@@ -9,6 +9,9 @@ const RESULTS_LIST_MAX_LIMIT = 1500;
 const RESULTS_LIST_CACHE_MAX_LIMIT = 400;
 const resultsListResponseCache = new Map();
 
+/** Источник истины — pages.status; кэш на prices — fallback (триггер на проде часто не создаётся). */
+const PAGE_STATUS_EXPR = 'COALESCE(pg.status, pr.page_status_cached)';
+
 function resultsListCacheKey(query, effectiveLimit, effectiveOffset) {
     return JSON.stringify({
         project_id: query.project_id != null ? String(query.project_id) : '',
@@ -422,7 +425,7 @@ module.exports = (db, settings) => {
                 }
                 if (page_status && ['pending', 'processing', 'done', 'error'].includes(String(page_status).toLowerCase())) {
                     const pageStatus = String(page_status).toLowerCase();
-                    qcOnly += ' AND COALESCE(pr.page_status_cached, pg.status) = ?';
+                    qcOnly += ` AND ${PAGE_STATUS_EXPR} = ?`;
                     pcOnly.push(pageStatus);
                 }
                 if (search && String(search).trim()) {
@@ -470,7 +473,7 @@ module.exports = (db, settings) => {
                 project_name: 'p.name',
                 product_name: 'pr.product_name',
                 sku: 'pr.sku',
-                page_status: 'COALESCE(pr.page_status_cached, pg.status)',
+                page_status: PAGE_STATUS_EXPR,
                 is_oos: 'pr.is_oos',
                 price: 'pr.price',
                 url: 'pr.url'
@@ -497,8 +500,8 @@ module.exports = (db, settings) => {
             }
             if (page_status && ['pending', 'processing', 'done', 'error'].includes(String(page_status).toLowerCase())) {
                 const pageStatus = String(page_status).toLowerCase();
-                qCond += ' AND COALESCE(pr.page_status_cached, pg.status) = ?';
-                qc += ' AND COALESCE(pr.page_status_cached, pg.status) = ?';
+                qCond += ` AND ${PAGE_STATUS_EXPR} = ?`;
+                qc += ` AND ${PAGE_STATUS_EXPR} = ?`;
                 p.push(pageStatus);
                 pc.push(pageStatus);
             }
@@ -566,7 +569,7 @@ module.exports = (db, settings) => {
                         GROUP BY prm.id
                       ) dg_res_pm ON dg_res_pm.price_id = pr.id`;
             const q = `SELECT pr.*, p.name as project_name, pg.url as page_url,
-                           COALESCE(pg.status, pr.page_status_cached) as page_status, pg.last_error as page_error, pg.parsed_at as page_parsed_at,
+                           ${PAGE_STATUS_EXPR} as page_status, pg.last_error as page_error, pg.parsed_at as page_parsed_at,
                            ${isMatchedExpr} AS is_matched
                      FROM prices pr 
                      JOIN projects p ON pr.project_id = p.id 
@@ -637,3 +640,5 @@ module.exports = (db, settings) => {
 
     return router;
 };
+
+module.exports.invalidateResultsListCache = invalidateResultsListCache;
