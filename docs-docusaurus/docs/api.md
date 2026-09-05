@@ -517,11 +517,14 @@ Query:
 ### GET `/api/matches/list`
 Список найденных сопоставлений.
 
-Логическая пара «наш сайт + конкурент + товар» хранится с полем `match_identity_hash` (SHA-256 от нормализованных SKU или от пары названий) и уникальным индексом по `(my_site_id, competitor_site_id, match_identity_hash)`, чтобы не появлялись дубли строк при повторном матчинге. При первом запросе к списку или задаче матчинга сервер при необходимости добавляет колонку, заполняет хеш для старых строк, сливает дубликаты и создаёт индекс (см. `ensureProductMatchIdentitySchema` в `routes/matches.js`). Подтверждение (`POST /confirm`, `POST /manual-match/confirm`) также удаляет лишние строки с тем же хешом.
+Логическая пара «наш сайт + конкурент + товар» хранится с полем `match_identity_hash` (SHA-256 от нормализованных SKU или от пары названий) и уникальным индексом по `(my_site_id, competitor_site_id, match_identity_hash)`, чтобы не появлялись дубли строк при повторном матчинге. Миграция хеша/индекса — в `warmupMatchingIndexes` при старте (не на каждый `GET /list`).
 
 Query:
 - `my_site_id`
+- `competitor_site_id`
 - `status` (`pending`, `confirmed`, `rejected`)
+- `search` / `q` — подстрока по нашему/конкурентному SKU и названию (и `confirmed_by`)
+- `match_type`
 - `limit`
 - `offset`
 

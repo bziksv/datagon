@@ -2153,7 +2153,8 @@ module.exports = (db, settings) => {
         try {
             await ensureMatchAuditColumns();
             await ensureProductMatchesOptionalCols();
-            await ensureProductMatchIdentitySchema();
+            // identity-schema / UNIQUE — только warmupMatchingIndexes, не блокируем GET /list
+            ensureProductMatchIdentitySchema().catch(() => {});
             let q = `
                 SELECT 
                     pm.*,
@@ -2186,6 +2187,22 @@ module.exports = (db, settings) => {
                     p.push(status);
                     pc.push(status);
                 }
+            }
+            const searchRaw = String(req.query.search ?? req.query.q ?? '').trim();
+            if (searchRaw) {
+                const like = `%${searchRaw}%`;
+                q += ` AND (
+                    pm.my_sku LIKE ? OR pm.competitor_sku LIKE ?
+                    OR pm.my_product_name LIKE ? OR pm.competitor_name LIKE ?
+                    OR pm.confirmed_by LIKE ?
+                )`;
+                qc += ` AND (
+                    my_sku LIKE ? OR competitor_sku LIKE ?
+                    OR my_product_name LIKE ? OR competitor_name LIKE ?
+                    OR confirmed_by LIKE ?
+                )`;
+                p.push(like, like, like, like, like);
+                pc.push(like, like, like, like, like);
             }
             if (mtWhereMain) q += mtWhereMain;
             if (mtWhereCount) qc += mtWhereCount;
@@ -2224,7 +2241,8 @@ module.exports = (db, settings) => {
                      FROM prices p
                      WHERE p.project_id IN (${compSiteIds.map(() => '?').join(',')})
                        AND (${whereParts.join(' OR ')})
-                     ORDER BY p.parsed_at DESC, p.id DESC`,
+                     ORDER BY p.parsed_at DESC, p.id DESC
+                     LIMIT 4000`,
                     params
                 );
                 for (const r of compRows) {

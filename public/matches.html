@@ -3679,6 +3679,8 @@
         var compF = document.getElementById("dg-matches-list-competitor");
         var compId = compF && String(compF.value || "").trim();
         if (compId) q.set("competitor_site_id", compId);
+        var smartTerm = String(document.getElementById("dg-matches-smart-filter").value || "").trim();
+        if (smartTerm) q.set("search", smartTerm);
         var fetchOpts = { credentials: "same-origin" };
         try {
           if (typeof AbortSignal !== "undefined" && AbortSignal.timeout) fetchOpts.signal = AbortSignal.timeout(120000);
