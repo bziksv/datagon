@@ -923,11 +923,19 @@ async function cleanupResultsByRetentionDays(days) {
             backfillPagesParseCacheFromPrices,
             requeueDoneProductPagesWithoutPrices,
         } = require('./lib/datagonPageParseCache');
-        const { collapseDuplicatePricesByPageId } = require('./lib/datagonPricesUpsert');
+        const {
+            collapseDuplicatePricesByPageId,
+            collapseDuplicatePricesByCanonUrl,
+            collapseHttpHttpsDuplicatePages,
+        } = require('./lib/datagonPricesUpsert');
         await ensurePagesParseCacheColumns(db);
         const collapsed = await collapseDuplicatePricesByPageId(db);
-        if (collapsed > 0) {
-            console.log(`[RESULTS CLEANUP] Collapsed duplicate prices by page_id: ${collapsed}`);
+        const collapsedCanon = await collapseDuplicatePricesByCanonUrl(db);
+        const httpTwins = await collapseHttpHttpsDuplicatePages(db, 5000);
+        if (collapsed > 0 || collapsedCanon > 0 || (httpTwins && httpTwins.pagesDeleted)) {
+            console.log(
+                `[RESULTS CLEANUP] Dedupe prices page_id=${collapsed} canon=${collapsedCanon}; http twin pages=${httpTwins.pagesDeleted || 0}`
+            );
         }
         // Не трогаем последнюю строку prices по page_id — иначе «готово» без названия/цены.
         const [r] = await db.query(

@@ -6,7 +6,7 @@ description: Таблица prices — фильтры, сортировка, п�
 
 **`/results.html`** — просмотр таблицы **`prices`**: что именно сохранил парсер (цена, валюта, SKU, название, время, проект/конкурент). Отсюда оценивают качество [селекторов](/docs/projects/) и решают, нужен ли повторный прогон.
 
-На один `page_id` (URL очереди) хранится **одна актуальная** строка: повторный парсинг **обновляет** запись (SKU/название/цену), а не плодит дубли с разными датами.
+На один `page_id` и на **канонический URL** (`https://` без `www`, без дубля `http://`) хранится **одна актуальная** строка: повторный парсинг **обновляет** запись (SKU/название/цену), а не плодит дубли с разными датами.
 
 <blockquote class="dg-doc-tip">
 <strong>Снимок интерфейса.</strong> PNG обновляют: <code>npm run docs:capture-screenshots</code> (с <code>DOCS_USER</code> и <code>DOCS_PASSWORD</code> — с живой панели; без входа — с макета <code>/doc-screenshots/results-sample.html</code>) и <code>npm run docs:docusaurus:build</code>. Таблица — <strong>viewport</strong>. <a href="./capture-screenshots.md">Подробнее о съёмке</a>.

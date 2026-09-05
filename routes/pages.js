@@ -11,6 +11,7 @@ const {
     backfillPagesParseCacheFromPrices,
 } = require('../lib/datagonPageParseCache');
 const { upsertPriceForPage } = require('../lib/datagonPricesUpsert');
+const { canonicalizeSiteUrl, httpTwinOfHttps } = require('../lib/datagonUrlCanon');
 
 module.exports = (db, settings) => {
     ensureProjectFetchProxyColumns(db).catch(() => {});
@@ -18,12 +19,26 @@ module.exports = (db, settings) => {
         .then(() => backfillPagesParseCacheFromPrices(db))
         .catch(() => {});
     try {
-        const { collapseDuplicatePricesByPageId } = require('../lib/datagonPricesUpsert');
-        collapseDuplicatePricesByPageId(db)
-            .then((n) => {
-                if (n > 0) console.log(`[pages] Collapsed duplicate prices by page_id: ${n}`);
-            })
-            .catch(() => {});
+        const {
+            collapseDuplicatePricesByPageId,
+            collapseDuplicatePricesByCanonUrl,
+            collapseHttpHttpsDuplicatePages,
+        } = require('../lib/datagonPricesUpsert');
+        (async () => {
+            const n1 = await collapseDuplicatePricesByPageId(db);
+            const n2 = await collapseDuplicatePricesByCanonUrl(db);
+            let pagesGone = 0;
+            for (let i = 0; i < 8; i += 1) {
+                const r = await collapseHttpHttpsDuplicatePages(db, 5000);
+                pagesGone += Number(r.pagesDeleted) || 0;
+                if (!r.pagesDeleted) break;
+            }
+            if (n1 || n2 || pagesGone) {
+                console.log(
+                    `[pages] dedupe prices page_id=${n1} canon=${n2}; removed http twin pages=${pagesGone}`
+                );
+            }
+        })().catch(() => {});
     } catch (_) {}
     let queueWorkerRunning = false;
     let queueTickBusy = false;
@@ -713,6 +728,7 @@ module.exports = (db, settings) => {
             const normalizeHost = (v) => String(v || '').toLowerCase().replace(/^www\./, '');
             if (normalizeHost(u.hostname) !== normalizeHost(host)) return '';
             u.hostname = normalizeHost(u.hostname);
+            u.protocol = 'https:';
             u.hash = '';
             // Убираем query, кроме фидов sitemap (иначе теряется route=feed/...).
             if (!isFeedOrSitemapQuery(u.search)) u.search = '';
@@ -763,11 +779,7 @@ module.exports = (db, settings) => {
             if (!/^https?:$/i.test(String(u.protocol || ''))) return '';
             // Не добавляем динамические страницы с query-параметрами.
             if (String(u.search || '')) return '';
-            u.hostname = String(u.hostname || '').toLowerCase().replace(/^www\./, '');
-            u.hash = '';
-            u.pathname = u.pathname.replace(/\/{2,}/g, '/');
-            if (u.pathname.length > 1) u.pathname = u.pathname.replace(/\/$/, '');
-            return u.toString();
+            return canonicalizeSiteUrl(u.toString()) || '';
         } catch (_) {
             return '';
         }
