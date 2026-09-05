@@ -931,10 +931,15 @@ async function cleanupResultsByRetentionDays(days) {
         await ensurePagesParseCacheColumns(db);
         const collapsed = await collapseDuplicatePricesByPageId(db);
         const collapsedCanon = await collapseDuplicatePricesByCanonUrl(db);
-        const httpTwins = await collapseHttpHttpsDuplicatePages(db, 5000);
-        if (collapsed > 0 || collapsedCanon > 0 || (httpTwins && httpTwins.pagesDeleted)) {
+        let twinPages = 0;
+        for (let i = 0; i < 12; i += 1) {
+            const httpTwins = await collapseHttpHttpsDuplicatePages(db, 5000);
+            twinPages += Number(httpTwins && httpTwins.pagesDeleted) || 0;
+            if (!(httpTwins && httpTwins.pagesDeleted)) break;
+        }
+        if (collapsed > 0 || collapsedCanon > 0 || twinPages > 0) {
             console.log(
-                `[RESULTS CLEANUP] Dedupe prices page_id=${collapsed} canon=${collapsedCanon}; http twin pages=${httpTwins.pagesDeleted || 0}`
+                `[RESULTS CLEANUP] Dedupe prices page_id=${collapsed} canon=${collapsedCanon}; http twin pages=${twinPages}`
             );
         }
         // Не трогаем последнюю строку prices по page_id — иначе «готово» без названия/цены.

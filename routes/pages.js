@@ -28,7 +28,7 @@ module.exports = (db, settings) => {
             const n1 = await collapseDuplicatePricesByPageId(db);
             const n2 = await collapseDuplicatePricesByCanonUrl(db);
             let pagesGone = 0;
-            for (let i = 0; i < 8; i += 1) {
+            for (let i = 0; i < 16; i += 1) {
                 const r = await collapseHttpHttpsDuplicatePages(db, 5000);
                 pagesGone += Number(r.pagesDeleted) || 0;
                 if (!r.pagesDeleted) break;
@@ -38,7 +38,9 @@ module.exports = (db, settings) => {
                     `[pages] dedupe prices page_id=${n1} canon=${n2}; removed http twin pages=${pagesGone}`
                 );
             }
-        })().catch(() => {});
+        })().catch((e) => {
+            console.warn('[pages] startup dedupe:', e && e.message ? e.message : e);
+        });
     } catch (_) {}
     let queueWorkerRunning = false;
     let queueTickBusy = false;
