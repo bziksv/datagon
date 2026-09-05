@@ -3663,6 +3663,8 @@
         var gen = loadMatchesGen;
         if (showLoader) {
           state.loadingMatches = true;
+          state.matches = [];
+          state.matchesTotal = 0;
           setMatchesListFetchBusy(true);
           renderMatchesTable();
         }
@@ -3683,7 +3685,7 @@
         if (smartTerm) q.set("search", smartTerm);
         var fetchOpts = { credentials: "same-origin" };
         try {
-          if (typeof AbortSignal !== "undefined" && AbortSignal.timeout) fetchOpts.signal = AbortSignal.timeout(120000);
+          if (typeof AbortSignal !== "undefined" && AbortSignal.timeout) fetchOpts.signal = AbortSignal.timeout(45000);
         } catch (eSig) {}
         fetch("/api/matches/list?" + q.toString(), fetchOpts)
           .then(function (r) {
@@ -3701,7 +3703,7 @@
             if (gen !== loadMatchesGen) return;
             if (e && (e.name === "AbortError" || /aborted|timeout/i.test(String(e.message || ""))))
               alert(
-                "Сервер не ответил за 2 минуты при загрузке совпадений. Частая причина — долгие операции с индексами в БД; перезапустите сервер и откройте страницу снова."
+                "Сервер не ответил за 45 с при загрузке совпадений. Обновите вкладку; если снова долго — перезапустите Node (dev:local / pm2)."
               );
             else alert(e.message || "Не удалось загрузить сопоставления");
             state.matches = [];

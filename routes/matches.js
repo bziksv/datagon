@@ -2153,8 +2153,6 @@ module.exports = (db, settings) => {
         try {
             await ensureMatchAuditColumns();
             await ensureProductMatchesOptionalCols();
-            // identity-schema / UNIQUE — только warmupMatchingIndexes, не блокируем GET /list
-            ensureProductMatchIdentitySchema().catch(() => {});
             let q = `
                 SELECT 
                     pm.*,
@@ -2190,19 +2188,37 @@ module.exports = (db, settings) => {
             }
             const searchRaw = String(req.query.search ?? req.query.q ?? '').trim();
             if (searchRaw) {
-                const like = `%${searchRaw}%`;
-                q += ` AND (
-                    pm.my_sku LIKE ? OR pm.competitor_sku LIKE ?
-                    OR pm.my_product_name LIKE ? OR pm.competitor_name LIKE ?
-                    OR pm.confirmed_by LIKE ?
-                )`;
-                qc += ` AND (
-                    my_sku LIKE ? OR competitor_sku LIKE ?
-                    OR my_product_name LIKE ? OR competitor_name LIKE ?
-                    OR confirmed_by LIKE ?
-                )`;
-                p.push(like, like, like, like, like);
-                pc.push(like, like, like, like, like);
+                // Точный SKU (артикул/штрихкод) — без ведущего %; иначе LIKE по полям.
+                const looksLikeSku = !/\s/.test(searchRaw) && searchRaw.length <= 100;
+                if (looksLikeSku) {
+                    q += ` AND (
+                        pm.my_sku = ? OR pm.competitor_sku = ?
+                        OR pm.my_sku LIKE ? OR pm.competitor_sku LIKE ?
+                        OR pm.my_product_name LIKE ? OR pm.competitor_name LIKE ?
+                    )`;
+                    qc += ` AND (
+                        my_sku = ? OR competitor_sku = ?
+                        OR my_sku LIKE ? OR competitor_sku LIKE ?
+                        OR my_product_name LIKE ? OR competitor_name LIKE ?
+                    )`;
+                    const like = `%${searchRaw}%`;
+                    p.push(searchRaw, searchRaw, like, like, like, like);
+                    pc.push(searchRaw, searchRaw, like, like, like, like);
+                } else {
+                    const like = `%${searchRaw}%`;
+                    q += ` AND (
+                        pm.my_sku LIKE ? OR pm.competitor_sku LIKE ?
+                        OR pm.my_product_name LIKE ? OR pm.competitor_name LIKE ?
+                        OR pm.confirmed_by LIKE ?
+                    )`;
+                    qc += ` AND (
+                        my_sku LIKE ? OR competitor_sku LIKE ?
+                        OR my_product_name LIKE ? OR competitor_name LIKE ?
+                        OR confirmed_by LIKE ?
+                    )`;
+                    p.push(like, like, like, like, like);
+                    pc.push(like, like, like, like, like);
+                }
             }
             if (mtWhereMain) q += mtWhereMain;
             if (mtWhereCount) qc += mtWhereCount;
@@ -2210,8 +2226,7 @@ module.exports = (db, settings) => {
             q += ' ORDER BY pm.confidence_score DESC, pm.id DESC LIMIT ? OFFSET ?';
             p.push(parseInt(limit), parseInt(offset));
 
-            const [rows] = await db.query(q, p);
-            const [count] = await db.query(qc, pc);
+            const [[rows], [count]] = await Promise.all([db.query(q, p), db.query(qc, pc)]);
             if (!rows.length) {
                 return res.json({ data: [], total: Number(count?.[0]?.total || 0) });
             }
@@ -2225,33 +2240,38 @@ module.exports = (db, settings) => {
 
             const compBySku = new Map();
             const compByName = new Map();
-            if (compSiteIds.length && (compSkus.length || compNames.length)) {
-                const whereParts = [];
-                const params = [...compSiteIds];
-                if (compSkus.length) {
-                    whereParts.push(`p.sku IN (${compSkus.map(() => '?').join(',')})`);
-                    params.push(...compSkus);
-                }
-                if (compNames.length) {
-                    whereParts.push(`p.product_name IN (${compNames.map(() => '?').join(',')})`);
-                    params.push(...compNames);
-                }
+            if (compSiteIds.length && compSkus.length) {
+                // Только по SKU страницы — без OR по длинным названиям (они раздували scan prices).
+                const params = [...compSiteIds, ...compSkus];
                 const [compRows] = await db.query(
                     `SELECT p.project_id, p.sku, p.product_name, p.price, p.currency, p.url, p.parsed_at, p.id
                      FROM prices p
                      WHERE p.project_id IN (${compSiteIds.map(() => '?').join(',')})
-                       AND (${whereParts.join(' OR ')})
+                       AND p.sku IN (${compSkus.map(() => '?').join(',')})
                      ORDER BY p.parsed_at DESC, p.id DESC
-                     LIMIT 4000`,
+                     LIMIT 2000`,
                     params
                 );
                 for (const r of compRows) {
                     const sku = String(r.sku || '').trim();
-                    const name = String(r.product_name || '').trim();
                     if (sku) {
                         const keySku = `${r.project_id}||${sku}`;
                         if (!compBySku.has(keySku)) compBySku.set(keySku, r);
                     }
+                }
+            } else if (compSiteIds.length && compNames.length) {
+                const params = [...compSiteIds, ...compNames];
+                const [compRows] = await db.query(
+                    `SELECT p.project_id, p.sku, p.product_name, p.price, p.currency, p.url, p.parsed_at, p.id
+                     FROM prices p
+                     WHERE p.project_id IN (${compSiteIds.map(() => '?').join(',')})
+                       AND p.product_name IN (${compNames.map(() => '?').join(',')})
+                     ORDER BY p.parsed_at DESC, p.id DESC
+                     LIMIT 2000`,
+                    params
+                );
+                for (const r of compRows) {
+                    const name = String(r.product_name || '').trim();
                     if (name) {
                         const keyName = `${r.project_id}||${name}`;
                         if (!compByName.has(keyName)) compByName.set(keyName, r);
