@@ -45,6 +45,40 @@ function invalidateResultsListCache() {
 }
 
 /**
+ * Подзапрос id из prices, у которых есть подтверждённое сопоставление.
+ * Инвертированный JOIN (от ~тыс. matches), а не EXISTS по каждой строке prices —
+ * иначе фильтр «Только сопоставленные» на десятках тысяч строк висит минутами.
+ */
+function matchedPriceIdsSubquerySql() {
+    return `(
+        SELECT prx.id
+          FROM prices prx
+         INNER JOIN product_matches pm
+            ON pm.status = 'confirmed'
+           AND pm.competitor_site_id = prx.project_id
+           AND pm.competitor_sku IS NOT NULL
+           AND pm.competitor_sku <> ''
+           AND pm.competitor_sku = prx.sku
+        UNION
+        SELECT prx.id
+          FROM prices prx
+         INNER JOIN product_matches pm
+            ON pm.status = 'confirmed'
+           AND pm.competitor_site_id = prx.project_id
+           AND pm.competitor_name IS NOT NULL
+           AND pm.competitor_name <> ''
+           AND pm.competitor_name = prx.product_name
+    )`;
+}
+
+function sqlMatchedFilter(matched) {
+    const m = String(matched == null ? '' : matched);
+    if (m === '1') return ` AND pr.id IN ${matchedPriceIdsSubquerySql()}`;
+    if (m === '0') return ` AND pr.id NOT IN ${matchedPriceIdsSubquerySql()}`;
+    return '';
+}
+
+/**
  * Кэш статуса страницы на prices — иначе ORDER BY pg.status тянет filesort по всему JOIN (десятки секунд).
  * Синхронизация: триггер на UPDATE pages + значение при INSERT в prices.
  */
@@ -275,8 +309,8 @@ module.exports = (db, settings) => {
                 }
                 if (search && String(search).trim()) {
                     const val = `%${String(search).trim()}%`;
-                    qcOnly += ' AND (pr.sku LIKE ? OR pr.product_name LIKE ?)';
-                    pcOnly.push(val, val);
+                    qcOnly += ' AND (pr.sku LIKE ? OR pr.product_name LIKE ? OR pr.url LIKE ? OR COALESCE(pg.url, \'\') LIKE ?)';
+                    pcOnly.push(val, val, val, val);
                 }
                 if (project_name && String(project_name).trim()) {
                     const pn = `%${String(project_name).trim()}%`;
@@ -298,31 +332,7 @@ module.exports = (db, settings) => {
                 } else if (availability === 'oos') {
                     qcOnly += ' AND COALESCE(pr.is_oos, 0) = 1';
                 }
-                if (matched === '1') {
-                    qcOnly += ` AND EXISTS(
-                    SELECT 1
-                    FROM product_matches pm
-                    WHERE pm.status = 'confirmed'
-                      AND pm.competitor_site_id = pr.project_id
-                      AND (
-                        (pm.competitor_sku IS NOT NULL AND pm.competitor_sku <> '' AND pm.competitor_sku = pr.sku)
-                        OR pm.competitor_name = pr.product_name
-                      )
-                    LIMIT 1
-                )`;
-                } else if (matched === '0') {
-                    qcOnly += ` AND NOT EXISTS(
-                    SELECT 1
-                    FROM product_matches pm
-                    WHERE pm.status = 'confirmed'
-                      AND pm.competitor_site_id = pr.project_id
-                      AND (
-                        (pm.competitor_sku IS NOT NULL AND pm.competitor_sku <> '' AND pm.competitor_sku = pr.sku)
-                        OR pm.competitor_name = pr.product_name
-                      )
-                    LIMIT 1
-                )`;
-                }
+                qcOnly += sqlMatchedFilter(matched);
                 const [cntRows] = await db.query(qcOnly, pcOnly);
                 const payloadCount = { rows: [], total: Number(cntRows[0]?.total) || 0 };
                 if (allowResultsListCache) {
@@ -352,9 +362,10 @@ module.exports = (db, settings) => {
             const joinFrom =
                 'FROM prices pr JOIN projects p ON pr.project_id = p.id LEFT JOIN pages pg ON pr.page_id = pg.id WHERE 1=1';
             let qCond = '';
-            // Без фильтра по статусу страницы JOIN pages в COUNT не нужен — на ~100k это заметно.
+            // JOIN pages в COUNT нужен для статуса страницы и для поиска по URL страницы.
             const needPagesForCount =
-                !!(page_status && ['pending', 'processing', 'done', 'error'].includes(String(page_status).toLowerCase()));
+                !!(page_status && ['pending', 'processing', 'done', 'error'].includes(String(page_status).toLowerCase())) ||
+                !!(search && String(search).trim());
             let qc = needPagesForCount
                 ? `SELECT COUNT(*) as total FROM prices pr LEFT JOIN pages pg ON pr.page_id = pg.id WHERE 1=1`
                 : `SELECT COUNT(*) as total FROM prices pr WHERE 1=1`;
@@ -376,10 +387,10 @@ module.exports = (db, settings) => {
 
             if (search && String(search).trim()) {
                 const val = `%${String(search).trim()}%`;
-                qCond += ' AND (pr.sku LIKE ? OR pr.product_name LIKE ?)';
-                qc += ' AND (pr.sku LIKE ? OR pr.product_name LIKE ?)';
-                p.push(val, val);
-                pc.push(val, val);
+                qCond += ' AND (pr.sku LIKE ? OR pr.product_name LIKE ? OR pr.url LIKE ? OR COALESCE(pg.url, \'\') LIKE ?)';
+                qc += ' AND (pr.sku LIKE ? OR pr.product_name LIKE ? OR pr.url LIKE ? OR COALESCE(pg.url, \'\') LIKE ?)';
+                p.push(val, val, val, val);
+                pc.push(val, val, val, val);
             }
             if (project_name && String(project_name).trim()) {
                 const pn = `%${String(project_name).trim()}%`;
@@ -409,52 +420,10 @@ module.exports = (db, settings) => {
                 qCond += ' AND COALESCE(pr.is_oos, 0) = 1';
                 qc += ' AND COALESCE(pr.is_oos, 0) = 1';
             }
-            if (matched === '1') {
-                qCond += ` AND EXISTS(
-                    SELECT 1
-                    FROM product_matches pm
-                    WHERE pm.status = 'confirmed'
-                      AND pm.competitor_site_id = pr.project_id
-                      AND (
-                        (pm.competitor_sku IS NOT NULL AND pm.competitor_sku <> '' AND pm.competitor_sku = pr.sku)
-                        OR pm.competitor_name = pr.product_name
-                      )
-                    LIMIT 1
-                )`;
-                qc += ` AND EXISTS(
-                    SELECT 1
-                    FROM product_matches pm
-                    WHERE pm.status = 'confirmed'
-                      AND pm.competitor_site_id = pr.project_id
-                      AND (
-                        (pm.competitor_sku IS NOT NULL AND pm.competitor_sku <> '' AND pm.competitor_sku = pr.sku)
-                        OR pm.competitor_name = pr.product_name
-                      )
-                    LIMIT 1
-                )`;
-            } else if (matched === '0') {
-                qCond += ` AND NOT EXISTS(
-                    SELECT 1
-                    FROM product_matches pm
-                    WHERE pm.status = 'confirmed'
-                      AND pm.competitor_site_id = pr.project_id
-                      AND (
-                        (pm.competitor_sku IS NOT NULL AND pm.competitor_sku <> '' AND pm.competitor_sku = pr.sku)
-                        OR pm.competitor_name = pr.product_name
-                      )
-                    LIMIT 1
-                )`;
-                qc += ` AND NOT EXISTS(
-                    SELECT 1
-                    FROM product_matches pm
-                    WHERE pm.status = 'confirmed'
-                      AND pm.competitor_site_id = pr.project_id
-                      AND (
-                        (pm.competitor_sku IS NOT NULL AND pm.competitor_sku <> '' AND pm.competitor_sku = pr.sku)
-                        OR pm.competitor_name = pr.product_name
-                      )
-                    LIMIT 1
-                )`;
+            {
+                const mf = sqlMatchedFilter(matched);
+                qCond += mf;
+                qc += mf;
             }
             
             const orderBySql = ` ORDER BY dg_res_sort ${sortDir}, pr.id DESC LIMIT ? OFFSET ?`;
