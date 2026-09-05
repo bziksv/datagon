@@ -1629,13 +1629,22 @@
                 var nameLine = String(p.my_product_name || "").trim();
                 var href =
                   "/matches.html?status=confirmed" +
-                  (p.my_site_id ? "&my_site_id=" + encodeURIComponent(String(p.my_site_id)) : "") +
+                  (p.my_site_id
+                    ? "&my_site_id=" +
+                      encodeURIComponent(String(p.my_site_id)) +
+                      "&list_my_site_id=" +
+                      encodeURIComponent(String(p.my_site_id))
+                    : "") +
                   (r.project_id ? "&list_competitor_id=" + encodeURIComponent(String(r.project_id)) : "") +
-                  (skuLine ? "&product_search=" + encodeURIComponent(skuLine) : "");
+                  (skuLine ? "&list_smart=" + encodeURIComponent(skuLine) : "");
                 var a = document.createElement("a");
                 a.href = href;
+                a.target = "_blank";
+                a.rel = "noopener noreferrer";
                 a.className = "dg-res-match-link";
-                a.title = [siteLine, skuLine, nameLine].filter(Boolean).join(" · ");
+                a.title =
+                  "Открыть подтверждённую пару в Совпадениях: " +
+                  [siteLine, skuLine, nameLine].filter(Boolean).join(" · ");
                 var t1 = document.createElement("div");
                 t1.className = "fw-semibold";
                 t1.textContent = skuLine ? "Наш: " + skuLine : "Наш товар";
