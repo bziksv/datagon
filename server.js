@@ -923,7 +923,12 @@ async function cleanupResultsByRetentionDays(days) {
             backfillPagesParseCacheFromPrices,
             requeueDoneProductPagesWithoutPrices,
         } = require('./lib/datagonPageParseCache');
+        const { collapseDuplicatePricesByPageId } = require('./lib/datagonPricesUpsert');
         await ensurePagesParseCacheColumns(db);
+        const collapsed = await collapseDuplicatePricesByPageId(db);
+        if (collapsed > 0) {
+            console.log(`[RESULTS CLEANUP] Collapsed duplicate prices by page_id: ${collapsed}`);
+        }
         // Не трогаем последнюю строку prices по page_id — иначе «готово» без названия/цены.
         const [r] = await db.query(
             `DELETE pr FROM prices pr

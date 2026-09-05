@@ -6,6 +6,7 @@ const { fetchHtmlForSiteParse } = require('./lib/datagonSiteFetch');
 const { resolveFetchProxy, ensureProjectFetchProxyColumns } = require('./lib/datagonFetchProxy');
 const { assertHtmlNotWafChallenge, hasGenericProductSignals } = require('./lib/datagonPageClassify');
 const { ensurePagesParseCacheColumns, updatePageParseCache } = require('./lib/datagonPageParseCache');
+const { upsertPriceForPage } = require('./lib/datagonPricesUpsert');
 
 // НАСТРОЙКИ
 const PAUSE_MS = 1000; // 1 секунда между запросами
@@ -146,9 +147,17 @@ async function runWorker() {
                     }
                     if (!sku) sku = $('meta[itemprop="productID"]').attr('content') || '';
 
-                    // Сохранение
+                    // Сохранение: одна актуальная строка в prices на page_id (не дубль)
                     if (isOos) {
-                        await db.query('INSERT INTO prices (project_id, page_id, sku, product_name, price, is_oos, url) VALUES (?, ?, ?, ?, ?, 1, ?)', [project.id, page.id, sku, productName, null, page.url]);
+                        await upsertPriceForPage(db, {
+                            projectId: project.id,
+                            pageId: page.id,
+                            sku,
+                            productName,
+                            price: null,
+                            isOos: true,
+                            url: page.url,
+                        });
                         await updatePageParseCache(db, page.id, {
                             productName,
                             sku,
@@ -157,7 +166,15 @@ async function runWorker() {
                         });
                         console.log(`  -> Под заказ: ${page.url}`);
                     } else if (!isNaN(price)) {
-                        await db.query('INSERT INTO prices (project_id, page_id, sku, product_name, price, is_oos, url) VALUES (?, ?, ?, ?, ?, 0, ?)', [project.id, page.id, sku, productName, price, page.url]);
+                        await upsertPriceForPage(db, {
+                            projectId: project.id,
+                            pageId: page.id,
+                            sku,
+                            productName,
+                            price,
+                            isOos: false,
+                            url: page.url,
+                        });
                         await updatePageParseCache(db, page.id, {
                             productName,
                             sku,

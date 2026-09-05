@@ -10,12 +10,21 @@ const {
     updatePageParseCache,
     backfillPagesParseCacheFromPrices,
 } = require('../lib/datagonPageParseCache');
+const { upsertPriceForPage } = require('../lib/datagonPricesUpsert');
 
 module.exports = (db, settings) => {
     ensureProjectFetchProxyColumns(db).catch(() => {});
     ensurePagesParseCacheColumns(db)
         .then(() => backfillPagesParseCacheFromPrices(db))
         .catch(() => {});
+    try {
+        const { collapseDuplicatePricesByPageId } = require('../lib/datagonPricesUpsert');
+        collapseDuplicatePricesByPageId(db)
+            .then((n) => {
+                if (n > 0) console.log(`[pages] Collapsed duplicate prices by page_id: ${n}`);
+            })
+            .catch(() => {});
+    } catch (_) {}
     let queueWorkerRunning = false;
     let queueTickBusy = false;
     let pagesAddedFromReady = false;
@@ -582,7 +591,15 @@ module.exports = (db, settings) => {
             if(!sku) sku = $('meta[itemprop="productID"]').attr('content')||'';
 
             if (hasOos) {
-                await db.query('INSERT INTO prices (project_id, page_id, sku, product_name, price, is_oos, url) VALUES (?,?,?,?,?,1,?)', [pageRow.project_id, pageRow.id, sku, name, null, pageRow.url]);
+                await upsertPriceForPage(db, {
+                    projectId: pageRow.project_id,
+                    pageId: pageRow.id,
+                    sku,
+                    productName: name,
+                    price: null,
+                    isOos: true,
+                    url: pageRow.url,
+                });
                 await updatePageParseCache(db, pageRow.id, {
                     productName: name,
                     sku,
@@ -590,7 +607,15 @@ module.exports = (db, settings) => {
                     isOos: true,
                 });
             } else if (!isNaN(price)) {
-                await db.query('INSERT INTO prices (project_id, page_id, sku, product_name, price, is_oos, url) VALUES (?,?,?,?,?,0,?)', [pageRow.project_id, pageRow.id, sku, name, price, pageRow.url]);
+                await upsertPriceForPage(db, {
+                    projectId: pageRow.project_id,
+                    pageId: pageRow.id,
+                    sku,
+                    productName: name,
+                    price,
+                    isOos: false,
+                    url: pageRow.url,
+                });
                 await updatePageParseCache(db, pageRow.id, {
                     productName: name,
                     sku,
@@ -1270,12 +1295,9 @@ module.exports = (db, settings) => {
             project_id,
             status,
             type,
-            tf_status,
-            tf_page_type,
             tf_id,
             tf_url,
             tf_added_from,
-            tf_matched,
             search,
             matched
         } = body || {};
@@ -1289,10 +1311,8 @@ module.exports = (db, settings) => {
         let effStatusFinal = null;
         let effTypeFinal = null;
         if (modeFiltered) {
-            if (tf_status && tf_status !== 'all') effStatusFinal = tf_status;
-            else if (status) effStatusFinal = status;
-            if (tf_page_type && tf_page_type !== 'all') effTypeFinal = tf_page_type;
-            else if (type && type !== 'all') effTypeFinal = type;
+            if (status) effStatusFinal = status;
+            if (type && type !== 'all') effTypeFinal = type;
         } else {
             if (status) effStatusFinal = status;
             if (type && type !== 'all') effTypeFinal = type;
@@ -1334,9 +1354,7 @@ module.exports = (db, settings) => {
             }
         }
 
-        const tfM = modeFiltered && tf_matched != null ? String(tf_matched) : 'all';
-        const topM = modeFiltered && matched != null ? String(matched) : 'all';
-        const effM = tfM === '1' || tfM === '0' ? tfM : topM === '1' || topM === '0' ? topM : 'all';
+        const effM = modeFiltered && (matched === '1' || matched === '0') ? String(matched) : 'all';
         if (effM === '1' || effM === '0') {
             const byProject = await loadMatchedUrlSet(project_id);
             const urls = new Set();
