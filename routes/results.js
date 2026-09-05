@@ -79,6 +79,124 @@ function sqlMatchedFilter(matched) {
 }
 
 /**
+ * Для строк текущей страницы — с чем подтверждено сопоставление (наш SKU/название/сайт).
+ * Только по id страницы (≤ limit), без полного скана prices.
+ */
+async function attachConfirmedMatchPartners(db, rows) {
+    if (!db || !Array.isArray(rows) || !rows.length) return;
+    const projectIds = Array.from(
+        new Set(rows.map((r) => Number(r.project_id)).filter((n) => Number.isFinite(n) && n > 0))
+    );
+    const skus = Array.from(new Set(rows.map((r) => String(r.sku || '').trim()).filter(Boolean)));
+    const names = Array.from(
+        new Set(rows.map((r) => String(r.product_name || '').trim()).filter(Boolean))
+    );
+    if (!projectIds.length || (!skus.length && !names.length)) {
+        for (const r of rows) {
+            r.match_partners = [];
+            r.match_partner_count = 0;
+        }
+        return;
+    }
+
+    const params = [projectIds];
+    const parts = [];
+    if (skus.length) {
+        parts.push('(pm.competitor_sku IS NOT NULL AND pm.competitor_sku <> \'\' AND pm.competitor_sku IN (?))');
+        params.push(skus);
+    }
+    if (names.length) {
+        parts.push('(pm.competitor_name IS NOT NULL AND pm.competitor_name <> \'\' AND pm.competitor_name IN (?))');
+        params.push(names);
+    }
+
+    let matchRows = [];
+    try {
+        const [found] = await db.query(
+            `SELECT pm.id AS match_id,
+                    pm.competitor_site_id,
+                    pm.competitor_sku,
+                    pm.competitor_name,
+                    pm.my_sku,
+                    pm.my_product_name,
+                    pm.my_site_id,
+                    COALESCE(NULLIF(TRIM(ms.name), ''), CONCAT('Сайт #', pm.my_site_id)) AS my_site_name
+               FROM product_matches pm
+               LEFT JOIN my_sites ms ON ms.id = pm.my_site_id
+              WHERE pm.status = 'confirmed'
+                AND pm.competitor_site_id IN (?)
+                AND (${parts.join(' OR ')})
+              ORDER BY pm.id DESC
+              LIMIT 2000`,
+            params
+        );
+        matchRows = found || [];
+    } catch (e) {
+        console.warn('[results] attachConfirmedMatchPartners:', e && e.message ? e.message : e);
+        matchRows = [];
+    }
+
+    const bySku = new Map();
+    const byName = new Map();
+    const pushMap = (map, key, row) => {
+        const k = String(key || '').trim();
+        if (!k) return;
+        const site = Number(row.competitor_site_id);
+        const mk = `${site}\0${k}`;
+        let arr = map.get(mk);
+        if (!arr) {
+            arr = [];
+            map.set(mk, arr);
+        }
+        arr.push(row);
+    };
+    for (const m of matchRows) {
+        pushMap(bySku, m.competitor_sku, m);
+        pushMap(byName, m.competitor_name, m);
+    }
+
+    const packPartner = (m) => ({
+        match_id: Number(m.match_id) || null,
+        my_site_id: Number(m.my_site_id) || null,
+        my_site_name: String(m.my_site_name || '').trim() || null,
+        my_sku: String(m.my_sku || '').trim() || null,
+        my_product_name: String(m.my_product_name || '').trim() || null,
+    });
+
+    for (const r of rows) {
+        const site = Number(r.project_id);
+        const sku = String(r.sku || '').trim();
+        const name = String(r.product_name || '').trim();
+        const seen = new Set();
+        const partners = [];
+        const addFrom = (arr) => {
+            for (const m of arr || []) {
+                const id = Number(m.match_id) || 0;
+                if (id && seen.has(id)) continue;
+                if (id) seen.add(id);
+                partners.push(packPartner(m));
+            }
+        };
+        if (sku) addFrom(bySku.get(`${site}\0${sku}`));
+        if (name) addFrom(byName.get(`${site}\0${name}`));
+        r.match_partners = partners;
+        r.match_partner_count = partners.length;
+        if (partners.length) {
+            r.is_matched = 1;
+            r.match_my_sku = partners[0].my_sku;
+            r.match_my_name = partners[0].my_product_name;
+            r.match_my_site = partners[0].my_site_name;
+            r.match_my_site_id = partners[0].my_site_id;
+        } else {
+            r.match_my_sku = null;
+            r.match_my_name = null;
+            r.match_my_site = null;
+            r.match_my_site_id = null;
+        }
+    }
+}
+
+/**
  * Кэш статуса страницы на prices — иначе ORDER BY pg.status тянет filesort по всему JOIN (десятки секунд).
  * Синхронизация: триггер на UPDATE pages + значение при INSERT в prices.
  */
@@ -464,6 +582,7 @@ module.exports = (db, settings) => {
             const [rowsPacket, countPacket] = await Promise.all([db.query(q, pRows), db.query(qc, pc)]);
             const rows = rowsPacket[0];
             const total = Number(countPacket[0][0]?.total) || 0;
+            await attachConfirmedMatchPartners(db, rows);
 
             const payloadRows = { rows, total };
             if (allowResultsListCache) {

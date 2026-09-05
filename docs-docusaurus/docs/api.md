@@ -359,6 +359,7 @@ Query:
 - `project_id`
 - `search` — подстрока по `sku`, `product_name`, `url` (и `pages.url` при join)
 - `matched` — `1` только сопоставленные / `0` только без подтверждённого матча (фильтр через `IN`/`NOT IN` от подтверждённых `product_matches`, не построчный `EXISTS`)
+- для строк ответа дополнительно: `match_partners[]` (`my_sku`, `my_product_name`, `my_site_name`, …), `match_my_sku` / `match_my_name` / `match_my_site` (первая пара)
 - `limit` — максимум **1500** строк на запрос (сверху зажимается на сервере; раньше до 25000 можно было положить Node по памяти).
 - `offset`
 

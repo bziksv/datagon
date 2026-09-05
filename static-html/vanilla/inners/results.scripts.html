@@ -440,12 +440,73 @@
           var tdSku = document.createElement("td");
           tdSku.textContent = r.sku || "-";
           var tdMat = document.createElement("td");
+          tdMat.className = "dg-res-match-cell";
           if (matched) {
             var badge = document.createElement("span");
             badge.className = "badge bg-success";
             badge.textContent = "Сопоставлено";
             tdMat.appendChild(badge);
-          } else tdMat.textContent = "-";
+            var partners = Array.isArray(r.match_partners) ? r.match_partners : [];
+            if (!partners.length && (r.match_my_sku || r.match_my_name)) {
+              partners = [
+                {
+                  my_sku: r.match_my_sku,
+                  my_product_name: r.match_my_name,
+                  my_site_name: r.match_my_site,
+                  my_site_id: r.match_my_site_id,
+                },
+              ];
+            }
+            if (partners.length) {
+              var maxShow = Math.min(partners.length, 2);
+              for (var pi = 0; pi < maxShow; pi++) {
+                var p = partners[pi] || {};
+                var block = document.createElement("div");
+                block.className = "small mt-1 dg-res-match-partner";
+                var siteLine = String(p.my_site_name || "").trim();
+                var skuLine = String(p.my_sku || "").trim();
+                var nameLine = String(p.my_product_name || "").trim();
+                var href =
+                  "/matches.html?status=confirmed" +
+                  (p.my_site_id ? "&my_site_id=" + encodeURIComponent(String(p.my_site_id)) : "") +
+                  (r.project_id ? "&list_competitor_id=" + encodeURIComponent(String(r.project_id)) : "") +
+                  (skuLine ? "&product_search=" + encodeURIComponent(skuLine) : "");
+                var a = document.createElement("a");
+                a.href = href;
+                a.className = "dg-res-match-link";
+                a.title = [siteLine, skuLine, nameLine].filter(Boolean).join(" · ");
+                var t1 = document.createElement("div");
+                t1.className = "fw-semibold";
+                t1.textContent = skuLine ? "Наш: " + skuLine : "Наш товар";
+                a.appendChild(t1);
+                if (nameLine) {
+                  var t2 = document.createElement("div");
+                  t2.className = "text-muted";
+                  t2.textContent = nameLine.length > 72 ? nameLine.slice(0, 69) + "…" : nameLine;
+                  a.appendChild(t2);
+                }
+                if (siteLine) {
+                  var t3 = document.createElement("div");
+                  t3.className = "text-muted";
+                  t3.textContent = siteLine;
+                  a.appendChild(t3);
+                }
+                block.appendChild(a);
+                tdMat.appendChild(block);
+              }
+              if (partners.length > maxShow) {
+                var more = document.createElement("div");
+                more.className = "small text-muted mt-1";
+                more.textContent = "ещё " + (partners.length - maxShow);
+                tdMat.appendChild(more);
+              }
+            } else {
+              var unk = document.createElement("div");
+              unk.className = "small text-muted mt-1";
+              unk.textContent = "пара не найдена";
+              tdMat.appendChild(unk);
+            }
+          } else tdMat.textContent = "—";
           var tdParse = document.createElement("td");
           if (pageStatus === "pending") {
             var w = document.createElement("span");
@@ -493,12 +554,18 @@
               " " +
               (r.currency || "RUB");
           var tdUrl = document.createElement("td");
-          var a = document.createElement("a");
-          a.href = r.page_url || r.url || "#";
-          a.target = "_blank";
-          a.rel = "noopener noreferrer";
-          a.textContent = "Открыть";
-          tdUrl.appendChild(a);
+          var pageUrl = String(r.page_url || r.url || "").trim();
+          if (pageUrl) {
+            var a = document.createElement("a");
+            a.href = pageUrl;
+            a.target = "_blank";
+            a.rel = "noopener noreferrer";
+            a.textContent = pageUrl;
+            a.title = pageUrl;
+            tdUrl.appendChild(a);
+          } else {
+            tdUrl.textContent = "—";
+          }
           var tdAct = document.createElement("td");
           tdAct.className = "text-nowrap";
           var btnRe = document.createElement("button");
@@ -659,7 +726,7 @@
           var value = t.slice(idx + 1).replace(/^"(.*)"$/, "$1").trim();
           if (key === "project" || key === "project_id") next.project_id = value;
           else if (key === "status" || key === "page_status") next.page_status = value;
-          else if (key === "code" || key === "sku" || key === "name") free.push(value);
+          else if (key === "code" || key === "sku" || key === "name" || key === "url") free.push(value);
           else free.push(value);
         });
         next.search = free.join(" ").trim();
