@@ -440,9 +440,6 @@
           id: document.getElementById("dg-q-tf-id").value.trim(),
           url: document.getElementById("dg-q-tf-url").value.trim(),
           added_from: document.getElementById("dg-q-tf-added_from").value.trim(),
-          status: document.getElementById("dg-q-tf-status").value,
-          page_type: document.getElementById("dg-q-tf-page_type").value,
-          matched: document.getElementById("dg-q-tf-matched").value,
         };
       }
 
@@ -458,9 +455,6 @@
           tf_id: t.id,
           tf_url: t.url,
           tf_added_from: t.added_from,
-          tf_status: t.status,
-          tf_page_type: t.page_type,
-          tf_matched: t.matched,
           page: String(page),
           limit: String(limit),
           sort_by: sortBy,
@@ -507,9 +501,6 @@
         if (prefs.tf_url != null) document.getElementById("dg-q-tf-url").value = String(prefs.tf_url);
         if (prefs.tf_added_from != null)
           document.getElementById("dg-q-tf-added_from").value = String(prefs.tf_added_from);
-        if (prefs.tf_status != null) document.getElementById("dg-q-tf-status").value = String(prefs.tf_status);
-        if (prefs.tf_page_type != null) document.getElementById("dg-q-tf-page_type").value = String(prefs.tf_page_type);
-        if (prefs.tf_matched != null) document.getElementById("dg-q-tf-matched").value = String(prefs.tf_matched);
         if (missing("page") && prefs.page != null) {
           var pg = Number(prefs.page);
           if (Number.isFinite(pg) && pg > 0) page = pg;
@@ -729,11 +720,6 @@
           if (tf.url && !String(r.url || "").toLowerCase().includes(String(tf.url).trim().toLowerCase())) return false;
           if (tf.added_from && !String(r.added_from || "").toLowerCase().includes(String(tf.added_from).trim().toLowerCase()))
             return false;
-          if (tf.status !== "all" && String(r.status || "").toLowerCase() !== String(tf.status).toLowerCase()) return false;
-          if (tf.page_type !== "all" && String(r.page_type || "").toLowerCase() !== String(tf.page_type).toLowerCase())
-            return false;
-          var isMatched = Number(r.is_matched || 0) === 1 ? "1" : "0";
-          if (tf.matched !== "all" && isMatched !== tf.matched) return false;
           return true;
         });
       }
@@ -1343,12 +1329,9 @@
           type: mode === "filtered" ? (f.type === "all" ? null : f.type) : null,
         };
         if (mode === "filtered") {
-          payload.tf_status = tf.status;
-          payload.tf_page_type = tf.page_type;
           payload.tf_id = tf.id;
           payload.tf_url = tf.url;
           payload.tf_added_from = tf.added_from;
-          payload.tf_matched = tf.matched;
           if (f.search) payload.search = f.search;
           if (f.matched && f.matched !== "all") payload.matched = f.matched;
         }
@@ -1409,9 +1392,6 @@
         document.getElementById("dg-q-tf-id").value = "";
         document.getElementById("dg-q-tf-url").value = "";
         document.getElementById("dg-q-tf-added_from").value = "";
-        document.getElementById("dg-q-tf-status").value = "all";
-        document.getElementById("dg-q-tf-page_type").value = "all";
-        document.getElementById("dg-q-tf-matched").value = "all";
         page = 1;
         sortBy = "id";
         sortDir = "desc";
@@ -1598,9 +1578,6 @@
         "dg-q-tf-id",
         "dg-q-tf-url",
         "dg-q-tf-added_from",
-        "dg-q-tf-status",
-        "dg-q-tf-page_type",
-        "dg-q-tf-matched",
       ].forEach(function (id) {
         var el = document.getElementById(id);
         el.addEventListener("input", function () {
@@ -1631,9 +1608,6 @@
               { key: "tf_id", title: "ID", hint: "" },
               { key: "tf_url", title: "URL", hint: "" },
               { key: "tf_added_from", title: "Добавлено откуда", hint: "" },
-              { key: "tf_status", title: "Статус (таблица)", hint: "" },
-              { key: "tf_page_type", title: "Тип (таблица)", hint: "" },
-              { key: "tf_matched", title: "Сопоставление (таблица)", hint: "" },
             ],
           },
           {
