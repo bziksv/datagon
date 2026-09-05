@@ -5,6 +5,7 @@ const config = require('./config');
 const { fetchHtmlForSiteParse } = require('./lib/datagonSiteFetch');
 const { resolveFetchProxy, ensureProjectFetchProxyColumns } = require('./lib/datagonFetchProxy');
 const { assertHtmlNotWafChallenge, hasGenericProductSignals } = require('./lib/datagonPageClassify');
+const { ensurePagesParseCacheColumns, updatePageParseCache } = require('./lib/datagonPageParseCache');
 
 // НАСТРОЙКИ
 const PAUSE_MS = 1000; // 1 секунда между запросами
@@ -27,6 +28,9 @@ async function runWorker() {
 
         try {
             await ensureProjectFetchProxyColumns(db);
+        } catch (_) {}
+        try {
+            await ensurePagesParseCacheColumns(db);
         } catch (_) {}
 
         let appProxySettings = { fetch_proxy_enabled: 0, fetch_proxy_list: '' };
@@ -145,11 +149,21 @@ async function runWorker() {
                     // Сохранение
                     if (isOos) {
                         await db.query('INSERT INTO prices (project_id, page_id, sku, product_name, price, is_oos, url) VALUES (?, ?, ?, ?, ?, 1, ?)', [project.id, page.id, sku, productName, null, page.url]);
-                        await db.query('UPDATE pages SET status = "done", parsed_at = NOW(), last_error = NULL WHERE id = ?', [page.id]);
+                        await updatePageParseCache(db, page.id, {
+                            productName,
+                            sku,
+                            price: null,
+                            isOos: true,
+                        });
                         console.log(`  -> Под заказ: ${page.url}`);
                     } else if (!isNaN(price)) {
                         await db.query('INSERT INTO prices (project_id, page_id, sku, product_name, price, is_oos, url) VALUES (?, ?, ?, ?, ?, 0, ?)', [project.id, page.id, sku, productName, price, page.url]);
-                        await db.query('UPDATE pages SET status = "done", parsed_at = NOW(), last_error = NULL WHERE id = ?', [page.id]);
+                        await updatePageParseCache(db, page.id, {
+                            productName,
+                            sku,
+                            price,
+                            isOos: false,
+                        });
                         console.log(`  -> Цена ${price}: ${page.url}`);
                     } else {
                         throw new Error('Цена не найдена');

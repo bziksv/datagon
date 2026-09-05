@@ -6,6 +6,8 @@ description: URL в очереди парсинга — статусы, доба
 
 **`/queue.html`** — операции над таблицей **`pages`**: какие **URL** какого **проекта** в каком **статусе**, массовое добавление, запуск парсера, очистка, **сброс в pending** после исправлений.
 
+При успешном разборе карточки на `pages` пишется кэш: **`product_name`**, **`last_sku`**, **`last_price`**, **`last_is_oos`** (название в таблице очереди и умный поиск по имени/SKU/URL). История цен — в `prices`; см. [Результаты](/docs/results/).
+
 <blockquote class="dg-doc-tip">
 <strong>Снимок интерфейса.</strong> PNG обновляют: <code>npm run docs:capture-screenshots</code> (с <code>DOCS_USER</code> и <code>DOCS_PASSWORD</code> — с живой панели; без входа — с макета <code>/doc-screenshots/queue-sample.html</code>) и <code>npm run docs:docusaurus:build</code>. Для очереди в кадр попадает <strong>область окна</strong> (viewport), не вся высота списка. <a href="./capture-screenshots.md">Подробнее о съёмке</a>.
 </blockquote>

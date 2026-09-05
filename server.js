@@ -918,15 +918,41 @@ async function cleanupResultsByRetentionDays(days) {
     const retentionDays = Number(days) || 120;
     if (retentionDays <= 0) return;
     try {
+        const {
+            ensurePagesParseCacheColumns,
+            backfillPagesParseCacheFromPrices,
+            requeueDoneProductPagesWithoutPrices,
+        } = require('./lib/datagonPageParseCache');
+        await ensurePagesParseCacheColumns(db);
+        // Не трогаем последнюю строку prices по page_id — иначе «готово» без названия/цены.
         const [r] = await db.query(
-            `DELETE FROM prices
-             WHERE parsed_at IS NOT NULL
-               AND parsed_at < (NOW() - INTERVAL ? DAY)`,
+            `DELETE pr FROM prices pr
+             LEFT JOIN (
+                 SELECT page_id, MAX(id) AS keep_id
+                   FROM prices
+                  WHERE page_id IS NOT NULL
+                  GROUP BY page_id
+             ) latest ON latest.keep_id = pr.id
+             WHERE pr.parsed_at IS NOT NULL
+               AND pr.parsed_at < (NOW() - INTERVAL ? DAY)
+               AND (pr.page_id IS NULL OR latest.keep_id IS NULL OR pr.id <> latest.keep_id)`,
             [retentionDays]
         );
         const deleted = Number(r?.affectedRows || 0);
         if (deleted > 0) {
-            console.log(`[RESULTS CLEANUP] Deleted ${deleted} rows older than ${retentionDays} days`);
+            console.log(
+                `[RESULTS CLEANUP] Deleted ${deleted} old prices (>${retentionDays}d), kept latest per page_id`
+            );
+        }
+        const bf = await backfillPagesParseCacheFromPrices(db);
+        if (bf && bf.updated) {
+            console.log(`[RESULTS CLEANUP] Backfilled pages.product_name from prices: ${bf.updated}`);
+        }
+        const requeued = await requeueDoneProductPagesWithoutPrices(db, 10000);
+        if (requeued > 0) {
+            console.log(
+                `[RESULTS CLEANUP] Requeued ${requeued} done product pages without prices → pending`
+            );
         }
     } catch (e) {
         console.warn('[RESULTS CLEANUP] failed:', e?.message || e);

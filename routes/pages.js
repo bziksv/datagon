@@ -5,9 +5,17 @@ const cheerio = require('cheerio');
 const { SITE_HTML_USER_AGENT, fetchHtmlForSiteParse, fetchDiscoverText } = require('../lib/datagonSiteFetch');
 const { resolveFetchProxy, ensureProjectFetchProxyColumns } = require('../lib/datagonFetchProxy');
 const { assertHtmlNotWafChallenge, hasGenericProductSignals } = require('../lib/datagonPageClassify');
+const {
+    ensurePagesParseCacheColumns,
+    updatePageParseCache,
+    backfillPagesParseCacheFromPrices,
+} = require('../lib/datagonPageParseCache');
 
 module.exports = (db, settings) => {
     ensureProjectFetchProxyColumns(db).catch(() => {});
+    ensurePagesParseCacheColumns(db)
+        .then(() => backfillPagesParseCacheFromPrices(db))
+        .catch(() => {});
     let queueWorkerRunning = false;
     let queueTickBusy = false;
     let pagesAddedFromReady = false;
@@ -194,11 +202,14 @@ module.exports = (db, settings) => {
     /** Последнее имя товара конкурента из prices (по page_id) — для колонки «Товар / URL» в очереди. */
     async function attachPageProductNames(rows) {
         if (!Array.isArray(rows) || rows.length === 0) return;
+        await ensurePagesParseCacheColumns(db);
         const ids = [];
         const seen = new Set();
         for (const row of rows) {
             const id = Number(row.id);
-            row.product_name = row.product_name != null ? String(row.product_name) : '';
+            const existing = String(row.product_name != null ? row.product_name : '').trim();
+            row.product_name = existing;
+            if (existing) continue;
             if (!Number.isFinite(id) || id <= 0 || seen.has(id)) continue;
             seen.add(id);
             ids.push(id);
@@ -230,8 +241,11 @@ module.exports = (db, settings) => {
         }
         for (const row of rows) {
             const id = Number(row.id);
-            if (namesByPage.has(id)) row.product_name = namesByPage.get(id);
-            else if (!row.product_name) row.product_name = '';
+            if (!String(row.product_name || '').trim() && namesByPage.has(id)) {
+                row.product_name = namesByPage.get(id);
+            } else if (!row.product_name) {
+                row.product_name = '';
+            }
         }
     }
 
@@ -569,13 +583,26 @@ module.exports = (db, settings) => {
 
             if (hasOos) {
                 await db.query('INSERT INTO prices (project_id, page_id, sku, product_name, price, is_oos, url) VALUES (?,?,?,?,?,1,?)', [pageRow.project_id, pageRow.id, sku, name, null, pageRow.url]);
+                await updatePageParseCache(db, pageRow.id, {
+                    productName: name,
+                    sku,
+                    price: null,
+                    isOos: true,
+                });
             } else if (!isNaN(price)) {
                 await db.query('INSERT INTO prices (project_id, page_id, sku, product_name, price, is_oos, url) VALUES (?,?,?,?,?,0,?)', [pageRow.project_id, pageRow.id, sku, name, price, pageRow.url]);
+                await updatePageParseCache(db, pageRow.id, {
+                    productName: name,
+                    sku,
+                    price,
+                    isOos: false,
+                });
             } else {
                 throw new Error('No price and no OOS status');
             }
             
-            await db.query('UPDATE pages SET status = "done", parsed_at = NOW() WHERE id = ?', [pageRow.id]);
+            // status/parsed_at уже в updatePageParseCache; дубль на случай старых колонок без кэша
+            await db.query('UPDATE pages SET status = "done", parsed_at = NOW(), last_error = NULL WHERE id = ?', [pageRow.id]);
         } catch (e) {
             const msg = String((e && e.message) || e || '');
             const retryLater =
@@ -602,6 +629,7 @@ module.exports = (db, settings) => {
             await ensurePagesAddedFromColumn();
             await ensurePagesAddedAtColumn();
             await ensurePagesStatusColumnSupportsSitemap();
+            await ensurePagesParseCacheColumns(db);
             await cleanupDiscoveredUrlsWithQuery();
             const batchSize = Math.max(1, Number(settings.parse_batch_size || 10));
             await db.query(
@@ -1092,9 +1120,11 @@ module.exports = (db, settings) => {
                 ensurePagesAddedAtColumn(),
                 ensurePagesStatusColumnSupportsSitemap(),
                 ensurePagesQueueIndex(),
+                ensurePagesParseCacheColumns(db),
             ]);
             // cleanup не ждём на GET — иначе первый запрос после рестарта может висеть на DELETE.
             void cleanupDiscoveredUrlsWithQuery();
+            void backfillPagesParseCacheFromPrices(db);
 
             const { project_id, status, type, search, matched, limit, offset, sort_by, sort_dir } = req.query;
             const l = parseInt(limit) || (settings.default_limit || 100);
@@ -1155,10 +1185,10 @@ module.exports = (db, settings) => {
             }
             if (search) {
                 const searchVal = `%${search}%`;
-                q += ' AND pg.url LIKE ?';
-                qc += ' AND pg.url LIKE ?';
-                p.push(searchVal);
-                pc.push(searchVal);
+                q += ' AND (pg.url LIKE ? OR pg.product_name LIKE ? OR pg.last_sku LIKE ?)';
+                qc += ' AND (pg.url LIKE ? OR pg.product_name LIKE ? OR pg.last_sku LIKE ?)';
+                p.push(searchVal, searchVal, searchVal);
+                pc.push(searchVal, searchVal, searchVal);
             }
 
             if (matched === '1' && matchedUrlList) {
