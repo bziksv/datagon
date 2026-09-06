@@ -257,6 +257,45 @@ async function ensureSourceEnabledColumn() {
     sourceEnabledColumnReady = true;
 }
 
+let cmsProductIdColumnReady = false;
+/** Webasyst: id карточки shop_product (для UI «ID/КОД» и ссылки в админку). source_id = id SKU. */
+async function ensureCmsProductIdColumn() {
+    if (cmsProductIdColumnReady) return;
+    const [rows] = await db.query(`
+        SELECT COUNT(*) AS cnt
+        FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'my_products'
+          AND COLUMN_NAME = 'cms_product_id'
+    `);
+    if (!rows[0]?.cnt) {
+        await db.query('ALTER TABLE my_products ADD COLUMN cms_product_id VARCHAR(255) NULL');
+        try {
+            await db.query('CREATE INDEX idx_my_products_cms_product_id ON my_products (site_id, cms_product_id)');
+        } catch (_) {}
+    }
+    cmsProductIdColumnReady = true;
+}
+
+function mapMyProductSyncRow(siteId, r) {
+    const sourceId = String(r.source_id || '').trim();
+    const cmsProductId = String(
+        r.cms_product_id != null && String(r.cms_product_id).trim() !== '' ? r.cms_product_id : sourceId
+    ).trim();
+    return [
+        siteId,
+        sourceId,
+        cmsProductId || null,
+        r.sku || '',
+        r.name || '',
+        r.price || 0,
+        r.currency || 'RUB',
+        r.stock || 0,
+        r.source_url || '',
+        Number(r.source_enabled) === 0 ? 0 : 1
+    ];
+}
+
 async function ensureSourceIdentityIndexes() {
     if (sourceIdentityIndexesReady) return;
     const [sourceRows] = await db.query(`
@@ -293,13 +332,13 @@ async function ensureSourceIdentityIndexes() {
 }
 
 async function queryBitrixRowsWithSourceEnabledFallback(conn, site, limit, offset) {
-    const withSourceEnabled = `SELECT ${site.field_code} as source_id, ${site.field_name} as name, ${site.field_sku} as sku, ${site.field_price} as price, ${site.field_currency} as currency, ${site.field_stock} as stock, '' as url_key, COALESCE(SOURCE_ENABLED, 1) as source_enabled FROM ${site.table_products} LIMIT ? OFFSET ?`;
+    const withSourceEnabled = `SELECT ${site.field_code} as source_id, ${site.field_code} as cms_product_id, ${site.field_name} as name, ${site.field_sku} as sku, ${site.field_price} as price, ${site.field_currency} as currency, ${site.field_stock} as stock, '' as url_key, COALESCE(SOURCE_ENABLED, 1) as source_enabled FROM ${site.table_products} LIMIT ? OFFSET ?`;
     try {
         const [rows] = await conn.query(withSourceEnabled, [limit, offset]);
         return rows;
     } catch (e) {
         if (!/Unknown column 'SOURCE_ENABLED'/i.test(String(e?.message || ''))) throw e;
-        const fallback = `SELECT ${site.field_code} as source_id, ${site.field_name} as name, ${site.field_sku} as sku, ${site.field_price} as price, ${site.field_currency} as currency, ${site.field_stock} as stock, '' as url_key, 1 as source_enabled FROM ${site.table_products} LIMIT ? OFFSET ?`;
+        const fallback = `SELECT ${site.field_code} as source_id, ${site.field_code} as cms_product_id, ${site.field_name} as name, ${site.field_sku} as sku, ${site.field_price} as price, ${site.field_currency} as currency, ${site.field_stock} as stock, '' as url_key, 1 as source_enabled FROM ${site.table_products} LIMIT ? OFFSET ?`;
         const [rows] = await conn.query(fallback, [limit, offset]);
         return rows;
     }
@@ -814,6 +853,7 @@ function startGlobalSyncBackground(targetSiteId = null) {
         try {
             if (!db) throw new Error('DB not connected');
             await ensureSourceEnabledColumn();
+            await ensureCmsProductIdColumn();
             await ensureSourceIdentityIndexes();
             const hasTargetSite = Number.isFinite(Number(targetSiteId)) && Number(targetSiteId) > 0;
             const [sites] = hasTargetSite
@@ -829,6 +869,20 @@ function startGlobalSyncBackground(targetSiteId = null) {
             for (const site of sites) {
                 syncState.message = `Синхронизация: ${site.name}...`;
                 console.log(`[SYNC] Site: ${site.name}`);
+
+                let skuSnap = [];
+                if (String(site.cms_type || '').toLowerCase() === 'webasyst') {
+                    try {
+                        const [snapRows] = await db.query(
+                            `SELECT id, sku FROM my_products
+                             WHERE site_id = ? AND TRIM(IFNULL(sku, '')) <> ''`,
+                            [site.id]
+                        );
+                        skuSnap = snapRows || [];
+                    } catch (_) {
+                        skuSnap = [];
+                    }
+                }
                 
                 // Сброс
                 await db.query('UPDATE my_products SET is_active = 0 WHERE site_id = ?', [site.id]);
@@ -851,23 +905,24 @@ function startGlobalSyncBackground(targetSiteId = null) {
                     let query = '';
                     let rows;
                     if (site.cms_type === 'webasyst') {
-                        query = `SELECT p.id as source_id, p.name, sk.${site.wa_field_sku_val} as sku, sk.${site.wa_field_price_val} as price, p.currency, sk.${site.wa_field_stock_val} as stock, p.url as url_key, CASE WHEN p.status = 1 THEN 1 ELSE 0 END as source_enabled FROM ${site.table_products} p JOIN ${site.wa_table_skus} sk ON p.id = sk.product_id LIMIT ? OFFSET ?`;
+                        // source_id = id SKU; cms_product_id = id карточки (для «ID/КОД» и админки WA).
+                        query = `SELECT sk.id as source_id, p.id as cms_product_id, p.name, sk.${site.wa_field_sku_val} as sku, sk.${site.wa_field_price_val} as price, p.currency, sk.${site.wa_field_stock_val} as stock, p.url as url_key, CASE WHEN p.status = 1 THEN 1 ELSE 0 END as source_enabled FROM ${site.table_products} p JOIN ${site.wa_table_skus} sk ON p.id = sk.product_id LIMIT ? OFFSET ?`;
                         [rows] = await conn.query(query, [batchSize, offset]);
                     } else if (String(site.cms_type || '').toLowerCase() === 'bitrix') {
                         rows = await queryBitrixRowsWithSourceEnabledFallback(conn, site, batchSize, offset);
                     } else {
-                        query = `SELECT ${site.field_code} as source_id, ${site.field_name} as name, ${site.field_sku} as sku, ${site.field_price} as price, ${site.field_currency} as currency, ${site.field_stock} as stock, '' as url_key, 1 as source_enabled FROM ${site.table_products} LIMIT ? OFFSET ?`;
+                        query = `SELECT ${site.field_code} as source_id, ${site.field_code} as cms_product_id, ${site.field_name} as name, ${site.field_sku} as sku, ${site.field_price} as price, ${site.field_currency} as currency, ${site.field_stock} as stock, '' as url_key, 1 as source_enabled FROM ${site.table_products} LIMIT ? OFFSET ?`;
                         [rows] = await conn.query(query, [batchSize, offset]);
                     }
                     if (rows.length === 0) break;
 
-                    const values = rows.map(r => {
+                    const values = rows.map((r) => {
                         const sourceUrl = buildSourceUrl(site.domain, r.url_key, site.cms_type);
-                        return [site.id, String(r.source_id || '').trim(), r.sku || '', r.name || '', r.price || 0, r.currency || 'RUB', r.stock || 0, sourceUrl, Number(r.source_enabled) === 0 ? 0 : 1];
+                        return mapMyProductSyncRow(site.id, { ...r, source_url: sourceUrl });
                     });
                     const priceUpdate = appSettings.sync_mode === 'always' ? 'price = VALUES(price),' : 'price = IF(price IS NULL OR price = 0, VALUES(price), price),';
 
-                    await db.query(`INSERT INTO my_products (site_id, source_id, sku, name, price, currency, stock, source_url, source_enabled) VALUES ? ON DUPLICATE KEY UPDATE source_id = VALUES(source_id), ${priceUpdate} name = VALUES(name), currency = VALUES(currency), stock = VALUES(stock), source_url = VALUES(source_url), source_enabled = VALUES(source_enabled), is_active = 1, updated_at = NOW()`, [values]);
+                    await db.query(`INSERT INTO my_products (site_id, source_id, cms_product_id, sku, name, price, currency, stock, source_url, source_enabled) VALUES ? ON DUPLICATE KEY UPDATE source_id = VALUES(source_id), cms_product_id = VALUES(cms_product_id), sku = VALUES(sku), ${priceUpdate} name = VALUES(name), currency = VALUES(currency), stock = VALUES(stock), source_url = VALUES(source_url), source_enabled = VALUES(source_enabled), is_active = 1, updated_at = NOW()`, [values]);
 
                     totalProcessed += rows.length;
                     syncState.processed = totalProcessed;
@@ -876,7 +931,25 @@ function startGlobalSyncBackground(targetSiteId = null) {
                     if (delay > 0) await new Promise(r => setTimeout(r, delay));
                 }
                 await conn.end();
-                
+
+                if (String(site.cms_type || '').toLowerCase() === 'webasyst') {
+                    try {
+                        const {
+                            cleanupInactiveSkuDuplicates,
+                            remapMatchRefsBySkuSnapshot
+                        } = require('./lib/datagonMyProductsSkuIdentityCleanup');
+                        const remappedSku = await remapMatchRefsBySkuSnapshot(db, site.id, skuSnap);
+                        const cleaned = await cleanupInactiveSkuDuplicates(db, site.id);
+                        if (cleaned.deleted || cleaned.remapped || remappedSku.remapped) {
+                            console.log(
+                                `[SYNC] Site ${site.name}: sku-ref remap ${remappedSku.remapped}, removed ${cleaned.deleted} legacy inactive SKU duplicates, remapped ${cleaned.remapped} inactive refs`
+                            );
+                        }
+                    } catch (e) {
+                        console.warn(`[SYNC] Site ${site.name}: SKU identity cleanup failed:`, e.message);
+                    }
+                }
+
                 // Удаление неактивных (опционально, сейчас просто помечены)
                 // await db.query('DELETE FROM my_products WHERE site_id = ? AND is_active = 0', [site.id]);
             }

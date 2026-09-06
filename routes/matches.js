@@ -429,6 +429,7 @@ module.exports = (db, settings) => {
                 competitor_name VARCHAR(500) NULL,
                 note VARCHAR(500) NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_match_manual_archive (my_site_id, competitor_site_id, my_product_id),
                 INDEX idx_march_site (my_site_id),
                 INDEX idx_march_comp (competitor_site_id)
             )`,
@@ -466,6 +467,43 @@ module.exports = (db, settings) => {
                 if (!rows.length) await db.query(c.ddl);
             } catch (_) {}
         }
+        // Архив: одна запись на пару (сайт×конкурент×товар). Дубли схлопываем, затем UNIQUE.
+        try {
+            await db.query(`
+                DELETE a FROM match_manual_archive a
+                INNER JOIN match_manual_archive b
+                  ON a.my_site_id = b.my_site_id
+                 AND a.competitor_site_id = b.competitor_site_id
+                 AND a.my_product_id = b.my_product_id
+                 AND a.id < b.id
+            `);
+        } catch (_) {}
+        try {
+            const [uqRows] = await db.query(
+                `SELECT 1
+                 FROM information_schema.statistics
+                 WHERE table_schema = DATABASE()
+                   AND table_name = 'match_manual_archive'
+                   AND index_name = 'uq_match_manual_archive'
+                 LIMIT 1`
+            );
+            if (!uqRows.length) {
+                await db.query(
+                    `ALTER TABLE match_manual_archive
+                     ADD UNIQUE KEY uq_match_manual_archive (my_site_id, competitor_site_id, my_product_id)`
+                );
+            }
+        } catch (_) {}
+        // Архив = окончательный отказ: не держим ту же пару в ручной очереди (шаг 3).
+        try {
+            await db.query(`
+                DELETE e FROM match_exclusion e
+                INNER JOIN match_manual_archive a
+                  ON e.my_site_id = a.my_site_id
+                 AND e.competitor_site_id = a.competitor_site_id
+                 AND e.my_product_id = a.my_product_id
+            `);
+        } catch (_) {}
         matchLaneTablesReady = true;
     }
 
@@ -524,9 +562,29 @@ module.exports = (db, settings) => {
         return !!(rows && rows.length);
     }
 
+    async function isInManualArchive(dbConn, mySiteId, compId, myProductId) {
+        if (!Number.isFinite(Number(mySiteId)) || !Number.isFinite(Number(compId)) || !Number.isFinite(Number(myProductId))) {
+            return false;
+        }
+        try {
+            const [rows] = await dbConn.query(
+                `SELECT 1 AS ok
+                 FROM match_manual_archive
+                 WHERE my_site_id = ? AND competitor_site_id = ? AND my_product_id = ?
+                 LIMIT 1`,
+                [mySiteId, compId, myProductId]
+            );
+            return !!(rows && rows.length);
+        } catch (_) {
+            return false;
+        }
+    }
+
     async function upsertExclusionNoMatch(dbConn, mySiteId, compId, myProd) {
         if (!myProd || !Number.isFinite(Number(myProd.id))) return;
         if (await hasConfirmedMatchForProduct(dbConn, mySiteId, compId, myProd)) return;
+        // Шаг 4 (архив) — финальный отказ: авто не возвращает товар в шаг 3.
+        if (await isInManualArchive(dbConn, mySiteId, compId, myProd.id)) return;
         const [exRows] = await dbConn.query(
             'SELECT id, reason FROM match_exclusion WHERE my_site_id = ? AND competitor_site_id = ? AND my_product_id = ? LIMIT 1',
             [mySiteId, compId, myProd.id]
@@ -1309,6 +1367,7 @@ module.exports = (db, settings) => {
         }
 
         await ensureMatchLaneTables();
+        // Пропуск авто: ручная очередь (шаг 3) + архив после отказа (шаг 4).
         const exclusionSet = new Set();
         if (competitorIds.length) {
             const phEx = competitorIds.map(() => '?').join(',');
@@ -1318,6 +1377,15 @@ module.exports = (db, settings) => {
                     [mySiteId, ...competitorIds]
                 );
                 for (const r of exRows) {
+                    exclusionSet.add(`${r.competitor_site_id}:${r.my_product_id}`);
+                }
+            } catch (_) {}
+            try {
+                const [archRows] = await db.query(
+                    `SELECT competitor_site_id, my_product_id FROM match_manual_archive WHERE my_site_id = ? AND competitor_site_id IN (${phEx})`,
+                    [mySiteId, ...competitorIds]
+                );
+                for (const r of archRows) {
                     exclusionSet.add(`${r.competitor_site_id}:${r.my_product_id}`);
                 }
             } catch (_) {}
@@ -2145,6 +2213,12 @@ module.exports = (db, settings) => {
             if (matchTypeFilter === 'sku') {
                 return ` AND (LOWER(TRIM(COALESCE(${p}match_type, ''))) = 'sku' OR (TRIM(COALESCE(${p}match_type, '')) = '' AND COALESCE(${p}confidence_score, 0) >= 0.9995))`;
             }
+            if (matchTypeFilter === 'manual') {
+                return ` AND (
+                    LOWER(TRIM(COALESCE(${p}match_type, ''))) = 'manual'
+                    OR LOWER(TRIM(COALESCE(${p}matching_mode, ''))) = 'manual'
+                )`;
+            }
             return '';
         }
         const mtWhereMain = matchTypeWhereSql(true);
@@ -2222,6 +2296,41 @@ module.exports = (db, settings) => {
             }
             if (mtWhereMain) q += mtWhereMain;
             if (mtWhereCount) qc += mtWhereCount;
+
+            const mySkuFilter = String(req.query.my_sku || '').trim().slice(0, 120);
+            if (mySkuFilter) {
+                const likeMy = `%${mySkuFilter}%`;
+                q += ' AND pm.my_sku LIKE ?';
+                qc += ' AND my_sku LIKE ?';
+                p.push(likeMy);
+                pc.push(likeMy);
+            }
+            const compSkuFilter = String(req.query.competitor_sku || '').trim().slice(0, 120);
+            if (compSkuFilter) {
+                const likeComp = `%${compSkuFilter}%`;
+                q += ' AND pm.competitor_sku LIKE ?';
+                qc += ' AND competitor_sku LIKE ?';
+                p.push(likeComp);
+                pc.push(likeComp);
+            }
+            const confMinRaw = String(req.query.confidence_min ?? req.query.conf_min ?? '').trim();
+            const confMaxRaw = String(req.query.confidence_max ?? req.query.conf_max ?? '').trim();
+            const confMinPct = confMinRaw === '' ? null : Number(confMinRaw);
+            const confMaxPct = confMaxRaw === '' ? null : Number(confMaxRaw);
+            if (Number.isFinite(confMinPct)) {
+                const min01 = Math.max(0, Math.min(100, confMinPct)) / 100;
+                q += ' AND COALESCE(pm.confidence_score, 0) >= ?';
+                qc += ' AND COALESCE(confidence_score, 0) >= ?';
+                p.push(min01);
+                pc.push(min01);
+            }
+            if (Number.isFinite(confMaxPct)) {
+                const max01 = Math.max(0, Math.min(100, confMaxPct)) / 100;
+                q += ' AND COALESCE(pm.confidence_score, 0) <= ?';
+                qc += ' AND COALESCE(confidence_score, 0) <= ?';
+                p.push(max01);
+                pc.push(max01);
+            }
 
             q += ' ORDER BY pm.confidence_score DESC, pm.id DESC LIMIT ? OFFSET ?';
             p.push(parseInt(limit), parseInt(offset));
@@ -2486,78 +2595,296 @@ module.exports = (db, settings) => {
         } catch (e) { res.status(500).json({ error: e.message }); }
     });
 
-    router.get('/manual-queue', async (req, res) => {
-        const mySiteId = parseInt(String(req.query.my_site_id || '').trim(), 10);
-        if (!Number.isFinite(mySiteId) || mySiteId < 1) return res.status(400).json({ error: 'my_site_id required' });
-        const compRaw = String(req.query.competitor_site_id || '').trim();
+    function parseManualQueueFilters(src) {
+        const srcObj = src && typeof src === 'object' ? src : {};
+        const mySiteId = parseInt(String(srcObj.my_site_id || '').trim(), 10);
+        const compRaw = String(srcObj.competitor_site_id || '').trim();
         const compId = compRaw === '' ? null : parseInt(compRaw, 10);
-        const search = String(req.query.search || '').trim();
-        const limit = Math.max(1, Math.min(parseInt(String(req.query.limit || '100'), 10) || 100, 300));
-        const offset = Math.max(0, parseInt(String(req.query.offset || '0'), 10) || 0);
-        const reasonRaw = String(req.query.exclusion_reason || req.query.reason || '')
+        const search = String(srcObj.search || '').trim().slice(0, 120);
+        const reasonRaw = String(srcObj.exclusion_reason || srcObj.reason || '')
             .trim()
             .toLowerCase();
         const reasonFilter = reasonRaw === 'no_match' || reasonRaw === 'rejected' ? reasonRaw : null;
+        return {
+            mySiteId,
+            compId: Number.isFinite(compId) && compId > 0 ? compId : null,
+            search,
+            reasonFilter
+        };
+    }
+
+    function buildManualQueueWhere(filters) {
+        let whereSql = ' WHERE e.my_site_id = ?';
+        const params = [filters.mySiteId];
+        if (filters.compId) {
+            whereSql += ' AND e.competitor_site_id = ?';
+            params.push(filters.compId);
+        }
+        if (filters.search) {
+            const v = `%${filters.search}%`;
+            whereSql += ` AND (
+                    mp.sku LIKE ? OR mp.name LIKE ? OR mp.source_id LIKE ?
+                    OR pm.my_sku LIKE ? OR pm.my_product_name LIKE ?
+                )`;
+            params.push(v, v, v, v, v);
+        }
+        if (filters.reasonFilter) {
+            whereSql += " AND LOWER(TRIM(COALESCE(e.reason, ''))) = ?";
+            params.push(filters.reasonFilter);
+        }
+        return { whereSql, params };
+    }
+
+    const MANUAL_QUEUE_FROM = `
+                FROM match_exclusion e
+                LEFT JOIN my_products mp ON mp.id = e.my_product_id AND mp.site_id = e.my_site_id
+                LEFT JOIN product_matches pm ON pm.id = e.source_product_match_id
+    `;
+
+    router.get('/manual-queue', async (req, res) => {
+        const filters = parseManualQueueFilters(req.query);
+        if (!Number.isFinite(filters.mySiteId) || filters.mySiteId < 1) {
+            return res.status(400).json({ error: 'my_site_id required' });
+        }
+        const limit = Math.max(1, Math.min(parseInt(String(req.query.limit || '100'), 10) || 100, 300));
+        const offset = Math.max(0, parseInt(String(req.query.offset || '0'), 10) || 0);
         try {
             await ensureMatchLaneTables();
-            let q = `
+            const { whereSql, params } = buildManualQueueWhere(filters);
+            const q = `
                 SELECT e.id, e.my_site_id, e.competitor_site_id, e.my_product_id, e.reason, e.source_product_match_id,
                        e.created_at, e.updated_at,
                        COALESCE(mp.sku, pm.my_sku) AS mp_sku,
                        COALESCE(mp.name, pm.my_product_name) AS mp_name,
                        mp.price AS mp_price, mp.currency AS mp_currency, mp.source_id AS mp_source_id,
+                       mp.source_url AS mp_source_url,
+                       ms.domain AS my_site_domain, ms.cms_type AS my_site_cms_type,
                        pr.name AS comp_project_name, pr.domain AS comp_domain
-                FROM match_exclusion e
-                LEFT JOIN my_products mp ON mp.id = e.my_product_id AND mp.site_id = e.my_site_id
-                LEFT JOIN product_matches pm ON pm.id = e.source_product_match_id
+                ${MANUAL_QUEUE_FROM}
+                LEFT JOIN my_sites ms ON ms.id = e.my_site_id
                 LEFT JOIN projects pr ON pr.id = e.competitor_site_id
-                WHERE e.my_site_id = ?
+                ${whereSql}
+                ORDER BY e.updated_at DESC LIMIT ? OFFSET ?
             `;
-            const p = [mySiteId];
-            if (Number.isFinite(compId) && compId > 0) {
-                q += ' AND e.competitor_site_id = ?';
-                p.push(compId);
-            }
-            if (search) {
-                const v = `%${search.slice(0, 120)}%`;
-                q += ` AND (
-                    mp.sku LIKE ? OR mp.name LIKE ? OR mp.source_id LIKE ?
-                    OR pm.my_sku LIKE ? OR pm.my_product_name LIKE ?
-                )`;
-                p.push(v, v, v, v, v);
-            }
-            if (reasonFilter) {
-                q += " AND LOWER(TRIM(COALESCE(e.reason, ''))) = ?";
-                p.push(reasonFilter);
-            }
-            q += ' ORDER BY e.updated_at DESC LIMIT ? OFFSET ?';
-            p.push(limit, offset);
-            const [data] = await db.query(q, p);
-            let qc = `
-                SELECT COUNT(*) AS total FROM match_exclusion e
-                LEFT JOIN my_products mp ON mp.id = e.my_product_id AND mp.site_id = e.my_site_id
-                LEFT JOIN product_matches pm ON pm.id = e.source_product_match_id
-                WHERE e.my_site_id = ?
-            `;
-            const pc = [mySiteId];
-            if (Number.isFinite(compId) && compId > 0) {
-                qc += ' AND e.competitor_site_id = ?';
-                pc.push(compId);
-            }
-            if (search) {
-                const v = `%${search.slice(0, 120)}%`;
-                qc += ` AND (
-                    mp.sku LIKE ? OR mp.name LIKE ? OR mp.source_id LIKE ?
-                    OR pm.my_sku LIKE ? OR pm.my_product_name LIKE ?
-                )`;
-                pc.push(v, v, v, v, v);
-            }
-            if (reasonFilter) {
-                qc += " AND LOWER(TRIM(COALESCE(e.reason, ''))) = ?";
-                pc.push(reasonFilter);
-            }
-            const [[cntRow]] = await db.query(qc, pc);
+            const [data] = await db.query(q, [...params, limit, offset]);
+            const qc = `SELECT COUNT(*) AS total ${MANUAL_QUEUE_FROM} ${whereSql}`;
+            const [[cntRow]] = await db.query(qc, params);
             return res.json({ data, total: Number(cntRow?.total || 0), limit, offset });
+        } catch (e) {
+            return res.status(500).json({ error: e.message });
+        }
+    });
+
+    /**
+     * Массово «Вернуть в авто»: удаляет все match_exclusion по тем же фильтрам, что GET /manual-queue
+     * (мой сайт, конкурент, поиск, причина). Нужен confirm: true.
+     * Лог — одна сводная запись + до 50 примеров (не N×INSERT: иначе UI крутит спиннер минутами).
+     */
+    router.post('/manual-queue/return-to-auto', async (req, res) => {
+        const body = req.body && typeof req.body === 'object' ? req.body : {};
+        if (!body.confirm) {
+            return res.status(400).json({ error: 'confirm required' });
+        }
+        const filters = parseManualQueueFilters(body);
+        if (!Number.isFinite(filters.mySiteId) || filters.mySiteId < 1) {
+            return res.status(400).json({ error: 'my_site_id required' });
+        }
+        const t0 = Date.now();
+        try {
+            await ensureMatchLaneTables();
+            const { whereSql, params } = buildManualQueueWhere(filters);
+            const [rows] = await db.query(
+                `SELECT e.id, e.my_site_id, e.my_product_id, e.competitor_site_id, e.reason
+                 ${MANUAL_QUEUE_FROM}
+                 ${whereSql}
+                 ORDER BY e.id ASC
+                 LIMIT 20000`,
+                params
+            );
+            const filterMeta = {
+                my_site_id: filters.mySiteId,
+                competitor_site_id: filters.compId,
+                search: filters.search || '',
+                exclusion_reason: filters.reasonFilter || ''
+            };
+            if (!rows.length) {
+                return res.json({
+                    success: true,
+                    deleted: 0,
+                    duration_sec: Number(((Date.now() - t0) / 1000).toFixed(2)),
+                    filters: filterMeta
+                });
+            }
+            const ids = rows.map((r) => Number(r.id)).filter((id) => Number.isFinite(id) && id > 0);
+            const CHUNK = 500;
+            for (let i = 0; i < ids.length; i += CHUNK) {
+                const chunk = ids.slice(i, i + CHUNK);
+                await db.query(`DELETE FROM match_exclusion WHERE id IN (?)`, [chunk]);
+            }
+            const sample = rows.slice(0, 50);
+            const logValues = sample.map((row) => [
+                row.my_site_id,
+                row.my_product_id,
+                row.competitor_site_id == null ? null : row.competitor_site_id,
+                'exclusion_cleared',
+                'Массово: строка удалена из ручной очереди — товар снова участвует в авто-сопоставлении',
+                JSON.stringify({
+                    exclusion_id: row.id,
+                    bulk: true,
+                    reason: row.reason || null,
+                    bulk_total: ids.length
+                }).slice(0, 60000)
+            ]);
+            if (logValues.length) {
+                await db.query(
+                    `INSERT INTO match_product_log (my_site_id, my_product_id, competitor_site_id, event, message, detail_json)
+                     VALUES ?`,
+                    [logValues]
+                );
+            }
+            if (ids.length > sample.length) {
+                await appendMatchProductLog(db, {
+                    my_site_id: filters.mySiteId,
+                    my_product_id: sample[0] ? sample[0].my_product_id : null,
+                    competitor_site_id: filters.compId,
+                    event: 'exclusion_cleared_bulk',
+                    message: `Массово вернули в авто: удалено ${ids.length} строк очереди (в лог товаров — первые ${sample.length})`,
+                    detail: {
+                        bulk: true,
+                        deleted: ids.length,
+                        logged_samples: sample.length,
+                        filters: filterMeta
+                    }
+                });
+            }
+            return res.json({
+                success: true,
+                deleted: ids.length,
+                duration_sec: Number(((Date.now() - t0) / 1000).toFixed(2)),
+                filters: filterMeta
+            });
+        } catch (e) {
+            return res.status(500).json({ error: e.message });
+        }
+    });
+
+    /**
+     * Массово «В архив»: перенос match_exclusion → match_manual_archive по тем же фильтрам, что GET /manual-queue.
+     * confirm: true; опционально note (общая заметка). Лог — до 50 примеров + сводка.
+     */
+    router.post('/manual-queue/archive-all', async (req, res) => {
+        const body = req.body && typeof req.body === 'object' ? req.body : {};
+        if (!body.confirm) {
+            return res.status(400).json({ error: 'confirm required' });
+        }
+        const filters = parseManualQueueFilters(body);
+        if (!Number.isFinite(filters.mySiteId) || filters.mySiteId < 1) {
+            return res.status(400).json({ error: 'my_site_id required' });
+        }
+        const note = String(body.note || '').trim().slice(0, 500);
+        const t0 = Date.now();
+        try {
+            await ensureMatchLaneTables();
+            const actor = await resolveActorDisplayName(req);
+            const { whereSql, params } = buildManualQueueWhere(filters);
+            const [rows] = await db.query(
+                `SELECT e.id, e.my_site_id, e.my_product_id, e.competitor_site_id, e.reason,
+                        COALESCE(mp.sku, pm.my_sku) AS mp_sku,
+                        COALESCE(mp.name, pm.my_product_name) AS mp_name
+                 ${MANUAL_QUEUE_FROM}
+                 ${whereSql}
+                 ORDER BY e.id ASC
+                 LIMIT 20000`,
+                params
+            );
+            const filterMeta = {
+                my_site_id: filters.mySiteId,
+                competitor_site_id: filters.compId,
+                search: filters.search || '',
+                exclusion_reason: filters.reasonFilter || ''
+            };
+            if (!rows.length) {
+                return res.json({
+                    success: true,
+                    archived: 0,
+                    duration_sec: Number(((Date.now() - t0) / 1000).toFixed(2)),
+                    filters: filterMeta
+                });
+            }
+            const CHUNK = 200;
+            for (let i = 0; i < rows.length; i += CHUNK) {
+                const chunk = rows.slice(i, i + CHUNK);
+                const archiveValues = chunk.map((row) => [
+                    row.my_site_id,
+                    row.competitor_site_id,
+                    row.my_product_id,
+                    null,
+                    null,
+                    note || null,
+                    actor || null
+                ]);
+                await db.query(
+                    `INSERT INTO match_manual_archive
+                     (my_site_id, competitor_site_id, my_product_id, competitor_sku, competitor_name, note, archived_by)
+                     VALUES ?
+                     ON DUPLICATE KEY UPDATE
+                       competitor_sku = COALESCE(VALUES(competitor_sku), competitor_sku),
+                       competitor_name = COALESCE(VALUES(competitor_name), competitor_name),
+                       note = COALESCE(VALUES(note), note),
+                       archived_by = COALESCE(VALUES(archived_by), archived_by)`,
+                    [archiveValues]
+                );
+                const ids = chunk.map((r) => Number(r.id)).filter((id) => Number.isFinite(id) && id > 0);
+                if (ids.length) {
+                    await db.query(`DELETE FROM match_exclusion WHERE id IN (?)`, [ids]);
+                }
+            }
+            const sample = rows.slice(0, 50);
+            const logValues = sample.map((row) => [
+                row.my_site_id,
+                row.my_product_id,
+                row.competitor_site_id == null ? null : row.competitor_site_id,
+                'manual_archived',
+                'Массово: после ручного сопоставления отказ — в архив',
+                JSON.stringify({
+                    exclusion_id: row.id,
+                    bulk: true,
+                    note: note || null,
+                    archived_by: actor || null,
+                    bulk_total: rows.length,
+                    reason: row.reason || null
+                }).slice(0, 60000)
+            ]);
+            if (logValues.length) {
+                await db.query(
+                    `INSERT INTO match_product_log (my_site_id, my_product_id, competitor_site_id, event, message, detail_json)
+                     VALUES ?`,
+                    [logValues]
+                );
+            }
+            if (rows.length > sample.length) {
+                await appendMatchProductLog(db, {
+                    my_site_id: filters.mySiteId,
+                    my_product_id: sample[0] ? sample[0].my_product_id : null,
+                    competitor_site_id: filters.compId,
+                    event: 'manual_archived_bulk',
+                    message: `Массово в архив: ${rows.length} строк очереди (в лог товаров — первые ${sample.length})`,
+                    detail: {
+                        bulk: true,
+                        archived: rows.length,
+                        logged_samples: sample.length,
+                        note: note || null,
+                        archived_by: actor || null,
+                        filters: filterMeta
+                    }
+                });
+            }
+            return res.json({
+                success: true,
+                archived: rows.length,
+                duration_sec: Number(((Date.now() - t0) / 1000).toFixed(2)),
+                filters: filterMeta
+            });
         } catch (e) {
             return res.status(500).json({ error: e.message });
         }
@@ -2590,35 +2917,47 @@ module.exports = (db, settings) => {
         if (!Number.isFinite(mySiteId) || mySiteId < 1) return res.status(400).json({ error: 'my_site_id required' });
         const compRaw = String(req.query.competitor_site_id || '').trim();
         const compId = compRaw === '' ? null : parseInt(compRaw, 10);
+        const search = String(req.query.search || '').trim().slice(0, 120);
         const limit = Math.max(1, Math.min(parseInt(String(req.query.limit || '100'), 10) || 100, 300));
         const offset = Math.max(0, parseInt(String(req.query.offset || '0'), 10) || 0);
         try {
             await ensureMatchLaneTables();
-            let q = `
-                SELECT a.id, a.my_site_id, a.competitor_site_id, a.my_product_id, a.competitor_sku, a.competitor_name, a.note, a.archived_by, a.created_at,
-                       mp.sku AS mp_sku, mp.name AS mp_name,
-                       pr.name AS comp_project_name, pr.domain AS comp_domain
+            const fromSql = `
                 FROM match_manual_archive a
                 LEFT JOIN my_products mp ON mp.id = a.my_product_id AND mp.site_id = a.my_site_id
+                LEFT JOIN my_sites ms ON ms.id = a.my_site_id
                 LEFT JOIN projects pr ON pr.id = a.competitor_site_id
                 WHERE a.my_site_id = ?
             `;
             const p = [mySiteId];
+            let whereExtra = '';
             if (Number.isFinite(compId) && compId > 0) {
-                q += ' AND a.competitor_site_id = ?';
+                whereExtra += ' AND a.competitor_site_id = ?';
                 p.push(compId);
             }
-            q += ' ORDER BY a.id DESC LIMIT ? OFFSET ?';
-            p.push(limit, offset);
-            const [data] = await db.query(q, p);
-            let qc = 'SELECT COUNT(*) AS total FROM match_manual_archive WHERE my_site_id = ?';
-            const pc = [mySiteId];
-            if (Number.isFinite(compId) && compId > 0) {
-                qc += ' AND competitor_site_id = ?';
-                pc.push(compId);
+            if (search) {
+                const v = `%${search}%`;
+                whereExtra += ` AND (
+                    mp.sku LIKE ? OR mp.name LIKE ?
+                    OR a.competitor_sku LIKE ? OR a.competitor_name LIKE ?
+                    OR a.note LIKE ? OR a.archived_by LIKE ?
+                    OR pr.name LIKE ? OR pr.domain LIKE ?
+                )`;
+                p.push(v, v, v, v, v, v, v, v);
             }
-            const [[cntRow]] = await db.query(qc, pc);
-            return res.json({ data, total: Number(cntRow?.total || 0), limit, offset });
+            const q = `
+                SELECT a.id, a.my_site_id, a.competitor_site_id, a.my_product_id, a.competitor_sku, a.competitor_name, a.note, a.archived_by, a.created_at,
+                       mp.sku AS mp_sku, mp.name AS mp_name, mp.source_url AS mp_source_url,
+                       ms.domain AS my_site_domain, ms.cms_type AS my_site_cms_type,
+                       pr.name AS comp_project_name, pr.domain AS comp_domain
+                ${fromSql}
+                ${whereExtra}
+                ORDER BY a.id DESC LIMIT ? OFFSET ?
+            `;
+            const [data] = await db.query(q, [...p, limit, offset]);
+            const qc = `SELECT COUNT(*) AS total ${fromSql} ${whereExtra}`;
+            const [[cntRow]] = await db.query(qc, p);
+            return res.json({ data, total: Number(cntRow?.total || 0), limit, offset, search: search || '' });
         } catch (e) {
             return res.status(500).json({ error: e.message });
         }
@@ -2862,7 +3201,12 @@ module.exports = (db, settings) => {
             const e0 = rows[0];
             await db.query(
                 `INSERT INTO match_manual_archive (my_site_id, competitor_site_id, my_product_id, competitor_sku, competitor_name, note, archived_by)
-                 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                 VALUES (?, ?, ?, ?, ?, ?, ?)
+                 ON DUPLICATE KEY UPDATE
+                   competitor_sku = COALESCE(VALUES(competitor_sku), competitor_sku),
+                   competitor_name = COALESCE(VALUES(competitor_name), competitor_name),
+                   note = COALESCE(VALUES(note), note),
+                   archived_by = COALESCE(VALUES(archived_by), archived_by)`,
                 [
                     e0.my_site_id,
                     e0.competitor_site_id,

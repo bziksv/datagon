@@ -521,7 +521,7 @@
               <p class="small text-muted mb-2">
                 Ниже — только просмотр и фильтры списка совпадений. Режим «Параметры запуска» и «Мой сайт (запуск)» на состав строк в таблице не влияют.
                 Новый прогон сопоставления <strong>не стирает</strong> ожидающие результаты другого режима (например, после прогона по названию по-прежнему видны строки «По SKU» при фильтре «Все» или «По SKU»), кроме режима
-                <strong>«все поля»</strong> — он заново очищает ожидающие только по <em>выбранным в задаче</em> конкурентам. Фильтр <strong>«Тип совпадения»</strong> «По SKU» / «По названию» отсекает строки другого типа: если последний прогон был только по названию, выберите «По названию» или «Все» и нажмите «Применить».
+                <strong>«все поля»</strong> — он заново очищает ожидающие только по <em>выбранным в задаче</em> конкурентам. Фильтр <strong>«Тип совпадения»</strong> «По SKU» / «По названию» отсекает строки другого типа (в т.ч. <strong>ручные</strong>): для пар из шага&nbsp;3 выберите «Вручную» или «Все» и нажмите «Применить».
               </p>
               <div class="dg-matches-list-filters">
                 <div class="row g-3 align-items-end">
@@ -577,20 +577,12 @@
                     <select
                       class="form-select"
                       id="dg-matches-tf-match-type"
-                      title="Какие строки показывать. «Все» — и по SKU, и по названию. В колонке «Схожесть»: по названию — подпись вида «98% по названию», по SKU — «100% по SKU»."
+                      title="Какие строки показывать. «Вручную» — пары из шага 3. «По SKU» / «По названию» — авто. «Все» — без отсечения по типу."
                     >
                       <option value="all">Все</option>
+                      <option value="manual">Вручную</option>
                       <option value="sku">По SKU</option>
                       <option value="name">По названию</option>
-                    </select>
-                  </div>
-                  <div class="col-6 col-md-4 col-lg-2" data-dg-matches-list-field="tf_status">
-                    <label class="form-label mb-1 small text-uppercase text-muted" style="letter-spacing: 0.04em" for="dg-matches-tf-status">Статус в списке</label>
-                    <select class="form-select" id="dg-matches-tf-status">
-                      <option value="all">Все</option>
-                      <option value="pending">Ожидает</option>
-                      <option value="confirmed">Подтверждено</option>
-                      <option value="rejected">Отклонено</option>
                     </select>
                   </div>
                   <div class="col-6 col-md-4 col-lg-2" data-dg-matches-list-field="tf_conf_min">
@@ -703,7 +695,7 @@
                 курсор на бейдж — откроется пояснение.
               </p>
               <p class="small text-secondary mb-2">
-                Фильтры <strong>«Мой сайт (список)»</strong> и <strong>«Конкурент»</strong> берутся из блока «Совпадения» выше (при смене нажмите «Обновить очередь»). Селект
+                Фильтры <strong>«Мой сайт (список)»</strong> и <strong>«Конкурент»</strong> берутся из блока «Совпадения» выше (при смене нажмите «Применить»). Селект
                 <strong>«Причина»</strong> ниже ограничивает очередь по значению колонки «Причина» (или показывает все).
               </p>
               <div class="row g-2 align-items-end mb-2">
@@ -712,8 +704,8 @@
                   <input type="text" class="form-control" id="dg-manual-queue-search" placeholder="SKU, название, код импорта…" autocomplete="off" />
                 </div>
                 <div class="col-12 col-md-6 d-flex flex-wrap gap-2 align-items-end">
-                  <button type="button" class="btn btn-sm btn-primary" id="dg-manual-queue-refresh" data-dg-notify-start="Обновляем очередь ручного сопоставления…">
-                    <i class="pe-7s-refresh me-1"></i>Обновить очередь
+                  <button type="button" class="btn btn-sm btn-primary" id="dg-manual-queue-refresh" data-dg-notify-start="Применяем фильтры очереди ручного сопоставления…" data-dg-tooltip="Применить поиск и фильтры к очереди ручного сопоставления (шаг 3). Enter в поле поиска — то же действие.">
+                    <i class="pe-7s-search me-1"></i>Применить
                   </button>
                 </div>
               </div>
@@ -742,7 +734,27 @@
                     <option value="rejected">Авто-совпадение вы отклонили</option>
                   </select>
                 </div>
-                <div class="col-12 col-sm-12 col-md-4 col-lg-6 d-flex flex-wrap align-items-end gap-2 justify-content-md-end">
+                <div class="col-12 col-sm-6 col-md-5 col-lg-4 d-flex flex-wrap align-items-end gap-2">
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-danger text-nowrap"
+                    id="dg-manual-queue-return-all"
+                    data-dg-notify-start="Готовим возврат всей очереди в авто…"
+                    data-dg-tooltip="Удалить из очереди все строки по текущим фильтрам (мой сайт, конкурент, поиск, причина). Перед удалением — подтверждение в модалке."
+                  >
+                    Вернуть все в авто
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-dark text-nowrap"
+                    id="dg-manual-queue-archive-all"
+                    data-dg-notify-start="Готовим перенос очереди в архив…"
+                    data-dg-tooltip="Перенести в архив (шаг 4) все строки очереди по текущим фильтрам. Перед переносом — подтверждение в модалке."
+                  >
+                    В архив все
+                  </button>
+                </div>
+                <div class="col-12 col-sm-12 col-md-3 col-lg-2 d-flex flex-wrap align-items-end gap-2 justify-content-md-end">
                   <div class="text-muted small" id="dg-manual-queue-page-hint">Страница 1/1</div>
                   <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-manual-queue-prev">Назад</button>
                   <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-manual-queue-next">Вперёд</button>
@@ -751,8 +763,9 @@
               <p class="small text-muted mb-2 lh-base" id="dg-manual-queue-actions-legend">
                 <strong>Действия в строке:</strong>
                 <span class="text-body-secondary">«События»</span> — таблица событий под строкой (повторное нажатие сворачивает);
-                <span class="text-body-secondary">«Найти по конкуренту»</span> — поиск в прайсе под строкой, выбор результата и «Подтвердить вручную» в том же блоке;
+                <span class="text-body-secondary">«Найти по конкуренту»</span> — поиск в прайсе под строкой, ссылки «Мой товар» / «Конкурент» / «Оба», выбор результата и «Подтвердить вручную» в том же блоке;
                 <span class="text-body-secondary">«Вернуть в авто»</span> — убрать из очереди, снова участвует в авто-сопоставлении;
+                <span class="text-body-secondary">«Вернуть все в авто»</span> / <span class="text-body-secondary">«В архив все»</span> (у фильтра «Причина») — то же для <em>всех</em> строк по текущим фильтрам (с подтверждением);
                 <span class="text-body-secondary">«В архив»</span> — отказ от ручной привязки, запись уходит в архив (шаг&nbsp;4).
               </p>
               <p
@@ -780,7 +793,7 @@
                   </thead>
                   <tbody id="dg-manual-queue-tbody">
                     <tr>
-                      <td colspan="5" class="text-muted small">Выберите «Мой сайт (список)» в блоке «Совпадения» — очередь подгрузится автоматически; при смене конкурента нажмите «Обновить очередь».</td>
+                      <td colspan="5" class="text-muted small">Выберите «Мой сайт (список)» в блоке «Совпадения» — очередь подгрузится автоматически; при смене конкурента нажмите «Применить».</td>
                     </tr>
                   </tbody>
                 </table>
@@ -809,9 +822,51 @@
               <div id="dg-matches-step4-body">
               <p class="small text-muted mb-2">
                 Сюда попадают позиции только после действия <strong>«В архив»</strong> в блоке ручного сопоставления. Удаление из архива снова
-                включает товар в обычное авто-сопоставление (как и удаление из очереди выше).
+                включает товар в обычное авто-сопоставление (как и удаление из очереди выше). Фильтры «Мой сайт» / «Конкурент» — из блока «Совпадения» выше.
               </p>
-              <button type="button" class="btn btn-sm btn-outline-primary mb-2" id="dg-manual-archive-refresh" data-dg-notify-start="Обновляем архив ручного сопоставления…">Обновить архив</button>
+              <div class="row g-2 align-items-end mb-2">
+                <div class="col-12 col-md-7 col-lg-6">
+                  <label class="form-label mb-0 small text-uppercase text-muted" for="dg-manual-archive-search">Поиск в архиве</label>
+                  <input
+                    type="text"
+                    class="form-control"
+                    id="dg-manual-archive-search"
+                    placeholder="SKU, название, заметка, кто перенёс…"
+                    autocomplete="off"
+                  />
+                </div>
+                <div class="col-12 col-md-5 col-lg-6 d-flex flex-wrap gap-2 align-items-end">
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-primary"
+                    id="dg-manual-archive-refresh"
+                    data-dg-notify-start="Применяем поиск по архиву…"
+                    data-dg-tooltip="Применить поиск к архиву (шаг 4). Enter в поле поиска — то же действие."
+                  >
+                    <i class="pe-7s-search me-1"></i>Применить
+                  </button>
+                </div>
+              </div>
+              <div class="row g-2 align-items-end mb-2">
+                <div class="col-12 col-sm-6 col-md-4 col-lg-3">
+                  <label class="form-label mb-0 small text-uppercase text-muted" for="dg-manual-archive-limit">На странице</label>
+                  <select
+                    class="form-select form-select-sm"
+                    id="dg-manual-archive-limit"
+                    title="Сколько строк архива загружать за раз (на сервере до 300)."
+                  >
+                    <option value="50">50</option>
+                    <option value="100" selected>100</option>
+                    <option value="200">200</option>
+                  </select>
+                </div>
+                <div class="col-12 col-sm-6 col-md-8 col-lg-9 d-flex flex-wrap align-items-end gap-2 justify-content-sm-end">
+                  <div class="text-muted small" id="dg-manual-archive-page-hint">Страница 1/1</div>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-manual-archive-prev">Назад</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-manual-archive-next">Вперёд</button>
+                </div>
+              </div>
+              <p class="small text-body-secondary mb-2 fw-semibold lh-sm" id="dg-manual-archive-count" aria-live="polite">Архив: —</p>
               <div class="table-responsive">
                 <table id="dg-manual-archive-table" class="table table-sm table-hover table-bordered mb-0">
                   <thead class="table-light">
@@ -831,6 +886,82 @@
                   </tbody>
                 </table>
               </div>
+              </div>
+            </div>
+          </div>
+
+          <div
+            id="dg-manual-queue-return-all-overlay"
+            class="dg-matches-confirm-overlay"
+            style="display: none"
+            aria-hidden="true"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="dg-manual-queue-return-all-title"
+          >
+            <div class="dg-matches-confirm-backdrop" id="dg-manual-queue-return-all-backdrop"></div>
+            <div class="dg-matches-confirm-panel card shadow-lg border-0">
+              <div class="card-header">
+                <div class="fw-semibold" id="dg-manual-queue-return-all-title">Вернуть все в авто?</div>
+              </div>
+              <div class="card-body">
+                <p class="mb-0" id="dg-manual-queue-return-all-text"></p>
+              </div>
+              <div class="card-footer d-flex justify-content-end gap-2 flex-wrap bg-white border-top-0">
+                <button type="button" class="btn btn-outline-secondary" id="dg-manual-queue-return-all-cancel" data-dg-no-activity="1">
+                  Отмена
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-danger"
+                  id="dg-manual-queue-return-all-ok"
+                  data-dg-notify-start="Возвращаем всю очередь в авто…"
+                >
+                  Вернуть все в авто
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div
+            id="dg-manual-queue-archive-all-overlay"
+            class="dg-matches-confirm-overlay"
+            style="display: none"
+            aria-hidden="true"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="dg-manual-queue-archive-all-title"
+          >
+            <div class="dg-matches-confirm-backdrop" id="dg-manual-queue-archive-all-backdrop"></div>
+            <div class="dg-matches-confirm-panel card shadow-lg border-0">
+              <div class="card-header">
+                <div class="fw-semibold" id="dg-manual-queue-archive-all-title">В архив все?</div>
+              </div>
+              <div class="card-body">
+                <p class="mb-2" id="dg-manual-queue-archive-all-text"></p>
+                <label class="form-label small text-muted mb-1" for="dg-manual-queue-archive-all-note">Заметка (необязательно)</label>
+                <input
+                  type="text"
+                  class="form-control form-control-sm"
+                  id="dg-manual-queue-archive-all-note"
+                  maxlength="500"
+                  placeholder="Общая заметка для всех переносимых строк"
+                  autocomplete="off"
+                  data-dg-no-activity="1"
+                />
+              </div>
+              <div class="card-footer d-flex justify-content-end gap-2 flex-wrap bg-white border-top-0">
+                <button type="button" class="btn btn-outline-secondary" id="dg-manual-queue-archive-all-cancel" data-dg-no-activity="1">
+                  Отмена
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-dark"
+                  id="dg-manual-queue-archive-all-ok"
+                  data-dg-notify-start="Переносим очередь в архив…"
+                >
+                  В архив все
+                </button>
               </div>
             </div>
           </div>

@@ -21,6 +21,44 @@ module.exports = (db, settings) => {
         sourceEnabledColumnReady = true;
     }
 
+    let cmsProductIdColumnReady = false;
+    async function ensureCmsProductIdColumn() {
+        if (cmsProductIdColumnReady) return;
+        const [rows] = await db.query(`
+            SELECT COUNT(*) AS cnt
+            FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = 'my_products'
+              AND COLUMN_NAME = 'cms_product_id'
+        `);
+        if (!rows[0]?.cnt) {
+            await db.query('ALTER TABLE my_products ADD COLUMN cms_product_id VARCHAR(255) NULL');
+            try {
+                await db.query('CREATE INDEX idx_my_products_cms_product_id ON my_products (site_id, cms_product_id)');
+            } catch (_) {}
+        }
+        cmsProductIdColumnReady = true;
+    }
+
+    function mapMyProductSyncRow(siteId, r, sourceUrl) {
+        const sourceId = String(r.source_id || '').trim();
+        const cmsProductId = String(
+            r.cms_product_id != null && String(r.cms_product_id).trim() !== '' ? r.cms_product_id : sourceId
+        ).trim();
+        return [
+            siteId,
+            sourceId,
+            cmsProductId || null,
+            r.sku || '',
+            r.name || '',
+            r.price || 0,
+            r.currency || 'RUB',
+            r.stock || 0,
+            sourceUrl || '',
+            Number(r.source_enabled) === 0 ? 0 : 1
+        ];
+    }
+
     async function ensureSourceIdentityIndexes() {
         if (sourceIdentityIndexesReady) return;
         const [sourceRows] = await db.query(`
@@ -57,13 +95,13 @@ module.exports = (db, settings) => {
     }
 
     async function queryBitrixRowsWithSourceEnabledFallback(conn, s, limit, offset) {
-        const withSourceEnabled = `SELECT ${s.field_code} as source_id, ${s.field_name} as name, ${s.field_sku} as sku, ${s.field_price} as price, ${s.field_currency} as currency, ${s.field_stock} as stock, '' as url_key, COALESCE(SOURCE_ENABLED, 1) as source_enabled FROM ${s.table_products} LIMIT ? OFFSET ?`;
+        const withSourceEnabled = `SELECT ${s.field_code} as source_id, ${s.field_code} as cms_product_id, ${s.field_name} as name, ${s.field_sku} as sku, ${s.field_price} as price, ${s.field_currency} as currency, ${s.field_stock} as stock, '' as url_key, COALESCE(SOURCE_ENABLED, 1) as source_enabled FROM ${s.table_products} LIMIT ? OFFSET ?`;
         try {
             const [rows] = await conn.query(withSourceEnabled, [limit, offset]);
             return rows;
         } catch (e) {
             if (!/Unknown column 'SOURCE_ENABLED'/i.test(String(e?.message || ''))) throw e;
-            const fallback = `SELECT ${s.field_code} as source_id, ${s.field_name} as name, ${s.field_sku} as sku, ${s.field_price} as price, ${s.field_currency} as currency, ${s.field_stock} as stock, '' as url_key, 1 as source_enabled FROM ${s.table_products} LIMIT ? OFFSET ?`;
+            const fallback = `SELECT ${s.field_code} as source_id, ${s.field_code} as cms_product_id, ${s.field_name} as name, ${s.field_sku} as sku, ${s.field_price} as price, ${s.field_currency} as currency, ${s.field_stock} as stock, '' as url_key, 1 as source_enabled FROM ${s.table_products} LIMIT ? OFFSET ?`;
             const [rows] = await conn.query(fallback, [limit, offset]);
             return rows;
         }
@@ -249,7 +287,7 @@ module.exports = (db, settings) => {
             const conn = await mysql.createConnection({ host: s.db_host, user: s.db_user, password: s.db_pass, database: s.db_name, connectTimeout: 10000 });
             let query = '';
             if (s.cms_type === 'webasyst') {
-                query = `SELECT p.id as source_id, p.name, sk.${s.wa_field_sku_val} as sku, sk.${s.wa_field_price_val} as price, p.currency, sk.${s.wa_field_stock_val} as stock, p.url as url_key FROM ${s.table_products} p JOIN ${s.wa_table_skus} sk ON p.id = sk.product_id ORDER BY p.id DESC LIMIT ?`;
+                query = `SELECT sk.id as source_id, p.id as cms_product_id, p.name, sk.${s.wa_field_sku_val} as sku, sk.${s.wa_field_price_val} as price, p.currency, sk.${s.wa_field_stock_val} as stock, p.url as url_key FROM ${s.table_products} p JOIN ${s.wa_table_skus} sk ON p.id = sk.product_id ORDER BY sk.id DESC LIMIT ?`;
             } else {
                 query = `SELECT ${s.field_code} as source_id, ${s.field_name} as name, ${s.field_sku} as sku, ${s.field_price} as price, ${s.field_currency} as currency, ${s.field_stock} as stock, '' as url_key FROM ${s.table_products} LIMIT ?`;
             }
@@ -279,11 +317,12 @@ module.exports = (db, settings) => {
             let sourceActive = 0;
             let sourceDisabled = 0;
             if (String(s.cms_type || '').toLowerCase() === 'webasyst') {
+                // Считаем строки SKU (= будущие строки my_products), не карточки shop_product.
                 const [src] = await conn.query(`
                     SELECT
-                        COUNT(DISTINCT p.id) AS total,
-                        COUNT(DISTINCT CASE WHEN p.status = 1 THEN p.id END) AS active,
-                        COUNT(DISTINCT CASE WHEN p.status <> 1 OR p.status IS NULL THEN p.id END) AS disabled
+                        COUNT(sk.id) AS total,
+                        SUM(CASE WHEN p.status = 1 THEN 1 ELSE 0 END) AS active,
+                        SUM(CASE WHEN p.status <> 1 OR p.status IS NULL THEN 1 ELSE 0 END) AS disabled
                     FROM ${s.table_products} p
                     JOIN ${s.wa_table_skus} sk ON p.id = sk.product_id
                 `);
@@ -358,6 +397,7 @@ module.exports = (db, settings) => {
 
         try {
             await ensureSourceEnabledColumn();
+            await ensureCmsProductIdColumn();
             await ensureSourceIdentityIndexes();
             if (init === 'true') {
                 await db.query('UPDATE my_products SET is_active = 0 WHERE site_id = ?', [s.id]);
@@ -372,7 +412,7 @@ module.exports = (db, settings) => {
             let query = '';
             let rows;
             if (s.cms_type === 'webasyst') {
-                query = `SELECT p.id as source_id, p.name, sk.${s.wa_field_sku_val} as sku, sk.${s.wa_field_price_val} as price, p.currency, sk.${s.wa_field_stock_val} as stock, p.url as url_key, CASE WHEN p.status = 1 THEN 1 ELSE 0 END as source_enabled FROM ${s.table_products} p JOIN ${s.wa_table_skus} sk ON p.id = sk.product_id LIMIT ? OFFSET ?`;
+                query = `SELECT sk.id as source_id, p.id as cms_product_id, p.name, sk.${s.wa_field_sku_val} as sku, sk.${s.wa_field_price_val} as price, p.currency, sk.${s.wa_field_stock_val} as stock, p.url as url_key, CASE WHEN p.status = 1 THEN 1 ELSE 0 END as source_enabled FROM ${s.table_products} p JOIN ${s.wa_table_skus} sk ON p.id = sk.product_id LIMIT ? OFFSET ?`;
                 [rows] = await conn.query(query, [batchSize, currentOffset]);
             } else if (String(s.cms_type || '').toLowerCase() === 'bitrix') {
                 rows = await queryBitrixRowsWithSourceEnabledFallback(conn, s, batchSize, currentOffset);
@@ -384,13 +424,21 @@ module.exports = (db, settings) => {
 
             if (rows.length === 0) {
                 const [inactive] = await db.query('SELECT COUNT(*) as c FROM my_products WHERE site_id = ? AND is_active = 0', [s.id]);
+                if (String(s.cms_type || '').toLowerCase() === 'webasyst') {
+                    try {
+                        const { cleanupInactiveSkuDuplicates } = require('../lib/datagonMyProductsSkuIdentityCleanup');
+                        await cleanupInactiveSkuDuplicates(db, s.id);
+                    } catch (_) {}
+                }
                 return res.json({ success: true, done: true, deactivated: inactive[0].c });
             }
 
-            const values = rows.map(r => [s.id, String(r.source_id || '').trim(), r.sku || '', r.name || '', r.price || 0, r.currency || 'RUB', r.stock || 0, buildSourceUrl(s.domain, r.url_key, s.cms_type), Number(r.source_enabled) === 0 ? 0 : 1]);
+            const values = rows.map((r) =>
+                mapMyProductSyncRow(s.id, r, buildSourceUrl(s.domain, r.url_key, s.cms_type))
+            );
             let priceUpdate = settings.sync_mode === 'always' ? 'price = VALUES(price),' : 'price = IF(price IS NULL OR price = 0, VALUES(price), price),';
 
-            await db.query(`INSERT INTO my_products (site_id, source_id, sku, name, price, currency, stock, source_url, source_enabled) VALUES ? ON DUPLICATE KEY UPDATE source_id = VALUES(source_id), ${priceUpdate} name = VALUES(name), currency = VALUES(currency), stock = VALUES(stock), source_url = VALUES(source_url), source_enabled = VALUES(source_enabled), is_active = 1, updated_at = NOW()`, [values]);
+            await db.query(`INSERT INTO my_products (site_id, source_id, cms_product_id, sku, name, price, currency, stock, source_url, source_enabled) VALUES ? ON DUPLICATE KEY UPDATE source_id = VALUES(source_id), cms_product_id = VALUES(cms_product_id), sku = VALUES(sku), ${priceUpdate} name = VALUES(name), currency = VALUES(currency), stock = VALUES(stock), source_url = VALUES(source_url), source_enabled = VALUES(source_enabled), is_active = 1, updated_at = NOW()`, [values]);
 
             res.json({ success: true, processed: rows.length, nextOffset: currentOffset + batchSize, hasMore: rows.length === batchSize });
         } catch (e) {
@@ -405,6 +453,7 @@ module.exports = (db, settings) => {
         console.log('[GLOBAL SYNC] STARTED');
         try {
             await ensureSourceEnabledColumn();
+            await ensureCmsProductIdColumn();
             await ensureSourceIdentityIndexes();
             const [sites] = await db.query('SELECT * FROM my_sites');
             if (!sites || sites.length === 0) {
@@ -439,7 +488,7 @@ module.exports = (db, settings) => {
                     let query = '';
                     let rows;
                     if (site.cms_type === 'webasyst') {
-                        query = `SELECT p.id as source_id, p.name, sk.${site.wa_field_sku_val} as sku, sk.${site.wa_field_price_val} as price, p.currency, sk.${site.wa_field_stock_val} as stock, p.url as url_key, CASE WHEN p.status = 1 THEN 1 ELSE 0 END as source_enabled FROM ${site.table_products} p JOIN ${site.wa_table_skus} sk ON p.id = sk.product_id LIMIT ${batchSize} OFFSET ${offset}`;
+                        query = `SELECT sk.id as source_id, p.id as cms_product_id, p.name, sk.${site.wa_field_sku_val} as sku, sk.${site.wa_field_price_val} as price, p.currency, sk.${site.wa_field_stock_val} as stock, p.url as url_key, CASE WHEN p.status = 1 THEN 1 ELSE 0 END as source_enabled FROM ${site.table_products} p JOIN ${site.wa_table_skus} sk ON p.id = sk.product_id LIMIT ${batchSize} OFFSET ${offset}`;
                         [rows] = await conn.query(query);
                     } else if (String(site.cms_type || '').toLowerCase() === 'bitrix') {
                         rows = await queryBitrixRowsWithSourceEnabledFallback(conn, site, batchSize, offset);
@@ -453,10 +502,12 @@ module.exports = (db, settings) => {
                         break;
                     }
 
-                    const values = rows.map(r => [site.id, String(r.source_id || '').trim(), r.sku || '', r.name || '', r.price || 0, r.currency || 'RUB', r.stock || 0, buildSourceUrl(site.domain, r.url_key, site.cms_type), Number(r.source_enabled) === 0 ? 0 : 1]);
+                    const values = rows.map((r) =>
+                        mapMyProductSyncRow(site.id, r, buildSourceUrl(site.domain, r.url_key, site.cms_type))
+                    );
                     let priceUpdate = settings.sync_mode === 'always' ? 'price = VALUES(price),' : 'price = IF(price IS NULL OR price = 0, VALUES(price), price),';
 
-                    await db.query(`INSERT INTO my_products (site_id, source_id, sku, name, price, currency, stock, source_url, source_enabled) VALUES ? ON DUPLICATE KEY UPDATE source_id = VALUES(source_id), ${priceUpdate} name = VALUES(name), currency = VALUES(currency), stock = VALUES(stock), source_url = VALUES(source_url), source_enabled = VALUES(source_enabled), is_active = 1, updated_at = NOW()`, [values]);
+                    await db.query(`INSERT INTO my_products (site_id, source_id, cms_product_id, sku, name, price, currency, stock, source_url, source_enabled) VALUES ? ON DUPLICATE KEY UPDATE source_id = VALUES(source_id), cms_product_id = VALUES(cms_product_id), sku = VALUES(sku), ${priceUpdate} name = VALUES(name), currency = VALUES(currency), stock = VALUES(stock), source_url = VALUES(source_url), source_enabled = VALUES(source_enabled), is_active = 1, updated_at = NOW()`, [values]);
 
                     totalProcessed += rows.length;
                     offset += batchSize;
@@ -469,7 +520,21 @@ module.exports = (db, settings) => {
                     }
                 }
                 await conn.end();
-                
+
+                if (String(site.cms_type || '').toLowerCase() === 'webasyst') {
+                    try {
+                        const { cleanupInactiveSkuDuplicates } = require('../lib/datagonMyProductsSkuIdentityCleanup');
+                        const cleaned = await cleanupInactiveSkuDuplicates(db, site.id);
+                        if (cleaned.deleted || cleaned.remapped) {
+                            console.log(
+                                `[GLOBAL SYNC] ${site.name}: removed ${cleaned.deleted} legacy inactive SKU duplicates, remapped ${cleaned.remapped} match refs`
+                            );
+                        }
+                    } catch (e) {
+                        console.warn(`[GLOBAL SYNC] ${site.name}: SKU identity cleanup failed:`, e.message);
+                    }
+                }
+
                 // Удаляем старые товары (is_active=0) этого сайта? 
                 // Обычно их просто помечают как неактивные, что мы уже сделали в начале.
                 // Если нужно физически удалить: await db.query('DELETE FROM my_products WHERE site_id = ? AND is_active = 0', [site.id]);

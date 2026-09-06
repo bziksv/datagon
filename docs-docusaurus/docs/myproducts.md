@@ -6,6 +6,8 @@ description: Детально — фильтры, поиск, сортировк
 
 Экран **`/my-products.html`** — основная таблица каталога **`my_products`**: что пришло с [Моих сайтов](/docs/mysites/), активность, связь с **МойСклад** (`ms_export`), сравнение с ценами **конкурентов** (если настроены парсинг и сопоставление).
 
+**Webasyst / модификации:** при синке каждая строка `shop_product_skus` становится **отдельной** записью `my_products`. Поле `source_id` = **id SKU** (модификации), чтобы UNIQUE `(site_id, source_id)` не схлопывал несколько артикулов одной карточки. Поле **`cms_product_id`** = id карточки `shop_product` — его показывают в колонке **«ID / КОД»** и в ссылке «редактировать в Webasyst» (иначе открывалась бы чужая карточка с тем же числом, что и id SKU). После первого синка со старой схемой остаются неактивные «призраки» с прежним `source_id` (= id карточки) — их снимает `cleanupInactiveSkuDuplicates`.
+
 <blockquote class="dg-doc-tip">
 <strong>Снимок интерфейса.</strong> PNG обновляют: <code>npm run docs:capture-screenshots</code> (с <code>DOCS_USER</code> и <code>DOCS_PASSWORD</code> — с живой панели; без входа — с макета <code>/doc-screenshots/myproducts-sample.html</code>) и <code>npm run docs:docusaurus:build</code>. Таблица в кадре — <strong>viewport</strong> (верх экрана). <a href="./capture-screenshots.md">Подробнее о съёмке</a>.
 </blockquote>

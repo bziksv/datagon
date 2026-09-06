@@ -309,6 +309,55 @@
     body[data-dg-active-nav="matches"] .dg-matches-workflow-guide .dg-matches-workflow-step + .dg-matches-workflow-step {
       margin-top: 1.25rem;
     }
+
+    /* Результаты поиска в прайсе (очередь шага 3) — сразу под формой поиска, заметный блок */
+    body[data-dg-active-nav="matches"] .dg-manual-inline-results {
+      border: 2px solid #86b7fe;
+      border-radius: 0.375rem;
+      background: #eef5ff;
+      padding: 0.65rem 0.75rem;
+      box-shadow: 0 1px 0 rgba(13, 110, 253, 0.12);
+    }
+    body[data-dg-active-nav="matches"] .dg-manual-inline-results.dg-manual-inline-results--filled {
+      border-color: #198754;
+      background: #edf8f1;
+      box-shadow: 0 1px 0 rgba(25, 135, 84, 0.15);
+    }
+    body[data-dg-active-nav="matches"] .dg-manual-inline-results-head {
+      color: #0f5132;
+    }
+    body[data-dg-active-nav="matches"] .dg-manual-inline-results-list {
+      border: 1px solid #c3e6cb;
+      border-radius: 0.25rem;
+      overflow: hidden;
+      background: #fff;
+      max-height: 280px;
+      overflow-y: auto;
+    }
+    body[data-dg-active-nav="matches"] .dg-manual-inline-result-item.active {
+      background-color: #d1e7dd;
+      border-color: #a3cfbb;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="matches"] .dg-matches-confirm-overlay,
+    body[data-dg-active-nav="matches"] .dg-matches-confirm-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 1090;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+    body[data-dg-active-nav="matches"] .dg-matches-confirm-overlay .dg-matches-confirm-backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.45);
+    }
+    body[data-dg-active-nav="matches"] .dg-matches-confirm-overlay .dg-matches-confirm-panel {
+      position: relative;
+      z-index: 1;
+      width: min(460px, 100%);
+    }
   </style>
 
   <style>
@@ -1490,7 +1539,7 @@
               <p class="small text-muted mb-2">
                 Ниже — только просмотр и фильтры списка совпадений. Режим «Параметры запуска» и «Мой сайт (запуск)» на состав строк в таблице не влияют.
                 Новый прогон сопоставления <strong>не стирает</strong> ожидающие результаты другого режима (например, после прогона по названию по-прежнему видны строки «По SKU» при фильтре «Все» или «По SKU»), кроме режима
-                <strong>«все поля»</strong> — он заново очищает ожидающие только по <em>выбранным в задаче</em> конкурентам. Фильтр <strong>«Тип совпадения»</strong> «По SKU» / «По названию» отсекает строки другого типа: если последний прогон был только по названию, выберите «По названию» или «Все» и нажмите «Применить».
+                <strong>«все поля»</strong> — он заново очищает ожидающие только по <em>выбранным в задаче</em> конкурентам. Фильтр <strong>«Тип совпадения»</strong> «По SKU» / «По названию» отсекает строки другого типа (в т.ч. <strong>ручные</strong>): для пар из шага&nbsp;3 выберите «Вручную» или «Все» и нажмите «Применить».
               </p>
               <div class="dg-matches-list-filters">
                 <div class="row g-3 align-items-end">
@@ -1546,20 +1595,12 @@
                     <select
                       class="form-select"
                       id="dg-matches-tf-match-type"
-                      title="Какие строки показывать. «Все» — и по SKU, и по названию. В колонке «Схожесть»: по названию — подпись вида «98% по названию», по SKU — «100% по SKU»."
+                      title="Какие строки показывать. «Вручную» — пары из шага 3. «По SKU» / «По названию» — авто. «Все» — без отсечения по типу."
                     >
                       <option value="all">Все</option>
+                      <option value="manual">Вручную</option>
                       <option value="sku">По SKU</option>
                       <option value="name">По названию</option>
-                    </select>
-                  </div>
-                  <div class="col-6 col-md-4 col-lg-2" data-dg-matches-list-field="tf_status">
-                    <label class="form-label mb-1 small text-uppercase text-muted" style="letter-spacing: 0.04em" for="dg-matches-tf-status">Статус в списке</label>
-                    <select class="form-select" id="dg-matches-tf-status">
-                      <option value="all">Все</option>
-                      <option value="pending">Ожидает</option>
-                      <option value="confirmed">Подтверждено</option>
-                      <option value="rejected">Отклонено</option>
                     </select>
                   </div>
                   <div class="col-6 col-md-4 col-lg-2" data-dg-matches-list-field="tf_conf_min">
@@ -1672,7 +1713,7 @@
                 курсор на бейдж — откроется пояснение.
               </p>
               <p class="small text-secondary mb-2">
-                Фильтры <strong>«Мой сайт (список)»</strong> и <strong>«Конкурент»</strong> берутся из блока «Совпадения» выше (при смене нажмите «Обновить очередь»). Селект
+                Фильтры <strong>«Мой сайт (список)»</strong> и <strong>«Конкурент»</strong> берутся из блока «Совпадения» выше (при смене нажмите «Применить»). Селект
                 <strong>«Причина»</strong> ниже ограничивает очередь по значению колонки «Причина» (или показывает все).
               </p>
               <div class="row g-2 align-items-end mb-2">
@@ -1681,8 +1722,8 @@
                   <input type="text" class="form-control" id="dg-manual-queue-search" placeholder="SKU, название, код импорта…" autocomplete="off" />
                 </div>
                 <div class="col-12 col-md-6 d-flex flex-wrap gap-2 align-items-end">
-                  <button type="button" class="btn btn-sm btn-primary" id="dg-manual-queue-refresh" data-dg-notify-start="Обновляем очередь ручного сопоставления…">
-                    <i class="pe-7s-refresh me-1"></i>Обновить очередь
+                  <button type="button" class="btn btn-sm btn-primary" id="dg-manual-queue-refresh" data-dg-notify-start="Применяем фильтры очереди ручного сопоставления…" data-dg-tooltip="Применить поиск и фильтры к очереди ручного сопоставления (шаг 3). Enter в поле поиска — то же действие.">
+                    <i class="pe-7s-search me-1"></i>Применить
                   </button>
                 </div>
               </div>
@@ -1711,7 +1752,27 @@
                     <option value="rejected">Авто-совпадение вы отклонили</option>
                   </select>
                 </div>
-                <div class="col-12 col-sm-12 col-md-4 col-lg-6 d-flex flex-wrap align-items-end gap-2 justify-content-md-end">
+                <div class="col-12 col-sm-6 col-md-5 col-lg-4 d-flex flex-wrap align-items-end gap-2">
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-danger text-nowrap"
+                    id="dg-manual-queue-return-all"
+                    data-dg-notify-start="Готовим возврат всей очереди в авто…"
+                    data-dg-tooltip="Удалить из очереди все строки по текущим фильтрам (мой сайт, конкурент, поиск, причина). Перед удалением — подтверждение в модалке."
+                  >
+                    Вернуть все в авто
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-dark text-nowrap"
+                    id="dg-manual-queue-archive-all"
+                    data-dg-notify-start="Готовим перенос очереди в архив…"
+                    data-dg-tooltip="Перенести в архив (шаг 4) все строки очереди по текущим фильтрам. Перед переносом — подтверждение в модалке."
+                  >
+                    В архив все
+                  </button>
+                </div>
+                <div class="col-12 col-sm-12 col-md-3 col-lg-2 d-flex flex-wrap align-items-end gap-2 justify-content-md-end">
                   <div class="text-muted small" id="dg-manual-queue-page-hint">Страница 1/1</div>
                   <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-manual-queue-prev">Назад</button>
                   <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-manual-queue-next">Вперёд</button>
@@ -1720,8 +1781,9 @@
               <p class="small text-muted mb-2 lh-base" id="dg-manual-queue-actions-legend">
                 <strong>Действия в строке:</strong>
                 <span class="text-body-secondary">«События»</span> — таблица событий под строкой (повторное нажатие сворачивает);
-                <span class="text-body-secondary">«Найти по конкуренту»</span> — поиск в прайсе под строкой, выбор результата и «Подтвердить вручную» в том же блоке;
+                <span class="text-body-secondary">«Найти по конкуренту»</span> — поиск в прайсе под строкой, ссылки «Мой товар» / «Конкурент» / «Оба», выбор результата и «Подтвердить вручную» в том же блоке;
                 <span class="text-body-secondary">«Вернуть в авто»</span> — убрать из очереди, снова участвует в авто-сопоставлении;
+                <span class="text-body-secondary">«Вернуть все в авто»</span> / <span class="text-body-secondary">«В архив все»</span> (у фильтра «Причина») — то же для <em>всех</em> строк по текущим фильтрам (с подтверждением);
                 <span class="text-body-secondary">«В архив»</span> — отказ от ручной привязки, запись уходит в архив (шаг&nbsp;4).
               </p>
               <p
@@ -1749,7 +1811,7 @@
                   </thead>
                   <tbody id="dg-manual-queue-tbody">
                     <tr>
-                      <td colspan="5" class="text-muted small">Выберите «Мой сайт (список)» в блоке «Совпадения» — очередь подгрузится автоматически; при смене конкурента нажмите «Обновить очередь».</td>
+                      <td colspan="5" class="text-muted small">Выберите «Мой сайт (список)» в блоке «Совпадения» — очередь подгрузится автоматически; при смене конкурента нажмите «Применить».</td>
                     </tr>
                   </tbody>
                 </table>
@@ -1778,9 +1840,51 @@
               <div id="dg-matches-step4-body">
               <p class="small text-muted mb-2">
                 Сюда попадают позиции только после действия <strong>«В архив»</strong> в блоке ручного сопоставления. Удаление из архива снова
-                включает товар в обычное авто-сопоставление (как и удаление из очереди выше).
+                включает товар в обычное авто-сопоставление (как и удаление из очереди выше). Фильтры «Мой сайт» / «Конкурент» — из блока «Совпадения» выше.
               </p>
-              <button type="button" class="btn btn-sm btn-outline-primary mb-2" id="dg-manual-archive-refresh" data-dg-notify-start="Обновляем архив ручного сопоставления…">Обновить архив</button>
+              <div class="row g-2 align-items-end mb-2">
+                <div class="col-12 col-md-7 col-lg-6">
+                  <label class="form-label mb-0 small text-uppercase text-muted" for="dg-manual-archive-search">Поиск в архиве</label>
+                  <input
+                    type="text"
+                    class="form-control"
+                    id="dg-manual-archive-search"
+                    placeholder="SKU, название, заметка, кто перенёс…"
+                    autocomplete="off"
+                  />
+                </div>
+                <div class="col-12 col-md-5 col-lg-6 d-flex flex-wrap gap-2 align-items-end">
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-primary"
+                    id="dg-manual-archive-refresh"
+                    data-dg-notify-start="Применяем поиск по архиву…"
+                    data-dg-tooltip="Применить поиск к архиву (шаг 4). Enter в поле поиска — то же действие."
+                  >
+                    <i class="pe-7s-search me-1"></i>Применить
+                  </button>
+                </div>
+              </div>
+              <div class="row g-2 align-items-end mb-2">
+                <div class="col-12 col-sm-6 col-md-4 col-lg-3">
+                  <label class="form-label mb-0 small text-uppercase text-muted" for="dg-manual-archive-limit">На странице</label>
+                  <select
+                    class="form-select form-select-sm"
+                    id="dg-manual-archive-limit"
+                    title="Сколько строк архива загружать за раз (на сервере до 300)."
+                  >
+                    <option value="50">50</option>
+                    <option value="100" selected>100</option>
+                    <option value="200">200</option>
+                  </select>
+                </div>
+                <div class="col-12 col-sm-6 col-md-8 col-lg-9 d-flex flex-wrap align-items-end gap-2 justify-content-sm-end">
+                  <div class="text-muted small" id="dg-manual-archive-page-hint">Страница 1/1</div>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-manual-archive-prev">Назад</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-manual-archive-next">Вперёд</button>
+                </div>
+              </div>
+              <p class="small text-body-secondary mb-2 fw-semibold lh-sm" id="dg-manual-archive-count" aria-live="polite">Архив: —</p>
               <div class="table-responsive">
                 <table id="dg-manual-archive-table" class="table table-sm table-hover table-bordered mb-0">
                   <thead class="table-light">
@@ -1800,6 +1904,82 @@
                   </tbody>
                 </table>
               </div>
+              </div>
+            </div>
+          </div>
+
+          <div
+            id="dg-manual-queue-return-all-overlay"
+            class="dg-matches-confirm-overlay"
+            style="display: none"
+            aria-hidden="true"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="dg-manual-queue-return-all-title"
+          >
+            <div class="dg-matches-confirm-backdrop" id="dg-manual-queue-return-all-backdrop"></div>
+            <div class="dg-matches-confirm-panel card shadow-lg border-0">
+              <div class="card-header">
+                <div class="fw-semibold" id="dg-manual-queue-return-all-title">Вернуть все в авто?</div>
+              </div>
+              <div class="card-body">
+                <p class="mb-0" id="dg-manual-queue-return-all-text"></p>
+              </div>
+              <div class="card-footer d-flex justify-content-end gap-2 flex-wrap bg-white border-top-0">
+                <button type="button" class="btn btn-outline-secondary" id="dg-manual-queue-return-all-cancel" data-dg-no-activity="1">
+                  Отмена
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-danger"
+                  id="dg-manual-queue-return-all-ok"
+                  data-dg-notify-start="Возвращаем всю очередь в авто…"
+                >
+                  Вернуть все в авто
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div
+            id="dg-manual-queue-archive-all-overlay"
+            class="dg-matches-confirm-overlay"
+            style="display: none"
+            aria-hidden="true"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="dg-manual-queue-archive-all-title"
+          >
+            <div class="dg-matches-confirm-backdrop" id="dg-manual-queue-archive-all-backdrop"></div>
+            <div class="dg-matches-confirm-panel card shadow-lg border-0">
+              <div class="card-header">
+                <div class="fw-semibold" id="dg-manual-queue-archive-all-title">В архив все?</div>
+              </div>
+              <div class="card-body">
+                <p class="mb-2" id="dg-manual-queue-archive-all-text"></p>
+                <label class="form-label small text-muted mb-1" for="dg-manual-queue-archive-all-note">Заметка (необязательно)</label>
+                <input
+                  type="text"
+                  class="form-control form-control-sm"
+                  id="dg-manual-queue-archive-all-note"
+                  maxlength="500"
+                  placeholder="Общая заметка для всех переносимых строк"
+                  autocomplete="off"
+                  data-dg-no-activity="1"
+                />
+              </div>
+              <div class="card-footer d-flex justify-content-end gap-2 flex-wrap bg-white border-top-0">
+                <button type="button" class="btn btn-outline-secondary" id="dg-manual-queue-archive-all-cancel" data-dg-no-activity="1">
+                  Отмена
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-dark"
+                  id="dg-manual-queue-archive-all-ok"
+                  data-dg-notify-start="Переносим очередь в архив…"
+                >
+                  В архив все
+                </button>
               </div>
             </div>
           </div>
@@ -1992,6 +2172,84 @@
         if (String(cmsType || "").toLowerCase() !== "webasyst") return "";
         return base.replace(/\/$/, "") + "/webasyst/shop/?action=products#/product/" + encodeURIComponent(id) + "/edit/";
       }
+      function resolveCompetitorPriceUrl(urlRaw, domainRaw) {
+        var raw = String(urlRaw || "").trim();
+        var base = buildSiteUrl(domainRaw);
+        if (/^https?:\/\//i.test(raw)) return raw;
+        if (raw && base) {
+          if (raw.charAt(0) === "/") return base.replace(/\/+$/, "") + raw;
+          return base.replace(/\/+$/, "") + "/" + raw.replace(/^\/+/, "");
+        }
+        return buildSiteUrl(raw) || base || "";
+      }
+      function buildManualQueueMyProductUrl(row) {
+        if (!row) return "";
+        var domain = row.my_site_domain || "";
+        var cms = row.my_site_cms_type || "";
+        if (!domain && row.my_site_id != null) {
+          var sid = Number(row.my_site_id);
+          var sites = state.mySites || [];
+          for (var i = 0; i < sites.length; i++) {
+            if (Number(sites[i].id) === sid) {
+              domain = sites[i].domain || "";
+              cms = sites[i].cms_type || cms;
+              break;
+            }
+          }
+        }
+        return (
+          normalizeWebasystProductUrl(row.mp_source_url || "", domain, cms) ||
+          buildProductPageUrlFromSlug(domain, row.mp_sku || "") ||
+          buildProductSearchUrl(domain, row.mp_sku || "", row.mp_name || "")
+        );
+      }
+      function openMatchesPairWindows(myUrl, compUrl) {
+        var a = String(myUrl || "").trim();
+        var b = String(compUrl || "").trim();
+        if (a) window.open(a, "_blank", "noopener");
+        if (b) window.open(b, "_blank", "noopener");
+      }
+      function appendProductOpenLinks(host, myUrl, compUrl, opts) {
+        if (!host) return;
+        var o = opts || {};
+        var wrap = document.createElement("div");
+        wrap.className = o.className || "dg-matches-product-links small mt-2 d-flex gap-2 flex-wrap align-items-center";
+        if (myUrl) {
+          var a1 = document.createElement("a");
+          a1.href = myUrl;
+          a1.target = "_blank";
+          a1.rel = "noopener noreferrer";
+          a1.className = "btn btn-sm btn-link p-0";
+          a1.innerHTML = '<i class="pe-7s-home me-1"></i>' + (o.myLabel || "Мой товар");
+          wrap.appendChild(a1);
+        }
+        if (compUrl) {
+          var a2 = document.createElement("a");
+          a2.href = compUrl;
+          a2.target = "_blank";
+          a2.rel = "noopener noreferrer";
+          a2.className = "btn btn-sm btn-link p-0";
+          a2.innerHTML = '<i class="pe-7s-link me-1"></i>' + (o.compLabel || "Конкурент");
+          wrap.appendChild(a2);
+        }
+        if (myUrl && compUrl) {
+          var both = document.createElement("button");
+          both.type = "button";
+          both.className = "btn btn-sm btn-outline-secondary";
+          both.setAttribute("data-dg-no-activity", "1");
+          both.innerHTML = '<i class="pe-7s-browser me-1"></i>Оба';
+          both.setAttribute(
+            "data-dg-tooltip",
+            "Открыть карточку нашего товара и страницу конкурента в соседних вкладках"
+          );
+          both.addEventListener("click", function (ev) {
+            ev.preventDefault();
+            openMatchesPairWindows(myUrl, compUrl);
+          });
+          wrap.appendChild(both);
+        }
+        if (wrap.childNodes.length) host.appendChild(wrap);
+      }
 
       var MATCH_MODES_ALLOWED = { all: 1, name: 1, sku: 1, sku_norm: 1, sku_best: 1 };
 
@@ -2022,6 +2280,10 @@
         if (mqLimit !== 100) params.set("manual_queue_limit", String(mqLimit));
         var mqReason = String(state.manualQueueReason || "").trim().toLowerCase();
         if (mqReason === "no_match" || mqReason === "rejected") params.set("manual_queue_reason", mqReason);
+        var maPage = Number(state.manualArchivePage || 1);
+        var maLimit = Number(state.manualArchiveLimit || 100);
+        if (maPage > 1) params.set("manual_archive_page", String(maPage));
+        if (maLimit !== 100) params.set("manual_archive_limit", String(maLimit));
         var next = params.toString()
           ? window.location.pathname + "?" + params.toString()
           : window.location.pathname;
@@ -2076,6 +2338,10 @@
         manualQueueTotal: 0,
         /** Шаг 3: фильтр очереди по match_exclusion.reason (пусто = все). */
         manualQueueReason: "",
+        /** Архив после ручного отказа (шаг 4). */
+        manualArchivePage: 1,
+        manualArchiveLimit: 100,
+        manualArchiveTotal: 0,
       };
 
       var matchesMyProductsSearchDebounceId = null;
@@ -2130,6 +2396,8 @@
           manual_queue_page: Number(p.get("manual_queue_page") || 1),
           manual_queue_limit: Number(p.get("manual_queue_limit") || 100),
           manual_queue_reason: String(p.get("manual_queue_reason") || "").trim().toLowerCase(),
+          manual_archive_page: Number(p.get("manual_archive_page") || 1),
+          manual_archive_limit: Number(p.get("manual_archive_limit") || 100),
         };
       }
 
@@ -2952,7 +3220,6 @@
           my_sku: document.getElementById("dg-matches-tf-my-sku").value.trim(),
           competitor_sku: document.getElementById("dg-matches-tf-comp-sku").value.trim(),
           match_type: document.getElementById("dg-matches-tf-match-type").value,
-          status: document.getElementById("dg-matches-tf-status").value,
           confidence_min: document.getElementById("dg-matches-tf-conf-min").value,
           confidence_max: document.getElementById("dg-matches-tf-conf-max").value,
         };
@@ -2971,7 +3238,6 @@
           my_sku: document.getElementById("dg-matches-tf-my-sku").value,
           competitor_sku: document.getElementById("dg-matches-tf-comp-sku").value,
           match_type: document.getElementById("dg-matches-tf-match-type").value,
-          tf_status: document.getElementById("dg-matches-tf-status").value,
           conf_min: document.getElementById("dg-matches-tf-conf-min").value,
           conf_max: document.getElementById("dg-matches-tf-conf-max").value,
         };
@@ -3032,7 +3298,6 @@
             document.getElementById("dg-matches-tf-comp-sku").value = String(prefs.competitor_sku);
         }
         if (prefs.match_type != null) document.getElementById("dg-matches-tf-match-type").value = String(prefs.match_type);
-        if (prefs.tf_status != null) document.getElementById("dg-matches-tf-status").value = String(prefs.tf_status);
         if (prefs.conf_min != null) document.getElementById("dg-matches-tf-conf-min").value = String(prefs.conf_min);
         if (prefs.conf_max != null) document.getElementById("dg-matches-tf-conf-max").value = String(prefs.conf_max);
       }
@@ -3064,6 +3329,8 @@
                 return hay.indexOf(term) !== -1;
               });
         var tf = readTableFilters();
+        // my_sku / competitor_sku / match_type / conf* уходят в GET /api/matches/list при «Применить»;
+        // здесь только сортировка (+ запасной клиентский отсев, если ответ ещё без этих фильтров).
         var byColumns = filtered.filter(function (m) {
           if (tf.my_sku && String(m.my_sku || "").toLowerCase().indexOf(String(tf.my_sku).trim().toLowerCase()) === -1)
             return false;
@@ -3075,11 +3342,15 @@
           if (tf.match_type !== "all") {
             var wantMt = String(tf.match_type).toLowerCase();
             var rowMt = String(m.match_type || "").trim().toLowerCase();
-            if (!rowMt)
-              rowMt = String(effectiveMatchTypeForScore(m, normalizeConfidence01(m.confidence_score))).toLowerCase();
-            if (rowMt !== wantMt) return false;
+            if (wantMt === "manual") {
+              var rowMode = String(m.matching_mode || "").trim().toLowerCase();
+              if (rowMt !== "manual" && rowMode !== "manual") return false;
+            } else {
+              if (!rowMt)
+                rowMt = String(effectiveMatchTypeForScore(m, normalizeConfidence01(m.confidence_score))).toLowerCase();
+              if (rowMt !== wantMt) return false;
+            }
           }
-          if (tf.status !== "all" && String(m.status || "").toLowerCase() !== String(tf.status).toLowerCase()) return false;
           var pct = normalizeConfidence01(m.confidence_score) * 100;
           var min = Number(tf.confidence_min || "");
           var max = Number(tf.confidence_max || "");
@@ -3398,14 +3669,13 @@
             (tf0.my_sku && String(tf0.my_sku).trim() !== "") ||
             (tf0.competitor_sku && String(tf0.competitor_sku).trim() !== "") ||
             tf0.match_type !== "all" ||
-            tf0.status !== "all" ||
             (String(tf0.confidence_min || "").trim() !== "") ||
             (String(tf0.confidence_max || "").trim() !== "");
           if (rawLen > 0 && filtersOn) {
             td0.textContent =
               "По фильтрам строк нет (загружено " +
               rawLen +
-              " на странице). Попробуйте «Тип совпадения: Все», «По умолчанию» или умный фильтр очистить. Если только что меняли «Тип», нажмите «Применить», чтобы список перезапросился с сервера.";
+              " на странице). Нажмите «Применить» — фильтры «Мой SKU» / «SKU конк.» / схожесть уходят на сервер. Или «Тип: Все» / «По умолчанию» / очистите умный фильтр.";
           } else if (rawLen === 0) {
             var listSel0 = document.getElementById("dg-matches-list-my-site");
             var listSiteV = String(listSel0 && listSel0.value ? listSel0.value : "").trim();
@@ -3418,7 +3688,7 @@
               td0.textContent =
                 "По текущим фильтрам на сервере 0 строк (всего: " +
                 formatNumber(tot) +
-                "). Смените верхний «Статус» (часто «Все»), «Все конкуренты», «Тип совпадения: Все» или запустите сопоставление. Поля «Мой SKU» / «SKU конк.» / «Статус в списке» режут уже загруженную выборку — после их смены нажмите «Применить». Если на сервере всё ещё старая страница — обновите вкладку без кэша (Ctrl+F5).";
+                "). Смените верхний «Статус» (часто «Все»), «Все конкуренты», «Тип совпадения: Все» / «Вручную» или запустите сопоставление. Поля «Мой SKU» / «SKU конк.» режут уже загруженную выборку — после их смены нажмите «Применить». Если на сервере всё ещё старая страница — обновите вкладку без кэша (Ctrl+F5).";
             } else {
               td0.textContent =
                 "Выберите «Мой сайт (список)», при необходимости фильтры и «Применить», либо запустите сопоставление.";
@@ -3683,6 +3953,18 @@
         if (compId) q.set("competitor_site_id", compId);
         var smartTerm = String(document.getElementById("dg-matches-smart-filter").value || "").trim();
         if (smartTerm) q.set("search", smartTerm);
+        var tfSku = document.getElementById("dg-matches-tf-my-sku");
+        var mySkuQ = tfSku ? String(tfSku.value || "").trim() : "";
+        if (mySkuQ) q.set("my_sku", mySkuQ);
+        var tfCompSku = document.getElementById("dg-matches-tf-comp-sku");
+        var compSkuQ = tfCompSku ? String(tfCompSku.value || "").trim() : "";
+        if (compSkuQ) q.set("competitor_sku", compSkuQ);
+        var tfConfMin = document.getElementById("dg-matches-tf-conf-min");
+        var confMinQ = tfConfMin ? String(tfConfMin.value || "").trim() : "";
+        if (confMinQ !== "") q.set("confidence_min", confMinQ);
+        var tfConfMax = document.getElementById("dg-matches-tf-conf-max");
+        var confMaxQ = tfConfMax ? String(tfConfMax.value || "").trim() : "";
+        if (confMaxQ !== "") q.set("confidence_max", confMaxQ);
         var fetchOpts = { credentials: "same-origin" };
         try {
           if (typeof AbortSignal !== "undefined" && AbortSignal.timeout) fetchOpts.signal = AbortSignal.timeout(45000);
@@ -4304,7 +4586,6 @@
         "dg-matches-tf-my-sku",
         "dg-matches-tf-comp-sku",
         "dg-matches-tf-match-type",
-        "dg-matches-tf-status",
         "dg-matches-tf-conf-min",
         "dg-matches-tf-conf-max",
       ].forEach(function (id) {
@@ -4320,6 +4601,15 @@
             loadMatches();
           }
         });
+        if (id === "dg-matches-tf-my-sku" || id === "dg-matches-tf-comp-sku") {
+          el.addEventListener("keydown", function (ev) {
+            if (ev.key === "Enter") {
+              ev.preventDefault();
+              var applyBtn = document.getElementById("dg-matches-filters-apply");
+              if (applyBtn) applyBtn.click();
+            }
+          });
+        }
       });
       document.getElementById("dg-matches-filters-apply").addEventListener("click", function () {
         state.matchesPage = 1;
@@ -4343,7 +4633,6 @@
         document.getElementById("dg-matches-tf-my-sku").value = "";
         document.getElementById("dg-matches-tf-comp-sku").value = "";
         document.getElementById("dg-matches-tf-match-type").value = "all";
-        document.getElementById("dg-matches-tf-status").value = "all";
         document.getElementById("dg-matches-tf-conf-min").value = "";
         document.getElementById("dg-matches-tf-conf-max").value = "";
         state.matchesPage = 1;
@@ -4411,9 +4700,8 @@
               {
                 key: "tf_match_type",
                 title: "Тип совпадения",
-                hint: "При «По названию» / «По SKU» учитывается при загрузке с сервера (не только среди 100 строк по score). Пустой match_type: как в колонке «Тип».",
+                hint: "Все / Вручную / По SKU / По названию — уходит на сервер при «Применить». Ручные пары (шаг 3) видны при «Вручную» или «Все».",
               },
-              { key: "tf_status", title: "Статус в списке", hint: "" },
               { key: "tf_conf_min", title: "Схож. от %", hint: "По confidence; по SKU обычно 100%." },
               { key: "tf_conf_max", title: "Схож. до %", hint: "По confidence; по SKU обычно 100%." },
             ],
@@ -4426,7 +4714,7 @@
         ];
         if (window.DatagonFilterFieldsVisibility && window.DatagonFilterFieldsVisibility.init) {
           window.DatagonFilterFieldsVisibility.init({
-            storageKeyPrefix: "datagon_matches_list_filter_fields_v2",
+            storageKeyPrefix: "datagon_matches_list_filter_fields_v3",
             attr: "data-dg-matches-list-field",
             fieldGroups: FIELD_GROUPS,
             togglesRootId: "dg-matches-list-filter-blocks-toggles",
@@ -4489,6 +4777,12 @@
           state.manualQueueReason = normalizeManualQueueReason(up.manual_queue_reason);
           var mqReasonEl = document.getElementById("dg-manual-queue-reason");
           if (mqReasonEl) mqReasonEl.value = state.manualQueueReason || "";
+          if (Number.isFinite(up.manual_archive_page) && up.manual_archive_page > 0) state.manualArchivePage = up.manual_archive_page;
+          if ([50, 100, 200].indexOf(up.manual_archive_limit) !== -1) {
+            state.manualArchiveLimit = up.manual_archive_limit;
+            var maLimEl = document.getElementById("dg-manual-archive-limit");
+            if (maLimEl) maLimEl.value = String(up.manual_archive_limit);
+          }
           mergeMatchesListPrefsFromStorage();
           if (up.list_smart) {
             document.getElementById("dg-matches-smart-filter").value = up.list_smart;
@@ -4651,6 +4945,15 @@
         }
 
         function runManualPricesSearchFetch(projectIdStr, q, resEl, pickTarget) {
+          var compDomain =
+            pickTarget && pickTarget.compDomain
+              ? String(pickTarget.compDomain)
+              : (function () {
+                  var c = (state.competitors || []).find(function (x) {
+                    return String(x.id) === String(projectIdStr);
+                  });
+                  return c && c.domain ? String(c.domain) : "";
+                })();
           fetch(
             "/api/matches/prices-search?project_id=" +
               encodeURIComponent(projectIdStr) +
@@ -4667,32 +4970,71 @@
             .then(function (x) {
               if (!x.r.ok) throw new Error(x.j.error || "Ошибка поиска");
               var rows = x.j.data || [];
+              resEl.classList.add("dg-manual-inline-results--filled");
               if (!rows.length) {
-                resEl.textContent = "Ничего не найдено.";
+                resEl.replaceChildren();
+                var empty = document.createElement("div");
+                empty.className = "dg-manual-inline-results-empty small px-2 py-2";
+                empty.textContent = "Ничего не найдено.";
+                resEl.appendChild(empty);
                 return;
               }
               resEl.replaceChildren();
+              var head = document.createElement("div");
+              head.className = "dg-manual-inline-results-head small fw-semibold mb-2";
+              head.textContent =
+                "Найдено: " + rows.length + " — кликните строку, чтобы подставить в «Подтверждение пары»";
+              resEl.appendChild(head);
               var ul = document.createElement("div");
-              ul.className = "list-group list-group-flush border rounded";
+              ul.className = "list-group list-group-flush dg-manual-inline-results-list";
               rows.forEach(function (pr) {
+                var priceUrl = resolveCompetitorPriceUrl(pr.url, compDomain);
                 var a = document.createElement("button");
                 a.type = "button";
-                a.className = "list-group-item list-group-item-action text-start small py-2";
+                a.className =
+                  "list-group-item list-group-item-action text-start py-2 dg-manual-inline-result-item";
                 a.innerHTML =
-                  "<strong>" +
+                  "<div class=\"d-flex flex-wrap justify-content-between gap-2 align-items-baseline\">" +
+                  "<strong class=\"text-body\">" +
                   (pr.sku || "—") +
-                  "</strong> · " +
-                  (pr.product_name || "—") +
-                  "<div class=\"text-muted\">" +
-                  (pr.price != null ? pr.price : "") +
+                  "</strong>" +
+                  "<span class=\"badge bg-success text-white flex-shrink-0\">" +
+                  (pr.price != null && pr.price !== "" ? String(pr.price) : "—") +
                   " " +
-                  (pr.currency || "") +
+                  (pr.currency || "RUB") +
+                  "</span>" +
+                  "</div>" +
+                  "<div class=\"small text-body mt-1\">" +
+                  (pr.product_name || "—") +
                   "</div>";
+                if (priceUrl) {
+                  var linkRow = document.createElement("div");
+                  linkRow.className = "mt-1";
+                  var openA = document.createElement("a");
+                  openA.href = priceUrl;
+                  openA.target = "_blank";
+                  openA.rel = "noopener noreferrer";
+                  openA.className = "small";
+                  openA.textContent = "Открыть у конкурента";
+                  openA.addEventListener("click", function (ev) {
+                    ev.stopPropagation();
+                  });
+                  linkRow.appendChild(openA);
+                  a.appendChild(linkRow);
+                }
                 a.addEventListener("click", function () {
                   var sEl = pickTarget && pickTarget.skuEl ? pickTarget.skuEl : null;
                   var nEl = pickTarget && pickTarget.nameEl ? pickTarget.nameEl : null;
                   if (sEl) sEl.value = pr.sku || "";
                   if (nEl) nEl.value = pr.product_name || "";
+                  if (pickTarget) {
+                    pickTarget.compUrl = priceUrl || "";
+                    if (typeof pickTarget.syncLinks === "function") pickTarget.syncLinks();
+                  }
+                  a.classList.add("active");
+                  try {
+                    if (sEl) sEl.focus();
+                  } catch (eF) {}
                 });
                 ul.appendChild(a);
               });
@@ -4837,6 +5179,16 @@
           rowF.appendChild(col3);
           root.appendChild(rowF);
 
+          var resEl = document.createElement("div");
+          resEl.className = "dg-manual-inline-results mb-2";
+          resEl.setAttribute("role", "region");
+          resEl.setAttribute("aria-label", "Результаты поиска в прайсе");
+          resEl.innerHTML =
+            '<div class="dg-manual-inline-results-empty small text-muted px-2 py-2">' +
+            "Введите запрос и нажмите «Найти в прайсе». Найденные позиции появятся здесь — клик подставит SKU и название в «Подтверждение пары» ниже." +
+            "</div>";
+          root.appendChild(resEl);
+
           var bSync = document.createElement("button");
           bSync.type = "button";
           bSync.className = "btn btn-link btn-sm p-0 small d-block mb-2";
@@ -4914,22 +5266,65 @@
             submitManualMatchConfirm(sid, cid, pid, cs, cn);
           });
           confirmWrap.appendChild(bConf);
+
+          var myProductUrl = buildManualQueueMyProductUrl(row);
+          var linksHost = document.createElement("div");
+          linksHost.className = "mt-2";
+          confirmWrap.appendChild(linksHost);
+
+          function currentCompDomain() {
+            var cid = String(compSel.value || "").trim() || String(row.competitor_site_id || "").trim();
+            if (row.comp_domain && String(row.competitor_site_id) === cid) return String(row.comp_domain);
+            var c = (state.competitors || []).find(function (x) {
+              return String(x.id) === cid;
+            });
+            return c && c.domain ? String(c.domain) : String(row.comp_domain || "");
+          }
+
+          var pickTarget = {
+            skuEl: skuInp,
+            nameEl: nameInp,
+            myUrl: myProductUrl,
+            compUrl: "",
+            compDomain: currentCompDomain(),
+            syncLinks: function () {
+              linksHost.replaceChildren();
+              appendProductOpenLinks(linksHost, pickTarget.myUrl, pickTarget.compUrl, {
+                className: "dg-matches-product-links small d-flex gap-2 flex-wrap align-items-center",
+                myLabel: "Мой товар",
+                compLabel: "Конкурент"
+              });
+              if (!pickTarget.myUrl && !pickTarget.compUrl) {
+                var hint = document.createElement("div");
+                hint.className = "small text-muted";
+                hint.textContent =
+                  "Ссылки: выберите результат поиска выше — появится «Конкурент» и кнопка «Оба» (с карточкой нашего товара).";
+                linksHost.appendChild(hint);
+              } else if (pickTarget.myUrl && !pickTarget.compUrl) {
+                var hint2 = document.createElement("div");
+                hint2.className = "small text-muted mt-1";
+                hint2.textContent = "Кликни строку в результатах поиска — появится ссылка на конкурента и «Оба».";
+                linksHost.appendChild(hint2);
+              }
+            }
+          };
+          pickTarget.syncLinks();
+          compSel.addEventListener("change", function () {
+            pickTarget.compDomain = currentCompDomain();
+            pickTarget.compUrl = "";
+            pickTarget.syncLinks();
+          });
+
           root.appendChild(confirmWrap);
 
-          var pickTarget = { skuEl: skuInp, nameEl: nameInp };
-
-          var resEl = document.createElement("div");
-          resEl.className = "small text-muted dg-manual-inline-results";
-          resEl.textContent =
-            "Введите запрос и нажмите «Найти в прайсе». Клик по строке результата подставит SKU и название в поля блока «Подтверждение пары» выше.";
-          root.appendChild(resEl);
-
           bSearch.addEventListener("click", function () {
+            pickTarget.compDomain = currentCompDomain();
             runManualPricesSearchInline(compSel, qInp, resEl, pickTarget);
           });
           qInp.addEventListener("keydown", function (ev) {
             if (ev.key === "Enter") {
               ev.preventDefault();
+              pickTarget.compDomain = currentCompDomain();
               runManualPricesSearchInline(compSel, qInp, resEl, pickTarget);
             }
           });
@@ -5141,6 +5536,10 @@
               "</div><div class=\"text-muted\">ID " +
               row.my_product_id +
               "</div>";
+            appendProductOpenLinks(tdM, buildManualQueueMyProductUrl(row), "", {
+              className: "dg-matches-product-links small mt-1 d-flex gap-2 flex-wrap align-items-center",
+              myLabel: "Мой товар"
+            });
             tr.appendChild(tdM);
             var tdU = document.createElement("td");
             tdU.className = "small text-muted";
@@ -5313,9 +5712,62 @@
               alert(e.message || "Ошибка");
             });
         }
-        function renderManualArchive(rows) {
+        function setManualArchiveCountUi(text) {
+          var el = document.getElementById("dg-manual-archive-count");
+          if (el) el.textContent = text || "Архив: —";
+        }
+        function manualArchivePages() {
+          var lim = Math.max(1, Number(state.manualArchiveLimit) || 100);
+          var tot = Math.max(0, Number(state.manualArchiveTotal) || 0);
+          return Math.max(1, Math.ceil(tot / lim));
+        }
+        function updateManualArchivePaginationUi() {
+          var hint = document.getElementById("dg-manual-archive-page-hint");
+          var prev = document.getElementById("dg-manual-archive-prev");
+          var next = document.getElementById("dg-manual-archive-next");
+          if (!listSiteId()) {
+            if (hint) hint.textContent = "Страница —";
+            if (prev) prev.disabled = true;
+            if (next) next.disabled = true;
+            return;
+          }
+          var pgs = manualArchivePages();
+          if (hint) hint.textContent = "Страница " + state.manualArchivePage + "/" + pgs;
+          if (prev) prev.disabled = state.manualArchivePage <= 1;
+          if (next) next.disabled = state.manualArchivePage >= pgs;
+        }
+        function formatManualArchiveCountLine(meta, shownLen) {
+          if (!listSiteId()) return "Архив: выберите «Мой сайт (список)».";
+          var m = meta && typeof meta === "object" ? meta : {};
+          var total = Number.isFinite(Number(m.total)) ? Math.max(0, Math.floor(Number(m.total))) : null;
+          var shown = Math.max(0, Math.floor(Number(shownLen) || 0));
+          var lim = Number.isFinite(Number(m.limit)) ? Math.max(1, Math.floor(Number(m.limit))) : 100;
+          var page = Number.isFinite(Number(m.page)) ? Math.max(1, Math.floor(Number(m.page))) : 1;
+          var pages = Number.isFinite(Number(m.pages)) ? Math.max(1, Math.floor(Number(m.pages))) : 1;
+          var search = m.search ? String(m.search) : "";
+          if (total === null) total = shown;
+          var base =
+            "Найдено: " +
+            formatNumber(total) +
+            "; страница " +
+            page +
+            "/" +
+            pages +
+            "; показано: " +
+            formatNumber(shown) +
+            " (на странице " +
+            formatNumber(lim) +
+            ")";
+          if (search) base += ' · поиск «' + search + '»';
+          return "Архив: " + base;
+        }
+        function renderManualArchive(rows, meta) {
           var tb = document.getElementById("dg-manual-archive-tbody");
           if (!tb) return;
+          var shown = rows && rows.length ? rows.length : 0;
+          var search = meta && meta.search ? String(meta.search) : "";
+          setManualArchiveCountUi(formatManualArchiveCountLine(meta, shown));
+          updateManualArchivePaginationUi();
           tb.replaceChildren();
           if (!listSiteId()) {
             var tr0 = document.createElement("tr");
@@ -5332,7 +5784,9 @@
             var td1 = document.createElement("td");
             td1.colSpan = 6;
             td1.className = "text-muted small";
-            td1.textContent = "Архив пуст.";
+            td1.textContent = search
+              ? "По поиску в архиве ничего не найдено. Очистите поле и нажмите «Применить»."
+              : "Архив пуст.";
             tr1.appendChild(td1);
             tb.appendChild(tr1);
             return;
@@ -5354,6 +5808,9 @@
               "</div><div class=\"text-muted\">ID " +
               row.my_product_id +
               "</div>";
+            appendProductOpenLinks(tdM, buildManualQueueMyProductUrl(row), "", {
+              myLabel: "Мой товар"
+            });
             tr.appendChild(tdM);
             var tdCn = document.createElement("td");
             tdCn.className = "small";
@@ -5408,14 +5865,24 @@
         function loadManualArchive() {
           var sid = listSiteId();
           if (!sid) {
-            renderManualArchive([]);
+            state.manualArchiveTotal = 0;
+            renderManualArchive([], {});
             return;
           }
+          var limRaw = Number(state.manualArchiveLimit);
+          var lim = [50, 100, 200].indexOf(limRaw) !== -1 ? limRaw : 100;
+          state.manualArchiveLimit = lim;
+          var page = Math.max(1, Number(state.manualArchivePage) || 1);
+          var off = (page - 1) * lim;
           var params = new URLSearchParams();
           params.set("my_site_id", sid);
           var cid = listCompetitorId();
           if (cid) params.set("competitor_site_id", cid);
-          params.set("limit", "200");
+          var sq = document.getElementById("dg-manual-archive-search");
+          var search = sq ? String(sq.value || "").trim() : "";
+          if (search) params.set("search", search);
+          params.set("limit", String(lim));
+          params.set("offset", String(off));
           fetch("/api/matches/manual-archive?" + params.toString(), { credentials: "same-origin" })
             .then(function (r) {
               return r.json().then(function (j) {
@@ -5424,9 +5891,28 @@
             })
             .then(function (x) {
               if (!x.r.ok) throw new Error(x.j.error || "Ошибка архива");
-              renderManualArchive(x.j.data || []);
+              var total = Math.max(0, Number(x.j.total) || 0);
+              var pages = Math.max(1, Math.ceil(total / lim) || 1);
+              if (total === 0) state.manualArchivePage = 1;
+              else if (state.manualArchivePage > pages) {
+                state.manualArchivePage = pages;
+                loadManualArchive();
+                return;
+              }
+              state.manualArchiveTotal = total;
+              renderManualArchive(x.j.data || [], {
+                total: total,
+                search: x.j.search || search,
+                limit: lim,
+                offset: off,
+                page: state.manualArchivePage,
+                pages: pages
+              });
+              scheduleSyncUrl();
             })
             .catch(function (e) {
+              setManualArchiveCountUi("Не удалось загрузить архив.");
+              updateManualArchivePaginationUi();
               alert(e.message || "Ошибка");
             });
         }
@@ -5631,12 +6117,319 @@
             });
         }
         function bindManual() {
+          var returnAllConfirmState = { resolve: null };
+          function closeReturnAllConfirm(ok) {
+            var overlay = document.getElementById("dg-manual-queue-return-all-overlay");
+            if (overlay) {
+              overlay.style.display = "none";
+              overlay.setAttribute("aria-hidden", "true");
+            }
+            var resolve = returnAllConfirmState.resolve;
+            returnAllConfirmState.resolve = null;
+            if (typeof resolve === "function") resolve(!!ok);
+          }
+          function openReturnAllConfirm(message) {
+            return new Promise(function (resolve) {
+              if (returnAllConfirmState.resolve) closeReturnAllConfirm(false);
+              returnAllConfirmState.resolve = resolve;
+              var textEl = document.getElementById("dg-manual-queue-return-all-text");
+              if (textEl) textEl.textContent = message || "";
+              var overlay = document.getElementById("dg-manual-queue-return-all-overlay");
+              var okBtn = document.getElementById("dg-manual-queue-return-all-ok");
+              if (!overlay) {
+                resolve(window.confirm(message || "Вернуть все в авто?"));
+                return;
+              }
+              overlay.style.display = "flex";
+              overlay.setAttribute("aria-hidden", "false");
+              if (okBtn) {
+                try {
+                  okBtn.focus();
+                } catch (_) {}
+              }
+            });
+          }
+          function reasonLabelForUi(reason) {
+            if (reason === "no_match") return "Авто не нашло пару";
+            if (reason === "rejected") return "Авто-совпадение вы отклонили";
+            return "Все";
+          }
+          function runReturnAllToAuto() {
+            var sid = listSiteId();
+            if (!sid) {
+              if (window.DatagonNotify && window.DatagonNotify.toast) {
+                window.DatagonNotify.toast({
+                  type: "warning",
+                  message: "Выберите «Мой сайт (список)» в блоке «Совпадения»."
+                });
+              } else {
+                alert("Выберите «Мой сайт (список)».");
+              }
+              return;
+            }
+            var total = Math.max(0, Number(state.manualQueueTotal) || 0);
+            if (total < 1) {
+              if (window.DatagonNotify && window.DatagonNotify.toast) {
+                window.DatagonNotify.toast({ type: "warning", message: "В очереди по текущим фильтрам нет строк." });
+              } else {
+                alert("В очереди по текущим фильтрам нет строк.");
+              }
+              return;
+            }
+            var cid = listCompetitorId();
+            var sq = document.getElementById("dg-manual-queue-search");
+            var search = sq ? String(sq.value || "").trim() : "";
+            var reason = normalizeManualQueueReason(state.manualQueueReason);
+            var filterBits = [];
+            filterBits.push("мой сайт #" + sid);
+            filterBits.push(cid ? "конкурент #" + cid : "все конкуренты");
+            filterBits.push("причина: " + reasonLabelForUi(reason));
+            if (search) filterBits.push('поиск: «' + search + '»');
+            var msg =
+              "Будет удалено из очереди (шаг 3) " +
+              total +
+              " записей по фильтрам: " +
+              filterBits.join("; ") +
+              ". Товары снова участвуют в авто-сопоставлении. Действие нельзя отменить.";
+            openReturnAllConfirm(msg).then(function (ok) {
+              if (!ok) return;
+              var payload = { confirm: true, my_site_id: Number(sid) };
+              if (cid) payload.competitor_site_id = Number(cid);
+              if (search) payload.search = search;
+              if (reason) payload.exclusion_reason = reason;
+              var btn = document.getElementById("dg-manual-queue-return-all");
+              var doFetch = function () {
+                var fetchOpts = {
+                  method: "POST",
+                  credentials: "same-origin",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(payload)
+                };
+                try {
+                  if (typeof AbortSignal !== "undefined" && AbortSignal.timeout) {
+                    fetchOpts.signal = AbortSignal.timeout(120000);
+                  }
+                } catch (_) {}
+                return fetch("/api/matches/manual-queue/return-to-auto", fetchOpts)
+                  .then(function (r) {
+                    return r.json().then(function (j) {
+                      return { r: r, j: j };
+                    });
+                  })
+                  .then(function (x) {
+                    if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Ошибка");
+                    var deleted = Number(x.j.deleted || 0);
+                    var sec = x.j.duration_sec != null ? String(x.j.duration_sec) : "";
+                    if (window.DatagonNotify && window.DatagonNotify.toast) {
+                      window.DatagonNotify.toast({
+                        type: "success",
+                        message: "Вернули в авто: " + deleted + (sec ? " (" + sec + " с)" : "")
+                      });
+                    }
+                    state.manualQueuePage = 1;
+                    loadManualQueue();
+                  })
+                  .catch(function (e) {
+                    var msg = e && e.name === "TimeoutError"
+                      ? "Сервер не ответил за 120 с. Очередь могла уже очиститься — обновите страницу."
+                      : e.message || "Ошибка";
+                    if (window.DatagonNotify && window.DatagonNotify.toast) {
+                      window.DatagonNotify.toast({ type: "danger", message: msg });
+                    } else {
+                      alert(msg);
+                    }
+                    state.manualQueuePage = 1;
+                    loadManualQueue();
+                  });
+              };
+              if (window.DatagonNotify && window.DatagonNotify.busyRun && btn) {
+                window.DatagonNotify.busyRun(btn, doFetch);
+              } else {
+                doFetch();
+              }
+            });
+          }
+          var bReturnAll = document.getElementById("dg-manual-queue-return-all");
+          if (bReturnAll) bReturnAll.addEventListener("click", runReturnAllToAuto);
+          var bReturnCancel = document.getElementById("dg-manual-queue-return-all-cancel");
+          if (bReturnCancel) bReturnCancel.addEventListener("click", function () { closeReturnAllConfirm(false); });
+          var bReturnOk = document.getElementById("dg-manual-queue-return-all-ok");
+          if (bReturnOk) bReturnOk.addEventListener("click", function () { closeReturnAllConfirm(true); });
+          var bReturnBackdrop = document.getElementById("dg-manual-queue-return-all-backdrop");
+          if (bReturnBackdrop) bReturnBackdrop.addEventListener("click", function () { closeReturnAllConfirm(false); });
+
+          var archiveAllConfirmState = { resolve: null };
+          function closeArchiveAllConfirm(ok) {
+            var overlay = document.getElementById("dg-manual-queue-archive-all-overlay");
+            if (overlay) {
+              overlay.style.display = "none";
+              overlay.setAttribute("aria-hidden", "true");
+            }
+            var resolve = archiveAllConfirmState.resolve;
+            archiveAllConfirmState.resolve = null;
+            if (typeof resolve === "function") resolve(!!ok);
+          }
+          function openArchiveAllConfirm(message) {
+            return new Promise(function (resolve) {
+              if (archiveAllConfirmState.resolve) closeArchiveAllConfirm(false);
+              archiveAllConfirmState.resolve = resolve;
+              var textEl = document.getElementById("dg-manual-queue-archive-all-text");
+              if (textEl) textEl.textContent = message || "";
+              var noteEl = document.getElementById("dg-manual-queue-archive-all-note");
+              if (noteEl) noteEl.value = "";
+              var overlay = document.getElementById("dg-manual-queue-archive-all-overlay");
+              var okBtn = document.getElementById("dg-manual-queue-archive-all-ok");
+              if (!overlay) {
+                resolve(window.confirm(message || "В архив все?"));
+                return;
+              }
+              overlay.style.display = "flex";
+              overlay.setAttribute("aria-hidden", "false");
+              if (okBtn) {
+                try {
+                  okBtn.focus();
+                } catch (_) {}
+              }
+            });
+          }
+          function runArchiveAll() {
+            var sid = listSiteId();
+            if (!sid) {
+              if (window.DatagonNotify && window.DatagonNotify.toast) {
+                window.DatagonNotify.toast({
+                  type: "warning",
+                  message: "Выберите «Мой сайт (список)» в блоке «Совпадения»."
+                });
+              } else {
+                alert("Выберите «Мой сайт (список)».");
+              }
+              return;
+            }
+            var total = Math.max(0, Number(state.manualQueueTotal) || 0);
+            if (total < 1) {
+              if (window.DatagonNotify && window.DatagonNotify.toast) {
+                window.DatagonNotify.toast({ type: "warning", message: "В очереди по текущим фильтрам нет строк." });
+              } else {
+                alert("В очереди по текущим фильтрам нет строк.");
+              }
+              return;
+            }
+            var cid = listCompetitorId();
+            var sq = document.getElementById("dg-manual-queue-search");
+            var search = sq ? String(sq.value || "").trim() : "";
+            var reason = normalizeManualQueueReason(state.manualQueueReason);
+            var filterBits = [];
+            filterBits.push("мой сайт #" + sid);
+            filterBits.push(cid ? "конкурент #" + cid : "все конкуренты");
+            filterBits.push("причина: " + reasonLabelForUi(reason));
+            if (search) filterBits.push('поиск: «' + search + '»');
+            var msg =
+              "Будет перенесено в архив (шаг 4) " +
+              total +
+              " записей по фильтрам: " +
+              filterBits.join("; ") +
+              ". Из очереди шага 3 строки исчезнут. Действие нельзя отменить одной кнопкой.";
+            openArchiveAllConfirm(msg).then(function (ok) {
+              if (!ok) return;
+              var noteEl = document.getElementById("dg-manual-queue-archive-all-note");
+              var note = noteEl ? String(noteEl.value || "").trim() : "";
+              var payload = { confirm: true, my_site_id: Number(sid) };
+              if (cid) payload.competitor_site_id = Number(cid);
+              if (search) payload.search = search;
+              if (reason) payload.exclusion_reason = reason;
+              if (note) payload.note = note;
+              var btn = document.getElementById("dg-manual-queue-archive-all");
+              var doFetch = function () {
+                var fetchOpts = {
+                  method: "POST",
+                  credentials: "same-origin",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(payload)
+                };
+                try {
+                  if (typeof AbortSignal !== "undefined" && AbortSignal.timeout) {
+                    fetchOpts.signal = AbortSignal.timeout(120000);
+                  }
+                } catch (_) {}
+                return fetch("/api/matches/manual-queue/archive-all", fetchOpts)
+                  .then(function (r) {
+                    return r.json().then(function (j) {
+                      return { r: r, j: j };
+                    });
+                  })
+                  .then(function (x) {
+                    if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Ошибка");
+                    var archived = Number(x.j.archived || 0);
+                    var sec = x.j.duration_sec != null ? String(x.j.duration_sec) : "";
+                    if (window.DatagonNotify && window.DatagonNotify.toast) {
+                      window.DatagonNotify.toast({
+                        type: "success",
+                        message: "В архив: " + archived + (sec ? " (" + sec + " с)" : "")
+                      });
+                    }
+                    state.manualQueuePage = 1;
+                    loadManualQueue();
+                    loadManualArchive();
+                  })
+                  .catch(function (e) {
+                    var errMsg =
+                      e && e.name === "TimeoutError"
+                        ? "Сервер не ответил за 120 с. Часть строк могла уже уйти в архив — обновите страницу."
+                        : e.message || "Ошибка";
+                    if (window.DatagonNotify && window.DatagonNotify.toast) {
+                      window.DatagonNotify.toast({ type: "danger", message: errMsg });
+                    } else {
+                      alert(errMsg);
+                    }
+                    state.manualQueuePage = 1;
+                    loadManualQueue();
+                    loadManualArchive();
+                  });
+              };
+              if (window.DatagonNotify && window.DatagonNotify.busyRun && btn) {
+                window.DatagonNotify.busyRun(btn, doFetch);
+              } else {
+                doFetch();
+              }
+            });
+          }
+          var bArchiveAll = document.getElementById("dg-manual-queue-archive-all");
+          if (bArchiveAll) bArchiveAll.addEventListener("click", runArchiveAll);
+          var bArchiveCancel = document.getElementById("dg-manual-queue-archive-all-cancel");
+          if (bArchiveCancel) bArchiveCancel.addEventListener("click", function () { closeArchiveAllConfirm(false); });
+          var bArchiveOk = document.getElementById("dg-manual-queue-archive-all-ok");
+          if (bArchiveOk) bArchiveOk.addEventListener("click", function () { closeArchiveAllConfirm(true); });
+          var bArchiveBackdrop = document.getElementById("dg-manual-queue-archive-all-backdrop");
+          if (bArchiveBackdrop) bArchiveBackdrop.addEventListener("click", function () { closeArchiveAllConfirm(false); });
+
+          document.addEventListener("keydown", function (ev) {
+            if (ev.key !== "Escape") return;
+            var retOv = document.getElementById("dg-manual-queue-return-all-overlay");
+            if (retOv && retOv.style.display === "flex") {
+              closeReturnAllConfirm(false);
+              return;
+            }
+            var archOv = document.getElementById("dg-manual-queue-archive-all-overlay");
+            if (archOv && archOv.style.display === "flex") closeArchiveAllConfirm(false);
+          });
+
           var bQ = document.getElementById("dg-manual-queue-refresh");
           if (bQ)
             bQ.addEventListener("click", function () {
               state.manualQueuePage = 1;
               loadManualQueue();
             });
+          var sqQ = document.getElementById("dg-manual-queue-search");
+          if (sqQ) {
+            sqQ.addEventListener("keydown", function (ev) {
+              if (ev.key === "Enter") {
+                ev.preventDefault();
+                state.manualQueuePage = 1;
+                if (bQ) bQ.click();
+                else loadManualQueue();
+              }
+            });
+          }
           var limQ = document.getElementById("dg-manual-queue-limit");
           if (limQ)
             limQ.addEventListener("change", function () {
@@ -5673,7 +6466,48 @@
               }
             });
           var bA = document.getElementById("dg-manual-archive-refresh");
-          if (bA) bA.addEventListener("click", loadManualArchive);
+          if (bA)
+            bA.addEventListener("click", function () {
+              state.manualArchivePage = 1;
+              loadManualArchive();
+            });
+          var sqA = document.getElementById("dg-manual-archive-search");
+          if (sqA) {
+            sqA.addEventListener("keydown", function (ev) {
+              if (ev.key === "Enter") {
+                ev.preventDefault();
+                state.manualArchivePage = 1;
+                if (bA) bA.click();
+                else loadManualArchive();
+              }
+            });
+          }
+          var limA = document.getElementById("dg-manual-archive-limit");
+          if (limA)
+            limA.addEventListener("change", function () {
+              state.manualArchiveLimit = Number(this.value) || 100;
+              state.manualArchivePage = 1;
+              loadManualArchive();
+              scheduleSyncUrl();
+            });
+          var prevA = document.getElementById("dg-manual-archive-prev");
+          if (prevA)
+            prevA.addEventListener("click", function () {
+              if (state.manualArchivePage > 1) {
+                state.manualArchivePage--;
+                loadManualArchive();
+                scheduleSyncUrl();
+              }
+            });
+          var nextA = document.getElementById("dg-manual-archive-next");
+          if (nextA)
+            nextA.addEventListener("click", function () {
+              if (state.manualArchivePage < manualArchivePages()) {
+                state.manualArchivePage++;
+                loadManualArchive();
+                scheduleSyncUrl();
+              }
+            });
           var bLog = document.getElementById("dg-manual-log-load");
           if (bLog) bLog.addEventListener("click", loadProductLog);
           var ls = document.getElementById("dg-matches-list-my-site");
@@ -5681,6 +6515,7 @@
           if (ls)
             ls.addEventListener("change", function () {
               state.manualQueuePage = 1;
+              state.manualArchivePage = 1;
               loadManualQueue();
               loadManualArchive();
               scheduleSyncUrl();
@@ -5688,6 +6523,7 @@
           if (lc)
             lc.addEventListener("change", function () {
               state.manualQueuePage = 1;
+              state.manualArchivePage = 1;
               loadManualQueue();
               loadManualArchive();
               scheduleSyncUrl();

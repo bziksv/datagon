@@ -23,10 +23,14 @@ function normalizeMsLinkKey(value) {
     return String(value ?? '').trim().toUpperCase();
 }
 
-/** SQL: строка ms_export совпадает с товаром по коду МойСклад = source_id или = sku (как в sync МС: upper+trim). */
+/** SQL: строка ms_export совпадает с товаром по коду МойСклад =
+ * cms_product_id (id карточки CMS) → иначе source_id → или sku.
+ * Для Webasyst нельзя матчить только по source_id (= id SKU): число совпадает
+ * с чужим кодом МС (например 27284 = «Якорь», а карточка отоскопа = 18622).
+ */
 function sqlMsExportMatchesProduct(msAlias = 'ms', mpAlias = 'mp') {
     return `(
-        UPPER(TRIM(COALESCE(${msAlias}.code,''))) = UPPER(TRIM(COALESCE(${mpAlias}.source_id,'')))
+        UPPER(TRIM(COALESCE(${msAlias}.code,''))) = UPPER(TRIM(COALESCE(NULLIF(TRIM(COALESCE(${mpAlias}.cms_product_id,'')), ''), ${mpAlias}.source_id)))
         OR (
             TRIM(COALESCE(${mpAlias}.sku,'')) <> ''
             AND UPPER(TRIM(COALESCE(${msAlias}.code,''))) = UPPER(TRIM(COALESCE(${mpAlias}.sku,'')))
@@ -37,7 +41,7 @@ function sqlMsExportMatchesProduct(msAlias = 'ms', mpAlias = 'mp') {
 /** JOIN-ы для связи my_products ↔ ms_export: код в ms_export уже upper+trim при синке — равенство по колонке даёт индекс. */
 function sqlMyProductsMsExportJoins(mpAlias = 'mp') {
     return `
-        LEFT JOIN ms_export ms_link_src ON ms_link_src.code = UPPER(TRIM(COALESCE(${mpAlias}.source_id,'')))
+        LEFT JOIN ms_export ms_link_src ON ms_link_src.code = UPPER(TRIM(COALESCE(NULLIF(TRIM(COALESCE(${mpAlias}.cms_product_id,'')), ''), ${mpAlias}.source_id)))
         LEFT JOIN ms_export ms_link_sku ON TRIM(COALESCE(${mpAlias}.sku,'')) <> ''
             AND ms_link_sku.code = UPPER(TRIM(COALESCE(${mpAlias}.sku,'')))
     `;
@@ -166,6 +170,26 @@ module.exports = (db, settings) => {
             await db.query('ALTER TABLE my_products ADD COLUMN source_enabled TINYINT(1) NOT NULL DEFAULT 1');
         }
         myProductsSourceEnabledReady = true;
+    }
+
+    let myProductsCmsProductIdReady = false;
+    async function ensureMyProductsCmsProductIdColumn() {
+        if (myProductsCmsProductIdReady) return;
+        const [rows] = await db.query(
+            `SELECT 1
+             FROM information_schema.columns
+             WHERE table_schema = DATABASE()
+               AND table_name = 'my_products'
+               AND column_name = 'cms_product_id'
+             LIMIT 1`
+        );
+        if (!rows.length) {
+            await db.query('ALTER TABLE my_products ADD COLUMN cms_product_id VARCHAR(255) NULL');
+            try {
+                await db.query('CREATE INDEX idx_my_products_cms_product_id ON my_products (site_id, cms_product_id)');
+            } catch (_) {}
+        }
+        myProductsCmsProductIdReady = true;
     }
 
     function resolveActorName(req) {
@@ -330,6 +354,7 @@ module.exports = (db, settings) => {
     router.get('/', async (req, res) => {
         try {
             await ensureMyProductsPerfIndexes();
+            await ensureMyProductsCmsProductIdColumn();
             const {
                 site_id,
                 status,
@@ -359,7 +384,7 @@ module.exports = (db, settings) => {
             const l = parseInt(limit) || (settings.default_limit || 100);
             const o = parseInt(offset) || 0;
             const sortFieldMap = {
-                id: 'mp.source_id',
+                id: 'COALESCE(mp.cms_product_id, mp.source_id)',
                 site: 'mp.site_id',
                 sku: 'mp.sku',
                 name: 'mp.name',
@@ -445,10 +470,11 @@ module.exports = (db, settings) => {
                 for (const token of tokens) {
                     const like = `%${token}%`;
                     if (!isNaN(token)) {
-                        q += ' AND (mp.source_id = ? OR mp.sku LIKE ? OR mp.name LIKE ?)';
-                        qc += ' AND (mp.source_id = ? OR mp.sku LIKE ? OR mp.name LIKE ?)';
-                        p.push(String(parseInt(token, 10)), like, like);
-                        pc.push(String(parseInt(token, 10)), like, like);
+                        q += ' AND (mp.source_id = ? OR mp.cms_product_id = ? OR mp.sku LIKE ? OR mp.name LIKE ?)';
+                        qc += ' AND (mp.source_id = ? OR mp.cms_product_id = ? OR mp.sku LIKE ? OR mp.name LIKE ?)';
+                        const idTok = String(parseInt(token, 10));
+                        p.push(idTok, idTok, like, like);
+                        pc.push(idTok, idTok, like, like);
                     } else {
                         q += ' AND (mp.sku LIKE ? OR mp.name LIKE ?)';
                         qc += ' AND (mp.sku LIKE ? OR mp.name LIKE ?)';
@@ -697,7 +723,7 @@ module.exports = (db, settings) => {
         const dir = sortDirection === 'ASC' ? 1 : -1;
         const field = String(sortBy || '').toLowerCase();
         const valueMap = {
-            id: (r) => String(r.source_id || ''),
+            id: (r) => String(r.cms_product_id || r.source_id || ''),
             site: (r) => Number(r.site_id || 0),
             sku: (r) => String(r.sku || ''),
             name: (r) => String(r.name || ''),
@@ -887,7 +913,7 @@ module.exports = (db, settings) => {
         if (!Array.isArray(rows) || !rows.length) return;
         const keys = new Set();
         for (const r of rows) {
-            const a = normalizeMsLinkKey(r.source_id);
+            const a = normalizeMsLinkKey(r.cms_product_id || r.source_id);
             if (a) keys.add(a);
             const b = normalizeMsLinkKey(r.sku);
             if (b) keys.add(b);
@@ -903,12 +929,13 @@ module.exports = (db, settings) => {
         );
         const linked = new Set((linkedRows || []).map((row) => String(row.k || '').trim()));
         rows.forEach((r) => {
-            const sid = normalizeMsLinkKey(r.source_id);
+            const idCode = String(r.cms_product_id || r.source_id || '').trim();
+            const idKey = normalizeMsLinkKey(idCode);
             const sku = normalizeMsLinkKey(r.sku);
-            const bySource = Boolean(sid && linked.has(sid));
+            const byId = Boolean(idKey && linked.has(idKey));
             const bySku = Boolean(sku && linked.has(sku));
-            r.in_moysklad = bySource || bySku ? 1 : 0;
-            if (bySource) r.ms_link_code = String(r.source_id || '').trim();
+            r.in_moysklad = byId || bySku ? 1 : 0;
+            if (byId) r.ms_link_code = idCode;
             else if (bySku) r.ms_link_code = String(r.sku || '').trim();
             else r.ms_link_code = '';
         });
@@ -981,6 +1008,7 @@ module.exports = (db, settings) => {
 
         try {
             await ensureMyProductsSourceEnabledColumn();
+            await ensureMyProductsCmsProductIdColumn();
             // Получаем настройки сайта из БД
             const [sites] = await db.query('SELECT * FROM my_sites WHERE id = ?', [site_id]);
             if (!sites.length) {
@@ -1002,9 +1030,11 @@ module.exports = (db, settings) => {
 
             // Формируем запрос в зависимости от CMS
             if (s.cms_type === 'webasyst') {
+                // source_id в my_products = shop_product_skus.id (модификация), не id карточки.
                 query = `
                     SELECT 
-                        p.id as source_id,
+                        sk.id as source_id,
+                        p.id as cms_product_id,
                         p.name,
                         sk.${s.wa_field_sku_val} as sku,
                         sk.${s.wa_field_price_val} as price,
@@ -1014,13 +1044,14 @@ module.exports = (db, settings) => {
                         CASE WHEN p.status = 1 THEN 1 ELSE 0 END as source_enabled
                     FROM ${s.table_products} p
                     JOIN ${s.wa_table_skus} sk ON p.id = sk.product_id
-                    WHERE ${source_id ? 'p.id = ?' : `sk.${s.wa_field_sku_val} = ?`}
+                    WHERE ${source_id ? 'sk.id = ?' : `sk.${s.wa_field_sku_val} = ?`}
                     LIMIT 1
                 `;
             } else if (String(s.cms_type || '').toLowerCase() === 'bitrix') {
                 query = `
                     SELECT 
                         ${s.field_code} as source_id,
+                        ${s.field_code} as cms_product_id,
                         ${s.field_name} as name,
                         ${s.field_sku} as sku,
                         ${s.field_price} as price,
@@ -1037,6 +1068,7 @@ module.exports = (db, settings) => {
                 query = `
                     SELECT 
                         ${s.field_code} as source_id,
+                        ${s.field_code} as cms_product_id,
                         ${s.field_name} as name,
                         ${s.field_sku} as sku,
                         ${s.field_price} as price,
@@ -1059,6 +1091,7 @@ module.exports = (db, settings) => {
                 const fallbackQuery = `
                     SELECT 
                         ${s.field_code} as source_id,
+                        ${s.field_code} as cms_product_id,
                         ${s.field_name} as name,
                         ${s.field_sku} as sku,
                         ${s.field_price} as price,
@@ -1080,6 +1113,9 @@ module.exports = (db, settings) => {
 
             const r = rows[0];
             const sourceId = String(r.source_id || '').trim();
+            const cmsProductId = String(
+                r.cms_product_id != null && String(r.cms_product_id).trim() !== '' ? r.cms_product_id : sourceId
+            ).trim();
             const cleanDomain = String(s.domain || '').trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '');
             const rawPath = String(r.url_key || '').trim();
             let sourceUrl = '';
@@ -1111,11 +1147,13 @@ module.exports = (db, settings) => {
 
             // Обновляем локальную запись
             const finalParams = [
+                r.sku || '',
                 r.name || '',
                 ...updateParams, // цена
                 r.currency || 'RUB',
                 r.stock || 0,
                 sourceId,
+                cmsProductId || null,
                 sourceUrl,
                 Number(r.source_enabled) === 0 ? 0 : 1,
                 site_id,
@@ -1125,11 +1163,13 @@ module.exports = (db, settings) => {
             await db.query(`
                 UPDATE my_products 
                 SET 
+                    sku = ?,
                     name = ?, 
                     ${priceUpdateClause}
                     currency = ?, 
                     stock = ?, 
                     source_id = ?,
+                    cms_product_id = ?,
                     source_url = ?,
                     source_enabled = ?,
                     is_active = 1, 
@@ -1247,24 +1287,40 @@ module.exports = (db, settings) => {
             });
             try {
                 if (String(s.cms_type || '').toLowerCase() === 'webasyst') {
-                    const productSourceId = Number(product.source_id || 0);
-                    if (!Number.isFinite(productSourceId) || productSourceId <= 0) {
-                        return res.status(400).json({ error: 'Некорректный source_id для товара Webasyst' });
+                    const skuRowId = Number(product.source_id || 0);
+                    const skuCode = String(product.sku || '').trim();
+                    let skuMeta = [];
+                    if (Number.isFinite(skuRowId) && skuRowId > 0) {
+                        const [byId] = await conn.query(
+                            `SELECT id, product_id
+                             FROM ${s.wa_table_skus}
+                             WHERE id = ?
+                             LIMIT 1`,
+                            [skuRowId]
+                        );
+                        skuMeta = byId;
                     }
-                    const [skuMeta] = await conn.query(
-                        `SELECT product_id
-                         FROM ${s.wa_table_skus}
-                         WHERE product_id = ? AND ${s.wa_field_sku_val} = ?
-                         LIMIT 1`,
-                        [productSourceId, product.sku]
-                    );
-                    const waProductId = Number(skuMeta?.[0]?.product_id);
+                    if (!skuMeta.length && skuCode) {
+                        const [bySku] = await conn.query(
+                            `SELECT id, product_id
+                             FROM ${s.wa_table_skus}
+                             WHERE ${s.wa_field_sku_val} = ?
+                             LIMIT 1`,
+                            [skuCode]
+                        );
+                        skuMeta = bySku;
+                    }
+                    if (!skuMeta.length) {
+                        return res.status(404).json({ error: 'SKU не найден в Webasyst (source_id / артикул)' });
+                    }
+                    const waSkuId = Number(skuMeta[0].id);
+                    const waProductId = Number(skuMeta[0].product_id);
                     await conn.query(
                         `UPDATE ${s.wa_table_skus}
                          SET ${s.wa_field_price_val} = ?
-                         WHERE product_id = ? AND ${s.wa_field_sku_val} = ?
+                         WHERE id = ?
                          LIMIT 1`,
-                        [finalPrice, productSourceId, product.sku]
+                        [finalPrice, waSkuId]
                     );
                     if (Number.isFinite(waProductId) && waProductId > 0) {
                         await recalcWebasystProductPrimaryPrices(conn, s, waProductId);

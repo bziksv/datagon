@@ -414,11 +414,13 @@ Query:
 ### GET `/api/my-products`
 Список товаров из локальной таблицы `my_products`.
 
+Для источников **Webasyst** каждая модификация (`shop_product_skus`) — отдельная строка: `source_id` = id SKU, `cms_product_id` = id карточки `shop_product` (колонка «ID / КОД» и ссылка в админку CMS), `sku` = артикул; уникальность `(site_id, source_id)`.
+
 Query (основные):
 - `site_id` — ID источника (`my_sites.id`) или `all`
 - `status` — `all` | `0` | `1` (`is_active`)
 - `source_enabled` — `all` | `0` | `1` (учёт на стороне источника)
-- `ms_linked` — `all` | `1` | `0` (есть / нет совпадения с `ms_export` по коду МойСклад: `source_id` или `sku`, сравнение после `UPPER(TRIM(...))`)
+- `ms_linked` — `all` | `1` | `0` (есть / нет совпадения с `ms_export` по коду МойСклад: `cms_product_id` (или `source_id`, если карточки нет), либо `sku`; сравнение после `UPPER(TRIM(...))`)
 - `search` — поиск по полям товара (несколько слов через пробел)
 - `sort_by`, `sort_dir` — сортировка (`id`, `site`, `sku`, `name`, `price`, …)
 - `limit`, `offset` — пагинация
@@ -440,7 +442,7 @@ Query:
 - `total` — активные записи (`is_active = 1`)
 - `active` / `disabled` — среди активных: включённые / выключенные на источнике (`source_enabled`)
 - `disappeared` — `is_active = 0`
-- `linked` — среди активных: есть строка в `ms_export`, где `code` (нормализован при синке МС) совпадает с `UPPER(TRIM(source_id))` или с непустым `UPPER(TRIM(sku))`
+- `linked` — среди активных: есть строка в `ms_export`, где `code` совпадает с `UPPER(TRIM(COALESCE(NULLIF(cms_product_id,''), source_id)))` или с непустым `UPPER(TRIM(sku))`
 
 Кэш ответа: **15 с** по полному набору query-параметров (снижает параллельную нагрузку на БД при открытии «Мои сайты» и «Мои товары»). Значения считаются на сервере; при необходимости мгновенно актуальных цифр подождите TTL или обновите страницу позже.
 
@@ -525,7 +527,10 @@ Query:
 - `competitor_site_id`
 - `status` (`pending`, `confirmed`, `rejected`)
 - `search` / `q` — подстрока по нашему/конкурентному SKU и названию (и `confirmed_by`)
-- `match_type`
+- `my_sku` — подстрока только по нашему артикулу (поле «Мой SKU» в UI; фильтр на сервере, не только по текущей странице)
+- `competitor_sku` — подстрока по артикулу конкурента
+- `confidence_min` / `confidence_max` — порог схожести в процентах 0…100 (как в UI)
+- `match_type` — `sku` | `name` | `manual` | `all` (пусто/`all` — без фильтра; `manual` — ручные пары из шага 3)
 - `limit`
 - `offset`
 
@@ -551,7 +556,7 @@ Body:
 
 ## Расширенные маршруты матчинга
 
-Эндпоинты для экрана «Сопоставление» (ручная очередь, архив, поиск по ценам конкурента, лог): `GET/DELETE /api/matches/manual-queue`, `GET/DELETE /api/matches/manual-archive`, `GET /api/matches/prices-resolve-sku`, `GET /api/matches/prices-search`, `GET /api/matches/product-match-log`, `POST /api/matches/manual-match/confirm`, `POST /api/matches/manual-match/archive`. Точные query и JSON — в `routes/matches.js`. **Поле `archived_by`** в ответе `GET /api/matches/manual-archive` — пользователь, который нажал «В архив» в блоке ручного сопоставления (заполняется при `POST /api/matches/manual-match/archive` через `resolveActorDisplayName`); миграция колонки `match_manual_archive.archived_by VARCHAR(100) NULL` живёт внутри `ensureMatchLaneTables()`.
+Эндпоинты для экрана «Сопоставление» (ручная очередь, архив, поиск по ценам конкурента, лог): `GET/DELETE /api/matches/manual-queue`, `POST /api/matches/manual-queue/return-to-auto` (массово «Вернуть в авто» по фильтрам: `my_site_id`, опц. `competitor_site_id` / `search` / `exclusion_reason`, `confirm: true`; ответ `{ success, deleted, duration_sec, filters }`; лог — пакет до 50 примеров + сводка, без N отдельных INSERT), `POST /api/matches/manual-queue/archive-all` (массово «В архив все» по тем же фильтрам + опц. `note`; ответ `{ success, archived, duration_sec, filters }`), `GET/DELETE /api/matches/manual-archive` (`GET` — query `my_site_id`, опц. `competitor_site_id` / `search` / `limit` (1–300, UI по умолчанию 100) / `offset`; UI шага 4 — пагинация «На странице» + Назад/Вперёд, URL `manual_archive_page` / `manual_archive_limit`; поиск по SKU/названию нашего товара, SKU/названию конкурента, заметке, `archived_by`, имени/домену проекта; в строках также `mp_source_url`, `my_site_domain`, `my_site_cms_type` для ссылки «Мой товар»), `GET /api/matches/prices-resolve-sku`, `GET /api/matches/prices-search`, `GET /api/matches/product-match-log`, `POST /api/matches/manual-match/confirm`, `POST /api/matches/manual-match/archive`. Точные query и JSON — в `routes/matches.js`. **Поле `archived_by`** в ответе `GET /api/matches/manual-archive` — пользователь, который нажал «В архив» в блоке ручного сопоставления (заполняется при `POST /api/matches/manual-match/archive` через `resolveActorDisplayName`); миграция колонки `match_manual_archive.archived_by VARCHAR(100) NULL` и UNIQUE `uq_match_manual_archive (my_site_id, competitor_site_id, my_product_id)` живут внутри `ensureMatchLaneTables()` (дубли архива схлопываются при старте; запись в архив — upsert). **Семантика шага 4:** пара в `match_manual_archive` больше не попадает в авто-сопоставление и не создаёт `match_exclusion` (шаг 3), пока запись не удалят из архива; при миграции/архивировании пересечения с очередью очищаются.
 
 ## MoySklad
 

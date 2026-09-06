@@ -82,14 +82,14 @@ async function runSync(siteId) {
             let fetchQuery = '';
             if (site.cms_type === 'webasyst') {
                 fetchQuery = `
-                    SELECT p.id as source_id, p.name, sk.${site.wa_field_sku_val} as sku, sk.${site.wa_field_price_val} as price, p.currency, sk.${site.wa_field_stock_val} as stock, p.url as url_key, CASE WHEN p.status = 1 THEN 1 ELSE 0 END as source_enabled
+                    SELECT sk.id as source_id, p.id as cms_product_id, p.name, sk.${site.wa_field_sku_val} as sku, sk.${site.wa_field_price_val} as price, p.currency, sk.${site.wa_field_stock_val} as stock, p.url as url_key, CASE WHEN p.status = 1 THEN 1 ELSE 0 END as source_enabled
                     FROM ${site.table_products} p
                     JOIN ${site.wa_table_skus} sk ON p.id = sk.product_id
                     LIMIT ? OFFSET ?
                 `;
             } else {
                 fetchQuery = `
-                    SELECT ${site.field_code} as source_id, ${site.field_name} as name, ${site.field_sku} as sku, ${site.field_price} as price, ${site.field_currency} as currency, ${site.field_stock} as stock, '' as url_key, 1 as source_enabled
+                    SELECT ${site.field_code} as source_id, ${site.field_code} as cms_product_id, ${site.field_name} as name, ${site.field_sku} as sku, ${site.field_price} as price, ${site.field_currency} as currency, ${site.field_stock} as stock, '' as url_key, 1 as source_enabled
                     FROM ${site.table_products}
                     LIMIT ? OFFSET ?
                 `;
@@ -100,23 +100,32 @@ async function runSync(siteId) {
             if (rows.length === 0) break;
 
             // Массовая вставка/обновление
-            const values = rows.map(r => [
-                site.id, 
-                String(r.source_id || '').trim(),
-                r.sku || '', 
-                r.name || '', 
-                r.price || 0, 
-                r.currency || 'RUB', 
-                r.stock || 0,
-                buildSourceUrl(site.domain, r.url_key, site.cms_type),
-                Number(r.source_enabled) === 0 ? 0 : 1
-            ]);
+            const values = rows.map(r => {
+                const sourceId = String(r.source_id || '').trim();
+                const cmsProductId = String(
+                    r.cms_product_id != null && String(r.cms_product_id).trim() !== '' ? r.cms_product_id : sourceId
+                ).trim();
+                return [
+                    site.id,
+                    sourceId,
+                    cmsProductId || null,
+                    r.sku || '',
+                    r.name || '',
+                    r.price || 0,
+                    r.currency || 'RUB',
+                    r.stock || 0,
+                    buildSourceUrl(site.domain, r.url_key, site.cms_type),
+                    Number(r.source_enabled) === 0 ? 0 : 1
+                ];
+            });
 
             await dbLocal.query(`
-                INSERT INTO my_products (site_id, source_id, sku, name, price, currency, stock, source_url, source_enabled)
+                INSERT INTO my_products (site_id, source_id, cms_product_id, sku, name, price, currency, stock, source_url, source_enabled)
                 VALUES ?
                 ON DUPLICATE KEY UPDATE 
                     source_id = VALUES(source_id),
+                    cms_product_id = VALUES(cms_product_id),
+                    sku = VALUES(sku),
                     name = VALUES(name),
                     price = VALUES(price),
                     currency = VALUES(currency),

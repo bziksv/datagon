@@ -382,8 +382,12 @@
       function filterRows(rows, tf) {
         return (rows || []).filter(function (r) {
           var siteName = String(siteNameById[String(r.site_id)] || "");
-          if (tf.source_id && String(r.source_id || "").indexOf(String(tf.source_id).trim()) === -1)
-            return false;
+          if (tf.source_id) {
+            var needle = String(tf.source_id).trim();
+            var sid = String(r.source_id || "");
+            var cpid = String(r.cms_product_id || "");
+            if (sid.indexOf(needle) === -1 && cpid.indexOf(needle) === -1) return false;
+          }
           if (tf.site_name && siteName.toLowerCase().indexOf(String(tf.site_name).trim().toLowerCase()) === -1)
             return false;
           if (tf.sku && String(r.sku || "").toLowerCase().indexOf(String(tf.sku).trim().toLowerCase()) === -1)
@@ -852,7 +856,7 @@
 
           var nameTd = document.createElement("td");
           var productUrl = normalizeSiteProductUrl(r.source_url, site);
-          var editUrl = buildWebasystEditUrl(site, r.source_id);
+          var editUrl = buildWebasystEditUrl(site, r.cms_product_id || r.source_id);
           if (productUrl) {
             var a = document.createElement("a");
             a.href = productUrl;
@@ -875,12 +879,12 @@
             nameTd.appendChild(ed);
           }
           if (Number(r.in_moysklad) === 1) {
-            var code = String(r.ms_link_code || r.source_id || r.sku || "").trim();
+            var code = String(r.ms_link_code || r.cms_product_id || r.sku || r.source_id || "").trim();
             if (code) {
               var msA = document.createElement("a");
               msA.href = buildMoyskladSearchLink(code);
               msA.className = "ms-2 small text-decoration-none text-muted";
-              msA.title = "Есть в МойСклад (код " + (r.ms_link_code || r.source_id || "-") + ")";
+              msA.title = "Есть в МойСклад (код " + (r.ms_link_code || r.cms_product_id || "-") + ")";
               msA.textContent = "[МойСклад]";
               nameTd.appendChild(msA);
             }
@@ -1036,7 +1040,7 @@
             myTd.appendChild(mr);
           }
 
-          tr.appendChild(tdText(r.source_id || "—"));
+          tr.appendChild(tdText(r.cms_product_id || r.source_id || "—"));
           tr.appendChild(tdText(siteLabel));
           tr.appendChild(tdText(r.sku || "—"));
           tr.appendChild(nameTd);
@@ -1861,7 +1865,7 @@
             title: "По загруженной таблице",
             subtitle: "Клиентский отбор",
             items: [
-              { key: "tf_id", title: "ID / КОД", hint: "" },
+              { key: "tf_id", title: "ID / КОД", hint: "Для Webasyst — id карточки товара (shop_product), не id модификации SKU" },
               { key: "tf_site", title: "Сайт (таблица)", hint: "" },
               { key: "tf_sku", title: "SKU", hint: "" },
               { key: "tf_name", title: "Название", hint: "" },
