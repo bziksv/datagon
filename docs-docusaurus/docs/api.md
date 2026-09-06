@@ -534,6 +534,10 @@ Query:
 - `limit`
 - `offset`
 
+В ответе к строкам подмешиваются цены/URL/`my_cms_product_id` из `my_products`. При **неуникальном SKU** сначала ищется карточка по **точному названию** (`my_product_name`), и только если нет — по артикулу (иначе чужой код «переезжает» на подтверждённую пару).
+
+`GET /api/matches/manual-queue` для дублей артикула добавляет `sku_not_unique`, `sku_duplicate_count` и при наличии другой подтверждённой пары — `sibling_confirmed` (`cms_product_id`, `source_url` / `source_id`, названия/SKU обеих сторон, `competitor_url` из `prices`, `confirmed_by` / `confirmed_at`). UI шага 3 — модалка сравнения со ссылками «Мой товар» / «Редактировать» / «Конкурент».
+
 ### POST `/api/matches/confirm`
 Подтвердить совпадение.
 

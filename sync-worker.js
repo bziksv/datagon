@@ -109,7 +109,7 @@ async function runSync(siteId) {
                     site.id,
                     sourceId,
                     cmsProductId || null,
-                    r.sku || '',
+                    r.sku != null ? String(r.sku).trim() : '',
                     r.name || '',
                     r.price || 0,
                     r.currency || 'RUB',

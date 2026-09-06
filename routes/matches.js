@@ -539,27 +539,72 @@ module.exports = (db, settings) => {
                  OR (? <> '' AND TRIM(IFNULL(sku, '')) = TRIM(?))
                  OR (? <> '' AND TRIM(IFNULL(name, '')) = TRIM(?))
                )
-             ORDER BY is_active DESC, id DESC
+             ORDER BY
+               CASE
+                 WHEN ? <> '' AND LOWER(TRIM(IFNULL(name, ''))) = LOWER(TRIM(?)) THEN 0
+                 ELSE 1
+               END,
+               is_active DESC,
+               id DESC
              LIMIT 1`,
-            [mySiteId, s, s, n, n, s, s, n, n]
+            [mySiteId, s, s, n, n, s, s, n, n, n, n]
         );
         if (rows && rows.length) return Number(rows[0].id);
         return null;
     }
 
+    /** Снять с ручной очереди только подтверждённую карточку (не все дубли с тем же SKU). */
+    async function clearMatchExclusionForConfirmedProduct(dbConn, mySiteId, competitorSiteId, mpId, name) {
+        const n = String(name || '').trim();
+        let affected = 0;
+        if (Number.isFinite(Number(mpId)) && Number(mpId) > 0) {
+            const [r] = await dbConn.query(
+                `DELETE FROM match_exclusion
+                 WHERE my_site_id = ? AND competitor_site_id = ? AND my_product_id = ?`,
+                [mySiteId, competitorSiteId, mpId]
+            );
+            affected += Number(r?.affectedRows || 0);
+        }
+        if (n) {
+            const [r2] = await dbConn.query(
+                `DELETE e FROM match_exclusion e
+                 INNER JOIN my_products mp ON mp.id = e.my_product_id AND mp.site_id = e.my_site_id
+                 WHERE e.my_site_id = ?
+                   AND e.competitor_site_id = ?
+                   AND mp.name = ?`,
+                [mySiteId, competitorSiteId, n]
+            );
+            affected += Number(r2?.affectedRows || 0);
+        }
+        return affected;
+    }
+
     async function hasConfirmedMatchForProduct(dbConn, mySiteId, compId, myProd) {
-        const [rows] = await dbConn.query(
+        const name = String(myProd?.name || '').trim();
+        const sku = String(myProd?.sku || '').trim();
+        if (!name && !sku) return false;
+        // Только эта карточка (по названию). Совпадение только по SKU не считаем —
+        // при неуникальном артикуле соседняя карточка остаётся без своей пары.
+        if (name) {
+            const [rows] = await dbConn.query(
+                `SELECT 1 AS ok
+                 FROM product_matches pm
+                 WHERE pm.my_site_id = ? AND pm.competitor_site_id = ? AND pm.status = 'confirmed'
+                   AND pm.my_product_name = ?
+                 LIMIT 1`,
+                [mySiteId, compId, name]
+            );
+            return !!(rows && rows.length);
+        }
+        const [rowsSku] = await dbConn.query(
             `SELECT 1 AS ok
              FROM product_matches pm
              WHERE pm.my_site_id = ? AND pm.competitor_site_id = ? AND pm.status = 'confirmed'
-               AND (
-                 (TRIM(IFNULL(pm.my_sku, '')) <> '' AND TRIM(pm.my_sku) = TRIM(?))
-                 OR (TRIM(IFNULL(pm.my_product_name, '')) <> '' AND pm.my_product_name = ?)
-               )
+               AND TRIM(IFNULL(pm.my_sku, '')) <> '' AND TRIM(pm.my_sku) = ?
              LIMIT 1`,
-            [mySiteId, compId, myProd.sku || '', myProd.name || '']
+            [mySiteId, compId, sku]
         );
-        return !!(rows && rows.length);
+        return !!(rowsSku && rowsSku.length);
     }
 
     async function isInManualArchive(dbConn, mySiteId, compId, myProductId) {
@@ -2399,16 +2444,17 @@ module.exports = (db, settings) => {
                     })()
                 );
             }
+            // SKU и имя — независимые выборки: при дублях артикула сначала матч по названию.
             if (mySiteIds.length && mySkus.length) {
                 enrichJobs.push(
                     (async () => {
                         const params = [...mySiteIds, ...mySkus];
                         const [myRows] = await db.query(
-                            `SELECT mp.site_id, mp.sku, mp.name, mp.price, mp.currency, mp.source_url, mp.source_id, mp.updated_at, mp.id
+                            `SELECT mp.site_id, mp.sku, mp.name, mp.price, mp.currency, mp.source_url, mp.source_id, mp.cms_product_id, mp.updated_at, mp.id
                              FROM my_products mp
                              WHERE mp.is_active = 1
                                AND mp.site_id IN (${mySiteIds.map(() => '?').join(',')})
-                               AND mp.sku IN (${mySkus.map(() => '?').join(',')})
+                               AND TRIM(mp.sku) IN (${mySkus.map(() => '?').join(',')})
                              ORDER BY mp.updated_at DESC, mp.id DESC
                              LIMIT 2000`,
                             params
@@ -2422,12 +2468,13 @@ module.exports = (db, settings) => {
                         }
                     })()
                 );
-            } else if (mySiteIds.length && myNames.length) {
+            }
+            if (mySiteIds.length && myNames.length) {
                 enrichJobs.push(
                     (async () => {
                         const params = [...mySiteIds, ...myNames];
                         const [myRows] = await db.query(
-                            `SELECT mp.site_id, mp.sku, mp.name, mp.price, mp.currency, mp.source_url, mp.source_id, mp.updated_at, mp.id
+                            `SELECT mp.site_id, mp.sku, mp.name, mp.price, mp.currency, mp.source_url, mp.source_id, mp.cms_product_id, mp.updated_at, mp.id
                              FROM my_products mp
                              WHERE mp.is_active = 1
                                AND mp.site_id IN (${mySiteIds.map(() => '?').join(',')})
@@ -2471,8 +2518,8 @@ module.exports = (db, settings) => {
                     (compName ? compByName.get(`${m.competitor_site_id}||${compName}`) : null) ||
                     null;
                 const myMatch =
-                    (mySku ? myBySku.get(`${m.my_site_id}||${mySku}`) : null) ||
                     (myName ? myByName.get(`${m.my_site_id}||${myName}`) : null) ||
+                    (mySku ? myBySku.get(`${m.my_site_id}||${mySku}`) : null) ||
                     null;
                 const siteMeta = mySiteMeta.get(Number(m.my_site_id)) || {};
                 return {
@@ -2485,6 +2532,7 @@ module.exports = (db, settings) => {
                     competitor_parsed_at: compMatch?.parsed_at || null,
                     my_product_url: myMatch?.source_url || null,
                     my_source_id: myMatch?.source_id || null,
+                    my_cms_product_id: myMatch?.cms_product_id || null,
                     my_site_domain: siteMeta?.domain || null,
                     my_site_cms_type: siteMeta?.cms_type || null
                 };
@@ -2529,11 +2577,14 @@ module.exports = (db, settings) => {
                 [actRow.my_site_id, actRow.competitor_site_id, idHash, id]
             );
             const mpId = await resolveMyProductId(db, row.my_site_id, row.my_sku, row.my_product_name);
+            await clearMatchExclusionForConfirmedProduct(
+                db,
+                row.my_site_id,
+                row.competitor_site_id,
+                mpId,
+                row.my_product_name
+            );
             if (mpId) {
-                await db.query(
-                    'DELETE FROM match_exclusion WHERE my_site_id = ? AND competitor_site_id = ? AND my_product_id = ?',
-                    [row.my_site_id, row.competitor_site_id, mpId]
-                );
                 await appendMatchProductLog(db, {
                     my_site_id: row.my_site_id,
                     my_product_id: mpId,
@@ -2623,15 +2674,26 @@ module.exports = (db, settings) => {
         if (filters.search) {
             const v = `%${filters.search}%`;
             whereSql += ` AND (
-                    mp.sku LIKE ? OR mp.name LIKE ? OR mp.source_id LIKE ?
+                    mp.sku LIKE ? OR mp.name LIKE ? OR mp.source_id LIKE ? OR mp.cms_product_id LIKE ?
                     OR pm.my_sku LIKE ? OR pm.my_product_name LIKE ?
                 )`;
-            params.push(v, v, v, v, v);
+            params.push(v, v, v, v, v, v);
         }
         if (filters.reasonFilter) {
             whereSql += " AND LOWER(TRIM(COALESCE(e.reason, ''))) = ?";
             params.push(filters.reasonFilter);
         }
+        // Уже подтверждённая ЭТА карточка (по названию) не должна висеть в шаге 3.
+        // Дубли с тем же SKU оставляем — с подсказкой про неуникальный артикул.
+        whereSql += ` AND NOT EXISTS (
+            SELECT 1 FROM product_matches pm_ok
+            WHERE pm_ok.my_site_id = e.my_site_id
+              AND pm_ok.competitor_site_id = e.competitor_site_id
+              AND pm_ok.status = 'confirmed'
+              AND TRIM(IFNULL(mp.name, '')) <> ''
+              AND pm_ok.my_product_name = mp.name
+            LIMIT 1
+        )`;
         return { whereSql, params };
     }
 
@@ -2657,6 +2719,7 @@ module.exports = (db, settings) => {
                        COALESCE(mp.sku, pm.my_sku) AS mp_sku,
                        COALESCE(mp.name, pm.my_product_name) AS mp_name,
                        mp.price AS mp_price, mp.currency AS mp_currency, mp.source_id AS mp_source_id,
+                       mp.cms_product_id AS mp_cms_product_id,
                        mp.source_url AS mp_source_url,
                        ms.domain AS my_site_domain, ms.cms_type AS my_site_cms_type,
                        pr.name AS comp_project_name, pr.domain AS comp_domain
@@ -2667,6 +2730,7 @@ module.exports = (db, settings) => {
                 ORDER BY e.updated_at DESC LIMIT ? OFFSET ?
             `;
             const [data] = await db.query(q, [...params, limit, offset]);
+            await enrichManualQueueDuplicateSkuHints(db, data);
             const qc = `SELECT COUNT(*) AS total ${MANUAL_QUEUE_FROM} ${whereSql}`;
             const [[cntRow]] = await db.query(qc, params);
             return res.json({ data, total: Number(cntRow?.total || 0), limit, offset });
@@ -2676,10 +2740,109 @@ module.exports = (db, settings) => {
     });
 
     /**
-     * Массово «Вернуть в авто»: удаляет все match_exclusion по тем же фильтрам, что GET /manual-queue
-     * (мой сайт, конкурент, поиск, причина). Нужен confirm: true.
-     * Лог — одна сводная запись + до 50 примеров (не N×INSERT: иначе UI крутит спиннер минутами).
+     * Для строк шага 3: неуникальный артикул + уже подтверждённая пара по тому же SKU
+     * (другая карточка my_products).
      */
+    async function enrichManualQueueDuplicateSkuHints(dbConn, rows) {
+        if (!Array.isArray(rows) || !rows.length) return;
+        const byKey = new Map();
+        for (const row of rows) {
+            const sku = String(row.mp_sku || '').trim();
+            if (!sku) {
+                row.sku_not_unique = false;
+                row.sibling_confirmed = null;
+                continue;
+            }
+            const key = `${Number(row.my_site_id)}||${Number(row.competitor_site_id)}||${sku}`;
+            if (!byKey.has(key)) byKey.set(key, []);
+            byKey.get(key).push(row);
+        }
+        for (const [key, group] of byKey.entries()) {
+            const [siteIdRaw, compIdRaw, sku] = key.split('||');
+            const siteId = Number(siteIdRaw);
+            const compId = Number(compIdRaw);
+            const [dupCntRows] = await dbConn.query(
+                `SELECT COUNT(*) AS c
+                 FROM my_products
+                 WHERE site_id = ? AND is_active = 1 AND TRIM(sku) = ?`,
+                [siteId, sku]
+            );
+            const dupCount = Number(dupCntRows?.[0]?.c || 0);
+            const [confirmed] = await dbConn.query(
+                `SELECT pm.id, pm.my_sku, pm.my_product_name, pm.competitor_sku, pm.competitor_name,
+                        pm.confirmed_by, pm.confirmed_at,
+                        mp.cms_product_id, mp.source_id, mp.source_url
+                 FROM product_matches pm
+                 LEFT JOIN my_products mp
+                   ON mp.site_id = pm.my_site_id
+                  AND mp.is_active = 1
+                  AND mp.name = pm.my_product_name
+                 WHERE pm.my_site_id = ?
+                   AND pm.competitor_site_id = ?
+                   AND pm.status = 'confirmed'
+                   AND TRIM(pm.my_sku) = ?
+                 ORDER BY pm.confirmed_at DESC, pm.id DESC
+                 LIMIT 5`,
+                [siteId, compId, sku]
+            );
+            const competitorUrlBySku = new Map();
+            const siblingCompSkus = Array.from(
+                new Set(
+                    (confirmed || [])
+                        .map((c) => String(c.competitor_sku || '').trim())
+                        .filter(Boolean)
+                )
+            );
+            if (siblingCompSkus.length) {
+                const [priceRows] = await dbConn.query(
+                    `SELECT sku, url
+                     FROM prices
+                     WHERE project_id = ?
+                       AND TRIM(sku) IN (${siblingCompSkus.map(() => '?').join(',')})
+                     ORDER BY parsed_at DESC, id DESC
+                     LIMIT 50`,
+                    [compId, ...siblingCompSkus]
+                );
+                for (const pr of priceRows || []) {
+                    const pSku = String(pr.sku || '').trim();
+                    if (pSku && pr.url && !competitorUrlBySku.has(pSku)) {
+                        competitorUrlBySku.set(pSku, String(pr.url));
+                    }
+                }
+            }
+            for (const row of group) {
+                const myName = String(row.mp_name || '').trim();
+                const sibling = (confirmed || []).find(
+                    (c) => String(c.my_product_name || '').trim() !== myName
+                ) || null;
+                const sameSelf = (confirmed || []).find(
+                    (c) => String(c.my_product_name || '').trim() === myName
+                );
+                row.sku_not_unique = dupCount > 1;
+                row.sku_duplicate_count = dupCount;
+                if (sibling && !sameSelf) {
+                    const siblingCompSku = String(sibling.competitor_sku || '').trim();
+                    row.sibling_confirmed = {
+                        product_match_id: sibling.id,
+                        my_sku: sibling.my_sku,
+                        my_product_name: sibling.my_product_name,
+                        cms_product_id: sibling.cms_product_id || sibling.source_id || null,
+                        source_id: sibling.source_id || null,
+                        source_url: sibling.source_url || null,
+                        competitor_sku: sibling.competitor_sku,
+                        competitor_name: sibling.competitor_name,
+                        competitor_url: siblingCompSku
+                            ? competitorUrlBySku.get(siblingCompSku) || null
+                            : null,
+                        confirmed_by: sibling.confirmed_by,
+                        confirmed_at: sibling.confirmed_at
+                    };
+                } else {
+                    row.sibling_confirmed = null;
+                }
+            }
+        }
+    }
     router.post('/manual-queue/return-to-auto', async (req, res) => {
         const body = req.body && typeof req.body === 'object' ? req.body : {};
         if (!body.confirm) {
@@ -2948,6 +3111,7 @@ module.exports = (db, settings) => {
             const q = `
                 SELECT a.id, a.my_site_id, a.competitor_site_id, a.my_product_id, a.competitor_sku, a.competitor_name, a.note, a.archived_by, a.created_at,
                        mp.sku AS mp_sku, mp.name AS mp_name, mp.source_url AS mp_source_url,
+                       mp.source_id AS mp_source_id, mp.cms_product_id AS mp_cms_product_id,
                        ms.domain AS my_site_domain, ms.cms_type AS my_site_cms_type,
                        pr.name AS comp_project_name, pr.domain AS comp_domain
                 ${fromSql}
@@ -3166,9 +3330,12 @@ module.exports = (db, settings) => {
                     [mySiteId, competitorSiteId, idHash, keepRow.id]
                 );
             }
-            await db.query(
-                'DELETE FROM match_exclusion WHERE my_site_id = ? AND competitor_site_id = ? AND my_product_id = ?',
-                [mySiteId, competitorSiteId, myProductId]
+            await clearMatchExclusionForConfirmedProduct(
+                db,
+                mySiteId,
+                competitorSiteId,
+                myProductId,
+                mp.name
             );
             await appendMatchProductLog(db, {
                 my_site_id: mySiteId,

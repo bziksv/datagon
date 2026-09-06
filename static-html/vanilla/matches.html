@@ -358,6 +358,130 @@
       z-index: 1;
       width: min(460px, 100%);
     }
+    body[data-dg-active-nav="matches"] .dg-matches-confirm-overlay .dg-matches-confirm-panel.dg-matches-confirm-panel--wide {
+      width: min(860px, 100%);
+      max-height: min(92vh, 960px);
+      overflow: auto;
+    }
+    body[data-dg-active-nav="matches"] .dg-matches-sku-conflict-lead {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.5rem 0.75rem;
+      margin-bottom: 1rem;
+      padding: 0.65rem 0.85rem;
+      border-radius: 0.4rem;
+      background: #f4f6f9;
+      border: 1px solid #e6e9ee;
+    }
+    body[data-dg-active-nav="matches"] .dg-matches-sku-conflict-sku-chip {
+      display: inline-block;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.85rem;
+      font-weight: 600;
+      padding: 0.2rem 0.55rem;
+      border-radius: 0.3rem;
+      background: #fff;
+      border: 1px solid #d7dde5;
+      color: #343a40;
+    }
+    body[data-dg-active-nav="matches"] .dg-matches-sku-conflict-side {
+      border: 1px solid #e6e9ee;
+      border-left-width: 4px;
+      border-radius: 0.45rem;
+      padding: 0.9rem 1rem;
+      background: #fff;
+      height: 100%;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    }
+    body[data-dg-active-nav="matches"] .dg-matches-sku-conflict-side.is-confirmed {
+      border-left-color: #3ac47d;
+      background: linear-gradient(180deg, #f3fbf6 0%, #fff 48%);
+    }
+    body[data-dg-active-nav="matches"] .dg-matches-sku-conflict-side.is-queue {
+      border-left-color: #f7b924;
+      background: linear-gradient(180deg, #fffaf0 0%, #fff 48%);
+    }
+    body[data-dg-active-nav="matches"] .dg-matches-sku-conflict-side-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 0.75rem;
+      margin-bottom: 0.75rem;
+    }
+    body[data-dg-active-nav="matches"] .dg-matches-sku-conflict-label {
+      font-size: 0.72rem;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      font-weight: 700;
+      color: #6c757d;
+      margin: 0;
+      line-height: 1.3;
+    }
+    body[data-dg-active-nav="matches"] .dg-matches-sku-conflict-code {
+      font-size: 1.35rem;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: -0.02em;
+      color: #212529;
+      font-variant-numeric: tabular-nums;
+    }
+    body[data-dg-active-nav="matches"] .dg-matches-sku-conflict-meta {
+      display: grid;
+      grid-template-columns: 3.2rem 1fr;
+      column-gap: 0.5rem;
+      row-gap: 0.25rem;
+      font-size: 0.875rem;
+      margin-bottom: 0.35rem;
+    }
+    body[data-dg-active-nav="matches"] .dg-matches-sku-conflict-meta dt {
+      margin: 0;
+      color: #868e96;
+      font-weight: 500;
+    }
+    body[data-dg-active-nav="matches"] .dg-matches-sku-conflict-meta dd {
+      margin: 0;
+      color: #212529;
+      word-break: break-word;
+    }
+    body[data-dg-active-nav="matches"] .dg-matches-sku-conflict-name {
+      font-size: 0.95rem;
+      font-weight: 600;
+      line-height: 1.35;
+      color: #212529;
+      margin: 0.55rem 0 0.65rem;
+    }
+    body[data-dg-active-nav="matches"] .dg-matches-sku-conflict-bridge {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.4rem;
+      margin: 0.85rem 0;
+      padding: 0.4rem 0.55rem;
+      border-radius: 999px;
+      background: #eef8f1;
+      border: 1px dashed #b7dfc5;
+      color: #2f6b45;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    body[data-dg-active-nav="matches"] .dg-matches-sku-conflict-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem 0.75rem;
+      align-items: center;
+      margin-top: 0.55rem;
+      padding-top: 0.55rem;
+      border-top: 1px solid #eef1f4;
+    }
+    body[data-dg-active-nav="matches"] .dg-matches-sku-conflict-links a {
+      font-size: 0.8125rem;
+    }
+    body[data-dg-active-nav="matches"] .dg-matches-sku-conflict-note {
+      font-size: 0.8rem;
+      color: #6c757d;
+      margin: 0.65rem 0 0;
+    }
   </style>
 
   <style>
@@ -1942,6 +2066,39 @@
           </div>
 
           <div
+            id="dg-matches-sku-conflict-overlay"
+            class="dg-matches-confirm-overlay"
+            style="display: none"
+            aria-hidden="true"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="dg-matches-sku-conflict-title"
+          >
+            <div class="dg-matches-confirm-backdrop" id="dg-matches-sku-conflict-backdrop"></div>
+            <div class="dg-matches-confirm-panel dg-matches-confirm-panel--wide card shadow-lg border-0">
+              <div class="card-header d-flex justify-content-between align-items-start gap-2">
+                <div>
+                  <div class="fw-semibold" id="dg-matches-sku-conflict-title">Один артикул — разные карточки</div>
+                  <div class="small text-muted mt-1" id="dg-matches-sku-conflict-subtitle"></div>
+                </div>
+                <button
+                  type="button"
+                  class="btn-close"
+                  id="dg-matches-sku-conflict-close-x"
+                  aria-label="Закрыть"
+                  data-dg-no-activity="1"
+                ></button>
+              </div>
+              <div class="card-body" id="dg-matches-sku-conflict-body"></div>
+              <div class="card-footer d-flex justify-content-end gap-2 flex-wrap bg-white border-top-0">
+                <button type="button" class="btn btn-primary" id="dg-matches-sku-conflict-close" data-dg-no-activity="1">
+                  Понятно
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div
             id="dg-manual-queue-archive-all-overlay"
             class="dg-matches-confirm-overlay"
             style="display: none"
@@ -2139,14 +2296,8 @@
             return direct;
           }
         }
-        if (!isWebasyst || !base) return "";
-        try {
-          var u2 = new URL(base);
-          var out2 = rewrite(u2, true);
-          return out2 != null ? out2 : base;
-        } catch (e2) {
-          return base;
-        }
+        // Без URL карточки не подставляем главную сайта — иначе ломается fallback /product/{sku}/.
+        return "";
       }
       /**
        * Fallback витрины Shop-Script: если после normalizeWebasystProductUrl URL всё ещё нет —
@@ -2164,6 +2315,202 @@
         var query = String(sku || "").trim() || String(name || "").trim();
         if (!query) return base;
         return base.replace(/\/$/, "") + "/search/?q=" + encodeURIComponent(query);
+      }
+      /** Код карточки на сайте (Webasyst shop_product / cms_product_id), не внутренний my_products.id. */
+      function mySiteProductCode(row) {
+        if (!row) return "";
+        return String(
+          row.mp_cms_product_id ||
+            row.my_cms_product_id ||
+            row.mp_source_id ||
+            row.my_source_id ||
+            ""
+        ).trim();
+      }
+      function mySiteProductCodeHtml(row) {
+        var code = mySiteProductCode(row);
+        if (!code) return "";
+        return "<div class=\"text-muted\">Код " + code + "</div>";
+      }
+      function escapeHtmlMatches(s) {
+        return String(s == null ? "" : s)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+      function closeSkuConflictModal() {
+        var overlay = document.getElementById("dg-matches-sku-conflict-overlay");
+        if (!overlay) return;
+        overlay.style.display = "none";
+        overlay.setAttribute("aria-hidden", "true");
+      }
+      function resolveQueueSiteMeta(row) {
+        var domain = (row && row.my_site_domain) || "";
+        var cms = (row && row.my_site_cms_type) || "";
+        if (!domain && row && row.my_site_id != null) {
+          var sid = Number(row.my_site_id);
+          var sites = state.mySites || [];
+          for (var i = 0; i < sites.length; i++) {
+            if (Number(sites[i].id) === sid) {
+              domain = sites[i].domain || "";
+              cms = sites[i].cms_type || cms;
+              break;
+            }
+          }
+        }
+        return { domain: domain, cms: cms };
+      }
+      function skuConflictLinkHtml(href, iconClass, label) {
+        var url = String(href || "").trim();
+        if (!url) return "";
+        return (
+          '<a href="' +
+          escapeHtmlMatches(url) +
+          '" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-link p-0">' +
+          '<i class="' +
+          escapeHtmlMatches(iconClass) +
+          ' me-1"></i>' +
+          escapeHtmlMatches(label) +
+          "</a>"
+        );
+      }
+      function skuConflictLinksBlock(linksHtml) {
+        var html = String(linksHtml || "").trim();
+        if (!html) return "";
+        return '<div class="dg-matches-sku-conflict-links">' + html + "</div>";
+      }
+      function openSkuConflictModal(row) {
+        if (!row) return;
+        var overlay = document.getElementById("dg-matches-sku-conflict-overlay");
+        var body = document.getElementById("dg-matches-sku-conflict-body");
+        var sub = document.getElementById("dg-matches-sku-conflict-subtitle");
+        if (!overlay || !body) return;
+        var sku = String(row.mp_sku || row.my_sku || "").trim() || "—";
+        var dup = Number(row.sku_duplicate_count) || 0;
+        if (sub) {
+          sub.textContent =
+            (dup > 1 ? dup + " карточки с одним артикулом" : "Дубль артикула") +
+            " — сверяйте код и название, не только SKU.";
+        }
+        var sc = row.sibling_confirmed || null;
+        var siteMeta = resolveQueueSiteMeta(row);
+        var queueCode = mySiteProductCode(row) || "—";
+        var queueName = String(row.mp_name || row.my_product_name || "—").trim() || "—";
+        var queueSku = String(row.mp_sku || row.my_sku || "—").trim() || "—";
+        var queueUrl = buildManualQueueMyProductUrl(row);
+        var queueEdit = buildWebasystEditUrl(
+          siteMeta.domain,
+          row.mp_cms_product_id || row.my_cms_product_id || row.mp_source_id || row.my_source_id || "",
+          siteMeta.cms
+        );
+        var confCode = sc && sc.cms_product_id ? String(sc.cms_product_id) : "—";
+        var confName = sc ? String(sc.my_product_name || sc.my_sku || "—").trim() : "—";
+        var confSku = sc ? String(sc.my_sku || "—").trim() : "—";
+        var compSku = sc ? String(sc.competitor_sku || "—").trim() : "—";
+        var compName = sc ? String(sc.competitor_name || "—").trim() : "—";
+        var confMyUrl = "";
+        var confEdit = "";
+        var confCompUrl = "";
+        if (sc) {
+          confMyUrl =
+            normalizeWebasystProductUrl(sc.source_url || "", siteMeta.domain, siteMeta.cms) ||
+            buildProductPageUrlFromSlug(siteMeta.domain, sc.my_sku || "") ||
+            buildProductSearchUrl(siteMeta.domain, sc.my_sku || "", sc.my_product_name || "");
+          confEdit = buildWebasystEditUrl(
+            siteMeta.domain,
+            sc.cms_product_id || sc.source_id || "",
+            siteMeta.cms
+          );
+          confCompUrl = resolveCompetitorPriceUrl(
+            sc.competitor_url || "",
+            row.comp_domain || ""
+          );
+        }
+        var confMeta = "";
+        if (sc) {
+          confMeta =
+            (sc.confirmed_by ? escapeHtmlMatches(String(sc.confirmed_by)) : "—") +
+            (sc.confirmed_at ? ", " + escapeHtmlMatches(formatDateTime(sc.confirmed_at)) : "");
+        }
+        var queueLinks = skuConflictLinksBlock(
+          skuConflictLinkHtml(queueUrl, "pe-7s-home", "Мой товар") +
+            skuConflictLinkHtml(queueEdit, "pe-7s-pen", "Редактировать")
+        );
+        var confMyLinks = skuConflictLinksBlock(
+          skuConflictLinkHtml(confMyUrl, "pe-7s-home", "Мой товар") +
+            skuConflictLinkHtml(confEdit, "pe-7s-pen", "Редактировать")
+        );
+        var confCompLinks = skuConflictLinksBlock(
+          skuConflictLinkHtml(confCompUrl, "pe-7s-link", "Конкурент")
+        );
+        body.innerHTML =
+          '<div class="dg-matches-sku-conflict-lead">' +
+          '<span class="badge bg-secondary">SKU</span>' +
+          '<span class="dg-matches-sku-conflict-sku-chip">' +
+          escapeHtmlMatches(sku) +
+          "</span>" +
+          '<span class="small text-muted mb-0">Одинаковый артикул ≠ одна карточка. Подтверждённая пара относится только к своему <strong>коду</strong>.</span>' +
+          "</div>" +
+          '<div class="row g-3">' +
+          '<div class="col-md-6">' +
+          '<div class="dg-matches-sku-conflict-side is-queue">' +
+          '<div class="dg-matches-sku-conflict-side-head">' +
+          '<div><span class="badge bg-warning text-dark mb-1">В очереди</span>' +
+          '<div class="dg-matches-sku-conflict-label">Ещё без пары</div></div>' +
+          '<div class="text-end"><div class="small text-muted">Код</div>' +
+          '<div class="dg-matches-sku-conflict-code">' +
+          escapeHtmlMatches(queueCode) +
+          "</div></div></div>" +
+          '<dl class="dg-matches-sku-conflict-meta"><dt>SKU</dt><dd>' +
+          escapeHtmlMatches(queueSku) +
+          "</dd></dl>" +
+          '<div class="dg-matches-sku-conflict-name">' +
+          escapeHtmlMatches(queueName) +
+          "</div>" +
+          queueLinks +
+          '<p class="dg-matches-sku-conflict-note">К конкуренту пока не пристыкована — ищите пару отдельно или верните в авто.</p>' +
+          "</div></div>" +
+          '<div class="col-md-6">' +
+          '<div class="dg-matches-sku-conflict-side is-confirmed">' +
+          (sc
+            ? '<div class="dg-matches-sku-conflict-side-head">' +
+              '<div><span class="badge bg-success mb-1">Подтверждено</span>' +
+              '<div class="dg-matches-sku-conflict-label">Уже пристыкована</div></div>' +
+              '<div class="text-end"><div class="small text-muted">Код</div>' +
+              '<div class="dg-matches-sku-conflict-code">' +
+              escapeHtmlMatches(confCode) +
+              "</div></div></div>" +
+              '<div class="small text-muted fw-semibold mb-1">Наш товар</div>' +
+              '<dl class="dg-matches-sku-conflict-meta"><dt>SKU</dt><dd>' +
+              escapeHtmlMatches(confSku) +
+              "</dd></dl>" +
+              '<div class="dg-matches-sku-conflict-name">' +
+              escapeHtmlMatches(confName) +
+              "</div>" +
+              confMyLinks +
+              '<div class="dg-matches-sku-conflict-bridge"><i class="pe-7s-link"></i> пристыкован к конкуренту</div>' +
+              '<div class="small text-muted fw-semibold mb-1">Конкурент</div>' +
+              '<dl class="dg-matches-sku-conflict-meta"><dt>SKU</dt><dd>' +
+              escapeHtmlMatches(compSku) +
+              "</dd></dl>" +
+              '<div class="dg-matches-sku-conflict-name" style="font-size:0.9rem;font-weight:500">' +
+              escapeHtmlMatches(compName) +
+              "</div>" +
+              confCompLinks +
+              '<p class="dg-matches-sku-conflict-note">Подтвердил: ' +
+              confMeta +
+              "</p>"
+            : '<div class="small mb-0">Нет другой подтверждённой пары по этому артикулу.</div>') +
+          "</div></div></div>";
+        overlay.style.display = "flex";
+        overlay.setAttribute("aria-hidden", "false");
+        var closeBtn = document.getElementById("dg-matches-sku-conflict-close");
+        if (closeBtn) {
+          try {
+            closeBtn.focus();
+          } catch (_) {}
+        }
       }
       function buildWebasystEditUrl(domainRaw, sourceId, cmsType) {
         var base = buildSiteUrl(domainRaw);
@@ -3709,7 +4056,11 @@
             normalizeWebasystProductUrl(m.my_product_url || "", m.my_site_domain || "", m.my_site_cms_type || "") ||
             buildProductPageUrlFromSlug(m.my_site_domain || "", m.my_sku || "") ||
             buildProductSearchUrl(m.my_site_domain || "", m.my_sku || "", m.my_product_name || "");
-          var myEditUrl = buildWebasystEditUrl(m.my_site_domain || "", m.my_source_id || "", m.my_site_cms_type || "");
+          var myEditUrl = buildWebasystEditUrl(
+            m.my_site_domain || "",
+            m.my_cms_product_id || m.my_source_id || "",
+            m.my_site_cms_type || ""
+          );
           var competitorUrl = buildSiteUrl(m.competitor_url || m.competitor_domain || "");
 
           var tr = document.createElement("tr");
@@ -3754,6 +4105,13 @@
             m.my_product_name,
             formatMatchesListPriceLine(m.my_price, m.my_currency)
           );
+          var myCode = mySiteProductCode(m);
+          if (myCode) {
+            var codeEl = document.createElement("div");
+            codeEl.className = "small text-muted mt-1";
+            codeEl.textContent = "Код " + myCode;
+            tdMy.appendChild(codeEl);
+          }
           var links = document.createElement("div");
           links.className = "dg-matches-product-links small mt-2 d-flex gap-2 flex-wrap";
           if (myProductUrl) {
@@ -5533,13 +5891,70 @@
               (row.mp_sku || "—") +
               "</strong></div><div>" +
               (row.mp_name || "—") +
-              "</div><div class=\"text-muted\">ID " +
-              row.my_product_id +
-              "</div>";
-            appendProductOpenLinks(tdM, buildManualQueueMyProductUrl(row), "", {
+              "</div>" +
+              mySiteProductCodeHtml(row);
+            var mqUrl = buildManualQueueMyProductUrl(row);
+            var mqEdit = buildWebasystEditUrl(
+              row.my_site_domain || "",
+              mySiteProductCode(row),
+              row.my_site_cms_type || ""
+            );
+            appendProductOpenLinks(tdM, mqUrl, "", {
               className: "dg-matches-product-links small mt-1 d-flex gap-2 flex-wrap align-items-center",
               myLabel: "Мой товар"
             });
+            if (mqEdit) {
+              var edMq = document.createElement("a");
+              edMq.href = mqEdit;
+              edMq.target = "_blank";
+              edMq.rel = "noopener noreferrer";
+              edMq.className = "btn btn-sm btn-link p-0 ms-2";
+              edMq.innerHTML = '<i class="pe-7s-pen me-1"></i>Редактировать';
+              var linkHostMq = tdM.querySelector(".dg-matches-product-links");
+              if (linkHostMq) linkHostMq.appendChild(edMq);
+              else tdM.appendChild(edMq);
+            }
+            if (row.sku_not_unique || row.sibling_confirmed) {
+              var hint = document.createElement("div");
+              hint.className = "alert alert-warning small mb-0 mt-2 py-2 px-2";
+              var parts = [];
+              if (row.sku_not_unique) {
+                parts.push(
+                  "Артикул не уникальный" +
+                    (Number(row.sku_duplicate_count) > 1
+                      ? " (" + String(row.sku_duplicate_count) + " карточки с этим SKU)"
+                      : "") +
+                    "."
+                );
+              }
+              if (row.sibling_confirmed) {
+                var sc = row.sibling_confirmed;
+                var codePart = sc.cms_product_id ? "код " + String(sc.cms_product_id) : "другая карточка";
+                parts.push("Уже подтверждена пара для " + codePart + " (не для этой).");
+              }
+              var hintText = document.createElement("div");
+              hintText.textContent = parts.join(" ");
+              hint.appendChild(hintText);
+              if (row.sibling_confirmed) {
+                var detailBtn = document.createElement("button");
+                detailBtn.type = "button";
+                detailBtn.className = "btn btn-sm btn-outline-warning mt-2";
+                detailBtn.textContent = "Какая пара пристыкована?";
+                detailBtn.setAttribute(
+                  "data-dg-tooltip",
+                  "Показать рядом: эта карточка очереди и уже подтверждённая пара (код, название, конкурент)."
+                );
+                detailBtn.setAttribute("aria-label", detailBtn.getAttribute("data-dg-tooltip"));
+                detailBtn.setAttribute("data-dg-no-activity", "1");
+                detailBtn.addEventListener("click", function (ev) {
+                  ev.preventDefault();
+                  ev.stopPropagation();
+                  openSkuConflictModal(row);
+                });
+                hint.appendChild(detailBtn);
+              }
+              tdM.appendChild(hint);
+            }
             tr.appendChild(tdM);
             var tdU = document.createElement("td");
             tdU.className = "small text-muted";
@@ -5805,12 +6220,27 @@
               (row.mp_sku || "—") +
               "</strong></div><div>" +
               (row.mp_name || "—") +
-              "</div><div class=\"text-muted\">ID " +
-              row.my_product_id +
-              "</div>";
+              "</div>" +
+              mySiteProductCodeHtml(row);
             appendProductOpenLinks(tdM, buildManualQueueMyProductUrl(row), "", {
               myLabel: "Мой товар"
             });
+            var archEdit = buildWebasystEditUrl(
+              row.my_site_domain || "",
+              mySiteProductCode(row),
+              row.my_site_cms_type || ""
+            );
+            if (archEdit) {
+              var edA = document.createElement("a");
+              edA.href = archEdit;
+              edA.target = "_blank";
+              edA.rel = "noopener noreferrer";
+              edA.className = "btn btn-sm btn-link p-0";
+              edA.innerHTML = '<i class="pe-7s-pen me-1"></i>Редактировать';
+              var linkHostA = tdM.querySelector(".dg-matches-product-links");
+              if (linkHostA) linkHostA.appendChild(edA);
+              else tdM.appendChild(edA);
+            }
             tr.appendChild(tdM);
             var tdCn = document.createElement("td");
             tdCn.className = "small";
@@ -6404,6 +6834,11 @@
 
           document.addEventListener("keydown", function (ev) {
             if (ev.key !== "Escape") return;
+            var skuOv = document.getElementById("dg-matches-sku-conflict-overlay");
+            if (skuOv && skuOv.style.display === "flex") {
+              closeSkuConflictModal();
+              return;
+            }
             var retOv = document.getElementById("dg-manual-queue-return-all-overlay");
             if (retOv && retOv.style.display === "flex") {
               closeReturnAllConfirm(false);
@@ -6412,6 +6847,13 @@
             var archOv = document.getElementById("dg-manual-queue-archive-all-overlay");
             if (archOv && archOv.style.display === "flex") closeArchiveAllConfirm(false);
           });
+
+          var bSkuClose = document.getElementById("dg-matches-sku-conflict-close");
+          if (bSkuClose) bSkuClose.addEventListener("click", closeSkuConflictModal);
+          var bSkuCloseX = document.getElementById("dg-matches-sku-conflict-close-x");
+          if (bSkuCloseX) bSkuCloseX.addEventListener("click", closeSkuConflictModal);
+          var bSkuBackdrop = document.getElementById("dg-matches-sku-conflict-backdrop");
+          if (bSkuBackdrop) bSkuBackdrop.addEventListener("click", closeSkuConflictModal);
 
           var bQ = document.getElementById("dg-manual-queue-refresh");
           if (bQ)

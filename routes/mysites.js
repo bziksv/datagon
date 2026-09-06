@@ -49,7 +49,7 @@ module.exports = (db, settings) => {
             siteId,
             sourceId,
             cmsProductId || null,
-            r.sku || '',
+            r.sku != null ? String(r.sku).trim() : '',
             r.name || '',
             r.price || 0,
             r.currency || 'RUB',
