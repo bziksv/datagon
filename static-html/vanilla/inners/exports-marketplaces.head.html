@@ -338,8 +338,8 @@
          рвёт выравнивание th/td («оторванная» плавающая шапка). */
       table-layout: auto;
     }
-    /* Базовые стили ячеек шапки. Sticky только у issues (ниже, !important).
-       Shop (ozon/wb/yandex): плавание через JS translate3d — без CSS sticky. */
+    /* Базовые стили ячеек шапки. Shop + issues: плавание через JS translate3d —
+       без CSS sticky (sticky+transform даёт зазор под app-header). */
     body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-mkt-table thead th {
       position: static;
       top: auto;
@@ -454,16 +454,12 @@
       position: relative;
       z-index: 2;
     }
-    /* «Проблемы с товарами»: единая sticky-схема маркетплейсов
-       (overflow:visible на обёртках, sticky-<th> прилипает под app-header через
-       top: var(--dg-table-sticky-top)). По умолчанию включены ВСЕ колонки
+    /* «Проблемы с товарами»: плавающая шапка как у Huckster / shop —
+       только JS translate3d на #dg-mpu-thead (без CSS sticky на th: sticky+transform
+       даёт зазор под app-header). По умолчанию включены ВСЕ колонки
        (DEFAULT_HIDDEN_COLS = {} в exports-marketplaces-issues.scripts.html,
        версия ключа localStorage v5). Кнопка «Столбцы по умолчанию» возвращает
-       состояние «все включены». Таблица при этом ШИРОКАЯ и выкатывается за
-       пределы карточки (страница получает горизонтальный скролл) — это
-       сознательный выбор: пользователь хотел видеть полный паспорт МС и трёх
-       маркетплейсов сразу. Если нужна компактная таблица, лишние колонки
-       выключаются через «🧩 Столбцы». */
+       состояние «все включены». */
     body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table thead th[data-col-key="ms_stock"],
     body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table tbody td[data-col-key="ms_stock"],
     body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table thead th[data-col-key$="_stock"],
@@ -490,10 +486,11 @@
       text-align: center;
     }
     /* «Проблемы»: компактнее эталона shop, но без nowrap (ломало визуальный порядок th/td
-       в части браузеров). Ограничение высоты — max-height + перенос, полный текст в title. */
+       в части браузеров). Ограничение высоты — max-height + перенос, полный текст в title.
+       position:static — как Ozon/WB/Я.М. и Huckster: плавание только через JS. */
     body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table thead th {
-      position: sticky !important;
-      top: 0 !important;
+      position: static !important;
+      top: auto !important;
       padding: 0.26rem 0.48rem 0.26rem 0.36rem;
       padding-right: 14px;
       line-height: 1.18;
@@ -505,7 +502,15 @@
       max-height: 2.65em;
       overflow: hidden;
       vertical-align: middle;
-      z-index: 32;
+      z-index: 25;
+      background: #f8f9fa;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table thead[data-dg-floating="1"] {
+      background: #f8f9fa;
+      box-shadow: 0 1px 0 #e6e9ee;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table thead[data-dg-floating="1"] th {
+      background: #f8f9fa;
     }
     body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mpu-resizer {
       position: absolute;

@@ -362,8 +362,8 @@
          рвёт выравнивание th/td («оторванная» плавающая шапка). */
       table-layout: auto;
     }
-    /* Базовые стили ячеек шапки. Sticky только у issues (ниже, !important).
-       Shop (ozon/wb/yandex): плавание через JS translate3d — без CSS sticky. */
+    /* Базовые стили ячеек шапки. Shop + issues: плавание через JS translate3d —
+       без CSS sticky (sticky+transform даёт зазор под app-header). */
     body.datagon-vanilla-body[data-dg-active-nav^="exports-marketplaces"] .dg-mp-mkt-table thead th {
       position: static;
       top: auto;
@@ -478,16 +478,12 @@
       position: relative;
       z-index: 2;
     }
-    /* «Проблемы с товарами»: единая sticky-схема маркетплейсов
-       (overflow:visible на обёртках, sticky-<th> прилипает под app-header через
-       top: var(--dg-table-sticky-top)). По умолчанию включены ВСЕ колонки
+    /* «Проблемы с товарами»: плавающая шапка как у Huckster / shop —
+       только JS translate3d на #dg-mpu-thead (без CSS sticky на th: sticky+transform
+       даёт зазор под app-header). По умолчанию включены ВСЕ колонки
        (DEFAULT_HIDDEN_COLS = {} в exports-marketplaces-issues.scripts.html,
        версия ключа localStorage v5). Кнопка «Столбцы по умолчанию» возвращает
-       состояние «все включены». Таблица при этом ШИРОКАЯ и выкатывается за
-       пределы карточки (страница получает горизонтальный скролл) — это
-       сознательный выбор: пользователь хотел видеть полный паспорт МС и трёх
-       маркетплейсов сразу. Если нужна компактная таблица, лишние колонки
-       выключаются через «🧩 Столбцы». */
+       состояние «все включены». */
     body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table thead th[data-col-key="ms_stock"],
     body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table tbody td[data-col-key="ms_stock"],
     body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table thead th[data-col-key$="_stock"],
@@ -514,10 +510,11 @@
       text-align: center;
     }
     /* «Проблемы»: компактнее эталона shop, но без nowrap (ломало визуальный порядок th/td
-       в части браузеров). Ограничение высоты — max-height + перенос, полный текст в title. */
+       в части браузеров). Ограничение высоты — max-height + перенос, полный текст в title.
+       position:static — как Ozon/WB/Я.М. и Huckster: плавание только через JS. */
     body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table thead th {
-      position: sticky !important;
-      top: 0 !important;
+      position: static !important;
+      top: auto !important;
       padding: 0.26rem 0.48rem 0.26rem 0.36rem;
       padding-right: 14px;
       line-height: 1.18;
@@ -529,7 +526,15 @@
       max-height: 2.65em;
       overflow: hidden;
       vertical-align: middle;
-      z-index: 32;
+      z-index: 25;
+      background: #f8f9fa;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table thead[data-dg-floating="1"] {
+      background: #f8f9fa;
+      box-shadow: 0 1px 0 #e6e9ee;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mp-mkt-table thead[data-dg-floating="1"] th {
+      background: #f8f9fa;
     }
     body.datagon-vanilla-body[data-dg-active-nav="exports-marketplaces-issues"] .dg-mpu-resizer {
       position: absolute;
@@ -1799,7 +1804,69 @@
               <div class="mt-3 d-flex flex-wrap gap-2 align-items-center" data-dg-mpu-filter-field="filter_actions" data-dg-filter-field-title="Кнопки «Применить» / «Сбросить»">
                 <button type="button" class="btn btn-sm btn-primary" id="dg-mpu-flt-apply" title="Применить фильтры и поиск (или нажмите Enter в поле поиска)" data-dg-notify-start="Применяем фильтры и обновляем таблицу…"><i class="pe-7s-search me-1"></i>Применить</button>
                 <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mpu-flt-reset" title="Сбросить scope, поиск, менеджера и контент-менеджера" data-dg-notify-start="Сбрасываем фильтры и применяем…"><i class="pe-7s-refresh me-1"></i>По умолчанию</button>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-primary"
+                  id="dg-mpu-fix-ozon-dims"
+                  title="Отправить габариты из МС на Ozon для всех строк текущей выборки (после Применить). Высота: коробка или пакет по типу упаковки."
+                  data-dg-notify-start="Готовим исправление габаритов на Ozon…"
+                >
+                  Исправить габариты на Oзоне
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-primary"
+                  id="dg-mpu-fix-wb-dims"
+                  title="Отправить габариты из МС на Wildberries для всех строк текущей выборки (после Применить). Высота: коробка или пакет по типу упаковки."
+                  data-dg-notify-start="Готовим исправление габаритов на WB…"
+                >
+                  Исправить габариты на WB
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-primary"
+                  id="dg-mpu-fix-ym-dims"
+                  title="Отправить габариты из МС на Яндекс Маркет для всех строк текущей выборки (после Применить). Высота: коробка или пакет по типу упаковки."
+                  data-dg-notify-start="Готовим исправление габаритов на Я.Маркет…"
+                >
+                  Исправить габариты на Я.М
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-primary"
+                  id="dg-mpu-fix-ozon-vat"
+                  title="Отправить НДС из МС на Ozon для всех строк текущей выборки (после Применить)."
+                  data-dg-notify-start="Готовим исправление НДС на Ozon…"
+                >
+                  Исправить НДС на Ozon
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-primary"
+                  id="dg-mpu-fix-wb-vat"
+                  title="Отправить НДС из МС на Wildberries для всех строк текущей выборки (после Применить)."
+                  data-dg-notify-start="Готовим исправление НДС на WB…"
+                >
+                  Исправить НДС на WB
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-primary"
+                  id="dg-mpu-fix-ym-vat"
+                  title="Отправить НДС из МС на Яндекс Маркет для всех строк текущей выборки (после Применить)."
+                  data-dg-notify-start="Готовим исправление НДС на Я.Маркет…"
+                >
+                  Исправить НДС на Я.М
+                </button>
                 <span class="badge bg-warning text-dark d-none" id="dg-mpu-flt-dirty" title="Есть несохранённые изменения фильтров">не применено</span>
+              </div>
+              <div id="dg-mpu-action-logs" class="mt-3 mb-0 d-flex flex-column gap-2">
+                <div id="dg-mpu-action-log-ozon" class="alert mb-0 d-none small" role="status" aria-live="polite" data-dg-mpu-log="ozon"></div>
+                <div id="dg-mpu-action-log-wb" class="alert mb-0 d-none small" role="status" aria-live="polite" data-dg-mpu-log="wb"></div>
+                <div id="dg-mpu-action-log-ym" class="alert mb-0 d-none small" role="status" aria-live="polite" data-dg-mpu-log="ym"></div>
+                <div id="dg-mpu-action-log-ozon_vat" class="alert mb-0 d-none small" role="status" aria-live="polite" data-dg-mpu-log="ozon_vat"></div>
+                <div id="dg-mpu-action-log-wb_vat" class="alert mb-0 d-none small" role="status" aria-live="polite" data-dg-mpu-log="wb_vat"></div>
+                <div id="dg-mpu-action-log-ym_vat" class="alert mb-0 d-none small" role="status" aria-live="polite" data-dg-mpu-log="ym_vat"></div>
               </div>
               <div id="dg-mpu-msg" class="alert alert-secondary mt-3 mb-0 d-none" role="status"></div>
             </div>
@@ -1901,6 +1968,186 @@
                   <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mp-page-prev">Назад</button>
                   <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mp-page-next">Вперед</button>
                 </div>
+              </div>
+            </div>
+          </div>
+
+          <div
+            id="dg-mpu-fix-ozon-overlay"
+            class="dg-ms-detail-overlay"
+            style="display: none"
+            aria-hidden="true"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="dg-mpu-fix-ozon-title"
+          >
+            <div class="dg-ms-detail-panel card shadow-lg border-0" style="max-width: 520px">
+              <div class="card-header">
+                <div class="fw-semibold" id="dg-mpu-fix-ozon-title">Исправить габариты на Ozon?</div>
+              </div>
+              <div class="card-body">
+                <p class="mb-0 small" id="dg-mpu-fix-ozon-text"></p>
+              </div>
+              <div class="card-footer d-flex justify-content-end gap-2 flex-wrap bg-white border-top-0">
+                <button type="button" class="btn btn-outline-secondary" id="dg-mpu-fix-ozon-cancel" data-dg-no-activity="1">Отмена</button>
+                <button
+                  type="button"
+                  class="btn btn-primary"
+                  id="dg-mpu-fix-ozon-ok"
+                  data-dg-notify-start="Отправляем габариты в Ozon…"
+                >
+                  Исправить на Ozon
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div
+            id="dg-mpu-fix-wb-overlay"
+            class="dg-ms-detail-overlay"
+            style="display: none"
+            aria-hidden="true"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="dg-mpu-fix-wb-title"
+          >
+            <div class="dg-ms-detail-panel card shadow-lg border-0" style="max-width: 520px">
+              <div class="card-header">
+                <div class="fw-semibold" id="dg-mpu-fix-wb-title">Исправить габариты на Wildberries?</div>
+              </div>
+              <div class="card-body">
+                <p class="mb-0 small" id="dg-mpu-fix-wb-text"></p>
+              </div>
+              <div class="card-footer d-flex justify-content-end gap-2 flex-wrap bg-white border-top-0">
+                <button type="button" class="btn btn-outline-secondary" id="dg-mpu-fix-wb-cancel" data-dg-no-activity="1">Отмена</button>
+                <button
+                  type="button"
+                  class="btn btn-primary"
+                  id="dg-mpu-fix-wb-ok"
+                  data-dg-notify-start="Отправляем габариты в WB…"
+                >
+                  Исправить на WB
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div
+            id="dg-mpu-fix-ym-overlay"
+            class="dg-ms-detail-overlay"
+            style="display: none"
+            aria-hidden="true"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="dg-mpu-fix-ym-title"
+          >
+            <div class="dg-ms-detail-panel card shadow-lg border-0" style="max-width: 520px">
+              <div class="card-header">
+                <div class="fw-semibold" id="dg-mpu-fix-ym-title">Исправить габариты на Яндекс Маркете?</div>
+              </div>
+              <div class="card-body">
+                <p class="mb-0 small" id="dg-mpu-fix-ym-text"></p>
+              </div>
+              <div class="card-footer d-flex justify-content-end gap-2 flex-wrap bg-white border-top-0">
+                <button type="button" class="btn btn-outline-secondary" id="dg-mpu-fix-ym-cancel" data-dg-no-activity="1">Отмена</button>
+                <button
+                  type="button"
+                  class="btn btn-primary"
+                  id="dg-mpu-fix-ym-ok"
+                  data-dg-notify-start="Отправляем габариты в Я.Маркет…"
+                >
+                  Исправить на Я.М
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div
+            id="dg-mpu-fix-ozon-vat-overlay"
+            class="dg-ms-detail-overlay"
+            style="display: none"
+            aria-hidden="true"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="dg-mpu-fix-ozon-vat-title"
+          >
+            <div class="dg-ms-detail-panel card shadow-lg border-0" style="max-width: 520px">
+              <div class="card-header">
+                <div class="fw-semibold" id="dg-mpu-fix-ozon-vat-title">Исправить НДС на Ozon?</div>
+              </div>
+              <div class="card-body">
+                <p class="mb-0 small" id="dg-mpu-fix-ozon-vat-text"></p>
+              </div>
+              <div class="card-footer d-flex justify-content-end gap-2 flex-wrap bg-white border-top-0">
+                <button type="button" class="btn btn-outline-secondary" id="dg-mpu-fix-ozon-vat-cancel" data-dg-no-activity="1">Отмена</button>
+                <button
+                  type="button"
+                  class="btn btn-primary"
+                  id="dg-mpu-fix-ozon-vat-ok"
+                  data-dg-notify-start="Отправляем НДС в Ozon…"
+                >
+                  Исправить НДС на Ozon
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div
+            id="dg-mpu-fix-wb-vat-overlay"
+            class="dg-ms-detail-overlay"
+            style="display: none"
+            aria-hidden="true"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="dg-mpu-fix-wb-vat-title"
+          >
+            <div class="dg-ms-detail-panel card shadow-lg border-0" style="max-width: 520px">
+              <div class="card-header">
+                <div class="fw-semibold" id="dg-mpu-fix-wb-vat-title">Исправить НДС на Wildberries?</div>
+              </div>
+              <div class="card-body">
+                <p class="mb-0 small" id="dg-mpu-fix-wb-vat-text"></p>
+              </div>
+              <div class="card-footer d-flex justify-content-end gap-2 flex-wrap bg-white border-top-0">
+                <button type="button" class="btn btn-outline-secondary" id="dg-mpu-fix-wb-vat-cancel" data-dg-no-activity="1">Отмена</button>
+                <button
+                  type="button"
+                  class="btn btn-primary"
+                  id="dg-mpu-fix-wb-vat-ok"
+                  data-dg-notify-start="Отправляем НДС в WB…"
+                >
+                  Исправить НДС на WB
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div
+            id="dg-mpu-fix-ym-vat-overlay"
+            class="dg-ms-detail-overlay"
+            style="display: none"
+            aria-hidden="true"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="dg-mpu-fix-ym-vat-title"
+          >
+            <div class="dg-ms-detail-panel card shadow-lg border-0" style="max-width: 520px">
+              <div class="card-header">
+                <div class="fw-semibold" id="dg-mpu-fix-ym-vat-title">Исправить НДС на Яндекс Маркете?</div>
+              </div>
+              <div class="card-body">
+                <p class="mb-0 small" id="dg-mpu-fix-ym-vat-text"></p>
+              </div>
+              <div class="card-footer d-flex justify-content-end gap-2 flex-wrap bg-white border-top-0">
+                <button type="button" class="btn btn-outline-secondary" id="dg-mpu-fix-ym-vat-cancel" data-dg-no-activity="1">Отмена</button>
+                <button
+                  type="button"
+                  class="btn btn-primary"
+                  id="dg-mpu-fix-ym-vat-ok"
+                  data-dg-notify-start="Отправляем НДС в Я.Маркет…"
+                >
+                  Исправить НДС на Я.М
+                </button>
               </div>
             </div>
           </div>
@@ -2008,9 +2255,9 @@
         (function () {
             'use strict';
 
-            // ---- шапка таблицы: --dg-table-sticky-top (прочие стили) + как /my-products.html —
-            // transform на #dg-mpu-thead при вертикальном скролле; горизонтальный скролл —
-            // #dg-mpu-table-scroll-outer. Таблица вне markBaselineTables (datagon-table-behavior-lock).
+            // ---- шапка таблицы: как /exports-huckster.html (и shop) —
+            // JS translate3d на #dg-mpu-thead под app-header, без CSS sticky на th.
+            // Горизонтальный скролл — #dg-mpu-table-scroll-outer.
             function syncStickyTopVar() {
                 try {
                     var app = document.querySelector('.app-container');
@@ -2058,19 +2305,45 @@
                 return h > 0 ? h : 60;
             }
 
-            function captureMpuTheadBaseTop() {
-                var thead = document.getElementById('dg-mpu-thead');
+            function clearMpuFloatStyles(thead) {
                 if (!thead) return;
                 thead.style.transform = '';
                 thead.style.position = '';
                 thead.style.zIndex = '';
                 thead.style.willChange = '';
                 thead.removeAttribute('data-dg-floating');
+                thead.removeAttribute('data-dg-float-shift');
+            }
+
+            function readMpuFloatShiftPx(thead) {
+                if (!thead) return 0;
+                var attr = thead.getAttribute('data-dg-float-shift');
+                if (attr != null && attr !== '' && Number.isFinite(Number(attr))) {
+                    return Number(attr);
+                }
+                var tr = (thead.style && thead.style.transform) || '';
+                /* Chrome нормализует к translate3d(0px, Npx, 0px) — учитываем optional px после 0. */
+                var m = /translate3d\(\s*0(?:px)?\s*,\s*([-\d.]+)px/i.exec(tr);
+                return m ? Number(m[1]) || 0 : 0;
+            }
+
+            function captureMpuTheadBaseTop() {
+                var thead = document.getElementById('dg-mpu-thead');
+                if (!thead) return;
+                clearMpuFloatStyles(thead);
                 var rect = thead.getBoundingClientRect();
-                var absTop = (window.scrollY || window.pageYOffset || 0) + (rect && rect.top ? rect.top : 0);
+                var y = window.scrollY || window.pageYOffset || 0;
+                var mainOuter = document.querySelector('.app-main__outer');
+                if (mainOuter && mainOuter.scrollTop) y += mainOuter.scrollTop;
+                var absTop = y + (rect && rect.top ? rect.top : 0);
                 thead.setAttribute('data-dg-base-top', String(absTop));
             }
 
+            /**
+             * Плавающая шапка как у Huckster (offset/zoom), но сдвиг считаем по viewport:
+             * скролл идёт в .app-main__outer, window.scrollY ≈ 0 — абсолютная формула
+             * «y + baseTop» оставляла зазор под app-header.
+             */
             function updateMpuFloatingHeaderFallback() {
                 var thead = document.getElementById('dg-mpu-thead');
                 if (!thead) return;
@@ -2079,42 +2352,35 @@
                 var row = thead.querySelector('tr');
                 if (!row) return;
 
-                var y = window.scrollY || window.pageYOffset || 0;
                 var headerTop = getMpuStickyTopPx();
-
-                var baseTopAbs = Number(thead.getAttribute('data-dg-base-top') || 0);
-                if (!Number.isFinite(baseTopAbs) || baseTopAbs <= 0) return;
+                var curShift = readMpuFloatShiftPx(thead);
+                var theadRect = thead.getBoundingClientRect();
+                var naturalTop = theadRect.top - curShift;
                 var tableRect = table.getBoundingClientRect();
-                var tableBottom = tableRect.bottom + y;
                 var rowRect = row.getBoundingClientRect();
                 var rowHeight = rowRect && rowRect.height ? rowRect.height : 0;
 
-                var headerLine = y + headerTop;
-                var start = baseTopAbs + MPU_FLOATING_HEADER_START_EPS_PX;
-                var end = tableBottom - rowHeight;
-                if (headerLine <= start || headerLine >= end) {
-                    if (thead.style.transform) {
-                        thead.style.transform = '';
-                        thead.style.position = '';
-                        thead.style.zIndex = '';
-                        thead.style.willChange = '';
-                        thead.removeAttribute('data-dg-floating');
-                    }
+                if (
+                    naturalTop > headerTop + MPU_FLOATING_HEADER_START_EPS_PX ||
+                    tableRect.bottom <= headerTop + rowHeight
+                ) {
+                    if (thead.style.transform) clearMpuFloatStyles(thead);
                     return;
                 }
 
                 var zoomAwareOffset = MPU_FLOATING_HEADER_OFFSET_PX;
                 var dpr = window.devicePixelRatio || 1;
                 if (Math.abs(dpr - 1) < 0.03) zoomAwareOffset = MPU_FLOATING_HEADER_OFFSET_PX - 3;
-                var shift = Math.max(0, headerLine - start - zoomAwareOffset);
+                var shift = Math.max(0, headerTop - naturalTop - zoomAwareOffset);
                 var shiftPx = Number(shift.toFixed(3));
                 var nextTransform = 'translate3d(0,' + shiftPx + 'px,0)';
                 if (thead.style.transform !== nextTransform) {
                     thead.style.transform = nextTransform;
                     thead.style.position = 'relative';
-                    thead.style.zIndex = '40';
+                    thead.style.zIndex = '25';
                     thead.style.willChange = 'transform';
                     thead.setAttribute('data-dg-floating', '1');
+                    thead.setAttribute('data-dg-float-shift', String(shiftPx));
                 }
             }
 
@@ -2428,12 +2694,12 @@
                 ozon: ['ozon_code', 'ozon_name'],
                 wb: ['wb_code', 'wb_name'],
                 ym: ['ym_code', 'ym_name'],
-                vat_mismatch: ['ozon_vat', 'wb_vat', 'ym_vat'],
+                vat_mismatch: ['ozon_vat', 'ozon_fix_vat', 'wb_vat', 'wb_fix_vat', 'ym_vat', 'ym_fix_vat'],
                 dims_mismatch: [
                     'ms_length', 'ms_width', 'ms_height_box', 'ms_height_bag', 'ms_weight',
-                    'ozon_length', 'ozon_width', 'ozon_height', 'ozon_weight',
-                    'wb_length', 'wb_width', 'wb_height', 'wb_weight',
-                    'ym_length', 'ym_width', 'ym_height', 'ym_weight',
+                    'ozon_length', 'ozon_width', 'ozon_height', 'ozon_weight', 'ozon_fix_dims',
+                    'wb_length', 'wb_width', 'wb_height', 'wb_weight', 'wb_fix_dims',
+                    'ym_length', 'ym_width', 'ym_height', 'ym_weight', 'ym_fix_dims',
                 ],
             };
             var COL_MIN_WIDTH = 60;
@@ -2460,11 +2726,13 @@
                 ozon_code: 70,
                 ozon_name: 160,
                 ozon_vat: 80,
+                ozon_fix_vat: 140,
                 ozon_stock: 80,
                 ozon_length: 80,
                 ozon_width: 80,
                 ozon_height: 80,
                 ozon_weight: 80,
+                ozon_fix_dims: 140,
                 ozon_cabinet_url: 90,
                 ozon_buyer_url: 95,
                 ozon_updated: 110,
@@ -2472,11 +2740,13 @@
                 wb_code: 70,
                 wb_name: 160,
                 wb_vat: 70,
+                wb_fix_vat: 140,
                 wb_stock: 80,
                 wb_length: 80,
                 wb_width: 80,
                 wb_height: 80,
                 wb_weight: 80,
+                wb_fix_dims: 140,
                 wb_cabinet_url: 90,
                 wb_buyer_url: 95,
                 wb_updated: 110,
@@ -2484,11 +2754,13 @@
                 ym_code: 70,
                 ym_name: 160,
                 ym_vat: 80,
+                ym_fix_vat: 140,
                 ym_stock: 80,
                 ym_length: 80,
                 ym_width: 80,
                 ym_height: 80,
                 ym_weight: 80,
+                ym_fix_dims: 140,
                 ym_cabinet_url: 90,
                 ym_buyer_url: 95,
                 ym_updated: 110,
@@ -2668,6 +2940,1344 @@
                 elMsg.textContent = text;
             }
 
+            var ACTION_LOG_CHANNELS = ['ozon', 'wb', 'ym', 'ozon_vat', 'wb_vat', 'ym_vat'];
+            function actionLogEl(channel) {
+                var ch = String(channel || '').trim().toLowerCase();
+                if (ACTION_LOG_CHANNELS.indexOf(ch) >= 0) {
+                    return document.getElementById('dg-mpu-action-log-' + ch);
+                }
+                return document.getElementById('dg-mpu-action-log-ozon');
+            }
+            /** @param {string} kind @param {string} htmlOrText @param {boolean=} asHtml @param {string=} channel ozon|wb|ym|ozon_vat|wb_vat|ym_vat */
+            function showActionLog(kind, htmlOrText, asHtml, channel) {
+                var box = actionLogEl(channel);
+                if (!box) return;
+                box.classList.remove('d-none', 'alert-danger', 'alert-success', 'alert-warning', 'alert-info', 'alert-secondary');
+                box.classList.add(
+                    kind === 'error' || kind === 'danger' ? 'alert-danger'
+                        : kind === 'ok' || kind === 'success' ? 'alert-success'
+                        : kind === 'warning' ? 'alert-warning'
+                        : kind === 'info' ? 'alert-info'
+                        : 'alert-secondary'
+                );
+                if (asHtml) box.innerHTML = htmlOrText || '';
+                else box.textContent = htmlOrText || '';
+            }
+            function hideActionLog(channel) {
+                var targets = channel
+                    ? [actionLogEl(channel)]
+                    : ACTION_LOG_CHANNELS.map(actionLogEl);
+                for (var i = 0; i < targets.length; i++) {
+                    var box = targets[i];
+                    if (!box) continue;
+                    box.classList.add('d-none');
+                    box.textContent = '';
+                }
+            }
+            function codesEligibleForOzonFix(rows) {
+                var out = [];
+                var list = Array.isArray(rows) ? rows : [];
+                for (var i = 0; i < list.length; i++) {
+                    var r = list[i];
+                    if (!r || !String(r.code || '').trim()) continue;
+                    if (!String(r.ozon_code || '').trim()) continue;
+                    var hasH =
+                        (r.ms_height_box != null && String(r.ms_height_box).trim() !== '') ||
+                        (r.ms_height_bag != null && String(r.ms_height_bag).trim() !== '');
+                    if (
+                        r.ms_length == null || String(r.ms_length).trim() === '' ||
+                        r.ms_width == null || String(r.ms_width).trim() === '' ||
+                        r.ms_weight == null || String(r.ms_weight).trim() === '' ||
+                        !hasH
+                    ) continue;
+                    out.push(String(r.code).trim());
+                }
+                return out;
+            }
+            var fixOzonConfirmState = { resolve: null, codes: null };
+            function closeFixOzonConfirm(ok) {
+                var ov = document.getElementById('dg-mpu-fix-ozon-overlay');
+                if (ov) {
+                    ov.style.display = 'none';
+                    ov.setAttribute('aria-hidden', 'true');
+                }
+                var resolve = fixOzonConfirmState.resolve;
+                fixOzonConfirmState.resolve = null;
+                if (typeof resolve === 'function') resolve(!!ok);
+            }
+            function openFixOzonConfirm(message) {
+                return new Promise(function (resolve) {
+                    if (fixOzonConfirmState.resolve) closeFixOzonConfirm(false);
+                    fixOzonConfirmState.resolve = resolve;
+                    var textEl = document.getElementById('dg-mpu-fix-ozon-text');
+                    if (textEl) textEl.textContent = message || '';
+                    var ov = document.getElementById('dg-mpu-fix-ozon-overlay');
+                    if (!ov) {
+                        resolve(window.confirm(message || 'Исправить габариты на Ozon?'));
+                        return;
+                    }
+                    ov.style.display = 'flex';
+                    ov.setAttribute('aria-hidden', 'false');
+                });
+            }
+            function applyLocalOzonDimsAfterFix(results) {
+                var list = Array.isArray(results) ? results : [];
+                var byCode = {};
+                for (var i = 0; i < state.rowsAll.length; i++) {
+                    var row = state.rowsAll[i];
+                    if (row && row.code != null) byCode[String(row.code)] = row;
+                }
+                for (var j = 0; j < list.length; j++) {
+                    var res = list[j];
+                    if (!res || !res.success || !res.dims || !res.code) continue;
+                    var target = byCode[String(res.code)];
+                    if (!target) continue;
+                    target.ozon_length = String(res.dims.length_cm);
+                    target.ozon_width = String(res.dims.width_cm);
+                    target.ozon_height = String(res.dims.height_cm);
+                    target.ozon_weight = String(res.dims.weight_kg);
+                }
+                applySearchFilter();
+                applySort();
+                renderTable();
+            }
+            var OZON_FIX_BATCH_SIZE = 200;
+            var OZON_FIX_BATCH_PAUSE_MS = 1500;
+            function chunkCodes(arr, size) {
+                var out = [];
+                var n = Math.max(1, size | 0);
+                for (var i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n));
+                return out;
+            }
+            function sleepMs(ms) {
+                return new Promise(function (resolve) {
+                    setTimeout(resolve, Math.max(0, Number(ms) || 0));
+                });
+            }
+            function postFixOzonBatch(codes) {
+                return fetch(API_URL + '/fix-ozon-dims', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ codes: codes, confirm: true }),
+                }).then(function (r) {
+                    return r.json().then(function (j) {
+                        return { r: r, j: j };
+                    });
+                });
+            }
+            function runFixOzonDims(codes, opts) {
+                var o = opts || {};
+                var list = Array.isArray(codes) ? codes.filter(Boolean) : [];
+                if (!list.length) {
+                    showActionLog('warning', 'Нет строк с Ozon и полными габаритами МС в текущей выборке.', false, 'ozon');
+                    return Promise.resolve();
+                }
+                var batches = chunkCodes(list, OZON_FIX_BATCH_SIZE);
+                var doFetch = function () {
+                    var started = Date.now();
+                    var filterHint =
+                        'фильтр: ' + (SCOPE_LABELS[state.scope] || state.scope) +
+                        (state.filters.manager ? '; менеджер: ' + state.filters.manager : '') +
+                        (state.filters.content_manager ? '; КМ: ' + state.filters.content_manager : '') +
+                        (state.search ? '; поиск: «' + state.search + '»' : '');
+                    var totals = { total: 0, updated: 0, skipped: 0, failed: 0 };
+                    var allErrors = [];
+                    var tick = null;
+                    var renderProgress = function (batchIdx) {
+                        showActionLog(
+                            'info',
+                            'Исправляем габариты на Ozon…<br>' +
+                                escapeHtml(filterHint) + '<br>' +
+                                'Всего: <strong>' + list.length + '</strong> арт.' +
+                                ' · пакеты по ' + OZON_FIX_BATCH_SIZE +
+                                ' · сейчас <strong>' + batchIdx + '/' + batches.length + '</strong>' +
+                                (o.single ? ' (одна строка)' : '') +
+                                '<br>✓ ' + totals.updated +
+                                ' · пропуск ' + totals.skipped +
+                                ' · × ' + totals.failed +
+                                '<br><span class="text-muted">идёт, прошло ' +
+                                Math.round((Date.now() - started) / 1000) +
+                                ' с…</span>',
+                            true
+                        , 'ozon');
+                    };
+                    renderProgress(0);
+                    tick = setInterval(function () {
+                        var logBox = actionLogEl('ozon');
+                        var span = logBox && logBox.querySelector('.text-muted');
+                        if (span) span.textContent = 'идёт, прошло ' + Math.round((Date.now() - started) / 1000) + ' с…';
+                    }, 1000);
+
+                    var chain = Promise.resolve();
+                    batches.forEach(function (batch, idx) {
+                        chain = chain.then(function () {
+                            if (idx > 0) return sleepMs(OZON_FIX_BATCH_PAUSE_MS).then(function () { return batch; });
+                            return batch;
+                        }).then(function (codesBatch) {
+                            renderProgress(idx + 1);
+                            return postFixOzonBatch(codesBatch).then(function (x) {
+                                if (!x.r.ok && !(x.j && x.j.total != null)) {
+                                    throw new Error((x.j && x.j.error) || ('HTTP ' + x.r.status + ' (пакет ' + (idx + 1) + ')'));
+                                }
+                                var j = x.j || {};
+                                totals.total += Number(j.total || 0);
+                                totals.updated += Number(j.updated || 0);
+                                totals.skipped += Number(j.skipped || 0);
+                                totals.failed += Number(j.failed || 0);
+                                if (Array.isArray(j.errors)) {
+                                    for (var e = 0; e < j.errors.length && allErrors.length < 20; e++) {
+                                        allErrors.push(j.errors[e]);
+                                    }
+                                }
+                                if (Array.isArray(j.results) && j.results.length) {
+                                    applyLocalOzonDimsAfterFix(j.results);
+                                }
+                            });
+                        });
+                    });
+
+                    return chain
+                        .then(function () {
+                            clearInterval(tick);
+                            var errLines = '';
+                            if (allErrors.length) {
+                                errLines = '<ul class="mb-0 mt-2">' + allErrors.map(function (e) {
+                                    return '<li><code>' + escapeHtml(e.code) + '</code>: ' + escapeHtml(e.error || '') + '</li>';
+                                }).join('') + '</ul>';
+                            }
+                            var kind = totals.failed > 0 ? 'warning' : 'success';
+                            showActionLog(
+                                kind,
+                                'Итог Ozon:<br>' +
+                                    'пакетов: ' + batches.length +
+                                    ' (по ≤' + OZON_FIX_BATCH_SIZE + ')' +
+                                    '; обработано: ' + totals.total +
+                                    '; записано ✓: ' + totals.updated +
+                                    '; пропущено: ' + totals.skipped +
+                                    '; ошибки ×: ' + totals.failed +
+                                    '; длительность: ' + Math.round((Date.now() - started) / 1000) + ' с' +
+                                    errLines,
+                                true
+                            , 'ozon');
+                            if (window.DatagonNotify && window.DatagonNotify.toast) {
+                                window.DatagonNotify.toast({
+                                    type: totals.failed > 0 ? 'warning' : 'success',
+                                    message: 'Ozon: ✓' + totals.updated + ' ×' + totals.failed + ' (' + batches.length + ' пак.)',
+                                });
+                            }
+                        })
+                        .catch(function (err) {
+                            clearInterval(tick);
+                            showActionLog(
+                                'danger',
+                                'Ошибка (частично: ✓' + totals.updated + ' ×' + totals.failed + '): ' +
+                                    escapeHtml(err && err.message ? err.message : String(err)),
+                                true
+                            , 'ozon');
+                            if (window.DatagonNotify && window.DatagonNotify.toast) {
+                                window.DatagonNotify.toast({
+                                    type: 'danger',
+                                    message: err && err.message ? err.message : 'Ошибка Ozon',
+                                });
+                            }
+                        });
+                };
+                var start = function () {
+                    var btn = o.btn || document.getElementById('dg-mpu-fix-ozon-dims');
+                    if (window.DatagonNotify && window.DatagonNotify.busyRun && btn) {
+                        return window.DatagonNotify.busyRun(btn, doFetch);
+                    }
+                    return doFetch();
+                };
+                if (o.single) return start();
+                var msg =
+                    'Отправим габариты из МойСклад в карточки Ozon для ' +
+                    list.length +
+                    ' артикулов текущей выборки' +
+                    (batches.length > 1
+                        ? ' пакетами по ' + OZON_FIX_BATCH_SIZE + ' (' + batches.length + ' запросов, пауза ' +
+                          Math.round(OZON_FIX_BATCH_PAUSE_MS / 1000) + ' с между ними)'
+                        : '') +
+                    '. Высота: коробка (или пакет, если тип упаковки — пакет). Продолжить?';
+                return openFixOzonConfirm(msg).then(function (ok) {
+                    if (!ok) return;
+                    return start();
+                });
+            }
+
+            function codesEligibleForWbFix(rows) {
+                var out = [];
+                var list = Array.isArray(rows) ? rows : [];
+                for (var i = 0; i < list.length; i++) {
+                    var r = list[i];
+                    if (!r || !String(r.code || '').trim()) continue;
+                    if (!String(r.wb_code || '').trim()) continue;
+                    var hasH =
+                        (r.ms_height_box != null && String(r.ms_height_box).trim() !== '') ||
+                        (r.ms_height_bag != null && String(r.ms_height_bag).trim() !== '');
+                    if (
+                        r.ms_length == null || String(r.ms_length).trim() === '' ||
+                        r.ms_width == null || String(r.ms_width).trim() === '' ||
+                        r.ms_weight == null || String(r.ms_weight).trim() === '' ||
+                        !hasH
+                    ) continue;
+                    out.push(String(r.code).trim());
+                }
+                return out;
+            }
+            var fixWbConfirmState = { resolve: null };
+            function closeFixWbConfirm(ok) {
+                var ov = document.getElementById('dg-mpu-fix-wb-overlay');
+                if (ov) {
+                    ov.style.display = 'none';
+                    ov.setAttribute('aria-hidden', 'true');
+                }
+                var resolve = fixWbConfirmState.resolve;
+                fixWbConfirmState.resolve = null;
+                if (typeof resolve === 'function') resolve(!!ok);
+            }
+            function openFixWbConfirm(message) {
+                return new Promise(function (resolve) {
+                    if (fixWbConfirmState.resolve) closeFixWbConfirm(false);
+                    fixWbConfirmState.resolve = resolve;
+                    var textEl = document.getElementById('dg-mpu-fix-wb-text');
+                    if (textEl) textEl.textContent = message || '';
+                    var ov = document.getElementById('dg-mpu-fix-wb-overlay');
+                    if (!ov) {
+                        resolve(window.confirm(message || 'Исправить габариты на WB?'));
+                        return;
+                    }
+                    ov.style.display = 'flex';
+                    ov.setAttribute('aria-hidden', 'false');
+                });
+            }
+            function applyLocalWbDimsAfterFix(results) {
+                var list = Array.isArray(results) ? results : [];
+                var byCode = {};
+                for (var i = 0; i < state.rowsAll.length; i++) {
+                    var row = state.rowsAll[i];
+                    if (row && row.code != null) byCode[String(row.code)] = row;
+                }
+                for (var j = 0; j < list.length; j++) {
+                    var res = list[j];
+                    if (!res || !res.success || !res.dims || !res.code) continue;
+                    var target = byCode[String(res.code)];
+                    if (!target) continue;
+                    target.wb_length = String(res.dims.length_cm);
+                    target.wb_width = String(res.dims.width_cm);
+                    target.wb_height = String(res.dims.height_cm);
+                    target.wb_weight = String(res.dims.weight_kg);
+                }
+                applySearchFilter();
+                applySort();
+                renderTable();
+            }
+            /* WB cards/update: ~10 req/мин — пакеты меньше, чем у Ozon. */
+            var WB_FIX_BATCH_SIZE = 100;
+            var WB_FIX_BATCH_PAUSE_MS = 2000;
+            function postFixWbBatch(codes) {
+                return fetch(API_URL + '/fix-wb-dims', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ codes: codes, confirm: true }),
+                }).then(function (r) {
+                    return r.json().then(function (j) {
+                        return { r: r, j: j };
+                    });
+                });
+            }
+            function runFixWbDims(codes, opts) {
+                var o = opts || {};
+                var list = Array.isArray(codes) ? codes.filter(Boolean) : [];
+                if (!list.length) {
+                    showActionLog('warning', 'Нет строк с WB и полными габаритами МС в текущей выборке.', false, 'wb');
+                    return Promise.resolve();
+                }
+                var batches = chunkCodes(list, WB_FIX_BATCH_SIZE);
+                var doFetch = function () {
+                    var started = Date.now();
+                    var filterHint =
+                        'фильтр: ' + (SCOPE_LABELS[state.scope] || state.scope) +
+                        (state.filters.manager ? '; менеджер: ' + state.filters.manager : '') +
+                        (state.filters.content_manager ? '; КМ: ' + state.filters.content_manager : '') +
+                        (state.search ? '; поиск: «' + state.search + '»' : '');
+                    var totals = { total: 0, updated: 0, skipped: 0, failed: 0 };
+                    var allErrors = [];
+                    var tick = null;
+                    var renderProgress = function (batchIdx) {
+                        showActionLog(
+                            'info',
+                            'Исправляем габариты на WB…<br>' +
+                                escapeHtml(filterHint) + '<br>' +
+                                'Всего: <strong>' + list.length + '</strong> арт.' +
+                                ' · пакеты по ' + WB_FIX_BATCH_SIZE +
+                                ' · сейчас <strong>' + batchIdx + '/' + batches.length + '</strong>' +
+                                (o.single ? ' (одна строка)' : '') +
+                                '<br>✓ ' + totals.updated +
+                                ' · пропуск ' + totals.skipped +
+                                ' · × ' + totals.failed +
+                                '<br><span class="text-muted">идёт, прошло ' +
+                                Math.round((Date.now() - started) / 1000) +
+                                ' с…</span>',
+                            true
+                        , 'wb');
+                    };
+                    renderProgress(0);
+                    tick = setInterval(function () {
+                        var logBox = actionLogEl('wb');
+                        var span = logBox && logBox.querySelector('.text-muted');
+                        if (span) span.textContent = 'идёт, прошло ' + Math.round((Date.now() - started) / 1000) + ' с…';
+                    }, 1000);
+
+                    var chain = Promise.resolve();
+                    batches.forEach(function (batch, idx) {
+                        chain = chain.then(function () {
+                            if (idx > 0) return sleepMs(WB_FIX_BATCH_PAUSE_MS).then(function () { return batch; });
+                            return batch;
+                        }).then(function (codesBatch) {
+                            renderProgress(idx + 1);
+                            return postFixWbBatch(codesBatch).then(function (x) {
+                                if (!x.r.ok && !(x.j && x.j.total != null)) {
+                                    throw new Error((x.j && x.j.error) || ('HTTP ' + x.r.status + ' (пакет ' + (idx + 1) + ')'));
+                                }
+                                var j = x.j || {};
+                                totals.total += Number(j.total || 0);
+                                totals.updated += Number(j.updated || 0);
+                                totals.skipped += Number(j.skipped || 0);
+                                totals.failed += Number(j.failed || 0);
+                                if (Array.isArray(j.errors)) {
+                                    for (var e = 0; e < j.errors.length && allErrors.length < 20; e++) {
+                                        allErrors.push(j.errors[e]);
+                                    }
+                                }
+                                if (Array.isArray(j.results) && j.results.length) {
+                                    applyLocalWbDimsAfterFix(j.results);
+                                }
+                            });
+                        });
+                    });
+
+                    return chain
+                        .then(function () {
+                            clearInterval(tick);
+                            var errLines = '';
+                            if (allErrors.length) {
+                                errLines = '<ul class="mb-0 mt-2">' + allErrors.map(function (e) {
+                                    return '<li><code>' + escapeHtml(e.code) + '</code>: ' + escapeHtml(e.error || '') + '</li>';
+                                }).join('') + '</ul>';
+                            }
+                            var kind = totals.failed > 0 ? 'warning' : 'success';
+                            showActionLog(
+                                kind,
+                                'Итог WB:<br>' +
+                                    'пакетов: ' + batches.length +
+                                    ' (по ≤' + WB_FIX_BATCH_SIZE + ')' +
+                                    '; обработано: ' + totals.total +
+                                    '; записано ✓: ' + totals.updated +
+                                    '; пропущено: ' + totals.skipped +
+                                    '; ошибки ×: ' + totals.failed +
+                                    '; длительность: ' + Math.round((Date.now() - started) / 1000) + ' с' +
+                                    errLines,
+                                true
+                            , 'wb');
+                            if (window.DatagonNotify && window.DatagonNotify.toast) {
+                                window.DatagonNotify.toast({
+                                    type: totals.failed > 0 ? 'warning' : 'success',
+                                    message: 'WB: ✓' + totals.updated + ' ×' + totals.failed + ' (' + batches.length + ' пак.)',
+                                });
+                            }
+                        })
+                        .catch(function (err) {
+                            clearInterval(tick);
+                            showActionLog(
+                                'danger',
+                                'Ошибка WB (частично: ✓' + totals.updated + ' ×' + totals.failed + '): ' +
+                                    escapeHtml(err && err.message ? err.message : String(err)),
+                                true
+                            , 'wb');
+                            if (window.DatagonNotify && window.DatagonNotify.toast) {
+                                window.DatagonNotify.toast({
+                                    type: 'danger',
+                                    message: err && err.message ? err.message : 'Ошибка WB',
+                                });
+                            }
+                        });
+                };
+                var start = function () {
+                    var btn = o.btn || document.getElementById('dg-mpu-fix-wb-dims');
+                    if (window.DatagonNotify && window.DatagonNotify.busyRun && btn) {
+                        return window.DatagonNotify.busyRun(btn, doFetch);
+                    }
+                    return doFetch();
+                };
+                if (o.single) return start();
+                var msg =
+                    'Отправим габариты из МойСклад в карточки Wildberries для ' +
+                    list.length +
+                    ' артикулов текущей выборки' +
+                    (batches.length > 1
+                        ? ' пакетами по ' + WB_FIX_BATCH_SIZE + ' (' + batches.length + ' запросов). WB Content update — до ~10 запросов/мин'
+                        : '') +
+                    '. Высота: коробка (или пакет, если тип упаковки — пакет). Вкладку не закрывайте. Продолжить?';
+                return openFixWbConfirm(msg).then(function (ok) {
+                    if (!ok) return;
+                    return start();
+                });
+            }
+
+            function codesEligibleForYmFix(rows) {
+                var out = [];
+                var list = Array.isArray(rows) ? rows : [];
+                for (var i = 0; i < list.length; i++) {
+                    var r = list[i];
+                    if (!r || !String(r.code || '').trim()) continue;
+                    if (!String(r.ym_code || '').trim()) continue;
+                    var hasH =
+                        (r.ms_height_box != null && String(r.ms_height_box).trim() !== '') ||
+                        (r.ms_height_bag != null && String(r.ms_height_bag).trim() !== '');
+                    if (
+                        r.ms_length == null || String(r.ms_length).trim() === '' ||
+                        r.ms_width == null || String(r.ms_width).trim() === '' ||
+                        r.ms_weight == null || String(r.ms_weight).trim() === '' ||
+                        !hasH
+                    ) continue;
+                    out.push(String(r.code).trim());
+                }
+                return out;
+            }
+            var fixYmConfirmState = { resolve: null };
+            function closeFixYmConfirm(ok) {
+                var ov = document.getElementById('dg-mpu-fix-ym-overlay');
+                if (ov) {
+                    ov.style.display = 'none';
+                    ov.setAttribute('aria-hidden', 'true');
+                }
+                var resolve = fixYmConfirmState.resolve;
+                fixYmConfirmState.resolve = null;
+                if (typeof resolve === 'function') resolve(!!ok);
+            }
+            function openFixYmConfirm(message) {
+                return new Promise(function (resolve) {
+                    if (fixYmConfirmState.resolve) closeFixYmConfirm(false);
+                    fixYmConfirmState.resolve = resolve;
+                    var textEl = document.getElementById('dg-mpu-fix-ym-text');
+                    if (textEl) textEl.textContent = message || '';
+                    var ov = document.getElementById('dg-mpu-fix-ym-overlay');
+                    if (!ov) {
+                        resolve(window.confirm(message || 'Исправить габариты на Я.Маркет?'));
+                        return;
+                    }
+                    ov.style.display = 'flex';
+                    ov.setAttribute('aria-hidden', 'false');
+                });
+            }
+            function applyLocalYmDimsAfterFix(results) {
+                var list = Array.isArray(results) ? results : [];
+                var byCode = {};
+                for (var i = 0; i < state.rowsAll.length; i++) {
+                    var row = state.rowsAll[i];
+                    if (row && row.code != null) byCode[String(row.code)] = row;
+                }
+                for (var j = 0; j < list.length; j++) {
+                    var res = list[j];
+                    if (!res || !res.success || !res.dims || !res.code) continue;
+                    var target = byCode[String(res.code)];
+                    if (!target) continue;
+                    target.ym_length = String(res.dims.length_cm);
+                    target.ym_width = String(res.dims.width_cm);
+                    target.ym_height = String(res.dims.height_cm);
+                    target.ym_weight = String(res.dims.weight_kg);
+                }
+                applySearchFilter();
+                applySort();
+                renderTable();
+            }
+            var YM_FIX_BATCH_SIZE = 100;
+            var YM_FIX_BATCH_PAUSE_MS = 1500;
+            function postFixYmBatch(codes) {
+                return fetch(API_URL + '/fix-ym-dims', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ codes: codes, confirm: true }),
+                }).then(function (r) {
+                    return r.json().then(function (j) {
+                        return { r: r, j: j };
+                    });
+                });
+            }
+            function runFixYmDims(codes, opts) {
+                var o = opts || {};
+                var list = Array.isArray(codes) ? codes.filter(Boolean) : [];
+                if (!list.length) {
+                    showActionLog('warning', 'Нет строк с Я.Маркет и полными габаритами МС в текущей выборке.', false, 'ym');
+                    return Promise.resolve();
+                }
+                var batches = chunkCodes(list, YM_FIX_BATCH_SIZE);
+                var doFetch = function () {
+                    var started = Date.now();
+                    var filterHint =
+                        'фильтр: ' + (SCOPE_LABELS[state.scope] || state.scope) +
+                        (state.filters.manager ? '; менеджер: ' + state.filters.manager : '') +
+                        (state.filters.content_manager ? '; КМ: ' + state.filters.content_manager : '') +
+                        (state.search ? '; поиск: «' + state.search + '»' : '');
+                    var totals = { total: 0, updated: 0, skipped: 0, failed: 0 };
+                    var allErrors = [];
+                    var tick = null;
+                    var renderProgress = function (batchIdx) {
+                        showActionLog(
+                            'info',
+                            'Исправляем габариты на Я.Маркет…<br>' +
+                                escapeHtml(filterHint) + '<br>' +
+                                'Всего: <strong>' + list.length + '</strong> арт.' +
+                                ' · пакеты по ' + YM_FIX_BATCH_SIZE +
+                                ' · сейчас <strong>' + batchIdx + '/' + batches.length + '</strong>' +
+                                (o.single ? ' (одна строка)' : '') +
+                                '<br>✓ ' + totals.updated +
+                                ' · пропуск ' + totals.skipped +
+                                ' · × ' + totals.failed +
+                                '<br><span class="text-muted">идёт, прошло ' +
+                                Math.round((Date.now() - started) / 1000) +
+                                ' с…</span>',
+                            true
+                        , 'ym');
+                    };
+                    renderProgress(0);
+                    tick = setInterval(function () {
+                        var logBox = actionLogEl('ym');
+                        var span = logBox && logBox.querySelector('.text-muted');
+                        if (span) span.textContent = 'идёт, прошло ' + Math.round((Date.now() - started) / 1000) + ' с…';
+                    }, 1000);
+
+                    var chain = Promise.resolve();
+                    batches.forEach(function (batch, idx) {
+                        chain = chain.then(function () {
+                            if (idx > 0) return sleepMs(YM_FIX_BATCH_PAUSE_MS).then(function () { return batch; });
+                            return batch;
+                        }).then(function (codesBatch) {
+                            renderProgress(idx + 1);
+                            return postFixYmBatch(codesBatch).then(function (x) {
+                                if (!x.r.ok && !(x.j && x.j.total != null)) {
+                                    throw new Error((x.j && x.j.error) || ('HTTP ' + x.r.status + ' (пакет ' + (idx + 1) + ')'));
+                                }
+                                var j = x.j || {};
+                                totals.total += Number(j.total || 0);
+                                totals.updated += Number(j.updated || 0);
+                                totals.skipped += Number(j.skipped || 0);
+                                totals.failed += Number(j.failed || 0);
+                                if (Array.isArray(j.errors)) {
+                                    for (var e = 0; e < j.errors.length && allErrors.length < 20; e++) {
+                                        allErrors.push(j.errors[e]);
+                                    }
+                                }
+                                if (Array.isArray(j.results) && j.results.length) {
+                                    applyLocalYmDimsAfterFix(j.results);
+                                }
+                            });
+                        });
+                    });
+
+                    return chain
+                        .then(function () {
+                            clearInterval(tick);
+                            var errLines = '';
+                            if (allErrors.length) {
+                                errLines = '<ul class="mb-0 mt-2">' + allErrors.map(function (e) {
+                                    return '<li><code>' + escapeHtml(e.code) + '</code>: ' + escapeHtml(e.error || '') + '</li>';
+                                }).join('') + '</ul>';
+                            }
+                            var kind = totals.failed > 0 ? 'warning' : 'success';
+                            showActionLog(
+                                kind,
+                                'Итог Я.Маркет:<br>' +
+                                    'пакетов: ' + batches.length +
+                                    ' (по ≤' + YM_FIX_BATCH_SIZE + ')' +
+                                    '; обработано: ' + totals.total +
+                                    '; записано ✓: ' + totals.updated +
+                                    '; пропущено: ' + totals.skipped +
+                                    '; ошибки ×: ' + totals.failed +
+                                    '; длительность: ' + Math.round((Date.now() - started) / 1000) + ' с' +
+                                    errLines,
+                                true
+                            , 'ym');
+                            if (window.DatagonNotify && window.DatagonNotify.toast) {
+                                window.DatagonNotify.toast({
+                                    type: totals.failed > 0 ? 'warning' : 'success',
+                                    message: 'Я.М: ✓' + totals.updated + ' ×' + totals.failed + ' (' + batches.length + ' пак.)',
+                                });
+                            }
+                        })
+                        .catch(function (err) {
+                            clearInterval(tick);
+                            showActionLog(
+                                'danger',
+                                'Ошибка Я.Маркет (частично: ✓' + totals.updated + ' ×' + totals.failed + '): ' +
+                                    escapeHtml(err && err.message ? err.message : String(err)),
+                                true
+                            , 'ym');
+                            if (window.DatagonNotify && window.DatagonNotify.toast) {
+                                window.DatagonNotify.toast({
+                                    type: 'danger',
+                                    message: err && err.message ? err.message : 'Ошибка Я.Маркет',
+                                });
+                            }
+                        });
+                };
+                var start = function () {
+                    var btn = o.btn || document.getElementById('dg-mpu-fix-ym-dims');
+                    if (window.DatagonNotify && window.DatagonNotify.busyRun && btn) {
+                        return window.DatagonNotify.busyRun(btn, doFetch);
+                    }
+                    return doFetch();
+                };
+                if (o.single) return start();
+                var msg =
+                    'Отправим габариты из МойСклад в карточки Яндекс Маркета для ' +
+                    list.length +
+                    ' артикулов текущей выборки' +
+                    (batches.length > 1
+                        ? ' пакетами по ' + YM_FIX_BATCH_SIZE + ' (' + batches.length + ' запросов)'
+                        : '') +
+                    '. Высота: коробка (или пакет, если тип упаковки — пакет). Вкладку не закрывайте. Продолжить?';
+                return openFixYmConfirm(msg).then(function (ok) {
+                    if (!ok) return;
+                    return start();
+                });
+            }
+
+            function rowHasMsVat(r) {
+                return r && r.ms_vat != null && String(r.ms_vat).trim() !== '';
+            }
+            function codesEligibleForOzonVatFix(rows) {
+                var out = [];
+                var list = Array.isArray(rows) ? rows : [];
+                for (var i = 0; i < list.length; i++) {
+                    var r = list[i];
+                    if (!r || !String(r.code || '').trim()) continue;
+                    if (!String(r.ozon_code || '').trim()) continue;
+                    if (!rowHasMsVat(r)) continue;
+                    out.push(String(r.code).trim());
+                }
+                return out;
+            }
+            var fixOzonVatConfirmState = { resolve: null };
+            function closeFixOzonVatConfirm(ok) {
+                var ov = document.getElementById('dg-mpu-fix-ozon-vat-overlay');
+                if (ov) {
+                    ov.style.display = 'none';
+                    ov.setAttribute('aria-hidden', 'true');
+                }
+                var resolve = fixOzonVatConfirmState.resolve;
+                fixOzonVatConfirmState.resolve = null;
+                if (typeof resolve === 'function') resolve(!!ok);
+            }
+            function openFixOzonVatConfirm(message) {
+                return new Promise(function (resolve) {
+                    if (fixOzonVatConfirmState.resolve) closeFixOzonVatConfirm(false);
+                    fixOzonVatConfirmState.resolve = resolve;
+                    var textEl = document.getElementById('dg-mpu-fix-ozon-vat-text');
+                    if (textEl) textEl.textContent = message || '';
+                    var ov = document.getElementById('dg-mpu-fix-ozon-vat-overlay');
+                    if (!ov) {
+                        resolve(window.confirm(message || 'Исправить НДС на Ozon?'));
+                        return;
+                    }
+                    ov.style.display = 'flex';
+                    ov.setAttribute('aria-hidden', 'false');
+                });
+            }
+            function applyLocalOzonVatAfterFix(results) {
+                var list = Array.isArray(results) ? results : [];
+                var byCode = {};
+                for (var i = 0; i < state.rowsAll.length; i++) {
+                    var row = state.rowsAll[i];
+                    if (row && row.code != null) byCode[String(row.code)] = row;
+                }
+                for (var j = 0; j < list.length; j++) {
+                    var res = list[j];
+                    if (!res || !res.success || !res.vat || !res.code) continue;
+                    var target = byCode[String(res.code)];
+                    if (!target) continue;
+                    target.ozon_vat = String(res.vat);
+                }
+                applySearchFilter();
+                applySort();
+                renderTable();
+            }
+            var OZON_VAT_FIX_BATCH_SIZE = 200;
+            var OZON_VAT_FIX_BATCH_PAUSE_MS = 1500;
+            function postFixOzonVatBatch(codes) {
+                return fetch(API_URL + '/fix-ozon-vat', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ codes: codes, confirm: true }),
+                }).then(function (r) {
+                    return r.json().then(function (j) {
+                        return { r: r, j: j };
+                    });
+                });
+            }
+            function runFixOzonVat(codes, opts) {
+                var o = opts || {};
+                var list = Array.isArray(codes) ? codes.filter(Boolean) : [];
+                if (!list.length) {
+                    showActionLog('warning', 'Нет строк с Ozon и НДС МС в текущей выборке.', false, 'ozon_vat');
+                    return Promise.resolve();
+                }
+                var batches = chunkCodes(list, OZON_VAT_FIX_BATCH_SIZE);
+                var doFetch = function () {
+                    var started = Date.now();
+                    var filterHint =
+                        'фильтр: ' + (SCOPE_LABELS[state.scope] || state.scope) +
+                        (state.filters.manager ? '; менеджер: ' + state.filters.manager : '') +
+                        (state.filters.content_manager ? '; КМ: ' + state.filters.content_manager : '') +
+                        (state.search ? '; поиск: «' + state.search + '»' : '');
+                    var totals = { total: 0, updated: 0, skipped: 0, failed: 0 };
+                    var allErrors = [];
+                    var tick = null;
+                    var renderProgress = function (batchIdx) {
+                        showActionLog(
+                            'info',
+                            'Исправляем НДС на Ozon…<br>' +
+                                escapeHtml(filterHint) + '<br>' +
+                                'Всего: <strong>' + list.length + '</strong> арт.' +
+                                ' · пакеты по ' + OZON_VAT_FIX_BATCH_SIZE +
+                                ' · сейчас <strong>' + batchIdx + '/' + batches.length + '</strong>' +
+                                (o.single ? ' (одна строка)' : '') +
+                                '<br>✓ ' + totals.updated +
+                                ' · пропуск ' + totals.skipped +
+                                ' · × ' + totals.failed +
+                                '<br><span class="text-muted">идёт, прошло ' +
+                                Math.round((Date.now() - started) / 1000) +
+                                ' с…</span>',
+                            true
+                        , 'ozon_vat');
+                    };
+                    renderProgress(0);
+                    tick = setInterval(function () {
+                        var logBox = actionLogEl('ozon_vat');
+                        var span = logBox && logBox.querySelector('.text-muted');
+                        if (span) span.textContent = 'идёт, прошло ' + Math.round((Date.now() - started) / 1000) + ' с…';
+                    }, 1000);
+
+                    var chain = Promise.resolve();
+                    batches.forEach(function (batch, idx) {
+                        chain = chain.then(function () {
+                            if (idx > 0) return sleepMs(OZON_VAT_FIX_BATCH_PAUSE_MS).then(function () { return batch; });
+                            return batch;
+                        }).then(function (codesBatch) {
+                            renderProgress(idx + 1);
+                            return postFixOzonVatBatch(codesBatch).then(function (x) {
+                                if (!x.r.ok && !(x.j && x.j.total != null)) {
+                                    throw new Error((x.j && x.j.error) || ('HTTP ' + x.r.status + ' (пакет ' + (idx + 1) + ')'));
+                                }
+                                var j = x.j || {};
+                                totals.total += Number(j.total || 0);
+                                totals.updated += Number(j.updated || 0);
+                                totals.skipped += Number(j.skipped || 0);
+                                totals.failed += Number(j.failed || 0);
+                                if (Array.isArray(j.errors)) {
+                                    for (var e = 0; e < j.errors.length && allErrors.length < 20; e++) {
+                                        allErrors.push(j.errors[e]);
+                                    }
+                                }
+                                if (Array.isArray(j.results) && j.results.length) {
+                                    applyLocalOzonVatAfterFix(j.results);
+                                }
+                            });
+                        });
+                    });
+
+                    return chain
+                        .then(function () {
+                            clearInterval(tick);
+                            var errLines = '';
+                            if (allErrors.length) {
+                                errLines = '<ul class="mb-0 mt-2">' + allErrors.map(function (e) {
+                                    return '<li><code>' + escapeHtml(e.code) + '</code>: ' + escapeHtml(e.error || '') + '</li>';
+                                }).join('') + '</ul>';
+                            }
+                            var kind = totals.failed > 0 ? 'warning' : 'success';
+                            showActionLog(
+                                kind,
+                                'Итог НДС Ozon:<br>' +
+                                    'пакетов: ' + batches.length +
+                                    ' (по ≤' + OZON_VAT_FIX_BATCH_SIZE + ')' +
+                                    '; обработано: ' + totals.total +
+                                    '; записано ✓: ' + totals.updated +
+                                    '; пропущено: ' + totals.skipped +
+                                    '; ошибки ×: ' + totals.failed +
+                                    '; длительность: ' + Math.round((Date.now() - started) / 1000) + ' с' +
+                                    errLines,
+                                true
+                            , 'ozon_vat');
+                            if (window.DatagonNotify && window.DatagonNotify.toast) {
+                                window.DatagonNotify.toast({
+                                    type: totals.failed > 0 ? 'warning' : 'success',
+                                    message: 'Ozon НДС: ✓' + totals.updated + ' ×' + totals.failed + ' (' + batches.length + ' пак.)',
+                                });
+                            }
+                        })
+                        .catch(function (err) {
+                            clearInterval(tick);
+                            showActionLog(
+                                'danger',
+                                'Ошибка НДС Ozon (частично: ✓' + totals.updated + ' ×' + totals.failed + '): ' +
+                                    escapeHtml(err && err.message ? err.message : String(err)),
+                                true
+                            , 'ozon_vat');
+                            if (window.DatagonNotify && window.DatagonNotify.toast) {
+                                window.DatagonNotify.toast({
+                                    type: 'danger',
+                                    message: err && err.message ? err.message : 'Ошибка НДС Ozon',
+                                });
+                            }
+                        });
+                };
+                var start = function () {
+                    var btn = o.btn || document.getElementById('dg-mpu-fix-ozon-vat');
+                    if (window.DatagonNotify && window.DatagonNotify.busyRun && btn) {
+                        return window.DatagonNotify.busyRun(btn, doFetch);
+                    }
+                    return doFetch();
+                };
+                if (o.single) return start();
+                var msg =
+                    'Отправим НДС из МойСклад в карточки Ozon для ' +
+                    list.length +
+                    ' артикулов текущей выборки' +
+                    (batches.length > 1
+                        ? ' пакетами по ' + OZON_VAT_FIX_BATCH_SIZE + ' (' + batches.length + ' запросов, пауза ' +
+                          Math.round(OZON_VAT_FIX_BATCH_PAUSE_MS / 1000) + ' с между ними)'
+                        : '') +
+                    '. Габариты карточки Ozon не меняются. Продолжить?';
+                return openFixOzonVatConfirm(msg).then(function (ok) {
+                    if (!ok) return;
+                    return start();
+                });
+            }
+
+            function codesEligibleForWbVatFix(rows) {
+                var out = [];
+                var list = Array.isArray(rows) ? rows : [];
+                for (var i = 0; i < list.length; i++) {
+                    var r = list[i];
+                    if (!r || !String(r.code || '').trim()) continue;
+                    if (!String(r.wb_code || '').trim()) continue;
+                    if (!rowHasMsVat(r)) continue;
+                    out.push(String(r.code).trim());
+                }
+                return out;
+            }
+            var fixWbVatConfirmState = { resolve: null };
+            function closeFixWbVatConfirm(ok) {
+                var ov = document.getElementById('dg-mpu-fix-wb-vat-overlay');
+                if (ov) {
+                    ov.style.display = 'none';
+                    ov.setAttribute('aria-hidden', 'true');
+                }
+                var resolve = fixWbVatConfirmState.resolve;
+                fixWbVatConfirmState.resolve = null;
+                if (typeof resolve === 'function') resolve(!!ok);
+            }
+            function openFixWbVatConfirm(message) {
+                return new Promise(function (resolve) {
+                    if (fixWbVatConfirmState.resolve) closeFixWbVatConfirm(false);
+                    fixWbVatConfirmState.resolve = resolve;
+                    var textEl = document.getElementById('dg-mpu-fix-wb-vat-text');
+                    if (textEl) textEl.textContent = message || '';
+                    var ov = document.getElementById('dg-mpu-fix-wb-vat-overlay');
+                    if (!ov) {
+                        resolve(window.confirm(message || 'Исправить НДС на WB?'));
+                        return;
+                    }
+                    ov.style.display = 'flex';
+                    ov.setAttribute('aria-hidden', 'false');
+                });
+            }
+            function applyLocalWbVatAfterFix(results) {
+                var list = Array.isArray(results) ? results : [];
+                var byCode = {};
+                for (var i = 0; i < state.rowsAll.length; i++) {
+                    var row = state.rowsAll[i];
+                    if (row && row.code != null) byCode[String(row.code)] = row;
+                }
+                for (var j = 0; j < list.length; j++) {
+                    var res = list[j];
+                    if (!res || !res.success || !res.vat || !res.code) continue;
+                    var target = byCode[String(res.code)];
+                    if (!target) continue;
+                    target.wb_vat = String(res.vat);
+                }
+                applySearchFilter();
+                applySort();
+                renderTable();
+            }
+            var WB_VAT_FIX_BATCH_SIZE = 100;
+            var WB_VAT_FIX_BATCH_PAUSE_MS = 2000;
+            function postFixWbVatBatch(codes) {
+                return fetch(API_URL + '/fix-wb-vat', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ codes: codes, confirm: true }),
+                }).then(function (r) {
+                    return r.json().then(function (j) {
+                        return { r: r, j: j };
+                    });
+                });
+            }
+            function runFixWbVat(codes, opts) {
+                var o = opts || {};
+                var list = Array.isArray(codes) ? codes.filter(Boolean) : [];
+                if (!list.length) {
+                    showActionLog('warning', 'Нет строк с WB и НДС МС в текущей выборке.', false, 'wb_vat');
+                    return Promise.resolve();
+                }
+                var batches = chunkCodes(list, WB_VAT_FIX_BATCH_SIZE);
+                var doFetch = function () {
+                    var started = Date.now();
+                    var filterHint =
+                        'фильтр: ' + (SCOPE_LABELS[state.scope] || state.scope) +
+                        (state.filters.manager ? '; менеджер: ' + state.filters.manager : '') +
+                        (state.filters.content_manager ? '; КМ: ' + state.filters.content_manager : '') +
+                        (state.search ? '; поиск: «' + state.search + '»' : '');
+                    var totals = { total: 0, updated: 0, skipped: 0, failed: 0 };
+                    var allErrors = [];
+                    var tick = null;
+                    var renderProgress = function (batchIdx) {
+                        showActionLog(
+                            'info',
+                            'Исправляем НДС на WB…<br>' +
+                                escapeHtml(filterHint) + '<br>' +
+                                'Всего: <strong>' + list.length + '</strong> арт.' +
+                                ' · пакеты по ' + WB_VAT_FIX_BATCH_SIZE +
+                                ' · сейчас <strong>' + batchIdx + '/' + batches.length + '</strong>' +
+                                (o.single ? ' (одна строка)' : '') +
+                                '<br>✓ ' + totals.updated +
+                                ' · пропуск ' + totals.skipped +
+                                ' · × ' + totals.failed +
+                                '<br><span class="text-muted">идёт, прошло ' +
+                                Math.round((Date.now() - started) / 1000) +
+                                ' с…</span>',
+                            true
+                        , 'wb_vat');
+                    };
+                    renderProgress(0);
+                    tick = setInterval(function () {
+                        var logBox = actionLogEl('wb_vat');
+                        var span = logBox && logBox.querySelector('.text-muted');
+                        if (span) span.textContent = 'идёт, прошло ' + Math.round((Date.now() - started) / 1000) + ' с…';
+                    }, 1000);
+
+                    var chain = Promise.resolve();
+                    batches.forEach(function (batch, idx) {
+                        chain = chain.then(function () {
+                            if (idx > 0) return sleepMs(WB_VAT_FIX_BATCH_PAUSE_MS).then(function () { return batch; });
+                            return batch;
+                        }).then(function (codesBatch) {
+                            renderProgress(idx + 1);
+                            return postFixWbVatBatch(codesBatch).then(function (x) {
+                                if (!x.r.ok && !(x.j && x.j.total != null)) {
+                                    throw new Error((x.j && x.j.error) || ('HTTP ' + x.r.status + ' (пакет ' + (idx + 1) + ')'));
+                                }
+                                var j = x.j || {};
+                                totals.total += Number(j.total || 0);
+                                totals.updated += Number(j.updated || 0);
+                                totals.skipped += Number(j.skipped || 0);
+                                totals.failed += Number(j.failed || 0);
+                                if (Array.isArray(j.errors)) {
+                                    for (var e = 0; e < j.errors.length && allErrors.length < 20; e++) {
+                                        allErrors.push(j.errors[e]);
+                                    }
+                                }
+                                if (Array.isArray(j.results) && j.results.length) {
+                                    applyLocalWbVatAfterFix(j.results);
+                                }
+                            });
+                        });
+                    });
+
+                    return chain
+                        .then(function () {
+                            clearInterval(tick);
+                            var errLines = '';
+                            if (allErrors.length) {
+                                errLines = '<ul class="mb-0 mt-2">' + allErrors.map(function (e) {
+                                    return '<li><code>' + escapeHtml(e.code) + '</code>: ' + escapeHtml(e.error || '') + '</li>';
+                                }).join('') + '</ul>';
+                            }
+                            var kind = totals.failed > 0 ? 'warning' : 'success';
+                            showActionLog(
+                                kind,
+                                'Итог НДС WB:<br>' +
+                                    'пакетов: ' + batches.length +
+                                    ' (по ≤' + WB_VAT_FIX_BATCH_SIZE + ')' +
+                                    '; обработано: ' + totals.total +
+                                    '; записано ✓: ' + totals.updated +
+                                    '; пропущено: ' + totals.skipped +
+                                    '; ошибки ×: ' + totals.failed +
+                                    '; длительность: ' + Math.round((Date.now() - started) / 1000) + ' с' +
+                                    errLines,
+                                true
+                            , 'wb_vat');
+                            if (window.DatagonNotify && window.DatagonNotify.toast) {
+                                window.DatagonNotify.toast({
+                                    type: totals.failed > 0 ? 'warning' : 'success',
+                                    message: 'WB НДС: ✓' + totals.updated + ' ×' + totals.failed + ' (' + batches.length + ' пак.)',
+                                });
+                            }
+                        })
+                        .catch(function (err) {
+                            clearInterval(tick);
+                            showActionLog(
+                                'danger',
+                                'Ошибка НДС WB (частично: ✓' + totals.updated + ' ×' + totals.failed + '): ' +
+                                    escapeHtml(err && err.message ? err.message : String(err)),
+                                true
+                            , 'wb_vat');
+                            if (window.DatagonNotify && window.DatagonNotify.toast) {
+                                window.DatagonNotify.toast({
+                                    type: 'danger',
+                                    message: err && err.message ? err.message : 'Ошибка НДС WB',
+                                });
+                            }
+                        });
+                };
+                var start = function () {
+                    var btn = o.btn || document.getElementById('dg-mpu-fix-wb-vat');
+                    if (window.DatagonNotify && window.DatagonNotify.busyRun && btn) {
+                        return window.DatagonNotify.busyRun(btn, doFetch);
+                    }
+                    return doFetch();
+                };
+                if (o.single) return start();
+                var msg =
+                    'Отправим НДС из МойСклад в карточки Wildberries для ' +
+                    list.length +
+                    ' артикулов текущей выборки' +
+                    (batches.length > 1
+                        ? ' пакетами по ' + WB_VAT_FIX_BATCH_SIZE + ' (' + batches.length + ' запросов). WB Content update — до ~10 запросов/мин'
+                        : '') +
+                    '. Габариты карточки WB не меняются. Вкладку не закрывайте. Продолжить?';
+                return openFixWbVatConfirm(msg).then(function (ok) {
+                    if (!ok) return;
+                    return start();
+                });
+            }
+
+            function codesEligibleForYmVatFix(rows) {
+                var out = [];
+                var list = Array.isArray(rows) ? rows : [];
+                for (var i = 0; i < list.length; i++) {
+                    var r = list[i];
+                    if (!r || !String(r.code || '').trim()) continue;
+                    if (!String(r.ym_code || '').trim()) continue;
+                    if (!rowHasMsVat(r)) continue;
+                    out.push(String(r.code).trim());
+                }
+                return out;
+            }
+            var fixYmVatConfirmState = { resolve: null };
+            function closeFixYmVatConfirm(ok) {
+                var ov = document.getElementById('dg-mpu-fix-ym-vat-overlay');
+                if (ov) {
+                    ov.style.display = 'none';
+                    ov.setAttribute('aria-hidden', 'true');
+                }
+                var resolve = fixYmVatConfirmState.resolve;
+                fixYmVatConfirmState.resolve = null;
+                if (typeof resolve === 'function') resolve(!!ok);
+            }
+            function openFixYmVatConfirm(message) {
+                return new Promise(function (resolve) {
+                    if (fixYmVatConfirmState.resolve) closeFixYmVatConfirm(false);
+                    fixYmVatConfirmState.resolve = resolve;
+                    var textEl = document.getElementById('dg-mpu-fix-ym-vat-text');
+                    if (textEl) textEl.textContent = message || '';
+                    var ov = document.getElementById('dg-mpu-fix-ym-vat-overlay');
+                    if (!ov) {
+                        resolve(window.confirm(message || 'Исправить НДС на Я.Маркет?'));
+                        return;
+                    }
+                    ov.style.display = 'flex';
+                    ov.setAttribute('aria-hidden', 'false');
+                });
+            }
+            function applyLocalYmVatAfterFix(results) {
+                var list = Array.isArray(results) ? results : [];
+                var byCode = {};
+                for (var i = 0; i < state.rowsAll.length; i++) {
+                    var row = state.rowsAll[i];
+                    if (row && row.code != null) byCode[String(row.code)] = row;
+                }
+                for (var j = 0; j < list.length; j++) {
+                    var res = list[j];
+                    if (!res || !res.success || !res.vat || !res.code) continue;
+                    var target = byCode[String(res.code)];
+                    if (!target) continue;
+                    target.ym_vat = String(res.vat);
+                }
+                applySearchFilter();
+                applySort();
+                renderTable();
+            }
+            var YM_VAT_FIX_BATCH_SIZE = 100;
+            var YM_VAT_FIX_BATCH_PAUSE_MS = 1500;
+            function postFixYmVatBatch(codes) {
+                return fetch(API_URL + '/fix-ym-vat', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ codes: codes, confirm: true }),
+                }).then(function (r) {
+                    return r.json().then(function (j) {
+                        return { r: r, j: j };
+                    });
+                });
+            }
+            function runFixYmVat(codes, opts) {
+                var o = opts || {};
+                var list = Array.isArray(codes) ? codes.filter(Boolean) : [];
+                if (!list.length) {
+                    showActionLog('warning', 'Нет строк с Я.Маркет и НДС МС в текущей выборке.', false, 'ym_vat');
+                    return Promise.resolve();
+                }
+                var batches = chunkCodes(list, YM_VAT_FIX_BATCH_SIZE);
+                var doFetch = function () {
+                    var started = Date.now();
+                    var filterHint =
+                        'фильтр: ' + (SCOPE_LABELS[state.scope] || state.scope) +
+                        (state.filters.manager ? '; менеджер: ' + state.filters.manager : '') +
+                        (state.filters.content_manager ? '; КМ: ' + state.filters.content_manager : '') +
+                        (state.search ? '; поиск: «' + state.search + '»' : '');
+                    var totals = { total: 0, updated: 0, skipped: 0, failed: 0 };
+                    var allErrors = [];
+                    var tick = null;
+                    var renderProgress = function (batchIdx) {
+                        showActionLog(
+                            'info',
+                            'Исправляем НДС на Я.Маркет…<br>' +
+                                escapeHtml(filterHint) + '<br>' +
+                                'Всего: <strong>' + list.length + '</strong> арт.' +
+                                ' · пакеты по ' + YM_VAT_FIX_BATCH_SIZE +
+                                ' · сейчас <strong>' + batchIdx + '/' + batches.length + '</strong>' +
+                                (o.single ? ' (одна строка)' : '') +
+                                '<br>✓ ' + totals.updated +
+                                ' · пропуск ' + totals.skipped +
+                                ' · × ' + totals.failed +
+                                '<br><span class="text-muted">идёт, прошло ' +
+                                Math.round((Date.now() - started) / 1000) +
+                                ' с…</span>',
+                            true
+                        , 'ym_vat');
+                    };
+                    renderProgress(0);
+                    tick = setInterval(function () {
+                        var logBox = actionLogEl('ym_vat');
+                        var span = logBox && logBox.querySelector('.text-muted');
+                        if (span) span.textContent = 'идёт, прошло ' + Math.round((Date.now() - started) / 1000) + ' с…';
+                    }, 1000);
+
+                    var chain = Promise.resolve();
+                    batches.forEach(function (batch, idx) {
+                        chain = chain.then(function () {
+                            if (idx > 0) return sleepMs(YM_VAT_FIX_BATCH_PAUSE_MS).then(function () { return batch; });
+                            return batch;
+                        }).then(function (codesBatch) {
+                            renderProgress(idx + 1);
+                            return postFixYmVatBatch(codesBatch).then(function (x) {
+                                if (!x.r.ok && !(x.j && x.j.total != null)) {
+                                    throw new Error((x.j && x.j.error) || ('HTTP ' + x.r.status + ' (пакет ' + (idx + 1) + ')'));
+                                }
+                                var j = x.j || {};
+                                totals.total += Number(j.total || 0);
+                                totals.updated += Number(j.updated || 0);
+                                totals.skipped += Number(j.skipped || 0);
+                                totals.failed += Number(j.failed || 0);
+                                if (Array.isArray(j.errors)) {
+                                    for (var e = 0; e < j.errors.length && allErrors.length < 20; e++) {
+                                        allErrors.push(j.errors[e]);
+                                    }
+                                }
+                                if (Array.isArray(j.results) && j.results.length) {
+                                    applyLocalYmVatAfterFix(j.results);
+                                }
+                            });
+                        });
+                    });
+
+                    return chain
+                        .then(function () {
+                            clearInterval(tick);
+                            var errLines = '';
+                            if (allErrors.length) {
+                                errLines = '<ul class="mb-0 mt-2">' + allErrors.map(function (e) {
+                                    return '<li><code>' + escapeHtml(e.code) + '</code>: ' + escapeHtml(e.error || '') + '</li>';
+                                }).join('') + '</ul>';
+                            }
+                            var kind = totals.failed > 0 ? 'warning' : 'success';
+                            showActionLog(
+                                kind,
+                                'Итог НДС Я.Маркет:<br>' +
+                                    'пакетов: ' + batches.length +
+                                    ' (по ≤' + YM_VAT_FIX_BATCH_SIZE + ')' +
+                                    '; обработано: ' + totals.total +
+                                    '; записано ✓: ' + totals.updated +
+                                    '; пропущено: ' + totals.skipped +
+                                    '; ошибки ×: ' + totals.failed +
+                                    '; длительность: ' + Math.round((Date.now() - started) / 1000) + ' с' +
+                                    errLines,
+                                true
+                            , 'ym_vat');
+                            if (window.DatagonNotify && window.DatagonNotify.toast) {
+                                window.DatagonNotify.toast({
+                                    type: totals.failed > 0 ? 'warning' : 'success',
+                                    message: 'Я.М НДС: ✓' + totals.updated + ' ×' + totals.failed + ' (' + batches.length + ' пак.)',
+                                });
+                            }
+                        })
+                        .catch(function (err) {
+                            clearInterval(tick);
+                            showActionLog(
+                                'danger',
+                                'Ошибка НДС Я.Маркет (частично: ✓' + totals.updated + ' ×' + totals.failed + '): ' +
+                                    escapeHtml(err && err.message ? err.message : String(err)),
+                                true
+                            , 'ym_vat');
+                            if (window.DatagonNotify && window.DatagonNotify.toast) {
+                                window.DatagonNotify.toast({
+                                    type: 'danger',
+                                    message: err && err.message ? err.message : 'Ошибка НДС Я.Маркет',
+                                });
+                            }
+                        });
+                };
+                var start = function () {
+                    var btn = o.btn || document.getElementById('dg-mpu-fix-ym-vat');
+                    if (window.DatagonNotify && window.DatagonNotify.busyRun && btn) {
+                        return window.DatagonNotify.busyRun(btn, doFetch);
+                    }
+                    return doFetch();
+                };
+                if (o.single) return start();
+                var msg =
+                    'Отправим НДС из МойСклад в офферы Яндекс Маркета для ' +
+                    list.length +
+                    ' артикулов текущей выборки' +
+                    (batches.length > 1
+                        ? ' пакетами по ' + YM_VAT_FIX_BATCH_SIZE + ' (' + batches.length + ' запросов)'
+                        : '') +
+                    '. Нужны ym_api_key и ym_campaign_id. Вкладку не закрывайте. Продолжить?';
+                return openFixYmVatConfirm(msg).then(function (ok) {
+                    if (!ok) return;
+                    return start();
+                });
+            }
+
             function escapeHtml(s) {
                 return String(s == null ? '' : s)
                     .replace(/&/g, '&amp;')
@@ -2749,6 +4359,15 @@
                 var n = parseFloat(s);
                 return Number.isFinite(n) ? n : null;
             }
+            /** Паритет с lib/mpIssuesRowFilters.js / routes: WB L/W/H — целые см. */
+            function issuesDimSizeEqual(msVal, mpVal, marketplace) {
+                if (msVal == null || mpVal == null) return false;
+                var kind = String(marketplace || '').toLowerCase();
+                if (kind === 'wb' || kind === 'wildberries') {
+                    return Math.round(msVal) === Math.round(mpVal);
+                }
+                return Math.abs(msVal - mpVal) <= ISSUES_DIM_EPS;
+            }
             function issuesDimTuple(row, prefix) {
                 return [
                     parseExportDimNumber(row[prefix + '_length']),
@@ -2792,11 +4411,11 @@
                     var mpW = parseExportDimNumber(row[pfx + '_width']);
                     var mpH = parseExportDimNumber(row[pfx + '_height']);
                     var mpWeight = parseExportDimNumber(row[pfx + '_weight']);
-                    if (msL != null && mpL != null && Math.abs(msL - mpL) > ISSUES_DIM_EPS) {
+                    if (msL != null && mpL != null && !issuesDimSizeEqual(msL, mpL, pfx)) {
                         out[pfx + '_length'] = true;
                         out.ms_length = true;
                     }
-                    if (msW != null && mpW != null && Math.abs(msW - mpW) > ISSUES_DIM_EPS) {
+                    if (msW != null && mpW != null && !issuesDimSizeEqual(msW, mpW, pfx)) {
                         out[pfx + '_width'] = true;
                         out.ms_width = true;
                     }
@@ -2805,8 +4424,8 @@
                         out.ms_weight = true;
                     }
                     if (mpH != null && (msHbox != null || msHbag != null)) {
-                        var matchBox = msHbox != null && Math.abs(mpH - msHbox) <= ISSUES_DIM_EPS;
-                        var matchBag = msHbag != null && Math.abs(mpH - msHbag) <= ISSUES_DIM_EPS;
+                        var matchBox = msHbox != null && issuesDimSizeEqual(msHbox, mpH, pfx);
+                        var matchBag = msHbag != null && issuesDimSizeEqual(msHbag, mpH, pfx);
                         if (!matchBox && !matchBag) {
                             out[pfx + '_height'] = true;
                             if (msHbox != null) out.ms_height_box = true;
@@ -3405,6 +5024,126 @@
                             } else {
                                 cellInner = escapeHtml(valStr);
                             }
+                        } else if (key === 'ozon_fix_dims') {
+                            var canFix =
+                                row &&
+                                String(row.ozon_code || '').trim() &&
+                                row.ms_length != null && String(row.ms_length).trim() !== '' &&
+                                row.ms_width != null && String(row.ms_width).trim() !== '' &&
+                                row.ms_weight != null && String(row.ms_weight).trim() !== '' &&
+                                (
+                                    (row.ms_height_box != null && String(row.ms_height_box).trim() !== '') ||
+                                    (row.ms_height_bag != null && String(row.ms_height_bag).trim() !== '')
+                                );
+                            if (canFix) {
+                                cellInner =
+                                    '<button type="button" class="btn btn-sm btn-outline-primary text-nowrap dg-mpu-fix-ozon-one" ' +
+                                    'data-dg-code="' + escapeHtml(String(row.code || '')) + '" ' +
+                                    'data-dg-notify-start="Исправляем габариты на Ozon…" ' +
+                                    'title="Отправить габариты МС (длина/ширина/высота/вес) в карточку Ozon">' +
+                                    'Исправить габариты</button>';
+                            } else if (!row || !String(row.ozon_code || '').trim()) {
+                                cellInner = '<span class="text-muted small">нет на Ozon</span>';
+                            } else {
+                                cellInner = '<span class="text-muted small">нет габаритов МС</span>';
+                            }
+                        } else if (key === 'wb_fix_dims') {
+                            var canFixWb =
+                                row &&
+                                String(row.wb_code || '').trim() &&
+                                row.ms_length != null && String(row.ms_length).trim() !== '' &&
+                                row.ms_width != null && String(row.ms_width).trim() !== '' &&
+                                row.ms_weight != null && String(row.ms_weight).trim() !== '' &&
+                                (
+                                    (row.ms_height_box != null && String(row.ms_height_box).trim() !== '') ||
+                                    (row.ms_height_bag != null && String(row.ms_height_bag).trim() !== '')
+                                );
+                            if (canFixWb) {
+                                cellInner =
+                                    '<button type="button" class="btn btn-sm btn-outline-primary text-nowrap dg-mpu-fix-wb-one" ' +
+                                    'data-dg-code="' + escapeHtml(String(row.code || '')) + '" ' +
+                                    'data-dg-notify-start="Исправляем габариты на WB…" ' +
+                                    'title="Отправить габариты МС (длина/ширина/высота/вес) в карточку Wildberries">' +
+                                    'Исправить габариты</button>';
+                            } else if (!row || !String(row.wb_code || '').trim()) {
+                                cellInner = '<span class="text-muted small">нет на WB</span>';
+                            } else {
+                                cellInner = '<span class="text-muted small">нет габаритов МС</span>';
+                            }
+                        } else if (key === 'ym_fix_dims') {
+                            var canFixYm =
+                                row &&
+                                String(row.ym_code || '').trim() &&
+                                row.ms_length != null && String(row.ms_length).trim() !== '' &&
+                                row.ms_width != null && String(row.ms_width).trim() !== '' &&
+                                row.ms_weight != null && String(row.ms_weight).trim() !== '' &&
+                                (
+                                    (row.ms_height_box != null && String(row.ms_height_box).trim() !== '') ||
+                                    (row.ms_height_bag != null && String(row.ms_height_bag).trim() !== '')
+                                );
+                            if (canFixYm) {
+                                cellInner =
+                                    '<button type="button" class="btn btn-sm btn-outline-primary text-nowrap dg-mpu-fix-ym-one" ' +
+                                    'data-dg-code="' + escapeHtml(String(row.code || '')) + '" ' +
+                                    'data-dg-notify-start="Исправляем габариты на Я.Маркет…" ' +
+                                    'title="Отправить габариты МС (длина/ширина/высота/вес) в карточку Яндекс Маркета">' +
+                                    'Исправить габариты</button>';
+                            } else if (!row || !String(row.ym_code || '').trim()) {
+                                cellInner = '<span class="text-muted small">нет на Я.М</span>';
+                            } else {
+                                cellInner = '<span class="text-muted small">нет габаритов МС</span>';
+                            }
+                        } else if (key === 'ozon_fix_vat') {
+                            var canFixOzonVat =
+                                row &&
+                                String(row.ozon_code || '').trim() &&
+                                row.ms_vat != null && String(row.ms_vat).trim() !== '';
+                            if (canFixOzonVat) {
+                                cellInner =
+                                    '<button type="button" class="btn btn-sm btn-outline-primary text-nowrap dg-mpu-fix-ozon-vat-one" ' +
+                                    'data-dg-code="' + escapeHtml(String(row.code || '')) + '" ' +
+                                    'data-dg-notify-start="Исправляем НДС на Ozon…" ' +
+                                    'title="Отправить НДС МС в карточку Ozon">' +
+                                    'Исправить НДС</button>';
+                            } else if (!row || !String(row.ozon_code || '').trim()) {
+                                cellInner = '<span class="text-muted small">нет на Ozon</span>';
+                            } else {
+                                cellInner = '<span class="text-muted small">нет НДС МС</span>';
+                            }
+                        } else if (key === 'wb_fix_vat') {
+                            var canFixWbVat =
+                                row &&
+                                String(row.wb_code || '').trim() &&
+                                row.ms_vat != null && String(row.ms_vat).trim() !== '';
+                            if (canFixWbVat) {
+                                cellInner =
+                                    '<button type="button" class="btn btn-sm btn-outline-primary text-nowrap dg-mpu-fix-wb-vat-one" ' +
+                                    'data-dg-code="' + escapeHtml(String(row.code || '')) + '" ' +
+                                    'data-dg-notify-start="Исправляем НДС на WB…" ' +
+                                    'title="Отправить НДС МС в карточку Wildberries">' +
+                                    'Исправить НДС</button>';
+                            } else if (!row || !String(row.wb_code || '').trim()) {
+                                cellInner = '<span class="text-muted small">нет на WB</span>';
+                            } else {
+                                cellInner = '<span class="text-muted small">нет НДС МС</span>';
+                            }
+                        } else if (key === 'ym_fix_vat') {
+                            var canFixYmVat =
+                                row &&
+                                String(row.ym_code || '').trim() &&
+                                row.ms_vat != null && String(row.ms_vat).trim() !== '';
+                            if (canFixYmVat) {
+                                cellInner =
+                                    '<button type="button" class="btn btn-sm btn-outline-primary text-nowrap dg-mpu-fix-ym-vat-one" ' +
+                                    'data-dg-code="' + escapeHtml(String(row.code || '')) + '" ' +
+                                    'data-dg-notify-start="Исправляем НДС на Я.Маркет…" ' +
+                                    'title="Отправить НДС МС в оффер Яндекс Маркета">' +
+                                    'Исправить НДС</button>';
+                            } else if (!row || !String(row.ym_code || '').trim()) {
+                                cellInner = '<span class="text-muted small">нет на Я.М</span>';
+                            } else {
+                                cellInner = '<span class="text-muted small">нет НДС МС</span>';
+                            }
                         } else if (key === 'ozon_cabinet_url' || key === 'wb_cabinet_url' || key === 'ym_cabinet_url' ||
                                    key === 'ozon_buyer_url' || key === 'wb_buyer_url' || key === 'ym_buyer_url') {
                             var rawUrl = val == null ? '' : String(val).trim();
@@ -3429,6 +5168,54 @@
                 if (!tbody._dgMpuMsNameBound) {
                     tbody._dgMpuMsNameBound = true;
                     tbody.addEventListener('click', function (e) {
+                        var fixBtn = e.target && e.target.closest ? e.target.closest('.dg-mpu-fix-ozon-one') : null;
+                        if (fixBtn && tbody.contains(fixBtn)) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            var codeOne = fixBtn.getAttribute('data-dg-code') || '';
+                            if (codeOne) runFixOzonDims([codeOne], { single: true, btn: fixBtn });
+                            return;
+                        }
+                        var fixWbBtn = e.target && e.target.closest ? e.target.closest('.dg-mpu-fix-wb-one') : null;
+                        if (fixWbBtn && tbody.contains(fixWbBtn)) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            var codeWb = fixWbBtn.getAttribute('data-dg-code') || '';
+                            if (codeWb) runFixWbDims([codeWb], { single: true, btn: fixWbBtn });
+                            return;
+                        }
+                        var fixYmBtn = e.target && e.target.closest ? e.target.closest('.dg-mpu-fix-ym-one') : null;
+                        if (fixYmBtn && tbody.contains(fixYmBtn)) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            var codeYm = fixYmBtn.getAttribute('data-dg-code') || '';
+                            if (codeYm) runFixYmDims([codeYm], { single: true, btn: fixYmBtn });
+                            return;
+                        }
+                        var fixOzonVatBtn = e.target && e.target.closest ? e.target.closest('.dg-mpu-fix-ozon-vat-one') : null;
+                        if (fixOzonVatBtn && tbody.contains(fixOzonVatBtn)) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            var codeOzonVat = fixOzonVatBtn.getAttribute('data-dg-code') || '';
+                            if (codeOzonVat) runFixOzonVat([codeOzonVat], { single: true, btn: fixOzonVatBtn });
+                            return;
+                        }
+                        var fixWbVatBtn = e.target && e.target.closest ? e.target.closest('.dg-mpu-fix-wb-vat-one') : null;
+                        if (fixWbVatBtn && tbody.contains(fixWbVatBtn)) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            var codeWbVat = fixWbVatBtn.getAttribute('data-dg-code') || '';
+                            if (codeWbVat) runFixWbVat([codeWbVat], { single: true, btn: fixWbVatBtn });
+                            return;
+                        }
+                        var fixYmVatBtn = e.target && e.target.closest ? e.target.closest('.dg-mpu-fix-ym-vat-one') : null;
+                        if (fixYmVatBtn && tbody.contains(fixYmVatBtn)) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            var codeYmVat = fixYmVatBtn.getAttribute('data-dg-code') || '';
+                            if (codeYmVat) runFixYmVat([codeYmVat], { single: true, btn: fixYmVatBtn });
+                            return;
+                        }
                         var btn = e.target && e.target.closest ? e.target.closest('.dg-mpu-ms-name') : null;
                         if (!btn || !tbody.contains(btn)) return;
                         e.preventDefault();
@@ -3722,9 +5509,139 @@
             if (elFltReset) {
                 elFltReset.addEventListener('click', function (e) {
                     e.preventDefault();
+                    hideActionLog();
                     resetAllFiltersAndCommit();
                 });
             }
+
+            var elFixOzonBulk = document.getElementById('dg-mpu-fix-ozon-dims');
+            if (elFixOzonBulk) {
+                elFixOzonBulk.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    var codes = codesEligibleForOzonFix(state.rows);
+                    runFixOzonDims(codes, { single: false, btn: elFixOzonBulk });
+                });
+            }
+            var elFixOzonCancel = document.getElementById('dg-mpu-fix-ozon-cancel');
+            if (elFixOzonCancel) elFixOzonCancel.addEventListener('click', function () { closeFixOzonConfirm(false); });
+            var elFixOzonOk = document.getElementById('dg-mpu-fix-ozon-ok');
+            if (elFixOzonOk) elFixOzonOk.addEventListener('click', function () { closeFixOzonConfirm(true); });
+            var elFixOzonOverlay = document.getElementById('dg-mpu-fix-ozon-overlay');
+            if (elFixOzonOverlay) {
+                elFixOzonOverlay.addEventListener('click', function (ev) {
+                    if (ev.target === elFixOzonOverlay) closeFixOzonConfirm(false);
+                });
+            }
+
+            var elFixWbBulk = document.getElementById('dg-mpu-fix-wb-dims');
+            if (elFixWbBulk) {
+                elFixWbBulk.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    var codesWb = codesEligibleForWbFix(state.rows);
+                    runFixWbDims(codesWb, { single: false, btn: elFixWbBulk });
+                });
+            }
+            var elFixWbCancel = document.getElementById('dg-mpu-fix-wb-cancel');
+            if (elFixWbCancel) elFixWbCancel.addEventListener('click', function () { closeFixWbConfirm(false); });
+            var elFixWbOk = document.getElementById('dg-mpu-fix-wb-ok');
+            if (elFixWbOk) elFixWbOk.addEventListener('click', function () { closeFixWbConfirm(true); });
+            var elFixWbOverlay = document.getElementById('dg-mpu-fix-wb-overlay');
+            if (elFixWbOverlay) {
+                elFixWbOverlay.addEventListener('click', function (ev) {
+                    if (ev.target === elFixWbOverlay) closeFixWbConfirm(false);
+                });
+            }
+
+            var elFixYmBulk = document.getElementById('dg-mpu-fix-ym-dims');
+            if (elFixYmBulk) {
+                elFixYmBulk.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    var codesYm = codesEligibleForYmFix(state.rows);
+                    runFixYmDims(codesYm, { single: false, btn: elFixYmBulk });
+                });
+            }
+            var elFixYmCancel = document.getElementById('dg-mpu-fix-ym-cancel');
+            if (elFixYmCancel) elFixYmCancel.addEventListener('click', function () { closeFixYmConfirm(false); });
+            var elFixYmOk = document.getElementById('dg-mpu-fix-ym-ok');
+            if (elFixYmOk) elFixYmOk.addEventListener('click', function () { closeFixYmConfirm(true); });
+            var elFixYmOverlay = document.getElementById('dg-mpu-fix-ym-overlay');
+            if (elFixYmOverlay) {
+                elFixYmOverlay.addEventListener('click', function (ev) {
+                    if (ev.target === elFixYmOverlay) closeFixYmConfirm(false);
+                });
+            }
+
+            var elFixOzonVatBulk = document.getElementById('dg-mpu-fix-ozon-vat');
+            if (elFixOzonVatBulk) {
+                elFixOzonVatBulk.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    var codesOv = codesEligibleForOzonVatFix(state.rows);
+                    runFixOzonVat(codesOv, { single: false, btn: elFixOzonVatBulk });
+                });
+            }
+            var elFixOzonVatCancel = document.getElementById('dg-mpu-fix-ozon-vat-cancel');
+            if (elFixOzonVatCancel) elFixOzonVatCancel.addEventListener('click', function () { closeFixOzonVatConfirm(false); });
+            var elFixOzonVatOk = document.getElementById('dg-mpu-fix-ozon-vat-ok');
+            if (elFixOzonVatOk) elFixOzonVatOk.addEventListener('click', function () { closeFixOzonVatConfirm(true); });
+            var elFixOzonVatOverlay = document.getElementById('dg-mpu-fix-ozon-vat-overlay');
+            if (elFixOzonVatOverlay) {
+                elFixOzonVatOverlay.addEventListener('click', function (ev) {
+                    if (ev.target === elFixOzonVatOverlay) closeFixOzonVatConfirm(false);
+                });
+            }
+
+            var elFixWbVatBulk = document.getElementById('dg-mpu-fix-wb-vat');
+            if (elFixWbVatBulk) {
+                elFixWbVatBulk.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    var codesWv = codesEligibleForWbVatFix(state.rows);
+                    runFixWbVat(codesWv, { single: false, btn: elFixWbVatBulk });
+                });
+            }
+            var elFixWbVatCancel = document.getElementById('dg-mpu-fix-wb-vat-cancel');
+            if (elFixWbVatCancel) elFixWbVatCancel.addEventListener('click', function () { closeFixWbVatConfirm(false); });
+            var elFixWbVatOk = document.getElementById('dg-mpu-fix-wb-vat-ok');
+            if (elFixWbVatOk) elFixWbVatOk.addEventListener('click', function () { closeFixWbVatConfirm(true); });
+            var elFixWbVatOverlay = document.getElementById('dg-mpu-fix-wb-vat-overlay');
+            if (elFixWbVatOverlay) {
+                elFixWbVatOverlay.addEventListener('click', function (ev) {
+                    if (ev.target === elFixWbVatOverlay) closeFixWbVatConfirm(false);
+                });
+            }
+
+            var elFixYmVatBulk = document.getElementById('dg-mpu-fix-ym-vat');
+            if (elFixYmVatBulk) {
+                elFixYmVatBulk.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    var codesYv = codesEligibleForYmVatFix(state.rows);
+                    runFixYmVat(codesYv, { single: false, btn: elFixYmVatBulk });
+                });
+            }
+            var elFixYmVatCancel = document.getElementById('dg-mpu-fix-ym-vat-cancel');
+            if (elFixYmVatCancel) elFixYmVatCancel.addEventListener('click', function () { closeFixYmVatConfirm(false); });
+            var elFixYmVatOk = document.getElementById('dg-mpu-fix-ym-vat-ok');
+            if (elFixYmVatOk) elFixYmVatOk.addEventListener('click', function () { closeFixYmVatConfirm(true); });
+            var elFixYmVatOverlay = document.getElementById('dg-mpu-fix-ym-vat-overlay');
+            if (elFixYmVatOverlay) {
+                elFixYmVatOverlay.addEventListener('click', function (ev) {
+                    if (ev.target === elFixYmVatOverlay) closeFixYmVatConfirm(false);
+                });
+            }
+            document.addEventListener('keydown', function (ev) {
+                if (ev.key !== 'Escape') return;
+                var ovO = document.getElementById('dg-mpu-fix-ozon-overlay');
+                if (ovO && ovO.style.display === 'flex') closeFixOzonConfirm(false);
+                var ovW = document.getElementById('dg-mpu-fix-wb-overlay');
+                if (ovW && ovW.style.display === 'flex') closeFixWbConfirm(false);
+                var ovY = document.getElementById('dg-mpu-fix-ym-overlay');
+                if (ovY && ovY.style.display === 'flex') closeFixYmConfirm(false);
+                var ovOv = document.getElementById('dg-mpu-fix-ozon-vat-overlay');
+                if (ovOv && ovOv.style.display === 'flex') closeFixOzonVatConfirm(false);
+                var ovWv = document.getElementById('dg-mpu-fix-wb-vat-overlay');
+                if (ovWv && ovWv.style.display === 'flex') closeFixWbVatConfirm(false);
+                var ovYv = document.getElementById('dg-mpu-fix-ym-vat-overlay');
+                if (ovYv && ovYv.style.display === 'flex') closeFixYmVatConfirm(false);
+            });
 
             var snapshotRowsCache = [];
             var snapshotDynamicsKind = 'by_manager';

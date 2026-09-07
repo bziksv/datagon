@@ -12,6 +12,35 @@ const {
     MP_MIN_DELAY_MS,
 } = require('../lib/marketplaceExports');
 const { persistMarketplaceRows, loadMarketplaceSnapshotRows } = require('../lib/marketplaceExportStore');
+const {
+    resolveMsDimsForOzonPush,
+    updateOzonOfferDimensions,
+    patchLocalOzonDims,
+} = require('../lib/ozonProductDimsUpdate');
+const {
+    resolveMsDimsForWbPush,
+    nmIdFromUrls,
+    updateWbOffersDimensionsBatch,
+    patchLocalWbDims,
+} = require('../lib/wbProductDimsUpdate');
+const {
+    resolveMsDimsForYmPush,
+    updateYmOffersDimensionsBatch,
+    patchLocalYmDims,
+} = require('../lib/ymProductDimsUpdate');
+const { parseMsVat } = require('../lib/mpVatConvert');
+const {
+    updateOzonOfferVat,
+    patchLocalOzonVat,
+} = require('../lib/ozonProductVatUpdate');
+const {
+    updateWbOffersVatBatch,
+    patchLocalWbVat,
+} = require('../lib/wbProductVatUpdate');
+const {
+    updateYmOffersVatBatch,
+    patchLocalYmVat,
+} = require('../lib/ymProductVatUpdate');
 
 const MARKETPLACE_EXTERNAL_KEY = {
     ozon: 'offer_id',
@@ -1171,7 +1200,7 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
     }
 
     /** Есть ли у МС хотя бы одно числовое значение габарита/веса (источник —
-     * атрибуты карточки МС из `ms_entity_details.payload_json`, см. /issues). */
+     * денорм `ms_entity_details.denorm_dim_*` или fallback из payload attributes). */
     function issuesRowHasMsDims(row) {
         return (
             parseExportDimNumber(row.ms_length) != null
@@ -1180,6 +1209,20 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
             || parseExportDimNumber(row.ms_height_bag) != null
             || parseExportDimNumber(row.ms_weight) != null
         );
+    }
+
+    /**
+     * Сравнение линейных размеров (см). WB L/W/H в API — целые см (`Math.round`),
+     * поэтому 2.5 в МС и 3 на WB — совпадение. Вес сюда не передавать.
+     * Паритет: lib/mpIssuesRowFilters.js → issuesDimSizeEqual.
+     */
+    function issuesDimSizeEqual(msVal, mpVal, marketplace) {
+        if (msVal == null || mpVal == null) return false;
+        const kind = String(marketplace || '').toLowerCase();
+        if (kind === 'wb' || kind === 'wildberries') {
+            return Math.round(msVal) === Math.round(mpVal);
+        }
+        return Math.abs(msVal - mpVal) <= ISSUES_DIM_EPS;
     }
 
     /** Есть ли расхождение МС ↔ маркетплейс по любой оси (длина/ширина/высота/вес).
@@ -1200,12 +1243,12 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
             const mpW = parseExportDimNumber(row[`${p}_width`]);
             const mpH = parseExportDimNumber(row[`${p}_height`]);
             const mpWeight = parseExportDimNumber(row[`${p}_weight`]);
-            if (msL != null && mpL != null && Math.abs(msL - mpL) > ISSUES_DIM_EPS) return true;
-            if (msW != null && mpW != null && Math.abs(msW - mpW) > ISSUES_DIM_EPS) return true;
+            if (msL != null && mpL != null && !issuesDimSizeEqual(msL, mpL, p)) return true;
+            if (msW != null && mpW != null && !issuesDimSizeEqual(msW, mpW, p)) return true;
             if (msWeight != null && mpWeight != null && Math.abs(msWeight - mpWeight) > ISSUES_DIM_EPS) return true;
             if (mpH != null && (msHbox != null || msHbag != null)) {
-                const matchBox = msHbox != null && Math.abs(mpH - msHbox) <= ISSUES_DIM_EPS;
-                const matchBag = msHbag != null && Math.abs(mpH - msHbag) <= ISSUES_DIM_EPS;
+                const matchBox = msHbox != null && issuesDimSizeEqual(msHbox, mpH, p);
+                const matchBag = msHbag != null && issuesDimSizeEqual(msHbag, mpH, p);
                 if (!matchBox && !matchBag) return true;
             }
         }
@@ -1287,15 +1330,18 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
      * Габариты МС для `/issues`: те же доп. поля карточки, что уходят в МС с
      * `/exports-dimensions.html` («↗ В МС»). Имена атрибутов — паритет с
      * `DIMENSION_ATTRS` / `FIELD_TO_MS_ATTR` в `routes/dimensions.js`.
-     * Источник — `ms_entity_details.payload_json.attributes`, не таблица замеров
+     * Источник — денорм `ms_entity_details.denorm_dim_*` (и fallback
+     * `payload_json.attributes` только без `denorm_dims_at`), не таблица замеров
      * `ms_dimensions_measurements` (там может быть только тип упаковки + вес).
      */
     const ISSUES_MS_DIM_ATTRS = [
-        { key: 'ms_length', attr: '!!Длина (см) КОРОБКА/Пакет станд. уп.' },
-        { key: 'ms_width', attr: '!!Ширина (см) КОРОБКА/Пакет станд. уп.' },
-        { key: 'ms_height_box', attr: '!!Высота (см) КОРОБКА станд. уп.' },
-        { key: 'ms_height_bag', attr: '!!Высота (см) Пакет!' },
-        { key: 'ms_weight', attr: '!!Вес (кг)' },
+        { key: 'ms_length', attr: '!!Длина (см) КОРОБКА/Пакет станд. уп.', decimals: 1 },
+        { key: 'ms_width', attr: '!!Ширина (см) КОРОБКА/Пакет станд. уп.', decimals: 1 },
+        { key: 'ms_height_box', attr: '!!Высота (см) КОРОБКА станд. уп.', decimals: 1 },
+        { key: 'ms_height_bag', attr: '!!Высота (см) Пакет!', decimals: 1 },
+        // Вес: 3 знака — как в денорме/МС. toFixed(1) давал ложные «2.6 vs 2.65»
+        // (сравнение и подсветка на issues), хотя в Ozon уходил полный вес 2.650.
+        { key: 'ms_weight', attr: '!!Вес (кг)', decimals: 3 },
     ];
 
     function extractIssuesMsDimAttr(payload, attrName) {
@@ -1322,28 +1368,45 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
         }
     }
 
-    function formatIssuesMsDimValue(v) {
+    function formatIssuesMsDimValue(v, decimals) {
         if (v == null) return null;
         const s = String(v).trim();
         if (!s) return null;
         const n = parseFloat(s.replace(',', '.'));
         if (!Number.isFinite(n)) return null;
-        return n.toFixed(1);
+        const d = Number.isFinite(decimals) ? Math.max(0, Math.min(6, decimals | 0)) : 1;
+        return n.toFixed(d);
     }
 
-    /** Подмешивает ms_length/… из полных карточек МС (чанками, без JOIN огромного JSON). */
+    /** Подмешивает ms_length/… из денорма `ms_entity_details` (JOIN) или,
+     * только для карточек без `denorm_dims_at`, из `payload_json` чанками.
+     * Полный скан payload по каталогу (~7k × сотни КБ) давал минуты на «Разные габариты». */
     async function attachIssuesMsDimsFromEntityDetails(dbConn, rows) {
         const list = rows || [];
         for (const r of list) {
-            for (const def of ISSUES_MS_DIM_ATTRS) r[def.key] = null;
+            // Денорм из SELECT (числа) → те же строки, что раньше из attributes.
+            for (const def of ISSUES_MS_DIM_ATTRS) {
+                if (r[def.key] != null && r[def.key] !== '') {
+                    r[def.key] = formatIssuesMsDimValue(r[def.key], def.decimals);
+                } else {
+                    r[def.key] = null;
+                }
+            }
         }
         const uuids = [];
         const seen = new Set();
         for (const r of list) {
+            const denormAt = r && r._denorm_dims_at;
+            if (denormAt != null && String(denormAt).trim() !== '') continue;
             const u = String(r && r.uuid != null ? r.uuid : '').trim();
             if (!u || seen.has(u)) continue;
             seen.add(u);
             uuids.push(u);
+        }
+        for (const r of list) {
+            if (r && Object.prototype.hasOwnProperty.call(r, '_denorm_dims_at')) {
+                delete r._denorm_dims_at;
+            }
         }
         if (!uuids.length || !dbConn || typeof dbConn.query !== 'function') return;
 
@@ -1361,7 +1424,10 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
                 const payload = parseIssuesEntityPayload(d.payload_json);
                 const dims = {};
                 for (const def of ISSUES_MS_DIM_ATTRS) {
-                    dims[def.key] = formatIssuesMsDimValue(extractIssuesMsDimAttr(payload, def.attr));
+                    dims[def.key] = formatIssuesMsDimValue(
+                        extractIssuesMsDimAttr(payload, def.attr),
+                        def.decimals
+                    );
                 }
                 byUuid.set(uid, dims);
             }
@@ -1392,6 +1458,14 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
                     m.content_manager AS content_manager,
                     DATE_FORMAT(m.synced_at, '%d.%m.%Y %H:%i') AS synced_at,
                     m.stock          AS ms_stock,
+
+                    med.denorm_dim_length_cm AS ms_length,
+                    med.denorm_dim_width_cm AS ms_width,
+                    med.denorm_dim_height_box_cm AS ms_height_box,
+                    med.denorm_dim_height_bag_cm AS ms_height_bag,
+                    med.denorm_dim_weight_kg AS ms_weight,
+                    med.denorm_dim_packing_type AS ms_packing_type,
+                    med.denorm_dims_at AS _denorm_dims_at,
 
                     ozon.external_id AS ozon_code,
                     ozon.name        AS ozon_name,
@@ -1429,6 +1503,8 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
                     ym.buyer_url     AS ym_buyer_url,
                     COALESCE(NULLIF(ym.updated_label, ''), DATE_FORMAT(ym.updated_at, '%d.%m.%Y %H:%i')) AS ym_updated
                 FROM ms_export m
+                LEFT JOIN ms_entity_details med
+                    ON med.uuid = m.uuid
                 LEFT JOIN marketplace_export_rows ozon
                     ON ozon.marketplace = 'ozon' AND ozon.external_id = m.code
                 LEFT JOIN marketplace_export_rows wb
@@ -1612,14 +1688,14 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
                 'manager', 'content_manager', 'ms_vat', 'ms_stock',
                 'ms_length', 'ms_width', 'ms_height_box', 'ms_height_bag', 'ms_weight',
                 'synced_at',
-                'ozon_code', 'ozon_name', 'ozon_vat', 'ozon_stock',
-                'ozon_length', 'ozon_width', 'ozon_height', 'ozon_weight',
+                'ozon_code', 'ozon_name', 'ozon_vat', 'ozon_fix_vat', 'ozon_stock',
+                'ozon_length', 'ozon_width', 'ozon_height', 'ozon_weight', 'ozon_fix_dims',
                 'ozon_cabinet_url', 'ozon_buyer_url', 'ozon_updated',
-                'wb_code', 'wb_name', 'wb_vat', 'wb_stock',
-                'wb_length', 'wb_width', 'wb_height', 'wb_weight',
+                'wb_code', 'wb_name', 'wb_vat', 'wb_fix_vat', 'wb_stock',
+                'wb_length', 'wb_width', 'wb_height', 'wb_weight', 'wb_fix_dims',
                 'wb_cabinet_url', 'wb_buyer_url', 'wb_updated',
-                'ym_code', 'ym_name', 'ym_vat', 'ym_stock',
-                'ym_length', 'ym_width', 'ym_height', 'ym_weight',
+                'ym_code', 'ym_name', 'ym_vat', 'ym_fix_vat', 'ym_stock',
+                'ym_length', 'ym_width', 'ym_height', 'ym_weight', 'ym_fix_dims',
                 'ym_cabinet_url', 'ym_buyer_url', 'ym_updated',
             ];
             const headerLabels = [
@@ -1627,14 +1703,14 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
                 'Менеджер', 'Контент-менеджер', 'НДС МС', 'Остаток по МС',
                 'Длина (см) МС', 'Ширина (см) МС', 'Высота — коробка (см) МС', 'Высота — пакет (см) МС', 'Вес (кг) МС',
                 'Синхронизация МС',
-                'Код Ozon', 'Название Ozon', 'НДС Ozon', 'Остаток Ozon',
-                'Длина (см) Ozon', 'Ширина (см) Ozon', 'Высота (см) Ozon', 'Вес (кг) Ozon',
+                'Код Ozon', 'Название Ozon', 'НДС Ozon', 'Исправить НДС Ozon', 'Остаток Ozon',
+                'Длина (см) Ozon', 'Ширина (см) Ozon', 'Высота (см) Ozon', 'Вес (кг) Ozon', 'Исправить на Ozon',
                 'Кабинет Ozon', 'Покупателю Ozon', 'Обновлено Ozon',
-                'Код Wildberries', 'Название Wildberries', 'НДС WB', 'Остаток WB',
-                'Длина (см) WB', 'Ширина (см) WB', 'Высота (см) WB', 'Вес (кг) WB',
+                'Код Wildberries', 'Название Wildberries', 'НДС WB', 'Исправить НДС WB', 'Остаток WB',
+                'Длина (см) WB', 'Ширина (см) WB', 'Высота (см) WB', 'Вес (кг) WB', 'Исправить на WB',
                 'Кабинет WB', 'Покупателю WB', 'Обновлено WB',
-                'Код Я.Маркет', 'Название Я.Маркет', 'НДС Я.Маркет', 'Остаток Я.Маркет',
-                'Длина (см) Я.Маркет', 'Ширина (см) Я.Маркет', 'Высота (см) Я.Маркет', 'Вес (кг) Я.Маркет',
+                'Код Я.Маркет', 'Название Я.Маркет', 'НДС Я.Маркет', 'Исправить НДС Я.М', 'Остаток Я.Маркет',
+                'Длина (см) Я.Маркет', 'Ширина (см) Я.Маркет', 'Высота (см) Я.Маркет', 'Вес (кг) Я.Маркет', 'Исправить на Я.М',
                 'Кабинет Я.Маркет', 'Покупателю Я.Маркет', 'Обновлено Я.Маркет',
             ];
             return res.json({
@@ -1651,6 +1727,1205 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
         } catch (e) {
             console.error('[exports/marketplaces] issues failed:', e && e.stack ? e.stack : e);
             return res.status(500).json({ error: e.message || String(e), code: 'ISSUES_FAILED' });
+        }
+    });
+
+    /**
+     * Исправить габариты на Ozon по артикулам (offer_id = код МС).
+     * Body: { codes: string[], dry_run?: boolean, confirm?: boolean }
+     * Для массовой кнопки — codes из текущей клиентской выборки (фильтры менеджера/поиска на клиенте).
+     * Габариты берутся из денорма МС (длина/ширина/вес + высота коробка|пакет).
+     */
+    router.post('/issues/fix-ozon-dims', async (req, res) => {
+        const t0 = Date.now();
+        try {
+            if (!db || typeof db.query !== 'function') {
+                return res.status(500).json({ error: 'БД недоступна', code: 'NO_DB' });
+            }
+            const body = req.body && typeof req.body === 'object' ? req.body : {};
+            const dryRun = body.dry_run === true || body.dry_run === 1 || body.dry_run === '1';
+            const confirm = body.confirm === true || body.confirm === 1 || body.confirm === '1';
+            if (!dryRun && !confirm) {
+                return res.status(400).json({ error: 'confirm required (или dry_run=1)', code: 'CONFIRM_REQUIRED' });
+            }
+            let codes = [];
+            if (Array.isArray(body.codes)) {
+                codes = body.codes.map((c) => String(c == null ? '' : c).trim()).filter(Boolean);
+            } else if (body.code != null && String(body.code).trim()) {
+                codes = [String(body.code).trim()];
+            }
+            codes = Array.from(new Set(codes));
+            if (!codes.length) {
+                return res.status(400).json({ error: 'codes[] или code обязателен', code: 'NO_CODES' });
+            }
+            if (codes.length > 200) {
+                return res.status(400).json({
+                    error: 'За один раз не больше 200 артикулов',
+                    code: 'TOO_MANY',
+                    max: 200,
+                    total: codes.length,
+                });
+            }
+
+            const creds = getOzonCreds(appSettings || {});
+            if (!creds.clientId || !creds.apiKey) {
+                return res.status(400).json({
+                    error: 'Не заданы ozon_client_id / ozon_api_key',
+                    code: 'MISSING_CREDS',
+                });
+            }
+            const delayMs = Math.max(
+                MP_MIN_DELAY_MS.ozon || 200,
+                Number((appSettings && appSettings.mp_ozon_delay_ms) || 400) || 400
+            );
+            const logger = createMarketplaceLogger('ozon-dims');
+
+            const ph = codes.map(() => '?').join(',');
+            const [msRows] = await db.query(
+                `SELECT m.code,
+                        med.denorm_dim_length_cm AS ms_length,
+                        med.denorm_dim_width_cm AS ms_width,
+                        med.denorm_dim_height_box_cm AS ms_height_box,
+                        med.denorm_dim_height_bag_cm AS ms_height_bag,
+                        med.denorm_dim_weight_kg AS ms_weight,
+                        med.denorm_dim_packing_type AS ms_packing_type,
+                        ozon.external_id AS ozon_code
+                 FROM ms_export m
+                 LEFT JOIN ms_entity_details med ON med.uuid = m.uuid
+                 LEFT JOIN marketplace_export_rows ozon
+                   ON ozon.marketplace = 'ozon' AND ozon.external_id = m.code
+                 WHERE m.code IN (${ph})`,
+                codes
+            );
+            const byCode = new Map();
+            for (const r of msRows || []) {
+                byCode.set(String(r.code || '').trim(), r);
+            }
+
+            const results = [];
+            let wouldUpdate = 0;
+            let updated = 0;
+            let skipped = 0;
+            let failed = 0;
+            const errors = [];
+
+            for (const code of codes) {
+                const row = byCode.get(code);
+                if (!row) {
+                    skipped += 1;
+                    results.push({ code, success: false, skipped: true, error: 'Нет в ms_export', code_err: 'NO_MS' });
+                    continue;
+                }
+                if (!row.ozon_code) {
+                    skipped += 1;
+                    results.push({
+                        code,
+                        success: false,
+                        skipped: true,
+                        error: 'Нет на Ozon (нет offer_id в снапшоте)',
+                        code_err: 'NO_OZON',
+                    });
+                    continue;
+                }
+                const dims = resolveMsDimsForOzonPush(row);
+                if (!dims) {
+                    skipped += 1;
+                    results.push({
+                        code,
+                        offer_id: row.ozon_code,
+                        success: false,
+                        skipped: true,
+                        error: 'Неполные габариты МС (нужны длина, ширина, высота, вес)',
+                        code_err: 'MS_DIMS_INCOMPLETE',
+                    });
+                    continue;
+                }
+                wouldUpdate += 1;
+                if (dryRun) {
+                    results.push({
+                        code,
+                        offer_id: row.ozon_code,
+                        success: true,
+                        dry_run: true,
+                        dims,
+                    });
+                    continue;
+                }
+                const out = await updateOzonOfferDimensions(creds, {
+                    offerId: row.ozon_code,
+                    dims,
+                    delayMs,
+                    logger,
+                    waitTask: true,
+                });
+                if (out.success) {
+                    updated += 1;
+                    try {
+                        await patchLocalOzonDims(db, row.ozon_code, out.dims);
+                    } catch (ePatch) {
+                        logger.log('local_patch_fail', { offer: row.ozon_code, message: ePatch.message });
+                    }
+                    results.push({
+                        code,
+                        offer_id: row.ozon_code,
+                        success: true,
+                        task_id: out.task_id,
+                        import_status: out.import_status,
+                        dims: out.dims,
+                    });
+                } else {
+                    failed += 1;
+                    const errItem = {
+                        code,
+                        offer_id: row.ozon_code,
+                        success: false,
+                        error: out.error || 'Ошибка Ozon',
+                        code_err: out.code || 'OZON_FAIL',
+                    };
+                    results.push(errItem);
+                    if (errors.length < 20) {
+                        errors.push({ code, error: errItem.error });
+                    }
+                }
+            }
+
+            return res.json({
+                success: failed === 0,
+                dry_run: dryRun,
+                total: codes.length,
+                would_update: wouldUpdate,
+                updated,
+                skipped,
+                failed,
+                errors,
+                results: results.slice(0, 50),
+                duration_sec: Number(((Date.now() - t0) / 1000).toFixed(2)),
+            });
+        } catch (e) {
+            console.error('[exports/marketplaces] fix-ozon-dims failed:', e && e.stack ? e.stack : e);
+            return res.status(500).json({ error: e.message || String(e), code: 'FIX_OZON_DIMS_FAILED' });
+        }
+    });
+
+    /**
+     * Исправить габариты на Wildberries по артикулам (vendorCode = код МС).
+     * Body: { codes: string[], dry_run?: boolean, confirm?: boolean }
+     * Макс. 100 за запрос (лимит WB cards/update ~10/мин, list 600 мс).
+     * UI режет выборку на пакеты по 100.
+     */
+    router.post('/issues/fix-wb-dims', async (req, res) => {
+        const t0 = Date.now();
+        try {
+            if (!db || typeof db.query !== 'function') {
+                return res.status(500).json({ error: 'БД недоступна', code: 'NO_DB' });
+            }
+            const body = req.body && typeof req.body === 'object' ? req.body : {};
+            const dryRun = body.dry_run === true || body.dry_run === 1 || body.dry_run === '1';
+            const confirm = body.confirm === true || body.confirm === 1 || body.confirm === '1';
+            if (!dryRun && !confirm) {
+                return res.status(400).json({ error: 'confirm required (или dry_run=1)', code: 'CONFIRM_REQUIRED' });
+            }
+            let codes = [];
+            if (Array.isArray(body.codes)) {
+                codes = body.codes.map((c) => String(c == null ? '' : c).trim()).filter(Boolean);
+            } else if (body.code != null && String(body.code).trim()) {
+                codes = [String(body.code).trim()];
+            }
+            codes = Array.from(new Set(codes));
+            if (!codes.length) {
+                return res.status(400).json({ error: 'codes[] или code обязателен', code: 'NO_CODES' });
+            }
+            if (codes.length > 100) {
+                return res.status(400).json({
+                    error: 'За один раз не больше 100 артикулов (лимит WB Content update)',
+                    code: 'TOO_MANY',
+                    max: 100,
+                    total: codes.length,
+                });
+            }
+
+            const creds = getWbCreds(appSettings || {});
+            if (!creds.apiKey) {
+                return res.status(400).json({
+                    error: 'Не задан wb_api_key',
+                    code: 'MISSING_CREDS',
+                });
+            }
+            const delayListMs = Math.max(
+                MP_MIN_DELAY_MS.wbCards || 600,
+                Number((appSettings && appSettings.mp_wb_delay_cards_ms) || 600) || 600
+            );
+            const logger = createMarketplaceLogger('wb-dims');
+            logger.log('http:fix-wb-dims:start', {
+                codes: codes.length,
+                dryRun,
+                delayListMs,
+            });
+
+            const ph = codes.map(() => '?').join(',');
+            const [msRows] = await db.query(
+                `SELECT m.code,
+                        med.denorm_dim_length_cm AS ms_length,
+                        med.denorm_dim_width_cm AS ms_width,
+                        med.denorm_dim_height_box_cm AS ms_height_box,
+                        med.denorm_dim_height_bag_cm AS ms_height_bag,
+                        med.denorm_dim_weight_kg AS ms_weight,
+                        med.denorm_dim_packing_type AS ms_packing_type,
+                        wb.external_id AS wb_code,
+                        wb.cabinet_url AS wb_cabinet_url,
+                        wb.buyer_url AS wb_buyer_url
+                 FROM ms_export m
+                 LEFT JOIN ms_entity_details med ON med.uuid = m.uuid
+                 LEFT JOIN marketplace_export_rows wb
+                   ON wb.marketplace = 'wildberries' AND wb.external_id = m.code
+                 WHERE m.code IN (${ph})`,
+                codes
+            );
+            const byCode = new Map();
+            for (const r of msRows || []) {
+                byCode.set(String(r.code || '').trim(), r);
+            }
+
+            const batchItems = [];
+            const preResults = [];
+            let wouldUpdate = 0;
+            let skipped = 0;
+
+            for (const code of codes) {
+                const row = byCode.get(code);
+                if (!row) {
+                    skipped += 1;
+                    preResults.push({ code, success: false, skipped: true, error: 'Нет в ms_export', code_err: 'NO_MS' });
+                    continue;
+                }
+                if (!row.wb_code) {
+                    skipped += 1;
+                    preResults.push({
+                        code,
+                        success: false,
+                        skipped: true,
+                        error: 'Нет на WB (нет vendorCode в снапшоте)',
+                        code_err: 'NO_WB',
+                    });
+                    continue;
+                }
+                const dims = resolveMsDimsForWbPush(row);
+                if (!dims) {
+                    skipped += 1;
+                    preResults.push({
+                        code,
+                        vendor_code: row.wb_code,
+                        success: false,
+                        skipped: true,
+                        error: 'Неполные габариты МС (нужны длина, ширина, высота, вес)',
+                        code_err: 'MS_DIMS_INCOMPLETE',
+                    });
+                    continue;
+                }
+                wouldUpdate += 1;
+                if (dryRun) {
+                    preResults.push({
+                        code,
+                        vendor_code: row.wb_code,
+                        success: true,
+                        dry_run: true,
+                        dims,
+                    });
+                    continue;
+                }
+                batchItems.push({
+                    code,
+                    vendorCode: row.wb_code,
+                    dims,
+                    nmIdHint: nmIdFromUrls(row.wb_cabinet_url, row.wb_buyer_url),
+                });
+            }
+
+            let updated = 0;
+            let failed = 0;
+            const errors = [];
+            const results = preResults.slice();
+
+            if (!dryRun && batchItems.length) {
+                const batchOut = await updateWbOffersDimensionsBatch(
+                    creds.apiKey,
+                    batchItems.map((it) => ({
+                        vendorCode: it.vendorCode,
+                        dims: it.dims,
+                        nmIdHint: it.nmIdHint,
+                    })),
+                    {
+                        logger,
+                        delayListMs,
+                        delayUpdateMs: 6500,
+                        updateChunk: 50,
+                        dryRun: false,
+                    }
+                );
+                const byVendor = new Map();
+                for (const it of batchItems) {
+                    byVendor.set(it.vendorCode, it.code);
+                }
+                for (const out of batchOut || []) {
+                    const code = byVendor.get(String(out.vendor_code || '').trim()) || out.vendor_code;
+                    if (out.success) {
+                        updated += 1;
+                        try {
+                            await patchLocalWbDims(db, out.vendor_code, out.dims);
+                        } catch (ePatch) {
+                            logger.log('local_patch_fail', {
+                                vendor: out.vendor_code,
+                                message: ePatch.message,
+                            });
+                        }
+                        results.push({
+                            code,
+                            vendor_code: out.vendor_code,
+                            nm_id: out.nm_id,
+                            success: true,
+                            dims: out.dims,
+                        });
+                    } else if (out.skipped) {
+                        skipped += 1;
+                        results.push({
+                            code,
+                            vendor_code: out.vendor_code,
+                            success: false,
+                            skipped: true,
+                            error: out.error,
+                            code_err: out.code,
+                        });
+                    } else {
+                        failed += 1;
+                        const errItem = {
+                            code,
+                            vendor_code: out.vendor_code,
+                            success: false,
+                            error: out.error || 'Ошибка WB',
+                            code_err: out.code || 'WB_FAIL',
+                        };
+                        results.push(errItem);
+                        if (errors.length < 20) {
+                            errors.push({ code, error: errItem.error });
+                        }
+                    }
+                }
+            }
+
+            logger.log('http:fix-wb-dims:done', {
+                total: codes.length,
+                would_update: wouldUpdate,
+                updated: dryRun ? 0 : updated,
+                skipped,
+                failed,
+                duration_sec: Number(((Date.now() - t0) / 1000).toFixed(2)),
+            });
+
+            return res.json({
+                success: failed === 0,
+                dry_run: dryRun,
+                total: codes.length,
+                would_update: wouldUpdate,
+                updated: dryRun ? 0 : updated,
+                skipped,
+                failed,
+                errors,
+                results: results.slice(0, 80),
+                duration_sec: Number(((Date.now() - t0) / 1000).toFixed(2)),
+            });
+        } catch (e) {
+            console.error('[exports/marketplaces] fix-wb-dims failed:', e && e.stack ? e.stack : e);
+            return res.status(500).json({ error: e.message || String(e), code: 'FIX_WB_DIMS_FAILED' });
+        }
+    });
+
+    /**
+     * Исправить габариты на Яндекс Маркете по артикулам (shopSku = код МС).
+     * Body: { codes: string[], dry_run?: boolean, confirm?: boolean }
+     * POST businesses/{businessId}/offer-mappings/update (weightDimensions).
+     * Макс. 100 за запрос (рекомендация YM); UI — пакеты по 100.
+     */
+    router.post('/issues/fix-ym-dims', async (req, res) => {
+        const t0 = Date.now();
+        try {
+            if (!db || typeof db.query !== 'function') {
+                return res.status(500).json({ error: 'БД недоступна', code: 'NO_DB' });
+            }
+            const body = req.body && typeof req.body === 'object' ? req.body : {};
+            const dryRun = body.dry_run === true || body.dry_run === 1 || body.dry_run === '1';
+            const confirm = body.confirm === true || body.confirm === 1 || body.confirm === '1';
+            if (!dryRun && !confirm) {
+                return res.status(400).json({ error: 'confirm required (или dry_run=1)', code: 'CONFIRM_REQUIRED' });
+            }
+            let codes = [];
+            if (Array.isArray(body.codes)) {
+                codes = body.codes.map((c) => String(c == null ? '' : c).trim()).filter(Boolean);
+            } else if (body.code != null && String(body.code).trim()) {
+                codes = [String(body.code).trim()];
+            }
+            codes = Array.from(new Set(codes));
+            if (!codes.length) {
+                return res.status(400).json({ error: 'codes[] или code обязателен', code: 'NO_CODES' });
+            }
+            if (codes.length > 100) {
+                return res.status(400).json({
+                    error: 'За один раз не больше 100 артикулов (лимит YM offer-mappings/update)',
+                    code: 'TOO_MANY',
+                    max: 100,
+                    total: codes.length,
+                });
+            }
+
+            const creds = getYmCreds(appSettings || {});
+            if (!creds.apiKey || !creds.businessId) {
+                return res.status(400).json({
+                    error: 'Не заданы ym_api_key / ym_business_id',
+                    code: 'MISSING_CREDS',
+                });
+            }
+            const delayMs = Math.max(
+                MP_MIN_DELAY_MS.yandex || 200,
+                Number((appSettings && appSettings.mp_yandex_delay_ms) || 280) || 280
+            );
+            const logger = createMarketplaceLogger('ym-dims');
+
+            const ph = codes.map(() => '?').join(',');
+            const [msRows] = await db.query(
+                `SELECT m.code,
+                        med.denorm_dim_length_cm AS ms_length,
+                        med.denorm_dim_width_cm AS ms_width,
+                        med.denorm_dim_height_box_cm AS ms_height_box,
+                        med.denorm_dim_height_bag_cm AS ms_height_bag,
+                        med.denorm_dim_weight_kg AS ms_weight,
+                        med.denorm_dim_packing_type AS ms_packing_type,
+                        ym.external_id AS ym_code
+                 FROM ms_export m
+                 LEFT JOIN ms_entity_details med ON med.uuid = m.uuid
+                 LEFT JOIN marketplace_export_rows ym
+                   ON ym.marketplace = 'yandex_market' AND ym.external_id = m.code
+                 WHERE m.code IN (${ph})`,
+                codes
+            );
+            const byCode = new Map();
+            for (const r of msRows || []) {
+                byCode.set(String(r.code || '').trim(), r);
+            }
+
+            const batchItems = [];
+            const preResults = [];
+            let wouldUpdate = 0;
+            let skipped = 0;
+
+            for (const code of codes) {
+                const row = byCode.get(code);
+                if (!row) {
+                    skipped += 1;
+                    preResults.push({ code, success: false, skipped: true, error: 'Нет в ms_export', code_err: 'NO_MS' });
+                    continue;
+                }
+                if (!row.ym_code) {
+                    skipped += 1;
+                    preResults.push({
+                        code,
+                        success: false,
+                        skipped: true,
+                        error: 'Нет на Я.Маркет (нет shopSku в снапшоте)',
+                        code_err: 'NO_YM',
+                    });
+                    continue;
+                }
+                const dims = resolveMsDimsForYmPush(row);
+                if (!dims) {
+                    skipped += 1;
+                    preResults.push({
+                        code,
+                        offer_id: row.ym_code,
+                        success: false,
+                        skipped: true,
+                        error: 'Неполные габариты МС (нужны длина, ширина, высота, вес)',
+                        code_err: 'MS_DIMS_INCOMPLETE',
+                    });
+                    continue;
+                }
+                wouldUpdate += 1;
+                if (dryRun) {
+                    preResults.push({
+                        code,
+                        offer_id: row.ym_code,
+                        success: true,
+                        dry_run: true,
+                        dims,
+                    });
+                    continue;
+                }
+                batchItems.push({
+                    code,
+                    offerId: row.ym_code,
+                    dims,
+                });
+            }
+
+            let updated = 0;
+            let failed = 0;
+            const errors = [];
+            const results = preResults.slice();
+
+            if (!dryRun && batchItems.length) {
+                const batchOut = await updateYmOffersDimensionsBatch(
+                    { apiKey: creds.apiKey, businessId: creds.businessId },
+                    batchItems.map((it) => ({ offerId: it.offerId, dims: it.dims })),
+                    { logger, delayMs, chunkSize: 100, dryRun: false }
+                );
+                const byOffer = new Map();
+                for (const it of batchItems) {
+                    byOffer.set(it.offerId, it.code);
+                }
+                for (const out of batchOut || []) {
+                    const code = byOffer.get(String(out.offer_id || '').trim()) || out.offer_id;
+                    if (out.success) {
+                        updated += 1;
+                        try {
+                            await patchLocalYmDims(db, out.offer_id, out.dims);
+                        } catch (ePatch) {
+                            logger.log('local_patch_fail', {
+                                offer: out.offer_id,
+                                message: ePatch.message,
+                            });
+                        }
+                        results.push({
+                            code,
+                            offer_id: out.offer_id,
+                            success: true,
+                            dims: out.dims,
+                        });
+                    } else if (out.skipped) {
+                        skipped += 1;
+                        results.push({
+                            code,
+                            offer_id: out.offer_id,
+                            success: false,
+                            skipped: true,
+                            error: out.error,
+                            code_err: out.code,
+                        });
+                    } else {
+                        failed += 1;
+                        const errItem = {
+                            code,
+                            offer_id: out.offer_id,
+                            success: false,
+                            error: out.error || 'Ошибка Я.Маркет',
+                            code_err: out.code || 'YM_FAIL',
+                        };
+                        results.push(errItem);
+                        if (errors.length < 20) {
+                            errors.push({ code, error: errItem.error });
+                        }
+                    }
+                }
+            }
+
+            return res.json({
+                success: failed === 0,
+                dry_run: dryRun,
+                total: codes.length,
+                would_update: wouldUpdate,
+                updated: dryRun ? 0 : updated,
+                skipped,
+                failed,
+                errors,
+                results: results.slice(0, 80),
+                duration_sec: Number(((Date.now() - t0) / 1000).toFixed(2)),
+            });
+        } catch (e) {
+            console.error('[exports/marketplaces] fix-ym-dims failed:', e && e.stack ? e.stack : e);
+            return res.status(500).json({ error: e.message || String(e), code: 'FIX_YM_DIMS_FAILED' });
+        }
+    });
+
+    /**
+     * Исправить НДС на Ozon по артикулам (offer_id = код МС).
+     * Body: { codes: string[], dry_run?: boolean, confirm?: boolean }
+     * Габариты карточки Ozon сохраняются; меняется только vat из МС.
+     */
+    router.post('/issues/fix-ozon-vat', async (req, res) => {
+        const t0 = Date.now();
+        try {
+            if (!db || typeof db.query !== 'function') {
+                return res.status(500).json({ error: 'БД недоступна', code: 'NO_DB' });
+            }
+            const body = req.body && typeof req.body === 'object' ? req.body : {};
+            const dryRun = body.dry_run === true || body.dry_run === 1 || body.dry_run === '1';
+            const confirm = body.confirm === true || body.confirm === 1 || body.confirm === '1';
+            if (!dryRun && !confirm) {
+                return res.status(400).json({ error: 'confirm required (или dry_run=1)', code: 'CONFIRM_REQUIRED' });
+            }
+            let codes = [];
+            if (Array.isArray(body.codes)) {
+                codes = body.codes.map((c) => String(c == null ? '' : c).trim()).filter(Boolean);
+            } else if (body.code != null && String(body.code).trim()) {
+                codes = [String(body.code).trim()];
+            }
+            codes = Array.from(new Set(codes));
+            if (!codes.length) {
+                return res.status(400).json({ error: 'codes[] или code обязателен', code: 'NO_CODES' });
+            }
+            if (codes.length > 200) {
+                return res.status(400).json({
+                    error: 'За один раз не больше 200 артикулов',
+                    code: 'TOO_MANY',
+                    max: 200,
+                    total: codes.length,
+                });
+            }
+
+            const creds = getOzonCreds(appSettings || {});
+            if (!creds.clientId || !creds.apiKey) {
+                return res.status(400).json({
+                    error: 'Не заданы ozon_client_id / ozon_api_key',
+                    code: 'MISSING_CREDS',
+                });
+            }
+            const delayMs = Math.max(
+                MP_MIN_DELAY_MS.ozon || 200,
+                Number((appSettings && appSettings.mp_ozon_delay_ms) || 400) || 400
+            );
+            const logger = createMarketplaceLogger('ozon-vat');
+
+            const ph = codes.map(() => '?').join(',');
+            const [msRows] = await db.query(
+                `SELECT m.code, m.vat AS ms_vat,
+                        ozon.external_id AS ozon_code
+                 FROM ms_export m
+                 LEFT JOIN marketplace_export_rows ozon
+                   ON ozon.marketplace = 'ozon' AND ozon.external_id = m.code
+                 WHERE m.code IN (${ph})`,
+                codes
+            );
+            const byCode = new Map();
+            for (const r of msRows || []) {
+                byCode.set(String(r.code || '').trim(), r);
+            }
+
+            const results = [];
+            let wouldUpdate = 0;
+            let updated = 0;
+            let skipped = 0;
+            let failed = 0;
+            const errors = [];
+
+            for (const code of codes) {
+                const row = byCode.get(code);
+                if (!row) {
+                    skipped += 1;
+                    results.push({ code, success: false, skipped: true, error: 'Нет в ms_export', code_err: 'NO_MS' });
+                    continue;
+                }
+                if (!row.ozon_code) {
+                    skipped += 1;
+                    results.push({
+                        code,
+                        success: false,
+                        skipped: true,
+                        error: 'Нет на Ozon (нет offer_id в снапшоте)',
+                        code_err: 'NO_OZON',
+                    });
+                    continue;
+                }
+                const vatParsed = parseMsVat(row.ms_vat);
+                if (!vatParsed.ok) {
+                    skipped += 1;
+                    results.push({
+                        code,
+                        offer_id: row.ozon_code,
+                        success: false,
+                        skipped: true,
+                        error: vatParsed.error || 'НДС МС не разобран',
+                        code_err: 'MS_VAT_BAD',
+                    });
+                    continue;
+                }
+                wouldUpdate += 1;
+                if (dryRun) {
+                    results.push({
+                        code,
+                        offer_id: row.ozon_code,
+                        success: true,
+                        dry_run: true,
+                        vat: vatParsed.pretty,
+                    });
+                    continue;
+                }
+                const out = await updateOzonOfferVat(creds, {
+                    offerId: row.ozon_code,
+                    msVat: row.ms_vat,
+                    delayMs,
+                    logger,
+                    waitTask: true,
+                });
+                if (out.success) {
+                    updated += 1;
+                    try {
+                        await patchLocalOzonVat(db, row.ozon_code, out.vat || vatParsed.pretty);
+                    } catch (ePatch) {
+                        logger.log('local_patch_fail', { offer: row.ozon_code, message: ePatch.message });
+                    }
+                    results.push({
+                        code,
+                        offer_id: row.ozon_code,
+                        success: true,
+                        task_id: out.task_id,
+                        import_status: out.import_status,
+                        vat: out.vat || vatParsed.pretty,
+                    });
+                } else if (out.skipped) {
+                    skipped += 1;
+                    wouldUpdate -= 1;
+                    results.push({
+                        code,
+                        offer_id: row.ozon_code,
+                        success: false,
+                        skipped: true,
+                        error: out.error,
+                        code_err: out.code,
+                    });
+                } else {
+                    failed += 1;
+                    const errItem = {
+                        code,
+                        offer_id: row.ozon_code,
+                        success: false,
+                        error: out.error || 'Ошибка Ozon',
+                        code_err: out.code || 'OZON_FAIL',
+                    };
+                    results.push(errItem);
+                    if (errors.length < 20) {
+                        errors.push({ code, error: errItem.error });
+                    }
+                }
+            }
+
+            return res.json({
+                success: failed === 0,
+                dry_run: dryRun,
+                total: codes.length,
+                would_update: wouldUpdate,
+                updated,
+                skipped,
+                failed,
+                errors,
+                results: results.slice(0, 50),
+                duration_sec: Number(((Date.now() - t0) / 1000).toFixed(2)),
+            });
+        } catch (e) {
+            console.error('[exports/marketplaces] fix-ozon-vat failed:', e && e.stack ? e.stack : e);
+            return res.status(500).json({ error: e.message || String(e), code: 'FIX_OZON_VAT_FAILED' });
+        }
+    });
+
+    /**
+     * Исправить НДС на Wildberries (характеристика 15001405).
+     * Body: { codes: string[], dry_run?: boolean, confirm?: boolean }
+     * Макс. 100 за запрос.
+     */
+    router.post('/issues/fix-wb-vat', async (req, res) => {
+        const t0 = Date.now();
+        try {
+            if (!db || typeof db.query !== 'function') {
+                return res.status(500).json({ error: 'БД недоступна', code: 'NO_DB' });
+            }
+            const body = req.body && typeof req.body === 'object' ? req.body : {};
+            const dryRun = body.dry_run === true || body.dry_run === 1 || body.dry_run === '1';
+            const confirm = body.confirm === true || body.confirm === 1 || body.confirm === '1';
+            if (!dryRun && !confirm) {
+                return res.status(400).json({ error: 'confirm required (или dry_run=1)', code: 'CONFIRM_REQUIRED' });
+            }
+            let codes = [];
+            if (Array.isArray(body.codes)) {
+                codes = body.codes.map((c) => String(c == null ? '' : c).trim()).filter(Boolean);
+            } else if (body.code != null && String(body.code).trim()) {
+                codes = [String(body.code).trim()];
+            }
+            codes = Array.from(new Set(codes));
+            if (!codes.length) {
+                return res.status(400).json({ error: 'codes[] или code обязателен', code: 'NO_CODES' });
+            }
+            if (codes.length > 100) {
+                return res.status(400).json({
+                    error: 'За один раз не больше 100 артикулов (лимит WB Content update)',
+                    code: 'TOO_MANY',
+                    max: 100,
+                    total: codes.length,
+                });
+            }
+
+            const creds = getWbCreds(appSettings || {});
+            if (!creds.apiKey) {
+                return res.status(400).json({
+                    error: 'Не задан wb_api_key',
+                    code: 'MISSING_CREDS',
+                });
+            }
+            const delayListMs = Math.max(
+                MP_MIN_DELAY_MS.wbCards || 600,
+                Number((appSettings && appSettings.mp_wb_delay_cards_ms) || 600) || 600
+            );
+            const logger = createMarketplaceLogger('wb-vat');
+
+            const ph = codes.map(() => '?').join(',');
+            const [msRows] = await db.query(
+                `SELECT m.code, m.vat AS ms_vat,
+                        wb.external_id AS wb_code,
+                        wb.cabinet_url AS wb_cabinet_url,
+                        wb.buyer_url AS wb_buyer_url
+                 FROM ms_export m
+                 LEFT JOIN marketplace_export_rows wb
+                   ON wb.marketplace = 'wildberries' AND wb.external_id = m.code
+                 WHERE m.code IN (${ph})`,
+                codes
+            );
+            const byCode = new Map();
+            for (const r of msRows || []) {
+                byCode.set(String(r.code || '').trim(), r);
+            }
+
+            const batchItems = [];
+            const preResults = [];
+            let wouldUpdate = 0;
+            let skipped = 0;
+
+            for (const code of codes) {
+                const row = byCode.get(code);
+                if (!row) {
+                    skipped += 1;
+                    preResults.push({ code, success: false, skipped: true, error: 'Нет в ms_export', code_err: 'NO_MS' });
+                    continue;
+                }
+                if (!row.wb_code) {
+                    skipped += 1;
+                    preResults.push({
+                        code,
+                        success: false,
+                        skipped: true,
+                        error: 'Нет на WB (нет vendorCode в снапшоте)',
+                        code_err: 'NO_WB',
+                    });
+                    continue;
+                }
+                const vatParsed = parseMsVat(row.ms_vat);
+                if (!vatParsed.ok) {
+                    skipped += 1;
+                    preResults.push({
+                        code,
+                        vendor_code: row.wb_code,
+                        success: false,
+                        skipped: true,
+                        error: vatParsed.error || 'НДС МС не разобран',
+                        code_err: 'MS_VAT_BAD',
+                    });
+                    continue;
+                }
+                wouldUpdate += 1;
+                if (dryRun) {
+                    preResults.push({
+                        code,
+                        vendor_code: row.wb_code,
+                        success: true,
+                        dry_run: true,
+                        vat: vatParsed.pretty,
+                    });
+                    continue;
+                }
+                batchItems.push({
+                    code,
+                    vendorCode: row.wb_code,
+                    msVat: row.ms_vat,
+                    nmIdHint: nmIdFromUrls(row.wb_cabinet_url, row.wb_buyer_url),
+                });
+            }
+
+            let updated = 0;
+            let failed = 0;
+            const errors = [];
+            const results = preResults.slice();
+
+            if (!dryRun && batchItems.length) {
+                const batchOut = await updateWbOffersVatBatch(
+                    creds.apiKey,
+                    batchItems.map((it) => ({
+                        vendorCode: it.vendorCode,
+                        msVat: it.msVat,
+                        nmIdHint: it.nmIdHint,
+                    })),
+                    {
+                        logger,
+                        delayListMs,
+                        delayUpdateMs: 6500,
+                        updateChunk: 50,
+                        dryRun: false,
+                    }
+                );
+                const byVendor = new Map();
+                for (const it of batchItems) {
+                    byVendor.set(it.vendorCode, it.code);
+                }
+                for (const out of batchOut || []) {
+                    const code = byVendor.get(String(out.vendor_code || '').trim()) || out.vendor_code;
+                    if (out.success) {
+                        updated += 1;
+                        try {
+                            await patchLocalWbVat(db, out.vendor_code, out.vat);
+                        } catch (ePatch) {
+                            logger.log('local_patch_fail', {
+                                vendor: out.vendor_code,
+                                message: ePatch.message,
+                            });
+                        }
+                        results.push({
+                            code,
+                            vendor_code: out.vendor_code,
+                            nm_id: out.nm_id,
+                            success: true,
+                            vat: out.vat,
+                        });
+                    } else if (out.skipped) {
+                        skipped += 1;
+                        results.push({
+                            code,
+                            vendor_code: out.vendor_code,
+                            success: false,
+                            skipped: true,
+                            error: out.error,
+                            code_err: out.code,
+                        });
+                    } else {
+                        failed += 1;
+                        const errItem = {
+                            code,
+                            vendor_code: out.vendor_code,
+                            success: false,
+                            error: out.error || 'Ошибка WB',
+                            code_err: out.code || 'WB_FAIL',
+                        };
+                        results.push(errItem);
+                        if (errors.length < 20) {
+                            errors.push({ code, error: errItem.error });
+                        }
+                    }
+                }
+            }
+
+            return res.json({
+                success: failed === 0,
+                dry_run: dryRun,
+                total: codes.length,
+                would_update: wouldUpdate,
+                updated: dryRun ? 0 : updated,
+                skipped,
+                failed,
+                errors,
+                results: results.slice(0, 80),
+                duration_sec: Number(((Date.now() - t0) / 1000).toFixed(2)),
+            });
+        } catch (e) {
+            console.error('[exports/marketplaces] fix-wb-vat failed:', e && e.stack ? e.stack : e);
+            return res.status(500).json({ error: e.message || String(e), code: 'FIX_WB_VAT_FAILED' });
+        }
+    });
+
+    /**
+     * Исправить НДС на Яндекс Маркете (campaigns/{id}/offers/update).
+     * Body: { codes: string[], dry_run?: boolean, confirm?: boolean }
+     * Нужны ym_api_key + ym_campaign_id. Макс. 100 за запрос.
+     */
+    router.post('/issues/fix-ym-vat', async (req, res) => {
+        const t0 = Date.now();
+        try {
+            if (!db || typeof db.query !== 'function') {
+                return res.status(500).json({ error: 'БД недоступна', code: 'NO_DB' });
+            }
+            const body = req.body && typeof req.body === 'object' ? req.body : {};
+            const dryRun = body.dry_run === true || body.dry_run === 1 || body.dry_run === '1';
+            const confirm = body.confirm === true || body.confirm === 1 || body.confirm === '1';
+            if (!dryRun && !confirm) {
+                return res.status(400).json({ error: 'confirm required (или dry_run=1)', code: 'CONFIRM_REQUIRED' });
+            }
+            let codes = [];
+            if (Array.isArray(body.codes)) {
+                codes = body.codes.map((c) => String(c == null ? '' : c).trim()).filter(Boolean);
+            } else if (body.code != null && String(body.code).trim()) {
+                codes = [String(body.code).trim()];
+            }
+            codes = Array.from(new Set(codes));
+            if (!codes.length) {
+                return res.status(400).json({ error: 'codes[] или code обязателен', code: 'NO_CODES' });
+            }
+            if (codes.length > 100) {
+                return res.status(400).json({
+                    error: 'За один раз не больше 100 артикулов (лимит YM offers/update)',
+                    code: 'TOO_MANY',
+                    max: 100,
+                    total: codes.length,
+                });
+            }
+
+            const creds = getYmCreds(appSettings || {});
+            if (!creds.apiKey || !creds.campaignId) {
+                return res.status(400).json({
+                    error: 'Не заданы ym_api_key / ym_campaign_id',
+                    code: 'MISSING_CREDS',
+                });
+            }
+            const delayMs = Math.max(
+                MP_MIN_DELAY_MS.yandex || 200,
+                Number((appSettings && appSettings.mp_yandex_delay_ms) || 280) || 280
+            );
+            const logger = createMarketplaceLogger('ym-vat');
+
+            const ph = codes.map(() => '?').join(',');
+            const [msRows] = await db.query(
+                `SELECT m.code, m.vat AS ms_vat,
+                        ym.external_id AS ym_code
+                 FROM ms_export m
+                 LEFT JOIN marketplace_export_rows ym
+                   ON ym.marketplace = 'yandex_market' AND ym.external_id = m.code
+                 WHERE m.code IN (${ph})`,
+                codes
+            );
+            const byCode = new Map();
+            for (const r of msRows || []) {
+                byCode.set(String(r.code || '').trim(), r);
+            }
+
+            const batchItems = [];
+            const preResults = [];
+            let wouldUpdate = 0;
+            let skipped = 0;
+
+            for (const code of codes) {
+                const row = byCode.get(code);
+                if (!row) {
+                    skipped += 1;
+                    preResults.push({ code, success: false, skipped: true, error: 'Нет в ms_export', code_err: 'NO_MS' });
+                    continue;
+                }
+                if (!row.ym_code) {
+                    skipped += 1;
+                    preResults.push({
+                        code,
+                        success: false,
+                        skipped: true,
+                        error: 'Нет на Я.Маркет (нет shopSku в снапшоте)',
+                        code_err: 'NO_YM',
+                    });
+                    continue;
+                }
+                const vatParsed = parseMsVat(row.ms_vat);
+                if (!vatParsed.ok) {
+                    skipped += 1;
+                    preResults.push({
+                        code,
+                        offer_id: row.ym_code,
+                        success: false,
+                        skipped: true,
+                        error: vatParsed.error || 'НДС МС не разобран',
+                        code_err: 'MS_VAT_BAD',
+                    });
+                    continue;
+                }
+                wouldUpdate += 1;
+                if (dryRun) {
+                    preResults.push({
+                        code,
+                        offer_id: row.ym_code,
+                        success: true,
+                        dry_run: true,
+                        vat: vatParsed.pretty,
+                    });
+                    continue;
+                }
+                batchItems.push({
+                    code,
+                    offerId: row.ym_code,
+                    msVat: row.ms_vat,
+                });
+            }
+
+            let updated = 0;
+            let failed = 0;
+            const errors = [];
+            const results = preResults.slice();
+
+            if (!dryRun && batchItems.length) {
+                const batchOut = await updateYmOffersVatBatch(
+                    { apiKey: creds.apiKey, campaignId: creds.campaignId },
+                    batchItems.map((it) => ({ offerId: it.offerId, msVat: it.msVat })),
+                    { logger, delayMs, chunkSize: 100, dryRun: false }
+                );
+                const byOffer = new Map();
+                for (const it of batchItems) {
+                    byOffer.set(it.offerId, it.code);
+                }
+                for (const out of batchOut || []) {
+                    const code = byOffer.get(String(out.offer_id || '').trim()) || out.offer_id;
+                    if (out.success) {
+                        updated += 1;
+                        try {
+                            await patchLocalYmVat(db, out.offer_id, out.vat);
+                        } catch (ePatch) {
+                            logger.log('local_patch_fail', {
+                                offer: out.offer_id,
+                                message: ePatch.message,
+                            });
+                        }
+                        results.push({
+                            code,
+                            offer_id: out.offer_id,
+                            success: true,
+                            vat: out.vat,
+                        });
+                    } else if (out.skipped) {
+                        skipped += 1;
+                        results.push({
+                            code,
+                            offer_id: out.offer_id,
+                            success: false,
+                            skipped: true,
+                            error: out.error,
+                            code_err: out.code,
+                        });
+                    } else {
+                        failed += 1;
+                        const errItem = {
+                            code,
+                            offer_id: out.offer_id,
+                            success: false,
+                            error: out.error || 'Ошибка Я.Маркет',
+                            code_err: out.code || 'YM_FAIL',
+                        };
+                        results.push(errItem);
+                        if (errors.length < 20) {
+                            errors.push({ code, error: errItem.error });
+                        }
+                    }
+                }
+            }
+
+            return res.json({
+                success: failed === 0,
+                dry_run: dryRun,
+                total: codes.length,
+                would_update: wouldUpdate,
+                updated: dryRun ? 0 : updated,
+                skipped,
+                failed,
+                errors,
+                results: results.slice(0, 80),
+                duration_sec: Number(((Date.now() - t0) / 1000).toFixed(2)),
+            });
+        } catch (e) {
+            console.error('[exports/marketplaces] fix-ym-vat failed:', e && e.stack ? e.stack : e);
+            return res.status(500).json({ error: e.message || String(e), code: 'FIX_YM_VAT_FAILED' });
         }
     });
 

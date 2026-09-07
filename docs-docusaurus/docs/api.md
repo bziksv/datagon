@@ -731,9 +731,9 @@ Body (JSON):
 
 ### GET `/api/exports/marketplaces/issues`
 
-Проблемы с товарами (бывш. «Неопубликованные»). Возвращает строки **`ms_export`** по основному фильтру `stock_position = 'Да' AND no_longer_cooperation = 'Нет'` с сопоставлением артикулов на 3 маркетплейсах через **`marketplace_export_rows.external_id`** (= `offer_id` для Ozon, `vendor_code` для WB, `shop_sku` для YM, см. `lib/marketplaceExportStore.js#externalIdFor`). По каждой строке возвращается полный паспорт МС (`ms_stock`, `ms_vat` из `ms_export`, габариты МС из **атрибутов карточки** `ms_entity_details.payload_json` — см. ниже) и каждого маркетплейса: `*_code`, `*_name`, `*_vat` (нормализован `prettifyMarketplaceVat`), `*_stock`, `*_length` / `*_width` / `*_height` (см), `*_weight` (кг), `*_cabinet_url`, `*_buyer_url`, `*_updated` (метка свежести снапшота — `updated_label` или форматированный `updated_at`). Поля **`uuid`** и **`type`** из `ms_export` приходят в каждом объекте `rows[]`, но **не** входят в массив **`headers`** (нужны UI для карточки МС и `GET /api/ms/detail/:uuid`, а не как отдельные колонки). Если код маркетплейса не найден в последнем снапшоте — все его поля приходят `null`; фронт подсвечивает пары `(*_code, *_name)` красным. Порядок колонок МС в `headers`/`headerLabels`: `code`, `name`, `manager`, `content_manager`, `ms_vat`, `ms_stock`, `ms_length`, `ms_width`, `ms_height_box`, `ms_height_bag`, `ms_weight`, `synced_at`.
+Проблемы с товарами (бывш. «Неопубликованные»). Возвращает строки **`ms_export`** по основному фильтру `stock_position = 'Да' AND no_longer_cooperation = 'Нет'` с сопоставлением артикулов на 3 маркетплейсах через **`marketplace_export_rows.external_id`** (= `offer_id` для Ozon, `vendor_code` для WB, `shop_sku` для YM, см. `lib/marketplaceExportStore.js#externalIdFor`). По каждой строке возвращается полный паспорт МС (`ms_stock`, `ms_vat` из `ms_export`, габариты МС из **денорма** `ms_entity_details.denorm_dim_*` — см. ниже) и каждого маркетплейса: `*_code`, `*_name`, `*_vat` (нормализован `prettifyMarketplaceVat`), `*_stock`, `*_length` / `*_width` / `*_height` (см), `*_weight` (кг), `*_cabinet_url`, `*_buyer_url`, `*_updated` (метка свежести снапшота — `updated_label` или форматированный `updated_at`). Поля **`uuid`** и **`type`** из `ms_export` приходят в каждом объекте `rows[]`, но **не** входят в массив **`headers`** (нужны UI для карточки МС и `GET /api/ms/detail/:uuid`, а не как отдельные колонки). Если код маркетплейса не найден в последнем снапшоте — все его поля приходят `null`; фронт подсвечивает пары `(*_code, *_name)` красным. Порядок колонок МС в `headers`/`headerLabels`: `code`, `name`, `manager`, `content_manager`, `ms_vat`, `ms_stock`, `ms_length`, `ms_width`, `ms_height_box`, `ms_height_bag`, `ms_weight`, `synced_at`.
 
-**Габариты МС** (`ms_length`, `ms_width`, `ms_height_box`, `ms_height_bag`, `ms_weight`) читаются из доп. полей полной карточки МойСклад (`ms_entity_details.payload_json.attributes`), те же имена, что при выгрузке «↗ В МС» с `/exports-dimensions.html`: `!!Длина (см) КОРОБКА/Пакет станд. уп.`, `!!Ширина (см) КОРОБКА/Пакет станд. уп.`, `!!Высота (см) КОРОБКА станд. уп.`, `!!Высота (см) Пакет!`, `!!Вес (кг)`. Это **не** таблица замеров `ms_dimensions_measurements` (там черновик до выгрузки в МС). Высоты у МС две (коробка / пакет); на маркетплейсах высота одна. Если у uuid нет карточки в `ms_entity_details` или атрибут пуст — поле `null`. Значения форматируются до **одного знака после точки** (`toFixed(1)`).
+**Габариты МС** (`ms_length`, `ms_width`, `ms_height_box`, `ms_height_bag`, `ms_weight`) берутся из колонок денорма `ms_entity_details.denorm_dim_*` (те же атрибуты карточки МС, что при выгрузке «↗ В МС» с `/exports-dimensions.html`: `!!Длина…`, `!!Ширина…`, `!!Высота…КОРОБКА`, `!!Высота…Пакет!`, `!!Вес (кг)`). Это **не** таблица замеров `ms_dimensions_measurements`. Высоты у МС две (коробка / пакет); на маркетплейсах высота одна. Если `denorm_dims_at` ещё пуст — одноразовый fallback читает `payload_json.attributes` только для таких uuid (не для всего каталога). Длина/ширина/высота форматируются до **1** знака (`toFixed(1)`), **вес** — до **3** (`toFixed(3)`), чтобы не получать ложные «2.6 vs 2.65» при сверке с Ozon/WB/Я.М.
 
 Query:
 
@@ -743,7 +743,13 @@ Query:
   - `all3` — нет ни на одном из 3 маркетплейсов;
   - `ozon` / `wb` / `ym` — нет на конкретном маркетплейсе;
   - `vat_mismatch` (алиас `vat-mismatch`) — товар есть в снапшоте маркетплейса, но нормализованный НДС МС не совпадает с НДС на этой площадке (Wildberries со значением «не указан» в сравнении не участвует);
-  - `dims_mismatch` (алиас `dims-mismatch`) — расхождение габаритов (длина/ширина/высота/вес) с допуском 0,02. Если у строки в атрибутах карточки МС есть **хотя бы одно** числовое значение (`ms_length`…`ms_weight`), сверка идёт **МС ↔ маркетплейсы**: длина/ширина/вес — одно МС-значение против каждой площадки; высота МС двойная — высота маркетплейса считается совпавшей, если совпала **хотя бы с одной** из непустых высот МС (коробка ИЛИ пакет). Если у МС нет ни одного числа, fallback — «между маркетплейсами»: товар есть минимум на двух площадках, по любой оси обе отдают число и оно расходится. Пара «число vs пусто» расхождением не считается. Отбор **в памяти** после подмешивания габаритов МС, `prettifyMarketplaceVat` и фильтра комплектов, в пределах первых `max_items` строк по `ORDER BY m.code` — при очень большом каталоге возможны «хвосты» за пределом лимита.
+  - `dims_mismatch` (алиас `dims-mismatch`) — расхождение габаритов (длина/ширина/высота/вес) с допуском 0,02. Если у строки в атрибутах карточки МС есть **хотя бы одно** числовое значение (`ms_length`…`ms_weight`), сверка идёт **МС ↔ маркетплейсы**: длина/ширина/вес — одно МС-значение против каждой площадки; высота МС двойная — высота маркетплейса считается совпавшей, если совпала **хотя бы с одной** из непустых высот МС (коробка ИЛИ пакет). Для **Wildberries** длина/ширина/высота сравниваются как **целые см** (`Math.round`), т.к. Content API не хранит дроби (МС `2.5` ↔ WB `3` — совпадение). Вес — с обычным EPS. Если у МС нет ни одного числа, fallback — «между маркетплейсами»: товар есть минимум на двух площадках, по любой оси обе отдают число и оно расходится. Пара «число vs пусто» расхождением не считается. Отбор **в памяти** после подмешивания габаритов МС (через денорм), `prettifyMarketplaceVat` и фильтра комплектов, в пределах первых `max_items` строк по `ORDER BY m.code` — при очень большом каталоге возможны «хвосты» за пределом лимита.
+- В `headers` после `ozon_vat` есть служебная колонка **`ozon_fix_vat`** («Исправить НДС Ozon») — только UI-кнопка, в `rows[]` значения нет.
+- После `wb_vat` — служебная **`wb_fix_vat`** («Исправить НДС WB»), аналогично.
+- После `ym_vat` — служебная **`ym_fix_vat`** («Исправить НДС Я.М»), аналогично.
+- В `headers` после `ozon_height` есть служебная колонка **`ozon_fix_dims`** («Исправить на Ozon») — только UI-кнопка, в `rows[]` значения нет.
+- После `wb_height` — служебная **`wb_fix_dims`** («Исправить на WB»), аналогично.
+- После `ym_height` — служебная **`ym_fix_dims`** («Исправить на Я.М»), аналогично.
 - `max_items` — лимит выборки, 1..100000, по умолчанию 50000.
 - `exclude_bundle_components` — `1` (по умолчанию) исключает товары, чей `code` встречается как компонент хотя бы одного комплекта (`ms_entity_details.kind = 'bundle'`, поле `payload_json.components.rows[].assortment.code`). Любое явно «ложное» значение (`0` / `false` / `no` / `off`) выключает фильтр. Полный набор кодов-компонентов кэшируется в памяти процесса на 5 минут (см. `getBundleComponentCodesCached` в `routes/exportsMarketplaces.js`); первый запрос после рестарта Node читает payload всех bundle-сущностей, последующие — берут готовый Set.
 
@@ -754,8 +760,8 @@ Query:
   "scope": "all",
   "scope_label": "все товары",
   "count": 123,
-  "headers": ["code","name","manager","content_manager","ms_vat","ms_stock","ms_length","ms_width","ms_height_box","ms_height_bag","ms_weight","synced_at","ozon_code","ozon_name","ozon_vat","ozon_stock","ozon_length","ozon_width","ozon_height","ozon_weight","ozon_cabinet_url","ozon_buyer_url","ozon_updated","wb_code","wb_name","wb_vat","wb_stock","wb_length","wb_width","wb_height","wb_weight","wb_cabinet_url","wb_buyer_url","wb_updated","ym_code","ym_name","ym_vat","ym_stock","ym_length","ym_width","ym_height","ym_weight","ym_cabinet_url","ym_buyer_url","ym_updated"],
-  "headerLabels": ["Код МС","Название МС","Менеджер","Контент-менеджер","НДС МС","Остаток по МС","Длина (см) МС","Ширина (см) МС","Высота — коробка (см) МС","Высота — пакет (см) МС","Вес (кг) МС","Синхронизация МС","Код Ozon","Название Ozon","НДС Ozon","Остаток Ozon","Длина (см) Ozon","Ширина (см) Ozon","Высота (см) Ozon","Вес (кг) Ozon","Кабинет Ozon","Покупателю Ozon","Обновлено Ozon","Код Wildberries","Название Wildberries","НДС WB","Остаток WB","Длина (см) WB","Ширина (см) WB","Высота (см) WB","Вес (кг) WB","Кабинет WB","Покупателю WB","Обновлено WB","Код Я.Маркет","Название Я.Маркет","НДС Я.Маркет","Остаток Я.Маркет","Длина (см) Я.Маркет","Ширина (см) Я.Маркет","Высота (см) Я.Маркет","Вес (кг) Я.Маркет","Кабинет Я.Маркет","Покупателю Я.Маркет","Обновлено Я.Маркет"],
+  "headers": ["code","name","manager","content_manager","ms_vat","ms_stock","ms_length","ms_width","ms_height_box","ms_height_bag","ms_weight","synced_at","ozon_code","ozon_name","ozon_vat","ozon_fix_vat","ozon_stock","ozon_length","ozon_width","ozon_height","ozon_weight","ozon_fix_dims","ozon_cabinet_url","ozon_buyer_url","ozon_updated","wb_code","wb_name","wb_vat","wb_fix_vat","wb_stock","wb_length","wb_width","wb_height","wb_weight","wb_fix_dims","wb_cabinet_url","wb_buyer_url","wb_updated","ym_code","ym_name","ym_vat","ym_fix_vat","ym_stock","ym_length","ym_width","ym_height","ym_weight","ym_fix_dims","ym_cabinet_url","ym_buyer_url","ym_updated"],
+  "headerLabels": ["Код МС","Название МС","Менеджер","Контент-менеджер","НДС МС","Остаток по МС","Длина (см) МС","Ширина (см) МС","Высота — коробка (см) МС","Высота — пакет (см) МС","Вес (кг) МС","Синхронизация МС","Код Ozon","Название Ozon","НДС Ozon","Исправить НДС Ozon","Остаток Ozon","Длина (см) Ozon","Ширина (см) Ozon","Высота (см) Ozon","Вес (кг) Ozon","Исправить на Ozon","Кабинет Ozon","Покупателю Ozon","Обновлено Ozon","Код Wildberries","Название Wildberries","НДС WB","Исправить НДС WB","Остаток WB","Длина (см) WB","Ширина (см) WB","Высота (см) WB","Вес (кг) WB","Исправить на WB","Кабинет WB","Покупателю WB","Обновлено WB","Код Я.Маркет","Название Я.Маркет","НДС Я.Маркет","Исправить НДС Я.М","Остаток Я.Маркет","Длина (см) Я.Маркет","Ширина (см) Я.Маркет","Высота (см) Я.Маркет","Вес (кг) Я.Маркет","Исправить на Я.М","Кабинет Я.Маркет","Покупателю Я.Маркет","Обновлено Я.Маркет"],
   "rows": [
     { "code": "ABC-1", "name": "...", "uuid": "…", "type": "Товар", "manager": null, "content_manager": null, "ms_vat": "20%", "ms_stock": 12, "ms_length": "30.0", "ms_width": "20.0", "ms_height_box": "10.0", "ms_height_bag": null, "ms_weight": "0.5", "synced_at": "01.01.2026 12:00", "ozon_code": "ABC-1", "ozon_name": "...", "ozon_vat": "20", "ozon_stock": "12", "ozon_length": "30", "ozon_width": "20", "ozon_height": "10", "ozon_weight": "0.5", "ozon_cabinet_url": "https://seller.ozon.ru/...", "ozon_buyer_url": "https://www.ozon.ru/...", "ozon_updated": "01.01.2026 12:30", "wb_code": null, "wb_name": null, "wb_vat": null, "wb_stock": null, "wb_length": null, "wb_width": null, "wb_height": null, "wb_weight": null, "wb_cabinet_url": null, "wb_buyer_url": null, "wb_updated": null, "ym_code": "ABC-1", "ym_name": "...", "ym_vat": "20", "ym_stock": "8", "ym_length": "30", "ym_width": "20", "ym_height": "10", "ym_weight": "0.5", "ym_cabinet_url": "https://partner.market.yandex.ru/...", "ym_buyer_url": "https://market.yandex.ru/...", "ym_updated": "01.01.2026 12:35" }
   ],
@@ -764,6 +770,84 @@ Query:
   "removed_by_bundle_filter": 17
 }
 ```
+
+### POST `/api/exports/marketplaces/issues/fix-ozon-dims`
+Отправить габариты из МС в карточки Ozon (`/v3/product/import`: карточка читается из attributes + info, меняются `depth`/`width`/`height`/`weight`).
+
+Body JSON:
+- `code` **или** `codes[]` — артикулы МС (= `offer_id` Ozon), максимум 200 за один HTTP-запрос;
+- `confirm: true` — обязателен для записи (или `dry_run: 1` для проверки без записи).
+
+UI `/exports-marketplaces-issues.html` при массовой кнопке режет выборку на пакеты по 200 и шлёт их **по очереди** с паузой ~1,5 с (лимит API на запрос сохраняется).
+
+Ответ: `{ success, dry_run, total, would_update, updated, skipped, failed, errors[{code,error}], results[], duration_sec }`. После успеха локальный снапшот `marketplace_export_rows` обновляет `length_cm`/`width_cm`/`height_cm`/`weight_kg`.
+
+Высота для Ozon: `ms_height_box`, либо `ms_height_bag` если тип упаковки похож на «пакет».
+
+### POST `/api/exports/marketplaces/issues/fix-wb-dims`
+Отправить габариты из МС в карточки Wildberries (`/content/v2/get/cards/list` → `/content/v2/cards/update`: меняются `dimensions.length/width/height` в см и `weightBrutto` в кг). Карточка перезаписывается целиком — сервер сначала читает текущую карточку по `vendorCode` (= код МС).
+
+**Целые см:** в API WB длина/ширина/высота — только целые сантиметры; сервер шлёт `Math.round` (`cmToWbInt`, минимум 1). МС `2.5` на WB станет `3` — это не ошибка записи. В фильтре/подсветке `dims_mismatch` пара МС↔WB по L/W/H тоже сравнивается через `Math.round`.
+
+**Права токена:** для `cards/update` нужен API-токен с категорией **«Контент»** и правом **изменения** карточек. Токен только на чтение (или без Content write) даёт **403** при записи, хотя выгрузка `/cards/list` может работать. Права к существующему токену WB не добавляются — нужен **новый** токен → `wb_api_key` в настройках → перезапуск Node.
+
+Body JSON:
+- `code` **или** `codes[]` — артикулы МС (= `vendorCode` WB), максимум **100** за один HTTP-запрос (лимит WB Content update ~10 req/мин);
+- `confirm: true` — обязателен для записи (или `dry_run: 1`).
+
+UI `/exports-marketplaces-issues.html`: кнопка **«Исправить габариты на WB»**, колонка **`wb_fix_dims`** после высоты WB; пакеты по 100 с паузой ~2 с. Вкладку нужно держать открытой до итога.
+
+Ответ: как у `fix-ozon-dims` — `{ success, dry_run, total, would_update, updated, skipped, failed, errors[], results[], duration_sec }`. После успеха локальный снапшот `marketplace_export_rows` (marketplace=`wildberries`) обновляет габариты.
+
+Высота: та же логика, что для Ozon (коробка / пакет).
+
+### POST `/api/exports/marketplaces/issues/fix-ym-dims`
+Отправить габариты из МС в офферы Яндекс Маркета (`POST /v2/businesses/{businessId}/offer-mappings/update` с `weightDimensions`: длина/ширина/высота в см, вес в кг). Нужны `ym_api_key` и **`ym_business_id`**.
+
+**Права токена:** для `offer-mappings/update` у Api-Key нужны доступы **`offers-and-cards-management`** («Управление товарами и карточками») или **`all-methods`**. Read-only / только цены / статистика дают **403** при записи, хотя выгрузка кампании может работать. Новый ключ → `ym_api_key` (+ проверить `ym_business_id`) → перезапуск Node.
+
+Body JSON:
+- `code` **или** `codes[]` — артикулы МС (= `shopSku` / `offerId`), максимум **100** за запрос;
+- `confirm: true` — обязателен для записи (или `dry_run: 1`).
+
+UI: кнопка **«Исправить габариты на Я.М»**, колонка **`ym_fix_dims`**. Пакеты по 100. Если YM вернул `status=ERROR` на пакете (ошибка хотя бы по одному SKU откатывает весь пакет), сервер повторяет проблемный чанк **по одному**.
+
+Ответ — как у `fix-ozon-dims` / `fix-wb-dims`. Локальный снапшот: `marketplace = yandex_market`.
+
+### POST `/api/exports/marketplaces/issues/fix-ozon-vat`
+Отправить НДС из МС в карточки Ozon (`/v3/product/import`: карточка читается из attributes + info, **габариты/вес текущей карточки Ozon сохраняются**, меняется только `vat`). Конвертация: `lib/mpVatConvert.js` (`msVatToOzonApi`: «без НДС»/0 → `'0'`, 5→`'0.05'`, 7→`'0.07'`, 10→`'0.10'`, 20/22→`'0.20'`).
+
+Body JSON:
+- `code` **или** `codes[]` — артикулы МС (= `offer_id` Ozon), максимум **200** за запрос;
+- `confirm: true` — обязателен для записи (или `dry_run: 1`).
+
+UI `/exports-marketplaces-issues.html`: кнопка **«Исправить НДС на Ozon»**, колонка **`ozon_fix_vat`** сразу после `ozon_vat`; пакеты по 200. Журнал — отдельный канал `#dg-mpu-action-log-ozon_vat` (не перетирает лог габаритов Ozon).
+
+Ответ: `{ success, dry_run, total, would_update, updated, skipped, failed, errors[], results[], duration_sec }`. После успеха локальный снапшот `marketplace_export_rows` (marketplace=`ozon`) обновляет `vat` (`updated_label = 'Ozon НДС ← МС'`).
+
+**Нужен перезапуск Node**, чтобы подхватить новые роуты и `lib/*VatUpdate.js`.
+
+### POST `/api/exports/marketplaces/issues/fix-wb-vat`
+Отправить НДС из МС в карточки Wildberries (`/content/v2/get/cards/list` → `/content/v2/cards/update`: характеристика id **15001405** «Ставка НДС»; **dimensions карточки сохраняются**). Конвертация: `msVatToWbCharValue` по справочнику `GET /content/v2/directory/vat` (без НДС → **`'Без НДС'`**, не код `'6'`; ставки → `'5'|'7'|'10'|'20'|'22'|…`). Код `'6'` WB принимает в update без ошибки, но **не применяет** ставку — из‑за этого UI мог показать «Без НДС» после локального патча, а на карточке оставалось `'5'`. После успеха локально пишутся и колонка `vat`, и `row_json.vat`. Синхронизация на стороне WB может занимать до ~30 минут; ответ `error:false` сам по себе не гарантирует мгновенное изменение в `cards/list`.
+
+Body JSON:
+- `code` **или** `codes[]` — максимум **100** за запрос;
+- `confirm: true` (или `dry_run: 1`).
+
+UI: кнопка **«Исправить НДС на WB»**, колонка **`wb_fix_vat`**; пакеты по 100; лог `#dg-mpu-action-log-wb_vat`. Права токена — как у `fix-wb-dims` (Content write).
+
+Ответ — как у `fix-ozon-vat`. Локальный снапшот: marketplace=`wildberries`, `updated_label = 'WB НДС ← МС'`.
+
+### POST `/api/exports/marketplaces/issues/fix-ym-vat`
+Отправить НДС из МС в офферы Яндекс Маркета (`POST /v2/campaigns/{campaignId}/offers/update` с `{ offers: [{ offerId, vat }] }`). Нужны **`ym_api_key`** и **`ym_campaign_id`** (не только `ym_business_id`). Конвертация: `msVatToYmVatId` (без НДС→6, 0%→5, 5→10, 7→11, 10→2, 20→7, 22→14 — обратно к `ymVatText`).
+
+Body JSON:
+- `code` **или** `codes[]` — максимум **100** за запрос;
+- `confirm: true` (или `dry_run: 1`).
+
+UI: кнопка **«Исправить НДС на Я.М»**, колонка **`ym_fix_vat`**; пакеты по 100; лог `#dg-mpu-action-log-ym_vat`. При `status=ERROR` на пакете — повтор по одному (как у dims).
+
+Ответ — как у `fix-ozon-vat` / `fix-wb-vat`. Локальный снапшот: marketplace=`yandex_market`, `updated_label = 'YM НДС ← МС'`.
 
 Поле `bundle_component_codes_known` — размер набора кодов-компонентов, отбираемых из `ms_entity_details`. `removed_by_bundle_filter` — сколько строк было отрезано серверным фильтром «исключить товары из комплектов» (полезно для отладки). Когда `exclude_bundle_components=0`, `bundle_component_codes_known` равно `0` и `removed_by_bundle_filter` равно `0`.
 

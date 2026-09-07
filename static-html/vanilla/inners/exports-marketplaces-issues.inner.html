@@ -285,7 +285,69 @@
               <div class="mt-3 d-flex flex-wrap gap-2 align-items-center" data-dg-mpu-filter-field="filter_actions" data-dg-filter-field-title="Кнопки «Применить» / «Сбросить»">
                 <button type="button" class="btn btn-sm btn-primary" id="dg-mpu-flt-apply" title="Применить фильтры и поиск (или нажмите Enter в поле поиска)" data-dg-notify-start="Применяем фильтры и обновляем таблицу…"><i class="pe-7s-search me-1"></i>Применить</button>
                 <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mpu-flt-reset" title="Сбросить scope, поиск, менеджера и контент-менеджера" data-dg-notify-start="Сбрасываем фильтры и применяем…"><i class="pe-7s-refresh me-1"></i>По умолчанию</button>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-primary"
+                  id="dg-mpu-fix-ozon-dims"
+                  title="Отправить габариты из МС на Ozon для всех строк текущей выборки (после Применить). Высота: коробка или пакет по типу упаковки."
+                  data-dg-notify-start="Готовим исправление габаритов на Ozon…"
+                >
+                  Исправить габариты на Oзоне
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-primary"
+                  id="dg-mpu-fix-wb-dims"
+                  title="Отправить габариты из МС на Wildberries для всех строк текущей выборки (после Применить). Высота: коробка или пакет по типу упаковки."
+                  data-dg-notify-start="Готовим исправление габаритов на WB…"
+                >
+                  Исправить габариты на WB
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-primary"
+                  id="dg-mpu-fix-ym-dims"
+                  title="Отправить габариты из МС на Яндекс Маркет для всех строк текущей выборки (после Применить). Высота: коробка или пакет по типу упаковки."
+                  data-dg-notify-start="Готовим исправление габаритов на Я.Маркет…"
+                >
+                  Исправить габариты на Я.М
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-primary"
+                  id="dg-mpu-fix-ozon-vat"
+                  title="Отправить НДС из МС на Ozon для всех строк текущей выборки (после Применить)."
+                  data-dg-notify-start="Готовим исправление НДС на Ozon…"
+                >
+                  Исправить НДС на Ozon
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-primary"
+                  id="dg-mpu-fix-wb-vat"
+                  title="Отправить НДС из МС на Wildberries для всех строк текущей выборки (после Применить)."
+                  data-dg-notify-start="Готовим исправление НДС на WB…"
+                >
+                  Исправить НДС на WB
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-primary"
+                  id="dg-mpu-fix-ym-vat"
+                  title="Отправить НДС из МС на Яндекс Маркет для всех строк текущей выборки (после Применить)."
+                  data-dg-notify-start="Готовим исправление НДС на Я.Маркет…"
+                >
+                  Исправить НДС на Я.М
+                </button>
                 <span class="badge bg-warning text-dark d-none" id="dg-mpu-flt-dirty" title="Есть несохранённые изменения фильтров">не применено</span>
+              </div>
+              <div id="dg-mpu-action-logs" class="mt-3 mb-0 d-flex flex-column gap-2">
+                <div id="dg-mpu-action-log-ozon" class="alert mb-0 d-none small" role="status" aria-live="polite" data-dg-mpu-log="ozon"></div>
+                <div id="dg-mpu-action-log-wb" class="alert mb-0 d-none small" role="status" aria-live="polite" data-dg-mpu-log="wb"></div>
+                <div id="dg-mpu-action-log-ym" class="alert mb-0 d-none small" role="status" aria-live="polite" data-dg-mpu-log="ym"></div>
+                <div id="dg-mpu-action-log-ozon_vat" class="alert mb-0 d-none small" role="status" aria-live="polite" data-dg-mpu-log="ozon_vat"></div>
+                <div id="dg-mpu-action-log-wb_vat" class="alert mb-0 d-none small" role="status" aria-live="polite" data-dg-mpu-log="wb_vat"></div>
+                <div id="dg-mpu-action-log-ym_vat" class="alert mb-0 d-none small" role="status" aria-live="polite" data-dg-mpu-log="ym_vat"></div>
               </div>
               <div id="dg-mpu-msg" class="alert alert-secondary mt-3 mb-0 d-none" role="status"></div>
             </div>
@@ -387,6 +449,186 @@
                   <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mp-page-prev">Назад</button>
                   <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mp-page-next">Вперед</button>
                 </div>
+              </div>
+            </div>
+          </div>
+
+          <div
+            id="dg-mpu-fix-ozon-overlay"
+            class="dg-ms-detail-overlay"
+            style="display: none"
+            aria-hidden="true"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="dg-mpu-fix-ozon-title"
+          >
+            <div class="dg-ms-detail-panel card shadow-lg border-0" style="max-width: 520px">
+              <div class="card-header">
+                <div class="fw-semibold" id="dg-mpu-fix-ozon-title">Исправить габариты на Ozon?</div>
+              </div>
+              <div class="card-body">
+                <p class="mb-0 small" id="dg-mpu-fix-ozon-text"></p>
+              </div>
+              <div class="card-footer d-flex justify-content-end gap-2 flex-wrap bg-white border-top-0">
+                <button type="button" class="btn btn-outline-secondary" id="dg-mpu-fix-ozon-cancel" data-dg-no-activity="1">Отмена</button>
+                <button
+                  type="button"
+                  class="btn btn-primary"
+                  id="dg-mpu-fix-ozon-ok"
+                  data-dg-notify-start="Отправляем габариты в Ozon…"
+                >
+                  Исправить на Ozon
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div
+            id="dg-mpu-fix-wb-overlay"
+            class="dg-ms-detail-overlay"
+            style="display: none"
+            aria-hidden="true"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="dg-mpu-fix-wb-title"
+          >
+            <div class="dg-ms-detail-panel card shadow-lg border-0" style="max-width: 520px">
+              <div class="card-header">
+                <div class="fw-semibold" id="dg-mpu-fix-wb-title">Исправить габариты на Wildberries?</div>
+              </div>
+              <div class="card-body">
+                <p class="mb-0 small" id="dg-mpu-fix-wb-text"></p>
+              </div>
+              <div class="card-footer d-flex justify-content-end gap-2 flex-wrap bg-white border-top-0">
+                <button type="button" class="btn btn-outline-secondary" id="dg-mpu-fix-wb-cancel" data-dg-no-activity="1">Отмена</button>
+                <button
+                  type="button"
+                  class="btn btn-primary"
+                  id="dg-mpu-fix-wb-ok"
+                  data-dg-notify-start="Отправляем габариты в WB…"
+                >
+                  Исправить на WB
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div
+            id="dg-mpu-fix-ym-overlay"
+            class="dg-ms-detail-overlay"
+            style="display: none"
+            aria-hidden="true"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="dg-mpu-fix-ym-title"
+          >
+            <div class="dg-ms-detail-panel card shadow-lg border-0" style="max-width: 520px">
+              <div class="card-header">
+                <div class="fw-semibold" id="dg-mpu-fix-ym-title">Исправить габариты на Яндекс Маркете?</div>
+              </div>
+              <div class="card-body">
+                <p class="mb-0 small" id="dg-mpu-fix-ym-text"></p>
+              </div>
+              <div class="card-footer d-flex justify-content-end gap-2 flex-wrap bg-white border-top-0">
+                <button type="button" class="btn btn-outline-secondary" id="dg-mpu-fix-ym-cancel" data-dg-no-activity="1">Отмена</button>
+                <button
+                  type="button"
+                  class="btn btn-primary"
+                  id="dg-mpu-fix-ym-ok"
+                  data-dg-notify-start="Отправляем габариты в Я.Маркет…"
+                >
+                  Исправить на Я.М
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div
+            id="dg-mpu-fix-ozon-vat-overlay"
+            class="dg-ms-detail-overlay"
+            style="display: none"
+            aria-hidden="true"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="dg-mpu-fix-ozon-vat-title"
+          >
+            <div class="dg-ms-detail-panel card shadow-lg border-0" style="max-width: 520px">
+              <div class="card-header">
+                <div class="fw-semibold" id="dg-mpu-fix-ozon-vat-title">Исправить НДС на Ozon?</div>
+              </div>
+              <div class="card-body">
+                <p class="mb-0 small" id="dg-mpu-fix-ozon-vat-text"></p>
+              </div>
+              <div class="card-footer d-flex justify-content-end gap-2 flex-wrap bg-white border-top-0">
+                <button type="button" class="btn btn-outline-secondary" id="dg-mpu-fix-ozon-vat-cancel" data-dg-no-activity="1">Отмена</button>
+                <button
+                  type="button"
+                  class="btn btn-primary"
+                  id="dg-mpu-fix-ozon-vat-ok"
+                  data-dg-notify-start="Отправляем НДС в Ozon…"
+                >
+                  Исправить НДС на Ozon
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div
+            id="dg-mpu-fix-wb-vat-overlay"
+            class="dg-ms-detail-overlay"
+            style="display: none"
+            aria-hidden="true"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="dg-mpu-fix-wb-vat-title"
+          >
+            <div class="dg-ms-detail-panel card shadow-lg border-0" style="max-width: 520px">
+              <div class="card-header">
+                <div class="fw-semibold" id="dg-mpu-fix-wb-vat-title">Исправить НДС на Wildberries?</div>
+              </div>
+              <div class="card-body">
+                <p class="mb-0 small" id="dg-mpu-fix-wb-vat-text"></p>
+              </div>
+              <div class="card-footer d-flex justify-content-end gap-2 flex-wrap bg-white border-top-0">
+                <button type="button" class="btn btn-outline-secondary" id="dg-mpu-fix-wb-vat-cancel" data-dg-no-activity="1">Отмена</button>
+                <button
+                  type="button"
+                  class="btn btn-primary"
+                  id="dg-mpu-fix-wb-vat-ok"
+                  data-dg-notify-start="Отправляем НДС в WB…"
+                >
+                  Исправить НДС на WB
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div
+            id="dg-mpu-fix-ym-vat-overlay"
+            class="dg-ms-detail-overlay"
+            style="display: none"
+            aria-hidden="true"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="dg-mpu-fix-ym-vat-title"
+          >
+            <div class="dg-ms-detail-panel card shadow-lg border-0" style="max-width: 520px">
+              <div class="card-header">
+                <div class="fw-semibold" id="dg-mpu-fix-ym-vat-title">Исправить НДС на Яндекс Маркете?</div>
+              </div>
+              <div class="card-body">
+                <p class="mb-0 small" id="dg-mpu-fix-ym-vat-text"></p>
+              </div>
+              <div class="card-footer d-flex justify-content-end gap-2 flex-wrap bg-white border-top-0">
+                <button type="button" class="btn btn-outline-secondary" id="dg-mpu-fix-ym-vat-cancel" data-dg-no-activity="1">Отмена</button>
+                <button
+                  type="button"
+                  class="btn btn-primary"
+                  id="dg-mpu-fix-ym-vat-ok"
+                  data-dg-notify-start="Отправляем НДС в Я.Маркет…"
+                >
+                  Исправить НДС на Я.М
+                </button>
               </div>
             </div>
           </div>
