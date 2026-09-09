@@ -294,6 +294,28 @@
     font-weight: 500;
     font-size: 0.7rem;
   }
+  /* Подсветка строк по статусу (Не добавлен / В работе / Добавлен) */
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"]
+    #dg-np-table tbody tr.dg-np-row-status-not-added > td {
+    background-color: #fef2f2 !important;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"]
+    #dg-np-table tbody tr.dg-np-row-status-in-progress > td {
+    background-color: #fffbeb !important;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"]
+    #dg-np-table tbody tr.dg-np-row-status-added > td {
+    background-color: #f0fdf4 !important;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"]
+    #dg-np-table tbody tr.dg-np-row-status-not-added:hover > td,
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"]
+    #dg-np-table tbody tr.dg-np-row-status-in-progress:hover > td,
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"]
+    #dg-np-table tbody tr.dg-np-row-status-added:hover > td {
+    filter: brightness(0.98);
+  }
+
   body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] tr.dg-np-kit-row > td {
     background: #f7f9fc;
     border-top-style: dashed;
@@ -1739,6 +1761,20 @@
     { key: "in_bundle", label: "В составе комплекта" },
   ];
   var STATUS_FILTER_EXTRA = [{ key: "removed", label: "Удалённые" }];
+  /** Подсветка строки таблицы по статусу (класс на <tr>). */
+  var NP_STATUS_ROW_CLASS = {
+    not_added: "dg-np-row-status-not-added",
+    in_progress: "dg-np-row-status-in-progress",
+    added: "dg-np-row-status-added",
+  };
+  function applyNpStatusRowClass(tr, status) {
+    if (!tr) return;
+    Object.keys(NP_STATUS_ROW_CLASS).forEach(function (k) {
+      tr.classList.remove(NP_STATUS_ROW_CLASS[k]);
+    });
+    var cls = NP_STATUS_ROW_CLASS[String(status || "")];
+    if (cls) tr.classList.add(cls);
+  }
   var PRIORITY_OPTS = [
     { key: "important", label: "Важный" },
     { key: "normal", label: "Обычный" },
@@ -3505,6 +3541,7 @@
 
   function renderAlmamedRow(row) {
     var tr = document.createElement("tr");
+    applyNpStatusRowClass(tr, row.status);
     var missMap = missingKeys(row);
 
     tr.appendChild(makeIdCell(row));
@@ -3728,6 +3765,7 @@
 
   function renderMarketsRow(row) {
     var tr = document.createElement("tr");
+    applyNpStatusRowClass(tr, row.status);
     var missMap = missingKeys(row);
 
     tr.appendChild(makeIdCell(row));
@@ -3940,6 +3978,7 @@
   function renderMarketsKitRow(parent, kit) {
     var tr = document.createElement("tr");
     tr.className = "dg-np-kit-row";
+    applyNpStatusRowClass(tr, kit.status || "new");
     tr.setAttribute("data-dg-kit-parent", String(parent.id));
     tr.setAttribute("data-dg-kit-id", String(kit.id));
 
@@ -4022,6 +4061,7 @@
       kitApi(parent.id, "PATCH", "/" + kit.id, { status: selSt.value })
         .then(function (j) {
           if (j.data) Object.assign(kit, j.data);
+          applyNpStatusRowClass(tr, (j.data && j.data.status) || selSt.value);
           if (window.DatagonNotify && window.DatagonNotify.toast) {
             window.DatagonNotify.toast({ type: "success", message: "Статус комплекта сохранён" });
           }

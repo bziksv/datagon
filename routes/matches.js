@@ -697,6 +697,16 @@ module.exports = (db, settings) => {
                 table: 'my_products',
                 name: 'idx_my_products_site_name_active_updated',
                 ddl: 'CREATE INDEX idx_my_products_site_name_active_updated ON my_products (site_id, name(191), is_active, updated_at)'
+            },
+            {
+                table: 'product_matches',
+                name: 'idx_pm_site_comp_status_name',
+                ddl: 'CREATE INDEX idx_pm_site_comp_status_name ON product_matches (my_site_id, competitor_site_id, status, my_product_name(191))'
+            },
+            {
+                table: 'match_exclusion',
+                name: 'idx_me_site_comp_updated',
+                ddl: 'CREATE INDEX idx_me_site_comp_updated ON match_exclusion (my_site_id, competitor_site_id, updated_at)'
             }
         ];
         for (const item of desired) {
@@ -2664,12 +2674,42 @@ module.exports = (db, settings) => {
         };
     }
 
-    function buildManualQueueWhere(filters) {
+    /**
+     * Ручная очередь: anti-join к материализованному DISTINCT confirmed-имён
+     * вместо коррелированного NOT EXISTS (тот давал nested-loop на десятки тысяч строк
+     * и шторм COUNT на 30+ минут).
+     */
+    function buildManualQueueParts(filters) {
+        const confParams = [filters.mySiteId];
+        let confCompSql = '';
+        if (filters.compId) {
+            confCompSql = ' AND pm_ok.competitor_site_id = ?';
+            confParams.push(filters.compId);
+        }
+        const fromSql = `
+                FROM match_exclusion e
+                LEFT JOIN my_products mp ON mp.id = e.my_product_id AND mp.site_id = e.my_site_id
+                LEFT JOIN product_matches pm ON pm.id = e.source_product_match_id
+                LEFT JOIN (
+                    SELECT DISTINCT
+                        pm_ok.my_site_id,
+                        pm_ok.competitor_site_id,
+                        pm_ok.my_product_name AS conf_name
+                    FROM product_matches pm_ok
+                    WHERE pm_ok.my_site_id = ?
+                      AND pm_ok.status = 'confirmed'
+                      AND TRIM(IFNULL(pm_ok.my_product_name, '')) <> ''
+                      ${confCompSql}
+                ) pm_conf
+                  ON pm_conf.my_site_id = e.my_site_id
+                 AND pm_conf.competitor_site_id = e.competitor_site_id
+                 AND pm_conf.conf_name = mp.name
+        `;
         let whereSql = ' WHERE e.my_site_id = ?';
-        const params = [filters.mySiteId];
+        const whereParams = [filters.mySiteId];
         if (filters.compId) {
             whereSql += ' AND e.competitor_site_id = ?';
-            params.push(filters.compId);
+            whereParams.push(filters.compId);
         }
         if (filters.search) {
             const v = `%${filters.search}%`;
@@ -2677,31 +2717,71 @@ module.exports = (db, settings) => {
                     mp.sku LIKE ? OR mp.name LIKE ? OR mp.source_id LIKE ? OR mp.cms_product_id LIKE ?
                     OR pm.my_sku LIKE ? OR pm.my_product_name LIKE ?
                 )`;
-            params.push(v, v, v, v, v, v);
+            whereParams.push(v, v, v, v, v, v);
         }
         if (filters.reasonFilter) {
             whereSql += " AND LOWER(TRIM(COALESCE(e.reason, ''))) = ?";
-            params.push(filters.reasonFilter);
+            whereParams.push(filters.reasonFilter);
         }
         // Уже подтверждённая ЭТА карточка (по названию) не должна висеть в шаге 3.
         // Дубли с тем же SKU оставляем — с подсказкой про неуникальный артикул.
-        whereSql += ` AND NOT EXISTS (
-            SELECT 1 FROM product_matches pm_ok
-            WHERE pm_ok.my_site_id = e.my_site_id
-              AND pm_ok.competitor_site_id = e.competitor_site_id
-              AND pm_ok.status = 'confirmed'
-              AND TRIM(IFNULL(mp.name, '')) <> ''
-              AND pm_ok.my_product_name = mp.name
-            LIMIT 1
-        )`;
-        return { whereSql, params };
+        whereSql += ` AND (TRIM(IFNULL(mp.name, '')) = '' OR pm_conf.conf_name IS NULL)`;
+        return { fromSql, whereSql, params: [...confParams, ...whereParams] };
     }
 
-    const MANUAL_QUEUE_FROM = `
-                FROM match_exclusion e
-                LEFT JOIN my_products mp ON mp.id = e.my_product_id AND mp.site_id = e.my_site_id
-                LEFT JOIN product_matches pm ON pm.id = e.source_product_match_id
-    `;
+    /** @deprecated use buildManualQueueParts */
+    function buildManualQueueWhere(filters) {
+        const parts = buildManualQueueParts(filters);
+        return { whereSql: parts.whereSql, params: parts.params, fromSql: parts.fromSql };
+    }
+
+    const MANUAL_QUEUE_MAX_EXEC_MS = 15000;
+    /** In-flight COUNT по ключу фильтров — не копить одинаковые тяжёлые запросы. */
+    const manualQueueCountInflight = new Map();
+    const manualQueueCountCache = new Map();
+    const MANUAL_QUEUE_COUNT_CACHE_MS = 15000;
+
+    function manualQueueFilterKey(filters) {
+        return [
+            filters.mySiteId,
+            filters.compId || 0,
+            filters.search || '',
+            filters.reasonFilter || ''
+        ].join('|');
+    }
+
+    function withMaxExecutionTime(sql, ms) {
+        const limit = Math.max(1000, Math.min(Number(ms) || MANUAL_QUEUE_MAX_EXEC_MS, 60000));
+        return String(sql || '').replace(/^\s*SELECT\b/i, `SELECT /*+ MAX_EXECUTION_TIME(${limit}) */`);
+    }
+
+    async function runManualQueueCount(filters, fromSql, whereSql, params) {
+        const key = manualQueueFilterKey(filters);
+        const now = Date.now();
+        const cached = manualQueueCountCache.get(key);
+        if (cached && now - cached.at < MANUAL_QUEUE_COUNT_CACHE_MS) {
+            return { total: cached.total, approx: false, cached: true };
+        }
+        if (manualQueueCountInflight.has(key)) {
+            return manualQueueCountInflight.get(key);
+        }
+        const p = (async () => {
+            try {
+                const qc = withMaxExecutionTime(
+                    `SELECT COUNT(*) AS total ${fromSql} ${whereSql}`,
+                    MANUAL_QUEUE_MAX_EXEC_MS
+                );
+                const [[cntRow]] = await db.query(qc, params);
+                const total = Number(cntRow?.total || 0);
+                manualQueueCountCache.set(key, { total, at: Date.now() });
+                return { total, approx: false, cached: false };
+            } finally {
+                manualQueueCountInflight.delete(key);
+            }
+        })();
+        manualQueueCountInflight.set(key, p);
+        return p;
+    }
 
     router.get('/manual-queue', async (req, res) => {
         const filters = parseManualQueueFilters(req.query);
@@ -2710,10 +2790,13 @@ module.exports = (db, settings) => {
         }
         const limit = Math.max(1, Math.min(parseInt(String(req.query.limit || '100'), 10) || 100, 300));
         const offset = Math.max(0, parseInt(String(req.query.offset || '0'), 10) || 0);
+        const includeTotal = String(req.query.include_total || '1') !== '0';
         try {
             await ensureMatchLaneTables();
-            const { whereSql, params } = buildManualQueueWhere(filters);
-            const q = `
+            await ensureMatchesPerfIndexes();
+            const { fromSql, whereSql, params } = buildManualQueueParts(filters);
+            const q = withMaxExecutionTime(
+                `
                 SELECT e.id, e.my_site_id, e.competitor_site_id, e.my_product_id, e.reason, e.source_product_match_id,
                        e.created_at, e.updated_at,
                        COALESCE(mp.sku, pm.my_sku) AS mp_sku,
@@ -2723,17 +2806,42 @@ module.exports = (db, settings) => {
                        mp.source_url AS mp_source_url,
                        ms.domain AS my_site_domain, ms.cms_type AS my_site_cms_type,
                        pr.name AS comp_project_name, pr.domain AS comp_domain
-                ${MANUAL_QUEUE_FROM}
+                ${fromSql}
                 LEFT JOIN my_sites ms ON ms.id = e.my_site_id
                 LEFT JOIN projects pr ON pr.id = e.competitor_site_id
                 ${whereSql}
                 ORDER BY e.updated_at DESC LIMIT ? OFFSET ?
-            `;
+            `,
+                MANUAL_QUEUE_MAX_EXEC_MS
+            );
+            // Сначала страница списка — COUNT не блокирует выдачу строк.
             const [data] = await db.query(q, [...params, limit, offset]);
             await enrichManualQueueDuplicateSkuHints(db, data);
-            const qc = `SELECT COUNT(*) AS total ${MANUAL_QUEUE_FROM} ${whereSql}`;
-            const [[cntRow]] = await db.query(qc, params);
-            return res.json({ data, total: Number(cntRow?.total || 0), limit, offset });
+
+            let total = offset + (Array.isArray(data) ? data.length : 0);
+            let totalApprox = true;
+            if (includeTotal) {
+                try {
+                    const cnt = await runManualQueueCount(filters, fromSql, whereSql, params);
+                    total = cnt.total;
+                    totalApprox = !!cnt.approx;
+                } catch (cntErr) {
+                    // Таймаут / kill — отдаём approx, чтобы UI не зависал.
+                    if (Array.isArray(data) && data.length === limit) {
+                        total = offset + data.length + 1;
+                    }
+                    totalApprox = true;
+                    console.warn('[matches] manual-queue COUNT failed:', cntErr && cntErr.message ? cntErr.message : cntErr);
+                }
+            }
+            return res.json({
+                data,
+                total,
+                total_approx: totalApprox,
+                limit,
+                offset,
+                include_total: includeTotal
+            });
         } catch (e) {
             return res.status(500).json({ error: e.message });
         }
@@ -2855,13 +2963,17 @@ module.exports = (db, settings) => {
         const t0 = Date.now();
         try {
             await ensureMatchLaneTables();
-            const { whereSql, params } = buildManualQueueWhere(filters);
+            await ensureMatchesPerfIndexes();
+            const { fromSql, whereSql, params } = buildManualQueueParts(filters);
             const [rows] = await db.query(
-                `SELECT e.id, e.my_site_id, e.my_product_id, e.competitor_site_id, e.reason
-                 ${MANUAL_QUEUE_FROM}
-                 ${whereSql}
-                 ORDER BY e.id ASC
-                 LIMIT 20000`,
+                withMaxExecutionTime(
+                    `SELECT e.id, e.my_site_id, e.my_product_id, e.competitor_site_id, e.reason
+                     ${fromSql}
+                     ${whereSql}
+                     ORDER BY e.id ASC
+                     LIMIT 20000`,
+                    MANUAL_QUEUE_MAX_EXEC_MS
+                ),
                 params
             );
             const filterMeta = {
@@ -2948,16 +3060,20 @@ module.exports = (db, settings) => {
         const t0 = Date.now();
         try {
             await ensureMatchLaneTables();
+            await ensureMatchesPerfIndexes();
             const actor = await resolveActorDisplayName(req);
-            const { whereSql, params } = buildManualQueueWhere(filters);
+            const { fromSql, whereSql, params } = buildManualQueueParts(filters);
             const [rows] = await db.query(
-                `SELECT e.id, e.my_site_id, e.my_product_id, e.competitor_site_id, e.reason,
+                withMaxExecutionTime(
+                    `SELECT e.id, e.my_site_id, e.my_product_id, e.competitor_site_id, e.reason,
                         COALESCE(mp.sku, pm.my_sku) AS mp_sku,
                         COALESCE(mp.name, pm.my_product_name) AS mp_name
-                 ${MANUAL_QUEUE_FROM}
-                 ${whereSql}
-                 ORDER BY e.id ASC
-                 LIMIT 20000`,
+                     ${fromSql}
+                     ${whereSql}
+                     ORDER BY e.id ASC
+                     LIMIT 20000`,
+                    MANUAL_QUEUE_MAX_EXEC_MS
+                ),
                 params
             );
             const filterMeta = {

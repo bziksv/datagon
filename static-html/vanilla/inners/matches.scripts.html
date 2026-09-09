@@ -3846,6 +3846,7 @@
           });
           updateManualQueuePaginationUi();
         }
+        var manualQueueAbortCtrl = null;
         function loadManualQueue() {
           var sid = listSiteId();
           if (!sid) {
@@ -3870,7 +3871,15 @@
           if (exReason) params.set("exclusion_reason", exReason);
           params.set("limit", String(lim));
           params.set("offset", String(off));
-          fetch("/api/matches/manual-queue?" + params.toString(), { credentials: "same-origin" })
+          if (manualQueueAbortCtrl) {
+            try {
+              manualQueueAbortCtrl.abort();
+            } catch (_e) {}
+          }
+          manualQueueAbortCtrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+          var fetchOpts = { credentials: "same-origin" };
+          if (manualQueueAbortCtrl) fetchOpts.signal = manualQueueAbortCtrl.signal;
+          fetch("/api/matches/manual-queue?" + params.toString(), fetchOpts)
             .then(function (r) {
               return r.json().then(function (j) {
                 return { r: r, j: j };
@@ -3899,6 +3908,7 @@
               scheduleSyncUrl();
             })
             .catch(function (e) {
+              if (e && (e.name === "AbortError" || e.code === 20)) return;
               setManualQueueCountUi("Не удалось загрузить очередь.");
               updateManualQueuePaginationUi();
               alert(e.message || "Ошибка");

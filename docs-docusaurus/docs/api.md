@@ -538,6 +538,8 @@ Query:
 
 `GET /api/matches/manual-queue` для дублей артикула добавляет `sku_not_unique`, `sku_duplicate_count` и при наличии другой подтверждённой пары — `sibling_confirmed` (`cms_product_id`, `source_url` / `source_id`, названия/SKU обеих сторон, `competitor_url` из `prices`, `confirmed_by` / `confirmed_at`). UI шага 3 — модалка сравнения со ссылками «Мой товар» / «Редактировать» / «Конкурент».
 
+Фильтр «уже confirmed по названию» — **anti-join** к `DISTINCT` confirmed-имён (не коррелированный `NOT EXISTS`). Query: `my_site_id` (обяз.), опц. `competitor_site_id` / `search` / `exclusion_reason` / `limit` / `offset` / `include_total` (`0` — без COUNT). Ответ: `{ data, total, total_approx, limit, offset, include_total }`. COUNT кэшируется ~15 с и дедупится in-flight; на SELECT — `MAX_EXECUTION_TIME(15000)`. Индексы: `idx_pm_site_comp_status_name`, `idx_me_site_comp_updated` (через `ensureMatchesPerfIndexes`).
+
 ### POST `/api/matches/confirm`
 Подтвердить совпадение.
 
