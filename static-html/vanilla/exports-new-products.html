@@ -195,6 +195,8 @@
   }
   body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-cell {
     position: relative;
+    overflow: hidden;
+    vertical-align: middle;
   }
   body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-cell-text {
     display: block;
@@ -203,6 +205,7 @@
     white-space: nowrap;
     width: 100%;
     max-width: 100%;
+    min-width: 0;
   }
   body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-click-copy {
     cursor: copy;
@@ -549,6 +552,8 @@
   body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-url-group {
     flex-wrap: nowrap;
     width: 100%;
+    max-width: 100%;
+    min-width: 0;
   }
   body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-url-group .form-control {
     flex: 1 1 auto;
@@ -1521,7 +1526,7 @@
                   <table
                     id="dg-np-table"
                     class="table table-hover table-striped mb-0 datagon-my-products-table dg-mp-table"
-                    style="width:max-content;min-width:min(100%,2200px);max-width:none;table-layout:auto;border-collapse:collapse;border-spacing:0"
+                    style="table-layout:auto;border-collapse:collapse;border-spacing:0"
                   >
                     <thead id="dg-np-thead"></thead>
                     <tbody id="dg-np-tbody"></tbody>
@@ -1992,8 +1997,9 @@
     return Math.max(getColMin(key), Math.min(getColMax(key), Math.round(w)));
   }
 
-  /** Ширины только через <colgroup> (как shop): не вешать min/max на каждый td —
-   *  иначе суммарный min-width раздувает таблицу и шапку. */
+  /** Ширины через <colgroup> + clamp th/td.
+   *  Нельзя держать width:max-content на таблице — тогда длинный nowrap (РУ)
+   *  раздувает колонку и «📏 Ширины» не действует. Ширина таблицы = сумма колонок. */
   function applyColumnWidths() {
     var table = el("dg-np-table");
     if (!table) return;
@@ -2001,14 +2007,51 @@
     var existing = table.querySelector(":scope > colgroup");
     if (existing) existing.parentNode.removeChild(existing);
     var cg = document.createElement("colgroup");
-    visibleKeys.forEach(function (key) {
+    var widths = visibleKeys.map(function (key) {
+      return resolvedColWidthPx(key);
+    });
+    var total = 0;
+    visibleKeys.forEach(function (key, idx) {
       var col = document.createElement("col");
-      var px = resolvedColWidthPx(key) + "px";
+      var px = widths[idx] + "px";
+      total += widths[idx];
       col.style.width = px;
+      col.style.minWidth = px;
+      col.style.maxWidth = px;
       col.setAttribute("data-col-key", key);
       cg.appendChild(col);
     });
     table.insertBefore(cg, table.firstElementChild);
+    if (total > 0) {
+      table.style.width = total + "px";
+      table.style.minWidth = total + "px";
+      table.style.maxWidth = "none";
+    }
+
+    function clampRow(row) {
+      if (!row) return;
+      var cells = row.children;
+      if (!cells || cells.length !== widths.length) return;
+      for (var i = 0; i < widths.length; i++) {
+        var px = widths[i] + "px";
+        var cell = cells[i];
+        cell.style.width = px;
+        cell.style.minWidth = px;
+        cell.style.maxWidth = px;
+        cell.style.overflow = "hidden";
+        cell.style.boxSizing = "border-box";
+      }
+    }
+
+    var thead = el("dg-np-thead");
+    if (thead) {
+      [].forEach.call(thead.querySelectorAll(":scope > tr"), clampRow);
+    }
+    var tbody = el("dg-np-tbody");
+    if (tbody) {
+      [].forEach.call(tbody.querySelectorAll(":scope > tr"), clampRow);
+    }
+    scheduleNpFloatingHeaderRebase();
   }
 
   function getStatusOpts() {
@@ -5052,6 +5095,19 @@
         saveWidths();
         applyColumnWidths();
         this.value = String(n);
+      });
+      input.addEventListener("input", function () {
+        var k = this.getAttribute("data-col-key");
+        var n = parseInt(this.value, 10);
+        if (!Number.isFinite(n)) return;
+        n = Math.max(getColMin(k), Math.min(getColMax(k), n));
+        state.columnWidths[k] = n;
+        applyColumnWidths();
+      });
+      input.addEventListener("blur", function () {
+        saveWidths();
+        var k = this.getAttribute("data-col-key");
+        this.value = String(resolvedColWidthPx(k));
       });
       wrap.appendChild(span);
       wrap.appendChild(input);

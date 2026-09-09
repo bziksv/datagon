@@ -281,8 +281,9 @@
     return Math.max(getColMin(key), Math.min(getColMax(key), Math.round(w)));
   }
 
-  /** Ширины только через <colgroup> (как shop): не вешать min/max на каждый td —
-   *  иначе суммарный min-width раздувает таблицу и шапку. */
+  /** Ширины через <colgroup> + clamp th/td.
+   *  Нельзя держать width:max-content на таблице — тогда длинный nowrap (РУ)
+   *  раздувает колонку и «📏 Ширины» не действует. Ширина таблицы = сумма колонок. */
   function applyColumnWidths() {
     var table = el("dg-np-table");
     if (!table) return;
@@ -290,14 +291,51 @@
     var existing = table.querySelector(":scope > colgroup");
     if (existing) existing.parentNode.removeChild(existing);
     var cg = document.createElement("colgroup");
-    visibleKeys.forEach(function (key) {
+    var widths = visibleKeys.map(function (key) {
+      return resolvedColWidthPx(key);
+    });
+    var total = 0;
+    visibleKeys.forEach(function (key, idx) {
       var col = document.createElement("col");
-      var px = resolvedColWidthPx(key) + "px";
+      var px = widths[idx] + "px";
+      total += widths[idx];
       col.style.width = px;
+      col.style.minWidth = px;
+      col.style.maxWidth = px;
       col.setAttribute("data-col-key", key);
       cg.appendChild(col);
     });
     table.insertBefore(cg, table.firstElementChild);
+    if (total > 0) {
+      table.style.width = total + "px";
+      table.style.minWidth = total + "px";
+      table.style.maxWidth = "none";
+    }
+
+    function clampRow(row) {
+      if (!row) return;
+      var cells = row.children;
+      if (!cells || cells.length !== widths.length) return;
+      for (var i = 0; i < widths.length; i++) {
+        var px = widths[i] + "px";
+        var cell = cells[i];
+        cell.style.width = px;
+        cell.style.minWidth = px;
+        cell.style.maxWidth = px;
+        cell.style.overflow = "hidden";
+        cell.style.boxSizing = "border-box";
+      }
+    }
+
+    var thead = el("dg-np-thead");
+    if (thead) {
+      [].forEach.call(thead.querySelectorAll(":scope > tr"), clampRow);
+    }
+    var tbody = el("dg-np-tbody");
+    if (tbody) {
+      [].forEach.call(tbody.querySelectorAll(":scope > tr"), clampRow);
+    }
+    scheduleNpFloatingHeaderRebase();
   }
 
   function getStatusOpts() {
@@ -3341,6 +3379,19 @@
         saveWidths();
         applyColumnWidths();
         this.value = String(n);
+      });
+      input.addEventListener("input", function () {
+        var k = this.getAttribute("data-col-key");
+        var n = parseInt(this.value, 10);
+        if (!Number.isFinite(n)) return;
+        n = Math.max(getColMin(k), Math.min(getColMax(k), n));
+        state.columnWidths[k] = n;
+        applyColumnWidths();
+      });
+      input.addEventListener("blur", function () {
+        saveWidths();
+        var k = this.getAttribute("data-col-key");
+        this.value = String(resolvedColWidthPx(k));
       });
       wrap.appendChild(span);
       wrap.appendChild(input);
