@@ -483,11 +483,13 @@ async function initDB() {
                     !r.setting_key.endsWith('_time') &&
                     !r.setting_key.endsWith('_weekdays') &&
                     (
+                        r.setting_key.endsWith('_enabled') ||
                         r.setting_key.includes('limit') ||
                         r.setting_key.includes('size') ||
                         r.setting_key.includes('delay') ||
                         r.setting_key.includes('days') ||
                         r.setting_key.includes('minutes') ||
+                        r.setting_key.endsWith('_interval_min') ||
                         r.setting_key === 'fetch_proxy_enabled'
                     );
                 appSettings[r.setting_key] = asInt ? parseInt(r.setting_value, 10) : r.setting_value;

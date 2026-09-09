@@ -3233,6 +3233,7 @@
           root.scrollTop = top;
           root.scrollLeft = left;
         });
+        scheduleAutoSyncPersistFromUi();
       }
 
       function scheduleAutoSyncTimeCommitAfterLeave(timeInput) {
@@ -3298,6 +3299,28 @@
         card.classList.toggle("dg-as-export-section-off", !on);
       }
 
+      var autoSyncPersistTimer = null;
+      function scheduleAutoSyncPersistFromUi() {
+        clearTimeout(autoSyncPersistTimer);
+        autoSyncPersistTimer = setTimeout(function () {
+          autoSyncPersistTimer = null;
+          if (window.DatagonNotify && window.DatagonNotify.toast) {
+            window.DatagonNotify.toast({ type: "info", message: "Сохраняем расписание автосинхронизации…" });
+          }
+          saveAutoSync();
+        }, 350);
+      }
+
+      function isAutoSyncPersistControl(el) {
+        if (!el || !el.closest) return false;
+        var root = el.closest("#dg-set-auto-sync-list, #dg-set-export-ms-card, #dg-set-export-ms-body");
+        if (!root) return false;
+        if (!el.closest(".dg-as-task") && el.id !== "dg-set-auto_export_ms_en") return false;
+        if (el.type === "checkbox") return true;
+        if (el.tagName === "SELECT") return true;
+        return false;
+      }
+
       function bindAutoSyncScheduleUiRefresh() {
         var scheduleCard = document.getElementById("dg-set-auto-sync-list");
         if (scheduleCard) scheduleCard = scheduleCard.closest(".card-body");
@@ -3348,6 +3371,9 @@
                 withAutoSyncScheduleScrollPreserved(function () {
                   refreshAutoSyncScheduleUi({ sort: false, force: true });
                 });
+              }
+              if (isAutoSyncPersistControl(t)) {
+                scheduleAutoSyncPersistFromUi();
               }
             },
             true
@@ -4315,6 +4341,12 @@
           var sentDisplay = mask ? maskValue(sent) : (sent === "" ? "<em>пусто</em>" : "<code>" + String(sent) + "</code>");
           var gotDisplay = mask ? maskValue(got) : (got === "" || got == null ? "<em>пусто</em>" : "<code>" + String(got) + "</code>");
           var same = String(sent || "") === String(got || "");
+          if (!same && /_enabled$/.test(String(k || ""))) {
+            function asEnFlag(v) {
+              return v === true || v === 1 || v === "1" ? 1 : 0;
+            }
+            same = asEnFlag(sent) === asEnFlag(got);
+          }
           if (!same && /^sales_formula_/.test(String(k || ""))) {
             var sn = parseFloat(String(sent).replace(",", "."));
             var gn = parseFloat(String(got).replace(",", "."));
