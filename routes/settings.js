@@ -487,6 +487,18 @@ module.exports = (db, appSettings) => {
             if(auto_sync_marketplaces_ym_time !== undefined) appSettings.auto_sync_marketplaces_ym_time = auto_sync_marketplaces_ym_time || '06:50';
             if(auto_sync_huckster_enabled !== undefined) appSettings.auto_sync_huckster_enabled = auto_sync_huckster_enabled ? 1 : 0;
             if(auto_sync_huckster_time !== undefined) appSettings.auto_sync_huckster_time = auto_sync_huckster_time || '06:00';
+            if (auto_sync_np_ms_enrich_enabled !== undefined) {
+                appSettings.auto_sync_np_ms_enrich_enabled = auto_sync_np_ms_enrich_enabled ? 1 : 0;
+            }
+            if (auto_sync_np_ms_enrich_interval_min !== undefined) {
+                const ivMem = Number(auto_sync_np_ms_enrich_interval_min || 30);
+                appSettings.auto_sync_np_ms_enrich_interval_min = [15, 30, 60].includes(ivMem) ? ivMem : 30;
+            }
+            if (auto_sync_np_ms_enrich_weekdays !== undefined) {
+                appSettings.auto_sync_np_ms_enrich_weekdays = normalizeAutoSyncWeekdaysCsv(
+                    auto_sync_np_ms_enrich_weekdays
+                );
+            }
             if(auto_sync_db_size_enabled !== undefined) appSettings.auto_sync_db_size_enabled = auto_sync_db_size_enabled ? 1 : 0;
             if(auto_sync_db_size_time !== undefined) appSettings.auto_sync_db_size_time = auto_sync_db_size_time || '02:00';
             if(auto_sync_export_ms_enabled !== undefined) appSettings.auto_sync_export_ms_enabled = auto_sync_export_ms_enabled ? 1 : 0;
