@@ -73,6 +73,14 @@
     var cls = NP_STATUS_ROW_CLASS[String(status || "")];
     if (cls) tr.classList.add(cls);
   }
+  /** Только ячейка Huckster: красная пока «Не добавлено», зелёная при «Добавлено». */
+  function applyNpHucksterCellClass(td, hucksterVal) {
+    if (!td) return;
+    td.classList.remove("dg-np-huckster-cell-no", "dg-np-huckster-cell-yes");
+    var cur = String(hucksterVal || "").trim();
+    if (cur === "yes") td.classList.add("dg-np-huckster-cell-yes");
+    else td.classList.add("dg-np-huckster-cell-no");
+  }
   var PRIORITY_OPTS = [
     { key: "important", label: "Важный" },
     { key: "normal", label: "Обычный" },
@@ -905,10 +913,11 @@
     var editable = canEditHuckster();
     var cur = String(row.huckster || "").trim();
     if (cur !== "yes" && cur !== "no") cur = "no";
+    applyNpHucksterCellClass(td, cur);
 
     if (!editable) {
       var span = document.createElement("span");
-      span.className = "badge " + (cur === "yes" ? "bg-success" : "bg-secondary");
+      span.className = "badge " + (cur === "yes" ? "bg-success" : "bg-danger");
       span.textContent = cur === "yes" ? "Добавлено" : "Не добавлено";
       span.title = "Менять может только менеджер маркетплейсов";
       td.appendChild(span);
@@ -931,6 +940,13 @@
       patchRow(row.id, payload)
         .then(function (j) {
           applyPatched(row, j);
+          var next = String((j && j.data && j.data.huckster) || sel.value || "no").trim();
+          applyNpHucksterCellClass(td, next);
+          document
+            .querySelectorAll('tr.dg-np-kit-row[data-dg-kit-parent="' + String(row.id) + '"] td.dg-np-kit-huckster-cell')
+            .forEach(function (ktd) {
+              applyNpHucksterCellClass(ktd, next);
+            });
           if (window.DatagonNotify && window.DatagonNotify.toast) {
             window.DatagonNotify.toast({ type: "success", message: "Huckster сохранён" });
           }
@@ -2285,11 +2301,14 @@
     tdId.innerHTML = '<span class="badge bg-light text-primary border">↳ комплект</span>';
     tr.appendChild(tdId);
     tr.appendChild(mutedCell("—", { title: "Связи — у товара" }));
-    tr.appendChild(
-      mutedCell(parent.huckster === "yes" ? "Добавлено" : "Не добавлено", {
+    (function () {
+      var hkTd = mutedCell(parent.huckster === "yes" ? "Добавлено" : "Не добавлено", {
         title: "Huckster — у товара (меняет менеджер маркетплейсов)",
-      })
-    );
+      });
+      hkTd.classList.add("dg-np-kit-huckster-cell");
+      applyNpHucksterCellClass(hkTd, parent.huckster === "yes" ? "yes" : "no");
+      tr.appendChild(hkTd);
+    })();
 
     tr.appendChild(mutedCell(parent.product_manager_name || "—", { title: "Как у товара" }));
     tr.appendChild(mutedCell(fmtDt(parent.created_at), { title: "Как у товара" }));
