@@ -817,6 +817,51 @@
                                   </div>
                 </div>
 
+                <div class="col-12 dg-as-task" data-as-task="np_ms_enrich" data-as-category="internal" data-as-schedule-mode="interval" data-as-en-id="dg-set-auto_np_ms_enrich_en" data-as-interval-id="dg-set-auto_np_ms_enrich_interval" data-as-weekdays-prefix="dg-set-auto_np_ms_enrich_wd">
+                  <div class="dg-as-task-card dg-as-cat-internal">
+                    <div class="dg-as-task-head">
+                      <span class="dg-as-cat-pill dg-as-cat-pill-dynamic"></span>
+                      <span class="dg-as-next-badge dg-as-next-badge-dynamic"></span>
+                    </div>
+                  <label class="form-label">Новые товары: дозаполнение полей из МойСклад (кэш, МСК)</label>
+                  <div class="d-flex gap-2 align-items-center flex-wrap">
+                    <input type="checkbox" id="dg-set-auto_np_ms_enrich_en" />
+                    <span>Включить</span>
+                    <label for="dg-set-auto_np_ms_enrich_interval" class="form-label mb-0 ms-1">Каждые</label>
+                    <select class="form-select" id="dg-set-auto_np_ms_enrich_interval" style="max-width:120px">
+                      <option value="15">15 мин</option>
+                      <option value="30" selected>30 мин</option>
+                      <option value="60">60 мин</option>
+                    </select>
+                    <button type="button" class="btn btn-outline-primary btn-sm" id="dg-set-auto_np_ms_enrich_run" data-dg-activity-label="Принудительно дозаполнить поля МС в новых товарах" data-dg-notify-start="Ставим в очередь дозаполнение полей МС…">
+                      Запустить сейчас
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm dg-set-as-log-btn" data-dg-notify-start="Открываем журнал запусков…" data-dg-tooltip="Журнал запусков этой задачи за выбранный день (МСК)">Лог</button>
+                  </div>
+                  <div class="mt-2">
+                    <div class="form-label small text-muted mb-1">Дни недели (МСК)</div>
+                    <div class="d-flex flex-wrap gap-2 align-items-center">
+                      <label class="form-check form-check-inline mb-0 small"><input type="checkbox" class="form-check-input" id="dg-set-auto_np_ms_enrich_wd_1" /> пн</label>
+                      <label class="form-check form-check-inline mb-0 small"><input type="checkbox" class="form-check-input" id="dg-set-auto_np_ms_enrich_wd_2" /> вт</label>
+                      <label class="form-check form-check-inline mb-0 small"><input type="checkbox" class="form-check-input" id="dg-set-auto_np_ms_enrich_wd_3" /> ср</label>
+                      <label class="form-check form-check-inline mb-0 small"><input type="checkbox" class="form-check-input" id="dg-set-auto_np_ms_enrich_wd_4" /> чт</label>
+                      <label class="form-check form-check-inline mb-0 small"><input type="checkbox" class="form-check-input" id="dg-set-auto_np_ms_enrich_wd_5" /> пт</label>
+                      <label class="form-check form-check-inline mb-0 small"><input type="checkbox" class="form-check-input" id="dg-set-auto_np_ms_enrich_wd_6" /> сб</label>
+                      <label class="form-check form-check-inline mb-0 small"><input type="checkbox" class="form-check-input" id="dg-set-auto_np_ms_enrich_wd_7" /> вс</label>
+                    </div>
+                    <div class="text-muted" style="font-size: 11px;">Пусто в БД или все семь галочек — каждый день. Запуск в слоты :00 / :15 / :30 / :45 (в зависимости от интервала), по календарю МСК.</div>
+                  </div>
+                  <p class="small text-muted mb-0 mt-1">
+                    Быстрое дозаполнение пустых <strong>кода</strong>, <strong>штрихкода</strong>, <strong>НДС</strong> и <strong>РУ</strong>
+                    в очереди <a href="/exports-new-products.html">«Новые товары» → размещение на маркеты</a>
+                    из уже скачанного кэша МойСклад (<code>ms_export</code> / детали карточек). Без live API МС —
+                    не зависает и не нагружает лимиты. Имеет смысл после импорта каталога МС
+                    (<code>moysklad</code>). Прогресс — на
+                    <a href="/processes.html">«Логи фоновых процессов»</a>.
+                  </p>
+                                  </div>
+                </div>
+
                 <div class="col-12 dg-as-task" data-as-task="db_size" data-as-category="internal" data-as-en-id="dg-set-auto_db_size_en" data-as-time-id="dg-set-auto_db_size_time">
                   <div class="dg-as-task-card dg-as-cat-internal">
                     <div class="dg-as-task-head">

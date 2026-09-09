@@ -74,6 +74,9 @@
         auto_sync_marketplaces_ym_time: "06:50",
         auto_sync_huckster_enabled: 0,
         auto_sync_huckster_time: "06:00",
+        auto_sync_np_ms_enrich_enabled: 0,
+        auto_sync_np_ms_enrich_interval_min: 30,
+        auto_sync_np_ms_enrich_weekdays: "",
         auto_sync_db_size_enabled: 1,
         auto_sync_db_size_time: "02:00",
         auto_sync_export_ms_enabled: 0,
@@ -352,23 +355,66 @@
       function readAutoSyncTaskScheduleMeta(taskEl) {
         var cat = taskEl.getAttribute("data-as-category") || "internal";
         var en = readAutoSyncTaskEnabledFromDom(taskEl);
-        var timeId = taskEl.getAttribute("data-as-time-id");
-        var timeEl = timeId ? document.getElementById(timeId) : null;
-        var timeStr = readAutoSyncTaskTimeStr(taskEl, timeEl);
+        var mode = String(taskEl.getAttribute("data-as-schedule-mode") || "daily");
         var wdPrefix = taskEl.getAttribute("data-as-weekdays-prefix");
         var wdCsv = wdPrefix ? collectAutoSyncWeekdayCsv(wdPrefix) : "";
-        var nextMeta = computeAutoSyncNextRunMeta(en, timeStr, wdCsv);
+        var timeStr;
+        var timeMin;
+        var nextMeta;
+        if (mode === "interval") {
+          var intervalId = taskEl.getAttribute("data-as-interval-id");
+          var intervalEl = intervalId ? document.getElementById(intervalId) : null;
+          var iv = Number(intervalEl && intervalEl.value ? intervalEl.value : 30);
+          if ([15, 30, 60].indexOf(iv) < 0) iv = 30;
+          timeStr = "каждые " + iv + " мин";
+          timeMin = iv;
+          nextMeta = computeAutoSyncNextIntervalMeta(en, iv, wdCsv);
+        } else {
+          var timeId = taskEl.getAttribute("data-as-time-id");
+          var timeEl = timeId ? document.getElementById(timeId) : null;
+          timeStr = readAutoSyncTaskTimeStr(taskEl, timeEl);
+          timeMin = timeStrToMinutes(timeStr);
+          nextMeta = computeAutoSyncNextRunMeta(en, timeStr, wdCsv);
+        }
         return {
           el: taskEl,
           task: String(taskEl.getAttribute("data-as-task") || ""),
           category: cat,
+          scheduleMode: mode,
           title: getAutoSyncTaskTitle(taskEl),
           enabled: en,
           timeStr: timeStr,
-          timeMin: timeStrToMinutes(timeStr),
+          timeMin: timeMin,
           weekdaysCsv: wdCsv,
           nextMeta: nextMeta,
         };
+      }
+
+      function computeAutoSyncNextIntervalMeta(enabled, intervalMin, weekdaysCsv) {
+        if (!enabled) return { sortKey: Number.MAX_SAFE_INTEGER, label: "выкл." };
+        var now = getMoscowNowPartsForSchedule();
+        var iv = Number(intervalMin) || 30;
+        if ([15, 30, 60].indexOf(iv) < 0) iv = 30;
+        var wdSet = parseWeekdaysSetFromCsv(weekdaysCsv);
+        var nowMin = timeStrToMinutes(now.time);
+        for (var add = 0; add <= 8; add++) {
+          var wd = ((now.weekdayMon1Sun7 - 1 + add) % 7) + 1;
+          if (!wdSet[wd]) continue;
+          if (add === 0) {
+            var rem = nowMin % iv;
+            var wait = rem === 0 ? 0 : iv - rem;
+            var label;
+            if (wait === 0) label = "слот сейчас";
+            else if (wait < 60) label = "через " + wait + " мин";
+            else label = "сегодня через " + wait + " мин";
+            return { sortKey: wait, label: label };
+          }
+          var waitDay = add * 24 * 60 - nowMin;
+          var label2 =
+            add === 1 ? "завтра 00:00" : "через " + add + " дн., 00:00";
+          return { sortKey: waitDay, label: label2 };
+        }
+        return { sortKey: Number.MAX_SAFE_INTEGER, label: "—" };
       }
 
       function weekdaysSetsOverlap(csvA, csvB) {
@@ -390,6 +436,7 @@
             var a = enabled[i];
             var b = enabled[j];
             if (!weekdaysSetsOverlap(a.weekdaysCsv, b.weekdaysCsv)) continue;
+            if (a.scheduleMode === "interval" || b.scheduleMode === "interval") continue;
             var diff = Math.abs(a.timeMin - b.timeMin);
             if (diff > AS_TIME_CLASH_MAX_DIFF_MIN) continue;
             var crossMs =
@@ -923,7 +970,14 @@
               if (t.type === "time") return;
               if (t.type === "checkbox") {
                 withAutoSyncScheduleScrollPreserved(function () {
-                  refreshAutoSyncScheduleUi({ sort: true, force: true });
+                  // Не пересобирать DOM: сортировка по времени не меняется от галочки,
+                  // а clear+append даёт скачок скролла («как будто проскроллили вверх»).
+                  refreshAutoSyncScheduleUi({ sort: false, force: true });
+                });
+              }
+              if (t.tagName === "SELECT" && t.id && t.id.indexOf("np_ms_enrich") >= 0) {
+                withAutoSyncScheduleScrollPreserved(function () {
+                  refreshAutoSyncScheduleUi({ sort: false, force: true });
                 });
               }
             },
@@ -990,6 +1044,12 @@
         set("dg-set-auto_market_ym_time", merged.auto_sync_marketplaces_ym_time || "06:50");
         document.getElementById("dg-set-auto_huckster_en").checked = Number(merged.auto_sync_huckster_enabled) === 1;
         set("dg-set-auto_huckster_time", merged.auto_sync_huckster_time || "06:00");
+        var npEn = document.getElementById("dg-set-auto_np_ms_enrich_en");
+        if (npEn) npEn.checked = Number(merged.auto_sync_np_ms_enrich_enabled) === 1;
+        var npIv = Number(merged.auto_sync_np_ms_enrich_interval_min || 30);
+        if ([15, 30, 60].indexOf(npIv) < 0) npIv = 30;
+        set("dg-set-auto_np_ms_enrich_interval", String(npIv));
+        applyAutoSyncWeekdayChecks("dg-set-auto_np_ms_enrich_wd", merged.auto_sync_np_ms_enrich_weekdays);
         document.getElementById("dg-set-auto_db_size_en").checked = Number(merged.auto_sync_db_size_enabled) === 1;
         set("dg-set-auto_db_size_time", merged.auto_sync_db_size_time || "02:00");
         var exportMsEn = document.getElementById("dg-set-auto_export_ms_en");
@@ -2134,6 +2194,14 @@
           auto_sync_marketplaces_ym_time: getStr("dg-set-auto_market_ym_time") || "06:50",
           auto_sync_huckster_enabled: document.getElementById("dg-set-auto_huckster_en").checked,
           auto_sync_huckster_time: getStr("dg-set-auto_huckster_time") || "06:00",
+          auto_sync_np_ms_enrich_enabled: document.getElementById("dg-set-auto_np_ms_enrich_en")
+            ? document.getElementById("dg-set-auto_np_ms_enrich_en").checked
+            : false,
+          auto_sync_np_ms_enrich_interval_min: (function () {
+            var n = getNum("dg-set-auto_np_ms_enrich_interval", 30);
+            return [15, 30, 60].indexOf(n) >= 0 ? n : 30;
+          })(),
+          auto_sync_np_ms_enrich_weekdays: collectAutoSyncWeekdayCsv("dg-set-auto_np_ms_enrich_wd"),
           auto_sync_db_size_enabled: document.getElementById("dg-set-auto_db_size_en").checked,
           auto_sync_db_size_time: getStr("dg-set-auto_db_size_time") || "02:00",
           auto_sync_export_ms_enabled: document.getElementById("dg-set-auto_export_ms_en")
@@ -2183,6 +2251,9 @@
             "auto_sync_marketplaces_wb_time",
             "auto_sync_marketplaces_ym_time",
             "auto_sync_huckster_time",
+            "auto_sync_np_ms_enrich_enabled",
+            "auto_sync_np_ms_enrich_interval_min",
+            "auto_sync_np_ms_enrich_weekdays",
             "auto_sync_db_size_time",
             "auto_sync_export_ms_enabled",
             "auto_sync_dimensions_time",
@@ -2214,6 +2285,7 @@
         marketplaces_wb: "Wildberries",
         marketplaces_ym: "Яндекс Маркет",
         huckster: "Huckster",
+        np_ms_enrich: "Новые товары: поля МС",
         db_size: "Размер БД и диска",
         dimensions: "Габариты МС",
         min_stock_export: "Неснижаемый остаток МС",
@@ -3437,6 +3509,12 @@
       document.getElementById("dg-set-auto_market_wb_run").addEventListener("click", function () { runAutoSyncNow("marketplaces_wb", "Wildberries", "dg-set-auto_market_wb_run"); });
       document.getElementById("dg-set-auto_market_ym_run").addEventListener("click", function () { runAutoSyncNow("marketplaces_ym", "Яндекс Маркет", "dg-set-auto_market_ym_run"); });
       document.getElementById("dg-set-auto_huckster_run").addEventListener("click", function () { runAutoSyncNow("huckster", "Huckster", "dg-set-auto_huckster_run"); });
+      var npMsEnrichRun = document.getElementById("dg-set-auto_np_ms_enrich_run");
+      if (npMsEnrichRun) {
+        npMsEnrichRun.addEventListener("click", function () {
+          runAutoSyncNow("np_ms_enrich", "Новые товары: поля МС", "dg-set-auto_np_ms_enrich_run");
+        });
+      }
       document.getElementById("dg-set-auto_db_size_run").addEventListener("click", function () { runAutoSyncNow("db_size", "Размер БД и диска", "dg-set-auto_db_size_run"); });
       document.getElementById("dg-set-auto_dim_run").addEventListener("click", function () { runAutoSyncNow("dimensions", "Габариты МС", "dg-set-auto_dim_run"); });
       document.getElementById("dg-set-auto_minstock_run").addEventListener("click", function () {

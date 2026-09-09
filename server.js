@@ -131,6 +131,10 @@ let appSettings = {
     auto_sync_marketplaces_ym_time: '06:50',
     auto_sync_huckster_enabled: 0,
     auto_sync_huckster_time: '06:00',
+    /** Дозаполнение кода/штрихкода/НДС/РУ в «Новые товары → маркеты» из кэша МС (интервал + дни недели). */
+    auto_sync_np_ms_enrich_enabled: 0,
+    auto_sync_np_ms_enrich_interval_min: 30,
+    auto_sync_np_ms_enrich_weekdays: '',
     auto_sync_db_size_enabled: 1,
     auto_sync_db_size_time: '02:00',
     /** Авто-выгрузка пользовательских override габаритов в МойСклад
@@ -427,6 +431,9 @@ async function initDB() {
             ['auto_sync_marketplaces_ym_time','06:50'],
             ['auto_sync_huckster_enabled','0'],
             ['auto_sync_huckster_time','06:00'],
+            ['auto_sync_np_ms_enrich_enabled','0'],
+            ['auto_sync_np_ms_enrich_interval_min','30'],
+            ['auto_sync_np_ms_enrich_weekdays',''],
             ['auto_sync_db_size_enabled','1'],
             ['auto_sync_db_size_time','02:00'],
             ['auto_sync_export_ms_enabled','0'],
@@ -2399,6 +2406,31 @@ async function processAutoSyncQueue() {
                     await finishAutoSyncRun('ms_orders', statusOrd, messageOrd);
                     console.log('[AUTO SYNC] Queue done: ms_orders — ' + statusOrd + ' (' + messageOrd + ')');
                 }
+            } else if (task === 'np_ms_enrich') {
+                console.log('[AUTO SYNC] Queue start: np_ms_enrich');
+                await startAutoSyncRun('np_ms_enrich', triggerType);
+                let statusNp = 'completed';
+                let messageNp = '';
+                try {
+                    const marketsMod = require('./lib/dgNewProductsMarkets');
+                    if (typeof marketsMod.backfillMarketsMsFieldsFromCache !== 'function') {
+                        throw new Error('backfillMarketsMsFieldsFromCache недоступен');
+                    }
+                    const r = await marketsMod.backfillMarketsMsFieldsFromCache(db, { limit: 3000 });
+                    messageNp = (
+                        'Поля МС (кэш): сканировано ' +
+                        (r.scanned || 0) +
+                        ', обновлено ' +
+                        (r.updated || 0) +
+                        ', без совпадения в МС ' +
+                        (r.missed || 0)
+                    ).slice(0, 480);
+                } catch (e) {
+                    statusNp = 'failed';
+                    messageNp = ('Ошибка дозаполнения полей МС: ' + (e && e.message ? e.message : e)).slice(0, 480);
+                }
+                await finishAutoSyncRun('np_ms_enrich', statusNp, messageNp);
+                console.log('[AUTO SYNC] Queue done: np_ms_enrich — ' + statusNp);
             }
         }
     } catch (e) {
@@ -2450,6 +2482,9 @@ async function processAutoSyncQueue() {
         }
         if (autoSyncRunIds.has('medmarket_fill')) {
             await finishAutoSyncRun('medmarket_fill', 'failed', e.message || 'Ошибка очереди');
+        }
+        if (autoSyncRunIds.has('np_ms_enrich')) {
+            await finishAutoSyncRun('np_ms_enrich', 'failed', e.message || 'Ошибка очереди');
         }
     } finally {
         autoSyncRunnerActive = false;
@@ -2508,6 +2543,16 @@ function startAutoSyncScheduler() {
                     time: String(appSettings.auto_sync_huckster_time || '06:00').slice(0, 5)
                 },
                 {
+                    type: 'np_ms_enrich',
+                    enabled: Number(appSettings.auto_sync_np_ms_enrich_enabled || 0) === 1,
+                    scheduleMode: 'interval',
+                    intervalMin: (() => {
+                        const n = Number(appSettings.auto_sync_np_ms_enrich_interval_min || 30);
+                        return [15, 30, 60].includes(n) ? n : 30;
+                    })(),
+                    weekdays: parseAutoSyncWeekdaysMon17(appSettings.auto_sync_np_ms_enrich_weekdays),
+                },
+                {
                     type: 'db_size',
                     enabled: Number(appSettings.auto_sync_db_size_enabled ?? 1) === 1,
                     time: String(appSettings.auto_sync_db_size_time || '02:00').slice(0, 5)
@@ -2560,9 +2605,18 @@ function startAutoSyncScheduler() {
             ];
             for (const t of tasks) {
                 if (!t.enabled) continue;
-                if (now.time !== t.time) continue;
                 if (t.weekdays && !t.weekdays.has(now.weekdayMon1Sun7)) continue;
-                const runKey = `${now.date} ${t.time}`;
+                let runKey;
+                if (t.scheduleMode === 'interval') {
+                    const iv = Number(t.intervalMin) || 30;
+                    const parts = String(now.time || '00:00').slice(0, 5).split(':');
+                    const minsOfDay = (parseInt(parts[0], 10) || 0) * 60 + (parseInt(parts[1], 10) || 0);
+                    if (minsOfDay % iv !== 0) continue;
+                    runKey = `${now.date} ${now.time}`;
+                } else {
+                    if (now.time !== t.time) continue;
+                    runKey = `${now.date} ${t.time}`;
+                }
                 const last = autoSyncLastRunByTask.get(t.type);
                 if (last === runKey) continue;
                 autoSyncLastRunByTask.set(t.type, runKey);
@@ -2903,6 +2957,9 @@ initDB().then(async () => {
                     marketplaces_ym_time: String(appSettings.auto_sync_marketplaces_ym_time || '06:50'),
                     huckster_enabled: Number(appSettings.auto_sync_huckster_enabled || 0) === 1,
                     huckster_time: String(appSettings.auto_sync_huckster_time || '06:00'),
+                    np_ms_enrich_enabled: Number(appSettings.auto_sync_np_ms_enrich_enabled || 0) === 1,
+                    np_ms_enrich_interval_min: Number(appSettings.auto_sync_np_ms_enrich_interval_min || 30),
+                    np_ms_enrich_weekdays: String(appSettings.auto_sync_np_ms_enrich_weekdays || ''),
                     db_size_enabled: Number(appSettings.auto_sync_db_size_enabled ?? 1) === 1,
                     db_size_time: String(appSettings.auto_sync_db_size_time || '02:00'),
                     dimensions_enabled: Number(appSettings.auto_sync_dimensions_enabled || 0) === 1,

@@ -73,12 +73,22 @@
     var cls = NP_STATUS_ROW_CLASS[String(status || "")];
     if (cls) tr.classList.add(cls);
   }
-  /** Только ячейка Huckster: красная пока «Не добавлено», зелёная при «Добавлено». */
-  function applyNpHucksterCellClass(td, hucksterVal) {
+  /** Только ячейка Huckster: красная пока нет в системе, зелёная если поле «Добавлено» или бейдж HK. */
+  function isNpHucksterEffectivelyYes(row) {
+    if (!row) return false;
+    if (String(row.huckster || "").trim() === "yes") return true;
+    if (row.huckster_added) return true;
+    if (row.presence && row.presence.huckster) return true;
+    return false;
+  }
+  function applyNpHucksterCellClass(td, yesOrVal) {
     if (!td) return;
     td.classList.remove("dg-np-huckster-cell-no", "dg-np-huckster-cell-yes");
-    var cur = String(hucksterVal || "").trim();
-    if (cur === "yes") td.classList.add("dg-np-huckster-cell-yes");
+    var yes =
+      yesOrVal === true ||
+      yesOrVal === "yes" ||
+      (yesOrVal && typeof yesOrVal === "object" && isNpHucksterEffectivelyYes(yesOrVal));
+    if (yes) td.classList.add("dg-np-huckster-cell-yes");
     else td.classList.add("dg-np-huckster-cell-no");
   }
   var PRIORITY_OPTS = [
@@ -913,12 +923,16 @@
     var editable = canEditHuckster();
     var cur = String(row.huckster || "").trim();
     if (cur !== "yes" && cur !== "no") cur = "no";
-    applyNpHucksterCellClass(td, cur);
+    var inMatrix = !!(row.presence && row.presence.huckster);
+    applyNpHucksterCellClass(td, isNpHucksterEffectivelyYes(row));
+    if (inMatrix && cur !== "yes") {
+      td.title = "Уже есть в матрице Huckster (бейдж HK) — поле «Добавлено» ещё не отмечено";
+    }
 
     if (!editable) {
       var span = document.createElement("span");
-      span.className = "badge " + (cur === "yes" ? "bg-success" : "bg-danger");
-      span.textContent = cur === "yes" ? "Добавлено" : "Не добавлено";
+      span.className = "badge " + (isNpHucksterEffectivelyYes(row) ? "bg-success" : "bg-danger");
+      span.textContent = cur === "yes" ? "Добавлено" : inMatrix ? "В матрице" : "Не добавлено";
       span.title = "Менять может только менеджер маркетплейсов";
       td.appendChild(span);
       td.classList.add("text-center");
@@ -940,12 +954,11 @@
       patchRow(row.id, payload)
         .then(function (j) {
           applyPatched(row, j);
-          var next = String((j && j.data && j.data.huckster) || sel.value || "no").trim();
-          applyNpHucksterCellClass(td, next);
+          applyNpHucksterCellClass(td, isNpHucksterEffectivelyYes(row));
           document
             .querySelectorAll('tr.dg-np-kit-row[data-dg-kit-parent="' + String(row.id) + '"] td.dg-np-kit-huckster-cell')
             .forEach(function (ktd) {
-              applyNpHucksterCellClass(ktd, next);
+              applyNpHucksterCellClass(ktd, isNpHucksterEffectivelyYes(row));
             });
           if (window.DatagonNotify && window.DatagonNotify.toast) {
             window.DatagonNotify.toast({ type: "success", message: "Huckster сохранён" });
@@ -2306,7 +2319,7 @@
         title: "Huckster — у товара (меняет менеджер маркетплейсов)",
       });
       hkTd.classList.add("dg-np-kit-huckster-cell");
-      applyNpHucksterCellClass(hkTd, parent.huckster === "yes" ? "yes" : "no");
+      applyNpHucksterCellClass(hkTd, isNpHucksterEffectivelyYes(parent));
       tr.appendChild(hkTd);
     })();
 
