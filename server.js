@@ -2785,6 +2785,7 @@ initDB().then(async () => {
     });
     app.use('/api/settings', require('./routes/settings')(db, appSettings));
     app.use('/api/exports/marketplaces', exportsMarketplacesRouterFactory(db, appSettings));
+    app.use('/api/exports/competitors', require('./routes/exportsCompetitors')(db));
     app.use('/api/exports/dimensions', require('./routes/dimensions')(db, appSettings));
     app.use('/api/exports/new-products', require('./routes/exportsNewProducts')(db, config));
     app.use('/api/exports/huckster', exportsHucksterRouterFactory(db, appSettings));

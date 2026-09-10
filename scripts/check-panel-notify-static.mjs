@@ -30,6 +30,8 @@ const PAGES = [
   "exports-marketplaces-yandex.html",
   "exports-dimensions.html",
   "exports-marketplaces-issues.html",
+  "exports-new-products.html",
+  "exports-marketplaces-competitors.html",
   "exports-huckster.html",
   "ms-sales.html",
   "login.html",

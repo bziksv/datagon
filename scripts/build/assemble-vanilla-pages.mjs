@@ -310,6 +310,21 @@ function assemble() {
             PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/exports-new-products.scripts.html')),
         },
         {
+            out: 'exports-marketplaces-competitors.html',
+            PAGE_TITLE: 'Маркетплейсы — Конкуренты — Датагон',
+            BODY_ATTRS:
+                'class="datagon-vanilla-body" data-dg-active-nav="exports-marketplaces-competitors"',
+            EXTRA_HEAD: read(
+                path.join(vanillaDir, 'inners/exports-marketplaces-competitors.head.html')
+            ),
+            MAIN_INNER: read(
+                path.join(vanillaDir, 'inners/exports-marketplaces-competitors.inner.html')
+            ),
+            PAGE_SCRIPTS: read(
+                path.join(vanillaDir, 'inners/exports-marketplaces-competitors.scripts.html')
+            ),
+        },
+        {
             out: 'ms-sales.html',
             PAGE_TITLE: 'Продажи МС — Датагон',
             BODY_ATTRS: 'class="datagon-vanilla-body" data-dg-active-nav="ms-sales"',

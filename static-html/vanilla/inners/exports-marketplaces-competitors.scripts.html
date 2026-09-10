@@ -1,0 +1,778 @@
+  <script>
+    (function () {
+      var COMP_COLS = [
+        ["code", "Код"],
+        ["article", "Артикул"],
+        ["manager", "Менеджер товара"],
+        ["name", "Название"],
+        ["buy_price", "Закупочная"],
+        ["stock", "Остаток"],
+        ["ozon", "Ozon"],
+        ["competitors_ozon", "Конкуренты Ozon"],
+        ["wb", "ВБ"],
+        ["competitors_wb", "Конкуренты WB"],
+        ["yandex", "Я.Маркет"],
+      ];
+      var SORTABLE_COLS = {
+        code: 1,
+        article: 1,
+        manager: 1,
+        name: 1,
+        buy_price: 1,
+        stock: 1,
+      };
+      var MARK_COLS = {
+        competitors_ozon: "ozon",
+        competitors_wb: "wb",
+      };
+
+      var FILTERS_COLLAPSE_KEY = "datagon_mpc_filters_collapsed_v1";
+      var TABLE_COLLAPSE_KEY = "dg.mpc.table-card.collapsed.v1";
+      var VISIBLE_COLS_KEY = "datagon_mpc_visible_cols_v4";
+      var COL_WIDTHS_KEY = "datagon_mpc_col_widths_v1";
+
+      var state = {
+        search: "",
+        buy_price_min: "",
+        buy_price_max: "",
+        type: "all",
+        stock_position: "yes",
+        manager: "",
+        competitors_ozon: "all",
+        competitors_wb: "all",
+        limit: 100,
+        offset: 0,
+        sort_by: "code",
+        sort_dir: "asc",
+        total: 0,
+        items: [],
+        managers: [],
+        pending: {
+          search: "",
+          buy_price_min: "",
+          buy_price_max: "",
+          type: "all",
+          stock_position: "yes",
+          manager: "",
+          competitors_ozon: "all",
+          competitors_wb: "all",
+          limit: 100,
+        },
+        loading: false,
+      };
+
+      var visibleCols = COMP_COLS.map(function (c) {
+        return c[0];
+      });
+      var colWidths = {};
+
+      function $(id) {
+        return document.getElementById(id);
+      }
+
+      function escapeText(s) {
+        return String(s == null ? "" : s)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+
+      function loadJson(key, fallback) {
+        try {
+          var raw = localStorage.getItem(key);
+          if (!raw) return fallback;
+          return JSON.parse(raw);
+        } catch (_) {
+          return fallback;
+        }
+      }
+
+      function saveJson(key, val) {
+        try {
+          localStorage.setItem(key, JSON.stringify(val));
+        } catch (_) {}
+      }
+
+      function syncDirtyMarker() {
+        var btn = $("dg-mpc-apply");
+        if (!btn) return;
+        var dirty =
+          String(state.pending.search) !== String(state.search) ||
+          String(state.pending.buy_price_min) !== String(state.buy_price_min) ||
+          String(state.pending.buy_price_max) !== String(state.buy_price_max) ||
+          String(state.pending.type) !== String(state.type) ||
+          String(state.pending.stock_position) !== String(state.stock_position) ||
+          String(state.pending.manager) !== String(state.manager) ||
+          String(state.pending.competitors_ozon) !== String(state.competitors_ozon) ||
+          String(state.pending.competitors_wb) !== String(state.competitors_wb) ||
+          Number(state.pending.limit) !== Number(state.limit);
+        btn.classList.toggle("dg-flt-dirty", dirty);
+        btn.textContent = dirty ? "Применить •" : "Применить";
+      }
+
+      function readPendingFromForm() {
+        state.pending.search = ($("dg-mpc-search") && $("dg-mpc-search").value) || "";
+        state.pending.buy_price_min = ($("dg-mpc-buy-min") && $("dg-mpc-buy-min").value) || "";
+        state.pending.buy_price_max = ($("dg-mpc-buy-max") && $("dg-mpc-buy-max").value) || "";
+        state.pending.type = ($("dg-mpc-type") && $("dg-mpc-type").value) || "all";
+        state.pending.stock_position =
+          ($("dg-mpc-stock-position") && $("dg-mpc-stock-position").value) || "yes";
+        state.pending.manager = ($("dg-mpc-manager") && $("dg-mpc-manager").value) || "";
+        state.pending.competitors_ozon =
+          ($("dg-mpc-competitors-ozon") && $("dg-mpc-competitors-ozon").value) || "all";
+        state.pending.competitors_wb =
+          ($("dg-mpc-competitors-wb") && $("dg-mpc-competitors-wb").value) || "all";
+        var lim =
+          ($("dg-mpc-page-size") && $("dg-mpc-page-size").value) ||
+          ($("dg-mpc-page-size-foot") && $("dg-mpc-page-size-foot").value) ||
+          "100";
+        state.pending.limit = Math.max(1, parseInt(lim, 10) || 100);
+        syncDirtyMarker();
+      }
+
+      function commitFilters() {
+        readPendingFromForm();
+        state.search = String(state.pending.search || "").trim();
+        state.buy_price_min = String(state.pending.buy_price_min || "").trim();
+        state.buy_price_max = String(state.pending.buy_price_max || "").trim();
+        state.type = String(state.pending.type || "all");
+        state.stock_position = String(state.pending.stock_position || "yes");
+        state.manager = String(state.pending.manager || "");
+        state.competitors_ozon = String(state.pending.competitors_ozon || "all");
+        state.competitors_wb = String(state.pending.competitors_wb || "all");
+        state.limit = Number(state.pending.limit) || 100;
+        state.offset = 0;
+        syncDirtyMarker();
+        load();
+      }
+
+      function resetFilters() {
+        if ($("dg-mpc-search")) $("dg-mpc-search").value = "";
+        if ($("dg-mpc-table-search-mirror")) $("dg-mpc-table-search-mirror").value = "";
+        if ($("dg-mpc-buy-min")) $("dg-mpc-buy-min").value = "";
+        if ($("dg-mpc-buy-max")) $("dg-mpc-buy-max").value = "";
+        if ($("dg-mpc-type")) $("dg-mpc-type").value = "all";
+        if ($("dg-mpc-stock-position")) $("dg-mpc-stock-position").value = "yes";
+        if ($("dg-mpc-manager")) $("dg-mpc-manager").value = "";
+        if ($("dg-mpc-competitors-ozon")) $("dg-mpc-competitors-ozon").value = "all";
+        if ($("dg-mpc-competitors-wb")) $("dg-mpc-competitors-wb").value = "all";
+        if ($("dg-mpc-page-size")) $("dg-mpc-page-size").value = "100";
+        if ($("dg-mpc-page-size-foot")) $("dg-mpc-page-size-foot").value = "100";
+        state.sort_by = "code";
+        state.sort_dir = "asc";
+        commitFilters();
+      }
+
+      function productHref(code) {
+        return "/product.html?code=" + encodeURIComponent(String(code || "").trim());
+      }
+
+      function mpSearchUrl(kind, name) {
+        var q = String(name || "").trim();
+        if (!q) return "";
+        if (kind === "ozon") return "https://www.ozon.ru/search/?text=" + encodeURIComponent(q);
+        if (kind === "wb")
+          return "https://www.wildberries.ru/catalog/0/search.aspx?search=" + encodeURIComponent(q);
+        if (kind === "yandex") return "https://market.yandex.ru/search?text=" + encodeURIComponent(q);
+        return "";
+      }
+
+      function makeProductLink(code, text) {
+        var c = String(code || "").trim();
+        var label = String(text || "").trim() || c || "—";
+        if (!c) return document.createTextNode(label);
+        var a = document.createElement("a");
+        a.href = productHref(c);
+        a.target = "_blank";
+        a.rel = "noopener";
+        a.className = "dg-mpc-name-link";
+        a.title = "Открыть карточку товара";
+        a.textContent = label;
+        return a;
+      }
+
+      function makeMpSearchLink(kind, name) {
+        var href = mpSearchUrl(kind, name);
+        if (!href) return document.createTextNode("—");
+        var a = document.createElement("a");
+        a.href = href;
+        a.target = "_blank";
+        a.rel = "noopener noreferrer";
+        a.className = "dg-mpc-mp-link";
+        a.textContent = "Искать";
+        a.title = "Поиск на маркетплейсе: " + String(name || "").trim();
+        return a;
+      }
+
+      function syncWrapPanels() {
+        var wrap = $("dg-mpc-toolbox-panels");
+        var cols = $("dg-mpc-columns-panel");
+        var widths = $("dg-mpc-widths-panel");
+        if (!wrap || !cols || !widths) return;
+        var open = !cols.classList.contains("d-none") || !widths.classList.contains("d-none");
+        wrap.classList.toggle("d-none", !open);
+      }
+
+      function renderColumnControls() {
+        var panel = $("dg-mpc-columns-panel");
+        if (!panel) return;
+        panel.innerHTML = "";
+        COMP_COLS.forEach(function (pair) {
+          var key = pair[0];
+          var label = pair[1];
+          var id = "dg-mpc-col-" + key;
+          var lab = document.createElement("label");
+          lab.className = "form-check d-block mb-1";
+          var cb = document.createElement("input");
+          cb.type = "checkbox";
+          cb.className = "form-check-input me-1";
+          cb.id = id;
+          cb.checked = visibleCols.indexOf(key) >= 0;
+          cb.addEventListener("change", function () {
+            if (cb.checked) {
+              if (visibleCols.indexOf(key) < 0) visibleCols.push(key);
+            } else {
+              visibleCols = visibleCols.filter(function (k) {
+                return k !== key;
+              });
+              if (!visibleCols.length) visibleCols = ["code"];
+            }
+            saveJson(VISIBLE_COLS_KEY, visibleCols);
+            buildThead();
+            renderTable();
+          });
+          lab.appendChild(cb);
+          lab.appendChild(document.createTextNode(label));
+          panel.appendChild(lab);
+        });
+      }
+
+      function renderWidthControls() {
+        var panel = $("dg-mpc-widths-panel");
+        if (!panel) return;
+        panel.innerHTML = "";
+        COMP_COLS.forEach(function (pair) {
+          var key = pair[0];
+          var label = pair[1];
+          var row = document.createElement("div");
+          row.className = "d-flex align-items-center gap-2 mb-1";
+          var span = document.createElement("span");
+          span.className = "small";
+          span.style.minWidth = "90px";
+          span.textContent = label;
+          var inp = document.createElement("input");
+          inp.type = "text";
+          inp.className = "form-control form-control-sm";
+          inp.style.maxWidth = "90px";
+          inp.inputMode = "numeric";
+          inp.placeholder = "px";
+          inp.value = colWidths[key] != null ? String(colWidths[key]) : "";
+          inp.addEventListener("change", function () {
+            var n = parseInt(String(inp.value || "").replace(/\D/g, ""), 10);
+            if (Number.isFinite(n) && n > 0) colWidths[key] = n;
+            else delete colWidths[key];
+            saveJson(COL_WIDTHS_KEY, colWidths);
+            buildThead();
+            renderTable();
+          });
+          row.appendChild(span);
+          row.appendChild(inp);
+          panel.appendChild(row);
+        });
+      }
+
+      function buildThead() {
+        var thead = $("dg-mpc-thead");
+        if (!thead) return;
+        thead.innerHTML = "";
+        var tr = document.createElement("tr");
+        COMP_COLS.forEach(function (pair) {
+          var key = pair[0];
+          var label = pair[1];
+          if (visibleCols.indexOf(key) < 0) return;
+          var th = document.createElement("th");
+          th.dataset.key = key;
+          if (colWidths[key]) th.style.width = colWidths[key] + "px";
+          var canSort = !!SORTABLE_COLS[key];
+          if (canSort) {
+            th.className = "dg-mpc-sortable";
+            var mark = "";
+            if (state.sort_by === key) mark = state.sort_dir === "desc" ? " ↓" : " ↑";
+            th.textContent = label + mark;
+            th.addEventListener("click", function () {
+              var sel = window.getSelection && window.getSelection();
+              if (sel && String(sel.toString() || "").trim()) return;
+              if (state.sort_by === key) {
+                state.sort_dir = state.sort_dir === "asc" ? "desc" : "asc";
+              } else {
+                state.sort_by = key;
+                state.sort_dir = "asc";
+              }
+              state.offset = 0;
+              load();
+            });
+          } else {
+            th.textContent = label;
+          }
+          tr.appendChild(th);
+        });
+        thead.appendChild(tr);
+      }
+
+      function saveMark(code, field, value) {
+        return fetch("/api/exports/competitors/mark", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code: code, field: field, value: value }),
+        }).then(function (r) {
+          return r.json().then(function (j) {
+            if (!r.ok || !j || j.success === false) {
+              throw new Error((j && j.error) || "HTTP " + r.status);
+            }
+            return j;
+          });
+        });
+      }
+
+      function makeMarkSelect(row, colKey) {
+        var apiField = MARK_COLS[colKey];
+        var wrap = document.createElement("span");
+        wrap.className = "d-inline-flex justify-content-center w-100";
+        var sel = document.createElement("select");
+        sel.className = "form-select form-select-sm dg-mpc-mark-select";
+        sel.title = colKey === "competitors_ozon" ? "Конкуренты Ozon" : "Конкуренты WB";
+        sel.setAttribute(
+          "data-dg-notify-start",
+          colKey === "competitors_ozon"
+            ? "Сохраняем «Конкуренты Ozon»…"
+            : "Сохраняем «Конкуренты WB»…"
+        );
+        [
+          { v: "0", t: "—" },
+          { v: "1", t: "Включена" },
+          { v: "2", t: "Не требуется" },
+        ].forEach(function (opt) {
+          var o = document.createElement("option");
+          o.value = opt.v;
+          o.textContent = opt.t;
+          sel.appendChild(o);
+        });
+        var cur = Number(row[colKey]);
+        if (cur !== 1 && cur !== 2) cur = 0;
+        sel.value = String(cur);
+        sel.addEventListener("change", function () {
+          var next = Number(sel.value) || 0;
+          if (next !== 1 && next !== 2) next = 0;
+          var prev = Number(row[colKey]);
+          if (prev !== 1 && prev !== 2) prev = 0;
+          var code = String(row.code || "").trim();
+          if (!code) {
+            sel.value = String(prev);
+            return;
+          }
+          saveMark(code, apiField, next)
+            .then(function (j) {
+              row.competitors_ozon = Number(j.competitors_ozon) || 0;
+              row.competitors_wb = Number(j.competitors_wb) || 0;
+              if (row.competitors_ozon !== 1 && row.competitors_ozon !== 2) row.competitors_ozon = 0;
+              if (row.competitors_wb !== 1 && row.competitors_wb !== 2) row.competitors_wb = 0;
+              sel.value = String(row[colKey] || 0);
+              if (window.DatagonNotify && window.DatagonNotify.toast) {
+                window.DatagonNotify.toast({ type: "success", message: "Сохранено" });
+              }
+            })
+            .catch(function (e) {
+              sel.value = String(prev);
+              if (window.DatagonNotify && window.DatagonNotify.toast) {
+                window.DatagonNotify.toast({
+                  type: "danger",
+                  message: (e && e.message) || "Ошибка сохранения",
+                });
+              }
+            });
+        });
+        wrap.appendChild(sel);
+        return wrap;
+      }
+
+      function renderCell(key, row) {
+        if (key === "code") return makeProductLink(row.code, row.code);
+        if (key === "article") return document.createTextNode(row.article || "—");
+        if (key === "manager") return document.createTextNode(row.manager || "—");
+        if (key === "name") return makeProductLink(row.code, row.name || row.code || "—");
+        if (key === "buy_price") {
+          var raw = String(row.buy_price || "").trim();
+          if (!raw) return document.createTextNode("—");
+          if (window.DatagonFmt && typeof window.DatagonFmt.formatMoney === "function") {
+            var n = Number(
+              raw
+                .replace(/[\s\u00A0\u202F]/g, "")
+                .replace(/,/g, ".")
+                .replace(/[^\d.-]/g, "")
+            );
+            if (Number.isFinite(n) && n > 0) {
+              return document.createTextNode(window.DatagonFmt.formatMoney(n));
+            }
+          }
+          return document.createTextNode(raw);
+        }
+        if (key === "stock") {
+          if (row.stock == null || row.stock === "") return document.createTextNode("—");
+          if (window.DatagonFmt && typeof window.DatagonFmt.formatNumber === "function") {
+            return document.createTextNode(window.DatagonFmt.formatNumber(row.stock));
+          }
+          return document.createTextNode(String(row.stock));
+        }
+        if (key === "ozon") return makeMpSearchLink("ozon", row.name);
+        if (key === "competitors_ozon" || key === "competitors_wb") {
+          return makeMarkSelect(row, key);
+        }
+        if (key === "wb") return makeMpSearchLink("wb", row.name);
+        if (key === "yandex") return makeMpSearchLink("yandex", row.name);
+        return document.createTextNode("—");
+      }
+
+      function renderTable() {
+        var tbody = $("dg-mpc-tbody");
+        if (!tbody) return;
+        tbody.innerHTML = "";
+        if (state.loading) {
+          var trL = document.createElement("tr");
+          var tdL = document.createElement("td");
+          tdL.colSpan = Math.max(1, visibleCols.length);
+          tdL.className = "text-muted";
+          tdL.textContent = "Загрузка…";
+          trL.appendChild(tdL);
+          tbody.appendChild(trL);
+          return;
+        }
+        if (!state.items.length) {
+          var trE = document.createElement("tr");
+          var tdE = document.createElement("td");
+          tdE.colSpan = Math.max(1, visibleCols.length);
+          tdE.className = "text-muted";
+          tdE.textContent = "Ничего не найдено.";
+          trE.appendChild(tdE);
+          tbody.appendChild(trE);
+          return;
+        }
+        state.items.forEach(function (row) {
+          var tr = document.createElement("tr");
+          COMP_COLS.forEach(function (pair) {
+            var key = pair[0];
+            if (visibleCols.indexOf(key) < 0) return;
+            var td = document.createElement("td");
+            if (MARK_COLS[key]) td.className = "text-center";
+            if (colWidths[key]) {
+              td.style.width = colWidths[key] + "px";
+              td.style.maxWidth = colWidths[key] + "px";
+            }
+            td.appendChild(renderCell(key, row));
+            tr.appendChild(td);
+          });
+          tbody.appendChild(tr);
+        });
+      }
+
+      function updatePager() {
+        var total = Number(state.total || 0);
+        var limit = Number(state.limit || 100);
+        var pages = Math.max(1, Math.ceil(total / Math.max(1, limit)));
+        var page = Math.floor(Number(state.offset || 0) / Math.max(1, limit)) + 1;
+        if (page > pages) page = pages;
+        var shown = state.items.length;
+        var st = $("dg-mpc-pager-status");
+        if (st) {
+          st.textContent =
+            "Найдено: " +
+            total.toLocaleString("ru-RU") +
+            "; страница " +
+            page +
+            "/" +
+            pages +
+            "; показано: " +
+            shown;
+        }
+        if ($("dg-mpc-prev")) $("dg-mpc-prev").disabled = page <= 1 || state.loading;
+        if ($("dg-mpc-next")) $("dg-mpc-next").disabled = page >= pages || state.loading;
+      }
+
+      function load() {
+        state.loading = true;
+        buildThead();
+        renderTable();
+        updatePager();
+        var params = new URLSearchParams();
+        if (state.search) params.set("search", state.search);
+        if (state.buy_price_min) params.set("buy_price_min", state.buy_price_min);
+        if (state.buy_price_max) params.set("buy_price_max", state.buy_price_max);
+        if (state.type && state.type !== "all") params.set("type", state.type);
+        params.set("stock_position", state.stock_position || "yes");
+        if (state.manager) params.set("manager", state.manager);
+        if (state.competitors_ozon && state.competitors_ozon !== "all") {
+          params.set("competitors_ozon", state.competitors_ozon);
+        }
+        if (state.competitors_wb && state.competitors_wb !== "all") {
+          params.set("competitors_wb", state.competitors_wb);
+        }
+        params.set("limit", String(state.limit || 100));
+        params.set("offset", String(state.offset || 0));
+        params.set("sort_by", state.sort_by || "code");
+        params.set("sort_dir", state.sort_dir || "asc");
+
+        var btn = $("dg-mpc-apply");
+        var run = function () {
+          return fetch("/api/exports/competitors?" + params.toString(), {
+            credentials: "same-origin",
+          })
+            .then(function (r) {
+              return r.json().then(function (j) {
+                return { ok: r.ok, j: j };
+              });
+            })
+            .then(function (x) {
+              if (!x.ok || !x.j || x.j.success === false) {
+                throw new Error((x.j && x.j.error) || "Ошибка загрузки");
+              }
+              state.total = Number(x.j.total || 0);
+              state.items = Array.isArray(x.j.items) ? x.j.items : [];
+              if (x.j.sort_by) state.sort_by = x.j.sort_by;
+              if (x.j.sort_dir) state.sort_dir = x.j.sort_dir;
+              fillManagerSelect(Array.isArray(x.j.managers) ? x.j.managers : []);
+            })
+            .catch(function (e) {
+              state.items = [];
+              state.total = 0;
+              if (window.DatagonNotify && window.DatagonNotify.toast) {
+                window.DatagonNotify.toast({
+                  type: "danger",
+                  message: (e && e.message) || "Ошибка загрузки",
+                });
+              }
+            })
+            .finally(function () {
+              state.loading = false;
+              buildThead();
+              renderTable();
+              updatePager();
+            });
+        };
+
+        if (window.DatagonNotify && window.DatagonNotify.busyRun && btn) {
+          return window.DatagonNotify.busyRun(btn, run);
+        }
+        return run();
+      }
+
+      function fillManagerSelect(managers) {
+        var sel = $("dg-mpc-manager");
+        if (!sel) return;
+        var prev = sel.value || state.manager || "";
+        state.managers = managers || [];
+        sel.innerHTML = "";
+        var oAll = document.createElement("option");
+        oAll.value = "";
+        oAll.textContent = "Все";
+        sel.appendChild(oAll);
+        var oEmpty = document.createElement("option");
+        oEmpty.value = "__empty__";
+        oEmpty.textContent = "Без менеджера";
+        sel.appendChild(oEmpty);
+        state.managers.forEach(function (name) {
+          var o = document.createElement("option");
+          o.value = name;
+          o.textContent = name;
+          sel.appendChild(o);
+        });
+        if (prev && Array.prototype.some.call(sel.options, function (opt) { return opt.value === prev; })) {
+          sel.value = prev;
+        } else {
+          sel.value = "";
+        }
+      }
+
+      function bindHeaderSearchMirror() {
+        var main = $("dg-mpc-search");
+        var mirror = $("dg-mpc-table-search-mirror");
+        if (!main || !mirror) return;
+        var syncing = false;
+        function sync(from, to) {
+          if (syncing) return;
+          syncing = true;
+          to.value = from.value;
+          syncing = false;
+        }
+        main.addEventListener("input", function () {
+          sync(main, mirror);
+          readPendingFromForm();
+        });
+        mirror.addEventListener("input", function () {
+          sync(mirror, main);
+          readPendingFromForm();
+        });
+        [main, mirror].forEach(function (el) {
+          el.addEventListener("keydown", function (ev) {
+            if (ev.key === "Enter") {
+              ev.preventDefault();
+              commitFilters();
+            }
+            if (ev.key === "Escape") {
+              ev.preventDefault();
+              main.value = "";
+              mirror.value = "";
+              commitFilters();
+            }
+          });
+        });
+      }
+
+      function filtersCollapse() {
+        var body = $("dg-mpc-filters-body");
+        var btn = $("dg-mpc-filters-toggle");
+        if (!body || !btn) return;
+        function apply(collapsed) {
+          body.style.display = collapsed ? "none" : "";
+          btn.textContent = collapsed ? "Развернуть" : "Свернуть";
+          try {
+            localStorage.setItem(FILTERS_COLLAPSE_KEY, collapsed ? "1" : "0");
+          } catch (_) {}
+        }
+        apply(localStorage.getItem(FILTERS_COLLAPSE_KEY) === "1");
+        btn.addEventListener("click", function () {
+          apply(body.style.display !== "none");
+        });
+      }
+
+      function tableCardCollapse() {
+        var body = $("dg-mpc-table-body");
+        var btn = $("dg-mpc-table-toggle");
+        if (!body || !btn) return;
+        function apply(collapsed) {
+          body.style.display = collapsed ? "none" : "";
+          btn.textContent = collapsed ? "Развернуть" : "Свернуть";
+          try {
+            localStorage.setItem(TABLE_COLLAPSE_KEY, collapsed ? "1" : "0");
+          } catch (_) {}
+        }
+        apply(localStorage.getItem(TABLE_COLLAPSE_KEY) === "1");
+        btn.addEventListener("click", function () {
+          apply(body.style.display !== "none");
+        });
+      }
+
+      function columnControls() {
+        var colsBtn = $("dg-mpc-cols-btn");
+        var widthsBtn = $("dg-mpc-widths-btn");
+        var cols = $("dg-mpc-columns-panel");
+        var widths = $("dg-mpc-widths-panel");
+        if (!colsBtn || !widthsBtn || !cols || !widths) return;
+        colsBtn.addEventListener("click", function (ev) {
+          ev.stopPropagation();
+          var open = cols.classList.contains("d-none");
+          cols.classList.toggle("d-none", !open);
+          widths.classList.add("d-none");
+          syncWrapPanels();
+        });
+        widthsBtn.addEventListener("click", function (ev) {
+          ev.stopPropagation();
+          var open = widths.classList.contains("d-none");
+          widths.classList.toggle("d-none", !open);
+          cols.classList.add("d-none");
+          syncWrapPanels();
+        });
+        document.addEventListener("click", function (ev) {
+          var wrap = $("dg-mpc-toolbox-panels");
+          if (!wrap || wrap.contains(ev.target) || colsBtn.contains(ev.target) || widthsBtn.contains(ev.target))
+            return;
+          cols.classList.add("d-none");
+          widths.classList.add("d-none");
+          syncWrapPanels();
+        });
+      }
+
+      function initFilterFieldsVisibility() {
+        if (!window.DatagonFilterFieldsVisibility || !window.DatagonFilterFieldsVisibility.init) return;
+        window.DatagonFilterFieldsVisibility.init({
+          storageKeyPrefix: "datagon_mpc_filter_fields_v1",
+          attr: "data-dg-mpc-filter-field",
+          fieldGroups: [
+            {
+              title: "Основные",
+              items: [
+                { key: "search", title: "Умный поиск" },
+                { key: "buy_price", title: "Закупочная цена" },
+                { key: "type", title: "Тип" },
+                { key: "stock_position", title: "Складская позиция" },
+                { key: "manager", title: "Менеджер товара" },
+                { key: "competitors_ozon", title: "Конкуренты Ozon" },
+                { key: "competitors_wb", title: "Конкуренты WB" },
+                { key: "page_size", title: "На странице" },
+              ],
+            },
+          ],
+          togglesRootId: "dg-mpc-filter-fields-toggles",
+          idPrefix: "dg-mpc-ff-",
+        });
+      }
+
+      function wire() {
+        var savedCols = loadJson(VISIBLE_COLS_KEY, null);
+        if (Array.isArray(savedCols) && savedCols.length) {
+          visibleCols = savedCols.filter(function (k) {
+            return COMP_COLS.some(function (c) {
+              return c[0] === k;
+            });
+          });
+          if (!visibleCols.length) visibleCols = COMP_COLS.map(function (c) {
+            return c[0];
+          });
+        }
+        colWidths = loadJson(COL_WIDTHS_KEY, {}) || {};
+
+        filtersCollapse();
+        tableCardCollapse();
+        columnControls();
+        bindHeaderSearchMirror();
+        initFilterFieldsVisibility();
+        renderColumnControls();
+        renderWidthControls();
+        buildThead();
+
+        ["dg-mpc-search", "dg-mpc-buy-min", "dg-mpc-buy-max", "dg-mpc-type", "dg-mpc-stock-position", "dg-mpc-manager", "dg-mpc-competitors-ozon", "dg-mpc-competitors-wb", "dg-mpc-page-size", "dg-mpc-page-size-foot"].forEach(
+          function (id) {
+            var el = $(id);
+            if (!el) return;
+            el.addEventListener("input", readPendingFromForm);
+            el.addEventListener("change", function () {
+              if (id === "dg-mpc-page-size" || id === "dg-mpc-page-size-foot") {
+                var v = el.value;
+                if ($("dg-mpc-page-size")) $("dg-mpc-page-size").value = v;
+                if ($("dg-mpc-page-size-foot")) $("dg-mpc-page-size-foot").value = v;
+              }
+              readPendingFromForm();
+            });
+          }
+        );
+
+        if ($("dg-mpc-apply")) $("dg-mpc-apply").addEventListener("click", commitFilters);
+        if ($("dg-mpc-reset")) $("dg-mpc-reset").addEventListener("click", resetFilters);
+        if ($("dg-mpc-prev"))
+          $("dg-mpc-prev").addEventListener("click", function () {
+            state.offset = Math.max(0, Number(state.offset || 0) - Number(state.limit || 100));
+            load();
+          });
+        if ($("dg-mpc-next"))
+          $("dg-mpc-next").addEventListener("click", function () {
+            state.offset = Number(state.offset || 0) + Number(state.limit || 100);
+            load();
+          });
+
+        commitFilters();
+      }
+
+      if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", wire);
+      else wire();
+    })();
+  </script>

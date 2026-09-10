@@ -1,0 +1,184 @@
+          <div class="app-page-title">
+            <div class="page-title-wrapper">
+              <div class="page-title-heading">
+                <div class="page-title-icon">
+                  <i class="pe-7s-search icon-gradient bg-plum-plate"> </i>
+                </div>
+                <div>
+                  Конкуренты
+                  <div class="page-title-subheading">
+                    Товары МойСклад: быстрый переход к поиску названия на Ozon, Wildberries и Яндекс Маркет.
+                    Код и название открывают карточку Datagon (как на «Закупках»).
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2">
+              <div class="d-flex align-items-center">
+                <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>
+                <span>Фильтры и действия</span>
+              </div>
+              <div class="d-flex align-items-center gap-2">
+                <div class="dropdown">
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-secondary dg-vanilla-dropdown-toggle"
+                    style="line-height: 1; padding: 0.35rem 0.5rem"
+                    aria-expanded="false"
+                    aria-haspopup="true"
+                    id="dg-mpc-filter-blocks-btn"
+                    data-dg-tooltip="Какие поля фильтров показывать"
+                  >
+                    ⚙
+                  </button>
+                  <div class="dropdown-menu dropdown-menu-right p-2" style="min-width: 260px" id="dg-mpc-filter-fields-menu">
+                    <div class="small text-muted mb-1">Поля фильтров</div>
+                    <div id="dg-mpc-filter-fields-toggles"></div>
+                  </div>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mpc-filters-toggle">Свернуть</button>
+              </div>
+            </div>
+            <div class="card-body" id="dg-mpc-filters-body">
+              <div class="row g-2 align-items-end">
+                <div class="col-md-4" data-dg-mpc-filter-field="search" data-dg-filter-field-title="Умный поиск">
+                  <label class="form-label" for="dg-mpc-search">Умный поиск</label>
+                  <input
+                    type="search"
+                    class="form-control"
+                    id="dg-mpc-search"
+                    placeholder="Код, артикул, название… (слова через пробел)"
+                    autocomplete="off"
+                    data-dg-tooltip="Слова через пробел — все должны найтись (AND). Группы через | — ИЛИ. Фраза в кавычках. Ключи: sku:, name:, article:, manager:"
+                  />
+                </div>
+                <div class="col-md-3 dg-mpc-buy-range" data-dg-mpc-filter-field="buy_price" data-dg-filter-field-title="Закупочная цена">
+                  <label class="form-label">Закупочная цена, ₽</label>
+                  <div class="d-flex align-items-center gap-2">
+                    <input type="text" class="form-control" id="dg-mpc-buy-min" inputmode="decimal" placeholder="от" autocomplete="off" />
+                    <span class="text-muted">—</span>
+                    <input type="text" class="form-control" id="dg-mpc-buy-max" inputmode="decimal" placeholder="до" autocomplete="off" />
+                  </div>
+                </div>
+                <div class="col-md-2" data-dg-mpc-filter-field="type" data-dg-filter-field-title="Тип">
+                  <label class="form-label" for="dg-mpc-type">Тип</label>
+                  <select class="form-select" id="dg-mpc-type">
+                    <option value="all" selected>Все</option>
+                    <option value="product">Товар</option>
+                    <option value="bundle">Комплект</option>
+                  </select>
+                </div>
+                <div class="col-md-2" data-dg-mpc-filter-field="stock_position" data-dg-filter-field-title="Складская позиция">
+                  <label class="form-label" for="dg-mpc-stock-position">Складская позиция</label>
+                  <select class="form-select" id="dg-mpc-stock-position">
+                    <option value="yes" selected>Только Да</option>
+                    <option value="no">Только Нет</option>
+                    <option value="all">Все</option>
+                  </select>
+                </div>
+                <div class="col-md-2" data-dg-mpc-filter-field="manager" data-dg-filter-field-title="Менеджер товара">
+                  <label class="form-label" for="dg-mpc-manager">Менеджер товара</label>
+                  <select class="form-select" id="dg-mpc-manager">
+                    <option value="" selected>Все</option>
+                    <option value="__empty__">Без менеджера</option>
+                  </select>
+                </div>
+                <div class="col-md-1" data-dg-mpc-filter-field="page_size" data-dg-filter-field-title="На странице">
+                  <label class="form-label" for="dg-mpc-page-size">На странице</label>
+                  <select class="form-select" id="dg-mpc-page-size">
+                    <option value="50">50</option>
+                    <option value="100" selected>100</option>
+                    <option value="200">200</option>
+                    <option value="500">500</option>
+                  </select>
+                </div>
+              </div>
+              <div class="row g-2 align-items-end mt-1">
+                <div class="col-md-3" data-dg-mpc-filter-field="competitors_ozon" data-dg-filter-field-title="Конкуренты Ozon">
+                  <label class="form-label" for="dg-mpc-competitors-ozon">Конкуренты Ozon</label>
+                  <select class="form-select" id="dg-mpc-competitors-ozon">
+                    <option value="all" selected>Все</option>
+                    <option value="0">Не отмечено</option>
+                    <option value="1">Включена</option>
+                    <option value="2">Не требуется</option>
+                  </select>
+                </div>
+                <div class="col-md-3" data-dg-mpc-filter-field="competitors_wb" data-dg-filter-field-title="Конкуренты WB">
+                  <label class="form-label" for="dg-mpc-competitors-wb">Конкуренты WB</label>
+                  <select class="form-select" id="dg-mpc-competitors-wb">
+                    <option value="all" selected>Все</option>
+                    <option value="0">Не отмечено</option>
+                    <option value="1">Включена</option>
+                    <option value="2">Не требуется</option>
+                  </select>
+                </div>
+              </div>
+              <div class="mt-3 d-flex flex-wrap gap-2">
+                <button type="button" class="btn btn-primary" id="dg-mpc-apply" data-dg-notify-start="Применяем фильтры…">Применить</button>
+                <button type="button" class="btn btn-outline-secondary" id="dg-mpc-reset" data-dg-notify-start="Сбрасываем фильтры…">По умолчанию</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex justify-content-between gap-2 flex-wrap">
+              <div class="d-flex align-items-center gap-3 flex-grow-1" style="min-width: 0">
+                <div class="d-flex align-items-center flex-shrink-0">
+                  <i class="header-icon pe-7s-display2 icon-gradient bg-premium-dark me-2"> </i>
+                  <span>Выгрузка конкуренты</span>
+                </div>
+                <div class="dg-mpc-header-search">
+                  <div class="input-group input-group-sm">
+                    <span class="input-group-text">🔎</span>
+                    <input
+                      type="search"
+                      class="form-control"
+                      id="dg-mpc-table-search-mirror"
+                      placeholder="Умный поиск…"
+                      autocomplete="off"
+                    />
+                  </div>
+                </div>
+              </div>
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mpc-cols-btn">🧩 Столбцы</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mpc-widths-btn">📏 Ширины</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mpc-table-toggle">Свернуть</button>
+              </div>
+            </div>
+            <div class="card-body" id="dg-mpc-table-body">
+              <div class="datagon-columns-toolbox mb-2 d-none" id="dg-mpc-toolbox-panels">
+                <div class="datagon-columns-panel d-none" id="dg-mpc-columns-panel"></div>
+                <div class="datagon-columns-panel d-none" id="dg-mpc-widths-panel"></div>
+              </div>
+              <div class="table-responsive">
+                <table class="table table-hover table-bordered mb-0" id="dg-mpc-table">
+                  <thead id="dg-mpc-thead"></thead>
+                  <tbody id="dg-mpc-tbody">
+                    <tr>
+                      <td colspan="7" class="text-muted">Нажмите «Применить», чтобы загрузить список.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-3">
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                  <label class="mb-0 small text-muted" for="dg-mpc-page-size-foot">На странице</label>
+                  <select class="form-select form-select-sm" id="dg-mpc-page-size-foot" style="width: auto">
+                    <option value="50">50</option>
+                    <option value="100" selected>100</option>
+                    <option value="200">200</option>
+                    <option value="500">500</option>
+                  </select>
+                  <span class="small text-muted" id="dg-mpc-pager-status">Найдено: 0; страница 0/0; показано: 0</span>
+                </div>
+                <div class="btn-group">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mpc-prev" disabled>Назад</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-mpc-next" disabled>Вперёд</button>
+                </div>
+              </div>
+            </div>
+          </div>

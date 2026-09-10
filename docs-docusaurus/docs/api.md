@@ -69,6 +69,7 @@ description: Справочник REST-эндпоинтов p.datagon.ru (осн
 - `/api/ms` -> `routes/moysklad.js`
 - `/api/medmarket` -> `routes/medmarket.js` (Медмаркет: стыковка `code`+тип (`10088+Товар`); `GET /`, `GET /sync-status`, `POST /sync`, `PATCH /mapping`, `POST /import`, `POST /fill-linkage-codes`)
 - `/api/exports/marketplaces` -> `routes/exportsMarketplaces.js`
+- `/api/exports/competitors` -> `routes/exportsCompetitors.js` (Маркетплейсы → Конкуренты: список `ms_export` + поиск на Ozon/WB/Я.М.)
 - `/api/exports/dimensions` -> `routes/dimensions.js`
 - `/api/exports/new-products` -> `routes/exportsNewProducts.js`
 - `/api/exports/huckster` -> `routes/exportsHuckster.js`
@@ -877,6 +878,51 @@ Query:
 Body (JSON, опционально): `trigger_type` (по умолчанию `manual_ui`), `schedule_slot_time` (обычно пусто).
 
 Ответ: `{ success: true, trigger_type }`. Ошибка БД — `500` с `code: ISSUES_SNAPSHOT_RUN_FAILED`.
+
+## Exports / Competitors (Конкуренты)
+
+Префикс: `/api/exports/competitors`. Экран: `/exports-marketplaces-competitors.html` (подменю **Маркетплейсы → Конкуренты**; не путать с Парсинг → Конкуренты / `projects`).
+
+Доступ: матрица `page_modes` для ключа **`exports-marketplaces-competitors`** (наследует скрытие родителя `exports-marketplaces`, если у дочерней нет явного `view`/`full`).
+
+Источник строк: **`ms_export`** + артикул из **`ms_entity_details.denorm_article`**.
+
+### GET `/api/exports/competitors`
+
+Список товаров для поиска названия на маркетплейсах.
+
+Query:
+
+| Параметр | Описание |
+|----------|----------|
+| `search` | Умный поиск (как МойСклад): слова через пробел = **AND** по `code`/`name`/`article`/`manager`; группы через `\|` = OR; фраза в кавычках; ключи `sku:`/`code:`, `name:`, `article:`, `manager:` |
+| `buy_price_min` / `buy_price_max` | Диапазон закупочной (парсинг строки `ms_export.buy_price` как в МойСклад) |
+| `type` | `all` (по умолчанию) \| `product` (Товар) \| `bundle` (Комплект) |
+| `stock_position` | `yes` (**по умолчанию**, только «Да») \| `no` \| `all` |
+| `manager` | точное имя из `ms_export.manager`; `__empty__` — без менеджера; пусто — все |
+| `competitors_ozon` / `competitors_wb` | `all` (по умолчанию) \| `0` не отмечено \| `1` включена \| `2` не требуется |
+| `sort_by` | `code` \| `article` \| `manager` \| `name` \| `buy_price` \| `stock` (по умолчанию `code`) |
+| `sort_dir` | `asc` \| `desc` |
+| `limit` | по умолчанию **100**, макс. 500 |
+| `offset` | пагинация |
+
+Ответ: `{ success, total, limit, offset, sort_by, sort_dir, managers: string[], items: [{ code, article, manager, name, buy_price, stock, competitors_ozon, competitors_wb }] }`.
+
+На UI код и название ведут на `/product.html?code=…`; перед названием — **Менеджер товара** (`ms_export.manager`); далее **Закупочная** / **Остаток**; колонки Ozon / ВБ / Я.Маркет — ссылки «Искать»; сразу после Ozon и ВБ — статус **Конкуренты Ozon** / **Конкуренты WB** (`dg_mp_competitor_marks`: `0` пусто, `1` включена, `2` не требуется).
+
+### POST `/api/exports/competitors/mark`
+
+Сохранить статус по коду товара.
+
+Body: `{ "code": "…", "field": "ozon"|"wb", "value": 0|1|2 }`
+
+- `0` — не отмечено  
+- `1` — включена (конкуренты проработаны / есть)  
+- `2` — не требуется  
+
+Ответ: `{ success, code, field, value, competitors_ozon, competitors_wb, updated_at }`.
+
+Таблица: **`dg_mp_competitor_marks`** (`code` PK, `ozon`, `wb`, `updated_at`, `updated_by_user_id`).
 
 ## Exports / Dimensions (Габариты)
 
