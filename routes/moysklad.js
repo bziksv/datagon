@@ -7,6 +7,7 @@ const {
     replaceMsExportStockByStoreFromReport,
     buildAssortmentUuidToCodeMap,
 } = require('../lib/msExportStockByStore');
+const { createSupplierNameResolver } = require('../lib/datagonMsSupplierLabel');
 
 const router = express.Router();
 
@@ -1203,24 +1204,16 @@ async function syncMsExport(db, config, settings = {}) {
         `Загружено товаров: ${products.length}, комплектов: ${bundles.length} (страница списка комплектов: limit=${bundleListPageLimit} — expand состава в МС)`
     );
 
-    const supplierCache = new Map();
-    const getSupplierName = async (supplier) => {
-        if (!supplier) return '';
-        if (supplier.name) return supplier.name;
-        const href = supplier.meta?.href;
-        if (!href) return '';
-        if (supplierCache.has(href)) return supplierCache.get(href);
-        try {
-            const resp = await axios.get(href, { headers, timeout: 30000 });
-            const name = resp.data?.name || '';
-            supplierCache.set(href, name);
-            return name;
-        } catch (_) {
-            const fallback = `[ID:${href.split('/').pop()}]`;
-            supplierCache.set(href, fallback);
-            return fallback;
-        }
-    };
+    // Раньше при ошибке GET писали «[ID:uuid]» в ms_export — на «Поставщиках» вместо имени.
+    // Теперь: retries + канонический /entity/counterparty/{uuid}; пустой результат не маскируем ID.
+    const supplierNameResolver = createSupplierNameResolver({
+        axiosImpl: axios,
+        headers,
+        baseUrl: BASE_URL,
+        delayMs: Math.max(100, Number(settings.ms_sync_delay_ms) || 200),
+        onWarn: (msg) => addLog(String(msg || '').slice(0, 240))
+    });
+    const getSupplierName = (supplier) => supplierNameResolver.resolve(supplier);
 
     addLog('Этап 4/6: загрузка остатков report/stock/all');
     jobState.message = 'Загрузка остатков...';
