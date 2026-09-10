@@ -2,7 +2,8 @@
 
 /**
  * Маркетплейсы → Конкуренты: список товаров ms_export для поиска на Ozon / WB / Я.Маркет.
- * Статусы «Конкуренты Ozon/WB» — dg_mp_competitor_marks: 0 пусто, 1 включена, 2 не требуется.
+ * Статусы «Конкуренты Ozon/WB/Я.М.» — dg_mp_competitor_marks:
+ * 0 пусто, 1 включена, 2 не требуется, 3 конкурентов нет.
  * Экран: /exports-marketplaces-competitors.html
  */
 
@@ -14,10 +15,11 @@ const MAX_LIMIT = 500;
 const BUY_PRICE_SQL =
     "COALESCE(CAST(REPLACE(REPLACE(REPLACE(REPLACE(mse.buy_price, '₽', ''), ' ', ''), ' ', ''), ',', '.') AS DECIMAL(15,2)), 0)";
 
-const SORT_KEYS = new Set(['code', 'article', 'name', 'manager', 'buy_price', 'stock']);
-const MARK_FIELDS = new Set(['ozon', 'wb']);
-/** 0 — не отмечено, 1 — конкуренты есть (галка), 2 — не требуется */
-const MARK_VALUES = new Set([0, 1, 2]);
+const MARK_FIELDS = new Set(['ozon', 'wb', 'yandex']);
+/** 0 — не отмечено, 1 — включена, 2 — не требуется, 3 — конкурентов нет */
+const MARK_VALUES = new Set([0, 1, 2, 3]);
+
+const SORT_KEYS = new Set(['code', 'article', 'name', 'manager', 'buy_price', 'stock', 'updated_at']);
 
 let schemaReady = false;
 
@@ -28,11 +30,30 @@ async function ensureSchema(db) {
             code VARCHAR(255) NOT NULL PRIMARY KEY,
             ozon TINYINT NOT NULL DEFAULT 0,
             wb TINYINT NOT NULL DEFAULT 0,
+            yandex TINYINT NOT NULL DEFAULT 0,
             updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             updated_by_user_id INT NULL,
             INDEX idx_dg_mp_comp_marks_updated (updated_at)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     `);
+    try {
+        const [cols] = await db.query(
+            `SELECT COLUMN_NAME AS c FROM INFORMATION_SCHEMA.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE()
+               AND TABLE_NAME = 'dg_mp_competitor_marks'
+               AND COLUMN_NAME = 'yandex'`
+        );
+        if (!cols || !cols.length) {
+            await db.query(
+                'ALTER TABLE dg_mp_competitor_marks ADD COLUMN yandex TINYINT NOT NULL DEFAULT 0 AFTER wb'
+            );
+        }
+    } catch (e) {
+        console.warn(
+            '[exports/competitors] schema migrate yandex:',
+            e && e.message ? e.message : e
+        );
+    }
     schemaReady = true;
 }
 
@@ -52,9 +73,33 @@ function normalizeMarkFilter(raw) {
     if (s === '0' || s === 'empty' || s === 'unset' || s === 'none') return 0;
     if (s === '1' || s === 'on' || s === 'yes' || s === 'enabled') return 1;
     if (s === '2' || s === 'skip' || s === 'not_required' || s === 'na') return 2;
+    if (
+        s === '3' ||
+        s === 'no_competitors' ||
+        s === 'absent' ||
+        s === 'missing' ||
+        s === 'нету' ||
+        s === 'нет'
+    ) {
+        return 3;
+    }
     const n = Number(s);
-    if (n === 0 || n === 1 || n === 2) return n;
+    if (n === 0 || n === 1 || n === 2 || n === 3) return n;
     return 'all';
+}
+
+function parseDateOnly(raw) {
+    const s = String(raw == null ? '' : raw).trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+    return s;
+}
+
+function formatUpdatedAt(v) {
+    if (v == null || v === '') return null;
+    if (v instanceof Date && !Number.isNaN(v.getTime())) return v.toISOString();
+    const d = new Date(v);
+    if (!Number.isNaN(d.getTime())) return d.toISOString();
+    return String(v);
 }
 
 function parseFlexibleNumber(raw) {
@@ -297,6 +342,14 @@ module.exports = function exportsCompetitorsRouter(db) {
             const managerRaw = String(q.manager || '').trim();
             const markOzon = normalizeMarkFilter(q.competitors_ozon ?? q.mark_ozon);
             const markWb = normalizeMarkFilter(q.competitors_wb ?? q.mark_wb);
+            const markYandex = normalizeMarkFilter(
+                q.competitors_yandex ?? q.mark_yandex ?? q.competitors_ym
+            );
+            const updatedFrom = parseDateOnly(q.updated_from ?? q.updated_at_from);
+            const updatedTo = parseDateOnly(q.updated_to ?? q.updated_at_to);
+            const updatedNone =
+                String(q.updated_none || q.no_updated || '').trim() === '1' ||
+                String(q.updated_none || '').trim().toLowerCase() === 'yes';
             const sortRaw = String(q.sort_by || 'code').trim();
             const sortBy = SORT_KEYS.has(sortRaw) ? sortRaw : 'code';
             const sortDir = String(q.sort_dir || 'asc').toLowerCase() === 'desc' ? 'DESC' : 'ASC';
@@ -347,6 +400,22 @@ module.exports = function exportsCompetitorsRouter(db) {
                 where.push('COALESCE(mcm.wb, 0) = ?');
                 params.push(markWb);
             }
+            if (markYandex !== 'all') {
+                where.push('COALESCE(mcm.yandex, 0) = ?');
+                params.push(markYandex);
+            }
+            if (updatedNone) {
+                where.push('mcm.updated_at IS NULL');
+            } else {
+                if (updatedFrom) {
+                    where.push('DATE(mcm.updated_at) >= ?');
+                    params.push(updatedFrom);
+                }
+                if (updatedTo) {
+                    where.push('DATE(mcm.updated_at) <= ?');
+                    params.push(updatedTo);
+                }
+            }
 
             const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
             const orderCol =
@@ -358,9 +427,11 @@ module.exports = function exportsCompetitorsRouter(db) {
                         ? "COALESCE(med.denorm_article, '')"
                         : sortBy === 'manager'
                           ? "COALESCE(mse.manager, '')"
-                          : sortBy === 'name'
-                            ? 'mse.name'
-                            : 'mse.code';
+                          : sortBy === 'updated_at'
+                            ? 'mcm.updated_at'
+                            : sortBy === 'name'
+                              ? 'mse.name'
+                              : 'mse.code';
 
             const fromSql = `
                 FROM ms_export mse
@@ -385,7 +456,9 @@ module.exports = function exportsCompetitorsRouter(db) {
                     mse.stock_position,
                     COALESCE(med.denorm_article, '') AS article,
                     COALESCE(mcm.ozon, 0) AS mark_ozon,
-                    COALESCE(mcm.wb, 0) AS mark_wb
+                    COALESCE(mcm.wb, 0) AS mark_wb,
+                    COALESCE(mcm.yandex, 0) AS mark_yandex,
+                    mcm.updated_at AS marks_updated_at
                  ${fromSql}
                  ORDER BY ${orderCol} ${sortDir}, mse.code ASC
                  LIMIT ? OFFSET ?`,
@@ -414,6 +487,8 @@ module.exports = function exportsCompetitorsRouter(db) {
                 stock_position: String(r.stock_position || '').trim(),
                 competitors_ozon: normalizeMarkValue(r.mark_ozon),
                 competitors_wb: normalizeMarkValue(r.mark_wb),
+                competitors_yandex: normalizeMarkValue(r.mark_yandex),
+                updated_at: formatUpdatedAt(r.marks_updated_at),
             }));
 
             res.json({
@@ -434,6 +509,10 @@ module.exports = function exportsCompetitorsRouter(db) {
                     manager: managerRaw || '',
                     competitors_ozon: markOzon === 'all' ? 'all' : String(markOzon),
                     competitors_wb: markWb === 'all' ? 'all' : String(markWb),
+                    competitors_yandex: markYandex === 'all' ? 'all' : String(markYandex),
+                    updated_from: updatedFrom || '',
+                    updated_to: updatedTo || '',
+                    updated_none: updatedNone ? '1' : '0',
                 },
                 items,
             });
@@ -448,18 +527,19 @@ module.exports = function exportsCompetitorsRouter(db) {
 
     /**
      * POST /api/exports/competitors/mark
-     * Body: { code, field: "ozon"|"wb", value: 0|1|2 }
-     * 0 — пусто, 1 — включена, 2 — не требуется
+     * Body: { code, field: "ozon"|"wb"|"yandex", value: 0|1|2|3 }
+     * 0 — пусто, 1 — включена, 2 — не требуется, 3 — конкурентов нет
      */
     router.post('/mark', async (req, res) => {
         try {
             await ensureSchema(db);
             const body = req.body || {};
             const code = String(body.code || '').trim();
-            const fieldRaw = String(body.field || '')
+            let fieldRaw = String(body.field || '')
                 .trim()
                 .toLowerCase()
                 .replace(/^competitors_/, '');
+            if (fieldRaw === 'ym' || fieldRaw === 'ya') fieldRaw = 'yandex';
             const field = MARK_FIELDS.has(fieldRaw) ? fieldRaw : '';
             const value = normalizeMarkValue(body.value);
             if (!code) {
@@ -468,12 +548,12 @@ module.exports = function exportsCompetitorsRouter(db) {
             if (!field) {
                 return res.status(400).json({
                     success: false,
-                    error: 'field: ozon | wb',
+                    error: 'field: ozon | wb | yandex',
                 });
             }
 
             const userId = sessionUserId(req);
-            const col = field === 'wb' ? 'wb' : 'ozon';
+            const col = field;
             await db.query(
                 `INSERT INTO dg_mp_competitor_marks (code, ${col}, updated_by_user_id)
                  VALUES (?, ?, ?)
@@ -484,7 +564,7 @@ module.exports = function exportsCompetitorsRouter(db) {
             );
 
             const [[row]] = await db.query(
-                `SELECT code, ozon, wb, updated_at FROM dg_mp_competitor_marks WHERE code = ? LIMIT 1`,
+                `SELECT code, ozon, wb, yandex, updated_at FROM dg_mp_competitor_marks WHERE code = ? LIMIT 1`,
                 [code]
             );
 
@@ -495,7 +575,8 @@ module.exports = function exportsCompetitorsRouter(db) {
                 value,
                 competitors_ozon: normalizeMarkValue(row?.ozon),
                 competitors_wb: normalizeMarkValue(row?.wb),
-                updated_at: row?.updated_at || null,
+                competitors_yandex: normalizeMarkValue(row?.yandex),
+                updated_at: formatUpdatedAt(row?.updated_at),
             });
         } catch (e) {
             console.error('[exports/competitors/mark]', e);

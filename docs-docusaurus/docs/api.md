@@ -900,29 +900,32 @@ Query:
 | `type` | `all` (по умолчанию) \| `product` (Товар) \| `bundle` (Комплект) |
 | `stock_position` | `yes` (**по умолчанию**, только «Да») \| `no` \| `all` |
 | `manager` | точное имя из `ms_export.manager`; `__empty__` — без менеджера; пусто — все |
-| `competitors_ozon` / `competitors_wb` | `all` (по умолчанию) \| `0` не отмечено \| `1` включена \| `2` не требуется |
-| `sort_by` | `code` \| `article` \| `manager` \| `name` \| `buy_price` \| `stock` (по умолчанию `code`) |
+| `competitors_ozon` / `competitors_wb` / `competitors_yandex` | `all` (по умолчанию) \| `0` не отмечено \| `1` включена \| `2` не требуется \| `3` конкурентов нет |
+| `updated_from` / `updated_to` | дата `YYYY-MM-DD` по `dg_mp_competitor_marks.updated_at` (включительно); игнорируются при `updated_none=1` |
+| `updated_none` | `1` — только строки без сохранённого статуса (`updated_at IS NULL`) |
+| `sort_by` | `code` \| `article` \| `manager` \| `name` \| `buy_price` \| `stock` \| `updated_at` (по умолчанию `code`) |
 | `sort_dir` | `asc` \| `desc` |
 | `limit` | по умолчанию **100**, макс. 500 |
 | `offset` | пагинация |
 
-Ответ: `{ success, total, limit, offset, sort_by, sort_dir, managers: string[], items: [{ code, article, manager, name, buy_price, stock, competitors_ozon, competitors_wb }] }`.
+Ответ: `{ success, total, limit, offset, sort_by, sort_dir, managers: string[], filters, items: [{ code, article, manager, name, buy_price, stock, competitors_ozon, competitors_wb, competitors_yandex, updated_at }] }`.
 
-На UI код и название ведут на `/product.html?code=…`; перед названием — **Менеджер товара** (`ms_export.manager`); далее **Закупочная** / **Остаток**; колонки Ozon / ВБ / Я.Маркет — ссылки «Искать»; сразу после Ozon и ВБ — статус **Конкуренты Ozon** / **Конкуренты WB** (`dg_mp_competitor_marks`: `0` пусто, `1` включена, `2` не требуется).
+На UI код и название ведут на `/product.html?code=…`; перед названием — **Менеджер товара** (`ms_export.manager`); далее **Закупочная** / **Остаток**; колонки Ozon / ВБ / Я.Маркет — ссылки «Искать»; сразу после каждой — статус **Конкуренты …** (`dg_mp_competitor_marks`: `0` пусто, `1` включена, `2` не требуется, `3` конкурентов нет); колонка **Обновлено** — `updated_at` последней записи статуса.
 
 ### POST `/api/exports/competitors/mark`
 
 Сохранить статус по коду товара.
 
-Body: `{ "code": "…", "field": "ozon"|"wb", "value": 0|1|2 }`
+Body: `{ "code": "…", "field": "ozon"|"wb"|"yandex", "value": 0|1|2|3 }`
 
 - `0` — не отмечено  
 - `1` — включена (конкуренты проработаны / есть)  
 - `2` — не требуется  
+- `3` — конкурентов нету  
 
-Ответ: `{ success, code, field, value, competitors_ozon, competitors_wb, updated_at }`.
+Ответ: `{ success, code, field, value, competitors_ozon, competitors_wb, competitors_yandex, updated_at }`.
 
-Таблица: **`dg_mp_competitor_marks`** (`code` PK, `ozon`, `wb`, `updated_at`, `updated_by_user_id`).
+Таблица: **`dg_mp_competitor_marks`** (`code` PK, `ozon`, `wb`, `yandex`, `updated_at`, `updated_by_user_id`).
 
 ## Exports / Dimensions (Габариты)
 
