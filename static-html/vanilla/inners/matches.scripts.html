@@ -392,7 +392,7 @@
         var listComp = listCompEl && listCompEl.value ? String(listCompEl.value).trim() : "";
         if (listComp) params.set("list_competitor_id", listComp);
         if (statusFilter && statusFilter !== "pending") params.set("status", statusFilter);
-        if (searchMode && searchMode !== "all") params.set("mode", searchMode);
+        if (searchMode && searchMode !== "sku") params.set("mode", searchMode);
         if (productSearch) params.set("product_search", productSearch);
         var listSmart = String(document.getElementById("dg-matches-smart-filter").value || "").trim();
         if (listSmart) params.set("list_smart", listSmart);
@@ -2128,10 +2128,11 @@
           })
           .finally(function () {
             if (gen !== loadMatchesGen) return;
-            if (showLoader) {
-              state.loadingMatches = false;
-              setMatchesListFetchBusy(false);
-            }
+            // Всегда снимаем «Загрузка…»: silent-перезагрузка (после job done / confirm)
+            // иначе перебивает gen у обычного loadMatches и forever оставляет loadingMatches=true
+            // при уже обновлённом matchesTotal («Всего: N» + вечная «Загрузка…»).
+            state.loadingMatches = false;
+            setMatchesListFetchBusy(false);
             renderMatchesTable();
             scheduleSyncUrl();
             persistMatchesListFilterForm();
@@ -2246,8 +2247,8 @@
           mode: document.getElementById("dg-matches-search-mode").value,
           productIds: state.selectedProductIds,
           batchSize: Number(document.getElementById("dg-matches-batch-size").value || 200),
-          microPauseMs: Number(document.getElementById("dg-matches-micro-pause").value || 20),
-          batchPauseMs: Number(document.getElementById("dg-matches-batch-pause").value || 200),
+          microPauseMs: Number(document.getElementById("dg-matches-micro-pause").value || 0),
+          batchPauseMs: Number(document.getElementById("dg-matches-batch-pause").value || 0),
         });
       }
 
@@ -2261,8 +2262,8 @@
           mode: document.getElementById("dg-matches-search-mode").value,
           productSearch: String(document.getElementById("dg-matches-product-search").value || "").trim(),
           batchSize: Number(document.getElementById("dg-matches-batch-size").value || 200),
-          microPauseMs: Number(document.getElementById("dg-matches-micro-pause").value || 20),
-          batchPauseMs: Number(document.getElementById("dg-matches-batch-pause").value || 200),
+          microPauseMs: Number(document.getElementById("dg-matches-micro-pause").value || 0),
+          batchPauseMs: Number(document.getElementById("dg-matches-batch-pause").value || 0),
         });
       }
 
@@ -2282,8 +2283,8 @@
             mode: document.getElementById("dg-matches-search-mode").value,
             productSearch: String(document.getElementById("dg-matches-product-search").value || "").trim(),
             batchSize: Number(document.getElementById("dg-matches-batch-size").value || 200),
-            microPauseMs: Number(document.getElementById("dg-matches-micro-pause").value || 20),
-            batchPauseMs: Number(document.getElementById("dg-matches-batch-pause").value || 200),
+            microPauseMs: Number(document.getElementById("dg-matches-micro-pause").value || 0),
+            batchPauseMs: Number(document.getElementById("dg-matches-batch-pause").value || 0),
           }),
         })
           .then(function (r) {
@@ -2897,6 +2898,7 @@
             document.getElementById("dg-matches-status-filter").value = up.status;
           if (up.mode && MATCH_MODES_ALLOWED[up.mode])
             document.getElementById("dg-matches-search-mode").value = up.mode;
+          else document.getElementById("dg-matches-search-mode").value = "sku";
           if (up.product_search) document.getElementById("dg-matches-product-search").value = up.product_search;
           if (Number.isFinite(up.matches_page) && up.matches_page > 0) state.matchesPage = up.matches_page;
           if ([50, 100, 200].indexOf(up.matches_limit) !== -1) {

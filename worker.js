@@ -111,13 +111,29 @@ async function runWorker() {
                         continue;
                     }
 
-                    // Парсинг цены
+                    // Парсинг цены — только зона карточки, не слайдеры «Похожие товары»
+                    const priceScope =
+                        $('.product-info, .product-card, .product-detail, .catalog-detail').first().length
+                            ? $('.product-info, .product-card, .product-detail, .catalog-detail').first()
+                            : ($('main').first().length ? $('main').first() : $('body'));
                     let priceText = '';
                     let price = null;
                     for (let sel of priceSelectors) {
-                        let text = $(sel.trim()).first().text().trim();
-                        if (!text) text = $(sel.trim()).first().attr('content') || $(sel.trim()).first().attr('data-price') || '';
-                        if (text) { priceText = text; break; }
+                        const nodes = priceScope.find(sel.trim()).filter((_, el) => {
+                            const $el = $(el);
+                            if ($el.closest('.products__slider, .similar-products, .related-products').length) return false;
+                            if ($el.closest('.swiper-slide').length && !$el.closest('.product-info, .product-detail, .product-card').length) return false;
+                            return true;
+                        });
+                        if (!nodes.length) continue;
+                        let text = String(nodes.first().text() || '').trim();
+                        if (!text) text = nodes.first().attr('content') || nodes.first().attr('data-price') || '';
+                        text = String(text || '').trim();
+                        const digits = text.replace(/[\s\u00A0\u202F]/g, '').replace(/[^0-9,.]/g, '').replace(',', '.');
+                        if (!digits || !(Number(digits) > 0)) continue;
+                        if (/цена\s*по\s*запросу|получить\s*кп/i.test(text)) continue;
+                        priceText = text;
+                        break;
                     }
                     if (priceText) {
                         priceText = String(priceText)
@@ -126,13 +142,19 @@ async function runWorker() {
                             .replace(',', '.');
                         price = parseFloat(priceText);
                     }
+                    const primaryTxt = String(priceScope.text() || '').toLowerCase().split('похожие товары')[0];
+                    const priceOnRequest = /цена\s+по\s+запросу|получить\s+кп/.test(primaryTxt);
 
                     // Парсинг остального
                     let isOos = false;
                     if (project.selector_oos) {
                         const oosSelectors = project.selector_oos.split(',');
-                        for (let sel of oosSelectors) { if ($(sel.trim()).length > 0) { isOos = true; break; } }
+                        for (let sel of oosSelectors) {
+                            if (priceScope.find(sel.trim()).length > 0) { isOos = true; break; }
+                        }
                     }
+                    if (!isOos && priceOnRequest) isOos = true;
+                    if (!isNaN(price) && price > 0) isOos = false;
 
                     let productName = '';
                     if (project.selector_name) {

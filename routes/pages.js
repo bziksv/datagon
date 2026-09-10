@@ -364,6 +364,71 @@ module.exports = (db, settings) => {
             .trim();
     }
 
+    /** Карточка товара без листингов «похожие» / слайдеров рекомендаций. */
+    function getPrimaryPriceScope($) {
+        const preferred = [
+            '.product-info',
+            '.product-card',
+            '.product-detail',
+            '.product-page',
+            '.catalog-detail',
+            '.detail',
+            '.item-detail',
+            '.bx_catalog_item'
+        ];
+        for (const s of preferred) {
+            const el = $(s).first();
+            if (el.length) return el;
+        }
+        const main = $('main').first();
+        return main.length ? main : $('body');
+    }
+
+    /**
+     * Dealmed и аналоги: цены похожих сидят в .products__slider / .swiper-slide,
+     * а широкий селектор вроде [id*="_price"] брал первую цену со страницы.
+     */
+    function isInsideRelatedProductsBlock($, el) {
+        const $el = $(el);
+        if (
+            $el.closest(
+                [
+                    '.products__slider',
+                    '.product-slider',
+                    '.similar-products',
+                    '.related-products',
+                    '.recommended-products',
+                    '[class*="similar-product"]',
+                    '[class*="related-product"]',
+                    '[data-entity="similar"]'
+                ].join(', ')
+            ).length
+        ) {
+            return true;
+        }
+        // Слайд рекомендации вне карточки (галерея внутри .product-info не режется).
+        if (
+            $el.closest('.swiper-slide').length &&
+            !$el.closest('.product-info, .product-detail, .product-card, .catalog-detail').length
+        ) {
+            return true;
+        }
+        return false;
+    }
+
+    /** Отбрасываем itemprop=0, «цена по запросу» и пустые кандидаты. */
+    function sanitizePriceCandidateText(raw) {
+        const s = String(raw || '').trim();
+        if (!s) return '';
+        if (/цена\s*по\s*запросу/i.test(s) || /получить\s*кп/i.test(s)) return '';
+        const digits = String(s)
+            .replace(/[\s\u00A0\u202F]/g, '')
+            .replace(/[^0-9,.]/g, '')
+            .replace(',', '.');
+        if (!digits || !(Number(digits) > 0)) return '';
+        return s;
+    }
+
     function getPrimaryProductText($) {
         const sectionSelectors = [
             '.product-info', '.product-card', '.product-detail', '.product-page', '.catalog-detail',
@@ -386,6 +451,11 @@ module.exports = (db, settings) => {
             .split('с этим товаром покупают')[0]
             .split('рекомендуем')[0]
             .trim();
+    }
+
+    function detectPriceOnRequest($) {
+        const targetText = getPrimaryProductText($);
+        return /цена\s+по\s+запросу/i.test(targetText) || /получить\s+кп/i.test(targetText);
     }
 
     function detectOosByText($, selectorOos) {
@@ -433,20 +503,33 @@ module.exports = (db, settings) => {
     }
 
     /**
-     * Цена из CSS-селектора: text или content/data-* (Bitrix meta[itemprop=price] часто без текста).
+     * Цена из CSS-селектора: только в зоне карточки (не «Похожие товары»).
+     * text или content/data-* (Bitrix itemprop=price часто без текста / content=0).
      */
     function readPriceCandidateFromSelector($, selector) {
-        const el = $(String(selector || '').trim()).first();
-        if (!el.length) return '';
-        const attr =
-            el.attr('content') ||
-            el.attr('data-price') ||
-            el.attr('data-value') ||
-            el.attr('value') ||
-            '';
-        const fromAttr = String(attr || '').trim();
-        if (fromAttr) return fromAttr;
-        return String(el.text() || '').trim();
+        const sel = String(selector || '').trim();
+        if (!sel) return '';
+        const scope = getPrimaryPriceScope($);
+        let nodes = scope.find(sel);
+        if (!nodes.length) {
+            // Совпадение самого корня (редко); весь документ НЕ сканируем — иначе чужие цены.
+            nodes = scope.filter(sel);
+        }
+        nodes = nodes.filter((_, el) => !isInsideRelatedProductsBlock($, el));
+        for (let i = 0; i < nodes.length; i += 1) {
+            const el = nodes.eq(i);
+            const attr =
+                el.attr('content') ||
+                el.attr('data-price') ||
+                el.attr('data-value') ||
+                el.attr('value') ||
+                '';
+            const fromAttr = sanitizePriceCandidateText(attr);
+            if (fromAttr) return fromAttr;
+            const fromText = sanitizePriceCandidateText(el.text());
+            if (fromText) return fromText;
+        }
+        return '';
     }
 
     function parsePriceNumber(priceTxt) {
@@ -587,18 +670,23 @@ module.exports = (db, settings) => {
                 .split(',')
                 .map((s) => s.trim())
                 .filter((s) => s && !s.toLowerCase().startsWith('text:'));
-            const hasOosBySelector = oosSelectors.some((s) => $(s).length > 0);
+            const priceScope = getPrimaryPriceScope($);
+            const hasOosBySelector = oosSelectors.some((s) => {
+                const nodes = priceScope.find(s).filter((_, el) => !isInsideRelatedProductsBlock($, el));
+                return nodes.length > 0;
+            });
             const hasOosByText = detectOosByText($, pr.selector_oos);
             const hasHardOosByText = detectHardOosByText($);
             const hasInStockByText = detectInStockByText($);
+            const priceOnRequest = detectPriceOnRequest($);
             // Приоритет:
             // 1) валидная цена → не OOS (цена важнее);
-            // 2) явный OOS (селектор/«ожидается поставка»/…) → OOS;
+            // 2) явный OOS / «цена по запросу» / «Получить КП» → OOS (без чужих цен из похожих);
             // 3) явный «в наличии» → не OOS;
             // «В корзину» больше не считается наличием — на dealmed кнопка есть и при ожидании поставки.
             const hasOos = hasPrice
                 ? false
-                : (hasHardOosByText || hasOosBySelector || hasOosByText)
+                : (hasHardOosByText || hasOosBySelector || hasOosByText || priceOnRequest)
                     ? true
                     : false;            
             type = detectPageType($, pageRow.url, pr, hasPrice, hasOos, hasInStockByText, html);
@@ -1252,11 +1340,26 @@ module.exports = (db, settings) => {
                 pc.push(type);
             }
             if (search) {
-                const searchVal = `%${search}%`;
-                q += ' AND (pg.url LIKE ? OR pg.product_name LIKE ? OR pg.last_sku LIKE ?)';
-                qc += ' AND (pg.url LIKE ? OR pg.product_name LIKE ? OR pg.last_sku LIKE ?)';
-                p.push(searchVal, searchVal, searchVal);
-                pc.push(searchVal, searchVal, searchVal);
+                const raw = String(search).trim();
+                const variants = new Set([raw]);
+                // dealmed и др.: в sitemap часто без www, в браузере/копипасте — с www
+                if (/^https?:\/\/www\./i.test(raw)) {
+                    variants.add(raw.replace(/^(https?:\/\/)www\./i, '$1'));
+                } else if (/^https?:\/\/(?!www\.)/i.test(raw)) {
+                    variants.add(raw.replace(/^(https?:\/\/)/i, '$1www.'));
+                }
+                const bare = raw.replace(/^https?:\/\/(www\.)?/i, '');
+                if (bare && bare !== raw) variants.add(bare);
+                const likes = [...variants].map((v) => `%${v}%`);
+                const urlOrParts = likes
+                    .map(() => '(pg.url LIKE ? OR pg.product_name LIKE ? OR pg.last_sku LIKE ?)')
+                    .join(' OR ');
+                q += ` AND (${urlOrParts})`;
+                qc += ` AND (${urlOrParts})`;
+                for (const like of likes) {
+                    p.push(like, like, like);
+                    pc.push(like, like, like);
+                }
             }
 
             if (matched === '1' && matchedUrlList) {

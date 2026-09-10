@@ -426,9 +426,9 @@ Query (основные):
 - `sort_by`, `sort_dir` — сортировка (`id`, `site`, `sku`, `name`, `price`, …)
 - `limit`, `offset` — пагинация
 - фильтр разрыва с конкурентом: `gap_filter_enabled`, `gap_exclude_zero`, `gap_competitor`, `gap_min_pct`, `gap_max_pct`, `usd_to_rub`, `eur_to_rub`
-- `match_audit` — фильтр по аудиту сопоставлений
+- `match_audit` — `all` | `confirmed` | `unlinked` | `none` (аудит `product_matches`). `confirmed` / `unlinked` / `none` строятся через `JOIN` к набору id из матчей (по `my_sku` ∪ по `my_product_name`), **не** через коррелированный `EXISTS` по всем ~40k `my_products` (тот путь давал десятки секунд на COUNT). При `gap_filter_enabled=1` пагинация в SQL снимается: сначала выбираются все строки по фильтрам, затем gap считается в Node — без узкого `search` / `match_audit` это тяжело.
 
-Кэш ответа: при неизменных параметрах повторный запрос в течение **120 с** может вернуть тот же JSON с полем `cache` (`source`, `age_ms`, `ttl_ms`).
+Кэш ответа: при неизменных параметрах повторный запрос в течение **120 с** может вернуть тот же JSON с полем `cache` (`source`, `age_ms`, `ttl_ms`). Проверка кэша — **до** DDL/прогрева индексов.
 
 ### GET `/api/my-products/stats`
 Агрегированная статистика **по каждому** `site_id` (одна строка на сайт в ответе).
@@ -487,7 +487,7 @@ Body (пример):
   "mySiteId": 1,
   "competitorIds": [2, 3],
   "threshold": 0.85,
-  "mode": "all",
+  "mode": "sku",
   "productIds": null,
   "productSearch": "",
   "batchSize": 200,
@@ -498,6 +498,7 @@ Body (пример):
 }
 ```
 
+`mode` по умолчанию (если не передан / невалидный): **`sku`** (строгий артикул). Варианты: `sku` | `sku_norm` | `sku_best` | `all` | `name`. UI рекомендует сначала SKU-режимы, затем `all` / `name`. Мисс в любом режиме пишет `match_exclusion` (`no_match` → ручная очередь шага 3) **пакетами** (bulk `INSERT … ON DUPLICATE KEY UPDATE`), без 3–4 SQL на каждый товар; `rejected` не затирается.
 ### POST `/api/matches/retry-last`
 Повторить/продолжить последнюю задачу сопоставления.
 

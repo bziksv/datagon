@@ -35,7 +35,7 @@
             </div>
             <div id="dg-matches-workflow-panel" class="d-none card-body pt-3 border-top bg-white">
               <p class="text-muted small mb-4 lh-base">
-                Рекомендуемый порядок: сначала SKU-прогон с «Нормализация + детерминированная строка», при необходимости — «Нормализация артикула», затем «Строгий отбор»; после этого — «Только название» и ручная доводка. Так вы быстрее закрываете очевидные пары и не смешиваете разные типы ошибок в одной куче.
+                Рекомендуемый порядок: сначала прогон <strong>по SKU</strong> (по умолчанию — строгий отбор), при необходимости — «Нормализация» / «Нормализация + строка»; затем — «Общий» или «Только название» и ручная доводка. Не начинайте с названия: «не найдено» уходит в ручную очередь и блокирует повторный поиск по артикулу.
               </p>
               <div class="alert alert-light border small mb-4 mb-md-3" role="note">
                 <div class="fw-semibold text-body mb-2">Что подставляется при открытии страницы</div>
@@ -68,9 +68,10 @@
                 </div>
                 <div id="dg-matches-workflow-t1-body" class="small text-body-secondary lh-lg px-2 pb-3 pt-2">
                   <p class="mb-2">
-                    Выберите <strong>мой сайт (запуск)</strong>, отметьте <strong>конкурентов</strong>, при необходимости сузьте набор через <strong>умный поиск</strong> и пакетные параметры. Для первого прохода по артикулам рекомендуем режим
-                    <strong>«Нормализация + детерминированная строка»</strong> — он устойчив к типичным расхождениям в SKU и к нескольким строкам прайса с одним ключом. При необходимости затем прогоните
-                    <strong>«Нормализация артикула»</strong>, затем <strong>«Строгий отбор (trim + регистр)»</strong>, чтобы сузить или перепроверить остатки. Нажмите
+                    Выберите <strong>мой сайт (запуск)</strong>, отметьте <strong>конкурентов</strong>, при необходимости сузьте набор через <strong>умный поиск</strong> и пакетные параметры. Режим по умолчанию —
+                    <strong>«По SKU — строгий отбор»</strong>. При необходимости затем прогоните
+                    <strong>«Нормализация + детерминированная строка»</strong> или
+                    <strong>«Нормализация артикула»</strong>. Нажмите
                     <strong>«Запустить авто по фильтру»</strong> или отметьте товары в таблице «Мои товары» и запустите по выбранным.
                   </p>
                   <p class="mb-2">
@@ -228,16 +229,14 @@
                     </button>
                   </div>
                   <select class="form-select" id="dg-matches-search-mode">
-                    <optgroup label="Комбинированно">
-                      <option value="all">Все поля — строгий SKU, затем название</option>
+                    <optgroup label="1. Сначала по артикулу (SKU)">
+                      <option value="sku" selected>По SKU — строгий отбор (trim + регистр)</option>
+                      <option value="sku_best">По SKU — нормализация + детерминированная строка</option>
+                      <option value="sku_norm">По SKU — нормализация артикула</option>
                     </optgroup>
-                    <optgroup label="Только SKU">
-                      <option value="sku_best">Нормализация + детерминированная строка</option>
-                      <option value="sku_norm">Нормализация артикула</option>
-                      <option value="sku">Строгий отбор (trim + регистр)</option>
-                    </optgroup>
-                    <optgroup label="Название">
-                      <option value="name">Только название</option>
+                    <optgroup label="2. Потом (после прогона по SKU)">
+                      <option value="all">Общий — SKU, затем название (не вместо SKU)</option>
+                      <option value="name">Только название (запускать после SKU)</option>
                     </optgroup>
                   </select>
                 </div>
@@ -247,11 +246,11 @@
                 </div>
                 <div class="col-md-1" data-dg-matches-launch-field="micro_pause">
                   <label class="form-label mb-1 small text-uppercase text-muted" style="letter-spacing: 0.04em" for="dg-matches-micro-pause">Микро, мс</label>
-                  <input type="number" class="form-control" id="dg-matches-micro-pause" min="0" value="20" title="Микропауза, мс" />
+                  <input type="number" class="form-control" id="dg-matches-micro-pause" min="0" value="0" title="Микропауза, мс. 0 — быстрее на больших объёмах." />
                 </div>
                 <div class="col-md-1" data-dg-matches-launch-field="batch_pause">
                   <label class="form-label mb-1 small text-uppercase text-muted" style="letter-spacing: 0.04em" for="dg-matches-batch-pause">Пауза, мс</label>
-                  <input type="number" class="form-control" id="dg-matches-batch-pause" min="0" value="200" title="Пауза между пакетами (мс). Большие значения сильно удлиняют прогон." />
+                  <input type="number" class="form-control" id="dg-matches-batch-pause" min="0" value="0" title="Пауза между пакетами (мс). 0 — быстрее; большие значения сильно удлиняют прогон." />
                 </div>
               </div>
               <p class="small text-muted mb-0 mt-1 lh-sm" style="font-size: 0.8rem">
@@ -262,38 +261,38 @@
                   <div class="px-3 py-2 border-bottom bg-light small fw-semibold text-body">Описание режимов сопоставления</div>
                   <div class="px-3 py-3 small text-body-secondary lh-base">
                     <p class="mb-2 text-muted" style="font-size: 0.75rem">
-                      Режимы можно менять и сравнивать результаты; позже часть логики можно автоматизировать по метрикам качества.
+                      В селекте по умолчанию выбран <strong>«По SKU — строгий отбор»</strong> (<code>sku</code>). Сначала закрывайте артикулы одним из режимов SKU; «Общий» и «Только название» — отдельно, после SKU.
                     </p>
                     <dl class="row mb-0">
                       <dt class="col-md-4 col-lg-3 mb-2 text-body fw-semibold">
-                        <code class="small">all</code> · Все поля
+                        <code class="small">sku</code> · По SKU — строгий отбор <span class="badge bg-primary">по умолчанию</span>
                       </dt>
                       <dd class="col-md-8 col-lg-9 mb-2">
-                        Сначала <strong>строгое</strong> совпадение SKU (<code>trim</code> + верхний регистр). Если нет — сравнение по названию с порогом схожести (по умолчанию 85%).
+                        Артикул = SKU: <code>trim</code> + верхний регистр, без другой нормализации. Совпадает с пунктом селекта «По SKU — строгий отбор (trim + регистр)».
                       </dd>
                       <dt class="col-md-4 col-lg-3 mb-2 text-body fw-semibold">
-                        <code class="small">sku_best</code> · Нормализация + выбор строки
+                        <code class="small">sku_best</code> · По SKU — нормализация + детерминированная строка
                       </dt>
                       <dd class="col-md-8 col-lg-9 mb-2">
-                        Тот же ключ, что и в <code>sku_norm</code>, но среди всех строк прайса с этим ключом выбирается одна: сначала большая <strong>дата парсинга</strong> (<code>MAX(parsed_at)</code> по группе строки), затем стабильный порядок по названию и исходному SKU.
+                        Тот же нормализованный ключ, что у <code>sku_norm</code>. Если в прайсе несколько строк с этим ключом, берётся <strong>одна и та же</strong> («детерминированная»): новее <code>parsed_at</code>, затем стабильный порядок по названию и исходному SKU. Это пункт селекта «По SKU — нормализация + детерминированная строка».
                       </dd>
                       <dt class="col-md-4 col-lg-3 mb-2 text-body fw-semibold">
-                        <code class="small">sku_norm</code> · Нормализация
+                        <code class="small">sku_norm</code> · По SKU — нормализация артикула
                       </dt>
                       <dd class="col-md-8 col-lg-9 mb-2">
-                        Ключ SKU: NFKC, верхний регистр, удаление пробелов/NBSP, унификация тире в ASCII-<code>-</code>. Берётся <strong>первая</strong> совпавшая строка прайса в текущем порядке выборки (как раньше для строгого режима, но по нормализованному ключу).
+                        Ключ: NFKC, верхний регистр, без пробелов/NBSP, тире → ASCII <code>-</code>. Берётся <strong>первая</strong> строка прайса с этим ключом в порядке выборки (не обязательно та же при повторном запуске, если порядок строк меняется).
                       </dd>
                       <dt class="col-md-4 col-lg-3 mb-2 text-body fw-semibold">
-                        <code class="small">sku</code> · Строгий SKU
+                        <code class="small">all</code> · Общий — SKU, затем название
                       </dt>
                       <dd class="col-md-8 col-lg-9 mb-2">
-                        Только точное совпадение после <code>trim</code> и приведения к верхнему регистру. Пробелы <em>внутри</em> артикула и Unicode-тире <strong>не</strong> приводятся к общему виду. Название не используется.
+                        Сначала строгий SKU, если нет — схожесть названий (~85%). Не замена первому прогону по SKU. В селекте: «Общий — SKU, затем название (не вместо SKU)».
                       </dd>
                       <dt class="col-md-4 col-lg-3 mb-2 text-body fw-semibold">
                         <code class="small">name</code> · Только название
                       </dt>
                       <dd class="col-md-8 col-lg-9 mb-0">
-                        SKU не участвует; только схожесть нормализованных названий при длине &gt; 3 символов (у вас и у позиции конкурента).
+                        SKU не сравнивается. Запускайте после SKU: иначе «авто не нашло» попадёт в ручную очередь (шаг 3) и следующий прогон по SKU этот товар <strong>пропустит</strong>, пока не нажмёте «Вернуть в авто». В селекте: «Только название (запускать после SKU)».
                       </dd>
                     </dl>
                   </div>
@@ -312,17 +311,19 @@
                   <p class="mb-2 fw-semibold text-body">Режим сопоставления (сервер)</p>
                   <ul class="mb-3 ps-3">
                     <li class="mb-2">
-                      <strong>Все поля</strong> — сначала <strong>строгий</strong> SKU (<code>trim</code> + верхний регистр). Если нет пары — шаг по <strong>названию</strong> (порог по умолчанию <strong>85%</strong>).
+                      <strong>По SKU (строгий)</strong> — <code>trim</code> + верхний регистр; название не используется. <strong>По умолчанию</strong> и рекомендуемый первый прогон.
                     </li>
                     <li class="mb-2">
-                      <strong>SKU нормализация + выбор строки</strong> — тот же ключ, что у нормализации; среди всех строк с этим ключом выбирается одна по максимальной дате парсинга группы, затем по названию и SKU (стабильно при повторных запусках). Рекомендуемый первый прогон по артикулам.
+                      <strong>SKU нормализация + выбор строки</strong> — нормализованный ключ; среди строк с этим ключом — одна по дате парсинга / названию / SKU.
                     </li>
                     <li class="mb-2">
-                      <strong>SKU нормализация</strong> — один ключ для вашего и конкурента: NFKC, верхний регистр, без пробелов/NBSP, тире приведены к <code>-</code>; берётся первое совпадение в порядке строк прайса.
+                      <strong>SKU нормализация</strong> — NFKC, верхний регистр, без пробелов/NBSP, тире → <code>-</code>; первое совпадение в прайсе.
                     </li>
-                    <li class="mb-2"><strong>SKU строгий</strong> — только <code>trim</code> + верхний регистр; название не используется.</li>
+                    <li class="mb-2">
+                      <strong>Общий</strong> — сначала строгий SKU, если нет — название (~85%). Запускать <strong>после</strong> отдельного прогона по SKU, не вместо него.
+                    </li>
                     <li class="mb-0">
-                      <strong>Только название</strong> — SKU не участвует; длина нормализованного названия &gt; 3 у обеих сторон.
+                      <strong>Только название</strong> — без SKU. Только после прогона по артикулам: иначе «не найдено» блокирует повторный SKU через ручную очередь.
                     </li>
                   </ul>
                   <p class="mb-2 fw-semibold text-body pt-1 border-top">Поле «Умный поиск»</p>

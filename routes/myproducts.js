@@ -51,6 +51,56 @@ function sqlMyProductsLinkedPredicate() {
     return '(ms_link_src.code IS NOT NULL OR ms_link_sku.code IS NOT NULL)';
 }
 
+/**
+ * Набор id my_products, связанных с product_matches (по sku или по name).
+ * Без коррелированного EXISTS по всей таблице my_products — тот путь давал ~100s на COUNT.
+ */
+function sqlMyProductsIdsMatchedBySkuOrName(extraPmWhereSql = '') {
+    const extra = extraPmWhereSql ? ` AND (${extraPmWhereSql})` : '';
+    return `
+        SELECT mp2.id AS mp_id
+        FROM product_matches pm
+        INNER JOIN my_products mp2
+          ON mp2.site_id = pm.my_site_id
+         AND TRIM(COALESCE(pm.my_sku, '')) <> ''
+         AND mp2.sku = pm.my_sku
+        WHERE 1=1${extra}
+        UNION
+        SELECT mp2.id AS mp_id
+        FROM product_matches pm
+        INNER JOIN my_products mp2
+          ON mp2.site_id = pm.my_site_id
+         AND mp2.name = pm.my_product_name
+        WHERE 1=1${extra}
+    `;
+}
+
+/** JOIN / WHERE для match_audit (confirmed|unlinked|none). Пустая строка — без фильтра. */
+function sqlMatchAuditJoinAndWhere(matchAuditFilter) {
+    const mode = String(matchAuditFilter || 'all').toLowerCase();
+    if (mode === 'confirmed') {
+        return {
+            joinSql: `INNER JOIN (${sqlMyProductsIdsMatchedBySkuOrName(`pm.status = 'confirmed'`)}) dg_ma ON dg_ma.mp_id = mp.id`,
+            whereSql: ''
+        };
+    }
+    if (mode === 'unlinked') {
+        return {
+            joinSql: `INNER JOIN (${sqlMyProductsIdsMatchedBySkuOrName(
+                `pm.unlinked_at IS NOT NULL AND (pm.confirmed_at IS NULL OR pm.unlinked_at >= pm.confirmed_at)`
+            )}) dg_ma ON dg_ma.mp_id = mp.id`,
+            whereSql: ''
+        };
+    }
+    if (mode === 'none') {
+        return {
+            joinSql: `LEFT JOIN (${sqlMyProductsIdsMatchedBySkuOrName('')}) dg_ma ON dg_ma.mp_id = mp.id`,
+            whereSql: ' AND dg_ma.mp_id IS NULL'
+        };
+    }
+    return { joinSql: '', whereSql: '' };
+}
+
 module.exports = (db, settings) => {
     if (!db) {
         console.error('[myproducts] CRITICAL: DB connection is undefined!');
@@ -353,8 +403,6 @@ module.exports = (db, settings) => {
     // 1. Список товаров (с поиском и фильтрами)
     router.get('/', async (req, res) => {
         try {
-            await ensureMyProductsPerfIndexes();
-            await ensureMyProductsCmsProductIdColumn();
             const {
                 site_id,
                 status,
@@ -439,14 +487,20 @@ module.exports = (db, settings) => {
                     }
                 });
             }
-            
+
+            await ensureMyProductsPerfIndexes();
+            await ensureMyProductsCmsProductIdColumn();
+
+            const matchAuditSql = sqlMatchAuditJoinAndWhere(matchAuditFilter);
             let q = `
                 SELECT 
                     mp.*
                 FROM my_products mp
+                ${matchAuditSql.joinSql}
                 WHERE 1=1
+                ${matchAuditSql.whereSql}
             `;
-            let qc = 'SELECT COUNT(*) as total FROM my_products mp WHERE 1=1';
+            let qc = `SELECT COUNT(*) as total FROM my_products mp ${matchAuditSql.joinSql} WHERE 1=1${matchAuditSql.whereSql}`;
             let p = [], pc = [];
 
             if (site_id && site_id !== 'all') { 
@@ -505,50 +559,6 @@ module.exports = (db, settings) => {
                 qc += ` AND ${cond}`;
             } else if (ms_linked === '0') {
                 const cond = `NOT EXISTS (SELECT 1 FROM ms_export ms WHERE ${sqlMsExportMatchesProduct('ms', 'mp')} LIMIT 1)`;
-                q += ` AND ${cond}`;
-                qc += ` AND ${cond}`;
-            }
-
-            if (matchAuditFilter === 'confirmed') {
-                const cond = `EXISTS(
-                    SELECT 1
-                    FROM product_matches pm
-                    WHERE pm.status = 'confirmed'
-                      AND pm.my_site_id = mp.site_id
-                      AND (
-                        (pm.my_sku IS NOT NULL AND pm.my_sku <> '' AND pm.my_sku = mp.sku)
-                        OR pm.my_product_name = mp.name
-                      )
-                    LIMIT 1
-                )`;
-                q += ` AND ${cond}`;
-                qc += ` AND ${cond}`;
-            } else if (matchAuditFilter === 'unlinked') {
-                const cond = `EXISTS(
-                    SELECT 1
-                    FROM product_matches pm
-                    WHERE pm.my_site_id = mp.site_id
-                      AND (
-                        (pm.my_sku IS NOT NULL AND pm.my_sku <> '' AND pm.my_sku = mp.sku)
-                        OR pm.my_product_name = mp.name
-                      )
-                      AND pm.unlinked_at IS NOT NULL
-                      AND (pm.confirmed_at IS NULL OR pm.unlinked_at >= pm.confirmed_at)
-                    LIMIT 1
-                )`;
-                q += ` AND ${cond}`;
-                qc += ` AND ${cond}`;
-            } else if (matchAuditFilter === 'none') {
-                const cond = `NOT EXISTS(
-                    SELECT 1
-                    FROM product_matches pm
-                    WHERE pm.my_site_id = mp.site_id
-                      AND (
-                        (pm.my_sku IS NOT NULL AND pm.my_sku <> '' AND pm.my_sku = mp.sku)
-                        OR pm.my_product_name = mp.name
-                      )
-                    LIMIT 1
-                )`;
                 q += ` AND ${cond}`;
                 qc += ` AND ${cond}`;
             }
