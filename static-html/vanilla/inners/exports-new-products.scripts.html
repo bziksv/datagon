@@ -155,10 +155,6 @@
     { key: "infographic", label: "Инфографика", sort: true, minWidth: 100, defWidth: 120 },
     { key: "photo", label: "Фото", sort: true, minWidth: 120, defWidth: 150 },
     { key: "placement_date", label: "Дата размещения", sort: true, minWidth: 120, defWidth: 148 },
-    { key: "length_cm", label: "Длина, см", sort: false, minWidth: 70, defWidth: 90 },
-    { key: "width_cm", label: "Ширина, см", sort: false, minWidth: 70, defWidth: 90 },
-    { key: "height_cm", label: "Высота, см", sort: false, minWidth: 70, defWidth: 90 },
-    { key: "weight_kg", label: "Вес, кг", sort: false, minWidth: 70, defWidth: 90 },
     { key: "vat", label: "НДС", sort: false, minWidth: 70, defWidth: 90 },
     { key: "ru_url", label: "Ссылка на РУ", sort: false, minWidth: 120, defWidth: 180 },
     { key: "manager_checked", label: "Проверено\nменеджером", sort: false, minWidth: 100, defWidth: 110 },
@@ -175,7 +171,7 @@
     });
   }
   function visibleColsKey() {
-    return "dg.np.visible-cols.v1:" + state.channel;
+    return "dg.np.visible-cols.v2:" + state.channel;
   }
   function colWidthsKey() {
     return "dg.np.col-widths.v1:" + state.channel;
@@ -611,10 +607,6 @@
     product_code: "Код",
     barcode: "Штрихкод",
     price_markets: "Цена на маркеты",
-    length_cm: "Длина, см",
-    width_cm: "Ширина, см",
-    height_cm: "Высота, см",
-    weight_kg: "Вес, кг",
     vat: "НДС",
     ru_url: "Ссылка на РУ",
     infographic: "Инфографика",
@@ -1888,22 +1880,6 @@
     });
   }
 
-  function makeDimCell(row, field, missMap, placeholder) {
-    var td = document.createElement("td");
-    td.className = "dg-np-cell";
-    markRequired(td, field, missMap);
-    var inp = document.createElement("input");
-    inp.type = "text";
-    inp.inputMode = "decimal";
-    inp.className = "form-control form-control-sm text-end";
-    inp.value = row[field] != null ? String(row[field]) : "";
-    inp.placeholder = placeholder || "";
-    inp.setAttribute("data-dg-no-activity", "1");
-    bindNumSave(inp, row, field);
-    td.appendChild(inp);
-    return attachFieldLog(td, row, field);
-  }
-
   function renderAlmamedRow(row) {
     var tr = document.createElement("tr");
     applyNpStatusRowClass(tr, row.status);
@@ -2233,11 +2209,6 @@
     tr.appendChild(makeEnumSelect(row, "photo", PHOTO_OPTS, "—"));
     tr.appendChild(makePlacementDatesCell(row));
 
-    tr.appendChild(makeDimCell(row, "length_cm", missMap, "см"));
-    tr.appendChild(makeDimCell(row, "width_cm", missMap, "см"));
-    tr.appendChild(makeDimCell(row, "height_cm", missMap, "см"));
-    tr.appendChild(makeDimCell(row, "weight_kg", missMap, "кг"));
-
     tr.appendChild(
       makeCopyCell(row.vat, {
         missKey: "vat",
@@ -2460,24 +2431,6 @@
     tr.appendChild(mutedCell("—", { title: "Фото — у товара" }));
     tr.appendChild(mutedCell("—", { title: "Дата размещения — у товара" }));
 
-    function kitNumCell(field, placeholder) {
-      var td = document.createElement("td");
-      td.className = "dg-np-cell";
-      var inp = document.createElement("input");
-      inp.type = "text";
-      inp.inputMode = "decimal";
-      inp.className = "form-control form-control-sm text-end";
-      inp.placeholder = placeholder || "";
-      inp.value = kit[field] != null ? String(kit[field]) : "";
-      inp.setAttribute("data-dg-no-activity", "1");
-      bindKitFieldSave(inp, parent, kit, field, { num: true });
-      td.appendChild(inp);
-      return td;
-    }
-    tr.appendChild(kitNumCell("length_cm", "см"));
-    tr.appendChild(kitNumCell("width_cm", "см"));
-    tr.appendChild(kitNumCell("height_cm", "см"));
-    tr.appendChild(kitNumCell("weight_kg", "кг"));
     tr.appendChild(mutedCell(kit.vat || "—", { title: "НДС комплекта — только просмотр" }));
     tr.appendChild(
       makeCopyCell(parent.ru_url || "", {
