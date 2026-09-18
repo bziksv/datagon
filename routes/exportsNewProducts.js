@@ -677,6 +677,11 @@ module.exports = function exportsNewProductsRouterFactory(db, config) {
             const brand = String(req.query.brand || '').trim();
             const responsible = String(req.query.responsible || '').trim();
             const manager = String(req.query.manager || '').trim();
+            const excludeVerified =
+                channel === 'almamed' &&
+                (String(req.query.exclude_verified || '') === '1' ||
+                    String(req.query.hide_placed || '') === '1' ||
+                    String(req.query.hide_placed || '').toLowerCase() === 'yes');
 
             let limit = parseInt(req.query.limit, 10);
             if (!Number.isFinite(limit) || limit < 1) limit = 100;
@@ -700,6 +705,10 @@ module.exports = function exportsNewProductsRouterFactory(db, config) {
                 // переданные в МС и удалённые не показываем в очереди Альмамед
                 where.push("status <> 'transferred'");
                 where.push("status <> 'removed'");
+                // пресет «Убрать размещенные»: скрыть «Проверен» без soft-delete
+                if (excludeVerified) {
+                    where.push("status <> 'verified'");
+                }
             }
             if (priority && PRIORITIES.has(priority)) {
                 where.push('priority = ?');
@@ -796,6 +805,7 @@ module.exports = function exportsNewProductsRouterFactory(db, config) {
                     brand,
                     responsible,
                     manager,
+                    exclude_verified: excludeVerified ? '1' : '0',
                 },
                 sort_by: sortBy,
                 sort_dir: sortDesc ? 'desc' : 'asc',
@@ -1914,6 +1924,7 @@ module.exports = function exportsNewProductsRouterFactory(db, config) {
             res.json({
                 success: true,
                 channel: 'marketplaces',
+                status_filter: 'added',
                 ...result,
                 duration_sec: Math.round((Date.now() - t0) / 1000),
             });

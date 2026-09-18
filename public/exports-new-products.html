@@ -1461,10 +1461,10 @@
                 </button>
                 <button
                   type="button"
-                  class="btn btn-sm btn-warning d-none"
+                  class="btn btn-sm btn-warning"
                   id="dg-np-remove-placed"
                   data-dg-notify-start="Убираем размещённые…"
-                  title="Убрать из таблицы все со статусом «Добавлен» после проверки"
+                  title="Альмамед: скрыть «Проверен» (фильтр). Маркеты: убрать «Добавлен» в удалённые."
                 >
                   Убрать размещенные
                 </button>
@@ -1731,6 +1731,7 @@
   var FILTERS_KEY = "datagon_np_filters_collapsed_v1";
   var TABLE_KEY = "dg.np.table-card.collapsed.v1";
   var CHANNEL_KEY = "dg.np.channel.v1";
+  var HIDE_PLACED_KEY = "dg.np.almamed.hide-placed.v1";
 
   var state = {
     channel: "almamed",
@@ -1746,6 +1747,8 @@
     brand: "",
     responsible: "",
     manager: "",
+    /** Альмамед: пресет «Убрать размещенные» — скрыть status=verified (без soft-delete). */
+    hide_placed: false,
     pending: {
       search: "",
       status: "",
@@ -2895,14 +2898,57 @@
           "Менеджер — галочка <b>Проверено менеджером</b> и <b>Комментарий менеджер</b>. " +
           "<b>Проверен</b> ставит проверка контента (admin / Полный доступ) только при галочке. " +
           "Авто: заполнены артикул, название, цена, ссылка, приоритет → <b>Не добавлен</b>. " +
-          "Галочки «Маркеты»/«Комплект» создают строку на вкладке маркетов.";
+          "Галочки «Маркеты»/«Комплект» создают строку на вкладке маркетов. " +
+          "«Убрать размещенные» — пресет фильтра: скрывает «Проверен» (не удаляет; снова показать — повторный клик или «По умолчанию»).";
       }
     }
     var btnSync = el("dg-np-sync-markets");
     var btnRemove = el("dg-np-remove-placed");
     if (btnSync) btnSync.classList.toggle("d-none", !isMp);
-    if (btnRemove) btnRemove.classList.toggle("d-none", !isMp);
+    syncRemovePlacedBtn();
     fillStatusFilter();
+  }
+
+  function persistHidePlaced() {
+    try {
+      localStorage.setItem(HIDE_PLACED_KEY, state.hide_placed ? "1" : "0");
+    } catch (_) {}
+  }
+
+  function loadHidePlacedPref() {
+    try {
+      state.hide_placed = localStorage.getItem(HIDE_PLACED_KEY) === "1";
+    } catch (_) {
+      state.hide_placed = false;
+    }
+  }
+
+  function syncRemovePlacedBtn() {
+    var btn = el("dg-np-remove-placed");
+    if (!btn) return;
+    btn.classList.remove("d-none");
+    var isMp = state.channel === "marketplaces";
+    if (isMp) {
+      btn.textContent = "Убрать размещенные";
+      btn.title = "Убрать из таблицы все со статусом «Добавлен» после проверки (в удалённые)";
+      btn.setAttribute("data-dg-notify-start", "Убираем размещённые…");
+      btn.classList.remove("btn-outline-warning");
+      btn.classList.add("btn-warning");
+      return;
+    }
+    if (state.hide_placed) {
+      btn.textContent = "Показать проверенные";
+      btn.title = "Снять пресет фильтра: снова показывать статус «Проверен»";
+      btn.setAttribute("data-dg-notify-start", "Показываем проверенные…");
+      btn.classList.remove("btn-warning");
+      btn.classList.add("btn-outline-warning");
+    } else {
+      btn.textContent = "Убрать размещенные";
+      btn.title = "Пресет фильтра: скрыть статус «Проверен» (не удаляет записи)";
+      btn.setAttribute("data-dg-notify-start", "Скрываем проверенные…");
+      btn.classList.remove("btn-outline-warning");
+      btn.classList.add("btn-warning");
+    }
   }
 
   function readPendingFromForm() {
@@ -2933,6 +2979,11 @@
     el("dg-np-f-brand").value = "";
     el("dg-np-f-responsible").value = "";
     el("dg-np-f-manager").value = "";
+    if (state.channel === "almamed") {
+      state.hide_placed = false;
+      persistHidePlaced();
+      syncRemovePlacedBtn();
+    }
     commitFilters();
   }
 
@@ -4315,6 +4366,9 @@
     if (state.brand) p.set("brand", state.brand);
     if (state.responsible) p.set("responsible", state.responsible);
     if (state.manager) p.set("manager", state.manager);
+    if (channelAtStart === "almamed" && state.hide_placed && !state.status) {
+      p.set("exclude_verified", "1");
+    }
     return fetch("/api/exports/new-products?" + p.toString(), {
       credentials: "same-origin",
       headers: authHeaders(false),
@@ -4632,6 +4686,11 @@
   }
 
   function removePlaced() {
+    var isMp = state.channel === "marketplaces";
+    if (!isMp) {
+      applyAlmamedHidePlacedPreset();
+      return;
+    }
     if (
       !window.confirm(
         "Убрать из таблицы все строки со статусом «Добавлен» (размещение на маркетах)?\nДелайте после проверки."
@@ -4718,6 +4777,33 @@
     if (window.DatagonNotify && window.DatagonNotify.busyRun) {
       window.DatagonNotify.busyRun(el("dg-np-remove-placed"), run);
     } else run();
+  }
+
+  /** Альмамед: пресет фильтра — скрыть/показать «Проверен» без soft-delete. */
+  function applyAlmamedHidePlacedPreset() {
+    var turningOn = !state.hide_placed;
+    state.hide_placed = turningOn;
+    persistHidePlaced();
+    if (turningOn) {
+      if (el("dg-np-f-status")) el("dg-np-f-status").value = "";
+      state.pending.status = "";
+      state.status = "";
+    }
+    state.offset = 0;
+    syncRemovePlacedBtn();
+    showLog(
+      "info",
+      turningOn
+        ? "Пресет фильтра: скрыты строки со статусом <b>Проверен</b> (записи не удалялись).<br>Канал: <b>Альмамед</b>"
+        : "Пресет снят: снова показываем статус <b>Проверен</b>.<br>Канал: <b>Альмамед</b>"
+    );
+    if (window.DatagonNotify && window.DatagonNotify.toast) {
+      window.DatagonNotify.toast({
+        type: "success",
+        message: turningOn ? "Скрыли «Проверен»" : "Показываем «Проверен»",
+      });
+    }
+    load();
   }
 
   function distribute() {
@@ -5506,6 +5592,7 @@
       var saved = localStorage.getItem(CHANNEL_KEY);
       if (saved === "marketplaces" || saved === "almamed") state.channel = saved;
     } catch (_) {}
+    loadHidePlacedPref();
     loadVisibleColsForChannel();
     loadWidthsForChannel();
     syncTabUi();
