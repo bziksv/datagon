@@ -1258,6 +1258,19 @@ function myProductsRouterFactory(db, settings) {
         return { minPct, maxPct };
     }
 
+    function roundPriceForCurrency(value, currency) {
+        const n = Number(value);
+        if (!Number.isFinite(n) || n <= 0) return NaN;
+        const cur = String(currency || 'RUB').trim().toUpperCase();
+        // Рубли — целые; EUR/USD и пр. — 2 знака (иначе Math.round(0.14 €) → 0 и «успешная» запись нуля).
+        if (cur === 'RUB' || cur === 'RUR' || cur === '₽') {
+            return Math.round(n);
+        }
+        const cents = Math.round(n * 100) / 100;
+        if (cents <= 0) return Math.ceil(n * 100) / 100;
+        return cents;
+    }
+
     function computeCompetitorTargetPrice(product, minPct, maxPct, usdRate, eurRate) {
         const candidates = [];
         if (Number.isFinite(Number(product.dealmed_price)) && Number(product.dealmed_price) > 0) {
@@ -1276,14 +1289,18 @@ function myProductsRouterFactory(db, settings) {
         const randomPct = minPct + Math.random() * (maxPct - minPct);
         const targetRub = selected.rub * (1 - randomPct / 100);
         const targetInMyCurrency = fromRub(targetRub, product.currency || 'RUB', usdRate, eurRate);
-        if (!Number.isFinite(targetInMyCurrency) || targetInMyCurrency <= 0) {
-            return { ok: false, error: 'Не удалось рассчитать целевую цену' };
+        const finalPrice = roundPriceForCurrency(targetInMyCurrency, product.currency || 'RUB');
+        if (!Number.isFinite(finalPrice) || finalPrice <= 0) {
+            return {
+                ok: false,
+                error: `Не удалось рассчитать целевую цену (${product.currency || 'RUB'}: ${targetInMyCurrency})`
+            };
         }
         return {
             ok: true,
             selected,
             randomPct,
-            finalPrice: Math.round(Number(targetInMyCurrency))
+            finalPrice
         };
     }
 
