@@ -169,7 +169,7 @@ Body (пример):
 - **`auto_sync_purchase_formula_cache_enabled`** / **`auto_sync_purchase_formula_cache_time`** — batch-заполнение **`dg_formula_proposed_cache`** для дефолтной выборки закупок (`routes/purchase.js → runPurchaseFormulaCacheBatch`). `task_type='purchase_formula_cache'` в `auto_sync_runs`; журнал на `/processes.html`. Кнопка «Запустить сейчас» и «Пересчитать кэш» на `/purchase.html` — `POST /api/settings/auto-sync-run` с `task: "purchase_formula_cache"`.
 - **`auto_sync_medmarket_enabled`** / **`auto_sync_medmarket_time`** / **`auto_sync_medmarket_weekdays`** — **полная выгрузка** атрибута «Код товара для медмаркета» из `ms_entity_details` → `ms_export.medmarket_product_code` (импорт, не запись в МС). МСК, по умолчанию `09:00`, дни **`7` (только вс)**. `task_type='medmarket'`.
 - **`auto_sync_medmarket_fill_enabled`** / **`auto_sync_medmarket_fill_time`** / **`auto_sync_medmarket_fill_weekdays`** — запись канонического **`код+Тип`** в атрибут МС и `ms_export` (как `POST /api/medmarket/fill-linkage-codes` без фильтров). Очередь «к записи» — только позиции с неверным/устаревшим форматом (~10–12 тыс., в основном регистр); ~46 тыс. уже со стыковкой пропускаются. МСК, по умолчанию **`09:30`**, дни **`1,2,3,4,5,6` (пн–сб, без вс)**. `task_type='medmarket_fill'`. Прогресс: `N/всего; ✓; ×` в `auto_sync_runs.message`.
-- **`auto_sync_price_comp_*`** — массовая синхронизация цен с конкурента (Dealmed/Медкомплекс) в CMS, как кнопка «Синх. цены по фильтрам» на `/my-products.html`. Ключи: `enabled`, `time` (по умолчанию **`10:00`**), `weekdays`, `match_audit` (по умолчанию **`confirmed`**), `rand_min` / `rand_max` (`0.1` / `1`), `stock_min` / `stock_max` (`0` / `1000`), `site_id` (`all`). `task_type='price_comp_sync'`. Фоновый runner: чанк 150, CMS×4.
+- **`auto_sync_price_comp_*`** — массовая синхронизация цен с конкурента (Dealmed/Медкомплекс) в CMS, как кнопка «Синх. цены по фильтрам» на `/my-products.html`. Ключи: `enabled`, `time` (по умолчанию **`10:00`**), `weekdays`, `match_audit` (по умолчанию **`confirmed`**), `rand_min` / `rand_max` (`0.1` / `0.99`), `stock_min` / `stock_max` (`0` / `1000`), `site_id` (`all`). `task_type='price_comp_sync'`. Фоновый runner: чанк 150, CMS×4.
 - **`sales_formula_replenishment_days`** (основной UI: «Пополнение, дней»), **`sales_formula_sku_replenishment_enabled`** (`1`/`0`, галка «Рек. дни пополнения по товарам» — авто-подъём **горизонта** `k` по SKU; по умолчанию `1`; вместе с упущенными за A даёт более жёсткий запас против нуля, не дубль одной поправки), **`sales_formula_replenishment_coef`** (legacy/синхрон = дни÷W), **`sales_formula_sales_window_days`** (W — «Продажи за период», сумма и средний спрос для формулы v2), **`sales_formula_absence_analysis_days`** (A — дни отсутствия → **упущенные шт в спросе**), **`sales_formula_project_mode`** (`all` | `selected`), **`sales_formula_project_uuids`** (CSV `project_uuid` из `ms_demand`; при `selected` в сумму продаж для формулы и колонок `d_*a` входят только отгрузки выбранных проектов), **`sales_formula_base_qty`**, **`sales_formula_rare_base_qty`**, **`sales_formula_rare_avg_max`** (legacy, в v2 не используется), **`sales_formula_expensive_rare_threshold_rub`**, **`sales_formula_expensive_rare_min_qty`**, **`sales_formula_max_change_coef`**, **`sales_formula_incomplete_pack_pct`** — **формула продаж** на карточке товара (`GET /api/product/:code` → `formula`). Логика в `lib/datagonSalesFormula.js` (v2: сумма за W + упущенные, ×(дни÷W) **без** прибавки `sales_formula_base_qty` / `sales_formula_expensive_rare_min_qty`; редкий/дорогой; кратность + `incomplete_pack_pct`). **Оверрайд по поставщику:** `dg_supplier_settings.replenishment_days` (если задано) сильнее глобальных дней; правит только `admin` на `/suppliers.html`. В `formula` ответ: `replenishment_source` = `global` | `supplier`, `replenishment_days_effective`. Кэш `dg_formula_proposed_cache.formula_fp` = base + `|rd:g` или `|rd:N`. UI глобали — `/settings.html`.
 - **`auto_sync_runs_retention_days`** — срок хранения строк в **`auto_sync_runs`** (журнал запусков автосинхронизации на `/processes.html`, кнопка «Лог»; по умолчанию **180**). Автоочистка в `server.js` удаляет только записи с непустым `finished_at` старше N дней (при старте и каждые 12 ч). UI: карточка **«Журнал запусков автосинхронизации»** на `/settings.html` (`GET /api/settings/auto-sync-runs/stats`, `POST /api/settings/auto-sync-runs/cleanup`). На каждой карточке расписания — кнопка **«Лог»** → модалка с днём МСК (`GET /api/settings/auto-sync-runs?task=&date=`).
 - **`product_stock_snapshot_retention_days`** — срок хранения дневных снимков **`ms_export.stock`** в **`dg_product_stock_snapshot`** (очистка при каждом успешном полном синке МС; по умолчанию **365**, диапазон **30…3650**). UI: карточка **«Снимки остатка МС (карточка товара)»** на `/settings.html` (`sectionId='stock-snap-retention'`).
@@ -427,7 +427,7 @@ Query (основные):
 - `search` — поиск по полям товара (несколько слов через пробел)
 - `sort_by`, `sort_dir` — сортировка (`id`, `site`, `sku`, `name`, `price`, …)
 - `limit`, `offset` — пагинация
-- фильтр разрыва с конкурентом: `gap_filter_enabled`, `gap_exclude_zero`, `gap_competitor`, `gap_min_pct`, `gap_max_pct`, `usd_to_rub`, `eur_to_rub`
+- фильтр разрыва с конкурентом: `gap_filter_enabled`, `gap_exclude_zero`, `gap_competitor`, `gap_min_pct`, `gap_max_pct`, опционально второй диапазон **ИЛИ** `gap_min_pct_2` / `gap_max_pct_2` (оба заданы → совпадение с любым из двух диапазонов), `usd_to_rub`, `eur_to_rub`
 - `match_audit` — `all` | `confirmed` | `unlinked` | `none` (аудит `product_matches`). `confirmed` / `unlinked` / `none` строятся через `JOIN` к набору id из матчей (по `my_sku` ∪ по `my_product_name`), **не** через коррелированный `EXISTS` по всем ~40k `my_products` (тот путь давал десятки секунд на COUNT). При `gap_filter_enabled=1` пагинация в SQL снимается: сначала выбираются все строки по фильтрам, затем gap считается в Node — без узкого `search` / `match_audit` это тяжело.
 
 Кэш ответа: при неизменных параметрах повторный запрос в течение **120 с** может вернуть тот же JSON с полем `cache` (`source`, `age_ms`, `ttl_ms`). Проверка кэша — **до** DDL/прогрева индексов.
@@ -467,24 +467,25 @@ Body:
 Массовая синхронизация цены с конкурента по **тем же API-фильтрам**, что у `GET /api/my-products` (сайт, статус, поиск, остаток, связь с МС, `match_audit`, фильтр Δ и курсы). Клиентские поля таблицы (`tf_*`) **не** участвуют.
 
 Параметры (query и/или JSON body):
-- фильтры списка: `site_id`, `status`, `source_enabled`, `search`, `stock_min`, `stock_max`, `ms_linked`, `match_audit`, `gap_filter_enabled`, `gap_exclude_zero`, `gap_competitor`, `gap_min_pct`, `gap_max_pct`, `usd_to_rub`, `eur_to_rub`;
-- `random_min_pct` / `random_max_pct` (по умолчанию `0.1` / `1`);
-- `dry_run=1` — быстрый **COUNT** по SQL (без enrich / без записи). Ответ: `total_sql`, `mode: "background"`, `estimate_exact: false`, `chunk_size`, `cms_concurrency`, пояснение в `note`;
-- `confirm=1` — старт **фоновой** задачи. Ответ сразу `{ started: true, status }`. Повторный старт при активной задаче → `409 ALREADY_RUNNING`. Жёсткий потолок SQL-выборки: **50 000**.
+- фильтры списка: `site_id`, `status`, `source_enabled`, `search`, `stock_min`, `stock_max`, `ms_linked`, `match_audit`, `gap_filter_enabled`, `gap_exclude_zero`, `gap_competitor`, `gap_min_pct`, `gap_max_pct`, `gap_min_pct_2`, `gap_max_pct_2`, `usd_to_rub`, `eur_to_rub`;
+- `random_min_pct` / `random_max_pct` (по умолчанию `0.1` / `0.99`);
+- `dry_run=1` — быстрый `COUNT(*)` по SQL (`estimate_exact: false`). При включённом Δ в `note` поясняется, что точный отбор будет в фоне перед записью (чтобы не блокировать кнопку в UI).
+- `confirm=1` — старт **фоновой** задачи. Ответ сразу `{ started: true, status }`. Повторный старт при активной задаче → `409 ALREADY_RUNNING`. Жёсткий потолок рабочей выборки: **50 000** (без Δ — по SQL COUNT; с Δ — по числу после отбора Δ).
 
 Фоновый runner:
-- читает порциями `PRICE_SYNC_CHUNK` (**150**) по `id DESC`;
+- при `gap_filter_enabled=1` сначала фаза `selecting`: отбор id по Δ (как в таблице), затем запись только по ним; `total_sql` = размер отобранного набора, `skipped_gap` = отсеянные на отборе;
+- без Δ: читает порциями `PRICE_SYNC_CHUNK` (**150**) по `id DESC`;
 - enrich конкурентов пачкой на чанк;
 - пишет в CMS параллельно до **`cms_concurrency` = 4** соединений на `site_id` (слот воркера → своё соединение);
 - счётчик `skipped_no_competitor` / alias `no_dm_mk_price` — **нет пригодной цены Dealmed/Медкомплекс > 0** (не путать с `match_audit=confirmed`: confirmed может быть с любым конкурентом).
 
 ### GET `/api/my-products/sync-price-from-competitor-bulk-status`
-Статус: `active`, `phase` (`idle|writing|done|cancelled|error`), `scanned` / `total_sql`, `cms_ok`, `cms_failed`, `skipped_gap`, `skipped_no_competitor` / `no_dm_mk_price`, `chunk_size`, `cms_concurrency`, `message`, `errors[]`, `duration_sec`.
+Статус: `active`, `phase` (`idle|selecting|writing|done|cancelled|error`), `scanned` / `total_sql`, `cms_ok`, `cms_failed`, `skipped_gap`, `skipped_no_competitor` / `no_dm_mk_price`, `chunk_size`, `cms_concurrency`, `message`, `errors[]`, `duration_sec`.
 
 ### POST `/api/my-products/sync-price-from-competitor-bulk-stop`
-Запрос остановки (`cancel_requested`); текущий чанк дописывается, затем `phase: cancelled`.
+Запрос остановки (`cancel_requested`); на отборе Δ останавливается между чанками SQL, на записи — после текущего чанка → `phase: cancelled`.
 
-UI: `/my-products.html` → **«Синх. цены по фильтрам»** + **«Стоп синх. цен»** + `#mp-action-log` (план → опрос статуса каждые 2 с → итог; подпись пропуска — «без цены ДМ/МК»).
+UI: `/my-products.html` → **«Синх. цены по фильтрам»** + **«Стоп синх. цен»** + `#mp-action-log` (план → опрос статуса каждые 2 с → итог; подпись пропуска — «без цены ДМ/МК» / «отсеяно по Δ»).
 
 ## Matches
 

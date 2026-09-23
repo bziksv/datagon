@@ -243,7 +243,7 @@ module.exports = (db, appSettings) => {
                 queries.push(['auto_sync_price_comp_rand_min', String(auto_sync_price_comp_rand_min ?? '0.1')]);
             }
             if (auto_sync_price_comp_rand_max !== undefined) {
-                queries.push(['auto_sync_price_comp_rand_max', String(auto_sync_price_comp_rand_max ?? '1')]);
+                queries.push(['auto_sync_price_comp_rand_max', String(auto_sync_price_comp_rand_max ?? '0.99')]);
             }
             if (auto_sync_price_comp_stock_min !== undefined) {
                 queries.push(['auto_sync_price_comp_stock_min', String(auto_sync_price_comp_stock_min ?? '0')]);
@@ -522,7 +522,7 @@ module.exports = (db, appSettings) => {
                 appSettings.auto_sync_price_comp_rand_min = String(auto_sync_price_comp_rand_min ?? '0.1');
             }
             if(auto_sync_price_comp_rand_max !== undefined) {
-                appSettings.auto_sync_price_comp_rand_max = String(auto_sync_price_comp_rand_max ?? '1');
+                appSettings.auto_sync_price_comp_rand_max = String(auto_sync_price_comp_rand_max ?? '0.99');
             }
             if(auto_sync_price_comp_stock_min !== undefined) {
                 appSettings.auto_sync_price_comp_stock_min = String(auto_sync_price_comp_stock_min ?? '0');

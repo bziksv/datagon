@@ -137,8 +137,8 @@
                   </select>
                 </div>
                 <div class="col-md-2" data-dg-mp-filter-field="limit">
-                  <label class="form-label" for="mp-f-limit">Лимит</label>
-                  <input type="number" class="form-control" id="mp-f-limit" min="1" value="30" />
+                  <label class="form-label" for="mp-f-limit">На странице</label>
+                  <input type="number" class="form-control" id="mp-f-limit" min="1" value="100" />
                 </div>
                 <div class="col-md-2" data-dg-mp-filter-field="match_audit">
                   <label class="form-label" for="mp-f-match_audit">Статус сопоставления</label>
@@ -165,6 +165,8 @@
                     <option value="updated">Обновлен</option>
                   </select>
                 </div>
+              </div>
+              <div class="row g-2 mt-1 align-items-end">
                 <div class="col-md-2" data-dg-mp-filter-field="sort_dir">
                   <label class="form-label" for="mp-f-sort-dir">Направление</label>
                   <select class="form-select" id="mp-f-sort-dir">
@@ -172,25 +174,27 @@
                     <option value="desc">По убыванию</option>
                   </select>
                 </div>
+                <div class="col-md-10 d-flex flex-wrap gap-2 align-items-center pb-1">
+                  <button type="button" class="btn btn-sm btn-primary" id="btn-apply" data-dg-tooltip="Применить фильтры и обновить данные. Сохраняет выбранные значения для следующего визита." data-dg-notify-start="Применяем фильтры и обновляем данные…"><i class="pe-7s-search me-1"></i>Применить</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="mp-filter-default" data-dg-tooltip="Сбросить фильтры к значениям по умолчанию и очистить сохранённые настройки." data-dg-notify-start="Сбрасываем фильтры и применяем…"><i class="pe-7s-refresh me-1"></i>По умолчанию</button>
+                </div>
               </div>
-              <div class="mt-2 d-flex flex-wrap gap-2">
-                <button type="button" class="btn btn-sm btn-primary" id="btn-apply" data-dg-tooltip="Применить фильтры и обновить данные. Сохраняет выбранные значения для следующего визита." data-dg-notify-start="Применяем фильтры и обновляем данные…"><i class="pe-7s-search me-1"></i>Применить</button>
-                <button type="button" class="btn btn-sm btn-outline-secondary" id="mp-filter-default" data-dg-tooltip="Сбросить фильтры к значениям по умолчанию и очистить сохранённые настройки." data-dg-notify-start="Сбрасываем фильтры и применяем…"><i class="pe-7s-refresh me-1"></i>По умолчанию</button>
-              </div>
-              <div class="row g-2 mt-1">
-                <div class="col-md-3 d-flex align-items-end" data-dg-mp-filter-field="gap_enabled">
+              <div class="row g-2 mt-2">
+                <div class="col-md-4 d-flex align-items-center" data-dg-mp-filter-field="gap_enabled">
                   <label class="form-check mb-0">
                     <input class="form-check-input me-1" type="checkbox" id="mp-f-gap_enabled" />
                     Включить фильтр расхождения
                   </label>
                 </div>
-                <div class="col-md-3 d-flex align-items-end" data-dg-mp-filter-field="gap_exclude_zero">
+                <div class="col-md-4 d-flex align-items-center" data-dg-mp-filter-field="gap_exclude_zero">
                   <label class="form-check mb-0">
                     <input class="form-check-input me-1" type="checkbox" id="mp-f-gap_exclude_zero" checked />
                     Не показывать Δ 0%
                   </label>
                 </div>
-                <div class="col-md-2" data-dg-mp-filter-field="gap_competitor">
+              </div>
+              <div class="row g-2 mt-1 align-items-end">
+                <div class="col-md-3" data-dg-mp-filter-field="gap_competitor">
                   <label class="form-label" for="mp-f-gap_competitor">Конкурент (Δ)</label>
                   <select class="form-select" id="mp-f-gap_competitor">
                     <option value="all">Любой (ДМ/МК)</option>
@@ -198,33 +202,43 @@
                     <option value="medkompleks">Медкомплекс</option>
                   </select>
                 </div>
-                <div class="col-md-1" data-dg-mp-filter-field="gap_min_pct">
+                <div class="col-md-2" data-dg-mp-filter-field="gap_min_pct">
                   <label class="form-label" for="mp-f-gap_min_pct">Δ % от</label>
                   <input type="number" step="0.01" class="form-control" id="mp-f-gap_min_pct" value="-100" />
                 </div>
-                <div class="col-md-1" data-dg-mp-filter-field="gap_max_pct">
+                <div class="col-md-2" data-dg-mp-filter-field="gap_max_pct">
                   <label class="form-label" for="mp-f-gap_max_pct">Δ % до</label>
                   <input type="number" step="0.01" class="form-control" id="mp-f-gap_max_pct" value="100" />
                 </div>
-                <div class="col-md-1" data-dg-mp-filter-field="usd_to_rub">
-                  <label class="form-label" for="mp-f-usd_to_rub">USD-&gt;RUB</label>
-                  <input type="number" step="0.01" class="form-control" id="mp-f-usd_to_rub" />
+                <div class="col-md-1 d-flex justify-content-center align-items-center pb-2" data-dg-mp-filter-field="gap_or_label">
+                  <span class="small text-muted fw-semibold">или</span>
                 </div>
-                <div class="col-md-1" data-dg-mp-filter-field="eur_to_rub">
-                  <label class="form-label" for="mp-f-eur_to_rub">EUR-&gt;RUB</label>
-                  <input type="number" step="0.01" class="form-control" id="mp-f-eur_to_rub" />
+                <div class="col-md-2" data-dg-mp-filter-field="gap_min_pct_2">
+                  <label class="form-label" for="mp-f-gap_min_pct_2">Δ % от</label>
+                  <input type="number" step="0.01" class="form-control" id="mp-f-gap_min_pct_2" value="" placeholder="+1" title="Второй диапазон (ИЛИ). Пусто = не используется." />
+                </div>
+                <div class="col-md-2" data-dg-mp-filter-field="gap_max_pct_2">
+                  <label class="form-label" for="mp-f-gap_max_pct_2">Δ % до</label>
+                  <input type="number" step="0.01" class="form-control" id="mp-f-gap_max_pct_2" value="" placeholder="+100" title="Второй диапазон (ИЛИ). Пусто = не используется." />
                 </div>
               </div>
               <div class="row g-2 mt-1">
+                <div class="col-md-2" data-dg-mp-filter-field="usd_to_rub">
+                  <label class="form-label" for="mp-f-usd_to_rub">USD-&gt;RUB</label>
+                  <input type="number" step="0.01" class="form-control" id="mp-f-usd_to_rub" />
+                </div>
+                <div class="col-md-2" data-dg-mp-filter-field="eur_to_rub">
+                  <label class="form-label" for="mp-f-eur_to_rub">EUR-&gt;RUB</label>
+                  <input type="number" step="0.01" class="form-control" id="mp-f-eur_to_rub" />
+                </div>
                 <div class="col-md-2" data-dg-mp-filter-field="comp_min">
                   <label class="form-label" for="mp-f-comp_min">Синх. % мин</label>
                   <input type="text" class="form-control" id="mp-f-comp_min" value="0.1" />
                 </div>
                 <div class="col-md-2" data-dg-mp-filter-field="comp_max">
                   <label class="form-label" for="mp-f-comp_max">Синх. % макс</label>
-                  <input type="text" class="form-control" id="mp-f-comp_max" value="1" />
+                  <input type="text" class="form-control" id="mp-f-comp_max" value="0.99" />
                 </div>
-                <div class="col-md-8"></div>
               </div>
               <div class="mt-3 d-flex flex-wrap gap-2">
                 <span class="d-inline-flex" data-dg-mp-filter-field="btn_fx">
@@ -367,6 +381,12 @@
                 </table>
                 </div>
               </div>
-              <p class="text-muted mb-0 mt-2" id="dg-mp-table-hint">—</p>
+              <div class="mt-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <p class="text-muted mb-0" id="dg-mp-table-hint">—</p>
+                <div class="btn-group" role="group" aria-label="Страницы Мои товары">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="mp-btn-prev" data-dg-notify-start="Предыдущая страница…">Назад</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="mp-btn-next" data-dg-notify-start="Следующая страница…">Вперёд</button>
+                </div>
+              </div>
             </div>
           </div>

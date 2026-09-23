@@ -1601,7 +1601,7 @@
                       </div>
                       <div class="col-md-2">
                         <label class="form-label small mb-0" for="dg-set-auto_price_comp_rand_max">Синх. % макс</label>
-                        <input type="text" class="form-control form-control-sm" id="dg-set-auto_price_comp_rand_max" value="1" />
+                        <input type="text" class="form-control form-control-sm" id="dg-set-auto_price_comp_rand_max" value="0.99" />
                       </div>
                       <div class="col-md-2">
                         <label class="form-label small mb-0" for="dg-set-auto_price_comp_stock_min">Остаток от</label>
@@ -2521,7 +2521,7 @@
         auto_sync_price_comp_weekdays: "1,2,3,4,5,6,7",
         auto_sync_price_comp_match_audit: "confirmed",
         auto_sync_price_comp_rand_min: "0.1",
-        auto_sync_price_comp_rand_max: "1",
+        auto_sync_price_comp_rand_max: "0.99",
         auto_sync_price_comp_stock_min: "0",
         auto_sync_price_comp_stock_max: "1000",
         auto_sync_price_comp_site_id: "all",
@@ -3425,7 +3425,16 @@
         if (!el.closest(".dg-as-task") && el.id !== "dg-set-auto_export_ms_en") return false;
         if (el.type === "checkbox") return true;
         if (el.tagName === "SELECT") return true;
+        // Extras карточек: rand %, остаток, окно дней и т.п. (time — отдельно через commitAutoSyncTimeInput)
+        if (el.tagName === "INPUT") {
+          var t = String(el.type || "text").toLowerCase();
+          if (t === "text" || t === "number" || t === "search" || t === "") return true;
+        }
         return false;
+      }
+
+      function isAutoSyncExtraTextInput(el) {
+        return isAutoSyncPersistControl(el) && el.tagName === "INPUT" && el.type !== "checkbox" && el.type !== "time";
       }
 
       function bindAutoSyncScheduleUiRefresh() {
@@ -3445,8 +3454,14 @@
           scheduleCard.addEventListener(
             "focusout",
             function (ev) {
-              if (!isAutoSyncScheduleTimeInput(ev.target)) return;
-              scheduleAutoSyncTimeCommitAfterLeave(ev.target);
+              if (isAutoSyncScheduleTimeInput(ev.target)) {
+                scheduleAutoSyncTimeCommitAfterLeave(ev.target);
+                return;
+              }
+              // Текст extras (Синх. %, остаток, дни): сохраняем при уходе с поля
+              if (isAutoSyncExtraTextInput(ev.target)) {
+                scheduleAutoSyncPersistFromUi();
+              }
             },
             true
           );
@@ -3454,10 +3469,16 @@
             "keydown",
             function (ev) {
               if (ev.key !== "Enter") return;
-              if (!isAutoSyncScheduleTimeInput(ev.target)) return;
-              clearTimeout(autoSyncTimeCommitTimer);
-              autoSyncScheduleTimeEditing = null;
-              commitAutoSyncTimeInput(ev.target);
+              if (isAutoSyncScheduleTimeInput(ev.target)) {
+                clearTimeout(autoSyncTimeCommitTimer);
+                autoSyncScheduleTimeEditing = null;
+                commitAutoSyncTimeInput(ev.target);
+                return;
+              }
+              if (isAutoSyncExtraTextInput(ev.target)) {
+                ev.preventDefault();
+                ev.target.blur();
+              }
             },
             true
           );
@@ -3543,7 +3564,7 @@
         );
         set("dg-set-auto_price_comp_match", merged.auto_sync_price_comp_match_audit || "confirmed");
         set("dg-set-auto_price_comp_rand_min", merged.auto_sync_price_comp_rand_min != null ? merged.auto_sync_price_comp_rand_min : "0.1");
-        set("dg-set-auto_price_comp_rand_max", merged.auto_sync_price_comp_rand_max != null ? merged.auto_sync_price_comp_rand_max : "1");
+        set("dg-set-auto_price_comp_rand_max", merged.auto_sync_price_comp_rand_max != null ? merged.auto_sync_price_comp_rand_max : "0.99");
         set("dg-set-auto_price_comp_stock_min", merged.auto_sync_price_comp_stock_min != null ? merged.auto_sync_price_comp_stock_min : "0");
         set("dg-set-auto_price_comp_stock_max", merged.auto_sync_price_comp_stock_max != null ? merged.auto_sync_price_comp_stock_max : "1000");
         document.getElementById("dg-set-auto_ms_en").checked = Number(merged.auto_sync_moysklad_enabled) === 1;
@@ -4708,7 +4729,7 @@
           auto_sync_price_comp_weekdays: collectAutoSyncWeekdayCsv("dg-set-auto_price_comp_wd"),
           auto_sync_price_comp_match_audit: getStr("dg-set-auto_price_comp_match") || "confirmed",
           auto_sync_price_comp_rand_min: getStr("dg-set-auto_price_comp_rand_min") || "0.1",
-          auto_sync_price_comp_rand_max: getStr("dg-set-auto_price_comp_rand_max") || "1",
+          auto_sync_price_comp_rand_max: getStr("dg-set-auto_price_comp_rand_max") || "0.99",
           auto_sync_price_comp_stock_min: getStr("dg-set-auto_price_comp_stock_min") || "0",
           auto_sync_price_comp_stock_max: getStr("dg-set-auto_price_comp_stock_max") || "1000",
           auto_sync_price_comp_site_id: "all",

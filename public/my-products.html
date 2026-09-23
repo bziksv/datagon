@@ -984,8 +984,8 @@
                   </select>
                 </div>
                 <div class="col-md-2" data-dg-mp-filter-field="limit">
-                  <label class="form-label" for="mp-f-limit">Лимит</label>
-                  <input type="number" class="form-control" id="mp-f-limit" min="1" value="30" />
+                  <label class="form-label" for="mp-f-limit">На странице</label>
+                  <input type="number" class="form-control" id="mp-f-limit" min="1" value="100" />
                 </div>
                 <div class="col-md-2" data-dg-mp-filter-field="match_audit">
                   <label class="form-label" for="mp-f-match_audit">Статус сопоставления</label>
@@ -1012,6 +1012,8 @@
                     <option value="updated">Обновлен</option>
                   </select>
                 </div>
+              </div>
+              <div class="row g-2 mt-1 align-items-end">
                 <div class="col-md-2" data-dg-mp-filter-field="sort_dir">
                   <label class="form-label" for="mp-f-sort-dir">Направление</label>
                   <select class="form-select" id="mp-f-sort-dir">
@@ -1019,25 +1021,27 @@
                     <option value="desc">По убыванию</option>
                   </select>
                 </div>
+                <div class="col-md-10 d-flex flex-wrap gap-2 align-items-center pb-1">
+                  <button type="button" class="btn btn-sm btn-primary" id="btn-apply" data-dg-tooltip="Применить фильтры и обновить данные. Сохраняет выбранные значения для следующего визита." data-dg-notify-start="Применяем фильтры и обновляем данные…"><i class="pe-7s-search me-1"></i>Применить</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="mp-filter-default" data-dg-tooltip="Сбросить фильтры к значениям по умолчанию и очистить сохранённые настройки." data-dg-notify-start="Сбрасываем фильтры и применяем…"><i class="pe-7s-refresh me-1"></i>По умолчанию</button>
+                </div>
               </div>
-              <div class="mt-2 d-flex flex-wrap gap-2">
-                <button type="button" class="btn btn-sm btn-primary" id="btn-apply" data-dg-tooltip="Применить фильтры и обновить данные. Сохраняет выбранные значения для следующего визита." data-dg-notify-start="Применяем фильтры и обновляем данные…"><i class="pe-7s-search me-1"></i>Применить</button>
-                <button type="button" class="btn btn-sm btn-outline-secondary" id="mp-filter-default" data-dg-tooltip="Сбросить фильтры к значениям по умолчанию и очистить сохранённые настройки." data-dg-notify-start="Сбрасываем фильтры и применяем…"><i class="pe-7s-refresh me-1"></i>По умолчанию</button>
-              </div>
-              <div class="row g-2 mt-1">
-                <div class="col-md-3 d-flex align-items-end" data-dg-mp-filter-field="gap_enabled">
+              <div class="row g-2 mt-2">
+                <div class="col-md-4 d-flex align-items-center" data-dg-mp-filter-field="gap_enabled">
                   <label class="form-check mb-0">
                     <input class="form-check-input me-1" type="checkbox" id="mp-f-gap_enabled" />
                     Включить фильтр расхождения
                   </label>
                 </div>
-                <div class="col-md-3 d-flex align-items-end" data-dg-mp-filter-field="gap_exclude_zero">
+                <div class="col-md-4 d-flex align-items-center" data-dg-mp-filter-field="gap_exclude_zero">
                   <label class="form-check mb-0">
                     <input class="form-check-input me-1" type="checkbox" id="mp-f-gap_exclude_zero" checked />
                     Не показывать Δ 0%
                   </label>
                 </div>
-                <div class="col-md-2" data-dg-mp-filter-field="gap_competitor">
+              </div>
+              <div class="row g-2 mt-1 align-items-end">
+                <div class="col-md-3" data-dg-mp-filter-field="gap_competitor">
                   <label class="form-label" for="mp-f-gap_competitor">Конкурент (Δ)</label>
                   <select class="form-select" id="mp-f-gap_competitor">
                     <option value="all">Любой (ДМ/МК)</option>
@@ -1045,33 +1049,43 @@
                     <option value="medkompleks">Медкомплекс</option>
                   </select>
                 </div>
-                <div class="col-md-1" data-dg-mp-filter-field="gap_min_pct">
+                <div class="col-md-2" data-dg-mp-filter-field="gap_min_pct">
                   <label class="form-label" for="mp-f-gap_min_pct">Δ % от</label>
                   <input type="number" step="0.01" class="form-control" id="mp-f-gap_min_pct" value="-100" />
                 </div>
-                <div class="col-md-1" data-dg-mp-filter-field="gap_max_pct">
+                <div class="col-md-2" data-dg-mp-filter-field="gap_max_pct">
                   <label class="form-label" for="mp-f-gap_max_pct">Δ % до</label>
                   <input type="number" step="0.01" class="form-control" id="mp-f-gap_max_pct" value="100" />
                 </div>
-                <div class="col-md-1" data-dg-mp-filter-field="usd_to_rub">
-                  <label class="form-label" for="mp-f-usd_to_rub">USD-&gt;RUB</label>
-                  <input type="number" step="0.01" class="form-control" id="mp-f-usd_to_rub" />
+                <div class="col-md-1 d-flex justify-content-center align-items-center pb-2" data-dg-mp-filter-field="gap_or_label">
+                  <span class="small text-muted fw-semibold">или</span>
                 </div>
-                <div class="col-md-1" data-dg-mp-filter-field="eur_to_rub">
-                  <label class="form-label" for="mp-f-eur_to_rub">EUR-&gt;RUB</label>
-                  <input type="number" step="0.01" class="form-control" id="mp-f-eur_to_rub" />
+                <div class="col-md-2" data-dg-mp-filter-field="gap_min_pct_2">
+                  <label class="form-label" for="mp-f-gap_min_pct_2">Δ % от</label>
+                  <input type="number" step="0.01" class="form-control" id="mp-f-gap_min_pct_2" value="" placeholder="+1" title="Второй диапазон (ИЛИ). Пусто = не используется." />
+                </div>
+                <div class="col-md-2" data-dg-mp-filter-field="gap_max_pct_2">
+                  <label class="form-label" for="mp-f-gap_max_pct_2">Δ % до</label>
+                  <input type="number" step="0.01" class="form-control" id="mp-f-gap_max_pct_2" value="" placeholder="+100" title="Второй диапазон (ИЛИ). Пусто = не используется." />
                 </div>
               </div>
               <div class="row g-2 mt-1">
+                <div class="col-md-2" data-dg-mp-filter-field="usd_to_rub">
+                  <label class="form-label" for="mp-f-usd_to_rub">USD-&gt;RUB</label>
+                  <input type="number" step="0.01" class="form-control" id="mp-f-usd_to_rub" />
+                </div>
+                <div class="col-md-2" data-dg-mp-filter-field="eur_to_rub">
+                  <label class="form-label" for="mp-f-eur_to_rub">EUR-&gt;RUB</label>
+                  <input type="number" step="0.01" class="form-control" id="mp-f-eur_to_rub" />
+                </div>
                 <div class="col-md-2" data-dg-mp-filter-field="comp_min">
                   <label class="form-label" for="mp-f-comp_min">Синх. % мин</label>
                   <input type="text" class="form-control" id="mp-f-comp_min" value="0.1" />
                 </div>
                 <div class="col-md-2" data-dg-mp-filter-field="comp_max">
                   <label class="form-label" for="mp-f-comp_max">Синх. % макс</label>
-                  <input type="text" class="form-control" id="mp-f-comp_max" value="1" />
+                  <input type="text" class="form-control" id="mp-f-comp_max" value="0.99" />
                 </div>
-                <div class="col-md-8"></div>
               </div>
               <div class="mt-3 d-flex flex-wrap gap-2">
                 <span class="d-inline-flex" data-dg-mp-filter-field="btn_fx">
@@ -1214,7 +1228,13 @@
                 </table>
                 </div>
               </div>
-              <p class="text-muted mb-0 mt-2" id="dg-mp-table-hint">—</p>
+              <div class="mt-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <p class="text-muted mb-0" id="dg-mp-table-hint">—</p>
+                <div class="btn-group" role="group" aria-label="Страницы Мои товары">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="mp-btn-prev" data-dg-notify-start="Предыдущая страница…">Назад</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="mp-btn-next" data-dg-notify-start="Следующая страница…">Вперёд</button>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -1302,7 +1322,7 @@
     (function () {
       var MP_FILTERS_KEY = "datagon_my_products_filters_collapsed_v1";
       var SORT_STORAGE_VERSION = "v1";
-      var initialLimit = 30;
+      var initialLimit = 100;
 
       var offset = 0;
       var apiSearch = "";
@@ -1412,6 +1432,12 @@
               "…" +
               (f.gap_max_pct || "100") +
               "%]" +
+              (f.gap_min_pct_2 !== "" &&
+              f.gap_min_pct_2 != null &&
+              f.gap_max_pct_2 !== "" &&
+              f.gap_max_pct_2 != null
+                ? " или [" + f.gap_min_pct_2 + "…" + f.gap_max_pct_2 + "%]"
+                : "") +
               (String(f.gap_exclude_zero) === "1" ? ", скрыть 0%" : "")
           );
         }
@@ -1419,7 +1445,7 @@
           "рандом −" +
             (f.comp_sync_rand_min || "0.1") +
             "…−" +
-            (f.comp_sync_rand_max || "1") +
+            (f.comp_sync_rand_max || "0.99") +
             "%"
         );
         return parts.join("; ");
@@ -1432,17 +1458,30 @@
         var scanned = Number(st.scanned || 0);
         var chunkPart = st.chunk_size ? "чанк " + st.chunk_size : "";
         var concPart = st.cms_concurrency ? "CMS×" + st.cms_concurrency : "";
-        var metaParts = [chunkPart, concPart].filter(Boolean).join(", ");
+        var metaParts =
+          st.phase === "selecting" || st.phase === "idle"
+            ? ""
+            : [chunkPart, concPart].filter(Boolean).join(", ");
         var lines = [
           p + "<strong>Синхронизация цен с конкурента</strong> (фон, чанки; мин. Dealmed/Медкомплекс − случайный %)",
           "Фильтры: " + describeMpAppliedFilters(),
-          "По SQL-фильтрам: " + totalSql.toLocaleString("ru-RU") + " товаров" +
+          (st.phase === "selecting"
+            ? "Отбор по Δ (как в таблице)…"
+            : "К обработке: " + totalSql.toLocaleString("ru-RU") + " товаров") +
             (metaParts ? " (" + metaParts + ")" : ""),
         ];
         if (j && j.dry_run) {
-          lines.push(
-            "<em>Пробный просмотр:</em> точное «к записи» считается в процессе (Δ и цена ДМ/МК — по ходу)."
-          );
+          if (String(j.gap_filter_enabled) === "1" || (j.applied_filters && String(j.applied_filters.gap_enabled) === "1")) {
+            lines.push(
+              "<em>План:</em> SQL ≈ " +
+                totalSql.toLocaleString("ru-RU") +
+                "; перед записью в фоне отберём по Δ (как в таблице) — писать будем только подходящие."
+            );
+          } else {
+            lines.push(
+              "<em>Пробный просмотр:</em> точное «к записи» без фильтра Δ; «без цены ДМ/МК» — по ходу записи."
+            );
+          }
           lines.push(
             "<small>Фильтр «подтверждено» ≠ цена Dealmed/Медкомплекс: «без цены ДМ/МК» — нет пригодной цены ДМ/МК (>0), своя цена не меняется.</small>"
           );
@@ -1451,7 +1490,7 @@
             lines.push(
               "<strong>Оценка:</strong> при ~" +
                 totalSql.toLocaleString("ru-RU") +
-                " строках прогон может занять десятки минут. Лучше выбрать конкретный сайт."
+                " SQL-строках отбор/запись могут занять время. Можно остановить «Стоп синх. цен»."
             );
           }
           return lines.join("<br>");
@@ -1474,7 +1513,7 @@
                   : st.no_competitor || st.skipped_no_competitor || 0
               ).toLocaleString("ru-RU") +
               (Number(st.skipped_gap || 0)
-                ? "; вне Δ: " + Number(st.skipped_gap || 0).toLocaleString("ru-RU")
+                ? "; отсеяно по Δ: " + Number(st.skipped_gap || 0).toLocaleString("ru-RU")
                 : "")
           );
         }
@@ -1510,12 +1549,14 @@
           gap_competitor: f.gap_competitor,
           gap_min_pct: f.gap_min_pct,
           gap_max_pct: f.gap_max_pct,
+          gap_min_pct_2: f.gap_min_pct_2,
+          gap_max_pct_2: f.gap_max_pct_2,
           usd_to_rub: f.usd_to_rub,
           eur_to_rub: f.eur_to_rub,
           stock_min: f.stock_min,
           stock_max: f.stock_max,
           random_min_pct: Number(String(f.comp_sync_rand_min || "0.1").replace(",", ".")),
-          random_max_pct: Number(String(f.comp_sync_rand_max || "1").replace(",", ".")),
+          random_max_pct: Number(String(f.comp_sync_rand_max || "0.99").replace(",", ".")),
         };
         if (extra) {
           Object.keys(extra).forEach(function (k) {
@@ -1900,6 +1941,8 @@
           gap_competitor: document.getElementById("mp-f-gap_competitor").value,
           gap_min_pct: document.getElementById("mp-f-gap_min_pct").value.trim(),
           gap_max_pct: document.getElementById("mp-f-gap_max_pct").value.trim(),
+          gap_min_pct_2: document.getElementById("mp-f-gap_min_pct_2").value.trim(),
+          gap_max_pct_2: document.getElementById("mp-f-gap_max_pct_2").value.trim(),
           usd_to_rub: document.getElementById("mp-f-usd_to_rub").value.trim(),
           eur_to_rub: document.getElementById("mp-f-eur_to_rub").value.trim(),
           comp_sync_rand_min: document.getElementById("mp-f-comp_min").value.trim(),
@@ -1938,6 +1981,8 @@
           gap_competitor: document.getElementById("mp-f-gap_competitor").value,
           gap_min_pct: document.getElementById("mp-f-gap_min_pct").value,
           gap_max_pct: document.getElementById("mp-f-gap_max_pct").value,
+          gap_min_pct_2: document.getElementById("mp-f-gap_min_pct_2").value,
+          gap_max_pct_2: document.getElementById("mp-f-gap_max_pct_2").value,
           usd_to_rub: document.getElementById("mp-f-usd_to_rub").value,
           eur_to_rub: document.getElementById("mp-f-eur_to_rub").value,
           comp_min: document.getElementById("mp-f-comp_min").value,
@@ -2007,6 +2052,10 @@
           document.getElementById("mp-f-gap_min_pct").value = String(prefs.gap_min_pct);
         if (miss("gap_max_pct") && prefs.gap_max_pct != null)
           document.getElementById("mp-f-gap_max_pct").value = String(prefs.gap_max_pct);
+        if (miss("gap_min_pct_2") && prefs.gap_min_pct_2 != null)
+          document.getElementById("mp-f-gap_min_pct_2").value = String(prefs.gap_min_pct_2);
+        if (miss("gap_max_pct_2") && prefs.gap_max_pct_2 != null)
+          document.getElementById("mp-f-gap_max_pct_2").value = String(prefs.gap_max_pct_2);
         if (miss("usd_to_rub") && prefs.usd_to_rub != null)
           document.getElementById("mp-f-usd_to_rub").value = String(prefs.usd_to_rub);
         if (miss("eur_to_rub") && prefs.eur_to_rub != null)
@@ -2717,11 +2766,46 @@
         return td;
       }
 
+      function getPageLimit() {
+        var lim = Number(document.getElementById("mp-f-limit").value);
+        if (!Number.isFinite(lim) || lim < 1) lim = initialLimit;
+        return lim;
+      }
+
+      function totalPages() {
+        var lim = getPageLimit();
+        var total = Number(lastTotal || 0);
+        if (total <= 0) return 1;
+        return Math.max(1, Math.ceil(total / lim));
+      }
+
+      function currentPage() {
+        var lim = getPageLimit();
+        return Math.floor(Number(offset || 0) / lim) + 1;
+      }
+
+      function updatePager() {
+        var pages = totalPages();
+        var page = currentPage();
+        var prev = document.getElementById("mp-btn-prev");
+        var next = document.getElementById("mp-btn-next");
+        if (prev) prev.disabled = page <= 1 || lastLoading;
+        if (next) next.disabled = page >= pages || lastLoading;
+      }
+
       function updateHint(filteredLen) {
         var hint = document.getElementById("dg-mp-table-hint");
         if (!hint) return;
         hint.textContent =
-          "Найдено: " + fmt(lastTotal) + "; отображено: " + filteredLen;
+          "Найдено: " +
+          fmt(lastTotal) +
+          "; страница " +
+          currentPage() +
+          "/" +
+          totalPages() +
+          "; показано: " +
+          fmt(filteredLen);
+        updatePager();
       }
 
       function applyTableFilterAndRender() {
@@ -2869,6 +2953,8 @@
           "gap_competitor",
           "gap_min_pct",
           "gap_max_pct",
+          "gap_min_pct_2",
+          "gap_max_pct_2",
           "usd_to_rub",
           "eur_to_rub",
           "comp_sync_rand_min",
@@ -2898,6 +2984,10 @@
             document.getElementById("mp-f-gap_min_pct").value = v;
           if (k === "gap_max_pct")
             document.getElementById("mp-f-gap_max_pct").value = v;
+          if (k === "gap_min_pct_2")
+            document.getElementById("mp-f-gap_min_pct_2").value = v;
+          if (k === "gap_max_pct_2")
+            document.getElementById("mp-f-gap_max_pct_2").value = v;
           if (k === "usd_to_rub") document.getElementById("mp-f-usd_to_rub").value = v;
           if (k === "eur_to_rub") document.getElementById("mp-f-eur_to_rub").value = v;
           if (k === "comp_sync_rand_min") document.getElementById("mp-f-comp_min").value = v;
@@ -2998,6 +3088,9 @@
 
           lastRows = Array.isArray(json.data) ? json.data : [];
           lastTotal = Number(json.total || 0);
+          var limClamp = getPageLimit();
+          var maxOff = Math.max(0, (totalPages() - 1) * limClamp);
+          if (Number(offset || 0) > maxOff) offset = maxOff;
           syncUrlFromDom();
           updateSortHeaders();
           persistMyProductsFilterForm();
@@ -3088,7 +3181,7 @@
         var min =
           document.getElementById("mp-f-comp_min").value.trim() || "0.1";
         var max =
-          document.getElementById("mp-f-comp_max").value.trim() || "1";
+          document.getElementById("mp-f-comp_max").value.trim() || "0.99";
         fetch("/api/my-products/sync-price-from-competitor", {
           method: "POST",
           credentials: "same-origin",
@@ -3254,6 +3347,19 @@
         persistMyProductsFilterForm();
         load();
       });
+      document.getElementById("mp-btn-prev").addEventListener("click", function () {
+        var lim = getPageLimit();
+        if (currentPage() <= 1) return;
+        offset = Math.max(0, Number(offset || 0) - lim);
+        persistMyProductsFilterForm();
+        load();
+      });
+      document.getElementById("mp-btn-next").addEventListener("click", function () {
+        if (currentPage() >= totalPages()) return;
+        offset = Number(offset || 0) + getPageLimit();
+        persistMyProductsFilterForm();
+        load();
+      });
       document.getElementById("mp-filter-default").addEventListener("click", function () {
         hideMpActionLog();
         if (window.DatagonMyProductsFilterBlocks) window.DatagonMyProductsFilterBlocks.reset();
@@ -3281,10 +3387,12 @@
         document.getElementById("mp-f-gap_competitor").value = "all";
         document.getElementById("mp-f-gap_min_pct").value = "-100";
         document.getElementById("mp-f-gap_max_pct").value = "100";
+        document.getElementById("mp-f-gap_min_pct_2").value = "";
+        document.getElementById("mp-f-gap_max_pct_2").value = "";
         document.getElementById("mp-f-usd_to_rub").value = "";
         document.getElementById("mp-f-eur_to_rub").value = "";
         document.getElementById("mp-f-comp_min").value = "0.1";
-        document.getElementById("mp-f-comp_max").value = "1";
+        document.getElementById("mp-f-comp_max").value = "0.99";
         try {
           window.history.replaceState(null, "", window.location.pathname);
         } catch (e2) {}
@@ -3530,7 +3638,7 @@
           core: ["smart", "site", "status", "ms_link"],
           table: ["tf_id", "tf_site", "tf_sku", "tf_name", "tf_currency", "table_hint"],
           stock_sort: ["stock_min", "stock_max", "source_enabled", "limit", "match_audit", "sort_by", "sort_dir"],
-          gap: ["gap_enabled", "gap_exclude_zero", "gap_competitor", "gap_min_pct", "gap_max_pct", "usd_to_rub", "eur_to_rub"],
+          gap: ["gap_enabled", "gap_exclude_zero", "gap_competitor", "gap_min_pct", "gap_max_pct", "gap_or_label", "gap_min_pct_2", "gap_max_pct_2", "usd_to_rub", "eur_to_rub"],
           comp_sync: ["comp_min", "comp_max"],
           sync_bar: ["btn_fx", "btn_syncall", "btn_sync_site", "btn_rebuild", "btn_copy", "btn_sync_price_bulk", "btn_sync_price_bulk_stop"],
         };
@@ -3564,7 +3672,7 @@
               { key: "stock_min", title: "Остаток от", hint: "" },
               { key: "stock_max", title: "Остаток до", hint: "" },
               { key: "source_enabled", title: "На сайте (вкл/выкл)", hint: "" },
-              { key: "limit", title: "Лимит", hint: "" },
+              { key: "limit", title: "На странице", hint: "" },
               { key: "match_audit", title: "Статус сопоставления", hint: "" },
               { key: "sort_by", title: "Сортировать по", hint: "" },
               { key: "sort_dir", title: "Направление", hint: "" },
@@ -3579,6 +3687,9 @@
               { key: "gap_competitor", title: "Конкурент (Δ)", hint: "" },
               { key: "gap_min_pct", title: "Δ % от", hint: "" },
               { key: "gap_max_pct", title: "Δ % до", hint: "" },
+              { key: "gap_or_label", title: "Δ или", hint: "Второй диапазон (ИЛИ)" },
+              { key: "gap_min_pct_2", title: "Δ % от (или)", hint: "Второй диапазон; пусто = выкл." },
+              { key: "gap_max_pct_2", title: "Δ % до (или)", hint: "Второй диапазон; пусто = выкл." },
               { key: "usd_to_rub", title: "USD → RUB", hint: "Ручной курс" },
               { key: "eur_to_rub", title: "EUR → RUB", hint: "Ручной курс" },
             ],

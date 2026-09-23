@@ -19,6 +19,79 @@ const myProductsResponseCache = new Map();
 const myProductsGapSetCache = new Map();
 const myProductsStatsCache = new Map(); // key -> { rows, exp }
 
+/** Единый ключ кэша отбора по Δ — и для списка, и для bulk sync цен. */
+function buildMyProductsGapSetKey(parts) {
+    const p = parts || {};
+    const stockMin = Number.isFinite(Number(p.stock_min)) ? Number(p.stock_min) : null;
+    const stockMax = Number.isFinite(Number(p.stock_max)) ? Number(p.stock_max) : null;
+    const r2min = p.gap_min_pct_2;
+    const r2max = p.gap_max_pct_2;
+    const hasR2 =
+        r2min !== undefined &&
+        r2min !== null &&
+        r2min !== '' &&
+        Number.isFinite(Number(r2min)) &&
+        r2max !== undefined &&
+        r2max !== null &&
+        r2max !== '' &&
+        Number.isFinite(Number(r2max));
+    return JSON.stringify({
+        site_id: p.site_id || 'all',
+        status: p.status ?? 'all',
+        source_enabled: p.source_enabled ?? 'all',
+        search: String(p.search || ''),
+        stock_min: stockMin,
+        stock_max: stockMax,
+        ms_linked: p.ms_linked != null ? p.ms_linked : 'all',
+        match_audit: String(p.match_audit || 'all').toLowerCase(),
+        gap_exclude_zero: String(p.gap_exclude_zero || '1') !== '0' ? '1' : '0',
+        gap_competitor: String(p.gap_competitor || 'all'),
+        gap_min_pct: Number(p.gap_min_pct),
+        gap_max_pct: Number(p.gap_max_pct),
+        gap_min_pct_2: hasR2 ? Number(r2min) : null,
+        gap_max_pct_2: hasR2 ? Number(r2max) : null,
+        usd_to_rub: Number(Number(p.usd_to_rub).toFixed(6)),
+        eur_to_rub: Number(Number(p.eur_to_rub).toFixed(6))
+    });
+}
+
+/** Пара Δ% (от/до). Пустая → null (диапазон не участвует). Иначе { min, max } с нормализацией. */
+function parseGapPctRange(minRaw, maxRaw, fallbackMin, fallbackMax) {
+    const parseOne = (v, fb) => {
+        if (v === undefined || v === null || v === '') {
+            return fb !== undefined ? fb : null;
+        }
+        const n = Number(String(v).replace(',', '.'));
+        return Number.isFinite(n) ? n : fb !== undefined ? fb : null;
+    };
+    const a = parseOne(minRaw, fallbackMin);
+    const b = parseOne(maxRaw, fallbackMax);
+    if (a === null || b === null || !Number.isFinite(a) || !Number.isFinite(b)) return null;
+    return { min: Math.min(a, b), max: Math.max(a, b) };
+}
+
+function buildGapFilterCfg(opts) {
+    const o = opts || {};
+    const range1 = parseGapPctRange(o.gap_min_pct, o.gap_max_pct, -100, 100);
+    const range2 = parseGapPctRange(o.gap_min_pct_2, o.gap_max_pct_2, null, null);
+    const ranges = [];
+    if (range1) ranges.push(range1);
+    if (range2) ranges.push(range2);
+    if (!ranges.length) ranges.push({ min: -100, max: 100 });
+    return {
+        competitor: String(o.gap_competitor || 'all'),
+        excludeZero: o.gapExcludeZero !== false && String(o.gap_exclude_zero || '1') !== '0',
+        ranges,
+        minPct: ranges[0].min,
+        maxPct: ranges[0].max,
+        minPct2: range2 ? range2.min : null,
+        maxPct2: range2 ? range2.max : null,
+        hasRange2: !!range2,
+        usdRate: o.usdRate,
+        eurRate: o.eurRate
+    };
+}
+
 function normalizeMsLinkKey(value) {
     return String(value ?? '').trim().toUpperCase();
 }
@@ -424,6 +497,8 @@ function myProductsRouterFactory(db, settings) {
                 match_audit = 'all',
                 gap_min_pct,
                 gap_max_pct,
+                gap_min_pct_2,
+                gap_max_pct_2,
                 usd_to_rub,
                 eur_to_rub
             } = req.query;
@@ -457,6 +532,7 @@ function myProductsRouterFactory(db, settings) {
             const eurRate = Math.max(0.0001, parseFlexible(eur_to_rub, Number(fxRatesCache.eur_to_rub || 100)));
             const gapMin = parseFlexible(gap_min_pct, -100);
             const gapMax = parseFlexible(gap_max_pct, 100);
+            const gapRange2 = parseGapPctRange(gap_min_pct_2, gap_max_pct_2, null, null);
             const cacheKeyObj = {
                 site_id: site_id || 'all',
                 status: status ?? 'all',
@@ -475,6 +551,8 @@ function myProductsRouterFactory(db, settings) {
                 match_audit,
                 gap_min_pct: Number.isFinite(Number(gap_min_pct)) ? Number(gap_min_pct) : null,
                 gap_max_pct: Number.isFinite(Number(gap_max_pct)) ? Number(gap_max_pct) : null,
+                gap_min_pct_2: gapRange2 ? gapRange2.min : null,
+                gap_max_pct_2: gapRange2 ? gapRange2.max : null,
                 usd_to_rub: Number(usdRate.toFixed(6)),
                 eur_to_rub: Number(eurRate.toFixed(6))
             };
@@ -599,16 +677,32 @@ function myProductsRouterFactory(db, settings) {
             
             let finalRows = [];
             if (isGapFilterEnabled) {
-                const gapSetKey = JSON.stringify({
+                const gapCfg = buildGapFilterCfg({
+                    gap_competitor,
+                    gap_exclude_zero: gapExcludeZero ? '1' : '0',
+                    gapExcludeZero,
+                    gap_min_pct: gapMin,
+                    gap_max_pct: gapMax,
+                    gap_min_pct_2,
+                    gap_max_pct_2,
+                    usdRate,
+                    eurRate
+                });
+                const gapSetKey = buildMyProductsGapSetKey({
                     site_id: site_id || 'all',
                     status: status ?? 'all',
+                    source_enabled: source_enabled ?? 'all',
                     search: String(search || ''),
+                    stock_min: Number.isFinite(Number(stock_min)) ? Number(stock_min) : null,
+                    stock_max: Number.isFinite(Number(stock_max)) ? Number(stock_max) : null,
                     ms_linked,
                     match_audit,
                     gap_exclude_zero: gapExcludeZero ? '1' : '0',
                     gap_competitor: String(gap_competitor || 'all'),
                     gap_min_pct: Number(gapMin),
                     gap_max_pct: Number(gapMax),
+                    gap_min_pct_2: gapCfg.hasRange2 ? gapCfg.minPct2 : null,
+                    gap_max_pct_2: gapCfg.hasRange2 ? gapCfg.maxPct2 : null,
                     usd_to_rub: Number(usdRate.toFixed(6)),
                     eur_to_rub: Number(eurRate.toFixed(6))
                 });
@@ -622,16 +716,7 @@ function myProductsRouterFactory(db, settings) {
                         enrichWithMoyskladLinks(dataRows),
                         enrichWithCompetitorPrices(dataRows)
                     ]);
-                    const normalizedMin = Math.min(gapMin, gapMax);
-                    const normalizedMax = Math.max(gapMin, gapMax);
-                    gapRows = dataRows.filter((row) => rowMatchesGapFilter(row, {
-                        competitor: String(gap_competitor || 'all'),
-                        excludeZero: gapExcludeZero,
-                        minPct: normalizedMin,
-                        maxPct: normalizedMax,
-                        usdRate,
-                        eurRate
-                    }));
+                    gapRows = dataRows.filter((row) => rowMatchesGapFilter(row, gapCfg));
                     myProductsGapSetCache.set(gapSetKey, {
                         ts: Date.now(),
                         rows: gapRows.map((r) => ({ ...r }))
@@ -661,6 +746,8 @@ function myProductsRouterFactory(db, settings) {
                     gap_exclude_zero: gapExcludeZero ? 1 : 0,
                     gap_min_pct: Number(gapMin),
                     gap_max_pct: Number(gapMax),
+                    gap_min_pct_2: gapRange2 ? gapRange2.min : null,
+                    gap_max_pct_2: gapRange2 ? gapRange2.max : null,
                     gap_competitor: String(gap_competitor || 'all'),
                     match_audit: matchAuditFilter
                 },
@@ -720,13 +807,22 @@ function myProductsRouterFactory(db, settings) {
             return false;
         }
 
+        const ranges =
+            Array.isArray(cfg.ranges) && cfg.ranges.length
+                ? cfg.ranges
+                : [{ min: cfg.minPct, max: cfg.maxPct }];
+
         for (const c of checks) {
             const compRub = toRub(c.price, c.currency, cfg.usdRate, cfg.eurRate);
             if (!Number.isFinite(compRub) || compRub <= 0) continue;
             const gapPct = ((myRub - compRub) / compRub) * 100;
             const isZeroGap = Math.abs(gapPct) < 0.005; // matches UI rounding to 0.00%
             if (cfg.excludeZero && isZeroGap) continue;
-            if (gapPct >= cfg.minPct && gapPct <= cfg.maxPct) return true;
+            for (const range of ranges) {
+                const lo = Math.min(Number(range.min), Number(range.max));
+                const hi = Math.max(Number(range.min), Number(range.max));
+                if (gapPct >= lo && gapPct <= hi) return true;
+            }
         }
         return false;
     }
@@ -1249,7 +1345,7 @@ function myProductsRouterFactory(db, settings) {
 
     function normalizeRandomPctRange(randomMinPct, randomMaxPct) {
         const rndMin = parseFlexibleNumber(randomMinPct, 0.1);
-        const rndMax = parseFlexibleNumber(randomMaxPct, 1);
+        const rndMax = parseFlexibleNumber(randomMaxPct, 0.99);
         const minPct = Math.max(0, Math.min(rndMin, rndMax));
         const maxPct = Math.max(0, Math.max(rndMin, rndMax));
         if (maxPct > 100) {
@@ -1377,6 +1473,8 @@ function myProductsRouterFactory(db, settings) {
         const match_audit = q.match_audit != null ? q.match_audit : 'all';
         const gap_min_pct = q.gap_min_pct;
         const gap_max_pct = q.gap_max_pct;
+        const gap_min_pct_2 = q.gap_min_pct_2;
+        const gap_max_pct_2 = q.gap_max_pct_2;
         const usd_to_rub = q.usd_to_rub;
         const eur_to_rub = q.eur_to_rub;
 
@@ -1385,8 +1483,19 @@ function myProductsRouterFactory(db, settings) {
         const gapExcludeZero = String(gap_exclude_zero || '1') !== '0';
         const usdRate = Math.max(0.0001, parseFlexibleNumber(usd_to_rub, Number(fxRatesCache.usd_to_rub || 90)));
         const eurRate = Math.max(0.0001, parseFlexibleNumber(eur_to_rub, Number(fxRatesCache.eur_to_rub || 100)));
-        const gapMin = parseFlexibleNumber(gap_min_pct, -100);
-        const gapMax = parseFlexibleNumber(gap_max_pct, 100);
+        const gapCfg = buildGapFilterCfg({
+            gap_competitor,
+            gap_exclude_zero: gapExcludeZero ? '1' : '0',
+            gapExcludeZero,
+            gap_min_pct,
+            gap_max_pct,
+            gap_min_pct_2,
+            gap_max_pct_2,
+            usdRate,
+            eurRate
+        });
+        const gapMin = gapCfg.minPct;
+        const gapMax = gapCfg.maxPct;
 
         await ensureMyProductsPerfIndexes();
         await ensureMyProductsCmsProductIdColumn();
@@ -1423,11 +1532,11 @@ function myProductsRouterFactory(db, settings) {
             }
         }
         const stockMinNum = Number(String(stock_min ?? '').replace(',', '.'));
+        const stockMaxNum = Number(String(stock_max ?? '').replace(',', '.'));
         if (Number.isFinite(stockMinNum)) {
             whereSql += ' AND COALESCE(mp.stock, 0) >= ?';
             params.push(stockMinNum);
         }
-        const stockMaxNum = Number(String(stock_max ?? '').replace(',', '.'));
         if (Number.isFinite(stockMaxNum)) {
             whereSql += ' AND COALESCE(mp.stock, 0) <= ?';
             params.push(stockMaxNum);
@@ -1449,7 +1558,9 @@ function myProductsRouterFactory(db, settings) {
             gap_exclude_zero: gapExcludeZero ? 1 : 0,
             gap_competitor: String(gap_competitor || 'all'),
             gap_min_pct: Number(gapMin),
-            gap_max_pct: Number(gapMax)
+            gap_max_pct: Number(gapMax),
+            gap_min_pct_2: gapCfg.hasRange2 ? gapCfg.minPct2 : null,
+            gap_max_pct_2: gapCfg.hasRange2 ? gapCfg.maxPct2 : null
         };
 
         return {
@@ -1458,14 +1569,9 @@ function myProductsRouterFactory(db, settings) {
             params,
             applied_filters,
             isGapFilterEnabled,
-            gapCfg: {
-                competitor: String(gap_competitor || 'all'),
-                excludeZero: gapExcludeZero,
-                minPct: Math.min(gapMin, gapMax),
-                maxPct: Math.max(gapMin, gapMax),
-                usdRate,
-                eurRate
-            },
+            stock_min: Number.isFinite(stockMinNum) ? stockMinNum : null,
+            stock_max: Number.isFinite(stockMaxNum) ? stockMaxNum : null,
+            gapCfg,
             usdRate,
             eurRate
         };
@@ -1480,6 +1586,160 @@ function myProductsRouterFactory(db, settings) {
             ctx.params
         );
         return Number(rows?.[0]?.total || 0);
+    }
+
+    /**
+     * Отбор id по Δ — тот же набор, что в таблице («Найдено: N»).
+     * Сначала кэш после «Применить»; иначе один проход как у списка.
+     */
+    async function collectPriceSyncGapMatchedIds(ctx, opts) {
+        const onProgress = opts && typeof opts.onProgress === 'function' ? opts.onProgress : null;
+        const shouldCancel = opts && typeof opts.shouldCancel === 'function' ? opts.shouldCancel : null;
+        const af = ctx.applied_filters || {};
+        const gapSetKey = buildMyProductsGapSetKey({
+            site_id: af.site_id,
+            status: af.status,
+            source_enabled: af.source_enabled,
+            search: af.search,
+            stock_min: ctx.stock_min,
+            stock_max: ctx.stock_max,
+            ms_linked: af.ms_linked,
+            match_audit: af.match_audit,
+            gap_exclude_zero: af.gap_exclude_zero ? '1' : '0',
+            gap_competitor: af.gap_competitor,
+            gap_min_pct: af.gap_min_pct,
+            gap_max_pct: af.gap_max_pct,
+            gap_min_pct_2: af.gap_min_pct_2,
+            gap_max_pct_2: af.gap_max_pct_2,
+            usd_to_rub: ctx.usdRate,
+            eur_to_rub: ctx.eurRate
+        });
+
+        if (shouldCancel && shouldCancel()) {
+            return { matchedIds: [], scannedSql: 0, cancelled: true, from_cache: false };
+        }
+
+        const gapCached = myProductsGapSetCache.get(gapSetKey);
+        if (gapCached && (Date.now() - gapCached.ts) < MY_PRODUCTS_CACHE_TTL_MS) {
+            const matchedIds = (gapCached.rows || [])
+                .map((r) => Number(r.id))
+                .filter((n) => Number.isFinite(n) && n > 0);
+            if (onProgress) {
+                onProgress({
+                    scannedSql: matchedIds.length,
+                    matched: matchedIds.length,
+                    from_cache: true
+                });
+            }
+            return {
+                matchedIds,
+                scannedSql: matchedIds.length,
+                cancelled: false,
+                from_cache: true
+            };
+        }
+
+        if (onProgress) {
+            onProgress({ scannedSql: 0, matched: 0, from_cache: false, loading: true });
+        }
+
+        const [rows] = await db.query(
+            `SELECT mp.*
+             FROM my_products mp
+             ${ctx.joinSql}
+             ${ctx.whereSql}
+             ORDER BY mp.id DESC`,
+            ctx.params
+        );
+        if (shouldCancel && shouldCancel()) {
+            return { matchedIds: [], scannedSql: 0, cancelled: true, from_cache: false };
+        }
+        const dataRows = Array.isArray(rows) ? rows : [];
+        await enrichWithCompetitorPrices(dataRows);
+        const gapRows = dataRows.filter((product) => rowMatchesGapFilter(product, ctx.gapCfg));
+        myProductsGapSetCache.set(gapSetKey, {
+            ts: Date.now(),
+            rows: gapRows.map((r) => ({ ...r }))
+        });
+        const matchedIds = gapRows.map((r) => Number(r.id)).filter((n) => Number.isFinite(n) && n > 0);
+        if (matchedIds.length > PRICE_SYNC_HARD_MAX) {
+            const err = new Error(
+                `Слишком много позиций по Δ (${matchedIds.length.toLocaleString('ru-RU')} > ${PRICE_SYNC_HARD_MAX}). Сузьте фильтры.`
+            );
+            err.code = 'SELECTION_TOO_LARGE';
+            err.matched = matchedIds.length;
+            err.scannedSql = dataRows.length;
+            throw err;
+        }
+        if (onProgress) {
+            onProgress({
+                scannedSql: dataRows.length,
+                matched: matchedIds.length,
+                from_cache: false
+            });
+        }
+        return {
+            matchedIds,
+            scannedSql: dataRows.length,
+            cancelled: false,
+            from_cache: false
+        };
+    }
+
+    /**
+     * Размер рабочей выборки для bulk sync.
+     * С фильтром Δ — число строк после enrich+gap (как в таблице), иначе COUNT(*) по SQL.
+     */
+    async function resolvePriceSyncWorkset(ctx, opts) {
+        if (!ctx.isGapFilterEnabled) {
+            const totalSql = await countPriceSyncCandidates(ctx);
+            return {
+                total: totalSql,
+                total_sql: totalSql,
+                matchedIds: null,
+                scannedSql: totalSql,
+                skipped_gap: 0,
+                gap_prefiltered: false
+            };
+        }
+        const coll = await collectPriceSyncGapMatchedIds(ctx, opts || {});
+        if (coll.cancelled) {
+            return {
+                total: coll.matchedIds.length,
+                total_sql: coll.matchedIds.length,
+                matchedIds: coll.matchedIds,
+                scannedSql: coll.scannedSql,
+                skipped_gap: Math.max(0, coll.scannedSql - coll.matchedIds.length),
+                gap_prefiltered: true,
+                from_cache: !!coll.from_cache,
+                cancelled: true
+            };
+        }
+        return {
+            total: coll.matchedIds.length,
+            total_sql: coll.matchedIds.length,
+            matchedIds: coll.matchedIds,
+            scannedSql: coll.scannedSql,
+            skipped_gap: Math.max(0, (coll.from_cache ? 0 : coll.scannedSql - coll.matchedIds.length)),
+            gap_prefiltered: true,
+            from_cache: !!coll.from_cache,
+            cancelled: false
+        };
+    }
+
+    async function fetchPriceSyncByIds(ids) {
+        const list = (Array.isArray(ids) ? ids : [])
+            .map((x) => Number(x))
+            .filter((n) => Number.isFinite(n) && n > 0);
+        if (!list.length) return [];
+        const [rows] = await db.query(
+            `SELECT mp.*
+             FROM my_products mp
+             WHERE mp.id IN (${list.map(() => '?').join(',')})`,
+            list
+        );
+        const byId = new Map((Array.isArray(rows) ? rows : []).map((r) => [Number(r.id), r]));
+        return list.map((id) => byId.get(id)).filter(Boolean);
     }
 
     async function fetchPriceSyncChunk(ctx, cursorId, limit) {
@@ -1511,7 +1771,7 @@ function myProductsRouterFactory(db, settings) {
         message: '',
         applied_filters: null,
         random_min_pct: 0.1,
-        random_max_pct: 1,
+        random_max_pct: 0.99,
         synced_by: '',
         total_sql: 0,
         scanned: 0,
@@ -1599,32 +1859,91 @@ function myProductsRouterFactory(db, settings) {
         /** @type {Map<number, import('mysql2/promise').Connection[]>} */
         const connPools = new Map();
 
-        function formatProgressMessage(totalSql, gapEnabled) {
+        function formatProgressMessage(totalWork, showGapSkips) {
             return (
-                `Обработано ${priceSyncJob.scanned.toLocaleString('ru-RU')}/${totalSql.toLocaleString('ru-RU')}` +
+                `Обработано ${priceSyncJob.scanned.toLocaleString('ru-RU')}/${totalWork.toLocaleString('ru-RU')}` +
                 `; записано ✓ ${priceSyncJob.cms_ok.toLocaleString('ru-RU')}` +
                 `, ошибок × ${priceSyncJob.cms_failed.toLocaleString('ru-RU')}` +
                 `, без цены ДМ/МК ${priceSyncJob.skipped_no_competitor.toLocaleString('ru-RU')}` +
-                (gapEnabled ? `, вне Δ ${priceSyncJob.skipped_gap.toLocaleString('ru-RU')}` : '')
+                (showGapSkips ? `, отсеяно по Δ ${priceSyncJob.skipped_gap.toLocaleString('ru-RU')}` : '')
             );
         }
 
         try {
             const ctx = await buildPriceSyncFilterContext(filterRaw);
-            const totalSql = await countPriceSyncCandidates(ctx);
-            if (totalSql > PRICE_SYNC_HARD_MAX) {
-                finishPriceSyncJob(
-                    serial,
-                    'error',
-                    `Слишком большая SQL-выборка (${totalSql.toLocaleString('ru-RU')} > ${PRICE_SYNC_HARD_MAX}). Сузьте фильтры.`
-                );
-                return;
-            }
-            priceSyncJob.total_sql = totalSql;
             priceSyncJob.applied_filters = ctx.applied_filters;
+            priceSyncJob.phase = 'selecting';
+
+            let workIds = null;
+            let totalWork = 0;
+            let showGapSkips = false;
+
+            if (ctx.isGapFilterEnabled) {
+                priceSyncJob.message = 'Отбираем товары по фильтру Δ (как в таблице)…';
+                const workset = await resolvePriceSyncWorkset(ctx, {
+                    shouldCancel: () =>
+                        priceSyncJob.cancelRequested || priceSyncJob.job_serial !== serial,
+                    onProgress: ({ scannedSql, matched, from_cache, loading }) => {
+                        if (priceSyncJob.job_serial !== serial) return;
+                        if (from_cache) {
+                            priceSyncJob.message =
+                                `Берём набор из таблицы (кэш Δ): ${Number(matched).toLocaleString('ru-RU')} товаров…`;
+                            return;
+                        }
+                        if (loading) {
+                            priceSyncJob.message = 'Считаем набор по Δ как при «Применить»…';
+                            return;
+                        }
+                        priceSyncJob.message =
+                            `Отбор Δ готов: подходит ${Number(matched).toLocaleString('ru-RU')}` +
+                            ` (из SQL ${Number(scannedSql).toLocaleString('ru-RU')})…`;
+                    }
+                });
+                if (workset.cancelled || priceSyncJob.cancelRequested) {
+                    finishPriceSyncJob(
+                        serial,
+                        'cancelled',
+                        `Остановлено на отборе Δ: просмотрено SQL ${workset.scannedSql}, подходит ${workset.total}`
+                    );
+                    return;
+                }
+                workIds = workset.matchedIds || [];
+                totalWork = workIds.length;
+                priceSyncJob.total_sql = totalWork;
+                priceSyncJob.skipped_gap = workset.skipped_gap;
+                showGapSkips = true;
+                if (!totalWork) {
+                    finishPriceSyncJob(
+                        serial,
+                        'done',
+                        `Готово: по фильтру Δ нет товаров (SQL просмотрено ${workset.scannedSql}, вне Δ ${workset.skipped_gap})`
+                    );
+                    return;
+                }
+            } else {
+                totalWork = await countPriceSyncCandidates(ctx);
+                if (totalWork > PRICE_SYNC_HARD_MAX) {
+                    finishPriceSyncJob(
+                        serial,
+                        'error',
+                        `Слишком большая SQL-выборка (${totalWork.toLocaleString('ru-RU')} > ${PRICE_SYNC_HARD_MAX}). Сузьте фильтры.`
+                    );
+                    return;
+                }
+                priceSyncJob.total_sql = totalWork;
+                if (!totalWork) {
+                    finishPriceSyncJob(serial, 'done', 'Готово: по фильтрам нет товаров');
+                    return;
+                }
+            }
+
+            priceSyncJob.phase = 'writing';
             priceSyncJob.message =
-                `К обработке по SQL: ${totalSql.toLocaleString('ru-RU')}…` +
-                ` (чанк ${PRICE_SYNC_CHUNK}, CMS×${PRICE_SYNC_CMS_CONCURRENCY})`;
+                `К записи: ${totalWork.toLocaleString('ru-RU')}` +
+                (showGapSkips
+                    ? ` (отсеяно по Δ ${priceSyncJob.skipped_gap.toLocaleString('ru-RU')})`
+                    : '') +
+                `… (чанк ${PRICE_SYNC_CHUNK}, CMS×${PRICE_SYNC_CMS_CONCURRENCY})`;
 
             async function ensureSitePool(siteId) {
                 const sid = Number(siteId);
@@ -1667,14 +1986,7 @@ function myProductsRouterFactory(db, settings) {
                 return { site: siteCache.get(sid), conn };
             }
 
-            let cursorId = null;
-            while (!priceSyncJob.cancelRequested) {
-                if (priceSyncJob.job_serial !== serial) return;
-                const rows = await fetchPriceSyncChunk(ctx, cursorId, PRICE_SYNC_CHUNK);
-                if (!rows.length) break;
-                const ids = rows.map((r) => Number(r.id)).filter(Number.isFinite);
-                cursorId = Math.min(...ids);
-
+            async function processRows(rows) {
                 await enrichWithCompetitorPrices(rows);
 
                 const toWrite = [];
@@ -1682,8 +1994,9 @@ function myProductsRouterFactory(db, settings) {
                     if (priceSyncJob.cancelRequested) break;
                     priceSyncJob.scanned += 1;
 
+                    // Без prefilter: Δ проверяем на лету. С prefilter — только страховка.
                     if (ctx.isGapFilterEnabled && !rowMatchesGapFilter(product, ctx.gapCfg)) {
-                        priceSyncJob.skipped_gap += 1;
+                        if (!workIds) priceSyncJob.skipped_gap += 1;
                         continue;
                     }
 
@@ -1701,7 +2014,6 @@ function myProductsRouterFactory(db, settings) {
                     toWrite.push({ product, computed });
                 }
 
-                // Поднимаем пулы для сайтов этого чанка до параллельной записи.
                 const siteIds = [...new Set(toWrite.map((x) => Number(x.product.site_id)).filter(Number.isFinite))];
                 for (const sid of siteIds) {
                     if (priceSyncJob.cancelRequested) break;
@@ -1743,9 +2055,34 @@ function myProductsRouterFactory(db, settings) {
                     }
                 });
 
-                priceSyncJob.message = formatProgressMessage(totalSql, ctx.isGapFilterEnabled);
+                priceSyncJob.message = formatProgressMessage(totalWork, showGapSkips);
+            }
 
-                await new Promise((resolve) => setImmediate(resolve));
+            if (workIds) {
+                for (let offset = 0; offset < workIds.length && !priceSyncJob.cancelRequested; offset += PRICE_SYNC_CHUNK) {
+                    if (priceSyncJob.job_serial !== serial) return;
+                    const slice = workIds.slice(offset, offset + PRICE_SYNC_CHUNK);
+                    // eslint-disable-next-line no-await-in-loop
+                    const rows = await fetchPriceSyncByIds(slice);
+                    // eslint-disable-next-line no-await-in-loop
+                    await processRows(rows);
+                    // eslint-disable-next-line no-await-in-loop
+                    await new Promise((resolve) => setImmediate(resolve));
+                }
+            } else {
+                let cursorId = null;
+                while (!priceSyncJob.cancelRequested) {
+                    if (priceSyncJob.job_serial !== serial) return;
+                    // eslint-disable-next-line no-await-in-loop
+                    const rows = await fetchPriceSyncChunk(ctx, cursorId, PRICE_SYNC_CHUNK);
+                    if (!rows.length) break;
+                    const ids = rows.map((r) => Number(r.id)).filter(Number.isFinite);
+                    cursorId = Math.min(...ids);
+                    // eslint-disable-next-line no-await-in-loop
+                    await processRows(rows);
+                    // eslint-disable-next-line no-await-in-loop
+                    await new Promise((resolve) => setImmediate(resolve));
+                }
             }
 
             myProductsResponseCache.clear();
@@ -1755,14 +2092,15 @@ function myProductsRouterFactory(db, settings) {
                 finishPriceSyncJob(
                     serial,
                     'cancelled',
-                    `Остановлено: просмотрено ${priceSyncJob.scanned}/${totalSql}, записано ✓ ${priceSyncJob.cms_ok}, ошибок × ${priceSyncJob.cms_failed}, без цены ДМ/МК ${priceSyncJob.skipped_no_competitor}`
+                    `Остановлено: просмотрено ${priceSyncJob.scanned}/${totalWork}, записано ✓ ${priceSyncJob.cms_ok}, ошибок × ${priceSyncJob.cms_failed}, без цены ДМ/МК ${priceSyncJob.skipped_no_competitor}` +
+                        (showGapSkips ? `, отсеяно по Δ ${priceSyncJob.skipped_gap}` : '')
                 );
             } else {
                 finishPriceSyncJob(
                     serial,
                     'done',
-                    `Готово: просмотрено ${priceSyncJob.scanned}/${totalSql}, записано ✓ ${priceSyncJob.cms_ok}, ошибок × ${priceSyncJob.cms_failed}, без цены ДМ/МК ${priceSyncJob.skipped_no_competitor}` +
-                        (ctx.isGapFilterEnabled ? `, вне Δ ${priceSyncJob.skipped_gap}` : '')
+                    `Готово: просмотрено ${priceSyncJob.scanned}/${totalWork}, записано ✓ ${priceSyncJob.cms_ok}, ошибок × ${priceSyncJob.cms_failed}, без цены ДМ/МК ${priceSyncJob.skipped_no_competitor}` +
+                        (showGapSkips ? `, отсеяно по Δ ${priceSyncJob.skipped_gap}` : '')
                 );
             }
         } catch (e) {
@@ -1916,23 +2254,25 @@ function myProductsRouterFactory(db, settings) {
         try {
             await ensureMyProductsSyncAuditColumns();
             const ctx = await buildPriceSyncFilterContext(q);
-            const totalSql = await countPriceSyncCandidates(ctx);
 
             if (dryRun) {
+                // Быстрый COUNT: полный отбор по Δ делаем в фоне (phase selecting), иначе UI «висит» на кнопке.
+                const totalSql = await countPriceSyncCandidates(ctx);
                 return res.json({
                     success: true,
                     dry_run: true,
                     mode: 'background',
                     total: totalSql,
                     total_sql: totalSql,
+                    scanned_sql: totalSql,
+                    skipped_gap: null,
+                    gap_prefiltered: false,
                     to_update: null,
                     would_update: null,
                     estimate_exact: false,
-                    note:
-                        'Confirmed-матч ≠ цена Dealmed/Медкомплекс: к записи идут только товары с ценой ДМ/МК > 0. ' +
-                        (ctx.isGapFilterEnabled
-                            ? 'Фильтр Δ и цены проверяются по чанкам в фоне.'
-                            : 'Точное число «без цены ДМ/МК» станет известно в процессе.'),
+                    note: ctx.isGapFilterEnabled
+                        ? `SQL по фильтрам: ${totalSql.toLocaleString('ru-RU')}. Фильтр Δ применится в фоне перед записью (как в таблице) — к обработке пойдёт только подходящее; «вне Δ» отсеется на отборе.`
+                        : 'Confirmed-матч ≠ цена Dealmed/Медкомплекс: к записи идут только товары с ценой ДМ/МК > 0. Точное число «без цены ДМ/МК» станет известно в процессе.',
                     skipped: null,
                     no_competitor: null,
                     no_dm_mk_price: null,
@@ -1940,35 +2280,13 @@ function myProductsRouterFactory(db, settings) {
                     chunk_size: PRICE_SYNC_CHUNK,
                     cms_concurrency: PRICE_SYNC_CMS_CONCURRENCY,
                     applied_filters: ctx.applied_filters,
+                    gap_filter_enabled: ctx.isGapFilterEnabled ? 1 : 0,
                     random_min_pct: pctRange.minPct,
                     random_max_pct: pctRange.maxPct,
                     duration_sec: Number(((Date.now() - startedAt) / 1000).toFixed(2))
                 });
             }
 
-            if (totalSql <= 0) {
-                return res.json({
-                    success: true,
-                    started: false,
-                    dry_run: false,
-                    total: 0,
-                    total_sql: 0,
-                    message: 'По фильтрам нет товаров',
-                    applied_filters: ctx.applied_filters,
-                    status: priceSyncJobPayload(),
-                    duration_sec: Number(((Date.now() - startedAt) / 1000).toFixed(2))
-                });
-            }
-            if (totalSql > PRICE_SYNC_HARD_MAX) {
-                return res.status(400).json({
-                    success: false,
-                    error: `Слишком большая SQL-выборка (${totalSql} > ${PRICE_SYNC_HARD_MAX}). Сузьте фильтры.`,
-                    code: 'SELECTION_TOO_LARGE',
-                    total_sql: totalSql,
-                    hard_max: PRICE_SYNC_HARD_MAX,
-                    applied_filters: ctx.applied_filters
-                });
-            }
             if (priceSyncJob.active) {
                 return res.status(409).json({
                     success: false,
@@ -1976,6 +2294,34 @@ function myProductsRouterFactory(db, settings) {
                     code: 'ALREADY_RUNNING',
                     status: priceSyncJobPayload()
                 });
+            }
+
+            let totalForStart = 0;
+            if (!ctx.isGapFilterEnabled) {
+                totalForStart = await countPriceSyncCandidates(ctx);
+                if (totalForStart <= 0) {
+                    return res.json({
+                        success: true,
+                        started: false,
+                        dry_run: false,
+                        total: 0,
+                        total_sql: 0,
+                        message: 'По фильтрам нет товаров',
+                        applied_filters: ctx.applied_filters,
+                        status: priceSyncJobPayload(),
+                        duration_sec: Number(((Date.now() - startedAt) / 1000).toFixed(2))
+                    });
+                }
+                if (totalForStart > PRICE_SYNC_HARD_MAX) {
+                    return res.status(400).json({
+                        success: false,
+                        error: `Слишком большая SQL-выборка (${totalForStart} > ${PRICE_SYNC_HARD_MAX}). Сузьте фильтры.`,
+                        code: 'SELECTION_TOO_LARGE',
+                        total_sql: totalForStart,
+                        hard_max: PRICE_SYNC_HARD_MAX,
+                        applied_filters: ctx.applied_filters
+                    });
+                }
             }
 
             const actorLogin = resolveActorName(req);
@@ -1986,8 +2332,12 @@ function myProductsRouterFactory(db, settings) {
                 minPct: pctRange.minPct,
                 maxPct: pctRange.maxPct,
                 actorDisplayName,
-                total_sql: totalSql
+                total_sql: totalForStart
             });
+            if (ctx.isGapFilterEnabled) {
+                priceSyncJob.phase = 'selecting';
+                priceSyncJob.message = 'Отбираем товары по фильтру Δ…';
+            }
 
             setImmediate(() => {
                 runPriceSyncJob(serial, q, pctRange, actorDisplayName).catch((e) => {
@@ -2001,14 +2351,26 @@ function myProductsRouterFactory(db, settings) {
                 started: true,
                 dry_run: false,
                 mode: 'background',
-                total: totalSql,
-                total_sql: totalSql,
-                message: 'Фоновая синхронизация цен запущена',
+                total: totalForStart,
+                total_sql: totalForStart,
+                message: ctx.isGapFilterEnabled
+                    ? 'Фоновая синхронизация цен запущена (сначала отбор по Δ)'
+                    : 'Фоновая синхронизация цен запущена',
                 status: priceSyncJobPayload(),
                 duration_sec: Number(((Date.now() - startedAt) / 1000).toFixed(2))
             });
         } catch (e) {
             console.error('Error starting bulk price sync:', e);
+            if (e && e.code === 'SELECTION_TOO_LARGE') {
+                return res.status(400).json({
+                    success: false,
+                    error: e.message,
+                    code: 'SELECTION_TOO_LARGE',
+                    total_sql: e.matched,
+                    hard_max: PRICE_SYNC_HARD_MAX,
+                    duration_sec: Number(((Date.now() - startedAt) / 1000).toFixed(2))
+                });
+            }
             return res.status(500).json({
                 error: e.message,
                 duration_sec: Number(((Date.now() - startedAt) / 1000).toFixed(2))
@@ -2048,25 +2410,30 @@ function myProductsRouterFactory(db, settings) {
             }
             await ensureMyProductsSyncAuditColumns();
             const ctx = await buildPriceSyncFilterContext(q);
-            const totalSql = await countPriceSyncCandidates(ctx);
-            if (totalSql <= 0) {
-                return {
-                    started: false,
-                    reason: 'empty',
-                    total_sql: 0,
-                    status: priceSyncJobPayload(),
-                    applied_filters: ctx.applied_filters
-                };
+
+            let totalForStart = 0;
+            if (!ctx.isGapFilterEnabled) {
+                totalForStart = await countPriceSyncCandidates(ctx);
+                if (totalForStart <= 0) {
+                    return {
+                        started: false,
+                        reason: 'empty',
+                        total_sql: 0,
+                        status: priceSyncJobPayload(),
+                        applied_filters: ctx.applied_filters
+                    };
+                }
+                if (totalForStart > PRICE_SYNC_HARD_MAX) {
+                    return {
+                        started: false,
+                        reason: 'too_large',
+                        total_sql: totalForStart,
+                        hard_max: PRICE_SYNC_HARD_MAX,
+                        error: `Слишком большая SQL-выборка (${totalForStart} > ${PRICE_SYNC_HARD_MAX})`
+                    };
+                }
             }
-            if (totalSql > PRICE_SYNC_HARD_MAX) {
-                return {
-                    started: false,
-                    reason: 'too_large',
-                    total_sql: totalSql,
-                    hard_max: PRICE_SYNC_HARD_MAX,
-                    error: `Слишком большая SQL-выборка (${totalSql} > ${PRICE_SYNC_HARD_MAX})`
-                };
-            }
+
             const actor = String(actorDisplayName || 'auto-sync').trim() || 'auto-sync';
             const serial = Number(priceSyncJob.job_serial || 0) + 1;
             resetPriceSyncJob(serial, {
@@ -2074,8 +2441,12 @@ function myProductsRouterFactory(db, settings) {
                 minPct: pctRange.minPct,
                 maxPct: pctRange.maxPct,
                 actorDisplayName: actor,
-                total_sql: totalSql
+                total_sql: totalForStart
             });
+            if (ctx.isGapFilterEnabled) {
+                priceSyncJob.phase = 'selecting';
+                priceSyncJob.message = 'Отбираем товары по фильтру Δ…';
+            }
             setImmediate(() => {
                 runPriceSyncJob(serial, q, pctRange, actor).catch((e) => {
                     console.error('price sync job crash:', e);
@@ -2084,7 +2455,7 @@ function myProductsRouterFactory(db, settings) {
             });
             return {
                 started: true,
-                total_sql: totalSql,
+                total_sql: totalForStart,
                 status: priceSyncJobPayload()
             };
         }
@@ -2110,7 +2481,7 @@ function buildPriceCompFiltersFromSettings(appSettings) {
         stock_min: String(s.auto_sync_price_comp_stock_min != null ? s.auto_sync_price_comp_stock_min : '0'),
         stock_max: String(s.auto_sync_price_comp_stock_max != null ? s.auto_sync_price_comp_stock_max : '1000'),
         random_min_pct: String(s.auto_sync_price_comp_rand_min != null ? s.auto_sync_price_comp_rand_min : '0.1'),
-        random_max_pct: String(s.auto_sync_price_comp_rand_max != null ? s.auto_sync_price_comp_rand_max : '1')
+        random_max_pct: String(s.auto_sync_price_comp_rand_max != null ? s.auto_sync_price_comp_rand_max : '0.99')
     };
 }
 
