@@ -1701,6 +1701,31 @@ function buildAutoSyncTasksLiveForOverview() {
         }
     }
 
+    if (hasRun('price_comp_sync')) {
+        const st =
+            typeof myProductsRouterFactory.getPriceCompSyncState === 'function'
+                ? myProductsRouterFactory.getPriceCompSyncState()
+                : null;
+        if (st && st.active) {
+            out.price_comp_sync = {
+                active: true,
+                scanned: Number(st.scanned || 0),
+                total: Number(st.total_sql || st.total || 0),
+                cms_ok: Number(st.cms_ok || 0),
+                cms_failed: Number(st.cms_failed || 0),
+                no_dm_mk_price: Number(st.no_dm_mk_price || st.skipped_no_competitor || 0),
+                message: String(st.message || ''),
+                duration_sec: Number(st.duration_sec || 0),
+            };
+        } else {
+            out.price_comp_sync = {
+                active: true,
+                pending: true,
+                message: 'Ожидание старта синхронизации цен с конкурента…',
+            };
+        }
+    }
+
     return out;
 }
 
@@ -2311,6 +2336,10 @@ async function processAutoSyncQueue() {
                     if (typeof myProductsRouterFactory.triggerPriceCompSyncFromSettings !== 'function') {
                         throw new Error('triggerPriceCompSyncFromSettings недоступен');
                     }
+                    await touchAutoSyncRunMessage(
+                        'price_comp_sync',
+                        'Подготовка: считаем выборку по фильтрам…'
+                    ).catch(() => {});
                     const startRes = await myProductsRouterFactory.triggerPriceCompSyncFromSettings(appSettings, {
                         actorDisplayName: 'auto-sync',
                     });
@@ -2320,11 +2349,40 @@ async function processAutoSyncQueue() {
                     } else if (startRes && startRes.started === false && startRes.reason !== 'already_running') {
                         messagePc = (startRes.error || startRes.reason || 'Не удалось запустить sync цен').slice(0, 480);
                     } else {
-                        const timedOut = !(await waitUntil(() => {
-                            return typeof myProductsRouterFactory.isPriceCompSyncActive === 'function'
-                                ? !myProductsRouterFactory.isPriceCompSyncActive()
-                                : true;
-                        }, 6 * 60 * 60 * 1000, 2000));
+                        const totalHint = Number(startRes && startRes.total_sql) || 0;
+                        if (totalHint > 0) {
+                            await touchAutoSyncRunMessage(
+                                'price_comp_sync',
+                                `Старт: ${totalHint.toLocaleString('ru-RU')} поз. по фильтрам…`
+                            ).catch(() => {});
+                        }
+                        let lastTouchAt = 0;
+                        const timedOut = !(await (async () => {
+                            const startedWait = Date.now();
+                            const timeoutMs = 6 * 60 * 60 * 1000;
+                            while (Date.now() - startedWait < timeoutMs) {
+                                const stillActive =
+                                    typeof myProductsRouterFactory.isPriceCompSyncActive === 'function'
+                                        ? myProductsRouterFactory.isPriceCompSyncActive()
+                                        : false;
+                                if (!stillActive) return true;
+                                const now = Date.now();
+                                if (now - lastTouchAt >= 2000) {
+                                    lastTouchAt = now;
+                                    const stLive =
+                                        typeof myProductsRouterFactory.getPriceCompSyncState === 'function'
+                                            ? myProductsRouterFactory.getPriceCompSyncState()
+                                            : {};
+                                    const liveMsg = String(
+                                        (stLive && stLive.message) ||
+                                            `Ход: ${Number(stLive.scanned || 0)}/${Number(stLive.total_sql || stLive.total || 0)}`
+                                    ).slice(0, 480);
+                                    await touchAutoSyncRunMessage('price_comp_sync', liveMsg).catch(() => {});
+                                }
+                                await new Promise((r) => setTimeout(r, 2000));
+                            }
+                            return false;
+                        })());
                         const st =
                             typeof myProductsRouterFactory.getPriceCompSyncState === 'function'
                                 ? myProductsRouterFactory.getPriceCompSyncState()

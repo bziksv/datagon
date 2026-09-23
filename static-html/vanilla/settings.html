@@ -100,6 +100,12 @@
       color: #856404;
       border-color: #ffe69c;
     }
+    .dg-as-next-badge.dg-as-next-running {
+      background: #cff4fc;
+      color: #055160;
+      border-color: #9eeaf9;
+      font-weight: 600;
+    }
     .dg-set-export-ms-card {
       border: 1px solid #f0c4ce;
       box-shadow: 0 1px 0 rgba(217, 37, 80, 0.06);
@@ -1613,6 +1619,7 @@
                       остаток 0…1000, все сайты. Confirmed ≠ цена ДМ/МК — позиции без цены ДМ/МК пропускаются.
                       Журнал — <a href="/processes.html">processes</a> (<code>price_comp_sync</code>).
                     </p>
+                    <div id="dg-set-auto_price_comp_live" class="alert alert-info py-2 px-3 mt-2 mb-0 d-none" role="status" aria-live="polite"></div>
                   </div>
                 </div>
 
@@ -2784,6 +2791,9 @@
       };
 
       var AS_TIME_CLASH_MAX_DIFF_MIN = 5;
+      var priceCompLiveTimer = null;
+      var priceCompLiveActive = false;
+      var priceCompLiveIdleTicks = 0;
 
       function escAutoSyncHtml(s) {
         return String(s || "")
@@ -3195,9 +3205,14 @@
         if (catPill) catPill.textContent = AS_CATEGORY_LABELS[meta.category] || meta.category;
         var badge = meta.el.querySelector(".dg-as-next-badge-dynamic");
         if (badge) {
-          badge.textContent = "Следующий: " + meta.nextMeta.label;
-          badge.classList.toggle("dg-as-next-off", !meta.enabled);
-          badge.classList.toggle("dg-as-next-soon", meta.enabled && meta.nextMeta.sortKey < 120);
+          if (meta.task === "price_comp_sync" && priceCompLiveActive) {
+            /* бейдж «Идёт…» держит poller — не затирать «Следующий» */
+          } else {
+            badge.textContent = "Следующий: " + meta.nextMeta.label;
+            badge.classList.remove("dg-as-next-running");
+            badge.classList.toggle("dg-as-next-off", !meta.enabled);
+            badge.classList.toggle("dg-as-next-soon", meta.enabled && meta.nextMeta.sortKey < 120);
+          }
         }
         meta.el.setAttribute("data-as-schedule-time", meta.timeStr);
       }
@@ -4819,12 +4834,118 @@
         purchase_formula_cache: "Закупки: кэш формулы",
         medmarket: "Медмаркет: каталог из МС",
         medmarket_fill: "Медмаркет: коды в МС (код+тип)",
+        price_comp_sync: "Цены с конкурента (ДМ/МК)",
       };
       function escAutoRunHtml(s) {
         return String(s || "")
           .replace(/&/g, "&amp;")
           .replace(/</g, "&lt;")
           .replace(/"/g, "&quot;");
+      }
+      function fmtPriceCompLiveNum(n) {
+        var x = Number(n || 0);
+        if (!Number.isFinite(x)) x = 0;
+        return Math.round(x).toLocaleString("ru-RU");
+      }
+      function applyPriceCompLiveUi(st) {
+        var live = document.getElementById("dg-set-auto_price_comp_live");
+        var taskEl = document.querySelector('.dg-as-task[data-as-task="price_comp_sync"]');
+        var badge = taskEl ? taskEl.querySelector(".dg-as-next-badge-dynamic") : null;
+        var active = !!(st && st.active);
+        if (active) {
+          priceCompLiveActive = true;
+          priceCompLiveIdleTicks = 0;
+          var scanned = Number(st.scanned || 0);
+          var total = Number(st.total_sql || st.total || 0);
+          var msg =
+            String(st.message || "").trim() ||
+            ("Ход: " + fmtPriceCompLiveNum(scanned) + "/" + fmtPriceCompLiveNum(total));
+          if (live) {
+            live.classList.remove("d-none", "alert-success", "alert-danger", "alert-warning");
+            live.classList.add("alert-info");
+            live.innerHTML =
+              "<strong>Идёт сейчас</strong> · " +
+              escAutoRunHtml(msg) +
+              " · ✓ " +
+              fmtPriceCompLiveNum(st.cms_ok) +
+              " · × " +
+              fmtPriceCompLiveNum(st.cms_failed) +
+              (st.duration_sec != null ? " · " + Number(st.duration_sec).toFixed(0) + " с" : "");
+          }
+          if (badge) {
+            badge.textContent =
+              "Идёт: " + fmtPriceCompLiveNum(scanned) + "/" + fmtPriceCompLiveNum(total);
+            badge.classList.remove("dg-as-next-off", "dg-as-next-soon");
+            badge.classList.add("dg-as-next-running");
+          }
+          return;
+        }
+        if (priceCompLiveActive) {
+          priceCompLiveActive = false;
+          var phase = String((st && st.phase) || "");
+          var okDone = phase === "done";
+          if (live) {
+            live.classList.remove("d-none", "alert-info");
+            live.classList.toggle("alert-success", okDone);
+            live.classList.toggle("alert-danger", phase === "error" || phase === "cancelled");
+            live.classList.toggle(
+              "alert-warning",
+              !okDone && phase !== "error" && phase !== "cancelled"
+            );
+            live.innerHTML =
+              "<strong>" +
+              (okDone
+                ? "Готово"
+                : phase === "cancelled"
+                  ? "Остановлено"
+                  : phase === "error"
+                    ? "Ошибка"
+                    : "Завершено") +
+              "</strong> · " +
+              escAutoRunHtml(String((st && st.message) || ""));
+          }
+          try {
+            refreshAutoSyncScheduleUi({ force: true, sort: false });
+          } catch (eRefresh) {
+            /* ignore */
+          }
+        }
+      }
+      function pollPriceCompLiveOnce() {
+        return fetch("/api/my-products/sync-price-from-competitor-bulk-status", {
+          credentials: "same-origin",
+        })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok || !x.j || !x.j.success) return null;
+            applyPriceCompLiveUi(x.j.status || {});
+            return x.j.status || null;
+          })
+          .catch(function () {
+            return null;
+          });
+      }
+      function startPriceCompLivePolling() {
+        if (priceCompLiveTimer) return;
+        pollPriceCompLiveOnce();
+        priceCompLiveTimer = setInterval(function () {
+          pollPriceCompLiveOnce().then(function (st) {
+            if (st && st.active) {
+              priceCompLiveIdleTicks = 0;
+              return;
+            }
+            priceCompLiveIdleTicks += 1;
+            if (priceCompLiveIdleTicks >= 3 && priceCompLiveTimer) {
+              clearInterval(priceCompLiveTimer);
+              priceCompLiveTimer = null;
+              priceCompLiveIdleTicks = 0;
+            }
+          });
+        }, 3000);
       }
       function formatAutoSyncQueueForUi(queue) {
         if (!Array.isArray(queue) || !queue.length) return "пусто (ваша задача может начаться сразу, если воркер был свободен).";
@@ -5097,6 +5218,7 @@
                   escAutoRunHtml(timeStr) +
                   "</div>"
               );
+              if (task === "price_comp_sync") startPriceCompLivePolling();
               return;
             }
             if (hint) hint.textContent = label + ": поставлено в очередь (" + timeStr + ").";
@@ -5113,6 +5235,7 @@
                 escAutoRunHtml(timeStr) +
                 "</div>"
             );
+            if (task === "price_comp_sync") startPriceCompLivePolling();
           })
           .catch(function (e) {
             var msg = e.message || "Ошибка запуска автосинхронизации";
@@ -6032,6 +6155,9 @@
         priceCompRunBtn.addEventListener("click", function () {
           runAutoSyncNow("price_comp_sync", "Цены с конкурента", "dg-set-auto_price_comp_run");
         });
+      }
+      if (document.getElementById("dg-set-auto_price_comp_live")) {
+        startPriceCompLivePolling();
       }
       document.getElementById("dg-set-auto_ms_run").addEventListener("click", function () { runAutoSyncNow("moysklad", "МойСклад (ms_export)", "dg-set-auto_ms_run"); });
       var msOrdersAutoRun = document.getElementById("dg-set-auto_ms_orders_run");

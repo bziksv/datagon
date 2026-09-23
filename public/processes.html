@@ -2352,6 +2352,24 @@
             daysOStr + (tailO ? " — " + tailO : "")
           );
         }
+        if (secKey === "price_comp_sync") {
+          if (lv.pending) return "Сейчас: " + String(lv.message || "Запуск…");
+          if (!lv.active) return "";
+          var pcTail = String(lv.message || "").slice(0, 160);
+          return (
+            "Сейчас: " +
+            fmtNum(lv.scanned || 0) +
+            "/" +
+            fmtNum(lv.total || 0) +
+            " · ✓ " +
+            fmtNum(lv.cms_ok || 0) +
+            " · × " +
+            fmtNum(lv.cms_failed || 0) +
+            " · без ДМ/МК " +
+            fmtNum(lv.no_dm_mk_price || 0) +
+            (pcTail ? " — " + pcTail : "")
+          );
+        }
         return "";
       }
 
