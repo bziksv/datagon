@@ -732,10 +732,23 @@
           document.getElementById("mp-f-gap_min_pct").value = String(prefs.gap_min_pct);
         if (miss("gap_max_pct") && prefs.gap_max_pct != null)
           document.getElementById("mp-f-gap_max_pct").value = String(prefs.gap_max_pct);
-        if (miss("gap_min_pct_2") && prefs.gap_min_pct_2 != null)
-          document.getElementById("mp-f-gap_min_pct_2").value = String(prefs.gap_min_pct_2);
-        if (miss("gap_max_pct_2") && prefs.gap_max_pct_2 != null)
-          document.getElementById("mp-f-gap_max_pct_2").value = String(prefs.gap_max_pct_2);
+        // Второй диапазон Δ (ИЛИ): если в URL уже задан фильтр Δ без *_2 —
+        // не подмешивать старые +1/+100 из localStorage (иначе «или» молча включается).
+        var gapUrlSet =
+          p.has("gap_filter_enabled") ||
+          p.has("gap_min_pct") ||
+          p.has("gap_max_pct") ||
+          p.has("gap_min_pct_2") ||
+          p.has("gap_max_pct_2");
+        if (gapUrlSet) {
+          if (miss("gap_min_pct_2")) document.getElementById("mp-f-gap_min_pct_2").value = "";
+          if (miss("gap_max_pct_2")) document.getElementById("mp-f-gap_max_pct_2").value = "";
+        } else {
+          if (miss("gap_min_pct_2") && prefs.gap_min_pct_2 != null && String(prefs.gap_min_pct_2).trim() !== "")
+            document.getElementById("mp-f-gap_min_pct_2").value = String(prefs.gap_min_pct_2);
+          if (miss("gap_max_pct_2") && prefs.gap_max_pct_2 != null && String(prefs.gap_max_pct_2).trim() !== "")
+            document.getElementById("mp-f-gap_max_pct_2").value = String(prefs.gap_max_pct_2);
+        }
         if (miss("usd_to_rub") && prefs.usd_to_rub != null)
           document.getElementById("mp-f-usd_to_rub").value = String(prefs.usd_to_rub);
         if (miss("eur_to_rub") && prefs.eur_to_rub != null)

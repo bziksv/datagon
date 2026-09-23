@@ -797,9 +797,20 @@ function myProductsRouterFactory(db, settings) {
             checks.push({ price: row.medkompleks_price, currency: row.medkompleks_currency });
         }
 
-        // Если у нас нет своей цены (или 0), но есть цена конкурента,
-        // показываем такие строки в фильтре расхождения как требующие внимания.
+        // Если у нас нет своей цены (или 0), но есть цена конкурента —
+        // только при «широком» диапазоне (±100) показываем как требующие внимания.
+        // При узком фильтре Δ (например −1.2…−99) такие строки НЕ подходят.
         if (!Number.isFinite(myRub) || myRub <= 0) {
+            const rangesWide =
+                Array.isArray(cfg.ranges) && cfg.ranges.length
+                    ? cfg.ranges
+                    : [{ min: cfg.minPct, max: cfg.maxPct }];
+            const isWideDefault = rangesWide.some((range) => {
+                const lo = Math.min(Number(range.min), Number(range.max));
+                const hi = Math.max(Number(range.min), Number(range.max));
+                return lo <= -99.5 && hi >= 99.5;
+            });
+            if (!isWideDefault) return false;
             for (const c of checks) {
                 const compRub = toRub(c.price, c.currency, cfg.usdRate, cfg.eurRate);
                 if (Number.isFinite(compRub) && compRub > 0) return true;
