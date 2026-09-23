@@ -3601,6 +3601,118 @@ module.exports = (db, settings) => {
         }
     });
 
+    /**
+     * Пересвязь: подтверждённая пара конкурента с другой карточки того же SKU
+     * переезжает на карточку из ручной очереди. Статус остаётся confirmed.
+     */
+    router.post('/manual-match/relink', async (req, res) => {
+        const mySiteId = parseInt(String(req.body.my_site_id || '').trim(), 10);
+        const competitorSiteId = parseInt(String(req.body.competitor_site_id || '').trim(), 10);
+        const myProductId = parseInt(String(req.body.my_product_id || '').trim(), 10);
+        const productMatchId = parseInt(String(req.body.product_match_id || '').trim(), 10);
+        if (!Number.isFinite(mySiteId) || mySiteId < 1 || !Number.isFinite(competitorSiteId) || competitorSiteId < 1) {
+            return res.status(400).json({ error: 'my_site_id и competitor_site_id обязательны' });
+        }
+        if (!Number.isFinite(myProductId) || myProductId < 1) {
+            return res.status(400).json({ error: 'my_product_id обязателен' });
+        }
+        if (!Number.isFinite(productMatchId) || productMatchId < 1) {
+            return res.status(400).json({ error: 'product_match_id обязателен' });
+        }
+        try {
+            await ensureMatchLaneTables();
+            await ensureMatchAuditColumns();
+            await ensureProductMatchIdentitySchema();
+            const [[mp]] = await db.query(
+                'SELECT id, sku, name FROM my_products WHERE id = ? AND site_id = ? AND is_active = 1 LIMIT 1',
+                [myProductId, mySiteId]
+            );
+            if (!mp) return res.status(404).json({ error: 'Товар очереди не найден' });
+            const [[pm]] = await db.query(
+                `SELECT id, my_site_id, competitor_site_id, my_sku, my_product_name, competitor_sku, competitor_name, status
+                 FROM product_matches WHERE id = ? LIMIT 1`,
+                [productMatchId]
+            );
+            if (!pm) return res.status(404).json({ error: 'Подтверждённая пара не найдена' });
+            if (String(pm.status) !== 'confirmed') {
+                return res.status(400).json({ error: 'Пересвязать можно только подтверждённую пару' });
+            }
+            if (Number(pm.my_site_id) !== mySiteId || Number(pm.competitor_site_id) !== competitorSiteId) {
+                return res.status(400).json({ error: 'Пара относится к другому сайту или конкуренту' });
+            }
+            const actor = await resolveActorDisplayName(req);
+            const idHash = computeMatchIdentityHash(
+                mySiteId,
+                competitorSiteId,
+                mp.sku,
+                mp.name,
+                pm.competitor_sku,
+                pm.competitor_name
+            );
+            await db.query(
+                `DELETE FROM product_matches
+                 WHERE my_site_id = ? AND competitor_site_id = ? AND match_identity_hash = ? AND id <> ?`,
+                [mySiteId, competitorSiteId, idHash, productMatchId]
+            );
+            await db.query(
+                `UPDATE product_matches
+                    SET my_sku = ?,
+                        my_product_name = ?,
+                        match_type = 'manual',
+                        matching_mode = 'manual',
+                        confidence_score = 1.0000,
+                        status = 'confirmed',
+                        confirmed_by = ?,
+                        confirmed_at = NOW(),
+                        unlinked_by = NULL,
+                        unlinked_at = NULL,
+                        rejected_by = NULL,
+                        rejected_at = NULL,
+                        match_identity_hash = ?,
+                        updated_at = CURRENT_TIMESTAMP
+                  WHERE id = ?`,
+                [
+                    mp.sku || '',
+                    mp.name || '',
+                    actor,
+                    idHash,
+                    productMatchId
+                ]
+            );
+            await clearMatchExclusionForConfirmedProduct(
+                db,
+                mySiteId,
+                competitorSiteId,
+                myProductId,
+                mp.name
+            );
+            await appendMatchProductLog(db, {
+                my_site_id: mySiteId,
+                my_product_id: myProductId,
+                competitor_site_id: competitorSiteId,
+                event: 'manual_relinked',
+                message:
+                    'Пересвязь: конкурент перенесён с другой карточки того же артикула (' +
+                    String(pm.my_product_name || pm.my_sku || '').trim() +
+                    ')',
+                detail: {
+                    product_match_id: productMatchId,
+                    from_sku: pm.my_sku,
+                    from_name: pm.my_product_name,
+                    competitor_sku: pm.competitor_sku,
+                    competitor_name: pm.competitor_name
+                }
+            });
+            return res.json({
+                success: true,
+                product_match_id: productMatchId,
+                my_product_id: myProductId
+            });
+        } catch (e) {
+            return res.status(500).json({ error: e.message || 'Ошибка пересвязи' });
+        }
+    });
+
     router.post('/manual-match/archive', async (req, res) => {
         const exclusionId = parseInt(String(req.body.exclusion_id || '').trim(), 10);
         const note = String(req.body.note || '').trim().slice(0, 500);

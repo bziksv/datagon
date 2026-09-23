@@ -101,7 +101,10 @@ function sqlMatchAuditJoinAndWhere(matchAuditFilter) {
     return { joinSql: '', whereSql: '' };
 }
 
-module.exports = (db, settings) => {
+/** Контролы фонового sync цен — заполняются при первом вызове фабрики роутера. */
+let _priceCompSyncControls = null;
+
+function myProductsRouterFactory(db, settings) {
     if (!db) {
         console.error('[myproducts] CRITICAL: DB connection is undefined!');
         return router;
@@ -1215,23 +1218,560 @@ module.exports = (db, settings) => {
         }
     });
 
+    const PRICE_SYNC_CHUNK = 150;
+    const PRICE_SYNC_HARD_MAX = 50000;
+    const PRICE_SYNC_CMS_CONCURRENCY = 4;
+
+    async function mapPool(items, concurrency, worker) {
+        const list = Array.isArray(items) ? items : [];
+        const limit = Math.max(1, Math.min(32, Number(concurrency) || 1));
+        let next = 0;
+        const slotCount = Math.min(limit, list.length || 1);
+        const runners = [];
+        for (let slot = 0; slot < slotCount; slot += 1) {
+            runners.push((async () => {
+                while (true) {
+                    const cur = next;
+                    next += 1;
+                    if (cur >= list.length) return;
+                    await worker(list[cur], cur, slot);
+                }
+            })());
+        }
+        await Promise.all(runners);
+    }
+
+    function parseFlexibleNumber(v, fallback) {
+        if (v === undefined || v === null || v === '') return fallback;
+        const n = Number(String(v).replace(',', '.'));
+        return Number.isFinite(n) ? n : fallback;
+    }
+
+    function normalizeRandomPctRange(randomMinPct, randomMaxPct) {
+        const rndMin = parseFlexibleNumber(randomMinPct, 0.1);
+        const rndMax = parseFlexibleNumber(randomMaxPct, 1);
+        const minPct = Math.max(0, Math.min(rndMin, rndMax));
+        const maxPct = Math.max(0, Math.max(rndMin, rndMax));
+        if (maxPct > 100) {
+            return { error: 'Диапазон рандома должен быть в пределах 0..100%' };
+        }
+        return { minPct, maxPct };
+    }
+
+    function computeCompetitorTargetPrice(product, minPct, maxPct, usdRate, eurRate) {
+        const candidates = [];
+        if (Number.isFinite(Number(product.dealmed_price)) && Number(product.dealmed_price) > 0) {
+            const rub = toRub(product.dealmed_price, product.dealmed_currency || 'RUB', usdRate, eurRate);
+            if (Number.isFinite(rub) && rub > 0) candidates.push({ source: 'dealmed', rub });
+        }
+        if (Number.isFinite(Number(product.medkompleks_price)) && Number(product.medkompleks_price) > 0) {
+            const rub = toRub(product.medkompleks_price, product.medkompleks_currency || 'RUB', usdRate, eurRate);
+            if (Number.isFinite(rub) && rub > 0) candidates.push({ source: 'medkompleks', rub });
+        }
+        if (!candidates.length) {
+            return { ok: false, error: 'Нет доступной цены конкурента для синхронизации' };
+        }
+        candidates.sort((a, b) => a.rub - b.rub);
+        const selected = candidates[0];
+        const randomPct = minPct + Math.random() * (maxPct - minPct);
+        const targetRub = selected.rub * (1 - randomPct / 100);
+        const targetInMyCurrency = fromRub(targetRub, product.currency || 'RUB', usdRate, eurRate);
+        if (!Number.isFinite(targetInMyCurrency) || targetInMyCurrency <= 0) {
+            return { ok: false, error: 'Не удалось рассчитать целевую цену' };
+        }
+        return {
+            ok: true,
+            selected,
+            randomPct,
+            finalPrice: Math.round(Number(targetInMyCurrency))
+        };
+    }
+
+    async function applyPriceToCms(conn, siteCfg, product, finalPrice) {
+        if (String(siteCfg.cms_type || '').toLowerCase() === 'webasyst') {
+            const skuRowId = Number(product.source_id || 0);
+            const skuCode = String(product.sku || '').trim();
+            let skuMeta = [];
+            if (Number.isFinite(skuRowId) && skuRowId > 0) {
+                const [byId] = await conn.query(
+                    `SELECT id, product_id
+                     FROM ${siteCfg.wa_table_skus}
+                     WHERE id = ?
+                     LIMIT 1`,
+                    [skuRowId]
+                );
+                skuMeta = byId;
+            }
+            if (!skuMeta.length && skuCode) {
+                const [bySku] = await conn.query(
+                    `SELECT id, product_id
+                     FROM ${siteCfg.wa_table_skus}
+                     WHERE ${siteCfg.wa_field_sku_val} = ?
+                     LIMIT 1`,
+                    [skuCode]
+                );
+                skuMeta = bySku;
+            }
+            if (!skuMeta.length) {
+                const err = new Error('SKU не найден в Webasyst (source_id / артикул)');
+                err.code = 'CMS_SKU_NOT_FOUND';
+                throw err;
+            }
+            const waSkuId = Number(skuMeta[0].id);
+            const waProductId = Number(skuMeta[0].product_id);
+            await conn.query(
+                `UPDATE ${siteCfg.wa_table_skus}
+                 SET ${siteCfg.wa_field_price_val} = ?
+                 WHERE id = ?
+                 LIMIT 1`,
+                [finalPrice, waSkuId]
+            );
+            if (Number.isFinite(waProductId) && waProductId > 0) {
+                await recalcWebasystProductPrimaryPrices(conn, siteCfg, waProductId);
+            }
+            await touchWebasystProductAfterPriceUpdate(conn, siteCfg, product.sku);
+            return;
+        }
+        await conn.query(
+            `UPDATE ${siteCfg.table_products}
+             SET ${siteCfg.field_price} = ?
+             WHERE ${siteCfg.field_code} = ?
+             LIMIT 1`,
+            [finalPrice, String(product.source_id || '')]
+        );
+    }
+
+    /**
+     * Контекст SQL-фильтров списка Мои товары (без пагинации / без Δ в SQL).
+     * Δ и цены конкурента применяются по чанкам в фоне.
+     */
+    async function buildPriceSyncFilterContext(raw) {
+        const q = raw || {};
+        const site_id = q.site_id;
+        const status = q.status;
+        const source_enabled = q.source_enabled;
+        const search = q.search;
+        const stock_min = q.stock_min;
+        const stock_max = q.stock_max;
+        const ms_linked = q.ms_linked != null ? q.ms_linked : 'all';
+        const gap_filter_enabled = q.gap_filter_enabled != null ? q.gap_filter_enabled : '0';
+        const gap_exclude_zero = q.gap_exclude_zero != null ? q.gap_exclude_zero : '1';
+        const gap_competitor = q.gap_competitor != null ? q.gap_competitor : 'all';
+        const match_audit = q.match_audit != null ? q.match_audit : 'all';
+        const gap_min_pct = q.gap_min_pct;
+        const gap_max_pct = q.gap_max_pct;
+        const usd_to_rub = q.usd_to_rub;
+        const eur_to_rub = q.eur_to_rub;
+
+        const matchAuditFilter = String(match_audit || 'all').toLowerCase();
+        const isGapFilterEnabled = String(gap_filter_enabled || '0') === '1';
+        const gapExcludeZero = String(gap_exclude_zero || '1') !== '0';
+        const usdRate = Math.max(0.0001, parseFlexibleNumber(usd_to_rub, Number(fxRatesCache.usd_to_rub || 90)));
+        const eurRate = Math.max(0.0001, parseFlexibleNumber(eur_to_rub, Number(fxRatesCache.eur_to_rub || 100)));
+        const gapMin = parseFlexibleNumber(gap_min_pct, -100);
+        const gapMax = parseFlexibleNumber(gap_max_pct, 100);
+
+        await ensureMyProductsPerfIndexes();
+        await ensureMyProductsCmsProductIdColumn();
+
+        const matchAuditSql = sqlMatchAuditJoinAndWhere(matchAuditFilter);
+        let whereSql = `WHERE 1=1${matchAuditSql.whereSql}`;
+        const params = [];
+
+        if (site_id && site_id !== 'all') {
+            whereSql += ' AND mp.site_id = ?';
+            params.push(site_id);
+        }
+        if (status !== undefined && status !== null && status !== '' && status !== 'all') {
+            whereSql += ' AND mp.is_active = ?';
+            params.push(status);
+        }
+        if (source_enabled !== undefined && source_enabled !== null && source_enabled !== '' && source_enabled !== 'all') {
+            whereSql += ' AND COALESCE(mp.source_enabled, 1) = ?';
+            params.push(source_enabled);
+        }
+        if (search) {
+            const rawTokens = String(search).trim().split(/\s+/).filter(Boolean).slice(0, 8);
+            const tokens = rawTokens.length ? rawTokens : [String(search).trim()];
+            for (const token of tokens) {
+                const like = `%${token}%`;
+                if (!isNaN(token)) {
+                    whereSql += ' AND (mp.source_id = ? OR mp.cms_product_id = ? OR mp.sku LIKE ? OR mp.name LIKE ?)';
+                    const idTok = String(parseInt(token, 10));
+                    params.push(idTok, idTok, like, like);
+                } else {
+                    whereSql += ' AND (mp.sku LIKE ? OR mp.name LIKE ?)';
+                    params.push(like, like);
+                }
+            }
+        }
+        const stockMinNum = Number(String(stock_min ?? '').replace(',', '.'));
+        if (Number.isFinite(stockMinNum)) {
+            whereSql += ' AND COALESCE(mp.stock, 0) >= ?';
+            params.push(stockMinNum);
+        }
+        const stockMaxNum = Number(String(stock_max ?? '').replace(',', '.'));
+        if (Number.isFinite(stockMaxNum)) {
+            whereSql += ' AND COALESCE(mp.stock, 0) <= ?';
+            params.push(stockMaxNum);
+        }
+        if (ms_linked === '1') {
+            whereSql += ` AND EXISTS (SELECT 1 FROM ms_export ms WHERE ${sqlMsExportMatchesProduct('ms', 'mp')} LIMIT 1)`;
+        } else if (ms_linked === '0') {
+            whereSql += ` AND NOT EXISTS (SELECT 1 FROM ms_export ms WHERE ${sqlMsExportMatchesProduct('ms', 'mp')} LIMIT 1)`;
+        }
+
+        const applied_filters = {
+            site_id: site_id || 'all',
+            status: status ?? 'all',
+            source_enabled: source_enabled ?? 'all',
+            search: String(search || ''),
+            ms_linked,
+            match_audit: matchAuditFilter,
+            gap_enabled: isGapFilterEnabled ? 1 : 0,
+            gap_exclude_zero: gapExcludeZero ? 1 : 0,
+            gap_competitor: String(gap_competitor || 'all'),
+            gap_min_pct: Number(gapMin),
+            gap_max_pct: Number(gapMax)
+        };
+
+        return {
+            joinSql: matchAuditSql.joinSql,
+            whereSql,
+            params,
+            applied_filters,
+            isGapFilterEnabled,
+            gapCfg: {
+                competitor: String(gap_competitor || 'all'),
+                excludeZero: gapExcludeZero,
+                minPct: Math.min(gapMin, gapMax),
+                maxPct: Math.max(gapMin, gapMax),
+                usdRate,
+                eurRate
+            },
+            usdRate,
+            eurRate
+        };
+    }
+
+    async function countPriceSyncCandidates(ctx) {
+        const [rows] = await db.query(
+            `SELECT COUNT(*) AS total
+             FROM my_products mp
+             ${ctx.joinSql}
+             ${ctx.whereSql}`,
+            ctx.params
+        );
+        return Number(rows?.[0]?.total || 0);
+    }
+
+    async function fetchPriceSyncChunk(ctx, cursorId, limit) {
+        const lim = Math.max(1, Math.min(200, Number(limit) || PRICE_SYNC_CHUNK));
+        const params = [...ctx.params];
+        let sql = `
+            SELECT mp.*
+            FROM my_products mp
+            ${ctx.joinSql}
+            ${ctx.whereSql}
+        `;
+        // Важно: Number(null) === 0 → нельзя считать «есть курсор» через isFinite(Number(null)).
+        if (cursorId != null && cursorId !== '' && Number.isFinite(Number(cursorId))) {
+            sql += ' AND mp.id < ?';
+            params.push(Number(cursorId));
+        }
+        sql += ` ORDER BY mp.id DESC LIMIT ${lim}`;
+        const [rows] = await db.query(sql, params);
+        return Array.isArray(rows) ? rows : [];
+    }
+
+    const priceSyncJob = {
+        active: false,
+        cancelRequested: false,
+        job_serial: 0,
+        started_at: null,
+        finished_at: null,
+        phase: 'idle',
+        message: '',
+        applied_filters: null,
+        random_min_pct: 0.1,
+        random_max_pct: 1,
+        synced_by: '',
+        total_sql: 0,
+        scanned: 0,
+        synced: 0,
+        cms_ok: 0,
+        cms_failed: 0,
+        skipped_gap: 0,
+        skipped_no_competitor: 0,
+        errors: []
+    };
+
+    function priceSyncJobDurationSec() {
+        if (!priceSyncJob.started_at) return 0;
+        const end = priceSyncJob.finished_at ? priceSyncJob.finished_at.getTime() : Date.now();
+        return Number(((end - priceSyncJob.started_at.getTime()) / 1000).toFixed(2));
+    }
+
+    function priceSyncJobPayload() {
+        const skipped = Number(priceSyncJob.skipped_gap || 0) + Number(priceSyncJob.skipped_no_competitor || 0);
+        return {
+            active: !!priceSyncJob.active,
+            cancel_requested: !!priceSyncJob.cancelRequested,
+            phase: priceSyncJob.phase,
+            message: priceSyncJob.message || '',
+            started_at: priceSyncJob.started_at ? priceSyncJob.started_at.toISOString() : null,
+            finished_at: priceSyncJob.finished_at ? priceSyncJob.finished_at.toISOString() : null,
+            total_sql: Number(priceSyncJob.total_sql || 0),
+            total: Number(priceSyncJob.total_sql || 0),
+            scanned: Number(priceSyncJob.scanned || 0),
+            synced: Number(priceSyncJob.synced || 0),
+            cms_ok: Number(priceSyncJob.cms_ok || 0),
+            cms_failed: Number(priceSyncJob.cms_failed || 0),
+            skipped_gap: Number(priceSyncJob.skipped_gap || 0),
+            skipped_no_competitor: Number(priceSyncJob.skipped_no_competitor || 0),
+            no_dm_mk_price: Number(priceSyncJob.skipped_no_competitor || 0),
+            skipped,
+            no_competitor: Number(priceSyncJob.skipped_no_competitor || 0),
+            to_update: Number(priceSyncJob.synced || 0) + Number(priceSyncJob.cms_failed || 0),
+            errors: Array.isArray(priceSyncJob.errors) ? priceSyncJob.errors.slice(-20) : [],
+            applied_filters: priceSyncJob.applied_filters,
+            random_min_pct: priceSyncJob.random_min_pct,
+            random_max_pct: priceSyncJob.random_max_pct,
+            synced_by: priceSyncJob.synced_by || '',
+            job_serial: priceSyncJob.job_serial,
+            chunk_size: PRICE_SYNC_CHUNK,
+            cms_concurrency: PRICE_SYNC_CMS_CONCURRENCY,
+            hard_max: PRICE_SYNC_HARD_MAX,
+            duration_sec: priceSyncJobDurationSec()
+        };
+    }
+
+    function resetPriceSyncJob(serial, meta) {
+        priceSyncJob.active = true;
+        priceSyncJob.cancelRequested = false;
+        priceSyncJob.job_serial = serial;
+        priceSyncJob.started_at = new Date();
+        priceSyncJob.finished_at = null;
+        priceSyncJob.phase = 'writing';
+        priceSyncJob.message = 'Стартует массовая синхронизация цен…';
+        priceSyncJob.applied_filters = meta.applied_filters || null;
+        priceSyncJob.random_min_pct = meta.minPct;
+        priceSyncJob.random_max_pct = meta.maxPct;
+        priceSyncJob.synced_by = meta.actorDisplayName || '';
+        priceSyncJob.total_sql = Number(meta.total_sql || 0);
+        priceSyncJob.scanned = 0;
+        priceSyncJob.synced = 0;
+        priceSyncJob.cms_ok = 0;
+        priceSyncJob.cms_failed = 0;
+        priceSyncJob.skipped_gap = 0;
+        priceSyncJob.skipped_no_competitor = 0;
+        priceSyncJob.errors = [];
+    }
+
+    function finishPriceSyncJob(serial, phase, message) {
+        if (priceSyncJob.job_serial !== serial) return;
+        priceSyncJob.active = false;
+        priceSyncJob.phase = phase;
+        priceSyncJob.finished_at = new Date();
+        priceSyncJob.message = message;
+        priceSyncJob.cancelRequested = false;
+    }
+
+    async function runPriceSyncJob(serial, filterRaw, pctRange, actorDisplayName) {
+        const siteCache = new Map();
+        /** @type {Map<number, import('mysql2/promise').Connection[]>} */
+        const connPools = new Map();
+
+        function formatProgressMessage(totalSql, gapEnabled) {
+            return (
+                `Обработано ${priceSyncJob.scanned.toLocaleString('ru-RU')}/${totalSql.toLocaleString('ru-RU')}` +
+                `; записано ✓ ${priceSyncJob.cms_ok.toLocaleString('ru-RU')}` +
+                `, ошибок × ${priceSyncJob.cms_failed.toLocaleString('ru-RU')}` +
+                `, без цены ДМ/МК ${priceSyncJob.skipped_no_competitor.toLocaleString('ru-RU')}` +
+                (gapEnabled ? `, вне Δ ${priceSyncJob.skipped_gap.toLocaleString('ru-RU')}` : '')
+            );
+        }
+
+        try {
+            const ctx = await buildPriceSyncFilterContext(filterRaw);
+            const totalSql = await countPriceSyncCandidates(ctx);
+            if (totalSql > PRICE_SYNC_HARD_MAX) {
+                finishPriceSyncJob(
+                    serial,
+                    'error',
+                    `Слишком большая SQL-выборка (${totalSql.toLocaleString('ru-RU')} > ${PRICE_SYNC_HARD_MAX}). Сузьте фильтры.`
+                );
+                return;
+            }
+            priceSyncJob.total_sql = totalSql;
+            priceSyncJob.applied_filters = ctx.applied_filters;
+            priceSyncJob.message =
+                `К обработке по SQL: ${totalSql.toLocaleString('ru-RU')}…` +
+                ` (чанк ${PRICE_SYNC_CHUNK}, CMS×${PRICE_SYNC_CMS_CONCURRENCY})`;
+
+            async function ensureSitePool(siteId) {
+                const sid = Number(siteId);
+                if (connPools.has(sid)) {
+                    return { site: siteCache.get(sid), pool: connPools.get(sid) };
+                }
+                const [sites] = await db.query('SELECT * FROM my_sites WHERE id = ?', [sid]);
+                if (!sites.length) {
+                    const err = new Error('Сайт не найден');
+                    err.code = 'SITE_NOT_FOUND';
+                    throw err;
+                }
+                const site = sites[0];
+                const pool = [];
+                for (let i = 0; i < PRICE_SYNC_CMS_CONCURRENCY; i += 1) {
+                    // eslint-disable-next-line no-await-in-loop
+                    const conn = await mysql.createConnection({
+                        host: site.db_host,
+                        user: site.db_user,
+                        password: site.db_pass,
+                        database: site.db_name,
+                        connectTimeout: 10000
+                    });
+                    pool.push(conn);
+                }
+                siteCache.set(sid, site);
+                connPools.set(sid, pool);
+                return { site, pool };
+            }
+
+            function takeSiteConn(siteId, slot) {
+                const sid = Number(siteId);
+                const pool = connPools.get(sid);
+                if (!pool || !pool.length) {
+                    const err = new Error('CMS pool not ready');
+                    err.code = 'CMS_POOL_MISSING';
+                    throw err;
+                }
+                const conn = pool[Math.abs(Number(slot) || 0) % pool.length];
+                return { site: siteCache.get(sid), conn };
+            }
+
+            let cursorId = null;
+            while (!priceSyncJob.cancelRequested) {
+                if (priceSyncJob.job_serial !== serial) return;
+                const rows = await fetchPriceSyncChunk(ctx, cursorId, PRICE_SYNC_CHUNK);
+                if (!rows.length) break;
+                const ids = rows.map((r) => Number(r.id)).filter(Number.isFinite);
+                cursorId = Math.min(...ids);
+
+                await enrichWithCompetitorPrices(rows);
+
+                const toWrite = [];
+                for (const product of rows) {
+                    if (priceSyncJob.cancelRequested) break;
+                    priceSyncJob.scanned += 1;
+
+                    if (ctx.isGapFilterEnabled && !rowMatchesGapFilter(product, ctx.gapCfg)) {
+                        priceSyncJob.skipped_gap += 1;
+                        continue;
+                    }
+
+                    const computed = computeCompetitorTargetPrice(
+                        product,
+                        pctRange.minPct,
+                        pctRange.maxPct,
+                        ctx.usdRate,
+                        ctx.eurRate
+                    );
+                    if (!computed.ok) {
+                        priceSyncJob.skipped_no_competitor += 1;
+                        continue;
+                    }
+                    toWrite.push({ product, computed });
+                }
+
+                // Поднимаем пулы для сайтов этого чанка до параллельной записи.
+                const siteIds = [...new Set(toWrite.map((x) => Number(x.product.site_id)).filter(Number.isFinite))];
+                for (const sid of siteIds) {
+                    if (priceSyncJob.cancelRequested) break;
+                    // eslint-disable-next-line no-await-in-loop
+                    await ensureSitePool(sid);
+                }
+
+                await mapPool(toWrite, PRICE_SYNC_CMS_CONCURRENCY, async (item, _idx, slot) => {
+                    if (priceSyncJob.cancelRequested) return;
+                    if (priceSyncJob.job_serial !== serial) return;
+                    const { product, computed } = item;
+                    const code = String(product.sku || product.source_id || product.id || '?');
+                    try {
+                        const { site, conn } = takeSiteConn(product.site_id, slot);
+                        await applyPriceToCms(conn, site, product, computed.finalPrice);
+                        await db.query(
+                            `UPDATE my_products
+                             SET price = ?, comp_sync_by = ?, comp_sync_at = NOW(), comp_sync_note = ?, updated_at = NOW()
+                             WHERE site_id = ? AND source_id = ?`,
+                            [
+                                computed.finalPrice,
+                                actorDisplayName,
+                                `bulk;from=${computed.selected.source};rnd=${computed.randomPct.toFixed(4)}%`,
+                                Number(product.site_id),
+                                String(product.source_id || '')
+                            ]
+                        );
+                        priceSyncJob.cms_ok += 1;
+                        priceSyncJob.synced += 1;
+                    } catch (itemErr) {
+                        priceSyncJob.cms_failed += 1;
+                        if (priceSyncJob.errors.length < 20) {
+                            priceSyncJob.errors.push({
+                                code,
+                                site_id: Number(product.site_id),
+                                error: String(itemErr && itemErr.message ? itemErr.message : itemErr)
+                            });
+                        }
+                    }
+                });
+
+                priceSyncJob.message = formatProgressMessage(totalSql, ctx.isGapFilterEnabled);
+
+                await new Promise((resolve) => setImmediate(resolve));
+            }
+
+            myProductsResponseCache.clear();
+            myProductsGapSetCache.clear();
+
+            if (priceSyncJob.cancelRequested) {
+                finishPriceSyncJob(
+                    serial,
+                    'cancelled',
+                    `Остановлено: просмотрено ${priceSyncJob.scanned}/${totalSql}, записано ✓ ${priceSyncJob.cms_ok}, ошибок × ${priceSyncJob.cms_failed}, без цены ДМ/МК ${priceSyncJob.skipped_no_competitor}`
+                );
+            } else {
+                finishPriceSyncJob(
+                    serial,
+                    'done',
+                    `Готово: просмотрено ${priceSyncJob.scanned}/${totalSql}, записано ✓ ${priceSyncJob.cms_ok}, ошибок × ${priceSyncJob.cms_failed}, без цены ДМ/МК ${priceSyncJob.skipped_no_competitor}` +
+                        (ctx.isGapFilterEnabled ? `, вне Δ ${priceSyncJob.skipped_gap}` : '')
+                );
+            }
+        } catch (e) {
+            console.error('Error in background price sync job:', e);
+            finishPriceSyncJob(serial, 'error', `Ошибка: ${e.message || e}`);
+        } finally {
+            for (const pool of connPools.values()) {
+                for (const conn of pool) {
+                    try {
+                        // eslint-disable-next-line no-await-in-loop
+                        await conn.end();
+                    } catch (_) {}
+                }
+            }
+        }
+    }
+
     // 4. Обновление цены на сайте от цены конкурента с рандомным шагом
     router.post('/sync-price-from-competitor', async (req, res) => {
         const { site_id, sku, source_id, random_min_pct, random_max_pct } = req.body || {};
         if (!site_id || (!sku && !source_id)) {
             return res.status(400).json({ error: 'Не указан site_id и идентификатор товара (source_id/sku)' });
         }
-        const parseFlexible = (v, fallback) => {
-            if (v === undefined || v === null || v === '') return fallback;
-            const n = Number(String(v).replace(',', '.'));
-            return Number.isFinite(n) ? n : fallback;
-        };
-        const rndMin = parseFlexible(random_min_pct, 0.1);
-        const rndMax = parseFlexible(random_max_pct, 1);
-        const minPct = Math.max(0, Math.min(rndMin, rndMax));
-        const maxPct = Math.max(0, Math.max(rndMin, rndMax));
-        if (maxPct > 100) {
-            return res.status(400).json({ error: 'Диапазон рандома должен быть в пределах 0..100%' });
+        const pctRange = normalizeRandomPctRange(random_min_pct, random_max_pct);
+        if (pctRange.error) {
+            return res.status(400).json({ error: pctRange.error });
         }
 
         try {
@@ -1257,31 +1797,16 @@ module.exports = (db, settings) => {
 
             const usdRate = Number(fxRatesCache.usd_to_rub || 90);
             const eurRate = Number(fxRatesCache.eur_to_rub || 100);
-
-            const candidates = [];
-            if (Number.isFinite(Number(product.dealmed_price)) && Number(product.dealmed_price) > 0) {
-                const rub = toRub(product.dealmed_price, product.dealmed_currency || 'RUB', usdRate, eurRate);
-                if (Number.isFinite(rub) && rub > 0) candidates.push({ source: 'dealmed', rub });
+            const computed = computeCompetitorTargetPrice(
+                product,
+                pctRange.minPct,
+                pctRange.maxPct,
+                usdRate,
+                eurRate
+            );
+            if (!computed.ok) {
+                return res.status(400).json({ error: computed.error });
             }
-            if (Number.isFinite(Number(product.medkompleks_price)) && Number(product.medkompleks_price) > 0) {
-                const rub = toRub(product.medkompleks_price, product.medkompleks_currency || 'RUB', usdRate, eurRate);
-                if (Number.isFinite(rub) && rub > 0) candidates.push({ source: 'medkompleks', rub });
-            }
-            if (!candidates.length) {
-                return res.status(400).json({ error: 'Нет доступной цены конкурента для синхронизации' });
-            }
-
-            // Берем минимальную конкурентную цену, чтобы оставаться ниже самого дешевого конкурента.
-            candidates.sort((a, b) => a.rub - b.rub);
-            const selected = candidates[0];
-            const randomPct = minPct + Math.random() * (maxPct - minPct);
-            const targetRub = selected.rub * (1 - randomPct / 100);
-            const targetInMyCurrency = fromRub(targetRub, product.currency || 'RUB', usdRate, eurRate);
-            if (!Number.isFinite(targetInMyCurrency) || targetInMyCurrency <= 0) {
-                return res.status(400).json({ error: 'Не удалось рассчитать целевую цену' });
-            }
-            // Отправляем цену без копеек: стандартное математическое округление.
-            const finalPrice = Math.round(Number(targetInMyCurrency));
 
             const [sites] = await db.query('SELECT * FROM my_sites WHERE id = ?', [siteIdNum]);
             if (!sites.length) {
@@ -1296,55 +1821,7 @@ module.exports = (db, settings) => {
                 connectTimeout: 10000
             });
             try {
-                if (String(s.cms_type || '').toLowerCase() === 'webasyst') {
-                    const skuRowId = Number(product.source_id || 0);
-                    const skuCode = String(product.sku || '').trim();
-                    let skuMeta = [];
-                    if (Number.isFinite(skuRowId) && skuRowId > 0) {
-                        const [byId] = await conn.query(
-                            `SELECT id, product_id
-                             FROM ${s.wa_table_skus}
-                             WHERE id = ?
-                             LIMIT 1`,
-                            [skuRowId]
-                        );
-                        skuMeta = byId;
-                    }
-                    if (!skuMeta.length && skuCode) {
-                        const [bySku] = await conn.query(
-                            `SELECT id, product_id
-                             FROM ${s.wa_table_skus}
-                             WHERE ${s.wa_field_sku_val} = ?
-                             LIMIT 1`,
-                            [skuCode]
-                        );
-                        skuMeta = bySku;
-                    }
-                    if (!skuMeta.length) {
-                        return res.status(404).json({ error: 'SKU не найден в Webasyst (source_id / артикул)' });
-                    }
-                    const waSkuId = Number(skuMeta[0].id);
-                    const waProductId = Number(skuMeta[0].product_id);
-                    await conn.query(
-                        `UPDATE ${s.wa_table_skus}
-                         SET ${s.wa_field_price_val} = ?
-                         WHERE id = ?
-                         LIMIT 1`,
-                        [finalPrice, waSkuId]
-                    );
-                    if (Number.isFinite(waProductId) && waProductId > 0) {
-                        await recalcWebasystProductPrimaryPrices(conn, s, waProductId);
-                    }
-                    await touchWebasystProductAfterPriceUpdate(conn, s, product.sku);
-                } else {
-                    await conn.query(
-                        `UPDATE ${s.table_products}
-                         SET ${s.field_price} = ?
-                         WHERE ${s.field_code} = ?
-                         LIMIT 1`,
-                        [finalPrice, String(product.source_id || '')]
-                    );
-                }
+                await applyPriceToCms(conn, s, product, computed.finalPrice);
             } finally {
                 await conn.end();
             }
@@ -1356,9 +1833,9 @@ module.exports = (db, settings) => {
                  SET price = ?, comp_sync_by = ?, comp_sync_at = NOW(), comp_sync_note = ?, updated_at = NOW()
                  WHERE site_id = ? AND source_id = ?`,
                 [
-                    finalPrice,
+                    computed.finalPrice,
                     actorDisplayName,
-                    `from=${selected.source};rnd=${randomPct.toFixed(4)}%`,
+                    `from=${computed.selected.source};rnd=${computed.randomPct.toFixed(4)}%`,
                     siteIdNum,
                     String(product.source_id || '')
                 ]
@@ -1379,10 +1856,10 @@ module.exports = (db, settings) => {
                 message: 'Цена обновлена от конкурента',
                 data: {
                     ...(syncMeta || {}),
-                    competitor_source: selected.source,
-                    competitor_price_rub: Number(selected.rub.toFixed(2)),
-                    random_pct: Number(randomPct.toFixed(4)),
-                    target_price: finalPrice,
+                    competitor_source: computed.selected.source,
+                    competitor_price_rub: Number(computed.selected.rub.toFixed(2)),
+                    random_pct: Number(computed.randomPct.toFixed(4)),
+                    target_price: computed.finalPrice,
                     target_currency: product.currency || 'RUB',
                     synced_by: actorDisplayName
                 }
@@ -1393,5 +1870,257 @@ module.exports = (db, settings) => {
         }
     });
 
+    // 4b. Массовая синхронизация цены: dry_run (быстрый COUNT) или confirm (фон + чанки)
+    router.post('/sync-price-from-competitor-bulk', async (req, res) => {
+        const startedAt = Date.now();
+        const body = req.body || {};
+        const q = { ...req.query, ...body };
+        const dryRun =
+            String(q.dry_run || '') === '1' ||
+            q.dry_run === true ||
+            q.dry_run === 1;
+        const confirm =
+            String(q.confirm || '') === '1' ||
+            q.confirm === true ||
+            q.confirm === 1;
+
+        if (!dryRun && !confirm) {
+            return res.status(400).json({
+                error: 'confirm required (или dry_run=1)',
+                code: 'CONFIRM_REQUIRED'
+            });
+        }
+
+        const pctRange = normalizeRandomPctRange(q.random_min_pct ?? body.random_min_pct, q.random_max_pct ?? body.random_max_pct);
+        if (pctRange.error) {
+            return res.status(400).json({ error: pctRange.error });
+        }
+
+        try {
+            await ensureMyProductsSyncAuditColumns();
+            const ctx = await buildPriceSyncFilterContext(q);
+            const totalSql = await countPriceSyncCandidates(ctx);
+
+            if (dryRun) {
+                return res.json({
+                    success: true,
+                    dry_run: true,
+                    mode: 'background',
+                    total: totalSql,
+                    total_sql: totalSql,
+                    to_update: null,
+                    would_update: null,
+                    estimate_exact: false,
+                    note:
+                        'Confirmed-матч ≠ цена Dealmed/Медкомплекс: к записи идут только товары с ценой ДМ/МК > 0. ' +
+                        (ctx.isGapFilterEnabled
+                            ? 'Фильтр Δ и цены проверяются по чанкам в фоне.'
+                            : 'Точное число «без цены ДМ/МК» станет известно в процессе.'),
+                    skipped: null,
+                    no_competitor: null,
+                    no_dm_mk_price: null,
+                    hard_max: PRICE_SYNC_HARD_MAX,
+                    chunk_size: PRICE_SYNC_CHUNK,
+                    cms_concurrency: PRICE_SYNC_CMS_CONCURRENCY,
+                    applied_filters: ctx.applied_filters,
+                    random_min_pct: pctRange.minPct,
+                    random_max_pct: pctRange.maxPct,
+                    duration_sec: Number(((Date.now() - startedAt) / 1000).toFixed(2))
+                });
+            }
+
+            if (totalSql <= 0) {
+                return res.json({
+                    success: true,
+                    started: false,
+                    dry_run: false,
+                    total: 0,
+                    total_sql: 0,
+                    message: 'По фильтрам нет товаров',
+                    applied_filters: ctx.applied_filters,
+                    status: priceSyncJobPayload(),
+                    duration_sec: Number(((Date.now() - startedAt) / 1000).toFixed(2))
+                });
+            }
+            if (totalSql > PRICE_SYNC_HARD_MAX) {
+                return res.status(400).json({
+                    success: false,
+                    error: `Слишком большая SQL-выборка (${totalSql} > ${PRICE_SYNC_HARD_MAX}). Сузьте фильтры.`,
+                    code: 'SELECTION_TOO_LARGE',
+                    total_sql: totalSql,
+                    hard_max: PRICE_SYNC_HARD_MAX,
+                    applied_filters: ctx.applied_filters
+                });
+            }
+            if (priceSyncJob.active) {
+                return res.status(409).json({
+                    success: false,
+                    error: 'Массовая синхронизация цен уже выполняется',
+                    code: 'ALREADY_RUNNING',
+                    status: priceSyncJobPayload()
+                });
+            }
+
+            const actorLogin = resolveActorName(req);
+            const actorDisplayName = await resolveActorDisplayName(actorLogin);
+            const serial = Number(priceSyncJob.job_serial || 0) + 1;
+            resetPriceSyncJob(serial, {
+                applied_filters: ctx.applied_filters,
+                minPct: pctRange.minPct,
+                maxPct: pctRange.maxPct,
+                actorDisplayName,
+                total_sql: totalSql
+            });
+
+            setImmediate(() => {
+                runPriceSyncJob(serial, q, pctRange, actorDisplayName).catch((e) => {
+                    console.error('price sync job crash:', e);
+                    finishPriceSyncJob(serial, 'error', `Ошибка: ${e.message || e}`);
+                });
+            });
+
+            return res.json({
+                success: true,
+                started: true,
+                dry_run: false,
+                mode: 'background',
+                total: totalSql,
+                total_sql: totalSql,
+                message: 'Фоновая синхронизация цен запущена',
+                status: priceSyncJobPayload(),
+                duration_sec: Number(((Date.now() - startedAt) / 1000).toFixed(2))
+            });
+        } catch (e) {
+            console.error('Error starting bulk price sync:', e);
+            return res.status(500).json({
+                error: e.message,
+                duration_sec: Number(((Date.now() - startedAt) / 1000).toFixed(2))
+            });
+        }
+    });
+
+    router.get('/sync-price-from-competitor-bulk-status', (req, res) => {
+        res.json({ success: true, status: priceSyncJobPayload() });
+    });
+
+    router.post('/sync-price-from-competitor-bulk-stop', (req, res) => {
+        if (!priceSyncJob.active) {
+            return res.json({ success: true, stopped: false, status: priceSyncJobPayload() });
+        }
+        priceSyncJob.cancelRequested = true;
+        priceSyncJob.message = 'Останавливаем…';
+        return res.json({ success: true, stopped: true, status: priceSyncJobPayload() });
+    });
+
+    _priceCompSyncControls = {
+        isActive: () => !!priceSyncJob.active,
+        getState: () => priceSyncJobPayload(),
+        /**
+         * Старт той же фоновой задачи, что POST …-bulk?confirm=1.
+         * @param {object} filters
+         * @param {string} actorDisplayName
+         */
+        startFromFilters: async (filters, actorDisplayName) => {
+            if (priceSyncJob.active) {
+                return { started: false, reason: 'already_running', status: priceSyncJobPayload() };
+            }
+            const q = filters || {};
+            const pctRange = normalizeRandomPctRange(q.random_min_pct, q.random_max_pct);
+            if (pctRange.error) {
+                return { started: false, error: pctRange.error };
+            }
+            await ensureMyProductsSyncAuditColumns();
+            const ctx = await buildPriceSyncFilterContext(q);
+            const totalSql = await countPriceSyncCandidates(ctx);
+            if (totalSql <= 0) {
+                return {
+                    started: false,
+                    reason: 'empty',
+                    total_sql: 0,
+                    status: priceSyncJobPayload(),
+                    applied_filters: ctx.applied_filters
+                };
+            }
+            if (totalSql > PRICE_SYNC_HARD_MAX) {
+                return {
+                    started: false,
+                    reason: 'too_large',
+                    total_sql: totalSql,
+                    hard_max: PRICE_SYNC_HARD_MAX,
+                    error: `Слишком большая SQL-выборка (${totalSql} > ${PRICE_SYNC_HARD_MAX})`
+                };
+            }
+            const actor = String(actorDisplayName || 'auto-sync').trim() || 'auto-sync';
+            const serial = Number(priceSyncJob.job_serial || 0) + 1;
+            resetPriceSyncJob(serial, {
+                applied_filters: ctx.applied_filters,
+                minPct: pctRange.minPct,
+                maxPct: pctRange.maxPct,
+                actorDisplayName: actor,
+                total_sql: totalSql
+            });
+            setImmediate(() => {
+                runPriceSyncJob(serial, q, pctRange, actor).catch((e) => {
+                    console.error('price sync job crash:', e);
+                    finishPriceSyncJob(serial, 'error', `Ошибка: ${e.message || e}`);
+                });
+            });
+            return {
+                started: true,
+                total_sql: totalSql,
+                status: priceSyncJobPayload()
+            };
+        }
+    };
+
     return router;
+}
+
+function buildPriceCompFiltersFromSettings(appSettings) {
+    const s = appSettings || {};
+    return {
+        site_id: String(s.auto_sync_price_comp_site_id || 'all'),
+        status: 'all',
+        source_enabled: 'all',
+        ms_linked: 'all',
+        search: '',
+        match_audit: String(s.auto_sync_price_comp_match_audit || 'confirmed'),
+        gap_filter_enabled: '0',
+        gap_exclude_zero: '1',
+        gap_competitor: 'all',
+        gap_min_pct: '-100',
+        gap_max_pct: '100',
+        stock_min: String(s.auto_sync_price_comp_stock_min != null ? s.auto_sync_price_comp_stock_min : '0'),
+        stock_max: String(s.auto_sync_price_comp_stock_max != null ? s.auto_sync_price_comp_stock_max : '1000'),
+        random_min_pct: String(s.auto_sync_price_comp_rand_min != null ? s.auto_sync_price_comp_rand_min : '0.1'),
+        random_max_pct: String(s.auto_sync_price_comp_rand_max != null ? s.auto_sync_price_comp_rand_max : '1')
+    };
+}
+
+/**
+ * Запуск из автосинка / «Запустить сейчас». Роутер должен быть уже смонтирован.
+ */
+myProductsRouterFactory.triggerPriceCompSyncFromSettings = async function triggerPriceCompSyncFromSettings(
+    appSettings,
+    opts
+) {
+    if (!_priceCompSyncControls || typeof _priceCompSyncControls.startFromFilters !== 'function') {
+        throw new Error('my-products router not initialized (price_comp_sync)');
+    }
+    const filters = buildPriceCompFiltersFromSettings(appSettings);
+    const actor = (opts && opts.actorDisplayName) || 'auto-sync';
+    return _priceCompSyncControls.startFromFilters(filters, actor);
 };
+
+myProductsRouterFactory.getPriceCompSyncState = function getPriceCompSyncState() {
+    if (!_priceCompSyncControls) {
+        return { active: false, phase: 'idle', message: 'роутер не инициализирован' };
+    }
+    return _priceCompSyncControls.getState();
+};
+
+myProductsRouterFactory.isPriceCompSyncActive = function isPriceCompSyncActive() {
+    return !!( _priceCompSyncControls && _priceCompSyncControls.isActive());
+};
+
+module.exports = myProductsRouterFactory;

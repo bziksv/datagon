@@ -20,19 +20,367 @@
       var myProductsPostBusy = false;
       var myProductsFxBusy = false;
       var myProductsRowActionBusy = false;
+      var myProductsBulkPriceBusy = false;
+      var mpPriceSyncPollTimer = null;
 
       function refreshMyProductsHeavyButtons() {
-        var busy = lastLoading || myProductsPostBusy || myProductsFxBusy || myProductsRowActionBusy;
+        var busy =
+          lastLoading ||
+          myProductsPostBusy ||
+          myProductsFxBusy ||
+          myProductsRowActionBusy ||
+          myProductsBulkPriceBusy;
         var fx = document.getElementById("mp-btn-fx");
         var syncAll = document.getElementById("mp-btn-syncall");
         var rebuild = document.getElementById("mp-btn-rebuild");
         var syncSite = document.getElementById("mp-btn-sync-site");
+        var syncPriceBulk = document.getElementById("mp-btn-sync-price-bulk");
         var sidEl = document.getElementById("f-site");
         var sid = sidEl ? String(sidEl.value || "") : "";
         if (fx) fx.disabled = !!busy;
         if (syncAll) syncAll.disabled = !!busy;
         if (rebuild) rebuild.disabled = !!busy;
         if (syncSite) syncSite.disabled = !!busy || !sid || sid === "all";
+        if (syncPriceBulk) syncPriceBulk.disabled = !!busy;
+      }
+
+      function setMpPriceSyncStopVisible(visible) {
+        var stopBtn = document.getElementById("mp-btn-sync-price-bulk-stop");
+        if (!stopBtn) return;
+        if (visible) stopBtn.classList.remove("d-none");
+        else stopBtn.classList.add("d-none");
+      }
+
+      function stopMpPriceSyncPoll() {
+        if (mpPriceSyncPollTimer) {
+          clearInterval(mpPriceSyncPollTimer);
+          mpPriceSyncPollTimer = null;
+        }
+      }
+
+      function notifyMp(type, message) {
+        if (window.DatagonNotify && window.DatagonNotify.toast) {
+          window.DatagonNotify.toast({ type: type || "info", message: String(message || "") });
+        }
+      }
+
+      function showMpActionLog(type, message, asHtml) {
+        var box = document.getElementById("mp-action-log");
+        if (!box) return;
+        var t = type || "info";
+        box.className =
+          "alert mt-3 mb-0 alert-" +
+          (t === "danger" ? "danger" : t === "success" ? "success" : t === "warning" ? "warning" : "info");
+        if (asHtml) box.innerHTML = String(message || "");
+        else box.textContent = String(message || "");
+        box.classList.remove("d-none");
+      }
+
+      function hideMpActionLog() {
+        var box = document.getElementById("mp-action-log");
+        if (!box) return;
+        box.classList.add("d-none");
+        box.textContent = "";
+        box.innerHTML = "";
+      }
+
+      function describeMpAppliedFilters() {
+        var f = collectApiFilters();
+        var parts = [];
+        if (f.site_id && f.site_id !== "all") {
+          var siteLabel = siteNameById[f.site_id] || ("#" + f.site_id);
+          parts.push("сайт: " + siteLabel);
+        } else parts.push("сайт: все");
+        if (f.status !== undefined && f.status !== "" && f.status !== "all") {
+          parts.push(String(f.status) === "1" ? "статус: активные" : "статус: неактивные");
+        }
+        if (f.source_enabled !== undefined && f.source_enabled !== "" && f.source_enabled !== "all") {
+          parts.push(String(f.source_enabled) === "1" ? "на сайте: вкл" : "на сайте: выкл");
+        }
+        if (f.ms_linked === "1") parts.push("МС: связаны");
+        else if (f.ms_linked === "0") parts.push("МС: без связи");
+        if (f.match_audit && f.match_audit !== "all") parts.push("сопоставление: " + f.match_audit);
+        if (f.search) parts.push("поиск: «" + f.search + "»");
+        if (f.stock_min) parts.push("остаток от " + f.stock_min);
+        if (f.stock_max) parts.push("остаток до " + f.stock_max);
+        if (String(f.gap_filter_enabled) === "1") {
+          parts.push(
+            "Δ: " +
+              (f.gap_competitor || "all") +
+              " [" +
+              (f.gap_min_pct || "-100") +
+              "…" +
+              (f.gap_max_pct || "100") +
+              "%]" +
+              (String(f.gap_exclude_zero) === "1" ? ", скрыть 0%" : "")
+          );
+        }
+        parts.push(
+          "рандом −" +
+            (f.comp_sync_rand_min || "0.1") +
+            "…−" +
+            (f.comp_sync_rand_max || "1") +
+            "%"
+        );
+        return parts.join("; ");
+      }
+
+      function formatBulkSyncPriceSummary(j, prefix) {
+        var st = j && j.status ? j.status : j || {};
+        var p = prefix ? prefix + " " : "";
+        var totalSql = Number(st.total_sql != null ? st.total_sql : st.total || 0);
+        var scanned = Number(st.scanned || 0);
+        var chunkPart = st.chunk_size ? "чанк " + st.chunk_size : "";
+        var concPart = st.cms_concurrency ? "CMS×" + st.cms_concurrency : "";
+        var metaParts = [chunkPart, concPart].filter(Boolean).join(", ");
+        var lines = [
+          p + "<strong>Синхронизация цен с конкурента</strong> (фон, чанки; мин. Dealmed/Медкомплекс − случайный %)",
+          "Фильтры: " + describeMpAppliedFilters(),
+          "По SQL-фильтрам: " + totalSql.toLocaleString("ru-RU") + " товаров" +
+            (metaParts ? " (" + metaParts + ")" : ""),
+        ];
+        if (j && j.dry_run) {
+          lines.push(
+            "<em>Пробный просмотр:</em> точное «к записи» считается в процессе (Δ и цена ДМ/МК — по ходу)."
+          );
+          lines.push(
+            "<small>Фильтр «подтверждено» ≠ цена Dealmed/Медкомплекс: «без цены ДМ/МК» — нет пригодной цены ДМ/МК (>0), своя цена не меняется.</small>"
+          );
+          if (j.note) lines.push(String(j.note));
+          if (totalSql >= 2000) {
+            lines.push(
+              "<strong>Оценка:</strong> при ~" +
+                totalSql.toLocaleString("ru-RU") +
+                " строках прогон может занять десятки минут. Лучше выбрать конкретный сайт."
+            );
+          }
+          return lines.join("<br>");
+        }
+        if (st.message) lines.push(String(st.message));
+        if (scanned > 0 || st.active) {
+          lines.push(
+            "Просмотрено: " +
+              scanned.toLocaleString("ru-RU") +
+              "/" +
+              totalSql.toLocaleString("ru-RU") +
+              "; записано ✓ " +
+              Number(st.cms_ok || st.synced || 0).toLocaleString("ru-RU") +
+              "; ошибок × " +
+              Number(st.cms_failed || 0).toLocaleString("ru-RU") +
+              "; без цены ДМ/МК: " +
+              Number(
+                st.no_dm_mk_price != null
+                  ? st.no_dm_mk_price
+                  : st.no_competitor || st.skipped_no_competitor || 0
+              ).toLocaleString("ru-RU") +
+              (Number(st.skipped_gap || 0)
+                ? "; вне Δ: " + Number(st.skipped_gap || 0).toLocaleString("ru-RU")
+                : "")
+          );
+        }
+        if (st.duration_sec != null) {
+          lines.push("Время: " + Number(st.duration_sec || 0).toLocaleString("ru-RU") + " с");
+        }
+        if (Number(st.cms_failed || 0) > 0 && st.errors && st.errors.length) {
+          lines.push("<strong>Примеры ошибок:</strong>");
+          st.errors.slice(0, 10).forEach(function (er) {
+            lines.push(
+              "• " +
+                (er.code || "?") +
+                (er.site_id != null ? " (сайт #" + er.site_id + ")" : "") +
+                " — " +
+                (er.error || "ошибка")
+            );
+          });
+        }
+        return lines.join("<br>");
+      }
+
+      function buildBulkSyncPriceBody(extra) {
+        var f = collectApiFilters();
+        var body = {
+          site_id: f.site_id,
+          status: f.status,
+          source_enabled: f.source_enabled,
+          ms_linked: f.ms_linked,
+          search: f.search,
+          match_audit: f.match_audit,
+          gap_filter_enabled: f.gap_filter_enabled,
+          gap_exclude_zero: f.gap_exclude_zero,
+          gap_competitor: f.gap_competitor,
+          gap_min_pct: f.gap_min_pct,
+          gap_max_pct: f.gap_max_pct,
+          usd_to_rub: f.usd_to_rub,
+          eur_to_rub: f.eur_to_rub,
+          stock_min: f.stock_min,
+          stock_max: f.stock_max,
+          random_min_pct: Number(String(f.comp_sync_rand_min || "0.1").replace(",", ".")),
+          random_max_pct: Number(String(f.comp_sync_rand_max || "1").replace(",", ".")),
+        };
+        if (extra) {
+          Object.keys(extra).forEach(function (k) {
+            body[k] = extra[k];
+          });
+        }
+        return body;
+      }
+
+      function fetchBulkSyncPrice(dryRun) {
+        var body = buildBulkSyncPriceBody(dryRun ? { dry_run: 1 } : { confirm: 1 });
+        return fetch("/api/my-products/sync-price-from-competitor-bulk", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        }).then(function (r) {
+          return r.json().then(function (j) {
+            return { ok: r.ok, status: r.status, j: j };
+          });
+        });
+      }
+
+      function fetchBulkSyncPriceStatus() {
+        return fetch("/api/my-products/sync-price-from-competitor-bulk-status", {
+          credentials: "same-origin",
+        }).then(function (r) {
+          return r.json().then(function (j) {
+            return { ok: r.ok, j: j };
+          });
+        });
+      }
+
+      function stopBulkSyncPriceJob() {
+        return fetch("/api/my-products/sync-price-from-competitor-bulk-stop", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: "{}",
+        }).then(function (r) {
+          return r.json().then(function (j) {
+            return { ok: r.ok, j: j };
+          });
+        });
+      }
+
+      function onPriceSyncJobFinished(st) {
+        stopMpPriceSyncPoll();
+        setMpPriceSyncStopVisible(false);
+        var phase = String(st.phase || "");
+        var logType =
+          phase === "error" ? "danger" : phase === "cancelled" || Number(st.cms_failed || 0) > 0 ? "warning" : "success";
+        showMpActionLog(logType, formatBulkSyncPriceSummary({ status: st }, "Итог."), true);
+        var shortMsg =
+          (st.message || "Готово") +
+          " · ✓ " +
+          Number(st.cms_ok || 0).toLocaleString("ru-RU") +
+          " / × " +
+          Number(st.cms_failed || 0).toLocaleString("ru-RU");
+        notifyMp(logType === "danger" ? "danger" : logType === "warning" ? "warning" : "success", shortMsg);
+        return load();
+      }
+
+      function pollPriceSyncJobUntilDone() {
+        stopMpPriceSyncPoll();
+        setMpPriceSyncStopVisible(true);
+        return new Promise(function (resolve, reject) {
+          var settled = false;
+          var tick = function () {
+            return fetchBulkSyncPriceStatus()
+              .then(function (x) {
+                if (!x.ok || !x.j || !x.j.status) return;
+                var st = x.j.status;
+                if (st.active) {
+                  showMpActionLog("info", formatBulkSyncPriceSummary({ status: st }, "Ход."), true);
+                  return;
+                }
+                if (settled) return;
+                settled = true;
+                stopMpPriceSyncPoll();
+                return onPriceSyncJobFinished(st).then(resolve, reject);
+              })
+              .catch(function (e) {
+                showMpActionLog(
+                  "warning",
+                  "Не удалось получить статус фоновой задачи: " + (e && e.message ? e.message : e),
+                  false
+                );
+              });
+          };
+          tick();
+          mpPriceSyncPollTimer = setInterval(tick, 2000);
+        });
+      }
+
+      function runBulkSyncPriceFromCompetitor() {
+        if (lastLoading) {
+          notifyMp("warning", "Дождитесь окончания загрузки таблицы");
+          return Promise.resolve();
+        }
+        if (myProductsBulkPriceBusy) return Promise.resolve();
+        var btn = document.getElementById("mp-btn-sync-price-bulk");
+        var doFetch = function () {
+          myProductsBulkPriceBusy = true;
+          refreshMyProductsHeavyButtons();
+          showMpActionLog("info", "Считаем выборку по SQL-фильтрам (без записи в CMS)…", false);
+          return fetchBulkSyncPrice(true)
+            .then(function (pre) {
+              if (!pre.ok || !pre.j || pre.j.success === false) {
+                throw new Error((pre.j && pre.j.error) || "Не удалось оценить выборку");
+              }
+              var pj = pre.j;
+              showMpActionLog("info", formatBulkSyncPriceSummary(pj, "План."), true);
+              var totalSql = Number(pj.total_sql != null ? pj.total_sql : pj.total || 0);
+              if (totalSql <= 0) {
+                var okMsg = "Нечего синхронизировать: по фильтрам 0 товаров.";
+                showMpActionLog("success", formatBulkSyncPriceSummary(pj, "Итог.") + "<br>" + okMsg, true);
+                notifyMp("success", okMsg);
+                return null;
+              }
+              var warn =
+                totalSql >= 2000
+                  ? "<br><strong>Внимание:</strong> " +
+                    totalSql.toLocaleString("ru-RU") +
+                    " строк — запуск в фоне чанками. Можно остановить кнопкой «Стоп синх. цен»."
+                  : "<br>Запуск фоновой записи в CMS…";
+              showMpActionLog("info", formatBulkSyncPriceSummary(pj, "План.") + warn, true);
+              return fetchBulkSyncPrice(false).then(function (x) {
+                if (x.status === 409) {
+                  notifyMp("warning", "Уже выполняется — показываем прогресс");
+                  return pollPriceSyncJobUntilDone();
+                }
+                if (!x.ok || !x.j || x.j.success === false) {
+                  throw new Error((x.j && x.j.error) || "Не удалось запустить синхронизацию");
+                }
+                if (x.j.started === false && Number(x.j.total_sql || 0) === 0) {
+                  return x.j;
+                }
+                return pollPriceSyncJobUntilDone();
+              });
+            })
+            .catch(function (e) {
+              stopMpPriceSyncPoll();
+              setMpPriceSyncStopVisible(false);
+              var err = e && e.message ? e.message : "Ошибка";
+              showMpActionLog(
+                "danger",
+                "<strong>Ошибка массовой синхронизации цен</strong><br>" +
+                  err +
+                  "<br>Фильтры: " +
+                  describeMpAppliedFilters(),
+                true
+              );
+              notifyMp("danger", err);
+              throw e;
+            })
+            .finally(function () {
+              myProductsBulkPriceBusy = false;
+              refreshMyProductsHeavyButtons();
+            });
+        };
+        if (window.DatagonNotify && window.DatagonNotify.busyRun && btn) {
+          return window.DatagonNotify.busyRun(btn, doFetch);
+        }
+        return doFetch();
       }
 
       var lastFx = { usd_to_rub: 90, eur_to_rub: 100 };
@@ -1607,6 +1955,7 @@
         load();
       });
       document.getElementById("mp-filter-default").addEventListener("click", function () {
+        hideMpActionLog();
         if (window.DatagonMyProductsFilterBlocks) window.DatagonMyProductsFilterBlocks.reset();
         if (window.DatagonFilters) window.DatagonFilters.clear("my_products");
         document.getElementById("mp-f-smart").value = "";
@@ -1739,6 +2088,41 @@
       document.getElementById("mp-btn-copy").addEventListener("click", function () {
         navigator.clipboard.writeText(window.location.href).catch(function () {});
       });
+      var bulkSyncPriceBtn = document.getElementById("mp-btn-sync-price-bulk");
+      if (bulkSyncPriceBtn) {
+        bulkSyncPriceBtn.addEventListener("click", function () {
+          runBulkSyncPriceFromCompetitor();
+        });
+      }
+      var bulkSyncPriceStopBtn = document.getElementById("mp-btn-sync-price-bulk-stop");
+      if (bulkSyncPriceStopBtn) {
+        bulkSyncPriceStopBtn.addEventListener("click", function () {
+          stopBulkSyncPriceJob()
+            .then(function (x) {
+              if (x.j && x.j.status) {
+                showMpActionLog("warning", formatBulkSyncPriceSummary({ status: x.j.status }, "Стоп."), true);
+              }
+              notifyMp("warning", "Запрошена остановка синхронизации цен");
+            })
+            .catch(function (e) {
+              notifyMp("danger", e && e.message ? e.message : "Не удалось остановить");
+            });
+        });
+      }
+      // Если вкладку перезагрузили во время фоновой задачи — подхватить прогресс.
+      fetchBulkSyncPriceStatus()
+        .then(function (x) {
+          if (x.ok && x.j && x.j.status && x.j.status.active) {
+            myProductsBulkPriceBusy = true;
+            refreshMyProductsHeavyButtons();
+            showMpActionLog("info", formatBulkSyncPriceSummary({ status: x.j.status }, "Ход."), true);
+            pollPriceSyncJobUntilDone().finally(function () {
+              myProductsBulkPriceBusy = false;
+              refreshMyProductsHeavyButtons();
+            });
+          }
+        })
+        .catch(function () {});
       (function initColumnsPanel() {
         try {
           var rawVisible = JSON.parse(localStorage.getItem(userVisibleColsKeyVanilla()) || "[]");
@@ -1848,7 +2232,7 @@
           stock_sort: ["stock_min", "stock_max", "source_enabled", "limit", "match_audit", "sort_by", "sort_dir"],
           gap: ["gap_enabled", "gap_exclude_zero", "gap_competitor", "gap_min_pct", "gap_max_pct", "usd_to_rub", "eur_to_rub"],
           comp_sync: ["comp_min", "comp_max"],
-          sync_bar: ["btn_fx", "btn_syncall", "btn_sync_site", "btn_rebuild", "btn_copy"],
+          sync_bar: ["btn_fx", "btn_syncall", "btn_sync_site", "btn_rebuild", "btn_copy", "btn_sync_price_bulk", "btn_sync_price_bulk_stop"],
         };
         var FIELD_GROUPS = [
           {
@@ -1916,6 +2300,8 @@
               { key: "btn_sync_site", title: "Синхронизировать сайт", hint: "" },
               { key: "btn_rebuild", title: "Перестроить кэш", hint: "" },
               { key: "btn_copy", title: "Скопировать ссылку", hint: "" },
+              { key: "btn_sync_price_bulk", title: "Синх. цены по фильтрам", hint: "Массово с конкурента (фон)" },
+              { key: "btn_sync_price_bulk_stop", title: "Стоп синх. цен", hint: "Остановка фона" },
             ],
           },
         ];

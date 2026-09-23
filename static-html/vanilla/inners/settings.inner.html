@@ -642,6 +642,69 @@
                   </div>
                 </div>
 
+                <div class="col-12 dg-as-task" data-as-task="price_comp_sync" data-as-category="price_monitor" data-as-en-id="dg-set-auto_price_comp_en" data-as-time-id="dg-set-auto_price_comp_time" data-as-weekdays-prefix="dg-set-auto_price_comp_wd">
+                  <div class="dg-as-task-card dg-as-cat-price_monitor">
+                    <div class="dg-as-task-head">
+                      <span class="dg-as-cat-pill dg-as-cat-pill-dynamic"></span>
+                      <span class="dg-as-next-badge dg-as-next-badge-dynamic"></span>
+                    </div>
+                    <label class="form-label">Мои товары: цены с конкурента Dealmed/Медкомплекс (МСК)</label>
+                    <div class="d-flex gap-2 align-items-center flex-wrap">
+                      <input type="checkbox" id="dg-set-auto_price_comp_en" />
+                      <span>Включить</span>
+                      <input type="time" class="form-control" id="dg-set-auto_price_comp_time" style="max-width:140px" />
+                      <button type="button" class="btn btn-outline-primary btn-sm" id="dg-set-auto_price_comp_run" data-dg-activity-label="Запустить синхронизацию цен с конкурента по расписанию" data-dg-notify-start="Ставим в очередь синхронизацию цен с конкурента…">
+                        Запустить сейчас
+                      </button>
+                      <button type="button" class="btn btn-outline-secondary btn-sm dg-set-as-log-btn" data-dg-notify-start="Открываем журнал запусков…" data-dg-tooltip="Журнал запусков этой задачи за выбранный день (МСК)">Лог</button>
+                    </div>
+                    <div class="mt-2 mb-0">
+                      <span class="small text-muted me-1">Дни недели (МСК):</span>
+                      <label class="form-check form-check-inline mb-0 small"><input type="checkbox" class="form-check-input" id="dg-set-auto_price_comp_wd_1" checked /> пн</label>
+                      <label class="form-check form-check-inline mb-0 small"><input type="checkbox" class="form-check-input" id="dg-set-auto_price_comp_wd_2" checked /> вт</label>
+                      <label class="form-check form-check-inline mb-0 small"><input type="checkbox" class="form-check-input" id="dg-set-auto_price_comp_wd_3" checked /> ср</label>
+                      <label class="form-check form-check-inline mb-0 small"><input type="checkbox" class="form-check-input" id="dg-set-auto_price_comp_wd_4" checked /> чт</label>
+                      <label class="form-check form-check-inline mb-0 small"><input type="checkbox" class="form-check-input" id="dg-set-auto_price_comp_wd_5" checked /> пт</label>
+                      <label class="form-check form-check-inline mb-0 small"><input type="checkbox" class="form-check-input" id="dg-set-auto_price_comp_wd_6" checked /> сб</label>
+                      <label class="form-check form-check-inline mb-0 small"><input type="checkbox" class="form-check-input" id="dg-set-auto_price_comp_wd_7" checked /> вс</label>
+                    </div>
+                    <div class="row g-2 mt-2 align-items-end">
+                      <div class="col-md-3">
+                        <label class="form-label small mb-0" for="dg-set-auto_price_comp_match">Сопоставление</label>
+                        <select class="form-select form-select-sm" id="dg-set-auto_price_comp_match">
+                          <option value="confirmed">Только подтверждено</option>
+                          <option value="all">Все</option>
+                          <option value="unlinked">Отвязано</option>
+                          <option value="none">Без матча</option>
+                        </select>
+                      </div>
+                      <div class="col-md-2">
+                        <label class="form-label small mb-0" for="dg-set-auto_price_comp_rand_min">Синх. % мин</label>
+                        <input type="text" class="form-control form-control-sm" id="dg-set-auto_price_comp_rand_min" value="0.1" />
+                      </div>
+                      <div class="col-md-2">
+                        <label class="form-label small mb-0" for="dg-set-auto_price_comp_rand_max">Синх. % макс</label>
+                        <input type="text" class="form-control form-control-sm" id="dg-set-auto_price_comp_rand_max" value="1" />
+                      </div>
+                      <div class="col-md-2">
+                        <label class="form-label small mb-0" for="dg-set-auto_price_comp_stock_min">Остаток от</label>
+                        <input type="text" class="form-control form-control-sm" id="dg-set-auto_price_comp_stock_min" value="0" />
+                      </div>
+                      <div class="col-md-2">
+                        <label class="form-label small mb-0" for="dg-set-auto_price_comp_stock_max">Остаток до</label>
+                        <input type="text" class="form-control form-control-sm" id="dg-set-auto_price_comp_stock_max" value="1000" />
+                      </div>
+                    </div>
+                    <p class="small text-muted mb-0 mt-2">
+                      То же, что кнопка <strong>«Синх. цены по фильтрам»</strong> на
+                      <a href="/my-products.html">«Мои товары»</a>: фон, чанки, мин. цена Dealmed/Медкомплекс
+                      минус случайный %. По умолчанию как ваш сценарий: <code>match_audit=confirmed</code>,
+                      остаток 0…1000, все сайты. Confirmed ≠ цена ДМ/МК — позиции без цены ДМ/МК пропускаются.
+                      Журнал — <a href="/processes.html">processes</a> (<code>price_comp_sync</code>).
+                    </p>
+                  </div>
+                </div>
+
                 <div class="col-12 dg-as-task" data-as-task="moysklad" data-as-category="import_ms" data-as-en-id="dg-set-auto_ms_en" data-as-time-id="dg-set-auto_ms_time">
                   <div class="dg-as-task-card dg-as-cat-import_ms">
                     <div class="dg-as-task-head">

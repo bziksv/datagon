@@ -151,6 +151,9 @@ module.exports = (db, appSettings) => {
             default_limit, parse_batch_size, page_delay_ms, sync_batch_size, sync_delay_ms, sync_mode, log_retention_days, results_retention_days, ms_dimensions_log_retention_days, dg_purchase_overrides_log_retention_days, auto_sync_runs_retention_days, product_stock_snapshot_retention_days,
             ms_sync_page_limit, ms_sync_delay_ms, ms_purchase_order_organization_name, ms_orders_exclude_owner_names, ms_orders_sync_days,
             auto_sync_myproducts_enabled, auto_sync_myproducts_time,
+            auto_sync_price_comp_enabled, auto_sync_price_comp_time, auto_sync_price_comp_weekdays,
+            auto_sync_price_comp_match_audit, auto_sync_price_comp_rand_min, auto_sync_price_comp_rand_max,
+            auto_sync_price_comp_stock_min, auto_sync_price_comp_stock_max, auto_sync_price_comp_site_id,
             auto_sync_moysklad_enabled, auto_sync_moysklad_time,
             auto_sync_ms_orders_enabled, auto_sync_ms_orders_time, auto_sync_ms_orders_weekdays,
             auto_sync_marketplaces_enabled, auto_sync_marketplaces_time,
@@ -217,6 +220,40 @@ module.exports = (db, appSettings) => {
             }
             if (auto_sync_myproducts_enabled !== undefined) queries.push(['auto_sync_myproducts_enabled', auto_sync_myproducts_enabled ? 1 : 0]);
             if (auto_sync_myproducts_time !== undefined) queries.push(['auto_sync_myproducts_time', auto_sync_myproducts_time || '03:00']);
+            if (auto_sync_price_comp_enabled !== undefined) {
+                queries.push(['auto_sync_price_comp_enabled', auto_sync_price_comp_enabled ? 1 : 0]);
+            }
+            if (auto_sync_price_comp_time !== undefined) {
+                queries.push(['auto_sync_price_comp_time', auto_sync_price_comp_time || '10:00']);
+            }
+            if (auto_sync_price_comp_weekdays !== undefined) {
+                queries.push([
+                    'auto_sync_price_comp_weekdays',
+                    normalizeAutoSyncWeekdaysCsv(auto_sync_price_comp_weekdays),
+                ]);
+            }
+            if (auto_sync_price_comp_match_audit !== undefined) {
+                const ma = String(auto_sync_price_comp_match_audit || 'confirmed').trim().toLowerCase();
+                queries.push([
+                    'auto_sync_price_comp_match_audit',
+                    ['confirmed', 'unlinked', 'none', 'all'].includes(ma) ? ma : 'confirmed',
+                ]);
+            }
+            if (auto_sync_price_comp_rand_min !== undefined) {
+                queries.push(['auto_sync_price_comp_rand_min', String(auto_sync_price_comp_rand_min ?? '0.1')]);
+            }
+            if (auto_sync_price_comp_rand_max !== undefined) {
+                queries.push(['auto_sync_price_comp_rand_max', String(auto_sync_price_comp_rand_max ?? '1')]);
+            }
+            if (auto_sync_price_comp_stock_min !== undefined) {
+                queries.push(['auto_sync_price_comp_stock_min', String(auto_sync_price_comp_stock_min ?? '0')]);
+            }
+            if (auto_sync_price_comp_stock_max !== undefined) {
+                queries.push(['auto_sync_price_comp_stock_max', String(auto_sync_price_comp_stock_max ?? '1000')]);
+            }
+            if (auto_sync_price_comp_site_id !== undefined) {
+                queries.push(['auto_sync_price_comp_site_id', String(auto_sync_price_comp_site_id || 'all')]);
+            }
             if (auto_sync_moysklad_enabled !== undefined) queries.push(['auto_sync_moysklad_enabled', auto_sync_moysklad_enabled ? 1 : 0]);
             if (auto_sync_moysklad_time !== undefined) queries.push(['auto_sync_moysklad_time', auto_sync_moysklad_time || '04:00']);
             if (auto_sync_ms_orders_enabled !== undefined) queries.push(['auto_sync_ms_orders_enabled', auto_sync_ms_orders_enabled ? 1 : 0]);
@@ -470,6 +507,32 @@ module.exports = (db, appSettings) => {
             }
             if(auto_sync_myproducts_enabled !== undefined) appSettings.auto_sync_myproducts_enabled = auto_sync_myproducts_enabled ? 1 : 0;
             if(auto_sync_myproducts_time !== undefined) appSettings.auto_sync_myproducts_time = auto_sync_myproducts_time || '03:00';
+            if(auto_sync_price_comp_enabled !== undefined) appSettings.auto_sync_price_comp_enabled = auto_sync_price_comp_enabled ? 1 : 0;
+            if(auto_sync_price_comp_time !== undefined) appSettings.auto_sync_price_comp_time = auto_sync_price_comp_time || '10:00';
+            if(auto_sync_price_comp_weekdays !== undefined) {
+                appSettings.auto_sync_price_comp_weekdays = normalizeAutoSyncWeekdaysCsv(auto_sync_price_comp_weekdays);
+            }
+            if(auto_sync_price_comp_match_audit !== undefined) {
+                const ma = String(auto_sync_price_comp_match_audit || 'confirmed').trim().toLowerCase();
+                appSettings.auto_sync_price_comp_match_audit = ['confirmed', 'unlinked', 'none', 'all'].includes(ma)
+                    ? ma
+                    : 'confirmed';
+            }
+            if(auto_sync_price_comp_rand_min !== undefined) {
+                appSettings.auto_sync_price_comp_rand_min = String(auto_sync_price_comp_rand_min ?? '0.1');
+            }
+            if(auto_sync_price_comp_rand_max !== undefined) {
+                appSettings.auto_sync_price_comp_rand_max = String(auto_sync_price_comp_rand_max ?? '1');
+            }
+            if(auto_sync_price_comp_stock_min !== undefined) {
+                appSettings.auto_sync_price_comp_stock_min = String(auto_sync_price_comp_stock_min ?? '0');
+            }
+            if(auto_sync_price_comp_stock_max !== undefined) {
+                appSettings.auto_sync_price_comp_stock_max = String(auto_sync_price_comp_stock_max ?? '1000');
+            }
+            if(auto_sync_price_comp_site_id !== undefined) {
+                appSettings.auto_sync_price_comp_site_id = String(auto_sync_price_comp_site_id || 'all');
+            }
             if(auto_sync_moysklad_enabled !== undefined) appSettings.auto_sync_moysklad_enabled = auto_sync_moysklad_enabled ? 1 : 0;
             if(auto_sync_moysklad_time !== undefined) appSettings.auto_sync_moysklad_time = auto_sync_moysklad_time || '04:00';
             if(auto_sync_ms_orders_enabled !== undefined) appSettings.auto_sync_ms_orders_enabled = auto_sync_ms_orders_enabled ? 1 : 0;

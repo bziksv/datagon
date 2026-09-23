@@ -59,6 +59,15 @@
         ms_orders_sync_days: 30,
         auto_sync_myproducts_enabled: 0,
         auto_sync_myproducts_time: "03:00",
+        auto_sync_price_comp_enabled: 0,
+        auto_sync_price_comp_time: "10:00",
+        auto_sync_price_comp_weekdays: "1,2,3,4,5,6,7",
+        auto_sync_price_comp_match_audit: "confirmed",
+        auto_sync_price_comp_rand_min: "0.1",
+        auto_sync_price_comp_rand_max: "1",
+        auto_sync_price_comp_stock_min: "0",
+        auto_sync_price_comp_stock_max: "1000",
+        auto_sync_price_comp_site_id: "all",
         auto_sync_moysklad_enabled: 0,
         auto_sync_moysklad_time: "04:00",
         auto_sync_ms_orders_enabled: 0,
@@ -307,6 +316,7 @@
         import_ms: "Импорт из МойСклад",
         export_ms: "Экспорт в МойСклад",
         cms: "Импорт из CMS",
+        price_monitor: "Мониторинг цен конкурентов и парсинг данных",
         marketplace: "Маркетплейсы",
         external: "Внешние сервисы",
         internal: "Система",
@@ -317,9 +327,10 @@
         import_ms: 0,
         export_ms: 1,
         cms: 2,
-        marketplace: 3,
-        external: 4,
-        internal: 5,
+        price_monitor: 3,
+        marketplace: 4,
+        external: 5,
+        internal: 6,
       };
 
       var AS_TIME_CLASH_MAX_DIFF_MIN = 5;
@@ -1056,6 +1067,20 @@
         set("dg-set-ms_orders_sync_days", String(Number(merged.ms_orders_sync_days || 30)));
         document.getElementById("dg-set-auto_my_en").checked = Number(merged.auto_sync_myproducts_enabled) === 1;
         set("dg-set-auto_my_time", merged.auto_sync_myproducts_time || "03:00");
+        var priceCompEn = document.getElementById("dg-set-auto_price_comp_en");
+        if (priceCompEn) priceCompEn.checked = Number(merged.auto_sync_price_comp_enabled) === 1;
+        set("dg-set-auto_price_comp_time", merged.auto_sync_price_comp_time || "10:00");
+        applyAutoSyncWeekdayChecks(
+          "dg-set-auto_price_comp_wd",
+          merged.auto_sync_price_comp_weekdays != null && String(merged.auto_sync_price_comp_weekdays).trim() !== ""
+            ? merged.auto_sync_price_comp_weekdays
+            : "1,2,3,4,5,6,7"
+        );
+        set("dg-set-auto_price_comp_match", merged.auto_sync_price_comp_match_audit || "confirmed");
+        set("dg-set-auto_price_comp_rand_min", merged.auto_sync_price_comp_rand_min != null ? merged.auto_sync_price_comp_rand_min : "0.1");
+        set("dg-set-auto_price_comp_rand_max", merged.auto_sync_price_comp_rand_max != null ? merged.auto_sync_price_comp_rand_max : "1");
+        set("dg-set-auto_price_comp_stock_min", merged.auto_sync_price_comp_stock_min != null ? merged.auto_sync_price_comp_stock_min : "0");
+        set("dg-set-auto_price_comp_stock_max", merged.auto_sync_price_comp_stock_max != null ? merged.auto_sync_price_comp_stock_max : "1000");
         document.getElementById("dg-set-auto_ms_en").checked = Number(merged.auto_sync_moysklad_enabled) === 1;
         set("dg-set-auto_ms_time", merged.auto_sync_moysklad_time || "04:00");
         var msOrdersAutoEn = document.getElementById("dg-set-auto_ms_orders_en");
@@ -2211,6 +2236,17 @@
         var payload = {
           auto_sync_myproducts_enabled: document.getElementById("dg-set-auto_my_en").checked,
           auto_sync_myproducts_time: getStr("dg-set-auto_my_time") || "03:00",
+          auto_sync_price_comp_enabled: document.getElementById("dg-set-auto_price_comp_en")
+            ? document.getElementById("dg-set-auto_price_comp_en").checked
+            : false,
+          auto_sync_price_comp_time: getStr("dg-set-auto_price_comp_time") || "10:00",
+          auto_sync_price_comp_weekdays: collectAutoSyncWeekdayCsv("dg-set-auto_price_comp_wd"),
+          auto_sync_price_comp_match_audit: getStr("dg-set-auto_price_comp_match") || "confirmed",
+          auto_sync_price_comp_rand_min: getStr("dg-set-auto_price_comp_rand_min") || "0.1",
+          auto_sync_price_comp_rand_max: getStr("dg-set-auto_price_comp_rand_max") || "1",
+          auto_sync_price_comp_stock_min: getStr("dg-set-auto_price_comp_stock_min") || "0",
+          auto_sync_price_comp_stock_max: getStr("dg-set-auto_price_comp_stock_max") || "1000",
+          auto_sync_price_comp_site_id: "all",
           auto_sync_moysklad_enabled: document.getElementById("dg-set-auto_ms_en").checked,
           auto_sync_moysklad_time: getStr("dg-set-auto_ms_time") || "04:00",
           auto_sync_ms_orders_enabled: document.getElementById("dg-set-auto_ms_orders_en")
@@ -2276,6 +2312,13 @@
           okText: "Расписание автосинхронизации сохранено",
           verifyKeys: [
             "auto_sync_myproducts_time",
+            "auto_sync_price_comp_time",
+            "auto_sync_price_comp_weekdays",
+            "auto_sync_price_comp_match_audit",
+            "auto_sync_price_comp_rand_min",
+            "auto_sync_price_comp_rand_max",
+            "auto_sync_price_comp_stock_min",
+            "auto_sync_price_comp_stock_max",
             "auto_sync_moysklad_time",
             "auto_sync_ms_orders_time",
             "auto_sync_ms_orders_weekdays",
@@ -3534,6 +3577,12 @@
         });
       }
       document.getElementById("dg-set-auto_my_run").addEventListener("click", function () { runAutoSyncNow("myproducts", "Мои товары", "dg-set-auto_my_run"); });
+      var priceCompRunBtn = document.getElementById("dg-set-auto_price_comp_run");
+      if (priceCompRunBtn) {
+        priceCompRunBtn.addEventListener("click", function () {
+          runAutoSyncNow("price_comp_sync", "Цены с конкурента", "dg-set-auto_price_comp_run");
+        });
+      }
       document.getElementById("dg-set-auto_ms_run").addEventListener("click", function () { runAutoSyncNow("moysklad", "МойСклад (ms_export)", "dg-set-auto_ms_run"); });
       var msOrdersAutoRun = document.getElementById("dg-set-auto_ms_orders_run");
       if (msOrdersAutoRun) msOrdersAutoRun.addEventListener("click", function () { runAutoSyncNow("ms_orders", "Заказы в МС", "dg-set-auto_ms_orders_run"); });

@@ -267,6 +267,12 @@
               "</div>" +
               confMyLinks +
               '<div class="dg-matches-sku-conflict-bridge"><i class="pe-7s-link"></i> пристыкован к конкуренту</div>' +
+              '<div class="mt-2">' +
+              '<button type="button" class="btn btn-sm btn-warning" id="dg-matches-sku-conflict-relink" data-dg-notify-start="Пересвязываем пару…">' +
+              "Пересвязь" +
+              "</button>" +
+              '<div class="small text-muted mt-1">Снять эту стыковку и пристыковать того же конкурента к карточке из очереди.</div>' +
+              "</div>" +
               '<div class="small text-muted fw-semibold mb-1">Конкурент</div>' +
               '<dl class="dg-matches-sku-conflict-meta"><dt>SKU</dt><dd>' +
               escapeHtmlMatches(compSku) +
@@ -282,6 +288,84 @@
           "</div></div></div>";
         overlay.style.display = "flex";
         overlay.setAttribute("aria-hidden", "false");
+        var relinkBtn = document.getElementById("dg-matches-sku-conflict-relink");
+        if (relinkBtn && sc) {
+          relinkBtn.addEventListener("click", function () {
+            var fromCode = confCode !== "—" ? "код " + confCode : "подтверждённую карточку";
+            var toCode = queueCode !== "—" ? "код " + queueCode : "карточку из очереди";
+            if (
+              !window.confirm(
+                "Пересвязь: конкурент уйдёт с «" +
+                  confName +
+                  "» (" +
+                  fromCode +
+                  ") на «" +
+                  queueName +
+                  "» (" +
+                  toCode +
+                  ").\nСтатус пары останется «подтверждено»."
+              )
+            ) {
+              return;
+            }
+            var pid = Number(row.my_product_id);
+            var matchId = Number(sc.product_match_id);
+            if (!Number.isFinite(pid) || pid < 1 || !Number.isFinite(matchId) || matchId < 1) {
+              if (window.DatagonNotify && window.DatagonNotify.toast) {
+                window.DatagonNotify.toast({
+                  type: "danger",
+                  message: "Не хватает id товара или подтверждённой пары",
+                });
+              }
+              return;
+            }
+            var run = function () {
+              return fetch("/api/matches/manual-match/relink", {
+                method: "POST",
+                credentials: "same-origin",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  my_site_id: Number(row.my_site_id),
+                  competitor_site_id: Number(row.competitor_site_id),
+                  my_product_id: pid,
+                  product_match_id: matchId,
+                }),
+              })
+                .then(function (r) {
+                  return r.json().then(function (j) {
+                    if (!r.ok || !j || j.success === false) {
+                      throw new Error((j && j.error) || "HTTP " + r.status);
+                    }
+                    return j;
+                  });
+                })
+                .then(function () {
+                  overlay.style.display = "none";
+                  overlay.setAttribute("aria-hidden", "true");
+                  if (window.DatagonNotify && window.DatagonNotify.toast) {
+                    window.DatagonNotify.toast({
+                      type: "success",
+                      message: "Пересвязано: конкурент пристыкован к карточке из очереди",
+                    });
+                  }
+                  if (window.__dgMatchesRefreshManualLanes) window.__dgMatchesRefreshManualLanes();
+                })
+                .catch(function (e) {
+                  if (window.DatagonNotify && window.DatagonNotify.toast) {
+                    window.DatagonNotify.toast({
+                      type: "danger",
+                      message: (e && e.message) || "Ошибка пересвязи",
+                    });
+                  }
+                });
+            };
+            if (window.DatagonNotify && window.DatagonNotify.busyRun) {
+              window.DatagonNotify.busyRun(relinkBtn, run);
+            } else {
+              run();
+            }
+          });
+        }
         var closeBtn = document.getElementById("dg-matches-sku-conflict-close");
         if (closeBtn) {
           try {

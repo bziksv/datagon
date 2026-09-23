@@ -78,6 +78,15 @@ let appSettings = {
     product_stock_snapshot_retention_days: 365,
     auto_sync_myproducts_enabled: 0,
     auto_sync_myproducts_time: '03:00',
+    auto_sync_price_comp_enabled: 0,
+    auto_sync_price_comp_time: '10:00',
+    auto_sync_price_comp_weekdays: '1,2,3,4,5,6,7',
+    auto_sync_price_comp_match_audit: 'confirmed',
+    auto_sync_price_comp_rand_min: '0.1',
+    auto_sync_price_comp_rand_max: '1',
+    auto_sync_price_comp_stock_min: '0',
+    auto_sync_price_comp_stock_max: '1000',
+    auto_sync_price_comp_site_id: 'all',
     auto_sync_moysklad_enabled: 0,
     auto_sync_moysklad_time: '04:00',
     auto_sync_ms_orders_enabled: 0,
@@ -219,6 +228,7 @@ const medmarketStore = require('./lib/medmarketStore');
 const msSalesModule = require('./routes/msSales');
 const msOrdersModule = require('./routes/msOrders');
 const medmarketRouterFactory = require('./routes/medmarket');
+const myProductsRouterFactory = require('./routes/myproducts');
 const { getAutoSyncTaskKeys } = require('./lib/datagonAutoSyncRegistry');
 /** Whitelist для POST /api/settings/auto-sync-run (фиксируется при старте процесса). */
 const AUTO_SYNC_ALLOWED_TASK_KEYS = new Set([
@@ -390,6 +400,12 @@ async function initDB() {
             ['ms_orders_exclude_owner_names','Новикова И.\nНовикова Ирина'],
             ['ms_orders_sync_days','30'],
             ['auto_sync_myproducts_enabled','0'],['auto_sync_myproducts_time','03:00'],
+            ['auto_sync_price_comp_enabled','0'],['auto_sync_price_comp_time','10:00'],
+            ['auto_sync_price_comp_weekdays','1,2,3,4,5,6,7'],
+            ['auto_sync_price_comp_match_audit','confirmed'],
+            ['auto_sync_price_comp_rand_min','0.1'],['auto_sync_price_comp_rand_max','1'],
+            ['auto_sync_price_comp_stock_min','0'],['auto_sync_price_comp_stock_max','1000'],
+            ['auto_sync_price_comp_site_id','all'],
             ['auto_sync_moysklad_enabled','0'],['auto_sync_moysklad_time','04:00'],
             ['auto_sync_ms_orders_enabled','0'],['auto_sync_ms_orders_time','08:00'],['auto_sync_ms_orders_weekdays',''],
             ['discover_max_sitemaps','200'],['discover_max_urls','50000'],
@@ -2286,6 +2302,55 @@ async function processAutoSyncQueue() {
                 }
                 await finishAutoSyncRun('medmarket_fill', statusFill, messageFill);
                 console.log(`[AUTO SYNC] Queue done: medmarket_fill — ${statusFill}`);
+            } else if (task === 'price_comp_sync') {
+                console.log('[AUTO SYNC] Queue start: price_comp_sync');
+                await startAutoSyncRun('price_comp_sync', triggerType);
+                let statusPc = 'failed';
+                let messagePc = 'Ошибка синхронизации цен с конкурента';
+                try {
+                    if (typeof myProductsRouterFactory.triggerPriceCompSyncFromSettings !== 'function') {
+                        throw new Error('triggerPriceCompSyncFromSettings недоступен');
+                    }
+                    const startRes = await myProductsRouterFactory.triggerPriceCompSyncFromSettings(appSettings, {
+                        actorDisplayName: 'auto-sync',
+                    });
+                    if (startRes && startRes.started === false && startRes.reason === 'empty') {
+                        statusPc = 'completed';
+                        messagePc = 'По фильтрам 0 товаров — нечего синхронизировать';
+                    } else if (startRes && startRes.started === false && startRes.reason !== 'already_running') {
+                        messagePc = (startRes.error || startRes.reason || 'Не удалось запустить sync цен').slice(0, 480);
+                    } else {
+                        const timedOut = !(await waitUntil(() => {
+                            return typeof myProductsRouterFactory.isPriceCompSyncActive === 'function'
+                                ? !myProductsRouterFactory.isPriceCompSyncActive()
+                                : true;
+                        }, 6 * 60 * 60 * 1000, 2000));
+                        const st =
+                            typeof myProductsRouterFactory.getPriceCompSyncState === 'function'
+                                ? myProductsRouterFactory.getPriceCompSyncState()
+                                : {};
+                        if (timedOut) {
+                            messagePc = 'Таймаут ожидания (6 ч)';
+                        } else if (st.phase === 'error') {
+                            messagePc = String(st.message || 'Ошибка фоновой задачи').slice(0, 480);
+                        } else if (st.phase === 'cancelled') {
+                            statusPc = 'failed';
+                            messagePc = String(st.message || 'Остановлено').slice(0, 480);
+                        } else {
+                            statusPc = Number(st.cms_failed || 0) > 0 && Number(st.cms_ok || 0) === 0
+                                ? 'failed'
+                                : 'completed';
+                            messagePc = String(
+                                st.message ||
+                                    `Готово: ✓ ${st.cms_ok || 0}, × ${st.cms_failed || 0}, без ДМ/МК ${st.no_dm_mk_price || st.skipped_no_competitor || 0}`
+                            ).slice(0, 480);
+                        }
+                    }
+                } catch (e) {
+                    messagePc = ('Ошибка sync цен: ' + (e && e.message ? e.message : e)).slice(0, 480);
+                }
+                await finishAutoSyncRun('price_comp_sync', statusPc, messagePc);
+                console.log(`[AUTO SYNC] Queue done: price_comp_sync — ${statusPc}`);
             } else if (task === 'mssales') {
                 console.log('[AUTO SYNC] Queue start: mssales');
                 await startAutoSyncRun('mssales', triggerType);
@@ -2485,6 +2550,9 @@ async function processAutoSyncQueue() {
         if (autoSyncRunIds.has('medmarket_fill')) {
             await finishAutoSyncRun('medmarket_fill', 'failed', e.message || 'Ошибка очереди');
         }
+        if (autoSyncRunIds.has('price_comp_sync')) {
+            await finishAutoSyncRun('price_comp_sync', 'failed', e.message || 'Ошибка очереди');
+        }
         if (autoSyncRunIds.has('np_ms_enrich')) {
             await finishAutoSyncRun('np_ms_enrich', 'failed', e.message || 'Ошибка очереди');
         }
@@ -2603,6 +2671,12 @@ function startAutoSyncScheduler() {
                     enabled: Number(appSettings.auto_sync_medmarket_fill_enabled || 0) === 1,
                     time: String(appSettings.auto_sync_medmarket_fill_time || '09:30').slice(0, 5),
                     weekdays: parseAutoSyncWeekdaysMon17(appSettings.auto_sync_medmarket_fill_weekdays)
+                },
+                {
+                    type: 'price_comp_sync',
+                    enabled: Number(appSettings.auto_sync_price_comp_enabled || 0) === 1,
+                    time: String(appSettings.auto_sync_price_comp_time || '10:00').slice(0, 5),
+                    weekdays: parseAutoSyncWeekdaysMon17(appSettings.auto_sync_price_comp_weekdays)
                 }
             ];
             for (const t of tasks) {
@@ -3138,7 +3212,7 @@ initDB().then(async () => {
     const resultsRouter = require('./routes/results')(db, appSettings);
     app.use('/api/results', resultsRouter);
     app.use('/api/my-sites', require('./routes/mysites')(db, appSettings));
-    app.use('/api/my-products', require('./routes/myproducts')(db, appSettings));
+    app.use('/api/my-products', myProductsRouterFactory(db, appSettings));
     matchesRouter = matchesRouterFactory(db, appSettings);
     app.use('/api/matches', matchesRouter);
     setTimeout(() => {
