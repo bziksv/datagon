@@ -1,0 +1,137 @@
+          <div class="app-page-title">
+            <div class="page-title-wrapper">
+              <div class="page-title-heading">
+                <div class="page-title-icon">
+                  <i class="pe-7s-camera icon-gradient bg-happy-itmeo"> </i>
+                </div>
+                <div>
+                  Отснять товары
+                  <div class="page-title-subheading">
+                    Товары из «Размещение на маркеты». По умолчанию — только с остатком МС; статус «Нет в наличии» ставится автоматически.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+              <div class="d-flex align-items-center">
+                <i class="header-icon pe-7s-filter icon-gradient bg-happy-fisher me-2"> </i>
+                <span>Фильтры и действия</span>
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-ps-filters-toggle">Свернуть</button>
+            </div>
+            <div class="card-body" id="dg-ps-filters-body">
+              <div class="row g-2 align-items-end">
+                <div class="col-md-4" data-dg-ps-filter-field="search">
+                  <label class="form-label" for="dg-ps-search">Умный поиск</label>
+                  <input
+                    type="search"
+                    class="form-control"
+                    id="dg-ps-search"
+                    placeholder="SKU, артикул, название, комментарий…"
+                    autocomplete="off"
+                  />
+                </div>
+                <div class="col-md-3" data-dg-ps-filter-field="photoshoot_status">
+                  <label class="form-label" for="dg-ps-f-status">Статус съёмки</label>
+                  <select class="form-select" id="dg-ps-f-status">
+                    <option value="">Все</option>
+                    <option value="not_shot">Не отснят</option>
+                    <option value="out_of_stock">Нет в наличии</option>
+                    <option value="in_package">товар в упаковке</option>
+                    <option value="shot">Отснят</option>
+                    <option value="boxed">Собран в коробку</option>
+                  </select>
+                </div>
+                <div class="col-md-2" data-dg-ps-filter-field="has_stock">
+                  <label class="form-label" for="dg-ps-f-has-stock">Остаток МС</label>
+                  <select class="form-select" id="dg-ps-f-has-stock">
+                    <option value="1" selected>Только с остатком</option>
+                    <option value="0">Только без остатка</option>
+                    <option value="all">Все</option>
+                  </select>
+                </div>
+                <div class="col-md-2" data-dg-ps-filter-field="limit">
+                  <label class="form-label" for="dg-ps-f-limit">На странице</label>
+                  <input type="number" class="form-control" id="dg-ps-f-limit" min="1" max="500" value="100" />
+                </div>
+              </div>
+              <div class="mt-3 d-flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  class="btn btn-sm btn-primary"
+                  id="dg-ps-apply"
+                  data-dg-notify-start="Применяем фильтры…"
+                >
+                  Применить
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-secondary"
+                  id="dg-ps-reset"
+                  data-dg-notify-start="Сбрасываем фильтры…"
+                >
+                  По умолчанию
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex justify-content-between gap-2 flex-wrap align-items-center">
+              <div class="d-flex align-items-center gap-3 flex-grow-1 min-w-0">
+                <div class="d-flex align-items-center flex-shrink-0">
+                  <i class="header-icon pe-7s-camera icon-gradient bg-tempting-azure me-2"></i>
+                  <span>Выгрузка Отснять товары</span>
+                </div>
+                <div class="dg-ps-header-search">
+                  <div class="input-group input-group-sm">
+                    <span class="input-group-text">🔎</span>
+                    <input
+                      type="search"
+                      class="form-control"
+                      id="dg-ps-table-search-mirror"
+                      placeholder="Поиск…"
+                      autocomplete="off"
+                    />
+                  </div>
+                </div>
+              </div>
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-ps-table-toggle">Свернуть</button>
+              </div>
+            </div>
+            <div class="card-body" id="dg-ps-table-body">
+              <div id="dg-ps-float-host" aria-hidden="true"><div id="dg-ps-float-inner"></div></div>
+              <div id="dg-ps-table-scroll-outer" class="dg-ps-table-scroll-outer">
+                <div class="table-responsive datagon-my-products-table-wrap">
+                  <table class="table table-sm table-hover mb-0" id="dg-ps-table">
+                    <thead id="dg-ps-thead"></thead>
+                    <tbody id="dg-ps-tbody">
+                      <tr>
+                        <td class="text-muted p-3">Загрузка…</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-3">
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                  <label class="mb-0 small text-muted" for="dg-ps-page-limit">На странице</label>
+                  <select class="form-select form-select-sm" id="dg-ps-page-limit" style="width: auto">
+                    <option value="50">50</option>
+                    <option value="100" selected>100</option>
+                    <option value="200">200</option>
+                    <option value="500">500</option>
+                  </select>
+                  <span class="small text-muted" id="dg-ps-page-status">Найдено: 0</span>
+                </div>
+                <div class="d-flex gap-2">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-ps-prev" disabled>Назад</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-ps-next" disabled>Вперёд</button>
+                </div>
+              </div>
+            </div>
+          </div>

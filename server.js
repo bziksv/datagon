@@ -2920,6 +2920,7 @@ initDB().then(async () => {
     app.use('/api/exports/competitors', require('./routes/exportsCompetitors')(db));
     app.use('/api/exports/dimensions', require('./routes/dimensions')(db, appSettings));
     app.use('/api/exports/new-products', require('./routes/exportsNewProducts')(db, config));
+    app.use('/api/exports/photoshoot', require('./routes/exportsPhotoshoot')(db));
     app.use('/api/exports/huckster', exportsHucksterRouterFactory(db, appSettings));
     app.use('/api/projects', require('./routes/projects')(db, appSettings));
     {

@@ -72,6 +72,7 @@ description: Справочник REST-эндпоинтов p.datagon.ru (осн
 - `/api/exports/competitors` -> `routes/exportsCompetitors.js` (Маркетплейсы → Конкуренты: список `ms_export` + поиск на Ozon/WB/Я.М.)
 - `/api/exports/dimensions` -> `routes/dimensions.js`
 - `/api/exports/new-products` -> `routes/exportsNewProducts.js`
+- `/api/exports/photoshoot` -> `routes/exportsPhotoshoot.js` (Маркетплейсы → Отснять товары)
 - `/api/exports/huckster` -> `routes/exportsHuckster.js`
 - `/api/ms-sales` -> `routes/msSales.js` (Продажи МС: отгрузки `entity/demand` + позиции с привязкой к `ms_export`)
 - `/api/ms-orders` -> `routes/msOrders.js` (Заказы в МС: `entity/customerorder`, окно **30 дней**, исключение ответственных из `app_settings`)
@@ -1463,6 +1464,30 @@ Query `exclude_verified=1` (алиас `hide_placed=1`): при пустом `st
 ### GET `/api/exports/new-products/assignees` · `GET /meta`
 
 `assignees`: `managers[]` — специальность **«Менеджер маркетплейсов»** (колонка/фильтр «Менеджер товара»); `responsibles[]` — только **«Контент-Менеджер»** (колонка/фильтр «Ответственный»); `data` = `managers` (back-compat). Meta — `statuses_almamed`, `statuses_marketplaces`, `required_fields_marketplaces`, `infographic_options`, `photo_options`.
+
+## Exports / Отснять товары
+
+Префикс: `/api/exports/photoshoot`. Экран: `/exports-photoshoot.html` (подменю **Маркетплейсы**).
+
+Источник строк — `dg_new_products` с `channel=marketplaces` и `status <> 'removed'` (та же очередь, что вкладка «Размещение на маркеты»). Поля съёмки на строке: `photoshoot_status`, `photoshoot_at`, `photoshoot_comment` (ensure при первом запросе).
+
+**Статусы:** `not_shot` (Не отснят, дефолт), `out_of_stock` (Нет в наличии), `in_package` (товар в упаковке), `shot` (Отснят), `boxed` (Собран в коробку).
+
+**Авто по остатку** (`ms_export.stock` join по `ms_product_uuid` / `product_code`): при `GET /` для статусов `not_shot` / `out_of_stock` — `stock ≤ 0` → `out_of_stock`, `stock > 0` → `not_shot`. Статусы `in_package` / `shot` / `boxed` авто-наличием не затираются.
+
+### GET `/api/exports/photoshoot`
+
+Query: `search`, `photoshoot_status`, **`has_stock`** (`1` по умолчанию — только с остатком; `0` — без остатка; `all` — без фильтра), `limit` (default 100), `offset`, `sort_by` (`stock`|`id`|`product_code`|`article`|`title`|`photoshoot_at`|`photoshoot_status`), `sort_dir`.
+
+Ответ: `{ success, data[], total, limit, offset, has_stock, statuses[] }`. В строке: `product_code` (SKU), `article`, `title`, `photoshoot_*`, `stock`, `markets_codes`, `markets_title`, `almamed_article`, `almamed_title`.
+
+### GET `/api/exports/photoshoot/meta`
+
+Список статусов съёмки.
+
+### PATCH `/api/exports/photoshoot/:id`
+
+Body: `photoshoot_status`, `photoshoot_comment`. При смене статуса (кроме `out_of_stock`) сервер ставит `photoshoot_at = NOW()`. Журнал — `dg_new_products_log`.
 
 ## Exports / Huckster
 

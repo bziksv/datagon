@@ -18,10 +18,104 @@
       } catch (e) {}
     })();
   </script>
-  <title>Справка Forms — Датагон</title>
+  <title>Маркетплейсы — Отснять товары — Датагон</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <link rel="stylesheet" href="/static/css/main.989b22a9.css" />
-  
+  <style>
+  body.datagon-vanilla-body[data-dg-active-nav="exports-photoshoot"] .app-main__outer,
+  body.datagon-vanilla-body[data-dg-active-nav="exports-photoshoot"] .app-main__inner,
+  body.datagon-vanilla-body[data-dg-active-nav="exports-photoshoot"] .main-card.card,
+  body.datagon-vanilla-body[data-dg-active-nav="exports-photoshoot"] .main-card.card > .card-body {
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-photoshoot"] .dg-ps-table-scroll-outer {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: visible;
+    -webkit-overflow-scrolling: touch;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-photoshoot"]
+    .dg-ps-table-scroll-outer
+    > .table-responsive {
+    overflow: visible !important;
+    max-height: none;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-photoshoot"] #dg-ps-table {
+    table-layout: auto;
+    width: max-content;
+    min-width: 100%;
+    font-size: 0.8rem;
+    line-height: 1.25;
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-photoshoot"] #dg-ps-thead th {
+    position: static !important;
+    border-right: 1px solid #e6e9ee;
+    white-space: nowrap;
+    user-select: text;
+    -webkit-user-select: text;
+    background: #fff;
+    font-weight: 600;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-photoshoot"] #dg-ps-table td {
+    border-right: 1px solid #f3f5f8;
+    vertical-align: middle;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-photoshoot"] .dg-ps-sortable {
+    cursor: pointer;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-photoshoot"] tr.dg-ps-row-not_shot > td {
+    background-color: #fde8e8 !important;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-photoshoot"] tr.dg-ps-row-out_of_stock > td {
+    background-color: #e9ecef !important;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-photoshoot"] tr.dg-ps-row-in_package > td {
+    background-color: #ffe8cc !important;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-photoshoot"] tr.dg-ps-row-shot > td {
+    background-color: #d4edda !important;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-photoshoot"] tr.dg-ps-row-boxed > td {
+    background-color: transparent;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-photoshoot"] .dg-ps-header-search {
+    flex: 0 1 380px;
+    min-width: 220px;
+  }
+  #dg-ps-float-host {
+    display: none;
+    position: fixed;
+    z-index: 25;
+    overflow: hidden;
+    pointer-events: none;
+    background: #fff;
+    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.06);
+  }
+  #dg-ps-float-host[data-active="1"] {
+    display: block;
+    pointer-events: auto;
+  }
+  #dg-ps-float-inner {
+    will-change: transform;
+  }
+  #dg-ps-thead[data-dg-floating="1"] th {
+    visibility: hidden;
+  }
+  .dg-ps-comment-input {
+    min-width: 140px;
+    max-width: 220px;
+  }
+  .dg-ps-status-select {
+    min-width: 150px;
+  }
+</style>
+
   <style>
     /* Один список сайдбара: «ArchitectUI меню» у нижнего края области навигации, без второго блока/ul */
     .dg-sidebar-nav-scroll {
@@ -231,7 +325,7 @@
     }
   </style>
 </head>
-<body class="datagon-vanilla-body">
+<body class="datagon-vanilla-body" data-dg-active-nav="exports-photoshoot">
   <div class="app-container app-theme-white datagon-shell datagon-vanilla-shell fixed-header fixed-sidebar fixed-footer">
     <div class="app-header header-shadow">
       <div class="app-header__logo">
@@ -701,25 +795,136 @@
           <div class="app-page-title">
             <div class="page-title-wrapper">
               <div class="page-title-heading">
-                <div class="page-title-icon"><i class="pe-7s-light icon-gradient bg-night-fade"></i></div>
-                <div>Forms <span class="text-muted small">(справка)</span></div>
+                <div class="page-title-icon">
+                  <i class="pe-7s-camera icon-gradient bg-happy-itmeo"> </i>
+                </div>
+                <div>
+                  Отснять товары
+                  <div class="page-title-subheading">
+                    Товары из «Размещение на маркеты». По умолчанию — только с остатком МС; статус «Нет в наличии» ставится автоматически.
+                  </div>
+                </div>
               </div>
             </div>
           </div>
-          <div class="main-card card">
-            <div class="card-body">
-              <div class="row g-3">
-                <div class="col-md-6">
-                  <label class="form-label" for="ref-inp1">Текст</label>
-                  <input type="text" class="form-control" id="ref-inp1" placeholder="placeholder" />
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+              <div class="d-flex align-items-center">
+                <i class="header-icon pe-7s-filter icon-gradient bg-happy-fisher me-2"> </i>
+                <span>Фильтры и действия</span>
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-ps-filters-toggle">Свернуть</button>
+            </div>
+            <div class="card-body" id="dg-ps-filters-body">
+              <div class="row g-2 align-items-end">
+                <div class="col-md-4" data-dg-ps-filter-field="search">
+                  <label class="form-label" for="dg-ps-search">Умный поиск</label>
+                  <input
+                    type="search"
+                    class="form-control"
+                    id="dg-ps-search"
+                    placeholder="SKU, артикул, название, комментарий…"
+                    autocomplete="off"
+                  />
                 </div>
-                <div class="col-md-6">
-                  <label class="form-label" for="ref-sel1">Выбор</label>
-                  <select class="form-select" id="ref-sel1"><option>Один</option><option>Два</option></select>
+                <div class="col-md-3" data-dg-ps-filter-field="photoshoot_status">
+                  <label class="form-label" for="dg-ps-f-status">Статус съёмки</label>
+                  <select class="form-select" id="dg-ps-f-status">
+                    <option value="">Все</option>
+                    <option value="not_shot">Не отснят</option>
+                    <option value="out_of_stock">Нет в наличии</option>
+                    <option value="in_package">товар в упаковке</option>
+                    <option value="shot">Отснят</option>
+                    <option value="boxed">Собран в коробку</option>
+                  </select>
                 </div>
-                <div class="col-12">
-                  <label class="form-label" for="ref-ta1">Многострочное</label>
-                  <textarea class="form-control" id="ref-ta1" rows="2"></textarea>
+                <div class="col-md-2" data-dg-ps-filter-field="has_stock">
+                  <label class="form-label" for="dg-ps-f-has-stock">Остаток МС</label>
+                  <select class="form-select" id="dg-ps-f-has-stock">
+                    <option value="1" selected>Только с остатком</option>
+                    <option value="0">Только без остатка</option>
+                    <option value="all">Все</option>
+                  </select>
+                </div>
+                <div class="col-md-2" data-dg-ps-filter-field="limit">
+                  <label class="form-label" for="dg-ps-f-limit">На странице</label>
+                  <input type="number" class="form-control" id="dg-ps-f-limit" min="1" max="500" value="100" />
+                </div>
+              </div>
+              <div class="mt-3 d-flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  class="btn btn-sm btn-primary"
+                  id="dg-ps-apply"
+                  data-dg-notify-start="Применяем фильтры…"
+                >
+                  Применить
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-secondary"
+                  id="dg-ps-reset"
+                  data-dg-notify-start="Сбрасываем фильтры…"
+                >
+                  По умолчанию
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex justify-content-between gap-2 flex-wrap align-items-center">
+              <div class="d-flex align-items-center gap-3 flex-grow-1 min-w-0">
+                <div class="d-flex align-items-center flex-shrink-0">
+                  <i class="header-icon pe-7s-camera icon-gradient bg-tempting-azure me-2"></i>
+                  <span>Выгрузка Отснять товары</span>
+                </div>
+                <div class="dg-ps-header-search">
+                  <div class="input-group input-group-sm">
+                    <span class="input-group-text">🔎</span>
+                    <input
+                      type="search"
+                      class="form-control"
+                      id="dg-ps-table-search-mirror"
+                      placeholder="Поиск…"
+                      autocomplete="off"
+                    />
+                  </div>
+                </div>
+              </div>
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-ps-table-toggle">Свернуть</button>
+              </div>
+            </div>
+            <div class="card-body" id="dg-ps-table-body">
+              <div id="dg-ps-float-host" aria-hidden="true"><div id="dg-ps-float-inner"></div></div>
+              <div id="dg-ps-table-scroll-outer" class="dg-ps-table-scroll-outer">
+                <div class="table-responsive datagon-my-products-table-wrap">
+                  <table class="table table-sm table-hover mb-0" id="dg-ps-table">
+                    <thead id="dg-ps-thead"></thead>
+                    <tbody id="dg-ps-tbody">
+                      <tr>
+                        <td class="text-muted p-3">Загрузка…</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-3">
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                  <label class="mb-0 small text-muted" for="dg-ps-page-limit">На странице</label>
+                  <select class="form-select form-select-sm" id="dg-ps-page-limit" style="width: auto">
+                    <option value="50">50</option>
+                    <option value="100" selected>100</option>
+                    <option value="200">200</option>
+                    <option value="500">500</option>
+                  </select>
+                  <span class="small text-muted" id="dg-ps-page-status">Найдено: 0</span>
+                </div>
+                <div class="d-flex gap-2">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-ps-prev" disabled>Назад</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-ps-next" disabled>Вперёд</button>
                 </div>
               </div>
             </div>
@@ -805,6 +1010,605 @@
 
   <script src="/datagon-legal.js"></script>
   <script src="/datagon-vanilla.js"></script>
-  
+  <script>
+(function () {
+  "use strict";
+
+  var PS_COLS = [
+    { key: "product_code", label: "SKU", sort: true },
+    { key: "article", label: "Артикул", sort: true },
+    { key: "title", label: "Название", sort: true },
+    { key: "photoshoot_at", label: "Дата съёмки", sort: true },
+    { key: "photoshoot_status", label: "Статус", sort: true },
+    { key: "photoshoot_comment", label: "Комментарий", sort: false },
+    { key: "markets_codes", label: "Код с маркетов", sort: false },
+    { key: "almamed_article", label: "Артикул альмамед", sort: false },
+    { key: "markets_title", label: "Название товара с маркетов", sort: false },
+  ];
+
+  var STATUS_OPTS = [
+    { key: "not_shot", label: "Не отснят" },
+    { key: "out_of_stock", label: "Нет в наличии" },
+    { key: "in_package", label: "товар в упаковке" },
+    { key: "shot", label: "Отснят" },
+    { key: "boxed", label: "Собран в коробку" },
+  ];
+
+  var FILTERS_KEY = "datagon_photoshoot_filters_collapsed_v1";
+  var TABLE_COLLAPSE_KEY = "dg.photoshoot.table-card.collapsed.v1";
+
+  var state = {
+    search: "",
+    photoshoot_status: "",
+    has_stock: "1",
+    limit: 100,
+    offset: 0,
+    sort_by: "stock",
+    sort_dir: "desc",
+    total: 0,
+    rows: [],
+    loading: false,
+    pending: { search: "", photoshoot_status: "", has_stock: "1", limit: 100 },
+  };
+
+  function el(id) {
+    return document.getElementById(id);
+  }
+
+  function esc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function toast(type, message) {
+    if (window.DatagonNotify && window.DatagonNotify.toast) {
+      window.DatagonNotify.toast({ type: type || "info", message: message });
+    }
+  }
+
+  function formatDt(v) {
+    if (!v) return "—";
+    var d = new Date(v);
+    if (isNaN(d.getTime())) return String(v);
+    return d.toLocaleString("ru-RU");
+  }
+
+  function pageCount() {
+    var lim = Math.max(1, Number(state.limit) || 100);
+    return Math.max(1, Math.ceil((Number(state.total) || 0) / lim));
+  }
+
+  function currentPage() {
+    var lim = Math.max(1, Number(state.limit) || 100);
+    return Math.floor((Number(state.offset) || 0) / lim) + 1;
+  }
+
+  function syncDirty() {
+    var btn = el("dg-ps-apply");
+    if (!btn) return;
+    var dirty =
+      String(state.pending.search) !== String(state.search) ||
+      String(state.pending.photoshoot_status) !== String(state.photoshoot_status) ||
+      String(state.pending.has_stock) !== String(state.has_stock) ||
+      Number(state.pending.limit) !== Number(state.limit);
+    btn.classList.toggle("dg-flt-dirty", dirty);
+    btn.textContent = dirty ? "Применить •" : "Применить";
+  }
+
+  function readPendingFromDom() {
+    state.pending.search = (el("dg-ps-search") && el("dg-ps-search").value) || "";
+    state.pending.photoshoot_status = (el("dg-ps-f-status") && el("dg-ps-f-status").value) || "";
+    state.pending.has_stock = (el("dg-ps-f-has-stock") && el("dg-ps-f-has-stock").value) || "1";
+    var lim = parseInt(el("dg-ps-f-limit") && el("dg-ps-f-limit").value, 10);
+    state.pending.limit = Number.isFinite(lim) && lim > 0 ? lim : 100;
+    syncDirty();
+  }
+
+  function commitFilters() {
+    readPendingFromDom();
+    state.search = state.pending.search;
+    state.photoshoot_status = state.pending.photoshoot_status;
+    state.has_stock = state.pending.has_stock;
+    state.limit = state.pending.limit;
+    state.offset = 0;
+    var pl = el("dg-ps-page-limit");
+    if (pl) pl.value = String(state.limit);
+    syncDirty();
+    return load();
+  }
+
+  function resetFilters() {
+    el("dg-ps-search").value = "";
+    el("dg-ps-table-search-mirror").value = "";
+    el("dg-ps-f-status").value = "";
+    el("dg-ps-f-has-stock").value = "1";
+    el("dg-ps-f-limit").value = "100";
+    state.sort_by = "stock";
+    state.sort_dir = "desc";
+    return commitFilters();
+  }
+
+  function buildQuery() {
+    var p = new URLSearchParams();
+    if (state.search) p.set("search", state.search);
+    if (state.photoshoot_status) p.set("photoshoot_status", state.photoshoot_status);
+    if (state.has_stock === "1" || state.has_stock === "0") p.set("has_stock", state.has_stock);
+    else p.set("has_stock", "all");
+    p.set("limit", String(state.limit));
+    p.set("offset", String(state.offset));
+    p.set("sort_by", state.sort_by || "stock");
+    p.set("sort_dir", state.sort_dir || "desc");
+    return "?" + p.toString();
+  }
+
+  function syncUrl() {
+    try {
+      var p = new URLSearchParams();
+      if (state.search) p.set("search", state.search);
+      if (state.photoshoot_status) p.set("photoshoot_status", state.photoshoot_status);
+      if (state.has_stock !== "1") p.set("has_stock", state.has_stock === "all" ? "all" : state.has_stock);
+      if (Number(state.limit) !== 100) p.set("limit", String(state.limit));
+      if (Number(state.offset) > 0) p.set("offset", String(state.offset));
+      if (state.sort_by && state.sort_by !== "stock") p.set("sort_by", state.sort_by);
+      if (state.sort_dir && state.sort_dir !== "desc") p.set("sort_dir", state.sort_dir);
+      var next = p.toString() ? location.pathname + "?" + p.toString() : location.pathname;
+      history.replaceState(null, "", next);
+    } catch (_) {}
+  }
+
+  function parseUrlToForm() {
+    var params = new URLSearchParams(location.search);
+    if (params.has("search")) {
+      el("dg-ps-search").value = params.get("search") || "";
+      el("dg-ps-table-search-mirror").value = el("dg-ps-search").value;
+    }
+    if (params.has("photoshoot_status")) el("dg-ps-f-status").value = params.get("photoshoot_status") || "";
+    if (params.has("has_stock")) {
+      var hs = params.get("has_stock");
+      el("dg-ps-f-has-stock").value = hs === "all" || hs === "" ? "all" : hs === "0" ? "0" : "1";
+    }
+    if (params.has("limit")) {
+      el("dg-ps-f-limit").value = params.get("limit") || "100";
+      el("dg-ps-page-limit").value = el("dg-ps-f-limit").value;
+    }
+    if (params.has("offset")) state.offset = Number(params.get("offset")) || 0;
+    if (params.has("sort_by")) state.sort_by = params.get("sort_by") || "stock";
+    if (params.has("sort_dir")) state.sort_dir = params.get("sort_dir") === "asc" ? "asc" : "desc";
+    readPendingFromDom();
+    state.search = state.pending.search;
+    state.photoshoot_status = state.pending.photoshoot_status;
+    state.has_stock = state.pending.has_stock;
+    state.limit = state.pending.limit;
+  }
+
+  function buildThead() {
+    var thead = el("dg-ps-thead");
+    if (!thead) return;
+    var tr = document.createElement("tr");
+    PS_COLS.forEach(function (c) {
+      var th = document.createElement("th");
+      th.textContent = c.label;
+      th.dataset.key = c.key;
+      if (c.sort) {
+        th.className = "dg-ps-sortable";
+        if (state.sort_by === c.key) {
+          th.textContent = c.label + (state.sort_dir === "asc" ? " ↑" : " ↓");
+        }
+        th.addEventListener("click", function () {
+          var sel = window.getSelection && window.getSelection();
+          if (sel && String(sel.toString() || "").trim()) return;
+          if (state.sort_by === c.key) state.sort_dir = state.sort_dir === "asc" ? "desc" : "asc";
+          else {
+            state.sort_by = c.key;
+            state.sort_dir = "asc";
+          }
+          state.offset = 0;
+          load();
+        });
+      }
+      tr.appendChild(th);
+    });
+    thead.innerHTML = "";
+    thead.appendChild(tr);
+  }
+
+  function statusSelect(row) {
+    var sel = document.createElement("select");
+    sel.className = "form-select form-select-sm dg-ps-status-select";
+    sel.setAttribute("data-dg-ps-id", String(row.id));
+    STATUS_OPTS.forEach(function (o) {
+      var opt = document.createElement("option");
+      opt.value = o.key;
+      opt.textContent = o.label;
+      if (o.key === row.photoshoot_status) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    sel.addEventListener("change", function () {
+      patchRow(row.id, { photoshoot_status: sel.value }, sel);
+    });
+    return sel;
+  }
+
+  function commentInput(row) {
+    var inp = document.createElement("input");
+    inp.type = "text";
+    inp.className = "form-control form-control-sm dg-ps-comment-input";
+    inp.value = row.photoshoot_comment || "";
+    inp.setAttribute("data-dg-ps-id", String(row.id));
+    var timer = null;
+    function save() {
+      patchRow(row.id, { photoshoot_comment: inp.value }, inp);
+    }
+    inp.addEventListener("change", save);
+    inp.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        save();
+      }
+    });
+    inp.addEventListener("blur", function () {
+      if (timer) clearTimeout(timer);
+    });
+    return inp;
+  }
+
+  function applyRowClass(tr, status) {
+    STATUS_OPTS.forEach(function (o) {
+      tr.classList.remove("dg-ps-row-" + o.key);
+    });
+    if (status) tr.classList.add("dg-ps-row-" + status);
+  }
+
+  function renderTable() {
+    buildThead();
+    var tbody = el("dg-ps-tbody");
+    if (!tbody) return;
+    tbody.innerHTML = "";
+    if (!state.rows.length) {
+      var empty = document.createElement("tr");
+      var td = document.createElement("td");
+      td.colSpan = PS_COLS.length;
+      td.className = "text-muted p-3";
+      td.textContent = "Нет строк по текущим фильтрам";
+      empty.appendChild(td);
+      tbody.appendChild(empty);
+    } else {
+      state.rows.forEach(function (row) {
+        var tr = document.createElement("tr");
+        applyRowClass(tr, row.photoshoot_status);
+        PS_COLS.forEach(function (c) {
+          var td = document.createElement("td");
+          if (c.key === "photoshoot_status") {
+            td.appendChild(statusSelect(row));
+          } else if (c.key === "photoshoot_comment") {
+            td.appendChild(commentInput(row));
+          } else if (c.key === "photoshoot_at") {
+            td.textContent = formatDt(row.photoshoot_at);
+          } else {
+            td.textContent = row[c.key] != null && row[c.key] !== "" ? String(row[c.key]) : "—";
+          }
+          tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+      });
+    }
+
+    var shown = state.rows.length;
+    var st = el("dg-ps-page-status");
+    if (st) {
+      st.textContent =
+        "Найдено: " +
+        Number(state.total || 0).toLocaleString("ru-RU") +
+        "; страница " +
+        currentPage() +
+        "/" +
+        pageCount() +
+        "; показано: " +
+        shown;
+    }
+    var prev = el("dg-ps-prev");
+    var next = el("dg-ps-next");
+    if (prev) prev.disabled = currentPage() <= 1 || state.loading;
+    if (next) next.disabled = currentPage() >= pageCount() || state.loading;
+    scheduleFloatRebase();
+  }
+
+  function patchRow(id, body, ctrl) {
+    var run = function () {
+      return fetch("/api/exports/photoshoot/" + id, {
+        method: "PATCH",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
+        .then(function (r) {
+          return r.json().then(function (j) {
+            return { ok: r.ok, j: j };
+          });
+        })
+        .then(function (res) {
+          if (!res.ok || !res.j || res.j.success === false) {
+            throw new Error((res.j && res.j.error) || "Ошибка сохранения");
+          }
+          var updated = res.j.data;
+          if (updated) {
+            for (var i = 0; i < state.rows.length; i++) {
+              if (Number(state.rows[i].id) === Number(id)) {
+                state.rows[i] = updated;
+                break;
+              }
+            }
+            renderTable();
+            toast("success", "Сохранено");
+          }
+        })
+        .catch(function (e) {
+          toast("danger", e.message || "Ошибка");
+          return load();
+        });
+    };
+    if (window.DatagonNotify && window.DatagonNotify.busyRun && ctrl) {
+      return window.DatagonNotify.busyRun(ctrl, run);
+    }
+    return run();
+  }
+
+  function load() {
+    if (state.loading) return Promise.resolve();
+    state.loading = true;
+    var tbody = el("dg-ps-tbody");
+    if (tbody) {
+      tbody.innerHTML =
+        '<tr><td class="text-muted p-3" colspan="' + PS_COLS.length + '">Загрузка…</td></tr>';
+    }
+    return fetch("/api/exports/photoshoot" + buildQuery(), { credentials: "same-origin" })
+      .then(function (r) {
+        return r.json().then(function (j) {
+          return { ok: r.ok, j: j };
+        });
+      })
+      .then(function (res) {
+        if (!res.ok || !res.j || res.j.error) {
+          throw new Error((res.j && res.j.error) || "Ошибка загрузки");
+        }
+        state.rows = Array.isArray(res.j.data) ? res.j.data : [];
+        state.total = Number(res.j.total || 0);
+        state.limit = Number(res.j.limit || state.limit);
+        state.offset = Number(res.j.offset || 0);
+        syncUrl();
+        renderTable();
+      })
+      .catch(function (e) {
+        if (tbody) {
+          tbody.innerHTML =
+            '<tr><td class="text-danger p-3" colspan="' +
+            PS_COLS.length +
+            '">' +
+            esc(e.message || "Ошибка") +
+            "</td></tr>";
+        }
+        toast("danger", e.message || "Ошибка загрузки");
+      })
+      .finally(function () {
+        state.loading = false;
+        var prev = el("dg-ps-prev");
+        var next = el("dg-ps-next");
+        if (prev) prev.disabled = currentPage() <= 1;
+        if (next) next.disabled = currentPage() >= pageCount();
+      });
+  }
+
+  /* —— floating header (new-products style: fixed clone) —— */
+  var floatMetrics = { baseTopAbs: 0, tableBottomAbs: 0, boxLeft: 0, boxWidth: 0 };
+  var floatRaf = 0;
+
+  function appHeaderH() {
+    var header = document.querySelector(".app-header");
+    if (!header || !header.getBoundingClientRect) return 60;
+    var r = header.getBoundingClientRect();
+    return r && r.height ? r.height : 60;
+  }
+
+  function rebaseFloat() {
+    var thead = el("dg-ps-thead");
+    var host = el("dg-ps-float-host");
+    var scrollOuter = el("dg-ps-table-scroll-outer");
+    var table = el("dg-ps-table");
+    if (!thead || !host || !scrollOuter || !table) return;
+    thead.removeAttribute("data-dg-floating");
+    host.removeAttribute("data-active");
+    host.style.display = "none";
+    var thRect = thead.getBoundingClientRect();
+    var box = scrollOuter.getBoundingClientRect();
+    var tableRect = table.getBoundingClientRect();
+    var scrollY = window.scrollY || window.pageYOffset || 0;
+    floatMetrics.baseTopAbs = thRect.top + scrollY;
+    floatMetrics.tableBottomAbs = tableRect.bottom + scrollY;
+    floatMetrics.boxLeft = box.left;
+    floatMetrics.boxWidth = box.width;
+    var inner = el("dg-ps-float-inner");
+    if (inner) {
+      inner.innerHTML = "";
+      var cloneTable = document.createElement("table");
+      cloneTable.className = table.className;
+      cloneTable.style.width = table.offsetWidth + "px";
+      cloneTable.style.margin = "0";
+      var cg = table.querySelector("colgroup");
+      if (cg) cloneTable.appendChild(cg.cloneNode(true));
+      cloneTable.appendChild(thead.cloneNode(true));
+      cloneTable.querySelectorAll("th").forEach(function (th, idx) {
+        th.style.visibility = "visible";
+        th.addEventListener("click", function (e) {
+          e.preventDefault();
+          var orig = thead.querySelectorAll("th")[idx];
+          if (orig) orig.click();
+        });
+      });
+      inner.appendChild(cloneTable);
+    }
+    updateFloat();
+  }
+
+  function updateFloat() {
+    var thead = el("dg-ps-thead");
+    var host = el("dg-ps-float-host");
+    var scrollOuter = el("dg-ps-table-scroll-outer");
+    var inner = el("dg-ps-float-inner");
+    if (!thead || !host || !scrollOuter) return;
+    var scrollY = window.scrollY || window.pageYOffset || 0;
+    var stickyTop = appHeaderH();
+    var stick =
+      scrollY + stickyTop > floatMetrics.baseTopAbs + 2 &&
+      scrollY + stickyTop < floatMetrics.tableBottomAbs - 40;
+    if (!stick) {
+      host.removeAttribute("data-active");
+      host.style.display = "none";
+      thead.removeAttribute("data-dg-floating");
+      return;
+    }
+    thead.setAttribute("data-dg-floating", "1");
+    host.setAttribute("data-active", "1");
+    host.style.display = "block";
+    host.style.top = stickyTop + "px";
+    host.style.left = floatMetrics.boxLeft + "px";
+    host.style.width = floatMetrics.boxWidth + "px";
+    if (inner) {
+      inner.style.transform = "translate3d(" + -scrollOuter.scrollLeft + "px,0,0)";
+    }
+  }
+
+  function scheduleFloatRebase() {
+    if (floatRaf) cancelAnimationFrame(floatRaf);
+    floatRaf = requestAnimationFrame(function () {
+      floatRaf = 0;
+      rebaseFloat();
+    });
+  }
+
+  function bindCollapse() {
+    var fBtn = el("dg-ps-filters-toggle");
+    var fBody = el("dg-ps-filters-body");
+    if (fBtn && fBody) {
+      var collapsed = localStorage.getItem(FILTERS_KEY) === "1";
+      function applyF() {
+        fBody.style.display = collapsed ? "none" : "";
+        fBtn.textContent = collapsed ? "Развернуть" : "Свернуть";
+      }
+      applyF();
+      fBtn.addEventListener("click", function () {
+        collapsed = !collapsed;
+        localStorage.setItem(FILTERS_KEY, collapsed ? "1" : "0");
+        applyF();
+        scheduleFloatRebase();
+      });
+    }
+    var tBtn = el("dg-ps-table-toggle");
+    var tBody = el("dg-ps-table-body");
+    if (tBtn && tBody) {
+      var tCollapsed = localStorage.getItem(TABLE_COLLAPSE_KEY) === "1";
+      function applyT() {
+        tBody.style.display = tCollapsed ? "none" : "";
+        tBtn.textContent = tCollapsed ? "Развернуть" : "Свернуть";
+      }
+      applyT();
+      tBtn.addEventListener("click", function () {
+        tCollapsed = !tCollapsed;
+        localStorage.setItem(TABLE_COLLAPSE_KEY, tCollapsed ? "1" : "0");
+        applyT();
+        scheduleFloatRebase();
+      });
+    }
+  }
+
+  function bindSearchMirror() {
+    var primary = el("dg-ps-search");
+    var mirror = el("dg-ps-table-search-mirror");
+    if (!primary || !mirror) return;
+    var syncing = false;
+    function copy(from, to) {
+      if (syncing) return;
+      syncing = true;
+      to.value = from.value;
+      syncing = false;
+      readPendingFromDom();
+    }
+    primary.addEventListener("input", function () {
+      copy(primary, mirror);
+    });
+    mirror.addEventListener("input", function () {
+      copy(mirror, primary);
+    });
+    function onKey(e) {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        el("dg-ps-apply").click();
+      } else if (e.key === "Escape") {
+        primary.value = "";
+        mirror.value = "";
+        commitFilters();
+      }
+    }
+    primary.addEventListener("keydown", onKey);
+    mirror.addEventListener("keydown", onKey);
+  }
+
+  function bind() {
+    bindCollapse();
+    bindSearchMirror();
+    ["dg-ps-search", "dg-ps-f-status", "dg-ps-f-has-stock", "dg-ps-f-limit"].forEach(function (id) {
+      var node = el(id);
+      if (!node) return;
+      node.addEventListener("input", readPendingFromDom);
+      node.addEventListener("change", readPendingFromDom);
+    });
+    el("dg-ps-apply").addEventListener("click", function () {
+      var btn = el("dg-ps-apply");
+      if (window.DatagonNotify && window.DatagonNotify.busyRun) {
+        window.DatagonNotify.busyRun(btn, commitFilters);
+      } else commitFilters();
+    });
+    el("dg-ps-reset").addEventListener("click", function () {
+      var btn = el("dg-ps-reset");
+      if (window.DatagonNotify && window.DatagonNotify.busyRun) {
+        window.DatagonNotify.busyRun(btn, resetFilters);
+      } else resetFilters();
+    });
+    el("dg-ps-prev").addEventListener("click", function () {
+      if (currentPage() <= 1) return;
+      state.offset = Math.max(0, state.offset - state.limit);
+      load();
+    });
+    el("dg-ps-next").addEventListener("click", function () {
+      if (currentPage() >= pageCount()) return;
+      state.offset = state.offset + state.limit;
+      load();
+    });
+    el("dg-ps-page-limit").addEventListener("change", function () {
+      var lim = parseInt(el("dg-ps-page-limit").value, 10);
+      if (!Number.isFinite(lim) || lim < 1) return;
+      el("dg-ps-f-limit").value = String(lim);
+      state.pending.limit = lim;
+      commitFilters();
+    });
+    window.addEventListener("scroll", updateFloat, { passive: true });
+    var outer = document.querySelector(".app-main__outer");
+    if (outer) outer.addEventListener("scroll", updateFloat, { passive: true });
+    var so = el("dg-ps-table-scroll-outer");
+    if (so) so.addEventListener("scroll", updateFloat, { passive: true });
+    window.addEventListener("resize", scheduleFloatRebase);
+  }
+
+  (async function init() {
+    bind();
+    parseUrlToForm();
+    syncDirty();
+    await load();
+  })();
+})();
+</script>
+
 </body>
 </html>
