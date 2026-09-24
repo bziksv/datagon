@@ -226,7 +226,6 @@
     inp.className = "form-control form-control-sm dg-ps-comment-input";
     inp.value = row.photoshoot_comment || "";
     inp.setAttribute("data-dg-ps-id", String(row.id));
-    var timer = null;
     function save() {
       patchRow(row.id, { photoshoot_comment: inp.value }, inp);
     }
@@ -237,10 +236,37 @@
         save();
       }
     });
-    inp.addEventListener("blur", function () {
-      if (timer) clearTimeout(timer);
-    });
     return inp;
+  }
+
+  var FIELD_LOG_LABELS = {
+    photoshoot_status: "Статус съёмки",
+    photoshoot_comment: "Комментарий съёмки",
+    photoshoot_at: "Дата съёмки",
+  };
+
+  function rowLogLabel(row) {
+    return String(
+      row.title || row.article || row.product_code || "#" + (row.channel_num != null ? row.channel_num : row.id)
+    );
+  }
+
+  function attachFieldLog(td, row, field) {
+    if (!td || !row || !field) return td;
+    td.classList.add("dg-ps-field-cell");
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "dg-ps-field-log-btn";
+    btn.textContent = "лог";
+    var flabel = FIELD_LOG_LABELS[field] || field;
+    btn.title = "Журнал изменений: " + flabel;
+    btn.setAttribute("data-dg-ps-log-id", String(row.id));
+    btn.setAttribute("data-dg-ps-log-field", field);
+    btn.setAttribute("data-dg-ps-log-field-label", flabel);
+    btn.setAttribute("data-dg-ps-log-label", rowLogLabel(row));
+    btn.setAttribute("data-dg-no-activity", "1");
+    td.appendChild(btn);
+    return td;
   }
 
   function applyRowClass(tr, status) {
@@ -271,10 +297,13 @@
           var td = document.createElement("td");
           if (c.key === "photoshoot_status") {
             td.appendChild(statusSelect(row));
+            attachFieldLog(td, row, "photoshoot_status");
           } else if (c.key === "photoshoot_comment") {
             td.appendChild(commentInput(row));
+            attachFieldLog(td, row, "photoshoot_comment");
           } else if (c.key === "photoshoot_at") {
             td.textContent = formatDt(row.photoshoot_at);
+            attachFieldLog(td, row, "photoshoot_at");
           } else {
             td.textContent = row[c.key] != null && row[c.key] !== "" ? String(row[c.key]) : "—";
           }
@@ -476,6 +505,261 @@
     });
   }
 
+  var logState = {
+    productId: null,
+    label: "",
+    field: "",
+    fieldLabel: "",
+    fieldFallbackNote: "",
+    limit: 100,
+    offset: 0,
+    total: 0,
+  };
+
+  function psLogActionLabel(action) {
+    var map = { set: "Изменение", create: "Создание", delete: "Удаление" };
+    return map[action] || action || "set";
+  }
+
+  function psLogWhoLabel(r) {
+    var name = String((r && r.changed_by_name) || "").trim();
+    var src = String((r && r.source) || "").trim();
+    if (src === "auto_stock") return name ? name + " · авто по остатку" : "система · авто по остатку";
+    if (name) return name;
+    if (src && src !== "ui") return "система · " + src;
+    return "—";
+  }
+
+  function closePsLog() {
+    var overlay = el("dg-ps-log-overlay");
+    if (!overlay) return;
+    overlay.style.display = "none";
+    overlay.setAttribute("aria-hidden", "true");
+  }
+
+  function openPsLog(productId, label, field, fieldLabel) {
+    logState.productId = productId;
+    logState.label = label || "#" + productId;
+    logState.field = field ? String(field) : "";
+    logState.fieldLabel = fieldLabel ? String(fieldLabel) : FIELD_LOG_LABELS[logState.field] || logState.field;
+    logState.fieldFallbackNote = "";
+    logState.offset = 0;
+    var overlay = el("dg-ps-log-overlay");
+    var titleEl = el("dg-ps-log-title");
+    var subEl = el("dg-ps-log-subtitle");
+    if (titleEl) {
+      titleEl.textContent = logState.field
+        ? "Журнал: " + (logState.fieldLabel || logState.field)
+        : "Журнал съёмки #" + productId;
+    }
+    if (subEl) {
+      subEl.textContent = logState.field
+        ? "#" + productId + " · " + logState.label
+        : logState.label;
+    }
+    if (overlay) {
+      overlay.style.display = "flex";
+      overlay.setAttribute("aria-hidden", "false");
+    }
+    loadPsLog();
+  }
+
+  function syncPsLogTitle() {
+    var titleEl = el("dg-ps-log-title");
+    var subEl = el("dg-ps-log-subtitle");
+    if (titleEl) {
+      titleEl.textContent = logState.field
+        ? "Журнал: " + (logState.fieldLabel || logState.field)
+        : "Журнал съёмки #" + logState.productId;
+    }
+    if (subEl) {
+      subEl.textContent = logState.field
+        ? "#" + logState.productId + " · " + logState.label
+        : logState.label;
+    }
+  }
+
+  function renderPsLogPager() {
+    var pages = Math.max(1, Math.ceil((logState.total || 0) / logState.limit) || 1);
+    var page = Math.floor(logState.offset / logState.limit) + 1;
+    var prevDisabled = logState.offset <= 0 ? " disabled" : "";
+    var nextDisabled = logState.offset + logState.limit >= logState.total ? " disabled" : "";
+    var filterBtn = logState.field
+      ? '<button type="button" class="btn btn-sm btn-outline-primary dg-ps-log-all-fields">Все поля съёмки</button>'
+      : "";
+    return (
+      '<div class="d-flex align-items-center justify-content-between gap-2 px-3 py-2 border-top flex-wrap">' +
+      '<span class="small text-muted">Найдено: ' +
+      logState.total +
+      "; страница " +
+      page +
+      "/" +
+      pages +
+      "</span>" +
+      '<div class="d-flex align-items-center gap-2 flex-wrap">' +
+      filterBtn +
+      '<div class="btn-group">' +
+      '<button type="button" class="btn btn-sm btn-outline-secondary dg-ps-log-prev"' +
+      prevDisabled +
+      ">Назад</button>" +
+      '<button type="button" class="btn btn-sm btn-outline-secondary dg-ps-log-next"' +
+      nextDisabled +
+      ">Вперёд</button>" +
+      "</div></div></div>"
+    );
+  }
+
+  function loadPsLog() {
+    var body = el("dg-ps-log-body");
+    if (!body || !logState.productId) return;
+    body.innerHTML = '<div class="text-muted small text-center py-4">Загрузка журнала…</div>';
+    var qs = new URLSearchParams();
+    qs.set("limit", String(logState.limit));
+    qs.set("offset", String(logState.offset));
+    if (logState.field) qs.set("field", logState.field);
+    fetch("/api/exports/photoshoot/" + logState.productId + "/log?" + qs.toString(), {
+      credentials: "same-origin",
+    })
+      .then(function (r) {
+        return r.json().then(function (j) {
+          if (!r.ok || (j && j.success === false)) {
+            throw new Error((j && j.error) || "HTTP " + r.status);
+          }
+          return j;
+        });
+      })
+      .then(function (j) {
+        logState.total = Number(j.total || 0);
+        var rows = j.rows || [];
+        if (!rows.length && logState.field && logState.offset === 0) {
+          var emptyField = logState.fieldLabel || logState.field;
+          logState.fieldFallbackNote =
+            "По полю «" + emptyField + "» изменений нет — показан журнал съёмки строки.";
+          logState.field = "";
+          logState.fieldLabel = "";
+          syncPsLogTitle();
+          return loadPsLog();
+        }
+        var noteHtml = logState.fieldFallbackNote
+          ? '<div class="alert alert-warning py-2 px-3 mb-0 rounded-0 small">' +
+            esc(logState.fieldFallbackNote) +
+            ' <button type="button" class="btn btn-link btn-sm p-0 align-baseline dg-ps-log-all-fields">Сбросить фильтр</button></div>'
+          : logState.field
+            ? '<div class="alert alert-info py-2 px-3 mb-0 rounded-0 small">Фильтр: <b>' +
+              esc(logState.fieldLabel || logState.field) +
+              '</b>. <button type="button" class="btn btn-link btn-sm p-0 align-baseline dg-ps-log-all-fields">Показать все поля</button></div>'
+            : "";
+        if (!rows.length) {
+          body.innerHTML =
+            noteHtml +
+            '<div class="text-muted small text-center py-4">Журнал пуст: по статусу/комментарию ещё не было изменений.</div>' +
+            renderPsLogPager();
+          return;
+        }
+        var showFieldCol = !logState.field;
+        var html =
+          noteHtml +
+          '<div class="table-responsive"><table class="table table-sm mb-0"><thead><tr>' +
+          "<th>Когда</th><th>Кто</th><th>Действие</th>" +
+          (showFieldCol ? "<th>Поле</th>" : "") +
+          "<th>Было → Стало</th>" +
+          "</tr></thead><tbody>";
+        rows.forEach(function (r) {
+          var when = r.changed_at
+            ? String(r.changed_at).replace("T", " ").replace(/\.\d+Z?$/, "").slice(0, 19)
+            : "—";
+          var who = esc(psLogWhoLabel(r));
+          var field = esc(r.field_label || r.field || "—");
+          var oldVal =
+            r.old_value == null
+              ? '<span class="text-muted">∅</span>'
+              : '<span class="dg-ps-log-old">' + esc(r.old_value) + "</span>";
+          var newVal =
+            r.new_value == null
+              ? '<span class="text-muted">∅</span>'
+              : '<span class="dg-ps-log-new">' + esc(r.new_value) + "</span>";
+          html +=
+            "<tr><td class=\"text-nowrap small\">" +
+            esc(when) +
+            "</td><td>" +
+            who +
+            '</td><td><span class="badge bg-light text-dark border">' +
+            esc(psLogActionLabel(r.action)) +
+            "</span></td>" +
+            (showFieldCol ? "<td>" + field + "</td>" : "") +
+            "<td>" +
+            oldVal +
+            '<span class="dg-ps-log-arrow">→</span>' +
+            newVal +
+            "</td></tr>";
+        });
+        html += "</tbody></table></div>" + renderPsLogPager();
+        body.innerHTML = html;
+      })
+      .catch(function (e) {
+        body.innerHTML =
+          '<div class="text-danger small text-center py-4">' +
+          esc(e.message || "Ошибка загрузки журнала") +
+          "</div>";
+      });
+  }
+
+  function bindPsLogUi() {
+    document.addEventListener("click", function (ev) {
+      var fieldBtn = ev.target && ev.target.closest && ev.target.closest(".dg-ps-field-log-btn");
+      if (fieldBtn) {
+        ev.preventDefault();
+        openPsLog(
+          Number(fieldBtn.getAttribute("data-dg-ps-log-id")),
+          fieldBtn.getAttribute("data-dg-ps-log-label") || "",
+          fieldBtn.getAttribute("data-dg-ps-log-field") || "",
+          fieldBtn.getAttribute("data-dg-ps-log-field-label") || ""
+        );
+        return;
+      }
+      if (ev.target && ev.target.closest && ev.target.closest(".dg-ps-log-prev")) {
+        if (logState.offset <= 0) return;
+        logState.offset = Math.max(0, logState.offset - logState.limit);
+        loadPsLog();
+        return;
+      }
+      if (ev.target && ev.target.closest && ev.target.closest(".dg-ps-log-next")) {
+        if (logState.offset + logState.limit >= logState.total) return;
+        logState.offset += logState.limit;
+        loadPsLog();
+        return;
+      }
+      if (ev.target && ev.target.closest && ev.target.closest(".dg-ps-log-all-fields")) {
+        logState.field = "";
+        logState.fieldLabel = "";
+        logState.fieldFallbackNote = "";
+        logState.offset = 0;
+        syncPsLogTitle();
+        loadPsLog();
+      }
+    });
+    var closeBtn = el("dg-ps-log-close");
+    var backdrop = el("dg-ps-log-backdrop");
+    var refresh = el("dg-ps-log-refresh");
+    if (closeBtn) closeBtn.addEventListener("click", closePsLog);
+    if (backdrop) backdrop.addEventListener("click", closePsLog);
+    if (refresh) {
+      refresh.addEventListener("click", function () {
+        if (window.DatagonNotify && window.DatagonNotify.busyRun) {
+          window.DatagonNotify.busyRun(refresh, function () {
+            return Promise.resolve(loadPsLog());
+          });
+        } else loadPsLog();
+      });
+    }
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") {
+        var ov = el("dg-ps-log-overlay");
+        if (ov && ov.style.display !== "none") closePsLog();
+      }
+    });
+  }
+
   function bindCollapse() {
     var fBtn = el("dg-ps-filters-toggle");
     var fBody = el("dg-ps-filters-body");
@@ -546,6 +830,7 @@
   function bind() {
     bindCollapse();
     bindSearchMirror();
+    bindPsLogUi();
     ["dg-ps-search", "dg-ps-f-status", "dg-ps-f-has-stock", "dg-ps-f-limit"].forEach(function (id) {
       var node = el(id);
       if (!node) return;

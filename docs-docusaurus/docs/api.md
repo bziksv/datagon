@@ -1489,6 +1489,10 @@ Query: `search`, `photoshoot_status`, **`has_stock`** (`1` по умолчани
 
 Body: `photoshoot_status`, `photoshoot_comment`. При смене статуса (кроме `out_of_stock`) сервер ставит `photoshoot_at = NOW()`. Журнал — `dg_new_products_log`.
 
+### GET `/api/exports/photoshoot/:id/log`
+
+Журнал полей съёмки (`photoshoot_status` / `photoshoot_comment` / `photoshoot_at`). Query: `field`, `limit`, `offset`. UI — мини-кнопка «лог» на ячейках статуса/комментария/даты (как на «Новые товары»).
+
 ## Exports / Huckster
 
 Префикс: `/api/exports/huckster`. Экран: `/exports-huckster.html`.

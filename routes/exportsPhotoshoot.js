@@ -22,6 +22,12 @@ const STATUS_SET = new Set(Object.keys(STATUS_LABELS));
 const AUTO_STOCK_STATUSES = new Set(['not_shot', 'out_of_stock']);
 const MANUAL_LOCK_STATUSES = new Set(['in_package', 'shot', 'boxed']);
 
+const FIELD_LOG_LABELS = {
+    photoshoot_status: 'Статус съёмки',
+    photoshoot_comment: 'Комментарий съёмки',
+    photoshoot_at: 'Дата съёмки',
+};
+
 const SORT_KEYS = new Set([
     'id',
     'product_code',
@@ -466,6 +472,88 @@ module.exports = function exportsPhotoshootRouterFactory(db) {
         } catch (e) {
             console.error('[photoshoot] patch', e);
             res.status(500).json({ error: e.message || 'Ошибка сохранения' });
+        }
+    });
+
+    router.get('/:id/log', async (req, res) => {
+        try {
+            await ensureSchema(db);
+            const id = parseInt(req.params.id, 10);
+            if (!Number.isFinite(id) || id < 1) {
+                return res.status(400).json({ success: false, error: 'Некорректный id' });
+            }
+            const [[cur]] = await db.query(
+                `SELECT id, channel, title, article, product_code FROM dg_new_products WHERE id = ? LIMIT 1`,
+                [id]
+            );
+            if (!cur || cur.channel !== 'marketplaces') {
+                return res.status(404).json({ success: false, error: 'Товар не найден' });
+            }
+            const rawLimit = Number(req.query.limit);
+            const limit = Math.min(
+                500,
+                Math.max(1, Number.isFinite(rawLimit) && rawLimit > 0 ? Math.floor(rawLimit) : 100)
+            );
+            const rawOffset = Number(req.query.offset);
+            const offset = Math.max(0, Number.isFinite(rawOffset) && rawOffset >= 0 ? Math.floor(rawOffset) : 0);
+            const field = String(req.query.field || '').trim();
+            const where = ['product_id = ?'];
+            const params = [id];
+            if (field) {
+                where.push('field = ?');
+                params.push(field);
+            } else {
+                where.push(
+                    `field IN ('photoshoot_status', 'photoshoot_comment', 'photoshoot_at')`
+                );
+            }
+            const whereSql = `WHERE ${where.join(' AND ')}`;
+            const [[cnt]] = await db.query(
+                `SELECT COUNT(*) AS total FROM dg_new_products_log ${whereSql}`,
+                params
+            );
+            const [rows] = await db.query(
+                `SELECT id, product_id, channel, kit_id, field, old_value, new_value, action, source,
+                        changed_by_user_id, changed_by_name, note, changed_at
+                   FROM dg_new_products_log ${whereSql}
+                  ORDER BY id DESC
+                  LIMIT ? OFFSET ?`,
+                [...params, limit, offset]
+            );
+            const out = (rows || []).map((r) => ({
+                id: Number(r.id),
+                product_id: Number(r.product_id),
+                channel: r.channel || '',
+                kit_id: r.kit_id != null ? Number(r.kit_id) : null,
+                field: String(r.field || ''),
+                field_label: FIELD_LOG_LABELS[r.field] || String(r.field || ''),
+                old_value: r.old_value != null ? String(r.old_value) : null,
+                new_value: r.new_value != null ? String(r.new_value) : null,
+                action: String(r.action || 'set'),
+                source: String(r.source || 'ui'),
+                changed_by_user_id: r.changed_by_user_id != null ? Number(r.changed_by_user_id) : null,
+                changed_by_name: r.changed_by_name != null ? String(r.changed_by_name) : '',
+                note: r.note != null ? String(r.note) : '',
+                changed_at: r.changed_at ? new Date(r.changed_at).toISOString() : '',
+            }));
+            res.json({
+                success: true,
+                product_id: id,
+                product: {
+                    id: Number(cur.id),
+                    title: cur.title || '',
+                    article: cur.article || '',
+                    product_code: cur.product_code || '',
+                    channel: cur.channel || '',
+                },
+                rows: out,
+                total: Number(cnt?.total || 0),
+                limit,
+                offset,
+            });
+        } catch (e) {
+            console.error('[photoshoot] GET log', e);
+            res.status(500).json({ success: false, error: e.message || 'Ошибка чтения журнала' });
         }
     });
 
