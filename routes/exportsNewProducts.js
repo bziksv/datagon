@@ -20,6 +20,7 @@
 const express = require('express');
 const markets = require('../lib/dgNewProductsMarkets');
 const crmPrime = require('../lib/crmPrimeTimesheets');
+const { assertActorPageAccess } = require('../lib/datagonPageRegistry');
 
 const CHANNELS = new Set(['almamed', 'marketplaces']);
 const PRIORITIES = new Set(['important', 'normal', 'low']);
@@ -420,6 +421,18 @@ async function logProductFieldChanges(db, { productId, channel, before, fields, 
 function normChannel(v) {
     const s = String(v || 'almamed').trim().toLowerCase();
     return CHANNELS.has(s) ? s : 'almamed';
+}
+
+/** CRM link scopes for dg_np_crm_task_links. */
+function normCrmScope(v, fallback = 'marketplaces') {
+    const s = String(v || fallback).trim().toLowerCase();
+    if (s === 'almamed' || s === 'marketplaces' || s === 'infographic') return s;
+    return fallback === 'almamed' || fallback === 'infographic' ? fallback : 'marketplaces';
+}
+
+/** Матрица доступа: инфографика → standing; Альмамед/Маркеты → stats. */
+function crmScopePageKey(scope) {
+    return scope === 'infographic' ? 'exports-new-products-standing' : 'exports-new-products-stats';
 }
 
 function normPriority(v) {
@@ -1013,7 +1026,7 @@ module.exports = function exportsNewProductsRouterFactory(db, config) {
                     m.crm_task_title = only.crm_task_title || null;
                     m.crm_hours = only.crm_hours;
                 } else {
-                    // «Общая»: в колонке задачи — обе привязки; crm_task_id = маркетов (или альмамед), для сортировки.
+                    // «Альмамед + Маркеты»: обе привязки; crm_task_id = маркетов (или альмамед), для сортировки.
                     const mp = links.marketplaces || {};
                     const al = links.almamed || {};
                     m.crm_task_id =
@@ -1045,12 +1058,145 @@ module.exports = function exportsNewProductsRouterFactory(db, config) {
         }
     });
 
-    /** Привязки КМ → CRM task_id. scope: almamed | marketplaces. */
-    router.get('/crm-task-links', async (req, res) => {
+    /**
+     * Постоянные задачи КМ: инфографика (норма 10 карточек/день).
+     * Query: from, to (YYYY-MM-DD). Scope CRM = infographic.
+     */
+    router.get('/standing-stats', async (req, res) => {
         try {
             await ensureSchema(db);
-            const scopeRaw = String(req.query.scope || 'marketplaces').trim().toLowerCase();
-            const scope = scopeRaw === 'almamed' ? 'almamed' : 'marketplaces';
+            const QUOTA_PER_DAY = 10;
+
+            const today = new Date();
+            const todayYmd = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+            function parseYmd(s) {
+                const m = String(s || '')
+                    .trim()
+                    .match(/^(\d{4})-(\d{2})-(\d{2})$/);
+                if (!m) return null;
+                const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+                if (Number.isNaN(d.getTime())) return null;
+                return `${m[1]}-${m[2]}-${m[3]}`;
+            }
+
+            function addDaysYmd(ymd, delta) {
+                const [y, mo, da] = ymd.split('-').map(Number);
+                const d = new Date(y, mo - 1, da);
+                d.setDate(d.getDate() + delta);
+                return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+            }
+
+            function daysInclusive(fromYmd, toYmd) {
+                const [y1, m1, d1] = fromYmd.split('-').map(Number);
+                const [y2, m2, d2] = toYmd.split('-').map(Number);
+                const a = Date.UTC(y1, m1 - 1, d1);
+                const b = Date.UTC(y2, m2 - 1, d2);
+                return Math.max(1, Math.floor((b - a) / 86400000) + 1);
+            }
+
+            let toYmd = parseYmd(req.query.to) || todayYmd;
+            let fromYmd = parseYmd(req.query.from) || addDaysYmd(toYmd, -29);
+            if (fromYmd > toYmd) {
+                const tmp = fromYmd;
+                fromYmd = toYmd;
+                toYmd = tmp;
+            }
+            const periodDays = daysInclusive(fromYmd, toYmd);
+            const linkScope = 'infographic';
+
+            const [responsibles] = await db.query(
+                `SELECT u.id, u.username, u.full_name
+                   FROM users u
+                   INNER JOIN specialties s ON s.id = u.specialty_id
+                  WHERE COALESCE(u.is_archived, 0) = 0
+                    AND LOWER(TRIM(s.name)) = LOWER(?)
+                  ORDER BY COALESCE(NULLIF(TRIM(u.full_name), ''), u.username) ASC`,
+                ['Контент-Менеджер']
+            );
+
+            const [linkRows] = await db.query(
+                `SELECT user_id, crm_task_id FROM dg_np_crm_task_links WHERE scope = ?`,
+                [linkScope]
+            );
+            const taskByUser = new Map();
+            for (const r of linkRows || []) {
+                const uid = Number(r.user_id);
+                const tid = Number(r.crm_task_id);
+                if (Number.isFinite(uid) && Number.isFinite(tid) && tid > 0) taskByUser.set(uid, tid);
+            }
+            const taskIds = [...new Set(taskByUser.values())];
+            const hoursRes = await crmPrime.sumHoursByTaskIds(taskIds, fromYmd, toYmd);
+            const titlesRes = await crmPrime.fetchTaskTitles(taskIds);
+            const crmMeta = {
+                configured: !!(hoursRes.configured || titlesRes.configured),
+                scope: linkScope,
+                error: hoursRes.error || titlesRes.error || null,
+            };
+
+            const managers = [];
+            for (const u of responsibles || []) {
+                const uid = Number(u.id);
+                const name =
+                    String(u.full_name || u.username || '').trim() || String(u.username || `ID ${uid}`);
+                const tid = taskByUser.get(uid) || null;
+                let crmHours = null;
+                let crmTitle = null;
+                if (tid) {
+                    crmTitle = titlesRes.titles.get(tid) || null;
+                    if (hoursRes.hoursByTaskId.has(tid)) crmHours = hoursRes.hoursByTaskId.get(tid);
+                    else if (crmMeta.configured && !hoursRes.error) crmHours = 0;
+                }
+                // Средние по календарным дням периода (не «норма × дни» — работа не каждый день).
+                let hoursPerTen = null;
+                let minutesPerCard = null;
+                if (crmHours != null && periodDays > 0) {
+                    hoursPerTen = Math.round((crmHours / periodDays) * 100) / 100;
+                    minutesPerCard =
+                        Math.round(((crmHours * 60) / (periodDays * QUOTA_PER_DAY)) * 10) / 10;
+                }
+                managers.push({
+                    user_id: uid,
+                    name,
+                    crm_task_id: tid,
+                    crm_task_title: crmTitle,
+                    crm_hours: crmHours,
+                    period_days: periodDays,
+                    hours_per_ten: hoursPerTen,
+                    minutes_per_card: minutesPerCard,
+                });
+            }
+
+            managers.sort((a, b) =>
+                String(a.name || '').localeCompare(String(b.name || ''), 'ru', { sensitivity: 'base' })
+            );
+
+            res.json({
+                success: true,
+                period: { from: fromYmd, to: toYmd, days: periodDays },
+                quota_per_day: QUOTA_PER_DAY,
+                task_title: 'Проработка инфографики на товарах',
+                crm: crmMeta,
+                managers,
+            });
+        } catch (e) {
+            res.status(500).json({ success: false, error: e.message || 'Ошибка standing-stats' });
+        }
+    });
+
+    /** Привязки КМ → CRM task_id. scope: almamed | marketplaces | infographic. */
+    router.get('/crm-task-links', async (req, res) => {
+        try {
+            const scope = normCrmScope(req.query.scope, 'marketplaces');
+            const denied = assertActorPageAccess(req.datagonActor, crmScopePageKey(scope), { write: false });
+            if (denied) {
+                return res.status(denied.status).json({
+                    success: false,
+                    error: denied.error,
+                    code: denied.code,
+                });
+            }
+            await ensureSchema(db);
             const [rows] = await db.query(
                 `SELECT user_id, scope, crm_task_id, updated_at FROM dg_np_crm_task_links WHERE scope = ?`,
                 [scope]
@@ -1073,10 +1219,17 @@ module.exports = function exportsNewProductsRouterFactory(db, config) {
 
     router.put('/crm-task-links', async (req, res) => {
         try {
-            await ensureSchema(db);
             const body = req.body || {};
-            const scopeRaw = String(body.scope || 'marketplaces').trim().toLowerCase();
-            const scope = scopeRaw === 'almamed' ? 'almamed' : 'marketplaces';
+            const scope = normCrmScope(body.scope, 'marketplaces');
+            const denied = assertActorPageAccess(req.datagonActor, crmScopePageKey(scope), { write: true });
+            if (denied) {
+                return res.status(denied.status).json({
+                    success: false,
+                    error: denied.error,
+                    code: denied.code,
+                });
+            }
+            await ensureSchema(db);
             const userId = parseInt(body.user_id, 10);
             if (!Number.isFinite(userId) || userId < 1) {
                 return res.status(400).json({ success: false, error: 'Нужен user_id' });

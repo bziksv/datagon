@@ -24,6 +24,9 @@
             <li class="nav-item">
               <button type="button" class="nav-link" data-dg-np-view="stats" id="dg-np-tab-stats">Статистика контент-отдела</button>
             </li>
+            <li class="nav-item">
+              <button type="button" class="nav-link" data-dg-np-view="standing" id="dg-np-tab-standing">Постоянные задачи</button>
+            </li>
           </ul>
 
           <div id="dg-np-queue-panel">
@@ -240,8 +243,8 @@
                   <div style="min-width: 9.5rem">
                     <label class="form-label mb-1" for="dg-np-stats-channel">Режим</label>
                     <select class="form-select form-select-sm" id="dg-np-stats-channel" data-dg-no-activity="1"
-                      data-dg-tooltip="KPI по товарам + CRM-часы: Общая (оба канала, сумма часов Альм.+Маркеты), только Альмамед или только Маркеты. WIP «сейчас» тоже по режиму.">
-                      <option value="all" selected>Общая</option>
+                      data-dg-tooltip="KPI по товарам + CRM-часы: Альмамед + Маркеты (оба канала, сумма часов), только Альмамед или только Маркеты. WIP «сейчас» тоже по режиму.">
+                      <option value="all" selected>Альмамед + Маркеты</option>
                       <option value="almamed">Альмамед</option>
                       <option value="marketplaces">Маркеты</option>
                     </select>
@@ -336,8 +339,85 @@
                   на проверку ·
                   <span class="dg-np-stats-wip-chip dg-np-stats-wip-new"><span class="dg-np-stats-wip-lab">Нов</span></span>
                   новый/не добавлен.
-                  Колонка <b>CRM задача</b> — ID таймера по режиму (Альмамед / Маркеты; в «Общей» — обе строки). Enter сохраняет.
+                  Колонка <b>CRM задача</b> — ID таймера по режиму (Альмамед / Маркеты; в «Альмамед + Маркеты» — обе строки). Enter сохраняет.
                   <b>мин / размещ.</b> = (часы CRM ÷ размещено) × 60.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-np-standing-panel" class="d-none">
+            <div class="main-card mb-3 card">
+              <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+                <div class="d-flex align-items-center">
+                  <i class="header-icon pe-7s-timer icon-gradient bg-happy-fisher me-2"> </i>
+                  <span>Постоянные задачи — инфографика</span>
+                </div>
+              </div>
+              <div class="card-body">
+                <div class="alert alert-warning py-2 px-3 mb-3" role="status">
+                  <strong>Проработка инфографики на товарах.</strong>
+                  Ориентир — <b>10 товаров в день</b>. В таблице — <b>средние</b> по календарным дням периода
+                  (не умножаем норму на все дни: работа бывает не каждый день).
+                  Часы — из таймеров CRM по привязанной задаче.
+                </div>
+                <div class="d-flex flex-wrap align-items-end gap-2">
+                  <div style="min-width: 8.5rem">
+                    <label class="form-label mb-1" for="dg-np-standing-preset">Период</label>
+                    <select class="form-select form-select-sm" id="dg-np-standing-preset" data-dg-no-activity="1"
+                      data-dg-tooltip="Календарные дни inclusive. Средние = часы CRM ÷ дней периода.">
+                      <option value="7">7 дней</option>
+                      <option value="30" selected>30 дней</option>
+                      <option value="90">90 дней</option>
+                      <option value="custom">Свой период</option>
+                    </select>
+                  </div>
+                  <div class="dg-np-standing-custom d-none" style="min-width: 9rem">
+                    <label class="form-label mb-1" for="dg-np-standing-from">С</label>
+                    <input type="date" class="form-control form-control-sm" id="dg-np-standing-from" data-dg-no-activity="1" />
+                  </div>
+                  <div class="dg-np-standing-custom d-none" style="min-width: 9rem">
+                    <label class="form-label mb-1" for="dg-np-standing-to">По</label>
+                    <input type="date" class="form-control form-control-sm" id="dg-np-standing-to" data-dg-no-activity="1" />
+                  </div>
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-primary"
+                    id="dg-np-standing-apply"
+                    data-dg-notify-start="Считаем постоянные задачи…"
+                    data-dg-tooltip="Пересчитать часы CRM и средние за период"
+                  >
+                    Применить
+                  </button>
+                  <span class="text-muted small ms-1" id="dg-np-standing-period-hint"></span>
+                </div>
+                <div id="dg-np-standing-action-log" class="small text-danger mt-2 d-none" role="status"></div>
+
+                <div class="table-responsive mt-3">
+                  <table class="table table-sm table-bordered mb-0" id="dg-np-standing-table">
+                    <thead id="dg-np-standing-thead">
+                      <tr>
+                        <th>Контент-менеджер</th>
+                        <th>CRM задача</th>
+                        <th class="text-end">Часы CRM</th>
+                        <th class="text-end">Дней</th>
+                        <th class="text-end">Ср. на 10 карточек</th>
+                        <th class="text-end">Ср. на 1 карточку</th>
+                      </tr>
+                    </thead>
+                    <tbody id="dg-np-standing-tbody">
+                      <tr>
+                        <td colspan="6" class="text-muted text-center py-3">Нажмите «Применить»</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <p class="small text-muted mt-2 mb-0" id="dg-np-standing-crm-hint"></p>
+                <p class="small text-muted mt-2 mb-0">
+                  Средние по календарным дням периода (работа не каждый день — норма × дни не считаем).
+                  <b>Ср. на 10 карточек</b> = часы CRM ÷ дней.
+                  <b>Ср. на 1 карточку</b> = (часы CRM × 60) ÷ (дни × 10) минут — при ориентире 10/день.
+                  Колонка CRM — ID задачи инфографики (Enter сохраняет, scope=infographic).
                 </p>
               </div>
             </div>

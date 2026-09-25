@@ -1546,6 +1546,9 @@
             <li class="nav-item">
               <button type="button" class="nav-link" data-dg-np-view="stats" id="dg-np-tab-stats">Статистика контент-отдела</button>
             </li>
+            <li class="nav-item">
+              <button type="button" class="nav-link" data-dg-np-view="standing" id="dg-np-tab-standing">Постоянные задачи</button>
+            </li>
           </ul>
 
           <div id="dg-np-queue-panel">
@@ -1762,8 +1765,8 @@
                   <div style="min-width: 9.5rem">
                     <label class="form-label mb-1" for="dg-np-stats-channel">Режим</label>
                     <select class="form-select form-select-sm" id="dg-np-stats-channel" data-dg-no-activity="1"
-                      data-dg-tooltip="KPI по товарам + CRM-часы: Общая (оба канала, сумма часов Альм.+Маркеты), только Альмамед или только Маркеты. WIP «сейчас» тоже по режиму.">
-                      <option value="all" selected>Общая</option>
+                      data-dg-tooltip="KPI по товарам + CRM-часы: Альмамед + Маркеты (оба канала, сумма часов), только Альмамед или только Маркеты. WIP «сейчас» тоже по режиму.">
+                      <option value="all" selected>Альмамед + Маркеты</option>
                       <option value="almamed">Альмамед</option>
                       <option value="marketplaces">Маркеты</option>
                     </select>
@@ -1858,8 +1861,85 @@
                   на проверку ·
                   <span class="dg-np-stats-wip-chip dg-np-stats-wip-new"><span class="dg-np-stats-wip-lab">Нов</span></span>
                   новый/не добавлен.
-                  Колонка <b>CRM задача</b> — ID таймера по режиму (Альмамед / Маркеты; в «Общей» — обе строки). Enter сохраняет.
+                  Колонка <b>CRM задача</b> — ID таймера по режиму (Альмамед / Маркеты; в «Альмамед + Маркеты» — обе строки). Enter сохраняет.
                   <b>мин / размещ.</b> = (часы CRM ÷ размещено) × 60.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-np-standing-panel" class="d-none">
+            <div class="main-card mb-3 card">
+              <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+                <div class="d-flex align-items-center">
+                  <i class="header-icon pe-7s-timer icon-gradient bg-happy-fisher me-2"> </i>
+                  <span>Постоянные задачи — инфографика</span>
+                </div>
+              </div>
+              <div class="card-body">
+                <div class="alert alert-warning py-2 px-3 mb-3" role="status">
+                  <strong>Проработка инфографики на товарах.</strong>
+                  Ориентир — <b>10 товаров в день</b>. В таблице — <b>средние</b> по календарным дням периода
+                  (не умножаем норму на все дни: работа бывает не каждый день).
+                  Часы — из таймеров CRM по привязанной задаче.
+                </div>
+                <div class="d-flex flex-wrap align-items-end gap-2">
+                  <div style="min-width: 8.5rem">
+                    <label class="form-label mb-1" for="dg-np-standing-preset">Период</label>
+                    <select class="form-select form-select-sm" id="dg-np-standing-preset" data-dg-no-activity="1"
+                      data-dg-tooltip="Календарные дни inclusive. Средние = часы CRM ÷ дней периода.">
+                      <option value="7">7 дней</option>
+                      <option value="30" selected>30 дней</option>
+                      <option value="90">90 дней</option>
+                      <option value="custom">Свой период</option>
+                    </select>
+                  </div>
+                  <div class="dg-np-standing-custom d-none" style="min-width: 9rem">
+                    <label class="form-label mb-1" for="dg-np-standing-from">С</label>
+                    <input type="date" class="form-control form-control-sm" id="dg-np-standing-from" data-dg-no-activity="1" />
+                  </div>
+                  <div class="dg-np-standing-custom d-none" style="min-width: 9rem">
+                    <label class="form-label mb-1" for="dg-np-standing-to">По</label>
+                    <input type="date" class="form-control form-control-sm" id="dg-np-standing-to" data-dg-no-activity="1" />
+                  </div>
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-primary"
+                    id="dg-np-standing-apply"
+                    data-dg-notify-start="Считаем постоянные задачи…"
+                    data-dg-tooltip="Пересчитать часы CRM и средние за период"
+                  >
+                    Применить
+                  </button>
+                  <span class="text-muted small ms-1" id="dg-np-standing-period-hint"></span>
+                </div>
+                <div id="dg-np-standing-action-log" class="small text-danger mt-2 d-none" role="status"></div>
+
+                <div class="table-responsive mt-3">
+                  <table class="table table-sm table-bordered mb-0" id="dg-np-standing-table">
+                    <thead id="dg-np-standing-thead">
+                      <tr>
+                        <th>Контент-менеджер</th>
+                        <th>CRM задача</th>
+                        <th class="text-end">Часы CRM</th>
+                        <th class="text-end">Дней</th>
+                        <th class="text-end">Ср. на 10 карточек</th>
+                        <th class="text-end">Ср. на 1 карточку</th>
+                      </tr>
+                    </thead>
+                    <tbody id="dg-np-standing-tbody">
+                      <tr>
+                        <td colspan="6" class="text-muted text-center py-3">Нажмите «Применить»</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <p class="small text-muted mt-2 mb-0" id="dg-np-standing-crm-hint"></p>
+                <p class="small text-muted mt-2 mb-0">
+                  Средние по календарным дням периода (работа не каждый день — норма × дни не считаем).
+                  <b>Ср. на 10 карточек</b> = часы CRM ÷ дней.
+                  <b>Ср. на 1 карточку</b> = (часы CRM × 60) ÷ (дни × 10) минут — при ориентире 10/день.
+                  Колонка CRM — ID задачи инфографики (Enter сохраняет, scope=infographic).
                 </p>
               </div>
             </div>
@@ -2039,7 +2119,7 @@
 
   var state = {
     channel: "almamed",
-    /** table | stats — третья вкладка KPI, не channel list API */
+    /** table | stats | standing */
     view: "table",
     rows: [],
     total: 0,
@@ -2075,6 +2155,8 @@
     statsSort: { key: "created_count", dir: "desc" },
     /** Режим матрицы exports-new-products-stats: full | view | hidden */
     statsAccess: "full",
+    /** Режим матрицы exports-new-products-standing: full | view | hidden */
+    standingAccess: "full",
   };
 
   var STATUS_OPTS_ALMAMED = [
@@ -3185,22 +3267,27 @@
 
   function syncTabUi() {
     var isStats = state.view === "stats";
+    var isStanding = state.view === "standing";
     document.querySelectorAll("#dg-np-tabs .nav-link").forEach(function (btn) {
       var view = btn.getAttribute("data-dg-np-view") || "table";
       if (view === "stats") {
         btn.classList.toggle("active", isStats);
+      } else if (view === "standing") {
+        btn.classList.toggle("active", isStanding);
       } else {
         btn.classList.toggle(
           "active",
-          !isStats && btn.getAttribute("data-dg-np-channel") === state.channel
+          !isStats && !isStanding && btn.getAttribute("data-dg-np-channel") === state.channel
         );
       }
     });
     var queuePanel = el("dg-np-queue-panel");
     var statsPanel = el("dg-np-stats-panel");
-    if (queuePanel) queuePanel.classList.toggle("d-none", isStats);
+    var standingPanel = el("dg-np-standing-panel");
+    if (queuePanel) queuePanel.classList.toggle("d-none", isStats || isStanding);
     if (statsPanel) statsPanel.classList.toggle("d-none", !isStats);
-    if (isStats) return;
+    if (standingPanel) standingPanel.classList.toggle("d-none", !isStanding);
+    if (isStats || isStanding) return;
 
     var isMp = state.channel === "marketplaces";
     var title = el("dg-np-table-title");
@@ -5647,14 +5734,14 @@
     {
       key: "crm_task_id",
       label: "CRM задача",
-      tip: "ID задачи CRM Prime по выбранному режиму (Альмамед / Маркеты). В «Общей» — две привязки. Часы — из rise_project_time.",
+      tip: "ID задачи CRM Prime по выбранному режиму (Альмамед / Маркеты). В «Альмамед + Маркеты» — две привязки. Часы — из rise_project_time.",
       align: "start",
       sort: true,
     },
     {
       key: "crm_hours",
       label: "Часы CRM",
-      tip: "Сумма таймеров CRM за период по привязанной задаче режима (в «Общей» — сумма Альмамед+Маркеты). Нужен CRM_PRIME_DB_* на сервере.",
+      tip: "Сумма таймеров CRM за период (start→end), показано как ч + мин (1 ч = 60 мин). В «Альмамед + Маркеты» — сумма обоих каналов.",
       align: "end",
       sort: true,
     },
@@ -5690,20 +5777,46 @@
     return "hidden";
   }
 
+  function resolveStandingAccessMode() {
+    try {
+      if (
+        window.localStorage.getItem("isAdmin") === "true" ||
+        window.localStorage.getItem("currentUser") === "admin"
+      ) {
+        return "full";
+      }
+      var raw = window.localStorage.getItem("datagonPageModesV1");
+      var pm = raw ? JSON.parse(raw) : {};
+      var m = pm && pm["exports-new-products-standing"];
+      if (m === "full" || m === "view" || m === "hidden") return m;
+    } catch (_) {}
+    return "hidden";
+  }
+
   function syncStatsTabAccess() {
     state.statsAccess = resolveStatsAccessMode();
-    var tab = el("dg-np-tab-stats");
-    if (tab) {
-      var show = state.statsAccess === "full" || state.statsAccess === "view";
-      tab.classList.toggle("d-none", !show);
-      tab.disabled = !show;
-      if (!show) {
-        tab.setAttribute("aria-hidden", "true");
-      } else {
-        tab.removeAttribute("aria-hidden");
-      }
+    state.standingAccess = resolveStandingAccessMode();
+    var showStats = state.statsAccess === "full" || state.statsAccess === "view";
+    var showStanding = state.standingAccess === "full" || state.standingAccess === "view";
+    var tabStats = el("dg-np-tab-stats");
+    if (tabStats) {
+      tabStats.classList.toggle("d-none", !showStats);
+      tabStats.disabled = !showStats;
+      if (!showStats) tabStats.setAttribute("aria-hidden", "true");
+      else tabStats.removeAttribute("aria-hidden");
+    }
+    var tabStanding = el("dg-np-tab-standing");
+    if (tabStanding) {
+      tabStanding.classList.toggle("d-none", !showStanding);
+      tabStanding.disabled = !showStanding;
+      if (!showStanding) tabStanding.setAttribute("aria-hidden", "true");
+      else tabStanding.removeAttribute("aria-hidden");
     }
     if (state.view === "stats" && state.statsAccess === "hidden") {
+      state.view = "table";
+      syncTabUi();
+      syncTabToUrl();
+    } else if (state.view === "standing" && state.standingAccess === "hidden") {
       state.view = "table";
       syncTabUi();
       syncTabToUrl();
@@ -5731,6 +5844,18 @@
     if (hours == null || !Number.isFinite(Number(hours))) return "—";
     var mins = Math.round(Number(hours) * 60);
     return fmtInt(mins) + " мин";
+  }
+
+  /** Дробные часы CRM → «14 ч 56 мин» (1 ч = 60 мин), не «14,93». */
+  function fmtCrmHoursClock(hours) {
+    if (hours == null || !Number.isFinite(Number(hours))) return "—";
+    var totalMin = Math.round(Number(hours) * 60);
+    if (totalMin < 0) totalMin = 0;
+    var h = Math.floor(totalMin / 60);
+    var m = totalMin % 60;
+    if (h <= 0) return m + " мин";
+    if (m <= 0) return h + " ч";
+    return h + " ч " + m + " мин";
   }
 
   /** Часы → «X дн. Y ч.» */
@@ -5782,7 +5907,8 @@
   function saveCrmTaskLink(userId, taskRaw, scope) {
     var uid = Number(userId);
     if (!Number.isFinite(uid) || uid < 1) return Promise.resolve();
-    var sc = scope === "almamed" ? "almamed" : "marketplaces";
+    var sc =
+      scope === "almamed" ? "almamed" : scope === "infographic" ? "infographic" : "marketplaces";
     var body = { scope: sc, user_id: uid, crm_task_id: taskRaw };
     var run = function () {
       return fetch("/api/exports/new-products/crm-task-links", {
@@ -5801,7 +5927,8 @@
             throw new Error((res.j && res.j.error) || "Не сохранено");
           }
           if (window.DatagonNotify && window.DatagonNotify.toast) {
-            var scLab = sc === "almamed" ? "Альмамед" : "Маркеты";
+            var scLab =
+              sc === "almamed" ? "Альмамед" : sc === "infographic" ? "Инфографика" : "Маркеты";
             window.DatagonNotify.toast({
               type: "success",
               message: res.j.crm_task_id
@@ -5809,6 +5936,7 @@
                 : "Привязка CRM (" + scLab + ") снята",
             });
           }
+          if (sc === "infographic") return loadStandingStats();
           return loadContentStats();
         })
         .catch(function (e) {
@@ -6213,11 +6341,15 @@
 
     tr.appendChild(
       tdText(
-        m.crm_hours == null ? "—" : fmtPerDay(m.crm_hours),
+        m.crm_hours == null ? "—" : fmtCrmHoursClock(m.crm_hours),
         "text-end",
         m.crm_hours == null
           ? "Нет привязки или CRM БД не настроена / нет часов за период"
-          : "Часы таймера CRM за период: " + fmtPerDay(m.crm_hours)
+          : "Часы таймера CRM за период: " +
+              fmtCrmHoursClock(m.crm_hours) +
+              " (" +
+              Math.round(Number(m.crm_hours) * 100) / 100 +
+              " ч)"
       )
     );
     tr.appendChild(
@@ -6229,8 +6361,8 @@
           : "Часы CRM ÷ размещено = " +
               fmtMinutesFromHours(m.crm_hours_per_placement) +
               " (" +
-              fmtPerDay(m.crm_hours_per_placement) +
-              " ч)"
+              fmtCrmHoursClock(m.crm_hours_per_placement) +
+              ")"
       )
     );
 
@@ -6291,7 +6423,7 @@
           ? "Альмамед"
           : data.channel === "marketplaces"
             ? "Маркеты"
-            : "Общая";
+            : "Альмамед + Маркеты";
       hint.textContent =
         data.period.from + " — " + data.period.to + " · " + data.period.days + " дн. · " + ch;
       hint.setAttribute(
@@ -6378,6 +6510,217 @@
     return run();
   }
 
+  function syncStandingCustomVisibility() {
+    var preset = el("dg-np-standing-preset");
+    var custom = preset && preset.value === "custom";
+    document.querySelectorAll(".dg-np-standing-custom").forEach(function (node) {
+      node.classList.toggle("d-none", !custom);
+    });
+  }
+
+  function resolveStandingPeriod() {
+    var presetEl = el("dg-np-standing-preset");
+    var preset = presetEl ? String(presetEl.value || "30") : "30";
+    var to = ymdLocal(new Date());
+    var from;
+    if (preset === "custom") {
+      from = el("dg-np-standing-from") && el("dg-np-standing-from").value;
+      to = (el("dg-np-standing-to") && el("dg-np-standing-to").value) || to;
+      if (!from) from = addDaysLocal(to, -29);
+    } else {
+      var days = parseInt(preset, 10);
+      if (!Number.isFinite(days) || days < 1) days = 30;
+      from = addDaysLocal(to, -(days - 1));
+      if (el("dg-np-standing-from")) el("dg-np-standing-from").value = from;
+      if (el("dg-np-standing-to")) el("dg-np-standing-to").value = to;
+    }
+    return { from: from, to: to };
+  }
+
+  function showStandingLog(type, html) {
+    var box = el("dg-np-standing-action-log");
+    if (!box) return;
+    if (type === "success") {
+      box.classList.add("d-none");
+      box.textContent = "";
+      return;
+    }
+    box.classList.remove("d-none", "text-danger", "text-muted");
+    box.classList.add(type === "danger" ? "text-danger" : "text-muted");
+    box.innerHTML = html;
+  }
+
+  function renderStandingStats(data) {
+    var tbody = el("dg-np-standing-tbody");
+    if (!tbody) return;
+    tbody.innerHTML = "";
+
+    function tdText(text, extraClass, tip) {
+      var td = document.createElement("td");
+      td.className = (extraClass || "").trim();
+      if (tip) td.setAttribute("data-dg-tooltip", tip);
+      td.textContent = text;
+      return td;
+    }
+
+    var managers = (data && data.managers) || [];
+    if (!managers.length) {
+      tbody.innerHTML =
+        '<tr><td colspan="6" class="text-muted text-center py-3">Нет контент-менеджеров</td></tr>';
+    } else {
+      managers.forEach(function (m) {
+        var tr = document.createElement("tr");
+        var tdName = document.createElement("td");
+        tdName.textContent = m.name || "—";
+        tr.appendChild(tdName);
+
+        var tdCrm = document.createElement("td");
+        tdCrm.className = "dg-np-stats-crm-cell";
+        var wrap = document.createElement("div");
+        wrap.className = "dg-np-stats-crm-link";
+        var inp = document.createElement("input");
+        inp.type = "text";
+        inp.inputMode = "numeric";
+        inp.className = "form-control form-control-sm dg-np-stats-crm-input";
+        inp.placeholder = "ID";
+        inp.value = m.crm_task_id ? String(m.crm_task_id) : "";
+        inp.setAttribute("data-dg-no-activity", "1");
+        var canEdit = state.standingAccess === "full";
+        var tip =
+          (m.crm_task_title ? m.crm_task_title + ". " : "") +
+          "Задача инфографики в CRM. Enter / blur — сохранить.";
+        if (!canEdit) {
+          inp.disabled = true;
+          tip += " Режим просмотра.";
+        }
+        inp.setAttribute("data-dg-tooltip", tip);
+        if (canEdit) {
+          inp.addEventListener("keydown", function (ev) {
+            if (ev.key === "Enter") {
+              ev.preventDefault();
+              inp.blur();
+            }
+          });
+          inp.addEventListener("change", function () {
+            var next = String(inp.value || "").trim();
+            var prev = m.crm_task_id ? String(m.crm_task_id) : "";
+            if (next === prev) return;
+            saveCrmTaskLink(m.user_id, next === "" ? null : next, "infographic");
+          });
+        }
+        wrap.appendChild(inp);
+        if (m.crm_task_id) {
+          var a = document.createElement("a");
+          a.href =
+            "https://crm.prime-ltd.su/index.php/tasks/view/" + encodeURIComponent(m.crm_task_id);
+          a.target = "_blank";
+          a.rel = "noopener noreferrer";
+          a.className = "btn btn-sm btn-outline-secondary dg-np-stats-crm-open";
+          a.textContent = "↗";
+          a.setAttribute("data-dg-tooltip", "Открыть задачу в CRM");
+          a.setAttribute("data-dg-no-activity", "1");
+          wrap.appendChild(a);
+        }
+        tdCrm.appendChild(wrap);
+        tr.appendChild(tdCrm);
+
+        tr.appendChild(
+          tdText(
+            m.crm_hours == null ? "—" : fmtCrmHoursClock(m.crm_hours),
+            "text-end",
+            m.crm_hours == null
+              ? "Нет привязки или нет часов за период"
+              : "Таймеры CRM: " + fmtCrmHoursClock(m.crm_hours)
+          )
+        );
+        tr.appendChild(
+          tdText(fmtInt(m.period_days), "text-end", "Календарные дни периода (для среднего)")
+        );
+        tr.appendChild(
+          tdText(
+            m.hours_per_ten == null ? "—" : fmtCrmHoursClock(m.hours_per_ten),
+            "text-end",
+            "Среднее: часы CRM ÷ дней периода (ориентир дневной нормы 10 карточек)"
+          )
+        );
+        tr.appendChild(
+          tdText(
+            m.minutes_per_card == null ? "—" : fmtPerDay(m.minutes_per_card) + " мин",
+            "text-end",
+            "Среднее: (часы CRM × 60) ÷ (дни × 10) — при ориентире 10 карточек/день"
+          )
+        );
+        tbody.appendChild(tr);
+      });
+    }
+
+    var hint = el("dg-np-standing-period-hint");
+    if (hint && data && data.period) {
+      hint.textContent =
+        data.period.from +
+        " — " +
+        data.period.to +
+        " · " +
+        data.period.days +
+        " дн. · ориентир " +
+        (data.quota_per_day || 10) +
+        "/день (средние)";
+    }
+    var crmHint = el("dg-np-standing-crm-hint");
+    if (crmHint) {
+      if (data && data.crm && data.crm.error) {
+        crmHint.classList.remove("d-none");
+        crmHint.textContent = "CRM часы: ошибка БД — " + data.crm.error;
+      } else if (data && data.crm && data.crm.configured === false) {
+        crmHint.classList.remove("d-none");
+        crmHint.textContent =
+          "Привязки сохраняются. Для часов нужны CRM_PRIME_DB_* на сервере.";
+      } else {
+        crmHint.classList.add("d-none");
+        crmHint.textContent = "";
+      }
+    }
+  }
+
+  function loadStandingStats() {
+    var period = resolveStandingPeriod();
+    var qs =
+      "from=" + encodeURIComponent(period.from) + "&to=" + encodeURIComponent(period.to);
+    showStandingLog("info", "Считаем постоянные задачи…");
+    var btn = el("dg-np-standing-apply");
+    var run = function () {
+      return fetch("/api/exports/new-products/standing-stats?" + qs, { credentials: "same-origin" })
+        .then(function (r) {
+          return r.json().then(function (j) {
+            return { ok: r.ok, j: j };
+          });
+        })
+        .then(function (res) {
+          if (!res.ok || !res.j || res.j.success === false) {
+            throw new Error((res.j && (res.j.error || res.j.message)) || "Ошибка API");
+          }
+          renderStandingStats(res.j);
+          showStandingLog("success", "");
+          if (window.DatagonNotify && window.DatagonNotify.toast) {
+            window.DatagonNotify.toast({ type: "success", message: "Постоянные задачи обновлены" });
+          }
+        })
+        .catch(function (e) {
+          showStandingLog("danger", "Ошибка: " + (e.message || e));
+          if (window.DatagonNotify && window.DatagonNotify.toast) {
+            window.DatagonNotify.toast({
+              type: "danger",
+              message: e.message || "Ошибка постоянных задач",
+            });
+          }
+        });
+    };
+    if (window.DatagonNotify && window.DatagonNotify.busyRun && btn) {
+      return window.DatagonNotify.busyRun(btn, run);
+    }
+    return run();
+  }
+
   function bindStatsSortUi() {
     var thead = el("dg-np-stats-thead");
     if (!thead || thead.getAttribute("data-dg-bound") === "1") return;
@@ -6422,6 +6765,14 @@
     if (raw === "stats" || raw === "content-stats" || raw === "content" || raw === "kpi") {
       return "stats";
     }
+    if (
+      raw === "standing" ||
+      raw === "infographic" ||
+      raw === "permanent" ||
+      raw === "fixed-tasks"
+    ) {
+      return "standing";
+    }
     if (raw === "marketplaces" || raw === "markets" || raw === "mp") return "marketplaces";
     if (raw === "almamed" || raw === "alma") return "almamed";
     return null;
@@ -6429,6 +6780,7 @@
 
   function currentTabToken() {
     if (state.view === "stats") return "stats";
+    if (state.view === "standing") return "standing";
     return state.channel === "marketplaces" ? "marketplaces" : "almamed";
   }
 
@@ -6462,6 +6814,11 @@
       setView("stats");
       return;
     }
+    if (tab === "standing") {
+      if (state.view === "standing") return;
+      setView("standing");
+      return;
+    }
     if (state.view === "table" && state.channel === tab) return;
     setChannel(tab);
   }
@@ -6483,6 +6840,24 @@
       syncTabUi();
       syncTabToUrl();
       loadContentStats();
+      return;
+    }
+    if (view === "standing") {
+      syncStatsTabAccess();
+      if (state.standingAccess === "hidden") {
+        if (window.DatagonNotify && window.DatagonNotify.toast) {
+          window.DatagonNotify.toast({
+            type: "warning",
+            message: "Нет доступа к «Постоянные задачи»",
+          });
+        }
+        syncTabToUrl();
+        return;
+      }
+      state.view = "standing";
+      syncTabUi();
+      syncTabToUrl();
+      loadStandingStats();
       return;
     }
     state.view = "table";
@@ -6848,6 +7223,13 @@
         syncTabToUrl();
         load();
       }
+    } else if (urlTab === "standing") {
+      setView("standing");
+      if (state.view !== "standing") {
+        syncTabUi();
+        syncTabToUrl();
+        load();
+      }
     } else if (urlTab === "marketplaces" || urlTab === "almamed") {
       if (state.channel !== urlTab || state.view !== "table") {
         setChannel(urlTab);
@@ -6879,8 +7261,8 @@
     document.querySelectorAll("#dg-np-tabs .nav-link").forEach(function (btn) {
       btn.addEventListener("click", function () {
         var view = btn.getAttribute("data-dg-np-view") || "table";
-        if (view === "stats") {
-          setView("stats");
+        if (view === "stats" || view === "standing") {
+          setView(view);
           return;
         }
         setChannel(btn.getAttribute("data-dg-np-channel"));
@@ -6896,6 +7278,14 @@
     if (statsApply) statsApply.addEventListener("click", loadContentStats);
     buildStatsThead();
     bindStatsSortUi();
+
+    var standingPreset = el("dg-np-standing-preset");
+    if (standingPreset) {
+      standingPreset.addEventListener("change", syncStandingCustomVisibility);
+      syncStandingCustomVisibility();
+    }
+    var standingApply = el("dg-np-standing-apply");
+    if (standingApply) standingApply.addEventListener("click", loadStandingStats);
 
     el("dg-np-apply").addEventListener("click", commitFilters);
     el("dg-np-reset").addEventListener("click", resetFilters);

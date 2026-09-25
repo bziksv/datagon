@@ -123,7 +123,7 @@ Body:
 - `PUT /api/specialties/:id/access` — сохранить режимы; body: `{ "modes": { "dashboard": "full", "results": "view", ... } }`.
 
 Записи к не-GET API (кроме путей без привязки к разделу в реестре) для не-admin проверяются по режиму раздела: при `hidden` — 403, при `view` — разрешены только GET/HEAD/OPTIONS.
-Новые страницы из `PAGE_DEFS` автоматически досинхронизируются в `specialty_page_modes` для всех существующих специальностей при старте сервера; для «Полный доступ» ставится `full`, для остальных групп — `hidden` до явного выбора администратора. Запись с `matrixOnly: true` (например **`exports-new-products-stats`** — вкладка «Статистика контент-отдела») появляется в матрице настроек доступа, но не меняет HTML-лист родительского экрана.
+Новые страницы из `PAGE_DEFS` автоматически досинхронизируются в `specialty_page_modes` для всех существующих специальностей при старте сервера; для «Полный доступ» ставится `full`, для остальных групп — `hidden` до явного выбора администратора. Запись с `matrixOnly: true` (например **`exports-new-products-stats`** — вкладка «Статистика контент-отдела», **`exports-new-products-standing`** — «Постоянные задачи») появляется в матрице настроек доступа, но не меняет HTML-лист родительского экрана.
 
 ## Settings
 
@@ -1375,13 +1375,20 @@ Body (JSON):
 
 ## Exports / Новые товары
 
-Префикс: `/api/exports/new-products`. Экран: `/exports-new-products.html` (подменю **Маркетплейсы**). Вкладки UI: **Альмамед** (`channel=almamed`), **Маркеты** (`channel=marketplaces`), **Статистика контент-отдела** (отдельный `GET /content-stats`, не list API). Deep-link вкладок (hash или `?tab=`): `#almamed`, `#marketplaces`, `#stats` (алиасы `#content-stats`, `?tab=markets`). Таблица `dg_new_products` (создаётся при первом запросе).
+Префикс: `/api/exports/new-products`. Экран: `/exports-new-products.html` (подменю **Маркетплейсы**). Вкладки UI: **Альмамед** (`channel=almamed`), **Маркеты** (`channel=marketplaces`), **Статистика контент-отдела** (`GET /content-stats`), **Постоянные задачи** (`GET /standing-stats`, инфографика). Deep-link вкладок (hash или `?tab=`): `#almamed`, `#marketplaces`, `#stats`, `#standing` (алиасы `#content-stats`, `#infographic`, `?tab=markets`). Таблица `dg_new_products` (создаётся при первом запросе).
 
 **UI / wide-таблица (lock):** плавающая шапка — `#dg-np-float-host` (`position: fixed` клон thead), **не** `translate3d` на живом `#dg-np-thead` (тяжёлая таблица; shop-схема Ozon сюда не копировать). Ширины — только `<colgroup>`, `table-layout: auto`. Контракт: `.cursor/rules/datagon-table-behavior-lock.mdc` (раздел «Новые товары»).
 
 Доступ по матрице страницы **`exports-new-products`** (как дочерняя маркетплейсов наследует скрытие родителя `exports-marketplaces`, если у дочерней нет явного `view`/`full`).
 
-Вкладка **«Статистика контент-отдела»** и API KPI/CRM-привязок — отдельный ключ матрицы **`exports-new-products-stats`** (`matrixOnly`: тот же HTML `exports-new-products.html`, отдельная строка в настройках доступа). Режимы: `hidden` — вкладка скрыта и API KPI/CRM запрещены; `view` — просмотр KPI, `PUT` привязок CRM запрещён; `full` — просмотр и правка привязок. Наследует скрытие родителя `exports-marketplaces`, если у ключа нет явного `view`/`full`. Список/CRUD очереди новых товаров по-прежнему проверяются по **`exports-new-products`**.
+Вкладки **«Статистика контент-отдела»** и **«Постоянные задачи»** — отдельные ключи матрицы (`matrixOnly`, тот же HTML `exports-new-products.html`):
+
+| Ключ | Вкладка / API |
+|------|----------------|
+| **`exports-new-products-stats`** | Статистика контент-отдела · `GET /content-stats` · CRM `scope=almamed\|marketplaces` |
+| **`exports-new-products-standing`** | Постоянные задачи · `GET /standing-stats` · CRM `scope=infographic` |
+
+Режимы: `hidden` — вкладка скрыта и соответствующий API запрещён; `view` — просмотр, `PUT` привязок CRM запрещён; `full` — просмотр и правка привязок. Наследуют скрытие родителя `exports-marketplaces`, если у ключа нет явного `view`/`full`. Список/CRUD очереди новых товаров по-прежнему проверяются по **`exports-new-products`**.
 
 ### Регламент / инструкция МП
 
@@ -1471,7 +1478,7 @@ Query `exclude_verified=1` (алиас `hide_placed=1`): при пустом `st
 
 Доступ: матрица **`exports-new-products-stats`** (`hidden` / `view` / `full`).
 
-KPI контент-отдела (вкладка **Статистика контент-отдела**). Query: `from`, `to` (`YYYY-MM-DD`; по умолчанию последние 30 календарных дней inclusive), `channel` = `all` | `almamed` | `marketplaces` (default `all`) — режим UI **Общая / Альмамед / Маркеты**: режет KPI по `dg_new_products.channel` и выбирает CRM-привязки (`dg_np_crm_task_links.scope`). Для `all` часы CRM = сумма обоих scope; в ответе у менеджера есть `crm_links.{almamed,marketplaces}`.
+KPI контент-отдела (вкладка **Статистика контент-отдела**). Query: `from`, `to` (`YYYY-MM-DD`; по умолчанию последние 30 календарных дней inclusive), `channel` = `all` | `almamed` | `marketplaces` (default `all`) — режим UI **Альмамед + Маркеты / Альмамед / Маркеты**: режет KPI по `dg_new_products.channel` и выбирает CRM-привязки (`dg_np_crm_task_links.scope`). Для `all` часы CRM = сумма обоих scope; в ответе у менеджера есть `crm_links.{almamed,marketplaces}`.
 
 Ответ: `{ success, period: { from, to, days }, channel, managers[], unassigned }`. Строки без `responsible_user_id` — в `unassigned` («Без ответственного»), не в средних по людям. Список `managers` — пересечение специальности «Контент-Менеджер» с id, у которых есть данные в периоде / WIP.
 
@@ -1491,11 +1498,32 @@ KPI контент-отдела (вкладка **Статистика конт�
 
 В ответе также `crm: { configured, scope, error? }`.
 
+### GET `/api/exports/new-products/standing-stats`
+
+Доступ: матрица **`exports-new-products-standing`** (`hidden` / `view` / `full`).
+
+KPI постоянной задачи **«Проработка инфографики на товарах»** (вкладка **Постоянные задачи**, deep-link `#standing`). Ориентир: **`quota_per_day = 10`** карточек/день. Query: `from`, `to` (`YYYY-MM-DD`; по умолчанию последние 30 дней inclusive). CRM-привязки — только `dg_np_crm_task_links.scope = infographic`.
+
+Метрики — **средние по календарным дням** периода (не «норма × дни»: работа бывает не каждый день).
+
+Ответ: `{ success, period: { from, to, days }, quota_per_day, task_title, crm: { configured, scope, error? }, managers[] }`. Список `managers` — все активные пользователи со специальностью **«Контент-Менеджер»**.
+
+| Поле | Смысл |
+|------|--------|
+| `crm_task_id` / `crm_task_title` | привязка КМ → задача CRM (`scope=infographic`) |
+| `crm_hours` | сумма таймеров `rise_project_time` за период (или `0` / `null` без часов / без привязки) |
+| `period_days` | `period.days` (делитель для средних) |
+| `hours_per_ten` | среднее: `crm_hours / days` (время на ориентир 10 карточек/день) |
+| `minutes_per_card` | среднее: `(crm_hours × 60) / (days × 10)` минут на 1 карточку |
+
 ### PUT `/api/exports/new-products/crm-task-links`
 
-Доступ: матрица **`exports-new-products-stats`** (`full` для записи; `view` — только GET).
+Доступ зависит от `scope` (проверка в роуте):
 
-Привязка КМ к задаче CRM. Body: `{ user_id, crm_task_id, scope? }` (`scope` = `almamed` | `marketplaces`, default `marketplaces`). Пустой/`null`/`0` — снять привязку. GET того же пути — список привязок выбранного scope.
+- `almamed` | `marketplaces` → матрица **`exports-new-products-stats`**
+- `infographic` → матрица **`exports-new-products-standing`**
+
+`full` для записи; `view` — только GET того же пути с тем же scope. Body: `{ user_id, crm_task_id, scope? }` (`scope` = `almamed` | `marketplaces` | `infographic`, default `marketplaces`). Пустой/`null`/`0` — снять привязку. GET того же пути — список привязок указанного scope.
 
 ## Exports / Отснять товары
 
