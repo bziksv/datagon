@@ -33,6 +33,52 @@ function normalizeProductMatchLookup(v) {
         .trim();
 }
 
+/**
+ * Коэффициент упаковки на паре.
+ * @returns {{ ok: true, pack_qty: number|null, pack_basis: 'ours'|'competitor'|null } | { ok: false, error: string }}
+ */
+function parseMatchPackFields(body) {
+    const src = body && typeof body === 'object' ? body : {};
+    const rawQty = src.pack_qty;
+    const rawBasis = String(src.pack_basis || '')
+        .trim()
+        .toLowerCase();
+    const qtyEmpty =
+        rawQty == null ||
+        rawQty === '' ||
+        String(rawQty).trim() === '' ||
+        String(rawQty).trim() === '0' ||
+        String(rawQty).trim() === '1';
+    const basisEmpty = !rawBasis || rawBasis === 'none' || rawBasis === 'null';
+    if (qtyEmpty && basisEmpty) {
+        return { ok: true, pack_qty: null, pack_basis: null };
+    }
+    if (qtyEmpty || basisEmpty) {
+        return { ok: false, error: 'Укажите и режим упаковки, и количество N ≥ 2 (или оба пусто)' };
+    }
+    if (rawBasis !== 'ours' && rawBasis !== 'competitor') {
+        return { ok: false, error: 'pack_basis: ours | competitor' };
+    }
+    const qty = parseInt(String(rawQty).trim(), 10);
+    if (!Number.isFinite(qty) || qty < 2) {
+        return { ok: false, error: 'pack_qty должно быть целым ≥ 2' };
+    }
+    return { ok: true, pack_qty: qty, pack_basis: rawBasis };
+}
+
+/** Сопоставимая цена конкурента с учётом упаковки. */
+function applyPackToCompetitorPrice(rawPrice, packQty, packBasis) {
+    const raw = Number(rawPrice);
+    if (!Number.isFinite(raw)) return null;
+    const qty = Number(packQty);
+    const basis = String(packBasis || '').toLowerCase();
+    if (!Number.isFinite(qty) || qty < 2 || (basis !== 'ours' && basis !== 'competitor')) {
+        return raw;
+    }
+    if (basis === 'ours') return Math.round(raw * qty * 10000) / 10000;
+    return Math.round((raw / qty) * 10000) / 10000;
+}
+
 /** Одна строка DP Левенштейна; если итоговое расстояние > maxDist, возвращает maxDist+1 (ранний отказ не делаем — maxDist уже узкий). */
 function levenshteinBounded(a, b, maxDist) {
     if (a === b) return 0;
@@ -359,8 +405,17 @@ module.exports = (db, settings) => {
             {
                 name: 'matching_mode',
                 ddl: 'ALTER TABLE product_matches ADD COLUMN matching_mode VARCHAR(24) NULL'
+            },
+            {
+                name: 'pack_qty',
+                ddl: 'ALTER TABLE product_matches ADD COLUMN pack_qty INT NULL'
+            },
+            {
+                name: 'pack_basis',
+                ddl: "ALTER TABLE product_matches ADD COLUMN pack_basis VARCHAR(16) NULL"
             }
         ];
+        let allOk = true;
         for (const c of cols) {
             try {
                 const [rows] = await db.query(
@@ -373,9 +428,27 @@ module.exports = (db, settings) => {
                     [c.name]
                 );
                 if (!rows.length) await db.query(c.ddl);
+            } catch (e) {
+                allOk = false;
+                console.error('[matches] ensureProductMatchesOptionalCols', c.name, e.message || e);
+            }
+        }
+        // Не кэшируем успех, пока pack_* не на месте — иначе confirm молча ломается.
+        if (allOk) {
+            try {
+                const [chk] = await db.query(
+                    `SELECT COLUMN_NAME AS c
+                     FROM information_schema.columns
+                     WHERE table_schema = DATABASE()
+                       AND table_name = 'product_matches'
+                       AND column_name IN ('pack_qty', 'pack_basis')`
+                );
+                const have = new Set((chk || []).map((r) => r.c));
+                if (have.has('pack_qty') && have.has('pack_basis')) {
+                    productMatchesOptionalColsReady = true;
+                }
             } catch (_) {}
         }
-        productMatchesOptionalColsReady = true;
     }
 
     async function ensureMatchAuditColumns() {
@@ -2666,12 +2739,20 @@ module.exports = (db, settings) => {
                     (mySku ? myBySku.get(`${m.my_site_id}||${mySku}`) : null) ||
                     null;
                 const siteMeta = mySiteMeta.get(Number(m.my_site_id)) || {};
+                const rawCompPrice = compMatch?.price ?? null;
+                const packQty = m.pack_qty != null ? Number(m.pack_qty) : null;
+                const packBasis = m.pack_basis || null;
+                const comparable = applyPackToCompetitorPrice(rawCompPrice, packQty, packBasis);
                 return {
                     ...m,
+                    pack_qty: Number.isFinite(packQty) && packQty >= 2 ? packQty : null,
+                    pack_basis:
+                        packBasis === 'ours' || packBasis === 'competitor' ? packBasis : null,
                     my_price: myMatch?.price ?? m.my_price ?? null,
                     my_currency: myMatch?.currency || m.my_currency || null,
                     competitor_url: compMatch?.url || null,
-                    competitor_price: compMatch?.price ?? null,
+                    competitor_price: rawCompPrice,
+                    competitor_price_comparable: comparable,
                     competitor_currency: compMatch?.currency || null,
                     competitor_parsed_at: compMatch?.parsed_at || null,
                     my_product_url: myMatch?.source_url || null,
@@ -2690,11 +2771,14 @@ module.exports = (db, settings) => {
 
     // 5. Подтвердить сопоставление
     router.post('/confirm', async (req, res) => {
-        const { id } = req.body;
+        const { id } = req.body || {};
         try {
             await ensureMatchAuditColumns();
             await ensureMatchLaneTables();
             await ensureProductMatchIdentitySchema();
+            await ensureProductMatchesOptionalCols();
+            const pack = parseMatchPackFields(req.body || {});
+            if (!pack.ok) return res.status(400).json({ error: pack.error });
             const actRow = await loadProductMatchActivityRow(id);
             if (!actRow) return res.status(404).json({ error: 'Запись не найдена' });
             const row = {
@@ -2713,8 +2797,19 @@ module.exports = (db, settings) => {
                 actRow.competitor_name
             );
             await db.query(
-                'UPDATE product_matches SET status = "confirmed", confirmed_by = ?, confirmed_at = NOW(), unlinked_by = NULL, unlinked_at = NULL, rejected_by = NULL, rejected_at = NULL, match_identity_hash = ? WHERE id = ?',
-                [actor, idHash, id]
+                `UPDATE product_matches
+                 SET status = "confirmed",
+                     confirmed_by = ?,
+                     confirmed_at = NOW(),
+                     unlinked_by = NULL,
+                     unlinked_at = NULL,
+                     rejected_by = NULL,
+                     rejected_at = NULL,
+                     match_identity_hash = ?,
+                     pack_qty = ?,
+                     pack_basis = ?
+                 WHERE id = ?`,
+                [actor, idHash, pack.pack_qty, pack.pack_basis, id]
             );
             await db.query(
                 'DELETE FROM product_matches WHERE my_site_id = ? AND competitor_site_id = ? AND match_identity_hash = ? AND id <> ?',
@@ -2735,12 +2830,59 @@ module.exports = (db, settings) => {
                     competitor_site_id: row.competitor_site_id,
                     event: 'auto_confirmed',
                     message: 'Подтверждено авто-совпадение — запись снята с ручной очереди при наличии',
-                    detail: { product_match_id: id }
+                    detail: {
+                        product_match_id: id,
+                        pack_qty: pack.pack_qty,
+                        pack_basis: pack.pack_basis
+                    }
                 });
             }
-            await recordMatchesListUiActivity(req, 'confirm', actRow, { my_product_id_resolved: mpId || null });
-            res.json({ success: true });
-        } catch (e) { res.status(500).json({ error: e.message }); }
+            await recordMatchesListUiActivity(req, 'confirm', actRow, {
+                my_product_id_resolved: mpId || null,
+                pack_qty: pack.pack_qty,
+                pack_basis: pack.pack_basis
+            });
+            res.json({
+                success: true,
+                pack_qty: pack.pack_qty,
+                pack_basis: pack.pack_basis
+            });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    /** Правка коэффициента упаковки без смены статуса. */
+    router.patch('/:id/pack', async (req, res) => {
+        const id = parseInt(String(req.params.id || '').trim(), 10);
+        if (!Number.isFinite(id) || id < 1) {
+            return res.status(400).json({ error: 'Некорректный id' });
+        }
+        try {
+            await ensureProductMatchesOptionalCols();
+            await ensureMatchAuditColumns();
+            const pack = parseMatchPackFields(req.body || {});
+            if (!pack.ok) return res.status(400).json({ error: pack.error });
+            const actRow = await loadProductMatchActivityRow(id);
+            if (!actRow) return res.status(404).json({ error: 'Запись не найдена' });
+            await db.query('UPDATE product_matches SET pack_qty = ?, pack_basis = ? WHERE id = ?', [
+                pack.pack_qty,
+                pack.pack_basis,
+                id
+            ]);
+            await recordMatchesListUiActivity(req, 'pack_update', actRow, {
+                pack_qty: pack.pack_qty,
+                pack_basis: pack.pack_basis
+            });
+            return res.json({
+                success: true,
+                id,
+                pack_qty: pack.pack_qty,
+                pack_basis: pack.pack_basis
+            });
+        } catch (e) {
+            return res.status(500).json({ error: e.message });
+        }
     });
 
     // 6. Отклонить сопоставление
@@ -3530,6 +3672,9 @@ module.exports = (db, settings) => {
             await ensureMatchLaneTables();
             await ensureMatchAuditColumns();
             await ensureProductMatchIdentitySchema();
+            await ensureProductMatchesOptionalCols();
+            const pack = parseMatchPackFields(req.body || {});
+            if (!pack.ok) return res.status(400).json({ error: pack.error });
             const [[mp]] = await db.query(
                 'SELECT id, sku, name FROM my_products WHERE id = ? AND site_id = ? AND is_active = 1 LIMIT 1',
                 [myProductId, mySiteId]
@@ -3547,8 +3692,9 @@ module.exports = (db, settings) => {
             await db.query(
                 `INSERT INTO product_matches
                  (my_site_id, my_sku, my_product_name, competitor_site_id, competitor_sku, competitor_name,
-                  match_type, matching_mode, confidence_score, status, confirmed_by, confirmed_at, match_identity_hash)
-                 VALUES (?, ?, ?, ?, ?, ?, 'manual', 'manual', 1.0000, 'confirmed', ?, NOW(), ?)
+                  match_type, matching_mode, confidence_score, status, confirmed_by, confirmed_at, match_identity_hash,
+                  pack_qty, pack_basis)
+                 VALUES (?, ?, ?, ?, ?, ?, 'manual', 'manual', 1.0000, 'confirmed', ?, NOW(), ?, ?, ?)
                  ON DUPLICATE KEY UPDATE
                    status = 'confirmed',
                    confirmed_by = VALUES(confirmed_by),
@@ -3560,12 +3706,25 @@ module.exports = (db, settings) => {
                    my_product_name = VALUES(my_product_name),
                    competitor_sku = VALUES(competitor_sku),
                    competitor_name = VALUES(competitor_name),
+                   pack_qty = VALUES(pack_qty),
+                   pack_basis = VALUES(pack_basis),
                    rejected_by = NULL,
                    rejected_at = NULL,
                    unlinked_by = NULL,
                    unlinked_at = NULL,
                    updated_at = CURRENT_TIMESTAMP`,
-                [mySiteId, mp.sku || '', mp.name || '', competitorSiteId, competitorSku || null, competitorName || null, actor, idHash]
+                [
+                    mySiteId,
+                    mp.sku || '',
+                    mp.name || '',
+                    competitorSiteId,
+                    competitorSku || null,
+                    competitorName || null,
+                    actor,
+                    idHash,
+                    pack.pack_qty,
+                    pack.pack_basis
+                ]
             );
             const [[keepRow]] = await db.query(
                 `SELECT id FROM product_matches
@@ -3593,9 +3752,18 @@ module.exports = (db, settings) => {
                 competitor_site_id: competitorSiteId,
                 event: 'manual_confirmed',
                 message: 'Ручное сопоставление зафиксировано',
-                detail: { competitor_sku: competitorSku, competitor_name: competitorName }
+                detail: {
+                    competitor_sku: competitorSku,
+                    competitor_name: competitorName,
+                    pack_qty: pack.pack_qty,
+                    pack_basis: pack.pack_basis
+                }
             });
-            return res.json({ success: true });
+            return res.json({
+                success: true,
+                pack_qty: pack.pack_qty,
+                pack_basis: pack.pack_basis
+            });
         } catch (e) {
             return res.status(500).json({ error: e.message });
         }

@@ -883,6 +883,23 @@ function myProductsRouterFactory(db, settings) {
     async function enrichWithCompetitorPrices(rows) {
         if (!Array.isArray(rows) || !rows.length) return;
 
+        try {
+            const [cols] = await db.query(
+                `SELECT COLUMN_NAME AS c
+                 FROM information_schema.columns
+                 WHERE table_schema = DATABASE()
+                   AND table_name = 'product_matches'
+                   AND column_name IN ('pack_qty', 'pack_basis')`
+            );
+            const have = new Set((cols || []).map((r) => r.c));
+            if (!have.has('pack_qty')) {
+                await db.query('ALTER TABLE product_matches ADD COLUMN pack_qty INT NULL');
+            }
+            if (!have.has('pack_basis')) {
+                await db.query("ALTER TABLE product_matches ADD COLUMN pack_basis VARCHAR(16) NULL");
+            }
+        } catch (_) {}
+
         const mySiteIds = [...new Set(rows.map(r => Number(r.site_id)).filter(Number.isFinite))];
         const mySkus = [...new Set(rows.map(r => String(r.sku || '').trim()).filter(Boolean))];
         const myNamesNoSku = [...new Set(
@@ -920,6 +937,8 @@ function myProductsRouterFactory(db, settings) {
                 pm.competitor_site_id,
                 pm.competitor_sku,
                 pm.competitor_name,
+                pm.pack_qty,
+                pm.pack_basis,
                 p.name AS competitor_project_name
             FROM product_matches pm
             JOIN projects p ON p.id = pm.competitor_site_id
@@ -973,6 +992,27 @@ function myProductsRouterFactory(db, settings) {
             return '';
         }
 
+        function applyPackToCompetitorPrice(rawPrice, packQty, packBasis) {
+            const raw = Number(rawPrice);
+            if (!Number.isFinite(raw)) return null;
+            const qty = Number(packQty);
+            const basis = String(packBasis || '').toLowerCase();
+            if (!Number.isFinite(qty) || qty < 2 || (basis !== 'ours' && basis !== 'competitor')) {
+                return raw;
+            }
+            if (basis === 'ours') return Math.round(raw * qty * 10000) / 10000;
+            return Math.round((raw / qty) * 10000) / 10000;
+        }
+
+        function normalizePackMeta(m) {
+            const qty = m.pack_qty != null ? Number(m.pack_qty) : null;
+            const basis = String(m.pack_basis || '').toLowerCase();
+            if (!Number.isFinite(qty) || qty < 2 || (basis !== 'ours' && basis !== 'competitor')) {
+                return { pack_qty: null, pack_basis: null };
+            }
+            return { pack_qty: qty, pack_basis: basis };
+        }
+
         const matchMap = new Map();
         const auditMap = new Map();
         for (const m of matches) {
@@ -986,9 +1026,15 @@ function myProductsRouterFactory(db, settings) {
                 const skuKey = `${m.competitor_site_id}::${String(m.competitor_sku || '').trim()}`;
                 const nameKey = `${m.competitor_site_id}::${String(m.competitor_name || '').trim()}`;
                 const compValue = latestBySku.get(skuKey) ?? latestByName.get(nameKey) ?? null;
-                matchMap.get(rowKey)[`${kind}_price`] = compValue?.price ?? null;
+                const pack = normalizePackMeta(m);
+                const rawPrice = compValue?.price ?? null;
+                const comparable = applyPackToCompetitorPrice(rawPrice, pack.pack_qty, pack.pack_basis);
+                matchMap.get(rowKey)[`${kind}_price`] = comparable;
+                matchMap.get(rowKey)[`${kind}_price_list`] = rawPrice;
                 matchMap.get(rowKey)[`${kind}_currency`] = compValue?.currency || null;
                 matchMap.get(rowKey)[`${kind}_url`] = compValue?.url || null;
+                matchMap.get(rowKey)[`${kind}_pack_qty`] = pack.pack_qty;
+                matchMap.get(rowKey)[`${kind}_pack_basis`] = pack.pack_basis;
             }
 
             const confirmedAt = m.confirmed_at ? new Date(m.confirmed_at) : null;
@@ -1019,10 +1065,16 @@ function myProductsRouterFactory(db, settings) {
             const audit = auditMap.get(key) || null;
             r.dealmed_price = prices.dealmed_price ?? null;
             r.medkompleks_price = prices.medkompleks_price ?? null;
+            r.dealmed_price_list = prices.dealmed_price_list ?? null;
+            r.medkompleks_price_list = prices.medkompleks_price_list ?? null;
             r.dealmed_currency = prices.dealmed_currency ?? null;
             r.medkompleks_currency = prices.medkompleks_currency ?? null;
             r.dealmed_url = prices.dealmed_url ?? null;
             r.medkompleks_url = prices.medkompleks_url ?? null;
+            r.dealmed_pack_qty = prices.dealmed_pack_qty ?? null;
+            r.dealmed_pack_basis = prices.dealmed_pack_basis ?? null;
+            r.medkompleks_pack_qty = prices.medkompleks_pack_qty ?? null;
+            r.medkompleks_pack_basis = prices.medkompleks_pack_basis ?? null;
             r.match_last_action = audit?.action || null;
             r.match_last_by = audit?.by || null;
             r.match_last_at = audit?.when || null;

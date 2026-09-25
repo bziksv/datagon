@@ -576,12 +576,21 @@ Body: `{ my_site_id, competitor_site_id, my_product_id, product_match_id }` (`pr
 Фильтр «уже confirmed по названию» — **anti-join** к `DISTINCT` confirmed-имён (не коррелированный `NOT EXISTS`). Query: `my_site_id` (обяз.), опц. `competitor_site_id` / `search` / `exclusion_reason` / `limit` / `offset` / `include_total` (`0` — без COUNT). Ответ: `{ data, total, total_approx, limit, offset, include_total }`. COUNT кэшируется ~15 с и дедупится in-flight; на SELECT — `MAX_EXECUTION_TIME(15000)`. Индексы: `idx_pm_site_comp_status_name`, `idx_me_site_comp_updated` (через `ensureMatchesPerfIndexes`).
 
 ### POST `/api/matches/confirm`
-Подтвердить совпадение.
+Подтвердить совпадение. Опционально коэффициент упаковки для gap/синка цен:
 
 Body:
 ```json
-{ "id": 123 }
+{ "id": 123, "pack_qty": 12, "pack_basis": "ours" }
 ```
+
+- `pack_basis`: `ours` (наша упаковка = N шт. конкурента → цена×N) | `competitor` (мы поштучно, упаковка конкурента N → цена÷N)
+- оба пусто / без полей — сравнение 1:1
+- `pack_qty` целое ≥ 2
+
+В `GET /api/matches/list` у строки: `pack_qty`, `pack_basis`, `competitor_price` (лист), `competitor_price_comparable`.
+
+### PATCH `/api/matches/:id/pack`
+Сохранить/сбросить упаковку без смены статуса. Body: `{ "pack_qty", "pack_basis" }` (пусто — сброс).
 
 ### POST `/api/matches/reject`
 Отклонить совпадение.
@@ -594,6 +603,8 @@ Body:
 ### POST `/api/matches/unlink`
 
 Снять подтверждённое сопоставление (разорвать пару). Тело — идентификаторы записи матчинга (см. `routes/matches.js`).
+
+`POST /api/matches/manual-match/confirm` принимает те же опциональные `pack_qty` / `pack_basis`.
 
 ## Расширенные маршруты матчинга
 

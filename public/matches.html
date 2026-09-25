@@ -3190,6 +3190,100 @@
         return c ? pStr + " " + c : pStr;
       }
 
+      function readPackFromControls(basisSel, qtyInp) {
+        var basis = basisSel ? String(basisSel.value || "").trim() : "";
+        if (!basis || basis === "none") return { pack_qty: null, pack_basis: null };
+        var qty = qtyInp ? parseInt(String(qtyInp.value || "").trim(), 10) : NaN;
+        if (!Number.isFinite(qty) || qty < 2) {
+          return { error: "Укажите количество в упаковке (целое ≥ 2) или выберите «Без коэф.»" };
+        }
+        if (basis !== "ours" && basis !== "competitor") {
+          return { error: "Некорректный режим упаковки" };
+        }
+        return { pack_qty: qty, pack_basis: basis };
+      }
+
+      function syncPackQtyVisibility(basisSel, qtyWrap) {
+        if (!basisSel || !qtyWrap) return;
+        var v = String(basisSel.value || "");
+        qtyWrap.classList.toggle("d-none", !v || v === "none");
+      }
+
+      /** Блок «Упаковка» для шага 2 / шага 3. */
+      function buildPackControls(initial, opts) {
+        var o = opts || {};
+        var wrap = document.createElement("div");
+        wrap.className = "dg-matches-pack-box mb-2";
+        var lb = document.createElement("div");
+        lb.className = "small text-muted text-uppercase mb-1";
+        lb.textContent = "Упаковка";
+        wrap.appendChild(lb);
+
+        var basisSel = document.createElement("select");
+        basisSel.className = "form-select form-select-sm mb-1 dg-matches-pack-basis";
+        basisSel.setAttribute("data-dg-no-activity", "1");
+        [
+          ["none", "Без коэф."],
+          ["ours", "У нас упаковка (× N)"],
+          ["competitor", "У нас поштучно (÷ N)"],
+        ].forEach(function (pair) {
+          var opt = document.createElement("option");
+          opt.value = pair[0];
+          opt.textContent = pair[1];
+          basisSel.appendChild(opt);
+        });
+        var initBasis =
+          initial && (initial.pack_basis === "ours" || initial.pack_basis === "competitor")
+            ? initial.pack_basis
+            : "none";
+        basisSel.value = initBasis;
+        wrap.appendChild(basisSel);
+
+        var qtyWrap = document.createElement("div");
+        qtyWrap.className = "dg-matches-pack-qty-wrap";
+        var qtyLb = document.createElement("label");
+        qtyLb.className = "form-label mb-0 small text-muted";
+        qtyLb.textContent = "Кол-во в упаковке";
+        var qtyInp = document.createElement("input");
+        qtyInp.type = "number";
+        qtyInp.min = "2";
+        qtyInp.step = "1";
+        qtyInp.className = "form-control form-control-sm dg-matches-pack-qty";
+        qtyInp.setAttribute("data-dg-no-activity", "1");
+        qtyInp.setAttribute("inputmode", "numeric");
+        if (initial && Number(initial.pack_qty) >= 2) qtyInp.value = String(initial.pack_qty);
+        qtyWrap.appendChild(qtyLb);
+        qtyWrap.appendChild(qtyInp);
+        wrap.appendChild(qtyWrap);
+
+        basisSel.addEventListener("change", function () {
+          syncPackQtyVisibility(basisSel, qtyWrap);
+        });
+        syncPackQtyVisibility(basisSel, qtyWrap);
+
+        if (o.showSave) {
+          var bSave = document.createElement("button");
+          bSave.type = "button";
+          bSave.className = "btn btn-sm btn-outline-secondary mt-1";
+          bSave.setAttribute("data-dg-no-activity", "1");
+          bSave.textContent = "Сохранить упаковку";
+          bSave.addEventListener("click", function () {
+            if (typeof o.onSave === "function") o.onSave(basisSel, qtyInp);
+          });
+          wrap.appendChild(bSave);
+        }
+
+        return { wrap: wrap, basisSel: basisSel, qtyInp: qtyInp };
+      }
+
+      function formatPackBadge(packQty, packBasis) {
+        var q = Number(packQty);
+        if (!Number.isFinite(q) || q < 2) return "";
+        if (packBasis === "ours") return "×" + q;
+        if (packBasis === "competitor") return "÷" + q;
+        return "";
+      }
+
       function appendMatchesListProductBlock(td, sku, name, priceLine) {
         td.classList.add("dg-matches-product-cell");
         var stack = document.createElement("div");
@@ -4241,12 +4335,18 @@
           tr.appendChild(tdMy);
 
           var tdComp = document.createElement("td");
-          appendMatchesListProductBlock(
-            tdComp,
-            m.competitor_sku,
-            m.competitor_name,
-            formatMatchesListPriceLine(m.competitor_price, m.competitor_currency)
-          );
+          var compPriceLine = formatMatchesListPriceLine(m.competitor_price, m.competitor_currency);
+          var packBadge = formatPackBadge(m.pack_qty, m.pack_basis);
+          if (packBadge && m.competitor_price_comparable != null) {
+            compPriceLine =
+              formatMatchesListPriceLine(m.competitor_price, m.competitor_currency) +
+              " → " +
+              formatMatchesListPriceLine(m.competitor_price_comparable, m.competitor_currency) +
+              " (" +
+              packBadge +
+              ")";
+          }
+          appendMatchesListProductBlock(tdComp, m.competitor_sku, m.competitor_name, compPriceLine);
           var c4 = document.createElement("div");
           c4.className = "dg-matches-product-meta small text-muted mt-2";
           c4.textContent = "Обновлено: " + formatDateTime(m.competitor_parsed_at);
@@ -4279,14 +4379,29 @@
           var tdAct = document.createElement("td");
           tdAct.className = "dg-matches-act-cell";
           var st = String(m.status || "").toLowerCase();
+          var packUi = buildPackControls(
+            { pack_qty: m.pack_qty, pack_basis: m.pack_basis },
+            st === "confirmed"
+              ? {
+                  showSave: true,
+                  onSave: function (basisSel, qtyInp) {
+                    saveMatchPack(m.id, basisSel, qtyInp);
+                  },
+                }
+              : {}
+          );
+          if (st === "pending" || st === "confirmed") {
+            tdAct.appendChild(packUi.wrap);
+          }
           if (st === "pending") {
             var bOk = document.createElement("button");
             bOk.type = "button";
             bOk.className = "btn btn-sm btn-outline-success me-1";
             bOk.setAttribute("data-dg-no-activity", "1");
+            bOk.setAttribute("data-dg-notify-start", "Подтверждаем совпадение…");
             bOk.innerHTML = '<i class="pe-7s-check me-1"></i>Подтвердить';
             bOk.addEventListener("click", function () {
-              updateMatch(m.id, "confirmed");
+              updateMatch(m.id, "confirmed", packUi.basisSel, packUi.qtyInp);
             });
             var bNo = document.createElement("button");
             bNo.type = "button";
@@ -4666,8 +4781,18 @@
           });
       }
 
-      function updateMatch(id, action) {
+      function updateMatch(id, action, basisSel, qtyInp) {
         if (matchesRowMutationBusy) return;
+        var body = { id: id };
+        if (action === "confirmed") {
+          var pack = readPackFromControls(basisSel, qtyInp);
+          if (pack.error) {
+            alert(pack.error);
+            return;
+          }
+          body.pack_qty = pack.pack_qty;
+          body.pack_basis = pack.pack_basis;
+        }
         matchesRowMutationBusy = true;
         var endpoint =
           action === "confirmed"
@@ -4679,7 +4804,7 @@
           method: "POST",
           credentials: "same-origin",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: id }),
+          body: JSON.stringify(body),
         })
           .then(function (r) {
             return r.json().then(function (j) {
@@ -4698,6 +4823,40 @@
           })
           .catch(function (e) {
             alert(e.message || "Ошибка обновления статуса");
+          })
+          .finally(function () {
+            matchesRowMutationBusy = false;
+          });
+      }
+
+      function saveMatchPack(id, basisSel, qtyInp) {
+        if (matchesRowMutationBusy) return;
+        var pack = readPackFromControls(basisSel, qtyInp);
+        if (pack.error) {
+          alert(pack.error);
+          return;
+        }
+        matchesRowMutationBusy = true;
+        fetch("/api/matches/" + encodeURIComponent(id) + "/pack", {
+          method: "PATCH",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ pack_qty: pack.pack_qty, pack_basis: pack.pack_basis }),
+        })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { r: r, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Не удалось сохранить упаковку");
+            if (window.DatagonNotify && window.DatagonNotify.toast) {
+              window.DatagonNotify.toast({ type: "success", message: "Упаковка сохранена" });
+            }
+            loadMatches(true);
+          })
+          .catch(function (e) {
+            alert(e.message || "Ошибка сохранения упаковки");
           })
           .finally(function () {
             matchesRowMutationBusy = false;
@@ -5299,7 +5458,7 @@
           return listCompetitorId();
         }
 
-        function submitManualMatchConfirm(sid, cid, pid, cs, cn) {
+        function submitManualMatchConfirm(sid, cid, pid, cs, cn, packFields) {
           if (!sid || !cid || !Number.isFinite(pid) || pid < 1) {
             alert("Нужны сайт (списком в «Совпадениях»), конкурент (в селекте под строкой или в фильтре «Совпадения») и ID нашего товара.");
             return Promise.reject(new Error("bad_input"));
@@ -5308,17 +5467,22 @@
             alert("Укажите SKU или название позиции конкурента.");
             return Promise.reject(new Error("bad_input"));
           }
+          var body = {
+            my_site_id: parseInt(sid, 10),
+            competitor_site_id: parseInt(cid, 10),
+            my_product_id: pid,
+            competitor_sku: cs,
+            competitor_name: cn,
+          };
+          if (packFields && !packFields.error) {
+            body.pack_qty = packFields.pack_qty;
+            body.pack_basis = packFields.pack_basis;
+          }
           return fetch("/api/matches/manual-match/confirm", {
             method: "POST",
             credentials: "same-origin",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              my_site_id: parseInt(sid, 10),
-              competitor_site_id: parseInt(cid, 10),
-              my_product_id: pid,
-              competitor_sku: cs,
-              competitor_name: cn,
-            }),
+            body: JSON.stringify(body),
           })
             .then(function (r) {
               return r.json().then(function (j) {
@@ -5718,9 +5882,13 @@
           rowNm.appendChild(nameInp);
           confirmWrap.appendChild(rowNm);
 
+          var packUiManual = buildPackControls({});
+          confirmWrap.appendChild(packUiManual.wrap);
+
           var bConf = document.createElement("button");
           bConf.type = "button";
           bConf.className = "btn btn-sm btn-success";
+          bConf.setAttribute("data-dg-notify-start", "Подтверждаем вручную…");
           bConf.textContent = "Подтвердить вручную";
           bConf.addEventListener("click", function () {
             var sid = listSiteId();
@@ -5728,7 +5896,12 @@
             var pid = parseInt(String(pidInp.value || "").trim(), 10);
             var cs = String(skuInp.value || "").trim();
             var cn = String(nameInp.value || "").trim();
-            submitManualMatchConfirm(sid, cid, pid, cs, cn);
+            var pack = readPackFromControls(packUiManual.basisSel, packUiManual.qtyInp);
+            if (pack.error) {
+              alert(pack.error);
+              return;
+            }
+            submitManualMatchConfirm(sid, cid, pid, cs, cn, pack);
           });
           confirmWrap.appendChild(bConf);
 

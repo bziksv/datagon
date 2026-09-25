@@ -2646,7 +2646,21 @@
                   eurRate
                 );
 
-          function priceCell(ui, dev, urlField) {
+          function formatCompPackHint(packQty, packBasis, listPrice, currency) {
+            var q = Number(packQty);
+            if (!Number.isFinite(q) || q < 2) return "";
+            var mark = packBasis === "ours" ? "×" + q : packBasis === "competitor" ? "÷" + q : "";
+            if (!mark) return "";
+            var tip = "Упаковка " + mark;
+            if (listPrice != null && listPrice !== "") {
+              tip +=
+                "; лист: " +
+                formatBasePriceWithRub(listPrice, currency || "RUB", usdRate, eurRate).baseText;
+            }
+            return tip;
+          }
+
+          function priceCell(ui, dev, urlField, packHint) {
             var td = document.createElement("td");
             td.className = "text-end";
             td.appendChild(document.createTextNode(ui.baseText));
@@ -2660,6 +2674,13 @@
             d.className = "small " + deviationClass(dev);
             d.textContent = "Δ " + dev;
             td.appendChild(d);
+            if (packHint) {
+              var ph = document.createElement("div");
+              ph.className = "small text-info";
+              ph.textContent = packHint;
+              ph.setAttribute("data-dg-tooltip", packHint);
+              td.appendChild(ph);
+            }
             var sl = safeLink(r[urlField]);
             if (sl) {
               var wrap = document.createElement("div");
@@ -2765,8 +2786,32 @@
           tr.appendChild(tdText(r.sku || "—"));
           tr.appendChild(nameTd);
           tr.appendChild(myTd);
-          tr.appendChild(priceCell(dmPriceUi, dealmedDev, "dealmed_url"));
-          tr.appendChild(priceCell(mkPriceUi, medkompleksDev, "medkompleks_url"));
+          tr.appendChild(
+            priceCell(
+              dmPriceUi,
+              dealmedDev,
+              "dealmed_url",
+              formatCompPackHint(
+                r.dealmed_pack_qty,
+                r.dealmed_pack_basis,
+                r.dealmed_price_list,
+                r.dealmed_currency
+              )
+            )
+          );
+          tr.appendChild(
+            priceCell(
+              mkPriceUi,
+              medkompleksDev,
+              "medkompleks_url",
+              formatCompPackHint(
+                r.medkompleks_pack_qty,
+                r.medkompleks_pack_basis,
+                r.medkompleks_price_list,
+                r.medkompleks_currency
+              )
+            )
+          );
           tr.appendChild(tdText(r.currency || "—"));
           var stTd = document.createElement("td");
           stTd.className = "text-end";
