@@ -1375,7 +1375,7 @@ Body (JSON):
 
 ## Exports / Новые товары
 
-Префикс: `/api/exports/new-products`. Экран: `/exports-new-products.html` (подменю **Маркетплейсы**). Две вкладки UI: **Альмамед** (`channel=almamed`) и **Маркеты** (`channel=marketplaces`). Таблица `dg_new_products` (создаётся при первом запросе).
+Префикс: `/api/exports/new-products`. Экран: `/exports-new-products.html` (подменю **Маркетплейсы**). Вкладки UI: **Альмамед** (`channel=almamed`), **Маркеты** (`channel=marketplaces`), **Статистика контент-отдела** (отдельный `GET /content-stats`, не list API). Таблица `dg_new_products` (создаётся при первом запросе).
 
 **UI / wide-таблица (lock):** плавающая шапка — `#dg-np-float-host` (`position: fixed` клон thead), **не** `translate3d` на живом `#dg-np-thead` (тяжёлая таблица; shop-схема Ozon сюда не копировать). Ширины — только `<colgroup>`, `table-layout: auto`. Контракт: `.cursor/rules/datagon-table-behavior-lock.mdc` (раздел «Новые товары»).
 
@@ -1464,6 +1464,22 @@ Query `exclude_verified=1` (алиас `hide_placed=1`): при пустом `st
 ### GET `/api/exports/new-products/assignees` · `GET /meta`
 
 `assignees`: `managers[]` — специальность **«Менеджер маркетплейсов»** (колонка/фильтр «Менеджер товара»); `responsibles[]` — только **«Контент-Менеджер»** (колонка/фильтр «Ответственный»); `data` = `managers` (back-compat). Meta — `statuses_almamed`, `statuses_marketplaces`, `required_fields_marketplaces`, `infographic_options`, `photo_options`.
+
+### GET `/api/exports/new-products/content-stats`
+
+KPI контент-отдела (вкладка **Статистика контент-отдела**). Query: `from`, `to` (`YYYY-MM-DD`; по умолчанию последние 30 календарных дней inclusive), `channel` = `all` | `almamed` | `marketplaces` (default `all`).
+
+Ответ: `{ success, period: { from, to, days }, channel, managers[], unassigned }`. Строки без `responsible_user_id` — в `unassigned` («Без ответственного»), не в средних по людям. Список `managers` — пересечение специальности «Контент-Менеджер» с id, у которых есть данные в периоде / WIP.
+
+Поля на менеджере:
+
+| Поле | Смысл |
+|------|--------|
+| `created_count` / `created_per_day` | строки с `created_at` в периоде ÷ `period.days` |
+| `placement_*` | товары с событием размещения в периоде: `COALESCE(placement_date, almamed_added_at)`, иначе первый лог `status` → «Добавлен»/«Проверен»; среднее и медиана часов `(placement_ts − created_at)` только при положительном интервале |
+| `revision_events` / `revision_products` / `revision_avg_per_product` | лог `status` → «На доработке» в периоде; assignee = текущий `np.responsible_user_id` |
+| `verified_count` | лог `status` → «Проверен» в периоде |
+| `wip_now` | снимок очереди сейчас: `new` / `not_added` / `in_progress` / `revision` / `review` (+ `total`), без периода |
 
 ## Exports / Отснять товары
 

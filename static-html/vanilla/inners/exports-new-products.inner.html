@@ -16,13 +16,17 @@
 
           <ul class="nav nav-tabs dg-np-tabs mb-3" id="dg-np-tabs" role="tablist">
             <li class="nav-item">
-              <button type="button" class="nav-link active" data-dg-np-channel="almamed" id="dg-np-tab-almamed">Альмамед</button>
+              <button type="button" class="nav-link active" data-dg-np-view="table" data-dg-np-channel="almamed" id="dg-np-tab-almamed">Альмамед</button>
             </li>
             <li class="nav-item">
-              <button type="button" class="nav-link" data-dg-np-channel="marketplaces" id="dg-np-tab-markets">Размещение на маркеты</button>
+              <button type="button" class="nav-link" data-dg-np-view="table" data-dg-np-channel="marketplaces" id="dg-np-tab-markets">Размещение на маркеты</button>
+            </li>
+            <li class="nav-item">
+              <button type="button" class="nav-link" data-dg-np-view="stats" id="dg-np-tab-stats">Статистика контент-отдела</button>
             </li>
           </ul>
 
+          <div id="dg-np-queue-panel">
           <div class="main-card mb-3 card">
             <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
               <div class="d-flex align-items-center">
@@ -200,6 +204,138 @@
                   <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-np-prev">Назад</button>
                   <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-np-next">Вперёд</button>
                 </div>
+              </div>
+            </div>
+          </div>
+          </div><!-- /#dg-np-queue-panel -->
+
+          <div id="dg-np-stats-panel" class="d-none">
+            <div class="main-card mb-3 card">
+              <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+                <div class="d-flex align-items-center">
+                  <i class="header-icon pe-7s-graph icon-gradient bg-happy-fisher me-2"> </i>
+                  <span>Статистика контент-отдела</span>
+                </div>
+              </div>
+              <div class="card-body">
+                <div class="d-flex flex-wrap align-items-end gap-2">
+                  <div style="min-width: 8.5rem">
+                    <label class="form-label mb-1" for="dg-np-stats-preset">Период</label>
+                    <select class="form-select form-select-sm" id="dg-np-stats-preset" data-dg-no-activity="1"
+                      data-dg-tooltip="Календарные дни inclusive. Метрики «добавлено / размещено / доработки / проверено» считаются только внутри этого окна.">
+                      <option value="7">7 дней</option>
+                      <option value="30" selected>30 дней</option>
+                      <option value="90">90 дней</option>
+                      <option value="custom">Свой период</option>
+                    </select>
+                  </div>
+                  <div class="dg-np-stats-custom d-none" style="min-width: 9rem">
+                    <label class="form-label mb-1" for="dg-np-stats-from">С</label>
+                    <input type="date" class="form-control form-control-sm" id="dg-np-stats-from" data-dg-no-activity="1" />
+                  </div>
+                  <div class="dg-np-stats-custom d-none" style="min-width: 9rem">
+                    <label class="form-label mb-1" for="dg-np-stats-to">По</label>
+                    <input type="date" class="form-control form-control-sm" id="dg-np-stats-to" data-dg-no-activity="1" />
+                  </div>
+                  <div style="min-width: 8.5rem">
+                    <label class="form-label mb-1" for="dg-np-stats-channel">Канал</label>
+                    <select class="form-select form-select-sm" id="dg-np-stats-channel" data-dg-no-activity="1"
+                      data-dg-tooltip="Фильтр по channel строки: Альмамед, Маркеты или оба. WIP «сейчас» тоже режется этим каналом.">
+                      <option value="all" selected>Оба</option>
+                      <option value="almamed">Альмамед</option>
+                      <option value="marketplaces">Маркеты</option>
+                    </select>
+                  </div>
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-primary"
+                    id="dg-np-stats-apply"
+                    data-dg-notify-start="Считаем статистику…"
+                    data-dg-tooltip="Пересчитать KPI по выбранному периоду и каналу"
+                  >
+                    Применить
+                  </button>
+                  <span class="text-muted small ms-1" id="dg-np-stats-period-hint"></span>
+                </div>
+                <div id="dg-np-stats-action-log" class="small text-danger mt-2 d-none" role="status"></div>
+
+                <div class="row g-2 mt-3" id="dg-np-stats-summary">
+                  <div class="col-6 col-md">
+                    <div class="card border dg-np-stats-kpi-card h-100" data-dg-tooltip="Сумма «Добавлено» по всем КМ и «Без ответственного»: COUNT строк dg_new_products с created_at в периоде (без удалённых).">
+                      <div class="card-body py-2 px-3">
+                        <div class="text-muted small">Добавлено</div>
+                        <div class="h5 mb-0 fw-bold" id="dg-np-stats-kpi-created">—</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="col-6 col-md">
+                    <div class="card border dg-np-stats-kpi-card h-100" data-dg-tooltip="Среднее время до размещения по отделу: среднее арифметическое placement_avg_hours КМ, взвешенное по числу размещённых. Порог подсветки в таблице: &gt;7 дн. жёлтый, &gt;14 дн. красный.">
+                      <div class="card-body py-2 px-3">
+                        <div class="text-muted small">До размещ. (ср.)</div>
+                        <div class="h5 mb-0 fw-bold" id="dg-np-stats-kpi-place">—</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="col-6 col-md">
+                    <div class="card border dg-np-stats-kpi-card h-100" data-dg-tooltip="Сумма событий лога status→«На доработке» в периоде по всем строкам (на текущего ответственного товара).">
+                      <div class="card-body py-2 px-3">
+                        <div class="text-muted small">Доработки</div>
+                        <div class="h5 mb-0 fw-bold" id="dg-np-stats-kpi-rev">—</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="col-6 col-md">
+                    <div class="card border dg-np-stats-kpi-card h-100" data-dg-tooltip="Снимок очереди сейчас (без периода): сумма new+not_added+in_progress+revision+review по всем КМ и без ответственного.">
+                      <div class="card-body py-2 px-3">
+                        <div class="text-muted small">В работе сейчас</div>
+                        <div class="h5 mb-0 fw-bold" id="dg-np-stats-kpi-wip">—</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="col-6 col-md">
+                    <div class="card border dg-np-stats-kpi-card h-100" data-dg-tooltip="Товары без responsible_user_id: сколько добавлено в периоде и сколько сейчас в WIP. Жёлтая подсветка строки, если WIP ≥ 10.">
+                      <div class="card-body py-2 px-3">
+                        <div class="text-muted small">Без ответственного</div>
+                        <div class="h5 mb-0 fw-bold" id="dg-np-stats-kpi-unassigned">—</div>
+                        <div class="small text-muted" id="dg-np-stats-kpi-unassigned-sub"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="main-card mb-3 card">
+              <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+                <div class="d-flex align-items-center">
+                  <i class="header-icon pe-7s-users icon-gradient bg-happy-itmeo me-2"> </i>
+                  <span>KPI по контент-менеджерам</span>
+                </div>
+                <span class="small text-muted" id="dg-np-stats-sort-hint"
+                  data-dg-tooltip="Клик по заголовку сортирует. По умолчанию — «Добавлено» по убыванию. «Без ответственного» всегда внизу."
+                  >Сортировка: Добавлено ↓</span>
+              </div>
+              <div class="card-body">
+                <div class="table-responsive">
+                  <table class="table table-sm table-hover table-bordered mb-0" id="dg-np-stats-table">
+                    <thead id="dg-np-stats-thead"></thead>
+                    <tbody id="dg-np-stats-tbody">
+                      <tr>
+                        <td colspan="10" class="text-muted text-center py-3">Нажмите «Применить»</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <p class="small text-muted mt-2 mb-0">
+                  Чипы WIP:
+                  <span class="dg-np-stats-wip-chip dg-np-stats-wip-progress"><span class="dg-np-stats-wip-lab">Раб</span></span>
+                  в работе ·
+                  <span class="dg-np-stats-wip-chip dg-np-stats-wip-revision"><span class="dg-np-stats-wip-lab">Дор</span></span>
+                  доработка ·
+                  <span class="dg-np-stats-wip-chip dg-np-stats-wip-review"><span class="dg-np-stats-wip-lab">Пров</span></span>
+                  на проверку ·
+                  <span class="dg-np-stats-wip-chip dg-np-stats-wip-new"><span class="dg-np-stats-wip-lab">Нов</span></span>
+                  новый/не добавлен. Наведите на заголовок колонки — формула расчёта.
+                </p>
               </div>
             </div>
           </div>

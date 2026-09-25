@@ -687,6 +687,119 @@
     border: 1px solid transparent;
     cursor: pointer;
   }
+
+  /* Статистика КМ: WIP-чипы вместо «в раб. N; пров. M» */
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-stats-wip-cell {
+    text-align: left;
+    vertical-align: middle;
+    min-width: 11rem;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-stats-wip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.28rem;
+    justify-content: flex-start;
+    align-items: center;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-stats-wip-chip {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.28rem;
+    padding: 0.18rem 0.45rem;
+    border-radius: 0.35rem;
+    border: 1px solid transparent;
+    font-size: 0.72rem;
+    line-height: 1.15;
+    white-space: nowrap;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-stats-wip-lab {
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    opacity: 0.88;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-stats-wip-num {
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-stats-wip-progress {
+    background: #e8f1ff;
+    color: #2554b8;
+    border-color: #c5d8f7;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-stats-wip-revision {
+    background: #fff3e0;
+    color: #b45309;
+    border-color: #f5d0a8;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-stats-wip-review {
+    background: #e7f7fb;
+    color: #0e7490;
+    border-color: #b6e4ef;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-stats-wip-new {
+    background: #f1f3f5;
+    color: #495057;
+    border-color: #dee2e6;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-stats-wip-empty {
+    font-size: 0.85rem;
+  }
+
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-stats-kpi-card {
+    background: #f8fafc;
+    box-shadow: none;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-stats-kpi-card .card-body {
+    cursor: help;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-stats-th.dg-np-stats-sortable {
+    user-select: text;
+    -webkit-user-select: text;
+    white-space: nowrap;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-stats-th.dg-np-stats-sortable:hover {
+    background: #f1f5f9;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-stats-sort-mark {
+    color: #3f6ad8;
+    font-weight: 700;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-stats-cell-warn {
+    background: #fff8e6 !important;
+    color: #9a6700;
+    font-weight: 600;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-stats-cell-danger {
+    background: #fde8e8 !important;
+    color: #b42318;
+    font-weight: 700;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] tr.dg-np-stats-row-unassigned > td {
+    background: #f1f3f5;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] tr.dg-np-stats-row-unassigned-hot > td {
+    background: #fff4e5;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-stats-perday {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.2rem;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-stats-perday-bar {
+    display: block;
+    width: 4.5rem;
+    height: 4px;
+    border-radius: 2px;
+    background: #e9ecef;
+    overflow: hidden;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-stats-perday-fill {
+    display: block;
+    height: 100%;
+    background: linear-gradient(90deg, #8eb8ff, #3f6ad8);
+    border-radius: 2px;
+  }
 </style>
 
   <style>
@@ -1383,13 +1496,17 @@
 
           <ul class="nav nav-tabs dg-np-tabs mb-3" id="dg-np-tabs" role="tablist">
             <li class="nav-item">
-              <button type="button" class="nav-link active" data-dg-np-channel="almamed" id="dg-np-tab-almamed">Альмамед</button>
+              <button type="button" class="nav-link active" data-dg-np-view="table" data-dg-np-channel="almamed" id="dg-np-tab-almamed">Альмамед</button>
             </li>
             <li class="nav-item">
-              <button type="button" class="nav-link" data-dg-np-channel="marketplaces" id="dg-np-tab-markets">Размещение на маркеты</button>
+              <button type="button" class="nav-link" data-dg-np-view="table" data-dg-np-channel="marketplaces" id="dg-np-tab-markets">Размещение на маркеты</button>
+            </li>
+            <li class="nav-item">
+              <button type="button" class="nav-link" data-dg-np-view="stats" id="dg-np-tab-stats">Статистика контент-отдела</button>
             </li>
           </ul>
 
+          <div id="dg-np-queue-panel">
           <div class="main-card mb-3 card">
             <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
               <div class="d-flex align-items-center">
@@ -1570,6 +1687,138 @@
               </div>
             </div>
           </div>
+          </div><!-- /#dg-np-queue-panel -->
+
+          <div id="dg-np-stats-panel" class="d-none">
+            <div class="main-card mb-3 card">
+              <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+                <div class="d-flex align-items-center">
+                  <i class="header-icon pe-7s-graph icon-gradient bg-happy-fisher me-2"> </i>
+                  <span>Статистика контент-отдела</span>
+                </div>
+              </div>
+              <div class="card-body">
+                <div class="d-flex flex-wrap align-items-end gap-2">
+                  <div style="min-width: 8.5rem">
+                    <label class="form-label mb-1" for="dg-np-stats-preset">Период</label>
+                    <select class="form-select form-select-sm" id="dg-np-stats-preset" data-dg-no-activity="1"
+                      data-dg-tooltip="Календарные дни inclusive. Метрики «добавлено / размещено / доработки / проверено» считаются только внутри этого окна.">
+                      <option value="7">7 дней</option>
+                      <option value="30" selected>30 дней</option>
+                      <option value="90">90 дней</option>
+                      <option value="custom">Свой период</option>
+                    </select>
+                  </div>
+                  <div class="dg-np-stats-custom d-none" style="min-width: 9rem">
+                    <label class="form-label mb-1" for="dg-np-stats-from">С</label>
+                    <input type="date" class="form-control form-control-sm" id="dg-np-stats-from" data-dg-no-activity="1" />
+                  </div>
+                  <div class="dg-np-stats-custom d-none" style="min-width: 9rem">
+                    <label class="form-label mb-1" for="dg-np-stats-to">По</label>
+                    <input type="date" class="form-control form-control-sm" id="dg-np-stats-to" data-dg-no-activity="1" />
+                  </div>
+                  <div style="min-width: 8.5rem">
+                    <label class="form-label mb-1" for="dg-np-stats-channel">Канал</label>
+                    <select class="form-select form-select-sm" id="dg-np-stats-channel" data-dg-no-activity="1"
+                      data-dg-tooltip="Фильтр по channel строки: Альмамед, Маркеты или оба. WIP «сейчас» тоже режется этим каналом.">
+                      <option value="all" selected>Оба</option>
+                      <option value="almamed">Альмамед</option>
+                      <option value="marketplaces">Маркеты</option>
+                    </select>
+                  </div>
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-primary"
+                    id="dg-np-stats-apply"
+                    data-dg-notify-start="Считаем статистику…"
+                    data-dg-tooltip="Пересчитать KPI по выбранному периоду и каналу"
+                  >
+                    Применить
+                  </button>
+                  <span class="text-muted small ms-1" id="dg-np-stats-period-hint"></span>
+                </div>
+                <div id="dg-np-stats-action-log" class="small text-danger mt-2 d-none" role="status"></div>
+
+                <div class="row g-2 mt-3" id="dg-np-stats-summary">
+                  <div class="col-6 col-md">
+                    <div class="card border dg-np-stats-kpi-card h-100" data-dg-tooltip="Сумма «Добавлено» по всем КМ и «Без ответственного»: COUNT строк dg_new_products с created_at в периоде (без удалённых).">
+                      <div class="card-body py-2 px-3">
+                        <div class="text-muted small">Добавлено</div>
+                        <div class="h5 mb-0 fw-bold" id="dg-np-stats-kpi-created">—</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="col-6 col-md">
+                    <div class="card border dg-np-stats-kpi-card h-100" data-dg-tooltip="Среднее время до размещения по отделу: среднее арифметическое placement_avg_hours КМ, взвешенное по числу размещённых. Порог подсветки в таблице: &gt;7 дн. жёлтый, &gt;14 дн. красный.">
+                      <div class="card-body py-2 px-3">
+                        <div class="text-muted small">До размещ. (ср.)</div>
+                        <div class="h5 mb-0 fw-bold" id="dg-np-stats-kpi-place">—</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="col-6 col-md">
+                    <div class="card border dg-np-stats-kpi-card h-100" data-dg-tooltip="Сумма событий лога status→«На доработке» в периоде по всем строкам (на текущего ответственного товара).">
+                      <div class="card-body py-2 px-3">
+                        <div class="text-muted small">Доработки</div>
+                        <div class="h5 mb-0 fw-bold" id="dg-np-stats-kpi-rev">—</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="col-6 col-md">
+                    <div class="card border dg-np-stats-kpi-card h-100" data-dg-tooltip="Снимок очереди сейчас (без периода): сумма new+not_added+in_progress+revision+review по всем КМ и без ответственного.">
+                      <div class="card-body py-2 px-3">
+                        <div class="text-muted small">В работе сейчас</div>
+                        <div class="h5 mb-0 fw-bold" id="dg-np-stats-kpi-wip">—</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="col-6 col-md">
+                    <div class="card border dg-np-stats-kpi-card h-100" data-dg-tooltip="Товары без responsible_user_id: сколько добавлено в периоде и сколько сейчас в WIP. Жёлтая подсветка строки, если WIP ≥ 10.">
+                      <div class="card-body py-2 px-3">
+                        <div class="text-muted small">Без ответственного</div>
+                        <div class="h5 mb-0 fw-bold" id="dg-np-stats-kpi-unassigned">—</div>
+                        <div class="small text-muted" id="dg-np-stats-kpi-unassigned-sub"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="main-card mb-3 card">
+              <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+                <div class="d-flex align-items-center">
+                  <i class="header-icon pe-7s-users icon-gradient bg-happy-itmeo me-2"> </i>
+                  <span>KPI по контент-менеджерам</span>
+                </div>
+                <span class="small text-muted" id="dg-np-stats-sort-hint"
+                  data-dg-tooltip="Клик по заголовку сортирует. По умолчанию — «Добавлено» по убыванию. «Без ответственного» всегда внизу."
+                  >Сортировка: Добавлено ↓</span>
+              </div>
+              <div class="card-body">
+                <div class="table-responsive">
+                  <table class="table table-sm table-hover table-bordered mb-0" id="dg-np-stats-table">
+                    <thead id="dg-np-stats-thead"></thead>
+                    <tbody id="dg-np-stats-tbody">
+                      <tr>
+                        <td colspan="10" class="text-muted text-center py-3">Нажмите «Применить»</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <p class="small text-muted mt-2 mb-0">
+                  Чипы WIP:
+                  <span class="dg-np-stats-wip-chip dg-np-stats-wip-progress"><span class="dg-np-stats-wip-lab">Раб</span></span>
+                  в работе ·
+                  <span class="dg-np-stats-wip-chip dg-np-stats-wip-revision"><span class="dg-np-stats-wip-lab">Дор</span></span>
+                  доработка ·
+                  <span class="dg-np-stats-wip-chip dg-np-stats-wip-review"><span class="dg-np-stats-wip-lab">Пров</span></span>
+                  на проверку ·
+                  <span class="dg-np-stats-wip-chip dg-np-stats-wip-new"><span class="dg-np-stats-wip-lab">Нов</span></span>
+                  новый/не добавлен. Наведите на заголовок колонки — формула расчёта.
+                </p>
+              </div>
+            </div>
+          </div>
 
           <div id="dg-np-log-overlay" class="dg-np-log-overlay" style="display: none" aria-hidden="true">
             <div class="dg-np-log-backdrop" id="dg-np-log-backdrop"></div>
@@ -1745,6 +1994,8 @@
 
   var state = {
     channel: "almamed",
+    /** table | stats — третья вкладка KPI, не channel list API */
+    view: "table",
     rows: [],
     total: 0,
     limit: 100,
@@ -1775,6 +2026,8 @@
     loading: false,
     visibleCols: new Set(),
     columnWidths: {},
+    statsData: null,
+    statsSort: { key: "created_count", dir: "desc" },
   };
 
   var STATUS_OPTS_ALMAMED = [
@@ -2884,10 +3137,25 @@
   }
 
   function syncTabUi() {
-    var isMp = state.channel === "marketplaces";
-    document.querySelectorAll("#dg-np-tabs [data-dg-np-channel]").forEach(function (btn) {
-      btn.classList.toggle("active", btn.getAttribute("data-dg-np-channel") === state.channel);
+    var isStats = state.view === "stats";
+    document.querySelectorAll("#dg-np-tabs .nav-link").forEach(function (btn) {
+      var view = btn.getAttribute("data-dg-np-view") || "table";
+      if (view === "stats") {
+        btn.classList.toggle("active", isStats);
+      } else {
+        btn.classList.toggle(
+          "active",
+          !isStats && btn.getAttribute("data-dg-np-channel") === state.channel
+        );
+      }
     });
+    var queuePanel = el("dg-np-queue-panel");
+    var statsPanel = el("dg-np-stats-panel");
+    if (queuePanel) queuePanel.classList.toggle("d-none", isStats);
+    if (statsPanel) statsPanel.classList.toggle("d-none", !isStats);
+    if (isStats) return;
+
+    var isMp = state.channel === "marketplaces";
     var title = el("dg-np-table-title");
     if (title) {
       title.textContent = isMp ? "Выгрузка Размещение на маркеты" : "Выгрузка Альмамед";
@@ -5259,7 +5527,600 @@
       });
   }
 
+  var STATS_PLACE_WARN_H = 7 * 24;
+  var STATS_PLACE_DANGER_H = 14 * 24;
+  var STATS_REV_WARN = 5;
+  var STATS_REV_DANGER = 15;
+  var STATS_UNASSIGNED_WIP_WARN = 10;
+
+  var STATS_COLS = [
+    {
+      key: "name",
+      label: "Контент-менеджер",
+      tip: "Специальность «Контент-Менеджер» + все responsible_user_id с данными. «Без ответственного» — строки без responsible_user_id (не входят в средние по людям).",
+      align: "start",
+      sort: true,
+    },
+    {
+      key: "created_count",
+      label: "Добавлено",
+      tip: "COUNT(*) товаров с created_at в периоде и данным ответственным (канал из фильтра, без status=removed).",
+      align: "end",
+      sort: true,
+    },
+    {
+      key: "created_per_day",
+      label: "Добавл./день",
+      tip: "Добавлено ÷ число календарных дней периода (включая дни с нулём). Полоска — доля от лучшего КМ в таблице.",
+      align: "end",
+      sort: true,
+    },
+    {
+      key: "placement_count",
+      label: "Размещено",
+      tip: "Товары, у которых событие размещения попало в период: COALESCE(placement_date, almamed_added_at), иначе первый лог status→«Добавлен»/«Проверен».",
+      align: "end",
+      sort: true,
+    },
+    {
+      key: "placement_avg_hours",
+      label: "До размещ. (ср.)",
+      tip: "Среднее (placement_ts − created_at) в часах, только положительные интервалы. Жёлтый >7 дн., красный >14 дн.",
+      align: "end",
+      sort: true,
+    },
+    {
+      key: "placement_median_hours",
+      label: "До размещ. (мед.)",
+      tip: "Медиана тех же интервалов, что и среднее. Устойчивее к выбросам одного долгого товара.",
+      align: "end",
+      sort: true,
+    },
+    {
+      key: "revision_events",
+      label: "Доработки",
+      tip: "События лога status→«На доработке» в периоде. Assignee = текущий responsible_user_id товара (истории на момент события нет). Жёлтый ≥5, красный ≥15.",
+      align: "end",
+      sort: true,
+    },
+    {
+      key: "revision_avg_per_product",
+      label: "Дораб./товар",
+      tip: "Доработки ÷ число уникальных product_id с ≥1 доработкой в периоде.",
+      align: "end",
+      sort: true,
+    },
+    {
+      key: "verified_count",
+      label: "Проверено",
+      tip: "События лога status→«Проверен» в периоде (на текущего ответственного).",
+      align: "end",
+      sort: true,
+    },
+    {
+      key: "wip_total",
+      label: "В работе сейчас",
+      tip: "Снимок очереди без периода: чипы Раб / Дор / Пров / Нов. Сортировка — по сумме WIP.",
+      align: "start",
+      sort: true,
+    },
+  ];
+
+  function fmtInt(n) {
+    var v = Number(n) || 0;
+    if (window.DatagonFmt && window.DatagonFmt.formatInteger) return window.DatagonFmt.formatInteger(v);
+    if (window.DatagonFmt && window.DatagonFmt.formatNumber) return window.DatagonFmt.formatNumber(v);
+    return String(v).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  }
+
+  function fmtPerDay(n) {
+    if (n == null || !Number.isFinite(Number(n))) return "—";
+    var v = Number(n);
+    if (window.DatagonFmt && window.DatagonFmt.formatNumber) {
+      return window.DatagonFmt.formatNumber(v, { maxFractionDigits: 2, minFractionDigits: 0 });
+    }
+    return String(Math.round(v * 100) / 100);
+  }
+
+  /** Часы → «X дн. Y ч.» */
+  function fmtDurationHours(hours) {
+    if (hours == null || !Number.isFinite(Number(hours))) return "—";
+    var h = Math.max(0, Number(hours));
+    var days = Math.floor(h / 24);
+    var rem = Math.round(h - days * 24);
+    if (rem === 24) {
+      days += 1;
+      rem = 0;
+    }
+    if (days <= 0) return rem + " ч.";
+    if (rem <= 0) return days + " дн.";
+    return days + " дн. " + rem + " ч.";
+  }
+
+  function wipTotal(wip) {
+    if (!wip) return 0;
+    if (wip.total != null) return Number(wip.total) || 0;
+    return (
+      (Number(wip.new) || 0) +
+      (Number(wip.not_added) || 0) +
+      (Number(wip.in_progress) || 0) +
+      (Number(wip.revision) || 0) +
+      (Number(wip.review) || 0)
+    );
+  }
+
+  function statsSortValue(m, key) {
+    if (key === "name") return String(m.name || "").toLowerCase();
+    if (key === "wip_total") return wipTotal(m.wip_now);
+    var v = m[key];
+    if (v == null || v === "") return key.indexOf("hours") >= 0 || key.indexOf("avg") >= 0 ? -1 : 0;
+    return Number(v);
+  }
+
+  function renderWipNowCell(wip) {
+    var wrap = document.createElement("div");
+    wrap.className = "dg-np-stats-wip";
+    wrap.setAttribute(
+      "data-dg-tooltip",
+      "Снимок очереди сейчас (не за период). Раб=в работе, Дор=на доработке, Пров=на проверку, Нов=новый+не добавлен."
+    );
+    var items = [
+      {
+        n: Number(wip && wip.in_progress) || 0,
+        short: "Раб",
+        title: "В работе",
+        cls: "dg-np-stats-wip-chip dg-np-stats-wip-progress",
+      },
+      {
+        n: Number(wip && wip.revision) || 0,
+        short: "Дор",
+        title: "На доработке",
+        cls: "dg-np-stats-wip-chip dg-np-stats-wip-revision",
+      },
+      {
+        n: Number(wip && wip.review) || 0,
+        short: "Пров",
+        title: "На проверку",
+        cls: "dg-np-stats-wip-chip dg-np-stats-wip-review",
+      },
+      {
+        n: (Number(wip && wip.new) || 0) + (Number(wip && wip.not_added) || 0),
+        short: "Нов",
+        title: "Новый / не добавлен",
+        cls: "dg-np-stats-wip-chip dg-np-stats-wip-new",
+      },
+    ];
+    var shown = items.filter(function (it) {
+      return it.n > 0;
+    });
+    if (!shown.length) {
+      var empty = document.createElement("span");
+      empty.className = "dg-np-stats-wip-empty text-muted";
+      empty.textContent = "0";
+      wrap.appendChild(empty);
+      return wrap;
+    }
+    shown.forEach(function (it) {
+      var chip = document.createElement("span");
+      chip.className = it.cls;
+      chip.setAttribute("data-dg-tooltip", it.title + ": " + it.n);
+      var lab = document.createElement("span");
+      lab.className = "dg-np-stats-wip-lab";
+      lab.textContent = it.short;
+      var num = document.createElement("span");
+      num.className = "dg-np-stats-wip-num";
+      num.textContent = fmtInt(it.n);
+      chip.appendChild(lab);
+      chip.appendChild(num);
+      wrap.appendChild(chip);
+    });
+    return wrap;
+  }
+
+  function ymdLocal(d) {
+    return (
+      d.getFullYear() +
+      "-" +
+      String(d.getMonth() + 1).padStart(2, "0") +
+      "-" +
+      String(d.getDate()).padStart(2, "0")
+    );
+  }
+
+  function addDaysLocal(ymd, delta) {
+    var p = String(ymd).split("-").map(Number);
+    var d = new Date(p[0], p[1] - 1, p[2]);
+    d.setDate(d.getDate() + delta);
+    return ymdLocal(d);
+  }
+
+  function syncStatsCustomVisibility() {
+    var preset = el("dg-np-stats-preset");
+    var custom = preset && preset.value === "custom";
+    document.querySelectorAll(".dg-np-stats-custom").forEach(function (node) {
+      node.classList.toggle("d-none", !custom);
+    });
+  }
+
+  function resolveStatsPeriod() {
+    var presetEl = el("dg-np-stats-preset");
+    var preset = presetEl ? String(presetEl.value || "30") : "30";
+    var to = ymdLocal(new Date());
+    var from;
+    if (preset === "custom") {
+      from = el("dg-np-stats-from") && el("dg-np-stats-from").value;
+      to = (el("dg-np-stats-to") && el("dg-np-stats-to").value) || to;
+      if (!from) from = addDaysLocal(to, -29);
+    } else {
+      var days = parseInt(preset, 10);
+      if (!Number.isFinite(days) || days < 1) days = 30;
+      from = addDaysLocal(to, -(days - 1));
+      if (el("dg-np-stats-from")) el("dg-np-stats-from").value = from;
+      if (el("dg-np-stats-to")) el("dg-np-stats-to").value = to;
+    }
+    return { from: from, to: to };
+  }
+
+  function anomalyClassPlace(hours) {
+    if (hours == null || !Number.isFinite(Number(hours))) return "";
+    var h = Number(hours);
+    if (h >= STATS_PLACE_DANGER_H) return "dg-np-stats-cell-danger";
+    if (h >= STATS_PLACE_WARN_H) return "dg-np-stats-cell-warn";
+    return "";
+  }
+
+  function anomalyClassRev(n) {
+    var v = Number(n) || 0;
+    if (v >= STATS_REV_DANGER) return "dg-np-stats-cell-danger";
+    if (v >= STATS_REV_WARN) return "dg-np-stats-cell-warn";
+    return "";
+  }
+
+  function buildStatsThead() {
+    var thead = el("dg-np-stats-thead");
+    if (!thead) return;
+    thead.innerHTML = "";
+    var tr = document.createElement("tr");
+    STATS_COLS.forEach(function (col) {
+      var th = document.createElement("th");
+      th.className = (col.align === "end" ? "text-end " : "") + "dg-np-stats-th";
+      if (col.sort) {
+        th.classList.add("dg-np-stats-sortable");
+        th.setAttribute("data-dg-stats-sort", col.key);
+        th.style.cursor = "pointer";
+        if (state.statsSort.key === col.key) {
+          th.classList.add(state.statsSort.dir === "asc" ? "sorted-asc" : "sorted-desc");
+        }
+      }
+      th.setAttribute("data-dg-tooltip", col.tip);
+      var lab = document.createElement("span");
+      lab.textContent = col.label;
+      th.appendChild(lab);
+      if (col.sort && state.statsSort.key === col.key) {
+        var mark = document.createElement("span");
+        mark.className = "dg-np-stats-sort-mark";
+        mark.textContent = state.statsSort.dir === "asc" ? " ↑" : " ↓";
+        th.appendChild(mark);
+      }
+      tr.appendChild(th);
+    });
+    thead.appendChild(tr);
+  }
+
+  function updateStatsSortHint() {
+    var hint = el("dg-np-stats-sort-hint");
+    if (!hint) return;
+    var col = STATS_COLS.find(function (c) {
+      return c.key === state.statsSort.key;
+    });
+    var label = (col && col.label) || state.statsSort.key;
+    hint.textContent = "Сортировка: " + label + (state.statsSort.dir === "asc" ? " ↑" : " ↓");
+  }
+
+  function renderStatsSummary(data) {
+    var managers = (data && data.managers) || [];
+    var un = (data && data.unassigned) || {};
+    var created = managers.reduce(function (s, m) {
+      return s + (Number(m.created_count) || 0);
+    }, 0) + (Number(un.created_count) || 0);
+    var placeWeight = 0;
+    var placeSum = 0;
+    managers.concat([un]).forEach(function (m) {
+      var c = Number(m.placement_count) || 0;
+      var h = m.placement_avg_hours;
+      if (c > 0 && h != null && Number.isFinite(Number(h))) {
+        placeWeight += c;
+        placeSum += Number(h) * c;
+      }
+    });
+    var placeAvg = placeWeight > 0 ? placeSum / placeWeight : null;
+    var rev = managers.reduce(function (s, m) {
+      return s + (Number(m.revision_events) || 0);
+    }, 0) + (Number(un.revision_events) || 0);
+    var wip =
+      managers.reduce(function (s, m) {
+        return s + wipTotal(m.wip_now);
+      }, 0) + wipTotal(un.wip_now);
+
+    var elC = el("dg-np-stats-kpi-created");
+    var elP = el("dg-np-stats-kpi-place");
+    var elR = el("dg-np-stats-kpi-rev");
+    var elW = el("dg-np-stats-kpi-wip");
+    var elU = el("dg-np-stats-kpi-unassigned");
+    var elUs = el("dg-np-stats-kpi-unassigned-sub");
+    if (elC) elC.textContent = fmtInt(created);
+    if (elP) {
+      elP.textContent = fmtDurationHours(placeAvg);
+      elP.className = "h5 mb-0 fw-bold " + anomalyClassPlace(placeAvg);
+    }
+    if (elR) {
+      elR.textContent = fmtInt(rev);
+      elR.className = "h5 mb-0 fw-bold " + anomalyClassRev(rev);
+    }
+    if (elW) elW.textContent = fmtInt(wip);
+    if (elU) elU.textContent = fmtInt(un.created_count);
+    if (elUs) {
+      elUs.textContent = "WIP сейчас: " + fmtInt(wipTotal(un.wip_now));
+    }
+  }
+
+  function renderStatsRow(m, isUnassigned, maxPerDay) {
+    var tr = document.createElement("tr");
+    if (isUnassigned) {
+      tr.classList.add("dg-np-stats-row-unassigned");
+      if (wipTotal(m.wip_now) >= STATS_UNASSIGNED_WIP_WARN) {
+        tr.classList.add("dg-np-stats-row-unassigned-hot");
+      }
+    }
+
+    function tdText(text, extraClass, tip) {
+      var td = document.createElement("td");
+      td.className = (extraClass || "").trim();
+      if (tip) td.setAttribute("data-dg-tooltip", tip);
+      td.textContent = text;
+      return td;
+    }
+
+    tr.appendChild(tdText(m.name || "—", "", isUnassigned ? "Строки без responsible_user_id" : ""));
+
+    tr.appendChild(
+      tdText(
+        fmtInt(m.created_count),
+        "text-end",
+        "Добавлено в периоде: " + fmtInt(m.created_count)
+      )
+    );
+
+    var perDayTd = document.createElement("td");
+    perDayTd.className = "text-end dg-np-stats-perday-cell";
+    perDayTd.setAttribute(
+      "data-dg-tooltip",
+      "Добавлено ÷ дней периода = " + fmtPerDay(m.created_per_day) + ". Полоска — доля от макс. среди КМ."
+    );
+    var perDayWrap = document.createElement("div");
+    perDayWrap.className = "dg-np-stats-perday";
+    var perDayVal = document.createElement("span");
+    perDayVal.textContent = fmtPerDay(m.created_per_day);
+    perDayWrap.appendChild(perDayVal);
+    if (!isUnassigned && maxPerDay > 0 && Number(m.created_per_day) > 0) {
+      var bar = document.createElement("span");
+      bar.className = "dg-np-stats-perday-bar";
+      var fill = document.createElement("span");
+      fill.className = "dg-np-stats-perday-fill";
+      var pct = Math.min(100, Math.round((Number(m.created_per_day) / maxPerDay) * 100));
+      fill.style.width = pct + "%";
+      bar.appendChild(fill);
+      perDayWrap.appendChild(bar);
+    }
+    perDayTd.appendChild(perDayWrap);
+    tr.appendChild(perDayTd);
+
+    tr.appendChild(tdText(fmtInt(m.placement_count), "text-end"));
+
+    var avgCls = "text-end " + anomalyClassPlace(m.placement_avg_hours);
+    tr.appendChild(
+      tdText(
+        fmtDurationHours(m.placement_avg_hours),
+        avgCls,
+        m.placement_avg_hours != null
+          ? "Среднее до размещения: " +
+              fmtDurationHours(m.placement_avg_hours) +
+              " (по " +
+              fmtInt(m.placement_count) +
+              " товарам). Порог: >7 дн. / >14 дн."
+          : "Нет размещений с положительным интервалом в периоде"
+      )
+    );
+
+    var medCls = "text-end " + anomalyClassPlace(m.placement_median_hours);
+    tr.appendChild(tdText(fmtDurationHours(m.placement_median_hours), medCls));
+
+    var revCls = "text-end " + anomalyClassRev(m.revision_events);
+    tr.appendChild(
+      tdText(
+        fmtInt(m.revision_events),
+        revCls,
+        "Событий «На доработке»: " +
+          fmtInt(m.revision_events) +
+          " на " +
+          fmtInt(m.revision_products) +
+          " товаров. Порог: ≥5 / ≥15."
+      )
+    );
+
+    tr.appendChild(
+      tdText(
+        m.revision_avg_per_product != null ? fmtPerDay(m.revision_avg_per_product) : "—",
+        "text-end"
+      )
+    );
+    tr.appendChild(tdText(fmtInt(m.verified_count), "text-end"));
+
+    var tdWip = document.createElement("td");
+    tdWip.className = "dg-np-stats-wip-cell";
+    tdWip.appendChild(renderWipNowCell(m.wip_now));
+    tr.appendChild(tdWip);
+    return tr;
+  }
+
+  function renderContentStats(data) {
+    state.statsData = data || null;
+    buildStatsThead();
+    updateStatsSortHint();
+    renderStatsSummary(data);
+
+    var tbody = el("dg-np-stats-tbody");
+    if (!tbody) return;
+    tbody.innerHTML = "";
+    var managers = ((data && data.managers) || []).slice();
+    var key = state.statsSort.key;
+    var dir = state.statsSort.dir === "asc" ? 1 : -1;
+    managers.sort(function (a, b) {
+      var va = statsSortValue(a, key);
+      var vb = statsSortValue(b, key);
+      if (typeof va === "string" || typeof vb === "string") {
+        return String(va).localeCompare(String(vb), "ru", { sensitivity: "base" }) * dir;
+      }
+      if (va === vb) return String(a.name || "").localeCompare(String(b.name || ""), "ru") * dir;
+      return (va < vb ? -1 : 1) * dir;
+    });
+
+    var maxPerDay = 0;
+    managers.forEach(function (m) {
+      var v = Number(m.created_per_day) || 0;
+      if (v > maxPerDay) maxPerDay = v;
+    });
+
+    if (!managers.length && !(data && data.unassigned)) {
+      var empty = document.createElement("tr");
+      empty.innerHTML = '<td colspan="10" class="text-muted text-center py-3">Нет данных</td>';
+      tbody.appendChild(empty);
+      return;
+    }
+    managers.forEach(function (m) {
+      tbody.appendChild(renderStatsRow(m, false, maxPerDay));
+    });
+    if (data && data.unassigned) {
+      tbody.appendChild(renderStatsRow(data.unassigned, true, maxPerDay));
+    }
+    var hint = el("dg-np-stats-period-hint");
+    if (hint && data && data.period) {
+      var ch =
+        data.channel === "almamed"
+          ? "Альмамед"
+          : data.channel === "marketplaces"
+            ? "Маркеты"
+            : "Оба";
+      hint.textContent =
+        data.period.from + " — " + data.period.to + " · " + data.period.days + " дн. · " + ch;
+      hint.setAttribute(
+        "data-dg-tooltip",
+        "Период inclusive: " +
+          data.period.from +
+          " … " +
+          data.period.to +
+          " (" +
+          data.period.days +
+          " календ. дн.). Канал: " +
+          ch +
+          "."
+      );
+    }
+  }
+
+  function showStatsLog(type, html) {
+    var box = el("dg-np-stats-action-log");
+    if (!box) return;
+    if (type === "success") {
+      box.classList.add("d-none");
+      box.textContent = "";
+      return;
+    }
+    box.classList.remove("d-none", "text-danger", "text-muted");
+    box.classList.add(type === "danger" ? "text-danger" : "text-muted");
+    box.innerHTML = html;
+  }
+
+  function loadContentStats() {
+    var period = resolveStatsPeriod();
+    var chEl = el("dg-np-stats-channel");
+    var channel = chEl ? String(chEl.value || "all") : "all";
+    var qs =
+      "from=" +
+      encodeURIComponent(period.from) +
+      "&to=" +
+      encodeURIComponent(period.to) +
+      "&channel=" +
+      encodeURIComponent(channel);
+    showStatsLog("info", "Считаем KPI…");
+    var btn = el("dg-np-stats-apply");
+    var run = function () {
+      return fetch("/api/exports/new-products/content-stats?" + qs, { credentials: "same-origin" })
+        .then(function (r) {
+          return r.json().then(function (j) {
+            return { ok: r.ok, j: j };
+          });
+        })
+        .then(function (res) {
+          if (!res.ok || !res.j || res.j.success === false) {
+            throw new Error((res.j && (res.j.error || res.j.message)) || "Ошибка API");
+          }
+          renderContentStats(res.j);
+          showStatsLog("success", "");
+          if (window.DatagonNotify && window.DatagonNotify.toast) {
+            window.DatagonNotify.toast({ type: "success", message: "Статистика обновлена" });
+          }
+        })
+        .catch(function (e) {
+          showStatsLog("danger", "Ошибка: " + (e.message || e));
+          if (window.DatagonNotify && window.DatagonNotify.toast) {
+            window.DatagonNotify.toast({ type: "danger", message: e.message || "Ошибка статистики" });
+          }
+        });
+    };
+    if (window.DatagonNotify && window.DatagonNotify.busyRun && btn) {
+      return window.DatagonNotify.busyRun(btn, run);
+    }
+    return run();
+  }
+
+  function bindStatsSortUi() {
+    var thead = el("dg-np-stats-thead");
+    if (!thead || thead.getAttribute("data-dg-bound") === "1") return;
+    thead.setAttribute("data-dg-bound", "1");
+    thead.addEventListener("click", function (ev) {
+      var th = ev.target && ev.target.closest ? ev.target.closest("[data-dg-stats-sort]") : null;
+      if (!th) return;
+      try {
+        var sel = window.getSelection && window.getSelection();
+        if (sel && String(sel.toString() || "").trim()) return;
+      } catch (_) {}
+      var key = th.getAttribute("data-dg-stats-sort");
+      if (!key) return;
+      if (state.statsSort.key === key) {
+        state.statsSort.dir = state.statsSort.dir === "asc" ? "desc" : "asc";
+      } else {
+        state.statsSort.key = key;
+        state.statsSort.dir = key === "name" ? "asc" : "desc";
+      }
+      if (state.statsData) renderContentStats(state.statsData);
+      else buildStatsThead();
+    });
+  }
+
+  function setView(view) {
+    if (view === "stats") {
+      state.view = "stats";
+      syncTabUi();
+      loadContentStats();
+      return;
+    }
+    state.view = "table";
+    syncTabUi();
+  }
+
   function setChannel(ch, opts) {
+    state.view = "table";
     var o = opts || {};
     state.channel = ch === "marketplaces" ? "marketplaces" : "almamed";
     try {
@@ -5614,11 +6475,26 @@
     bindNpConfirmUi();
     bindMsDetailModal();
 
-    document.querySelectorAll("#dg-np-tabs [data-dg-np-channel]").forEach(function (btn) {
+    document.querySelectorAll("#dg-np-tabs .nav-link").forEach(function (btn) {
       btn.addEventListener("click", function () {
+        var view = btn.getAttribute("data-dg-np-view") || "table";
+        if (view === "stats") {
+          setView("stats");
+          return;
+        }
         setChannel(btn.getAttribute("data-dg-np-channel"));
       });
     });
+
+    var statsPreset = el("dg-np-stats-preset");
+    if (statsPreset) {
+      statsPreset.addEventListener("change", syncStatsCustomVisibility);
+      syncStatsCustomVisibility();
+    }
+    var statsApply = el("dg-np-stats-apply");
+    if (statsApply) statsApply.addEventListener("click", loadContentStats);
+    buildStatsThead();
+    bindStatsSortUi();
 
     el("dg-np-apply").addEventListener("click", commitFilters);
     el("dg-np-reset").addEventListener("click", resetFilters);

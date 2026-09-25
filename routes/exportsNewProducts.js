@@ -667,6 +667,281 @@ module.exports = function exportsNewProductsRouterFactory(db, config) {
         }
     });
 
+    /**
+     * KPI контент-отдела: добавления/день, время до размещения, доработки.
+     * Query: from, to (YYYY-MM-DD), channel=all|almamed|marketplaces.
+     */
+    router.get('/content-stats', async (req, res) => {
+        try {
+            await ensureSchema(db);
+
+            const channelRaw = String(req.query.channel || 'all').trim().toLowerCase();
+            const channel =
+                channelRaw === 'almamed' || channelRaw === 'marketplaces' ? channelRaw : 'all';
+
+            const today = new Date();
+            const todayYmd = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+            function parseYmd(s) {
+                const m = String(s || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+                if (!m) return null;
+                const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+                if (Number.isNaN(d.getTime())) return null;
+                return `${m[1]}-${m[2]}-${m[3]}`;
+            }
+
+            function addDaysYmd(ymd, delta) {
+                const [y, mo, da] = ymd.split('-').map(Number);
+                const d = new Date(y, mo - 1, da);
+                d.setDate(d.getDate() + delta);
+                return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+            }
+
+            function daysInclusive(fromYmd, toYmd) {
+                const [y1, m1, d1] = fromYmd.split('-').map(Number);
+                const [y2, m2, d2] = toYmd.split('-').map(Number);
+                const a = Date.UTC(y1, m1 - 1, d1);
+                const b = Date.UTC(y2, m2 - 1, d2);
+                return Math.max(1, Math.floor((b - a) / 86400000) + 1);
+            }
+
+            let toYmd = parseYmd(req.query.to) || todayYmd;
+            let fromYmd = parseYmd(req.query.from) || addDaysYmd(toYmd, -29);
+            if (fromYmd > toYmd) {
+                const tmp = fromYmd;
+                fromYmd = toYmd;
+                toYmd = tmp;
+            }
+            const periodDays = daysInclusive(fromYmd, toYmd);
+            const fromTs = `${fromYmd} 00:00:00`;
+            const toExclusive = `${addDaysYmd(toYmd, 1)} 00:00:00`;
+
+            const channelSql = channel === 'all' ? '' : ' AND np.channel = ? ';
+            const channelParams = channel === 'all' ? [] : [channel];
+
+            function emptyMetrics(userId, name) {
+                return {
+                    user_id: userId == null ? null : Number(userId),
+                    name: name || (userId == null ? 'Без ответственного' : `ID ${userId}`),
+                    created_count: 0,
+                    created_per_day: 0,
+                    placement_count: 0,
+                    placement_avg_hours: null,
+                    placement_median_hours: null,
+                    revision_events: 0,
+                    revision_products: 0,
+                    revision_avg_per_product: null,
+                    verified_count: 0,
+                    wip_now: {
+                        in_progress: 0,
+                        revision: 0,
+                        review: 0,
+                        new: 0,
+                        not_added: 0,
+                        total: 0,
+                    },
+                };
+            }
+
+            function bucketKey(uid) {
+                return uid == null || uid === '' || Number(uid) === 0 ? 'none' : String(Number(uid));
+            }
+
+            const buckets = new Map();
+            function ensureBucket(uid, name) {
+                const key = bucketKey(uid);
+                if (!buckets.has(key)) {
+                    buckets.set(key, emptyMetrics(key === 'none' ? null : Number(uid), name));
+                } else if (name && buckets.get(key).name.startsWith('ID ')) {
+                    buckets.get(key).name = name;
+                }
+                return buckets.get(key);
+            }
+
+            const [responsibles] = await db.query(
+                `SELECT u.id, u.username, u.full_name
+                   FROM users u
+                   INNER JOIN specialties s ON s.id = u.specialty_id
+                  WHERE COALESCE(u.is_archived, 0) = 0
+                    AND LOWER(TRIM(s.name)) = LOWER(?)
+                  ORDER BY COALESCE(NULLIF(TRIM(u.full_name), ''), u.username) ASC`,
+                ['Контент-Менеджер']
+            );
+            for (const u of responsibles || []) {
+                const label = String(u.full_name || u.username || '').trim() || String(u.username);
+                ensureBucket(u.id, label);
+            }
+
+            const [createdRows] = await db.query(
+                `SELECT np.responsible_user_id AS uid,
+                        MAX(NULLIF(TRIM(np.responsible_name), '')) AS rname,
+                        COUNT(*) AS cnt
+                   FROM dg_new_products np
+                  WHERE np.status <> 'removed'
+                    AND np.created_at >= ? AND np.created_at < ?
+                    ${channelSql}
+                  GROUP BY np.responsible_user_id`,
+                [fromTs, toExclusive, ...channelParams]
+            );
+            for (const r of createdRows || []) {
+                const b = ensureBucket(r.uid, r.rname);
+                b.created_count = Number(r.cnt) || 0;
+                b.created_per_day = Math.round((b.created_count / periodDays) * 100) / 100;
+            }
+
+            const placementHoursByKey = new Map();
+            function pushPlacement(uid, name, createdAt, placementAt) {
+                const c = createdAt ? new Date(createdAt).getTime() : NaN;
+                const p = placementAt ? new Date(placementAt).getTime() : NaN;
+                if (!Number.isFinite(c) || !Number.isFinite(p) || p <= c) return;
+                const hours = (p - c) / 3600000;
+                if (!(hours > 0)) return;
+                const key = bucketKey(uid);
+                ensureBucket(uid, name);
+                if (!placementHoursByKey.has(key)) placementHoursByKey.set(key, []);
+                placementHoursByKey.get(key).push(hours);
+            }
+
+            const [placeDated] = await db.query(
+                `SELECT np.responsible_user_id AS uid,
+                        NULLIF(TRIM(np.responsible_name), '') AS rname,
+                        np.created_at,
+                        COALESCE(np.placement_date, np.almamed_added_at) AS placement_ts
+                   FROM dg_new_products np
+                  WHERE np.status <> 'removed'
+                    AND COALESCE(np.placement_date, np.almamed_added_at) IS NOT NULL
+                    AND COALESCE(np.placement_date, np.almamed_added_at) >= ?
+                    AND COALESCE(np.placement_date, np.almamed_added_at) < ?
+                    ${channelSql}`,
+                [fromTs, toExclusive, ...channelParams]
+            );
+            for (const r of placeDated || []) {
+                pushPlacement(r.uid, r.rname, r.created_at, r.placement_ts);
+            }
+
+            const [placeLog] = await db.query(
+                `SELECT np.responsible_user_id AS uid,
+                        NULLIF(TRIM(np.responsible_name), '') AS rname,
+                        np.created_at,
+                        MIN(l.changed_at) AS placement_ts
+                   FROM dg_new_products_log l
+                   INNER JOIN dg_new_products np ON np.id = l.product_id
+                  WHERE np.status <> 'removed'
+                    AND COALESCE(np.placement_date, np.almamed_added_at) IS NULL
+                    AND l.field = 'status'
+                    AND l.new_value IN ('Добавлен', 'Проверен')
+                    AND l.changed_at >= ? AND l.changed_at < ?
+                    ${channelSql}
+                  GROUP BY np.id, np.responsible_user_id, np.responsible_name, np.created_at`,
+                [fromTs, toExclusive, ...channelParams]
+            );
+            for (const r of placeLog || []) {
+                pushPlacement(r.uid, r.rname, r.created_at, r.placement_ts);
+            }
+
+            function median(arr) {
+                if (!arr || !arr.length) return null;
+                const s = arr.slice().sort((a, b) => a - b);
+                const mid = Math.floor(s.length / 2);
+                const v = s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+                return Math.round(v * 10) / 10;
+            }
+
+            for (const [key, hours] of placementHoursByKey.entries()) {
+                const b = buckets.get(key) || ensureBucket(key === 'none' ? null : Number(key));
+                b.placement_count = hours.length;
+                const sum = hours.reduce((a, h) => a + h, 0);
+                b.placement_avg_hours = Math.round((sum / hours.length) * 10) / 10;
+                b.placement_median_hours = median(hours);
+            }
+
+            const [revRows] = await db.query(
+                `SELECT np.responsible_user_id AS uid,
+                        MAX(NULLIF(TRIM(np.responsible_name), '')) AS rname,
+                        COUNT(*) AS events,
+                        COUNT(DISTINCT l.product_id) AS products
+                   FROM dg_new_products_log l
+                   INNER JOIN dg_new_products np ON np.id = l.product_id
+                  WHERE l.field = 'status'
+                    AND l.new_value = 'На доработке'
+                    AND l.changed_at >= ? AND l.changed_at < ?
+                    ${channelSql}
+                  GROUP BY np.responsible_user_id`,
+                [fromTs, toExclusive, ...channelParams]
+            );
+            for (const r of revRows || []) {
+                const b = ensureBucket(r.uid, r.rname);
+                b.revision_events = Number(r.events) || 0;
+                b.revision_products = Number(r.products) || 0;
+                b.revision_avg_per_product =
+                    b.revision_products > 0
+                        ? Math.round((b.revision_events / b.revision_products) * 100) / 100
+                        : null;
+            }
+
+            const [verRows] = await db.query(
+                `SELECT np.responsible_user_id AS uid,
+                        MAX(NULLIF(TRIM(np.responsible_name), '')) AS rname,
+                        COUNT(*) AS cnt
+                   FROM dg_new_products_log l
+                   INNER JOIN dg_new_products np ON np.id = l.product_id
+                  WHERE l.field = 'status'
+                    AND l.new_value = 'Проверен'
+                    AND l.changed_at >= ? AND l.changed_at < ?
+                    ${channelSql}
+                  GROUP BY np.responsible_user_id`,
+                [fromTs, toExclusive, ...channelParams]
+            );
+            for (const r of verRows || []) {
+                const b = ensureBucket(r.uid, r.rname);
+                b.verified_count = Number(r.cnt) || 0;
+            }
+
+            const [wipRows] = await db.query(
+                `SELECT np.responsible_user_id AS uid,
+                        MAX(NULLIF(TRIM(np.responsible_name), '')) AS rname,
+                        np.status,
+                        COUNT(*) AS cnt
+                   FROM dg_new_products np
+                  WHERE np.status IN ('new', 'not_added', 'in_progress', 'revision', 'review')
+                    ${channelSql}
+                  GROUP BY np.responsible_user_id, np.status`,
+                [...channelParams]
+            );
+            for (const r of wipRows || []) {
+                const b = ensureBucket(r.uid, r.rname);
+                const st = String(r.status || '');
+                const n = Number(r.cnt) || 0;
+                if (st in b.wip_now) b.wip_now[st] = n;
+                b.wip_now.total += n;
+            }
+
+            const managers = [];
+            let unassigned = null;
+            for (const [key, b] of buckets.entries()) {
+                if (key === 'none') {
+                    unassigned = b;
+                } else {
+                    managers.push(b);
+                }
+            }
+            managers.sort((a, b) =>
+                String(a.name || '').localeCompare(String(b.name || ''), 'ru', { sensitivity: 'base' })
+            );
+            if (!unassigned) unassigned = emptyMetrics(null, 'Без ответственного');
+
+            res.json({
+                success: true,
+                period: { from: fromYmd, to: toYmd, days: periodDays },
+                channel,
+                managers,
+                unassigned,
+            });
+        } catch (e) {
+            res.status(500).json({ success: false, error: e.message || 'Ошибка content-stats' });
+        }
+    });
+
     router.get('/', async (req, res) => {
         try {
             await ensureSchema(db);
