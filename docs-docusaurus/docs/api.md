@@ -1482,7 +1482,7 @@ KPI контент-отдела (вкладка **Статистика конт�
 | `wip_now` | снимок очереди сейчас: `new` / `not_added` / `in_progress` / `revision` / `review` (+ `total`), без периода |
 | `crm_task_id` / `crm_task_title` | привязка КМ → задача CRM (`dg_np_crm_task_links`, scope=`marketplaces`); правка на вкладке статистики |
 | `crm_hours` | сумма таймеров `rise_project_time` за период по `crm_task_id` (нужен read-only доступ к БД CRM: env `CRM_PRIME_DB_*`) |
-| `crm_hours_per_placement` | `crm_hours ÷ placement_count` |
+| `crm_hours_per_placement` | `crm_hours ÷ placement_count` (в UI колонка «мин / размещ.» = ×60, минуты) |
 
 В ответе также `crm: { configured, scope, error? }`.
 

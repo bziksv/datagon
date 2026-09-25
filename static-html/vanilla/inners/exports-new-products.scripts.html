@@ -3628,8 +3628,8 @@
     },
     {
       key: "crm_hours_per_placement",
-      label: "ч / размещ.",
-      tip: "Часы CRM ÷ «Размещено» за период. Сколько часов работы на один размещённый товар.",
+      label: "мин / размещ.",
+      tip: "Часы CRM ÷ «Размещено», показано в минутах (×60). Сколько минут работы на один размещённый товар.",
       align: "end",
       sort: true,
     },
@@ -3656,6 +3656,13 @@
       return window.DatagonFmt.formatNumber(v, { maxFractionDigits: 2, minFractionDigits: 0 });
     }
     return String(Math.round(v * 100) / 100);
+  }
+
+  /** Часы на размещение → минуты (округление до целых). */
+  function fmtMinutesFromHours(hours) {
+    if (hours == null || !Number.isFinite(Number(hours))) return "—";
+    var mins = Math.round(Number(hours) * 60);
+    return fmtInt(mins) + " мин";
   }
 
   /** Часы → «X дн. Y ч.» */
@@ -4094,11 +4101,15 @@
     );
     tr.appendChild(
       tdText(
-        m.crm_hours_per_placement == null ? "—" : fmtPerDay(m.crm_hours_per_placement),
+        m.crm_hours_per_placement == null ? "—" : fmtMinutesFromHours(m.crm_hours_per_placement),
         "text-end",
         m.crm_hours_per_placement == null
           ? "Нужны часы CRM и размещено > 0"
-          : "Часы CRM ÷ размещено = " + fmtPerDay(m.crm_hours_per_placement)
+          : "Часы CRM ÷ размещено = " +
+              fmtMinutesFromHours(m.crm_hours_per_placement) +
+              " (" +
+              fmtPerDay(m.crm_hours_per_placement) +
+              " ч)"
       )
     );
 
