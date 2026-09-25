@@ -5823,8 +5823,19 @@
   function buildCrmTaskRow(m, scope, label) {
     var links = m.crm_links || {};
     var link = links[scope] || {};
-    var taskId = link.crm_task_id != null ? link.crm_task_id : scope === getStatsChannel() ? m.crm_task_id : null;
-    var title = link.crm_task_title || (taskId && taskId === m.crm_task_id ? m.crm_task_title : null) || "";
+    var taskId = null;
+    if (link.crm_task_id != null && Number(link.crm_task_id) > 0) {
+      taskId = Number(link.crm_task_id);
+    } else if (scope === "marketplaces" && m.crm_task_id != null && Number(m.crm_task_id) > 0) {
+      // back-compat: старый ответ без crm_links
+      taskId = Number(m.crm_task_id);
+    } else if (scope === getStatsChannel() && m.crm_task_id != null && Number(m.crm_task_id) > 0) {
+      taskId = Number(m.crm_task_id);
+    }
+    var title =
+      link.crm_task_title ||
+      (taskId && Number(m.crm_task_id) === taskId ? m.crm_task_title : null) ||
+      "";
     var wrap = document.createElement("div");
     wrap.className = "dg-np-stats-crm-link";
     if (label) {
@@ -5840,6 +5851,7 @@
     inp.placeholder = "ID";
     inp.value = taskId ? String(taskId) : "";
     inp.setAttribute("data-dg-no-activity", "1");
+    if (taskId) inp.setAttribute("value", String(taskId));
     var canEditCrm = state.statsAccess === "full";
     var tipBase = (title ? title + ". " : "") + (label ? label + ": " : "");
     if (!canEditCrm) {
