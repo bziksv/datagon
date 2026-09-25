@@ -3613,6 +3613,27 @@
       sort: true,
     },
     {
+      key: "crm_task_id",
+      label: "CRM задача",
+      tip: "ID задачи в CRM Prime (таймер маркетов). Пример: 11760. Ссылка открывает карточку задачи. Часы берутся из rise_project_time по этой задаче.",
+      align: "start",
+      sort: true,
+    },
+    {
+      key: "crm_hours",
+      label: "Часы CRM",
+      tip: "Сумма таймеров CRM (logged/approved + открытый) за период по привязанной задаче. Нужен доступ CRM_PRIME_DB_* на сервере.",
+      align: "end",
+      sort: true,
+    },
+    {
+      key: "crm_hours_per_placement",
+      label: "ч / размещ.",
+      tip: "Часы CRM ÷ «Размещено» за период. Сколько часов работы на один размещённый товар.",
+      align: "end",
+      sort: true,
+    },
+    {
       key: "wip_total",
       label: "В работе сейчас",
       tip: "Снимок очереди без периода: чипы Раб / Дор / Пров / Нов. Сортировка — по сумме WIP.",
@@ -3667,9 +3688,52 @@
   function statsSortValue(m, key) {
     if (key === "name") return String(m.name || "").toLowerCase();
     if (key === "wip_total") return wipTotal(m.wip_now);
+    if (key === "crm_task_id") return Number(m.crm_task_id) || 0;
+    if (key === "crm_hours") return m.crm_hours == null ? -1 : Number(m.crm_hours);
+    if (key === "crm_hours_per_placement")
+      return m.crm_hours_per_placement == null ? -1 : Number(m.crm_hours_per_placement);
     var v = m[key];
     if (v == null || v === "") return key.indexOf("hours") >= 0 || key.indexOf("avg") >= 0 ? -1 : 0;
     return Number(v);
+  }
+
+  function saveCrmTaskLink(userId, taskRaw) {
+    var uid = Number(userId);
+    if (!Number.isFinite(uid) || uid < 1) return Promise.resolve();
+    var body = { scope: "marketplaces", user_id: uid, crm_task_id: taskRaw };
+    var run = function () {
+      return fetch("/api/exports/new-products/crm-task-links", {
+        method: "PUT",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
+        .then(function (r) {
+          return r.json().then(function (j) {
+            return { ok: r.ok, j: j };
+          });
+        })
+        .then(function (res) {
+          if (!res.ok || !res.j || res.j.success === false) {
+            throw new Error((res.j && res.j.error) || "Не сохранено");
+          }
+          if (window.DatagonNotify && window.DatagonNotify.toast) {
+            window.DatagonNotify.toast({
+              type: "success",
+              message: res.j.crm_task_id
+                ? "CRM задача #" + res.j.crm_task_id + " привязана"
+                : "Привязка CRM снята",
+            });
+          }
+          return loadContentStats();
+        })
+        .catch(function (e) {
+          if (window.DatagonNotify && window.DatagonNotify.toast) {
+            window.DatagonNotify.toast({ type: "danger", message: e.message || "Ошибка привязки" });
+          }
+        });
+    };
+    return run();
   }
 
   function renderWipNowCell(wip) {
@@ -3971,6 +4035,73 @@
     );
     tr.appendChild(tdText(fmtInt(m.verified_count), "text-end"));
 
+    var tdCrm = document.createElement("td");
+    tdCrm.className = "dg-np-stats-crm-cell";
+    if (isUnassigned) {
+      tdCrm.className += " text-muted";
+      tdCrm.textContent = "—";
+    } else {
+      var wrap = document.createElement("div");
+      wrap.className = "dg-np-stats-crm-link";
+      var inp = document.createElement("input");
+      inp.type = "text";
+      inp.inputMode = "numeric";
+      inp.className = "form-control form-control-sm dg-np-stats-crm-input";
+      inp.placeholder = "ID";
+      inp.value = m.crm_task_id ? String(m.crm_task_id) : "";
+      inp.setAttribute("data-dg-no-activity", "1");
+      inp.setAttribute(
+        "data-dg-tooltip",
+        (m.crm_task_title ? m.crm_task_title + ". " : "") +
+          "Введите ID задачи CRM (маркетов) и Enter / blur — сохранится привязка."
+      );
+      inp.addEventListener("keydown", function (ev) {
+        if (ev.key === "Enter") {
+          ev.preventDefault();
+          inp.blur();
+        }
+      });
+      inp.addEventListener("change", function () {
+        var next = String(inp.value || "").trim();
+        var prev = m.crm_task_id ? String(m.crm_task_id) : "";
+        if (next === prev) return;
+        saveCrmTaskLink(m.user_id, next === "" ? null : next);
+      });
+      wrap.appendChild(inp);
+      if (m.crm_task_id) {
+        var a = document.createElement("a");
+        a.href = "https://crm.prime-ltd.su/index.php/tasks/view/" + encodeURIComponent(m.crm_task_id);
+        a.target = "_blank";
+        a.rel = "noopener noreferrer";
+        a.className = "btn btn-sm btn-outline-secondary dg-np-stats-crm-open";
+        a.textContent = "↗";
+        a.setAttribute("data-dg-tooltip", "Открыть задачу в CRM");
+        a.setAttribute("data-dg-no-activity", "1");
+        wrap.appendChild(a);
+      }
+      tdCrm.appendChild(wrap);
+    }
+    tr.appendChild(tdCrm);
+
+    tr.appendChild(
+      tdText(
+        m.crm_hours == null ? "—" : fmtPerDay(m.crm_hours),
+        "text-end",
+        m.crm_hours == null
+          ? "Нет привязки или CRM БД не настроена / нет часов за период"
+          : "Часы таймера CRM за период: " + fmtPerDay(m.crm_hours)
+      )
+    );
+    tr.appendChild(
+      tdText(
+        m.crm_hours_per_placement == null ? "—" : fmtPerDay(m.crm_hours_per_placement),
+        "text-end",
+        m.crm_hours_per_placement == null
+          ? "Нужны часы CRM и размещено > 0"
+          : "Часы CRM ÷ размещено = " + fmtPerDay(m.crm_hours_per_placement)
+      )
+    );
+
     var tdWip = document.createElement("td");
     tdWip.className = "dg-np-stats-wip-cell";
     tdWip.appendChild(renderWipNowCell(m.wip_now));
@@ -4008,7 +4139,10 @@
 
     if (!managers.length && !(data && data.unassigned)) {
       var empty = document.createElement("tr");
-      empty.innerHTML = '<td colspan="10" class="text-muted text-center py-3">Нет данных</td>';
+      empty.innerHTML =
+        '<td colspan="' +
+        STATS_COLS.length +
+        '" class="text-muted text-center py-3">Нет данных</td>';
       tbody.appendChild(empty);
       return;
     }
@@ -4040,6 +4174,20 @@
           ch +
           "."
       );
+    }
+    var crmHint = el("dg-np-stats-crm-hint");
+    if (crmHint) {
+      if (data && data.crm && data.crm.error) {
+        crmHint.classList.remove("d-none");
+        crmHint.textContent = "CRM часы: ошибка БД — " + data.crm.error;
+      } else if (data && data.crm && data.crm.configured === false) {
+        crmHint.classList.remove("d-none");
+        crmHint.textContent =
+          "Привязки задач сохраняются. Чтобы подтянуть часы, на сервере нужны CRM_PRIME_DB_HOST/USER/PASSWORD.";
+      } else {
+        crmHint.classList.add("d-none");
+        crmHint.textContent = "";
+      }
     }
   }
 

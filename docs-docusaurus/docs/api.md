@@ -1480,6 +1480,15 @@ KPI контент-отдела (вкладка **Статистика конт�
 | `revision_events` / `revision_products` / `revision_avg_per_product` | лог `status` → «На доработке» в периоде; assignee = текущий `np.responsible_user_id` |
 | `verified_count` | лог `status` → «Проверен» в периоде |
 | `wip_now` | снимок очереди сейчас: `new` / `not_added` / `in_progress` / `revision` / `review` (+ `total`), без периода |
+| `crm_task_id` / `crm_task_title` | привязка КМ → задача CRM (`dg_np_crm_task_links`, scope=`marketplaces`); правка на вкладке статистики |
+| `crm_hours` | сумма таймеров `rise_project_time` за период по `crm_task_id` (нужен read-only доступ к БД CRM: env `CRM_PRIME_DB_*`) |
+| `crm_hours_per_placement` | `crm_hours ÷ placement_count` |
+
+В ответе также `crm: { configured, scope, error? }`.
+
+### PUT `/api/exports/new-products/crm-task-links`
+
+Привязка КМ к задаче CRM. Body: `{ user_id, crm_task_id, scope? }` (`scope` default `marketplaces`). Пустой/`null`/`0` — снять привязку. GET того же пути — список привязок.
 
 ## Exports / Отснять товары
 

@@ -19,6 +19,7 @@
 
 const express = require('express');
 const markets = require('../lib/dgNewProductsMarkets');
+const crmPrime = require('../lib/crmPrimeTimesheets');
 
 const CHANNELS = new Set(['almamed', 'marketplaces']);
 const PRIORITIES = new Set(['important', 'normal', 'low']);
@@ -237,6 +238,16 @@ async function ensureSchema(db) {
     await ensureColumn(db, 'dg_new_products', 'manager_checked_at', 'DATETIME NULL');
     await ensureColumn(db, 'dg_new_products', 'manager_checked_by_user_id', 'INT NULL');
     await ensureColumn(db, 'dg_new_products', 'manager_comment', 'TEXT NULL');
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS dg_np_crm_task_links (
+            user_id INT NOT NULL,
+            scope VARCHAR(32) NOT NULL DEFAULT 'marketplaces',
+            crm_task_id INT NOT NULL,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (user_id, scope),
+            INDEX idx_np_crm_task (crm_task_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
     schemaReady = true;
 }
 
@@ -740,6 +751,10 @@ module.exports = function exportsNewProductsRouterFactory(db, config) {
                         not_added: 0,
                         total: 0,
                     },
+                    crm_task_id: null,
+                    crm_task_title: null,
+                    crm_hours: null,
+                    crm_hours_per_placement: null,
                 };
             }
 
@@ -930,15 +945,133 @@ module.exports = function exportsNewProductsRouterFactory(db, config) {
             );
             if (!unassigned) unassigned = emptyMetrics(null, 'Без ответственного');
 
+            // Привязка CRM-задач (scope=marketplaces) + часы таймера за период
+            const linkScope = 'marketplaces';
+            const [linkRows] = await db.query(
+                `SELECT user_id, crm_task_id FROM dg_np_crm_task_links WHERE scope = ?`,
+                [linkScope]
+            );
+            const taskByUser = new Map();
+            for (const r of linkRows || []) {
+                const uid = Number(r.user_id);
+                const tid = Number(r.crm_task_id);
+                if (Number.isFinite(uid) && Number.isFinite(tid) && tid > 0) {
+                    taskByUser.set(uid, tid);
+                }
+            }
+            const taskIds = [...new Set(taskByUser.values())];
+            let crmMeta = {
+                configured: crmPrime.isCrmConfigured(),
+                scope: linkScope,
+                error: null,
+            };
+            const hoursRes = await crmPrime.sumHoursByTaskIds(taskIds, fromYmd, toYmd);
+            const titlesRes = await crmPrime.fetchTaskTitles(taskIds);
+            if (hoursRes.error) crmMeta.error = hoursRes.error;
+            else if (titlesRes.error) crmMeta.error = titlesRes.error;
+            crmMeta.configured = !!(hoursRes.configured || titlesRes.configured);
+
+            for (const m of managers) {
+                const tid = taskByUser.get(Number(m.user_id));
+                if (!tid) continue;
+                m.crm_task_id = tid;
+                m.crm_task_title = titlesRes.titles.get(tid) || null;
+                if (hoursRes.hoursByTaskId.has(tid)) {
+                    m.crm_hours = hoursRes.hoursByTaskId.get(tid);
+                } else if (crmMeta.configured && !hoursRes.error) {
+                    m.crm_hours = 0;
+                }
+                if (m.crm_hours != null && Number(m.placement_count) > 0) {
+                    m.crm_hours_per_placement =
+                        Math.round((m.crm_hours / Number(m.placement_count)) * 100) / 100;
+                }
+            }
+
             res.json({
                 success: true,
                 period: { from: fromYmd, to: toYmd, days: periodDays },
                 channel,
+                crm: crmMeta,
                 managers,
                 unassigned,
             });
         } catch (e) {
             res.status(500).json({ success: false, error: e.message || 'Ошибка content-stats' });
+        }
+    });
+
+    /** Привязки КМ → CRM task_id (пока scope=marketplaces). */
+    router.get('/crm-task-links', async (req, res) => {
+        try {
+            await ensureSchema(db);
+            const scope = String(req.query.scope || 'marketplaces').trim() || 'marketplaces';
+            const [rows] = await db.query(
+                `SELECT user_id, scope, crm_task_id, updated_at FROM dg_np_crm_task_links WHERE scope = ?`,
+                [scope]
+            );
+            res.json({
+                success: true,
+                scope,
+                crm_configured: crmPrime.isCrmConfigured(),
+                links: (rows || []).map((r) => ({
+                    user_id: Number(r.user_id),
+                    scope: r.scope,
+                    crm_task_id: Number(r.crm_task_id),
+                    updated_at: r.updated_at,
+                })),
+            });
+        } catch (e) {
+            res.status(500).json({ success: false, error: e.message || 'Ошибка crm-task-links' });
+        }
+    });
+
+    router.put('/crm-task-links', async (req, res) => {
+        try {
+            await ensureSchema(db);
+            const body = req.body || {};
+            const scope = String(body.scope || 'marketplaces').trim() || 'marketplaces';
+            const userId = parseInt(body.user_id, 10);
+            if (!Number.isFinite(userId) || userId < 1) {
+                return res.status(400).json({ success: false, error: 'Нужен user_id' });
+            }
+            const rawTask = body.crm_task_id;
+            const clear =
+                rawTask == null ||
+                rawTask === '' ||
+                String(rawTask).trim() === '0' ||
+                String(rawTask).trim().toLowerCase() === 'null';
+            if (clear) {
+                await db.query(`DELETE FROM dg_np_crm_task_links WHERE user_id = ? AND scope = ?`, [
+                    userId,
+                    scope,
+                ]);
+                return res.json({ success: true, scope, user_id: userId, crm_task_id: null });
+            }
+            const taskId = parseInt(rawTask, 10);
+            if (!Number.isFinite(taskId) || taskId < 1) {
+                return res.status(400).json({ success: false, error: 'Некорректный crm_task_id' });
+            }
+            await db.query(
+                `INSERT INTO dg_np_crm_task_links (user_id, scope, crm_task_id)
+                 VALUES (?, ?, ?)
+                 ON DUPLICATE KEY UPDATE crm_task_id = VALUES(crm_task_id)`,
+                [userId, scope, taskId]
+            );
+            let title = null;
+            if (crmPrime.isCrmConfigured()) {
+                const t = await crmPrime.fetchTaskTitles([taskId]);
+                title = t.titles.get(taskId) || null;
+            }
+            res.json({
+                success: true,
+                scope,
+                user_id: userId,
+                crm_task_id: taskId,
+                crm_task_title: title,
+                crm_configured: crmPrime.isCrmConfigured(),
+            });
+        } catch (e) {
+            res.status(500).json({ success: false, error: e.message || 'Ошибка сохранения привязки' });
         }
     });
 
