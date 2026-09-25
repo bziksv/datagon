@@ -123,7 +123,7 @@ Body:
 - `PUT /api/specialties/:id/access` — сохранить режимы; body: `{ "modes": { "dashboard": "full", "results": "view", ... } }`.
 
 Записи к не-GET API (кроме путей без привязки к разделу в реестре) для не-admin проверяются по режиму раздела: при `hidden` — 403, при `view` — разрешены только GET/HEAD/OPTIONS.
-Новые страницы из `PAGE_DEFS` автоматически досинхронизируются в `specialty_page_modes` для всех существующих специальностей при старте сервера; для «Полный доступ» ставится `full`, для остальных групп — `hidden` до явного выбора администратора.
+Новые страницы из `PAGE_DEFS` автоматически досинхронизируются в `specialty_page_modes` для всех существующих специальностей при старте сервера; для «Полный доступ» ставится `full`, для остальных групп — `hidden` до явного выбора администратора. Запись с `matrixOnly: true` (например **`exports-new-products-stats`** — вкладка «Статистика контент-отдела») появляется в матрице настроек доступа, но не меняет HTML-лист родительского экрана.
 
 ## Settings
 
@@ -1375,11 +1375,13 @@ Body (JSON):
 
 ## Exports / Новые товары
 
-Префикс: `/api/exports/new-products`. Экран: `/exports-new-products.html` (подменю **Маркетплейсы**). Вкладки UI: **Альмамед** (`channel=almamed`), **Маркеты** (`channel=marketplaces`), **Статистика контент-отдела** (отдельный `GET /content-stats`, не list API). Таблица `dg_new_products` (создаётся при первом запросе).
+Префикс: `/api/exports/new-products`. Экран: `/exports-new-products.html` (подменю **Маркетплейсы**). Вкладки UI: **Альмамед** (`channel=almamed`), **Маркеты** (`channel=marketplaces`), **Статистика контент-отдела** (отдельный `GET /content-stats`, не list API). Deep-link вкладок (hash или `?tab=`): `#almamed`, `#marketplaces`, `#stats` (алиасы `#content-stats`, `?tab=markets`). Таблица `dg_new_products` (создаётся при первом запросе).
 
 **UI / wide-таблица (lock):** плавающая шапка — `#dg-np-float-host` (`position: fixed` клон thead), **не** `translate3d` на живом `#dg-np-thead` (тяжёлая таблица; shop-схема Ozon сюда не копировать). Ширины — только `<colgroup>`, `table-layout: auto`. Контракт: `.cursor/rules/datagon-table-behavior-lock.mdc` (раздел «Новые товары»).
 
 Доступ по матрице страницы **`exports-new-products`** (как дочерняя маркетплейсов наследует скрытие родителя `exports-marketplaces`, если у дочерней нет явного `view`/`full`).
+
+Вкладка **«Статистика контент-отдела»** и API KPI/CRM-привязок — отдельный ключ матрицы **`exports-new-products-stats`** (`matrixOnly`: тот же HTML `exports-new-products.html`, отдельная строка в настройках доступа). Режимы: `hidden` — вкладка скрыта и API KPI/CRM запрещены; `view` — просмотр KPI, `PUT` привязок CRM запрещён; `full` — просмотр и правка привязок. Наследует скрытие родителя `exports-marketplaces`, если у ключа нет явного `view`/`full`. Список/CRUD очереди новых товаров по-прежнему проверяются по **`exports-new-products`**.
 
 ### Регламент / инструкция МП
 
@@ -1467,6 +1469,8 @@ Query `exclude_verified=1` (алиас `hide_placed=1`): при пустом `st
 
 ### GET `/api/exports/new-products/content-stats`
 
+Доступ: матрица **`exports-new-products-stats`** (`hidden` / `view` / `full`).
+
 KPI контент-отдела (вкладка **Статистика контент-отдела**). Query: `from`, `to` (`YYYY-MM-DD`; по умолчанию последние 30 календарных дней inclusive), `channel` = `all` | `almamed` | `marketplaces` (default `all`).
 
 Ответ: `{ success, period: { from, to, days }, channel, managers[], unassigned }`. Строки без `responsible_user_id` — в `unassigned` («Без ответственного»), не в средних по людям. Список `managers` — пересечение специальности «Контент-Менеджер» с id, у которых есть данные в периоде / WIP.
@@ -1487,6 +1491,8 @@ KPI контент-отдела (вкладка **Статистика конт�
 В ответе также `crm: { configured, scope, error? }`.
 
 ### PUT `/api/exports/new-products/crm-task-links`
+
+Доступ: матрица **`exports-new-products-stats`** (`full` для записи; `view` — только GET).
 
 Привязка КМ к задаче CRM. Body: `{ user_id, crm_task_id, scope? }` (`scope` default `marketplaces`). Пустой/`null`/`0` — снять привязку. GET того же пути — список привязок.
 

@@ -2061,6 +2061,8 @@
     columnWidths: {},
     statsData: null,
     statsSort: { key: "created_count", dir: "desc" },
+    /** Режим матрицы exports-new-products-stats: full | view | hidden */
+    statsAccess: "full",
   };
 
   var STATUS_OPTS_ALMAMED = [
@@ -5660,6 +5662,42 @@
     },
   ];
 
+  function resolveStatsAccessMode() {
+    try {
+      if (
+        window.localStorage.getItem("isAdmin") === "true" ||
+        window.localStorage.getItem("currentUser") === "admin"
+      ) {
+        return "full";
+      }
+      var raw = window.localStorage.getItem("datagonPageModesV1");
+      var pm = raw ? JSON.parse(raw) : {};
+      var m = pm && pm["exports-new-products-stats"];
+      if (m === "full" || m === "view" || m === "hidden") return m;
+    } catch (_) {}
+    return "hidden";
+  }
+
+  function syncStatsTabAccess() {
+    state.statsAccess = resolveStatsAccessMode();
+    var tab = el("dg-np-tab-stats");
+    if (tab) {
+      var show = state.statsAccess === "full" || state.statsAccess === "view";
+      tab.classList.toggle("d-none", !show);
+      tab.disabled = !show;
+      if (!show) {
+        tab.setAttribute("aria-hidden", "true");
+      } else {
+        tab.removeAttribute("aria-hidden");
+      }
+    }
+    if (state.view === "stats" && state.statsAccess === "hidden") {
+      state.view = "table";
+      syncTabUi();
+      syncTabToUrl();
+    }
+  }
+
   function fmtInt(n) {
     var v = Number(n) || 0;
     if (window.DatagonFmt && window.DatagonFmt.formatInteger) return window.DatagonFmt.formatInteger(v);
@@ -6075,23 +6113,33 @@
       inp.placeholder = "ID";
       inp.value = m.crm_task_id ? String(m.crm_task_id) : "";
       inp.setAttribute("data-dg-no-activity", "1");
-      inp.setAttribute(
-        "data-dg-tooltip",
-        (m.crm_task_title ? m.crm_task_title + ". " : "") +
-          "Введите ID задачи CRM (маркетов) и Enter / blur — сохранится привязка."
-      );
-      inp.addEventListener("keydown", function (ev) {
-        if (ev.key === "Enter") {
-          ev.preventDefault();
-          inp.blur();
-        }
-      });
-      inp.addEventListener("change", function () {
-        var next = String(inp.value || "").trim();
-        var prev = m.crm_task_id ? String(m.crm_task_id) : "";
-        if (next === prev) return;
-        saveCrmTaskLink(m.user_id, next === "" ? null : next);
-      });
+      var canEditCrm = state.statsAccess === "full";
+      if (!canEditCrm) {
+        inp.disabled = true;
+        inp.setAttribute(
+          "data-dg-tooltip",
+          (m.crm_task_title ? m.crm_task_title + ". " : "") +
+            "Режим просмотра: привязку CRM может менять только full-доступ."
+        );
+      } else {
+        inp.setAttribute(
+          "data-dg-tooltip",
+          (m.crm_task_title ? m.crm_task_title + ". " : "") +
+            "Введите ID задачи CRM (маркетов) и Enter / blur — сохранится привязка."
+        );
+        inp.addEventListener("keydown", function (ev) {
+          if (ev.key === "Enter") {
+            ev.preventDefault();
+            inp.blur();
+          }
+        });
+        inp.addEventListener("change", function () {
+          var next = String(inp.value || "").trim();
+          var prev = m.crm_task_id ? String(m.crm_task_id) : "";
+          if (next === prev) return;
+          saveCrmTaskLink(m.user_id, next === "" ? null : next);
+        });
+      }
       wrap.appendChild(inp);
       if (m.crm_task_id) {
         var a = document.createElement("a");
@@ -6300,15 +6348,92 @@
     });
   }
 
+  /** Deep-link вкладок: #almamed | #marketplaces | #stats (и ?tab=…). */
+  var npTabUrlSilent = false;
+
+  function parseTabFromLocation() {
+    var raw = "";
+    try {
+      var params = new URLSearchParams(location.search || "");
+      raw = String(params.get("tab") || "").trim();
+    } catch (_) {}
+    if (!raw) {
+      raw = String(location.hash || "")
+        .replace(/^#/, "")
+        .split(/[?&]/)[0]
+        .trim();
+    }
+    raw = raw.toLowerCase();
+    if (!raw) return null;
+    if (raw === "stats" || raw === "content-stats" || raw === "content" || raw === "kpi") {
+      return "stats";
+    }
+    if (raw === "marketplaces" || raw === "markets" || raw === "mp") return "marketplaces";
+    if (raw === "almamed" || raw === "alma") return "almamed";
+    return null;
+  }
+
+  function currentTabToken() {
+    if (state.view === "stats") return "stats";
+    return state.channel === "marketplaces" ? "marketplaces" : "almamed";
+  }
+
+  function syncTabToUrl() {
+    if (npTabUrlSilent) return;
+    var token = currentTabToken();
+    var nextHash = "#" + token;
+    try {
+      var params = new URLSearchParams(location.search || "");
+      if (params.has("tab")) {
+        params.delete("tab");
+        var qs = params.toString();
+        var next = location.pathname + (qs ? "?" + qs : "") + nextHash;
+        if (location.pathname + location.search + location.hash !== next) {
+          history.replaceState(null, "", next);
+        }
+        return;
+      }
+      if (location.hash !== nextHash) {
+        history.replaceState(null, "", location.pathname + location.search + nextHash);
+      }
+    } catch (_) {}
+  }
+
+  function onNpTabHashChange() {
+    if (npTabUrlSilent) return;
+    var tab = parseTabFromLocation();
+    if (!tab) return;
+    if (tab === "stats") {
+      if (state.view === "stats") return;
+      setView("stats");
+      return;
+    }
+    if (state.view === "table" && state.channel === tab) return;
+    setChannel(tab);
+  }
+
   function setView(view) {
     if (view === "stats") {
+      syncStatsTabAccess();
+      if (state.statsAccess === "hidden") {
+        if (window.DatagonNotify && window.DatagonNotify.toast) {
+          window.DatagonNotify.toast({
+            type: "warning",
+            message: "Нет доступа к «Статистика контент-отдела»",
+          });
+        }
+        syncTabToUrl();
+        return;
+      }
       state.view = "stats";
       syncTabUi();
+      syncTabToUrl();
       loadContentStats();
       return;
     }
     state.view = "table";
     syncTabUi();
+    syncTabToUrl();
   }
 
   function setChannel(ch, opts) {
@@ -6325,6 +6450,7 @@
     state.rows = [];
     state.loading = true;
     syncTabUi();
+    syncTabToUrl();
     renderTable();
 
     function finish() {
@@ -6658,7 +6784,32 @@
     loadHidePlacedPref();
     loadVisibleColsForChannel();
     loadWidthsForChannel();
-    syncTabUi();
+    syncStatsTabAccess();
+
+    var urlTab = parseTabFromLocation();
+    if (urlTab === "stats") {
+      setView("stats");
+      if (state.view !== "stats") {
+        syncTabUi();
+        syncTabToUrl();
+        load();
+      }
+    } else if (urlTab === "marketplaces" || urlTab === "almamed") {
+      if (state.channel !== urlTab || state.view !== "table") {
+        setChannel(urlTab);
+      } else {
+        syncTabUi();
+        syncTabToUrl();
+        load();
+      }
+    } else {
+      syncTabUi();
+      syncTabToUrl();
+      load();
+    }
+
+    window.addEventListener("hashchange", onNpTabHashChange);
+
     bindCollapse("dg-np-filters-toggle", "dg-np-filters-body", FILTERS_KEY);
     bindCollapse("dg-np-table-toggle", "dg-np-table-body", TABLE_KEY);
     bindNpFloatingHeader();
@@ -6666,6 +6817,10 @@
     bindNpLogUi();
     bindNpConfirmUi();
     bindMsDetailModal();
+
+    document.addEventListener("datagon-profile-loaded", function () {
+      syncStatsTabAccess();
+    });
 
     document.querySelectorAll("#dg-np-tabs .nav-link").forEach(function (btn) {
       btn.addEventListener("click", function () {
@@ -6723,7 +6878,6 @@
 
     // Параллельно: assignees не должны блокировать таблицу.
     loadAssignees();
-    load();
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
