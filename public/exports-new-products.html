@@ -816,6 +816,18 @@
     gap: 0.35rem;
     min-width: 7.5rem;
   }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-stats-crm-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    min-width: 9.5rem;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-stats-crm-row-lab {
+    font-size: 0.65rem;
+    color: #6c757d;
+    line-height: 1;
+    min-width: 2.4rem;
+  }
   body.datagon-vanilla-body[data-dg-active-nav="exports-new-products"] .dg-np-stats-crm-input {
     width: 5.2rem;
     max-width: 100%;
@@ -1747,11 +1759,11 @@
                     <label class="form-label mb-1" for="dg-np-stats-to">По</label>
                     <input type="date" class="form-control form-control-sm" id="dg-np-stats-to" data-dg-no-activity="1" />
                   </div>
-                  <div style="min-width: 8.5rem">
-                    <label class="form-label mb-1" for="dg-np-stats-channel">Канал</label>
+                  <div style="min-width: 9.5rem">
+                    <label class="form-label mb-1" for="dg-np-stats-channel">Режим</label>
                     <select class="form-select form-select-sm" id="dg-np-stats-channel" data-dg-no-activity="1"
-                      data-dg-tooltip="Фильтр по channel строки: Альмамед, Маркеты или оба. WIP «сейчас» тоже режется этим каналом.">
-                      <option value="all" selected>Оба</option>
+                      data-dg-tooltip="KPI по товарам + CRM-часы: Общая (оба канала, сумма часов Альм.+Маркеты), только Альмамед или только Маркеты. WIP «сейчас» тоже по режиму.">
+                      <option value="all" selected>Общая</option>
                       <option value="almamed">Альмамед</option>
                       <option value="marketplaces">Маркеты</option>
                     </select>
@@ -1761,7 +1773,7 @@
                     class="btn btn-sm btn-primary"
                     id="dg-np-stats-apply"
                     data-dg-notify-start="Считаем статистику…"
-                    data-dg-tooltip="Пересчитать KPI по выбранному периоду и каналу"
+                    data-dg-tooltip="Пересчитать KPI по выбранному периоду и режиму"
                   >
                     Применить
                   </button>
@@ -1846,7 +1858,7 @@
                   на проверку ·
                   <span class="dg-np-stats-wip-chip dg-np-stats-wip-new"><span class="dg-np-stats-wip-lab">Нов</span></span>
                   новый/не добавлен.
-                  Колонка <b>CRM задача</b> — ID задачи таймера маркетов (Enter сохраняет).
+                  Колонка <b>CRM задача</b> — ID таймера по режиму (Альмамед / Маркеты; в «Общей» — обе строки). Enter сохраняет.
                   <b>мин / размещ.</b> = (часы CRM ÷ размещено) × 60.
                 </p>
               </div>
@@ -5635,14 +5647,14 @@
     {
       key: "crm_task_id",
       label: "CRM задача",
-      tip: "ID задачи в CRM Prime (таймер маркетов). Пример: 11760. Ссылка открывает карточку задачи. Часы берутся из rise_project_time по этой задаче.",
+      tip: "ID задачи CRM Prime по выбранному режиму (Альмамед / Маркеты). В «Общей» — две привязки. Часы — из rise_project_time.",
       align: "start",
       sort: true,
     },
     {
       key: "crm_hours",
       label: "Часы CRM",
-      tip: "Сумма таймеров CRM (logged/approved + открытый) за период по привязанной задаче. Нужен доступ CRM_PRIME_DB_* на сервере.",
+      tip: "Сумма таймеров CRM за период по привязанной задаче режима (в «Общей» — сумма Альмамед+Маркеты). Нужен CRM_PRIME_DB_* на сервере.",
       align: "end",
       sort: true,
     },
@@ -5760,10 +5772,18 @@
     return Number(v);
   }
 
-  function saveCrmTaskLink(userId, taskRaw) {
+  function getStatsChannel() {
+    var chEl = el("dg-np-stats-channel");
+    var v = chEl ? String(chEl.value || "all") : "all";
+    if (v === "almamed" || v === "marketplaces") return v;
+    return "all";
+  }
+
+  function saveCrmTaskLink(userId, taskRaw, scope) {
     var uid = Number(userId);
     if (!Number.isFinite(uid) || uid < 1) return Promise.resolve();
-    var body = { scope: "marketplaces", user_id: uid, crm_task_id: taskRaw };
+    var sc = scope === "almamed" ? "almamed" : "marketplaces";
+    var body = { scope: sc, user_id: uid, crm_task_id: taskRaw };
     var run = function () {
       return fetch("/api/exports/new-products/crm-task-links", {
         method: "PUT",
@@ -5781,11 +5801,12 @@
             throw new Error((res.j && res.j.error) || "Не сохранено");
           }
           if (window.DatagonNotify && window.DatagonNotify.toast) {
+            var scLab = sc === "almamed" ? "Альмамед" : "Маркеты";
             window.DatagonNotify.toast({
               type: "success",
               message: res.j.crm_task_id
-                ? "CRM задача #" + res.j.crm_task_id + " привязана"
-                : "Привязка CRM снята",
+                ? "CRM (" + scLab + ") #" + res.j.crm_task_id + " привязана"
+                : "Привязка CRM (" + scLab + ") снята",
             });
           }
           return loadContentStats();
@@ -5797,6 +5818,67 @@
         });
     };
     return run();
+  }
+
+  function buildCrmTaskRow(m, scope, label) {
+    var links = m.crm_links || {};
+    var link = links[scope] || {};
+    var taskId = link.crm_task_id != null ? link.crm_task_id : scope === getStatsChannel() ? m.crm_task_id : null;
+    var title = link.crm_task_title || (taskId && taskId === m.crm_task_id ? m.crm_task_title : null) || "";
+    var wrap = document.createElement("div");
+    wrap.className = "dg-np-stats-crm-link";
+    if (label) {
+      var lab = document.createElement("span");
+      lab.className = "dg-np-stats-crm-row-lab";
+      lab.textContent = label;
+      wrap.appendChild(lab);
+    }
+    var inp = document.createElement("input");
+    inp.type = "text";
+    inp.inputMode = "numeric";
+    inp.className = "form-control form-control-sm dg-np-stats-crm-input";
+    inp.placeholder = "ID";
+    inp.value = taskId ? String(taskId) : "";
+    inp.setAttribute("data-dg-no-activity", "1");
+    var canEditCrm = state.statsAccess === "full";
+    var tipBase = (title ? title + ". " : "") + (label ? label + ": " : "");
+    if (!canEditCrm) {
+      inp.disabled = true;
+      inp.setAttribute(
+        "data-dg-tooltip",
+        tipBase + "Режим просмотра: привязку CRM может менять только full-доступ."
+      );
+    } else {
+      inp.setAttribute(
+        "data-dg-tooltip",
+        tipBase + "ID задачи CRM и Enter / blur — сохранить привязку."
+      );
+      inp.addEventListener("keydown", function (ev) {
+        if (ev.key === "Enter") {
+          ev.preventDefault();
+          inp.blur();
+        }
+      });
+      inp.addEventListener("change", function () {
+        var next = String(inp.value || "").trim();
+        var prev = taskId ? String(taskId) : "";
+        if (next === prev) return;
+        saveCrmTaskLink(m.user_id, next === "" ? null : next, scope);
+      });
+    }
+    wrap.appendChild(inp);
+    if (taskId) {
+      var a = document.createElement("a");
+      a.href = "https://crm.prime-ltd.su/index.php/tasks/view/" + encodeURIComponent(taskId);
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      a.className = "btn btn-sm btn-outline-secondary dg-np-stats-crm-open";
+      a.textContent = "↗";
+      a.setAttribute("data-dg-tooltip", "Открыть задачу в CRM");
+      a.setAttribute("data-dg-no-activity", "1");
+      wrap.appendChild(a);
+    }
+    return wrap;
   }
 
   function renderWipNowCell(wip) {
@@ -6104,55 +6186,16 @@
       tdCrm.className += " text-muted";
       tdCrm.textContent = "—";
     } else {
-      var wrap = document.createElement("div");
-      wrap.className = "dg-np-stats-crm-link";
-      var inp = document.createElement("input");
-      inp.type = "text";
-      inp.inputMode = "numeric";
-      inp.className = "form-control form-control-sm dg-np-stats-crm-input";
-      inp.placeholder = "ID";
-      inp.value = m.crm_task_id ? String(m.crm_task_id) : "";
-      inp.setAttribute("data-dg-no-activity", "1");
-      var canEditCrm = state.statsAccess === "full";
-      if (!canEditCrm) {
-        inp.disabled = true;
-        inp.setAttribute(
-          "data-dg-tooltip",
-          (m.crm_task_title ? m.crm_task_title + ". " : "") +
-            "Режим просмотра: привязку CRM может менять только full-доступ."
-        );
+      var ch = (state.statsData && state.statsData.channel) || getStatsChannel();
+      if (ch === "all") {
+        var stack = document.createElement("div");
+        stack.className = "dg-np-stats-crm-stack";
+        stack.appendChild(buildCrmTaskRow(m, "almamed", "Альм."));
+        stack.appendChild(buildCrmTaskRow(m, "marketplaces", "Марк."));
+        tdCrm.appendChild(stack);
       } else {
-        inp.setAttribute(
-          "data-dg-tooltip",
-          (m.crm_task_title ? m.crm_task_title + ". " : "") +
-            "Введите ID задачи CRM (маркетов) и Enter / blur — сохранится привязка."
-        );
-        inp.addEventListener("keydown", function (ev) {
-          if (ev.key === "Enter") {
-            ev.preventDefault();
-            inp.blur();
-          }
-        });
-        inp.addEventListener("change", function () {
-          var next = String(inp.value || "").trim();
-          var prev = m.crm_task_id ? String(m.crm_task_id) : "";
-          if (next === prev) return;
-          saveCrmTaskLink(m.user_id, next === "" ? null : next);
-        });
+        tdCrm.appendChild(buildCrmTaskRow(m, ch === "almamed" ? "almamed" : "marketplaces", null));
       }
-      wrap.appendChild(inp);
-      if (m.crm_task_id) {
-        var a = document.createElement("a");
-        a.href = "https://crm.prime-ltd.su/index.php/tasks/view/" + encodeURIComponent(m.crm_task_id);
-        a.target = "_blank";
-        a.rel = "noopener noreferrer";
-        a.className = "btn btn-sm btn-outline-secondary dg-np-stats-crm-open";
-        a.textContent = "↗";
-        a.setAttribute("data-dg-tooltip", "Открыть задачу в CRM");
-        a.setAttribute("data-dg-no-activity", "1");
-        wrap.appendChild(a);
-      }
-      tdCrm.appendChild(wrap);
     }
     tr.appendChild(tdCrm);
 
@@ -6236,7 +6279,7 @@
           ? "Альмамед"
           : data.channel === "marketplaces"
             ? "Маркеты"
-            : "Оба";
+            : "Общая";
       hint.textContent =
         data.period.from + " — " + data.period.to + " · " + data.period.days + " дн. · " + ch;
       hint.setAttribute(
@@ -6247,7 +6290,7 @@
           data.period.to +
           " (" +
           data.period.days +
-          " календ. дн.). Канал: " +
+          " календ. дн.). Режим: " +
           ch +
           "."
       );
@@ -6283,8 +6326,7 @@
 
   function loadContentStats() {
     var period = resolveStatsPeriod();
-    var chEl = el("dg-np-stats-channel");
-    var channel = chEl ? String(chEl.value || "all") : "all";
+    var channel = getStatsChannel();
     var qs =
       "from=" +
       encodeURIComponent(period.from) +

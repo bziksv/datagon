@@ -1471,7 +1471,7 @@ Query `exclude_verified=1` (алиас `hide_placed=1`): при пустом `st
 
 Доступ: матрица **`exports-new-products-stats`** (`hidden` / `view` / `full`).
 
-KPI контент-отдела (вкладка **Статистика контент-отдела**). Query: `from`, `to` (`YYYY-MM-DD`; по умолчанию последние 30 календарных дней inclusive), `channel` = `all` | `almamed` | `marketplaces` (default `all`).
+KPI контент-отдела (вкладка **Статистика контент-отдела**). Query: `from`, `to` (`YYYY-MM-DD`; по умолчанию последние 30 календарных дней inclusive), `channel` = `all` | `almamed` | `marketplaces` (default `all`) — режим UI **Общая / Альмамед / Маркеты**: режет KPI по `dg_new_products.channel` и выбирает CRM-привязки (`dg_np_crm_task_links.scope`). Для `all` часы CRM = сумма обоих scope; в ответе у менеджера есть `crm_links.{almamed,marketplaces}`.
 
 Ответ: `{ success, period: { from, to, days }, channel, managers[], unassigned }`. Строки без `responsible_user_id` — в `unassigned` («Без ответственного»), не в средних по людям. Список `managers` — пересечение специальности «Контент-Менеджер» с id, у которых есть данные в периоде / WIP.
 
@@ -1484,8 +1484,9 @@ KPI контент-отдела (вкладка **Статистика конт�
 | `revision_events` / `revision_products` / `revision_avg_per_product` | лог `status` → «На доработке» в периоде; assignee = текущий `np.responsible_user_id` |
 | `verified_count` | лог `status` → «Проверен» в периоде |
 | `wip_now` | снимок очереди сейчас: `new` / `not_added` / `in_progress` / `revision` / `review` (+ `total`), без периода |
-| `crm_task_id` / `crm_task_title` | привязка КМ → задача CRM (`dg_np_crm_task_links`, scope=`marketplaces`); правка на вкладке статистики |
-| `crm_hours` | сумма таймеров `rise_project_time` за период по `crm_task_id` (нужен read-only доступ к БД CRM: env `CRM_PRIME_DB_*`) |
+| `crm_task_id` / `crm_task_title` | привязка КМ → задача CRM для текущего режима (`scope` = channel; при `all` — приоритет маркетов для сортировки) |
+| `crm_links` | `{ almamed?: {crm_task_id,crm_task_title,crm_hours}, marketplaces?: … }` — обе привязки в режиме `all` |
+| `crm_hours` | сумма таймеров `rise_project_time` за период по задаче(ам) режима |
 | `crm_hours_per_placement` | `crm_hours ÷ placement_count` (в UI колонка «мин / размещ.» = ×60, минуты) |
 
 В ответе также `crm: { configured, scope, error? }`.
@@ -1494,7 +1495,7 @@ KPI контент-отдела (вкладка **Статистика конт�
 
 Доступ: матрица **`exports-new-products-stats`** (`full` для записи; `view` — только GET).
 
-Привязка КМ к задаче CRM. Body: `{ user_id, crm_task_id, scope? }` (`scope` default `marketplaces`). Пустой/`null`/`0` — снять привязку. GET того же пути — список привязок.
+Привязка КМ к задаче CRM. Body: `{ user_id, crm_task_id, scope? }` (`scope` = `almamed` | `marketplaces`, default `marketplaces`). Пустой/`null`/`0` — снять привязку. GET того же пути — список привязок выбранного scope.
 
 ## Exports / Отснять товары
 

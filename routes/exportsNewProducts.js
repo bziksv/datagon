@@ -755,6 +755,7 @@ module.exports = function exportsNewProductsRouterFactory(db, config) {
                     crm_task_title: null,
                     crm_hours: null,
                     crm_hours_per_placement: null,
+                    crm_links: {},
                 };
             }
 
@@ -945,24 +946,31 @@ module.exports = function exportsNewProductsRouterFactory(db, config) {
             );
             if (!unassigned) unassigned = emptyMetrics(null, 'Без ответственного');
 
-            // Привязка CRM-задач (scope=marketplaces) + часы таймера за период
-            const linkScope = 'marketplaces';
+            // Привязка CRM-задач: scope = channel (almamed|marketplaces); для all — оба scope, часы суммируются.
+            const crmScopes =
+                channel === 'almamed' || channel === 'marketplaces' ? [channel] : ['almamed', 'marketplaces'];
             const [linkRows] = await db.query(
-                `SELECT user_id, crm_task_id FROM dg_np_crm_task_links WHERE scope = ?`,
-                [linkScope]
+                `SELECT user_id, scope, crm_task_id FROM dg_np_crm_task_links WHERE scope IN (?)`,
+                [crmScopes]
             );
-            const taskByUser = new Map();
+            /** @type {Map<number, Map<string, number>>} */
+            const tasksByUserScope = new Map();
+            const allTaskIds = new Set();
             for (const r of linkRows || []) {
                 const uid = Number(r.user_id);
                 const tid = Number(r.crm_task_id);
-                if (Number.isFinite(uid) && Number.isFinite(tid) && tid > 0) {
-                    taskByUser.set(uid, tid);
-                }
+                const sc = String(r.scope || '');
+                if (!Number.isFinite(uid) || !Number.isFinite(tid) || tid < 1) continue;
+                if (sc !== 'almamed' && sc !== 'marketplaces') continue;
+                if (!tasksByUserScope.has(uid)) tasksByUserScope.set(uid, new Map());
+                tasksByUserScope.get(uid).set(sc, tid);
+                allTaskIds.add(tid);
             }
-            const taskIds = [...new Set(taskByUser.values())];
+            const taskIds = [...allTaskIds];
             let crmMeta = {
                 configured: crmPrime.isCrmConfigured(),
-                scope: linkScope,
+                scopes: crmScopes,
+                scope: crmScopes.length === 1 ? crmScopes[0] : 'all',
                 error: null,
             };
             const hoursRes = await crmPrime.sumHoursByTaskIds(taskIds, fromYmd, toYmd);
@@ -972,14 +980,50 @@ module.exports = function exportsNewProductsRouterFactory(db, config) {
             crmMeta.configured = !!(hoursRes.configured || titlesRes.configured);
 
             for (const m of managers) {
-                const tid = taskByUser.get(Number(m.user_id));
-                if (!tid) continue;
-                m.crm_task_id = tid;
-                m.crm_task_title = titlesRes.titles.get(tid) || null;
-                if (hoursRes.hoursByTaskId.has(tid)) {
-                    m.crm_hours = hoursRes.hoursByTaskId.get(tid);
-                } else if (crmMeta.configured && !hoursRes.error) {
-                    m.crm_hours = 0;
+                const uid = Number(m.user_id);
+                const byScope = tasksByUserScope.get(uid) || new Map();
+                const links = {};
+                let hoursSum = null;
+                let primaryTid = null;
+                let primaryTitle = null;
+                for (const sc of crmScopes) {
+                    const tid = byScope.get(sc);
+                    if (!tid) {
+                        links[sc] = { crm_task_id: null, crm_task_title: null, crm_hours: null };
+                        continue;
+                    }
+                    let h = null;
+                    if (hoursRes.hoursByTaskId.has(tid)) h = hoursRes.hoursByTaskId.get(tid);
+                    else if (crmMeta.configured && !hoursRes.error) h = 0;
+                    links[sc] = {
+                        crm_task_id: tid,
+                        crm_task_title: titlesRes.titles.get(tid) || null,
+                        crm_hours: h,
+                    };
+                    if (h != null) hoursSum = (hoursSum == null ? 0 : hoursSum) + h;
+                    if (primaryTid == null) {
+                        primaryTid = tid;
+                        primaryTitle = links[sc].crm_task_title;
+                    }
+                }
+                m.crm_links = links;
+                if (crmScopes.length === 1) {
+                    const only = links[crmScopes[0]] || {};
+                    m.crm_task_id = only.crm_task_id != null ? only.crm_task_id : null;
+                    m.crm_task_title = only.crm_task_title || null;
+                    m.crm_hours = only.crm_hours;
+                } else {
+                    // «Общая»: в колонке задачи — обе привязки; crm_task_id = маркетов (или альмамед), для сортировки.
+                    const mp = links.marketplaces || {};
+                    const al = links.almamed || {};
+                    m.crm_task_id =
+                        mp.crm_task_id != null
+                            ? mp.crm_task_id
+                            : al.crm_task_id != null
+                              ? al.crm_task_id
+                              : null;
+                    m.crm_task_title = mp.crm_task_title || al.crm_task_title || primaryTitle;
+                    m.crm_hours = hoursSum;
                 }
                 if (m.crm_hours != null && Number(m.placement_count) > 0) {
                     m.crm_hours_per_placement =
@@ -995,16 +1039,18 @@ module.exports = function exportsNewProductsRouterFactory(db, config) {
                 managers,
                 unassigned,
             });
+            return;
         } catch (e) {
             res.status(500).json({ success: false, error: e.message || 'Ошибка content-stats' });
         }
     });
 
-    /** Привязки КМ → CRM task_id (пока scope=marketplaces). */
+    /** Привязки КМ → CRM task_id. scope: almamed | marketplaces. */
     router.get('/crm-task-links', async (req, res) => {
         try {
             await ensureSchema(db);
-            const scope = String(req.query.scope || 'marketplaces').trim() || 'marketplaces';
+            const scopeRaw = String(req.query.scope || 'marketplaces').trim().toLowerCase();
+            const scope = scopeRaw === 'almamed' ? 'almamed' : 'marketplaces';
             const [rows] = await db.query(
                 `SELECT user_id, scope, crm_task_id, updated_at FROM dg_np_crm_task_links WHERE scope = ?`,
                 [scope]
@@ -1029,7 +1075,8 @@ module.exports = function exportsNewProductsRouterFactory(db, config) {
         try {
             await ensureSchema(db);
             const body = req.body || {};
-            const scope = String(body.scope || 'marketplaces').trim() || 'marketplaces';
+            const scopeRaw = String(body.scope || 'marketplaces').trim().toLowerCase();
+            const scope = scopeRaw === 'almamed' ? 'almamed' : 'marketplaces';
             const userId = parseInt(body.user_id, 10);
             if (!Number.isFinite(userId) || userId < 1) {
                 return res.status(400).json({ success: false, error: 'Нужен user_id' });
