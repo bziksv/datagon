@@ -2918,6 +2918,31 @@
         return state.sort_dir === "asc" ? " ↑" : " ↓";
       }
 
+      /** Блокировать сортировку только при реальном drag-выделении текста, не при обычном клике по th. */
+      function saIsTextSelectDrag(el) {
+        if (!el) return false;
+        var down = el._dgSaPointerDown;
+        if (!down) return false;
+        var dx = Math.abs((down.x || 0) - (el._dgSaPointerUpX || down.x || 0));
+        var dy = Math.abs((down.y || 0) - (el._dgSaPointerUpY || down.y || 0));
+        return dx > 4 || dy > 4;
+      }
+
+      function bindSaSortableThPointer(th) {
+        if (!th || th._dgSaSortPointerBound) return;
+        th._dgSaSortPointerBound = true;
+        th.addEventListener("mousedown", function (ev) {
+          if (ev.button !== 0) return;
+          th._dgSaPointerDown = { x: ev.clientX, y: ev.clientY };
+          th._dgSaPointerUpX = ev.clientX;
+          th._dgSaPointerUpY = ev.clientY;
+        });
+        th.addEventListener("mouseup", function (ev) {
+          th._dgSaPointerUpX = ev.clientX;
+          th._dgSaPointerUpY = ev.clientY;
+        });
+      }
+
       function setSaThLabel(th, label, opts) {
         opts = opts || {};
         th.classList.add("dg-sa-th-label");
@@ -2982,8 +3007,14 @@
           }
           if (opts.sortKey) {
             th.style.cursor = "pointer";
+            bindSaSortableThPointer(th);
             th.addEventListener("click", function () {
-              if (window.getSelection && window.getSelection().toString().trim()) return;
+              // Копирование заголовка: только если тянули мышь (drag). Обычный клик часто
+              // оставляет выделение на тексте th — из‑за этого сортировка «не срабатывала».
+              if (saIsTextSelectDrag(th)) return;
+              try {
+                if (window.getSelection) window.getSelection().removeAllRanges();
+              } catch (errSel) {}
               if (state.sort_by === opts.sortKey) {
                 state.sort_dir = state.sort_dir === "asc" ? "desc" : "asc";
               } else {
@@ -2993,7 +3024,13 @@
               }
               state.offset = 0;
               buildSaThead();
-              loadRanking();
+              showTableLoading("Сортируем…");
+              loadRanking().catch(function (e) {
+                showTableLoading("Ошибка сортировки: " + (e.message || "неизвестно"));
+                if (window.DatagonNotify) {
+                  DatagonNotify.toast({ type: "danger", message: e.message || "Ошибка сортировки" });
+                }
+              });
             });
           }
           tr.appendChild(th);
@@ -3970,10 +4007,27 @@
       function bindSaDetailTables() {
         var card = document.getElementById("dg-sa-detail-card");
         if (card) {
+          card.addEventListener("mousedown", function (ev) {
+            var th = ev.target.closest("th.dg-sa-detail-sortable");
+            if (!th || ev.button !== 0) return;
+            bindSaSortableThPointer(th);
+            th._dgSaPointerDown = { x: ev.clientX, y: ev.clientY };
+            th._dgSaPointerUpX = ev.clientX;
+            th._dgSaPointerUpY = ev.clientY;
+          });
+          card.addEventListener("mouseup", function (ev) {
+            var th = ev.target.closest("th.dg-sa-detail-sortable");
+            if (!th) return;
+            th._dgSaPointerUpX = ev.clientX;
+            th._dgSaPointerUpY = ev.clientY;
+          });
           card.addEventListener("click", function (ev) {
             var th = ev.target.closest("th.dg-sa-detail-sortable");
             if (!th) return;
-            if (window.getSelection && window.getSelection().toString().trim()) return;
+            if (saIsTextSelectDrag(th)) return;
+            try {
+              if (window.getSelection) window.getSelection().removeAllRanges();
+            } catch (errSel) {}
             var tableKey = th.getAttribute("data-dg-detail-table");
             var sortKey = th.getAttribute("data-sort-key");
             if (!tableKey || !sortKey) return;
@@ -4288,6 +4342,19 @@
         return null;
       }
 
+      function showTableLoading(msg) {
+        var tbody = document.getElementById("dg-sa-tbody");
+        if (!tbody) return;
+        tbody.innerHTML =
+          '<tr><td colspan="' +
+          saColCount() +
+          '" class="text-center text-muted py-4">' +
+          (msg || "Считаем рейтинг поставщиков…") +
+          "</td></tr>";
+        var status = document.getElementById("dg-sa-pager-status");
+        if (status) status.textContent = "Загрузка…";
+      }
+
       function loadRanking() {
         var p = new URLSearchParams();
         p.set("days", String(state.days));
@@ -4335,6 +4402,8 @@
         q.set("new_stock_days", String(state.new_stock_days));
         if (state.search) q.set("search", state.search);
         appendProjectParams(q);
+        showTableLoading("Считаем рейтинг поставщиков…");
+        var startedAt = Date.now();
         var pOverview = fetch("/api/supplier-analysis/overview?" + q.toString(), {
           credentials: "same-origin",
           headers: authHeaders(),
@@ -4357,9 +4426,18 @@
               renderHighlights();
               renderCharts();
             }
-
+            if (window.DatagonNotify) {
+              var sec = Math.round((Date.now() - startedAt) / 1000);
+              if (sec >= 3) {
+                DatagonNotify.toast({
+                  type: "success",
+                  message: "Анализ поставщиков готов (" + sec + " с)",
+                });
+              }
+            }
           })
           .catch(function (e) {
+            showTableLoading("Ошибка загрузки: " + (e.message || "неизвестно"));
             if (window.DatagonNotify) {
               DatagonNotify.toast({ type: "danger", message: e.message || "Ошибка загрузки" });
             }

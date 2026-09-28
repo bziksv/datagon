@@ -19,7 +19,6 @@ const {
     catalogBySupplierSubquery,
     salesJoinSql,
     salesMarginLineSql,
-    firstPositiveStockByCodeSubquery,
     salesRankingQueryParams,
     supplierRankingSelectSql,
 } = require('../lib/datagonSupplierAnalysisSql');
@@ -789,7 +788,16 @@ module.exports = function supplierAnalysisRouterFactory(db, appSettings = {}) {
             const limitMax = catalogListMode ? 500 : 200;
             const limitDefault = catalogListMode ? 300 : 50;
             const limit = clampInt(req.query.limit, 1, limitMax, limitDefault);
-            const snapSql = firstPositiveStockByCodeSubquery(Math.max(newStockDays + 30, 120));
+            const snapLookback = Math.max(newStockDays + 30, 120);
+            // Только коды этого поставщика — полный snap (~7M строк) вешает деталку на минуты.
+            const snapSql = `
+                SELECT z.code, MIN(z.ts_date) AS first_positive_date
+                  FROM dg_product_stock_snapshot z
+                  INNER JOIN ms_export mse_snap ON mse_snap.code = z.code
+                 WHERE TRIM(mse_snap.supplier) = ?
+                   AND z.ts_date >= DATE_SUB(CURDATE(), INTERVAL ${snapLookback} DAY)
+                   AND z.stock > 0
+                 GROUP BY z.code`;
             const productWhereSql =
                 mode === 'all_skus' || mode === 'total'
                     ? sqlSupplierAllSkusWhere('mse')
@@ -812,7 +820,8 @@ module.exports = function supplierAnalysisRouterFactory(db, appSettings = {}) {
             if (mode === 'laggards' || mode === 'stale') having = ' HAVING COALESCE(sales_revenue, 0) <= 0 ';
 
             let extraStockSql = '';
-            const queryParams = [...pf.params, supplierKey, days, supplierKey];
+            // Порядок ?: snap(supplier) → salesSub(pf…, supplier, days) → WHERE(supplier) → grace?
+            const queryParams = [supplierKey, ...pf.params, supplierKey, days, supplierKey];
             if (mode === 'laggards' || mode === 'stale') {
                 extraStockSql = `
                   AND COALESCE(mse.stock, 0) > 0
