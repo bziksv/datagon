@@ -350,6 +350,84 @@ async function refreshBundleComponentsCache(db, componentCode) {
     return upserts.length;
 }
 
+function uuidFromMsHref(href) {
+    const m = String(href || '').match(/\/([0-9a-f-]{36})(?:\?|$)/i);
+    return m ? m[1].toLowerCase() : '';
+}
+
+/**
+ * Комплекты, которых ещё нет в `dg_bundle_components` (кэш греется с карточки товара).
+ * Берём состав из `ms_entity_details.payload_json` после полного синка МС.
+ * @returns {Promise<number>} сколько строк вставлено
+ */
+async function backfillMissingBundleComponentsFromDetails(db) {
+    await ensureBundleComponentsSchema(db);
+    const [rows] = await db.query(`
+        SELECT e.uuid AS bundle_uuid, e.code AS bundle_code, e.name AS bundle_name,
+               CAST(COALESCE(e.is_archived, 0) AS UNSIGNED) AS is_archived,
+               m.payload_json
+          FROM ms_export e
+          INNER JOIN ms_entity_details m ON m.uuid = e.uuid
+          LEFT JOIN dg_bundle_components bc ON bc.bundle_code = e.code
+         WHERE LOWER(TRIM(COALESCE(e.type, ''))) LIKE '%комплект%'
+           AND bc.bundle_code IS NULL
+    `);
+    const pending = [];
+    const needUuid = new Set();
+    for (const row of rows || []) {
+        const payload = parsePayloadSafe(row.payload_json);
+        const crows = payload && payload.components && payload.components.rows;
+        if (!Array.isArray(crows) || !crows.length) continue;
+        for (const cr of crows) {
+            const a = cr && cr.assortment ? cr.assortment : {};
+            const q = Number(cr && cr.quantity);
+            if (!Number.isFinite(q) || q <= 0) continue;
+            let code = String(a.code || '').trim();
+            const uuid = String(a.id || uuidFromMsHref(a.meta && a.meta.href) || '').trim().toLowerCase();
+            if (!code && uuid) needUuid.add(uuid);
+            pending.push({
+                bundle_uuid: String(row.bundle_uuid),
+                bundle_code: String(row.bundle_code || ''),
+                component_code: code,
+                component_uuid: uuid,
+                qty_per_bundle: q,
+                bundle_name: row.bundle_name ? String(row.bundle_name).slice(0, 500) : '',
+                is_archived: Number(row.is_archived || 0) ? 1 : 0,
+            });
+        }
+    }
+    let uuidToCode = new Map();
+    if (needUuid.size) {
+        const ids = [...needUuid];
+        const ph = ids.map(() => '?').join(',');
+        const [exp] = await db.query(`SELECT uuid, code FROM ms_export WHERE uuid IN (${ph})`, ids);
+        for (const r of exp || []) uuidToCode.set(String(r.uuid || '').toLowerCase(), String(r.code || '').trim());
+    }
+    const upserts = [];
+    for (const u of pending) {
+        const code = u.component_code || uuidToCode.get(u.component_uuid) || '';
+        if (!code) continue;
+        upserts.push(u.bundle_uuid, u.bundle_code, code, u.qty_per_bundle, u.bundle_name, u.is_archived);
+    }
+    if (!upserts.length) return 0;
+    let inserted = 0;
+    const CHUNK = 40;
+    const width = 6;
+    for (let i = 0; i < upserts.length; i += CHUNK * width) {
+        const slice = upserts.slice(i, i + CHUNK * width);
+        const n = slice.length / width;
+        const placeholders = Array.from({ length: n }, () => '(?, ?, ?, ?, ?, ?)').join(', ');
+        const [res] = await db.query(
+            `INSERT IGNORE INTO dg_bundle_components
+                (bundle_uuid, bundle_code, component_code, qty_per_bundle, bundle_name, is_archived)
+             VALUES ${placeholders}`,
+            slice,
+        );
+        inserted += Number(res && res.affectedRows) || 0;
+    }
+    return inserted;
+}
+
 /** @returns {Promise<number|undefined>} число вставленных строк кэша комплектов; `undefined` — пропуск (комплект, невалидный код, кулдаун). */
 async function ensureBundleComponentsForProduct(db, componentCode, isBundleProduct) {
     if (isBundleProduct) return undefined;
@@ -1984,6 +2062,7 @@ module.exports.ensureZeroStockSchema = ensureZeroStockSchema;
 module.exports.ensureZeroStockWindowImportSchema = ensureZeroStockWindowImportSchema;
 module.exports.ensureBundleComponentsSchema = ensureBundleComponentsSchema;
 module.exports.ensureBundleComponentsForProduct = ensureBundleComponentsForProduct;
+module.exports.backfillMissingBundleComponentsFromDetails = backfillMissingBundleComponentsFromDetails;
 module.exports.syncZeroStockLogAfterMoyskladExport = syncZeroStockLogAfterMoyskladExport;
 module.exports.syncProductStockSnapshotsAfterMoyskladExport = syncProductStockSnapshotsAfterMoyskladExport;
 module.exports.loadLatestZeroStockWindowImportMap = loadLatestZeroStockWindowImportMap;

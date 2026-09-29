@@ -33,6 +33,7 @@ const {
     SUPPLIER_NEED_QTY_SQL,
     SUPPLIER_TARGET_STOCK_SQL,
     sqlSupplierProductWhere,
+    supplierEffectiveSql,
 } = require('../lib/datagonSuppliersSql');
 const { loadPurchaseDataRevision, buildFormulaFingerprint } = require('../lib/datagonFormulaProposedCache');
 const { loadSupplierAbsenceRollupMap } = require('../lib/datagonSupplierAbsenceProfile');
@@ -256,8 +257,8 @@ function buildSupplierAggregatesSubquery(formulaFp, dataRev) {
             : `LEFT JOIN dg_formula_proposed_cache fc ON fc.code = mse.code`;
     return `
         SELECT
-            TRIM(mse.supplier) AS supplier_key,
-            TRIM(mse.supplier) AS supplier_name,
+            ${supplierEffectiveSql('mse')} AS supplier_key,
+            ${supplierEffectiveSql('mse')} AS supplier_name,
             COUNT(*) AS products_total,
             SUM(CASE WHEN (${SUPPLIER_NEED_QTY_SQL}) > 0 THEN 1 ELSE 0 END) AS products_to_purchase,
             SUM(
@@ -282,7 +283,7 @@ function buildSupplierAggregatesSubquery(formulaFp, dataRev) {
         LEFT JOIN ms_entity_details med ON med.uuid = mse.uuid
         ${fcJoin}
         WHERE ${productWhere}
-        GROUP BY TRIM(mse.supplier)
+        GROUP BY ${supplierEffectiveSql('mse')}
         HAVING COUNT(*) >= 1
     `;
 }

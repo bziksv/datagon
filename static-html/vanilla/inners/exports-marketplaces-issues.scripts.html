@@ -381,13 +381,14 @@
                 ym: 'нет на Я.Маркет',
                 vat_mismatch: 'не совпадает НДС (МС ↔ маркетплейс)',
                 dims_mismatch: 'разные габариты между маркетплейсами',
+                no_supplier: 'нет поставщика в МС',
             };
             // Ключи, по которым работает «умный поиск»: артикул/наименование МС + маркетплейсов
             // + ФИО менеджеров. Если бэкенд вернёт строку без этих ключей — fallback на все
             // строковые поля row (см. applySearchFilter ниже). Так искать по «Иванов» или по
             // подстроке наименования с любого маркетплейса будет всегда, без отдельных полей.
             var SEARCH_KEYS = [
-                'code', 'name',
+                'code', 'name', 'type', 'supplier_label',
                 'manager', 'content_manager',
                 'ms_vat', 'ms_stock', 'synced_at',
                 'ms_length', 'ms_width', 'ms_height_box', 'ms_height_bag', 'ms_weight',
@@ -403,20 +404,15 @@
                 ['ym_code', 'ym_name'],
             ];
             // ---- Колонки: дефолтные ширины и видимость (сохраняем в localStorage) ----
-            // Bump COLS_VISIBLE_KEY до v5 после смены семантики дефолта: теперь по
-            // умолчанию (и при клике на «Столбцы по умолчанию») включены ВСЕ колонки,
-            // а не компактный набор (см. DEFAULT_HIDDEN_COLS — пустой объект ниже).
-            // Старые v4-настройки игнорируем, иначе у пользователей со скрытыми
-            // *_name/*_vat/dim/link/updated кнопка «Столбцы по умолчанию» не
-            // включала бы все колонки. COLS_WIDTH_KEY оставлен v2 — индивидуальные
-            // пиксельные значения сохраняются, новые получают дефолт из
-            // COL_WIDTH_DEFAULTS_BY_KEY. При большом числе включённых колонок
-            // таблица расширяется (по эталону маркетплейсов sticky-th прилипает под
-            // app-header через --dg-table-sticky-top, см. правило).
+            // Bump COLS_VISIBLE_KEY до v6: в headers появились type и supplier_label.
+            // Старые v5-настройки игнорируем, чтобы новые колонки были видны по умолчанию.
+            // COLS_WIDTH_KEY оставлен v2 — индивидуальные пиксельные значения сохраняются,
+            // новые ключи получают дефолт из COL_WIDTH_DEFAULTS_BY_KEY.
             var COLS_WIDTH_KEY = 'dg.mpu.colwidths.v2';
-            var COLS_VISIBLE_KEY = 'dg.mpu.colvisible.v5';
-            // ---- Дополнительные фильтры (Менеджер / Контент-менеджер / «исключить товары
-            // из комплектов» / «умное скрытие столбцов»): сохраняем в localStorage ----
+            var COLS_VISIBLE_KEY = 'dg.mpu.colvisible.v6';
+            // ---- Дополнительные фильтры (Тип МС / Менеджер / Контент-менеджер /
+            // «исключить товары из комплектов» / «умное скрытие столбцов»):
+            // сохраняем в localStorage ----
             // Чекбокс «исключить компоненты комплектов» хранится строкой ('1' / '0').
             // Если ключа в storage нет — считаем, что фильтр включён по умолчанию (см.
             // initialExcludeBundleComponents ниже). Это согласовано с серверным
@@ -425,6 +421,7 @@
             // SMART_COLS_BY_SCOPE и visibleHeaders ниже): по умолчанию включён, на
             // «проблемных» scope (ozon/wb/ym/vat_mismatch/dims_mismatch) оставляет в
             // таблице только базовые колонки МС + колонки, относящиеся к проблеме.
+            var FILTER_TYPE_KEY = 'dg.mpu.flt.type.v1';
             var FILTER_MANAGER_KEY = 'dg.mpu.flt.manager.v1';
             var FILTER_CONTENT_MGR_KEY = 'dg.mpu.flt.cmgr.v1';
             var FILTER_EXCLUDE_BUNDLE_COMPONENTS_KEY = 'dg.mpu.flt.excludeBundleComponents.v1';
@@ -432,7 +429,7 @@
             var FILTER_SMART_COLUMNS_KEY = 'dg.mpu.flt.smartColumns.v1';
             // Базовый «паспорт МС» — эти колонки остаются всегда, когда smart-режим
             // активен. Меняется только набор колонок маркетплейсов (см. ниже).
-            var SMART_COLS_BASE_MS = ['code', 'name', 'manager', 'content_manager', 'ms_vat', 'ms_stock', 'synced_at'];
+            var SMART_COLS_BASE_MS = ['code', 'name', 'type', 'supplier_label', 'manager', 'content_manager', 'ms_vat', 'ms_stock', 'synced_at'];
             // Маппинг scope → дополнительные колонки маркетплейсов, которые нужно
             // оставить в таблице. Scope, которого нет в маппинге (all / any / all3),
             // smart-режимом не затрагивается — на нём показываются обычные колонки
@@ -448,6 +445,8 @@
                     'wb_length', 'wb_width', 'wb_height', 'wb_weight', 'wb_fix_dims',
                     'ym_length', 'ym_width', 'ym_height', 'ym_weight', 'ym_fix_dims',
                 ],
+                // Только паспорт МС (supplier_label уже в SMART_COLS_BASE_MS).
+                no_supplier: [],
             };
             var COL_MIN_WIDTH = 60;
             var COL_MAX_WIDTH = 800;
@@ -459,6 +458,8 @@
             var COL_WIDTH_DEFAULTS_BY_KEY = {
                 code: 80,
                 name: 200,
+                type: 90,
+                supplier_label: 160,
                 ms_vat: 70,
                 manager: 110,
                 content_manager: 130,
@@ -538,6 +539,7 @@
             var elWidthsPanel = document.getElementById('dg-mpu-widths-panel');
             var elWidthsGrid = document.getElementById('dg-mpu-widths-grid');
             var elWidthsReset = document.getElementById('dg-mpu-widths-reset');
+            var elFltType = document.getElementById('dg-mpu-flt-type');
             var elFltManager = document.getElementById('dg-mpu-flt-manager');
             var elFltCmgr = document.getElementById('dg-mpu-flt-cmgr');
             var elFltExcludeBundleComp = document.getElementById('dg-mpu-flt-exclude-bundle-components');
@@ -589,6 +591,7 @@
             var initialStockPositive = readBoolWithDefault(FILTER_STOCK_POSITIVE_KEY, false);
             var initialSmartColumns = readBoolWithDefault(FILTER_SMART_COLUMNS_KEY, true);
             var initialFilters = {
+                type: readStr(FILTER_TYPE_KEY),
                 manager: readStr(FILTER_MANAGER_KEY),
                 content_manager: readStr(FILTER_CONTENT_MGR_KEY),
                 exclude_bundle_components: initialExcludeBundleComponents,
@@ -620,7 +623,7 @@
                 visible: readJsonFromStorage(COLS_VISIBLE_KEY) || {},
                 colWidths: readJsonFromStorage(COLS_WIDTH_KEY) || {},
                 // Расширенные фильтры (применяются ДО умного поиска и сортировки):
-                // точное совпадение строк manager/content_manager (пусто = «все»).
+                // точное совпадение строк type/manager/content_manager (пусто = «все»).
                 // exclude_bundle_components — серверный фильтр (передаётся в URL),
                 // ниже в commitFilters() при изменении тригерится перезапрос.
                 // stock_positive — клиентский: только строки с ms_stock > 0 (дефолт выкл).
@@ -629,6 +632,7 @@
                 // оставляет только базовые колонки МС и колонки, относящиеся к
                 // выбранной проблеме. На прочих scope — без эффекта.
                 filters: {
+                    type: initialFilters.type,
                     manager: initialFilters.manager,
                     content_manager: initialFilters.content_manager,
                     exclude_bundle_components: !!initialFilters.exclude_bundle_components,
@@ -641,6 +645,7 @@
                     scope: 'all',
                     search: '',
                     filters: {
+                        type: initialFilters.type,
                         manager: initialFilters.manager,
                         content_manager: initialFilters.content_manager,
                         exclude_bundle_components: !!initialFilters.exclude_bundle_components,
@@ -655,6 +660,7 @@
                 if (String(state.pending.search || '') !== String(state.search || '')) return true;
                 var pf = state.pending.filters || {};
                 var af = state.filters || {};
+                if (String(pf.type || '') !== String(af.type || '')) return true;
                 if (String(pf.manager || '') !== String(af.manager || '')) return true;
                 if (String(pf.content_manager || '') !== String(af.content_manager || '')) return true;
                 if (Boolean(pf.exclude_bundle_components) !== Boolean(af.exclude_bundle_components)) return true;
@@ -825,6 +831,7 @@
                     var started = Date.now();
                     var filterHint =
                         'фильтр: ' + (SCOPE_LABELS[state.scope] || state.scope) +
+                        (state.filters.type ? '; тип: ' + state.filters.type : '') +
                         (state.filters.manager ? '; менеджер: ' + state.filters.manager : '') +
                         (state.filters.content_manager ? '; КМ: ' + state.filters.content_manager : '') +
                         (state.search ? '; поиск: «' + state.search + '»' : '');
@@ -1047,6 +1054,7 @@
                     var started = Date.now();
                     var filterHint =
                         'фильтр: ' + (SCOPE_LABELS[state.scope] || state.scope) +
+                        (state.filters.type ? '; тип: ' + state.filters.type : '') +
                         (state.filters.manager ? '; менеджер: ' + state.filters.manager : '') +
                         (state.filters.content_manager ? '; КМ: ' + state.filters.content_manager : '') +
                         (state.search ? '; поиск: «' + state.search + '»' : '');
@@ -1267,6 +1275,7 @@
                     var started = Date.now();
                     var filterHint =
                         'фильтр: ' + (SCOPE_LABELS[state.scope] || state.scope) +
+                        (state.filters.type ? '; тип: ' + state.filters.type : '') +
                         (state.filters.manager ? '; менеджер: ' + state.filters.manager : '') +
                         (state.filters.content_manager ? '; КМ: ' + state.filters.content_manager : '') +
                         (state.search ? '; поиск: «' + state.search + '»' : '');
@@ -1479,6 +1488,7 @@
                     var started = Date.now();
                     var filterHint =
                         'фильтр: ' + (SCOPE_LABELS[state.scope] || state.scope) +
+                        (state.filters.type ? '; тип: ' + state.filters.type : '') +
                         (state.filters.manager ? '; менеджер: ' + state.filters.manager : '') +
                         (state.filters.content_manager ? '; КМ: ' + state.filters.content_manager : '') +
                         (state.search ? '; поиск: «' + state.search + '»' : '');
@@ -1689,6 +1699,7 @@
                     var started = Date.now();
                     var filterHint =
                         'фильтр: ' + (SCOPE_LABELS[state.scope] || state.scope) +
+                        (state.filters.type ? '; тип: ' + state.filters.type : '') +
                         (state.filters.manager ? '; менеджер: ' + state.filters.manager : '') +
                         (state.filters.content_manager ? '; КМ: ' + state.filters.content_manager : '') +
                         (state.search ? '; поиск: «' + state.search + '»' : '');
@@ -1898,6 +1909,7 @@
                     var started = Date.now();
                     var filterHint =
                         'фильтр: ' + (SCOPE_LABELS[state.scope] || state.scope) +
+                        (state.filters.type ? '; тип: ' + state.filters.type : '') +
                         (state.filters.manager ? '; менеджер: ' + state.filters.manager : '') +
                         (state.filters.content_manager ? '; КМ: ' + state.filters.content_manager : '') +
                         (state.search ? '; поиск: «' + state.search + '»' : '');
@@ -2257,9 +2269,12 @@
                 return dimsMismatchHighlightKeysAcrossMps(row);
             }
 
-            // ---- Расширенные фильтры (manager / content_manager / stock) + умный поиск ----
+            // ---- Расширенные фильтры (type / manager / content_manager / stock) + умный поиск ----
             function passesAdvancedFilters(row) {
                 var f = state.filters || {};
+                if (f.type) {
+                    if (String(row.type || '').trim() !== String(f.type).trim()) return false;
+                }
                 if (f.manager) {
                     if (String(row.manager || '').trim() !== String(f.manager).trim()) return false;
                 }
@@ -2344,6 +2359,7 @@
                 }
             }
             function rebuildAdvancedFilters() {
+                rebuildSelect(elFltType, 'type', state.filters.type || '');
                 rebuildSelect(elFltManager, 'manager', state.filters.manager || '');
                 rebuildSelect(elFltCmgr, 'content_manager', state.filters.content_manager || '');
             }
@@ -2737,6 +2753,10 @@
                                 tdClasses.push('dg-mpu-missing');
                             }
                         }
+                        // Пустой поставщик (оба поля МС) — проблема на любом scope.
+                        if (key === 'supplier_label' && isEmptyVal(val)) {
+                            tdClasses.push('dg-mpu-missing');
+                        }
                         if (!scopeIsAll) {
                             // НДС МС подсвечиваем мягким жёлтым (это справочное значение МС;
                             // фактическая ошибка — на стороне маркетплейса). Ячейки
@@ -2753,7 +2773,13 @@
                         }
                         var cls = tdClasses.length ? ' class="' + tdClasses.join(' ') + '"' : '';
                         var cellInner;
-                        if (key === 'name') {
+                        if (key === 'supplier_label') {
+                            if (isEmptyVal(val)) {
+                                cellInner = '<span class="text-danger">не указан</span>';
+                            } else {
+                                cellInner = escapeHtml(String(val));
+                            }
+                        } else if (key === 'name') {
                             var uuid = String(row.uuid || '').trim();
                             var typeMs = row.type || '';
                             var codeStr = row.code || '';
@@ -3065,6 +3091,7 @@
                         // После rebuildAdvancedFilters select.value мог быть скорректирован
                         // (значение могло пропасть из набора). Синхронизируем pending с
                         // фактически отображаемыми значениями, чтобы dirty-индикатор не врал.
+                        if (elFltType) state.pending.filters.type = String(elFltType.value || '');
                         if (elFltManager) state.pending.filters.manager = String(elFltManager.value || '');
                         if (elFltCmgr) state.pending.filters.content_manager = String(elFltCmgr.value || '');
                         applySearchFilter();
@@ -3108,11 +3135,13 @@
                 var pendingSmartCols = !!(state.pending.filters && state.pending.filters.smart_columns);
                 state.scope = String(state.pending.scope || 'all');
                 state.search = String(state.pending.search || '');
+                state.filters.type = String((state.pending.filters && state.pending.filters.type) || '');
                 state.filters.manager = String((state.pending.filters && state.pending.filters.manager) || '');
                 state.filters.content_manager = String((state.pending.filters && state.pending.filters.content_manager) || '');
                 state.filters.exclude_bundle_components = pendingExcludeBundle;
                 state.filters.stock_positive = pendingStockPositive;
                 state.filters.smart_columns = pendingSmartCols;
+                writeStr(FILTER_TYPE_KEY, state.filters.type);
                 writeStr(FILTER_MANAGER_KEY, state.filters.manager);
                 writeStr(FILTER_CONTENT_MGR_KEY, state.filters.content_manager);
                 writeStr(FILTER_EXCLUDE_BUNDLE_COMPONENTS_KEY, state.filters.exclude_bundle_components ? '1' : '0');
@@ -3139,12 +3168,14 @@
             function resetAllFiltersAndCommit() {
                 state.pending.scope = 'all';
                 state.pending.search = '';
+                state.pending.filters.type = '';
                 state.pending.filters.manager = '';
                 state.pending.filters.content_manager = '';
                 state.pending.filters.exclude_bundle_components = true;
                 state.pending.filters.stock_positive = false;
                 state.pending.filters.smart_columns = true;
                 if (elSearch) elSearch.value = '';
+                if (elFltType) elFltType.value = '';
                 if (elFltManager) elFltManager.value = '';
                 if (elFltCmgr) elFltCmgr.value = '';
                 if (elFltExcludeBundleComp) elFltExcludeBundleComp.checked = true;
@@ -3217,6 +3248,12 @@
                 });
             }
 
+            if (elFltType) {
+                elFltType.addEventListener('change', function () {
+                    state.pending.filters.type = String(elFltType.value || '');
+                    refreshDirtyIndicator();
+                });
+            }
             if (elFltManager) {
                 elFltManager.addEventListener('change', function () {
                     state.pending.filters.manager = String(elFltManager.value || '');
@@ -3890,6 +3927,7 @@
                         key: 'extra_filters',
                         title: 'Дополнительные фильтры',
                         items: [
+                            { key: 'type', title: 'Тип товара в МС', hint: 'Селектор типа (Товар / Комплект / …) в карточке «Фильтры и действия»' },
                             { key: 'manager', title: 'Менеджер', hint: 'Селектор менеджера в карточке «Фильтры и действия»' },
                             { key: 'cmgr', title: 'Контент-менеджер', hint: 'Селектор контент-менеджера в карточке «Фильтры и действия»' },
                             { key: 'exclude_bundle_components', title: 'Исключить товары из комплектов', hint: 'Серверный фильтр; дефолт включён' },

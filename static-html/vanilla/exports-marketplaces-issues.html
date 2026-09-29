@@ -1584,7 +1584,7 @@
                     <strong class="text-body">Фильтры и видимость полей</strong> — селекты менеджеров, scope, чекбокс «Исключить товары из комплектов» (<code class="small">dg.mpu.flt.excludeBundleComponents.v1</code>, дефолт включён), ползунок «Умное скрытие столбцов под выбранный фильтр» (<code class="small">dg.mpu.flt.smartColumns.v1</code>, дефолт включён), ползунок «Показывать товары с остатком» (<code class="small">dg.mpu.flt.stockPositive.v1</code>, дефолт выкл — только <em>Остаток по МС &gt; 0</em>), настройки шестерёнки «Поля фильтров» (<code class="small">datagon_mpu_filter_fields_v1</code>).
                   </li>
                   <li class="mb-0">
-                    <strong class="text-body">Таблица</strong> — какие колонки показаны и ширины в пикселях (<code class="small">dg.mpu.colvisible.v5</code>, <code class="small">dg.mpu.colwidths.v2</code>). По умолчанию включены <strong>все</strong> колонки — «Код МС», «Название МС», «Менеджер», «Контент-менеджер», «НДС МС», «Остаток по МС», габариты МС (<em>Длина, Ширина, Высота — коробка, Высота — пакет (см), Вес (кг)</em> — из <code class="small">ms_dimensions_measurements</code>, страница <a href="/exports-dimensions.html">Габариты</a>), «Синхронизация МС» и полный паспорт каждого маркетплейса (<em>код, название, НДС, остаток, длина / ширина / высота / вес, кабинет, покупателю, обновлено</em>). Кнопка <strong>«Столбцы по умолчанию»</strong> возвращает именно это состояние «все включены». Лишние колонки можно скрыть через <strong>🧩 Столбцы</strong>. Полное наименование МС и ссылки на маркетплейсы — по клику на «Название МС» (карточка МойСклад).
+                    <strong class="text-body">Таблица</strong> — какие колонки показаны и ширины в пикселях (<code class="small">dg.mpu.colvisible.v6</code>, <code class="small">dg.mpu.colwidths.v2</code>). По умолчанию включены <strong>все</strong> колонки — «Код МС», «Название МС», «Тип МС», «Поставщик / Поставщик 2», «Менеджер», «Контент-менеджер», «НДС МС», «Остаток по МС», габариты МС (<em>Длина, Ширина, Высота — коробка, Высота — пакет (см), Вес (кг)</em> — из атрибутов карточки МС), «Синхронизация МС» и полный паспорт каждого маркетплейса (<em>код, название, НДС, остаток, длина / ширина / высота / вес, кабинет, покупателю, обновлено</em>). Пустой «Поставщик / Поставщик 2» подсвечивается красным. Кнопка <strong>«Столбцы по умолчанию»</strong> возвращает именно это состояние «все включены». Лишние колонки можно скрыть через <strong>🧩 Столбцы</strong>. Полное наименование МС и ссылки на маркетплейсы — по клику на «Название МС» (карточка МойСклад).
                   </li>
                 </ol>
               </div>
@@ -1615,7 +1615,7 @@
                 </div>
                 <div id="dg-mp-issues-workflow-t2-body" class="small text-body-secondary lh-lg px-2 pb-3 pt-2">
                   <p class="mb-2">
-                    Выберите <strong>фильтр маркетплейса</strong> (все товары / есть проблемы хотя бы на одном / нет ни на одном / нет на конкретном маркетплейсе / не совпадает НДС / разные габариты — со сверкой с МС, когда есть замеры в реестре <a href="/exports-dimensions.html">Габариты</a>, иначе между маркетплейсами). При необходимости сузьте выбор селектами <strong>Менеджер</strong> и <strong>Контент-менеджер</strong>.
+                    Выберите <strong>фильтр маркетплейса</strong> (все товары / есть проблемы хотя бы на одном / нет ни на одном / нет на конкретном маркетплейсе / не совпадает НДС / разные габариты — со сверкой с МС, когда есть замеры в реестре <a href="/exports-dimensions.html">Габариты</a>, иначе между маркетплейсами / <strong>нет поставщика</strong> — оба поля «Поставщик» и «Поставщик 2» в МС пустые). При необходимости сузьте выбор селектами <strong>Тип товара в МС</strong>, <strong>Менеджер</strong> и <strong>Контент-менеджер</strong>.
                   </p>
                   <p class="mb-2">
                     Чекбокс <strong>«Исключить товары, по которым есть комплекты»</strong> (включён по умолчанию) скрывает товары, чей <code class="small">code</code> встречается в составе хотя бы одного комплекта (берётся из <code class="small">ms_entity_details</code>, <code class="small">kind=bundle</code>, поле <code class="small">payload_json.components.rows[].assortment.code</code>). Это исключает «ложные проблемы» по штучным товарам, которые отгружаются комплектом и не выкладываются на маркетплейс отдельно. Снимите галку, если хотите видеть полный список.
@@ -1641,7 +1641,7 @@
                     <strong>Умный поиск</strong> в шапке карточки таблицы ищет по артикулам и наименованиям МС и маркетплейсов, а также по ФИО менеджеров (мульти-слова через пробел — как AND). <strong>Esc</strong> или крестик в поле очищают строку и сразу применяют фильтр.
                   </p>
                   <p class="mb-2">
-                    При фильтре <strong>«Все товары»</strong> красным подсвечиваются только ячейки <strong>кода</strong> маркетплейса (Ozon / Wildberries / Я.Маркет), если товар в снапшоте не найден. Несовпадение НДС (МС ↔ площадка) и расхождение габаритов подсвечиваются <strong>на соответствующих фильтрах</strong>, не в режиме «все товары». На остальных фильтрах при отсутствии товара подсвечивается пара <strong>код + название</strong> для этой площадки. На фильтре <strong>«Не совпадает НДС»</strong> ячейки <em>НДС маркетплейсов</em> с расхождением подсвечиваются <strong>красным</strong>, а <em>НДС МС</em> — <strong>мягким жёлтым</strong>: это справочное значение со стороны МС, фактическая ошибка — на маркетплейсе.
+                    При фильтре <strong>«Все товары»</strong> красным подсвечиваются только ячейки <strong>кода</strong> маркетплейса (Ozon / Wildberries / Я.Маркет), если товар в снапшоте не найден. Колонка <strong>«Поставщик / Поставщик 2»</strong> подсвечивается красным на <em>любом</em> фильтре, если оба поля поставщика в МС пустые. Несовпадение НДС (МС ↔ площадка) и расхождение габаритов подсвечиваются <strong>на соответствующих фильтрах</strong>, не в режиме «все товары». На остальных фильтрах при отсутствии товара подсвечивается пара <strong>код + название</strong> для этой площадки. На фильтре <strong>«Не совпадает НДС»</strong> ячейки <em>НДС маркетплейсов</em> с расхождением подсвечиваются <strong>красным</strong>, а <em>НДС МС</em> — <strong>мягким жёлтым</strong>: это справочное значение со стороны МС, фактическая ошибка — на маркетплейсе.
                   </p>
                   <p class="mb-2">
                     На фильтре <strong>«Разные габариты»</strong>, если у товара заполнены замеры МС в реестре <a href="/exports-dimensions.html">Габариты</a> (хотя бы одно значение из «Длина», «Ширина», «Высота — коробка», «Высота — пакет», «Вес»), сверка идёт <strong>МС ↔ маркетплейсы</strong>: ячейка маркетплейса и соответствующая ячейка МС подсвечиваются, когда числа расходятся (допуск 0,02). Высота МС двойная (коробка / пакет): высота маркетплейса считается совпавшей, если совпала <strong>хотя бы с одной</strong> из непустых высот МС. Если у строки в МС <strong>нет ни одного</strong> измерения — fallback «между маркетплейсами»: для каждой оси (длина / ширина / высота / вес) собираются значения всех маркетплейсов, у которых есть карточка по товару, и подсвечиваются <strong>отклонения от большинства</strong>. Например, при <em>50 / 20 / 50</em> по ширине красным становится только колонка с «20» — две другие совпадают и принимаются за эталон. Если уникального большинства нет (три разных значения, либо ровно две площадки и значения разные) — подсвечиваются все, у кого значение определено; пустые ячейки расхождением не считаются.
@@ -1782,7 +1782,16 @@
 
                     <input type="radio" class="btn-check" name="dg-mpu-scope" id="dg-mpu-scope-dims-mismatch" value="dims_mismatch">
                     <label class="btn btn-outline-primary" for="dg-mpu-scope-dims-mismatch" title="Расхождение по длине/ширине/высоте/весу. Если у товара есть замеры МС в реестре «Габариты» — сверка идёт МС ↔ маркетплейсы (высота МС двойная: коробка/пакет, совпадение хотя бы с одной = ОК). Иначе fallback — между маркетплейсами: подсветка по большинству (50/20/50 → красным только «20»); если уникального большинства нет (3 разных значения или ровно 2 площадки с разными значениями) — подсвечиваются все определённые. Пусто с одной стороны расхождением не считается. Допуск 0,02.">Разные габариты</label>
+
+                    <input type="radio" class="btn-check" name="dg-mpu-scope" id="dg-mpu-scope-no-supplier" value="no_supplier">
+                    <label class="btn btn-outline-primary" for="dg-mpu-scope-no-supplier" title="В карточке МойСклад не заполнены ни «Поставщик», ни «Поставщик 2» (оба пустые после TRIM). Колонка «Поставщик / Поставщик 2» подсвечивается красным.">Нет поставщика</label>
                   </div>
+                </div>
+                <div class="col-md-4 col-sm-6" data-dg-mpu-filter-field="type" data-dg-filter-field-title="Тип товара в МС">
+                  <label class="form-label small mb-1" for="dg-mpu-flt-type">Тип товара в МС</label>
+                  <select class="form-select form-select-sm" id="dg-mpu-flt-type">
+                    <option value="">— все —</option>
+                  </select>
                 </div>
                 <div class="col-md-4 col-sm-6" data-dg-mpu-filter-field="manager" data-dg-filter-field-title="Менеджер">
                   <label class="form-label small mb-1" for="dg-mpu-flt-manager">Менеджер</label>
@@ -1807,7 +1816,7 @@
                 <div class="col-12" data-dg-mpu-filter-field="smart_columns" data-dg-filter-field-title="Умное скрытие столбцов под выбранный фильтр">
                   <div class="form-check form-switch mb-0">
                     <input class="form-check-input" type="checkbox" role="switch" id="dg-mpu-flt-smart-columns" checked>
-                    <label class="form-check-label small" for="dg-mpu-flt-smart-columns" data-dg-tooltip="Когда включено и выбран «Нет на Ozon/Wildberries/Я.Маркет», «Не совпадает НДС» или «Разные габариты» — в таблице остаются только базовые колонки МойСклад (Код, Название, Менеджер, Контент-менеджер, НДС, Остаток, Синхронизация) и колонки, относящиеся к выбранной проблеме. На фильтрах «Все товары», «Есть проблемы», «Нет ни на одном» ползунок ничего не меняет. По умолчанию включено.">
+                    <label class="form-check-label small" for="dg-mpu-flt-smart-columns" data-dg-tooltip="Когда включено и выбран «Нет на Ozon/Wildberries/Я.Маркет», «Не совпадает НДС», «Разные габариты» или «Нет поставщика» — в таблице остаются только базовые колонки МойСклад (Код, Название, Тип, Поставщик, Менеджер, Контент-менеджер, НДС, Остаток, Синхронизация) и колонки, относящиеся к выбранной проблеме. На фильтрах «Все товары», «Есть проблемы», «Нет ни на одном» ползунок ничего не меняет. По умолчанию включено.">
                       Умное скрытие столбцов под выбранный фильтр
                     </label>
                   </div>
@@ -2654,13 +2663,14 @@
                 ym: 'нет на Я.Маркет',
                 vat_mismatch: 'не совпадает НДС (МС ↔ маркетплейс)',
                 dims_mismatch: 'разные габариты между маркетплейсами',
+                no_supplier: 'нет поставщика в МС',
             };
             // Ключи, по которым работает «умный поиск»: артикул/наименование МС + маркетплейсов
             // + ФИО менеджеров. Если бэкенд вернёт строку без этих ключей — fallback на все
             // строковые поля row (см. applySearchFilter ниже). Так искать по «Иванов» или по
             // подстроке наименования с любого маркетплейса будет всегда, без отдельных полей.
             var SEARCH_KEYS = [
-                'code', 'name',
+                'code', 'name', 'type', 'supplier_label',
                 'manager', 'content_manager',
                 'ms_vat', 'ms_stock', 'synced_at',
                 'ms_length', 'ms_width', 'ms_height_box', 'ms_height_bag', 'ms_weight',
@@ -2676,20 +2686,15 @@
                 ['ym_code', 'ym_name'],
             ];
             // ---- Колонки: дефолтные ширины и видимость (сохраняем в localStorage) ----
-            // Bump COLS_VISIBLE_KEY до v5 после смены семантики дефолта: теперь по
-            // умолчанию (и при клике на «Столбцы по умолчанию») включены ВСЕ колонки,
-            // а не компактный набор (см. DEFAULT_HIDDEN_COLS — пустой объект ниже).
-            // Старые v4-настройки игнорируем, иначе у пользователей со скрытыми
-            // *_name/*_vat/dim/link/updated кнопка «Столбцы по умолчанию» не
-            // включала бы все колонки. COLS_WIDTH_KEY оставлен v2 — индивидуальные
-            // пиксельные значения сохраняются, новые получают дефолт из
-            // COL_WIDTH_DEFAULTS_BY_KEY. При большом числе включённых колонок
-            // таблица расширяется (по эталону маркетплейсов sticky-th прилипает под
-            // app-header через --dg-table-sticky-top, см. правило).
+            // Bump COLS_VISIBLE_KEY до v6: в headers появились type и supplier_label.
+            // Старые v5-настройки игнорируем, чтобы новые колонки были видны по умолчанию.
+            // COLS_WIDTH_KEY оставлен v2 — индивидуальные пиксельные значения сохраняются,
+            // новые ключи получают дефолт из COL_WIDTH_DEFAULTS_BY_KEY.
             var COLS_WIDTH_KEY = 'dg.mpu.colwidths.v2';
-            var COLS_VISIBLE_KEY = 'dg.mpu.colvisible.v5';
-            // ---- Дополнительные фильтры (Менеджер / Контент-менеджер / «исключить товары
-            // из комплектов» / «умное скрытие столбцов»): сохраняем в localStorage ----
+            var COLS_VISIBLE_KEY = 'dg.mpu.colvisible.v6';
+            // ---- Дополнительные фильтры (Тип МС / Менеджер / Контент-менеджер /
+            // «исключить товары из комплектов» / «умное скрытие столбцов»):
+            // сохраняем в localStorage ----
             // Чекбокс «исключить компоненты комплектов» хранится строкой ('1' / '0').
             // Если ключа в storage нет — считаем, что фильтр включён по умолчанию (см.
             // initialExcludeBundleComponents ниже). Это согласовано с серверным
@@ -2698,6 +2703,7 @@
             // SMART_COLS_BY_SCOPE и visibleHeaders ниже): по умолчанию включён, на
             // «проблемных» scope (ozon/wb/ym/vat_mismatch/dims_mismatch) оставляет в
             // таблице только базовые колонки МС + колонки, относящиеся к проблеме.
+            var FILTER_TYPE_KEY = 'dg.mpu.flt.type.v1';
             var FILTER_MANAGER_KEY = 'dg.mpu.flt.manager.v1';
             var FILTER_CONTENT_MGR_KEY = 'dg.mpu.flt.cmgr.v1';
             var FILTER_EXCLUDE_BUNDLE_COMPONENTS_KEY = 'dg.mpu.flt.excludeBundleComponents.v1';
@@ -2705,7 +2711,7 @@
             var FILTER_SMART_COLUMNS_KEY = 'dg.mpu.flt.smartColumns.v1';
             // Базовый «паспорт МС» — эти колонки остаются всегда, когда smart-режим
             // активен. Меняется только набор колонок маркетплейсов (см. ниже).
-            var SMART_COLS_BASE_MS = ['code', 'name', 'manager', 'content_manager', 'ms_vat', 'ms_stock', 'synced_at'];
+            var SMART_COLS_BASE_MS = ['code', 'name', 'type', 'supplier_label', 'manager', 'content_manager', 'ms_vat', 'ms_stock', 'synced_at'];
             // Маппинг scope → дополнительные колонки маркетплейсов, которые нужно
             // оставить в таблице. Scope, которого нет в маппинге (all / any / all3),
             // smart-режимом не затрагивается — на нём показываются обычные колонки
@@ -2721,6 +2727,8 @@
                     'wb_length', 'wb_width', 'wb_height', 'wb_weight', 'wb_fix_dims',
                     'ym_length', 'ym_width', 'ym_height', 'ym_weight', 'ym_fix_dims',
                 ],
+                // Только паспорт МС (supplier_label уже в SMART_COLS_BASE_MS).
+                no_supplier: [],
             };
             var COL_MIN_WIDTH = 60;
             var COL_MAX_WIDTH = 800;
@@ -2732,6 +2740,8 @@
             var COL_WIDTH_DEFAULTS_BY_KEY = {
                 code: 80,
                 name: 200,
+                type: 90,
+                supplier_label: 160,
                 ms_vat: 70,
                 manager: 110,
                 content_manager: 130,
@@ -2811,6 +2821,7 @@
             var elWidthsPanel = document.getElementById('dg-mpu-widths-panel');
             var elWidthsGrid = document.getElementById('dg-mpu-widths-grid');
             var elWidthsReset = document.getElementById('dg-mpu-widths-reset');
+            var elFltType = document.getElementById('dg-mpu-flt-type');
             var elFltManager = document.getElementById('dg-mpu-flt-manager');
             var elFltCmgr = document.getElementById('dg-mpu-flt-cmgr');
             var elFltExcludeBundleComp = document.getElementById('dg-mpu-flt-exclude-bundle-components');
@@ -2862,6 +2873,7 @@
             var initialStockPositive = readBoolWithDefault(FILTER_STOCK_POSITIVE_KEY, false);
             var initialSmartColumns = readBoolWithDefault(FILTER_SMART_COLUMNS_KEY, true);
             var initialFilters = {
+                type: readStr(FILTER_TYPE_KEY),
                 manager: readStr(FILTER_MANAGER_KEY),
                 content_manager: readStr(FILTER_CONTENT_MGR_KEY),
                 exclude_bundle_components: initialExcludeBundleComponents,
@@ -2893,7 +2905,7 @@
                 visible: readJsonFromStorage(COLS_VISIBLE_KEY) || {},
                 colWidths: readJsonFromStorage(COLS_WIDTH_KEY) || {},
                 // Расширенные фильтры (применяются ДО умного поиска и сортировки):
-                // точное совпадение строк manager/content_manager (пусто = «все»).
+                // точное совпадение строк type/manager/content_manager (пусто = «все»).
                 // exclude_bundle_components — серверный фильтр (передаётся в URL),
                 // ниже в commitFilters() при изменении тригерится перезапрос.
                 // stock_positive — клиентский: только строки с ms_stock > 0 (дефолт выкл).
@@ -2902,6 +2914,7 @@
                 // оставляет только базовые колонки МС и колонки, относящиеся к
                 // выбранной проблеме. На прочих scope — без эффекта.
                 filters: {
+                    type: initialFilters.type,
                     manager: initialFilters.manager,
                     content_manager: initialFilters.content_manager,
                     exclude_bundle_components: !!initialFilters.exclude_bundle_components,
@@ -2914,6 +2927,7 @@
                     scope: 'all',
                     search: '',
                     filters: {
+                        type: initialFilters.type,
                         manager: initialFilters.manager,
                         content_manager: initialFilters.content_manager,
                         exclude_bundle_components: !!initialFilters.exclude_bundle_components,
@@ -2928,6 +2942,7 @@
                 if (String(state.pending.search || '') !== String(state.search || '')) return true;
                 var pf = state.pending.filters || {};
                 var af = state.filters || {};
+                if (String(pf.type || '') !== String(af.type || '')) return true;
                 if (String(pf.manager || '') !== String(af.manager || '')) return true;
                 if (String(pf.content_manager || '') !== String(af.content_manager || '')) return true;
                 if (Boolean(pf.exclude_bundle_components) !== Boolean(af.exclude_bundle_components)) return true;
@@ -3098,6 +3113,7 @@
                     var started = Date.now();
                     var filterHint =
                         'фильтр: ' + (SCOPE_LABELS[state.scope] || state.scope) +
+                        (state.filters.type ? '; тип: ' + state.filters.type : '') +
                         (state.filters.manager ? '; менеджер: ' + state.filters.manager : '') +
                         (state.filters.content_manager ? '; КМ: ' + state.filters.content_manager : '') +
                         (state.search ? '; поиск: «' + state.search + '»' : '');
@@ -3320,6 +3336,7 @@
                     var started = Date.now();
                     var filterHint =
                         'фильтр: ' + (SCOPE_LABELS[state.scope] || state.scope) +
+                        (state.filters.type ? '; тип: ' + state.filters.type : '') +
                         (state.filters.manager ? '; менеджер: ' + state.filters.manager : '') +
                         (state.filters.content_manager ? '; КМ: ' + state.filters.content_manager : '') +
                         (state.search ? '; поиск: «' + state.search + '»' : '');
@@ -3540,6 +3557,7 @@
                     var started = Date.now();
                     var filterHint =
                         'фильтр: ' + (SCOPE_LABELS[state.scope] || state.scope) +
+                        (state.filters.type ? '; тип: ' + state.filters.type : '') +
                         (state.filters.manager ? '; менеджер: ' + state.filters.manager : '') +
                         (state.filters.content_manager ? '; КМ: ' + state.filters.content_manager : '') +
                         (state.search ? '; поиск: «' + state.search + '»' : '');
@@ -3752,6 +3770,7 @@
                     var started = Date.now();
                     var filterHint =
                         'фильтр: ' + (SCOPE_LABELS[state.scope] || state.scope) +
+                        (state.filters.type ? '; тип: ' + state.filters.type : '') +
                         (state.filters.manager ? '; менеджер: ' + state.filters.manager : '') +
                         (state.filters.content_manager ? '; КМ: ' + state.filters.content_manager : '') +
                         (state.search ? '; поиск: «' + state.search + '»' : '');
@@ -3962,6 +3981,7 @@
                     var started = Date.now();
                     var filterHint =
                         'фильтр: ' + (SCOPE_LABELS[state.scope] || state.scope) +
+                        (state.filters.type ? '; тип: ' + state.filters.type : '') +
                         (state.filters.manager ? '; менеджер: ' + state.filters.manager : '') +
                         (state.filters.content_manager ? '; КМ: ' + state.filters.content_manager : '') +
                         (state.search ? '; поиск: «' + state.search + '»' : '');
@@ -4171,6 +4191,7 @@
                     var started = Date.now();
                     var filterHint =
                         'фильтр: ' + (SCOPE_LABELS[state.scope] || state.scope) +
+                        (state.filters.type ? '; тип: ' + state.filters.type : '') +
                         (state.filters.manager ? '; менеджер: ' + state.filters.manager : '') +
                         (state.filters.content_manager ? '; КМ: ' + state.filters.content_manager : '') +
                         (state.search ? '; поиск: «' + state.search + '»' : '');
@@ -4530,9 +4551,12 @@
                 return dimsMismatchHighlightKeysAcrossMps(row);
             }
 
-            // ---- Расширенные фильтры (manager / content_manager / stock) + умный поиск ----
+            // ---- Расширенные фильтры (type / manager / content_manager / stock) + умный поиск ----
             function passesAdvancedFilters(row) {
                 var f = state.filters || {};
+                if (f.type) {
+                    if (String(row.type || '').trim() !== String(f.type).trim()) return false;
+                }
                 if (f.manager) {
                     if (String(row.manager || '').trim() !== String(f.manager).trim()) return false;
                 }
@@ -4617,6 +4641,7 @@
                 }
             }
             function rebuildAdvancedFilters() {
+                rebuildSelect(elFltType, 'type', state.filters.type || '');
                 rebuildSelect(elFltManager, 'manager', state.filters.manager || '');
                 rebuildSelect(elFltCmgr, 'content_manager', state.filters.content_manager || '');
             }
@@ -5010,6 +5035,10 @@
                                 tdClasses.push('dg-mpu-missing');
                             }
                         }
+                        // Пустой поставщик (оба поля МС) — проблема на любом scope.
+                        if (key === 'supplier_label' && isEmptyVal(val)) {
+                            tdClasses.push('dg-mpu-missing');
+                        }
                         if (!scopeIsAll) {
                             // НДС МС подсвечиваем мягким жёлтым (это справочное значение МС;
                             // фактическая ошибка — на стороне маркетплейса). Ячейки
@@ -5026,7 +5055,13 @@
                         }
                         var cls = tdClasses.length ? ' class="' + tdClasses.join(' ') + '"' : '';
                         var cellInner;
-                        if (key === 'name') {
+                        if (key === 'supplier_label') {
+                            if (isEmptyVal(val)) {
+                                cellInner = '<span class="text-danger">не указан</span>';
+                            } else {
+                                cellInner = escapeHtml(String(val));
+                            }
+                        } else if (key === 'name') {
                             var uuid = String(row.uuid || '').trim();
                             var typeMs = row.type || '';
                             var codeStr = row.code || '';
@@ -5338,6 +5373,7 @@
                         // После rebuildAdvancedFilters select.value мог быть скорректирован
                         // (значение могло пропасть из набора). Синхронизируем pending с
                         // фактически отображаемыми значениями, чтобы dirty-индикатор не врал.
+                        if (elFltType) state.pending.filters.type = String(elFltType.value || '');
                         if (elFltManager) state.pending.filters.manager = String(elFltManager.value || '');
                         if (elFltCmgr) state.pending.filters.content_manager = String(elFltCmgr.value || '');
                         applySearchFilter();
@@ -5381,11 +5417,13 @@
                 var pendingSmartCols = !!(state.pending.filters && state.pending.filters.smart_columns);
                 state.scope = String(state.pending.scope || 'all');
                 state.search = String(state.pending.search || '');
+                state.filters.type = String((state.pending.filters && state.pending.filters.type) || '');
                 state.filters.manager = String((state.pending.filters && state.pending.filters.manager) || '');
                 state.filters.content_manager = String((state.pending.filters && state.pending.filters.content_manager) || '');
                 state.filters.exclude_bundle_components = pendingExcludeBundle;
                 state.filters.stock_positive = pendingStockPositive;
                 state.filters.smart_columns = pendingSmartCols;
+                writeStr(FILTER_TYPE_KEY, state.filters.type);
                 writeStr(FILTER_MANAGER_KEY, state.filters.manager);
                 writeStr(FILTER_CONTENT_MGR_KEY, state.filters.content_manager);
                 writeStr(FILTER_EXCLUDE_BUNDLE_COMPONENTS_KEY, state.filters.exclude_bundle_components ? '1' : '0');
@@ -5412,12 +5450,14 @@
             function resetAllFiltersAndCommit() {
                 state.pending.scope = 'all';
                 state.pending.search = '';
+                state.pending.filters.type = '';
                 state.pending.filters.manager = '';
                 state.pending.filters.content_manager = '';
                 state.pending.filters.exclude_bundle_components = true;
                 state.pending.filters.stock_positive = false;
                 state.pending.filters.smart_columns = true;
                 if (elSearch) elSearch.value = '';
+                if (elFltType) elFltType.value = '';
                 if (elFltManager) elFltManager.value = '';
                 if (elFltCmgr) elFltCmgr.value = '';
                 if (elFltExcludeBundleComp) elFltExcludeBundleComp.checked = true;
@@ -5490,6 +5530,12 @@
                 });
             }
 
+            if (elFltType) {
+                elFltType.addEventListener('change', function () {
+                    state.pending.filters.type = String(elFltType.value || '');
+                    refreshDirtyIndicator();
+                });
+            }
             if (elFltManager) {
                 elFltManager.addEventListener('change', function () {
                     state.pending.filters.manager = String(elFltManager.value || '');
@@ -6163,6 +6209,7 @@
                         key: 'extra_filters',
                         title: 'Дополнительные фильтры',
                         items: [
+                            { key: 'type', title: 'Тип товара в МС', hint: 'Селектор типа (Товар / Комплект / …) в карточке «Фильтры и действия»' },
                             { key: 'manager', title: 'Менеджер', hint: 'Селектор менеджера в карточке «Фильтры и действия»' },
                             { key: 'cmgr', title: 'Контент-менеджер', hint: 'Селектор контент-менеджера в карточке «Фильтры и действия»' },
                             { key: 'exclude_bundle_components', title: 'Исключить товары из комплектов', hint: 'Серверный фильтр; дефолт включён' },

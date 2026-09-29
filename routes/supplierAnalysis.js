@@ -19,6 +19,8 @@ const {
     catalogBySupplierSubquery,
     salesJoinSql,
     salesMarginLineSql,
+    salesQtyExprSql,
+    salesRevenueExprSql,
     salesRankingQueryParams,
     supplierRankingSelectSql,
 } = require('../lib/datagonSupplierAnalysisSql');
@@ -26,6 +28,8 @@ const {
     sqlSupplierProductWhere,
     sqlSupplierAllSkusWhere,
     supplierPriceNumSql,
+    supplierEffectiveSql,
+    sqlSupplierKeyEquals,
 } = require('../lib/datagonSuppliersSql');
 const MSE_BUY_PRICE_NUM = supplierPriceNumSql('mse', 'buy_price');
 const MSE_SALE_PRICE_NUM = supplierPriceNumSql('mse', 'sale_price');
@@ -43,6 +47,7 @@ const {
 } = require('../lib/datagonSupplierAbsenceProfile');
 
 const CACHE_TTL_MS = 90 * 1000;
+const CACHE_VER = 'sa5';
 const responseCache = new Map();
 
 const RANKING_SORT = new Set([
@@ -428,7 +433,7 @@ module.exports = function supplierAnalysisRouterFactory(db, appSettings = {}) {
             const days = clampInt(req.query.days, 7, 365, 90);
             const newStockDays = clampInt(req.query.new_stock_days, 7, 180, 30);
             const pf = msDemandProjectFilterFromQuery(req.query);
-            const cacheKey = `overview:${days}:${newStockDays}:${pf.fingerprint}`;
+            const cacheKey = `${CACHE_VER}:overview:${days}:${newStockDays}:${pf.fingerprint}`;
             const cached = cacheGet(cacheKey);
             if (cached) return res.json({ ...cached, cache: { hit: true } });
 
@@ -501,13 +506,13 @@ module.exports = function supplierAnalysisRouterFactory(db, appSettings = {}) {
             const search = String(req.query.search || '').trim().toLowerCase();
             const pf = msDemandProjectFilterFromQuery(req.query);
             const marginSql = salesMarginLineSql('e');
-            const cacheKey = `sales-breakdown:${days}:${limit}:${offset}:${search}:${pf.fingerprint}`;
+            const cacheKey = `${CACHE_VER}:sales-breakdown:${days}:${limit}:${offset}:${search}:${pf.fingerprint}`;
             const cached = cacheGet(cacheKey);
             if (cached) return res.json({ ...cached, cache: { hit: true } });
 
             const momentSql = 'd.moment >= DATE_SUB(NOW(), INTERVAL ? DAY)';
             const searchSql = search
-                ? ` AND (LOWER(TRIM(e.supplier)) LIKE ? OR LOWER(e.code) LIKE ? OR LOWER(e.name) LIKE ?) `
+                ? ` AND (LOWER(${supplierEffectiveSql('e')}) LIKE ? OR LOWER(e.code) LIKE ? OR LOWER(e.name) LIKE ?) `
                 : '';
             const searchParam = search ? `%${search}%` : null;
             const baseJoin = `${salesJoinSql('e', pf.sql)} AND ${momentSql}${searchSql}`;
@@ -522,9 +527,9 @@ module.exports = function supplierAnalysisRouterFactory(db, appSettings = {}) {
 
             const [totRows] = await db.query(
                 `SELECT
-                    SUM(p.sum_minor) / 100 AS sales_revenue,
+                    SUM(${salesRevenueExprSql()}) AS sales_revenue,
                     SUM(${marginSql}) AS gross_margin_est,
-                    SUM(p.quantity) AS sales_qty,
+                    SUM(${salesQtyExprSql()}) AS sales_qty,
                     COUNT(DISTINCT d.uuid) AS demands_count
                  ${baseJoin}`,
                 baseParams,
@@ -540,12 +545,12 @@ module.exports = function supplierAnalysisRouterFactory(db, appSettings = {}) {
                     d.project_name,
                     p.ms_export_code AS code,
                     e.name,
-                    TRIM(e.supplier) AS supplier,
-                    p.quantity,
-                    p.sum_minor / 100 AS line_revenue,
+                    ${supplierEffectiveSql('e')} AS supplier,
+                    ${salesQtyExprSql()} AS quantity,
+                    ${salesRevenueExprSql()} AS line_revenue,
                     p.price_minor / 100 AS line_price,
                     (${EXPORT_BUY_PRICE_NUM}) AS buy_price_unit,
-                    (p.quantity * (${EXPORT_BUY_PRICE_NUM})) AS line_cost,
+                    (${salesQtyExprSql()} * (${EXPORT_BUY_PRICE_NUM})) AS line_cost,
                     (${marginSql}) AS line_margin
                  ${baseJoin}
                  ORDER BY d.moment DESC, d.doc_name ASC, p.ms_export_code ASC
@@ -613,6 +618,7 @@ module.exports = function supplierAnalysisRouterFactory(db, appSettings = {}) {
             const pf = msDemandProjectFilterFromQuery(req.query);
 
             const cacheKey = JSON.stringify({
+                ver: CACHE_VER,
                 days, newStockDays, limit, offset, search, focus, sortBy, sortDir, pf: pf.fingerprint,
             });
             const cached = cacheGet(cacheKey);
@@ -630,7 +636,7 @@ module.exports = function supplierAnalysisRouterFactory(db, appSettings = {}) {
             const mapCtx = { days, newStockDays };
 
             const searchSql = search
-                ? ' AND c.supplier_name COLLATE utf8mb4_unicode_ci LIKE ? '
+                ? ' AND LOWER(CONVERT(c.supplier_name USING utf8mb4)) LIKE ? '
                 : '';
             const searchParam = search ? `%${search}%` : null;
 
@@ -707,16 +713,16 @@ module.exports = function supplierAnalysisRouterFactory(db, appSettings = {}) {
             const months = clampInt(req.query.months, 3, 24, 12);
             const pf = msDemandProjectFilterFromQuery(req.query);
 
-            const cacheKey = `trend:${supplierKey}:${months}:${pf.fingerprint}`;
+            const cacheKey = `${CACHE_VER}:trend:${supplierKey}:${months}:${pf.fingerprint}`;
             const cached = cacheGet(cacheKey);
             if (cached) return res.json({ ...cached, cache: { hit: true } });
 
             const [rows] = await db.query(
                 `SELECT DATE_FORMAT(d.moment, '%Y-%m') AS ym,
-                        SUM(p.quantity) AS sales_qty,
-                        SUM(p.sum_minor) / 100 AS sales_revenue
+                        SUM(${salesQtyExprSql()}) AS sales_qty,
+                        SUM(${salesRevenueExprSql()}) AS sales_revenue
                  ${salesJoinSql('e', pf.sql)}
-                   AND TRIM(e.supplier) = ?
+                   AND ${sqlSupplierKeyEquals('e')}
                    AND d.moment >= DATE_SUB(DATE_FORMAT(NOW(), '%Y-%m-01'), INTERVAL ? MONTH)
                  GROUP BY DATE_FORMAT(d.moment, '%Y-%m')
                  ORDER BY ym ASC`,
@@ -794,7 +800,7 @@ module.exports = function supplierAnalysisRouterFactory(db, appSettings = {}) {
                 SELECT z.code, MIN(z.ts_date) AS first_positive_date
                   FROM dg_product_stock_snapshot z
                   INNER JOIN ms_export mse_snap ON mse_snap.code = z.code
-                 WHERE TRIM(mse_snap.supplier) = ?
+                 WHERE ${sqlSupplierKeyEquals('mse_snap')}
                    AND z.ts_date >= DATE_SUB(CURDATE(), INTERVAL ${snapLookback} DAY)
                    AND z.stock > 0
                  GROUP BY z.code`;
@@ -805,14 +811,14 @@ module.exports = function supplierAnalysisRouterFactory(db, appSettings = {}) {
 
             const marginLine = salesMarginLineSql('e');
             const salesSub = `
-                SELECT p.ms_export_code AS code,
-                       SUM(p.quantity) AS sales_qty,
-                       SUM(p.sum_minor) / 100 AS sales_revenue,
+                SELECT e.code AS code,
+                       SUM(${salesQtyExprSql()}) AS sales_qty,
+                       SUM(${salesRevenueExprSql()}) AS sales_revenue,
                        SUM(${marginLine}) AS gross_margin_est
                 ${salesJoinSql('e', pf.sql)}
-                  AND TRIM(e.supplier) = ?
+                  AND ${sqlSupplierKeyEquals('e')}
                   AND d.moment >= DATE_SUB(NOW(), INTERVAL ? DAY)
-                GROUP BY p.ms_export_code`;
+                GROUP BY e.code`;
 
             const grace = Math.max(7, Math.min(180, newStockDays));
             let having = '';
@@ -847,7 +853,7 @@ module.exports = function supplierAnalysisRouterFactory(db, appSettings = {}) {
                 const [[countRow]] = await db.query(
                     `SELECT COUNT(*) AS total
                        FROM ms_export mse
-                      WHERE TRIM(mse.supplier) = ?
+                      WHERE ${sqlSupplierKeyEquals('mse')}
                         AND ${productWhereSql}`,
                     [supplierKey],
                 );
@@ -874,7 +880,7 @@ module.exports = function supplierAnalysisRouterFactory(db, appSettings = {}) {
                    LEFT JOIN ms_entity_details med ON med.uuid = mse.uuid
                    LEFT JOIN (${snapSql}) snap ON snap.code = mse.code
                    LEFT JOIN (${salesSub}) s ON s.code = mse.code
-                  WHERE TRIM(mse.supplier) = ?
+                  WHERE ${sqlSupplierKeyEquals('mse')}
                     AND ${productWhereSql}
                     ${extraStockSql}
                   ${having}
@@ -941,7 +947,7 @@ module.exports = function supplierAnalysisRouterFactory(db, appSettings = {}) {
             const days = clampInt(req.query.days, 7, 365, 90);
             const newStockDays = clampInt(req.query.new_stock_days, 7, 180, 30);
             const pf = msDemandProjectFilterFromQuery(req.query);
-            const cacheKey = `highlights:${days}:${newStockDays}:${pf.fingerprint}`;
+            const cacheKey = `${CACHE_VER}:highlights:${days}:${newStockDays}:${pf.fingerprint}`;
             const cached = cacheGet(cacheKey);
             if (cached) return res.json({ ...cached, cache: { hit: true } });
 
@@ -1048,7 +1054,7 @@ module.exports = function supplierAnalysisRouterFactory(db, appSettings = {}) {
         );
         const catalogSql = catalogBySupplierSubquery(newStockDays);
         const searchSql = search
-            ? ' AND c.supplier_name COLLATE utf8mb4_unicode_ci LIKE ? '
+            ? ' AND LOWER(CONVERT(c.supplier_name USING utf8mb4)) LIKE ? '
             : '';
         const searchParam = search ? `%${search}%` : null;
         const innerSql = supplierRankingSelectSql(catalogSql, curSql, prevSql) + ` WHERE 1=1 ${searchSql}`;

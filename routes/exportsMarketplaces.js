@@ -1442,9 +1442,27 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
         }
     }
 
+    function formatIssuesSupplierLabel(supplier, supplier2) {
+        const s1 = String(supplier == null ? '' : supplier).trim();
+        const s2 = String(supplier2 == null ? '' : supplier2).trim();
+        if (!s1 && !s2) return '';
+        if (!s1) return s2;
+        if (!s2) return s1;
+        if (s1.toLowerCase() === s2.toLowerCase()) return s1;
+        return `${s1} / ${s2}`;
+    }
+
+    function enrichIssuesSupplierFields(rows) {
+        for (const r of rows || []) {
+            if (!r || typeof r !== 'object') continue;
+            r.supplier_label = formatIssuesSupplierLabel(r.supplier, r.supplier2);
+            r.supplier_missing = !r.supplier_label ? 1 : 0;
+        }
+    }
+
     /**
      * Общая выборка строк для `/issues` и для ежедневного снимка (после синка маркетплейсов).
-     * `scope` — уже нормализованный ключ (all|any|all3|ozon|wb|ym|vat_mismatch|dims_mismatch).
+     * `scope` — уже нормализованный ключ (all|any|all3|ozon|wb|ym|vat_mismatch|dims_mismatch|no_supplier).
      */
     async function loadIssuesRowsCore(dbConn, { scope, maxItems, excludeBundleComponents }) {
         const baseSelect = `
@@ -1453,6 +1471,8 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
                     m.name           AS name,
                     m.uuid           AS uuid,
                     m.type           AS type,
+                    m.supplier       AS supplier,
+                    m.supplier2      AS supplier2,
                     m.vat            AS ms_vat,
                     m.manager        AS manager,
                     m.content_manager AS content_manager,
@@ -1521,6 +1541,10 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
             scopeWhere = ' AND ozon.external_id IS NULL AND wb.external_id IS NULL AND ym.external_id IS NULL';
         } else if (scope === 'any') {
             scopeWhere = ' AND (ozon.external_id IS NULL OR wb.external_id IS NULL OR ym.external_id IS NULL)';
+        } else if (scope === 'no_supplier') {
+            // Оба поля поставщика в карточке МС пустые (после TRIM).
+            scopeWhere = ` AND NULLIF(TRIM(COALESCE(m.supplier, '')), '') IS NULL`
+                + ` AND NULLIF(TRIM(COALESCE(m.supplier2, '')), '') IS NULL`;
         }
 
         const sql = `${baseSelect}\n${baseWhere}${scopeWhere}\nORDER BY m.code\nLIMIT ?`;
@@ -1561,6 +1585,8 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
             // (двойная высота: коробка ИЛИ пакет). Иначе — «между маркетплейсами».
             rows = (rows || []).filter((r) => issuesRowDimsMismatch(r));
         }
+
+        enrichIssuesSupplierFields(rows);
 
         return {
             rows: rows || [],
@@ -1628,6 +1654,8 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
      *                    сверка идёт МС ↔ маркетплейсы (высота МС двойная: совпадение
      *                    высоты площадки хотя бы с коробкой ИЛИ с пакетом = match).
      *                    Если атрибутов МС нет — fallback «между маркетплейсами».
+     *   no_supplier    — у товара в МС не заполнены ни `supplier`, ни `supplier2`
+     *                    (после TRIM оба пустые); UI колонка `supplier_label` пустая.
      */
     router.get('/issues', async (req, res) => {
         try {
@@ -1651,6 +1679,9 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
                 'vat-mismatch': 'vat_mismatch',
                 dims_mismatch: 'dims_mismatch',
                 'dims-mismatch': 'dims_mismatch',
+                no_supplier: 'no_supplier',
+                'no-supplier': 'no_supplier',
+                supplier_missing: 'no_supplier',
             };
             const scope = scopeAliases[scopeRaw];
             if (!scope) {
@@ -1665,6 +1696,7 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
                 ym: 'нет на Я.Маркет',
                 vat_mismatch: 'не совпадает НДС (МС ↔ маркетплейс)',
                 dims_mismatch: 'разные габариты между маркетплейсами',
+                no_supplier: 'нет поставщика в МС',
             };
 
             const maxItemsRaw = parseInt(req.query.max_items, 10);
@@ -1684,7 +1716,7 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
             } = await loadIssuesRowsCore(db, { scope, maxItems, excludeBundleComponents });
 
             const headers = [
-                'code', 'name',
+                'code', 'name', 'type', 'supplier_label',
                 'manager', 'content_manager', 'ms_vat', 'ms_stock',
                 'ms_length', 'ms_width', 'ms_height_box', 'ms_height_bag', 'ms_weight',
                 'synced_at',
@@ -1699,7 +1731,7 @@ module.exports = function exportsMarketplacesRouter(db, appSettings) {
                 'ym_cabinet_url', 'ym_buyer_url', 'ym_updated',
             ];
             const headerLabels = [
-                'Код МС', 'Название МС',
+                'Код МС', 'Название МС', 'Тип МС', 'Поставщик / Поставщик 2',
                 'Менеджер', 'Контент-менеджер', 'НДС МС', 'Остаток по МС',
                 'Длина (см) МС', 'Ширина (см) МС', 'Высота — коробка (см) МС', 'Высота — пакет (см) МС', 'Вес (кг) МС',
                 'Синхронизация МС',

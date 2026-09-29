@@ -2,7 +2,11 @@ const express = require('express');
 const axios = require('axios');
 const { computeMsEntityPurchaseDenorm } = require('../lib/datagonMsEntityPurchaseDenorm');
 const { computeMsEntityDimsDenorm } = require('../lib/datagonMsEntityDimsDenorm');
-const { syncZeroStockLogAfterMoyskladExport, syncProductStockSnapshotsAfterMoyskladExport } = require('./product');
+const {
+    syncZeroStockLogAfterMoyskladExport,
+    syncProductStockSnapshotsAfterMoyskladExport,
+    backfillMissingBundleComponentsFromDetails,
+} = require('./product');
 const {
     replaceMsExportStockByStoreFromReport,
     buildAssortmentUuidToCodeMap,
@@ -1246,7 +1250,12 @@ async function syncMsExport(db, config, settings = {}) {
             const n = Number(rawRes);
             if (Number.isFinite(n)) reserve = n;
         }
-        stockMap.set(code, { stock, stockDays, salePrice, inTransit, reserve });
+        let costPrice = null;
+        if (row.price != null && row.price !== '') {
+            const cp = Number(row.price) / 100;
+            if (Number.isFinite(cp)) costPrice = cp;
+        }
+        stockMap.set(code, { stock, stockDays, salePrice, inTransit, reserve, costPrice });
     }
     addLog(`Остатков загружено: ${stockMap.size}`);
 
@@ -1488,11 +1497,10 @@ async function syncMsExport(db, config, settings = {}) {
         if (!code) continue;
         const sm = stockMap.get(code);
         if (!sm) continue;
-        if (sm.inTransit != null && Number.isFinite(sm.inTransit)) {
-            item.inTransit = sm.inTransit;
-        }
-        if (sm.reserve != null && Number.isFinite(sm.reserve)) {
-            item.reserve = sm.reserve;
+        item.inTransit = sm.inTransit != null && Number.isFinite(sm.inTransit) ? sm.inTransit : 0;
+        item.reserve = sm.reserve != null && Number.isFinite(sm.reserve) ? sm.reserve : 0;
+        if (sm.costPrice != null && Number.isFinite(sm.costPrice)) {
+            item.stockCost = sm.costPrice;
         }
     }
 
@@ -1509,6 +1517,13 @@ async function syncMsExport(db, config, settings = {}) {
             addLog(`Сохранение полных карточек МойСклад: ${processed}/${total} (${pct}%)`);
         }
     });
+
+    try {
+        const bundleRows = await backfillMissingBundleComponentsFromDetails(db);
+        addLog(`Кэш состава комплектов dg_bundle_components: дописано ${bundleRows} строк (не было в кэше карточки товара)`);
+    } catch (e) {
+        addLog(`Кэш состава комплектов: ${e && e.message ? e.message : String(e)}`);
+    }
 
     jobState.active = false;
     jobState.done = true;
