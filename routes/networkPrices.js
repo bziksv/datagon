@@ -1750,6 +1750,7 @@ networkPricesRouterFactory.triggerNetworkPricesSyncFromSettings = async function
         );
 
         let conn = null;
+        let siteWritten = 0;
         try {
             conn = await openConn(site);
             for (const pair of pairs || []) {
@@ -1793,6 +1794,7 @@ networkPricesRouterFactory.triggerNetworkPricesSyncFromSettings = async function
                         ]
                     );
                     written += 1;
+                    siteWritten += 1;
                 } catch (e) {
                     failed += 1;
                     if (errors.length < 20) {
@@ -1817,6 +1819,35 @@ networkPricesRouterFactory.triggerNetworkPricesSyncFromSettings = async function
                 try {
                     await conn.end();
                 } catch (_) {}
+            }
+        }
+        /* Иначе витрина Bitrix продолжает отдавать старый HTML из bitrix/cache (как 273 608 при PRICE=421417). */
+        if (siteWritten > 0 && String(site.cms_type || '').toLowerCase() === 'bitrix') {
+            try {
+                if (onProgress) {
+                    onProgress({
+                        scanned,
+                        written,
+                        skipped,
+                        failed,
+                        message: `Цены сети: сброс кэша витрины (сайт ${targetSiteId})…`,
+                    });
+                }
+                // eslint-disable-next-line no-await-in-loop
+                const cacheClear = await clearBitrixStorefrontCache(site);
+                if (cacheClear && cacheClear.ok === false && errors.length < 20) {
+                    errors.push({
+                        code: `site:${targetSiteId}`,
+                        error: `cache_clear: ${cacheClear.error || cacheClear.body || cacheClear.status || 'fail'}`,
+                    });
+                }
+            } catch (e) {
+                if (errors.length < 20) {
+                    errors.push({
+                        code: `site:${targetSiteId}`,
+                        error: `cache_clear: ${e.message || e}`,
+                    });
+                }
             }
         }
     }
