@@ -352,7 +352,7 @@
     box.innerHTML = html;
   }
 
-  function bindCollapse(btnId, bodyId, storageKey) {
+  function bindCollapse(btnId, bodyId, storageKey, onToggle) {
     var btn = el(btnId);
     var body = el(bodyId);
     if (!btn || !body) return;
@@ -362,6 +362,7 @@
       try {
         localStorage.setItem(storageKey, collapsed ? "1" : "0");
       } catch (e) {}
+      if (typeof onToggle === "function") onToggle(!collapsed);
     }
     var init = false;
     try {
@@ -371,6 +372,137 @@
     btn.addEventListener("click", function () {
       apply(body.style.display !== "none");
     });
+  }
+
+  /** Плавающая шапка матрицы — как my-products / moysklad (translate3d на thead). */
+  var FLOATING_HEADER_OFFSET_PX = 2;
+  var FLOATING_HEADER_START_EPS_PX = 3;
+  var npFloatingHeaderRaf = 0;
+  var npFloatingLastScrollTs = 0;
+
+  function updateNpStickyTopVar() {
+    var app = document.querySelector(".app-container");
+    var header = document.querySelector(".app-header");
+    var fixed = Boolean(app && app.classList && app.classList.contains("fixed-header"));
+    var top = 0;
+    if (fixed && header && header.getBoundingClientRect) {
+      var rect = header.getBoundingClientRect();
+      top = rect && rect.height ? rect.height : 60;
+    }
+    document.documentElement.style.setProperty("--dg-table-sticky-top", top + "px");
+  }
+
+  function getNpStickyTopPx() {
+    var app = document.querySelector(".app-container");
+    var header = document.querySelector(".app-header");
+    var fixed = Boolean(app && app.classList && app.classList.contains("fixed-header"));
+    if (!fixed) return 0;
+    if (!header || !header.getBoundingClientRect) return 60;
+    var rect = header.getBoundingClientRect();
+    var h = rect && rect.height ? rect.height : 60;
+    return h > 0 ? h : 60;
+  }
+
+  function captureNpTheadBaseTop() {
+    var thead = document.getElementById("dg-np-thead");
+    if (!thead) return;
+    thead.style.transform = "";
+    thead.style.position = "";
+    thead.style.zIndex = "";
+    thead.style.willChange = "";
+    thead.removeAttribute("data-dg-floating");
+    var rect = thead.getBoundingClientRect();
+    var absTop = (window.scrollY || window.pageYOffset || 0) + (rect && rect.top ? rect.top : 0);
+    thead.setAttribute("data-dg-base-top", String(absTop));
+  }
+
+  function updateNpFloatingHeaderFallback() {
+    var thead = document.getElementById("dg-np-thead");
+    if (!thead) return;
+    var table = thead.closest("table");
+    if (!table || !table.getBoundingClientRect) return;
+
+    var y = window.scrollY || window.pageYOffset || 0;
+    var headerTop = getNpStickyTopPx();
+
+    var baseTopAbs = Number(thead.getAttribute("data-dg-base-top") || 0);
+    if (!Number.isFinite(baseTopAbs) || baseTopAbs <= 0) return;
+    var tableRect = table.getBoundingClientRect();
+    var tableBottom = tableRect.bottom + y;
+    /* Двухрядная шапка — высота всего thead, не одной tr */
+    var theadRect = thead.getBoundingClientRect();
+    var headHeight = theadRect && theadRect.height ? theadRect.height : 0;
+
+    var headerLine = y + headerTop;
+    var start = baseTopAbs + FLOATING_HEADER_START_EPS_PX;
+    var end = tableBottom - headHeight;
+    if (headerLine <= start || headerLine >= end) {
+      if (thead.style.transform) {
+        thead.style.transform = "";
+        thead.style.position = "";
+        thead.style.zIndex = "";
+        thead.style.willChange = "";
+        thead.removeAttribute("data-dg-floating");
+      }
+      return;
+    }
+
+    var zoomAwareOffset = FLOATING_HEADER_OFFSET_PX;
+    var dpr = window.devicePixelRatio || 1;
+    if (Math.abs(dpr - 1) < 0.03) zoomAwareOffset = FLOATING_HEADER_OFFSET_PX - 3;
+    var shift = Math.max(0, headerLine - start - zoomAwareOffset);
+    var shiftPx = Number(shift.toFixed(3));
+    var nextTransform = "translate3d(0," + shiftPx + "px,0)";
+    if (thead.style.transform !== nextTransform) {
+      thead.style.transform = nextTransform;
+      thead.style.position = "relative";
+      thead.style.zIndex = "25";
+      thead.style.willChange = "transform";
+      thead.setAttribute("data-dg-floating", "1");
+    }
+  }
+
+  function npFloatingHeaderTick(ts) {
+    npFloatingHeaderRaf = 0;
+    updateNpFloatingHeaderFallback();
+    if (ts - npFloatingLastScrollTs < 140) {
+      npFloatingHeaderRaf = requestAnimationFrame(npFloatingHeaderTick);
+    }
+  }
+
+  function scheduleNpFloatingHeaderUpdate() {
+    npFloatingLastScrollTs = performance.now();
+    if (npFloatingHeaderRaf) return;
+    npFloatingHeaderRaf = requestAnimationFrame(npFloatingHeaderTick);
+  }
+
+  function onScrollNpFloatingHeader() {
+    scheduleNpFloatingHeaderUpdate();
+  }
+
+  function npRefreshFloatingAfterLayout() {
+    requestAnimationFrame(function () {
+      captureNpTheadBaseTop();
+      scheduleNpFloatingHeaderUpdate();
+    });
+  }
+
+  function bindNpFloatingHeader() {
+    updateNpStickyTopVar();
+    window.addEventListener("scroll", onScrollNpFloatingHeader, { passive: true });
+    window.addEventListener("resize", function () {
+      updateNpStickyTopVar();
+      npRefreshFloatingAfterLayout();
+    });
+    var mainOuter = document.querySelector(".app-main__outer");
+    if (mainOuter && mainOuter.addEventListener) {
+      mainOuter.addEventListener("scroll", onScrollNpFloatingHeader, { passive: true });
+    }
+    var horiz = document.getElementById("dg-np-table-scroll-outer");
+    if (horiz && horiz.addEventListener) {
+      horiz.addEventListener("scroll", onScrollNpFloatingHeader, { passive: true });
+    }
+    npRefreshFloatingAfterLayout();
   }
 
   function fillSourceSelect(sites, sourceId) {
@@ -689,6 +821,7 @@
     var tb = el("dg-np-tbody");
     if (!state.rows.length) {
       tb.innerHTML = '<tr><td colspan="14" class="text-muted text-center py-4">Нет строк по фильтрам.</td></tr>';
+      npRefreshFloatingAfterLayout();
       return;
     }
     tb.innerHTML = state.rows
@@ -805,6 +938,7 @@
         );
       })
       .join("");
+    npRefreshFloatingAfterLayout();
   }
 
   function runApply() {
@@ -1653,10 +1787,17 @@
     }
   });
 
-  bindCollapse("dg-np-settings-toggle", "dg-np-settings-body", "datagon_np_settings_collapsed_v1");
-  bindCollapse("dg-np-filters-toggle", "dg-np-filters-body", "datagon_np_filters_collapsed_v1");
-  bindCollapse("dg-np-table-toggle", "dg-np-table-body", "datagon_np_table_collapsed_v1");
+  bindCollapse("dg-np-settings-toggle", "dg-np-settings-body", "datagon_np_settings_collapsed_v1", function () {
+    npRefreshFloatingAfterLayout();
+  });
+  bindCollapse("dg-np-filters-toggle", "dg-np-filters-body", "datagon_np_filters_collapsed_v1", function () {
+    npRefreshFloatingAfterLayout();
+  });
+  bindCollapse("dg-np-table-toggle", "dg-np-table-body", "datagon_np_table_collapsed_v1", function (expanded) {
+    if (expanded) npRefreshFloatingAfterLayout();
+  });
   bindNprConfirmUi();
+  bindNpFloatingHeader();
 
   loadSettings()
     .then(function () {
