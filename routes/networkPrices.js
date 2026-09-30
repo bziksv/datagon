@@ -440,14 +440,12 @@ function networkPricesRouterFactory(db, appSettings) {
                     [tid, enabled, pricePct]
                 );
             }
-            const [[verify]] = await Promise.all([
-                (async () => {
-                    const sourceSiteId = await getSourceSiteId();
-                    const [cfgRows] = await db.query('SELECT * FROM network_price_site_settings');
-                    return { source_site_id: sourceSiteId, targets: cfgRows };
-                })(),
-            ]);
-            res.json({ success: true, verified: verify });
+            const sourceSiteId = await getSourceSiteId();
+            const [cfgRows] = await db.query('SELECT * FROM network_price_site_settings');
+            res.json({
+                success: true,
+                verified: { source_site_id: sourceSiteId, targets: cfgRows || [] },
+            });
         } catch (e) {
             res.status(500).json({ success: false, error: e.message || 'save settings error' });
         }

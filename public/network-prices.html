@@ -1092,7 +1092,7 @@
             return r.json();
           })
           .then(function (sites) {
-            var list = Array.isArray(sites) ? sites : sites && sites.data ? sites.data : [];
+            var list = Array.isArray(sites) ? sites : (sites && Array.isArray(sites.data) ? sites.data : (sites && Array.isArray(sites.rows) ? sites.rows : []));
             fillSourceSelect(list, x.j.source_site_id);
             renderTargetsTable(x.j.targets || []);
             fillTargetSelect(x.j.targets || []);
