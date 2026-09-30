@@ -421,7 +421,7 @@ Query:
 
 Экран `/network-prices.html`, роутер `routes/networkPrices.js`. Эталон (по умолчанию **Альмамед**, `app_settings.network_prices_source_site_id = 2`) → целевые сайты с наценкой/скидкой `%`. Связь пар: ручная (`network_product_links`) или авто по одинаковому артикулу (пока нет записи в `network_product_link_ignore`). **Остаток** в v1 только в матрице, в CMS не пишется.
 
-Правило записи: если у сайта `enabled=0` или `price_pct` NULL — сайт целиком пропускается; иначе `proposed = round(source.price × (1 + price_pct/100))`; при `|proposed − target.price| < eps` — без изменений; иначе `applyPriceToCms` (`lib/datagonCmsPriceWrite.js`) + `UPDATE my_products` (`network_sync_at` / `network_sync_note`).
+Правило записи: если у сайта `enabled=0` или `price_pct` NULL — сайт целиком пропускается; иначе `proposed = round(source.price × (1 + price_pct/100))`; при `|proposed − target.price| < eps` — без изменений; иначе `applyPriceToCms` (`lib/datagonCmsPriceWrite.js`) + `UPDATE my_products` (`network_sync_at` / `network_sync_note`). Для Bitrix после пакета — обязательный `GET /local/datagon/cache_clear.php` (иначе витрина держит старый HTML); сбой сброса кэша попадает в `errors[]` / статус failed.
 
 Таблицы (DDL при первом запросе): `network_price_site_settings`, `network_product_links`, `network_product_link_ignore`, `network_content_tasks`, `network_prices_action_log`.
 

@@ -1490,7 +1490,9 @@ function networkPricesRouterFactory(db, appSettings) {
                         site_id: targetSiteId,
                     };
                     // eslint-disable-next-line no-await-in-loop
-                    await applyPriceToCms(conn, site, product, prop.finalPrice);
+                    await applyPriceToCms(conn, site, product, prop.finalPrice, {
+                        deferStorefrontCacheClear: true,
+                    });
                     // eslint-disable-next-line no-await-in-loop
                     await db.query(
                         `UPDATE my_products
@@ -1525,15 +1527,31 @@ function networkPricesRouterFactory(db, appSettings) {
             try {
                 const cacheClear = await clearBitrixStorefrontCache(site);
                 result.cache_clear = cacheClear;
+                if (!cacheClear || cacheClear.ok !== true) {
+                    result.cms_failed += 1;
+                    if (result.errors.length < 20) {
+                        result.errors.push({
+                            code: `site:${targetSiteId}`,
+                            error: `cache_clear: ${cacheClear && (cacheClear.error || cacheClear.body || cacheClear.status) || 'fail'}`,
+                        });
+                    }
+                    result.message =
+                        `Записано ✓ ${result.written}, но кэш витрины Bitrix НЕ сброшен — на сайте может висеть старая цена`;
+                }
             } catch (e) {
                 result.cache_clear = { ok: false, error: e.message || String(e) };
+                result.cms_failed += 1;
+                result.message =
+                    `Записано ✓ ${result.written}, но кэш витрины Bitrix НЕ сброшен: ${e.message || e}`;
             }
         }
 
         result.duration_sec = Math.round(((Date.now() - started) / 1000) * 100) / 100;
-        result.message = dryRun
-            ? `Пробный прогон: к записи ${result.would_update}, без изменений ${result.skipped_unchanged}, без цены эталона ${result.skipped_no_source_price}`
-            : `Записано ✓ ${result.written}, без изменений ${result.skipped_unchanged}, ошибок CMS × ${result.cms_failed}`;
+        if (!result.message) {
+            result.message = dryRun
+                ? `Пробный прогон: к записи ${result.would_update}, без изменений ${result.skipped_unchanged}, без цены эталона ${result.skipped_no_source_price}`
+                : `Записано ✓ ${result.written}, без изменений ${result.skipped_unchanged}, ошибок CMS × ${result.cms_failed}`;
+        }
         return result;
     }
 
@@ -1780,7 +1798,8 @@ networkPricesRouterFactory.triggerNetworkPricesSyncFromSettings = async function
                         conn,
                         site,
                         { source_id: pair.target_code, sku: pair.target_sku },
-                        finalPrice
+                        finalPrice,
+                        { deferStorefrontCacheClear: true }
                     );
                     // eslint-disable-next-line no-await-in-loop
                     await db.query(
@@ -1835,13 +1854,17 @@ networkPricesRouterFactory.triggerNetworkPricesSyncFromSettings = async function
                 }
                 // eslint-disable-next-line no-await-in-loop
                 const cacheClear = await clearBitrixStorefrontCache(site);
-                if (cacheClear && cacheClear.ok === false && errors.length < 20) {
-                    errors.push({
-                        code: `site:${targetSiteId}`,
-                        error: `cache_clear: ${cacheClear.error || cacheClear.body || cacheClear.status || 'fail'}`,
-                    });
+                if (cacheClear && cacheClear.ok === false) {
+                    failed += 1;
+                    if (errors.length < 20) {
+                        errors.push({
+                            code: `site:${targetSiteId}`,
+                            error: `cache_clear: ${cacheClear.error || cacheClear.body || cacheClear.status || 'fail'}`,
+                        });
+                    }
                 }
             } catch (e) {
+                failed += 1;
                 if (errors.length < 20) {
                     errors.push({
                         code: `site:${targetSiteId}`,
@@ -1852,14 +1875,17 @@ networkPricesRouterFactory.triggerNetworkPricesSyncFromSettings = async function
         }
     }
 
+    const cacheFail = (errors || []).some((e) => String(e.error || '').startsWith('cache_clear'));
     return {
-        success: failed === 0 || written > 0,
+        success: (failed === 0 || written > 0) && !cacheFail,
         scanned,
         written,
         skipped,
         failed,
         errors,
-        message: `Цены сети: записано ✓ ${written}, без изменений ${skipped}, ошибок × ${failed}`,
+        message: cacheFail
+            ? `Цены сети: записано ✓ ${written}, но кэш витрины Bitrix НЕ сброшен (ошибок × ${failed})`
+            : `Цены сети: записано ✓ ${written}, без изменений ${skipped}, ошибок × ${failed}`,
     };
 };
 

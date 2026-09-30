@@ -9,6 +9,10 @@ const {
     ensureFxAutoUpdater,
     snapshotFx,
 } = require('../lib/datagonFxRates');
+const {
+    applyPriceToCms: applyPriceToCmsShared,
+    clearBitrixStorefrontCache,
+} = require('../lib/datagonCmsPriceWrite');
 let myProductsPerfReady = false;
 let myProductsSyncAuditReady = false;
 let myProductsSourceEnabledReady = false;
@@ -1437,58 +1441,37 @@ function myProductsRouterFactory(db, settings) {
         };
     }
 
-    async function applyPriceToCms(conn, siteCfg, product, finalPrice) {
-        if (String(siteCfg.cms_type || '').toLowerCase() === 'webasyst') {
-            const skuRowId = Number(product.source_id || 0);
-            const skuCode = String(product.sku || '').trim();
-            let skuMeta = [];
-            if (Number.isFinite(skuRowId) && skuRowId > 0) {
-                const [byId] = await conn.query(
-                    `SELECT id, product_id
-                     FROM ${siteCfg.wa_table_skus}
-                     WHERE id = ?
-                     LIMIT 1`,
-                    [skuRowId]
-                );
-                skuMeta = byId;
+    async function applyPriceToCms(conn, siteCfg, product, finalPrice, opts) {
+        return applyPriceToCmsShared(conn, siteCfg, product, finalPrice, opts || {});
+    }
+
+    async function flushBitrixStorefrontCaches(siteByIdMap, siteIds, errorsOut) {
+        const ids = [...new Set((siteIds || []).map(Number).filter(Number.isFinite))];
+        for (const sid of ids) {
+            const site = siteByIdMap && siteByIdMap.get ? siteByIdMap.get(sid) : null;
+            if (!site || String(site.cms_type || '').toLowerCase() !== 'bitrix') continue;
+            try {
+                // eslint-disable-next-line no-await-in-loop
+                const cacheClear = await clearBitrixStorefrontCache(site);
+                if (!cacheClear || cacheClear.ok !== true) {
+                    if (errorsOut && errorsOut.length < 20) {
+                        errorsOut.push({
+                            code: `site:${sid}`,
+                            site_id: sid,
+                            error: `cache_clear: ${(cacheClear && (cacheClear.error || cacheClear.body || cacheClear.status)) || 'fail'}`,
+                        });
+                    }
+                }
+            } catch (e) {
+                if (errorsOut && errorsOut.length < 20) {
+                    errorsOut.push({
+                        code: `site:${sid}`,
+                        site_id: sid,
+                        error: `cache_clear: ${e.message || e}`,
+                    });
+                }
             }
-            if (!skuMeta.length && skuCode) {
-                const [bySku] = await conn.query(
-                    `SELECT id, product_id
-                     FROM ${siteCfg.wa_table_skus}
-                     WHERE ${siteCfg.wa_field_sku_val} = ?
-                     LIMIT 1`,
-                    [skuCode]
-                );
-                skuMeta = bySku;
-            }
-            if (!skuMeta.length) {
-                const err = new Error('SKU не найден в Webasyst (source_id / артикул)');
-                err.code = 'CMS_SKU_NOT_FOUND';
-                throw err;
-            }
-            const waSkuId = Number(skuMeta[0].id);
-            const waProductId = Number(skuMeta[0].product_id);
-            await conn.query(
-                `UPDATE ${siteCfg.wa_table_skus}
-                 SET ${siteCfg.wa_field_price_val} = ?
-                 WHERE id = ?
-                 LIMIT 1`,
-                [finalPrice, waSkuId]
-            );
-            if (Number.isFinite(waProductId) && waProductId > 0) {
-                await recalcWebasystProductPrimaryPrices(conn, siteCfg, waProductId);
-            }
-            await touchWebasystProductAfterPriceUpdate(conn, siteCfg, product.sku);
-            return;
         }
-        await conn.query(
-            `UPDATE ${siteCfg.table_products}
-             SET ${siteCfg.field_price} = ?
-             WHERE ${siteCfg.field_code} = ?
-             LIMIT 1`,
-            [finalPrice, String(product.source_id || '')]
-        );
     }
 
     /**
@@ -1983,6 +1966,9 @@ function myProductsRouterFactory(db, settings) {
                     : '') +
                 `… (чанк ${PRICE_SYNC_CHUNK}, CMS×${PRICE_SYNC_CMS_CONCURRENCY})`;
 
+            /** site_id → нужен сброс кэша Bitrix после пакетной записи */
+            const bitrixDirtySiteIds = new Set();
+
             async function ensureSitePool(siteId) {
                 const sid = Number(siteId);
                 if (connPools.has(sid)) {
@@ -2066,7 +2052,12 @@ function myProductsRouterFactory(db, settings) {
                     const code = String(product.sku || product.source_id || product.id || '?');
                     try {
                         const { site, conn } = takeSiteConn(product.site_id, slot);
-                        await applyPriceToCms(conn, site, product, computed.finalPrice);
+                        await applyPriceToCms(conn, site, product, computed.finalPrice, {
+                            deferStorefrontCacheClear: true,
+                        });
+                        if (String(site.cms_type || '').toLowerCase() === 'bitrix') {
+                            bitrixDirtySiteIds.add(Number(product.site_id));
+                        }
                         await db.query(
                             `UPDATE my_products
                              SET price = ?, comp_sync_by = ?, comp_sync_at = NOW(), comp_sync_note = ?, updated_at = NOW()
@@ -2126,6 +2117,15 @@ function myProductsRouterFactory(db, settings) {
             myProductsResponseCache.clear();
             myProductsGapSetCache.clear();
 
+            if (bitrixDirtySiteIds.size > 0 && !priceSyncJob.cancelRequested) {
+                priceSyncJob.message = 'Сброс кэша витрины Bitrix…';
+                await flushBitrixStorefrontCaches(
+                    siteCache,
+                    [...bitrixDirtySiteIds],
+                    priceSyncJob.errors
+                );
+            }
+
             if (priceSyncJob.cancelRequested) {
                 finishPriceSyncJob(
                     serial,
@@ -2134,10 +2134,16 @@ function myProductsRouterFactory(db, settings) {
                         (showGapSkips ? `, отсеяно по Δ ${priceSyncJob.skipped_gap}` : '')
                 );
             } else {
+                const cacheFails = (priceSyncJob.errors || []).filter((e) =>
+                    String(e.error || '').startsWith('cache_clear')
+                ).length;
                 finishPriceSyncJob(
                     serial,
-                    'done',
-                    `Готово: просмотрено ${priceSyncJob.scanned}/${totalWork}, записано ✓ ${priceSyncJob.cms_ok}, ошибок × ${priceSyncJob.cms_failed}, без цены ДМ/МК ${priceSyncJob.skipped_no_competitor}` +
+                    cacheFails ? 'error' : 'done',
+                    (cacheFails
+                        ? `Цены записаны ✓ ${priceSyncJob.cms_ok}, но кэш Bitrix НЕ сброшен (${cacheFails}). `
+                        : '') +
+                        `Готово: просмотрено ${priceSyncJob.scanned}/${totalWork}, записано ✓ ${priceSyncJob.cms_ok}, ошибок × ${priceSyncJob.cms_failed}, без цены ДМ/МК ${priceSyncJob.skipped_no_competitor}` +
                         (showGapSkips ? `, отсеяно по Δ ${priceSyncJob.skipped_gap}` : '')
                 );
             }
