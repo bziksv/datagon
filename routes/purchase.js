@@ -71,6 +71,10 @@ const {
 } = require('../lib/datagonPurchaseWindowSnapshot');
 const { SUPPLIER_NEED_QTY_SQL, SUPPLIER_IN_TRANSIT_SQL } = require('../lib/datagonSuppliersSql');
 const { loadSkuRecommendedDaysByCodes } = require('../lib/datagonSupplierAbsenceProfile');
+const {
+    ensureProductAnalysisDecisionsSchema,
+    upsertProductDecision,
+} = require('../lib/datagonProductAnalysisDecisions');
 
 /** Макс. уникальных кодов на странице, для которых выполняется прогрев составов комплектов. */
 const PURCHASE_BUNDLE_WARM_MAX_CODES = 600;
@@ -619,6 +623,7 @@ function buildPurchaseBaseFromJoin(incompletePack) {
     return `
                 FROM ms_export mse
                 LEFT JOIN dg_purchase_overrides po ON po.code = mse.code
+                LEFT JOIN dg_product_analysis_decisions pad ON pad.code = mse.code
                 LEFT JOIN ms_entity_details med ON med.uuid = mse.uuid
                 ${incompletePack ? `LEFT JOIN (${MS_EXPORT_BUNDLE_MIN_SUFFIX_SUBSQL}) bb ON bb.base_code = mse.code` : ''}
             `;
@@ -632,6 +637,7 @@ function buildPurchaseCountFromJoin(incompletePack, withFormulaCache) {
     return `
                 FROM ms_export mse
                 LEFT JOIN dg_purchase_overrides po ON po.code = mse.code
+                LEFT JOIN dg_product_analysis_decisions pad ON pad.code = mse.code
                 LEFT JOIN ms_entity_details med ON med.uuid = mse.uuid
                 ${bundleJoin}
                 ${fcJoin}
@@ -940,6 +946,7 @@ function buildPurchaseListSelectSql(frag) {
                     mse.synced_at,
                     po.min_stock_dg, po.multiplicity,
                     po.proposed_min_stock, po.pack_qty_manual, po.updated_at AS override_updated_at,
+                    COALESCE(pad.lock_proposed_min_stock, 0) AS lock_proposed_min_stock,
                     NULL AS payload_json,
                     med.denorm_article,
                     med.denorm_in_transit,
@@ -1327,6 +1334,7 @@ async function ensureSchema(db) {
             INDEX idx_pu_ms_apply_item_code (code)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     `);
+    await ensureProductAnalysisDecisionsSchema(db);
     schemaReady = true;
 }
 
@@ -1913,6 +1921,7 @@ async function loadMsPayloadRowsForCodes(db, codes, formulaMeta, loadOpts = {}) 
                     mse.synced_at,
                     po.min_stock_dg, po.multiplicity,
                     po.proposed_min_stock, po.pack_qty_manual, po.updated_at AS override_updated_at,
+                    COALESCE(pad.lock_proposed_min_stock, 0) AS lock_proposed_min_stock,
                     ${payloadSel},
                     med.denorm_article,
                     med.denorm_in_transit,
@@ -1921,6 +1930,7 @@ async function loadMsPayloadRowsForCodes(db, codes, formulaMeta, loadOpts = {}) 
                     ${fcSel}
                FROM ms_export mse
                LEFT JOIN dg_purchase_overrides po ON po.code = mse.code
+               LEFT JOIN dg_product_analysis_decisions pad ON pad.code = mse.code
                LEFT JOIN ms_entity_details med ON med.uuid = mse.uuid
                ${fcJoin}
               WHERE mse.code IN (${ph})`,
@@ -2000,6 +2010,7 @@ function mapPurchaseSqlRowToDataItem(r, opts = {}) {
         min_stock: r.min_stock,
         automation_price: r.automation_price || '',
         proposed_min_stock: r.proposed_min_stock,
+        lock_proposed_min_stock: Number(r.lock_proposed_min_stock || 0) === 1,
         min_stock_dg: r.min_stock_dg,
         multiplicity: r.multiplicity,
         pack_qty: r.pack_qty_manual != null ? r.pack_qty_manual : packQtyAuto,
@@ -2664,6 +2675,19 @@ async function enrichPurchaseRowsWithFormula(db, appSettings, sqlRows, data, opt
             } else {
                 d.formula_proposed_at_base_days = d.formula_proposed_min_stock;
                 d.formula_uplift_from_rec_days = 0;
+            }
+
+            // «Анализ товаров» → lock_proposed + override: колонка «Предлагаемый» должна
+            // совпадать с COALESCE(override, формула) на /product-analysis, а не с пересчётом.
+            if (d.lock_proposed_min_stock) {
+                const ovRaw =
+                    d.proposed_min_stock != null && d.proposed_min_stock !== ''
+                        ? Number(d.proposed_min_stock)
+                        : 0;
+                d.formula_proposed_min_stock = Number.isFinite(ovRaw) ? ovRaw : 0;
+                d.formula_proposed_at_base_days = d.formula_proposed_min_stock;
+                d.formula_uplift_from_rec_days = 0;
+                d.formula_locked_override = true;
             }
         }
 
@@ -3370,6 +3394,24 @@ function createPurchaseRouter(db, appSettings) {
                 ON DUPLICATE KEY UPDATE ${field} = VALUES(${field})
             `;
             await db.query(upsertSql, [code, num]);
+
+            // Сброс предлагаемого в закупках = снять фиксацию с «Анализа товаров»
+            if (field === 'proposed_min_stock' && num == null) {
+                try {
+                    await upsertProductDecision(
+                        db,
+                        code,
+                        { lock_proposed_min_stock: false },
+                        req.datagonActor || null,
+                        { source: 'purchase' },
+                    );
+                } catch (unlockErr) {
+                    console.warn(
+                        '[purchase][override] unlock_proposed:',
+                        (unlockErr && unlockErr.message) || unlockErr,
+                    );
+                }
+            }
 
             if (PURCHASE_LOG_FIELDS.has(field) && !sameOverrideNum(prevNum, num)) {
                 await insertPurchaseOverrideLog(db, {

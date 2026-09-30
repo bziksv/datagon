@@ -111,6 +111,9 @@
         auto_sync_medmarket_fill_enabled: 0,
         auto_sync_medmarket_fill_time: "09:30",
         auto_sync_medmarket_fill_weekdays: "1,2,3,4,5,6",
+        auto_sync_network_prices_enabled: 0,
+        auto_sync_network_prices_time: "11:00",
+        auto_sync_network_prices_weekdays: "1,2,3,4,5,6,7",
         ms_dimensions_log_retention_days: 180,
         dg_purchase_overrides_log_retention_days: 180,
         auto_sync_runs_retention_days: 180,
@@ -1110,6 +1113,15 @@
         set("dg-set-auto_price_comp_rand_max", merged.auto_sync_price_comp_rand_max != null ? merged.auto_sync_price_comp_rand_max : "0.99");
         set("dg-set-auto_price_comp_stock_min", merged.auto_sync_price_comp_stock_min != null ? merged.auto_sync_price_comp_stock_min : "0");
         set("dg-set-auto_price_comp_stock_max", merged.auto_sync_price_comp_stock_max != null ? merged.auto_sync_price_comp_stock_max : "1000");
+        var networkPricesEn = document.getElementById("dg-set-auto_network_prices_en");
+        if (networkPricesEn) networkPricesEn.checked = Number(merged.auto_sync_network_prices_enabled) === 1;
+        set("dg-set-auto_network_prices_time", merged.auto_sync_network_prices_time || "11:00");
+        applyAutoSyncWeekdayChecks(
+          "dg-set-auto_network_prices_wd",
+          merged.auto_sync_network_prices_weekdays != null && String(merged.auto_sync_network_prices_weekdays).trim() !== ""
+            ? merged.auto_sync_network_prices_weekdays
+            : "1,2,3,4,5,6,7"
+        );
         document.getElementById("dg-set-auto_ms_en").checked = Number(merged.auto_sync_moysklad_enabled) === 1;
         set("dg-set-auto_ms_time", merged.auto_sync_moysklad_time || "04:00");
         var msOrdersAutoEn = document.getElementById("dg-set-auto_ms_orders_en");
@@ -2276,6 +2288,11 @@
           auto_sync_price_comp_stock_min: getStr("dg-set-auto_price_comp_stock_min") || "0",
           auto_sync_price_comp_stock_max: getStr("dg-set-auto_price_comp_stock_max") || "1000",
           auto_sync_price_comp_site_id: "all",
+          auto_sync_network_prices_enabled: document.getElementById("dg-set-auto_network_prices_en")
+            ? document.getElementById("dg-set-auto_network_prices_en").checked
+            : false,
+          auto_sync_network_prices_time: getStr("dg-set-auto_network_prices_time") || "11:00",
+          auto_sync_network_prices_weekdays: collectAutoSyncWeekdayCsv("dg-set-auto_network_prices_wd"),
           auto_sync_moysklad_enabled: document.getElementById("dg-set-auto_ms_en").checked,
           auto_sync_moysklad_time: getStr("dg-set-auto_ms_time") || "04:00",
           auto_sync_ms_orders_enabled: document.getElementById("dg-set-auto_ms_orders_en")
@@ -2348,6 +2365,9 @@
             "auto_sync_price_comp_rand_max",
             "auto_sync_price_comp_stock_min",
             "auto_sync_price_comp_stock_max",
+            "auto_sync_network_prices_enabled",
+            "auto_sync_network_prices_time",
+            "auto_sync_network_prices_weekdays",
             "auto_sync_moysklad_time",
             "auto_sync_ms_orders_time",
             "auto_sync_ms_orders_weekdays",
@@ -2399,6 +2419,7 @@
         medmarket: "Медмаркет: каталог из МС",
         medmarket_fill: "Медмаркет: коды в МС (код+тип)",
         price_comp_sync: "Цены с конкурента (ДМ/МК)",
+        network_prices: "Цены сети",
       };
       function escAutoRunHtml(s) {
         return String(s || "")
@@ -3718,6 +3739,12 @@
       if (priceCompRunBtn) {
         priceCompRunBtn.addEventListener("click", function () {
           runAutoSyncNow("price_comp_sync", "Цены с конкурента", "dg-set-auto_price_comp_run");
+        });
+      }
+      var networkPricesRunBtn = document.getElementById("dg-set-auto_network_prices_run");
+      if (networkPricesRunBtn) {
+        networkPricesRunBtn.addEventListener("click", function () {
+          runAutoSyncNow("network_prices", "Цены сети", "dg-set-auto_network_prices_run");
         });
       }
       if (document.getElementById("dg-set-auto_price_comp_live")) {

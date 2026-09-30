@@ -682,6 +682,75 @@ module.exports = (db, settings) => {
         return !!(rowsSku && rowsSku.length);
     }
 
+    /**
+     * Правило: один наш товар — одна confirmed-стыковка на конкурента (сайт).
+     * Остальные confirmed по тому же ключу → pending (как «Разорвать»).
+     * Ключ как у фильтра multi_comp_cards: при непустом my_sku — по SKU; иначе по названию.
+     * @returns {Promise<{ unlinked_ids: number[], unlinked: number }>}
+     */
+    async function unlinkOtherConfirmedForMyProduct(dbConn, opts) {
+        const keepId = Number(opts && opts.keepId);
+        const mySiteId = Number(opts && opts.mySiteId);
+        const competitorSiteId = Number(opts && opts.competitorSiteId);
+        const actor = String((opts && opts.actor) || '')
+            .trim()
+            .slice(0, 100);
+        const sku = String((opts && opts.mySku) || '').trim();
+        const name = String((opts && opts.myProductName) || '').trim();
+        if (!Number.isFinite(keepId) || keepId < 1) return { unlinked_ids: [], unlinked: 0 };
+        if (!Number.isFinite(mySiteId) || mySiteId < 1 || !Number.isFinite(competitorSiteId) || competitorSiteId < 1) {
+            return { unlinked_ids: [], unlinked: 0 };
+        }
+        if (!sku && !name) return { unlinked_ids: [], unlinked: 0 };
+
+        let siblings = [];
+        if (sku) {
+            const [rows] = await dbConn.query(
+                `SELECT id
+                 FROM product_matches
+                 WHERE my_site_id = ?
+                   AND competitor_site_id = ?
+                   AND status = 'confirmed'
+                   AND id <> ?
+                   AND TRIM(IFNULL(my_sku, '')) <> ''
+                   AND TRIM(my_sku) = ?`,
+                [mySiteId, competitorSiteId, keepId, sku]
+            );
+            siblings = rows || [];
+        } else {
+            const [rows] = await dbConn.query(
+                `SELECT id
+                 FROM product_matches
+                 WHERE my_site_id = ?
+                   AND competitor_site_id = ?
+                   AND status = 'confirmed'
+                   AND id <> ?
+                   AND TRIM(IFNULL(my_product_name, '')) = ?`,
+                [mySiteId, competitorSiteId, keepId, name]
+            );
+            siblings = rows || [];
+        }
+        const ids = siblings
+            .map((r) => Number(r.id))
+            .filter((id) => Number.isFinite(id) && id > 0);
+        if (!ids.length) return { unlinked_ids: [], unlinked: 0 };
+
+        await dbConn.query(
+            `UPDATE product_matches
+             SET status = 'pending',
+                 confirmed_by = NULL,
+                 confirmed_at = NULL,
+                 unlinked_by = ?,
+                 unlinked_at = NOW(),
+                 rejected_by = NULL,
+                 rejected_at = NULL
+             WHERE id IN (${ids.map(() => '?').join(',')})
+               AND status = 'confirmed'`,
+            [actor || null, ...ids]
+        );
+        return { unlinked_ids: ids, unlinked: ids.length };
+    }
+
     async function isInManualArchive(dbConn, mySiteId, compId, myProductId) {
         if (!Number.isFinite(Number(mySiteId)) || !Number.isFinite(Number(compId)) || !Number.isFinite(Number(myProductId))) {
             return false;
@@ -2594,6 +2663,38 @@ module.exports = (db, settings) => {
                 pc.push(max01);
             }
 
+            // Товары, к которым confirmed >1 карточки одного и того же конкурента
+            // (группа: my_site × competitor × SKU, без SKU — по названию нашего товара).
+            const multiCompCards = ['1', 'true', 'yes'].includes(
+                String(req.query.multi_comp_cards || '')
+                    .trim()
+                    .toLowerCase()
+            );
+            if (multiCompCards) {
+                const multiExists = (myAlias) => `
+                AND EXISTS (
+                    SELECT 1
+                    FROM product_matches pm_d
+                    WHERE pm_d.my_site_id = ${myAlias}.my_site_id
+                      AND pm_d.competitor_site_id = ${myAlias}.competitor_site_id
+                      AND pm_d.status = 'confirmed'
+                      AND (
+                        (
+                          TRIM(IFNULL(${myAlias}.my_sku, '')) <> ''
+                          AND TRIM(IFNULL(pm_d.my_sku, '')) = TRIM(${myAlias}.my_sku)
+                        )
+                        OR (
+                          TRIM(IFNULL(${myAlias}.my_sku, '')) = ''
+                          AND TRIM(IFNULL(${myAlias}.my_product_name, '')) <> ''
+                          AND TRIM(IFNULL(pm_d.my_product_name, '')) = TRIM(${myAlias}.my_product_name)
+                        )
+                      )
+                    HAVING COUNT(*) > 1
+                )`;
+                q += multiExists('pm');
+                qc += multiExists('product_matches');
+            }
+
             q += ' ORDER BY pm.confidence_score DESC, pm.id DESC LIMIT ? OFFSET ?';
             p.push(parseInt(limit), parseInt(offset));
 
@@ -2815,6 +2916,14 @@ module.exports = (db, settings) => {
                 'DELETE FROM product_matches WHERE my_site_id = ? AND competitor_site_id = ? AND match_identity_hash = ? AND id <> ?',
                 [actRow.my_site_id, actRow.competitor_site_id, idHash, id]
             );
+            const released = await unlinkOtherConfirmedForMyProduct(db, {
+                keepId: id,
+                mySiteId: actRow.my_site_id,
+                competitorSiteId: actRow.competitor_site_id,
+                mySku: actRow.my_sku,
+                myProductName: actRow.my_product_name,
+                actor
+            });
             const mpId = await resolveMyProductId(db, row.my_site_id, row.my_sku, row.my_product_name);
             await clearMatchExclusionForConfirmedProduct(
                 db,
@@ -2829,23 +2938,30 @@ module.exports = (db, settings) => {
                     my_product_id: mpId,
                     competitor_site_id: row.competitor_site_id,
                     event: 'auto_confirmed',
-                    message: 'Подтверждено авто-совпадение — запись снята с ручной очереди при наличии',
+                    message:
+                        released.unlinked > 0
+                            ? `Подтверждено авто-совпадение; снято других стыковок с этим конкурентом: ${released.unlinked}`
+                            : 'Подтверждено авто-совпадение — запись снята с ручной очереди при наличии',
                     detail: {
                         product_match_id: id,
                         pack_qty: pack.pack_qty,
-                        pack_basis: pack.pack_basis
+                        pack_basis: pack.pack_basis,
+                        unlinked_ids: released.unlinked_ids
                     }
                 });
             }
             await recordMatchesListUiActivity(req, 'confirm', actRow, {
                 my_product_id_resolved: mpId || null,
                 pack_qty: pack.pack_qty,
-                pack_basis: pack.pack_basis
+                pack_basis: pack.pack_basis,
+                unlinked_siblings: released.unlinked
             });
             res.json({
                 success: true,
                 pack_qty: pack.pack_qty,
-                pack_basis: pack.pack_basis
+                pack_basis: pack.pack_basis,
+                unlinked_siblings: released.unlinked,
+                unlinked_ids: released.unlinked_ids
             });
         } catch (e) {
             res.status(500).json({ error: e.message });
@@ -3733,11 +3849,20 @@ module.exports = (db, settings) => {
                  LIMIT 1`,
                 [mySiteId, competitorSiteId, idHash]
             );
+            let released = { unlinked_ids: [], unlinked: 0 };
             if (keepRow && keepRow.id) {
                 await db.query(
                     'DELETE FROM product_matches WHERE my_site_id = ? AND competitor_site_id = ? AND match_identity_hash = ? AND id <> ?',
                     [mySiteId, competitorSiteId, idHash, keepRow.id]
                 );
+                released = await unlinkOtherConfirmedForMyProduct(db, {
+                    keepId: keepRow.id,
+                    mySiteId,
+                    competitorSiteId,
+                    mySku: mp.sku,
+                    myProductName: mp.name,
+                    actor
+                });
             }
             await clearMatchExclusionForConfirmedProduct(
                 db,
@@ -3751,18 +3876,25 @@ module.exports = (db, settings) => {
                 my_product_id: myProductId,
                 competitor_site_id: competitorSiteId,
                 event: 'manual_confirmed',
-                message: 'Ручное сопоставление зафиксировано',
+                message:
+                    released.unlinked > 0
+                        ? `Ручное сопоставление зафиксировано; снято других стыковок с этим конкурентом: ${released.unlinked}`
+                        : 'Ручное сопоставление зафиксировано',
                 detail: {
                     competitor_sku: competitorSku,
                     competitor_name: competitorName,
                     pack_qty: pack.pack_qty,
-                    pack_basis: pack.pack_basis
+                    pack_basis: pack.pack_basis,
+                    product_match_id: keepRow && keepRow.id ? keepRow.id : null,
+                    unlinked_ids: released.unlinked_ids
                 }
             });
             return res.json({
                 success: true,
                 pack_qty: pack.pack_qty,
-                pack_basis: pack.pack_basis
+                pack_basis: pack.pack_basis,
+                unlinked_siblings: released.unlinked,
+                unlinked_ids: released.unlinked_ids
             });
         } catch (e) {
             return res.status(500).json({ error: e.message });
@@ -3847,6 +3979,14 @@ module.exports = (db, settings) => {
                     productMatchId
                 ]
             );
+            const released = await unlinkOtherConfirmedForMyProduct(db, {
+                keepId: productMatchId,
+                mySiteId,
+                competitorSiteId,
+                mySku: mp.sku,
+                myProductName: mp.name,
+                actor
+            });
             await clearMatchExclusionForConfirmedProduct(
                 db,
                 mySiteId,
@@ -3862,19 +4002,25 @@ module.exports = (db, settings) => {
                 message:
                     'Пересвязь: конкурент перенесён с другой карточки того же артикула (' +
                     String(pm.my_product_name || pm.my_sku || '').trim() +
-                    ')',
+                    ')' +
+                    (released.unlinked > 0
+                        ? `; снято других стыковок с этим конкурентом: ${released.unlinked}`
+                        : ''),
                 detail: {
                     product_match_id: productMatchId,
                     from_sku: pm.my_sku,
                     from_name: pm.my_product_name,
                     competitor_sku: pm.competitor_sku,
-                    competitor_name: pm.competitor_name
+                    competitor_name: pm.competitor_name,
+                    unlinked_ids: released.unlinked_ids
                 }
             });
             return res.json({
                 success: true,
                 product_match_id: productMatchId,
-                my_product_id: myProductId
+                my_product_id: myProductId,
+                unlinked_siblings: released.unlinked,
+                unlinked_ids: released.unlinked_ids
             });
         } catch (e) {
             return res.status(500).json({ error: e.message || 'Ошибка пересвязи' });

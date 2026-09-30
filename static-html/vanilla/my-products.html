@@ -639,6 +639,7 @@
                     <ul class="metismenu-container">
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="dashboard" href="/dashboard.html"><i class="metismenu-icon pe-7s-rocket"></i>Дашборд</a></li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="my-sites" href="/my-sites.html"><i class="metismenu-icon pe-7s-global"></i>Мои сайты</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="network-prices" href="/network-prices.html"><i class="metismenu-icon pe-7s-shuffle"></i>Цены сети</a></li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="my-products" href="/my-products.html"><i class="metismenu-icon pe-7s-box2"></i>Мои товары (сайты)</a></li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="moysklad" href="/moysklad.html"><i class="metismenu-icon pe-7s-shopbag"></i>Мой Склад (товары)</a></li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="medmarket" href="/medmarket.html" title="Стыковка кода МС с кодом товара для Медмаркета"><i class="metismenu-icon pe-7s-id"></i>Медмаркет</a></li>
@@ -843,6 +844,7 @@
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="purchase" href="/purchase.html" title="Закупки товары: планирование, неснижаемые остатки, кратность"><i class="metismenu-icon pe-7s-cart"></i>Закупки товары</a></li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="suppliers" href="/suppliers.html" title="Поставщики: сводка по закупкам и настройки"><i class="metismenu-icon pe-7s-id"></i>Поставщики</a></li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="supplier-analysis" href="/supplier-analysis.html" title="Продажи, оборот и тренды по поставщикам"><i class="metismenu-icon pe-7s-graph2"></i>Анализ поставщиков</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="product-analysis" href="/product-analysis.html" title="Продажи по SKU: топы, мёртвые, жизненный цикл и неснижаемый"><i class="metismenu-icon pe-7s-graph1"></i>Анализ товаров</a></li>
                     </ul>
                   </div>
                 </div>
@@ -1065,18 +1067,18 @@
                 </div>
                 <div class="col-md-2" data-dg-mp-filter-field="gap_max_pct">
                   <label class="form-label" for="mp-f-gap_max_pct">Δ % до</label>
-                  <input type="number" step="0.01" class="form-control" id="mp-f-gap_max_pct" value="100" />
+                  <input type="number" step="0.01" class="form-control" id="mp-f-gap_max_pct" value="-2" />
                 </div>
                 <div class="col-md-1 d-flex justify-content-center align-items-center pb-2" data-dg-mp-filter-field="gap_or_label">
                   <span class="small text-muted fw-semibold">или</span>
                 </div>
                 <div class="col-md-2" data-dg-mp-filter-field="gap_min_pct_2">
                   <label class="form-label" for="mp-f-gap_min_pct_2">Δ % от</label>
-                  <input type="number" step="0.01" class="form-control" id="mp-f-gap_min_pct_2" value="" title="Второй диапазон (ИЛИ). Пусто = не используется." />
+                  <input type="number" step="0.01" class="form-control" id="mp-f-gap_min_pct_2" value="2" title="Второй диапазон (ИЛИ). Пусто = не используется." />
                 </div>
                 <div class="col-md-2" data-dg-mp-filter-field="gap_max_pct_2">
                   <label class="form-label" for="mp-f-gap_max_pct_2">Δ % до</label>
-                  <input type="number" step="0.01" class="form-control" id="mp-f-gap_max_pct_2" value="" title="Второй диапазон (ИЛИ). Пусто = не используется." />
+                  <input type="number" step="0.01" class="form-control" id="mp-f-gap_max_pct_2" value="100" title="Второй диапазон (ИЛИ). Пусто = не используется." />
                 </div>
               </div>
               <div class="row g-2 mt-1">
@@ -1440,7 +1442,7 @@
               " [" +
               (f.gap_min_pct || "-100") +
               "…" +
-              (f.gap_max_pct || "100") +
+              (f.gap_max_pct || "-2") +
               "%]" +
               (f.gap_min_pct_2 !== "" &&
               f.gap_min_pct_2 != null &&
@@ -3454,9 +3456,9 @@
         document.getElementById("mp-f-gap_exclude_zero").checked = true;
         document.getElementById("mp-f-gap_competitor").value = "all";
         document.getElementById("mp-f-gap_min_pct").value = "-100";
-        document.getElementById("mp-f-gap_max_pct").value = "100";
-        document.getElementById("mp-f-gap_min_pct_2").value = "";
-        document.getElementById("mp-f-gap_max_pct_2").value = "";
+        document.getElementById("mp-f-gap_max_pct").value = "-2";
+        document.getElementById("mp-f-gap_min_pct_2").value = "2";
+        document.getElementById("mp-f-gap_max_pct_2").value = "100";
         document.getElementById("mp-f-usd_to_rub").value = "";
         document.getElementById("mp-f-eur_to_rub").value = "";
         document.getElementById("mp-f-comp_min").value = "0.1";

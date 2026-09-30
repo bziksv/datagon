@@ -174,7 +174,13 @@
         state.breakdownOffset = 0;
         syncDirtyApply();
         updateProjectFilterHint();
-        return loadAll();
+        return loadProjectsList().then(function () {
+          if (state.project_mode === "selected") {
+            state.project_uuids = readPendingProjectUuids();
+            state.pending.project_uuids = state.project_uuids.slice();
+          }
+          return loadAll();
+        });
       }
 
       function updateProjectFilterHint(label) {
@@ -2769,6 +2775,7 @@
           daysEl.addEventListener("change", function () {
             state.pending.days = Number(daysEl.value) || 90;
             syncDirtyApply();
+            loadProjectsList();
           });
         }
         if (searchEl) {

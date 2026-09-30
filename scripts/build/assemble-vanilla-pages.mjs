@@ -76,6 +76,14 @@ function assemble() {
             PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/supplier-analysis.scripts.html')),
         },
         {
+            out: 'product-analysis.html',
+            PAGE_TITLE: 'Анализ товаров — Датагон',
+            BODY_ATTRS: 'class="datagon-vanilla-body" data-dg-active-nav="product-analysis"',
+            EXTRA_HEAD: read(path.join(vanillaDir, 'inners/product-analysis.head.html')),
+            MAIN_INNER: read(path.join(vanillaDir, 'inners/product-analysis.inner.html')),
+            PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/product-analysis.scripts.html')),
+        },
+        {
             out: 'purchase.html',
             PAGE_TITLE: 'Закупки товары — Датагон',
             BODY_ATTRS: 'class="datagon-vanilla-body" data-dg-active-nav="purchase"',
@@ -100,6 +108,14 @@ function assemble() {
             EXTRA_HEAD: read(path.join(vanillaDir, 'inners/my-products.head.html')),
             MAIN_INNER: read(path.join(vanillaDir, 'inners/my-products.inner.html')),
             PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/my-products.scripts.html')),
+        },
+        {
+            out: 'network-prices.html',
+            PAGE_TITLE: 'Цены сети — Датагон',
+            BODY_ATTRS: 'class="datagon-vanilla-body" data-dg-active-nav="network-prices"',
+            EXTRA_HEAD: read(path.join(vanillaDir, 'inners/network-prices.head.html')),
+            MAIN_INNER: read(path.join(vanillaDir, 'inners/network-prices.inner.html')),
+            PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/network-prices.scripts.html')),
         },
         {
             out: 'projects.html',

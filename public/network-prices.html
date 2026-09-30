@@ -1,0 +1,1506 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, shrink-to-fit=no" />
+  <script>
+    (function () {
+      try {
+        if (localStorage.getItem("datagon_theme_font_source_sans_3_v1") === "1") {
+          document.documentElement.classList.add("dg-font-source-sans-3");
+          var l = document.createElement("link");
+          l.id = "dg-font-source-sans-3-link";
+          l.rel = "stylesheet";
+          l.href =
+            "https://fonts.googleapis.com/css2?family=Source+Sans+3:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap";
+          document.head.appendChild(l);
+        }
+      } catch (e) {}
+    })();
+  </script>
+  <title>Цены сети — Датагон</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="stylesheet" href="/static/css/main.989b22a9.css" />
+  <style>
+  body.datagon-vanilla-body[data-dg-active-nav="network-prices"] .app-main__inner { min-width: 0; }
+  body.datagon-vanilla-body[data-dg-active-nav="network-prices"] .dg-np-table-wrap { overflow-x: auto; }
+  body.datagon-vanilla-body[data-dg-active-nav="network-prices"] #dg-np-table th,
+  body.datagon-vanilla-body[data-dg-active-nav="network-prices"] #dg-np-table td { white-space: nowrap; font-size: 0.85rem; }
+  body.datagon-vanilla-body[data-dg-active-nav="network-prices"] .dg-np-muted { color: #8b95a5; }
+</style>
+
+  <style>
+    /* Один список сайдбара: «ArchitectUI меню» у нижнего края области навигации, без второго блока/ul */
+    .dg-sidebar-nav-scroll {
+      display: flex;
+      flex-direction: column;
+    }
+    .dg-sidebar-nav-measure {
+      flex: 1 1 auto;
+      min-height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+    .dg-sidebar-nav-measure .datagon-nav-shell,
+    .dg-sidebar-nav-measure .vertical-nav-menu {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    /* Только корневой список меню: иначе вложенный ul.metismenu-container (под «Маркетплейсы» и т.п.)
+       получает min-height:100% + flex и растягивается на всю колонку — вертикальная линия темы залезает на соседние пункты. */
+    .dg-sidebar-nav-measure .vertical-nav-menu > .metismenu-container {
+      display: flex;
+      flex-direction: column;
+      flex: 1 1 auto;
+      min-height: 100%;
+      margin-bottom: 0;
+    }
+    /*
+      Подменю «Маркетплейсы»: ArchitectUI скрывает .metismenu-icon у подпунктов и даёт малый padding.
+      Не трогаем узкую полоску без hover — большой padding раздувает li и смещает «left:50%» у всех иконок колонки.
+      При развороте по hover из closed-sidebar класс closed-sidebar не снимается — нужен отдельный селектор с .app-sidebar:hover.
+    */
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible,
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon {
+      display: block !important;
+    }
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link,
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link {
+      padding-left: 3.4375rem !important;
+      position: relative;
+      /* Длинные подписи подпунктов («Проблемы с товарами», «Яндекс Маркет»)
+         не должны обрезаться ellipsis: разрешаем перенос на 2 строки и
+         выравниваем иконку по верхней строке. */
+      white-space: normal !important;
+      line-height: 1.25;
+      align-items: flex-start;
+      padding-top: 0.45rem !important;
+      padding-bottom: 0.45rem !important;
+      padding-right: 0.5rem !important;
+      min-height: 2rem;
+      height: auto !important;
+    }
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible,
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon {
+      top: 0.55rem !important;
+    }
+    .dg-sidebar-architect-item {
+      margin-top: auto;
+    }
+    .dg-sidebar-architect-item .metismenu-link {
+      border-top: 1px solid rgba(0, 0, 0, 0.07);
+      padding-top: 0.65rem;
+    }
+    /* Пункты сайдбара с доступом как у журнала активности (admin / право на пользователей) */
+    .dg-sidebar-nav-restricted .metismenu-link {
+      display: inline-flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.15rem 0.35rem;
+    }
+    .dg-sidebar-nav-restricted .dg-nav-restricted-icon {
+      font-size: 0.7rem;
+      opacity: 0.72;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+    .datagon-vanilla-shell .app-footer .app-footer__inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .datagon-vanilla-shell .app-footer-right {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 6px 12px;
+      padding: 4px 8px 4px 12px;
+      max-width: min(100%, 540px);
+      margin-left: auto;
+    }
+    .datagon-vanilla-shell .dg-footer-legal-link {
+      font-size: 11px;
+      line-height: 1.25;
+      color: #6c757d;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    .datagon-vanilla-shell .dg-footer-legal-link:hover {
+      color: #2f5de0;
+      text-decoration: underline;
+    }
+    @media (max-width: 991.98px) {
+      /* На мобильном layout не должен наследовать desktop-сдвиг fixed/closed sidebar. */
+      .datagon-vanilla-shell .app-main__outer {
+        margin-left: 0 !important;
+      }
+      .datagon-vanilla-shell .app-footer {
+        left: 0 !important;
+        width: 100% !important;
+      }
+      .datagon-vanilla-shell .app-footer .app-footer__inner {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-left: 0 !important;
+      }
+      /* На телефонах слой мобильного меню должен перекрывать фиксированный футер. */
+      .datagon-vanilla-shell .sidebar-mobile-overlay {
+        z-index: 1090;
+      }
+      .datagon-vanilla-shell .app-sidebar {
+        z-index: 1100;
+      }
+      .datagon-vanilla-shell .app-footer {
+        z-index: 1080;
+      }
+      .datagon-vanilla-shell.sidebar-mobile-open .app-footer {
+        pointer-events: none;
+        opacity: 0.25;
+      }
+    }
+    /* Source Sans 3 — opt-in из «Параметры макета» (все экраны, в т.ч. Windows). */
+    html.dg-font-source-sans-3 .datagon-vanilla-shell {
+      --bs-body-font-family: "Source Sans 3", -apple-system, BlinkMacSystemFont, "Segoe UI",
+        Roboto, "Helvetica Neue", Arial, sans-serif;
+      --bs-font-sans-serif: var(--bs-body-font-family);
+      font-family: var(--bs-body-font-family);
+    }
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .btn,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .form-control,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .form-select,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .table,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .card,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .page-title-heading,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .vertical-nav-menu a,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .app-header,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .app-sidebar,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .app-main,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .app-footer {
+      font-family: inherit;
+    }
+  </style>
+</head>
+<body class="datagon-vanilla-body" data-dg-active-nav="network-prices">
+  <div class="app-container app-theme-white datagon-shell datagon-vanilla-shell fixed-header fixed-sidebar fixed-footer">
+    <div class="app-header header-shadow">
+      <div class="app-header__logo">
+        <button type="button" class="logo-src datagon-brand" onclick="location.href='/dashboard.html'" title="Открыть дашборд" style="border:0;background:transparent;padding:0;cursor:pointer">Датагон</button>
+        <div class="header__pane ms-auto">
+          <div>
+            <button type="button" class="hamburger hamburger--slider dg-toggle-sidebar" aria-label="Свернуть боковую панель" title="Свернуть боковую панель">
+              <span class="hamburger-box"><span class="hamburger-inner"></span></span>
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="app-header__mobile-menu">
+        <div>
+          <button type="button" class="hamburger hamburger--slider dg-toggle-mobile-sidebar" aria-label="Открыть меню">
+            <span class="hamburger-box"><span class="hamburger-inner"></span></span>
+          </button>
+        </div>
+      </div>
+      <div class="app-header__menu">
+        <span>
+          <button type="button" class="btn btn-primary btn-sm btn-icon btn-icon-only dg-toggle-header-small" aria-label="Доп. меню шапки">
+            <div class="btn-icon-wrapper">
+              <i class="pe-7s-more" style="font-size:1.1rem;line-height:1"></i>
+            </div>
+          </button>
+        </span>
+      </div>
+      <div class="app-header__content">
+        <div class="app-header-left">
+          <div class="search-wrapper">
+            <div class="input-holder">
+              <input type="text" class="search-input" placeholder="Type to search" autocomplete="off" />
+              <button type="button" class="search-icon dg-vanilla-search-docs" aria-label="Открыть документацию" title="Документация">
+                <span></span>
+              </button>
+            </div>
+            <button type="button" class="btn-close dg-vanilla-search-close" aria-label="Закрыть поиск"></button>
+          </div>
+        </div>
+        <div class="app-header-right">
+          <div class="ui-theme-settings ui-theme-settings--header">
+            <button type="button" class="btn btn-link btn-open-options btn-open-options--header" id="TooltipDemoVanilla" aria-label="Параметры темы" title="Параметры темы (полная версия в React-панели)">
+              <i class="pe-7s-config" style="font-size:1.35rem;color:#3f6ad8;line-height:1"></i>
+            </button>
+            <div class="theme-settings__inner">
+              <div class="theme-settings__options-wrapper">
+                <h3 class="themeoptions-heading">Параметры макета</h3>
+                <div class="list-group">
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Фиксированная шапка</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-fixed-header" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Тень шапки</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-header-shadow" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Фиксированный сайдбар</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-fixed-sidebar" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Тень сайдбара</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-sidebar-shadow" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Фиксированный футер</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-fixed-footer" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Шрифт Source Sans 3</h5>
+                    <label class="switch mb-0" title="Удобнее на Windows; сохраняется для всех страниц панели"><input type="checkbox" id="dg-theme-font-source-sans-3"><span class="slider round"></span></label>
+                  </div>
+                </div>
+
+                <h3 class="themeoptions-heading">Параметры заголовка страницы</h3>
+                <div class="list-group">
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Иконка заголовка</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-title-icon" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Подзаголовок страницы</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-title-subheading" checked><span class="slider round"></span></label>
+                  </div>
+                </div>
+
+                <h3 class="themeoptions-heading">Цветовые схемы</h3>
+                <div class="list-group">
+                  <div class="list-group-item">
+                    <h5 class="mb-2">Цветовая схема макета</h5>
+                    <div class="theme-settings-swatches">
+                      <div class="swatch-holder-lg active dg-theme-color-scheme" data-color-scheme="white" style="background:#fff;border:1px solid #dee2e6"></div>
+                      <div class="swatch-holder-lg dg-theme-color-scheme" data-color-scheme="gray" style="background:#868e96"></div>
+                    </div>
+                  </div>
+                </div>
+
+                <h3 class="themeoptions-heading">Параметры сайдбара</h3>
+                <div class="list-group">
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Фоновое изображение сайдбара</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-sidebar-bg-image"><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item">
+                    <h5 class="mb-2">Цвета сайдбара</h5>
+                    <div class="theme-settings-swatches">
+                      <div class="swatch-holder bg-primary dg-theme-sidebar-color" data-color-class="bg-primary"></div><div class="swatch-holder bg-danger dg-theme-sidebar-color" data-color-class="bg-danger"></div><div class="swatch-holder bg-warning dg-theme-sidebar-color" data-color-class="bg-warning"></div><div class="swatch-holder bg-success dg-theme-sidebar-color" data-color-class="bg-success"></div>
+                      <div class="swatch-holder bg-info dg-theme-sidebar-color" data-color-class="bg-info"></div><div class="swatch-holder bg-secondary dg-theme-sidebar-color" data-color-class="bg-secondary"></div><div class="swatch-holder bg-dark dg-theme-sidebar-color" data-color-class="bg-dark"></div><div class="swatch-holder dg-theme-sidebar-color" data-color-class="bg-plum-plate" style="background:#667eea"></div>
+                      <div class="swatch-holder dg-theme-sidebar-color" data-color-class="bg-arielle-smile" style="background:#16d9e3"></div><div class="swatch-holder dg-theme-sidebar-color" data-color-class="bg-ripe-malin" style="background:#f093fb"></div><div class="swatch-holder dg-theme-sidebar-color" data-color-class="bg-night-fade" style="background:#a18cd1"></div><div class="swatch-holder dg-theme-sidebar-color" data-color-class="bg-malibu-beach" style="background:#4facfe"></div>
+                    </div>
+                  </div>
+                </div>
+
+                <h3 class="themeoptions-heading">Параметры шапки</h3>
+                <div class="list-group">
+                  <div class="list-group-item">
+                    <h5 class="mb-2">Цвета шапки</h5>
+                    <div class="theme-settings-swatches">
+                      <div class="swatch-holder bg-primary dg-theme-header-color" data-color-class="bg-primary"></div><div class="swatch-holder bg-danger dg-theme-header-color" data-color-class="bg-danger"></div><div class="swatch-holder bg-warning dg-theme-header-color" data-color-class="bg-warning"></div><div class="swatch-holder bg-success dg-theme-header-color" data-color-class="bg-success"></div>
+                      <div class="swatch-holder bg-info dg-theme-header-color" data-color-class="bg-info"></div><div class="swatch-holder bg-secondary dg-theme-header-color" data-color-class="bg-secondary"></div><div class="swatch-holder bg-dark dg-theme-header-color" data-color-class="bg-dark"></div><div class="swatch-holder dg-theme-header-color" data-color-class="bg-plum-plate" style="background:#667eea"></div>
+                    </div>
+                  </div>
+                </div>
+                <div class="p-2">
+                  <a href="/settings.html" class="btn btn-sm btn-outline-primary w-100">Настройки</a>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="header-dots">
+            <div class="dropdown">
+              <button type="button" class="btn btn-link p-0 me-2 dg-vanilla-dropdown-toggle" style="line-height:0" aria-expanded="false" aria-haspopup="true">
+                <div class="icon-wrapper icon-wrapper-alt rounded-circle">
+                  <div class="icon-wrapper-bg bg-success"></div>
+                  <i class="pe-7s-graph2" style="font-size:23px;color:#3ac47d"></i>
+                </div>
+              </button>
+              <div class="dropdown-menu dropdown-menu-xl rm-pointers p-0" style="min-width: 320px">
+                <div class="dropdown-menu-header">
+                  <div class="dropdown-menu-header-inner bg-premium-dark">
+                    <div class="menu-header-image" style="background-image:url('/assets/utils/images/dropdown-header/abstract4.jpg')"></div>
+                    <div class="menu-header-content text-white">
+                      <h5 class="menu-header-title">Вы в сети</h5>
+                      <h6 class="menu-header-subtitle">Онлайн за окно из настроек</h6>
+                    </div>
+                  </div>
+                </div>
+                <div class="widget-chart">
+                  <div class="widget-chart-content">
+                    <div class="icon-wrapper rounded-circle">
+                      <div class="icon-wrapper-bg opacity-9 bg-focus"></div>
+                      <i class="lnr-users text-white"></i>
+                    </div>
+                    <div class="widget-numbers d-flex flex-column align-items-center text-center" id="dg-vanilla-online-users-wrap">
+                      <span id="dg-vanilla-online-users">—</span>
+                      <span class="opacity-9 fw-normal" style="font-size: 0.72rem; line-height: 1.25; margin-top: 0.15rem" id="dg-vanilla-online-users-unit"></span>
+                    </div>
+                    <div class="widget-subheading pt-2 small text-muted" id="dg-vanilla-online-users-role"></div>
+                    <div class="text-center small px-2 pt-1 pb-1">
+                      <a href="/settings.html#dg-settings-online-presence" class="text-decoration-none">Окно минут</a>
+                    </div>
+                    <div class="widget-description text-muted small px-2 mt-1 mb-0" id="dg-vanilla-online-users-sessions" style="line-height: 1.35"></div>
+                    <div class="widget-description text-muted mt-2 mb-0">
+                      <span class="pe-1 small" id="dg-vanilla-online-users-note"></span>
+                    </div>
+                  </div>
+                  <div class="widget-chart-wrapper">
+                    <div style="height:40px;opacity:.35;background:linear-gradient(90deg,#f7b924 0%,#f7b92455 100%);border-radius:2px;"></div>
+                  </div>
+                </div>
+                <div class="nav-item-divider mt-0"></div>
+                <div class="nav-item-btn text-center pb-3 mb-2">
+                  <button type="button" class="btn btn-sm btn-shine btn-wide btn-pill btn-warning" id="dg-vanilla-online-users-refresh">
+                    <i class="pe-7s-refresh me-2"></i>Обновить
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="header-btn-lg pe-0">
+            <div class="widget-content p-0">
+              <div class="widget-content-wrapper">
+                <div class="widget-content-left d-flex align-items-center gap-1 pe-2">
+                  <span
+                    class="rounded-circle d-inline-flex align-items-center justify-content-center flex-shrink-0 bg-light text-secondary border"
+                    style="width: 42px; height: 42px; border-color: #e2e8f0"
+                    role="img"
+                    aria-label="Профиль"
+                  >
+                    <i class="pe-7s-user" style="font-size: 1.2rem; line-height: 1; opacity: 0.85" aria-hidden="true"></i>
+                  </span>
+                  <button type="button" class="btn btn-link p-0 dg-vanilla-logout d-inline-flex align-items-center justify-content-center text-danger" title="Выйти" aria-label="Выйти из профиля" style="min-width:34px;min-height:34px;line-height:1;border-radius:50%">
+                    <i class="lnr-exit" style="font-size:1.2rem"></i>
+                  </button>
+                </div>
+                <div class="widget-content-left ms-2 header-user-info">
+                  <div class="widget-heading" id="dg-vanilla-user-display-inline">Пользователь</div>
+                  <div class="widget-subheading" id="dg-vanilla-user-role-inline">Пользователь</div>
+                </div>
+                <div class="widget-content-right header-user-info ms-3">
+                  <button type="button" class="btn btn-shadow p-1 btn-sm btn-info" id="Tooltip-1" title="Click for notifications">
+                    <i class="pe-7s-date text-white" style="font-size:20px;line-height:1"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="app-main">
+      <div class="sidebar-mobile-overlay"></div>
+      <div class="app-sidebar sidebar-shadow">
+        <div class="d-flex flex-column h-100 min-h-0">
+          <div class="app-header__logo">
+            <button type="button" class="logo-src datagon-brand" onclick="location.href='/dashboard.html'" title="Открыть дашборд" style="border:0;background:transparent;padding:0;cursor:pointer">Датагон</button>
+            <div class="header__pane ms-auto">
+              <div>
+                <button type="button" class="hamburger hamburger--slider dg-toggle-sidebar" aria-label="Свернуть боковую панель" title="Свернуть боковую панель">
+                  <span class="hamburger-box"><span class="hamburger-inner"></span></span>
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="app-header__mobile-menu">
+            <div>
+              <button type="button" class="hamburger hamburger--slider dg-toggle-mobile-sidebar" aria-label="Открыть меню">
+                <span class="hamburger-box"><span class="hamburger-inner"></span></span>
+              </button>
+            </div>
+          </div>
+          <div class="app-header__menu">
+            <span>
+              <button type="button" class="btn btn-primary btn-sm btn-icon btn-icon-only dg-toggle-header-small" aria-label="Доп. меню шапки">
+                <div class="btn-icon-wrapper">
+                  <i class="pe-7s-more" style="font-size:1.1rem;line-height:1"></i>
+                </div>
+              </button>
+            </span>
+          </div>
+          <div class="custom-scrollbar dg-sidebar-nav-wrap d-flex flex-column min-h-0" style="flex:1 1 0%;min-height:0;max-height:calc(100vh - 80px);overflow-x:hidden">
+            <div class="app-sidebar__inner dg-sidebar-nav-scroll flex-grow-1 min-h-0" style="overflow-y:auto;overflow-x:hidden">
+              <div class="dg-sidebar-nav-measure">
+                <div class="datagon-nav-shell">
+                  <div class="vertical-nav-menu" style="pointer-events:auto;z-index:999;position:relative">
+                    <ul class="metismenu-container">
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="dashboard" href="/dashboard.html"><i class="metismenu-icon pe-7s-rocket"></i>Дашборд</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="my-sites" href="/my-sites.html"><i class="metismenu-icon pe-7s-global"></i>Мои сайты</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="network-prices" href="/network-prices.html"><i class="metismenu-icon pe-7s-shuffle"></i>Цены сети</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="my-products" href="/my-products.html"><i class="metismenu-icon pe-7s-box2"></i>Мои товары (сайты)</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="moysklad" href="/moysklad.html"><i class="metismenu-icon pe-7s-shopbag"></i>Мой Склад (товары)</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="medmarket" href="/medmarket.html" title="Стыковка кода МС с кодом товара для Медмаркета"><i class="metismenu-icon pe-7s-id"></i>Медмаркет</a></li>
+                      <li class="metismenu-item">
+                        <a
+                          href="#"
+                          class="metismenu-link dg-vanilla-submenu-toggle"
+                          aria-expanded="false"
+                          title="Парсинг сайтов конкурентов: проекты, очередь, результаты, сопоставление"
+                        >
+                          <i class="metismenu-icon pe-7s-browser"></i>Парсинг
+                          <i class="metismenu-state-icon pe-7s-angle-down" aria-hidden="true"></i>
+                        </a>
+                        <ul class="metismenu-container dg-vanilla-parse-submenu">
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="projects"
+                              href="/projects.html"
+                              title="Проекты и сайты конкурентов"
+                            >
+                              <i class="metismenu-icon pe-7s-portfolio"></i>Конкуренты
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="queue"
+                              href="/queue.html"
+                              title="Очередь задач парсинга"
+                            >
+                              <i class="metismenu-icon pe-7s-network"></i>Очередь
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="results"
+                              href="/results.html"
+                              title="Результаты парсинга"
+                            >
+                              <i class="metismenu-icon pe-7s-note2"></i>Результаты
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="matches"
+                              href="/matches.html"
+                              title="Сопоставление товаров"
+                            >
+                              <i class="metismenu-icon pe-7s-link"></i>Сопоставление
+                            </a>
+                          </li>
+                        </ul>
+                      </li>
+                      <li class="metismenu-item dg-sidebar-nav-restricted" data-dg-nav-restricted="activity">
+                        <a
+                          class="metismenu-link"
+                          data-nav="processes"
+                          href="/processes.html"
+                          title="Активность/Логи: журнал команды и фоновые процессы (доступ ограничен: администратор или право управления пользователями)"
+                        >
+                          <i class="metismenu-icon pe-7s-timer"></i>Активность/Логи
+                          <i
+                            class="pe-7s-lock dg-nav-restricted-icon"
+                            aria-hidden="true"
+                            title="Пункт меню с ограниченным доступом"
+                          ></i>
+                        </a>
+                      </li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="settings" href="/settings.html"><i class="metismenu-icon pe-7s-config"></i>Настройки</a></li>
+                      <li class="metismenu-item dg-sidebar-architect-item">
+                        <a
+                          class="metismenu-link"
+                          data-nav="architectui-demo"
+                          href="/ref/react-demo-index.html"
+                          title="Каталог разделов React-шаблона ArchitectUI"
+                        >
+                          <i class="metismenu-icon pe-7s-plugin"></i>ArchitectUI
+                        </a>
+                      </li>
+                      <li class="metismenu-item">
+                        <a
+                          href="#"
+                          class="metismenu-link dg-vanilla-submenu-toggle"
+                          aria-expanded="false"
+                          title="Интеграции маркетплейсов: ключи и диагностика выгрузок"
+                        >
+                          <i class="metismenu-icon pe-7s-graph3"></i>Маркетплейсы
+                          <i class="metismenu-state-icon pe-7s-angle-down" aria-hidden="true"></i>
+                        </a>
+                        <ul class="metismenu-container dg-vanilla-mp-submenu">
+                          <!-- Подпункт «Настройки» (data-nav="exports-marketplaces", /exports-marketplaces.html)
+                               скрыт из меню по запросу: ключи API маркетплейсов задаются в /settings.html;
+                               страница остаётся доступной по прямому URL и через ссылки из гайдов
+                               (например, на /exports-marketplaces-issues.html). -->
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-ozon"
+                              href="/exports-marketplaces-ozon.html"
+                              title="Таблица и выгрузка Ozon"
+                            >
+                              <i class="metismenu-icon pe-7s-graph2"></i>Ozon
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-wildberries"
+                              href="/exports-marketplaces-wildberries.html"
+                              title="Таблица и выгрузка Wildberries"
+                            >
+                              <i class="metismenu-icon pe-7s-graph2"></i>Wildberries
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-yandex"
+                              href="/exports-marketplaces-yandex.html"
+                              title="Таблица и выгрузка Яндекс Маркет"
+                            >
+                              <i class="metismenu-icon pe-7s-graph2"></i>Яндекс Маркет
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-huckster"
+                              href="/exports-huckster.html"
+                              title="Интеграция Huckster / e-teleport — матрица UID по магазинам"
+                            >
+                              <i class="metismenu-icon pe-7s-cart"></i>Huckster
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-dimensions"
+                              href="/exports-dimensions.html"
+                              title="Реестр замеров габаритов товаров МойСклад"
+                            >
+                              <i class="metismenu-icon pe-7s-scissors"></i>Габариты
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-issues"
+                              href="/exports-marketplaces-issues.html"
+                              title="Товары МойСклад с проблемами публикации на маркетплейсах"
+                            >
+                              <i class="metismenu-icon pe-7s-attention"></i>Проблемы с товарами
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-new-products"
+                              href="/exports-new-products.html"
+                              title="Очередь новых товаров: Альмамед и Маркеты"
+                            >
+                              <i class="metismenu-icon pe-7s-plus"></i>Новые товары
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-photoshoot"
+                              href="/exports-photoshoot.html"
+                              title="Съёмка товаров из очереди «Размещение на маркеты»"
+                            >
+                              <i class="metismenu-icon pe-7s-camera"></i>Отснять товары
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-competitors"
+                              href="/exports-marketplaces-competitors.html"
+                              title="Поиск наших товаров на Ozon, Wildberries и Яндекс Маркет"
+                            >
+                              <i class="metismenu-icon pe-7s-search"></i>Конкуренты
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-reglament"
+                              href="/exports-marketplaces-reglament.html"
+                              title="Регламент МП: от поиска товара до поступления на склад"
+                            >
+                              <i class="metismenu-icon pe-7s-news-paper"></i>Инструкция
+                            </a>
+                          </li>
+                        </ul>
+                      </li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="ms-orders" href="/ms-orders.html" title="Заказы покупателей entity/customerorder из МойСклад (30 дней)"><i class="metismenu-icon pe-7s-note2"></i>Заказы в МС</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="ms-sales" href="/ms-sales.html" title="Продажи МС: отгрузки entity/demand, позиции с привязкой к товарам ms_export"><i class="metismenu-icon pe-7s-cash"></i>Продажи МС</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="purchase" href="/purchase.html" title="Закупки товары: планирование, неснижаемые остатки, кратность"><i class="metismenu-icon pe-7s-cart"></i>Закупки товары</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="suppliers" href="/suppliers.html" title="Поставщики: сводка по закупкам и настройки"><i class="metismenu-icon pe-7s-id"></i>Поставщики</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="supplier-analysis" href="/supplier-analysis.html" title="Продажи, оборот и тренды по поставщикам"><i class="metismenu-icon pe-7s-graph2"></i>Анализ поставщиков</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="product-analysis" href="/product-analysis.html" title="Продажи по SKU: топы, мёртвые, жизненный цикл и неснижаемый"><i class="metismenu-icon pe-7s-graph1"></i>Анализ товаров</a></li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="app-sidebar-bg opacity-06"></div>
+        </div>
+      </div>
+
+      <div class="app-main__outer">
+        <div class="app-main__inner">
+          <div class="app-page-title">
+            <div class="page-title-wrapper">
+              <div class="page-title-heading">
+                <div class="page-title-icon">
+                  <i class="pe-7s-shuffle icon-gradient bg-happy-itmeo"> </i>
+                </div>
+                <div>
+                  Цены сети
+                  <div class="page-title-subheading">
+                    Эталон (Альмамед) → целевые сайты: наценка/скидка %, связь по артикулу, запись цены в CMS.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="main-card card mb-3">
+            <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+              <div class="card-header-title mb-0">
+                <i class="header-icon pe-7s-config icon-gradient bg-sunny-morning"> </i>
+                Настройки сети
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-np-settings-toggle">Свернуть</button>
+            </div>
+            <div class="card-body" id="dg-np-settings-body">
+              <div class="row g-2 align-items-end mb-3">
+                <div class="col-md-4">
+                  <label class="form-label small mb-1" for="dg-np-source-site">Эталон (источник цен)</label>
+                  <select class="form-select form-select-sm" id="dg-np-source-site"></select>
+                </div>
+              </div>
+              <div class="table-responsive">
+                <table class="table table-sm table-bordered mb-2" id="dg-np-targets-table">
+                  <thead>
+                    <tr>
+                      <th>Сайт</th>
+                      <th>Участвует</th>
+                      <th>Δ % от эталона</th>
+                      <th>Домен</th>
+                    </tr>
+                  </thead>
+                  <tbody id="dg-np-targets-tbody"></tbody>
+                </table>
+              </div>
+              <p class="small text-muted mb-2">Пустой % или выключено «Участвует» — сайт не трогаем при применении и в автосинке.</p>
+              <button type="button" class="btn btn-sm btn-primary" id="dg-np-settings-save" data-dg-notify-start="Сохраняем настройки цен сети…">Сохранить настройки</button>
+              <div id="dg-np-settings-save-msg" class="alert mt-3 mb-0 d-none" role="status"></div>
+            </div>
+          </div>
+
+          <div class="main-card card mb-3">
+            <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+              <div class="card-header-title mb-0">
+                <i class="header-icon pe-7s-filter icon-gradient bg-amy-crisp"> </i>
+                Фильтры и действия
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-np-filters-toggle">Свернуть</button>
+            </div>
+            <div class="card-body" id="dg-np-filters-body">
+              <div class="row g-2 align-items-end">
+                <div class="col-md-3">
+                  <label class="form-label small mb-1" for="dg-np-target-site">Целевой сайт</label>
+                  <select class="form-select form-select-sm" id="dg-np-target-site"></select>
+                </div>
+                <div class="col-md-3">
+                  <label class="form-label small mb-1" for="dg-np-search">Поиск</label>
+                  <input type="search" class="form-control form-control-sm" id="dg-np-search" placeholder="Артикул, название, код…" autocomplete="off" />
+                </div>
+                <div class="col-md-3">
+                  <label class="form-label small mb-1" for="dg-np-link-status">Связь</label>
+                  <select class="form-select form-select-sm" id="dg-np-link-status">
+                    <option value="all">Все</option>
+                    <option value="linked" selected>Связанные</option>
+                    <option value="unlinked">Без связи (эталон или цель)</option>
+                    <option value="source_only">Только эталон без пары</option>
+                    <option value="target_only">Только цель без пары</option>
+                  </select>
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label small mb-1" for="dg-np-limit">На странице</label>
+                  <select class="form-select form-select-sm" id="dg-np-limit">
+                    <option value="50">50</option>
+                    <option value="100" selected>100</option>
+                    <option value="200">200</option>
+                  </select>
+                </div>
+              </div>
+              <div class="d-flex flex-wrap gap-2 mt-3">
+                <button type="button" class="btn btn-sm btn-primary" id="dg-np-apply-filters" data-dg-notify-start="Загружаем матрицу цен сети…">Применить</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-np-reset-filters" data-dg-notify-start="Сбрасываем фильтры…">По умолчанию</button>
+                <button type="button" class="btn btn-sm btn-outline-info" id="dg-np-dry-run" data-dg-notify-start="Пробный прогон цен сети…">Пробный прогон (dry_run)</button>
+                <button type="button" class="btn btn-sm btn-success" id="dg-np-apply-prices" data-dg-notify-start="Пишем цены на целевой сайт…">Применить цены</button>
+              </div>
+              <div id="dg-np-action-log" class="alert alert-secondary mt-3 mb-0 d-none" role="status"></div>
+            </div>
+          </div>
+
+          <div class="main-card card mb-3">
+            <div class="card-header d-flex justify-content-between gap-2 flex-wrap">
+              <div class="d-flex align-items-center gap-3 flex-grow-1" style="min-width:0">
+                <div class="card-header-title mb-0 flex-shrink-0">
+                  <i class="header-icon pe-7s-menu icon-gradient bg-happy-itmeo"> </i>
+                  Матрица
+                </div>
+                <div class="text-muted small" id="dg-np-matrix-hint"></div>
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-np-table-toggle">Свернуть</button>
+            </div>
+            <div class="card-body" id="dg-np-table-body">
+              <div class="dg-np-table-wrap">
+                <table class="table table-hover table-bordered mb-0" id="dg-np-table">
+                  <thead>
+                    <tr>
+                      <th colspan="5" class="text-center bg-light">Эталон</th>
+                      <th colspan="4" class="text-center bg-light">Целевой сайт</th>
+                      <th colspan="3" class="text-center bg-light">Расчёт</th>
+                      <th class="text-center bg-light">Действия</th>
+                    </tr>
+                    <tr>
+                      <th>Код</th>
+                      <th>Артикул</th>
+                      <th>Название</th>
+                      <th>Остаток</th>
+                      <th>Цена</th>
+                      <th>Артикул</th>
+                      <th>Название</th>
+                      <th>Цена</th>
+                      <th>Остаток</th>
+                      <th>Предл.</th>
+                      <th>Δ% vs предл.</th>
+                      <th>Связь</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="dg-np-tbody">
+                    <tr><td colspan="13" class="text-muted text-center py-4">Выберите целевой сайт и нажмите «Применить».</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mt-3">
+                <div class="small text-muted" id="dg-np-pager-status">Найдено: 0</div>
+                <div class="btn-group btn-group-sm">
+                  <button type="button" class="btn btn-outline-secondary" id="dg-np-prev">Назад</button>
+                  <button type="button" class="btn btn-outline-secondary" id="dg-np-next">Вперёд</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="app-footer">
+          <div class="app-footer__inner">
+            <div class="app-footer-left">
+              <div class="footer-dots">
+                <a href="#" class="dot-btn-wrapper dg-vanilla-footer-toggle" id="PopoverFooter-1" aria-expanded="false" aria-haspopup="true">
+                  <i class="dot-btn-icon lnr-bullhorn icon-gradient bg-mean-fruit"></i>
+                  <div class="badge badge-dot badge-abs badge-dot-sm bg-danger">Notifications</div>
+                </a>
+                <div class="dots-separator"></div>
+                <a href="#" class="dot-btn-wrapper dg-vanilla-footer-toggle" id="PopoverFooter-3" aria-expanded="false" aria-haspopup="true">
+                  <i class="dot-btn-icon lnr-pie-chart icon-gradient bg-love-kiss"></i>
+                  <div class="badge badge-dot badge-abs badge-dot-sm bg-warning">Notifications</div>
+                </a>
+                <div class="dropdown-menu popover-custom popover-custom-xl rm-pointers p-0 dg-vanilla-footer-popover" data-footer-popover="PopoverFooter-1" style="min-width:420px">
+                  <div class="dropdown-menu-header mb-0">
+                    <div class="dropdown-menu-header-inner bg-strong-bliss">
+                      <div class="menu-header-image opacity-1" style="background-image:url('./assets/utils/images/dropdown-header/city2.jpg')"></div>
+                      <div class="menu-header-content text-white">
+                        <h5 class="menu-header-title">Notifications</h5>
+                        <h6 class="menu-header-subtitle">You have <b class="text-warning">21</b> unread messages</h6>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="card-tabs-animated card-tabs-animated-inner">
+                    <ul class="nav nav-justified">
+                      <li class="nav-item"><a href="#" class="nav-link active">Messages</a></li>
+                      <li class="nav-item"><a href="#" class="nav-link">Events</a></li>
+                      <li class="nav-item"><a href="#" class="nav-link">Errors</a></li>
+                    </ul>
+                    <div class="p-3">
+                      <div class="text-muted small">Chat, timeline and system tabs in React version.</div>
+                    </div>
+                  </div>
+                  <div class="nav-item-btn text-center pt-3 pb-3">
+                    <button type="button" class="btn btn-shadow btn-wide btn-pill btn-dark">
+                      <span class="badge badge-dot badge-dot-lg bg-warning badge-pulse me-2"></span>
+                      View All Messages
+                    </button>
+                  </div>
+                </div>
+                <div class="dropdown-menu popover-custom popover-custom-lg rm-pointers p-0 dg-vanilla-footer-popover" data-footer-popover="PopoverFooter-3" style="min-width:380px">
+                  <div class="dropdown-menu-header">
+                    <div class="dropdown-menu-header-inner bg-malibu-beach">
+                      <div class="menu-header-image opacity-2" style="background-image:url('./assets/utils/images/dropdown-header/city2.jpg')"></div>
+                      <div class="menu-header-content text-white">
+                        <div class="avatar-icon-wrapper btn-hover-shine mb-3 avatar-icon-xl">
+                          <div class="avatar-icon rounded">
+                            <img src="./assets/utils/images/avatars/2.jpg" alt="Avatar 6" />
+                          </div>
+                        </div>
+                        <h5 class="menu-header-title">Fancy Statistics</h5>
+                        <h6 class="menu-header-subtitle">Just an example of a slider with some chart widgets inside.</h6>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="p-2">
+                    <div class="card no-shadow widget-chart widget-chart2 text-start p-2 m-1">
+                      <div class="widget-title opacity-6 text-muted text-uppercase">New accounts since 2018</div>
+                      <div class="widget-numbers text-success">78<small class="opacity-5 ps-1">%</small></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="app-footer-right">
+              <a class="dg-footer-legal-link" href="/legal/privacy.html" target="_blank" rel="noopener">Политика обработки персональных данных</a>
+              <a class="dg-footer-legal-link" href="/legal/cookies.html" target="_blank" rel="noopener">Политика использования cookie-файлов</a>
+              <a class="dg-footer-legal-link" href="/legal/recommendation.html" target="_blank" rel="noopener">Правила применения рекомендательных технологий</a>
+              <a class="dg-footer-legal-link" href="/legal/consent.html" target="_blank" rel="noopener">Согласие на обработку ПДн</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/datagon-legal.js"></script>
+  <script src="/datagon-vanilla.js"></script>
+  <script>
+(function () {
+  "use strict";
+
+  var state = {
+    settings: null,
+    page: 1,
+    limit: 100,
+    total: 0,
+    rows: [],
+    pricePct: null,
+    enabled: false,
+  };
+
+  function el(id) {
+    return document.getElementById(id);
+  }
+
+  function esc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function fmtNum(v) {
+    if (v == null || v === "") return "—";
+    var n = Number(v);
+    if (!Number.isFinite(n)) return esc(v);
+    if (window.DatagonFmt && window.DatagonFmt.number) return window.DatagonFmt.number(n);
+    return String(n);
+  }
+
+  function fmtPct(v) {
+    if (v == null || !Number.isFinite(Number(v))) return "—";
+    return Number(v).toFixed(2) + "%";
+  }
+
+  function showLog(type, html) {
+    var box = el("dg-np-action-log");
+    if (!box) return;
+    box.classList.remove("d-none", "alert-info", "alert-success", "alert-warning", "alert-danger", "alert-secondary");
+    box.classList.add("alert-" + (type || "secondary"));
+    box.innerHTML = html;
+  }
+
+  function setSaveMsg(ok, html) {
+    var box = el("dg-np-settings-save-msg");
+    if (!box) return;
+    box.classList.remove("d-none", "alert-success", "alert-warning", "alert-danger", "alert-info");
+    box.classList.add(ok === true ? "alert-success" : ok === false ? "alert-danger" : "alert-warning");
+    box.innerHTML = html;
+  }
+
+  function bindCollapse(btnId, bodyId, storageKey) {
+    var btn = el(btnId);
+    var body = el(bodyId);
+    if (!btn || !body) return;
+    function apply(collapsed) {
+      body.style.display = collapsed ? "none" : "";
+      btn.textContent = collapsed ? "Развернуть" : "Свернуть";
+      try {
+        localStorage.setItem(storageKey, collapsed ? "1" : "0");
+      } catch (e) {}
+    }
+    var init = false;
+    try {
+      init = localStorage.getItem(storageKey) === "1";
+    } catch (e2) {}
+    apply(init);
+    btn.addEventListener("click", function () {
+      apply(body.style.display !== "none");
+    });
+  }
+
+  function fillSourceSelect(sites, sourceId) {
+    var sel = el("dg-np-source-site");
+    if (!sel) return;
+    sel.innerHTML = "";
+    (sites || []).forEach(function (s) {
+      var o = document.createElement("option");
+      o.value = String(s.id);
+      o.textContent = s.name + (s.domain ? " (" + s.domain + ")" : "");
+      if (Number(s.id) === Number(sourceId)) o.selected = true;
+      sel.appendChild(o);
+    });
+  }
+
+  function renderTargetsTable(targets) {
+    var tb = el("dg-np-targets-tbody");
+    if (!tb) return;
+    if (!targets || !targets.length) {
+      tb.innerHTML = '<tr><td colspan="4" class="text-muted">Нет других сайтов в «Мои сайты».</td></tr>';
+      return;
+    }
+    tb.innerHTML = targets
+      .map(function (t) {
+        var pct = t.price_pct == null || t.price_pct === "" ? "" : String(t.price_pct);
+        return (
+          "<tr data-site-id=\"" +
+          esc(t.site_id) +
+          "\">" +
+          "<td>" +
+          esc(t.name) +
+          "</td>" +
+          "<td><input type=\"checkbox\" class=\"form-check-input dg-np-tgt-en\" " +
+          (t.enabled ? "checked" : "") +
+          " /></td>" +
+          "<td><input type=\"text\" class=\"form-control form-control-sm dg-np-tgt-pct\" value=\"" +
+          esc(pct) +
+          "\" placeholder=\"пусто = не трогать\" /></td>" +
+          "<td class=\"small text-muted\">" +
+          esc(t.domain || "") +
+          "</td>" +
+          "</tr>"
+        );
+      })
+      .join("");
+  }
+
+  function fillTargetSelect(targets) {
+    var sel = el("dg-np-target-site");
+    if (!sel) return;
+    var prev = sel.value;
+    sel.innerHTML = "";
+    (targets || []).forEach(function (t) {
+      var o = document.createElement("option");
+      o.value = String(t.site_id);
+      o.textContent = t.name + (t.enabled && t.price_pct != null ? " · " + t.price_pct + "%" : " · % не задан");
+      sel.appendChild(o);
+    });
+    if (prev && [].some.call(sel.options, function (o) { return o.value === prev; })) sel.value = prev;
+  }
+
+  function loadSettings() {
+    return fetch("/api/network-prices/settings", { credentials: "same-origin" })
+      .then(function (r) {
+        return r.json().then(function (j) {
+          return { r: r, j: j };
+        });
+      })
+      .then(function (x) {
+        if (!x.r.ok || !x.j.success) throw new Error((x.j && x.j.error) || "Ошибка настроек");
+        state.settings = x.j;
+        var allSites = [];
+        if (x.j.source) allSites.push(x.j.source);
+        (x.j.targets || []).forEach(function (t) {
+          allSites.push({ id: t.site_id, name: t.name, domain: t.domain });
+        });
+        // reload full site list for source select
+        return fetch("/api/my-sites", { credentials: "same-origin" })
+          .then(function (r) {
+            return r.json();
+          })
+          .then(function (sites) {
+            var list = Array.isArray(sites) ? sites : sites && sites.data ? sites.data : [];
+            fillSourceSelect(list, x.j.source_site_id);
+            renderTargetsTable(x.j.targets || []);
+            fillTargetSelect(x.j.targets || []);
+          });
+      });
+  }
+
+  function collectTargetsPayload() {
+    var rows = document.querySelectorAll("#dg-np-targets-tbody tr[data-site-id]");
+    var out = [];
+    rows.forEach(function (tr) {
+      var id = tr.getAttribute("data-site-id");
+      var en = tr.querySelector(".dg-np-tgt-en");
+      var pct = tr.querySelector(".dg-np-tgt-pct");
+      out.push({
+        site_id: Number(id),
+        enabled: !!(en && en.checked),
+        price_pct: pct && String(pct.value).trim() !== "" ? String(pct.value).trim() : null,
+      });
+    });
+    return out;
+  }
+
+  function saveSettings() {
+    var btn = el("dg-np-settings-save");
+    setSaveMsg(null, "Сохраняем…");
+    if (btn) btn.disabled = true;
+    var payload = {
+      source_site_id: el("dg-np-source-site") ? el("dg-np-source-site").value : "",
+      targets: collectTargetsPayload(),
+    };
+    return fetch("/api/network-prices/settings", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+      .then(function (r) {
+        return r.json().then(function (j) {
+          return { r: r, j: j };
+        });
+      })
+      .then(function (x) {
+        if (!x.r.ok || !x.j.success) throw new Error((x.j && x.j.error) || "Ошибка сохранения");
+        return loadSettings().then(function () {
+          setSaveMsg(true, "<strong>Сохранено.</strong> Настройки записаны в БД.");
+          if (window.DatagonNotify && window.DatagonNotify.toast) {
+            window.DatagonNotify.toast({ type: "success", message: "Настройки цен сети сохранены" });
+          }
+        });
+      })
+      .catch(function (e) {
+        setSaveMsg(false, "<strong>Ошибка.</strong> " + esc(e.message || e));
+      })
+      .then(function () {
+        if (btn) btn.disabled = false;
+      });
+  }
+
+  function loadMatrix() {
+    var targetId = el("dg-np-target-site") && el("dg-np-target-site").value;
+    if (!targetId) {
+      el("dg-np-tbody").innerHTML =
+        '<tr><td colspan="13" class="text-muted text-center py-4">Нет целевого сайта.</td></tr>';
+      return Promise.resolve();
+    }
+    var q = new URLSearchParams({
+      target_site_id: targetId,
+      link_status: el("dg-np-link-status").value || "all",
+      search: el("dg-np-search").value || "",
+      limit: String(state.limit),
+      offset: String((state.page - 1) * state.limit),
+    });
+    el("dg-np-tbody").innerHTML =
+      '<tr><td colspan="13" class="text-muted text-center py-4">Загрузка…</td></tr>';
+    return fetch("/api/network-prices/matrix?" + q.toString(), { credentials: "same-origin" })
+      .then(function (r) {
+        return r.json().then(function (j) {
+          return { r: r, j: j };
+        });
+      })
+      .then(function (x) {
+        if (!x.r.ok || !x.j.success) throw new Error((x.j && x.j.error) || "Ошибка матрицы");
+        state.rows = x.j.data || [];
+        state.total = Number(x.j.total || 0);
+        state.pricePct = x.j.price_pct;
+        state.enabled = !!x.j.enabled;
+        renderTable();
+        var pages = Math.max(1, Math.ceil(state.total / state.limit) || 1);
+        el("dg-np-pager-status").textContent =
+          "Найдено: " +
+          state.total +
+          "; страница " +
+          state.page +
+          "/" +
+          pages +
+          "; показано: " +
+          state.rows.length;
+        el("dg-np-matrix-hint").textContent = state.enabled
+          ? "Δ % сайта: " + (state.pricePct != null ? state.pricePct : "—")
+          : "Сайт не участвует или % не задан — запись недоступна";
+      })
+      .catch(function (e) {
+        el("dg-np-tbody").innerHTML =
+          '<tr><td colspan="13" class="text-danger text-center py-4">' + esc(e.message || e) + "</td></tr>";
+      });
+  }
+
+  function renderTable() {
+    var tb = el("dg-np-tbody");
+    if (!state.rows.length) {
+      tb.innerHTML = '<tr><td colspan="13" class="text-muted text-center py-4">Нет строк по фильтрам.</td></tr>';
+      return;
+    }
+    tb.innerHTML = state.rows
+      .map(function (r) {
+        var linkLabel =
+          r.link_status === "linked" || r.link_kind
+            ? r.link_kind === "manual"
+              ? "вручную"
+              : "по SKU"
+            : r.link_status === "source_only"
+              ? "нет на цели"
+              : r.link_status === "target_only"
+                ? "нет на эталоне"
+                : "—";
+        var actions = "";
+        if ((r.link_status === "linked" || r.link_kind) && r.source_product_id && r.target_product_id) {
+          actions =
+            '<button type="button" class="btn btn-sm btn-outline-danger dg-np-unlink" data-src="' +
+            esc(r.source_product_id) +
+            '" data-tgt="' +
+            esc(r.target_product_id) +
+            '">Разорвать</button>';
+        } else if (r.link_status === "source_only" && r.source_product_id) {
+          actions =
+            '<button type="button" class="btn btn-sm btn-outline-primary dg-np-link-pick" data-src="' +
+            esc(r.source_product_id) +
+            '" title="Укажите ID товара цели в prompt">Связать…</button>';
+        }
+        return (
+          "<tr>" +
+          "<td>" +
+          esc(r.source_code || "—") +
+          "</td>" +
+          "<td>" +
+          esc(r.source_sku || "—") +
+          "</td>" +
+          "<td style=\"max-width:220px;white-space:normal\">" +
+          esc(r.source_name || "—") +
+          "</td>" +
+          "<td>" +
+          fmtNum(r.source_stock) +
+          "</td>" +
+          "<td>" +
+          fmtNum(r.source_price) +
+          "</td>" +
+          "<td>" +
+          esc(r.target_sku || "—") +
+          "</td>" +
+          "<td style=\"max-width:220px;white-space:normal\">" +
+          esc(r.target_name || "—") +
+          "</td>" +
+          "<td>" +
+          fmtNum(r.target_price) +
+          "</td>" +
+          "<td>" +
+          fmtNum(r.target_stock) +
+          "</td>" +
+          "<td>" +
+          fmtNum(r.proposed_price) +
+          "</td>" +
+          "<td>" +
+          fmtPct(r.delta_pct_vs_proposed) +
+          "</td>" +
+          "<td>" +
+          esc(linkLabel) +
+          "</td>" +
+          "<td>" +
+          actions +
+          "</td>" +
+          "</tr>"
+        );
+      })
+      .join("");
+  }
+
+  function runApply(dryRun) {
+    var targetId = el("dg-np-target-site") && el("dg-np-target-site").value;
+    if (!targetId) {
+      showLog("warning", "Выберите целевой сайт.");
+      return;
+    }
+    if (!dryRun) {
+      if (!window.confirm("Записать цены на целевой сайт по формуле эталон × (1 + %)? Сайты без % не меняются.")) {
+        return;
+      }
+    }
+    showLog(
+      "info",
+      "<strong>" +
+        (dryRun ? "Пробный прогон" : "Запись цен") +
+        "</strong><br>Цель: сайт #" +
+        esc(targetId) +
+        "; поиск: «" +
+        esc(el("dg-np-search").value || "") +
+        "»…"
+    );
+    var body = {
+      target_site_id: Number(targetId),
+      search: el("dg-np-search").value || "",
+      dry_run: dryRun ? 1 : 0,
+      confirm: dryRun ? 0 : 1,
+    };
+    var btn = dryRun ? el("dg-np-dry-run") : el("dg-np-apply-prices");
+    var run = function () {
+      return fetch("/api/network-prices/apply", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
+        .then(function (r) {
+          return r.json().then(function (j) {
+            return { r: r, j: j };
+          });
+        })
+        .then(function (x) {
+          if (!x.r.ok || x.j.success === false) throw new Error((x.j && x.j.error) || "Ошибка apply");
+          var j = x.j;
+          var lines =
+            "<strong>" +
+            esc(j.message || "Готово") +
+            "</strong><ul class=\"mb-0 mt-2\">" +
+            "<li>просмотрено: " +
+            (j.scanned || 0) +
+            "</li>" +
+            (dryRun
+              ? "<li>к записи: " + (j.would_update || 0) + "</li>"
+              : "<li>записано ✓: " + (j.written || 0) + "</li>") +
+            "<li>без изменений: " +
+            (j.skipped_unchanged || 0) +
+            "</li>" +
+            "<li>без цены эталона: " +
+            (j.skipped_no_source_price || 0) +
+            "</li>" +
+            "<li>ошибок CMS ×: " +
+            (j.cms_failed || 0) +
+            "</li>" +
+            "<li>длительность: " +
+            (j.duration_sec != null ? j.duration_sec + " с" : "—") +
+            "</li></ul>";
+          if (j.errors && j.errors.length) {
+            lines +=
+              "<div class=\"small mt-2\">Ошибки:<br>" +
+              j.errors
+                .slice(0, 20)
+                .map(function (e) {
+                  return esc(e.code) + ": " + esc(e.error);
+                })
+                .join("<br>") +
+              "</div>";
+          }
+          showLog(j.cms_failed ? "warning" : "success", lines);
+          if (!dryRun) loadMatrix();
+        })
+        .catch(function (e) {
+          showLog("danger", "<strong>Ошибка.</strong> " + esc(e.message || e));
+        });
+    };
+    if (window.DatagonNotify && window.DatagonNotify.busyRun && btn) {
+      window.DatagonNotify.busyRun(btn, run);
+    } else {
+      run();
+    }
+  }
+
+  function unlinkPair(srcId, tgtId) {
+    var targetId = el("dg-np-target-site").value;
+    return fetch("/api/network-prices/unlink", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        target_site_id: Number(targetId),
+        source_product_id: Number(srcId),
+        target_product_id: Number(tgtId),
+      }),
+    })
+      .then(function (r) {
+        return r.json().then(function (j) {
+          return { r: r, j: j };
+        });
+      })
+      .then(function (x) {
+        if (!x.r.ok || !x.j.success) throw new Error((x.j && x.j.error) || "Ошибка");
+        loadMatrix();
+      })
+      .catch(function (e) {
+        alert(e.message || e);
+      });
+  }
+
+  function linkPair(srcId) {
+    var targetId = el("dg-np-target-site").value;
+    var raw = window.prompt("ID товара целевого сайта (my_products.id) для связи с эталоном #" + srcId + ":");
+    if (!raw) return;
+    var tgtId = parseInt(String(raw).trim(), 10);
+    if (!Number.isFinite(tgtId) || tgtId < 1) {
+      alert("Некорректный ID");
+      return;
+    }
+    fetch("/api/network-prices/link", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        target_site_id: Number(targetId),
+        source_product_id: Number(srcId),
+        target_product_id: tgtId,
+      }),
+    })
+      .then(function (r) {
+        return r.json().then(function (j) {
+          return { r: r, j: j };
+        });
+      })
+      .then(function (x) {
+        if (!x.r.ok || !x.j.success) throw new Error((x.j && x.j.error) || "Ошибка");
+        loadMatrix();
+      })
+      .catch(function (e) {
+        alert(e.message || e);
+      });
+  }
+
+  el("dg-np-settings-save").addEventListener("click", function () {
+    if (window.DatagonNotify && window.DatagonNotify.busyRun) {
+      window.DatagonNotify.busyRun(el("dg-np-settings-save"), saveSettings);
+    } else saveSettings();
+  });
+
+  el("dg-np-apply-filters").addEventListener("click", function () {
+    state.page = 1;
+    state.limit = Number(el("dg-np-limit").value) || 100;
+    if (window.DatagonNotify && window.DatagonNotify.busyRun) {
+      window.DatagonNotify.busyRun(el("dg-np-apply-filters"), loadMatrix);
+    } else loadMatrix();
+  });
+
+  el("dg-np-reset-filters").addEventListener("click", function () {
+    el("dg-np-search").value = "";
+    el("dg-np-link-status").value = "linked";
+    el("dg-np-limit").value = "100";
+    state.page = 1;
+    state.limit = 100;
+    loadMatrix();
+  });
+
+  el("dg-np-dry-run").addEventListener("click", function () {
+    runApply(true);
+  });
+  el("dg-np-apply-prices").addEventListener("click", function () {
+    runApply(false);
+  });
+
+  el("dg-np-prev").addEventListener("click", function () {
+    if (state.page <= 1) return;
+    state.page -= 1;
+    loadMatrix();
+  });
+  el("dg-np-next").addEventListener("click", function () {
+    var pages = Math.max(1, Math.ceil(state.total / state.limit) || 1);
+    if (state.page >= pages) return;
+    state.page += 1;
+    loadMatrix();
+  });
+
+  el("dg-np-search").addEventListener("keydown", function (ev) {
+    if (ev.key === "Enter") {
+      ev.preventDefault();
+      el("dg-np-apply-filters").click();
+    }
+  });
+
+  document.addEventListener("click", function (ev) {
+    var u = ev.target && ev.target.closest && ev.target.closest(".dg-np-unlink");
+    if (u) {
+      unlinkPair(u.getAttribute("data-src"), u.getAttribute("data-tgt"));
+      return;
+    }
+    var l = ev.target && ev.target.closest && ev.target.closest(".dg-np-link-pick");
+    if (l) linkPair(l.getAttribute("data-src"));
+  });
+
+  bindCollapse("dg-np-settings-toggle", "dg-np-settings-body", "datagon_np_settings_collapsed_v1");
+  bindCollapse("dg-np-filters-toggle", "dg-np-filters-body", "datagon_np_filters_collapsed_v1");
+  bindCollapse("dg-np-table-toggle", "dg-np-table-body", "datagon_np_table_collapsed_v1");
+
+  loadSettings()
+    .then(function () {
+      return loadMatrix();
+    })
+    .catch(function (e) {
+      showLog("danger", esc(e.message || e));
+    });
+})();
+</script>
+
+</body>
+</html>

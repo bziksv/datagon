@@ -48,6 +48,8 @@ module.exports = (db, appSettings) => {
                 `SELECT project_uuid AS uuid, project_name AS name, COUNT(*) AS cnt
                    FROM ms_demand
                   WHERE moment >= (NOW() - INTERVAL ? DAY)
+                    AND applicable = 1
+                    AND deleted_at IS NULL
                     AND project_uuid IS NOT NULL
                     AND TRIM(project_uuid) <> ''
                   GROUP BY project_uuid, project_name
@@ -154,6 +156,7 @@ module.exports = (db, appSettings) => {
             auto_sync_price_comp_enabled, auto_sync_price_comp_time, auto_sync_price_comp_weekdays,
             auto_sync_price_comp_match_audit, auto_sync_price_comp_rand_min, auto_sync_price_comp_rand_max,
             auto_sync_price_comp_stock_min, auto_sync_price_comp_stock_max, auto_sync_price_comp_site_id,
+            auto_sync_network_prices_enabled, auto_sync_network_prices_time, auto_sync_network_prices_weekdays,
             auto_sync_moysklad_enabled, auto_sync_moysklad_time,
             auto_sync_ms_orders_enabled, auto_sync_ms_orders_time, auto_sync_ms_orders_weekdays,
             auto_sync_marketplaces_enabled, auto_sync_marketplaces_time,
@@ -253,6 +256,18 @@ module.exports = (db, appSettings) => {
             }
             if (auto_sync_price_comp_site_id !== undefined) {
                 queries.push(['auto_sync_price_comp_site_id', String(auto_sync_price_comp_site_id || 'all')]);
+            }
+            if (auto_sync_network_prices_enabled !== undefined) {
+                queries.push(['auto_sync_network_prices_enabled', auto_sync_network_prices_enabled ? 1 : 0]);
+            }
+            if (auto_sync_network_prices_time !== undefined) {
+                queries.push(['auto_sync_network_prices_time', auto_sync_network_prices_time || '11:00']);
+            }
+            if (auto_sync_network_prices_weekdays !== undefined) {
+                queries.push([
+                    'auto_sync_network_prices_weekdays',
+                    normalizeAutoSyncWeekdaysCsv(auto_sync_network_prices_weekdays),
+                ]);
             }
             if (auto_sync_moysklad_enabled !== undefined) queries.push(['auto_sync_moysklad_enabled', auto_sync_moysklad_enabled ? 1 : 0]);
             if (auto_sync_moysklad_time !== undefined) queries.push(['auto_sync_moysklad_time', auto_sync_moysklad_time || '04:00']);
@@ -532,6 +547,15 @@ module.exports = (db, appSettings) => {
             }
             if(auto_sync_price_comp_site_id !== undefined) {
                 appSettings.auto_sync_price_comp_site_id = String(auto_sync_price_comp_site_id || 'all');
+            }
+            if(auto_sync_network_prices_enabled !== undefined) {
+                appSettings.auto_sync_network_prices_enabled = auto_sync_network_prices_enabled ? 1 : 0;
+            }
+            if(auto_sync_network_prices_time !== undefined) {
+                appSettings.auto_sync_network_prices_time = auto_sync_network_prices_time || '11:00';
+            }
+            if(auto_sync_network_prices_weekdays !== undefined) {
+                appSettings.auto_sync_network_prices_weekdays = normalizeAutoSyncWeekdaysCsv(auto_sync_network_prices_weekdays);
             }
             if(auto_sync_moysklad_enabled !== undefined) appSettings.auto_sync_moysklad_enabled = auto_sync_moysklad_enabled ? 1 : 0;
             if(auto_sync_moysklad_time !== undefined) appSettings.auto_sync_moysklad_time = auto_sync_moysklad_time || '04:00';

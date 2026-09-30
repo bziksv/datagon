@@ -87,6 +87,10 @@ let appSettings = {
     auto_sync_price_comp_stock_min: '0',
     auto_sync_price_comp_stock_max: '1000',
     auto_sync_price_comp_site_id: 'all',
+    auto_sync_network_prices_enabled: 0,
+    auto_sync_network_prices_time: '11:00',
+    auto_sync_network_prices_weekdays: '1,2,3,4,5,6,7',
+    network_prices_source_site_id: '2',
     auto_sync_moysklad_enabled: 0,
     auto_sync_moysklad_time: '04:00',
     auto_sync_ms_orders_enabled: 0,
@@ -210,6 +214,7 @@ const moyskladRouterFactory = require('./routes/moysklad');
 const purchaseRouterFactory = require('./routes/purchase');
 const suppliersRouterFactory = require('./routes/suppliers');
 const supplierAnalysisRouterFactory = require('./routes/supplierAnalysis');
+const productAnalysisRouterFactory = require('./routes/productAnalysis');
 const productRouterFactory = require('./routes/product');
 const pagesRouterFactory = require('./routes/pages');
 const matchesRouterFactory = require('./routes/matches');
@@ -229,6 +234,7 @@ const msSalesModule = require('./routes/msSales');
 const msOrdersModule = require('./routes/msOrders');
 const medmarketRouterFactory = require('./routes/medmarket');
 const myProductsRouterFactory = require('./routes/myproducts');
+const networkPricesRouterFactory = require('./routes/networkPrices');
 const { getAutoSyncTaskKeys } = require('./lib/datagonAutoSyncRegistry');
 /** Whitelist для POST /api/settings/auto-sync-run (фиксируется при старте процесса). */
 const AUTO_SYNC_ALLOWED_TASK_KEYS = new Set([
@@ -406,6 +412,9 @@ async function initDB() {
             ['auto_sync_price_comp_rand_min','0.1'],['auto_sync_price_comp_rand_max','0.99'],
             ['auto_sync_price_comp_stock_min','0'],['auto_sync_price_comp_stock_max','1000'],
             ['auto_sync_price_comp_site_id','all'],
+            ['auto_sync_network_prices_enabled','0'],['auto_sync_network_prices_time','11:00'],
+            ['auto_sync_network_prices_weekdays','1,2,3,4,5,6,7'],
+            ['network_prices_source_site_id','2'],
             ['auto_sync_moysklad_enabled','0'],['auto_sync_moysklad_time','04:00'],
             ['auto_sync_ms_orders_enabled','0'],['auto_sync_ms_orders_time','08:00'],['auto_sync_ms_orders_weekdays',''],
             ['discover_max_sitemaps','200'],['discover_max_urls','50000'],
@@ -2409,6 +2418,39 @@ async function processAutoSyncQueue() {
                 }
                 await finishAutoSyncRun('price_comp_sync', statusPc, messagePc);
                 console.log(`[AUTO SYNC] Queue done: price_comp_sync — ${statusPc}`);
+            } else if (task === 'network_prices') {
+                console.log('[AUTO SYNC] Queue start: network_prices');
+                await startAutoSyncRun('network_prices', triggerType);
+                let statusNp = 'failed';
+                let messageNp = 'Ошибка синхронизации цен сети';
+                try {
+                    if (typeof networkPricesRouterFactory.triggerNetworkPricesSyncFromSettings !== 'function') {
+                        throw new Error('triggerNetworkPricesSyncFromSettings недоступен');
+                    }
+                    await touchAutoSyncRunMessage('network_prices', 'Цены сети: старт…').catch(() => {});
+                    const result = await networkPricesRouterFactory.triggerNetworkPricesSyncFromSettings(
+                        db,
+                        appSettings,
+                        {
+                            onProgress: (p) => {
+                                touchAutoSyncRunMessage(
+                                    'network_prices',
+                                    String((p && p.message) || 'Цены сети…').slice(0, 480)
+                                ).catch(() => {});
+                            },
+                        }
+                    );
+                    messageNp = String((result && result.message) || 'Готово').slice(0, 480);
+                    if (result && result.success === false && Number(result.written || 0) === 0) {
+                        statusNp = 'failed';
+                    } else {
+                        statusNp = 'completed';
+                    }
+                } catch (e) {
+                    messageNp = ('Ошибка цен сети: ' + (e && e.message ? e.message : e)).slice(0, 480);
+                }
+                await finishAutoSyncRun('network_prices', statusNp, messageNp);
+                console.log(`[AUTO SYNC] Queue done: network_prices — ${statusNp}`);
             } else if (task === 'mssales') {
                 console.log('[AUTO SYNC] Queue start: mssales');
                 await startAutoSyncRun('mssales', triggerType);
@@ -2611,6 +2653,9 @@ async function processAutoSyncQueue() {
         if (autoSyncRunIds.has('price_comp_sync')) {
             await finishAutoSyncRun('price_comp_sync', 'failed', e.message || 'Ошибка очереди');
         }
+        if (autoSyncRunIds.has('network_prices')) {
+            await finishAutoSyncRun('network_prices', 'failed', e.message || 'Ошибка очереди');
+        }
         if (autoSyncRunIds.has('np_ms_enrich')) {
             await finishAutoSyncRun('np_ms_enrich', 'failed', e.message || 'Ошибка очереди');
         }
@@ -2735,6 +2780,12 @@ function startAutoSyncScheduler() {
                     enabled: Number(appSettings.auto_sync_price_comp_enabled || 0) === 1,
                     time: String(appSettings.auto_sync_price_comp_time || '10:00').slice(0, 5),
                     weekdays: parseAutoSyncWeekdaysMon17(appSettings.auto_sync_price_comp_weekdays)
+                },
+                {
+                    type: 'network_prices',
+                    enabled: Number(appSettings.auto_sync_network_prices_enabled || 0) === 1,
+                    time: String(appSettings.auto_sync_network_prices_time || '11:00').slice(0, 5),
+                    weekdays: parseAutoSyncWeekdaysMon17(appSettings.auto_sync_network_prices_weekdays)
                 }
             ];
             for (const t of tasks) {
@@ -3272,6 +3323,7 @@ initDB().then(async () => {
     app.use('/api/results', resultsRouter);
     app.use('/api/my-sites', require('./routes/mysites')(db, appSettings));
     app.use('/api/my-products', myProductsRouterFactory(db, appSettings));
+    app.use('/api/network-prices', networkPricesRouterFactory(db, appSettings));
     matchesRouter = matchesRouterFactory(db, appSettings);
     app.use('/api/matches', matchesRouter);
     setTimeout(() => {
@@ -3318,6 +3370,7 @@ initDB().then(async () => {
     app.use('/api/purchase', purchaseRouterFactory(db, appSettings));
     app.use('/api/suppliers', suppliersRouterFactory(db, appSettings));
     app.use('/api/supplier-analysis', supplierAnalysisRouterFactory(db, appSettings));
+    app.use('/api/product-analysis', productAnalysisRouterFactory(db, appSettings));
     app.use('/api/product', productRouterFactory(db, appSettings));
     
     // Алиас для совместимости, если фронт стучится сюда
@@ -3343,6 +3396,7 @@ initDB().then(async () => {
     app.get('/moysklad', redirectToDatagonHtml('moysklad.html'));
     app.get('/suppliers', redirectToDatagonHtml('suppliers.html'));
     app.get('/supplier-analysis', redirectToDatagonHtml('supplier-analysis.html'));
+    app.get('/product-analysis', redirectToDatagonHtml('product-analysis.html'));
     app.get('/purchase', redirectToDatagonHtml('purchase.html'));
     app.get('/product', redirectToDatagonHtml('product.html'));
     app.get('/matches', redirectToDatagonHtml('matches.html'));

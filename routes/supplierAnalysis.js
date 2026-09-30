@@ -398,6 +398,8 @@ module.exports = function supplierAnalysisRouterFactory(db, appSettings = {}) {
                 `SELECT project_uuid AS uuid, project_name AS name, COUNT(*) AS cnt
                    FROM ms_demand
                   WHERE moment >= DATE_SUB(NOW(), INTERVAL ? DAY)
+                    AND applicable = 1
+                    AND deleted_at IS NULL
                     AND project_uuid IS NOT NULL
                     AND TRIM(project_uuid) <> ''
                   GROUP BY project_uuid, project_name

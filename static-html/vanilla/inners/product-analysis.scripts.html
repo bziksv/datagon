@@ -1,0 +1,2650 @@
+  <script>
+    (function () {
+      var chartJsPromise = null;
+      var detailShareChart = null;
+
+      function ensureChartJs() {
+        if (window.Chart) return Promise.resolve(window.Chart);
+        if (chartJsPromise) return chartJsPromise;
+        chartJsPromise = new Promise(function (resolve, reject) {
+          var s = document.createElement("script");
+          s.src = "https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js";
+          s.onload = function () { resolve(window.Chart); };
+          s.onerror = function () { reject(new Error("Chart.js")); };
+          document.head.appendChild(s);
+        });
+        return chartJsPromise;
+      }
+
+      var PA_COLS = [
+        ["_expand", ""],
+        ["_sel", "✓", { tip: "Отметить строки для массовых действий" }],
+        ["code", "Код", { tip: "Код товара в МойСклад" }],
+        ["name", "Наименование", { tip: "Название товара в каталоге МС" }],
+        ["supplier_name", "Поставщик", { tip: "Поставщик (supplier, иначе supplier2)" }],
+        ["manager", "Менеджер товара", { tip: "Свойство МС «Менеджер поддерживающий товар»" }],
+        ["stock_qty", "Остаток шт.", { tip: "Текущий остаток на складе (шт.)" }],
+        ["stock_value_rub", "Остаток ₽", { tip: "Остаток × себестоимость/закупка" }],
+        ["days_on_stock", "Дней на складе", { tip: "Дней с первого снимка остатка > 0 в окне до 365 дн. (dg_product_stock_snapshot). Пусто — в окне истории остатка не было. Если товар лежал дольше окна/истории снимков — цифра упрётся в край доступных данных." }],
+        ["min_stock", "Неснижаемый остаток", { tip: "ms_export.min_stock — неснижаемый в Datagon/МС" }],
+        ["formula_proposed", "Предлагаемый нес.ост.", { tip: "Предлагаемый неснижаемый (override или формула). 🔒 = зафиксирован вручную (=0), можно снять в ячейке." }],
+        ["sales_qty", "Продажи шт.", { tip: "Количество в отгрузках за выбранный период" }],
+        ["sales_revenue", "Продажи ₽", { tip: "Выручка по отгрузкам за выбранный период" }],
+        ["margin_pct", "Маржа % (оценка)", { tip: "Грубая оценка: не точная маржа. По умолчанию скрыта." }],
+        ["days_without_sales", "Дней без продаж", { tip: "Дней с последней отгрузки в периоде; пусто — продаж не было" }],
+        ["decision_note", "Комментарий", { tip: "Свободный комментарий к решению по SKU (до 3 строк). Сохраняется при уходе из поля или Ctrl/⌘+Enter. История — «лог»." }],
+        ["lifecycle", "Решение", { tip: "Выберите этап прямо в строке: топ / держать / буст / распродажа / вывод. Массовые кнопки сверху — для пачек." }],
+      ];
+      var PA_DEFAULT_VISIBLE = PA_COLS.map(function (c) { return c[0]; }).filter(function (k) {
+        return k !== "margin_pct";
+      });
+      var PA_DEFAULT_WIDTHS = {
+        _expand: 32, _sel: 36, code: 110, name: 220, supplier_name: 140, manager: 140, stock_qty: 90,
+        stock_value_rub: 100, days_on_stock: 100, min_stock: 120, formula_proposed: 160,
+        sales_qty: 100, sales_revenue: 110, margin_pct: 90,
+        days_without_sales: 110, decision_note: 180, lifecycle: 180,
+      };
+
+      var PRESETS_FALLBACK = [
+        {
+          key: "all",
+          label: "Все",
+          tip: "Без фильтра пресета — все SKU с учётом поиска и остальных фильтров.",
+        },
+        {
+          key: "top_revenue",
+          label: "Топ выручка",
+          tip: "Все SKU, сортировка по выручке за период ↓.",
+        },
+        {
+          key: "top_qty",
+          label: "Топ по шт.",
+          tip: "Все SKU, сортировка по продажам в штуках за период ↓.",
+        },
+        {
+          key: "dead",
+          label: "Мёртвые",
+          tip:
+            "Строго: за период продаж = 0 шт., на складе остаток > 0. При «Исключать новые» — без недавно появившихся на складе.",
+        },
+        {
+          key: "stuck",
+          label: "Зависшие",
+          tip:
+            "Шире мёртвых: остаток > 0 и (продаж нет ИЛИ с последней продажи ≥ 30 дней). При «Исключать новые» — без новинок.",
+        },
+        {
+          key: "new_on_stock",
+          label: "Новые на складе",
+          tip:
+            "Остаток > 0 и первый снимок с остатком > 0 был не раньше N дней назад (поле «Считать новым на складе»).",
+        },
+        {
+          key: "dead_min_stock",
+          label: "Неснижаемый >0 без продаж",
+          tip:
+            "Продаж = 0, неснижаемый в МС > 0. Кандидаты на «Обнулить НС». При «Исключать новые» — без новинок.",
+        },
+        {
+          key: "min_vs_proposed",
+          label: "Неснижаемый ≠ предлагаемый",
+          tip: "Неснижаемый в МС не совпадает с предлагаемым (формула / target).",
+        },
+        {
+          key: "lifecycle_none",
+          label: "Без решения",
+          tip: "Ещё не выставляли этап жизненного цикла.",
+        },
+        {
+          key: "lifecycle_boost",
+          label: "В бусте",
+          tip: "Решение «Буст» — в рекламе / продвижении.",
+        },
+        {
+          key: "lifecycle_boost_failed",
+          label: "Буст не сработал",
+          tip: "Буст ставили, эффекта нет — дальше распродажа или вывод.",
+        },
+        {
+          key: "lifecycle_clearance",
+          label: "Распродажа",
+          tip: "Этап распродажи: не заказывать, слить остаток.",
+        },
+        {
+          key: "lifecycle_exit",
+          label: "На выводе",
+          tip: "Вывод из ассортимента: не заказывать, целевой НС = 0.",
+        },
+      ];
+
+      var presetsList = PRESETS_FALLBACK.slice();
+
+      var LC_LABEL = {
+        none: "Без решения",
+        top: "Топ",
+        hold: "Держать",
+        boost: "Буст (реклама)",
+        boost_failed: "Буст не сработал",
+        clearance: "Распродажа",
+        exit: "Вывод из ассортимента",
+      };
+
+      var LC_ROW_OPTIONS = [
+        { value: "none", action: "clear_decision" },
+        { value: "top", action: "top" },
+        { value: "hold", action: "hold" },
+        { value: "boost", action: "boost" },
+        { value: "boost_failed", action: "boost_failed" },
+        { value: "clearance", action: "clearance" },
+        { value: "exit", action: "exit" },
+      ];
+
+      function postRowDecision(code, body, el, opts) {
+        var o = opts || {};
+        var run = function () {
+          return fetch("/api/product-analysis/decision", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(Object.assign({ code: code }, body)),
+          })
+            .then(function (r) {
+              return r.json().then(function (j) {
+                return { ok: r.ok, j: j };
+              });
+            })
+            .then(function (x) {
+              if (!x.ok || !x.j.success) throw new Error((x.j && x.j.error) || "Ошибка");
+              invalidatePaTipCache(code);
+              if (window.DatagonNotify && window.DatagonNotify.toast) {
+                var ch = (x.j.changes || [])
+                  .map(function (c) {
+                    return (c.field || "") + ": " + (c.old_value == null ? "∅" : c.old_value) + "→" + (c.new_value == null ? "∅" : c.new_value);
+                  })
+                  .slice(0, 3)
+                  .join("; ");
+                window.DatagonNotify.toast({
+                  type: "success",
+                  message: "Сохранено: " + code + (ch ? " (" + ch + ")" : ""),
+                });
+              }
+              if (o.noReload) {
+                if (el && Object.prototype.hasOwnProperty.call(body, "decision_note")) {
+                  var saved =
+                    x.j.decision && x.j.decision.decision_note != null
+                      ? String(x.j.decision.decision_note)
+                      : body.decision_note == null
+                        ? ""
+                        : String(body.decision_note);
+                  el.value = saved;
+                  el.setAttribute("data-prev", saved);
+                  el.title = saved || "Комментарий к решению";
+                }
+                return x.j;
+              }
+              return loadAll();
+            })
+            .catch(function (e) {
+              if (window.DatagonNotify && window.DatagonNotify.toast) {
+                window.DatagonNotify.toast({
+                  type: "danger",
+                  message: (e && e.message) || "Ошибка сохранения",
+                });
+              }
+              if (o.noReload) {
+                if (el && el.getAttribute("data-prev") != null) {
+                  el.value = el.getAttribute("data-prev") || "";
+                }
+                return null;
+              }
+              return loadRanking();
+            });
+        };
+        if (window.DatagonNotify && window.DatagonNotify.busyRun && el && !o.noReload) {
+          return window.DatagonNotify.busyRun(el, run);
+        }
+        return run();
+      }
+
+      function saveDecisionNoteFromInput(inp) {
+        if (!inp) return;
+        var code = inp.getAttribute("data-code") || "";
+        if (!code) return;
+        var next = String(inp.value || "").trim().slice(0, 500);
+        var prev = String(inp.getAttribute("data-prev") || "");
+        if (next === prev) return;
+        inp.value = next;
+        postRowDecision(code, { decision_note: next === "" ? null : next }, inp, { noReload: true });
+      }
+
+      var FILTERS_KEY = "datagon_product_analysis_filters_collapsed_v1";
+      var TABLE_COLLAPSE_KEY = "dg.product-analysis.table-card.collapsed.v1";
+      var SUMMARY_COLLAPSE_KEY = "dg.product-analysis.summary.collapsed.v1";
+      var VIS_COLS_KEY = "dg.product-analysis.visible-cols.v4";
+      var COL_WIDTH_KEY = "dg.product-analysis.col-widths.v3";
+
+      var state = {
+        days: 90,
+        new_stock_days: 30,
+        exclude_new_on_stock: true,
+        search: "",
+        supplier: "",
+        preset: "all",
+        project_mode: "selected",
+        project_uuids: [],
+        manager: "",
+        limit: 100,
+        offset: 0,
+        total: 0,
+        sort_by: "sales_revenue",
+        sort_dir: "desc",
+        rows: [],
+        selected: {},
+        selectedCode: "",
+        pending: {
+          days: 90,
+          new_stock_days: 30,
+          exclude_new_on_stock: true,
+          search: "",
+          supplier: "",
+          preset: "all",
+          project_mode: "selected",
+          project_uuids: [],
+          manager: "",
+        },
+      };
+
+      var PA_URL_DEFAULTS = {
+        days: 90,
+        new_stock_days: 30,
+        exclude_new_on_stock: true,
+        preset: "all",
+        project_mode: "selected",
+        limit: 100,
+        offset: 0,
+        sort_by: "sales_revenue",
+        sort_dir: "desc",
+      };
+      var urlSyncTimer = null;
+
+      function writePendingToForm() {
+        var daysEl = document.getElementById("dg-pa-days");
+        if (daysEl) daysEl.value = String(state.pending.days || 90);
+        var nsEl = document.getElementById("dg-pa-new-stock-days");
+        if (nsEl) nsEl.value = String(state.pending.new_stock_days || 30);
+        var exEl = document.getElementById("dg-pa-exclude-new");
+        if (exEl) exEl.checked = !!state.pending.exclude_new_on_stock;
+        var searchEl = document.getElementById("dg-pa-search");
+        if (searchEl) searchEl.value = state.pending.search || "";
+        var mirrorEl = document.getElementById("dg-pa-table-search-mirror");
+        if (mirrorEl) mirrorEl.value = state.pending.search || "";
+        var supplierEl = document.getElementById("dg-pa-supplier");
+        if (supplierEl) supplierEl.value = state.pending.supplier || "";
+        var managerEl = document.getElementById("dg-pa-manager");
+        if (managerEl) managerEl.value = state.pending.manager || "";
+        var limitEl = document.getElementById("dg-pa-page-size");
+        if (limitEl) limitEl.value = String(state.limit || 100);
+        var footLimit = document.getElementById("dg-pa-footer-page-size");
+        if (footLimit) footLimit.value = String(state.limit || 100);
+        var modeSelected = state.pending.project_mode === "selected";
+        var radioSel = document.getElementById("dg-pa-project-mode-selected");
+        var radioAll = document.getElementById("dg-pa-project-mode-all");
+        if (radioSel) radioSel.checked = modeSelected;
+        if (radioAll) radioAll.checked = !modeSelected;
+      }
+
+      function applyPendingProjectCheckboxes() {
+        var set = {};
+        (state.pending.project_uuids || []).forEach(function (u) {
+          set[String(u || "").toLowerCase()] = 1;
+        });
+        Array.prototype.slice
+          .call(document.querySelectorAll('#dg-pa-projects-list input[type="checkbox"]'))
+          .forEach(function (el) {
+            el.checked = !!set[String(el.value || "").toLowerCase()];
+          });
+      }
+
+      function syncUrlFromState() {
+        var params = new URLSearchParams();
+        if (Number(state.days) !== PA_URL_DEFAULTS.days) {
+          params.set("days", String(state.days));
+        }
+        if (Number(state.new_stock_days) !== PA_URL_DEFAULTS.new_stock_days) {
+          params.set("new_stock_days", String(state.new_stock_days));
+        }
+        if (!!state.exclude_new_on_stock !== !!PA_URL_DEFAULTS.exclude_new_on_stock) {
+          params.set("exclude_new_on_stock", state.exclude_new_on_stock ? "1" : "0");
+        }
+        if (state.search) params.set("search", state.search);
+        if (state.supplier) params.set("supplier", state.supplier);
+        if (state.manager) params.set("manager", state.manager);
+        if (String(state.preset || "all") !== PA_URL_DEFAULTS.preset) {
+          params.set("preset", state.preset || "all");
+        }
+        if (state.project_mode === "all") {
+          params.set("project_mode", "all");
+        } else if (state.project_uuids && state.project_uuids.length) {
+          params.set("project_uuids", state.project_uuids.join(","));
+        }
+        if (Number(state.limit) !== PA_URL_DEFAULTS.limit) {
+          params.set("limit", String(state.limit));
+        }
+        var page =
+          Math.floor(Number(state.offset || 0) / Math.max(1, Number(state.limit) || 100)) + 1;
+        if (page > 1) params.set("page", String(page));
+        if (String(state.sort_by || "") !== PA_URL_DEFAULTS.sort_by) {
+          params.set("sort_by", state.sort_by);
+        }
+        if (String(state.sort_dir || "") !== PA_URL_DEFAULTS.sort_dir) {
+          params.set("sort_dir", state.sort_dir);
+        }
+        var qs = params.toString();
+        var next = qs
+          ? window.location.pathname + "?" + qs
+          : window.location.pathname;
+        try {
+          if (window.location.pathname + window.location.search !== next) {
+            window.history.replaceState(null, "", next);
+          }
+        } catch (e) {}
+      }
+
+      function scheduleUrlSync() {
+        if (urlSyncTimer) clearTimeout(urlSyncTimer);
+        urlSyncTimer = setTimeout(function () {
+          urlSyncTimer = null;
+          syncUrlFromState();
+        }, 120);
+      }
+
+      /** Читает GET из адресной строки → pending/form (+ sort/limit/page). */
+      function parseUrlToPending() {
+        var params = new URLSearchParams(window.location.search || "");
+        var info = {
+          fromUrl: false,
+          hasProjectUuids: false,
+          touchedProjects: false,
+          projectModeAll: false,
+          hasSort: false,
+        };
+        function has(k) {
+          return params.has(k);
+        }
+        if (has("days")) {
+          info.fromUrl = true;
+          var d = Number(params.get("days"));
+          if (Number.isFinite(d) && d >= 7 && d <= 365) state.pending.days = Math.floor(d);
+        }
+        if (has("new_stock_days")) {
+          info.fromUrl = true;
+          var ns = Number(params.get("new_stock_days"));
+          if (Number.isFinite(ns) && ns >= 7 && ns <= 180) {
+            state.pending.new_stock_days = Math.floor(ns);
+          }
+        }
+        if (has("exclude_new_on_stock")) {
+          info.fromUrl = true;
+          var ex = String(params.get("exclude_new_on_stock") || "").toLowerCase();
+          state.pending.exclude_new_on_stock = !(ex === "0" || ex === "false" || ex === "off");
+        }
+        if (has("search")) {
+          info.fromUrl = true;
+          state.pending.search = String(params.get("search") || "");
+        }
+        if (has("supplier")) {
+          info.fromUrl = true;
+          state.pending.supplier = String(params.get("supplier") || "");
+        }
+        if (has("manager")) {
+          info.fromUrl = true;
+          state.pending.manager = String(params.get("manager") || "");
+        }
+        if (has("preset")) {
+          info.fromUrl = true;
+          state.pending.preset = String(params.get("preset") || "all").trim() || "all";
+        }
+        if (has("project_mode")) {
+          info.fromUrl = true;
+          info.touchedProjects = true;
+          var pm = String(params.get("project_mode") || "").toLowerCase();
+          state.pending.project_mode = pm === "all" ? "all" : "selected";
+          info.projectModeAll = state.pending.project_mode === "all";
+        }
+        if (has("project_uuids")) {
+          info.fromUrl = true;
+          info.touchedProjects = true;
+          info.hasProjectUuids = true;
+          state.pending.project_mode = "selected";
+          state.pending.project_uuids = String(params.get("project_uuids") || "")
+            .split(",")
+            .map(function (u) { return String(u || "").trim().toLowerCase(); })
+            .filter(Boolean)
+            .sort();
+        }
+        if (has("limit")) {
+          info.fromUrl = true;
+          var lim = Number(params.get("limit"));
+          if (lim === 50 || lim === 100 || lim === 200) state.limit = lim;
+        }
+        if (has("sort_by")) {
+          info.fromUrl = true;
+          info.hasSort = true;
+          var sb = String(params.get("sort_by") || "").trim();
+          if (sb) state.sort_by = sb;
+        }
+        if (has("sort_dir")) {
+          info.fromUrl = true;
+          info.hasSort = true;
+          var sd = String(params.get("sort_dir") || "").toLowerCase();
+          state.sort_dir = sd === "asc" ? "asc" : "desc";
+        }
+        if (has("page") || has("offset")) {
+          info.fromUrl = true;
+          var lim2 = Math.max(1, Number(state.limit) || 100);
+          if (has("offset")) {
+            var off = Number(params.get("offset"));
+            state.offset = Number.isFinite(off) && off > 0 ? Math.floor(off) : 0;
+          } else {
+            var page = Math.max(1, Math.floor(Number(params.get("page")) || 1));
+            state.offset = (page - 1) * lim2;
+          }
+        }
+        writePendingToForm();
+        return info;
+      }
+
+      function fmt(n, digits) {
+        if (window.DatagonFmt && window.DatagonFmt.num) {
+          return window.DatagonFmt.num(n, digits != null ? digits : 0);
+        }
+        var x = Number(n);
+        if (!Number.isFinite(x)) return "—";
+        return x.toLocaleString("ru-RU", {
+          maximumFractionDigits: digits != null ? digits : 0,
+          minimumFractionDigits: 0,
+        });
+      }
+
+      function esc(s) {
+        return String(s == null ? "" : s)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+
+      function isDefaultMarketplaceProjectName(name) {
+        var n = String(name || "").trim().toLowerCase();
+        if (!n) return false;
+        if (n === "озон" || n.indexOf("ozon") >= 0) return true;
+        if (n.indexOf("вайлдберриз") >= 0 || n.indexOf("wildberries") >= 0) return true;
+        if (n.indexOf("яндекс") >= 0 && n.indexOf("маркет") >= 0) return true;
+        return false;
+      }
+
+      function pickDefaultMarketplaceProjectUuids(projects) {
+        var out = [];
+        var used = {};
+        (projects || []).forEach(function (p) {
+          var u = String(p.uuid || "").trim().toLowerCase();
+          if (!u || used[u] || !isDefaultMarketplaceProjectName(p.name)) return;
+          out.push(u);
+          used[u] = 1;
+        });
+        return out.sort();
+      }
+
+      function readPendingProjectUuids() {
+        var box = document.getElementById("dg-pa-projects-list");
+        if (!box) return [];
+        return Array.prototype.slice
+          .call(box.querySelectorAll('input[type="checkbox"]:checked'))
+          .map(function (el) { return String(el.value || "").toLowerCase(); })
+          .filter(Boolean)
+          .sort();
+      }
+
+      function queryParams() {
+        var p = new URLSearchParams();
+        p.set("days", String(state.days));
+        p.set("new_stock_days", String(state.new_stock_days || 30));
+        p.set("exclude_new_on_stock", state.exclude_new_on_stock ? "1" : "0");
+        p.set("preset", state.preset || "all");
+        p.set("project_mode", state.project_mode || "all");
+        if (state.project_mode === "selected" && state.project_uuids.length) {
+          p.set("project_uuids", state.project_uuids.join(","));
+        }
+        if (state.search) p.set("search", state.search);
+        if (state.supplier) p.set("supplier", state.supplier);
+        if (state.manager) p.set("manager", state.manager);
+        if (state._presetSortOnce) {
+          p.set("preset_sort", "1");
+          state._presetSortOnce = false;
+        }
+        p.set("limit", String(state.limit));
+        p.set("offset", String(state.offset));
+        p.set("sort_by", state.sort_by);
+        p.set("sort_dir", state.sort_dir);
+        return p;
+      }
+
+      function filterBodyForBulk() {
+        return {
+          days: state.days,
+          new_stock_days: state.new_stock_days,
+          exclude_new_on_stock: state.exclude_new_on_stock ? 1 : 0,
+          preset: state.preset,
+          project_mode: state.project_mode,
+          project_uuids: state.project_uuids.join(","),
+          search: state.search,
+          supplier: state.supplier,
+          manager: state.manager,
+          limit: 2000,
+        };
+      }
+
+      function syncDirtyApply() {
+        var dirty =
+          Number(state.pending.days) !== Number(state.days) ||
+          Number(state.pending.new_stock_days) !== Number(state.new_stock_days) ||
+          !!state.pending.exclude_new_on_stock !== !!state.exclude_new_on_stock ||
+          String(state.pending.search || "") !== String(state.search || "") ||
+          String(state.pending.supplier || "") !== String(state.supplier || "") ||
+          String(state.pending.manager || "") !== String(state.manager || "") ||
+          String(state.pending.preset || "") !== String(state.preset || "") ||
+          state.pending.project_mode !== state.project_mode ||
+          JSON.stringify(state.pending.project_uuids || []) !==
+            JSON.stringify(state.project_uuids || []);
+        var btn = document.getElementById("dg-pa-apply");
+        if (!btn) return;
+        btn.textContent = dirty ? "Применить •" : "Применить";
+        if (dirty) btn.classList.add("dg-flt-dirty");
+        else btn.classList.remove("dg-flt-dirty");
+      }
+
+      function presetSortFor(preset) {
+        switch (String(preset || "all")) {
+          case "top_qty":
+            return { sort_by: "sales_qty", sort_dir: "desc" };
+          case "dead":
+          case "stuck":
+          case "dead_min_stock":
+            return { sort_by: "stock_value_rub", sort_dir: "desc" };
+          case "new_on_stock":
+            return { sort_by: "days_on_stock", sort_dir: "asc" };
+          case "min_vs_proposed":
+            return { sort_by: "min_stock", sort_dir: "desc" };
+          case "top_revenue":
+          case "all":
+          default:
+            return { sort_by: "sales_revenue", sort_dir: "desc" };
+        }
+      }
+
+      function presetLabel(key) {
+        var hit = presetsList.filter(function (p) { return p.key === key; })[0];
+        return hit ? hit.label : key;
+      }
+
+      function loadPresetsMeta() {
+        return fetch("/api/product-analysis/presets", { credentials: "same-origin" })
+          .then(function (r) { return r.json(); })
+          .then(function (j) {
+            if (!j || !j.success || !Array.isArray(j.presets) || !j.presets.length) return;
+            presetsList = j.presets.map(function (p) {
+              var fb = PRESETS_FALLBACK.filter(function (x) { return x.key === p.key; })[0];
+              return {
+                key: p.key,
+                label: p.label || (fb && fb.label) || p.key,
+                tip: p.description || (fb && fb.tip) || "",
+              };
+            });
+            renderPresetChips();
+          })
+          .catch(function () { /* fallback уже в presetsList */ });
+      }
+
+      function commitFilters(opts) {
+        opts = opts || {};
+        var daysBefore = Number(state.days) || 90;
+        state.days = Number(state.pending.days) || 90;
+        state.new_stock_days = Number(state.pending.new_stock_days) || 30;
+        state.exclude_new_on_stock = !!state.pending.exclude_new_on_stock;
+        state.search = String(state.pending.search || "").trim();
+        state.supplier = String(state.pending.supplier || "").trim();
+        state.manager = String(state.pending.manager || "").trim();
+        state.preset = state.pending.preset || "all";
+        state.project_mode = state.pending.project_mode === "selected" ? "selected" : "all";
+        state.project_uuids =
+          state.project_mode === "selected" ? readPendingProjectUuids() : [];
+        state.pending.project_uuids = state.project_uuids.slice();
+        if (opts.fromPreset) {
+          var ps = presetSortFor(state.preset);
+          state.sort_by = ps.sort_by;
+          state.sort_dir = ps.sort_dir;
+          state._presetSortOnce = true;
+        }
+        if (!opts.preserveOffset) state.offset = 0;
+        state.selected = {};
+        state.selectedCode = "";
+        stashDetailCardInHost();
+        syncDirtyApply();
+        renderPresetChips();
+        scheduleUrlSync();
+        var presetHint = state.preset && state.preset !== "all" ? presetLabel(state.preset) : "";
+        var afterLoad = function () {
+          scheduleUrlSync();
+          if (opts.fromPreset && window.DatagonNotify && window.DatagonNotify.toast) {
+            window.DatagonNotify.toast({
+              type: "success",
+              message:
+                (presetHint ? "Пресет «" + presetHint + "»: " : "Фильтры: ") +
+                "найдено " +
+                fmt(state.total, 0),
+            });
+          }
+        };
+        var daysChanged = Number(state.days) !== Number(daysBefore);
+        var projectsPromise =
+          daysChanged || opts.reloadProjects
+            ? loadProjectsList().then(function () {
+                if (state.project_mode === "selected") {
+                  state.project_uuids = readPendingProjectUuids();
+                  state.pending.project_uuids = state.project_uuids.slice();
+                }
+              })
+            : Promise.resolve();
+        return projectsPromise.then(function () {
+          return loadAll();
+        }).then(afterLoad);
+      }
+
+      function showActionLog(type, html) {
+        var el = document.getElementById("dg-pa-action-log");
+        if (!el) return;
+        el.classList.remove("d-none", "alert-secondary", "alert-success", "alert-danger", "alert-warning", "alert-info");
+        el.classList.add("alert-" + (type || "secondary"));
+        el.innerHTML = html;
+      }
+
+      function formatPatchFieldsHtml(fields) {
+        if (!fields || !fields.length) return "";
+        return (
+          "<br>поля: " +
+          fields
+            .map(function (f) {
+              return (
+                "<code>" +
+                esc(f.label || f.field) +
+                "</code>" +
+                (f.value != null ? " → <strong>" + esc(f.value) + "</strong>" : "")
+              );
+            })
+            .join("; ")
+        );
+      }
+
+      var paTipCache = {};
+      var PA_TIP_CACHE_TTL_MS = 60 * 1000;
+      var paTipEl = null;
+      var paTipShowTimer = null;
+      var paTipHideTimer = null;
+      var paTipCurrentTarget = null;
+      var paTipPinned = false;
+      var paTipDocCloseBound = false;
+
+      function invalidatePaTipCache(code) {
+        var prefix = String(code || "") + "/";
+        Object.keys(paTipCache).forEach(function (k) {
+          if (!code || k.indexOf(prefix) === 0) delete paTipCache[k];
+        });
+      }
+
+      function hidePaTip() {
+        cancelPaShowTip();
+        cancelPaHideTip();
+        paTipPinned = false;
+        paTipCurrentTarget = null;
+        if (paTipEl) paTipEl.style.display = "none";
+      }
+
+      function ensurePaTipEl() {
+        if (paTipEl) return paTipEl;
+        paTipEl = document.createElement("div");
+        paTipEl.className = "dg-pa-cell-tip";
+        paTipEl.setAttribute("role", "tooltip");
+        paTipEl.style.display = "none";
+        document.body.appendChild(paTipEl);
+        paTipEl.addEventListener("mouseenter", cancelPaHideTip);
+        paTipEl.addEventListener("mouseleave", function () {
+          if (!paTipPinned) schedulePaHideTip();
+        });
+        return paTipEl;
+      }
+
+      function bindPaTipDocClose() {
+        if (paTipDocCloseBound) return;
+        paTipDocCloseBound = true;
+        document.addEventListener(
+          "click",
+          function (ev) {
+            if (!paTipEl || paTipEl.style.display === "none") return;
+            if (ev.target.closest(".dg-pa-lc-log") || ev.target.closest(".dg-pa-cell-tip")) return;
+            hidePaTip();
+          },
+          true
+        );
+        document.addEventListener("keydown", function (ev) {
+          if (ev.key === "Escape") hidePaTip();
+        });
+      }
+
+      function positionPaTip(target) {
+        if (!paTipEl || !target) return;
+        var rect = target.getBoundingClientRect();
+        paTipEl.style.left = "-9999px";
+        paTipEl.style.top = "-9999px";
+        paTipEl.style.display = "block";
+        var tipRect = paTipEl.getBoundingClientRect();
+        var left = Math.min(window.innerWidth - tipRect.width - 8, Math.max(8, rect.left));
+        var top = rect.bottom + 6;
+        if (top + tipRect.height > window.innerHeight - 8) {
+          top = Math.max(8, rect.top - tipRect.height - 6);
+        }
+        paTipEl.style.left = left + "px";
+        paTipEl.style.top = top + "px";
+      }
+
+      function formatPaLogWhen(iso) {
+        if (!iso) return "—";
+        try {
+          var d = new Date(iso);
+          if (!Number.isFinite(d.getTime())) return String(iso);
+          return d.toLocaleString("ru-RU", { timeZone: "Europe/Moscow" });
+        } catch (e) {
+          return String(iso);
+        }
+      }
+
+      function renderPaTipContent(rows, fieldKey) {
+        if (!rows || !rows.length) {
+          return '<div class="dg-pa-cell-tip-empty">По этому полю ещё нет записей в журнале.</div>';
+        }
+        var title =
+          "Журнал «" +
+          esc((rows[0] && rows[0].field_label) || fieldKey || "Решение") +
+          "»";
+        var out = '<div class="dg-pa-cell-tip-title">' + title + '</div><ul class="dg-pa-cell-tip-list">';
+        rows.forEach(function (row) {
+          var oldV = row.old_value == null ? "∅" : esc(row.old_value);
+          var newV = row.new_value == null ? "∅" : esc(row.new_value);
+          var who = row.changed_by_name || ("user#" + (row.changed_by_user_id || "—"));
+          var src = String(row.source || "ui");
+          var srcLabel = row.source_label || src;
+          out +=
+            "<li>" +
+            '<div class="dg-pa-cell-tip-row1"><span>' +
+            esc(formatPaLogWhen(row.changed_at)) +
+            "</span> · <span>" +
+            esc(who) +
+            '</span> · <span class="dg-pa-log-src dg-pa-log-src-' +
+            esc(src) +
+            '" title="' +
+            esc(src) +
+            '">' +
+            esc(srcLabel) +
+            "</span></div>" +
+            '<div><span class="dg-pa-cell-tip-old">' +
+            oldV +
+            '</span> → <span class="dg-pa-cell-tip-new">' +
+            newV +
+            "</span></div>" +
+            "</li>";
+        });
+        out += "</ul>";
+        return out;
+      }
+
+      function showPaTipFor(target, pinned) {
+        if (!target) return;
+        var code = target.getAttribute("data-dg-code") || "";
+        var field = target.getAttribute("data-dg-field") || "lifecycle";
+        if (!code) return;
+        bindPaTipDocClose();
+        ensurePaTipEl();
+        paTipCurrentTarget = target;
+        if (pinned) paTipPinned = true;
+        var cacheKey = code + "/" + field;
+        var now = Date.now();
+        var cached = paTipCache[cacheKey];
+        if (cached && now - cached.ts < PA_TIP_CACHE_TTL_MS) {
+          paTipEl.innerHTML = renderPaTipContent(cached.rows, field);
+          positionPaTip(target);
+          return;
+        }
+        paTipEl.innerHTML = '<div class="dg-pa-cell-tip-loading">Загрузка журнала…</div>';
+        positionPaTip(target);
+        var qs = new URLSearchParams({ code: String(code), limit: "8", field: String(field) });
+        fetch("/api/product-analysis/log?" + qs.toString(), { credentials: "same-origin" })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { ok: r.ok, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.ok || !x.j || x.j.success === false) {
+              if (paTipCurrentTarget === target) {
+                paTipEl.innerHTML =
+                  '<div class="dg-pa-cell-tip-err">' +
+                  esc((x.j && x.j.error) || "Не удалось загрузить") +
+                  "</div>";
+                positionPaTip(target);
+              }
+              return;
+            }
+            var rows = x.j.rows || [];
+            paTipCache[cacheKey] = { ts: Date.now(), rows: rows };
+            if (paTipCurrentTarget === target) {
+              paTipEl.innerHTML = renderPaTipContent(rows, field);
+              positionPaTip(target);
+            }
+          })
+          .catch(function () {
+            if (paTipCurrentTarget === target) {
+              paTipEl.innerHTML = '<div class="dg-pa-cell-tip-err">Сетевая ошибка</div>';
+              positionPaTip(target);
+            }
+          });
+      }
+
+      function schedulePaShowTip(target) {
+        if (paTipPinned) return;
+        cancelPaShowTip();
+        paTipCurrentTarget = target;
+        paTipShowTimer = setTimeout(function () {
+          showPaTipFor(target, false);
+        }, 280);
+      }
+
+      function schedulePaHideTip() {
+        if (paTipPinned) return;
+        cancelPaHideTip();
+        paTipHideTimer = setTimeout(function () {
+          if (paTipPinned) return;
+          if (paTipEl) paTipEl.style.display = "none";
+          paTipCurrentTarget = null;
+        }, 160);
+      }
+
+      function cancelPaShowTip() {
+        if (paTipShowTimer) {
+          clearTimeout(paTipShowTimer);
+          paTipShowTimer = null;
+        }
+      }
+
+      function cancelPaHideTip() {
+        if (paTipHideTimer) {
+          clearTimeout(paTipHideTimer);
+          paTipHideTimer = null;
+        }
+      }
+
+      function bindPaDecisionLogTips() {
+        var tbody = document.getElementById("dg-pa-tbody");
+        if (!tbody || tbody._dgPaLogBound) return;
+        tbody._dgPaLogBound = true;
+        tbody.addEventListener("mouseover", function (ev) {
+          var btn = ev.target.closest(".dg-pa-lc-log");
+          if (!btn || !tbody.contains(btn)) return;
+          cancelPaHideTip();
+          schedulePaShowTip(btn);
+        });
+        tbody.addEventListener("mouseout", function (ev) {
+          var btn = ev.target.closest(".dg-pa-lc-log");
+          if (!btn) return;
+          var to = ev.relatedTarget;
+          if (to && (btn.contains(to) || (paTipEl && paTipEl.contains(to)))) return;
+          schedulePaHideTip();
+        });
+        tbody.addEventListener(
+          "click",
+          function (ev) {
+            var btn = ev.target.closest(".dg-pa-lc-log");
+            if (!btn) return;
+            ev.preventDefault();
+            ev.stopPropagation();
+            cancelPaHideTip();
+            cancelPaShowTip();
+            showPaTipFor(btn, true);
+          },
+          true
+        );
+      }
+
+      function hideActionLog() {
+        var el = document.getElementById("dg-pa-action-log");
+        if (!el) return;
+        el.classList.add("d-none");
+        el.innerHTML = "";
+      }
+
+      function selectedCodes() {
+        return Object.keys(state.selected).filter(function (k) { return state.selected[k]; });
+      }
+
+      function filtersHintText(codesLen) {
+        return (
+          "пресет «" +
+          presetLabel(state.preset) +
+          "»; период " +
+          state.days +
+          " дн.; новый на складе ≤" +
+          state.new_stock_days +
+          " дн." +
+          (state.exclude_new_on_stock ? " (искл. из мёртвых/зависших)" : "") +
+          "; поиск: " +
+          (state.search || "—") +
+          (state.supplier ? "; поставщик: " + state.supplier : "") +
+          (state.manager ? "; менеджер: " + state.manager : "") +
+          (codesLen ? "; отмечено строк: " + codesLen : "; галочек нет — по всей выборке фильтра")
+        );
+      }
+
+      /**
+       * Подтверждение массового действия.
+       * Без галочек — модалка с обязательным чекбоксом «понимаю».
+       * С галочками — обычный confirm.
+       * @returns {Promise<boolean>}
+       */
+      function confirmBulkWrite(opts) {
+        var label = (opts && opts.label) || "Массовое действие";
+        var would = Number((opts && opts.would) || 0);
+        var codesLen = Number((opts && opts.codesLen) || 0);
+        var byFilter = !codesLen;
+
+        if (!byFilter) {
+          return Promise.resolve(
+            window.confirm(label + ": обновить " + would + " отмеченных SKU?")
+          );
+        }
+
+        return new Promise(function (resolve) {
+          var ov = document.getElementById("dg-pa-bulk-confirm-overlay");
+          var lead = document.getElementById("dg-pa-bulk-confirm-lead");
+          var filtersEl = document.getElementById("dg-pa-bulk-confirm-filters");
+          var ack = document.getElementById("dg-pa-bulk-confirm-ack");
+          var okBtn = document.getElementById("dg-pa-bulk-confirm-ok");
+          var cancelBtn = document.getElementById("dg-pa-bulk-confirm-cancel");
+          if (!ov || !okBtn || !cancelBtn || !ack) {
+            resolve(
+              window.confirm(
+                "Галочки не отмечены. " + label + " применится к " + would + " SKU по фильтру. Продолжить?"
+              )
+            );
+            return;
+          }
+
+          if (lead) {
+            lead.innerHTML =
+              "Действие <strong>«" +
+              esc(label) +
+              "»</strong> затронет <strong>" +
+              would +
+              "</strong> SKU.<br>" +
+              "Строки <strong>не отмечены</strong> галочками — применяется ко <strong>всей текущей выборке</strong> по пресету/фильтрам (лимит API до 500 за раз).";
+          }
+          if (filtersEl) filtersEl.textContent = filtersHintText(0);
+          ack.checked = false;
+          okBtn.disabled = true;
+
+          function syncOk() {
+            okBtn.disabled = !ack.checked;
+          }
+          function cleanup(result) {
+            ack.removeEventListener("change", syncOk);
+            okBtn.removeEventListener("click", onOk);
+            cancelBtn.removeEventListener("click", onCancel);
+            ov.removeEventListener("click", onBackdrop);
+            document.removeEventListener("keydown", onKey);
+            ov.classList.remove("is-open");
+            ov.style.display = "none";
+            resolve(result);
+          }
+          function onOk(ev) {
+            ev.preventDefault();
+            if (!ack.checked) return;
+            cleanup(true);
+          }
+          function onCancel(ev) {
+            if (ev) ev.preventDefault();
+            cleanup(false);
+          }
+          function onBackdrop(ev) {
+            if (ev.target === ov) onCancel(ev);
+          }
+          function onKey(ev) {
+            if (ev.key === "Escape") onCancel(ev);
+          }
+
+          ack.addEventListener("change", syncOk);
+          okBtn.addEventListener("click", onOk);
+          cancelBtn.addEventListener("click", onCancel);
+          ov.addEventListener("click", onBackdrop);
+          document.addEventListener("keydown", onKey);
+          ov.style.display = "flex";
+          ov.classList.add("is-open");
+          syncOk();
+          try {
+            ack.focus();
+          } catch (e) {}
+        });
+      }
+
+      function loadVisibleCols() {
+        try {
+          var raw = localStorage.getItem(VIS_COLS_KEY);
+          if (!raw) return PA_DEFAULT_VISIBLE.slice();
+          var arr = JSON.parse(raw);
+          if (!Array.isArray(arr) || !arr.length) return PA_DEFAULT_VISIBLE.slice();
+          var known = {};
+          PA_COLS.forEach(function (c) { known[c[0]] = 1; });
+          var out = arr.filter(function (k) { return known[k]; });
+          if (out.indexOf("_expand") < 0) out.unshift("_expand");
+          if (out.indexOf("_sel") < 0) out.splice(1, 0, "_sel");
+          return out.length ? out : PA_DEFAULT_VISIBLE.slice();
+        } catch (e) {
+          return PA_DEFAULT_VISIBLE.slice();
+        }
+      }
+
+      function saveVisibleCols(cols) {
+        try { localStorage.setItem(VIS_COLS_KEY, JSON.stringify(cols)); } catch (e) {}
+      }
+
+      function loadColWidths() {
+        try {
+          var raw = localStorage.getItem(COL_WIDTH_KEY);
+          if (!raw) return Object.assign({}, PA_DEFAULT_WIDTHS);
+          return Object.assign({}, PA_DEFAULT_WIDTHS, JSON.parse(raw) || {});
+        } catch (e) {
+          return Object.assign({}, PA_DEFAULT_WIDTHS);
+        }
+      }
+
+      function saveColWidths(w) {
+        try { localStorage.setItem(COL_WIDTH_KEY, JSON.stringify(w)); } catch (e) {}
+      }
+
+      var visibleCols = loadVisibleCols();
+      var colWidths = loadColWidths();
+
+      var FLOATING_HEADER_OFFSET_PX = 2;
+      var FLOATING_HEADER_START_EPS_PX = 3;
+      var paFloatingHeaderRaf = 0;
+      var paFloatingLastScrollTs = 0;
+
+      function updatePaStickyTopVar() {
+        var app = document.querySelector(".app-container");
+        var header = document.querySelector(".app-header");
+        var fixed = Boolean(app && app.classList && app.classList.contains("fixed-header"));
+        var top = 0;
+        if (fixed && header && header.getBoundingClientRect) {
+          var rect = header.getBoundingClientRect();
+          top = rect && rect.height ? rect.height : 60;
+        }
+        document.documentElement.style.setProperty("--dg-table-sticky-top", top + "px");
+      }
+      function getPaStickyTopPx() {
+        var app = document.querySelector(".app-container");
+        var header = document.querySelector(".app-header");
+        var fixed = Boolean(app && app.classList && app.classList.contains("fixed-header"));
+        if (!fixed) return 0;
+        if (!header || !header.getBoundingClientRect) return 60;
+        var rect = header.getBoundingClientRect();
+        return rect && rect.height ? rect.height : 60;
+      }
+      function clearPaHeaderFloatStyles(thead, row) {
+        if (!thead) return;
+        thead.style.transform = "";
+        thead.style.position = "";
+        thead.style.zIndex = "";
+        thead.style.willChange = "";
+        thead.removeAttribute("data-dg-floating");
+        if (!row) return;
+        row.style.transform = "";
+        row.style.position = "";
+        row.style.zIndex = "";
+        row.style.willChange = "";
+      }
+      function capturePaTheadBaseTop() {
+        var thead = document.getElementById("dg-pa-thead");
+        if (!thead) return;
+        var row = thead.querySelector("tr");
+        if (!row) return;
+        clearPaHeaderFloatStyles(thead, row);
+        var rect = row.getBoundingClientRect();
+        var absTop =
+          (window.scrollY || window.pageYOffset || 0) + (rect && rect.top ? rect.top : 0);
+        thead.setAttribute("data-dg-base-top", String(absTop));
+      }
+      function updatePaFloatingHeaderFallback() {
+        var thead = document.getElementById("dg-pa-thead");
+        if (!thead) return;
+        var table = thead.closest("table");
+        if (!table || !table.getBoundingClientRect) return;
+        var row = thead.querySelector("tr");
+        if (!row) return;
+
+        var y = window.scrollY || window.pageYOffset || 0;
+        var headerTop = getPaStickyTopPx();
+        var tableRect = table.getBoundingClientRect();
+        var tableBottom = tableRect.bottom + y;
+        var rowRect = row.getBoundingClientRect();
+        var rowHeight = rowRect && rowRect.height ? rowRect.height : 0;
+        var isFloating = thead.getAttribute("data-dg-floating") === "1" || !!row.style.transform;
+
+        if (!isFloating) {
+          var liveBase = y + (rowRect && rowRect.top ? rowRect.top : 0);
+          if (Number.isFinite(liveBase) && liveBase > 0) {
+            thead.setAttribute("data-dg-base-top", String(liveBase));
+          }
+        }
+
+        var baseTopAbs = Number(thead.getAttribute("data-dg-base-top") || 0);
+        if (!Number.isFinite(baseTopAbs) || baseTopAbs <= 0) return;
+
+        var headerLine = y + headerTop;
+        var start = baseTopAbs + FLOATING_HEADER_START_EPS_PX;
+        var end = tableBottom - rowHeight;
+        if (headerLine <= start || headerLine >= end) {
+          if (row.style.transform || thead.getAttribute("data-dg-floating")) {
+            clearPaHeaderFloatStyles(thead, row);
+          }
+          return;
+        }
+
+        var zoomAwareOffset = FLOATING_HEADER_OFFSET_PX;
+        var dpr = window.devicePixelRatio || 1;
+        if (Math.abs(dpr - 1) < 0.03) zoomAwareOffset = FLOATING_HEADER_OFFSET_PX - 3;
+        var shift = Math.max(0, headerLine - start - zoomAwareOffset);
+        var shiftPx = Number(shift.toFixed(3));
+        var nextTransform = "translate3d(0," + shiftPx + "px,0)";
+        if (row.style.transform !== nextTransform) {
+          thead.style.transform = "";
+          thead.style.position = "";
+          thead.style.zIndex = "";
+          thead.style.willChange = "";
+          row.style.transform = nextTransform;
+          row.style.position = "relative";
+          row.style.zIndex = "25";
+          row.style.willChange = "transform";
+          thead.setAttribute("data-dg-floating", "1");
+        }
+      }
+      function paFloatingHeaderTick(ts) {
+        paFloatingHeaderRaf = 0;
+        updatePaFloatingHeaderFallback();
+        if (ts - paFloatingLastScrollTs < 140) {
+          paFloatingHeaderRaf = requestAnimationFrame(paFloatingHeaderTick);
+        }
+      }
+      function schedulePaFloatingHeaderUpdate() {
+        paFloatingLastScrollTs = performance.now();
+        if (paFloatingHeaderRaf) return;
+        paFloatingHeaderRaf = requestAnimationFrame(paFloatingHeaderTick);
+      }
+      function onScrollPaFloatingHeader() {
+        schedulePaFloatingHeaderUpdate();
+      }
+      function paRefreshFloatingAfterLayout() {
+        requestAnimationFrame(function () {
+          capturePaTheadBaseTop();
+          schedulePaFloatingHeaderUpdate();
+        });
+      }
+
+      function renderPresetChips() {
+        var host = document.getElementById("dg-pa-presets");
+        if (!host) return;
+        var cur = state.pending.preset || "all";
+        host.innerHTML = presetsList.map(function (p) {
+          var active = p.key === cur ? " is-active" : "";
+          var tip = p.tip || p.description || "";
+          return (
+            '<button type="button" class="dg-pa-preset-chip' +
+            active +
+            '" data-preset="' +
+            esc(p.key) +
+            '"' +
+            (tip ? ' data-dg-tooltip="' + esc(tip) + '"' : "") +
+            ">" +
+            esc(p.label) +
+            "</button>"
+          );
+        }).join("");
+      }
+
+      function buildThead() {
+        var thead = document.getElementById("dg-pa-thead");
+        var cg = document.getElementById("dg-pa-colgroup");
+        if (!thead) return;
+        var cols = PA_COLS.filter(function (c) { return visibleCols.indexOf(c[0]) >= 0; });
+        if (cg) {
+          cg.innerHTML = cols
+            .map(function (c) {
+              var w = colWidths[c[0]] || PA_DEFAULT_WIDTHS[c[0]] || 100;
+              return '<col style="width:' + w + 'px;min-width:' + Math.min(w, 60) + 'px" />';
+            })
+            .join("");
+        }
+        thead.innerHTML =
+          "<tr>" +
+          cols
+            .map(function (c) {
+              var key = c[0];
+              var label = c[1];
+              if (key === "_expand") {
+                return (
+                  '<th class="dg-pa-expand-col dg-pa-sortable" data-col="_expand" title="Развернуть продажи по проектам">' +
+                  "</th>"
+                );
+              }
+              if (key === "_sel") {
+                return (
+                  '<th class="dg-pa-sortable" data-col="_sel" title="Выделить все на странице">' +
+                  '<input type="checkbox" id="dg-pa-sel-all" aria-label="Выделить все" />' +
+                  "</th>"
+                );
+              }
+              var arrow = "";
+              if (state.sort_by === key) arrow = state.sort_dir === "asc" ? " ↑" : " ↓";
+              var tip = (c[2] && c[2].tip) || label;
+              return (
+                '<th class="dg-pa-sortable dg-pa-th-label" data-col="' +
+                esc(key) +
+                '" title="' +
+                esc(tip) +
+                '">' +
+                esc(label) +
+                arrow +
+                "</th>"
+              );
+            })
+            .join("") +
+          "</tr>";
+        var selAll = document.getElementById("dg-pa-sel-all");
+        if (selAll) {
+          selAll.addEventListener("change", function () {
+            var on = !!selAll.checked;
+            (state.rows || []).forEach(function (r) {
+              state.selected[r.code] = on;
+            });
+            renderTable();
+          });
+        }
+      }
+
+      function rowClass(r) {
+        if (r.lifecycle === "exit" || r.lifecycle === "clearance") return "dg-pa-row-exit";
+        if (r.lifecycle === "boost") return "dg-pa-row-boost";
+        if (r.lifecycle === "top") return "dg-pa-row-top";
+        if (Number(r.sales_qty || 0) <= 0 && Number(r.min_stock || 0) > 0) return "dg-pa-row-dead";
+        if (Number(r.sales_qty || 0) <= 0 && Number(r.stock_qty || 0) > 0) return "dg-pa-row-dead";
+        return "";
+      }
+
+      function cellHtml(key, r) {
+        if (key === "_expand") {
+          return '<span class="dg-pa-row-chevron" aria-hidden="true">›</span>';
+        }
+        if (key === "_sel") {
+          var checked = state.selected[r.code] ? " checked" : "";
+          return (
+            '<input type="checkbox" class="dg-pa-row-sel" data-code="' +
+            esc(r.code) +
+            '"' +
+            checked +
+            " />"
+          );
+        }
+        if (key === "code") {
+          return (
+            '<a href="/product.html?code=' +
+            encodeURIComponent(r.code) +
+            '" target="_blank" rel="noopener">' +
+            esc(r.code) +
+            "</a>"
+          );
+        }
+        if (key === "name" || key === "supplier_name" || key === "manager") return esc(r[key] || "");
+        if (key === "decision_note") {
+          var note = r.decision_note != null ? String(r.decision_note) : "";
+          return (
+            '<span class="dg-pa-note-wrap">' +
+            '<textarea class="form-control form-control-sm dg-pa-note-input" rows="3" maxlength="500" ' +
+            'data-code="' +
+            esc(r.code) +
+            '" data-prev="' +
+            esc(note) +
+            '" placeholder="Комментарий…" title="' +
+            esc(note || "Комментарий к решению") +
+            '" data-dg-no-activity="1" data-dg-tooltip="Сохраняется при уходе из поля или Ctrl/⌘+Enter">' +
+            esc(note) +
+            "</textarea>" +
+            '<button type="button" class="btn btn-sm btn-outline-secondary dg-pa-lc-log" data-dg-code="' +
+            esc(r.code) +
+            '" data-dg-field="decision_note" aria-label="Журнал комментария" data-dg-no-activity="1">лог</button>' +
+            "</span>"
+          );
+        }
+        if (key === "lifecycle") {
+          var lc = r.lifecycle || "none";
+          var opts = LC_ROW_OPTIONS.map(function (o) {
+            return (
+              '<option value="' +
+              esc(o.value) +
+              '"' +
+              (o.value === lc ? " selected" : "") +
+              ">" +
+              esc(LC_LABEL[o.value] || o.value) +
+              "</option>"
+            );
+          }).join("");
+          return (
+            '<span class="dg-pa-lc-wrap">' +
+            '<select class="form-select form-select-sm dg-pa-lc-select dg-pa-lc-' +
+            esc(lc) +
+            '" data-code="' +
+            esc(r.code) +
+            '" data-prev="' +
+            esc(lc) +
+            '" data-dg-tooltip="Сменить решение для этой SKU">' +
+            opts +
+            "</select>" +
+            '<button type="button" class="btn btn-sm btn-outline-secondary dg-pa-lc-log" data-dg-code="' +
+            esc(r.code) +
+            '" data-dg-field="lifecycle" aria-label="Журнал решений" data-dg-no-activity="1">лог</button>' +
+            "</span>"
+          );
+        }
+        if (key === "margin_pct" || key === "revenue_change_pct") {
+          return r[key] == null ? "—" : fmt(r[key], 1) + "%";
+        }
+        if (
+          key === "stock_value_rub" ||
+          key === "sales_revenue" ||
+          key === "gross_margin_est"
+        ) {
+          return fmt(r[key], 0);
+        }
+        if (
+          key === "stock_qty" ||
+          key === "min_stock" ||
+          key === "sales_qty" ||
+          key === "days_without_sales" ||
+          key === "days_on_stock"
+        ) {
+          return r[key] == null ? "—" : fmt(r[key], 0);
+        }
+        if (key === "formula_proposed") {
+          var val = r.formula_proposed == null ? "—" : fmt(r.formula_proposed, 0);
+          var locked = !!r.lock_proposed_min_stock;
+          if (!locked) return esc(val);
+          return (
+            '<span class="dg-pa-proposed-cell">' +
+            '<span>' +
+            esc(val) +
+            "</span>" +
+            '<span class="dg-pa-lock-badge" data-dg-tooltip="Предлагаемый зафиксирован (=0). Формула не перезапишет, пока не снимете фиксацию.">🔒 фикс.</span>' +
+            '<button type="button" class="btn btn-sm btn-outline-secondary dg-pa-unlock-btn" data-code="' +
+            esc(r.code) +
+            '" data-dg-notify-start="Снимаем фиксацию…" data-dg-tooltip="Снять фиксацию предлагаемого для этой SKU">Снять</button>' +
+            "</span>"
+          );
+        }
+        return esc(r[key] == null ? "" : r[key]);
+      }
+
+      function visibleColCount() {
+        return PA_COLS.filter(function (c) { return visibleCols.indexOf(c[0]) >= 0; }).length;
+      }
+
+      function stashDetailCardInHost() {
+        var host = document.getElementById("dg-pa-detail-host");
+        var card = document.getElementById("dg-pa-detail-card");
+        if (!host || !card) return;
+        if (card.parentElement !== host) host.appendChild(card);
+        card.classList.add("d-none");
+        card.setAttribute("aria-hidden", "true");
+        host.classList.add("d-none");
+        host.setAttribute("aria-hidden", "true");
+      }
+
+      function mountDetailCard() {
+        var card = document.getElementById("dg-pa-detail-card");
+        var host = document.getElementById("dg-pa-detail-host");
+        var slot =
+          state.selectedCode &&
+          document.querySelector("#dg-pa-tbody tr.dg-pa-detail-row #dg-pa-detail-slot");
+        if (!card) return;
+        if (slot) {
+          slot.appendChild(card);
+          card.classList.remove("d-none");
+          card.setAttribute("aria-hidden", "false");
+          if (host) {
+            host.classList.add("d-none");
+            host.setAttribute("aria-hidden", "true");
+          }
+        } else {
+          stashDetailCardInHost();
+        }
+      }
+
+      function closeDetail() {
+        state.selectedCode = "";
+        stashDetailCardInHost();
+        if (detailShareChart) {
+          try { detailShareChart.destroy(); } catch (e) {}
+          detailShareChart = null;
+        }
+        renderTable();
+      }
+
+      function openDetail(code, name) {
+        code = String(code || "").trim();
+        if (!code) return;
+        if (state.selectedCode === code) {
+          closeDetail();
+          return;
+        }
+        state.selectedCode = code;
+        renderTable();
+        requestAnimationFrame(function () {
+          mountDetailCard();
+          loadSkuDetail(code, name);
+          paRefreshFloatingAfterLayout();
+        });
+      }
+
+      function renderDetailProjects(byProject) {
+        var tb = document.getElementById("dg-pa-detail-projects-tbody");
+        if (!tb) return;
+        var rows = byProject || [];
+        if (!rows.length) {
+          tb.innerHTML = '<tr><td colspan="4" class="text-muted">Нет продаж за период</td></tr>';
+          return;
+        }
+        tb.innerHTML = rows
+          .map(function (r) {
+            return (
+              "<tr><td>" +
+              esc(r.project_name) +
+              '</td><td class="text-end">' +
+              fmt(r.sales_qty, 0) +
+              '</td><td class="text-end">' +
+              fmt(r.sales_revenue, 0) +
+              '</td><td class="text-end">' +
+              fmt(r.share_pct, 1) +
+              "%</td></tr>"
+            );
+          })
+          .join("");
+      }
+
+      function renderDetailAbsence(abs) {
+        var el = document.getElementById("dg-pa-detail-absence");
+        if (!el) return;
+        abs = abs || {};
+        var flags = [];
+        if (abs.chronic) flags.push('<span class="badge bg-danger">долгий простой</span>');
+        if (abs.flicker) flags.push('<span class="badge bg-warning text-dark">частые короткие</span>');
+        el.innerHTML =
+          "<li><strong>Макс. дней без товара на складе:</strong> " +
+          fmt(abs.max_streak_days || 0, 0) +
+          "</li>" +
+          "<li>Эпизодов нуля: " +
+          fmt(abs.episode_count || 0, 0) +
+          " (ср. длина " +
+          fmt(abs.avg_episode_days || 0, 1) +
+          " дн.)</li>" +
+          "<li>Рек. дней пополнения (из отсутствия): " +
+          (abs.recommended_replenishment_days != null
+            ? fmt(abs.recommended_replenishment_days, 0)
+            : "—") +
+          "</li>" +
+          (flags.length ? "<li class=\"mt-1\">" + flags.join(" ") + "</li>" : "") +
+          '<li class="text-muted mt-1">По журналу нулевых остатков (~' +
+          (abs.window_days || 210) +
+          " дн.)</li>";
+      }
+
+      function renderDetailMeta(product, sales) {
+        var el = document.getElementById("dg-pa-detail-meta");
+        if (!el) return;
+        product = product || {};
+        sales = sales || {};
+        el.innerHTML =
+          "<li>Остаток: <strong>" +
+          fmt(product.stock_qty, 0) +
+          "</strong> шт.</li>" +
+          "<li>Неснижаемый: <strong>" +
+          fmt(product.min_stock, 0) +
+          "</strong></li>" +
+          "<li>Менеджер: " +
+          esc(product.manager || "—") +
+          "</li>" +
+          "<li>Решение: " +
+          esc(LC_LABEL[product.lifecycle] || product.lifecycle || "—") +
+          (product.do_not_order ? " · не заказывать" : "") +
+          "</li>" +
+          "<li>Комментарий: " +
+          esc(product.decision_note || "—") +
+          "</li>" +
+          "<li>Продажи за период: <strong>" +
+          fmt(sales.qty_total, 0) +
+          "</strong> шт. / <strong>" +
+          fmt(sales.revenue_total, 0) +
+          "</strong> ₽</li>";
+      }
+
+      function renderDetailChart(byProject) {
+        var canvas = document.getElementById("dg-pa-detail-chart");
+        if (!canvas) return Promise.resolve();
+        return ensureChartJs()
+          .then(function (Chart) {
+            if (detailShareChart) {
+              try { detailShareChart.destroy(); } catch (e) {}
+              detailShareChart = null;
+            }
+            var rows = (byProject || []).filter(function (r) {
+              return Number(r.sales_revenue || 0) > 0 || Number(r.sales_qty || 0) > 0;
+            });
+            if (!rows.length) return;
+            var labels = rows.map(function (r) { return r.project_name; });
+            var data = rows.map(function (r) {
+              return Number(r.sales_revenue || 0) || Number(r.sales_qty || 0);
+            });
+            var colors = [
+              "#1e6bb8", "#28a745", "#f39c12", "#e74c3c", "#8e44ad",
+              "#16a085", "#d35400", "#2c3e50", "#7f8c8d", "#c0392b",
+            ];
+            detailShareChart = new Chart(canvas, {
+              type: "doughnut",
+              data: {
+                labels: labels,
+                datasets: [
+                  {
+                    data: data,
+                    backgroundColor: labels.map(function (_l, i) {
+                      return colors[i % colors.length];
+                    }),
+                  },
+                ],
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                  legend: { position: "bottom", labels: { boxWidth: 10, font: { size: 10 } } },
+                },
+              },
+            });
+          })
+          .catch(function () {});
+      }
+
+      function loadSkuDetail(code, nameHint) {
+        var title = document.getElementById("dg-pa-detail-title");
+        var sub = document.getElementById("dg-pa-detail-sub");
+        var link = document.getElementById("dg-pa-detail-product-link");
+        var sumEl = document.getElementById("dg-pa-detail-sales-sum");
+        if (title) title.textContent = nameHint || code;
+        if (sub) sub.textContent = "Код " + code + " · загрузка…";
+        if (link) link.href = "/product.html?code=" + encodeURIComponent(code);
+        var q = queryParams();
+        q.set("code", code);
+        q.delete("limit");
+        q.delete("offset");
+        q.delete("sort_by");
+        q.delete("sort_dir");
+        return fetch("/api/product-analysis/sku-detail?" + q.toString(), { credentials: "same-origin" })
+          .then(function (r) { return r.json(); })
+          .then(function (j) {
+            if (!j || !j.success) throw new Error((j && j.error) || "Ошибка детализации");
+            var p = j.product || {};
+            var sales = j.sales || {};
+            if (title) title.textContent = p.name || nameHint || code;
+            if (sub) {
+              sub.textContent =
+                "Код " +
+                (p.code || code) +
+                (p.supplier_name ? " · " + p.supplier_name : "") +
+                " · период " +
+                (j.days || state.days) +
+                " дн.";
+            }
+            if (sumEl) {
+              sumEl.textContent =
+                "Итого: " +
+                fmt(sales.qty_total, 0) +
+                " шт. / " +
+                fmt(sales.revenue_total, 0) +
+                " ₽";
+            }
+            renderDetailProjects(sales.by_project);
+            renderDetailAbsence(j.absence);
+            renderDetailMeta(p, sales);
+            return renderDetailChart(sales.by_project);
+          })
+          .catch(function (e) {
+            if (sub) sub.textContent = (e && e.message) || "Ошибка";
+            var tb = document.getElementById("dg-pa-detail-projects-tbody");
+            if (tb) tb.innerHTML = '<tr><td colspan="4" class="text-danger">' + esc((e && e.message) || e) + "</td></tr>";
+          });
+      }
+
+      function renderTable() {
+        stashDetailCardInHost();
+        buildThead();
+        var tbody = document.getElementById("dg-pa-tbody");
+        if (!tbody) return;
+        var cols = PA_COLS.filter(function (c) { return visibleCols.indexOf(c[0]) >= 0; });
+        if (visibleCols.indexOf("_expand") < 0) {
+          visibleCols = ["_expand"].concat(visibleCols.filter(function (k) { return k !== "_expand"; }));
+          cols = PA_COLS.filter(function (c) { return visibleCols.indexOf(c[0]) >= 0; });
+        }
+        var rows = state.rows || [];
+        if (!rows.length) {
+          tbody.innerHTML =
+            '<tr><td colspan="' +
+            cols.length +
+            '" class="text-muted text-center py-4">Нет строк</td></tr>';
+        } else {
+          var html = "";
+          rows.forEach(function (r) {
+            var open = r.code === state.selectedCode;
+            var cls = (rowClass(r) + (open ? " dg-pa-row-active" : "")).trim();
+            html +=
+              '<tr class="dg-pa-row-expandable ' +
+              cls +
+              '" data-code="' +
+              esc(r.code) +
+              '" data-name="' +
+              esc(r.name || "") +
+              '">' +
+              cols
+                .map(function (c) {
+                  var tdClass = c[0] === "_expand" ? ' class="dg-pa-expand-cell"' : "";
+                  return "<td" + tdClass + ">" + cellHtml(c[0], r) + "</td>";
+                })
+                .join("") +
+              "</tr>";
+            if (open) {
+              html +=
+                '<tr class="dg-pa-detail-row"><td colspan="' +
+                cols.length +
+                '" class="dg-pa-detail-cell"><div id="dg-pa-detail-slot"></div></td></tr>';
+            }
+          });
+          tbody.innerHTML = html;
+          if (state.selectedCode) mountDetailCard();
+        }
+        var pages = Math.max(1, Math.ceil((state.total || 0) / (state.limit || 100)));
+        var page = Math.floor((state.offset || 0) / (state.limit || 100)) + 1;
+        var shown = rows.length;
+        var st = document.getElementById("dg-pa-pager-status");
+        if (st) {
+          st.textContent =
+            "Найдено: " +
+            fmt(state.total, 0) +
+            "; страница " +
+            page +
+            "/" +
+            pages +
+            "; показано: " +
+            shown;
+        }
+        var prev = document.getElementById("dg-pa-prev");
+        var next = document.getElementById("dg-pa-next");
+        if (prev) prev.disabled = state.offset <= 0;
+        if (next) next.disabled = state.offset + state.limit >= state.total;
+        paRefreshFloatingAfterLayout();
+      }
+
+      function renderKpis(totals) {
+        var t = totals || {};
+        function set(id, v, digits) {
+          var el = document.getElementById(id);
+          if (el) el.textContent = fmt(v, digits != null ? digits : 0);
+        }
+        set("dg-pa-kpi-skus", t.skus_total);
+        set("dg-pa-kpi-revenue", t.sales_revenue);
+        set("dg-pa-kpi-qty", t.sales_qty);
+        set("dg-pa-kpi-stock", t.stock_value_rub);
+        set("dg-pa-kpi-minstock", t.min_stock_sum);
+        set("dg-pa-kpi-dead-ms", t.dead_with_min_stock);
+        set("dg-pa-kpi-boost", t.in_boost);
+        set("dg-pa-kpi-exit", t.in_exit_path);
+      }
+
+      function loadManagersList() {
+        var sel = document.getElementById("dg-pa-manager");
+        if (!sel) return Promise.resolve();
+        var keep = String(state.pending.manager || sel.value || "");
+        return fetch("/api/product-analysis/managers", { credentials: "same-origin" })
+          .then(function (r) { return r.json(); })
+          .then(function (j) {
+            var managers = (j && j.success && Array.isArray(j.managers)) ? j.managers : [];
+            sel.innerHTML =
+              '<option value="">— все —</option>' +
+              managers
+                .map(function (m) {
+                  var v = String(m || "").trim();
+                  if (!v) return "";
+                  return '<option value="' + esc(v) + '">' + esc(v) + "</option>";
+                })
+                .join("");
+            if (keep) sel.value = keep;
+          })
+          .catch(function () {});
+      }
+
+      function loadProjectsList() {
+        var days = Number(state.pending.days) || 90;
+        var status = document.getElementById("dg-pa-projects-status");
+        var list = document.getElementById("dg-pa-projects-list");
+        if (status) status.textContent = "Загрузка проектов…";
+        return fetch("/api/product-analysis/projects?days=" + encodeURIComponent(days), {
+          credentials: "same-origin",
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (j) {
+            if (!j || !j.success) throw new Error((j && j.error) || "Ошибка проектов");
+            var projects = j.projects || [];
+            var selected = {};
+            (state.pending.project_uuids || []).forEach(function (u) { selected[u] = 1; });
+            if (list) {
+              list.innerHTML = projects
+                .map(function (p) {
+                  var u = String(p.uuid || "").toLowerCase();
+                  var chk = selected[u] ? " checked" : "";
+                  return (
+                    '<div class="form-check">' +
+                    '<input class="form-check-input" type="checkbox" value="' +
+                    esc(u) +
+                    '" id="dg-pa-pr-' +
+                    esc(u) +
+                    '"' +
+                    chk +
+                    " />" +
+                    '<label class="form-check-label small" for="dg-pa-pr-' +
+                    esc(u) +
+                    '">' +
+                    esc(p.name) +
+                    " <span class=\"text-muted\">(" +
+                    fmt(p.count, 0) +
+                    ")</span></label></div>"
+                  );
+                })
+                .join("");
+            }
+            if (status) status.textContent = "Проектов: " + projects.length;
+            return projects;
+          });
+      }
+
+      function syncProjectModeUi() {
+        var selected =
+          document.getElementById("dg-pa-project-mode-selected") &&
+          document.getElementById("dg-pa-project-mode-selected").checked;
+        state.pending.project_mode = selected ? "selected" : "all";
+        var wrap = document.getElementById("dg-pa-projects-wrap");
+        var selAll = document.getElementById("dg-pa-projects-select-all");
+        var clearBtn = document.getElementById("dg-pa-projects-clear");
+        var reloadBtn = document.getElementById("dg-pa-projects-reload");
+        var hint = document.getElementById("dg-pa-project-mode-hint");
+        if (wrap) wrap.classList.toggle("d-none", !selected);
+        if (selAll) selAll.classList.toggle("d-none", !selected);
+        if (clearBtn) clearBtn.classList.toggle("d-none", !selected);
+        if (reloadBtn) reloadBtn.classList.toggle("d-none", !selected);
+        if (hint) hint.classList.toggle("d-none", selected);
+        syncDirtyApply();
+      }
+
+      function applyDefaultMarketplaceProjectSelection() {
+        var projects = [];
+        var list = document.getElementById("dg-pa-projects-list");
+        if (!list) return;
+        Array.prototype.slice.call(list.querySelectorAll('input[type="checkbox"]')).forEach(function (el) {
+          projects.push({ uuid: el.value, name: (el.nextElementSibling && el.nextElementSibling.textContent) || "" });
+        });
+        // re-read names from labels more carefully
+        projects = [];
+        Array.prototype.slice.call(list.querySelectorAll(".form-check")).forEach(function (wrap) {
+          var inp = wrap.querySelector("input");
+          var lab = wrap.querySelector("label");
+          if (!inp) return;
+          projects.push({
+            uuid: inp.value,
+            name: lab ? String(lab.textContent || "").replace(/\(\d[\d\s]*\)\s*$/, "").trim() : "",
+          });
+        });
+        var uuids = pickDefaultMarketplaceProjectUuids(projects);
+        Array.prototype.slice.call(list.querySelectorAll('input[type="checkbox"]')).forEach(function (el) {
+          el.checked = uuids.indexOf(String(el.value).toLowerCase()) >= 0;
+        });
+        state.pending.project_uuids = uuids;
+      }
+
+      function loadOverview() {
+        var q = queryParams();
+        return fetch("/api/product-analysis/overview?" + q.toString(), { credentials: "same-origin" })
+          .then(function (r) { return r.json(); })
+          .then(function (j) {
+            if (!j || !j.success) throw new Error((j && j.error) || "Ошибка сводки");
+            renderKpis(j.totals);
+            return j;
+          });
+      }
+
+      function loadRanking() {
+        var q = queryParams();
+        return fetch("/api/product-analysis/ranking?" + q.toString(), { credentials: "same-origin" })
+          .then(function (r) { return r.json(); })
+          .then(function (j) {
+            if (!j || !j.success) throw new Error((j && j.error) || "Ошибка списка");
+            state.rows = j.rows || [];
+            state.total = Number(j.total || 0);
+            if (j.sort_by) state.sort_by = j.sort_by;
+            if (j.sort_dir) state.sort_dir = j.sort_dir;
+            renderTable();
+            scheduleUrlSync();
+            return j;
+          });
+      }
+
+      function loadAll() {
+        return Promise.all([loadOverview(), loadRanking()]).catch(function (e) {
+          if (window.DatagonNotify && window.DatagonNotify.toast) {
+            window.DatagonNotify.toast({ type: "danger", message: (e && e.message) || "Ошибка загрузки" });
+          }
+        });
+      }
+
+      function runBulkDecision(action, label) {
+        var codes = selectedCodes();
+        var body = Object.assign({ action: action, dry_run: 1 }, filterBodyForBulk());
+        if (codes.length) body.codes = codes;
+        var filtersHint = filtersHintText(codes.length);
+        showActionLog(
+          "info",
+          "<strong>" +
+            esc(label) +
+            "</strong><br>Фильтры: " +
+            esc(filtersHint) +
+            "<br>Preflight…"
+        );
+        var t0 = Date.now();
+        var timer = setInterval(function () {
+          var el = document.getElementById("dg-pa-action-log");
+          if (!el || el.classList.contains("d-none")) return;
+          var sec = Math.round((Date.now() - t0) / 1000);
+          el.innerHTML =
+            el.innerHTML.replace(/<br>идёт.*/i, "") +
+            "<br>идёт, прошло " +
+            sec +
+            " с…";
+        }, 1000);
+
+        function stopTimer() { clearInterval(timer); }
+
+        var btn = document.getElementById("dg-pa-act-" + (action === "boost_failed" ? "boost-failed" : action === "do_not_order_on" ? "dno-on" : action === "do_not_order_off" ? "dno-off" : action === "lock_proposed_zero" ? "lock-prop" : action === "unlock_proposed" ? "unlock-prop" : action));
+        var run = function () {
+          return fetch("/api/product-analysis/decision/bulk", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          })
+            .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+            .then(function (x) {
+              if (!x.ok || !x.j.success) throw new Error((x.j && x.j.error) || "Ошибка preflight");
+              var would = Number(x.j.would_update || x.j.total || 0);
+              showActionLog(
+                "warning",
+                "<strong>" +
+                  esc(label) +
+                  "</strong><br>Фильтры: " +
+                  esc(filtersHint) +
+                  formatPatchFieldsHtml(x.j.patch_fields) +
+                  "<br>Будет обновлено: <strong>" +
+                  would +
+                  "</strong>" +
+                  (codes.length ? " (отмеченные строки)." : " по фильтру/пресету — нужно доп. подтверждение.")
+              );
+              if (!would) {
+                stopTimer();
+                showActionLog("info", "Нечего обновлять по текущим фильтрам.");
+                return;
+              }
+              return confirmBulkWrite({
+                label: label,
+                would: would,
+                codesLen: codes.length,
+              }).then(function (ok) {
+                if (!ok) {
+                  stopTimer();
+                  showActionLog("secondary", "Отменено. Preflight: " + would + " SKU.");
+                  return;
+                }
+                body.dry_run = 0;
+                return fetch("/api/product-analysis/decision/bulk", {
+                  method: "POST",
+                  credentials: "same-origin",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(body),
+                })
+                  .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+                  .then(function (y) {
+                    stopTimer();
+                    if (!y.ok || !y.j.success) throw new Error((y.j && y.j.error) || "Ошибка записи");
+                    var errHtml = "";
+                    if (y.j.errors && y.j.errors.length) {
+                      errHtml =
+                        "<ul>" +
+                        y.j.errors
+                          .map(function (e) {
+                            return "<li>" + esc(e.code) + ": " + esc(e.error) + "</li>";
+                          })
+                          .join("") +
+                        "</ul>";
+                    }
+                    showActionLog(
+                      "success",
+                      "<strong>" +
+                        esc(label) +
+                        " — готово</strong><br>Фильтры: " +
+                        esc(filtersHint) +
+                        formatPatchFieldsHtml(y.j.patch_fields) +
+                        "<br>SKU: " +
+                        (y.j.total || 0) +
+                        "; записано: " +
+                        (y.j.updated || 0) +
+                        "; изменений полей: " +
+                        (y.j.changed_fields || 0) +
+                        "; ошибок: " +
+                        (y.j.failed || 0) +
+                        "; " +
+                        (y.j.duration_sec || 0) +
+                        " с" +
+                        errHtml +
+                        "<br><span class=\"text-muted\">История — кнопка «лог» в колонке «Решение».</span>"
+                    );
+                    paTipCache = {};
+                    return loadAll();
+                  });
+              });
+            })
+            .catch(function (e) {
+              stopTimer();
+              showActionLog("danger", "Ошибка: " + esc((e && e.message) || e));
+            });
+        };
+        if (window.DatagonNotify && window.DatagonNotify.busyRun && btn) {
+          return window.DatagonNotify.busyRun(btn, run);
+        }
+        return run();
+      }
+
+      function runZeroMinStock() {
+        var codes = selectedCodes();
+        var body = Object.assign(
+          { force_zero: 1, dry_run: 1, preset: state.preset === "all" ? "dead_min_stock" : state.preset },
+          filterBodyForBulk()
+        );
+        if (codes.length) body.codes = codes;
+        var filtersHint = filtersHintText(codes.length);
+        showActionLog(
+          "info",
+          "<strong>Обнулить неснижаемый</strong><br>" +
+            esc(filtersHint) +
+            "<br>Preflight…"
+        );
+        var btn = document.getElementById("dg-pa-act-zero-ms");
+        var run = function () {
+          return fetch("/api/product-analysis/min-stock/apply", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          })
+            .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+            .then(function (x) {
+              if (!x.ok || !x.j.success) throw new Error((x.j && x.j.error) || "Ошибка preflight");
+              var would = Number(x.j.would_update || x.j.to_update || 0);
+              var sample = (x.j.sample || [])
+                .slice(0, 10)
+                .map(function (s) {
+                  return esc(s.code) + ": " + s.from + " → " + s.to;
+                })
+                .join("; ");
+              showActionLog(
+                "warning",
+                "К записи: <strong>" +
+                  would +
+                  "</strong>; без изменений: " +
+                  (x.j.skipped || 0) +
+                  (sample ? "<br>Примеры: " + sample : "") +
+                  (codes.length ? "" : "<br>Галочек нет — нужно доп. подтверждение по фильтру.")
+              );
+              if (!would) return;
+              return confirmBulkWrite({
+                label: "Обнулить неснижаемый",
+                would: would,
+                codesLen: codes.length,
+              }).then(function (ok) {
+                if (!ok) {
+                  showActionLog("secondary", "Отменено. Preflight: " + would);
+                  return;
+                }
+                body.dry_run = 0;
+                return fetch("/api/product-analysis/min-stock/apply", {
+                  method: "POST",
+                  credentials: "same-origin",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(body),
+                })
+                  .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+                  .then(function (y) {
+                    if (!y.ok || !y.j.success) throw new Error((y.j && y.j.error) || "Ошибка записи");
+                    var errHtml = "";
+                    if (y.j.errors && y.j.errors.length) {
+                      errHtml =
+                        "<ul>" +
+                        y.j.errors
+                          .map(function (e) {
+                            return "<li>" + esc(e.code) + ": " + esc(e.error) + "</li>";
+                          })
+                          .join("") +
+                        "</ul>";
+                    }
+                    showActionLog(
+                      "success",
+                      "<strong>НС обнулён</strong><br>обработано: " +
+                        (y.j.total || 0) +
+                        "; записано: " +
+                        (y.j.updated || 0) +
+                        "; пропущено: " +
+                        (y.j.skipped || 0) +
+                        "; ошибок: " +
+                        (y.j.failed || 0) +
+                        "; " +
+                        (y.j.duration_sec || 0) +
+                        " с" +
+                        errHtml
+                    );
+                    return loadAll();
+                  });
+              });
+            })
+            .catch(function (e) {
+              showActionLog("danger", "Ошибка: " + esc((e && e.message) || e));
+            });
+        };
+        if (window.DatagonNotify && window.DatagonNotify.busyRun && btn) {
+          return window.DatagonNotify.busyRun(btn, run);
+        }
+        return run();
+      }
+
+      function columnControls() {
+        var wrap = document.getElementById("dg-pa-toolbox-panels");
+        var colsPanel = document.getElementById("dg-pa-columns-panel");
+        var widthsPanel = document.getElementById("dg-pa-widths-panel");
+        var list = document.getElementById("dg-pa-columns-list");
+        var wList = document.getElementById("dg-pa-widths-list");
+
+        function syncWrap() {
+          var open =
+            (colsPanel && !colsPanel.classList.contains("d-none") && colsPanel.offsetParent !== null && wrap && !wrap.classList.contains("d-none")) ||
+            (widthsPanel && widthsPanel.style.display !== "none");
+          // simpler: wrap visible if either panel shown
+          var showCols = colsPanel && colsPanel.getAttribute("data-open") === "1";
+          var showW = widthsPanel && widthsPanel.getAttribute("data-open") === "1";
+          if (wrap) wrap.classList.toggle("d-none", !(showCols || showW));
+          if (colsPanel) colsPanel.style.display = showCols ? "" : "none";
+          if (widthsPanel) widthsPanel.style.display = showW ? "" : "none";
+        }
+
+        function renderColumnControls() {
+          if (!list) return;
+          list.innerHTML = PA_COLS.map(function (c) {
+            if (c[0] === "_sel" || c[0] === "_expand") return "";
+            var on = visibleCols.indexOf(c[0]) >= 0;
+            return (
+              '<label class="form-check"><input class="form-check-input" type="checkbox" data-col="' +
+              esc(c[0]) +
+              '"' +
+              (on ? " checked" : "") +
+              " /> " +
+              esc(c[1]) +
+              "</label>"
+            );
+          }).join("");
+        }
+
+        function renderWidthControls() {
+          if (!wList) return;
+          wList.innerHTML = PA_COLS.filter(function (c) {
+            return visibleCols.indexOf(c[0]) >= 0 && c[0] !== "_sel";
+          })
+            .map(function (c) {
+              var w = colWidths[c[0]] || 100;
+              return (
+                '<div class="mb-1"><label class="small">' +
+                esc(c[1]) +
+                '</label><input type="range" min="60" max="400" value="' +
+                w +
+                '" data-col="' +
+                esc(c[0]) +
+                '" class="form-range" /></div>'
+              );
+            })
+            .join("");
+        }
+
+        document.getElementById("dg-pa-columns-toggle").addEventListener("click", function (ev) {
+          ev.stopPropagation();
+          var open = colsPanel.getAttribute("data-open") === "1";
+          colsPanel.setAttribute("data-open", open ? "0" : "1");
+          if (!open) widthsPanel.setAttribute("data-open", "0");
+          renderColumnControls();
+          syncWrap();
+        });
+        document.getElementById("dg-pa-widths-toggle").addEventListener("click", function (ev) {
+          ev.stopPropagation();
+          var open = widthsPanel.getAttribute("data-open") === "1";
+          widthsPanel.setAttribute("data-open", open ? "0" : "1");
+          if (!open) colsPanel.setAttribute("data-open", "0");
+          renderWidthControls();
+          syncWrap();
+        });
+        if (list) {
+          list.addEventListener("change", function (ev) {
+            var inp = ev.target.closest("input[data-col]");
+            if (!inp) return;
+            var key = inp.getAttribute("data-col");
+            if (inp.checked) {
+              if (visibleCols.indexOf(key) < 0) visibleCols.push(key);
+            } else {
+              visibleCols = visibleCols.filter(function (k) { return k !== key; });
+              if (visibleCols.indexOf("_expand") < 0) visibleCols.unshift("_expand");
+              if (visibleCols.indexOf("_sel") < 0) visibleCols.splice(1, 0, "_sel");
+            }
+            saveVisibleCols(visibleCols);
+            renderTable();
+          });
+        }
+        if (wList) {
+          wList.addEventListener("input", function (ev) {
+            var inp = ev.target.closest("input[data-col]");
+            if (!inp) return;
+            colWidths[inp.getAttribute("data-col")] = Number(inp.value) || 100;
+            saveColWidths(colWidths);
+            renderTable();
+          });
+        }
+        var btnAll = document.getElementById("dg-pa-columns-all");
+        var btnNone = document.getElementById("dg-pa-columns-none");
+        var btnDef = document.getElementById("dg-pa-columns-default");
+        if (btnAll) {
+          btnAll.addEventListener("click", function () {
+            visibleCols = PA_DEFAULT_VISIBLE.slice();
+            saveVisibleCols(visibleCols);
+            renderColumnControls();
+            renderTable();
+          });
+        }
+        if (btnNone) {
+          btnNone.addEventListener("click", function () {
+            visibleCols = ["_expand", "_sel", "code", "name"];
+            saveVisibleCols(visibleCols);
+            renderColumnControls();
+            renderTable();
+          });
+        }
+        if (btnDef) {
+          btnDef.addEventListener("click", function () {
+            visibleCols = PA_DEFAULT_VISIBLE.slice();
+            saveVisibleCols(visibleCols);
+            renderColumnControls();
+            renderTable();
+          });
+        }
+        var wDef = document.getElementById("dg-pa-widths-default");
+        if (wDef) {
+          wDef.addEventListener("click", function () {
+            colWidths = Object.assign({}, PA_DEFAULT_WIDTHS);
+            saveColWidths(colWidths);
+            renderWidthControls();
+            renderTable();
+          });
+        }
+        document.addEventListener("click", function (ev) {
+          if (!wrap || wrap.classList.contains("d-none")) return;
+          if (ev.target.closest("#dg-pa-toolbox-panels") || ev.target.closest("#dg-pa-columns-toggle") || ev.target.closest("#dg-pa-widths-toggle")) return;
+          colsPanel.setAttribute("data-open", "0");
+          widthsPanel.setAttribute("data-open", "0");
+          syncWrap();
+        });
+        if (colsPanel) colsPanel.setAttribute("data-open", "0");
+        if (widthsPanel) widthsPanel.setAttribute("data-open", "0");
+        syncWrap();
+      }
+
+      function bindHeaderSearchMirror() {
+        var a = document.getElementById("dg-pa-search");
+        var b = document.getElementById("dg-pa-table-search-mirror");
+        if (!a || !b) return;
+        var syncing = false;
+        function sync(from, to) {
+          if (syncing) return;
+          syncing = true;
+          to.value = from.value;
+          syncing = false;
+        }
+        a.addEventListener("input", function () {
+          state.pending.search = a.value;
+          sync(a, b);
+          syncDirtyApply();
+        });
+        b.addEventListener("input", function () {
+          state.pending.search = b.value;
+          sync(b, a);
+          syncDirtyApply();
+        });
+        function onEnter(ev) {
+          if (ev.key !== "Enter") return;
+          ev.preventDefault();
+          document.getElementById("dg-pa-apply").click();
+        }
+        function onEsc(ev) {
+          if (ev.key !== "Escape") return;
+          a.value = "";
+          b.value = "";
+          state.pending.search = "";
+          document.getElementById("dg-pa-apply").click();
+        }
+        a.addEventListener("keydown", onEnter);
+        b.addEventListener("keydown", onEnter);
+        a.addEventListener("keydown", onEsc);
+        b.addEventListener("keydown", onEsc);
+      }
+
+      function initCollapse() {
+        function bind(btnId, bodyId, key) {
+          var btn = document.getElementById(btnId);
+          var body = document.getElementById(bodyId);
+          if (!btn || !body) return;
+          function apply(collapsed) {
+            body.classList.toggle("d-none", collapsed);
+            btn.textContent = collapsed ? "Развернуть" : "Свернуть";
+            try { localStorage.setItem(key, collapsed ? "1" : "0"); } catch (e) {}
+          }
+          var saved = false;
+          try { saved = localStorage.getItem(key) === "1"; } catch (e) {}
+          apply(saved);
+          btn.addEventListener("click", function () {
+            apply(body.classList.contains("d-none") ? false : true);
+            paRefreshFloatingAfterLayout();
+          });
+        }
+        bind("dg-pa-filters-toggle", "dg-pa-filters-body", FILTERS_KEY);
+        bind("dg-pa-table-toggle", "dg-pa-table-body", TABLE_COLLAPSE_KEY);
+        bind("dg-pa-summary-toggle", "dg-pa-summary-body", SUMMARY_COLLAPSE_KEY);
+      }
+
+      function init() {
+        renderPresetChips();
+        columnControls();
+        bindHeaderSearchMirror();
+        initCollapse();
+
+        if (window.DatagonFilterFieldsVisibility && window.DatagonFilterFieldsVisibility.init) {
+          window.DatagonFilterFieldsVisibility.init({
+            storageKeyPrefix: "datagon_product_analysis_filter_fields_v2",
+            attr: "data-dg-pa-filter-field",
+            togglesRootId: "dg-pa-filter-fields-toggles",
+            idPrefix: "dg-pa-ff-",
+            exposeAs: "DatagonProductAnalysisFilterBlocks",
+            fieldGroups: [
+              {
+                title: "Основные",
+                items: [
+                  { key: "days", title: "Период" },
+                  { key: "new_stock_days", title: "Новый на складе" },
+                  { key: "exclude_new_on_stock", title: "Искл. новые из мёртвых" },
+                  { key: "search", title: "Поиск" },
+                  { key: "supplier", title: "Поставщик" },
+                  { key: "manager", title: "Менеджер" },
+                  { key: "projects", title: "Проекты" },
+                  { key: "presets", title: "Пресеты" },
+                  { key: "page_size", title: "На странице" },
+                ],
+              },
+            ],
+          });
+        }
+
+        document.getElementById("dg-pa-days").addEventListener("change", function () {
+          state.pending.days = Number(this.value) || 90;
+          syncDirtyApply();
+          // Счётчики в скобках завязаны на период — обновляем список сразу.
+          loadProjectsList();
+        });
+        document.getElementById("dg-pa-new-stock-days").addEventListener("change", function () {
+          state.pending.new_stock_days = Number(this.value) || 30;
+          syncDirtyApply();
+        });
+        document.getElementById("dg-pa-exclude-new").addEventListener("change", function () {
+          state.pending.exclude_new_on_stock = !!this.checked;
+          syncDirtyApply();
+        });
+        document.getElementById("dg-pa-search").addEventListener("input", function () {
+          state.pending.search = this.value;
+          syncDirtyApply();
+        });
+        document.getElementById("dg-pa-supplier").addEventListener("input", function () {
+          state.pending.supplier = this.value;
+          syncDirtyApply();
+        });
+        document.getElementById("dg-pa-manager").addEventListener("change", function () {
+          state.pending.manager = this.value;
+          syncDirtyApply();
+        });
+        document.getElementById("dg-pa-page-size").addEventListener("change", function () {
+          state.limit = Number(this.value) || 100;
+          var foot = document.getElementById("dg-pa-footer-page-size");
+          if (foot) foot.value = String(state.limit);
+          state.offset = 0;
+          loadRanking();
+        });
+        document.getElementById("dg-pa-footer-page-size").addEventListener("change", function () {
+          state.limit = Number(this.value) || 100;
+          var top = document.getElementById("dg-pa-page-size");
+          if (top) top.value = String(state.limit);
+          state.offset = 0;
+          loadRanking();
+        });
+
+        document.querySelectorAll('input[name="dg-pa-project-mode"]').forEach(function (el) {
+          el.addEventListener("change", function () {
+            syncProjectModeUi();
+          });
+        });
+        document.getElementById("dg-pa-projects-list").addEventListener("change", function () {
+          state.pending.project_uuids = readPendingProjectUuids();
+          syncDirtyApply();
+        });
+        document.getElementById("dg-pa-projects-reload").addEventListener("click", function () {
+          loadProjectsList().then(syncDirtyApply);
+        });
+        document.getElementById("dg-pa-projects-select-all").addEventListener("click", function () {
+          Array.prototype.slice
+            .call(document.querySelectorAll('#dg-pa-projects-list input[type="checkbox"]'))
+            .forEach(function (el) { el.checked = true; });
+          state.pending.project_uuids = readPendingProjectUuids();
+          syncDirtyApply();
+        });
+        document.getElementById("dg-pa-projects-clear").addEventListener("click", function () {
+          Array.prototype.slice
+            .call(document.querySelectorAll('#dg-pa-projects-list input[type="checkbox"]'))
+            .forEach(function (el) { el.checked = false; });
+          state.pending.project_uuids = [];
+          syncDirtyApply();
+        });
+
+        document.getElementById("dg-pa-presets").addEventListener("click", function (ev) {
+          var btn = ev.target.closest("[data-preset]");
+          if (!btn) return;
+          state.pending.preset = btn.getAttribute("data-preset") || "all";
+          renderPresetChips();
+          syncDirtyApply();
+          var run = function () { return commitFilters({ fromPreset: true }); };
+          if (window.DatagonNotify && window.DatagonNotify.busyRun) {
+            window.DatagonNotify.busyRun(btn, run);
+          } else {
+            run();
+          }
+        });
+
+        document.getElementById("dg-pa-apply").addEventListener("click", function () {
+          var btn = this;
+          var run = function () { return commitFilters(); };
+          if (window.DatagonNotify && window.DatagonNotify.busyRun) {
+            window.DatagonNotify.busyRun(btn, run);
+          } else run();
+        });
+        document.getElementById("dg-pa-reset").addEventListener("click", function () {
+          hideActionLog();
+          state.pending = {
+            days: 90,
+            new_stock_days: 30,
+            exclude_new_on_stock: true,
+            search: "",
+            supplier: "",
+            manager: "",
+            preset: "all",
+            project_mode: "selected",
+            project_uuids: [],
+          };
+          state.limit = 100;
+          state.offset = 0;
+          state.sort_by = "sales_revenue";
+          state.sort_dir = "desc";
+          writePendingToForm();
+          syncProjectModeUi();
+          loadProjectsList().then(function () {
+            applyDefaultMarketplaceProjectSelection();
+            return commitFilters();
+          });
+        });
+        document.getElementById("dg-pa-export").addEventListener("click", function () {
+          window.location.href = "/api/product-analysis/export?" + queryParams().toString();
+        });
+
+        document.getElementById("dg-pa-prev").addEventListener("click", function () {
+          state.offset = Math.max(0, state.offset - state.limit);
+          loadRanking();
+        });
+        document.getElementById("dg-pa-next").addEventListener("click", function () {
+          if (state.offset + state.limit < state.total) {
+            state.offset += state.limit;
+            loadRanking();
+          }
+        });
+
+        document.getElementById("dg-pa-thead").addEventListener("click", function (ev) {
+          var sel = window.getSelection && window.getSelection();
+          if (sel && String(sel.toString() || "").trim()) return;
+          var th = ev.target.closest("th[data-col]");
+          if (!th) return;
+          var col = th.getAttribute("data-col");
+          if (!col || col === "_sel" || col === "_expand") return;
+          if (state.sort_by === col) {
+            state.sort_dir = state.sort_dir === "asc" ? "desc" : "asc";
+          } else {
+            state.sort_by = col;
+            state.sort_dir = "desc";
+          }
+          state.offset = 0;
+          loadRanking();
+        });
+
+        document.getElementById("dg-pa-tbody").addEventListener("change", function (ev) {
+          var noteInp = ev.target.closest(".dg-pa-note-input");
+          if (noteInp) {
+            saveDecisionNoteFromInput(noteInp);
+            return;
+          }
+          var sel = ev.target.closest(".dg-pa-lc-select");
+          if (sel) {
+            var codeLc = sel.getAttribute("data-code");
+            var next = String(sel.value || "none");
+            var prev = String(sel.getAttribute("data-prev") || "none");
+            if (!codeLc || next === prev) return;
+            var hit = LC_ROW_OPTIONS.filter(function (o) { return o.value === next; })[0];
+            var action = hit ? hit.action : null;
+            if (!action) return;
+            postRowDecision(codeLc, { action: action }, sel);
+            return;
+          }
+          var dno = ev.target.closest(".dg-pa-dno-check");
+          if (dno) return;
+          var inp = ev.target.closest(".dg-pa-row-sel");
+          if (!inp) return;
+          state.selected[inp.getAttribute("data-code")] = !!inp.checked;
+        });
+        document.getElementById("dg-pa-tbody").addEventListener("keydown", function (ev) {
+          var noteInp = ev.target.closest(".dg-pa-note-input");
+          if (!noteInp) return;
+          if (ev.key === "Enter" && (ev.ctrlKey || ev.metaKey)) {
+            ev.preventDefault();
+            noteInp.blur();
+            return;
+          }
+          if (ev.key === "Escape") {
+            ev.preventDefault();
+            noteInp.value = noteInp.getAttribute("data-prev") || "";
+            noteInp.blur();
+          }
+        });
+        document.getElementById("dg-pa-tbody").addEventListener("click", function (ev) {
+          if (
+            ev.target.closest(".dg-pa-lc-select") ||
+            ev.target.closest(".dg-pa-lc-log") ||
+            ev.target.closest(".dg-pa-note-input") ||
+            ev.target.closest(".dg-pa-note-wrap")
+          ) {
+            ev.stopPropagation();
+          }
+          var unlockBtn = ev.target.closest(".dg-pa-unlock-btn");
+          if (unlockBtn) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            var unlockCode = unlockBtn.getAttribute("data-code");
+            if (!unlockCode) return;
+            postRowDecision(unlockCode, { action: "unlock_proposed" }, unlockBtn);
+            return;
+          }
+          if (
+            ev.target.closest("a") ||
+            ev.target.closest(".dg-pa-row-sel") ||
+            ev.target.closest(".dg-pa-detail-row") ||
+            ev.target.closest(".dg-pa-lc-select") ||
+            ev.target.closest(".dg-pa-note-input") ||
+            ev.target.closest(".dg-pa-note-wrap")
+          ) {
+            return;
+          }
+          var tr = ev.target.closest("tr.dg-pa-row-expandable");
+          if (!tr) return;
+          var cell = ev.target.closest("td");
+          if (!cell) return;
+          if (
+            cell.classList.contains("dg-pa-expand-cell") ||
+            cell.cellIndex === 0 ||
+            (cell.previousElementSibling == null && cell.querySelector(".dg-pa-row-chevron"))
+          ) {
+            openDetail(tr.getAttribute("data-code"), tr.getAttribute("data-name"));
+          }
+        });
+        var detailClose = document.getElementById("dg-pa-detail-close");
+        if (detailClose) {
+          detailClose.addEventListener("click", function () {
+            closeDetail();
+          });
+        }
+
+        document.getElementById("dg-pa-act-boost").addEventListener("click", function () {
+          runBulkDecision("boost", "Буст (реклама)");
+        });
+        document.getElementById("dg-pa-act-boost-failed").addEventListener("click", function () {
+          runBulkDecision("boost_failed", "Буст не сработал");
+        });
+        document.getElementById("dg-pa-act-clearance").addEventListener("click", function () {
+          runBulkDecision("clearance", "Распродажа (слить остаток)");
+        });
+        document.getElementById("dg-pa-act-exit").addEventListener("click", function () {
+          runBulkDecision("exit", "Вывод из ассортимента");
+        });
+        document.getElementById("dg-pa-act-top").addEventListener("click", function () {
+          runBulkDecision("top", "Топ-товар");
+        });
+        document.getElementById("dg-pa-act-hold").addEventListener("click", function () {
+          runBulkDecision("hold", "Держать в ассортименте");
+        });
+        document.getElementById("dg-pa-act-lock-prop").addEventListener("click", function () {
+          runBulkDecision("lock_proposed_zero", "Зафиксировать предлагаемый = 0");
+        });
+        document.getElementById("dg-pa-act-unlock-prop").addEventListener("click", function () {
+          runBulkDecision("unlock_proposed", "Снять фиксацию предлагаемого");
+        });
+        document.getElementById("dg-pa-act-zero-ms").addEventListener("click", function () {
+          runZeroMinStock();
+        });
+
+        updatePaStickyTopVar();
+        bindPaDecisionLogTips();
+        window.addEventListener("scroll", onScrollPaFloatingHeader, { passive: true });
+        window.addEventListener("resize", function () {
+          updatePaStickyTopVar();
+          paRefreshFloatingAfterLayout();
+        });
+        (function bindPaScrollContainers() {
+          var mainOuter = document.querySelector(".app-main__outer");
+          var scrollOuter = document.getElementById("dg-pa-table-scroll-outer");
+          if (mainOuter) mainOuter.addEventListener("scroll", onScrollPaFloatingHeader, { passive: true });
+          if (scrollOuter) scrollOuter.addEventListener("scroll", onScrollPaFloatingHeader, { passive: true });
+        })();
+
+        loadPresetsMeta();
+        loadManagersList();
+        var urlInfo = parseUrlToPending();
+        syncProjectModeUi();
+        loadProjectsList()
+          .then(function () {
+            if (urlInfo.hasProjectUuids) {
+              applyPendingProjectCheckboxes();
+              state.pending.project_uuids = readPendingProjectUuids();
+            } else if (!urlInfo.touchedProjects) {
+              applyDefaultMarketplaceProjectSelection();
+            } else if (urlInfo.projectModeAll) {
+              state.pending.project_uuids = [];
+            } else {
+              applyDefaultMarketplaceProjectSelection();
+            }
+            syncDirtyApply();
+            renderPresetChips();
+            var commitOpts = {};
+            if (urlInfo.fromUrl && state.pending.preset && state.pending.preset !== "all" && !urlInfo.hasSort) {
+              commitOpts.fromPreset = true;
+            }
+            if ((Number(state.offset) || 0) > 0) commitOpts.preserveOffset = true;
+            return commitFilters(commitOpts);
+          })
+          .catch(function () {
+            syncDirtyApply();
+            return commitFilters();
+          });
+      }
+
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", init);
+      } else {
+        init();
+      }
+    })();
+  </script>

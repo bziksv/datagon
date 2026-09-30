@@ -56,6 +56,31 @@
       padding: 8px;
     }
     .dg-pu-header-search { min-width: 0; }
+    .dg-pu-proposed-lock-row {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      margin-top: 2px;
+      flex-wrap: wrap;
+    }
+    .dg-pu-lock-badge {
+      display: inline-flex;
+      align-items: center;
+      font-size: 11px;
+      font-weight: 600;
+      line-height: 1.2;
+      padding: 0.1rem 0.35rem;
+      border-radius: 0.25rem;
+      background: #fff3cd;
+      color: #856404;
+      border: 1px solid #ffeeba;
+      white-space: nowrap;
+    }
+    .dg-pu-unlock-proposed {
+      font-size: 11px;
+      padding: 0.05rem 0.35rem;
+      line-height: 1.3;
+    }
     .dg-pu-header-search .input-group-text {
       border-color: #d1d5db;
       font-size: 14px;
@@ -990,6 +1015,7 @@
                     <ul class="metismenu-container">
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="dashboard" href="/dashboard.html"><i class="metismenu-icon pe-7s-rocket"></i>Дашборд</a></li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="my-sites" href="/my-sites.html"><i class="metismenu-icon pe-7s-global"></i>Мои сайты</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="network-prices" href="/network-prices.html"><i class="metismenu-icon pe-7s-shuffle"></i>Цены сети</a></li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="my-products" href="/my-products.html"><i class="metismenu-icon pe-7s-box2"></i>Мои товары (сайты)</a></li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="moysklad" href="/moysklad.html"><i class="metismenu-icon pe-7s-shopbag"></i>Мой Склад (товары)</a></li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="medmarket" href="/medmarket.html" title="Стыковка кода МС с кодом товара для Медмаркета"><i class="metismenu-icon pe-7s-id"></i>Медмаркет</a></li>
@@ -1194,6 +1220,7 @@
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="purchase" href="/purchase.html" title="Закупки товары: планирование, неснижаемые остатки, кратность"><i class="metismenu-icon pe-7s-cart"></i>Закупки товары</a></li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="suppliers" href="/suppliers.html" title="Поставщики: сводка по закупкам и настройки"><i class="metismenu-icon pe-7s-id"></i>Поставщики</a></li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="supplier-analysis" href="/supplier-analysis.html" title="Продажи, оборот и тренды по поставщикам"><i class="metismenu-icon pe-7s-graph2"></i>Анализ поставщиков</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="product-analysis" href="/product-analysis.html" title="Продажи по SKU: топы, мёртвые, жизненный цикл и неснижаемый"><i class="metismenu-icon pe-7s-graph1"></i>Анализ товаров</a></li>
                     </ul>
                   </div>
                 </div>
@@ -3217,8 +3244,37 @@
           var wrapFp = document.createElement("div");
           wrapFp.className = "dg-pu-formula-proposed-cell";
           var fp = document.createElement("div");
+          fp.className = "dg-pu-proposed-main";
           var fpn = r.formula_proposed_min_stock;
+          var lockedProposed =
+            !!r.lock_proposed_min_stock ||
+            (r.proposed_min_stock != null &&
+              r.proposed_min_stock !== "" &&
+              Number.isFinite(Number(r.proposed_min_stock)));
           fp.textContent = fpn != null && fpn !== "" && Number.isFinite(Number(fpn)) ? fmtNum(fpn) : "—";
+          wrapFp.appendChild(fp);
+
+          if (lockedProposed) {
+            var lockRow = document.createElement("div");
+            lockRow.className = "dg-pu-proposed-lock-row";
+            var badge = document.createElement("span");
+            badge.className = "dg-pu-lock-badge";
+            badge.textContent = "🔒 фикс.";
+            badge.setAttribute(
+              "data-dg-tooltip",
+              "Предлагаемый зафиксирован (override). Формула не перезапишет, пока не снимете."
+            );
+            var unlockBtn = document.createElement("button");
+            unlockBtn.type = "button";
+            unlockBtn.className = "btn btn-sm btn-outline-secondary dg-pu-unlock-proposed";
+            unlockBtn.textContent = "Снять";
+            unlockBtn.setAttribute("data-code", String(r.code || ""));
+            unlockBtn.setAttribute("data-dg-notify-start", "Снимаем фиксацию…");
+            unlockBtn.setAttribute("data-dg-tooltip", "Снять фиксацию предлагаемого для этой SKU");
+            lockRow.appendChild(badge);
+            lockRow.appendChild(unlockBtn);
+            wrapFp.appendChild(lockRow);
+          }
 
           var adj =
             r.formula_adjusted_sales_sum != null && Number.isFinite(Number(r.formula_adjusted_sales_sum))
@@ -3258,6 +3314,9 @@
               : null;
 
           var tipParts = [];
+          if (lockedProposed) {
+            tipParts.push("Предлагаемый зафиксирован вручную (замок).");
+          }
           if (r.formula_rare_short_circuit) {
             tipParts.push("Редкий товар: сразу базовый запас для редких (без умножения на дни).");
           } else if (
@@ -3303,13 +3362,11 @@
           );
           wrapFp.setAttribute("data-dg-tooltip", tipParts.join(" "));
 
-          wrapFp.appendChild(fp);
-          if (fpn != null && Number.isFinite(Number(fpn)) && !r.formula_rare_short_circuit && atBase != null) {
+          if (fpn != null && Number.isFinite(Number(fpn)) && !r.formula_rare_short_circuit && atBase != null && !lockedProposed) {
             var sub = document.createElement("div");
             sub.className = "text-muted";
             sub.style.fontSize = "11px";
             sub.style.lineHeight = "1.2";
-            // Один формат для всех строк: сколько было бы на базовых днях и что добавили рек. дни.
             var line =
               "на " +
               (daysBase != null ? daysBase : "—") +
@@ -4698,6 +4755,54 @@
         page = 1;
         loadData();
       });
+      (function bindPuUnlockProposed() {
+        var tbody = document.getElementById("dg-pu-tbody");
+        if (!tbody) return;
+        tbody.addEventListener("click", function (ev) {
+          var btn = ev.target.closest(".dg-pu-unlock-proposed");
+          if (!btn) return;
+          ev.preventDefault();
+          ev.stopPropagation();
+          var code = btn.getAttribute("data-code");
+          if (!code) return;
+          var run = function () {
+            return fetch("/api/purchase/override", {
+              method: "POST",
+              credentials: "same-origin",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ code: code, field: "proposed_min_stock", value: null }),
+            })
+              .then(function (r) {
+                return r.json().then(function (j) {
+                  return { ok: r.ok, j: j };
+                });
+              })
+              .then(function (x) {
+                if (!x.ok || !x.j.success) throw new Error((x.j && x.j.error) || "Ошибка");
+                if (window.DatagonNotify && window.DatagonNotify.toast) {
+                  window.DatagonNotify.toast({
+                    type: "success",
+                    message: "Фиксация предлагаемого снята: " + code,
+                  });
+                }
+                return loadData();
+              })
+              .catch(function (e) {
+                if (window.DatagonNotify && window.DatagonNotify.toast) {
+                  window.DatagonNotify.toast({
+                    type: "danger",
+                    message: (e && e.message) || "Не удалось снять фиксацию",
+                  });
+                }
+              });
+          };
+          if (window.DatagonNotify && window.DatagonNotify.busyRun) {
+            window.DatagonNotify.busyRun(btn, run);
+          } else {
+            run();
+          }
+        });
+      })();
       (function bindPuExtraFilterChange() {
         var xf = document.getElementById("pu-f-extra-filter");
         if (!xf) return;

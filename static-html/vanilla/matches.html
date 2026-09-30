@@ -944,6 +944,7 @@
                     <ul class="metismenu-container">
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="dashboard" href="/dashboard.html"><i class="metismenu-icon pe-7s-rocket"></i>Дашборд</a></li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="my-sites" href="/my-sites.html"><i class="metismenu-icon pe-7s-global"></i>Мои сайты</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="network-prices" href="/network-prices.html"><i class="metismenu-icon pe-7s-shuffle"></i>Цены сети</a></li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="my-products" href="/my-products.html"><i class="metismenu-icon pe-7s-box2"></i>Мои товары (сайты)</a></li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="moysklad" href="/moysklad.html"><i class="metismenu-icon pe-7s-shopbag"></i>Мой Склад (товары)</a></li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="medmarket" href="/medmarket.html" title="Стыковка кода МС с кодом товара для Медмаркета"><i class="metismenu-icon pe-7s-id"></i>Медмаркет</a></li>
@@ -1148,6 +1149,7 @@
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="purchase" href="/purchase.html" title="Закупки товары: планирование, неснижаемые остатки, кратность"><i class="metismenu-icon pe-7s-cart"></i>Закупки товары</a></li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="suppliers" href="/suppliers.html" title="Поставщики: сводка по закупкам и настройки"><i class="metismenu-icon pe-7s-id"></i>Поставщики</a></li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="supplier-analysis" href="/supplier-analysis.html" title="Продажи, оборот и тренды по поставщикам"><i class="metismenu-icon pe-7s-graph2"></i>Анализ поставщиков</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="product-analysis" href="/product-analysis.html" title="Продажи по SKU: топы, мёртвые, жизненный цикл и неснижаемый"><i class="metismenu-icon pe-7s-graph1"></i>Анализ товаров</a></li>
                     </ul>
                   </div>
                 </div>
@@ -1769,6 +1771,21 @@
                       max="100"
                       title="Верхняя граница уверенности (0–100%). У строк по SKU обычно 100%; у совпадений по названию — доля схожести."
                     />
+                  </div>
+                </div>
+                <div class="row mt-2" data-dg-matches-list-field="multi_comp_cards">
+                  <div class="col-12">
+                    <div class="form-check">
+                      <input
+                        class="form-check-input"
+                        type="checkbox"
+                        id="dg-matches-tf-multi-comp-cards"
+                        title="Показать только наши товары, к которым подтверждено более одной карточки одного и того же конкурента (по SKU; без SKU — по названию). Удобно для разбора дублей стыковки."
+                      />
+                      <label class="form-check-label" for="dg-matches-tf-multi-comp-cards">
+                        Несколько карточек одного конкурента (&gt;1 confirmed)
+                      </label>
+                    </div>
                   </div>
                 </div>
                 <div class="row align-items-center mt-2 pt-1 border-top border-light" data-dg-matches-list-field="list_actions">
@@ -2583,13 +2600,18 @@
                     return j;
                   });
                 })
-                .then(function () {
+                .then(function (j) {
                   overlay.style.display = "none";
                   overlay.setAttribute("aria-hidden", "true");
+                  var unlinkedN = Number(j && j.unlinked_siblings ? j.unlinked_siblings : 0);
+                  var msg =
+                    unlinkedN > 0
+                      ? "Пересвязано. Снято других стыковок с этим конкурентом: " + unlinkedN + "."
+                      : "Пересвязано: конкурент пристыкован к карточке из очереди";
                   if (window.DatagonNotify && window.DatagonNotify.toast) {
                     window.DatagonNotify.toast({
-                      type: "success",
-                      message: "Пересвязано: конкурент пристыкован к карточке из очереди",
+                      type: unlinkedN > 0 ? "warning" : "success",
+                      message: msg,
                     });
                   }
                   if (window.__dgMatchesRefreshManualLanes) window.__dgMatchesRefreshManualLanes();
@@ -2724,6 +2746,8 @@
         if (productSearch) params.set("product_search", productSearch);
         var listSmart = String(document.getElementById("dg-matches-smart-filter").value || "").trim();
         if (listSmart) params.set("list_smart", listSmart);
+        var multiCardsEl = document.getElementById("dg-matches-tf-multi-comp-cards");
+        if (multiCardsEl && multiCardsEl.checked) params.set("multi_comp_cards", "1");
         if (matchesPage > 1) params.set("matches_page", String(matchesPage));
         if (matchesLimit !== 100) params.set("matches_limit", String(matchesLimit));
         var mqPage = Number(state.manualQueuePage || 1);
@@ -2843,6 +2867,7 @@
           mode: p.get("mode") || "",
           product_search: p.get("product_search") || "",
           list_smart: p.get("list_smart") || "",
+          multi_comp_cards: p.get("multi_comp_cards") || "",
           matches_page: Number(p.get("matches_page") || 1),
           matches_limit: Number(p.get("matches_limit") || 100),
           manual_queue_page: Number(p.get("manual_queue_page") || 1),
@@ -3762,16 +3787,19 @@
       }
 
       function readTableFilters() {
+        var multiEl = document.getElementById("dg-matches-tf-multi-comp-cards");
         return {
           my_sku: document.getElementById("dg-matches-tf-my-sku").value.trim(),
           competitor_sku: document.getElementById("dg-matches-tf-comp-sku").value.trim(),
           match_type: document.getElementById("dg-matches-tf-match-type").value,
           confidence_min: document.getElementById("dg-matches-tf-conf-min").value,
           confidence_max: document.getElementById("dg-matches-tf-conf-max").value,
+          multi_comp_cards: !!(multiEl && multiEl.checked),
         };
       }
 
       function collectMatchesListFilterForm() {
+        var multiEl = document.getElementById("dg-matches-tf-multi-comp-cards");
         return {
           list_my_site_id: document.getElementById("dg-matches-list-my-site").value,
           list_competitor_site_id: (function () {
@@ -3786,6 +3814,7 @@
           match_type: document.getElementById("dg-matches-tf-match-type").value,
           conf_min: document.getElementById("dg-matches-tf-conf-min").value,
           conf_max: document.getElementById("dg-matches-tf-conf-max").value,
+          multi_comp_cards: !!(multiEl && multiEl.checked),
         };
       }
 
@@ -3846,6 +3875,10 @@
         if (prefs.match_type != null) document.getElementById("dg-matches-tf-match-type").value = String(prefs.match_type);
         if (prefs.conf_min != null) document.getElementById("dg-matches-tf-conf-min").value = String(prefs.conf_min);
         if (prefs.conf_max != null) document.getElementById("dg-matches-tf-conf-max").value = String(prefs.conf_max);
+        if (miss("multi_comp_cards") && prefs.multi_comp_cards != null) {
+          var multiPrefEl = document.getElementById("dg-matches-tf-multi-comp-cards");
+          if (multiPrefEl) multiPrefEl.checked = !!prefs.multi_comp_cards;
+        }
       }
 
       function filteredSortedMatches() {
@@ -4216,7 +4249,8 @@
             (tf0.competitor_sku && String(tf0.competitor_sku).trim() !== "") ||
             tf0.match_type !== "all" ||
             (String(tf0.confidence_min || "").trim() !== "") ||
-            (String(tf0.confidence_max || "").trim() !== "");
+            (String(tf0.confidence_max || "").trim() !== "") ||
+            !!tf0.multi_comp_cards;
           if (rawLen > 0 && filtersOn) {
             td0.textContent =
               "По фильтрам строк нет (загружено " +
@@ -4543,6 +4577,8 @@
         var tfConfMax = document.getElementById("dg-matches-tf-conf-max");
         var confMaxQ = tfConfMax ? String(tfConfMax.value || "").trim() : "";
         if (confMaxQ !== "") q.set("confidence_max", confMaxQ);
+        var multiCards = document.getElementById("dg-matches-tf-multi-comp-cards");
+        if (multiCards && multiCards.checked) q.set("multi_comp_cards", "1");
         var fetchOpts = { credentials: "same-origin" };
         try {
           if (typeof AbortSignal !== "undefined" && AbortSignal.timeout) fetchOpts.signal = AbortSignal.timeout(45000);
@@ -4815,6 +4851,18 @@
             if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Не удалось обновить статус");
             loadMatches(true);
             if (window.__dgMatchesRefreshManualLanes) window.__dgMatchesRefreshManualLanes();
+            if (action === "confirmed") {
+              var unlinkedN = Number(x.j.unlinked_siblings || 0);
+              if (unlinkedN > 0) {
+                var msg =
+                  "Подтверждено. Снято других стыковок с этим конкурентом: " + unlinkedN + " (правило: 1 товар — 1 confirmed на сайт конкурента).";
+                if (window.DatagonNotify && window.DatagonNotify.toast) {
+                  window.DatagonNotify.toast({ type: "warning", message: msg });
+                } else {
+                  alert(msg);
+                }
+              }
+            }
             if (action === "rejected" && x.j.exclusion_created === false) {
               alert(
                 "Отклонение сохранено, но запись не попала в ручную очередь: не удалось сопоставить SKU/название из строки с «Мои товары». Проверьте активность товара и совпадение полей."
@@ -5258,6 +5306,8 @@
         document.getElementById("dg-matches-tf-match-type").value = "all";
         document.getElementById("dg-matches-tf-conf-min").value = "";
         document.getElementById("dg-matches-tf-conf-max").value = "";
+        var multiReset = document.getElementById("dg-matches-tf-multi-comp-cards");
+        if (multiReset) multiReset.checked = false;
         state.matchesPage = 1;
         scheduleSyncUrl();
         loadMatches();
@@ -5327,6 +5377,11 @@
               },
               { key: "tf_conf_min", title: "Схож. от %", hint: "По confidence; по SKU обычно 100%." },
               { key: "tf_conf_max", title: "Схож. до %", hint: "По confidence; по SKU обычно 100%." },
+              {
+                key: "multi_comp_cards",
+                title: "Несколько карточек одного конкурента",
+                hint: "Только наши товары с >1 confirmed-карточкой одного конкурента (по SKU).",
+              },
             ],
           },
           {
@@ -5413,6 +5468,10 @@
             document.getElementById("dg-matches-tf-my-sku").value = "";
             document.getElementById("dg-matches-tf-comp-sku").value = "";
           }
+          var multiUrlEl = document.getElementById("dg-matches-tf-multi-comp-cards");
+          if (multiUrlEl) {
+            multiUrlEl.checked = ["1", "true", "yes"].indexOf(String(up.multi_comp_cards || "").trim().toLowerCase()) !== -1;
+          }
           fillListCompetitorSelect();
           var compElInit = document.getElementById("dg-matches-list-competitor");
           if (compElInit && up.list_competitor_id && listCompetitorOptionExists(compElInit, up.list_competitor_id))
@@ -5491,7 +5550,12 @@
             })
             .then(function (x) {
               if (!x.r.ok || !x.j.success) throw new Error(x.j.error || "Ошибка");
-              alert("Сохранено как подтвержденное вручную.");
+              var unlinkedN = Number(x.j.unlinked_siblings || 0);
+              var okMsg =
+                unlinkedN > 0
+                  ? "Сохранено как подтверждённое вручную. Снято других стыковок с этим конкурентом: " + unlinkedN + "."
+                  : "Сохранено как подтвержденное вручную.";
+              alert(okMsg);
               loadManualQueue();
               loadMatches(true);
             })

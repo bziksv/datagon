@@ -1,0 +1,565 @@
+<script>
+(function () {
+  "use strict";
+
+  var state = {
+    settings: null,
+    page: 1,
+    limit: 100,
+    total: 0,
+    rows: [],
+    pricePct: null,
+    enabled: false,
+  };
+
+  function el(id) {
+    return document.getElementById(id);
+  }
+
+  function esc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function fmtNum(v) {
+    if (v == null || v === "") return "—";
+    var n = Number(v);
+    if (!Number.isFinite(n)) return esc(v);
+    if (window.DatagonFmt && window.DatagonFmt.number) return window.DatagonFmt.number(n);
+    return String(n);
+  }
+
+  function fmtPct(v) {
+    if (v == null || !Number.isFinite(Number(v))) return "—";
+    return Number(v).toFixed(2) + "%";
+  }
+
+  function showLog(type, html) {
+    var box = el("dg-np-action-log");
+    if (!box) return;
+    box.classList.remove("d-none", "alert-info", "alert-success", "alert-warning", "alert-danger", "alert-secondary");
+    box.classList.add("alert-" + (type || "secondary"));
+    box.innerHTML = html;
+  }
+
+  function setSaveMsg(ok, html) {
+    var box = el("dg-np-settings-save-msg");
+    if (!box) return;
+    box.classList.remove("d-none", "alert-success", "alert-warning", "alert-danger", "alert-info");
+    box.classList.add(ok === true ? "alert-success" : ok === false ? "alert-danger" : "alert-warning");
+    box.innerHTML = html;
+  }
+
+  function bindCollapse(btnId, bodyId, storageKey) {
+    var btn = el(btnId);
+    var body = el(bodyId);
+    if (!btn || !body) return;
+    function apply(collapsed) {
+      body.style.display = collapsed ? "none" : "";
+      btn.textContent = collapsed ? "Развернуть" : "Свернуть";
+      try {
+        localStorage.setItem(storageKey, collapsed ? "1" : "0");
+      } catch (e) {}
+    }
+    var init = false;
+    try {
+      init = localStorage.getItem(storageKey) === "1";
+    } catch (e2) {}
+    apply(init);
+    btn.addEventListener("click", function () {
+      apply(body.style.display !== "none");
+    });
+  }
+
+  function fillSourceSelect(sites, sourceId) {
+    var sel = el("dg-np-source-site");
+    if (!sel) return;
+    sel.innerHTML = "";
+    (sites || []).forEach(function (s) {
+      var o = document.createElement("option");
+      o.value = String(s.id);
+      o.textContent = s.name + (s.domain ? " (" + s.domain + ")" : "");
+      if (Number(s.id) === Number(sourceId)) o.selected = true;
+      sel.appendChild(o);
+    });
+  }
+
+  function renderTargetsTable(targets) {
+    var tb = el("dg-np-targets-tbody");
+    if (!tb) return;
+    if (!targets || !targets.length) {
+      tb.innerHTML = '<tr><td colspan="4" class="text-muted">Нет других сайтов в «Мои сайты».</td></tr>';
+      return;
+    }
+    tb.innerHTML = targets
+      .map(function (t) {
+        var pct = t.price_pct == null || t.price_pct === "" ? "" : String(t.price_pct);
+        return (
+          "<tr data-site-id=\"" +
+          esc(t.site_id) +
+          "\">" +
+          "<td>" +
+          esc(t.name) +
+          "</td>" +
+          "<td><input type=\"checkbox\" class=\"form-check-input dg-np-tgt-en\" " +
+          (t.enabled ? "checked" : "") +
+          " /></td>" +
+          "<td><input type=\"text\" class=\"form-control form-control-sm dg-np-tgt-pct\" value=\"" +
+          esc(pct) +
+          "\" placeholder=\"пусто = не трогать\" /></td>" +
+          "<td class=\"small text-muted\">" +
+          esc(t.domain || "") +
+          "</td>" +
+          "</tr>"
+        );
+      })
+      .join("");
+  }
+
+  function fillTargetSelect(targets) {
+    var sel = el("dg-np-target-site");
+    if (!sel) return;
+    var prev = sel.value;
+    sel.innerHTML = "";
+    (targets || []).forEach(function (t) {
+      var o = document.createElement("option");
+      o.value = String(t.site_id);
+      o.textContent = t.name + (t.enabled && t.price_pct != null ? " · " + t.price_pct + "%" : " · % не задан");
+      sel.appendChild(o);
+    });
+    if (prev && [].some.call(sel.options, function (o) { return o.value === prev; })) sel.value = prev;
+  }
+
+  function loadSettings() {
+    return fetch("/api/network-prices/settings", { credentials: "same-origin" })
+      .then(function (r) {
+        return r.json().then(function (j) {
+          return { r: r, j: j };
+        });
+      })
+      .then(function (x) {
+        if (!x.r.ok || !x.j.success) throw new Error((x.j && x.j.error) || "Ошибка настроек");
+        state.settings = x.j;
+        var allSites = [];
+        if (x.j.source) allSites.push(x.j.source);
+        (x.j.targets || []).forEach(function (t) {
+          allSites.push({ id: t.site_id, name: t.name, domain: t.domain });
+        });
+        // reload full site list for source select
+        return fetch("/api/my-sites", { credentials: "same-origin" })
+          .then(function (r) {
+            return r.json();
+          })
+          .then(function (sites) {
+            var list = Array.isArray(sites) ? sites : sites && sites.data ? sites.data : [];
+            fillSourceSelect(list, x.j.source_site_id);
+            renderTargetsTable(x.j.targets || []);
+            fillTargetSelect(x.j.targets || []);
+          });
+      });
+  }
+
+  function collectTargetsPayload() {
+    var rows = document.querySelectorAll("#dg-np-targets-tbody tr[data-site-id]");
+    var out = [];
+    rows.forEach(function (tr) {
+      var id = tr.getAttribute("data-site-id");
+      var en = tr.querySelector(".dg-np-tgt-en");
+      var pct = tr.querySelector(".dg-np-tgt-pct");
+      out.push({
+        site_id: Number(id),
+        enabled: !!(en && en.checked),
+        price_pct: pct && String(pct.value).trim() !== "" ? String(pct.value).trim() : null,
+      });
+    });
+    return out;
+  }
+
+  function saveSettings() {
+    var btn = el("dg-np-settings-save");
+    setSaveMsg(null, "Сохраняем…");
+    if (btn) btn.disabled = true;
+    var payload = {
+      source_site_id: el("dg-np-source-site") ? el("dg-np-source-site").value : "",
+      targets: collectTargetsPayload(),
+    };
+    return fetch("/api/network-prices/settings", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+      .then(function (r) {
+        return r.json().then(function (j) {
+          return { r: r, j: j };
+        });
+      })
+      .then(function (x) {
+        if (!x.r.ok || !x.j.success) throw new Error((x.j && x.j.error) || "Ошибка сохранения");
+        return loadSettings().then(function () {
+          setSaveMsg(true, "<strong>Сохранено.</strong> Настройки записаны в БД.");
+          if (window.DatagonNotify && window.DatagonNotify.toast) {
+            window.DatagonNotify.toast({ type: "success", message: "Настройки цен сети сохранены" });
+          }
+        });
+      })
+      .catch(function (e) {
+        setSaveMsg(false, "<strong>Ошибка.</strong> " + esc(e.message || e));
+      })
+      .then(function () {
+        if (btn) btn.disabled = false;
+      });
+  }
+
+  function loadMatrix() {
+    var targetId = el("dg-np-target-site") && el("dg-np-target-site").value;
+    if (!targetId) {
+      el("dg-np-tbody").innerHTML =
+        '<tr><td colspan="13" class="text-muted text-center py-4">Нет целевого сайта.</td></tr>';
+      return Promise.resolve();
+    }
+    var q = new URLSearchParams({
+      target_site_id: targetId,
+      link_status: el("dg-np-link-status").value || "all",
+      search: el("dg-np-search").value || "",
+      limit: String(state.limit),
+      offset: String((state.page - 1) * state.limit),
+    });
+    el("dg-np-tbody").innerHTML =
+      '<tr><td colspan="13" class="text-muted text-center py-4">Загрузка…</td></tr>';
+    return fetch("/api/network-prices/matrix?" + q.toString(), { credentials: "same-origin" })
+      .then(function (r) {
+        return r.json().then(function (j) {
+          return { r: r, j: j };
+        });
+      })
+      .then(function (x) {
+        if (!x.r.ok || !x.j.success) throw new Error((x.j && x.j.error) || "Ошибка матрицы");
+        state.rows = x.j.data || [];
+        state.total = Number(x.j.total || 0);
+        state.pricePct = x.j.price_pct;
+        state.enabled = !!x.j.enabled;
+        renderTable();
+        var pages = Math.max(1, Math.ceil(state.total / state.limit) || 1);
+        el("dg-np-pager-status").textContent =
+          "Найдено: " +
+          state.total +
+          "; страница " +
+          state.page +
+          "/" +
+          pages +
+          "; показано: " +
+          state.rows.length;
+        el("dg-np-matrix-hint").textContent = state.enabled
+          ? "Δ % сайта: " + (state.pricePct != null ? state.pricePct : "—")
+          : "Сайт не участвует или % не задан — запись недоступна";
+      })
+      .catch(function (e) {
+        el("dg-np-tbody").innerHTML =
+          '<tr><td colspan="13" class="text-danger text-center py-4">' + esc(e.message || e) + "</td></tr>";
+      });
+  }
+
+  function renderTable() {
+    var tb = el("dg-np-tbody");
+    if (!state.rows.length) {
+      tb.innerHTML = '<tr><td colspan="13" class="text-muted text-center py-4">Нет строк по фильтрам.</td></tr>';
+      return;
+    }
+    tb.innerHTML = state.rows
+      .map(function (r) {
+        var linkLabel =
+          r.link_status === "linked" || r.link_kind
+            ? r.link_kind === "manual"
+              ? "вручную"
+              : "по SKU"
+            : r.link_status === "source_only"
+              ? "нет на цели"
+              : r.link_status === "target_only"
+                ? "нет на эталоне"
+                : "—";
+        var actions = "";
+        if ((r.link_status === "linked" || r.link_kind) && r.source_product_id && r.target_product_id) {
+          actions =
+            '<button type="button" class="btn btn-sm btn-outline-danger dg-np-unlink" data-src="' +
+            esc(r.source_product_id) +
+            '" data-tgt="' +
+            esc(r.target_product_id) +
+            '">Разорвать</button>';
+        } else if (r.link_status === "source_only" && r.source_product_id) {
+          actions =
+            '<button type="button" class="btn btn-sm btn-outline-primary dg-np-link-pick" data-src="' +
+            esc(r.source_product_id) +
+            '" title="Укажите ID товара цели в prompt">Связать…</button>';
+        }
+        return (
+          "<tr>" +
+          "<td>" +
+          esc(r.source_code || "—") +
+          "</td>" +
+          "<td>" +
+          esc(r.source_sku || "—") +
+          "</td>" +
+          "<td style=\"max-width:220px;white-space:normal\">" +
+          esc(r.source_name || "—") +
+          "</td>" +
+          "<td>" +
+          fmtNum(r.source_stock) +
+          "</td>" +
+          "<td>" +
+          fmtNum(r.source_price) +
+          "</td>" +
+          "<td>" +
+          esc(r.target_sku || "—") +
+          "</td>" +
+          "<td style=\"max-width:220px;white-space:normal\">" +
+          esc(r.target_name || "—") +
+          "</td>" +
+          "<td>" +
+          fmtNum(r.target_price) +
+          "</td>" +
+          "<td>" +
+          fmtNum(r.target_stock) +
+          "</td>" +
+          "<td>" +
+          fmtNum(r.proposed_price) +
+          "</td>" +
+          "<td>" +
+          fmtPct(r.delta_pct_vs_proposed) +
+          "</td>" +
+          "<td>" +
+          esc(linkLabel) +
+          "</td>" +
+          "<td>" +
+          actions +
+          "</td>" +
+          "</tr>"
+        );
+      })
+      .join("");
+  }
+
+  function runApply(dryRun) {
+    var targetId = el("dg-np-target-site") && el("dg-np-target-site").value;
+    if (!targetId) {
+      showLog("warning", "Выберите целевой сайт.");
+      return;
+    }
+    if (!dryRun) {
+      if (!window.confirm("Записать цены на целевой сайт по формуле эталон × (1 + %)? Сайты без % не меняются.")) {
+        return;
+      }
+    }
+    showLog(
+      "info",
+      "<strong>" +
+        (dryRun ? "Пробный прогон" : "Запись цен") +
+        "</strong><br>Цель: сайт #" +
+        esc(targetId) +
+        "; поиск: «" +
+        esc(el("dg-np-search").value || "") +
+        "»…"
+    );
+    var body = {
+      target_site_id: Number(targetId),
+      search: el("dg-np-search").value || "",
+      dry_run: dryRun ? 1 : 0,
+      confirm: dryRun ? 0 : 1,
+    };
+    var btn = dryRun ? el("dg-np-dry-run") : el("dg-np-apply-prices");
+    var run = function () {
+      return fetch("/api/network-prices/apply", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
+        .then(function (r) {
+          return r.json().then(function (j) {
+            return { r: r, j: j };
+          });
+        })
+        .then(function (x) {
+          if (!x.r.ok || x.j.success === false) throw new Error((x.j && x.j.error) || "Ошибка apply");
+          var j = x.j;
+          var lines =
+            "<strong>" +
+            esc(j.message || "Готово") +
+            "</strong><ul class=\"mb-0 mt-2\">" +
+            "<li>просмотрено: " +
+            (j.scanned || 0) +
+            "</li>" +
+            (dryRun
+              ? "<li>к записи: " + (j.would_update || 0) + "</li>"
+              : "<li>записано ✓: " + (j.written || 0) + "</li>") +
+            "<li>без изменений: " +
+            (j.skipped_unchanged || 0) +
+            "</li>" +
+            "<li>без цены эталона: " +
+            (j.skipped_no_source_price || 0) +
+            "</li>" +
+            "<li>ошибок CMS ×: " +
+            (j.cms_failed || 0) +
+            "</li>" +
+            "<li>длительность: " +
+            (j.duration_sec != null ? j.duration_sec + " с" : "—") +
+            "</li></ul>";
+          if (j.errors && j.errors.length) {
+            lines +=
+              "<div class=\"small mt-2\">Ошибки:<br>" +
+              j.errors
+                .slice(0, 20)
+                .map(function (e) {
+                  return esc(e.code) + ": " + esc(e.error);
+                })
+                .join("<br>") +
+              "</div>";
+          }
+          showLog(j.cms_failed ? "warning" : "success", lines);
+          if (!dryRun) loadMatrix();
+        })
+        .catch(function (e) {
+          showLog("danger", "<strong>Ошибка.</strong> " + esc(e.message || e));
+        });
+    };
+    if (window.DatagonNotify && window.DatagonNotify.busyRun && btn) {
+      window.DatagonNotify.busyRun(btn, run);
+    } else {
+      run();
+    }
+  }
+
+  function unlinkPair(srcId, tgtId) {
+    var targetId = el("dg-np-target-site").value;
+    return fetch("/api/network-prices/unlink", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        target_site_id: Number(targetId),
+        source_product_id: Number(srcId),
+        target_product_id: Number(tgtId),
+      }),
+    })
+      .then(function (r) {
+        return r.json().then(function (j) {
+          return { r: r, j: j };
+        });
+      })
+      .then(function (x) {
+        if (!x.r.ok || !x.j.success) throw new Error((x.j && x.j.error) || "Ошибка");
+        loadMatrix();
+      })
+      .catch(function (e) {
+        alert(e.message || e);
+      });
+  }
+
+  function linkPair(srcId) {
+    var targetId = el("dg-np-target-site").value;
+    var raw = window.prompt("ID товара целевого сайта (my_products.id) для связи с эталоном #" + srcId + ":");
+    if (!raw) return;
+    var tgtId = parseInt(String(raw).trim(), 10);
+    if (!Number.isFinite(tgtId) || tgtId < 1) {
+      alert("Некорректный ID");
+      return;
+    }
+    fetch("/api/network-prices/link", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        target_site_id: Number(targetId),
+        source_product_id: Number(srcId),
+        target_product_id: tgtId,
+      }),
+    })
+      .then(function (r) {
+        return r.json().then(function (j) {
+          return { r: r, j: j };
+        });
+      })
+      .then(function (x) {
+        if (!x.r.ok || !x.j.success) throw new Error((x.j && x.j.error) || "Ошибка");
+        loadMatrix();
+      })
+      .catch(function (e) {
+        alert(e.message || e);
+      });
+  }
+
+  el("dg-np-settings-save").addEventListener("click", function () {
+    if (window.DatagonNotify && window.DatagonNotify.busyRun) {
+      window.DatagonNotify.busyRun(el("dg-np-settings-save"), saveSettings);
+    } else saveSettings();
+  });
+
+  el("dg-np-apply-filters").addEventListener("click", function () {
+    state.page = 1;
+    state.limit = Number(el("dg-np-limit").value) || 100;
+    if (window.DatagonNotify && window.DatagonNotify.busyRun) {
+      window.DatagonNotify.busyRun(el("dg-np-apply-filters"), loadMatrix);
+    } else loadMatrix();
+  });
+
+  el("dg-np-reset-filters").addEventListener("click", function () {
+    el("dg-np-search").value = "";
+    el("dg-np-link-status").value = "linked";
+    el("dg-np-limit").value = "100";
+    state.page = 1;
+    state.limit = 100;
+    loadMatrix();
+  });
+
+  el("dg-np-dry-run").addEventListener("click", function () {
+    runApply(true);
+  });
+  el("dg-np-apply-prices").addEventListener("click", function () {
+    runApply(false);
+  });
+
+  el("dg-np-prev").addEventListener("click", function () {
+    if (state.page <= 1) return;
+    state.page -= 1;
+    loadMatrix();
+  });
+  el("dg-np-next").addEventListener("click", function () {
+    var pages = Math.max(1, Math.ceil(state.total / state.limit) || 1);
+    if (state.page >= pages) return;
+    state.page += 1;
+    loadMatrix();
+  });
+
+  el("dg-np-search").addEventListener("keydown", function (ev) {
+    if (ev.key === "Enter") {
+      ev.preventDefault();
+      el("dg-np-apply-filters").click();
+    }
+  });
+
+  document.addEventListener("click", function (ev) {
+    var u = ev.target && ev.target.closest && ev.target.closest(".dg-np-unlink");
+    if (u) {
+      unlinkPair(u.getAttribute("data-src"), u.getAttribute("data-tgt"));
+      return;
+    }
+    var l = ev.target && ev.target.closest && ev.target.closest(".dg-np-link-pick");
+    if (l) linkPair(l.getAttribute("data-src"));
+  });
+
+  bindCollapse("dg-np-settings-toggle", "dg-np-settings-body", "datagon_np_settings_collapsed_v1");
+  bindCollapse("dg-np-filters-toggle", "dg-np-filters-body", "datagon_np_filters_collapsed_v1");
+  bindCollapse("dg-np-table-toggle", "dg-np-table-body", "datagon_np_table_collapsed_v1");
+
+  loadSettings()
+    .then(function () {
+      return loadMatrix();
+    })
+    .catch(function (e) {
+      showLog("danger", esc(e.message || e));
+    });
+})();
+</script>

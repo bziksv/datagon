@@ -27,6 +27,7 @@ description: Справочник REST-эндпоинтов p.datagon.ru (осн
 | Таблица `prices`, очистка | [Results](#results) |
 | Источники Bitrix/Webasyst, синк | [My sites](#my-sites) |
 | Каталог `my_products`, фильтры | [My products](#my-products) |
+| Цены эталон → сайты сети | [Цены сети](#цены-сети) |
 | Матчинг, confirm/reject | [Matches](#matches) |
 | Ручной матчинг, очереди, вспомогательные GET | [Расширенные маршруты матчинга](#расширенные-маршруты-матчинга) |
 | МойСклад, `ms_export` | [MoySklad](#moysklad) |
@@ -65,6 +66,7 @@ description: Справочник REST-эндпоинтов p.datagon.ru (осн
 - `/api/results` -> `routes/results.js`
 - `/api/my-sites` -> `routes/mysites.js`
 - `/api/my-products` -> `routes/myproducts.js`
+- `/api/network-prices` -> `routes/networkPrices.js` (Цены сети: эталон → целевые сайты с `%`; `GET/POST /settings`, `GET /matrix`, `POST /link`, `POST /unlink`, `POST /apply`, автосинк `triggerNetworkPricesSyncFromSettings`)
 - `/api/matches` -> `routes/matches.js`
 - `/api/ms` -> `routes/moysklad.js`
 - `/api/medmarket` -> `routes/medmarket.js` (Медмаркет: стыковка `code`+тип (`10088+Товар`); `GET /`, `GET /sync-status`, `POST /sync`, `PATCH /mapping`, `POST /import`, `POST /fill-linkage-codes`)
@@ -78,6 +80,7 @@ description: Справочник REST-эндпоинтов p.datagon.ru (осн
 - `/api/ms-orders` -> `routes/msOrders.js` (Заказы в МС: `entity/customerorder`, окно **30 дней**, исключение ответственных из `app_settings`)
 - `/api/suppliers` -> `routes/suppliers.js` (Поставщики: агрегат по `ms_export` + `dg_supplier_settings`; `GET /`, `GET /assignees`, `GET /ms-order-log`, `GET /ms-order-log/:logId`, `GET /export/supplier`, `GET /export/purchaser`, `POST /:supplierKey/send-ms-order`, `PATCH /:supplierKey`)
 - `/api/supplier-analysis` -> `routes/supplierAnalysis.js` (Анализ поставщиков: продажи из `ms_demand` + `ms_export.supplier`; `GET /projects`, `/overview`, `/ranking`, `/highlights`, `/trend`, `/products`, `/export`, `/data-freshness`; фильтр `project_mode` / `project_uuids`)
+- `/api/product-analysis` -> `routes/productAnalysis.js` (Анализ товаров: продажи/остатки по SKU; `GET /projects`, `/presets`, `/overview`, `/ranking`, `/export`; `POST /decision`, `/decision/bulk`, `/min-stock/apply`; таблица `dg_product_analysis_decisions`)
 - `/api/purchase` -> `routes/purchase.js` (Закупки: `GET` список — SQL `ORDER BY` + пагинация, enrich страницы; `POST /override`, `POST /overrides-import`, журнал overrides: `GET /log`, `GET /log/stats`, `POST /log/cleanup`; перенос «Предлагаемый нес.ост.» → `ms_export.min_stock` (только БД): `POST /min-stock-apply/run`, …; выгрузка в МС — `auto_sync_min_stock_export` / `lib/datagonMinStockExportMs.js`)
 - `/api/product` -> `routes/product.js` (Карточка товара: `ms_export` + `ms_entity_details` + продажи + `dg_bundle_components`; лог отсутствий — пакетно после синка МС: `stock≤0` или для базового кода `stock` < min суффикса в `код-число`, см. `syncZeroStockLogAfterMoyskladExport`; снимки остатка по дням — `dg_product_stock_snapshot`, см. `syncProductStockSnapshotsAfterMoyskladExport` — оба вызываются из `routes/moysklad.js` после сохранения `ms_export`)
 - `/api/activity` -> `routes/activity.js`
@@ -171,6 +174,7 @@ Body (пример):
 - **`auto_sync_medmarket_enabled`** / **`auto_sync_medmarket_time`** / **`auto_sync_medmarket_weekdays`** — **полная выгрузка** атрибута «Код товара для медмаркета» из `ms_entity_details` → `ms_export.medmarket_product_code` (импорт, не запись в МС). МСК, по умолчанию `09:00`, дни **`7` (только вс)**. `task_type='medmarket'`.
 - **`auto_sync_medmarket_fill_enabled`** / **`auto_sync_medmarket_fill_time`** / **`auto_sync_medmarket_fill_weekdays`** — запись канонического **`код+Тип`** в атрибут МС и `ms_export` (как `POST /api/medmarket/fill-linkage-codes` без фильтров). Очередь «к записи» — только позиции с неверным/устаревшим форматом (~10–12 тыс., в основном регистр); ~46 тыс. уже со стыковкой пропускаются. МСК, по умолчанию **`09:30`**, дни **`1,2,3,4,5,6` (пн–сб, без вс)**. `task_type='medmarket_fill'`. Прогресс: `N/всего; ✓; ×` в `auto_sync_runs.message`.
 - **`auto_sync_price_comp_*`** — массовая синхронизация цен с конкурента (Dealmed/Медкомплекс) в CMS, как кнопка «Синх. цены по фильтрам» на `/my-products.html`. Ключи: `enabled`, `time` (по умолчанию **`10:00`**), `weekdays`, `match_audit` (по умолчанию **`confirmed`**), `rand_min` / `rand_max` (`0.1` / `0.99`), `stock_min` / `stock_max` (`0` / `1000`), `site_id` (`all`). `task_type='price_comp_sync'`. Фоновый runner: чанк 150, CMS×4.
+- **`auto_sync_network_prices_enabled`** / **`auto_sync_network_prices_time`** / **`auto_sync_network_prices_weekdays`** — **Цены сети** (`/network-prices.html`): эталон (по умолчанию Альмамед, `network_prices_source_site_id`) → целевые сайты с заданным `price_pct`. Формула `цена_эталона × (1 + price_pct/100)` → CMS + `my_products`. Сайты без `%` или с `enabled=0` пропускаются. МСК, по умолчанию **`11:00`**, дни `1…7`. `task_type='network_prices'`. Runner: `routes/networkPrices.js → triggerNetworkPricesSyncFromSettings`.
 - **`sales_formula_replenishment_days`** (основной UI: «Пополнение, дней»), **`sales_formula_sku_replenishment_enabled`** (`1`/`0`, галка «Рек. дни пополнения по товарам» — авто-подъём **горизонта** `k` по SKU; по умолчанию `1`; вместе с упущенными за A даёт более жёсткий запас против нуля, не дубль одной поправки), **`sales_formula_replenishment_coef`** (legacy/синхрон = дни÷W), **`sales_formula_sales_window_days`** (W — «Продажи за период», сумма и средний спрос для формулы v2), **`sales_formula_absence_analysis_days`** (A — дни отсутствия → **упущенные шт в спросе**), **`sales_formula_project_mode`** (`all` | `selected`), **`sales_formula_project_uuids`** (CSV `project_uuid` из `ms_demand`; при `selected` в сумму продаж для формулы и колонок `d_*a` входят только отгрузки выбранных проектов), **`sales_formula_base_qty`**, **`sales_formula_rare_base_qty`**, **`sales_formula_rare_avg_max`** (legacy, в v2 не используется), **`sales_formula_expensive_rare_threshold_rub`**, **`sales_formula_expensive_rare_min_qty`**, **`sales_formula_max_change_coef`**, **`sales_formula_incomplete_pack_pct`** — **формула продаж** на карточке товара (`GET /api/product/:code` → `formula`). Логика в `lib/datagonSalesFormula.js` (v2: сумма за W + упущенные, ×(дни÷W) **без** прибавки `sales_formula_base_qty` / `sales_formula_expensive_rare_min_qty`; редкий/дорогой; кратность + `incomplete_pack_pct`). **Оверрайд по поставщику:** `dg_supplier_settings.replenishment_days` (если задано) сильнее глобальных дней; правит только `admin` на `/suppliers.html`. В `formula` ответ: `replenishment_source` = `global` | `supplier`, `replenishment_days_effective`. Кэш `dg_formula_proposed_cache.formula_fp` = base + `|rd:g` или `|rd:N`. UI глобали — `/settings.html`.
 - **`auto_sync_runs_retention_days`** — срок хранения строк в **`auto_sync_runs`** (журнал запусков автосинхронизации на `/processes.html`, кнопка «Лог»; по умолчанию **180**). Автоочистка в `server.js` удаляет только записи с непустым `finished_at` старше N дней (при старте и каждые 12 ч). UI: карточка **«Журнал запусков автосинхронизации»** на `/settings.html` (`GET /api/settings/auto-sync-runs/stats`, `POST /api/settings/auto-sync-runs/cleanup`). На каждой карточке расписания — кнопка **«Лог»** → модалка с днём МСК (`GET /api/settings/auto-sync-runs?task=&date=`).
 - **`product_stock_snapshot_retention_days`** — срок хранения дневных снимков **`ms_export.stock`** в **`dg_product_stock_snapshot`** (очистка при каждом успешном полном синке МС; по умолчанию **365**, диапазон **30…3650**). UI: карточка **«Снимки остатка МС (карточка товара)»** на `/settings.html` (`sectionId='stock-snap-retention'`).
@@ -217,7 +221,7 @@ Query:
 
 Принудительно поставить одну задачу автосинхронизации в общую очередь расписания, не дожидаясь времени запуска. Используется кнопками «Запустить сейчас» в `settings.html`.
 
-Body: `{ "task": "myproducts" | "moysklad" | "ms_orders" | "marketplaces_ozon" | "marketplaces_wb" | "marketplaces_ym" | "marketplaces" | "huckster" | "np_ms_enrich" | "db_size" | "dimensions" | "min_stock_export" | "mssales" | "mssales_full" | "purchase_formula_cache" | "medmarket" | "medmarket_fill" | "price_comp_sync" }`. Whitelist — `lib/datagonAutoSyncRegistry.js → getAutoSyncTaskKeys()` плюс legacy **`marketplaces`** (все три площадки одним прогоном). Запись в `auto_sync_runs` с `trigger_type = "manual"`. Для `dimensions` — балк как по расписанию. Для `mssales` / `mssales_full` / `ms_orders` — см. соответствующие `auto_sync_*` выше. Для **`purchase_formula_cache`** — `runPurchaseFormulaCacheBatch(db, appSettings)` (дефолтные фильтры закупок, чанками без RAM-снимка). Для **`medmarket`** — `routes/medmarket.js → triggerSync(db)` (каталог из `ms_export`). Для **`price_comp_sync`** — `routes/myproducts.js → triggerPriceCompSyncFromSettings(appSettings)` (фильтры из `auto_sync_price_comp_*`). Для **`np_ms_enrich`** — `lib/dgNewProductsMarkets.js → backfillMarketsMsFieldsFromCache` (кэш МС, без live API).
+Body: `{ "task": "myproducts" | "moysklad" | "ms_orders" | "marketplaces_ozon" | "marketplaces_wb" | "marketplaces_ym" | "marketplaces" | "huckster" | "np_ms_enrich" | "db_size" | "dimensions" | "min_stock_export" | "mssales" | "mssales_full" | "purchase_formula_cache" | "medmarket" | "medmarket_fill" | "price_comp_sync" | "network_prices" }`. Whitelist — `lib/datagonAutoSyncRegistry.js → getAutoSyncTaskKeys()` плюс legacy **`marketplaces`** (все три площадки одним прогоном). Запись в `auto_sync_runs` с `trigger_type = "manual"`. Для `dimensions` — балк как по расписанию. Для `mssales` / `mssales_full` / `ms_orders` — см. соответствующие `auto_sync_*` выше. Для **`purchase_formula_cache`** — `runPurchaseFormulaCacheBatch(db, appSettings)` (дефолтные фильтры закупок, чанками без RAM-снимка). Для **`medmarket`** — `routes/medmarket.js → triggerSync(db)` (каталог из `ms_export`). Для **`price_comp_sync`** — `routes/myproducts.js → triggerPriceCompSyncFromSettings(appSettings)` (фильтры из `auto_sync_price_comp_*`). Для **`network_prices`** — `routes/networkPrices.js → triggerNetworkPricesSyncFromSettings` (все enabled-сайты с заданным `%`). Для **`np_ms_enrich`** — `lib/dgNewProductsMarkets.js → backfillMarketsMsFieldsFromCache` (кэш МС, без live API).
 
 Ответ `{ "success": true, "queued": true|false, "skip_reason": null|"already_running"|"already_queued"|"invalid_task", "task", "queue", "runner_active", "running_tasks" }`. Поле **`running_tasks`** — массив строк `task_type`, у которых в этот момент есть незавершённая запись в `auto_sync_runs` (**что реально крутится в воркере**); удобно показывать в UI вместе с `runner_active`. Поле **`queued: false`** означает, что задача **не** добавлена в очередь (дубликат или такой тип уже выполняется); в этом случае в **`skip_reason`** — причина. Успешная постановка не гарантирует мгновенный старт: если в этот момент уже крутится **другая** задача очереди, исполнение отложится до её завершения (сервер сам вызовет обработчик снова). На `/settings.html` тот же ответ показывается **плашкой** в карточке «Автосинхронизация по расписанию» (текст очереди, занятость воркера, время ответа), чтобы не гадать, «уехало» ли нажатие.
 
@@ -413,6 +417,44 @@ Query:
 ### POST `/api/my-sites/sync-all-real`
 Полная синхронизация всех источников (синхронный маршрут в роутере `mysites`).
 
+## Цены сети
+
+Экран `/network-prices.html`, роутер `routes/networkPrices.js`. Эталон (по умолчанию **Альмамед**, `app_settings.network_prices_source_site_id = 2`) → целевые сайты с наценкой/скидкой `%`. Связь пар: ручная (`network_product_links`) или авто по одинаковому артикулу (пока нет записи в `network_product_link_ignore`). **Остаток** в v1 только в матрице, в CMS не пишется.
+
+Правило записи: если у сайта `enabled=0` или `price_pct` NULL — сайт целиком пропускается; иначе `proposed = round(source.price × (1 + price_pct/100))`; при `|proposed − target.price| < eps` — без изменений; иначе `applyPriceToCms` (`lib/datagonCmsPriceWrite.js`) + `UPDATE my_products` (`network_sync_at` / `network_sync_note`).
+
+Таблицы (DDL при первом запросе): `network_price_site_settings`, `network_product_links`, `network_product_link_ignore`.
+
+### GET `/api/network-prices/settings`
+
+`{ success, source_site_id, source, targets: [{ site_id, name, domain, enabled, price_pct, … }] }`.
+
+### POST `/api/network-prices/settings`
+
+Body: `{ source_site_id?, targets: [{ site_id, enabled, price_pct|null }] }`. Пустой `price_pct` → NULL (сайт не трогаем). Ответ: `{ success, verified }`.
+
+### GET `/api/network-prices/matrix`
+
+Query: `target_site_id` (обяз.), `link_status` (`all` | `linked` | `unlinked` | `source_only` | `target_only`), `search`, `limit`, `offset`.
+
+Ответ: `{ success, enabled, price_pct, total, data[] }` — строки с полями эталона/цели, `proposed_price`, `delta_pct_vs_proposed`, `link_kind` / `link_status`.
+
+### POST `/api/network-prices/link`
+
+Body: `{ target_site_id, source_product_id, target_product_id }` — ручная связь (снимает ignore).
+
+### POST `/api/network-prices/unlink`
+
+Body: `{ target_site_id, source_product_id, target_product_id? }` — удаляет manual-link и ставит ignore (чтобы автопо SKU не вернулась).
+
+### POST `/api/network-prices/apply`
+
+Body: `{ target_site_id, search?, dry_run: 0|1, confirm: true }` (для записи нужен `confirm` или `dry_run=1`).
+
+Ответ-счётчики: `scanned`, `would_update` (dry_run) / `written`, `skipped_unchanged`, `skipped_no_source_price`, `cms_failed`, `errors[]` (до 20), `duration_sec`, `message`.
+
+Также: `GET /apply-status`, `POST /apply-stop`. Автосинк по расписанию — `task: "network_prices"` (см. Settings).
+
 ## My products
 
 ### GET `/api/my-products`
@@ -560,6 +602,7 @@ Query:
 - `competitor_sku` — подстрока по артикулу конкурента
 - `confidence_min` / `confidence_max` — порог схожести в процентах 0…100 (как в UI)
 - `match_type` — `sku` | `name` | `manual` | `all` (пусто/`all` — без фильтра; `manual` — ручные пары из шага 3)
+- `multi_comp_cards` — `1` / `true` / `yes`: только строки, у которых к тому же нашему товару (по SKU; без SKU — по названию) уже есть **более одной** `confirmed`-карточки **того же** конкурента. UI шага 2 — галка «Несколько карточек одного конкурента»; URL `multi_comp_cards=1`
 - `limit`
 - `offset`
 
@@ -587,6 +630,8 @@ Body:
 - оба пусто / без полей — сравнение 1:1
 - `pack_qty` целое ≥ 2
 
+**Правило 1:1 на конкурента:** после confirm остальные `confirmed` по тому же нашему товару (ключ — SKU; без SKU — название) и тому же `competitor_site_id` переводятся в `pending` (как «Разорвать»). Ответ дополнительно: `unlinked_siblings`, `unlinked_ids`. То же при `POST /api/matches/manual-match/confirm` и `POST /api/matches/manual-match/relink`. Существующие дубли массово не чистятся — смотрите фильтр `multi_comp_cards=1` в списке.
+
 В `GET /api/matches/list` у строки: `pack_qty`, `pack_basis`, `competitor_price` (лист), `competitor_price_comparable`.
 
 ### PATCH `/api/matches/:id/pack`
@@ -604,8 +649,7 @@ Body:
 
 Снять подтверждённое сопоставление (разорвать пару). Тело — идентификаторы записи матчинга (см. `routes/matches.js`).
 
-`POST /api/matches/manual-match/confirm` принимает те же опциональные `pack_qty` / `pack_basis`.
-
+`POST /api/matches/manual-match/confirm` принимает те же опциональные `pack_qty` / `pack_basis` и тоже снимает лишние confirmed с того же конкурента.
 ## Расширенные маршруты матчинга
 
 Эндпоинты для экрана «Сопоставление» (ручная очередь, архив, поиск по ценам конкурента, лог): `GET/DELETE /api/matches/manual-queue`, `POST /api/matches/manual-queue/return-to-auto` (массово «Вернуть в авто» по фильтрам: `my_site_id`, опц. `competitor_site_id` / `search` / `exclusion_reason`, `confirm: true`; ответ `{ success, deleted, duration_sec, filters }`; лог — пакет до 50 примеров + сводка, без N отдельных INSERT), `POST /api/matches/manual-queue/archive-all` (массово «В архив все» по тем же фильтрам + опц. `note`; ответ `{ success, archived, duration_sec, filters }`), `GET/DELETE /api/matches/manual-archive` (`GET` — query `my_site_id`, опц. `competitor_site_id` / `search` / `limit` (1–300, UI по умолчанию 100) / `offset`; UI шага 4 — пагинация «На странице» + Назад/Вперёд, URL `manual_archive_page` / `manual_archive_limit`; поиск по SKU/названию нашего товара, SKU/названию конкурента, заметке, `archived_by`, имени/домену проекта; в строках также `mp_source_url`, `my_site_domain`, `my_site_cms_type` для ссылки «Мой товар»), `GET /api/matches/prices-resolve-sku`, `GET /api/matches/prices-search`, `GET /api/matches/product-match-log`, `POST /api/matches/manual-match/confirm`, `POST /api/matches/manual-match/archive`. Точные query и JSON — в `routes/matches.js`. **Поле `archived_by`** в ответе `GET /api/matches/manual-archive` — пользователь, который нажал «В архив» в блоке ручного сопоставления (заполняется при `POST /api/matches/manual-match/archive` через `resolveActorDisplayName`); миграция колонки `match_manual_archive.archived_by VARCHAR(100) NULL` и UNIQUE `uq_match_manual_archive (my_site_id, competitor_site_id, my_product_id)` живут внутри `ensureMatchLaneTables()` (дубли архива схлопываются при старте; запись в архив — upsert). **Семантика шага 4:** пара в `match_manual_archive` больше не попадает в авто-сопоставление и не создаёт `match_exclusion` (шаг 3), пока запись не удалят из архива; при миграции/архивировании пересечения с очередью очищаются.
@@ -1934,7 +1978,7 @@ Body: `{ days }` (max = **`ms_orders_sync_days`**; если не передан�
 
 ### GET `/api/supplier-analysis/projects`
 
-Query: `days` (7–365, default 90). Список проектов из `ms_demand` с отгрузками за период: `{ success, days, projects: [{ uuid, name, count }] }`.
+Query: `days` (7–365, default 90). Список проектов из `ms_demand` с **активными** отгрузками за период (`applicable=1`, `deleted_at IS NULL` — как в агрегатах продаж): `{ success, days, projects: [{ uuid, name, count }] }`. `count` — число документов отгрузки, не SKU и не позиции.
 
 ### GET `/api/supplier-analysis/sales-breakdown`
 
@@ -1969,6 +2013,68 @@ Query: `days`, `search`, `project_mode`, `project_uuids` (как в ranking). О
 ### GET `/api/supplier-analysis/data-freshness`
 
 Как `/api/suppliers/data-freshness` (каталог МС + продажи МС).
+
+## Анализ товаров
+
+Страница `/product-analysis.html` (меню сразу после «Анализ поставщиков», ключ матрицы `product-analysis`, `sortOrder` 45.56). Роутер `routes/productAnalysis.js`, SQL — `lib/datagonProductAnalysisSql.js`. Каталог — складские SKU (`sqlProductAnalysisCatalogWhere`: не архив, складская «Да», не комплект; **включая** «перестали сотрудничать» — остаток ещё может лежать). Продажи — те же join'ы, что у анализа поставщиков (`salesJoinSql` с тем же catalog-where), агрегат **по `code`**.
+
+**Шаринг фильтров через URL:** после «Применить» / пресета / сортировки / страницы адрес обновляется (`history.replaceState`). Параметры (не-дефолтные): `days`, `new_stock_days`, `exclude_new_on_stock`, `search`, `supplier`, `manager`, `preset`, `project_mode` (`all`|`selected`), `project_uuids` (через запятую), `limit`, `page`, `sort_by`, `sort_dir`. Открытие ссылки восстанавливает форму и сразу грузит выборку.
+
+**Производительность ranking/overview:** тяжёлый join к `dg_product_stock_snapshot` (~миллионы строк) **не** выполняется на каждом запросе (как в анализе поставщиков). Snap включается только для пресетов «Новые на складе» / «исключать новые» из мёртвых·зависших·НС>0 и при сортировке по `days_on_stock`. Для обычных списков `days_on_stock` догружается точечно по кодам текущей страницы. Окно «прошлый период» продаж в ranking строится только при сортировке по `revenue_change_pct` (в overview — всегда, для KPI Δ%).
+
+Решения хранятся в **`dg_product_analysis_decisions`** (не в `dg_purchase_overrides`): `lifecycle` (`none`|`top`|`hold`|`boost`|`boost_failed`|`clearance`|`exit`), `do_not_order`, `min_stock_target`, `lock_proposed_min_stock`, поля буста (`boost_started_at`, `boost_days`), `decision_note`.
+
+Каждое реальное изменение поля пишется в **`dg_product_analysis_decisions_log`** (`field`, `old_value`/`new_value` человекочитаемо, `source`: `row`|`bulk`|`min_stock`|`purchase`). В UI перед колонкой «Решение» — колонка **«Комментарий»** (`decision_note`, до 500 символов, сохранение по Enter/blur) с кнопкой **лог**; у «Решение» — своя кнопка **лог** (hover/клик), как журнал overrides на закупках.
+
+Пресеты query `preset`: `all`, `top_revenue`, `top_qty`, `dead`, `stuck`, `new_on_stock`, `dead_min_stock`, `min_vs_proposed`, `lifecycle_*`, `do_not_order`. Фильтр проектов отгрузок — как у supplier-analysis (`project_mode` / `project_uuids`).
+
+Отличие ключевых пресетов остатка: **`dead` (Мёртвые)** — продаж за период = 0 и `stock_qty > 0`; **`stuck` (Зависшие)** — шире: `stock_qty > 0` и (продаж = 0 **или** `days_without_sales ≥ 30`). `dead` ⊂ `stuck` при нулевых продажах; зависшие ещё ловят SKU с редкими/давними продажами внутри периода. **`new_on_stock` (Новые на складе)** — `stock_qty > 0` и первый снимок остатка > 0 в пределах `new_stock_days` (как «Новые» в анализе поставщиков). При `exclude_new_on_stock=1` (по умолчанию) новинки **исключаются** из пресетов `dead` / `stuck` / `dead_min_stock`.
+
+### GET `/api/product-analysis/presets`
+
+Список `{ key, label, description }` + допустимые `lifecycle`. `description` — текст подсказки на чипах пресетов в UI.
+
+### GET `/api/product-analysis/projects`
+
+Как `/api/supplier-analysis/projects`.
+
+### GET `/api/product-analysis/managers`
+
+Уникальные значения `ms_export.manager` (свойство МС «Менеджер поддерживающий товар»): `{ success, managers: string[] }`.
+
+### GET `/api/product-analysis/overview`
+
+Query: `days`, `new_stock_days` (7–180, default 30), `exclude_new_on_stock` (`1`/`0`, default `1`), `preset`, `search`, `supplier`, `manager` (точное совпадение `ms_export.manager`), `lifecycle`, `project_mode`, `project_uuids`. Ответ: `{ totals: { skus_total, sales_revenue, sales_qty, stock_value_rub, min_stock_sum, dead_with_min_stock, in_boost, in_exit_path, … }, new_stock_days, exclude_new_on_stock }`.
+
+### GET `/api/product-analysis/ranking`
+
+Query: как overview + `limit` (default 100), `offset`, `sort_by`, `sort_dir`. Ответ: `{ total, rows[] }` — метрики продаж/остатка + `manager` + `days_on_stock` / `first_positive_date` (по `dg_product_stock_snapshot`, lookback **до 365 дней**, join только по складским SKU) + поля решения.
+
+### GET `/api/product-analysis/sku-detail`
+
+Query: `code` (обяз.), `days`, `project_mode`, `project_uuids`. Детализация одной SKU для раскрытия строки: `{ product, sales: { qty_total, revenue_total, by_project: [{ project_name, sales_qty, sales_revenue, share_pct }] }, absence: { max_streak_days, episode_count, avg_episode_days, recommended_replenishment_days, chronic, flicker } }`. Продажи — через тот же join, что ranking (включая комплекты); отсутствие — `dg_product_zero_stock_log` / `loadSkuRecommendedDaysByCodes`.
+
+### GET `/api/product-analysis/log`
+
+Query: **`code`** (обяз.), **`field`** (опц.: `lifecycle`|`do_not_order`|`min_stock_target`|`lock_proposed_min_stock`|`boost_days`|`decision_note`), `limit` (default 100, max 500), `offset`. Ответ: `{ success, code, total, rows: [{ id, field, field_label, old_value, new_value, source, source_label, changed_by_name, changed_at }] }`.
+
+### GET `/api/product-analysis/export`
+
+CSV по текущим фильтрам (до 20 000 строк).
+
+### POST `/api/product-analysis/decision`
+
+Body: `{ code, action? | lifecycle?, do_not_order?, min_stock_target?, lock_proposed_min_stock?, decision_note?, boost_days? }`. Actions: `boost`, `boost_failed`, `clearance`, `exit`, `top`, `hold`, `clear_decision`, `do_not_order_on`/`off`, `lock_proposed_zero`, `unlock_proposed` (снимает замок и очищает `dg_purchase_overrides.proposed_min_stock`). Ответ дополнительно: `changes[]`. Источник в журнале: `row`.
+
+В UI колонка «Предлагаемый нес.ост.» показывает бейдж **🔒 фикс.** и кнопку **Снять**, если `lock_proposed_min_stock`. То же на `/purchase.html` (по `lock_proposed_min_stock` или явному override `proposed_min_stock`).
+
+### POST `/api/product-analysis/decision/bulk`
+
+Body: `{ codes[]? }` **или** фильтры ranking (`days`, `preset`, …) + `action`/`patch`, `dry_run=1` для preflight. Ответ: `total` / `updated` / `changed_fields` / `patch_fields[]` / `errors[]`. Источник в журнале: `bulk`.
+
+### POST `/api/product-analysis/min-stock/apply`
+
+Запись `ms_export.min_stock` из `min_stock_target` / `force_zero` / `value` **только в Datagon** (выгрузка в МС — автосинк `min_stock_export`). Поддерживает `dry_run` и выборку по `codes[]` или фильтрам (по умолчанию пресет `dead_min_stock`).
 
 ### GET `/api/suppliers/data-freshness`
 

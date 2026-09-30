@@ -1487,7 +1487,10 @@ function createMsSalesRouter(db, appSettings = {}) {
             const [projects] = await db.query(
                 `SELECT project_uuid AS uuid, project_name AS name, COUNT(*) AS cnt
                    FROM ms_demand
-                  WHERE moment >= (NOW() - INTERVAL ? DAY) AND project_uuid IS NOT NULL
+                  WHERE moment >= (NOW() - INTERVAL ? DAY)
+                    AND applicable = 1
+                    AND deleted_at IS NULL
+                    AND project_uuid IS NOT NULL
                   GROUP BY project_uuid, project_name
                   ORDER BY cnt DESC, name`,
                 [days],

@@ -1,0 +1,148 @@
+          <div class="app-page-title">
+            <div class="page-title-wrapper">
+              <div class="page-title-heading">
+                <div class="page-title-icon">
+                  <i class="pe-7s-shuffle icon-gradient bg-happy-itmeo"> </i>
+                </div>
+                <div>
+                  Цены сети
+                  <div class="page-title-subheading">
+                    Эталон (Альмамед) → целевые сайты: наценка/скидка %, связь по артикулу, запись цены в CMS.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="main-card card mb-3">
+            <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+              <div class="card-header-title mb-0">
+                <i class="header-icon pe-7s-config icon-gradient bg-sunny-morning"> </i>
+                Настройки сети
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-np-settings-toggle">Свернуть</button>
+            </div>
+            <div class="card-body" id="dg-np-settings-body">
+              <div class="row g-2 align-items-end mb-3">
+                <div class="col-md-4">
+                  <label class="form-label small mb-1" for="dg-np-source-site">Эталон (источник цен)</label>
+                  <select class="form-select form-select-sm" id="dg-np-source-site"></select>
+                </div>
+              </div>
+              <div class="table-responsive">
+                <table class="table table-sm table-bordered mb-2" id="dg-np-targets-table">
+                  <thead>
+                    <tr>
+                      <th>Сайт</th>
+                      <th>Участвует</th>
+                      <th>Δ % от эталона</th>
+                      <th>Домен</th>
+                    </tr>
+                  </thead>
+                  <tbody id="dg-np-targets-tbody"></tbody>
+                </table>
+              </div>
+              <p class="small text-muted mb-2">Пустой % или выключено «Участвует» — сайт не трогаем при применении и в автосинке.</p>
+              <button type="button" class="btn btn-sm btn-primary" id="dg-np-settings-save" data-dg-notify-start="Сохраняем настройки цен сети…">Сохранить настройки</button>
+              <div id="dg-np-settings-save-msg" class="alert mt-3 mb-0 d-none" role="status"></div>
+            </div>
+          </div>
+
+          <div class="main-card card mb-3">
+            <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+              <div class="card-header-title mb-0">
+                <i class="header-icon pe-7s-filter icon-gradient bg-amy-crisp"> </i>
+                Фильтры и действия
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-np-filters-toggle">Свернуть</button>
+            </div>
+            <div class="card-body" id="dg-np-filters-body">
+              <div class="row g-2 align-items-end">
+                <div class="col-md-3">
+                  <label class="form-label small mb-1" for="dg-np-target-site">Целевой сайт</label>
+                  <select class="form-select form-select-sm" id="dg-np-target-site"></select>
+                </div>
+                <div class="col-md-3">
+                  <label class="form-label small mb-1" for="dg-np-search">Поиск</label>
+                  <input type="search" class="form-control form-control-sm" id="dg-np-search" placeholder="Артикул, название, код…" autocomplete="off" />
+                </div>
+                <div class="col-md-3">
+                  <label class="form-label small mb-1" for="dg-np-link-status">Связь</label>
+                  <select class="form-select form-select-sm" id="dg-np-link-status">
+                    <option value="all">Все</option>
+                    <option value="linked" selected>Связанные</option>
+                    <option value="unlinked">Без связи (эталон или цель)</option>
+                    <option value="source_only">Только эталон без пары</option>
+                    <option value="target_only">Только цель без пары</option>
+                  </select>
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label small mb-1" for="dg-np-limit">На странице</label>
+                  <select class="form-select form-select-sm" id="dg-np-limit">
+                    <option value="50">50</option>
+                    <option value="100" selected>100</option>
+                    <option value="200">200</option>
+                  </select>
+                </div>
+              </div>
+              <div class="d-flex flex-wrap gap-2 mt-3">
+                <button type="button" class="btn btn-sm btn-primary" id="dg-np-apply-filters" data-dg-notify-start="Загружаем матрицу цен сети…">Применить</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-np-reset-filters" data-dg-notify-start="Сбрасываем фильтры…">По умолчанию</button>
+                <button type="button" class="btn btn-sm btn-outline-info" id="dg-np-dry-run" data-dg-notify-start="Пробный прогон цен сети…">Пробный прогон (dry_run)</button>
+                <button type="button" class="btn btn-sm btn-success" id="dg-np-apply-prices" data-dg-notify-start="Пишем цены на целевой сайт…">Применить цены</button>
+              </div>
+              <div id="dg-np-action-log" class="alert alert-secondary mt-3 mb-0 d-none" role="status"></div>
+            </div>
+          </div>
+
+          <div class="main-card card mb-3">
+            <div class="card-header d-flex justify-content-between gap-2 flex-wrap">
+              <div class="d-flex align-items-center gap-3 flex-grow-1" style="min-width:0">
+                <div class="card-header-title mb-0 flex-shrink-0">
+                  <i class="header-icon pe-7s-menu icon-gradient bg-happy-itmeo"> </i>
+                  Матрица
+                </div>
+                <div class="text-muted small" id="dg-np-matrix-hint"></div>
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-np-table-toggle">Свернуть</button>
+            </div>
+            <div class="card-body" id="dg-np-table-body">
+              <div class="dg-np-table-wrap">
+                <table class="table table-hover table-bordered mb-0" id="dg-np-table">
+                  <thead>
+                    <tr>
+                      <th colspan="5" class="text-center bg-light">Эталон</th>
+                      <th colspan="4" class="text-center bg-light">Целевой сайт</th>
+                      <th colspan="3" class="text-center bg-light">Расчёт</th>
+                      <th class="text-center bg-light">Действия</th>
+                    </tr>
+                    <tr>
+                      <th>Код</th>
+                      <th>Артикул</th>
+                      <th>Название</th>
+                      <th>Остаток</th>
+                      <th>Цена</th>
+                      <th>Артикул</th>
+                      <th>Название</th>
+                      <th>Цена</th>
+                      <th>Остаток</th>
+                      <th>Предл.</th>
+                      <th>Δ% vs предл.</th>
+                      <th>Связь</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="dg-np-tbody">
+                    <tr><td colspan="13" class="text-muted text-center py-4">Выберите целевой сайт и нажмите «Применить».</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mt-3">
+                <div class="small text-muted" id="dg-np-pager-status">Найдено: 0</div>
+                <div class="btn-group btn-group-sm">
+                  <button type="button" class="btn btn-outline-secondary" id="dg-np-prev">Назад</button>
+                  <button type="button" class="btn btn-outline-secondary" id="dg-np-next">Вперёд</button>
+                </div>
+              </div>
+            </div>
+          </div>

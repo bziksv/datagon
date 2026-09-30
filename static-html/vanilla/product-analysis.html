@@ -1,0 +1,4161 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, shrink-to-fit=no" />
+  <script>
+    (function () {
+      try {
+        if (localStorage.getItem("datagon_theme_font_source_sans_3_v1") === "1") {
+          document.documentElement.classList.add("dg-font-source-sans-3");
+          var l = document.createElement("link");
+          l.id = "dg-font-source-sans-3-link";
+          l.rel = "stylesheet";
+          l.href =
+            "https://fonts.googleapis.com/css2?family=Source+Sans+3:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap";
+          document.head.appendChild(l);
+        }
+      } catch (e) {}
+    })();
+  </script>
+  <title>Анализ товаров — Датагон</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="stylesheet" href="/static/css/main.989b22a9.css" />
+    <style>
+    body.datagon-vanilla-body[data-dg-active-nav="product-analysis"] .app-main__outer,
+    body.datagon-vanilla-body[data-dg-active-nav="product-analysis"] .app-main__inner {
+      min-width: 0;
+      max-width: 100%;
+      box-sizing: border-box;
+      overflow-x: clip;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="product-analysis"] .main-card.card,
+    body.datagon-vanilla-body[data-dg-active-nav="product-analysis"] .main-card.card > .card-body {
+      min-width: 0;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+
+    .dg-pa-summary-card .dg-pa-summary-header {
+      background: linear-gradient(135deg, #3d4a5c 0%, #2c3e50 45%, #1e6bb8 100%);
+    }
+    .dg-pa-summary-body {
+      background: linear-gradient(180deg, #f8fafc 0%, #fff 120px);
+    }
+    .dg-pa-block-label {
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #6c757d;
+      margin-bottom: 0.5rem;
+    }
+    .dg-pa-kpi-tile {
+      background: #fff;
+      border: 1px solid #e8eaed;
+      border-radius: 8px;
+      padding: 10px 12px;
+      height: 100%;
+      min-height: 72px;
+    }
+    .dg-pa-kpi-label { font-size: 0.72rem; color: #6c757d; line-height: 1.25; }
+    .dg-pa-kpi-value {
+      font-size: 1.1rem;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      margin-top: 2px;
+      min-height: 1.35em;
+      line-height: 1.35;
+    }
+    .dg-pa-kpi-money .dg-pa-kpi-value { color: #1e6bb8; }
+    .dg-pa-kpi-warn .dg-pa-kpi-value { color: #c0392b; }
+
+    .dg-pa-presets {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+    }
+    .dg-pa-preset-chip {
+      border: 1px solid #ced4da;
+      background: #fff;
+      color: #495057;
+      border-radius: 999px;
+      padding: 0.2rem 0.7rem;
+      font-size: 0.78rem;
+      line-height: 1.4;
+      cursor: pointer;
+    }
+    .dg-pa-preset-chip:hover { border-color: #1e6bb8; color: #1e6bb8; }
+    .dg-pa-preset-chip.is-active {
+      background: #1e6bb8;
+      border-color: #1e6bb8;
+      color: #fff;
+    }
+
+    .dg-pa-actions-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+      align-items: center;
+    }
+
+    body.datagon-vanilla-body[data-dg-active-nav="product-analysis"] .dg-pa-table-scroll-outer {
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+      box-sizing: border-box;
+      overflow-x: auto;
+      overflow-y: visible;
+      -webkit-overflow-scrolling: touch;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="product-analysis"] #dg-pa-table-body {
+      min-width: 0;
+      max-width: 100%;
+    }
+    body.datagon-vanilla-body[data-dg-active-nav="product-analysis"]
+      .dg-pa-table-scroll-outer > .datagon-my-products-table-wrap {
+      overflow: visible !important;
+      max-height: none !important;
+    }
+    .dg-pa-table {
+      width: max-content;
+      min-width: 100%;
+      table-layout: fixed;
+      border-collapse: collapse;
+      font-size: 0.82rem;
+      font-variant-numeric: tabular-nums;
+    }
+    .dg-pa-table thead th,
+    .dg-pa-table tbody td {
+      box-sizing: border-box;
+    }
+    /* sticky top 0 + плавающий сдвиг transform на tr в JS (как supplier-analysis / moysklad) */
+    .dg-pa-table thead th {
+      position: sticky !important;
+      top: 0 !important;
+      z-index: 20 !important;
+      background: #f8f9fa !important;
+      border-right: 1px solid #e6e9ee;
+      white-space: nowrap;
+      user-select: text;
+      -webkit-user-select: text;
+      cursor: pointer;
+      vertical-align: bottom;
+    }
+    .dg-pa-table thead[data-dg-floating="1"] th {
+      position: relative !important;
+      top: auto !important;
+    }
+    .dg-pa-table thead[data-dg-floating="1"] tr {
+      background: #f8f9fa;
+    }
+    .dg-pa-table tbody td {
+      border-right: 1px solid #f3f5f8;
+      vertical-align: middle;
+    }
+    .dg-pa-table thead th.dg-pa-th-label {
+      white-space: normal;
+      word-break: break-word;
+      overflow-wrap: break-word;
+      line-height: 1.2;
+      max-width: 9rem;
+      vertical-align: bottom;
+      padding-top: 6px;
+      padding-bottom: 6px;
+    }
+
+    .dg-pa-row-top { background: rgba(40, 167, 69, 0.06); }
+    .dg-pa-row-dead { background: rgba(243, 156, 18, 0.08); }
+    .dg-pa-row-boost { background: rgba(30, 107, 184, 0.08); }
+    .dg-pa-row-exit { background: rgba(192, 57, 43, 0.08); }
+    .dg-pa-table tbody tr.dg-pa-row-active { background: rgba(30, 107, 184, 0.1) !important; }
+
+    .dg-pa-expand-col,
+    .dg-pa-expand-cell {
+      width: 32px;
+      max-width: 32px;
+      padding-left: 8px !important;
+      padding-right: 4px !important;
+      vertical-align: middle;
+      cursor: pointer;
+    }
+    .dg-pa-row-chevron {
+      display: inline-block;
+      color: #868e96;
+      font-size: 1.1rem;
+      line-height: 1;
+      transition: transform 0.15s ease, color 0.15s ease;
+    }
+    .dg-pa-row-active .dg-pa-row-chevron {
+      transform: rotate(90deg);
+      color: #1e6bb8;
+    }
+    .dg-pa-detail-panel {
+      background: #f8fafc;
+      border: 1px solid #dee2e6;
+      border-radius: 8px;
+      padding: 12px 14px;
+    }
+    .dg-pa-detail-row { position: relative; z-index: 30; }
+    .dg-pa-detail-row > .dg-pa-detail-cell {
+      padding: 0 !important;
+      background: #f8fafc;
+      border-top: 0;
+    }
+    .dg-pa-detail-row .dg-pa-detail-panel {
+      margin: 0;
+      border: 0;
+      border-radius: 0;
+      box-shadow: none;
+    }
+    .dg-pa-doughnut-wrap {
+      position: relative;
+      height: 200px;
+      max-width: 220px;
+      margin: 0 auto;
+    }
+    .dg-pa-detail-table-wrap { max-height: 220px; overflow: auto; }
+
+    .dg-pa-lc-badge {
+      display: inline-block;
+      font-size: 0.72rem;
+      padding: 0.1rem 0.45rem;
+      border-radius: 4px;
+      background: #eef1f4;
+      color: #495057;
+      white-space: nowrap;
+    }
+    .dg-pa-lc-select {
+      min-width: 11rem;
+      max-width: 14rem;
+      font-size: 12px;
+      font-weight: 600;
+      padding-top: 0.15rem;
+      padding-bottom: 0.15rem;
+    }
+    .dg-pa-lc-select.dg-pa-lc-top { background: #d4edda; color: #155724; border-color: #c3e6cb; }
+    .dg-pa-lc-select.dg-pa-lc-hold { background: #e2e3e5; color: #383d41; border-color: #d6d8db; }
+    .dg-pa-lc-select.dg-pa-lc-boost { background: #cce5ff; color: #004085; border-color: #b8daff; }
+    .dg-pa-lc-select.dg-pa-lc-boost_failed { background: #fff3cd; color: #856404; border-color: #ffeeba; }
+    .dg-pa-lc-select.dg-pa-lc-clearance { background: #f8d7da; color: #721c24; border-color: #f5c6cb; }
+    .dg-pa-lc-select.dg-pa-lc-exit { background: #f5c6cb; color: #491217; border-color: #f1b0b7; }
+    .dg-pa-dno-toggle {
+      display: inline-flex;
+      align-items: center;
+      cursor: pointer;
+      user-select: none;
+      font-size: 12px;
+    }
+    .dg-pa-lc-top { background: #d4edda; color: #155724; }
+    .dg-pa-lc-boost { background: #cce5ff; color: #004085; }
+    .dg-pa-lc-boost_failed { background: #fff3cd; color: #856404; }
+    .dg-pa-lc-clearance { background: #f8d7da; color: #721c24; }
+    .dg-pa-lc-exit { background: #f5c6cb; color: #491217; }
+    .dg-pa-proposed-cell {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      flex-wrap: wrap;
+    }
+    .dg-pa-lock-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.2rem;
+      font-size: 11px;
+      font-weight: 600;
+      line-height: 1.2;
+      padding: 0.12rem 0.35rem;
+      border-radius: 0.25rem;
+      background: #fff3cd;
+      color: #856404;
+      border: 1px solid #ffeeba;
+      white-space: nowrap;
+    }
+    .dg-pa-unlock-btn {
+      font-size: 11px;
+      padding: 0.05rem 0.35rem;
+      line-height: 1.3;
+    }
+
+    .dg-pa-lc-wrap,
+    .dg-pa-note-wrap {
+      display: inline-flex;
+      align-items: flex-start;
+      gap: 0.25rem;
+      max-width: 100%;
+      width: 100%;
+    }
+    .dg-pa-lc-wrap {
+      align-items: center;
+    }
+    .dg-pa-lc-wrap .dg-pa-lc-select,
+    .dg-pa-note-wrap .dg-pa-note-input {
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+    .dg-pa-note-input {
+      font-size: 12px;
+      padding: 0.2rem 0.35rem;
+      line-height: 1.35;
+      height: auto;
+      min-height: calc(1.35em * 3 + 0.4rem);
+      resize: vertical;
+    }
+    .dg-pa-lc-log {
+      flex: 0 0 auto;
+      font-size: 11px;
+      padding: 0.05rem 0.3rem;
+      line-height: 1.25;
+      color: #6c757d;
+      border-color: #ced4da;
+    }
+    .dg-pa-lc-log:hover {
+      color: #1e6bb8;
+      border-color: #1e6bb8;
+    }
+
+    .dg-pa-cell-tip {
+      position: fixed;
+      z-index: 10050;
+      max-width: 380px;
+      min-width: 240px;
+      background: #ffffff;
+      color: #1f2937;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      padding: 8px 10px;
+      box-shadow: 0 6px 18px rgba(15, 23, 42, 0.12);
+      font-size: 11px;
+      line-height: 1.35;
+      pointer-events: auto;
+    }
+    .dg-pa-cell-tip .dg-pa-cell-tip-title {
+      font-weight: 600;
+      font-size: 11px;
+      color: #374151;
+      margin-bottom: 6px;
+    }
+    .dg-pa-cell-tip .dg-pa-cell-tip-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    .dg-pa-cell-tip .dg-pa-cell-tip-list li {
+      padding: 4px 0;
+      border-top: 1px solid #f3f4f6;
+    }
+    .dg-pa-cell-tip .dg-pa-cell-tip-list li:first-child {
+      border-top: 0;
+      padding-top: 0;
+    }
+    .dg-pa-cell-tip .dg-pa-cell-tip-row1 {
+      color: #6b7280;
+      font-size: 10px;
+      margin-bottom: 2px;
+    }
+    .dg-pa-cell-tip .dg-pa-cell-tip-old {
+      color: #b91c1c;
+      text-decoration: line-through;
+      text-decoration-thickness: 1px;
+    }
+    .dg-pa-cell-tip .dg-pa-cell-tip-new {
+      color: #14532d;
+      font-weight: 600;
+    }
+    .dg-pa-cell-tip .dg-pa-cell-tip-empty,
+    .dg-pa-cell-tip .dg-pa-cell-tip-loading,
+    .dg-pa-cell-tip .dg-pa-cell-tip-err {
+      color: #6b7280;
+    }
+    .dg-pa-cell-tip .dg-pa-cell-tip-err { color: #b91c1c; }
+    .dg-pa-log-src {
+      display: inline-block;
+      padding: 0 4px;
+      border-radius: 3px;
+      background: #eef2f7;
+      color: #374151;
+      font-size: 10px;
+    }
+    .dg-pa-log-src-bulk { background: #e0f2fe; color: #075985; }
+    .dg-pa-log-src-row { background: #ecfdf5; color: #065f46; }
+    .dg-pa-log-src-min_stock { background: #fff7ed; color: #9a3412; }
+    .dg-pa-log-src-purchase { background: #f3e8ff; color: #6b21a8; }
+
+    #dg-pa-action-log {
+      font-size: 0.82rem;
+      white-space: pre-wrap;
+    }
+    .dg-pa-bulk-confirm-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 2100;
+      background: rgba(15, 23, 42, 0.5);
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+    .dg-pa-bulk-confirm-overlay.is-open {
+      display: flex !important;
+    }
+    .dg-pa-bulk-confirm-card {
+      max-width: 520px;
+      width: 100%;
+    }
+    .dg-pa-header-search { flex: 0 1 380px; min-width: 220px; }
+  </style>
+
+  <style>
+    /* Один список сайдбара: «ArchitectUI меню» у нижнего края области навигации, без второго блока/ul */
+    .dg-sidebar-nav-scroll {
+      display: flex;
+      flex-direction: column;
+    }
+    .dg-sidebar-nav-measure {
+      flex: 1 1 auto;
+      min-height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+    .dg-sidebar-nav-measure .datagon-nav-shell,
+    .dg-sidebar-nav-measure .vertical-nav-menu {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    /* Только корневой список меню: иначе вложенный ul.metismenu-container (под «Маркетплейсы» и т.п.)
+       получает min-height:100% + flex и растягивается на всю колонку — вертикальная линия темы залезает на соседние пункты. */
+    .dg-sidebar-nav-measure .vertical-nav-menu > .metismenu-container {
+      display: flex;
+      flex-direction: column;
+      flex: 1 1 auto;
+      min-height: 100%;
+      margin-bottom: 0;
+    }
+    /*
+      Подменю «Маркетплейсы»: ArchitectUI скрывает .metismenu-icon у подпунктов и даёт малый padding.
+      Не трогаем узкую полоску без hover — большой padding раздувает li и смещает «left:50%» у всех иконок колонки.
+      При развороте по hover из closed-sidebar класс closed-sidebar не снимается — нужен отдельный селектор с .app-sidebar:hover.
+    */
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible,
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon {
+      display: block !important;
+    }
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link,
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link {
+      padding-left: 3.4375rem !important;
+      position: relative;
+      /* Длинные подписи подпунктов («Проблемы с товарами», «Яндекс Маркет»)
+         не должны обрезаться ellipsis: разрешаем перенос на 2 строки и
+         выравниваем иконку по верхней строке. */
+      white-space: normal !important;
+      line-height: 1.25;
+      align-items: flex-start;
+      padding-top: 0.45rem !important;
+      padding-bottom: 0.45rem !important;
+      padding-right: 0.5rem !important;
+      min-height: 2rem;
+      height: auto !important;
+    }
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible,
+    .datagon-vanilla-shell:not(.closed-sidebar)
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-mp-submenu.metismenu-container.visible,
+    .datagon-vanilla-shell.closed-sidebar .app-sidebar:hover
+      .vertical-nav-menu
+      ul.dg-vanilla-parse-submenu.metismenu-container.visible
+      > .metismenu-item
+      > .metismenu-link
+      .metismenu-icon {
+      top: 0.55rem !important;
+    }
+    .dg-sidebar-architect-item {
+      margin-top: auto;
+    }
+    .dg-sidebar-architect-item .metismenu-link {
+      border-top: 1px solid rgba(0, 0, 0, 0.07);
+      padding-top: 0.65rem;
+    }
+    /* Пункты сайдбара с доступом как у журнала активности (admin / право на пользователей) */
+    .dg-sidebar-nav-restricted .metismenu-link {
+      display: inline-flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.15rem 0.35rem;
+    }
+    .dg-sidebar-nav-restricted .dg-nav-restricted-icon {
+      font-size: 0.7rem;
+      opacity: 0.72;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+    .datagon-vanilla-shell .app-footer .app-footer__inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .datagon-vanilla-shell .app-footer-right {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 6px 12px;
+      padding: 4px 8px 4px 12px;
+      max-width: min(100%, 540px);
+      margin-left: auto;
+    }
+    .datagon-vanilla-shell .dg-footer-legal-link {
+      font-size: 11px;
+      line-height: 1.25;
+      color: #6c757d;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    .datagon-vanilla-shell .dg-footer-legal-link:hover {
+      color: #2f5de0;
+      text-decoration: underline;
+    }
+    @media (max-width: 991.98px) {
+      /* На мобильном layout не должен наследовать desktop-сдвиг fixed/closed sidebar. */
+      .datagon-vanilla-shell .app-main__outer {
+        margin-left: 0 !important;
+      }
+      .datagon-vanilla-shell .app-footer {
+        left: 0 !important;
+        width: 100% !important;
+      }
+      .datagon-vanilla-shell .app-footer .app-footer__inner {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-left: 0 !important;
+      }
+      /* На телефонах слой мобильного меню должен перекрывать фиксированный футер. */
+      .datagon-vanilla-shell .sidebar-mobile-overlay {
+        z-index: 1090;
+      }
+      .datagon-vanilla-shell .app-sidebar {
+        z-index: 1100;
+      }
+      .datagon-vanilla-shell .app-footer {
+        z-index: 1080;
+      }
+      .datagon-vanilla-shell.sidebar-mobile-open .app-footer {
+        pointer-events: none;
+        opacity: 0.25;
+      }
+    }
+    /* Source Sans 3 — opt-in из «Параметры макета» (все экраны, в т.ч. Windows). */
+    html.dg-font-source-sans-3 .datagon-vanilla-shell {
+      --bs-body-font-family: "Source Sans 3", -apple-system, BlinkMacSystemFont, "Segoe UI",
+        Roboto, "Helvetica Neue", Arial, sans-serif;
+      --bs-font-sans-serif: var(--bs-body-font-family);
+      font-family: var(--bs-body-font-family);
+    }
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .btn,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .form-control,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .form-select,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .table,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .card,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .page-title-heading,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .vertical-nav-menu a,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .app-header,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .app-sidebar,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .app-main,
+    html.dg-font-source-sans-3 .datagon-vanilla-shell .app-footer {
+      font-family: inherit;
+    }
+  </style>
+</head>
+<body class="datagon-vanilla-body" data-dg-active-nav="product-analysis">
+  <div class="app-container app-theme-white datagon-shell datagon-vanilla-shell fixed-header fixed-sidebar fixed-footer">
+    <div class="app-header header-shadow">
+      <div class="app-header__logo">
+        <button type="button" class="logo-src datagon-brand" onclick="location.href='/dashboard.html'" title="Открыть дашборд" style="border:0;background:transparent;padding:0;cursor:pointer">Датагон</button>
+        <div class="header__pane ms-auto">
+          <div>
+            <button type="button" class="hamburger hamburger--slider dg-toggle-sidebar" aria-label="Свернуть боковую панель" title="Свернуть боковую панель">
+              <span class="hamburger-box"><span class="hamburger-inner"></span></span>
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="app-header__mobile-menu">
+        <div>
+          <button type="button" class="hamburger hamburger--slider dg-toggle-mobile-sidebar" aria-label="Открыть меню">
+            <span class="hamburger-box"><span class="hamburger-inner"></span></span>
+          </button>
+        </div>
+      </div>
+      <div class="app-header__menu">
+        <span>
+          <button type="button" class="btn btn-primary btn-sm btn-icon btn-icon-only dg-toggle-header-small" aria-label="Доп. меню шапки">
+            <div class="btn-icon-wrapper">
+              <i class="pe-7s-more" style="font-size:1.1rem;line-height:1"></i>
+            </div>
+          </button>
+        </span>
+      </div>
+      <div class="app-header__content">
+        <div class="app-header-left">
+          <div class="search-wrapper">
+            <div class="input-holder">
+              <input type="text" class="search-input" placeholder="Type to search" autocomplete="off" />
+              <button type="button" class="search-icon dg-vanilla-search-docs" aria-label="Открыть документацию" title="Документация">
+                <span></span>
+              </button>
+            </div>
+            <button type="button" class="btn-close dg-vanilla-search-close" aria-label="Закрыть поиск"></button>
+          </div>
+        </div>
+        <div class="app-header-right">
+          <div class="ui-theme-settings ui-theme-settings--header">
+            <button type="button" class="btn btn-link btn-open-options btn-open-options--header" id="TooltipDemoVanilla" aria-label="Параметры темы" title="Параметры темы (полная версия в React-панели)">
+              <i class="pe-7s-config" style="font-size:1.35rem;color:#3f6ad8;line-height:1"></i>
+            </button>
+            <div class="theme-settings__inner">
+              <div class="theme-settings__options-wrapper">
+                <h3 class="themeoptions-heading">Параметры макета</h3>
+                <div class="list-group">
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Фиксированная шапка</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-fixed-header" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Тень шапки</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-header-shadow" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Фиксированный сайдбар</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-fixed-sidebar" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Тень сайдбара</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-sidebar-shadow" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Фиксированный футер</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-fixed-footer" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Шрифт Source Sans 3</h5>
+                    <label class="switch mb-0" title="Удобнее на Windows; сохраняется для всех страниц панели"><input type="checkbox" id="dg-theme-font-source-sans-3"><span class="slider round"></span></label>
+                  </div>
+                </div>
+
+                <h3 class="themeoptions-heading">Параметры заголовка страницы</h3>
+                <div class="list-group">
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Иконка заголовка</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-title-icon" checked><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Подзаголовок страницы</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-title-subheading" checked><span class="slider round"></span></label>
+                  </div>
+                </div>
+
+                <h3 class="themeoptions-heading">Цветовые схемы</h3>
+                <div class="list-group">
+                  <div class="list-group-item">
+                    <h5 class="mb-2">Цветовая схема макета</h5>
+                    <div class="theme-settings-swatches">
+                      <div class="swatch-holder-lg active dg-theme-color-scheme" data-color-scheme="white" style="background:#fff;border:1px solid #dee2e6"></div>
+                      <div class="swatch-holder-lg dg-theme-color-scheme" data-color-scheme="gray" style="background:#868e96"></div>
+                    </div>
+                  </div>
+                </div>
+
+                <h3 class="themeoptions-heading">Параметры сайдбара</h3>
+                <div class="list-group">
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Фоновое изображение сайдбара</h5>
+                    <label class="switch mb-0"><input type="checkbox" id="dg-theme-sidebar-bg-image"><span class="slider round"></span></label>
+                  </div>
+                  <div class="list-group-item">
+                    <h5 class="mb-2">Цвета сайдбара</h5>
+                    <div class="theme-settings-swatches">
+                      <div class="swatch-holder bg-primary dg-theme-sidebar-color" data-color-class="bg-primary"></div><div class="swatch-holder bg-danger dg-theme-sidebar-color" data-color-class="bg-danger"></div><div class="swatch-holder bg-warning dg-theme-sidebar-color" data-color-class="bg-warning"></div><div class="swatch-holder bg-success dg-theme-sidebar-color" data-color-class="bg-success"></div>
+                      <div class="swatch-holder bg-info dg-theme-sidebar-color" data-color-class="bg-info"></div><div class="swatch-holder bg-secondary dg-theme-sidebar-color" data-color-class="bg-secondary"></div><div class="swatch-holder bg-dark dg-theme-sidebar-color" data-color-class="bg-dark"></div><div class="swatch-holder dg-theme-sidebar-color" data-color-class="bg-plum-plate" style="background:#667eea"></div>
+                      <div class="swatch-holder dg-theme-sidebar-color" data-color-class="bg-arielle-smile" style="background:#16d9e3"></div><div class="swatch-holder dg-theme-sidebar-color" data-color-class="bg-ripe-malin" style="background:#f093fb"></div><div class="swatch-holder dg-theme-sidebar-color" data-color-class="bg-night-fade" style="background:#a18cd1"></div><div class="swatch-holder dg-theme-sidebar-color" data-color-class="bg-malibu-beach" style="background:#4facfe"></div>
+                    </div>
+                  </div>
+                </div>
+
+                <h3 class="themeoptions-heading">Параметры шапки</h3>
+                <div class="list-group">
+                  <div class="list-group-item">
+                    <h5 class="mb-2">Цвета шапки</h5>
+                    <div class="theme-settings-swatches">
+                      <div class="swatch-holder bg-primary dg-theme-header-color" data-color-class="bg-primary"></div><div class="swatch-holder bg-danger dg-theme-header-color" data-color-class="bg-danger"></div><div class="swatch-holder bg-warning dg-theme-header-color" data-color-class="bg-warning"></div><div class="swatch-holder bg-success dg-theme-header-color" data-color-class="bg-success"></div>
+                      <div class="swatch-holder bg-info dg-theme-header-color" data-color-class="bg-info"></div><div class="swatch-holder bg-secondary dg-theme-header-color" data-color-class="bg-secondary"></div><div class="swatch-holder bg-dark dg-theme-header-color" data-color-class="bg-dark"></div><div class="swatch-holder dg-theme-header-color" data-color-class="bg-plum-plate" style="background:#667eea"></div>
+                    </div>
+                  </div>
+                </div>
+                <div class="p-2">
+                  <a href="/settings.html" class="btn btn-sm btn-outline-primary w-100">Настройки</a>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="header-dots">
+            <div class="dropdown">
+              <button type="button" class="btn btn-link p-0 me-2 dg-vanilla-dropdown-toggle" style="line-height:0" aria-expanded="false" aria-haspopup="true">
+                <div class="icon-wrapper icon-wrapper-alt rounded-circle">
+                  <div class="icon-wrapper-bg bg-success"></div>
+                  <i class="pe-7s-graph2" style="font-size:23px;color:#3ac47d"></i>
+                </div>
+              </button>
+              <div class="dropdown-menu dropdown-menu-xl rm-pointers p-0" style="min-width: 320px">
+                <div class="dropdown-menu-header">
+                  <div class="dropdown-menu-header-inner bg-premium-dark">
+                    <div class="menu-header-image" style="background-image:url('/assets/utils/images/dropdown-header/abstract4.jpg')"></div>
+                    <div class="menu-header-content text-white">
+                      <h5 class="menu-header-title">Вы в сети</h5>
+                      <h6 class="menu-header-subtitle">Онлайн за окно из настроек</h6>
+                    </div>
+                  </div>
+                </div>
+                <div class="widget-chart">
+                  <div class="widget-chart-content">
+                    <div class="icon-wrapper rounded-circle">
+                      <div class="icon-wrapper-bg opacity-9 bg-focus"></div>
+                      <i class="lnr-users text-white"></i>
+                    </div>
+                    <div class="widget-numbers d-flex flex-column align-items-center text-center" id="dg-vanilla-online-users-wrap">
+                      <span id="dg-vanilla-online-users">—</span>
+                      <span class="opacity-9 fw-normal" style="font-size: 0.72rem; line-height: 1.25; margin-top: 0.15rem" id="dg-vanilla-online-users-unit"></span>
+                    </div>
+                    <div class="widget-subheading pt-2 small text-muted" id="dg-vanilla-online-users-role"></div>
+                    <div class="text-center small px-2 pt-1 pb-1">
+                      <a href="/settings.html#dg-settings-online-presence" class="text-decoration-none">Окно минут</a>
+                    </div>
+                    <div class="widget-description text-muted small px-2 mt-1 mb-0" id="dg-vanilla-online-users-sessions" style="line-height: 1.35"></div>
+                    <div class="widget-description text-muted mt-2 mb-0">
+                      <span class="pe-1 small" id="dg-vanilla-online-users-note"></span>
+                    </div>
+                  </div>
+                  <div class="widget-chart-wrapper">
+                    <div style="height:40px;opacity:.35;background:linear-gradient(90deg,#f7b924 0%,#f7b92455 100%);border-radius:2px;"></div>
+                  </div>
+                </div>
+                <div class="nav-item-divider mt-0"></div>
+                <div class="nav-item-btn text-center pb-3 mb-2">
+                  <button type="button" class="btn btn-sm btn-shine btn-wide btn-pill btn-warning" id="dg-vanilla-online-users-refresh">
+                    <i class="pe-7s-refresh me-2"></i>Обновить
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="header-btn-lg pe-0">
+            <div class="widget-content p-0">
+              <div class="widget-content-wrapper">
+                <div class="widget-content-left d-flex align-items-center gap-1 pe-2">
+                  <span
+                    class="rounded-circle d-inline-flex align-items-center justify-content-center flex-shrink-0 bg-light text-secondary border"
+                    style="width: 42px; height: 42px; border-color: #e2e8f0"
+                    role="img"
+                    aria-label="Профиль"
+                  >
+                    <i class="pe-7s-user" style="font-size: 1.2rem; line-height: 1; opacity: 0.85" aria-hidden="true"></i>
+                  </span>
+                  <button type="button" class="btn btn-link p-0 dg-vanilla-logout d-inline-flex align-items-center justify-content-center text-danger" title="Выйти" aria-label="Выйти из профиля" style="min-width:34px;min-height:34px;line-height:1;border-radius:50%">
+                    <i class="lnr-exit" style="font-size:1.2rem"></i>
+                  </button>
+                </div>
+                <div class="widget-content-left ms-2 header-user-info">
+                  <div class="widget-heading" id="dg-vanilla-user-display-inline">Пользователь</div>
+                  <div class="widget-subheading" id="dg-vanilla-user-role-inline">Пользователь</div>
+                </div>
+                <div class="widget-content-right header-user-info ms-3">
+                  <button type="button" class="btn btn-shadow p-1 btn-sm btn-info" id="Tooltip-1" title="Click for notifications">
+                    <i class="pe-7s-date text-white" style="font-size:20px;line-height:1"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="app-main">
+      <div class="sidebar-mobile-overlay"></div>
+      <div class="app-sidebar sidebar-shadow">
+        <div class="d-flex flex-column h-100 min-h-0">
+          <div class="app-header__logo">
+            <button type="button" class="logo-src datagon-brand" onclick="location.href='/dashboard.html'" title="Открыть дашборд" style="border:0;background:transparent;padding:0;cursor:pointer">Датагон</button>
+            <div class="header__pane ms-auto">
+              <div>
+                <button type="button" class="hamburger hamburger--slider dg-toggle-sidebar" aria-label="Свернуть боковую панель" title="Свернуть боковую панель">
+                  <span class="hamburger-box"><span class="hamburger-inner"></span></span>
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="app-header__mobile-menu">
+            <div>
+              <button type="button" class="hamburger hamburger--slider dg-toggle-mobile-sidebar" aria-label="Открыть меню">
+                <span class="hamburger-box"><span class="hamburger-inner"></span></span>
+              </button>
+            </div>
+          </div>
+          <div class="app-header__menu">
+            <span>
+              <button type="button" class="btn btn-primary btn-sm btn-icon btn-icon-only dg-toggle-header-small" aria-label="Доп. меню шапки">
+                <div class="btn-icon-wrapper">
+                  <i class="pe-7s-more" style="font-size:1.1rem;line-height:1"></i>
+                </div>
+              </button>
+            </span>
+          </div>
+          <div class="custom-scrollbar dg-sidebar-nav-wrap d-flex flex-column min-h-0" style="flex:1 1 0%;min-height:0;max-height:calc(100vh - 80px);overflow-x:hidden">
+            <div class="app-sidebar__inner dg-sidebar-nav-scroll flex-grow-1 min-h-0" style="overflow-y:auto;overflow-x:hidden">
+              <div class="dg-sidebar-nav-measure">
+                <div class="datagon-nav-shell">
+                  <div class="vertical-nav-menu" style="pointer-events:auto;z-index:999;position:relative">
+                    <ul class="metismenu-container">
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="dashboard" href="/dashboard.html"><i class="metismenu-icon pe-7s-rocket"></i>Дашборд</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="my-sites" href="/my-sites.html"><i class="metismenu-icon pe-7s-global"></i>Мои сайты</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="network-prices" href="/network-prices.html"><i class="metismenu-icon pe-7s-shuffle"></i>Цены сети</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="my-products" href="/my-products.html"><i class="metismenu-icon pe-7s-box2"></i>Мои товары (сайты)</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="moysklad" href="/moysklad.html"><i class="metismenu-icon pe-7s-shopbag"></i>Мой Склад (товары)</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="medmarket" href="/medmarket.html" title="Стыковка кода МС с кодом товара для Медмаркета"><i class="metismenu-icon pe-7s-id"></i>Медмаркет</a></li>
+                      <li class="metismenu-item">
+                        <a
+                          href="#"
+                          class="metismenu-link dg-vanilla-submenu-toggle"
+                          aria-expanded="false"
+                          title="Парсинг сайтов конкурентов: проекты, очередь, результаты, сопоставление"
+                        >
+                          <i class="metismenu-icon pe-7s-browser"></i>Парсинг
+                          <i class="metismenu-state-icon pe-7s-angle-down" aria-hidden="true"></i>
+                        </a>
+                        <ul class="metismenu-container dg-vanilla-parse-submenu">
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="projects"
+                              href="/projects.html"
+                              title="Проекты и сайты конкурентов"
+                            >
+                              <i class="metismenu-icon pe-7s-portfolio"></i>Конкуренты
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="queue"
+                              href="/queue.html"
+                              title="Очередь задач парсинга"
+                            >
+                              <i class="metismenu-icon pe-7s-network"></i>Очередь
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="results"
+                              href="/results.html"
+                              title="Результаты парсинга"
+                            >
+                              <i class="metismenu-icon pe-7s-note2"></i>Результаты
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="matches"
+                              href="/matches.html"
+                              title="Сопоставление товаров"
+                            >
+                              <i class="metismenu-icon pe-7s-link"></i>Сопоставление
+                            </a>
+                          </li>
+                        </ul>
+                      </li>
+                      <li class="metismenu-item dg-sidebar-nav-restricted" data-dg-nav-restricted="activity">
+                        <a
+                          class="metismenu-link"
+                          data-nav="processes"
+                          href="/processes.html"
+                          title="Активность/Логи: журнал команды и фоновые процессы (доступ ограничен: администратор или право управления пользователями)"
+                        >
+                          <i class="metismenu-icon pe-7s-timer"></i>Активность/Логи
+                          <i
+                            class="pe-7s-lock dg-nav-restricted-icon"
+                            aria-hidden="true"
+                            title="Пункт меню с ограниченным доступом"
+                          ></i>
+                        </a>
+                      </li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="settings" href="/settings.html"><i class="metismenu-icon pe-7s-config"></i>Настройки</a></li>
+                      <li class="metismenu-item dg-sidebar-architect-item">
+                        <a
+                          class="metismenu-link"
+                          data-nav="architectui-demo"
+                          href="/ref/react-demo-index.html"
+                          title="Каталог разделов React-шаблона ArchitectUI"
+                        >
+                          <i class="metismenu-icon pe-7s-plugin"></i>ArchitectUI
+                        </a>
+                      </li>
+                      <li class="metismenu-item">
+                        <a
+                          href="#"
+                          class="metismenu-link dg-vanilla-submenu-toggle"
+                          aria-expanded="false"
+                          title="Интеграции маркетплейсов: ключи и диагностика выгрузок"
+                        >
+                          <i class="metismenu-icon pe-7s-graph3"></i>Маркетплейсы
+                          <i class="metismenu-state-icon pe-7s-angle-down" aria-hidden="true"></i>
+                        </a>
+                        <ul class="metismenu-container dg-vanilla-mp-submenu">
+                          <!-- Подпункт «Настройки» (data-nav="exports-marketplaces", /exports-marketplaces.html)
+                               скрыт из меню по запросу: ключи API маркетплейсов задаются в /settings.html;
+                               страница остаётся доступной по прямому URL и через ссылки из гайдов
+                               (например, на /exports-marketplaces-issues.html). -->
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-ozon"
+                              href="/exports-marketplaces-ozon.html"
+                              title="Таблица и выгрузка Ozon"
+                            >
+                              <i class="metismenu-icon pe-7s-graph2"></i>Ozon
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-wildberries"
+                              href="/exports-marketplaces-wildberries.html"
+                              title="Таблица и выгрузка Wildberries"
+                            >
+                              <i class="metismenu-icon pe-7s-graph2"></i>Wildberries
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-yandex"
+                              href="/exports-marketplaces-yandex.html"
+                              title="Таблица и выгрузка Яндекс Маркет"
+                            >
+                              <i class="metismenu-icon pe-7s-graph2"></i>Яндекс Маркет
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-huckster"
+                              href="/exports-huckster.html"
+                              title="Интеграция Huckster / e-teleport — матрица UID по магазинам"
+                            >
+                              <i class="metismenu-icon pe-7s-cart"></i>Huckster
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-dimensions"
+                              href="/exports-dimensions.html"
+                              title="Реестр замеров габаритов товаров МойСклад"
+                            >
+                              <i class="metismenu-icon pe-7s-scissors"></i>Габариты
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-issues"
+                              href="/exports-marketplaces-issues.html"
+                              title="Товары МойСклад с проблемами публикации на маркетплейсах"
+                            >
+                              <i class="metismenu-icon pe-7s-attention"></i>Проблемы с товарами
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-new-products"
+                              href="/exports-new-products.html"
+                              title="Очередь новых товаров: Альмамед и Маркеты"
+                            >
+                              <i class="metismenu-icon pe-7s-plus"></i>Новые товары
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-photoshoot"
+                              href="/exports-photoshoot.html"
+                              title="Съёмка товаров из очереди «Размещение на маркеты»"
+                            >
+                              <i class="metismenu-icon pe-7s-camera"></i>Отснять товары
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-competitors"
+                              href="/exports-marketplaces-competitors.html"
+                              title="Поиск наших товаров на Ozon, Wildberries и Яндекс Маркет"
+                            >
+                              <i class="metismenu-icon pe-7s-search"></i>Конкуренты
+                            </a>
+                          </li>
+                          <li class="metismenu-item">
+                            <a
+                              class="metismenu-link"
+                              data-nav="exports-marketplaces-reglament"
+                              href="/exports-marketplaces-reglament.html"
+                              title="Регламент МП: от поиска товара до поступления на склад"
+                            >
+                              <i class="metismenu-icon pe-7s-news-paper"></i>Инструкция
+                            </a>
+                          </li>
+                        </ul>
+                      </li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="ms-orders" href="/ms-orders.html" title="Заказы покупателей entity/customerorder из МойСклад (30 дней)"><i class="metismenu-icon pe-7s-note2"></i>Заказы в МС</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="ms-sales" href="/ms-sales.html" title="Продажи МС: отгрузки entity/demand, позиции с привязкой к товарам ms_export"><i class="metismenu-icon pe-7s-cash"></i>Продажи МС</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="purchase" href="/purchase.html" title="Закупки товары: планирование, неснижаемые остатки, кратность"><i class="metismenu-icon pe-7s-cart"></i>Закупки товары</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="suppliers" href="/suppliers.html" title="Поставщики: сводка по закупкам и настройки"><i class="metismenu-icon pe-7s-id"></i>Поставщики</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="supplier-analysis" href="/supplier-analysis.html" title="Продажи, оборот и тренды по поставщикам"><i class="metismenu-icon pe-7s-graph2"></i>Анализ поставщиков</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="product-analysis" href="/product-analysis.html" title="Продажи по SKU: топы, мёртвые, жизненный цикл и неснижаемый"><i class="metismenu-icon pe-7s-graph1"></i>Анализ товаров</a></li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="app-sidebar-bg opacity-06"></div>
+        </div>
+      </div>
+
+      <div class="app-main__outer">
+        <div class="app-main__inner">
+          <div class="app-page-title">
+            <div class="page-title-wrapper">
+              <div class="page-title-heading">
+                <div class="page-title-icon">
+                  <i class="pe-7s-graph1 icon-gradient bg-love-kiss"> </i>
+                </div>
+                <div>
+                  Анализ товаров
+                  <div class="page-title-subheading">
+                    Статистика продаж по SKU: топы, мёртвые, буст и пошаговый вывод из ассортимента.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 1. Фильтры и действия -->
+          <div class="main-card card mb-3">
+            <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+              <div class="card-header-title mb-0">
+                <i class="header-icon pe-7s-filter icon-gradient bg-sunny-morning"> </i>
+                Фильтры и действия
+              </div>
+              <div class="d-flex align-items-center gap-2">
+                <div class="dropdown">
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-secondary dropdown-toggle"
+                    id="dg-pa-filter-fields-btn"
+                    data-bs-toggle="dropdown"
+                    data-bs-auto-close="outside"
+                    aria-expanded="false"
+                    title="Поля фильтров"
+                  >⚙</button>
+                  <div class="dropdown-menu dropdown-menu-end p-3" style="min-width: 280px; max-height: 360px; overflow: auto">
+                    <div class="fw-semibold small mb-2">Поля фильтров</div>
+                    <div id="dg-pa-filter-fields-toggles"></div>
+                  </div>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-pa-filters-toggle">Свернуть</button>
+              </div>
+            </div>
+            <div class="card-body" id="dg-pa-filters-body">
+              <div class="row g-2 align-items-end">
+                <div class="col-sm-6 col-lg-2" data-dg-pa-filter-field="days">
+                  <label class="form-label small mb-1" for="dg-pa-days">Период продаж</label>
+                  <select class="form-select form-select-sm" id="dg-pa-days">
+                    <option value="30">30 дней</option>
+                    <option value="90" selected>90 дней</option>
+                    <option value="180">180 дней</option>
+                    <option value="365">365 дней</option>
+                  </select>
+                </div>
+                <div class="col-sm-6 col-lg-2" data-dg-pa-filter-field="new_stock_days">
+                  <label class="form-label small mb-1" for="dg-pa-new-stock-days" title="По истории остатков: сколько дней с первого появления на складе SKU ещё считается новым">Считать «новым на складе»</label>
+                  <select class="form-select form-select-sm" id="dg-pa-new-stock-days" title="Если первый остаток &gt; 0 был не раньше этого срока — SKU в пресете «Новые на складе» и исключается из мёртвых/зависших">
+                    <option value="14">14 дней</option>
+                    <option value="30" selected>30 дней</option>
+                    <option value="45">45 дней</option>
+                    <option value="60">60 дней</option>
+                  </select>
+                </div>
+                <div class="col-sm-6 col-lg-2" data-dg-pa-filter-field="search">
+                  <label class="form-label small mb-1" for="dg-pa-search">Поиск</label>
+                  <input type="search" class="form-control form-control-sm" id="dg-pa-search" placeholder="Код, название, поставщик, менеджер…" autocomplete="off" />
+                </div>
+                <div class="col-sm-6 col-lg-2" data-dg-pa-filter-field="supplier">
+                  <label class="form-label small mb-1" for="dg-pa-supplier" data-dg-filter-field-title="Поставщик">Поставщик</label>
+                  <input type="search" class="form-control form-control-sm" id="dg-pa-supplier" placeholder="Часть названия…" autocomplete="off" />
+                </div>
+                <div
+                  class="col-sm-6 col-lg-2"
+                  data-dg-pa-filter-field="manager"
+                  data-dg-filter-field-title="Менеджер"
+                  title="Свойство МС «Менеджер поддерживающий товар» (ms_export.manager). Срабатывает по «Применить»."
+                >
+                  <label class="form-label small mb-1" for="dg-pa-manager">Менеджер</label>
+                  <select class="form-select form-select-sm" id="dg-pa-manager">
+                    <option value="">— все —</option>
+                  </select>
+                </div>
+                <div class="col-sm-4 col-lg-2" data-dg-pa-filter-field="page_size">
+                  <label class="form-label small mb-1" for="dg-pa-page-size">На странице</label>
+                  <select class="form-select form-select-sm" id="dg-pa-page-size">
+                    <option value="50">50</option>
+                    <option value="100" selected>100</option>
+                    <option value="200">200</option>
+                  </select>
+                </div>
+                <div class="col-12" data-dg-pa-filter-field="exclude_new_on_stock">
+                  <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="dg-pa-exclude-new" checked />
+                    <label class="form-check-label small" for="dg-pa-exclude-new" title="Для пресетов «Мёртвые» / «Зависшие» / «НС&gt;0 без продаж»: не включать SKU, у которых первый остаток &gt; 0 был в пределах окна «новым на складе»">
+                      Исключать «новые на складе» из мёртвых и зависших
+                    </label>
+                  </div>
+                </div>
+                <div class="col-12" data-dg-pa-filter-field="projects">
+                  <label class="form-label small mb-1">Проекты отгрузок (учёт продаж)</label>
+                  <div class="d-flex flex-wrap gap-3 align-items-center mb-1">
+                    <div class="form-check form-check-inline mb-0">
+                      <input class="form-check-input" type="radio" name="dg-pa-project-mode" id="dg-pa-project-mode-all" value="all" />
+                      <label class="form-check-label small" for="dg-pa-project-mode-all">Все проекты</label>
+                    </div>
+                    <div class="form-check form-check-inline mb-0">
+                      <input class="form-check-input" type="radio" name="dg-pa-project-mode" id="dg-pa-project-mode-selected" value="selected" checked />
+                      <label class="form-check-label small" for="dg-pa-project-mode-selected">Только выбранные</label>
+                    </div>
+                    <button type="button" class="btn btn-link btn-sm p-0" id="dg-pa-projects-reload">Обновить список</button>
+                    <button type="button" class="btn btn-link btn-sm p-0" id="dg-pa-projects-select-all">Выбрать все</button>
+                    <button type="button" class="btn btn-link btn-sm p-0" id="dg-pa-projects-clear">Снять все</button>
+                  </div>
+                  <p class="small text-muted mb-1 d-none" id="dg-pa-project-mode-hint">
+                    Учитываются продажи по <strong>всем</strong> проектам. Список галочек нужен только в режиме «Только выбранные».
+                  </p>
+                  <div id="dg-pa-projects-wrap" class="border rounded p-2 bg-light" style="max-height: 160px; overflow: auto">
+                    <div id="dg-pa-projects-status" class="small text-muted mb-1">Загрузка проектов…</div>
+                    <div id="dg-pa-projects-list"></div>
+                  </div>
+                </div>
+                <div class="col-12" data-dg-pa-filter-field="presets">
+                  <div class="dg-pa-block-label mb-1">Пресеты</div>
+                  <div class="dg-pa-presets" id="dg-pa-presets" role="group" aria-label="Пресеты фильтрации"></div>
+                </div>
+                <div class="col-12">
+                  <div class="dg-pa-block-label mb-1">Массовые решения</div>
+                  <div class="dg-pa-actions-bar" role="group" aria-label="Массовые решения по SKU">
+                    <button type="button" class="btn btn-sm btn-outline-primary" id="dg-pa-act-boost"
+                      data-dg-notify-start="Ставим в буст…"
+                      data-dg-tooltip="Этап «Буст»: товар в рекламе/продвижении. Пишет lifecycle=boost (срок буста по умолчанию). Неснижаемый и закупки не трогает.">Буст (реклама)</button>
+                    <button type="button" class="btn btn-sm btn-outline-warning" id="dg-pa-act-boost-failed"
+                      data-dg-notify-start="Отмечаем: буст не сработал…"
+                      data-dg-tooltip="Этап «Буст не сработал»: реклама уже была, эффекта нет. Кандидаты дальше на распродажу или вывод. Только метка lifecycle.">Буст не сработал</button>
+                    <button type="button" class="btn btn-sm btn-outline-danger" id="dg-pa-act-clearance"
+                      data-dg-notify-start="Переводим в распродажу…"
+                      data-dg-tooltip="Этап «Распродажа»: сливаем остаток. Ставит lifecycle=clearance, флаг «не заказывать» и цель НС = 0. Сам неснижаемый в ms_export не меняет — для этого «Обнулить неснижаемый».">Распродажа (слить остаток)</button>
+                    <button type="button" class="btn btn-sm btn-danger" id="dg-pa-act-exit"
+                      data-dg-notify-start="Выводим из ассортимента…"
+                      data-dg-tooltip="Этап «Вывод из ассортимента»: больше не ведём. lifecycle=exit + «не заказывать» + цель НС = 0. Неснижаемый в таблице меняется только через «Обнулить неснижаемый».">Вывод из ассортимента</button>
+                    <button type="button" class="btn btn-sm btn-outline-success" id="dg-pa-act-top"
+                      data-dg-notify-start="Помечаем как топ…"
+                      data-dg-tooltip="Метка «Топ-товар»: решение держать в ассортименте как приоритетный. Только lifecycle=top, без смены НС и флага заказа.">Топ-товар</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-pa-act-hold"
+                      data-dg-notify-start="Помечаем: держать…"
+                      data-dg-tooltip="Метка «Держать»: оставляем в ассортименте без буста и без вывода. Только lifecycle=hold.">Держать в ассортименте</button>
+                    <button type="button" class="btn btn-sm btn-warning" id="dg-pa-act-zero-ms"
+                      data-dg-notify-start="Обнуляем неснижаемый…"
+                      data-dg-tooltip="Пишет неснижаемый остаток = 0 в Datagon (ms_export.min_stock). Это колонка «Неснижаемый остаток». В МойСклад уйдёт отдельной выгрузкой НС, не сразу.">Обнулить неснижаемый</button>
+                    <button type="button" class="btn btn-sm btn-outline-warning" id="dg-pa-act-lock-prop"
+                      data-dg-notify-start="Фиксируем предлагаемый = 0…"
+                      data-dg-tooltip="Фиксирует «предлагаемый» неснижаемый = 0 (override), чтобы формула больше не предлагала пополнение. В колонке появится замок 🔒. Текущий неснижаемый не обнуляет.">Зафиксировать предлагаемый = 0</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-pa-act-unlock-prop"
+                      data-dg-notify-start="Снимаем фиксацию предлагаемого…"
+                      data-dg-tooltip="Снимает замок: очищает override предлагаемого, снова считается формула/кэш. В колонке «Предлагаемый» пропадёт 🔒.">Снять фиксацию предлагаемого</button>
+                  </div>
+                  <p class="small text-muted mb-0 mt-1">
+                    Действуют по <strong>отмеченным</strong> строкам или, если галочек нет, по <strong>текущему пресету/фильтрам</strong> (до 500 SKU).
+                    Перед записью — confirm с числом. Наведите на кнопку — что именно меняется.
+                    «Обнулить неснижаемый» пишет в Datagon; в МС — через выгрузку неснижаемого.
+                  </p>
+                </div>
+                <div class="col-12 d-flex flex-wrap gap-2 align-items-center">
+                  <button type="button" class="btn btn-primary btn-sm" id="dg-pa-apply" data-dg-notify-start="Считаем анализ товаров…">Применить</button>
+                  <button type="button" class="btn btn-outline-secondary btn-sm" id="dg-pa-reset">По умолчанию</button>
+                  <button type="button" class="btn btn-outline-primary btn-sm" id="dg-pa-export" data-dg-notify-start="Готовим CSV…">CSV</button>
+                </div>
+                <div class="col-12">
+                  <div id="dg-pa-action-log" class="alert alert-secondary mt-2 mb-0 d-none" role="status"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 2. Сводка KPI -->
+          <div class="main-card card mb-3 dg-pa-summary-card border-0 shadow-sm overflow-hidden">
+            <div class="card-header dg-pa-summary-header border-0 d-flex flex-wrap align-items-center justify-content-between gap-2">
+              <div class="d-flex align-items-center gap-2">
+                <i class="header-icon pe-7s-graph1 icon-gradient bg-love-kiss me-1"> </i>
+                <div>
+                  <span class="fw-semibold text-white">Сводка за период</span>
+                  <div class="small text-white-50 d-none d-md-block">По применённым фильтрам и пресету</div>
+                </div>
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-light" id="dg-pa-summary-toggle">Свернуть</button>
+            </div>
+            <div class="card-body dg-pa-summary-body" id="dg-pa-summary-body">
+              <div class="row row-cols-2 row-cols-md-4 row-cols-xl-4 g-2" id="dg-pa-kpi-row">
+                <div class="col"><div class="dg-pa-kpi-tile"><div class="dg-pa-kpi-label">SKU в выборке</div><div class="dg-pa-kpi-value" id="dg-pa-kpi-skus">—</div></div></div>
+                <div class="col"><div class="dg-pa-kpi-tile dg-pa-kpi-money"><div class="dg-pa-kpi-label">Выручка</div><div class="dg-pa-kpi-value" id="dg-pa-kpi-revenue">—</div></div></div>
+                <div class="col"><div class="dg-pa-kpi-tile"><div class="dg-pa-kpi-label">Продажи шт.</div><div class="dg-pa-kpi-value" id="dg-pa-kpi-qty">—</div></div></div>
+                <div class="col"><div class="dg-pa-kpi-tile dg-pa-kpi-money"><div class="dg-pa-kpi-label">Остаток ₽</div><div class="dg-pa-kpi-value" id="dg-pa-kpi-stock">—</div></div></div>
+                <div class="col"><div class="dg-pa-kpi-tile"><div class="dg-pa-kpi-label">Сумма неснижаемого</div><div class="dg-pa-kpi-value" id="dg-pa-kpi-minstock">—</div></div></div>
+                <div class="col"><div class="dg-pa-kpi-tile dg-pa-kpi-warn"><div class="dg-pa-kpi-label">Без продаж, несн.&gt;0</div><div class="dg-pa-kpi-value" id="dg-pa-kpi-dead-ms">—</div></div></div>
+                <div class="col"><div class="dg-pa-kpi-tile"><div class="dg-pa-kpi-label">В бусте</div><div class="dg-pa-kpi-value" id="dg-pa-kpi-boost">—</div></div></div>
+                <div class="col"><div class="dg-pa-kpi-tile dg-pa-kpi-warn"><div class="dg-pa-kpi-label">На выводе</div><div class="dg-pa-kpi-value" id="dg-pa-kpi-exit">—</div></div></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 3. Таблица -->
+          <div class="main-card card mb-3">
+            <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+              <div class="d-flex align-items-center gap-3 flex-grow-1" style="min-width: 0">
+                <div class="d-flex align-items-center flex-shrink-0">
+                  <i class="header-icon pe-7s-note2 icon-gradient bg-malibu-beach me-2"> </i>
+                  <span class="fw-semibold">Выгрузка товаров</span>
+                </div>
+                <div class="dg-pa-header-search">
+                  <div class="input-group input-group-sm">
+                    <span class="input-group-text bg-white text-muted px-2" aria-hidden="true">🔎</span>
+                    <input type="search" class="form-control" id="dg-pa-table-search-mirror"
+                           placeholder="Поиск (Enter — применить)"
+                           autocomplete="off" />
+                  </div>
+                </div>
+              </div>
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-pa-columns-toggle">🧩 Столбцы</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-pa-widths-toggle">📏 Ширины</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-pa-table-toggle">Свернуть</button>
+              </div>
+            </div>
+            <div class="card-body" id="dg-pa-table-body">
+              <div class="datagon-columns-toolbox mb-2 d-none" id="dg-pa-toolbox-panels">
+                <div class="datagon-columns-panel" id="dg-pa-columns-panel">
+                  <div class="columns-actions mb-2">
+                    <button type="button" class="btn btn-sm" id="dg-pa-columns-all">Выделить все</button>
+                    <button type="button" class="btn btn-sm" id="dg-pa-columns-none">Снять все</button>
+                    <button type="button" class="btn btn-sm" id="dg-pa-columns-default">По умолчанию</button>
+                  </div>
+                  <div id="dg-pa-columns-list" class="columns-grid"></div>
+                </div>
+                <div class="datagon-columns-panel" id="dg-pa-widths-panel">
+                  <div class="columns-actions mb-2">
+                    <button type="button" class="btn btn-sm" id="dg-pa-widths-default">По умолчанию</button>
+                  </div>
+                  <div id="dg-pa-widths-list" class="dg-sa-widths-grid"></div>
+                </div>
+              </div>
+
+              <div id="dg-pa-detail-host" class="d-none" aria-hidden="true">
+                <div class="dg-pa-detail-panel d-none" id="dg-pa-detail-card" aria-hidden="true">
+                  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2 pb-2 border-bottom">
+                    <div>
+                      <div class="fw-semibold" id="dg-pa-detail-title">Детали товара</div>
+                      <div class="small text-muted" id="dg-pa-detail-sub"></div>
+                    </div>
+                    <div class="d-flex flex-wrap gap-2">
+                      <a class="btn btn-sm btn-outline-primary" id="dg-pa-detail-product-link" href="/product.html" target="_blank" rel="noopener">Карточка</a>
+                      <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-pa-detail-close">Скрыть</button>
+                    </div>
+                  </div>
+                  <div class="row g-3">
+                    <div class="col-lg-4">
+                      <div class="dg-pa-block-label mb-1">Доля продаж по проектам</div>
+                      <div class="dg-pa-doughnut-wrap">
+                        <canvas id="dg-pa-detail-chart" aria-label="Доля продаж по проектам"></canvas>
+                      </div>
+                      <div class="small text-muted mt-1" id="dg-pa-detail-sales-sum">—</div>
+                    </div>
+                    <div class="col-lg-4">
+                      <div class="dg-pa-block-label mb-1">Проекты / каналы</div>
+                      <div class="table-responsive dg-pa-detail-table-wrap border rounded">
+                        <table class="table table-sm mb-0">
+                          <thead class="table-light">
+                            <tr>
+                              <th>Проект</th>
+                              <th class="text-end">шт.</th>
+                              <th class="text-end">₽</th>
+                              <th class="text-end">%</th>
+                            </tr>
+                          </thead>
+                          <tbody id="dg-pa-detail-projects-tbody">
+                            <tr><td colspan="4" class="text-muted">Загрузка…</td></tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                    <div class="col-lg-4">
+                      <div class="dg-pa-block-label mb-1">Отсутствие на складе</div>
+                      <ul class="list-unstyled small mb-2" id="dg-pa-detail-absence">
+                        <li class="text-muted">Загрузка…</li>
+                      </ul>
+                      <div class="dg-pa-block-label mb-1">Сводка</div>
+                      <ul class="list-unstyled small mb-0" id="dg-pa-detail-meta">
+                        <li class="text-muted">—</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div id="dg-pa-table-scroll-outer" class="dg-pa-table-scroll-outer">
+                <div class="table-responsive datagon-my-products-table-wrap" style="overflow: visible !important">
+                  <table class="table table-hover table-striped dg-pa-table mb-0" id="dg-pa-table">
+                    <colgroup id="dg-pa-colgroup"></colgroup>
+                    <thead id="dg-pa-thead"></thead>
+                    <tbody id="dg-pa-tbody">
+                      <tr><td colspan="14" class="text-muted text-center py-4">Нажмите «Применить»</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <div class="mt-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                  <label class="form-label mb-0 small text-muted" for="dg-pa-footer-page-size">На странице</label>
+                  <select class="form-select form-select-sm" id="dg-pa-footer-page-size" style="width:auto">
+                    <option value="50">50</option>
+                    <option value="100" selected>100</option>
+                    <option value="200">200</option>
+                  </select>
+                  <span class="text-muted small" id="dg-pa-pager-status">Найдено: 0; страница 1/1; показано: 0</span>
+                </div>
+                <div class="btn-group btn-group-sm" role="group">
+                  <button type="button" class="btn btn-outline-secondary" id="dg-pa-prev" disabled>Назад</button>
+                  <button type="button" class="btn btn-outline-secondary" id="dg-pa-next" disabled>Вперёд</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-pa-bulk-confirm-overlay"
+               class="dg-pa-bulk-confirm-overlay"
+               style="display: none"
+               aria-modal="true"
+               role="dialog"
+               aria-labelledby="dg-pa-bulk-confirm-title">
+            <div class="dg-pa-bulk-confirm-card bg-white rounded shadow-lg p-3 p-md-4">
+              <h5 class="mb-2 text-danger" id="dg-pa-bulk-confirm-title">Подтверждение по фильтру</h5>
+              <p class="mb-2" id="dg-pa-bulk-confirm-lead">—</p>
+              <div class="alert alert-warning py-2 small mb-3" id="dg-pa-bulk-confirm-filters" role="status"></div>
+              <div class="form-check mb-3">
+                <input class="form-check-input" type="checkbox" id="dg-pa-bulk-confirm-ack" />
+                <label class="form-check-label" for="dg-pa-bulk-confirm-ack" id="dg-pa-bulk-confirm-ack-label">
+                  Понимаю: галочки не отмечены, действие применится ко всей текущей выборке по фильтру/пресету.
+                </label>
+              </div>
+              <div class="d-flex justify-content-end gap-2 flex-wrap">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-pa-bulk-confirm-cancel">Отмена</button>
+                <button type="button" class="btn btn-sm btn-danger" id="dg-pa-bulk-confirm-ok" disabled>Применить ко всей выборке</button>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="app-footer">
+          <div class="app-footer__inner">
+            <div class="app-footer-left">
+              <div class="footer-dots">
+                <a href="#" class="dot-btn-wrapper dg-vanilla-footer-toggle" id="PopoverFooter-1" aria-expanded="false" aria-haspopup="true">
+                  <i class="dot-btn-icon lnr-bullhorn icon-gradient bg-mean-fruit"></i>
+                  <div class="badge badge-dot badge-abs badge-dot-sm bg-danger">Notifications</div>
+                </a>
+                <div class="dots-separator"></div>
+                <a href="#" class="dot-btn-wrapper dg-vanilla-footer-toggle" id="PopoverFooter-3" aria-expanded="false" aria-haspopup="true">
+                  <i class="dot-btn-icon lnr-pie-chart icon-gradient bg-love-kiss"></i>
+                  <div class="badge badge-dot badge-abs badge-dot-sm bg-warning">Notifications</div>
+                </a>
+                <div class="dropdown-menu popover-custom popover-custom-xl rm-pointers p-0 dg-vanilla-footer-popover" data-footer-popover="PopoverFooter-1" style="min-width:420px">
+                  <div class="dropdown-menu-header mb-0">
+                    <div class="dropdown-menu-header-inner bg-strong-bliss">
+                      <div class="menu-header-image opacity-1" style="background-image:url('./assets/utils/images/dropdown-header/city2.jpg')"></div>
+                      <div class="menu-header-content text-white">
+                        <h5 class="menu-header-title">Notifications</h5>
+                        <h6 class="menu-header-subtitle">You have <b class="text-warning">21</b> unread messages</h6>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="card-tabs-animated card-tabs-animated-inner">
+                    <ul class="nav nav-justified">
+                      <li class="nav-item"><a href="#" class="nav-link active">Messages</a></li>
+                      <li class="nav-item"><a href="#" class="nav-link">Events</a></li>
+                      <li class="nav-item"><a href="#" class="nav-link">Errors</a></li>
+                    </ul>
+                    <div class="p-3">
+                      <div class="text-muted small">Chat, timeline and system tabs in React version.</div>
+                    </div>
+                  </div>
+                  <div class="nav-item-btn text-center pt-3 pb-3">
+                    <button type="button" class="btn btn-shadow btn-wide btn-pill btn-dark">
+                      <span class="badge badge-dot badge-dot-lg bg-warning badge-pulse me-2"></span>
+                      View All Messages
+                    </button>
+                  </div>
+                </div>
+                <div class="dropdown-menu popover-custom popover-custom-lg rm-pointers p-0 dg-vanilla-footer-popover" data-footer-popover="PopoverFooter-3" style="min-width:380px">
+                  <div class="dropdown-menu-header">
+                    <div class="dropdown-menu-header-inner bg-malibu-beach">
+                      <div class="menu-header-image opacity-2" style="background-image:url('./assets/utils/images/dropdown-header/city2.jpg')"></div>
+                      <div class="menu-header-content text-white">
+                        <div class="avatar-icon-wrapper btn-hover-shine mb-3 avatar-icon-xl">
+                          <div class="avatar-icon rounded">
+                            <img src="./assets/utils/images/avatars/2.jpg" alt="Avatar 6" />
+                          </div>
+                        </div>
+                        <h5 class="menu-header-title">Fancy Statistics</h5>
+                        <h6 class="menu-header-subtitle">Just an example of a slider with some chart widgets inside.</h6>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="p-2">
+                    <div class="card no-shadow widget-chart widget-chart2 text-start p-2 m-1">
+                      <div class="widget-title opacity-6 text-muted text-uppercase">New accounts since 2018</div>
+                      <div class="widget-numbers text-success">78<small class="opacity-5 ps-1">%</small></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="app-footer-right">
+              <a class="dg-footer-legal-link" href="/legal/privacy.html" target="_blank" rel="noopener">Политика обработки персональных данных</a>
+              <a class="dg-footer-legal-link" href="/legal/cookies.html" target="_blank" rel="noopener">Политика использования cookie-файлов</a>
+              <a class="dg-footer-legal-link" href="/legal/recommendation.html" target="_blank" rel="noopener">Правила применения рекомендательных технологий</a>
+              <a class="dg-footer-legal-link" href="/legal/consent.html" target="_blank" rel="noopener">Согласие на обработку ПДн</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/datagon-legal.js"></script>
+  <script src="/datagon-vanilla.js"></script>
+    <script>
+    (function () {
+      var chartJsPromise = null;
+      var detailShareChart = null;
+
+      function ensureChartJs() {
+        if (window.Chart) return Promise.resolve(window.Chart);
+        if (chartJsPromise) return chartJsPromise;
+        chartJsPromise = new Promise(function (resolve, reject) {
+          var s = document.createElement("script");
+          s.src = "https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js";
+          s.onload = function () { resolve(window.Chart); };
+          s.onerror = function () { reject(new Error("Chart.js")); };
+          document.head.appendChild(s);
+        });
+        return chartJsPromise;
+      }
+
+      var PA_COLS = [
+        ["_expand", ""],
+        ["_sel", "✓", { tip: "Отметить строки для массовых действий" }],
+        ["code", "Код", { tip: "Код товара в МойСклад" }],
+        ["name", "Наименование", { tip: "Название товара в каталоге МС" }],
+        ["supplier_name", "Поставщик", { tip: "Поставщик (supplier, иначе supplier2)" }],
+        ["manager", "Менеджер товара", { tip: "Свойство МС «Менеджер поддерживающий товар»" }],
+        ["stock_qty", "Остаток шт.", { tip: "Текущий остаток на складе (шт.)" }],
+        ["stock_value_rub", "Остаток ₽", { tip: "Остаток × себестоимость/закупка" }],
+        ["days_on_stock", "Дней на складе", { tip: "Дней с первого снимка остатка > 0 в окне до 365 дн. (dg_product_stock_snapshot). Пусто — в окне истории остатка не было. Если товар лежал дольше окна/истории снимков — цифра упрётся в край доступных данных." }],
+        ["min_stock", "Неснижаемый остаток", { tip: "ms_export.min_stock — неснижаемый в Datagon/МС" }],
+        ["formula_proposed", "Предлагаемый нес.ост.", { tip: "Предлагаемый неснижаемый (override или формула). 🔒 = зафиксирован вручную (=0), можно снять в ячейке." }],
+        ["sales_qty", "Продажи шт.", { tip: "Количество в отгрузках за выбранный период" }],
+        ["sales_revenue", "Продажи ₽", { tip: "Выручка по отгрузкам за выбранный период" }],
+        ["margin_pct", "Маржа % (оценка)", { tip: "Грубая оценка: не точная маржа. По умолчанию скрыта." }],
+        ["days_without_sales", "Дней без продаж", { tip: "Дней с последней отгрузки в периоде; пусто — продаж не было" }],
+        ["decision_note", "Комментарий", { tip: "Свободный комментарий к решению по SKU (до 3 строк). Сохраняется при уходе из поля или Ctrl/⌘+Enter. История — «лог»." }],
+        ["lifecycle", "Решение", { tip: "Выберите этап прямо в строке: топ / держать / буст / распродажа / вывод. Массовые кнопки сверху — для пачек." }],
+      ];
+      var PA_DEFAULT_VISIBLE = PA_COLS.map(function (c) { return c[0]; }).filter(function (k) {
+        return k !== "margin_pct";
+      });
+      var PA_DEFAULT_WIDTHS = {
+        _expand: 32, _sel: 36, code: 110, name: 220, supplier_name: 140, manager: 140, stock_qty: 90,
+        stock_value_rub: 100, days_on_stock: 100, min_stock: 120, formula_proposed: 160,
+        sales_qty: 100, sales_revenue: 110, margin_pct: 90,
+        days_without_sales: 110, decision_note: 180, lifecycle: 180,
+      };
+
+      var PRESETS_FALLBACK = [
+        {
+          key: "all",
+          label: "Все",
+          tip: "Без фильтра пресета — все SKU с учётом поиска и остальных фильтров.",
+        },
+        {
+          key: "top_revenue",
+          label: "Топ выручка",
+          tip: "Все SKU, сортировка по выручке за период ↓.",
+        },
+        {
+          key: "top_qty",
+          label: "Топ по шт.",
+          tip: "Все SKU, сортировка по продажам в штуках за период ↓.",
+        },
+        {
+          key: "dead",
+          label: "Мёртвые",
+          tip:
+            "Строго: за период продаж = 0 шт., на складе остаток > 0. При «Исключать новые» — без недавно появившихся на складе.",
+        },
+        {
+          key: "stuck",
+          label: "Зависшие",
+          tip:
+            "Шире мёртвых: остаток > 0 и (продаж нет ИЛИ с последней продажи ≥ 30 дней). При «Исключать новые» — без новинок.",
+        },
+        {
+          key: "new_on_stock",
+          label: "Новые на складе",
+          tip:
+            "Остаток > 0 и первый снимок с остатком > 0 был не раньше N дней назад (поле «Считать новым на складе»).",
+        },
+        {
+          key: "dead_min_stock",
+          label: "Неснижаемый >0 без продаж",
+          tip:
+            "Продаж = 0, неснижаемый в МС > 0. Кандидаты на «Обнулить НС». При «Исключать новые» — без новинок.",
+        },
+        {
+          key: "min_vs_proposed",
+          label: "Неснижаемый ≠ предлагаемый",
+          tip: "Неснижаемый в МС не совпадает с предлагаемым (формула / target).",
+        },
+        {
+          key: "lifecycle_none",
+          label: "Без решения",
+          tip: "Ещё не выставляли этап жизненного цикла.",
+        },
+        {
+          key: "lifecycle_boost",
+          label: "В бусте",
+          tip: "Решение «Буст» — в рекламе / продвижении.",
+        },
+        {
+          key: "lifecycle_boost_failed",
+          label: "Буст не сработал",
+          tip: "Буст ставили, эффекта нет — дальше распродажа или вывод.",
+        },
+        {
+          key: "lifecycle_clearance",
+          label: "Распродажа",
+          tip: "Этап распродажи: не заказывать, слить остаток.",
+        },
+        {
+          key: "lifecycle_exit",
+          label: "На выводе",
+          tip: "Вывод из ассортимента: не заказывать, целевой НС = 0.",
+        },
+      ];
+
+      var presetsList = PRESETS_FALLBACK.slice();
+
+      var LC_LABEL = {
+        none: "Без решения",
+        top: "Топ",
+        hold: "Держать",
+        boost: "Буст (реклама)",
+        boost_failed: "Буст не сработал",
+        clearance: "Распродажа",
+        exit: "Вывод из ассортимента",
+      };
+
+      var LC_ROW_OPTIONS = [
+        { value: "none", action: "clear_decision" },
+        { value: "top", action: "top" },
+        { value: "hold", action: "hold" },
+        { value: "boost", action: "boost" },
+        { value: "boost_failed", action: "boost_failed" },
+        { value: "clearance", action: "clearance" },
+        { value: "exit", action: "exit" },
+      ];
+
+      function postRowDecision(code, body, el, opts) {
+        var o = opts || {};
+        var run = function () {
+          return fetch("/api/product-analysis/decision", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(Object.assign({ code: code }, body)),
+          })
+            .then(function (r) {
+              return r.json().then(function (j) {
+                return { ok: r.ok, j: j };
+              });
+            })
+            .then(function (x) {
+              if (!x.ok || !x.j.success) throw new Error((x.j && x.j.error) || "Ошибка");
+              invalidatePaTipCache(code);
+              if (window.DatagonNotify && window.DatagonNotify.toast) {
+                var ch = (x.j.changes || [])
+                  .map(function (c) {
+                    return (c.field || "") + ": " + (c.old_value == null ? "∅" : c.old_value) + "→" + (c.new_value == null ? "∅" : c.new_value);
+                  })
+                  .slice(0, 3)
+                  .join("; ");
+                window.DatagonNotify.toast({
+                  type: "success",
+                  message: "Сохранено: " + code + (ch ? " (" + ch + ")" : ""),
+                });
+              }
+              if (o.noReload) {
+                if (el && Object.prototype.hasOwnProperty.call(body, "decision_note")) {
+                  var saved =
+                    x.j.decision && x.j.decision.decision_note != null
+                      ? String(x.j.decision.decision_note)
+                      : body.decision_note == null
+                        ? ""
+                        : String(body.decision_note);
+                  el.value = saved;
+                  el.setAttribute("data-prev", saved);
+                  el.title = saved || "Комментарий к решению";
+                }
+                return x.j;
+              }
+              return loadAll();
+            })
+            .catch(function (e) {
+              if (window.DatagonNotify && window.DatagonNotify.toast) {
+                window.DatagonNotify.toast({
+                  type: "danger",
+                  message: (e && e.message) || "Ошибка сохранения",
+                });
+              }
+              if (o.noReload) {
+                if (el && el.getAttribute("data-prev") != null) {
+                  el.value = el.getAttribute("data-prev") || "";
+                }
+                return null;
+              }
+              return loadRanking();
+            });
+        };
+        if (window.DatagonNotify && window.DatagonNotify.busyRun && el && !o.noReload) {
+          return window.DatagonNotify.busyRun(el, run);
+        }
+        return run();
+      }
+
+      function saveDecisionNoteFromInput(inp) {
+        if (!inp) return;
+        var code = inp.getAttribute("data-code") || "";
+        if (!code) return;
+        var next = String(inp.value || "").trim().slice(0, 500);
+        var prev = String(inp.getAttribute("data-prev") || "");
+        if (next === prev) return;
+        inp.value = next;
+        postRowDecision(code, { decision_note: next === "" ? null : next }, inp, { noReload: true });
+      }
+
+      var FILTERS_KEY = "datagon_product_analysis_filters_collapsed_v1";
+      var TABLE_COLLAPSE_KEY = "dg.product-analysis.table-card.collapsed.v1";
+      var SUMMARY_COLLAPSE_KEY = "dg.product-analysis.summary.collapsed.v1";
+      var VIS_COLS_KEY = "dg.product-analysis.visible-cols.v4";
+      var COL_WIDTH_KEY = "dg.product-analysis.col-widths.v3";
+
+      var state = {
+        days: 90,
+        new_stock_days: 30,
+        exclude_new_on_stock: true,
+        search: "",
+        supplier: "",
+        preset: "all",
+        project_mode: "selected",
+        project_uuids: [],
+        manager: "",
+        limit: 100,
+        offset: 0,
+        total: 0,
+        sort_by: "sales_revenue",
+        sort_dir: "desc",
+        rows: [],
+        selected: {},
+        selectedCode: "",
+        pending: {
+          days: 90,
+          new_stock_days: 30,
+          exclude_new_on_stock: true,
+          search: "",
+          supplier: "",
+          preset: "all",
+          project_mode: "selected",
+          project_uuids: [],
+          manager: "",
+        },
+      };
+
+      var PA_URL_DEFAULTS = {
+        days: 90,
+        new_stock_days: 30,
+        exclude_new_on_stock: true,
+        preset: "all",
+        project_mode: "selected",
+        limit: 100,
+        offset: 0,
+        sort_by: "sales_revenue",
+        sort_dir: "desc",
+      };
+      var urlSyncTimer = null;
+
+      function writePendingToForm() {
+        var daysEl = document.getElementById("dg-pa-days");
+        if (daysEl) daysEl.value = String(state.pending.days || 90);
+        var nsEl = document.getElementById("dg-pa-new-stock-days");
+        if (nsEl) nsEl.value = String(state.pending.new_stock_days || 30);
+        var exEl = document.getElementById("dg-pa-exclude-new");
+        if (exEl) exEl.checked = !!state.pending.exclude_new_on_stock;
+        var searchEl = document.getElementById("dg-pa-search");
+        if (searchEl) searchEl.value = state.pending.search || "";
+        var mirrorEl = document.getElementById("dg-pa-table-search-mirror");
+        if (mirrorEl) mirrorEl.value = state.pending.search || "";
+        var supplierEl = document.getElementById("dg-pa-supplier");
+        if (supplierEl) supplierEl.value = state.pending.supplier || "";
+        var managerEl = document.getElementById("dg-pa-manager");
+        if (managerEl) managerEl.value = state.pending.manager || "";
+        var limitEl = document.getElementById("dg-pa-page-size");
+        if (limitEl) limitEl.value = String(state.limit || 100);
+        var footLimit = document.getElementById("dg-pa-footer-page-size");
+        if (footLimit) footLimit.value = String(state.limit || 100);
+        var modeSelected = state.pending.project_mode === "selected";
+        var radioSel = document.getElementById("dg-pa-project-mode-selected");
+        var radioAll = document.getElementById("dg-pa-project-mode-all");
+        if (radioSel) radioSel.checked = modeSelected;
+        if (radioAll) radioAll.checked = !modeSelected;
+      }
+
+      function applyPendingProjectCheckboxes() {
+        var set = {};
+        (state.pending.project_uuids || []).forEach(function (u) {
+          set[String(u || "").toLowerCase()] = 1;
+        });
+        Array.prototype.slice
+          .call(document.querySelectorAll('#dg-pa-projects-list input[type="checkbox"]'))
+          .forEach(function (el) {
+            el.checked = !!set[String(el.value || "").toLowerCase()];
+          });
+      }
+
+      function syncUrlFromState() {
+        var params = new URLSearchParams();
+        if (Number(state.days) !== PA_URL_DEFAULTS.days) {
+          params.set("days", String(state.days));
+        }
+        if (Number(state.new_stock_days) !== PA_URL_DEFAULTS.new_stock_days) {
+          params.set("new_stock_days", String(state.new_stock_days));
+        }
+        if (!!state.exclude_new_on_stock !== !!PA_URL_DEFAULTS.exclude_new_on_stock) {
+          params.set("exclude_new_on_stock", state.exclude_new_on_stock ? "1" : "0");
+        }
+        if (state.search) params.set("search", state.search);
+        if (state.supplier) params.set("supplier", state.supplier);
+        if (state.manager) params.set("manager", state.manager);
+        if (String(state.preset || "all") !== PA_URL_DEFAULTS.preset) {
+          params.set("preset", state.preset || "all");
+        }
+        if (state.project_mode === "all") {
+          params.set("project_mode", "all");
+        } else if (state.project_uuids && state.project_uuids.length) {
+          params.set("project_uuids", state.project_uuids.join(","));
+        }
+        if (Number(state.limit) !== PA_URL_DEFAULTS.limit) {
+          params.set("limit", String(state.limit));
+        }
+        var page =
+          Math.floor(Number(state.offset || 0) / Math.max(1, Number(state.limit) || 100)) + 1;
+        if (page > 1) params.set("page", String(page));
+        if (String(state.sort_by || "") !== PA_URL_DEFAULTS.sort_by) {
+          params.set("sort_by", state.sort_by);
+        }
+        if (String(state.sort_dir || "") !== PA_URL_DEFAULTS.sort_dir) {
+          params.set("sort_dir", state.sort_dir);
+        }
+        var qs = params.toString();
+        var next = qs
+          ? window.location.pathname + "?" + qs
+          : window.location.pathname;
+        try {
+          if (window.location.pathname + window.location.search !== next) {
+            window.history.replaceState(null, "", next);
+          }
+        } catch (e) {}
+      }
+
+      function scheduleUrlSync() {
+        if (urlSyncTimer) clearTimeout(urlSyncTimer);
+        urlSyncTimer = setTimeout(function () {
+          urlSyncTimer = null;
+          syncUrlFromState();
+        }, 120);
+      }
+
+      /** Читает GET из адресной строки → pending/form (+ sort/limit/page). */
+      function parseUrlToPending() {
+        var params = new URLSearchParams(window.location.search || "");
+        var info = {
+          fromUrl: false,
+          hasProjectUuids: false,
+          touchedProjects: false,
+          projectModeAll: false,
+          hasSort: false,
+        };
+        function has(k) {
+          return params.has(k);
+        }
+        if (has("days")) {
+          info.fromUrl = true;
+          var d = Number(params.get("days"));
+          if (Number.isFinite(d) && d >= 7 && d <= 365) state.pending.days = Math.floor(d);
+        }
+        if (has("new_stock_days")) {
+          info.fromUrl = true;
+          var ns = Number(params.get("new_stock_days"));
+          if (Number.isFinite(ns) && ns >= 7 && ns <= 180) {
+            state.pending.new_stock_days = Math.floor(ns);
+          }
+        }
+        if (has("exclude_new_on_stock")) {
+          info.fromUrl = true;
+          var ex = String(params.get("exclude_new_on_stock") || "").toLowerCase();
+          state.pending.exclude_new_on_stock = !(ex === "0" || ex === "false" || ex === "off");
+        }
+        if (has("search")) {
+          info.fromUrl = true;
+          state.pending.search = String(params.get("search") || "");
+        }
+        if (has("supplier")) {
+          info.fromUrl = true;
+          state.pending.supplier = String(params.get("supplier") || "");
+        }
+        if (has("manager")) {
+          info.fromUrl = true;
+          state.pending.manager = String(params.get("manager") || "");
+        }
+        if (has("preset")) {
+          info.fromUrl = true;
+          state.pending.preset = String(params.get("preset") || "all").trim() || "all";
+        }
+        if (has("project_mode")) {
+          info.fromUrl = true;
+          info.touchedProjects = true;
+          var pm = String(params.get("project_mode") || "").toLowerCase();
+          state.pending.project_mode = pm === "all" ? "all" : "selected";
+          info.projectModeAll = state.pending.project_mode === "all";
+        }
+        if (has("project_uuids")) {
+          info.fromUrl = true;
+          info.touchedProjects = true;
+          info.hasProjectUuids = true;
+          state.pending.project_mode = "selected";
+          state.pending.project_uuids = String(params.get("project_uuids") || "")
+            .split(",")
+            .map(function (u) { return String(u || "").trim().toLowerCase(); })
+            .filter(Boolean)
+            .sort();
+        }
+        if (has("limit")) {
+          info.fromUrl = true;
+          var lim = Number(params.get("limit"));
+          if (lim === 50 || lim === 100 || lim === 200) state.limit = lim;
+        }
+        if (has("sort_by")) {
+          info.fromUrl = true;
+          info.hasSort = true;
+          var sb = String(params.get("sort_by") || "").trim();
+          if (sb) state.sort_by = sb;
+        }
+        if (has("sort_dir")) {
+          info.fromUrl = true;
+          info.hasSort = true;
+          var sd = String(params.get("sort_dir") || "").toLowerCase();
+          state.sort_dir = sd === "asc" ? "asc" : "desc";
+        }
+        if (has("page") || has("offset")) {
+          info.fromUrl = true;
+          var lim2 = Math.max(1, Number(state.limit) || 100);
+          if (has("offset")) {
+            var off = Number(params.get("offset"));
+            state.offset = Number.isFinite(off) && off > 0 ? Math.floor(off) : 0;
+          } else {
+            var page = Math.max(1, Math.floor(Number(params.get("page")) || 1));
+            state.offset = (page - 1) * lim2;
+          }
+        }
+        writePendingToForm();
+        return info;
+      }
+
+      function fmt(n, digits) {
+        if (window.DatagonFmt && window.DatagonFmt.num) {
+          return window.DatagonFmt.num(n, digits != null ? digits : 0);
+        }
+        var x = Number(n);
+        if (!Number.isFinite(x)) return "—";
+        return x.toLocaleString("ru-RU", {
+          maximumFractionDigits: digits != null ? digits : 0,
+          minimumFractionDigits: 0,
+        });
+      }
+
+      function esc(s) {
+        return String(s == null ? "" : s)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+
+      function isDefaultMarketplaceProjectName(name) {
+        var n = String(name || "").trim().toLowerCase();
+        if (!n) return false;
+        if (n === "озон" || n.indexOf("ozon") >= 0) return true;
+        if (n.indexOf("вайлдберриз") >= 0 || n.indexOf("wildberries") >= 0) return true;
+        if (n.indexOf("яндекс") >= 0 && n.indexOf("маркет") >= 0) return true;
+        return false;
+      }
+
+      function pickDefaultMarketplaceProjectUuids(projects) {
+        var out = [];
+        var used = {};
+        (projects || []).forEach(function (p) {
+          var u = String(p.uuid || "").trim().toLowerCase();
+          if (!u || used[u] || !isDefaultMarketplaceProjectName(p.name)) return;
+          out.push(u);
+          used[u] = 1;
+        });
+        return out.sort();
+      }
+
+      function readPendingProjectUuids() {
+        var box = document.getElementById("dg-pa-projects-list");
+        if (!box) return [];
+        return Array.prototype.slice
+          .call(box.querySelectorAll('input[type="checkbox"]:checked'))
+          .map(function (el) { return String(el.value || "").toLowerCase(); })
+          .filter(Boolean)
+          .sort();
+      }
+
+      function queryParams() {
+        var p = new URLSearchParams();
+        p.set("days", String(state.days));
+        p.set("new_stock_days", String(state.new_stock_days || 30));
+        p.set("exclude_new_on_stock", state.exclude_new_on_stock ? "1" : "0");
+        p.set("preset", state.preset || "all");
+        p.set("project_mode", state.project_mode || "all");
+        if (state.project_mode === "selected" && state.project_uuids.length) {
+          p.set("project_uuids", state.project_uuids.join(","));
+        }
+        if (state.search) p.set("search", state.search);
+        if (state.supplier) p.set("supplier", state.supplier);
+        if (state.manager) p.set("manager", state.manager);
+        if (state._presetSortOnce) {
+          p.set("preset_sort", "1");
+          state._presetSortOnce = false;
+        }
+        p.set("limit", String(state.limit));
+        p.set("offset", String(state.offset));
+        p.set("sort_by", state.sort_by);
+        p.set("sort_dir", state.sort_dir);
+        return p;
+      }
+
+      function filterBodyForBulk() {
+        return {
+          days: state.days,
+          new_stock_days: state.new_stock_days,
+          exclude_new_on_stock: state.exclude_new_on_stock ? 1 : 0,
+          preset: state.preset,
+          project_mode: state.project_mode,
+          project_uuids: state.project_uuids.join(","),
+          search: state.search,
+          supplier: state.supplier,
+          manager: state.manager,
+          limit: 2000,
+        };
+      }
+
+      function syncDirtyApply() {
+        var dirty =
+          Number(state.pending.days) !== Number(state.days) ||
+          Number(state.pending.new_stock_days) !== Number(state.new_stock_days) ||
+          !!state.pending.exclude_new_on_stock !== !!state.exclude_new_on_stock ||
+          String(state.pending.search || "") !== String(state.search || "") ||
+          String(state.pending.supplier || "") !== String(state.supplier || "") ||
+          String(state.pending.manager || "") !== String(state.manager || "") ||
+          String(state.pending.preset || "") !== String(state.preset || "") ||
+          state.pending.project_mode !== state.project_mode ||
+          JSON.stringify(state.pending.project_uuids || []) !==
+            JSON.stringify(state.project_uuids || []);
+        var btn = document.getElementById("dg-pa-apply");
+        if (!btn) return;
+        btn.textContent = dirty ? "Применить •" : "Применить";
+        if (dirty) btn.classList.add("dg-flt-dirty");
+        else btn.classList.remove("dg-flt-dirty");
+      }
+
+      function presetSortFor(preset) {
+        switch (String(preset || "all")) {
+          case "top_qty":
+            return { sort_by: "sales_qty", sort_dir: "desc" };
+          case "dead":
+          case "stuck":
+          case "dead_min_stock":
+            return { sort_by: "stock_value_rub", sort_dir: "desc" };
+          case "new_on_stock":
+            return { sort_by: "days_on_stock", sort_dir: "asc" };
+          case "min_vs_proposed":
+            return { sort_by: "min_stock", sort_dir: "desc" };
+          case "top_revenue":
+          case "all":
+          default:
+            return { sort_by: "sales_revenue", sort_dir: "desc" };
+        }
+      }
+
+      function presetLabel(key) {
+        var hit = presetsList.filter(function (p) { return p.key === key; })[0];
+        return hit ? hit.label : key;
+      }
+
+      function loadPresetsMeta() {
+        return fetch("/api/product-analysis/presets", { credentials: "same-origin" })
+          .then(function (r) { return r.json(); })
+          .then(function (j) {
+            if (!j || !j.success || !Array.isArray(j.presets) || !j.presets.length) return;
+            presetsList = j.presets.map(function (p) {
+              var fb = PRESETS_FALLBACK.filter(function (x) { return x.key === p.key; })[0];
+              return {
+                key: p.key,
+                label: p.label || (fb && fb.label) || p.key,
+                tip: p.description || (fb && fb.tip) || "",
+              };
+            });
+            renderPresetChips();
+          })
+          .catch(function () { /* fallback уже в presetsList */ });
+      }
+
+      function commitFilters(opts) {
+        opts = opts || {};
+        var daysBefore = Number(state.days) || 90;
+        state.days = Number(state.pending.days) || 90;
+        state.new_stock_days = Number(state.pending.new_stock_days) || 30;
+        state.exclude_new_on_stock = !!state.pending.exclude_new_on_stock;
+        state.search = String(state.pending.search || "").trim();
+        state.supplier = String(state.pending.supplier || "").trim();
+        state.manager = String(state.pending.manager || "").trim();
+        state.preset = state.pending.preset || "all";
+        state.project_mode = state.pending.project_mode === "selected" ? "selected" : "all";
+        state.project_uuids =
+          state.project_mode === "selected" ? readPendingProjectUuids() : [];
+        state.pending.project_uuids = state.project_uuids.slice();
+        if (opts.fromPreset) {
+          var ps = presetSortFor(state.preset);
+          state.sort_by = ps.sort_by;
+          state.sort_dir = ps.sort_dir;
+          state._presetSortOnce = true;
+        }
+        if (!opts.preserveOffset) state.offset = 0;
+        state.selected = {};
+        state.selectedCode = "";
+        stashDetailCardInHost();
+        syncDirtyApply();
+        renderPresetChips();
+        scheduleUrlSync();
+        var presetHint = state.preset && state.preset !== "all" ? presetLabel(state.preset) : "";
+        var afterLoad = function () {
+          scheduleUrlSync();
+          if (opts.fromPreset && window.DatagonNotify && window.DatagonNotify.toast) {
+            window.DatagonNotify.toast({
+              type: "success",
+              message:
+                (presetHint ? "Пресет «" + presetHint + "»: " : "Фильтры: ") +
+                "найдено " +
+                fmt(state.total, 0),
+            });
+          }
+        };
+        var daysChanged = Number(state.days) !== Number(daysBefore);
+        var projectsPromise =
+          daysChanged || opts.reloadProjects
+            ? loadProjectsList().then(function () {
+                if (state.project_mode === "selected") {
+                  state.project_uuids = readPendingProjectUuids();
+                  state.pending.project_uuids = state.project_uuids.slice();
+                }
+              })
+            : Promise.resolve();
+        return projectsPromise.then(function () {
+          return loadAll();
+        }).then(afterLoad);
+      }
+
+      function showActionLog(type, html) {
+        var el = document.getElementById("dg-pa-action-log");
+        if (!el) return;
+        el.classList.remove("d-none", "alert-secondary", "alert-success", "alert-danger", "alert-warning", "alert-info");
+        el.classList.add("alert-" + (type || "secondary"));
+        el.innerHTML = html;
+      }
+
+      function formatPatchFieldsHtml(fields) {
+        if (!fields || !fields.length) return "";
+        return (
+          "<br>поля: " +
+          fields
+            .map(function (f) {
+              return (
+                "<code>" +
+                esc(f.label || f.field) +
+                "</code>" +
+                (f.value != null ? " → <strong>" + esc(f.value) + "</strong>" : "")
+              );
+            })
+            .join("; ")
+        );
+      }
+
+      var paTipCache = {};
+      var PA_TIP_CACHE_TTL_MS = 60 * 1000;
+      var paTipEl = null;
+      var paTipShowTimer = null;
+      var paTipHideTimer = null;
+      var paTipCurrentTarget = null;
+      var paTipPinned = false;
+      var paTipDocCloseBound = false;
+
+      function invalidatePaTipCache(code) {
+        var prefix = String(code || "") + "/";
+        Object.keys(paTipCache).forEach(function (k) {
+          if (!code || k.indexOf(prefix) === 0) delete paTipCache[k];
+        });
+      }
+
+      function hidePaTip() {
+        cancelPaShowTip();
+        cancelPaHideTip();
+        paTipPinned = false;
+        paTipCurrentTarget = null;
+        if (paTipEl) paTipEl.style.display = "none";
+      }
+
+      function ensurePaTipEl() {
+        if (paTipEl) return paTipEl;
+        paTipEl = document.createElement("div");
+        paTipEl.className = "dg-pa-cell-tip";
+        paTipEl.setAttribute("role", "tooltip");
+        paTipEl.style.display = "none";
+        document.body.appendChild(paTipEl);
+        paTipEl.addEventListener("mouseenter", cancelPaHideTip);
+        paTipEl.addEventListener("mouseleave", function () {
+          if (!paTipPinned) schedulePaHideTip();
+        });
+        return paTipEl;
+      }
+
+      function bindPaTipDocClose() {
+        if (paTipDocCloseBound) return;
+        paTipDocCloseBound = true;
+        document.addEventListener(
+          "click",
+          function (ev) {
+            if (!paTipEl || paTipEl.style.display === "none") return;
+            if (ev.target.closest(".dg-pa-lc-log") || ev.target.closest(".dg-pa-cell-tip")) return;
+            hidePaTip();
+          },
+          true
+        );
+        document.addEventListener("keydown", function (ev) {
+          if (ev.key === "Escape") hidePaTip();
+        });
+      }
+
+      function positionPaTip(target) {
+        if (!paTipEl || !target) return;
+        var rect = target.getBoundingClientRect();
+        paTipEl.style.left = "-9999px";
+        paTipEl.style.top = "-9999px";
+        paTipEl.style.display = "block";
+        var tipRect = paTipEl.getBoundingClientRect();
+        var left = Math.min(window.innerWidth - tipRect.width - 8, Math.max(8, rect.left));
+        var top = rect.bottom + 6;
+        if (top + tipRect.height > window.innerHeight - 8) {
+          top = Math.max(8, rect.top - tipRect.height - 6);
+        }
+        paTipEl.style.left = left + "px";
+        paTipEl.style.top = top + "px";
+      }
+
+      function formatPaLogWhen(iso) {
+        if (!iso) return "—";
+        try {
+          var d = new Date(iso);
+          if (!Number.isFinite(d.getTime())) return String(iso);
+          return d.toLocaleString("ru-RU", { timeZone: "Europe/Moscow" });
+        } catch (e) {
+          return String(iso);
+        }
+      }
+
+      function renderPaTipContent(rows, fieldKey) {
+        if (!rows || !rows.length) {
+          return '<div class="dg-pa-cell-tip-empty">По этому полю ещё нет записей в журнале.</div>';
+        }
+        var title =
+          "Журнал «" +
+          esc((rows[0] && rows[0].field_label) || fieldKey || "Решение") +
+          "»";
+        var out = '<div class="dg-pa-cell-tip-title">' + title + '</div><ul class="dg-pa-cell-tip-list">';
+        rows.forEach(function (row) {
+          var oldV = row.old_value == null ? "∅" : esc(row.old_value);
+          var newV = row.new_value == null ? "∅" : esc(row.new_value);
+          var who = row.changed_by_name || ("user#" + (row.changed_by_user_id || "—"));
+          var src = String(row.source || "ui");
+          var srcLabel = row.source_label || src;
+          out +=
+            "<li>" +
+            '<div class="dg-pa-cell-tip-row1"><span>' +
+            esc(formatPaLogWhen(row.changed_at)) +
+            "</span> · <span>" +
+            esc(who) +
+            '</span> · <span class="dg-pa-log-src dg-pa-log-src-' +
+            esc(src) +
+            '" title="' +
+            esc(src) +
+            '">' +
+            esc(srcLabel) +
+            "</span></div>" +
+            '<div><span class="dg-pa-cell-tip-old">' +
+            oldV +
+            '</span> → <span class="dg-pa-cell-tip-new">' +
+            newV +
+            "</span></div>" +
+            "</li>";
+        });
+        out += "</ul>";
+        return out;
+      }
+
+      function showPaTipFor(target, pinned) {
+        if (!target) return;
+        var code = target.getAttribute("data-dg-code") || "";
+        var field = target.getAttribute("data-dg-field") || "lifecycle";
+        if (!code) return;
+        bindPaTipDocClose();
+        ensurePaTipEl();
+        paTipCurrentTarget = target;
+        if (pinned) paTipPinned = true;
+        var cacheKey = code + "/" + field;
+        var now = Date.now();
+        var cached = paTipCache[cacheKey];
+        if (cached && now - cached.ts < PA_TIP_CACHE_TTL_MS) {
+          paTipEl.innerHTML = renderPaTipContent(cached.rows, field);
+          positionPaTip(target);
+          return;
+        }
+        paTipEl.innerHTML = '<div class="dg-pa-cell-tip-loading">Загрузка журнала…</div>';
+        positionPaTip(target);
+        var qs = new URLSearchParams({ code: String(code), limit: "8", field: String(field) });
+        fetch("/api/product-analysis/log?" + qs.toString(), { credentials: "same-origin" })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { ok: r.ok, j: j };
+            });
+          })
+          .then(function (x) {
+            if (!x.ok || !x.j || x.j.success === false) {
+              if (paTipCurrentTarget === target) {
+                paTipEl.innerHTML =
+                  '<div class="dg-pa-cell-tip-err">' +
+                  esc((x.j && x.j.error) || "Не удалось загрузить") +
+                  "</div>";
+                positionPaTip(target);
+              }
+              return;
+            }
+            var rows = x.j.rows || [];
+            paTipCache[cacheKey] = { ts: Date.now(), rows: rows };
+            if (paTipCurrentTarget === target) {
+              paTipEl.innerHTML = renderPaTipContent(rows, field);
+              positionPaTip(target);
+            }
+          })
+          .catch(function () {
+            if (paTipCurrentTarget === target) {
+              paTipEl.innerHTML = '<div class="dg-pa-cell-tip-err">Сетевая ошибка</div>';
+              positionPaTip(target);
+            }
+          });
+      }
+
+      function schedulePaShowTip(target) {
+        if (paTipPinned) return;
+        cancelPaShowTip();
+        paTipCurrentTarget = target;
+        paTipShowTimer = setTimeout(function () {
+          showPaTipFor(target, false);
+        }, 280);
+      }
+
+      function schedulePaHideTip() {
+        if (paTipPinned) return;
+        cancelPaHideTip();
+        paTipHideTimer = setTimeout(function () {
+          if (paTipPinned) return;
+          if (paTipEl) paTipEl.style.display = "none";
+          paTipCurrentTarget = null;
+        }, 160);
+      }
+
+      function cancelPaShowTip() {
+        if (paTipShowTimer) {
+          clearTimeout(paTipShowTimer);
+          paTipShowTimer = null;
+        }
+      }
+
+      function cancelPaHideTip() {
+        if (paTipHideTimer) {
+          clearTimeout(paTipHideTimer);
+          paTipHideTimer = null;
+        }
+      }
+
+      function bindPaDecisionLogTips() {
+        var tbody = document.getElementById("dg-pa-tbody");
+        if (!tbody || tbody._dgPaLogBound) return;
+        tbody._dgPaLogBound = true;
+        tbody.addEventListener("mouseover", function (ev) {
+          var btn = ev.target.closest(".dg-pa-lc-log");
+          if (!btn || !tbody.contains(btn)) return;
+          cancelPaHideTip();
+          schedulePaShowTip(btn);
+        });
+        tbody.addEventListener("mouseout", function (ev) {
+          var btn = ev.target.closest(".dg-pa-lc-log");
+          if (!btn) return;
+          var to = ev.relatedTarget;
+          if (to && (btn.contains(to) || (paTipEl && paTipEl.contains(to)))) return;
+          schedulePaHideTip();
+        });
+        tbody.addEventListener(
+          "click",
+          function (ev) {
+            var btn = ev.target.closest(".dg-pa-lc-log");
+            if (!btn) return;
+            ev.preventDefault();
+            ev.stopPropagation();
+            cancelPaHideTip();
+            cancelPaShowTip();
+            showPaTipFor(btn, true);
+          },
+          true
+        );
+      }
+
+      function hideActionLog() {
+        var el = document.getElementById("dg-pa-action-log");
+        if (!el) return;
+        el.classList.add("d-none");
+        el.innerHTML = "";
+      }
+
+      function selectedCodes() {
+        return Object.keys(state.selected).filter(function (k) { return state.selected[k]; });
+      }
+
+      function filtersHintText(codesLen) {
+        return (
+          "пресет «" +
+          presetLabel(state.preset) +
+          "»; период " +
+          state.days +
+          " дн.; новый на складе ≤" +
+          state.new_stock_days +
+          " дн." +
+          (state.exclude_new_on_stock ? " (искл. из мёртвых/зависших)" : "") +
+          "; поиск: " +
+          (state.search || "—") +
+          (state.supplier ? "; поставщик: " + state.supplier : "") +
+          (state.manager ? "; менеджер: " + state.manager : "") +
+          (codesLen ? "; отмечено строк: " + codesLen : "; галочек нет — по всей выборке фильтра")
+        );
+      }
+
+      /**
+       * Подтверждение массового действия.
+       * Без галочек — модалка с обязательным чекбоксом «понимаю».
+       * С галочками — обычный confirm.
+       * @returns {Promise<boolean>}
+       */
+      function confirmBulkWrite(opts) {
+        var label = (opts && opts.label) || "Массовое действие";
+        var would = Number((opts && opts.would) || 0);
+        var codesLen = Number((opts && opts.codesLen) || 0);
+        var byFilter = !codesLen;
+
+        if (!byFilter) {
+          return Promise.resolve(
+            window.confirm(label + ": обновить " + would + " отмеченных SKU?")
+          );
+        }
+
+        return new Promise(function (resolve) {
+          var ov = document.getElementById("dg-pa-bulk-confirm-overlay");
+          var lead = document.getElementById("dg-pa-bulk-confirm-lead");
+          var filtersEl = document.getElementById("dg-pa-bulk-confirm-filters");
+          var ack = document.getElementById("dg-pa-bulk-confirm-ack");
+          var okBtn = document.getElementById("dg-pa-bulk-confirm-ok");
+          var cancelBtn = document.getElementById("dg-pa-bulk-confirm-cancel");
+          if (!ov || !okBtn || !cancelBtn || !ack) {
+            resolve(
+              window.confirm(
+                "Галочки не отмечены. " + label + " применится к " + would + " SKU по фильтру. Продолжить?"
+              )
+            );
+            return;
+          }
+
+          if (lead) {
+            lead.innerHTML =
+              "Действие <strong>«" +
+              esc(label) +
+              "»</strong> затронет <strong>" +
+              would +
+              "</strong> SKU.<br>" +
+              "Строки <strong>не отмечены</strong> галочками — применяется ко <strong>всей текущей выборке</strong> по пресету/фильтрам (лимит API до 500 за раз).";
+          }
+          if (filtersEl) filtersEl.textContent = filtersHintText(0);
+          ack.checked = false;
+          okBtn.disabled = true;
+
+          function syncOk() {
+            okBtn.disabled = !ack.checked;
+          }
+          function cleanup(result) {
+            ack.removeEventListener("change", syncOk);
+            okBtn.removeEventListener("click", onOk);
+            cancelBtn.removeEventListener("click", onCancel);
+            ov.removeEventListener("click", onBackdrop);
+            document.removeEventListener("keydown", onKey);
+            ov.classList.remove("is-open");
+            ov.style.display = "none";
+            resolve(result);
+          }
+          function onOk(ev) {
+            ev.preventDefault();
+            if (!ack.checked) return;
+            cleanup(true);
+          }
+          function onCancel(ev) {
+            if (ev) ev.preventDefault();
+            cleanup(false);
+          }
+          function onBackdrop(ev) {
+            if (ev.target === ov) onCancel(ev);
+          }
+          function onKey(ev) {
+            if (ev.key === "Escape") onCancel(ev);
+          }
+
+          ack.addEventListener("change", syncOk);
+          okBtn.addEventListener("click", onOk);
+          cancelBtn.addEventListener("click", onCancel);
+          ov.addEventListener("click", onBackdrop);
+          document.addEventListener("keydown", onKey);
+          ov.style.display = "flex";
+          ov.classList.add("is-open");
+          syncOk();
+          try {
+            ack.focus();
+          } catch (e) {}
+        });
+      }
+
+      function loadVisibleCols() {
+        try {
+          var raw = localStorage.getItem(VIS_COLS_KEY);
+          if (!raw) return PA_DEFAULT_VISIBLE.slice();
+          var arr = JSON.parse(raw);
+          if (!Array.isArray(arr) || !arr.length) return PA_DEFAULT_VISIBLE.slice();
+          var known = {};
+          PA_COLS.forEach(function (c) { known[c[0]] = 1; });
+          var out = arr.filter(function (k) { return known[k]; });
+          if (out.indexOf("_expand") < 0) out.unshift("_expand");
+          if (out.indexOf("_sel") < 0) out.splice(1, 0, "_sel");
+          return out.length ? out : PA_DEFAULT_VISIBLE.slice();
+        } catch (e) {
+          return PA_DEFAULT_VISIBLE.slice();
+        }
+      }
+
+      function saveVisibleCols(cols) {
+        try { localStorage.setItem(VIS_COLS_KEY, JSON.stringify(cols)); } catch (e) {}
+      }
+
+      function loadColWidths() {
+        try {
+          var raw = localStorage.getItem(COL_WIDTH_KEY);
+          if (!raw) return Object.assign({}, PA_DEFAULT_WIDTHS);
+          return Object.assign({}, PA_DEFAULT_WIDTHS, JSON.parse(raw) || {});
+        } catch (e) {
+          return Object.assign({}, PA_DEFAULT_WIDTHS);
+        }
+      }
+
+      function saveColWidths(w) {
+        try { localStorage.setItem(COL_WIDTH_KEY, JSON.stringify(w)); } catch (e) {}
+      }
+
+      var visibleCols = loadVisibleCols();
+      var colWidths = loadColWidths();
+
+      var FLOATING_HEADER_OFFSET_PX = 2;
+      var FLOATING_HEADER_START_EPS_PX = 3;
+      var paFloatingHeaderRaf = 0;
+      var paFloatingLastScrollTs = 0;
+
+      function updatePaStickyTopVar() {
+        var app = document.querySelector(".app-container");
+        var header = document.querySelector(".app-header");
+        var fixed = Boolean(app && app.classList && app.classList.contains("fixed-header"));
+        var top = 0;
+        if (fixed && header && header.getBoundingClientRect) {
+          var rect = header.getBoundingClientRect();
+          top = rect && rect.height ? rect.height : 60;
+        }
+        document.documentElement.style.setProperty("--dg-table-sticky-top", top + "px");
+      }
+      function getPaStickyTopPx() {
+        var app = document.querySelector(".app-container");
+        var header = document.querySelector(".app-header");
+        var fixed = Boolean(app && app.classList && app.classList.contains("fixed-header"));
+        if (!fixed) return 0;
+        if (!header || !header.getBoundingClientRect) return 60;
+        var rect = header.getBoundingClientRect();
+        return rect && rect.height ? rect.height : 60;
+      }
+      function clearPaHeaderFloatStyles(thead, row) {
+        if (!thead) return;
+        thead.style.transform = "";
+        thead.style.position = "";
+        thead.style.zIndex = "";
+        thead.style.willChange = "";
+        thead.removeAttribute("data-dg-floating");
+        if (!row) return;
+        row.style.transform = "";
+        row.style.position = "";
+        row.style.zIndex = "";
+        row.style.willChange = "";
+      }
+      function capturePaTheadBaseTop() {
+        var thead = document.getElementById("dg-pa-thead");
+        if (!thead) return;
+        var row = thead.querySelector("tr");
+        if (!row) return;
+        clearPaHeaderFloatStyles(thead, row);
+        var rect = row.getBoundingClientRect();
+        var absTop =
+          (window.scrollY || window.pageYOffset || 0) + (rect && rect.top ? rect.top : 0);
+        thead.setAttribute("data-dg-base-top", String(absTop));
+      }
+      function updatePaFloatingHeaderFallback() {
+        var thead = document.getElementById("dg-pa-thead");
+        if (!thead) return;
+        var table = thead.closest("table");
+        if (!table || !table.getBoundingClientRect) return;
+        var row = thead.querySelector("tr");
+        if (!row) return;
+
+        var y = window.scrollY || window.pageYOffset || 0;
+        var headerTop = getPaStickyTopPx();
+        var tableRect = table.getBoundingClientRect();
+        var tableBottom = tableRect.bottom + y;
+        var rowRect = row.getBoundingClientRect();
+        var rowHeight = rowRect && rowRect.height ? rowRect.height : 0;
+        var isFloating = thead.getAttribute("data-dg-floating") === "1" || !!row.style.transform;
+
+        if (!isFloating) {
+          var liveBase = y + (rowRect && rowRect.top ? rowRect.top : 0);
+          if (Number.isFinite(liveBase) && liveBase > 0) {
+            thead.setAttribute("data-dg-base-top", String(liveBase));
+          }
+        }
+
+        var baseTopAbs = Number(thead.getAttribute("data-dg-base-top") || 0);
+        if (!Number.isFinite(baseTopAbs) || baseTopAbs <= 0) return;
+
+        var headerLine = y + headerTop;
+        var start = baseTopAbs + FLOATING_HEADER_START_EPS_PX;
+        var end = tableBottom - rowHeight;
+        if (headerLine <= start || headerLine >= end) {
+          if (row.style.transform || thead.getAttribute("data-dg-floating")) {
+            clearPaHeaderFloatStyles(thead, row);
+          }
+          return;
+        }
+
+        var zoomAwareOffset = FLOATING_HEADER_OFFSET_PX;
+        var dpr = window.devicePixelRatio || 1;
+        if (Math.abs(dpr - 1) < 0.03) zoomAwareOffset = FLOATING_HEADER_OFFSET_PX - 3;
+        var shift = Math.max(0, headerLine - start - zoomAwareOffset);
+        var shiftPx = Number(shift.toFixed(3));
+        var nextTransform = "translate3d(0," + shiftPx + "px,0)";
+        if (row.style.transform !== nextTransform) {
+          thead.style.transform = "";
+          thead.style.position = "";
+          thead.style.zIndex = "";
+          thead.style.willChange = "";
+          row.style.transform = nextTransform;
+          row.style.position = "relative";
+          row.style.zIndex = "25";
+          row.style.willChange = "transform";
+          thead.setAttribute("data-dg-floating", "1");
+        }
+      }
+      function paFloatingHeaderTick(ts) {
+        paFloatingHeaderRaf = 0;
+        updatePaFloatingHeaderFallback();
+        if (ts - paFloatingLastScrollTs < 140) {
+          paFloatingHeaderRaf = requestAnimationFrame(paFloatingHeaderTick);
+        }
+      }
+      function schedulePaFloatingHeaderUpdate() {
+        paFloatingLastScrollTs = performance.now();
+        if (paFloatingHeaderRaf) return;
+        paFloatingHeaderRaf = requestAnimationFrame(paFloatingHeaderTick);
+      }
+      function onScrollPaFloatingHeader() {
+        schedulePaFloatingHeaderUpdate();
+      }
+      function paRefreshFloatingAfterLayout() {
+        requestAnimationFrame(function () {
+          capturePaTheadBaseTop();
+          schedulePaFloatingHeaderUpdate();
+        });
+      }
+
+      function renderPresetChips() {
+        var host = document.getElementById("dg-pa-presets");
+        if (!host) return;
+        var cur = state.pending.preset || "all";
+        host.innerHTML = presetsList.map(function (p) {
+          var active = p.key === cur ? " is-active" : "";
+          var tip = p.tip || p.description || "";
+          return (
+            '<button type="button" class="dg-pa-preset-chip' +
+            active +
+            '" data-preset="' +
+            esc(p.key) +
+            '"' +
+            (tip ? ' data-dg-tooltip="' + esc(tip) + '"' : "") +
+            ">" +
+            esc(p.label) +
+            "</button>"
+          );
+        }).join("");
+      }
+
+      function buildThead() {
+        var thead = document.getElementById("dg-pa-thead");
+        var cg = document.getElementById("dg-pa-colgroup");
+        if (!thead) return;
+        var cols = PA_COLS.filter(function (c) { return visibleCols.indexOf(c[0]) >= 0; });
+        if (cg) {
+          cg.innerHTML = cols
+            .map(function (c) {
+              var w = colWidths[c[0]] || PA_DEFAULT_WIDTHS[c[0]] || 100;
+              return '<col style="width:' + w + 'px;min-width:' + Math.min(w, 60) + 'px" />';
+            })
+            .join("");
+        }
+        thead.innerHTML =
+          "<tr>" +
+          cols
+            .map(function (c) {
+              var key = c[0];
+              var label = c[1];
+              if (key === "_expand") {
+                return (
+                  '<th class="dg-pa-expand-col dg-pa-sortable" data-col="_expand" title="Развернуть продажи по проектам">' +
+                  "</th>"
+                );
+              }
+              if (key === "_sel") {
+                return (
+                  '<th class="dg-pa-sortable" data-col="_sel" title="Выделить все на странице">' +
+                  '<input type="checkbox" id="dg-pa-sel-all" aria-label="Выделить все" />' +
+                  "</th>"
+                );
+              }
+              var arrow = "";
+              if (state.sort_by === key) arrow = state.sort_dir === "asc" ? " ↑" : " ↓";
+              var tip = (c[2] && c[2].tip) || label;
+              return (
+                '<th class="dg-pa-sortable dg-pa-th-label" data-col="' +
+                esc(key) +
+                '" title="' +
+                esc(tip) +
+                '">' +
+                esc(label) +
+                arrow +
+                "</th>"
+              );
+            })
+            .join("") +
+          "</tr>";
+        var selAll = document.getElementById("dg-pa-sel-all");
+        if (selAll) {
+          selAll.addEventListener("change", function () {
+            var on = !!selAll.checked;
+            (state.rows || []).forEach(function (r) {
+              state.selected[r.code] = on;
+            });
+            renderTable();
+          });
+        }
+      }
+
+      function rowClass(r) {
+        if (r.lifecycle === "exit" || r.lifecycle === "clearance") return "dg-pa-row-exit";
+        if (r.lifecycle === "boost") return "dg-pa-row-boost";
+        if (r.lifecycle === "top") return "dg-pa-row-top";
+        if (Number(r.sales_qty || 0) <= 0 && Number(r.min_stock || 0) > 0) return "dg-pa-row-dead";
+        if (Number(r.sales_qty || 0) <= 0 && Number(r.stock_qty || 0) > 0) return "dg-pa-row-dead";
+        return "";
+      }
+
+      function cellHtml(key, r) {
+        if (key === "_expand") {
+          return '<span class="dg-pa-row-chevron" aria-hidden="true">›</span>';
+        }
+        if (key === "_sel") {
+          var checked = state.selected[r.code] ? " checked" : "";
+          return (
+            '<input type="checkbox" class="dg-pa-row-sel" data-code="' +
+            esc(r.code) +
+            '"' +
+            checked +
+            " />"
+          );
+        }
+        if (key === "code") {
+          return (
+            '<a href="/product.html?code=' +
+            encodeURIComponent(r.code) +
+            '" target="_blank" rel="noopener">' +
+            esc(r.code) +
+            "</a>"
+          );
+        }
+        if (key === "name" || key === "supplier_name" || key === "manager") return esc(r[key] || "");
+        if (key === "decision_note") {
+          var note = r.decision_note != null ? String(r.decision_note) : "";
+          return (
+            '<span class="dg-pa-note-wrap">' +
+            '<textarea class="form-control form-control-sm dg-pa-note-input" rows="3" maxlength="500" ' +
+            'data-code="' +
+            esc(r.code) +
+            '" data-prev="' +
+            esc(note) +
+            '" placeholder="Комментарий…" title="' +
+            esc(note || "Комментарий к решению") +
+            '" data-dg-no-activity="1" data-dg-tooltip="Сохраняется при уходе из поля или Ctrl/⌘+Enter">' +
+            esc(note) +
+            "</textarea>" +
+            '<button type="button" class="btn btn-sm btn-outline-secondary dg-pa-lc-log" data-dg-code="' +
+            esc(r.code) +
+            '" data-dg-field="decision_note" aria-label="Журнал комментария" data-dg-no-activity="1">лог</button>' +
+            "</span>"
+          );
+        }
+        if (key === "lifecycle") {
+          var lc = r.lifecycle || "none";
+          var opts = LC_ROW_OPTIONS.map(function (o) {
+            return (
+              '<option value="' +
+              esc(o.value) +
+              '"' +
+              (o.value === lc ? " selected" : "") +
+              ">" +
+              esc(LC_LABEL[o.value] || o.value) +
+              "</option>"
+            );
+          }).join("");
+          return (
+            '<span class="dg-pa-lc-wrap">' +
+            '<select class="form-select form-select-sm dg-pa-lc-select dg-pa-lc-' +
+            esc(lc) +
+            '" data-code="' +
+            esc(r.code) +
+            '" data-prev="' +
+            esc(lc) +
+            '" data-dg-tooltip="Сменить решение для этой SKU">' +
+            opts +
+            "</select>" +
+            '<button type="button" class="btn btn-sm btn-outline-secondary dg-pa-lc-log" data-dg-code="' +
+            esc(r.code) +
+            '" data-dg-field="lifecycle" aria-label="Журнал решений" data-dg-no-activity="1">лог</button>' +
+            "</span>"
+          );
+        }
+        if (key === "margin_pct" || key === "revenue_change_pct") {
+          return r[key] == null ? "—" : fmt(r[key], 1) + "%";
+        }
+        if (
+          key === "stock_value_rub" ||
+          key === "sales_revenue" ||
+          key === "gross_margin_est"
+        ) {
+          return fmt(r[key], 0);
+        }
+        if (
+          key === "stock_qty" ||
+          key === "min_stock" ||
+          key === "sales_qty" ||
+          key === "days_without_sales" ||
+          key === "days_on_stock"
+        ) {
+          return r[key] == null ? "—" : fmt(r[key], 0);
+        }
+        if (key === "formula_proposed") {
+          var val = r.formula_proposed == null ? "—" : fmt(r.formula_proposed, 0);
+          var locked = !!r.lock_proposed_min_stock;
+          if (!locked) return esc(val);
+          return (
+            '<span class="dg-pa-proposed-cell">' +
+            '<span>' +
+            esc(val) +
+            "</span>" +
+            '<span class="dg-pa-lock-badge" data-dg-tooltip="Предлагаемый зафиксирован (=0). Формула не перезапишет, пока не снимете фиксацию.">🔒 фикс.</span>' +
+            '<button type="button" class="btn btn-sm btn-outline-secondary dg-pa-unlock-btn" data-code="' +
+            esc(r.code) +
+            '" data-dg-notify-start="Снимаем фиксацию…" data-dg-tooltip="Снять фиксацию предлагаемого для этой SKU">Снять</button>' +
+            "</span>"
+          );
+        }
+        return esc(r[key] == null ? "" : r[key]);
+      }
+
+      function visibleColCount() {
+        return PA_COLS.filter(function (c) { return visibleCols.indexOf(c[0]) >= 0; }).length;
+      }
+
+      function stashDetailCardInHost() {
+        var host = document.getElementById("dg-pa-detail-host");
+        var card = document.getElementById("dg-pa-detail-card");
+        if (!host || !card) return;
+        if (card.parentElement !== host) host.appendChild(card);
+        card.classList.add("d-none");
+        card.setAttribute("aria-hidden", "true");
+        host.classList.add("d-none");
+        host.setAttribute("aria-hidden", "true");
+      }
+
+      function mountDetailCard() {
+        var card = document.getElementById("dg-pa-detail-card");
+        var host = document.getElementById("dg-pa-detail-host");
+        var slot =
+          state.selectedCode &&
+          document.querySelector("#dg-pa-tbody tr.dg-pa-detail-row #dg-pa-detail-slot");
+        if (!card) return;
+        if (slot) {
+          slot.appendChild(card);
+          card.classList.remove("d-none");
+          card.setAttribute("aria-hidden", "false");
+          if (host) {
+            host.classList.add("d-none");
+            host.setAttribute("aria-hidden", "true");
+          }
+        } else {
+          stashDetailCardInHost();
+        }
+      }
+
+      function closeDetail() {
+        state.selectedCode = "";
+        stashDetailCardInHost();
+        if (detailShareChart) {
+          try { detailShareChart.destroy(); } catch (e) {}
+          detailShareChart = null;
+        }
+        renderTable();
+      }
+
+      function openDetail(code, name) {
+        code = String(code || "").trim();
+        if (!code) return;
+        if (state.selectedCode === code) {
+          closeDetail();
+          return;
+        }
+        state.selectedCode = code;
+        renderTable();
+        requestAnimationFrame(function () {
+          mountDetailCard();
+          loadSkuDetail(code, name);
+          paRefreshFloatingAfterLayout();
+        });
+      }
+
+      function renderDetailProjects(byProject) {
+        var tb = document.getElementById("dg-pa-detail-projects-tbody");
+        if (!tb) return;
+        var rows = byProject || [];
+        if (!rows.length) {
+          tb.innerHTML = '<tr><td colspan="4" class="text-muted">Нет продаж за период</td></tr>';
+          return;
+        }
+        tb.innerHTML = rows
+          .map(function (r) {
+            return (
+              "<tr><td>" +
+              esc(r.project_name) +
+              '</td><td class="text-end">' +
+              fmt(r.sales_qty, 0) +
+              '</td><td class="text-end">' +
+              fmt(r.sales_revenue, 0) +
+              '</td><td class="text-end">' +
+              fmt(r.share_pct, 1) +
+              "%</td></tr>"
+            );
+          })
+          .join("");
+      }
+
+      function renderDetailAbsence(abs) {
+        var el = document.getElementById("dg-pa-detail-absence");
+        if (!el) return;
+        abs = abs || {};
+        var flags = [];
+        if (abs.chronic) flags.push('<span class="badge bg-danger">долгий простой</span>');
+        if (abs.flicker) flags.push('<span class="badge bg-warning text-dark">частые короткие</span>');
+        el.innerHTML =
+          "<li><strong>Макс. дней без товара на складе:</strong> " +
+          fmt(abs.max_streak_days || 0, 0) +
+          "</li>" +
+          "<li>Эпизодов нуля: " +
+          fmt(abs.episode_count || 0, 0) +
+          " (ср. длина " +
+          fmt(abs.avg_episode_days || 0, 1) +
+          " дн.)</li>" +
+          "<li>Рек. дней пополнения (из отсутствия): " +
+          (abs.recommended_replenishment_days != null
+            ? fmt(abs.recommended_replenishment_days, 0)
+            : "—") +
+          "</li>" +
+          (flags.length ? "<li class=\"mt-1\">" + flags.join(" ") + "</li>" : "") +
+          '<li class="text-muted mt-1">По журналу нулевых остатков (~' +
+          (abs.window_days || 210) +
+          " дн.)</li>";
+      }
+
+      function renderDetailMeta(product, sales) {
+        var el = document.getElementById("dg-pa-detail-meta");
+        if (!el) return;
+        product = product || {};
+        sales = sales || {};
+        el.innerHTML =
+          "<li>Остаток: <strong>" +
+          fmt(product.stock_qty, 0) +
+          "</strong> шт.</li>" +
+          "<li>Неснижаемый: <strong>" +
+          fmt(product.min_stock, 0) +
+          "</strong></li>" +
+          "<li>Менеджер: " +
+          esc(product.manager || "—") +
+          "</li>" +
+          "<li>Решение: " +
+          esc(LC_LABEL[product.lifecycle] || product.lifecycle || "—") +
+          (product.do_not_order ? " · не заказывать" : "") +
+          "</li>" +
+          "<li>Комментарий: " +
+          esc(product.decision_note || "—") +
+          "</li>" +
+          "<li>Продажи за период: <strong>" +
+          fmt(sales.qty_total, 0) +
+          "</strong> шт. / <strong>" +
+          fmt(sales.revenue_total, 0) +
+          "</strong> ₽</li>";
+      }
+
+      function renderDetailChart(byProject) {
+        var canvas = document.getElementById("dg-pa-detail-chart");
+        if (!canvas) return Promise.resolve();
+        return ensureChartJs()
+          .then(function (Chart) {
+            if (detailShareChart) {
+              try { detailShareChart.destroy(); } catch (e) {}
+              detailShareChart = null;
+            }
+            var rows = (byProject || []).filter(function (r) {
+              return Number(r.sales_revenue || 0) > 0 || Number(r.sales_qty || 0) > 0;
+            });
+            if (!rows.length) return;
+            var labels = rows.map(function (r) { return r.project_name; });
+            var data = rows.map(function (r) {
+              return Number(r.sales_revenue || 0) || Number(r.sales_qty || 0);
+            });
+            var colors = [
+              "#1e6bb8", "#28a745", "#f39c12", "#e74c3c", "#8e44ad",
+              "#16a085", "#d35400", "#2c3e50", "#7f8c8d", "#c0392b",
+            ];
+            detailShareChart = new Chart(canvas, {
+              type: "doughnut",
+              data: {
+                labels: labels,
+                datasets: [
+                  {
+                    data: data,
+                    backgroundColor: labels.map(function (_l, i) {
+                      return colors[i % colors.length];
+                    }),
+                  },
+                ],
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                  legend: { position: "bottom", labels: { boxWidth: 10, font: { size: 10 } } },
+                },
+              },
+            });
+          })
+          .catch(function () {});
+      }
+
+      function loadSkuDetail(code, nameHint) {
+        var title = document.getElementById("dg-pa-detail-title");
+        var sub = document.getElementById("dg-pa-detail-sub");
+        var link = document.getElementById("dg-pa-detail-product-link");
+        var sumEl = document.getElementById("dg-pa-detail-sales-sum");
+        if (title) title.textContent = nameHint || code;
+        if (sub) sub.textContent = "Код " + code + " · загрузка…";
+        if (link) link.href = "/product.html?code=" + encodeURIComponent(code);
+        var q = queryParams();
+        q.set("code", code);
+        q.delete("limit");
+        q.delete("offset");
+        q.delete("sort_by");
+        q.delete("sort_dir");
+        return fetch("/api/product-analysis/sku-detail?" + q.toString(), { credentials: "same-origin" })
+          .then(function (r) { return r.json(); })
+          .then(function (j) {
+            if (!j || !j.success) throw new Error((j && j.error) || "Ошибка детализации");
+            var p = j.product || {};
+            var sales = j.sales || {};
+            if (title) title.textContent = p.name || nameHint || code;
+            if (sub) {
+              sub.textContent =
+                "Код " +
+                (p.code || code) +
+                (p.supplier_name ? " · " + p.supplier_name : "") +
+                " · период " +
+                (j.days || state.days) +
+                " дн.";
+            }
+            if (sumEl) {
+              sumEl.textContent =
+                "Итого: " +
+                fmt(sales.qty_total, 0) +
+                " шт. / " +
+                fmt(sales.revenue_total, 0) +
+                " ₽";
+            }
+            renderDetailProjects(sales.by_project);
+            renderDetailAbsence(j.absence);
+            renderDetailMeta(p, sales);
+            return renderDetailChart(sales.by_project);
+          })
+          .catch(function (e) {
+            if (sub) sub.textContent = (e && e.message) || "Ошибка";
+            var tb = document.getElementById("dg-pa-detail-projects-tbody");
+            if (tb) tb.innerHTML = '<tr><td colspan="4" class="text-danger">' + esc((e && e.message) || e) + "</td></tr>";
+          });
+      }
+
+      function renderTable() {
+        stashDetailCardInHost();
+        buildThead();
+        var tbody = document.getElementById("dg-pa-tbody");
+        if (!tbody) return;
+        var cols = PA_COLS.filter(function (c) { return visibleCols.indexOf(c[0]) >= 0; });
+        if (visibleCols.indexOf("_expand") < 0) {
+          visibleCols = ["_expand"].concat(visibleCols.filter(function (k) { return k !== "_expand"; }));
+          cols = PA_COLS.filter(function (c) { return visibleCols.indexOf(c[0]) >= 0; });
+        }
+        var rows = state.rows || [];
+        if (!rows.length) {
+          tbody.innerHTML =
+            '<tr><td colspan="' +
+            cols.length +
+            '" class="text-muted text-center py-4">Нет строк</td></tr>';
+        } else {
+          var html = "";
+          rows.forEach(function (r) {
+            var open = r.code === state.selectedCode;
+            var cls = (rowClass(r) + (open ? " dg-pa-row-active" : "")).trim();
+            html +=
+              '<tr class="dg-pa-row-expandable ' +
+              cls +
+              '" data-code="' +
+              esc(r.code) +
+              '" data-name="' +
+              esc(r.name || "") +
+              '">' +
+              cols
+                .map(function (c) {
+                  var tdClass = c[0] === "_expand" ? ' class="dg-pa-expand-cell"' : "";
+                  return "<td" + tdClass + ">" + cellHtml(c[0], r) + "</td>";
+                })
+                .join("") +
+              "</tr>";
+            if (open) {
+              html +=
+                '<tr class="dg-pa-detail-row"><td colspan="' +
+                cols.length +
+                '" class="dg-pa-detail-cell"><div id="dg-pa-detail-slot"></div></td></tr>';
+            }
+          });
+          tbody.innerHTML = html;
+          if (state.selectedCode) mountDetailCard();
+        }
+        var pages = Math.max(1, Math.ceil((state.total || 0) / (state.limit || 100)));
+        var page = Math.floor((state.offset || 0) / (state.limit || 100)) + 1;
+        var shown = rows.length;
+        var st = document.getElementById("dg-pa-pager-status");
+        if (st) {
+          st.textContent =
+            "Найдено: " +
+            fmt(state.total, 0) +
+            "; страница " +
+            page +
+            "/" +
+            pages +
+            "; показано: " +
+            shown;
+        }
+        var prev = document.getElementById("dg-pa-prev");
+        var next = document.getElementById("dg-pa-next");
+        if (prev) prev.disabled = state.offset <= 0;
+        if (next) next.disabled = state.offset + state.limit >= state.total;
+        paRefreshFloatingAfterLayout();
+      }
+
+      function renderKpis(totals) {
+        var t = totals || {};
+        function set(id, v, digits) {
+          var el = document.getElementById(id);
+          if (el) el.textContent = fmt(v, digits != null ? digits : 0);
+        }
+        set("dg-pa-kpi-skus", t.skus_total);
+        set("dg-pa-kpi-revenue", t.sales_revenue);
+        set("dg-pa-kpi-qty", t.sales_qty);
+        set("dg-pa-kpi-stock", t.stock_value_rub);
+        set("dg-pa-kpi-minstock", t.min_stock_sum);
+        set("dg-pa-kpi-dead-ms", t.dead_with_min_stock);
+        set("dg-pa-kpi-boost", t.in_boost);
+        set("dg-pa-kpi-exit", t.in_exit_path);
+      }
+
+      function loadManagersList() {
+        var sel = document.getElementById("dg-pa-manager");
+        if (!sel) return Promise.resolve();
+        var keep = String(state.pending.manager || sel.value || "");
+        return fetch("/api/product-analysis/managers", { credentials: "same-origin" })
+          .then(function (r) { return r.json(); })
+          .then(function (j) {
+            var managers = (j && j.success && Array.isArray(j.managers)) ? j.managers : [];
+            sel.innerHTML =
+              '<option value="">— все —</option>' +
+              managers
+                .map(function (m) {
+                  var v = String(m || "").trim();
+                  if (!v) return "";
+                  return '<option value="' + esc(v) + '">' + esc(v) + "</option>";
+                })
+                .join("");
+            if (keep) sel.value = keep;
+          })
+          .catch(function () {});
+      }
+
+      function loadProjectsList() {
+        var days = Number(state.pending.days) || 90;
+        var status = document.getElementById("dg-pa-projects-status");
+        var list = document.getElementById("dg-pa-projects-list");
+        if (status) status.textContent = "Загрузка проектов…";
+        return fetch("/api/product-analysis/projects?days=" + encodeURIComponent(days), {
+          credentials: "same-origin",
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (j) {
+            if (!j || !j.success) throw new Error((j && j.error) || "Ошибка проектов");
+            var projects = j.projects || [];
+            var selected = {};
+            (state.pending.project_uuids || []).forEach(function (u) { selected[u] = 1; });
+            if (list) {
+              list.innerHTML = projects
+                .map(function (p) {
+                  var u = String(p.uuid || "").toLowerCase();
+                  var chk = selected[u] ? " checked" : "";
+                  return (
+                    '<div class="form-check">' +
+                    '<input class="form-check-input" type="checkbox" value="' +
+                    esc(u) +
+                    '" id="dg-pa-pr-' +
+                    esc(u) +
+                    '"' +
+                    chk +
+                    " />" +
+                    '<label class="form-check-label small" for="dg-pa-pr-' +
+                    esc(u) +
+                    '">' +
+                    esc(p.name) +
+                    " <span class=\"text-muted\">(" +
+                    fmt(p.count, 0) +
+                    ")</span></label></div>"
+                  );
+                })
+                .join("");
+            }
+            if (status) status.textContent = "Проектов: " + projects.length;
+            return projects;
+          });
+      }
+
+      function syncProjectModeUi() {
+        var selected =
+          document.getElementById("dg-pa-project-mode-selected") &&
+          document.getElementById("dg-pa-project-mode-selected").checked;
+        state.pending.project_mode = selected ? "selected" : "all";
+        var wrap = document.getElementById("dg-pa-projects-wrap");
+        var selAll = document.getElementById("dg-pa-projects-select-all");
+        var clearBtn = document.getElementById("dg-pa-projects-clear");
+        var reloadBtn = document.getElementById("dg-pa-projects-reload");
+        var hint = document.getElementById("dg-pa-project-mode-hint");
+        if (wrap) wrap.classList.toggle("d-none", !selected);
+        if (selAll) selAll.classList.toggle("d-none", !selected);
+        if (clearBtn) clearBtn.classList.toggle("d-none", !selected);
+        if (reloadBtn) reloadBtn.classList.toggle("d-none", !selected);
+        if (hint) hint.classList.toggle("d-none", selected);
+        syncDirtyApply();
+      }
+
+      function applyDefaultMarketplaceProjectSelection() {
+        var projects = [];
+        var list = document.getElementById("dg-pa-projects-list");
+        if (!list) return;
+        Array.prototype.slice.call(list.querySelectorAll('input[type="checkbox"]')).forEach(function (el) {
+          projects.push({ uuid: el.value, name: (el.nextElementSibling && el.nextElementSibling.textContent) || "" });
+        });
+        // re-read names from labels more carefully
+        projects = [];
+        Array.prototype.slice.call(list.querySelectorAll(".form-check")).forEach(function (wrap) {
+          var inp = wrap.querySelector("input");
+          var lab = wrap.querySelector("label");
+          if (!inp) return;
+          projects.push({
+            uuid: inp.value,
+            name: lab ? String(lab.textContent || "").replace(/\(\d[\d\s]*\)\s*$/, "").trim() : "",
+          });
+        });
+        var uuids = pickDefaultMarketplaceProjectUuids(projects);
+        Array.prototype.slice.call(list.querySelectorAll('input[type="checkbox"]')).forEach(function (el) {
+          el.checked = uuids.indexOf(String(el.value).toLowerCase()) >= 0;
+        });
+        state.pending.project_uuids = uuids;
+      }
+
+      function loadOverview() {
+        var q = queryParams();
+        return fetch("/api/product-analysis/overview?" + q.toString(), { credentials: "same-origin" })
+          .then(function (r) { return r.json(); })
+          .then(function (j) {
+            if (!j || !j.success) throw new Error((j && j.error) || "Ошибка сводки");
+            renderKpis(j.totals);
+            return j;
+          });
+      }
+
+      function loadRanking() {
+        var q = queryParams();
+        return fetch("/api/product-analysis/ranking?" + q.toString(), { credentials: "same-origin" })
+          .then(function (r) { return r.json(); })
+          .then(function (j) {
+            if (!j || !j.success) throw new Error((j && j.error) || "Ошибка списка");
+            state.rows = j.rows || [];
+            state.total = Number(j.total || 0);
+            if (j.sort_by) state.sort_by = j.sort_by;
+            if (j.sort_dir) state.sort_dir = j.sort_dir;
+            renderTable();
+            scheduleUrlSync();
+            return j;
+          });
+      }
+
+      function loadAll() {
+        return Promise.all([loadOverview(), loadRanking()]).catch(function (e) {
+          if (window.DatagonNotify && window.DatagonNotify.toast) {
+            window.DatagonNotify.toast({ type: "danger", message: (e && e.message) || "Ошибка загрузки" });
+          }
+        });
+      }
+
+      function runBulkDecision(action, label) {
+        var codes = selectedCodes();
+        var body = Object.assign({ action: action, dry_run: 1 }, filterBodyForBulk());
+        if (codes.length) body.codes = codes;
+        var filtersHint = filtersHintText(codes.length);
+        showActionLog(
+          "info",
+          "<strong>" +
+            esc(label) +
+            "</strong><br>Фильтры: " +
+            esc(filtersHint) +
+            "<br>Preflight…"
+        );
+        var t0 = Date.now();
+        var timer = setInterval(function () {
+          var el = document.getElementById("dg-pa-action-log");
+          if (!el || el.classList.contains("d-none")) return;
+          var sec = Math.round((Date.now() - t0) / 1000);
+          el.innerHTML =
+            el.innerHTML.replace(/<br>идёт.*/i, "") +
+            "<br>идёт, прошло " +
+            sec +
+            " с…";
+        }, 1000);
+
+        function stopTimer() { clearInterval(timer); }
+
+        var btn = document.getElementById("dg-pa-act-" + (action === "boost_failed" ? "boost-failed" : action === "do_not_order_on" ? "dno-on" : action === "do_not_order_off" ? "dno-off" : action === "lock_proposed_zero" ? "lock-prop" : action === "unlock_proposed" ? "unlock-prop" : action));
+        var run = function () {
+          return fetch("/api/product-analysis/decision/bulk", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          })
+            .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+            .then(function (x) {
+              if (!x.ok || !x.j.success) throw new Error((x.j && x.j.error) || "Ошибка preflight");
+              var would = Number(x.j.would_update || x.j.total || 0);
+              showActionLog(
+                "warning",
+                "<strong>" +
+                  esc(label) +
+                  "</strong><br>Фильтры: " +
+                  esc(filtersHint) +
+                  formatPatchFieldsHtml(x.j.patch_fields) +
+                  "<br>Будет обновлено: <strong>" +
+                  would +
+                  "</strong>" +
+                  (codes.length ? " (отмеченные строки)." : " по фильтру/пресету — нужно доп. подтверждение.")
+              );
+              if (!would) {
+                stopTimer();
+                showActionLog("info", "Нечего обновлять по текущим фильтрам.");
+                return;
+              }
+              return confirmBulkWrite({
+                label: label,
+                would: would,
+                codesLen: codes.length,
+              }).then(function (ok) {
+                if (!ok) {
+                  stopTimer();
+                  showActionLog("secondary", "Отменено. Preflight: " + would + " SKU.");
+                  return;
+                }
+                body.dry_run = 0;
+                return fetch("/api/product-analysis/decision/bulk", {
+                  method: "POST",
+                  credentials: "same-origin",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(body),
+                })
+                  .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+                  .then(function (y) {
+                    stopTimer();
+                    if (!y.ok || !y.j.success) throw new Error((y.j && y.j.error) || "Ошибка записи");
+                    var errHtml = "";
+                    if (y.j.errors && y.j.errors.length) {
+                      errHtml =
+                        "<ul>" +
+                        y.j.errors
+                          .map(function (e) {
+                            return "<li>" + esc(e.code) + ": " + esc(e.error) + "</li>";
+                          })
+                          .join("") +
+                        "</ul>";
+                    }
+                    showActionLog(
+                      "success",
+                      "<strong>" +
+                        esc(label) +
+                        " — готово</strong><br>Фильтры: " +
+                        esc(filtersHint) +
+                        formatPatchFieldsHtml(y.j.patch_fields) +
+                        "<br>SKU: " +
+                        (y.j.total || 0) +
+                        "; записано: " +
+                        (y.j.updated || 0) +
+                        "; изменений полей: " +
+                        (y.j.changed_fields || 0) +
+                        "; ошибок: " +
+                        (y.j.failed || 0) +
+                        "; " +
+                        (y.j.duration_sec || 0) +
+                        " с" +
+                        errHtml +
+                        "<br><span class=\"text-muted\">История — кнопка «лог» в колонке «Решение».</span>"
+                    );
+                    paTipCache = {};
+                    return loadAll();
+                  });
+              });
+            })
+            .catch(function (e) {
+              stopTimer();
+              showActionLog("danger", "Ошибка: " + esc((e && e.message) || e));
+            });
+        };
+        if (window.DatagonNotify && window.DatagonNotify.busyRun && btn) {
+          return window.DatagonNotify.busyRun(btn, run);
+        }
+        return run();
+      }
+
+      function runZeroMinStock() {
+        var codes = selectedCodes();
+        var body = Object.assign(
+          { force_zero: 1, dry_run: 1, preset: state.preset === "all" ? "dead_min_stock" : state.preset },
+          filterBodyForBulk()
+        );
+        if (codes.length) body.codes = codes;
+        var filtersHint = filtersHintText(codes.length);
+        showActionLog(
+          "info",
+          "<strong>Обнулить неснижаемый</strong><br>" +
+            esc(filtersHint) +
+            "<br>Preflight…"
+        );
+        var btn = document.getElementById("dg-pa-act-zero-ms");
+        var run = function () {
+          return fetch("/api/product-analysis/min-stock/apply", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          })
+            .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+            .then(function (x) {
+              if (!x.ok || !x.j.success) throw new Error((x.j && x.j.error) || "Ошибка preflight");
+              var would = Number(x.j.would_update || x.j.to_update || 0);
+              var sample = (x.j.sample || [])
+                .slice(0, 10)
+                .map(function (s) {
+                  return esc(s.code) + ": " + s.from + " → " + s.to;
+                })
+                .join("; ");
+              showActionLog(
+                "warning",
+                "К записи: <strong>" +
+                  would +
+                  "</strong>; без изменений: " +
+                  (x.j.skipped || 0) +
+                  (sample ? "<br>Примеры: " + sample : "") +
+                  (codes.length ? "" : "<br>Галочек нет — нужно доп. подтверждение по фильтру.")
+              );
+              if (!would) return;
+              return confirmBulkWrite({
+                label: "Обнулить неснижаемый",
+                would: would,
+                codesLen: codes.length,
+              }).then(function (ok) {
+                if (!ok) {
+                  showActionLog("secondary", "Отменено. Preflight: " + would);
+                  return;
+                }
+                body.dry_run = 0;
+                return fetch("/api/product-analysis/min-stock/apply", {
+                  method: "POST",
+                  credentials: "same-origin",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(body),
+                })
+                  .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+                  .then(function (y) {
+                    if (!y.ok || !y.j.success) throw new Error((y.j && y.j.error) || "Ошибка записи");
+                    var errHtml = "";
+                    if (y.j.errors && y.j.errors.length) {
+                      errHtml =
+                        "<ul>" +
+                        y.j.errors
+                          .map(function (e) {
+                            return "<li>" + esc(e.code) + ": " + esc(e.error) + "</li>";
+                          })
+                          .join("") +
+                        "</ul>";
+                    }
+                    showActionLog(
+                      "success",
+                      "<strong>НС обнулён</strong><br>обработано: " +
+                        (y.j.total || 0) +
+                        "; записано: " +
+                        (y.j.updated || 0) +
+                        "; пропущено: " +
+                        (y.j.skipped || 0) +
+                        "; ошибок: " +
+                        (y.j.failed || 0) +
+                        "; " +
+                        (y.j.duration_sec || 0) +
+                        " с" +
+                        errHtml
+                    );
+                    return loadAll();
+                  });
+              });
+            })
+            .catch(function (e) {
+              showActionLog("danger", "Ошибка: " + esc((e && e.message) || e));
+            });
+        };
+        if (window.DatagonNotify && window.DatagonNotify.busyRun && btn) {
+          return window.DatagonNotify.busyRun(btn, run);
+        }
+        return run();
+      }
+
+      function columnControls() {
+        var wrap = document.getElementById("dg-pa-toolbox-panels");
+        var colsPanel = document.getElementById("dg-pa-columns-panel");
+        var widthsPanel = document.getElementById("dg-pa-widths-panel");
+        var list = document.getElementById("dg-pa-columns-list");
+        var wList = document.getElementById("dg-pa-widths-list");
+
+        function syncWrap() {
+          var open =
+            (colsPanel && !colsPanel.classList.contains("d-none") && colsPanel.offsetParent !== null && wrap && !wrap.classList.contains("d-none")) ||
+            (widthsPanel && widthsPanel.style.display !== "none");
+          // simpler: wrap visible if either panel shown
+          var showCols = colsPanel && colsPanel.getAttribute("data-open") === "1";
+          var showW = widthsPanel && widthsPanel.getAttribute("data-open") === "1";
+          if (wrap) wrap.classList.toggle("d-none", !(showCols || showW));
+          if (colsPanel) colsPanel.style.display = showCols ? "" : "none";
+          if (widthsPanel) widthsPanel.style.display = showW ? "" : "none";
+        }
+
+        function renderColumnControls() {
+          if (!list) return;
+          list.innerHTML = PA_COLS.map(function (c) {
+            if (c[0] === "_sel" || c[0] === "_expand") return "";
+            var on = visibleCols.indexOf(c[0]) >= 0;
+            return (
+              '<label class="form-check"><input class="form-check-input" type="checkbox" data-col="' +
+              esc(c[0]) +
+              '"' +
+              (on ? " checked" : "") +
+              " /> " +
+              esc(c[1]) +
+              "</label>"
+            );
+          }).join("");
+        }
+
+        function renderWidthControls() {
+          if (!wList) return;
+          wList.innerHTML = PA_COLS.filter(function (c) {
+            return visibleCols.indexOf(c[0]) >= 0 && c[0] !== "_sel";
+          })
+            .map(function (c) {
+              var w = colWidths[c[0]] || 100;
+              return (
+                '<div class="mb-1"><label class="small">' +
+                esc(c[1]) +
+                '</label><input type="range" min="60" max="400" value="' +
+                w +
+                '" data-col="' +
+                esc(c[0]) +
+                '" class="form-range" /></div>'
+              );
+            })
+            .join("");
+        }
+
+        document.getElementById("dg-pa-columns-toggle").addEventListener("click", function (ev) {
+          ev.stopPropagation();
+          var open = colsPanel.getAttribute("data-open") === "1";
+          colsPanel.setAttribute("data-open", open ? "0" : "1");
+          if (!open) widthsPanel.setAttribute("data-open", "0");
+          renderColumnControls();
+          syncWrap();
+        });
+        document.getElementById("dg-pa-widths-toggle").addEventListener("click", function (ev) {
+          ev.stopPropagation();
+          var open = widthsPanel.getAttribute("data-open") === "1";
+          widthsPanel.setAttribute("data-open", open ? "0" : "1");
+          if (!open) colsPanel.setAttribute("data-open", "0");
+          renderWidthControls();
+          syncWrap();
+        });
+        if (list) {
+          list.addEventListener("change", function (ev) {
+            var inp = ev.target.closest("input[data-col]");
+            if (!inp) return;
+            var key = inp.getAttribute("data-col");
+            if (inp.checked) {
+              if (visibleCols.indexOf(key) < 0) visibleCols.push(key);
+            } else {
+              visibleCols = visibleCols.filter(function (k) { return k !== key; });
+              if (visibleCols.indexOf("_expand") < 0) visibleCols.unshift("_expand");
+              if (visibleCols.indexOf("_sel") < 0) visibleCols.splice(1, 0, "_sel");
+            }
+            saveVisibleCols(visibleCols);
+            renderTable();
+          });
+        }
+        if (wList) {
+          wList.addEventListener("input", function (ev) {
+            var inp = ev.target.closest("input[data-col]");
+            if (!inp) return;
+            colWidths[inp.getAttribute("data-col")] = Number(inp.value) || 100;
+            saveColWidths(colWidths);
+            renderTable();
+          });
+        }
+        var btnAll = document.getElementById("dg-pa-columns-all");
+        var btnNone = document.getElementById("dg-pa-columns-none");
+        var btnDef = document.getElementById("dg-pa-columns-default");
+        if (btnAll) {
+          btnAll.addEventListener("click", function () {
+            visibleCols = PA_DEFAULT_VISIBLE.slice();
+            saveVisibleCols(visibleCols);
+            renderColumnControls();
+            renderTable();
+          });
+        }
+        if (btnNone) {
+          btnNone.addEventListener("click", function () {
+            visibleCols = ["_expand", "_sel", "code", "name"];
+            saveVisibleCols(visibleCols);
+            renderColumnControls();
+            renderTable();
+          });
+        }
+        if (btnDef) {
+          btnDef.addEventListener("click", function () {
+            visibleCols = PA_DEFAULT_VISIBLE.slice();
+            saveVisibleCols(visibleCols);
+            renderColumnControls();
+            renderTable();
+          });
+        }
+        var wDef = document.getElementById("dg-pa-widths-default");
+        if (wDef) {
+          wDef.addEventListener("click", function () {
+            colWidths = Object.assign({}, PA_DEFAULT_WIDTHS);
+            saveColWidths(colWidths);
+            renderWidthControls();
+            renderTable();
+          });
+        }
+        document.addEventListener("click", function (ev) {
+          if (!wrap || wrap.classList.contains("d-none")) return;
+          if (ev.target.closest("#dg-pa-toolbox-panels") || ev.target.closest("#dg-pa-columns-toggle") || ev.target.closest("#dg-pa-widths-toggle")) return;
+          colsPanel.setAttribute("data-open", "0");
+          widthsPanel.setAttribute("data-open", "0");
+          syncWrap();
+        });
+        if (colsPanel) colsPanel.setAttribute("data-open", "0");
+        if (widthsPanel) widthsPanel.setAttribute("data-open", "0");
+        syncWrap();
+      }
+
+      function bindHeaderSearchMirror() {
+        var a = document.getElementById("dg-pa-search");
+        var b = document.getElementById("dg-pa-table-search-mirror");
+        if (!a || !b) return;
+        var syncing = false;
+        function sync(from, to) {
+          if (syncing) return;
+          syncing = true;
+          to.value = from.value;
+          syncing = false;
+        }
+        a.addEventListener("input", function () {
+          state.pending.search = a.value;
+          sync(a, b);
+          syncDirtyApply();
+        });
+        b.addEventListener("input", function () {
+          state.pending.search = b.value;
+          sync(b, a);
+          syncDirtyApply();
+        });
+        function onEnter(ev) {
+          if (ev.key !== "Enter") return;
+          ev.preventDefault();
+          document.getElementById("dg-pa-apply").click();
+        }
+        function onEsc(ev) {
+          if (ev.key !== "Escape") return;
+          a.value = "";
+          b.value = "";
+          state.pending.search = "";
+          document.getElementById("dg-pa-apply").click();
+        }
+        a.addEventListener("keydown", onEnter);
+        b.addEventListener("keydown", onEnter);
+        a.addEventListener("keydown", onEsc);
+        b.addEventListener("keydown", onEsc);
+      }
+
+      function initCollapse() {
+        function bind(btnId, bodyId, key) {
+          var btn = document.getElementById(btnId);
+          var body = document.getElementById(bodyId);
+          if (!btn || !body) return;
+          function apply(collapsed) {
+            body.classList.toggle("d-none", collapsed);
+            btn.textContent = collapsed ? "Развернуть" : "Свернуть";
+            try { localStorage.setItem(key, collapsed ? "1" : "0"); } catch (e) {}
+          }
+          var saved = false;
+          try { saved = localStorage.getItem(key) === "1"; } catch (e) {}
+          apply(saved);
+          btn.addEventListener("click", function () {
+            apply(body.classList.contains("d-none") ? false : true);
+            paRefreshFloatingAfterLayout();
+          });
+        }
+        bind("dg-pa-filters-toggle", "dg-pa-filters-body", FILTERS_KEY);
+        bind("dg-pa-table-toggle", "dg-pa-table-body", TABLE_COLLAPSE_KEY);
+        bind("dg-pa-summary-toggle", "dg-pa-summary-body", SUMMARY_COLLAPSE_KEY);
+      }
+
+      function init() {
+        renderPresetChips();
+        columnControls();
+        bindHeaderSearchMirror();
+        initCollapse();
+
+        if (window.DatagonFilterFieldsVisibility && window.DatagonFilterFieldsVisibility.init) {
+          window.DatagonFilterFieldsVisibility.init({
+            storageKeyPrefix: "datagon_product_analysis_filter_fields_v2",
+            attr: "data-dg-pa-filter-field",
+            togglesRootId: "dg-pa-filter-fields-toggles",
+            idPrefix: "dg-pa-ff-",
+            exposeAs: "DatagonProductAnalysisFilterBlocks",
+            fieldGroups: [
+              {
+                title: "Основные",
+                items: [
+                  { key: "days", title: "Период" },
+                  { key: "new_stock_days", title: "Новый на складе" },
+                  { key: "exclude_new_on_stock", title: "Искл. новые из мёртвых" },
+                  { key: "search", title: "Поиск" },
+                  { key: "supplier", title: "Поставщик" },
+                  { key: "manager", title: "Менеджер" },
+                  { key: "projects", title: "Проекты" },
+                  { key: "presets", title: "Пресеты" },
+                  { key: "page_size", title: "На странице" },
+                ],
+              },
+            ],
+          });
+        }
+
+        document.getElementById("dg-pa-days").addEventListener("change", function () {
+          state.pending.days = Number(this.value) || 90;
+          syncDirtyApply();
+          // Счётчики в скобках завязаны на период — обновляем список сразу.
+          loadProjectsList();
+        });
+        document.getElementById("dg-pa-new-stock-days").addEventListener("change", function () {
+          state.pending.new_stock_days = Number(this.value) || 30;
+          syncDirtyApply();
+        });
+        document.getElementById("dg-pa-exclude-new").addEventListener("change", function () {
+          state.pending.exclude_new_on_stock = !!this.checked;
+          syncDirtyApply();
+        });
+        document.getElementById("dg-pa-search").addEventListener("input", function () {
+          state.pending.search = this.value;
+          syncDirtyApply();
+        });
+        document.getElementById("dg-pa-supplier").addEventListener("input", function () {
+          state.pending.supplier = this.value;
+          syncDirtyApply();
+        });
+        document.getElementById("dg-pa-manager").addEventListener("change", function () {
+          state.pending.manager = this.value;
+          syncDirtyApply();
+        });
+        document.getElementById("dg-pa-page-size").addEventListener("change", function () {
+          state.limit = Number(this.value) || 100;
+          var foot = document.getElementById("dg-pa-footer-page-size");
+          if (foot) foot.value = String(state.limit);
+          state.offset = 0;
+          loadRanking();
+        });
+        document.getElementById("dg-pa-footer-page-size").addEventListener("change", function () {
+          state.limit = Number(this.value) || 100;
+          var top = document.getElementById("dg-pa-page-size");
+          if (top) top.value = String(state.limit);
+          state.offset = 0;
+          loadRanking();
+        });
+
+        document.querySelectorAll('input[name="dg-pa-project-mode"]').forEach(function (el) {
+          el.addEventListener("change", function () {
+            syncProjectModeUi();
+          });
+        });
+        document.getElementById("dg-pa-projects-list").addEventListener("change", function () {
+          state.pending.project_uuids = readPendingProjectUuids();
+          syncDirtyApply();
+        });
+        document.getElementById("dg-pa-projects-reload").addEventListener("click", function () {
+          loadProjectsList().then(syncDirtyApply);
+        });
+        document.getElementById("dg-pa-projects-select-all").addEventListener("click", function () {
+          Array.prototype.slice
+            .call(document.querySelectorAll('#dg-pa-projects-list input[type="checkbox"]'))
+            .forEach(function (el) { el.checked = true; });
+          state.pending.project_uuids = readPendingProjectUuids();
+          syncDirtyApply();
+        });
+        document.getElementById("dg-pa-projects-clear").addEventListener("click", function () {
+          Array.prototype.slice
+            .call(document.querySelectorAll('#dg-pa-projects-list input[type="checkbox"]'))
+            .forEach(function (el) { el.checked = false; });
+          state.pending.project_uuids = [];
+          syncDirtyApply();
+        });
+
+        document.getElementById("dg-pa-presets").addEventListener("click", function (ev) {
+          var btn = ev.target.closest("[data-preset]");
+          if (!btn) return;
+          state.pending.preset = btn.getAttribute("data-preset") || "all";
+          renderPresetChips();
+          syncDirtyApply();
+          var run = function () { return commitFilters({ fromPreset: true }); };
+          if (window.DatagonNotify && window.DatagonNotify.busyRun) {
+            window.DatagonNotify.busyRun(btn, run);
+          } else {
+            run();
+          }
+        });
+
+        document.getElementById("dg-pa-apply").addEventListener("click", function () {
+          var btn = this;
+          var run = function () { return commitFilters(); };
+          if (window.DatagonNotify && window.DatagonNotify.busyRun) {
+            window.DatagonNotify.busyRun(btn, run);
+          } else run();
+        });
+        document.getElementById("dg-pa-reset").addEventListener("click", function () {
+          hideActionLog();
+          state.pending = {
+            days: 90,
+            new_stock_days: 30,
+            exclude_new_on_stock: true,
+            search: "",
+            supplier: "",
+            manager: "",
+            preset: "all",
+            project_mode: "selected",
+            project_uuids: [],
+          };
+          state.limit = 100;
+          state.offset = 0;
+          state.sort_by = "sales_revenue";
+          state.sort_dir = "desc";
+          writePendingToForm();
+          syncProjectModeUi();
+          loadProjectsList().then(function () {
+            applyDefaultMarketplaceProjectSelection();
+            return commitFilters();
+          });
+        });
+        document.getElementById("dg-pa-export").addEventListener("click", function () {
+          window.location.href = "/api/product-analysis/export?" + queryParams().toString();
+        });
+
+        document.getElementById("dg-pa-prev").addEventListener("click", function () {
+          state.offset = Math.max(0, state.offset - state.limit);
+          loadRanking();
+        });
+        document.getElementById("dg-pa-next").addEventListener("click", function () {
+          if (state.offset + state.limit < state.total) {
+            state.offset += state.limit;
+            loadRanking();
+          }
+        });
+
+        document.getElementById("dg-pa-thead").addEventListener("click", function (ev) {
+          var sel = window.getSelection && window.getSelection();
+          if (sel && String(sel.toString() || "").trim()) return;
+          var th = ev.target.closest("th[data-col]");
+          if (!th) return;
+          var col = th.getAttribute("data-col");
+          if (!col || col === "_sel" || col === "_expand") return;
+          if (state.sort_by === col) {
+            state.sort_dir = state.sort_dir === "asc" ? "desc" : "asc";
+          } else {
+            state.sort_by = col;
+            state.sort_dir = "desc";
+          }
+          state.offset = 0;
+          loadRanking();
+        });
+
+        document.getElementById("dg-pa-tbody").addEventListener("change", function (ev) {
+          var noteInp = ev.target.closest(".dg-pa-note-input");
+          if (noteInp) {
+            saveDecisionNoteFromInput(noteInp);
+            return;
+          }
+          var sel = ev.target.closest(".dg-pa-lc-select");
+          if (sel) {
+            var codeLc = sel.getAttribute("data-code");
+            var next = String(sel.value || "none");
+            var prev = String(sel.getAttribute("data-prev") || "none");
+            if (!codeLc || next === prev) return;
+            var hit = LC_ROW_OPTIONS.filter(function (o) { return o.value === next; })[0];
+            var action = hit ? hit.action : null;
+            if (!action) return;
+            postRowDecision(codeLc, { action: action }, sel);
+            return;
+          }
+          var dno = ev.target.closest(".dg-pa-dno-check");
+          if (dno) return;
+          var inp = ev.target.closest(".dg-pa-row-sel");
+          if (!inp) return;
+          state.selected[inp.getAttribute("data-code")] = !!inp.checked;
+        });
+        document.getElementById("dg-pa-tbody").addEventListener("keydown", function (ev) {
+          var noteInp = ev.target.closest(".dg-pa-note-input");
+          if (!noteInp) return;
+          if (ev.key === "Enter" && (ev.ctrlKey || ev.metaKey)) {
+            ev.preventDefault();
+            noteInp.blur();
+            return;
+          }
+          if (ev.key === "Escape") {
+            ev.preventDefault();
+            noteInp.value = noteInp.getAttribute("data-prev") || "";
+            noteInp.blur();
+          }
+        });
+        document.getElementById("dg-pa-tbody").addEventListener("click", function (ev) {
+          if (
+            ev.target.closest(".dg-pa-lc-select") ||
+            ev.target.closest(".dg-pa-lc-log") ||
+            ev.target.closest(".dg-pa-note-input") ||
+            ev.target.closest(".dg-pa-note-wrap")
+          ) {
+            ev.stopPropagation();
+          }
+          var unlockBtn = ev.target.closest(".dg-pa-unlock-btn");
+          if (unlockBtn) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            var unlockCode = unlockBtn.getAttribute("data-code");
+            if (!unlockCode) return;
+            postRowDecision(unlockCode, { action: "unlock_proposed" }, unlockBtn);
+            return;
+          }
+          if (
+            ev.target.closest("a") ||
+            ev.target.closest(".dg-pa-row-sel") ||
+            ev.target.closest(".dg-pa-detail-row") ||
+            ev.target.closest(".dg-pa-lc-select") ||
+            ev.target.closest(".dg-pa-note-input") ||
+            ev.target.closest(".dg-pa-note-wrap")
+          ) {
+            return;
+          }
+          var tr = ev.target.closest("tr.dg-pa-row-expandable");
+          if (!tr) return;
+          var cell = ev.target.closest("td");
+          if (!cell) return;
+          if (
+            cell.classList.contains("dg-pa-expand-cell") ||
+            cell.cellIndex === 0 ||
+            (cell.previousElementSibling == null && cell.querySelector(".dg-pa-row-chevron"))
+          ) {
+            openDetail(tr.getAttribute("data-code"), tr.getAttribute("data-name"));
+          }
+        });
+        var detailClose = document.getElementById("dg-pa-detail-close");
+        if (detailClose) {
+          detailClose.addEventListener("click", function () {
+            closeDetail();
+          });
+        }
+
+        document.getElementById("dg-pa-act-boost").addEventListener("click", function () {
+          runBulkDecision("boost", "Буст (реклама)");
+        });
+        document.getElementById("dg-pa-act-boost-failed").addEventListener("click", function () {
+          runBulkDecision("boost_failed", "Буст не сработал");
+        });
+        document.getElementById("dg-pa-act-clearance").addEventListener("click", function () {
+          runBulkDecision("clearance", "Распродажа (слить остаток)");
+        });
+        document.getElementById("dg-pa-act-exit").addEventListener("click", function () {
+          runBulkDecision("exit", "Вывод из ассортимента");
+        });
+        document.getElementById("dg-pa-act-top").addEventListener("click", function () {
+          runBulkDecision("top", "Топ-товар");
+        });
+        document.getElementById("dg-pa-act-hold").addEventListener("click", function () {
+          runBulkDecision("hold", "Держать в ассортименте");
+        });
+        document.getElementById("dg-pa-act-lock-prop").addEventListener("click", function () {
+          runBulkDecision("lock_proposed_zero", "Зафиксировать предлагаемый = 0");
+        });
+        document.getElementById("dg-pa-act-unlock-prop").addEventListener("click", function () {
+          runBulkDecision("unlock_proposed", "Снять фиксацию предлагаемого");
+        });
+        document.getElementById("dg-pa-act-zero-ms").addEventListener("click", function () {
+          runZeroMinStock();
+        });
+
+        updatePaStickyTopVar();
+        bindPaDecisionLogTips();
+        window.addEventListener("scroll", onScrollPaFloatingHeader, { passive: true });
+        window.addEventListener("resize", function () {
+          updatePaStickyTopVar();
+          paRefreshFloatingAfterLayout();
+        });
+        (function bindPaScrollContainers() {
+          var mainOuter = document.querySelector(".app-main__outer");
+          var scrollOuter = document.getElementById("dg-pa-table-scroll-outer");
+          if (mainOuter) mainOuter.addEventListener("scroll", onScrollPaFloatingHeader, { passive: true });
+          if (scrollOuter) scrollOuter.addEventListener("scroll", onScrollPaFloatingHeader, { passive: true });
+        })();
+
+        loadPresetsMeta();
+        loadManagersList();
+        var urlInfo = parseUrlToPending();
+        syncProjectModeUi();
+        loadProjectsList()
+          .then(function () {
+            if (urlInfo.hasProjectUuids) {
+              applyPendingProjectCheckboxes();
+              state.pending.project_uuids = readPendingProjectUuids();
+            } else if (!urlInfo.touchedProjects) {
+              applyDefaultMarketplaceProjectSelection();
+            } else if (urlInfo.projectModeAll) {
+              state.pending.project_uuids = [];
+            } else {
+              applyDefaultMarketplaceProjectSelection();
+            }
+            syncDirtyApply();
+            renderPresetChips();
+            var commitOpts = {};
+            if (urlInfo.fromUrl && state.pending.preset && state.pending.preset !== "all" && !urlInfo.hasSort) {
+              commitOpts.fromPreset = true;
+            }
+            if ((Number(state.offset) || 0) > 0) commitOpts.preserveOffset = true;
+            return commitFilters(commitOpts);
+          })
+          .catch(function () {
+            syncDirtyApply();
+            return commitFilters();
+          });
+      }
+
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", init);
+      } else {
+        init();
+      }
+    })();
+  </script>
+
+</body>
+</html>

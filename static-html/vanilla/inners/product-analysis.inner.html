@@ -1,0 +1,343 @@
+          <div class="app-page-title">
+            <div class="page-title-wrapper">
+              <div class="page-title-heading">
+                <div class="page-title-icon">
+                  <i class="pe-7s-graph1 icon-gradient bg-love-kiss"> </i>
+                </div>
+                <div>
+                  Анализ товаров
+                  <div class="page-title-subheading">
+                    Статистика продаж по SKU: топы, мёртвые, буст и пошаговый вывод из ассортимента.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 1. Фильтры и действия -->
+          <div class="main-card card mb-3">
+            <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+              <div class="card-header-title mb-0">
+                <i class="header-icon pe-7s-filter icon-gradient bg-sunny-morning"> </i>
+                Фильтры и действия
+              </div>
+              <div class="d-flex align-items-center gap-2">
+                <div class="dropdown">
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-secondary dropdown-toggle"
+                    id="dg-pa-filter-fields-btn"
+                    data-bs-toggle="dropdown"
+                    data-bs-auto-close="outside"
+                    aria-expanded="false"
+                    title="Поля фильтров"
+                  >⚙</button>
+                  <div class="dropdown-menu dropdown-menu-end p-3" style="min-width: 280px; max-height: 360px; overflow: auto">
+                    <div class="fw-semibold small mb-2">Поля фильтров</div>
+                    <div id="dg-pa-filter-fields-toggles"></div>
+                  </div>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-pa-filters-toggle">Свернуть</button>
+              </div>
+            </div>
+            <div class="card-body" id="dg-pa-filters-body">
+              <div class="row g-2 align-items-end">
+                <div class="col-sm-6 col-lg-2" data-dg-pa-filter-field="days">
+                  <label class="form-label small mb-1" for="dg-pa-days">Период продаж</label>
+                  <select class="form-select form-select-sm" id="dg-pa-days">
+                    <option value="30">30 дней</option>
+                    <option value="90" selected>90 дней</option>
+                    <option value="180">180 дней</option>
+                    <option value="365">365 дней</option>
+                  </select>
+                </div>
+                <div class="col-sm-6 col-lg-2" data-dg-pa-filter-field="new_stock_days">
+                  <label class="form-label small mb-1" for="dg-pa-new-stock-days" title="По истории остатков: сколько дней с первого появления на складе SKU ещё считается новым">Считать «новым на складе»</label>
+                  <select class="form-select form-select-sm" id="dg-pa-new-stock-days" title="Если первый остаток &gt; 0 был не раньше этого срока — SKU в пресете «Новые на складе» и исключается из мёртвых/зависших">
+                    <option value="14">14 дней</option>
+                    <option value="30" selected>30 дней</option>
+                    <option value="45">45 дней</option>
+                    <option value="60">60 дней</option>
+                  </select>
+                </div>
+                <div class="col-sm-6 col-lg-2" data-dg-pa-filter-field="search">
+                  <label class="form-label small mb-1" for="dg-pa-search">Поиск</label>
+                  <input type="search" class="form-control form-control-sm" id="dg-pa-search" placeholder="Код, название, поставщик, менеджер…" autocomplete="off" />
+                </div>
+                <div class="col-sm-6 col-lg-2" data-dg-pa-filter-field="supplier">
+                  <label class="form-label small mb-1" for="dg-pa-supplier" data-dg-filter-field-title="Поставщик">Поставщик</label>
+                  <input type="search" class="form-control form-control-sm" id="dg-pa-supplier" placeholder="Часть названия…" autocomplete="off" />
+                </div>
+                <div
+                  class="col-sm-6 col-lg-2"
+                  data-dg-pa-filter-field="manager"
+                  data-dg-filter-field-title="Менеджер"
+                  title="Свойство МС «Менеджер поддерживающий товар» (ms_export.manager). Срабатывает по «Применить»."
+                >
+                  <label class="form-label small mb-1" for="dg-pa-manager">Менеджер</label>
+                  <select class="form-select form-select-sm" id="dg-pa-manager">
+                    <option value="">— все —</option>
+                  </select>
+                </div>
+                <div class="col-sm-4 col-lg-2" data-dg-pa-filter-field="page_size">
+                  <label class="form-label small mb-1" for="dg-pa-page-size">На странице</label>
+                  <select class="form-select form-select-sm" id="dg-pa-page-size">
+                    <option value="50">50</option>
+                    <option value="100" selected>100</option>
+                    <option value="200">200</option>
+                  </select>
+                </div>
+                <div class="col-12" data-dg-pa-filter-field="exclude_new_on_stock">
+                  <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="dg-pa-exclude-new" checked />
+                    <label class="form-check-label small" for="dg-pa-exclude-new" title="Для пресетов «Мёртвые» / «Зависшие» / «НС&gt;0 без продаж»: не включать SKU, у которых первый остаток &gt; 0 был в пределах окна «новым на складе»">
+                      Исключать «новые на складе» из мёртвых и зависших
+                    </label>
+                  </div>
+                </div>
+                <div class="col-12" data-dg-pa-filter-field="projects">
+                  <label class="form-label small mb-1">Проекты отгрузок (учёт продаж)</label>
+                  <div class="d-flex flex-wrap gap-3 align-items-center mb-1">
+                    <div class="form-check form-check-inline mb-0">
+                      <input class="form-check-input" type="radio" name="dg-pa-project-mode" id="dg-pa-project-mode-all" value="all" />
+                      <label class="form-check-label small" for="dg-pa-project-mode-all">Все проекты</label>
+                    </div>
+                    <div class="form-check form-check-inline mb-0">
+                      <input class="form-check-input" type="radio" name="dg-pa-project-mode" id="dg-pa-project-mode-selected" value="selected" checked />
+                      <label class="form-check-label small" for="dg-pa-project-mode-selected">Только выбранные</label>
+                    </div>
+                    <button type="button" class="btn btn-link btn-sm p-0" id="dg-pa-projects-reload">Обновить список</button>
+                    <button type="button" class="btn btn-link btn-sm p-0" id="dg-pa-projects-select-all">Выбрать все</button>
+                    <button type="button" class="btn btn-link btn-sm p-0" id="dg-pa-projects-clear">Снять все</button>
+                  </div>
+                  <p class="small text-muted mb-1 d-none" id="dg-pa-project-mode-hint">
+                    Учитываются продажи по <strong>всем</strong> проектам. Список галочек нужен только в режиме «Только выбранные».
+                  </p>
+                  <div id="dg-pa-projects-wrap" class="border rounded p-2 bg-light" style="max-height: 160px; overflow: auto">
+                    <div id="dg-pa-projects-status" class="small text-muted mb-1">Загрузка проектов…</div>
+                    <div id="dg-pa-projects-list"></div>
+                  </div>
+                </div>
+                <div class="col-12" data-dg-pa-filter-field="presets">
+                  <div class="dg-pa-block-label mb-1">Пресеты</div>
+                  <div class="dg-pa-presets" id="dg-pa-presets" role="group" aria-label="Пресеты фильтрации"></div>
+                </div>
+                <div class="col-12">
+                  <div class="dg-pa-block-label mb-1">Массовые решения</div>
+                  <div class="dg-pa-actions-bar" role="group" aria-label="Массовые решения по SKU">
+                    <button type="button" class="btn btn-sm btn-outline-primary" id="dg-pa-act-boost"
+                      data-dg-notify-start="Ставим в буст…"
+                      data-dg-tooltip="Этап «Буст»: товар в рекламе/продвижении. Пишет lifecycle=boost (срок буста по умолчанию). Неснижаемый и закупки не трогает.">Буст (реклама)</button>
+                    <button type="button" class="btn btn-sm btn-outline-warning" id="dg-pa-act-boost-failed"
+                      data-dg-notify-start="Отмечаем: буст не сработал…"
+                      data-dg-tooltip="Этап «Буст не сработал»: реклама уже была, эффекта нет. Кандидаты дальше на распродажу или вывод. Только метка lifecycle.">Буст не сработал</button>
+                    <button type="button" class="btn btn-sm btn-outline-danger" id="dg-pa-act-clearance"
+                      data-dg-notify-start="Переводим в распродажу…"
+                      data-dg-tooltip="Этап «Распродажа»: сливаем остаток. Ставит lifecycle=clearance, флаг «не заказывать» и цель НС = 0. Сам неснижаемый в ms_export не меняет — для этого «Обнулить неснижаемый».">Распродажа (слить остаток)</button>
+                    <button type="button" class="btn btn-sm btn-danger" id="dg-pa-act-exit"
+                      data-dg-notify-start="Выводим из ассортимента…"
+                      data-dg-tooltip="Этап «Вывод из ассортимента»: больше не ведём. lifecycle=exit + «не заказывать» + цель НС = 0. Неснижаемый в таблице меняется только через «Обнулить неснижаемый».">Вывод из ассортимента</button>
+                    <button type="button" class="btn btn-sm btn-outline-success" id="dg-pa-act-top"
+                      data-dg-notify-start="Помечаем как топ…"
+                      data-dg-tooltip="Метка «Топ-товар»: решение держать в ассортименте как приоритетный. Только lifecycle=top, без смены НС и флага заказа.">Топ-товар</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-pa-act-hold"
+                      data-dg-notify-start="Помечаем: держать…"
+                      data-dg-tooltip="Метка «Держать»: оставляем в ассортименте без буста и без вывода. Только lifecycle=hold.">Держать в ассортименте</button>
+                    <button type="button" class="btn btn-sm btn-warning" id="dg-pa-act-zero-ms"
+                      data-dg-notify-start="Обнуляем неснижаемый…"
+                      data-dg-tooltip="Пишет неснижаемый остаток = 0 в Datagon (ms_export.min_stock). Это колонка «Неснижаемый остаток». В МойСклад уйдёт отдельной выгрузкой НС, не сразу.">Обнулить неснижаемый</button>
+                    <button type="button" class="btn btn-sm btn-outline-warning" id="dg-pa-act-lock-prop"
+                      data-dg-notify-start="Фиксируем предлагаемый = 0…"
+                      data-dg-tooltip="Фиксирует «предлагаемый» неснижаемый = 0 (override), чтобы формула больше не предлагала пополнение. В колонке появится замок 🔒. Текущий неснижаемый не обнуляет.">Зафиксировать предлагаемый = 0</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-pa-act-unlock-prop"
+                      data-dg-notify-start="Снимаем фиксацию предлагаемого…"
+                      data-dg-tooltip="Снимает замок: очищает override предлагаемого, снова считается формула/кэш. В колонке «Предлагаемый» пропадёт 🔒.">Снять фиксацию предлагаемого</button>
+                  </div>
+                  <p class="small text-muted mb-0 mt-1">
+                    Действуют по <strong>отмеченным</strong> строкам или, если галочек нет, по <strong>текущему пресету/фильтрам</strong> (до 500 SKU).
+                    Перед записью — confirm с числом. Наведите на кнопку — что именно меняется.
+                    «Обнулить неснижаемый» пишет в Datagon; в МС — через выгрузку неснижаемого.
+                  </p>
+                </div>
+                <div class="col-12 d-flex flex-wrap gap-2 align-items-center">
+                  <button type="button" class="btn btn-primary btn-sm" id="dg-pa-apply" data-dg-notify-start="Считаем анализ товаров…">Применить</button>
+                  <button type="button" class="btn btn-outline-secondary btn-sm" id="dg-pa-reset">По умолчанию</button>
+                  <button type="button" class="btn btn-outline-primary btn-sm" id="dg-pa-export" data-dg-notify-start="Готовим CSV…">CSV</button>
+                </div>
+                <div class="col-12">
+                  <div id="dg-pa-action-log" class="alert alert-secondary mt-2 mb-0 d-none" role="status"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 2. Сводка KPI -->
+          <div class="main-card card mb-3 dg-pa-summary-card border-0 shadow-sm overflow-hidden">
+            <div class="card-header dg-pa-summary-header border-0 d-flex flex-wrap align-items-center justify-content-between gap-2">
+              <div class="d-flex align-items-center gap-2">
+                <i class="header-icon pe-7s-graph1 icon-gradient bg-love-kiss me-1"> </i>
+                <div>
+                  <span class="fw-semibold text-white">Сводка за период</span>
+                  <div class="small text-white-50 d-none d-md-block">По применённым фильтрам и пресету</div>
+                </div>
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-light" id="dg-pa-summary-toggle">Свернуть</button>
+            </div>
+            <div class="card-body dg-pa-summary-body" id="dg-pa-summary-body">
+              <div class="row row-cols-2 row-cols-md-4 row-cols-xl-4 g-2" id="dg-pa-kpi-row">
+                <div class="col"><div class="dg-pa-kpi-tile"><div class="dg-pa-kpi-label">SKU в выборке</div><div class="dg-pa-kpi-value" id="dg-pa-kpi-skus">—</div></div></div>
+                <div class="col"><div class="dg-pa-kpi-tile dg-pa-kpi-money"><div class="dg-pa-kpi-label">Выручка</div><div class="dg-pa-kpi-value" id="dg-pa-kpi-revenue">—</div></div></div>
+                <div class="col"><div class="dg-pa-kpi-tile"><div class="dg-pa-kpi-label">Продажи шт.</div><div class="dg-pa-kpi-value" id="dg-pa-kpi-qty">—</div></div></div>
+                <div class="col"><div class="dg-pa-kpi-tile dg-pa-kpi-money"><div class="dg-pa-kpi-label">Остаток ₽</div><div class="dg-pa-kpi-value" id="dg-pa-kpi-stock">—</div></div></div>
+                <div class="col"><div class="dg-pa-kpi-tile"><div class="dg-pa-kpi-label">Сумма неснижаемого</div><div class="dg-pa-kpi-value" id="dg-pa-kpi-minstock">—</div></div></div>
+                <div class="col"><div class="dg-pa-kpi-tile dg-pa-kpi-warn"><div class="dg-pa-kpi-label">Без продаж, несн.&gt;0</div><div class="dg-pa-kpi-value" id="dg-pa-kpi-dead-ms">—</div></div></div>
+                <div class="col"><div class="dg-pa-kpi-tile"><div class="dg-pa-kpi-label">В бусте</div><div class="dg-pa-kpi-value" id="dg-pa-kpi-boost">—</div></div></div>
+                <div class="col"><div class="dg-pa-kpi-tile dg-pa-kpi-warn"><div class="dg-pa-kpi-label">На выводе</div><div class="dg-pa-kpi-value" id="dg-pa-kpi-exit">—</div></div></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 3. Таблица -->
+          <div class="main-card card mb-3">
+            <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+              <div class="d-flex align-items-center gap-3 flex-grow-1" style="min-width: 0">
+                <div class="d-flex align-items-center flex-shrink-0">
+                  <i class="header-icon pe-7s-note2 icon-gradient bg-malibu-beach me-2"> </i>
+                  <span class="fw-semibold">Выгрузка товаров</span>
+                </div>
+                <div class="dg-pa-header-search">
+                  <div class="input-group input-group-sm">
+                    <span class="input-group-text bg-white text-muted px-2" aria-hidden="true">🔎</span>
+                    <input type="search" class="form-control" id="dg-pa-table-search-mirror"
+                           placeholder="Поиск (Enter — применить)"
+                           autocomplete="off" />
+                  </div>
+                </div>
+              </div>
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-pa-columns-toggle">🧩 Столбцы</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-pa-widths-toggle">📏 Ширины</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-pa-table-toggle">Свернуть</button>
+              </div>
+            </div>
+            <div class="card-body" id="dg-pa-table-body">
+              <div class="datagon-columns-toolbox mb-2 d-none" id="dg-pa-toolbox-panels">
+                <div class="datagon-columns-panel" id="dg-pa-columns-panel">
+                  <div class="columns-actions mb-2">
+                    <button type="button" class="btn btn-sm" id="dg-pa-columns-all">Выделить все</button>
+                    <button type="button" class="btn btn-sm" id="dg-pa-columns-none">Снять все</button>
+                    <button type="button" class="btn btn-sm" id="dg-pa-columns-default">По умолчанию</button>
+                  </div>
+                  <div id="dg-pa-columns-list" class="columns-grid"></div>
+                </div>
+                <div class="datagon-columns-panel" id="dg-pa-widths-panel">
+                  <div class="columns-actions mb-2">
+                    <button type="button" class="btn btn-sm" id="dg-pa-widths-default">По умолчанию</button>
+                  </div>
+                  <div id="dg-pa-widths-list" class="dg-sa-widths-grid"></div>
+                </div>
+              </div>
+
+              <div id="dg-pa-detail-host" class="d-none" aria-hidden="true">
+                <div class="dg-pa-detail-panel d-none" id="dg-pa-detail-card" aria-hidden="true">
+                  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2 pb-2 border-bottom">
+                    <div>
+                      <div class="fw-semibold" id="dg-pa-detail-title">Детали товара</div>
+                      <div class="small text-muted" id="dg-pa-detail-sub"></div>
+                    </div>
+                    <div class="d-flex flex-wrap gap-2">
+                      <a class="btn btn-sm btn-outline-primary" id="dg-pa-detail-product-link" href="/product.html" target="_blank" rel="noopener">Карточка</a>
+                      <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-pa-detail-close">Скрыть</button>
+                    </div>
+                  </div>
+                  <div class="row g-3">
+                    <div class="col-lg-4">
+                      <div class="dg-pa-block-label mb-1">Доля продаж по проектам</div>
+                      <div class="dg-pa-doughnut-wrap">
+                        <canvas id="dg-pa-detail-chart" aria-label="Доля продаж по проектам"></canvas>
+                      </div>
+                      <div class="small text-muted mt-1" id="dg-pa-detail-sales-sum">—</div>
+                    </div>
+                    <div class="col-lg-4">
+                      <div class="dg-pa-block-label mb-1">Проекты / каналы</div>
+                      <div class="table-responsive dg-pa-detail-table-wrap border rounded">
+                        <table class="table table-sm mb-0">
+                          <thead class="table-light">
+                            <tr>
+                              <th>Проект</th>
+                              <th class="text-end">шт.</th>
+                              <th class="text-end">₽</th>
+                              <th class="text-end">%</th>
+                            </tr>
+                          </thead>
+                          <tbody id="dg-pa-detail-projects-tbody">
+                            <tr><td colspan="4" class="text-muted">Загрузка…</td></tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                    <div class="col-lg-4">
+                      <div class="dg-pa-block-label mb-1">Отсутствие на складе</div>
+                      <ul class="list-unstyled small mb-2" id="dg-pa-detail-absence">
+                        <li class="text-muted">Загрузка…</li>
+                      </ul>
+                      <div class="dg-pa-block-label mb-1">Сводка</div>
+                      <ul class="list-unstyled small mb-0" id="dg-pa-detail-meta">
+                        <li class="text-muted">—</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div id="dg-pa-table-scroll-outer" class="dg-pa-table-scroll-outer">
+                <div class="table-responsive datagon-my-products-table-wrap" style="overflow: visible !important">
+                  <table class="table table-hover table-striped dg-pa-table mb-0" id="dg-pa-table">
+                    <colgroup id="dg-pa-colgroup"></colgroup>
+                    <thead id="dg-pa-thead"></thead>
+                    <tbody id="dg-pa-tbody">
+                      <tr><td colspan="14" class="text-muted text-center py-4">Нажмите «Применить»</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <div class="mt-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                  <label class="form-label mb-0 small text-muted" for="dg-pa-footer-page-size">На странице</label>
+                  <select class="form-select form-select-sm" id="dg-pa-footer-page-size" style="width:auto">
+                    <option value="50">50</option>
+                    <option value="100" selected>100</option>
+                    <option value="200">200</option>
+                  </select>
+                  <span class="text-muted small" id="dg-pa-pager-status">Найдено: 0; страница 1/1; показано: 0</span>
+                </div>
+                <div class="btn-group btn-group-sm" role="group">
+                  <button type="button" class="btn btn-outline-secondary" id="dg-pa-prev" disabled>Назад</button>
+                  <button type="button" class="btn btn-outline-secondary" id="dg-pa-next" disabled>Вперёд</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-pa-bulk-confirm-overlay"
+               class="dg-pa-bulk-confirm-overlay"
+               style="display: none"
+               aria-modal="true"
+               role="dialog"
+               aria-labelledby="dg-pa-bulk-confirm-title">
+            <div class="dg-pa-bulk-confirm-card bg-white rounded shadow-lg p-3 p-md-4">
+              <h5 class="mb-2 text-danger" id="dg-pa-bulk-confirm-title">Подтверждение по фильтру</h5>
+              <p class="mb-2" id="dg-pa-bulk-confirm-lead">—</p>
+              <div class="alert alert-warning py-2 small mb-3" id="dg-pa-bulk-confirm-filters" role="status"></div>
+              <div class="form-check mb-3">
+                <input class="form-check-input" type="checkbox" id="dg-pa-bulk-confirm-ack" />
+                <label class="form-check-label" for="dg-pa-bulk-confirm-ack" id="dg-pa-bulk-confirm-ack-label">
+                  Понимаю: галочки не отмечены, действие применится ко всей текущей выборке по фильтру/пресету.
+                </label>
+              </div>
+              <div class="d-flex justify-content-end gap-2 flex-wrap">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-pa-bulk-confirm-cancel">Отмена</button>
+                <button type="button" class="btn btn-sm btn-danger" id="dg-pa-bulk-confirm-ok" disabled>Применить ко всей выборке</button>
+              </div>
+            </div>
+          </div>

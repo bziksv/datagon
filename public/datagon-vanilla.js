@@ -1841,6 +1841,7 @@
       id === "dg-mp-table-main" ||
       id === "dg-sp-table-main" ||
       id === "dg-sa-table" ||
+      id === "dg-pa-table" ||
       /** Маркетплейсы → Габариты: свои стили в exports-dimensions.head.html + локальный JS sticky-top. */
       id === "dg-dim-table" ||
       id === "dg-mm-table-main" ||
