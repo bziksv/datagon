@@ -8,6 +8,8 @@ const {
     deactivateProductInCms,
     activateProductInCms,
     clearBitrixStorefrontCache,
+    fetchLiveCmsPrices,
+    applyLiveCmsPricesToRows,
     roundPriceForCurrency,
     openSiteConnection,
 } = require('../lib/datagonCmsPriceWrite');
@@ -782,9 +784,31 @@ function networkPricesRouterFactory(db, appSettings) {
                 offset
             );
             const withContent = await attachContentTasks(targetSiteId, rows);
+            let liveRows = withContent;
+            try {
+                const [[site]] = await db.query('SELECT * FROM my_sites WHERE id = ? LIMIT 1', [
+                    targetSiteId,
+                ]);
+                if (site) {
+                    let cmsConn = null;
+                    try {
+                        cmsConn = await openSiteConnection(site);
+                        const liveMap = await fetchLiveCmsPrices(cmsConn, site, withContent);
+                        liveRows = applyLiveCmsPricesToRows(withContent, liveMap);
+                    } finally {
+                        if (cmsConn) {
+                            try {
+                                await cmsConn.end();
+                            } catch (_) {}
+                        }
+                    }
+                }
+            } catch (liveErr) {
+                console.error('[network-prices] live CMS prices:', liveErr.message || liveErr);
+            }
             const fx = await getFxRates();
             const data = enrichProposed(
-                withContent,
+                liveRows,
                 enabled && pricePct != null ? pricePct : null,
                 fx
             );
@@ -1440,8 +1464,18 @@ function networkPricesRouterFactory(db, appSettings) {
         }
         const site = sites[0];
         let conn = null;
-        if (!dryRun) {
-            conn = await openSiteConnection(site);
+        conn = await openSiteConnection(site);
+        let liveMap = new Map();
+        try {
+            liveMap = await fetchLiveCmsPrices(conn, site, pairs);
+        } catch (e) {
+            console.error('[network-prices] apply live prices:', e.message || e);
+        }
+        if (dryRun) {
+            try {
+                await conn.end();
+            } catch (_) {}
+            conn = null;
         }
 
         const result = {
@@ -1474,7 +1508,12 @@ function networkPricesRouterFactory(db, appSettings) {
                     result.skipped_no_source_price += 1;
                     continue;
                 }
-                const tgtRub = toRub(pair.target_price, pair.target_currency || 'RUB', fx);
+                const live =
+                    liveMap.get(`sku:${normalizeSku(pair.target_sku)}`) ||
+                    liveMap.get(`xml:${String(pair.target_code || '').trim()}`);
+                const tgtRub = live
+                    ? toRub(live.price, live.currency || 'RUB', fx)
+                    : toRub(pair.target_price, pair.target_currency || 'RUB', fx);
                 if (pricesEqual(tgtRub, prop.finalPrice)) {
                     result.skipped_unchanged += 1;
                     continue;
@@ -1771,6 +1810,12 @@ networkPricesRouterFactory.triggerNetworkPricesSyncFromSettings = async function
         let siteWritten = 0;
         try {
             conn = await openConn(site);
+            let liveMap = new Map();
+            try {
+                liveMap = await fetchLiveCmsPrices(conn, site, pairs || []);
+            } catch (e) {
+                console.error('[network-prices] autosync live prices:', e.message || e);
+            }
             for (const pair of pairs || []) {
                 scanned += 1;
                 const srcCur = String(pair.source_currency || 'RUB').trim().toUpperCase();
@@ -1784,7 +1829,12 @@ networkPricesRouterFactory.triggerNetworkPricesSyncFromSettings = async function
                     skipped += 1;
                     continue;
                 }
-                const tgtRub = priceToRub(pair.target_price, pair.target_currency || 'RUB', fx);
+                const live =
+                    liveMap.get(`sku:${String(pair.target_sku || '').trim()}`) ||
+                    liveMap.get(`xml:${String(pair.target_code || '').trim()}`);
+                const tgtRub = live
+                    ? priceToRub(live.price, live.currency || 'RUB', fx)
+                    : priceToRub(pair.target_price, pair.target_currency || 'RUB', fx);
                 if (
                     Number.isFinite(tgtRub) &&
                     Math.abs(Number(tgtRub) - finalPrice) < PRICE_EPS_SYNC

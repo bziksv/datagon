@@ -437,7 +437,7 @@ Body: `{ source_site_id?, targets: [{ site_id, enabled, price_pct|null }] }`. П
 
 Query: `target_site_id` (обяз.), `link_status` (`all` | `linked` | `unlinked` | `source_only` | `target_only`), `search`, `limit`, `offset`.
 
-Ответ: `{ success, enabled, price_pct, fx: { usd_to_rub, eur_to_rub, updated_at, source }, total, data[] }` — строки с полями эталона/цели (`source_url` / `target_url`, `source_currency` / `target_currency`), `proposed_price` (**всегда RUB**), `proposed_currency`, `source_price_rub`, `fx_applied`, `delta_pct_vs_proposed` (в рублях), `link_kind` / `link_status`, `target_source_enabled` (0 = деактивирован на сателлите, строка остаётся в матрице).
+Ответ: `{ success, enabled, price_pct, fx: { usd_to_rub, eur_to_rub, updated_at, source }, total, data[] }` — строки с полями эталона/цели (`source_url` / `target_url`, `source_currency` / `target_currency`), **`target_price` = живая цена витрины CMS** (Bitrix `PRICES` по артикулу / view; не кэш `my_products` после синка), `target_price_cached` (значение из Datagon, если подменили), `target_price_source`, `proposed_price` (**всегда RUB**), `proposed_currency`, `source_price_rub`, `fx_applied`, `delta_pct_vs_proposed` (живая цель vs предл. в рублях), `link_kind` / `link_status`, `target_source_enabled` (0 = деактивирован на сателлите, строка остаётся в матрице).
 
 **Валюта:** EUR/USD эталона → RUB по курсу ЦБ (`lib/datagonFxRates.js`, cbr-xml-daily, как «Мои товары»), затем × `(1 + price_pct/100)`. `POST /apply` и автосинк пишут рубли.
 
