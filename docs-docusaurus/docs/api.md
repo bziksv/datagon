@@ -66,7 +66,7 @@ description: Справочник REST-эндпоинтов p.datagon.ru (осн
 - `/api/results` -> `routes/results.js`
 - `/api/my-sites` -> `routes/mysites.js`
 - `/api/my-products` -> `routes/myproducts.js`
-- `/api/network-prices` -> `routes/networkPrices.js` (Цены сети: эталон → целевые сайты с `%`; `GET/POST /settings`, `GET /matrix`, `POST /link`, `POST /unlink`, `POST /apply`, автосинк `triggerNetworkPricesSyncFromSettings`)
+- `/api/network-prices` -> `routes/networkPrices.js` (Цены сети: эталон → целевые сайты с `%`; `GET/POST /settings`, `GET /matrix`, `GET /resolve-product`, `POST /link`, `POST /unlink`, `POST /deactivate`, `POST /activate`, `GET /action-log`, `POST /apply`, автосинк `triggerNetworkPricesSyncFromSettings`)
 - `/api/matches` -> `routes/matches.js`
 - `/api/ms` -> `routes/moysklad.js`
 - `/api/medmarket` -> `routes/medmarket.js` (Медмаркет: стыковка `code`+тип (`10088+Товар`); `GET /`, `GET /sync-status`, `POST /sync`, `PATCH /mapping`, `POST /import`, `POST /fill-linkage-codes`)
@@ -174,7 +174,7 @@ Body (пример):
 - **`auto_sync_medmarket_enabled`** / **`auto_sync_medmarket_time`** / **`auto_sync_medmarket_weekdays`** — **полная выгрузка** атрибута «Код товара для медмаркета» из `ms_entity_details` → `ms_export.medmarket_product_code` (импорт, не запись в МС). МСК, по умолчанию `09:00`, дни **`7` (только вс)**. `task_type='medmarket'`.
 - **`auto_sync_medmarket_fill_enabled`** / **`auto_sync_medmarket_fill_time`** / **`auto_sync_medmarket_fill_weekdays`** — запись канонического **`код+Тип`** в атрибут МС и `ms_export` (как `POST /api/medmarket/fill-linkage-codes` без фильтров). Очередь «к записи» — только позиции с неверным/устаревшим форматом (~10–12 тыс., в основном регистр); ~46 тыс. уже со стыковкой пропускаются. МСК, по умолчанию **`09:30`**, дни **`1,2,3,4,5,6` (пн–сб, без вс)**. `task_type='medmarket_fill'`. Прогресс: `N/всего; ✓; ×` в `auto_sync_runs.message`.
 - **`auto_sync_price_comp_*`** — массовая синхронизация цен с конкурента (Dealmed/Медкомплекс) в CMS, как кнопка «Синх. цены по фильтрам» на `/my-products.html`. Ключи: `enabled`, `time` (по умолчанию **`10:00`**), `weekdays`, `match_audit` (по умолчанию **`confirmed`**), `rand_min` / `rand_max` (`0.1` / `0.99`), `stock_min` / `stock_max` (`0` / `1000`), `site_id` (`all`). `task_type='price_comp_sync'`. Фоновый runner: чанк 150, CMS×4.
-- **`auto_sync_network_prices_enabled`** / **`auto_sync_network_prices_time`** / **`auto_sync_network_prices_weekdays`** — **Цены сети** (`/network-prices.html`): эталон (по умолчанию Альмамед, `network_prices_source_site_id`) → целевые сайты с заданным `price_pct`. Формула `цена_эталона × (1 + price_pct/100)` → CMS + `my_products`. Сайты без `%` или с `enabled=0` пропускаются. МСК, по умолчанию **`11:00`**, дни `1…7`. `task_type='network_prices'`. Runner: `routes/networkPrices.js → triggerNetworkPricesSyncFromSettings`.
+- **`auto_sync_network_prices_enabled`** / **`auto_sync_network_prices_time`** / **`auto_sync_network_prices_weekdays`** — **Цены сети** (`/network-prices.html`): эталон (по умолчанию Альмамед, `network_prices_source_site_id`) → целевые сайты с заданным `price_pct`. Формула: эталон → **RUB** (курс ЦБ при EUR/USD) × `(1 + price_pct/100)` → CMS + `my_products`. Сайты без `%` или с `enabled=0` пропускаются. МСК, по умолчанию **`11:00`**, дни `1…7`. `task_type='network_prices'`. Runner: `routes/networkPrices.js → triggerNetworkPricesSyncFromSettings`.
 - **`sales_formula_replenishment_days`** (основной UI: «Пополнение, дней»), **`sales_formula_sku_replenishment_enabled`** (`1`/`0`, галка «Рек. дни пополнения по товарам» — авто-подъём **горизонта** `k` по SKU; по умолчанию `1`; вместе с упущенными за A даёт более жёсткий запас против нуля, не дубль одной поправки), **`sales_formula_replenishment_coef`** (legacy/синхрон = дни÷W), **`sales_formula_sales_window_days`** (W — «Продажи за период», сумма и средний спрос для формулы v2), **`sales_formula_absence_analysis_days`** (A — дни отсутствия → **упущенные шт в спросе**), **`sales_formula_project_mode`** (`all` | `selected`), **`sales_formula_project_uuids`** (CSV `project_uuid` из `ms_demand`; при `selected` в сумму продаж для формулы и колонок `d_*a` входят только отгрузки выбранных проектов), **`sales_formula_base_qty`**, **`sales_formula_rare_base_qty`**, **`sales_formula_rare_avg_max`** (legacy, в v2 не используется), **`sales_formula_expensive_rare_threshold_rub`**, **`sales_formula_expensive_rare_min_qty`**, **`sales_formula_max_change_coef`**, **`sales_formula_incomplete_pack_pct`** — **формула продаж** на карточке товара (`GET /api/product/:code` → `formula`). Логика в `lib/datagonSalesFormula.js` (v2: сумма за W + упущенные, ×(дни÷W) **без** прибавки `sales_formula_base_qty` / `sales_formula_expensive_rare_min_qty`; редкий/дорогой; кратность + `incomplete_pack_pct`). **Оверрайд по поставщику:** `dg_supplier_settings.replenishment_days` (если задано) сильнее глобальных дней; правит только `admin` на `/suppliers.html`. В `formula` ответ: `replenishment_source` = `global` | `supplier`, `replenishment_days_effective`. Кэш `dg_formula_proposed_cache.formula_fp` = base + `|rd:g` или `|rd:N`. UI глобали — `/settings.html`.
 - **`auto_sync_runs_retention_days`** — срок хранения строк в **`auto_sync_runs`** (журнал запусков автосинхронизации на `/processes.html`, кнопка «Лог»; по умолчанию **180**). Автоочистка в `server.js` удаляет только записи с непустым `finished_at` старше N дней (при старте и каждые 12 ч). UI: карточка **«Журнал запусков автосинхронизации»** на `/settings.html` (`GET /api/settings/auto-sync-runs/stats`, `POST /api/settings/auto-sync-runs/cleanup`). На каждой карточке расписания — кнопка **«Лог»** → модалка с днём МСК (`GET /api/settings/auto-sync-runs?task=&date=`).
 - **`product_stock_snapshot_retention_days`** — срок хранения дневных снимков **`ms_export.stock`** в **`dg_product_stock_snapshot`** (очистка при каждом успешном полном синке МС; по умолчанию **365**, диапазон **30…3650**). UI: карточка **«Снимки остатка МС (карточка товара)»** на `/settings.html` (`sectionId='stock-snap-retention'`).
@@ -423,7 +423,7 @@ Query:
 
 Правило записи: если у сайта `enabled=0` или `price_pct` NULL — сайт целиком пропускается; иначе `proposed = round(source.price × (1 + price_pct/100))`; при `|proposed − target.price| < eps` — без изменений; иначе `applyPriceToCms` (`lib/datagonCmsPriceWrite.js`) + `UPDATE my_products` (`network_sync_at` / `network_sync_note`).
 
-Таблицы (DDL при первом запросе): `network_price_site_settings`, `network_product_links`, `network_product_link_ignore`.
+Таблицы (DDL при первом запросе): `network_price_site_settings`, `network_product_links`, `network_product_link_ignore`, `network_content_tasks`, `network_prices_action_log`.
 
 ### GET `/api/network-prices/settings`
 
@@ -437,16 +437,50 @@ Body: `{ source_site_id?, targets: [{ site_id, enabled, price_pct|null }] }`. П
 
 Query: `target_site_id` (обяз.), `link_status` (`all` | `linked` | `unlinked` | `source_only` | `target_only`), `search`, `limit`, `offset`.
 
-Ответ: `{ success, enabled, price_pct, total, data[] }` — строки с полями эталона/цели, `proposed_price`, `delta_pct_vs_proposed`, `link_kind` / `link_status`.
+Ответ: `{ success, enabled, price_pct, fx: { usd_to_rub, eur_to_rub, updated_at, source }, total, data[] }` — строки с полями эталона/цели (`source_url` / `target_url`, `source_currency` / `target_currency`), `proposed_price` (**всегда RUB**), `proposed_currency`, `source_price_rub`, `fx_applied`, `delta_pct_vs_proposed` (в рублях), `link_kind` / `link_status`, `target_source_enabled` (0 = деактивирован на сателлите, строка остаётся в матрице).
+
+**Валюта:** EUR/USD эталона → RUB по курсу ЦБ (`lib/datagonFxRates.js`, cbr-xml-daily, как «Мои товары»), затем × `(1 + price_pct/100)`. `POST /apply` и автосинк пишут рубли.
+
+Сортировка: **сначала свежие** (ручная связь `created_at` / задача контенту `updated_at` DESC), затем `target_product_id` DESC.
+### GET `/api/network-prices/resolve-product`
+
+Превью поиска товара перед связью. Query: `q` (артикул/код/ID), `side` = `source`|`target` (по умолчанию `source`), для `target` — `target_site_id`.
+
+Ответ при одном совпадении: `{ success, site_id, side, product: { id, source_id, sku, name, price } }`. При нескольких — `409` + `candidates[]`; не найдено — `404` + `error`.
 
 ### POST `/api/network-prices/link`
 
-Body: `{ target_site_id, source_product_id, target_product_id }` — ручная связь (снимает ignore).
+Body: `{ target_site_id, source_product_id?, target_product_id?, source_query?, target_query? }` — ручная связь (снимает ignore). Можно передать ID пары или query для разрешения через `resolveSiteProduct`. Пишет строку в `network_prices_action_log` (`action=link`).
 
 ### POST `/api/network-prices/unlink`
 
-Body: `{ target_site_id, source_product_id, target_product_id? }` — удаляет manual-link и ставит ignore (чтобы автопо SKU не вернулась).
+Body: `{ target_site_id, source_product_id, target_product_id? }` — удаляет manual-link и ставит ignore (чтобы автопо SKU не вернулась). Лог: `action=unlink`.
 
+### POST `/api/network-prices/deactivate`
+
+Деактивация товара **на сателлите** (витрина). Body: `{ target_site_id, target_product_id, confirm: true }`.
+
+- Bitrix: `b_iblock_element.ACTIVE='N'`, `TIMESTAMP_X=NOW()`, суффикс `CODE` (`…-deactivated-{ID}`), `b_catalog_product.AVAILABLE='N'`, удаление из `b_search_content*`, сброс `b_cache_tag`; затем HTTP `GET https://{domain}/local/datagon/cache_clear.php` (токен = `sha256(db_pass + '|datagon-bitrix-cache-clear-v1')`, скрипт `scripts/bitrix-cache-clear.php` на сателлите) — иначе витрина продолжает отдавать старый HTML из `bitrix/cache/…/catalog.element`;
+- Webasyst: `shop_product.status=0`;
+- Datagon: `my_products.source_enabled=0`, связи этой цели удаляются.
+
+Лог: `action=deactivate` в `network_prices_action_log` (`detail` включает `cache_clear`).
+
+### POST `/api/network-prices/activate`
+
+Включение товара **на сателлите** обратно. Body: `{ target_site_id, target_product_id, confirm: true }`.
+
+- Bitrix: `ACTIVE='Y'`, снятие суффикса `CODE` `…-deactivated-{ID}`, `AVAILABLE='Y'`, включение цепочки разделов (`b_iblock_section.ACTIVE='Y'` вверх по родителям — иначе SEF-URL с выключенным разделом даёт 404), сброс `b_cache_tag` + `cache_clear.php`;
+- Webasyst: `shop_product.status=1`;
+- Datagon: `my_products.source_enabled=1`. Связь с эталоном **не** восстанавливается автоматически.
+
+Лог: `action=activate` (`detail.sections_activated[]`). UI: у выключенной строки бейдж «выкл. на сайте» + кнопка **«Включить»** (confirm-модалка).
+
+### GET `/api/network-prices/action-log`
+
+Query: `target_site_id?`, `target_product_id?`, `source_product_id?`, `action?` (например `content_task` / `link` / `unlink` / `deactivate` / `activate`), `limit` (default 50, max 200). Ответ: `{ success, data: [{ id, created_at, actor, action, …, message, detail_json }] }`.
+
+UI `/network-prices.html`: микрокнопка **«лог»** при наведении на ячейку **Действия** (весь журнал строки) и на **Контент-отделу** (только `action=content_task`) — оверлей `#dg-npr-row-log-overlay`.
 ### POST `/api/network-prices/apply`
 
 Body: `{ target_site_id, search?, dry_run: 0|1, confirm: true }` (для записи нужен `confirm` или `dry_run=1`).
@@ -605,6 +639,11 @@ Query:
 - `multi_comp_cards` — `1` / `true` / `yes`: только строки, у которых к тому же нашему товару (по SKU; без SKU — по названию) уже есть **более одной** `confirmed`-карточки **того же** конкурента. UI шага 2 — галка «Несколько карточек одного конкурента»; URL `multi_comp_cards=1`
 - `limit`
 - `offset`
+
+Сортировка списка:
+- `status=confirmed` — `confirmed_at DESC`, затем `id DESC` (свежие подтверждения сверху);
+- `status=rejected` — `rejected_at DESC`, затем `id DESC`;
+- иначе (`pending` / без статуса) — `confidence_score DESC`, затем `id DESC`.
 
 В ответе к строкам подмешиваются цены/URL/`my_cms_product_id` из `my_products`. При **неуникальном SKU** сначала ищется карточка по **точному названию** (`my_product_name`), и только если нет — по артикулу (иначе чужой код «переезжает» на подтверждённую пару).
 

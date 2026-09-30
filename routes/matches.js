@@ -2695,7 +2695,17 @@ module.exports = (db, settings) => {
                 qc += multiExists('product_matches');
             }
 
-            q += ' ORDER BY pm.confidence_score DESC, pm.id DESC LIMIT ? OFFSET ?';
+            // Подтверждённые / отклонённые — свежие сверху по дате действия.
+            // Pending и смешанный список — по схожести (как раньше).
+            if (status === 'confirmed') {
+                q +=
+                    " ORDER BY COALESCE(pm.confirmed_at, '1970-01-01') DESC, pm.id DESC LIMIT ? OFFSET ?";
+            } else if (status === 'rejected') {
+                q +=
+                    " ORDER BY COALESCE(pm.rejected_at, '1970-01-01') DESC, pm.id DESC LIMIT ? OFFSET ?";
+            } else {
+                q += ' ORDER BY pm.confidence_score DESC, pm.id DESC LIMIT ? OFFSET ?';
+            }
             p.push(parseInt(limit), parseInt(offset));
 
             const [[rows], [count]] = await Promise.all([db.query(q, p), db.query(qc, pc)]);

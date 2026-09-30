@@ -3699,6 +3699,32 @@
       bindAutoSyncScheduleUiRefresh();
       refreshAutoSyncScheduleUi();
 
+      function focusSettingsHashTarget() {
+        var raw = String((window.location && window.location.hash) || "").replace(/^#/, "");
+        if (!raw) return;
+        var target = document.getElementById(raw);
+        if (!target) {
+          target = document.querySelector('.dg-as-task[data-as-task="' + raw + '"]');
+        }
+        if (!target) return;
+        try {
+          target.scrollIntoView({ behavior: "smooth", block: "center" });
+        } catch (e) {
+          target.scrollIntoView();
+        }
+        var card = target.classList.contains("dg-as-task-card")
+          ? target
+          : target.querySelector(".dg-as-task-card") || target;
+        if (card && card.classList) {
+          card.classList.add("border", "border-primary");
+          window.setTimeout(function () {
+            card.classList.remove("border", "border-primary");
+          }, 2600);
+        }
+      }
+      window.setTimeout(focusSettingsHashTarget, 350);
+      window.addEventListener("hashchange", focusSettingsHashTarget);
+
       var saveSalesFormulaBtn = document.getElementById("dg-set-btn-save-sales-formula");
       if (saveSalesFormulaBtn) saveSalesFormulaBtn.addEventListener("click", saveSalesFormula);
       document.getElementById("dg-set-btn-save-marketplaces").addEventListener("click", saveMarketplacesSettings);

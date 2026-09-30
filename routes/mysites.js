@@ -1,6 +1,7 @@
 const mysql = require('mysql2/promise');
 const express = require('express');
 const router = express.Router();
+const { attachBitrixUrlKeys } = require('../lib/datagonBitrixProductUrl');
 
 module.exports = (db, settings) => {
     let sourceEnabledColumnReady = false;
@@ -96,15 +97,17 @@ module.exports = (db, settings) => {
 
     async function queryBitrixRowsWithSourceEnabledFallback(conn, s, limit, offset) {
         const withSourceEnabled = `SELECT ${s.field_code} as source_id, ${s.field_code} as cms_product_id, ${s.field_name} as name, ${s.field_sku} as sku, ${s.field_price} as price, ${s.field_currency} as currency, ${s.field_stock} as stock, '' as url_key, COALESCE(SOURCE_ENABLED, 1) as source_enabled FROM ${s.table_products} LIMIT ? OFFSET ?`;
+        let rows;
         try {
-            const [rows] = await conn.query(withSourceEnabled, [limit, offset]);
-            return rows;
+            const [r] = await conn.query(withSourceEnabled, [limit, offset]);
+            rows = r;
         } catch (e) {
             if (!/Unknown column 'SOURCE_ENABLED'/i.test(String(e?.message || ''))) throw e;
             const fallback = `SELECT ${s.field_code} as source_id, ${s.field_code} as cms_product_id, ${s.field_name} as name, ${s.field_sku} as sku, ${s.field_price} as price, ${s.field_currency} as currency, ${s.field_stock} as stock, '' as url_key, 1 as source_enabled FROM ${s.table_products} LIMIT ? OFFSET ?`;
-            const [rows] = await conn.query(fallback, [limit, offset]);
-            return rows;
+            const [r] = await conn.query(fallback, [limit, offset]);
+            rows = r;
         }
+        return attachBitrixUrlKeys(conn, rows || []);
     }
 
     async function prepareBitrixView(conn, requestedTable = 'b_catalog_product') {

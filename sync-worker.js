@@ -1,5 +1,6 @@
 const mysql = require('mysql2/promise');
 const config = require('./config');
+const { attachBitrixUrlKeys } = require('./lib/datagonBitrixProductUrl');
 
 // НАСТРОЙКИ (можно вынести в аргументы или ENV, пока берем дефолтные)
 const SYNC_BATCH_SIZE = 500;
@@ -95,7 +96,11 @@ async function runSync(siteId) {
                 `;
             }
 
-            const [rows] = await dbRemote.query(fetchQuery, [SYNC_BATCH_SIZE, offset]);
+            const [rowsRaw] = await dbRemote.query(fetchQuery, [SYNC_BATCH_SIZE, offset]);
+            let rows = rowsRaw;
+            if (String(site.cms_type || '').toLowerCase() === 'bitrix') {
+                rows = await attachBitrixUrlKeys(dbRemote, rowsRaw || []);
+            }
 
             if (rows.length === 0) break;
 

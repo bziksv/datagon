@@ -24,6 +24,7 @@
 
       var sites = [];
       var statsMap = {};
+      var statsLoaded = false;
       var verifyMap = {};
       var loading = false;
       var previewSite = null;
@@ -410,7 +411,7 @@
         if (!st) {
           var sp = document.createElement("span");
           sp.className = "text-muted";
-          sp.textContent = "Загрузка...";
+          sp.textContent = statsLoaded ? "Нет товаров" : "Загрузка...";
           wrap.appendChild(sp);
           return wrap;
         }
@@ -803,22 +804,28 @@
         fetch("/api/my-products/stats", { credentials: "same-origin", signal: controller.signal })
           .then(function (r) {
             clearTimeout(timer);
-            if (!r.ok) return;
+            if (!r.ok) throw new Error("stats http " + r.status);
             return r.json();
           })
           .then(function (json) {
-            if (!Array.isArray(json)) return;
             statsMap = {};
-            json.forEach(function (s) {
-              var keyRaw = s && s.site_id != null ? s.site_id : "";
-              var key = String(keyRaw).trim();
-              if (key) statsMap[key] = s;
-              var asNum = Number(keyRaw);
-              if (Number.isFinite(asNum)) statsMap[String(asNum)] = s;
-            });
+            if (Array.isArray(json)) {
+              json.forEach(function (s) {
+                var keyRaw = s && s.site_id != null ? s.site_id : "";
+                var key = String(keyRaw).trim();
+                if (key) statsMap[key] = s;
+                var asNum = Number(keyRaw);
+                if (Number.isFinite(asNum)) statsMap[String(asNum)] = s;
+              });
+            }
+            statsLoaded = true;
             renderTable();
           })
-          .catch(function () {});
+          .catch(function () {
+            clearTimeout(timer);
+            statsLoaded = true;
+            renderTable();
+          });
       }
 
       function saveSite(body, id) {

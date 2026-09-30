@@ -2,14 +2,13 @@ const mysql = require('mysql2/promise');
 const express = require('express');
 const axios = require('axios');
 const router = express.Router();
-
-let fxRatesCache = {
-    usd_to_rub: 90,
-    eur_to_rub: 100,
-    updated_at: null,
-    source: 'fallback'
-};
-let fxAutoUpdateStarted = false;
+const { attachBitrixUrlKeys } = require('../lib/datagonBitrixProductUrl');
+const {
+    getFxRates,
+    updateFxRates,
+    ensureFxAutoUpdater,
+    snapshotFx,
+} = require('../lib/datagonFxRates');
 let myProductsPerfReady = false;
 let myProductsSyncAuditReady = false;
 let myProductsSourceEnabledReady = false;
@@ -181,33 +180,6 @@ function myProductsRouterFactory(db, settings) {
     if (!db) {
         console.error('[myproducts] CRITICAL: DB connection is undefined!');
         return router;
-    }
-
-    async function updateFxRates() {
-        try {
-            const { data } = await axios.get('https://www.cbr-xml-daily.ru/daily_json.js', { timeout: 8000 });
-            const usd = Number(data?.Valute?.USD?.Value);
-            const eur = Number(data?.Valute?.EUR?.Value);
-            if (Number.isFinite(usd) && Number.isFinite(eur) && usd > 0 && eur > 0) {
-                fxRatesCache = {
-                    usd_to_rub: usd,
-                    eur_to_rub: eur,
-                    updated_at: new Date().toISOString(),
-                    source: 'cbr'
-                };
-                return true;
-            }
-        } catch (_) {}
-        return false;
-    }
-
-    function ensureFxAutoUpdater() {
-        if (fxAutoUpdateStarted) return;
-        fxAutoUpdateStarted = true;
-        updateFxRates().catch(() => {});
-        setInterval(() => {
-            updateFxRates().catch(() => {});
-        }, 60 * 60 * 1000);
     }
 
     ensureFxAutoUpdater();
@@ -464,15 +436,13 @@ function myProductsRouterFactory(db, settings) {
 
     router.get('/fx-rates', async (req, res) => {
         const force = String(req.query.force || '0') === '1';
-        if (force) {
-            await updateFxRates();
-        }
+        const fx = await getFxRates({ force });
         return res.json({
             success: true,
-            usd_to_rub: Number(fxRatesCache.usd_to_rub || 90),
-            eur_to_rub: Number(fxRatesCache.eur_to_rub || 100),
-            updated_at: fxRatesCache.updated_at,
-            source: fxRatesCache.source || 'fallback'
+            usd_to_rub: Number(fx.usd_to_rub || 90),
+            eur_to_rub: Number(fx.eur_to_rub || 100),
+            updated_at: fx.updated_at,
+            source: fx.source || 'fallback'
         });
     });
 
@@ -528,8 +498,9 @@ function myProductsRouterFactory(db, settings) {
             const gapExcludeZero = String(gap_exclude_zero || '1') !== '0';
             const isCustomCompetitorSort = customCompetitorSort === 'dealmed_price' || customCompetitorSort === 'medkompleks_price';
             const needsPostFilter = isGapFilterEnabled || isCustomCompetitorSort;
-            const usdRate = Math.max(0.0001, parseFlexible(usd_to_rub, Number(fxRatesCache.usd_to_rub || 90)));
-            const eurRate = Math.max(0.0001, parseFlexible(eur_to_rub, Number(fxRatesCache.eur_to_rub || 100)));
+            const fxSnap = snapshotFx();
+            const usdRate = Math.max(0.0001, parseFlexible(usd_to_rub, Number(fxSnap.usd_to_rub || 90)));
+            const eurRate = Math.max(0.0001, parseFlexible(eur_to_rub, Number(fxSnap.eur_to_rub || 100)));
             const gapMin = parseFlexible(gap_min_pct, -100);
             const gapMax = parseFlexible(gap_max_pct, 100);
             const gapRange2 = parseGapPctRange(gap_min_pct_2, gap_max_pct_2, null, null);
@@ -1277,6 +1248,9 @@ function myProductsRouterFactory(db, settings) {
                 `;
                 [rows] = await conn.query(fallbackQuery, params);
             }
+            if (String(s.cms_type || '').toLowerCase() === 'bitrix') {
+                rows = await attachBitrixUrlKeys(conn, rows || []);
+            }
             await conn.end();
 
             if (rows.length === 0) {
@@ -1544,8 +1518,9 @@ function myProductsRouterFactory(db, settings) {
         const matchAuditFilter = String(match_audit || 'all').toLowerCase();
         const isGapFilterEnabled = String(gap_filter_enabled || '0') === '1';
         const gapExcludeZero = String(gap_exclude_zero || '1') !== '0';
-        const usdRate = Math.max(0.0001, parseFlexibleNumber(usd_to_rub, Number(fxRatesCache.usd_to_rub || 90)));
-        const eurRate = Math.max(0.0001, parseFlexibleNumber(eur_to_rub, Number(fxRatesCache.eur_to_rub || 100)));
+        const fxSnap = snapshotFx();
+        const usdRate = Math.max(0.0001, parseFlexibleNumber(usd_to_rub, Number(fxSnap.usd_to_rub || 90)));
+        const eurRate = Math.max(0.0001, parseFlexibleNumber(eur_to_rub, Number(fxSnap.eur_to_rub || 100)));
         const gapCfg = buildGapFilterCfg({
             gap_competitor,
             gap_exclude_zero: gapExcludeZero ? '1' : '0',
@@ -2213,8 +2188,9 @@ function myProductsRouterFactory(db, settings) {
             const product = rows[0];
             await enrichWithCompetitorPrices([product]);
 
-            const usdRate = Number(fxRatesCache.usd_to_rub || 90);
-            const eurRate = Number(fxRatesCache.eur_to_rub || 100);
+            const fxSnap = snapshotFx();
+            const usdRate = Number(fxSnap.usd_to_rub || 90);
+            const eurRate = Number(fxSnap.eur_to_rub || 100);
             const computed = computeCompetitorTargetPrice(
                 product,
                 pctRange.minPct,

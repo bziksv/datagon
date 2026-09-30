@@ -8,6 +8,7 @@ const bcrypt = require('bcryptjs');
 const os = require('os');
 const config = require('./config');
 const { parseAutoSyncWeekdaysMon17 } = require('./lib/datagonAutoSyncRegistry');
+const { attachBitrixUrlKeys } = require('./lib/datagonBitrixProductUrl');
 
 const app = express();
 const PORT = config.port || 3000;
@@ -353,15 +354,17 @@ async function ensureSourceIdentityIndexes() {
 
 async function queryBitrixRowsWithSourceEnabledFallback(conn, site, limit, offset) {
     const withSourceEnabled = `SELECT ${site.field_code} as source_id, ${site.field_code} as cms_product_id, ${site.field_name} as name, ${site.field_sku} as sku, ${site.field_price} as price, ${site.field_currency} as currency, ${site.field_stock} as stock, '' as url_key, COALESCE(SOURCE_ENABLED, 1) as source_enabled FROM ${site.table_products} LIMIT ? OFFSET ?`;
+    let rows;
     try {
-        const [rows] = await conn.query(withSourceEnabled, [limit, offset]);
-        return rows;
+        const [r] = await conn.query(withSourceEnabled, [limit, offset]);
+        rows = r;
     } catch (e) {
         if (!/Unknown column 'SOURCE_ENABLED'/i.test(String(e?.message || ''))) throw e;
         const fallback = `SELECT ${site.field_code} as source_id, ${site.field_code} as cms_product_id, ${site.field_name} as name, ${site.field_sku} as sku, ${site.field_price} as price, ${site.field_currency} as currency, ${site.field_stock} as stock, '' as url_key, 1 as source_enabled FROM ${site.table_products} LIMIT ? OFFSET ?`;
-        const [rows] = await conn.query(fallback, [limit, offset]);
-        return rows;
+        const [r] = await conn.query(fallback, [limit, offset]);
+        rows = r;
     }
+    return attachBitrixUrlKeys(conn, rows || []);
 }
 
 async function initDB() {

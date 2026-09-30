@@ -43,6 +43,11 @@
                 </table>
               </div>
               <p class="small text-muted mb-2">Пустой % или выключено «Участвует» — сайт не трогаем при применении и в автосинке.</p>
+              <p class="small mb-2">
+                Расписание автозаписи цен по сайтам —
+                <a href="/settings.html#dg-set-as-network-prices">Настройки → Автосинхронизация → «Цены сети»</a>
+                (время, дни, «Запустить сейчас»).
+              </p>
               <button type="button" class="btn btn-sm btn-primary" id="dg-np-settings-save" data-dg-notify-start="Сохраняем настройки цен сети…">Сохранить настройки</button>
               <div id="dg-np-settings-save-msg" class="alert mt-3 mb-0 d-none" role="status"></div>
             </div>
@@ -88,9 +93,14 @@
               <div class="d-flex flex-wrap gap-2 mt-3">
                 <button type="button" class="btn btn-sm btn-primary" id="dg-np-apply-filters" data-dg-notify-start="Загружаем матрицу цен сети…">Применить</button>
                 <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-np-reset-filters" data-dg-notify-start="Сбрасываем фильтры…">По умолчанию</button>
-                <button type="button" class="btn btn-sm btn-outline-info" id="dg-np-dry-run" data-dg-notify-start="Пробный прогон цен сети…">Пробный прогон (dry_run)</button>
                 <button type="button" class="btn btn-sm btn-success" id="dg-np-apply-prices" data-dg-notify-start="Пишем цены на целевой сайт…">Применить цены</button>
               </div>
+              <p class="small text-muted mt-2 mb-0">
+                Автосвязь — по одинаковому артикулу. Если пары нет: в колонке «Действия» →
+                <strong>Связать с эталоном…</strong> / <strong>Связать с целью…</strong>
+                или <strong>Деактивировать</strong> (выключить на сателлите; строка остаётся в матрице с пометкой «деактивирован» и кнопкой <strong>Включить</strong>).
+                Цены — только по связанным строкам.
+              </p>
               <div id="dg-np-action-log" class="alert alert-secondary mt-3 mb-0 d-none" role="status"></div>
             </div>
           </div>
@@ -114,6 +124,7 @@
                       <th colspan="5" class="text-center bg-light">Эталон</th>
                       <th colspan="4" class="text-center bg-light">Целевой сайт</th>
                       <th colspan="3" class="text-center bg-light">Расчёт</th>
+                      <th class="text-center bg-light">Контент-отделу</th>
                       <th class="text-center bg-light">Действия</th>
                     </tr>
                     <tr>
@@ -126,14 +137,15 @@
                       <th>Название</th>
                       <th>Цена</th>
                       <th>Остаток</th>
-                      <th>Предл.</th>
+                      <th title="Предложение для записи на целевой сайт (всегда RUB; EUR/USD эталона → по курсу ЦБ)">Предл. ₽</th>
                       <th>Δ% vs предл.</th>
                       <th>Связь</th>
+                      <th style="min-width:180px" title="Можно выбрать несколько (Ctrl/Cmd)">Задачи</th>
                       <th></th>
                     </tr>
                   </thead>
                   <tbody id="dg-np-tbody">
-                    <tr><td colspan="13" class="text-muted text-center py-4">Выберите целевой сайт и нажмите «Применить».</td></tr>
+                    <tr><td colspan="14" class="text-muted text-center py-4">Выберите целевой сайт и нажмите «Применить».</td></tr>
                   </tbody>
                 </table>
               </div>
@@ -142,6 +154,69 @@
                 <div class="btn-group btn-group-sm">
                   <button type="button" class="btn btn-outline-secondary" id="dg-np-prev">Назад</button>
                   <button type="button" class="btn btn-outline-secondary" id="dg-np-next">Вперёд</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-npr-link-overlay" class="dg-npr-confirm-overlay" style="display: none" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="dg-np-link-modal-title">
+            <div class="dg-npr-confirm-backdrop" id="dg-npr-link-backdrop"></div>
+            <div class="dg-npr-confirm-panel card shadow-lg border-0">
+              <div class="card-header d-flex justify-content-between align-items-center">
+                <div class="fw-semibold" id="dg-np-link-modal-title">Связать товары</div>
+                <button type="button" class="close" aria-label="Close" id="dg-np-link-modal-x" data-dg-no-activity="1">
+                  <span aria-hidden="true">&times;</span>
+                </button>
+              </div>
+              <div class="card-body">
+                <p class="small text-muted mb-2" id="dg-np-link-modal-hint"></p>
+                <label class="form-label" for="dg-np-link-query" id="dg-np-link-query-label">Артикул / код / ID</label>
+                <div class="input-group input-group-sm">
+                  <input type="text" class="form-control" id="dg-np-link-query" placeholder="Например артикул на эталоне" autocomplete="off" />
+                  <button type="button" class="btn btn-outline-secondary" id="dg-np-link-find" data-dg-notify-start="Ищем товар…">Найти</button>
+                </div>
+                <div id="dg-np-link-preview" class="small mt-2 mb-0 d-none" role="status"></div>
+                <div id="dg-np-link-modal-err" class="alert alert-danger mt-2 mb-0 d-none" role="alert"></div>
+              </div>
+              <div class="card-footer d-flex justify-content-end gap-2">
+                <button type="button" class="btn btn-outline-secondary" id="dg-np-link-modal-cancel" data-dg-no-activity="1">Отмена</button>
+                <button type="button" class="btn btn-primary" id="dg-np-link-modal-ok" data-dg-notify-start="Сохраняем связь…">Связать</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-npr-confirm-overlay" class="dg-npr-confirm-overlay" style="display: none" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="dg-npr-confirm-title">
+            <div class="dg-npr-confirm-backdrop" id="dg-npr-confirm-backdrop"></div>
+            <div class="dg-npr-confirm-panel card shadow-lg border-0">
+              <div class="card-header">
+                <div class="fw-semibold" id="dg-npr-confirm-title">Подтвердите действие</div>
+              </div>
+              <div class="card-body">
+                <p class="mb-0" id="dg-npr-confirm-text"></p>
+              </div>
+              <div class="card-footer d-flex justify-content-end gap-2">
+                <button type="button" class="btn btn-outline-secondary" id="dg-npr-confirm-cancel" data-dg-no-activity="1">Отмена</button>
+                <button type="button" class="btn btn-danger" id="dg-npr-confirm-ok" data-dg-notify-start="Выполняем…">Подтвердить</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-npr-row-log-overlay" class="dg-npr-row-log-overlay" style="display: none" aria-hidden="true">
+            <div class="dg-npr-row-log-backdrop" id="dg-npr-row-log-backdrop"></div>
+            <div class="dg-npr-row-log-panel card shadow-lg border-0">
+              <div class="card-header d-flex align-items-center justify-content-between gap-2">
+                <div class="d-flex flex-column" style="min-width: 0">
+                  <div class="fw-semibold" id="dg-npr-row-log-title">Журнал изменений</div>
+                  <div class="text-muted small" id="dg-npr-row-log-subtitle"></div>
+                </div>
+                <div class="d-flex align-items-center gap-2 flex-shrink-0">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-npr-row-log-refresh" data-dg-notify-start="Обновляем журнал…">Обновить</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-npr-row-log-close" data-dg-no-activity="1">Закрыть</button>
+                </div>
+              </div>
+              <div class="card-body p-0">
+                <div class="dg-npr-row-log-body" id="dg-npr-row-log-body">
+                  <div class="text-muted small text-center py-4">Загрузка журнала…</div>
                 </div>
               </div>
             </div>
