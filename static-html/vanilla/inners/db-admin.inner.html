@@ -1,0 +1,187 @@
+          <div class="app-page-title">
+            <div class="page-title-wrapper">
+              <div class="page-title-heading">
+                <div class="page-title-icon">
+                  <i class="pe-7s-server icon-gradient bg-night-fade"> </i>
+                </div>
+                <div>
+                  Управление БД
+                  <div class="page-title-subheading">
+                    Основная MySQL Datagon: размеры таблиц, карта связей с МС / CMS / маркетплейсами, превью и OPTIMIZE/ANALYZE.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+              <div class="d-flex align-items-center">
+                <i class="header-icon pe-7s-graph icon-gradient bg-happy-fisher me-2"> </i>
+                <span>Сводка базы</span>
+              </div>
+              <button
+                type="button"
+                class="btn btn-sm btn-outline-primary"
+                id="dg-dba-refresh"
+                data-dg-notify-start="Обновляем размеры таблиц…"
+                data-dg-activity-label="Обновить сводку БД"
+              >
+                Обновить
+              </button>
+            </div>
+            <div class="card-body">
+              <div class="row g-3 mb-3">
+                <div class="col-md-3">
+                  <div class="dg-dba-stat-tile">
+                    <div class="dg-dba-stat-label">База</div>
+                    <div class="dg-dba-stat-value" id="dg-dba-db-name">—</div>
+                    <div class="dg-dba-stat-sub" id="dg-dba-fetched-at">Обновлено: —</div>
+                  </div>
+                </div>
+                <div class="col-md-3">
+                  <div class="dg-dba-stat-tile">
+                    <div class="dg-dba-stat-label">Всего</div>
+                    <div class="dg-dba-stat-value" id="dg-dba-size-total">—</div>
+                    <div class="dg-dba-stat-sub" id="dg-dba-table-count">Таблиц: —</div>
+                  </div>
+                </div>
+                <div class="col-md-3">
+                  <div class="dg-dba-stat-tile">
+                    <div class="dg-dba-stat-label">Данные</div>
+                    <div class="dg-dba-stat-value" id="dg-dba-size-data">—</div>
+                    <div class="dg-dba-stat-sub" id="dg-dba-pct-data">—</div>
+                  </div>
+                </div>
+                <div class="col-md-3">
+                  <div class="dg-dba-stat-tile">
+                    <div class="dg-dba-stat-label">Индексы</div>
+                    <div class="dg-dba-stat-value" id="dg-dba-size-index">—</div>
+                    <div class="dg-dba-stat-sub" id="dg-dba-pct-index">—</div>
+                  </div>
+                </div>
+              </div>
+              <div class="dg-dba-bar mb-1" id="dg-dba-size-bar" title="Данные / индексы">
+                <div class="dg-dba-bar-seg dg-dba-bar-data" id="dg-dba-bar-data" style="width: 50%"></div>
+                <div class="dg-dba-bar-seg dg-dba-bar-index" id="dg-dba-bar-index" style="width: 50%"></div>
+              </div>
+              <div class="small text-muted">
+                <span class="me-3"><span class="badge bg-primary">&nbsp;</span> данные</span>
+                <span><span class="badge" style="background:#16aaff">&nbsp;</span> индексы</span>
+              </div>
+              <div id="dg-dba-summary-err" class="alert alert-danger mt-3 mb-0 d-none" role="alert"></div>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+              <div class="d-flex align-items-center flex-grow-1 gap-3" style="min-width:0">
+                <div class="d-flex align-items-center flex-shrink-0">
+                  <i class="header-icon pe-7s-menu icon-gradient bg-happy-itmeo me-2"> </i>
+                  <span>Таблицы</span>
+                </div>
+                <div class="input-group input-group-sm" style="max-width: 320px">
+                  <span class="input-group-text">🔎</span>
+                  <input type="search" class="form-control" id="dg-dba-search" placeholder="Имя таблицы, домен…" autocomplete="off" />
+                </div>
+              </div>
+              <div class="d-flex flex-wrap gap-2">
+                <button type="button" class="btn btn-sm btn-primary" id="dg-dba-apply" data-dg-notify-start="Применяем фильтр таблиц…">Применить</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-dba-reset" data-dg-notify-start="Сбрасываем фильтр…">По умолчанию</button>
+                <button type="button" class="btn btn-sm btn-outline-info" id="dg-dba-analyze-sel" data-dg-notify-start="ANALYZE выбранных…" disabled>ANALYZE выбранные</button>
+                <button type="button" class="btn btn-sm btn-outline-danger" id="dg-dba-optimize-sel" data-dg-notify-start="OPTIMIZE выбранных…" disabled>OPTIMIZE выбранные</button>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="row g-2 align-items-end mb-3">
+                <div class="col-md-3">
+                  <label class="form-label" for="dg-dba-domain">Домен</label>
+                  <select class="form-select form-select-sm" id="dg-dba-domain">
+                    <option value="">Все</option>
+                  </select>
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label" for="dg-dba-page-size">На странице</label>
+                  <select class="form-select form-select-sm" id="dg-dba-page-size">
+                    <option value="40" selected>40</option>
+                    <option value="100">100</option>
+                    <option value="200">200</option>
+                  </select>
+                </div>
+              </div>
+              <div id="dg-dba-action-log" class="alert alert-secondary d-none mb-3" role="status"></div>
+              <div class="dg-dba-table-wrap">
+                <table class="table table-sm table-hover align-middle mb-0 dg-dba-table" id="dg-dba-table">
+                  <thead>
+                    <tr>
+                      <th style="width:2rem"><input type="checkbox" id="dg-dba-check-all" title="Выбрать на странице" /></th>
+                      <th>Таблица</th>
+                      <th>Домен</th>
+                      <th class="text-end">Строк ≈</th>
+                      <th class="text-end">Данные</th>
+                      <th class="text-end">Индексы</th>
+                      <th class="text-end">Всего</th>
+                      <th class="text-end">% БД</th>
+                      <th>Действия</th>
+                    </tr>
+                  </thead>
+                  <tbody id="dg-dba-tbody">
+                    <tr><td colspan="9" class="text-muted">Загрузка…</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-3">
+                <div class="small text-muted" id="dg-dba-pager-status">Найдено: 0</div>
+                <div class="btn-group btn-group-sm">
+                  <button type="button" class="btn btn-outline-secondary" id="dg-dba-prev" disabled>Назад</button>
+                  <button type="button" class="btn btn-outline-secondary" id="dg-dba-next" disabled>Вперёд</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+              <div class="d-flex align-items-center">
+                <i class="header-icon pe-7s-share icon-gradient bg-plum-plate me-2"> </i>
+                <span>Связи с системами</span>
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-dba-rel-toggle">Свернуть</button>
+            </div>
+            <div class="card-body" id="dg-dba-rel-body">
+              <p class="small text-muted mb-3">
+                Смысловая карта: какие таблицы питают МойСклад, CMS сайтов, маркетплейсы, цены сети и журналы.
+                Это не FK-граф MySQL — подписи из каталога Datagon.
+              </p>
+              <div class="row g-3" id="dg-dba-relations"></div>
+            </div>
+          </div>
+
+          <div id="dg-dba-preview-overlay" class="dg-dba-overlay d-none" role="dialog" aria-modal="true" aria-labelledby="dg-dba-preview-title">
+            <div class="dg-dba-modal">
+              <div class="dg-dba-modal-header d-flex justify-content-between align-items-start gap-2">
+                <div>
+                  <h5 class="mb-1" id="dg-dba-preview-title">Превью</h5>
+                  <div class="small text-muted" id="dg-dba-preview-meta"></div>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-dba-preview-close">Закрыть</button>
+              </div>
+              <div class="dg-dba-modal-body" id="dg-dba-preview-body"></div>
+            </div>
+          </div>
+
+          <div id="dg-dba-confirm-overlay" class="dg-dba-overlay d-none" role="dialog" aria-modal="true" aria-labelledby="dg-dba-confirm-title">
+            <div class="dg-dba-modal dg-dba-modal-sm">
+              <div class="dg-dba-modal-header">
+                <h5 class="mb-0" id="dg-dba-confirm-title">Подтверждение</h5>
+              </div>
+              <div class="dg-dba-modal-body">
+                <p class="mb-2" id="dg-dba-confirm-text"></p>
+                <p class="small text-danger mb-0" id="dg-dba-confirm-warn"></p>
+              </div>
+              <div class="dg-dba-modal-footer d-flex justify-content-end gap-2">
+                <button type="button" class="btn btn-outline-secondary" id="dg-dba-confirm-cancel">Отмена</button>
+                <button type="button" class="btn btn-danger" id="dg-dba-confirm-ok">Выполнить</button>
+              </div>
+            </div>
+          </div>

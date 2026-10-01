@@ -708,6 +708,21 @@
                   <div class="vertical-nav-menu" style="pointer-events:auto;z-index:999;position:relative">
                     <ul class="metismenu-container">
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="dashboard" href="/dashboard.html"><i class="metismenu-icon pe-7s-rocket"></i>Дашборд</a></li>
+                      <li class="metismenu-item dg-sidebar-nav-restricted" data-dg-nav-restricted="activity">
+                        <a
+                          class="metismenu-link"
+                          data-nav="db-admin"
+                          href="/db-admin.html"
+                          title="Управление БД: размеры таблиц, связи, превью, OPTIMIZE (доступ ограничен: администратор или право управления пользователями)"
+                        >
+                          <i class="metismenu-icon pe-7s-server"></i>Управление БД
+                          <i
+                            class="pe-7s-lock dg-nav-restricted-icon"
+                            aria-hidden="true"
+                            title="Пункт меню с ограниченным доступом"
+                          ></i>
+                        </a>
+                      </li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="my-sites" href="/my-sites.html"><i class="metismenu-icon pe-7s-global"></i>Мои сайты</a></li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="network-prices" href="/network-prices.html"><i class="metismenu-icon pe-7s-shuffle"></i>Цены сети</a></li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="my-products" href="/my-products.html"><i class="metismenu-icon pe-7s-box2"></i>Мои товары (сайты)</a></li>
@@ -1534,11 +1549,12 @@
             </div>
             <div class="card-body">
               <p class="small text-muted mb-2">
-                Кнопки «Запустить сейчас» отправляют задачу на сервер (очередь + один воркер). Результат последнего нажатия — в плашке ниже; ход выполнения — на странице
+                Кнопки «Запустить сейчас» отправляют задачу на сервер (очередь + один воркер). Ответ («принято» / ошибка) показывается
+                <strong>на самой карточке</strong> задачи, без прокрутки страницы вверх. Ход выполнения — на
                 <a href="/processes.html">«Логи фоновых процессов»</a>. Кнопка <strong>«Лог»</strong> на карточке открывает журнал запусков
                 этой задачи за выбранный день (МСК) из таблицы <code>auto_sync_runs</code>.
               </p>
-              <div id="dg-set-auto-run-msg" class="alert mb-3 d-none" role="status"></div>
+              <div id="dg-set-auto-run-msg" class="alert mb-3 d-none" role="status" aria-hidden="true"></div>
               <p class="small text-muted mb-2">
                 Задачи сгруппированы по <strong>типу</strong> (сначала импорт из МойСклад, затем экспорт в МС и остальные), внутри группы — по <strong>времени</strong> (МСК).
                 Порядок и предупреждения о совпадении обновляются <strong>после выбора времени</strong> (когда поле теряет фокус или закрывается выбор в часах). Выгрузки в МойСклад — в блоке <a href="#dg-set-export-ms-card">«Экспорт в МС»</a>.
@@ -5047,8 +5063,40 @@
           })
           .join(" → ");
       }
-      function showAutoSyncRunBanner(kind, htmlBody) {
-        var el = document.getElementById("dg-set-auto-run-msg");
+      function showAutoSyncRunBanner(kind, htmlBody, anchor) {
+        // Плашка у карточки, с которой нажали «Запустить сейчас» — без scrollIntoView
+        // на общий баннер сверху (иначе страница уезжает вверх, и карточку ищут глазами).
+        document.querySelectorAll(".dg-as-task-run-msg").forEach(function (node) {
+          node.classList.add("d-none");
+          node.innerHTML = "";
+        });
+        var globalEl = document.getElementById("dg-set-auto-run-msg");
+        var taskRow = anchor && anchor.closest ? anchor.closest(".dg-as-task") : null;
+        var card = taskRow
+          ? taskRow.querySelector(".dg-as-task-card") || taskRow
+          : null;
+        var el = null;
+        if (card) {
+          el = card.querySelector(".dg-as-task-run-msg");
+          if (!el) {
+            el = document.createElement("div");
+            el.className = "dg-as-task-run-msg alert mt-2 mb-2";
+            el.setAttribute("role", "status");
+            var head = card.querySelector(".dg-as-task-head");
+            if (head && head.parentNode) {
+              if (head.nextSibling) head.parentNode.insertBefore(el, head.nextSibling);
+              else head.parentNode.appendChild(el);
+            } else {
+              card.insertBefore(el, card.firstChild);
+            }
+          }
+          if (globalEl) {
+            globalEl.classList.add("d-none");
+            globalEl.innerHTML = "";
+          }
+        } else {
+          el = globalEl;
+        }
         if (!el) return;
         el.classList.remove("d-none", "alert-success", "alert-warning", "alert-danger", "alert-info");
         var cls =
@@ -5061,9 +5109,6 @@
                 : "alert-info";
         el.classList.add(cls);
         el.innerHTML = htmlBody;
-        try {
-          el.scrollIntoView({ behavior: "smooth", block: "nearest" });
-        } catch (_) {}
       }
       function resolveAutoSyncTaskKey(task, btn) {
         var row = btn && btn.closest ? btn.closest(".dg-as-task") : null;
@@ -5221,14 +5266,16 @@
         if (!task) {
           showAutoSyncRunBanner(
             "err",
-            "<strong>Ошибка</strong><div class=\"small mt-1\">Не удалось определить тип задачи (data-as-task на карточке).</div>"
+            "<strong>Ошибка</strong><div class=\"small mt-1\">Не удалось определить тип задачи (data-as-task на карточке).</div>",
+            btn
           );
           return;
         }
         if (autoSyncRunRequestInFlight[task]) {
           showAutoSyncRunBanner(
             "warn",
-            "<strong>Подождите</strong><div class=\"small mt-1\">По этой задаче запрос к серверу уже выполняется — дождитесь ответа, не нажимайте повторно.</div>"
+            "<strong>Подождите</strong><div class=\"small mt-1\">По этой задаче запрос к серверу уже выполняется — дождитесь ответа, не нажимайте повторно.</div>",
+            btn
           );
           return;
         }
@@ -5243,7 +5290,8 @@
         if (hint) hint.textContent = "Запрос к серверу: " + label + "…";
         showAutoSyncRunBanner(
           "info",
-          "<strong>Отправляем на сервер…</strong><div class=\"small mt-1\">" + escAutoRunHtml(label) + "</div>"
+          "<strong>Отправляем на сервер…</strong><div class=\"small mt-1\">" + escAutoRunHtml(label) + "</div>",
+          btn
         );
         fetch("/api/settings/auto-sync-run", {
           method: "POST",
@@ -5305,7 +5353,8 @@
                   procLink +
                   "</div><div class=\"small text-muted mt-1\">Ответ сервера: " +
                   escAutoRunHtml(timeStr) +
-                  "</div>"
+                  "</div>",
+                btn
               );
               if (task === "price_comp_sync") startPriceCompLivePolling();
               return;
@@ -5322,7 +5371,8 @@
                 procLink +
                 "</div><div class=\"small text-muted mt-1\">Ответ сервера: " +
                 escAutoRunHtml(timeStr) +
-                "</div>"
+                "</div>",
+              btn
             );
             if (task === "price_comp_sync") startPriceCompLivePolling();
           })
@@ -5331,7 +5381,8 @@
             if (hint) hint.textContent = "Ошибка: " + msg;
             showAutoSyncRunBanner(
               "err",
-              "<strong>Ошибка запуска</strong><div class=\"small mt-1\">" + escAutoRunHtml(msg) + "</div>"
+              "<strong>Ошибка запуска</strong><div class=\"small mt-1\">" + escAutoRunHtml(msg) + "</div>",
+              btn
             );
           })
           .finally(function () {

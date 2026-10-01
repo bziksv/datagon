@@ -286,6 +286,7 @@
     results: "Результаты",
     matches: "Сопоставление",
     processes: "Активность/Логи",
+    "db-admin": "Управление БД",
     settings: "Настройки",
     sections: "Статические экраны",
     "exports-marketplaces": "Маркетплейсы — Настройки",

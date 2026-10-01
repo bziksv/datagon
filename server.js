@@ -2926,6 +2926,7 @@ initDB().then(async () => {
     // Совместимость со старым фронтендом/кэшем, где логин идет на /api/login
     app.use('/api', authModule.router);
     app.use('/api/activity', require('./routes/activity')(db));
+    app.use('/api/db-admin', require('./routes/dbAdmin')(db));
     app.use('/api/specialties', require('./routes/specialties')(db));
     app.post('/api/settings/auto-sync-run', async (req, res) => {
         try {
@@ -3408,6 +3409,7 @@ initDB().then(async () => {
     app.get('/results', redirectToDatagonHtml('results.html'));
     app.get('/projects', redirectToDatagonHtml('projects.html'));
     app.get('/processes', redirectToDatagonHtml('processes.html'));
+    app.get('/db-admin', redirectToDatagonHtml('db-admin.html'));
     app.get('/settings', redirectToDatagonHtml('settings.html'));
     app.get('/login', (req, res, next) => {
         if (req.method !== 'GET' && req.method !== 'HEAD') return next();

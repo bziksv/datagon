@@ -158,6 +158,14 @@ function assemble() {
             PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/processes.scripts.html')),
         },
         {
+            out: 'db-admin.html',
+            PAGE_TITLE: 'Управление БД — Датагон',
+            BODY_ATTRS: 'class="datagon-vanilla-body" data-dg-active-nav="db-admin"',
+            EXTRA_HEAD: read(path.join(vanillaDir, 'inners/db-admin.head.html')),
+            MAIN_INNER: read(path.join(vanillaDir, 'inners/db-admin.inner.html')),
+            PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/db-admin.scripts.html')),
+        },
+        {
             out: 'settings.html',
             PAGE_TITLE: 'Настройки — Датагон',
             BODY_ATTRS: 'class="datagon-vanilla-body" data-dg-active-nav="settings"',

@@ -1,0 +1,678 @@
+<script>
+  (function () {
+    var PAGE_SIZE_KEY = "datagon_db_admin_page_size_v1";
+    var PAGE_SIZE_ALLOWED = { "40": 1, "100": 1, "200": 1 };
+
+    function loadSavedPageSize() {
+      try {
+        var v = String(localStorage.getItem(PAGE_SIZE_KEY) || "").trim();
+        if (PAGE_SIZE_ALLOWED[v]) return parseInt(v, 10);
+      } catch (_) {}
+      return 40;
+    }
+
+    function savePageSize(n) {
+      var v = String(n || 40);
+      if (!PAGE_SIZE_ALLOWED[v]) v = "40";
+      try {
+        localStorage.setItem(PAGE_SIZE_KEY, v);
+      } catch (_) {}
+      return parseInt(v, 10);
+    }
+
+    var initialPageSize = loadSavedPageSize();
+    var state = {
+      tables: [],
+      domains: [],
+      database: "",
+      size_bytes: 0,
+      data_bytes: 0,
+      index_bytes: 0,
+      table_count: 0,
+      fetched_at: null,
+      pending: { search: "", domain: "", pageSize: initialPageSize },
+      applied: { search: "", domain: "", pageSize: initialPageSize },
+      page: 1,
+      selected: Object.create(null),
+      confirm: null,
+    };
+
+    function $(id) {
+      return document.getElementById(id);
+    }
+
+    function fmtBytes(n) {
+      var v = Number(n) || 0;
+      if (v < 1024) return v + " B";
+      if (v < 1024 * 1024) return (v / 1024).toFixed(1) + " KB";
+      if (v < 1024 * 1024 * 1024) return (v / (1024 * 1024)).toFixed(2) + " MB";
+      return (v / (1024 * 1024 * 1024)).toFixed(2) + " GB";
+    }
+
+    function fmtNum(n) {
+      if (n == null || !Number.isFinite(Number(n))) return "—";
+      try {
+        if (window.DatagonFmt && window.DatagonFmt.int) return window.DatagonFmt.int(n);
+      } catch (_) {}
+      return String(Math.round(Number(n))).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+    }
+
+    function esc(s) {
+      return String(s == null ? "" : s)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    function badgeClass(color) {
+      var c = String(color || "secondary");
+      if (c === "light") return "bg-light text-dark border";
+      return "bg-" + c;
+    }
+
+    function showSummaryErr(msg) {
+      var el = $("dg-dba-summary-err");
+      if (!el) return;
+      if (!msg) {
+        el.classList.add("d-none");
+        el.textContent = "";
+        return;
+      }
+      el.classList.remove("d-none");
+      el.textContent = msg;
+    }
+
+    function showActionLog(kind, html) {
+      var el = $("dg-dba-action-log");
+      if (!el) return;
+      el.classList.remove("d-none", "alert-success", "alert-warning", "alert-danger", "alert-info", "alert-secondary");
+      el.classList.add(
+        kind === "ok" ? "alert-success" : kind === "warn" ? "alert-warning" : kind === "err" ? "alert-danger" : kind === "info" ? "alert-info" : "alert-secondary"
+      );
+      el.innerHTML = html;
+    }
+
+    function selectedList() {
+      return Object.keys(state.selected).filter(function (k) {
+        return state.selected[k];
+      });
+    }
+
+    function syncBulkButtons() {
+      var n = selectedList().length;
+      var a = $("dg-dba-analyze-sel");
+      var o = $("dg-dba-optimize-sel");
+      if (a) a.disabled = n === 0;
+      if (o) o.disabled = n === 0;
+    }
+
+    function filteredTables() {
+      var q = String(state.applied.search || "")
+        .trim()
+        .toLowerCase();
+      var dom = String(state.applied.domain || "").trim();
+      return state.tables.filter(function (t) {
+        if (dom && t.domain !== dom) return false;
+        if (!q) return true;
+        var hay = (t.name + " " + (t.domain_title || "") + " " + (t.note || "")).toLowerCase();
+        return hay.indexOf(q) >= 0;
+      });
+    }
+
+    function renderSummary() {
+      $("dg-dba-db-name").textContent = state.database || "—";
+      $("dg-dba-size-total").textContent = fmtBytes(state.size_bytes);
+      $("dg-dba-size-data").textContent = fmtBytes(state.data_bytes);
+      $("dg-dba-size-index").textContent = fmtBytes(state.index_bytes);
+      $("dg-dba-table-count").textContent = "Таблиц: " + fmtNum(state.table_count);
+      var total = Number(state.size_bytes) || 0;
+      var dp = total > 0 ? Math.round((state.data_bytes / total) * 1000) / 10 : 0;
+      var ip = total > 0 ? Math.round((state.index_bytes / total) * 1000) / 10 : 0;
+      $("dg-dba-pct-data").textContent = dp + "% от объёма";
+      $("dg-dba-pct-index").textContent = ip + "% от объёма";
+      $("dg-dba-bar-data").style.width = (dp || 0) + "%";
+      $("dg-dba-bar-index").style.width = (ip || 0) + "%";
+      var at = state.fetched_at ? new Date(state.fetched_at) : null;
+      $("dg-dba-fetched-at").textContent = at && !isNaN(at.getTime())
+        ? "Обновлено: " + at.toLocaleString("ru-RU")
+        : "Обновлено: —";
+    }
+
+    function fillDomainSelect() {
+      var sel = $("dg-dba-domain");
+      if (!sel) return;
+      var cur = sel.value;
+      sel.innerHTML = '<option value="">Все</option>';
+      state.domains.forEach(function (d) {
+        var opt = document.createElement("option");
+        opt.value = d.id;
+        opt.textContent = d.title + " (" + (d.tables ? d.tables.length : 0) + ")";
+        sel.appendChild(opt);
+      });
+      if (cur) sel.value = cur;
+    }
+
+    function renderRelations() {
+      var root = $("dg-dba-relations");
+      if (!root) return;
+      root.replaceChildren();
+      state.domains.forEach(function (d) {
+        var col = document.createElement("div");
+        col.className = "col-md-6 col-xl-4";
+        var card = document.createElement("div");
+        card.className = "dg-dba-domain-card";
+        var tables = d.tables || [];
+        var head =
+          '<div class="d-flex align-items-start justify-content-between gap-2">' +
+          '<div><span class="badge ' +
+          badgeClass(d.color) +
+          ' mb-1">' +
+          esc(d.title) +
+          "</span>" +
+          '<div class="small text-muted">' +
+          esc(d.subtitle || "") +
+          "</div></div>" +
+          '<span class="badge bg-light text-dark border">' +
+          tables.length +
+          "</span></div>";
+        var ul = "<ul>";
+        tables.slice(0, 12).forEach(function (t) {
+          ul +=
+            "<li><code>" +
+            esc(t.name) +
+            "</code> — " +
+            esc(t.note || "") +
+            "</li>";
+        });
+        if (tables.length > 12) ul += "<li class=\"text-muted\">… ещё " + (tables.length - 12) + "</li>";
+        ul += "</ul>";
+        card.innerHTML = head + ul;
+        col.appendChild(card);
+        root.appendChild(col);
+      });
+    }
+
+    function renderTable() {
+      var tbody = $("dg-dba-tbody");
+      if (!tbody) return;
+      var rows = filteredTables();
+      var pageSize = Math.max(1, Number(state.applied.pageSize) || 40);
+      var pages = Math.max(1, Math.ceil(rows.length / pageSize));
+      if (state.page > pages) state.page = pages;
+      if (state.page < 1) state.page = 1;
+      var start = (state.page - 1) * pageSize;
+      var slice = rows.slice(start, start + pageSize);
+      tbody.replaceChildren();
+      if (!slice.length) {
+        var tr0 = document.createElement("tr");
+        tr0.innerHTML = '<td colspan="9" class="text-muted">Нет таблиц по фильтру</td>';
+        tbody.appendChild(tr0);
+      } else {
+        slice.forEach(function (t) {
+          var tr = document.createElement("tr");
+          var checked = state.selected[t.name] ? " checked" : "";
+          tr.innerHTML =
+            '<td><input type="checkbox" class="dg-dba-row-check" data-name="' +
+            esc(t.name) +
+            '"' +
+            checked +
+            " /></td>" +
+            "<td><code>" +
+            esc(t.name) +
+            "</code>" +
+            (t.engine ? '<div class="small text-muted">' + esc(t.engine) + "</div>" : "") +
+            "</td>" +
+            '<td><span class="badge ' +
+            badgeClass(t.domain_color) +
+            '">' +
+            esc(t.domain_title || t.domain || "—") +
+            "</span></td>" +
+            '<td class="text-end">' +
+            fmtNum(t.table_rows) +
+            "</td>" +
+            '<td class="text-end">' +
+            fmtBytes(t.data_bytes) +
+            "</td>" +
+            '<td class="text-end">' +
+            fmtBytes(t.index_bytes) +
+            "</td>" +
+            '<td class="text-end fw-semibold">' +
+            fmtBytes(t.size_bytes) +
+            "</td>" +
+            '<td class="text-end">' +
+            (t.pct_of_db != null ? t.pct_of_db + "%" : "—") +
+            "</td>" +
+            '<td class="text-nowrap">' +
+            '<button type="button" class="btn btn-sm btn-outline-secondary me-1 dg-dba-preview" data-name="' +
+            esc(t.name) +
+            '" data-dg-notify-start="Загружаем превью…">Превью</button>' +
+            '<button type="button" class="btn btn-sm btn-outline-info me-1 dg-dba-analyze-one" data-name="' +
+            esc(t.name) +
+            '" data-dg-notify-start="ANALYZE…">ANALYZE</button>' +
+            '<button type="button" class="btn btn-sm btn-outline-danger dg-dba-optimize-one" data-name="' +
+            esc(t.name) +
+            '" data-dg-notify-start="OPTIMIZE…">OPTIMIZE</button>' +
+            "</td>";
+          tbody.appendChild(tr);
+        });
+      }
+      var shown = slice.length;
+      $("dg-dba-pager-status").textContent =
+        "Найдено: " + fmtNum(rows.length) + "; страница " + state.page + "/" + pages + "; показано: " + fmtNum(shown);
+      $("dg-dba-prev").disabled = state.page <= 1;
+      $("dg-dba-next").disabled = state.page >= pages;
+      var all = $("dg-dba-check-all");
+      if (all) {
+        all.checked = slice.length > 0 && slice.every(function (t) {
+          return !!state.selected[t.name];
+        });
+      }
+      syncBulkButtons();
+    }
+
+    function commitFilters() {
+      state.applied.search = state.pending.search;
+      state.applied.domain = state.pending.domain;
+      state.applied.pageSize = savePageSize(state.pending.pageSize);
+      state.pending.pageSize = state.applied.pageSize;
+      state.page = 1;
+      renderTable();
+    }
+
+    function loadRelations() {
+      return fetch("/api/db-admin/relations", { credentials: "same-origin" })
+        .then(function (r) {
+          return r.json().then(function (j) {
+            return { r: r, j: j };
+          });
+        })
+        .then(function (x) {
+          if (!x.r.ok || !x.j.success) throw new Error((x.j && x.j.error) || "HTTP " + x.r.status);
+          state.domains = x.j.domains || [];
+          fillDomainSelect();
+          renderRelations();
+        });
+    }
+
+    function loadOverview(refresh) {
+      showSummaryErr("");
+      var url = "/api/db-admin/overview" + (refresh ? "?refresh=1" : "");
+      return fetch(url, { credentials: "same-origin" })
+        .then(function (r) {
+          return r.json().then(function (j) {
+            return { r: r, j: j };
+          });
+        })
+        .then(function (x) {
+          if (!x.r.ok || !x.j.success) throw new Error((x.j && x.j.error) || "HTTP " + x.r.status);
+          var j = x.j;
+          state.tables = j.tables || [];
+          state.size_bytes = j.size_bytes || 0;
+          state.data_bytes = j.data_bytes || 0;
+          state.index_bytes = j.index_bytes || 0;
+          state.table_count = j.table_count || 0;
+          state.fetched_at = j.fetched_at;
+          state.database = j.database || "";
+          if (!state.database) {
+            try {
+              state.database = (document.body.getAttribute("data-dg-db") || "") || "Datagon";
+            } catch (_) {
+              state.database = "Datagon";
+            }
+          }
+          renderSummary();
+          renderTable();
+          return j;
+        })
+        .catch(function (e) {
+          showSummaryErr(e.message || "Ошибка загрузки");
+          throw e;
+        });
+    }
+
+    function openPreview(name) {
+      var ov = $("dg-dba-preview-overlay");
+      var body = $("dg-dba-preview-body");
+      var title = $("dg-dba-preview-title");
+      var meta = $("dg-dba-preview-meta");
+      if (!ov || !body) return;
+      title.textContent = "Превью: " + name;
+      meta.textContent = "Загрузка…";
+      body.innerHTML = '<p class="text-muted mb-0">Загрузка…</p>';
+      ov.classList.remove("d-none");
+      fetch("/api/db-admin/tables/" + encodeURIComponent(name) + "/preview?limit=20", {
+        credentials: "same-origin",
+      })
+        .then(function (r) {
+          return r.json().then(function (j) {
+            return { r: r, j: j };
+          });
+        })
+        .then(function (x) {
+          if (!x.r.ok || !x.j.success) throw new Error((x.j && x.j.error) || "HTTP " + x.r.status);
+          var j = x.j;
+          var m = j.meta || {};
+          meta.textContent =
+            (m.domain_title || "") +
+            (m.note ? " · " + m.note : "") +
+            " · строк в выборке: " +
+            (j.row_count || 0);
+          var cols = j.columns || [];
+          var rows = j.rows || [];
+          var html = "";
+          if (cols.length) {
+            html += '<p class="small text-muted mb-2"><strong>Колонки:</strong> ';
+            html += cols
+              .map(function (c) {
+                return "<code>" + esc(c.name) + "</code> <span class=\"text-muted\">" + esc(c.column_type) + "</span>";
+              })
+              .join("; ");
+            html += "</p>";
+          }
+          if (!rows.length) {
+            html += '<p class="text-muted mb-0">Таблица пуста (или нет строк в LIMIT).</p>';
+          } else {
+            var keys = cols.length
+              ? cols.map(function (c) {
+                  return c.name;
+                })
+              : Object.keys(rows[0] || {});
+            html += '<div class="table-responsive"><table class="table table-sm table-bordered dg-dba-preview-table"><thead><tr>';
+            keys.forEach(function (k) {
+              html += "<th>" + esc(k) + "</th>";
+            });
+            html += "</tr></thead><tbody>";
+            rows.forEach(function (row) {
+              html += "<tr>";
+              keys.forEach(function (k) {
+                var v = row[k];
+                if (v == null) html += '<td class="text-muted">NULL</td>';
+                else if (typeof v === "object") html += "<td>" + esc(JSON.stringify(v)) + "</td>";
+                else html += "<td title=\"" + esc(String(v)) + "\">" + esc(String(v)) + "</td>";
+              });
+              html += "</tr>";
+            });
+            html += "</tbody></table></div>";
+          }
+          body.innerHTML = html;
+        })
+        .catch(function (e) {
+          body.innerHTML = '<p class="text-danger mb-0">' + esc(e.message || "Ошибка") + "</p>";
+          meta.textContent = "";
+        });
+    }
+
+    function closePreview() {
+      var ov = $("dg-dba-preview-overlay");
+      if (ov) ov.classList.add("d-none");
+    }
+
+    function openConfirm(opts) {
+      state.confirm = opts || null;
+      $("dg-dba-confirm-title").textContent = opts.title || "Подтверждение";
+      $("dg-dba-confirm-text").textContent = opts.text || "";
+      $("dg-dba-confirm-warn").textContent = opts.warn || "";
+      $("dg-dba-confirm-ok").textContent = opts.okLabel || "Выполнить";
+      $("dg-dba-confirm-overlay").classList.remove("d-none");
+    }
+
+    function closeConfirm() {
+      state.confirm = null;
+      $("dg-dba-confirm-overlay").classList.add("d-none");
+    }
+
+    function runMaintain(kind, tables) {
+      var label = kind === "optimize" ? "OPTIMIZE" : "ANALYZE";
+      showActionLog(
+        "info",
+        "<strong>" +
+          label +
+          "</strong><br>Таблиц: " +
+          tables.length +
+          "<br>Идёт запрос к MySQL…"
+      );
+      var t0 = Date.now();
+      var tick = setInterval(function () {
+        var sec = Math.round((Date.now() - t0) / 1000);
+        showActionLog(
+          "info",
+          "<strong>" + label + "</strong><br>Таблиц: " + tables.length + "<br>Идёт, прошло " + sec + " с…"
+        );
+      }, 1000);
+      return fetch("/api/db-admin/" + kind, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tables: tables }),
+      })
+        .then(function (r) {
+          return r.json().then(function (j) {
+            return { r: r, j: j };
+          });
+        })
+        .then(function (x) {
+          clearInterval(tick);
+          var j = x.j || {};
+          if (!x.r.ok && j.success === false && !j.ok_count) {
+            throw new Error(j.error || "HTTP " + x.r.status);
+          }
+          var errs = j.errors || [];
+          var errHtml = "";
+          if (errs.length) {
+            errHtml =
+              "<ul class=\"mb-0 mt-2\">" +
+              errs
+                .slice(0, 20)
+                .map(function (e) {
+                  return "<li><code>" + esc(e.table) + "</code>: " + esc(e.error) + "</li>";
+                })
+                .join("") +
+              "</ul>";
+          }
+          showActionLog(
+            j.failed ? "warn" : "ok",
+            "<strong>" +
+              label +
+              " — итог</strong><br>Всего: " +
+              (j.total || tables.length) +
+              "; успешно: " +
+              (j.ok_count || 0) +
+              "; ошибок: " +
+              (j.failed || 0) +
+              "; длительность: " +
+              (j.duration_sec != null ? j.duration_sec + " с" : "—") +
+              errHtml
+          );
+          if (window.DatagonNotify && window.DatagonNotify.toast) {
+            window.DatagonNotify.toast({
+              type: j.failed ? "warning" : "success",
+              message: label + ": ок " + (j.ok_count || 0) + ", ошибок " + (j.failed || 0),
+            });
+          }
+          return loadOverview(true);
+        })
+        .catch(function (e) {
+          clearInterval(tick);
+          showActionLog("err", "<strong>Ошибка " + label + "</strong><br>" + esc(e.message || e));
+          if (window.DatagonNotify && window.DatagonNotify.toast) {
+            window.DatagonNotify.toast({ type: "danger", message: e.message || "Ошибка" });
+          }
+        });
+    }
+
+    function bind() {
+      $("dg-dba-refresh").addEventListener("click", function () {
+        var btn = this;
+        var run = function () {
+          return loadOverview(true);
+        };
+        if (window.DatagonNotify && window.DatagonNotify.busyRun) window.DatagonNotify.busyRun(btn, run);
+        else run();
+      });
+
+      $("dg-dba-search").addEventListener("input", function () {
+        state.pending.search = this.value;
+      });
+      $("dg-dba-search").addEventListener("keydown", function (e) {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          $("dg-dba-apply").click();
+        }
+        if (e.key === "Escape") {
+          this.value = "";
+          state.pending.search = "";
+          commitFilters();
+        }
+      });
+      $("dg-dba-domain").addEventListener("change", function () {
+        state.pending.domain = this.value;
+      });
+      $("dg-dba-page-size").addEventListener("change", function () {
+        state.pending.pageSize = parseInt(this.value, 10) || 40;
+        // размер страницы только клиентский — сразу применяем и запоминаем
+        commitFilters();
+      });
+      $("dg-dba-apply").addEventListener("click", commitFilters);
+      $("dg-dba-reset").addEventListener("click", function () {
+        state.pending = { search: "", domain: "", pageSize: 40 };
+        $("dg-dba-search").value = "";
+        $("dg-dba-domain").value = "";
+        $("dg-dba-page-size").value = "40";
+        commitFilters();
+      });
+      $("dg-dba-prev").addEventListener("click", function () {
+        state.page -= 1;
+        renderTable();
+      });
+      $("dg-dba-next").addEventListener("click", function () {
+        state.page += 1;
+        renderTable();
+      });
+
+      $("dg-dba-check-all").addEventListener("change", function () {
+        var on = this.checked;
+        var rows = filteredTables();
+        var pageSize = Math.max(1, Number(state.applied.pageSize) || 40);
+        var start = (state.page - 1) * pageSize;
+        rows.slice(start, start + pageSize).forEach(function (t) {
+          state.selected[t.name] = on;
+        });
+        renderTable();
+      });
+
+      $("dg-dba-tbody").addEventListener("change", function (e) {
+        var t = e.target;
+        if (!t.classList.contains("dg-dba-row-check")) return;
+        var name = t.getAttribute("data-name");
+        state.selected[name] = !!t.checked;
+        syncBulkButtons();
+      });
+
+      $("dg-dba-tbody").addEventListener("click", function (e) {
+        var btn = e.target.closest("button");
+        if (!btn) return;
+        var name = btn.getAttribute("data-name");
+        if (!name) return;
+        if (btn.classList.contains("dg-dba-preview")) {
+          openPreview(name);
+          return;
+        }
+        if (btn.classList.contains("dg-dba-analyze-one")) {
+          var runA = function () {
+            return runMaintain("analyze", [name]);
+          };
+          if (window.DatagonNotify && window.DatagonNotify.busyRun) window.DatagonNotify.busyRun(btn, runA);
+          else runA();
+          return;
+        }
+        if (btn.classList.contains("dg-dba-optimize-one")) {
+          openConfirm({
+            title: "OPTIMIZE TABLE",
+            text: "Выполнить OPTIMIZE для таблицы «" + name + "»?",
+            warn: "Операция может надолго заблокировать таблицу. На боевой БД запускайте осознанно.",
+            okLabel: "Оптимизировать",
+            kind: "optimize",
+            tables: [name],
+          });
+        }
+      });
+
+      $("dg-dba-analyze-sel").addEventListener("click", function () {
+        var tables = selectedList();
+        if (!tables.length) return;
+        var btn = this;
+        var run = function () {
+          return runMaintain("analyze", tables);
+        };
+        if (window.DatagonNotify && window.DatagonNotify.busyRun) window.DatagonNotify.busyRun(btn, run);
+        else run();
+      });
+
+      $("dg-dba-optimize-sel").addEventListener("click", function () {
+        var tables = selectedList();
+        if (!tables.length) return;
+        openConfirm({
+          title: "OPTIMIZE выбранных",
+          text: "Оптимизировать " + tables.length + " табл.: " + tables.slice(0, 8).join(", ") + (tables.length > 8 ? "…" : ""),
+          warn: "OPTIMIZE может блокировать таблицы. Не запускайте на пике нагрузки без необходимости.",
+          okLabel: "Оптимизировать",
+          kind: "optimize",
+          tables: tables,
+        });
+      });
+
+      $("dg-dba-preview-close").addEventListener("click", closePreview);
+      $("dg-dba-preview-overlay").addEventListener("click", function (e) {
+        if (e.target === this) closePreview();
+      });
+      $("dg-dba-confirm-cancel").addEventListener("click", closeConfirm);
+      $("dg-dba-confirm-overlay").addEventListener("click", function (e) {
+        if (e.target === this) closeConfirm();
+      });
+      $("dg-dba-confirm-ok").addEventListener("click", function () {
+        var c = state.confirm;
+        closeConfirm();
+        if (!c || !c.tables || !c.tables.length) return;
+        var btn = this;
+        var run = function () {
+          return runMaintain(c.kind || "optimize", c.tables);
+        };
+        if (window.DatagonNotify && window.DatagonNotify.busyRun) window.DatagonNotify.busyRun(btn, run);
+        else run();
+      });
+
+      document.addEventListener("keydown", function (e) {
+        if (e.key !== "Escape") return;
+        if (!$("dg-dba-confirm-overlay").classList.contains("d-none")) closeConfirm();
+        else if (!$("dg-dba-preview-overlay").classList.contains("d-none")) closePreview();
+      });
+
+      var relToggle = $("dg-dba-rel-toggle");
+      var relBody = $("dg-dba-rel-body");
+      var REL_KEY = "datagon_db_admin_rel_collapsed_v1";
+      function applyRelCollapsed(on) {
+        if (!relBody || !relToggle) return;
+        relBody.style.display = on ? "none" : "";
+        relToggle.textContent = on ? "Развернуть" : "Свернуть";
+        try {
+          localStorage.setItem(REL_KEY, on ? "1" : "0");
+        } catch (_) {}
+      }
+      try {
+        applyRelCollapsed(localStorage.getItem(REL_KEY) === "1");
+      } catch (_) {}
+      if (relToggle) {
+        relToggle.addEventListener("click", function () {
+          applyRelCollapsed(relBody.style.display !== "none");
+        });
+      }
+    }
+
+    bind();
+    try {
+      $("dg-dba-page-size").value = String(initialPageSize);
+    } catch (_) {}
+    Promise.all([loadRelations(), loadOverview(false)]).catch(function () {});
+  })();
+</script>

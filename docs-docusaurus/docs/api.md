@@ -38,6 +38,7 @@ description: Справочник REST-эндпоинтов p.datagon.ru (осн
 | Массовый синк источников | [Глобальная синхронизация (server.js)](#глобальная-синхронизация-serverjs) |
 | Сводка фоновых задач (логи в UI) | [Обзор процессов](#обзор-процессов) |
 | События активности в UI | [Активность](#активность) |
+| Размеры таблиц, превью, OPTIMIZE | [Управление БД](#управление-бд) |
 | Примеры `curl` | [Минимальные проверки через curl](#минимальные-проверки-через-curl) |
 | Версии скриптов синка | [Версионирование скриптов](./script-versioning) (эталон — Huckster `sync_script`) |
 
@@ -84,6 +85,7 @@ description: Справочник REST-эндпоинтов p.datagon.ru (осн
 - `/api/purchase` -> `routes/purchase.js` (Закупки: `GET` список — SQL `ORDER BY` + пагинация, enrich страницы; `POST /override`, `POST /overrides-import`, журнал overrides: `GET /log`, `GET /log/stats`, `POST /log/cleanup`; перенос «Предлагаемый нес.ост.» → `ms_export.min_stock` (только БД): `POST /min-stock-apply/run`, …; выгрузка в МС — `auto_sync_min_stock_export` / `lib/datagonMinStockExportMs.js`)
 - `/api/product` -> `routes/product.js` (Карточка товара: `ms_export` + `ms_entity_details` + продажи + `dg_bundle_components`; лог отсутствий — пакетно после синка МС: `stock≤0` или для базового кода `stock` < min суффикса в `код-число`, см. `syncZeroStockLogAfterMoyskladExport`; снимки остатка по дням — `dg_product_stock_snapshot`, см. `syncProductStockSnapshotsAfterMoyskladExport` — оба вызываются из `routes/moysklad.js` после сохранения `ms_export`)
 - `/api/activity` -> `routes/activity.js`
+- `/api/db-admin` -> `routes/dbAdmin.js` (Управление БД: размеры таблиц, связи, превью, ANALYZE/OPTIMIZE)
 - `GET /api/processes/overview`, `POST /api/sync-all-start`, `POST /api/sync-site-start`, `GET /api/sync-status` -> `server.js`
 
 ## Auth
@@ -2000,6 +2002,30 @@ Body: `{ days }` (max = **`ms_orders_sync_days`**; если не передан�
 - `scanDurationMs`, `scannedAt`, `ttlSec`, `cached` — диагностика и признак кэша.
 
 Кэш — 5 минут (`DISK_USAGE_CACHE_TTL_MS` в `server.js`); параллельные запросы дедуплицируются через общее `in-flight` обещание. `?refresh=1` принудительно пересчитывает разбивку. Обход дерева использует `fs.readdir` + `fs.lstat`, не следует по симлинкам и устойчив к `EACCES`.
+
+## Управление БД
+
+Страница `/db-admin.html`, роутер `routes/dbAdmin.js`, каталог связей `lib/datagonDbRelations.js`. Только **основная** MySQL Datagon (не CMS сайтов). Доступ: **admin** или `can_manage_users` (как «Активность/Логи»). Матрица страниц: ключ `db-admin`. Имена таблиц для preview/ANALYZE/OPTIMIZE сверяются с `information_schema` текущей схемы — произвольный SQL запрещён.
+
+### GET `/api/db-admin/overview`
+
+Сводка + список таблиц: `database`, `size_bytes`, `data_bytes`, `index_bytes`, `table_count`, `fetched_at`, `tables[]` (`name`, `engine`, `table_rows`, размеры, `pct_of_db`, `domain` / `domain_title` / `note` / `links` из каталога связей). Query `refresh=1` — без кэша на стороне API (пересчёт из `information_schema` каждый раз).
+
+### GET `/api/db-admin/relations`
+
+Группы доменов (CMS, МойСклад, маркетплейсы, цены сети, парсер, закупки, журналы) и таблицы с человеческими подписями «зачем таблица».
+
+### GET `/api/db-admin/tables/:name/preview`
+
+Query: `limit` (1…50, default 20). Ответ: `columns[]` из `information_schema.COLUMNS`, `rows[]` (`SELECT * … LIMIT`), `meta` из каталога связей.
+
+### POST `/api/db-admin/analyze`
+
+Body: `{ "tables": ["my_products", …] }` (макс. 40). Последовательно `ANALYZE TABLE`. Ответ: `total`, `ok_count`, `failed`, `duration_sec`, `ok[]`, `errors[{ table, error }]` (до 20).
+
+### POST `/api/db-admin/optimize`
+
+То же тело, что у analyze. Выполняет `OPTIMIZE TABLE`. **Может блокировать таблицу** — в UI своя confirm-модалка.
 
 ## Поставщики
 

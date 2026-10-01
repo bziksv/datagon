@@ -14,6 +14,7 @@ module.exports = {
     "results",
     "matches",
     "processes",
+    "db-admin",
     "settings",
     "script-versioning",
     "api",

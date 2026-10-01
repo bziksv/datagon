@@ -20,6 +20,7 @@ const PAGE_REGISTRY = [
     { value: 'results', label: 'Результаты' },
     { value: 'matches', label: 'Сопоставление' },
     { value: 'processes', label: 'Активность/Логи' },
+    { value: 'db-admin', label: 'Управление БД' },
     { value: 'settings', label: 'Настройки' },
     { value: 'sections', label: 'Статические экраны' },
     { value: 'architectui-demo', label: 'ArchitectUI меню' },
