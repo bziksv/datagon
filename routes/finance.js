@@ -1175,18 +1175,40 @@ function factory(db, appSettings) {
                 params
             );
 
+            /** Предпочитаем «человеческое» полное имя, а не «ИНН …» / короткие варианты. */
+            function preferCpName(current, candidate, currentCnt, candidateCnt) {
+                const cur = String(current || '').trim();
+                const cand = String(candidate || '').trim();
+                if (!cand || cand === '(без названия)') return cur || cand;
+                if (!cur || cur === '(без названия)') return cand;
+                const curUgly = /^инн\s/i.test(cur);
+                const candUgly = /^инн\s/i.test(cand);
+                if (curUgly && !candUgly) return cand;
+                if (!curUgly && candUgly) return cur;
+                if (cand.length > cur.length + 5) return cand;
+                if (cur.length > cand.length + 5) return cur;
+                if ((candidateCnt || 0) > (currentCnt || 0)) return cand;
+                return cur;
+            }
+
             const inMap = Object.create(null);
             const outMap = Object.create(null);
             let totIn = 0;
             let totOut = 0;
             (rows || []).forEach(function (r) {
                 const name = String(r.cp_name || '(без названия)');
-                const inn = String(r.cp_inn || '');
-                const key = name + '\0' + inn;
+                const inn = String(r.cp_inn || '').replace(/\s+/g, '');
+                // Одно юрлицо = один ИНН; без ИНН — по имени (как раньше).
+                const key = inn ? 'inn:' + inn : 'name:' + name.toLowerCase();
                 const abs = Number(r.sum_abs) || 0;
                 const cnt = Number(r.cnt) || 0;
                 const bucket = String(r.direction) === 'out' ? outMap : inMap;
-                if (!bucket[key]) bucket[key] = { name: name, inn: inn, amount: 0, count: 0 };
+                if (!bucket[key]) {
+                    bucket[key] = { name: name, inn: inn, amount: 0, count: 0, nameVotes: 0 };
+                }
+                bucket[key].name = preferCpName(bucket[key].name, name, bucket[key].nameVotes, cnt);
+                bucket[key].nameVotes = Math.max(bucket[key].nameVotes || 0, cnt);
+                if (inn) bucket[key].inn = inn;
                 bucket[key].amount += abs;
                 bucket[key].count += cnt;
                 if (String(r.direction) === 'out') totOut += abs;

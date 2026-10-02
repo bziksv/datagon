@@ -2066,7 +2066,7 @@ Query: `search`, `customer_code` (организация / клиент Точк
 
 Топ контрагентов по сумме входящих / исходящих. Query: `limit` (3…20, по умолчанию **8**), `months` (если нет `date_from`/`date_to`), `date_from`, `date_to`, `customer_code` / `org`, `account_id`, `currency`, `include_internal=1` / `include_deposits=1` (по умолчанию **выкл.**, те же исключения, что у monthly).
 
-Ответ: `{ success, limit, currency, date_from, date_to, include_internal, top_in: [{ rank, name, inn, amount, count, share }], top_out: […], totals: { in, out, counterparties_in, counterparties_out } }`.
+Ответ: `{ success, limit, currency, date_from, date_to, include_internal, top_in: [{ rank, name, inn, amount, count, share }], top_out: […], totals: { in, out, counterparties_in, counterparties_out } }`. Группировка по **ИНН** (если есть) — разные написания названия одной конторы сливаются; без ИНН — по имени.
 
 ### GET `/api/finance/sync-status`
 

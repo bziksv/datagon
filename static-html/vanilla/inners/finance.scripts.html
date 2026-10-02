@@ -577,17 +577,22 @@
     return (parts[0].charAt(0) + parts[1].charAt(0)).toUpperCase();
   }
 
-  function applyCounterpartyToFilters(name, direction) {
+  function applyCounterpartyToFilters(name, direction, inn) {
     var n = String(name || "").trim();
-    if (!n || n === "(без названия)") return;
+    var innStr = String(inn || "").replace(/\s+/g, "").trim();
+    // По ИНН ловим все варианты названия одной конторы в выписке.
+    var q = innStr || (n && n !== "(без названия)" ? n : "");
+    if (!q) return;
     readPendingFromForm();
-    state.pending.search = n;
+    state.pending.search = q;
     if (direction === "in" || direction === "out") state.pending.direction = direction;
     writeFormFromPending();
     markDirty();
     toast(
       "info",
-      "Фильтр: «" + n + "»" +
+      "Фильтр: «" +
+        (innStr ? "ИНН " + innStr : n) +
+        "»" +
         (direction === "in" ? " · входящие" : direction === "out" ? " · исходящие" : "") +
         ". Нажмите «Применить»."
     );
@@ -623,6 +628,8 @@
           topCls +
           '" data-dg-cp-name="' +
           esc(r.name) +
+          '" data-dg-cp-inn="' +
+          esc(r.inn || "") +
           '" data-dg-cp-dir="' +
           esc(direction) +
           '" data-dg-notify-start="Подставляем контрагента в фильтр…">' +
@@ -2357,7 +2364,11 @@
     cpGrid.addEventListener("click", function (ev) {
       var btn = ev.target && ev.target.closest ? ev.target.closest("[data-dg-cp-name]") : null;
       if (!btn || !cpGrid.contains(btn)) return;
-      applyCounterpartyToFilters(btn.getAttribute("data-dg-cp-name"), btn.getAttribute("data-dg-cp-dir"));
+      applyCounterpartyToFilters(
+        btn.getAttribute("data-dg-cp-name"),
+        btn.getAttribute("data-dg-cp-dir"),
+        btn.getAttribute("data-dg-cp-inn")
+      );
     });
   }
   bindHeaderSearchMirror();
