@@ -20,6 +20,7 @@
 const express = require('express');
 const markets = require('../lib/dgNewProductsMarkets');
 const crmPrime = require('../lib/crmPrimeTimesheets');
+const crmNotify = require('../lib/dgNpCrmNotify');
 const { assertActorPageAccess } = require('../lib/datagonPageRegistry');
 
 const CHANNELS = new Set(['almamed', 'marketplaces']);
@@ -582,7 +583,7 @@ function mapRow(r) {
     };
 }
 
-module.exports = function exportsNewProductsRouterFactory(db, config) {
+module.exports = function exportsNewProductsRouterFactory(db, config, appSettings) {
     const router = express.Router();
 
     router.get('/meta', async (_req, res) => {
@@ -1532,6 +1533,7 @@ module.exports = function exportsNewProductsRouterFactory(db, config) {
                 console.warn('[new-products] create log', le);
             }
             const mapped = mapRow(row);
+            crmNotify.scheduleInstant(db);
             res.json({
                 success: true,
                 data: mapped,
@@ -1684,6 +1686,7 @@ module.exports = function exportsNewProductsRouterFactory(db, config) {
             }
 
             const durationSec = Math.round((Date.now() - t0) / 1000);
+            if (created > 0) crmNotify.scheduleInstant(db);
             res.json({
                 success: true,
                 channel,
@@ -1974,6 +1977,7 @@ module.exports = function exportsNewProductsRouterFactory(db, config) {
             if (channel === 'marketplaces') {
                 await markets.attachKitsToMapped(db, [mapped]);
             }
+            crmNotify.scheduleInstant(db);
             res.json({
                 success: true,
                 data: mapped,
@@ -2487,6 +2491,7 @@ module.exports = function exportsNewProductsRouterFactory(db, config) {
                 }
             }
 
+            if (assigned > 0) crmNotify.scheduleInstant(db);
             res.json({
                 success: true,
                 assigned,
@@ -2508,6 +2513,7 @@ module.exports = function exportsNewProductsRouterFactory(db, config) {
         try {
             await ensureSchema(db);
             const result = await markets.refreshMarketsQueue(db);
+            crmNotify.scheduleInstant(db);
             res.json({
                 success: true,
                 ...result,
@@ -2539,6 +2545,85 @@ module.exports = function exportsNewProductsRouterFactory(db, config) {
         } catch (e) {
             console.error('[new-products] remove-placed', e);
             res.status(500).json({ error: e.message || 'Ошибка удаления размещённых' });
+        }
+    });
+
+    const CRM_NOTIFY_PAGE = 'exports-new-products-crm-notify';
+
+    function denyCrmNotify(res, denied) {
+        return res.status(denied.status).json({
+            success: false,
+            error: denied.error,
+            code: denied.code,
+        });
+    }
+
+    router.get('/crm-notify', async (req, res) => {
+        try {
+            const denied = assertActorPageAccess(req.datagonActor, CRM_NOTIFY_PAGE, { write: false });
+            if (denied) return denyCrmNotify(res, denied);
+            const preview = await crmNotify.buildPreview(db);
+            res.json({ success: true, ...preview });
+        } catch (e) {
+            console.error('[new-products] crm-notify GET', e);
+            res.status(500).json({ success: false, error: e.message || 'Ошибка настроек уведомлений' });
+        }
+    });
+
+    router.post('/crm-notify', async (req, res) => {
+        try {
+            const denied = assertActorPageAccess(req.datagonActor, CRM_NOTIFY_PAGE, { write: true });
+            if (denied) return denyCrmNotify(res, denied);
+            const saved = await crmNotify.saveSettings(db, appSettings, req.body || {});
+            const preview = await crmNotify.buildPreview(db);
+            res.json({
+                success: true,
+                baselined_now: saved.baselined_now,
+                settings: preview.settings,
+                people: preview.people,
+                waiting_total: preview.waiting_total,
+                crm_configured: preview.crm_configured,
+                script: preview.script,
+            });
+        } catch (e) {
+            console.error('[new-products] crm-notify POST', e);
+            res.status(500).json({ success: false, error: e.message || 'Ошибка сохранения уведомлений' });
+        }
+    });
+
+    router.post('/crm-notify/run', async (req, res) => {
+        const t0 = Date.now();
+        try {
+            const denied = assertActorPageAccess(req.datagonActor, CRM_NOTIFY_PAGE, { write: true });
+            if (denied) return denyCrmNotify(res, denied);
+            const body = req.body && typeof req.body === 'object' ? req.body : {};
+            const dryRun =
+                String(body.dry_run != null ? body.dry_run : req.query.dry_run || '') === '1' ||
+                body.dry_run === true;
+            const instant =
+                body.instant === true || body.instant === 1 || body.mode === 'instant' || body.mode === 'both';
+            const digest =
+                body.digest === true || body.digest === 1 || body.mode === 'digest' || body.mode === 'both';
+            if (!instant && !digest) {
+                return res.status(400).json({ success: false, error: 'Укажите instant и/или digest' });
+            }
+            const result = await crmNotify.run(db, {
+                instant,
+                digest,
+                digestNow: digest,
+                dry_run: dryRun,
+                force: true,
+                allowBaseline: true,
+            });
+            const ok = !result.error_count;
+            res.json({
+                success: ok,
+                ...result,
+                duration_sec: result.duration_sec != null ? result.duration_sec : Math.round((Date.now() - t0) / 1000),
+            });
+        } catch (e) {
+            console.error('[new-products] crm-notify run', e);
+            res.status(500).json({ success: false, error: e.message || 'Ошибка отправки уведомлений' });
         }
     });
 

@@ -172,6 +172,14 @@ let appSettings = {
     auto_sync_np_ms_enrich_enabled: 0,
     auto_sync_np_ms_enrich_interval_min: 30,
     auto_sync_np_ms_enrich_weekdays: '',
+    /** Комментарии в задачи CRM по очереди «Новые товары» (вкладка уведомлений + интервал). */
+    auto_sync_np_crm_notify_enabled: 0,
+    auto_sync_np_crm_notify_interval_min: 15,
+    auto_sync_np_crm_notify_weekdays: '',
+    np_crm_notify_instant_enabled: 1,
+    np_crm_notify_digest_days: 3,
+    np_crm_notify_crm_user_id: 1,
+    np_crm_notify_baselined: 0,
     auto_sync_db_size_enabled: 1,
     auto_sync_db_size_time: '02:00',
     /** Авто-выгрузка пользовательских override габаритов в МойСклад
@@ -489,6 +497,13 @@ async function initDB() {
             ['auto_sync_np_ms_enrich_enabled','0'],
             ['auto_sync_np_ms_enrich_interval_min','30'],
             ['auto_sync_np_ms_enrich_weekdays',''],
+            ['auto_sync_np_crm_notify_enabled','0'],
+            ['auto_sync_np_crm_notify_interval_min','15'],
+            ['auto_sync_np_crm_notify_weekdays',''],
+            ['np_crm_notify_instant_enabled','1'],
+            ['np_crm_notify_digest_days','3'],
+            ['np_crm_notify_crm_user_id','1'],
+            ['np_crm_notify_baselined','0'],
             ['auto_sync_db_size_enabled','1'],
             ['auto_sync_db_size_time','02:00'],
             ['auto_sync_export_ms_enabled','0'],
@@ -2841,6 +2856,41 @@ async function processAutoSyncQueue() {
                 }
                 await finishAutoSyncRun('np_ms_enrich', statusNp, messageNp);
                 console.log('[AUTO SYNC] Queue done: np_ms_enrich — ' + statusNp);
+            } else if (task === 'np_crm_notify') {
+                console.log('[AUTO SYNC] Queue start: np_crm_notify');
+                await startAutoSyncRun('np_crm_notify', triggerType);
+                let statusCrm = 'completed';
+                let messageCrm = '';
+                try {
+                    const crmNotify = require('./lib/dgNpCrmNotify');
+                    const r = await crmNotify.run(db, {
+                        instant: true,
+                        digest: true,
+                        digestNow: false,
+                        force: true,
+                        allowBaseline: true,
+                        dry_run: false,
+                    });
+                    if (r.skipped === 'disabled') {
+                        messageCrm = 'Выключено в настройках';
+                    } else {
+                        messageCrm = (
+                            'База ' + (r.baselined || 0) +
+                            ', новых комментариев ' + (r.instant_posted || 0) +
+                            ' (' + (r.instant_products || 0) + ' товаров)' +
+                            ', сводок ' + (r.digest_posted || 0) +
+                            (r.error_count ? ', ошибок ' + r.error_count : '')
+                        ).slice(0, 480);
+                        if (r.error_count && !r.instant_posted && !r.digest_posted && !r.did_baseline) {
+                            statusCrm = 'failed';
+                        }
+                    }
+                } catch (e) {
+                    statusCrm = 'failed';
+                    messageCrm = ('Ошибка уведомлений CRM: ' + (e && e.message ? e.message : e)).slice(0, 480);
+                }
+                await finishAutoSyncRun('np_crm_notify', statusCrm, messageCrm);
+                console.log('[AUTO SYNC] Queue done: np_crm_notify — ' + statusCrm);
             }
         }
     } catch (e) {
@@ -2901,6 +2951,9 @@ async function processAutoSyncQueue() {
         }
         if (autoSyncRunIds.has('np_ms_enrich')) {
             await finishAutoSyncRun('np_ms_enrich', 'failed', e.message || 'Ошибка очереди');
+        }
+        if (autoSyncRunIds.has('np_crm_notify')) {
+            await finishAutoSyncRun('np_crm_notify', 'failed', e.message || 'Ошибка очереди');
         }
     } finally {
         autoSyncRunnerActive = false;
@@ -2967,6 +3020,16 @@ function startAutoSyncScheduler() {
                         return [15, 30, 60].includes(n) ? n : 30;
                     })(),
                     weekdays: parseAutoSyncWeekdaysMon17(appSettings.auto_sync_np_ms_enrich_weekdays),
+                },
+                {
+                    type: 'np_crm_notify',
+                    enabled: Number(appSettings.auto_sync_np_crm_notify_enabled || 0) === 1,
+                    scheduleMode: 'interval',
+                    intervalMin: (() => {
+                        const n = Number(appSettings.auto_sync_np_crm_notify_interval_min || 15);
+                        return [15, 30, 60].includes(n) ? n : 15;
+                    })(),
+                    weekdays: parseAutoSyncWeekdaysMon17(appSettings.auto_sync_np_crm_notify_weekdays),
                 },
                 {
                     type: 'db_size',
@@ -3262,7 +3325,7 @@ initDB().then(async () => {
     app.use('/api/exports/marketplaces', exportsMarketplacesRouterFactory(db, appSettings));
     app.use('/api/exports/competitors', require('./routes/exportsCompetitors')(db));
     app.use('/api/exports/dimensions', require('./routes/dimensions')(db, appSettings));
-    app.use('/api/exports/new-products', require('./routes/exportsNewProducts')(db, config));
+    app.use('/api/exports/new-products', require('./routes/exportsNewProducts')(db, config, appSettings));
     app.use('/api/exports/photoshoot', require('./routes/exportsPhotoshoot')(db));
     app.use('/api/exports/huckster', exportsHucksterRouterFactory(db, appSettings));
     app.use('/api/projects', require('./routes/projects')(db, appSettings));

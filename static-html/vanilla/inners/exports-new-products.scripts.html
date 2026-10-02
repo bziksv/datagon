@@ -1158,26 +1158,32 @@
   function syncTabUi() {
     var isStats = state.view === "stats";
     var isStanding = state.view === "standing";
+    var isCrmNotify = state.view === "crm-notify";
+    var isExtra = isStats || isStanding || isCrmNotify;
     document.querySelectorAll("#dg-np-tabs .nav-link").forEach(function (btn) {
       var view = btn.getAttribute("data-dg-np-view") || "table";
       if (view === "stats") {
         btn.classList.toggle("active", isStats);
       } else if (view === "standing") {
         btn.classList.toggle("active", isStanding);
+      } else if (view === "crm-notify") {
+        btn.classList.toggle("active", isCrmNotify);
       } else {
         btn.classList.toggle(
           "active",
-          !isStats && !isStanding && btn.getAttribute("data-dg-np-channel") === state.channel
+          !isExtra && btn.getAttribute("data-dg-np-channel") === state.channel
         );
       }
     });
     var queuePanel = el("dg-np-queue-panel");
     var statsPanel = el("dg-np-stats-panel");
     var standingPanel = el("dg-np-standing-panel");
-    if (queuePanel) queuePanel.classList.toggle("d-none", isStats || isStanding);
+    var crmPanel = el("dg-np-crm-notify-panel");
+    if (queuePanel) queuePanel.classList.toggle("d-none", isExtra);
     if (statsPanel) statsPanel.classList.toggle("d-none", !isStats);
     if (standingPanel) standingPanel.classList.toggle("d-none", !isStanding);
-    if (isStats || isStanding) return;
+    if (crmPanel) crmPanel.classList.toggle("d-none", !isCrmNotify);
+    if (isExtra) return;
 
     var isMp = state.channel === "marketplaces";
     var title = el("dg-np-table-title");
@@ -3683,11 +3689,29 @@
     return "hidden";
   }
 
+  function resolveCrmNotifyAccessMode() {
+    try {
+      if (
+        window.localStorage.getItem("isAdmin") === "true" ||
+        window.localStorage.getItem("currentUser") === "admin"
+      ) {
+        return "full";
+      }
+      var raw = window.localStorage.getItem("datagonPageModesV1");
+      var pm = raw ? JSON.parse(raw) : {};
+      var m = pm && pm["exports-new-products-crm-notify"];
+      if (m === "full" || m === "view" || m === "hidden") return m;
+    } catch (_) {}
+    return "hidden";
+  }
+
   function syncStatsTabAccess() {
     state.statsAccess = resolveStatsAccessMode();
     state.standingAccess = resolveStandingAccessMode();
+    state.crmNotifyAccess = resolveCrmNotifyAccessMode();
     var showStats = state.statsAccess === "full" || state.statsAccess === "view";
     var showStanding = state.standingAccess === "full" || state.standingAccess === "view";
+    var showCrm = state.crmNotifyAccess === "full" || state.crmNotifyAccess === "view";
     var tabStats = el("dg-np-tab-stats");
     if (tabStats) {
       tabStats.classList.toggle("d-none", !showStats);
@@ -3702,11 +3726,22 @@
       if (!showStanding) tabStanding.setAttribute("aria-hidden", "true");
       else tabStanding.removeAttribute("aria-hidden");
     }
+    var tabCrm = el("dg-np-tab-crm-notify");
+    if (tabCrm) {
+      tabCrm.classList.toggle("d-none", !showCrm);
+      tabCrm.disabled = !showCrm;
+      if (!showCrm) tabCrm.setAttribute("aria-hidden", "true");
+      else tabCrm.removeAttribute("aria-hidden");
+    }
     if (state.view === "stats" && state.statsAccess === "hidden") {
       state.view = "table";
       syncTabUi();
       syncTabToUrl();
     } else if (state.view === "standing" && state.standingAccess === "hidden") {
+      state.view = "table";
+      syncTabUi();
+      syncTabToUrl();
+    } else if (state.view === "crm-notify" && state.crmNotifyAccess === "hidden") {
       state.view = "table";
       syncTabUi();
       syncTabToUrl();
@@ -4663,6 +4698,14 @@
     ) {
       return "standing";
     }
+    if (
+      raw === "crm-notify" ||
+      raw === "crm" ||
+      raw === "notifications" ||
+      raw === "notify"
+    ) {
+      return "crm-notify";
+    }
     if (raw === "marketplaces" || raw === "markets" || raw === "mp") return "marketplaces";
     if (raw === "almamed" || raw === "alma") return "almamed";
     return null;
@@ -4671,6 +4714,7 @@
   function currentTabToken() {
     if (state.view === "stats") return "stats";
     if (state.view === "standing") return "standing";
+    if (state.view === "crm-notify") return "crm-notify";
     return state.channel === "marketplaces" ? "marketplaces" : "almamed";
   }
 
@@ -4707,6 +4751,11 @@
     if (tab === "standing") {
       if (state.view === "standing") return;
       setView("standing");
+      return;
+    }
+    if (tab === "crm-notify") {
+      if (state.view === "crm-notify") return;
+      setView("crm-notify");
       return;
     }
     if (state.view === "table" && state.channel === tab) return;
@@ -4748,6 +4797,24 @@
       syncTabUi();
       syncTabToUrl();
       loadStandingStats();
+      return;
+    }
+    if (view === "crm-notify") {
+      syncStatsTabAccess();
+      if (state.crmNotifyAccess === "hidden") {
+        if (window.DatagonNotify && window.DatagonNotify.toast) {
+          window.DatagonNotify.toast({
+            type: "warning",
+            message: "Нет доступа к «Настройка уведомлений датагон-crm»",
+          });
+        }
+        syncTabToUrl();
+        return;
+      }
+      state.view = "crm-notify";
+      syncTabUi();
+      syncTabToUrl();
+      loadCrmNotify();
       return;
     }
     state.view = "table";
@@ -5095,6 +5162,311 @@
     });
   }
 
+  function crmNotifyCanWrite() {
+    return state.crmNotifyAccess === "full";
+  }
+
+  function setCrmNotifyLog(type, html) {
+    var box = el("dg-np-crm-notify-log");
+    if (!box) return;
+    box.className = "alert mt-3 mb-3 alert-" + (type || "info");
+    box.innerHTML = html;
+    box.classList.remove("d-none");
+  }
+
+  function crmChannelCell(ch) {
+    if (!ch || !ch.crm_task_id) return '<span class="text-danger">нет задачи</span>';
+    var href = String(ch.crm_task_url || "");
+    return (
+      '<a href="' +
+      escapeHtml(href) +
+      '" target="_blank" rel="noopener noreferrer">' +
+      escapeHtml(String(ch.crm_task_id)) +
+      "</a>"
+    );
+  }
+
+  function renderCrmNotifyPeople(people) {
+    var tb = el("dg-np-crm-notify-tbody");
+    if (!tb) return;
+    if (!people || !people.length) {
+      tb.innerHTML =
+        '<tr><td colspan="7" class="text-muted text-center py-3">Нет контент-менеджеров</td></tr>';
+      return;
+    }
+    tb.innerHTML = people
+      .map(function (p) {
+        var a = p.almamed || {};
+        var m = p.marketplaces || {};
+        return (
+          "<tr><td>" +
+          escapeHtml(p.full_name || "") +
+          "</td><td>" +
+          crmChannelCell(a) +
+          '</td><td class="text-end">' +
+          fmtInt(a.waiting || 0) +
+          '</td><td class="text-end">' +
+          fmtInt(a.fresh || 0) +
+          "</td><td>" +
+          crmChannelCell(m) +
+          '</td><td class="text-end">' +
+          fmtInt(m.waiting || 0) +
+          '</td><td class="text-end">' +
+          fmtInt(m.fresh || 0) +
+          "</td></tr>"
+        );
+      })
+      .join("");
+  }
+
+  function applyCrmNotifySettings(data) {
+    var s = (data && data.settings) || {};
+    var en = el("dg-np-crm-notify-enabled");
+    var instant = el("dg-np-crm-notify-instant");
+    var days = el("dg-np-crm-notify-days");
+    var interval = el("dg-np-crm-notify-interval");
+    var author = el("dg-np-crm-notify-author");
+    if (en) en.checked = !!s.enabled;
+    if (instant) instant.checked = s.instant_enabled !== false;
+    if (days) days.value = String(s.digest_days != null ? s.digest_days : 3);
+    var iv = Number(s.interval_min || 15);
+    if ([15, 30, 60].indexOf(iv) < 0) iv = 15;
+    if (interval) interval.value = String(iv);
+    if (author) author.value = String(s.crm_user_id || 1);
+    var ver = el("dg-np-crm-notify-ver");
+    var script = data && data.script;
+    if (ver) {
+      ver.textContent = script && script.version ? "v" + script.version + " · rev." + script.revision : "—";
+    }
+    renderCrmNotifyPeople(data && data.people);
+    var hint = el("dg-np-crm-notify-hint");
+    if (hint) {
+      var bits = [];
+      bits.push("В очереди сейчас: " + fmtInt((data && data.waiting_total) || 0));
+      if (s.baselined) bits.push("текущая очередь уже запомнена");
+      else bits.push("при включении текущая очередь будет запомнена и не уйдёт как «новые»");
+      if (data && data.crm_configured === false) bits.push("CRM не настроена");
+      if (!crmNotifyCanWrite()) bits.push("режим просмотра");
+      hint.textContent = bits.join(". ") + ".";
+    }
+    ["dg-np-crm-notify-save", "dg-np-crm-notify-instant-run", "dg-np-crm-notify-digest-run", "dg-np-crm-notify-enabled", "dg-np-crm-notify-instant", "dg-np-crm-notify-days", "dg-np-crm-notify-interval", "dg-np-crm-notify-author"].forEach(function (id) {
+      var node = el(id);
+      if (node) node.disabled = !crmNotifyCanWrite();
+    });
+  }
+
+  function loadCrmNotify() {
+    return fetch("/api/exports/new-products/crm-notify", { credentials: "same-origin" })
+      .then(function (r) {
+        return r.json().then(function (j) {
+          return { r: r, j: j };
+        });
+      })
+      .then(function (x) {
+        if (!x.r.ok || !x.j.success) throw new Error((x.j && x.j.error) || "HTTP " + x.r.status);
+        applyCrmNotifySettings(x.j);
+        return x.j;
+      })
+      .catch(function (e) {
+        setCrmNotifyLog("danger", "<strong>Не удалось загрузить.</strong> " + escapeHtml(e && e.message ? e.message : String(e)));
+      });
+  }
+
+  function crmNotifyPayloadFromForm() {
+    var daysRaw = el("dg-np-crm-notify-days") ? el("dg-np-crm-notify-days").value : "3";
+    var authorRaw = el("dg-np-crm-notify-author") ? el("dg-np-crm-notify-author").value : "1";
+    var days = window.DatagonFmt && window.DatagonFmt.parseNumberInput
+      ? window.DatagonFmt.parseNumberInput(daysRaw)
+      : Number(String(daysRaw).replace(/\s/g, "").replace(",", "."));
+    var author = window.DatagonFmt && window.DatagonFmt.parseNumberInput
+      ? window.DatagonFmt.parseNumberInput(authorRaw)
+      : Number(String(authorRaw).replace(/\s/g, ""));
+    return {
+      enabled: !!(el("dg-np-crm-notify-enabled") && el("dg-np-crm-notify-enabled").checked),
+      instant_enabled: !!(el("dg-np-crm-notify-instant") && el("dg-np-crm-notify-instant").checked),
+      digest_days: Number.isFinite(Number(days)) ? Math.round(Number(days)) : 3,
+      interval_min: Number(el("dg-np-crm-notify-interval") && el("dg-np-crm-notify-interval").value) || 15,
+      crm_user_id: Number.isFinite(Number(author)) ? Math.round(Number(author)) : 1,
+    };
+  }
+
+  function formatCrmRunReport(j) {
+    var lines = [];
+    if (j.did_baseline) {
+      lines.push("Текущая очередь запомнена: " + fmtInt(j.baselined || 0) + " товаров. Как «новые» они не отправлены.");
+    }
+    lines.push("Новых комментариев: " + fmtInt(j.instant_posted || 0) + " (" + fmtInt(j.instant_products || 0) + " товаров)");
+    lines.push("Сводок: " + fmtInt(j.digest_posted || 0));
+    lines.push("Длительность: " + (j.duration_sec != null ? j.duration_sec : "—") + " с");
+    if (j.dry_run) lines.push("Пробный запуск, в CRM ничего не записано.");
+    if (j.errors && j.errors.length) {
+      lines.push("Ошибки:");
+      j.errors.slice(0, 20).forEach(function (err) {
+        lines.push(
+          "user " +
+            (err.user_id || "—") +
+            " / " +
+            (err.channel || "—") +
+            (err.crm_task_id ? " / задача " + err.crm_task_id : "") +
+            ": " +
+            (err.error || "")
+        );
+      });
+    }
+    return lines.map(function (line) { return escapeHtml(line); }).join("<br>");
+  }
+
+  function runCrmNotify(kind) {
+    var body = kind === "digest" ? { digest: true } : { instant: true };
+    var label = kind === "digest" ? "сводку «ожидает размещения»" : "уведомления о новых товарах";
+    setCrmNotifyLog("warning", "Считаем, кого затронет отправка " + label + "…");
+    var probe = Object.assign({ dry_run: true }, body);
+    return fetch("/api/exports/new-products/crm-notify/run", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(probe),
+    })
+      .then(function (r) {
+        return r.json().then(function (j) {
+          return { r: r, j: j };
+        });
+      })
+      .then(function (x) {
+        if (!x.r.ok && !x.j) throw new Error("HTTP " + x.r.status);
+        if (x.j && x.j.error && !x.j.posted && x.j.success === false && x.r.status >= 400) {
+          throw new Error(x.j.error);
+        }
+        var pre = x.j || {};
+        setCrmNotifyLog("info", "<strong>Проверка без записи.</strong><br>" + formatCrmRunReport(pre));
+        var count = kind === "digest" ? pre.digest_posted || 0 : pre.instant_posted || 0;
+        if (pre.did_baseline && kind !== "digest") {
+          return openNpConfirm({
+            title: "Запомнить очередь?",
+            message:
+              "Сейчас в очереди " +
+              (pre.baselined || 0) +
+              " товаров. Они будут помечены как уже известные, комментарии «появились новые» по ним не уйдут. Продолжить?",
+            okLabel: "Запомнить",
+            notifyStart: "Запоминаем текущую очередь…",
+          }).then(function (ok) {
+            if (!ok) return null;
+            return postCrmNotifyReal(body);
+          });
+        }
+        if (!count) {
+          setCrmNotifyLog("info", "<strong>Отправлять нечего.</strong><br>" + formatCrmRunReport(pre));
+          return null;
+        }
+        return openNpConfirm({
+          title: kind === "digest" ? "Отправить сводку в CRM?" : "Отправить новые товары в CRM?",
+          message:
+            "В задачи CRM уйдёт " +
+            count +
+            " комментариев. Это запись в боевую CRM, отменить комментарий из Датагона нельзя.",
+          okLabel: "Отправить",
+          notifyStart: "Пишем комментарии в CRM…",
+        }).then(function (ok) {
+          if (!ok) return null;
+          return postCrmNotifyReal(body);
+        });
+      });
+  }
+
+  function postCrmNotifyReal(body) {
+    setCrmNotifyLog("warning", "Запись в CRM…");
+    return fetch("/api/exports/new-products/crm-notify/run", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
+      .then(function (r) {
+        return r.json().then(function (j) {
+          return { r: r, j: j };
+        });
+      })
+      .then(function (x) {
+        var j = x.j || {};
+        if (!x.r.ok && j.error && !j.posted) throw new Error(j.error || "HTTP " + x.r.status);
+        setCrmNotifyLog(j.success ? "success" : "warning", "<strong>" + (j.success ? "Готово." : "Завершено с ошибками.") + "</strong><br>" + formatCrmRunReport(j));
+        return loadCrmNotify();
+      })
+      .catch(function (e) {
+        setCrmNotifyLog("danger", "<strong>Ошибка отправки.</strong> " + escapeHtml(e && e.message ? e.message : String(e)));
+      });
+  }
+
+  function bindCrmNotify() {
+    var saveBtn = el("dg-np-crm-notify-save");
+    if (saveBtn) {
+      saveBtn.addEventListener("click", function () {
+        var payload = crmNotifyPayloadFromForm();
+        setCrmNotifyLog("warning", "Сохраняем…");
+        var run = function () {
+          return fetch("/api/exports/new-products/crm-notify", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          })
+            .then(function (r) {
+              return r.json().then(function (j) {
+                return { r: r, j: j };
+              });
+            })
+            .then(function (x) {
+              if (!x.r.ok || !x.j.success) throw new Error((x.j && x.j.error) || "HTTP " + x.r.status);
+              applyCrmNotifySettings(x.j);
+              var extra = x.j.baselined_now
+                ? " Текущая очередь запомнена: " + fmtInt(x.j.baselined_now) + " товаров."
+                : "";
+              setCrmNotifyLog(
+                "success",
+                "<strong>Сохранено.</strong> Расписание " +
+                  (payload.enabled ? "включено" : "выключено") +
+                  ", сводка каждые " +
+                  fmtInt(payload.digest_days) +
+                  " дн., проверка каждые " +
+                  fmtInt(payload.interval_min) +
+                  " мин." +
+                  extra
+              );
+            })
+            .catch(function (e) {
+              setCrmNotifyLog("danger", "<strong>Ошибка сохранения.</strong> " + escapeHtml(e && e.message ? e.message : String(e)));
+            });
+        };
+        if (window.DatagonNotify && window.DatagonNotify.busyRun) window.DatagonNotify.busyRun(saveBtn, run);
+        else run();
+      });
+    }
+    var instantBtn = el("dg-np-crm-notify-instant-run");
+    if (instantBtn) {
+      instantBtn.addEventListener("click", function () {
+        var run = function () { return runCrmNotify("instant"); };
+        if (window.DatagonNotify && window.DatagonNotify.busyRun) window.DatagonNotify.busyRun(instantBtn, run);
+        else run();
+      });
+    }
+    var digestBtn = el("dg-np-crm-notify-digest-run");
+    if (digestBtn) {
+      digestBtn.addEventListener("click", function () {
+        var run = function () { return runCrmNotify("digest"); };
+        if (window.DatagonNotify && window.DatagonNotify.busyRun) window.DatagonNotify.busyRun(digestBtn, run);
+        else run();
+      });
+    }
+    var refreshBtn = el("dg-np-crm-notify-refresh");
+    if (refreshBtn) {
+      refreshBtn.addEventListener("click", function () {
+        var run = function () { return loadCrmNotify(); };
+        if (window.DatagonNotify && window.DatagonNotify.busyRun) window.DatagonNotify.busyRun(refreshBtn, run);
+        else run();
+      });
+    }
+  }
+
   function init() {
     try {
       var saved = localStorage.getItem(CHANNEL_KEY);
@@ -5116,6 +5488,13 @@
     } else if (urlTab === "standing") {
       setView("standing");
       if (state.view !== "standing") {
+        syncTabUi();
+        syncTabToUrl();
+        load();
+      }
+    } else if (urlTab === "crm-notify") {
+      setView("crm-notify");
+      if (state.view !== "crm-notify") {
         syncTabUi();
         syncTabToUrl();
         load();
@@ -5142,6 +5521,7 @@
     bindColumnPanels();
     bindNpLogUi();
     bindNpConfirmUi();
+    bindCrmNotify();
     bindMsDetailModal();
 
     document.addEventListener("datagon-profile-loaded", function () {
@@ -5151,7 +5531,7 @@
     document.querySelectorAll("#dg-np-tabs .nav-link").forEach(function (btn) {
       btn.addEventListener("click", function () {
         var view = btn.getAttribute("data-dg-np-view") || "table";
-        if (view === "stats" || view === "standing") {
+        if (view === "stats" || view === "standing" || view === "crm-notify") {
           setView(view);
           return;
         }

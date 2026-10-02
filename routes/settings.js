@@ -170,6 +170,7 @@ module.exports = (db, appSettings) => {
             auto_sync_marketplaces_ym_enabled, auto_sync_marketplaces_ym_time,
             auto_sync_huckster_enabled, auto_sync_huckster_time,
             auto_sync_np_ms_enrich_enabled, auto_sync_np_ms_enrich_interval_min, auto_sync_np_ms_enrich_weekdays,
+            auto_sync_np_crm_notify_enabled, auto_sync_np_crm_notify_interval_min, auto_sync_np_crm_notify_weekdays,
             auto_sync_db_size_enabled, auto_sync_db_size_time,
             auto_sync_export_ms_enabled,
             auto_sync_dimensions_enabled, auto_sync_dimensions_time, auto_sync_dimensions_weekdays,
@@ -318,6 +319,22 @@ module.exports = (db, appSettings) => {
                 queries.push([
                     'auto_sync_np_ms_enrich_weekdays',
                     normalizeAutoSyncWeekdaysCsv(auto_sync_np_ms_enrich_weekdays),
+                ]);
+            }
+            if (auto_sync_np_crm_notify_enabled !== undefined) {
+                queries.push(['auto_sync_np_crm_notify_enabled', auto_sync_np_crm_notify_enabled ? 1 : 0]);
+            }
+            if (auto_sync_np_crm_notify_interval_min !== undefined) {
+                const ivCrm = Number(auto_sync_np_crm_notify_interval_min || 15);
+                queries.push([
+                    'auto_sync_np_crm_notify_interval_min',
+                    String([15, 30, 60].includes(ivCrm) ? ivCrm : 15),
+                ]);
+            }
+            if (auto_sync_np_crm_notify_weekdays !== undefined) {
+                queries.push([
+                    'auto_sync_np_crm_notify_weekdays',
+                    normalizeAutoSyncWeekdaysCsv(auto_sync_np_crm_notify_weekdays),
                 ]);
             }
             if (auto_sync_db_size_enabled !== undefined) queries.push(['auto_sync_db_size_enabled', auto_sync_db_size_enabled ? 1 : 0]);
@@ -620,6 +637,18 @@ module.exports = (db, appSettings) => {
             if (auto_sync_np_ms_enrich_weekdays !== undefined) {
                 appSettings.auto_sync_np_ms_enrich_weekdays = normalizeAutoSyncWeekdaysCsv(
                     auto_sync_np_ms_enrich_weekdays
+                );
+            }
+            if (auto_sync_np_crm_notify_enabled !== undefined) {
+                appSettings.auto_sync_np_crm_notify_enabled = auto_sync_np_crm_notify_enabled ? 1 : 0;
+            }
+            if (auto_sync_np_crm_notify_interval_min !== undefined) {
+                const ivCrmMem = Number(auto_sync_np_crm_notify_interval_min || 15);
+                appSettings.auto_sync_np_crm_notify_interval_min = [15, 30, 60].includes(ivCrmMem) ? ivCrmMem : 15;
+            }
+            if (auto_sync_np_crm_notify_weekdays !== undefined) {
+                appSettings.auto_sync_np_crm_notify_weekdays = normalizeAutoSyncWeekdaysCsv(
+                    auto_sync_np_crm_notify_weekdays
                 );
             }
             if(auto_sync_db_size_enabled !== undefined) appSettings.auto_sync_db_size_enabled = auto_sync_db_size_enabled ? 1 : 0;

@@ -27,6 +27,9 @@
             <li class="nav-item">
               <button type="button" class="nav-link" data-dg-np-view="standing" id="dg-np-tab-standing">Постоянные задачи</button>
             </li>
+            <li class="nav-item">
+              <button type="button" class="nav-link" data-dg-np-view="crm-notify" id="dg-np-tab-crm-notify">Настройка уведомлений датагон-crm</button>
+            </li>
           </ul>
 
           <div id="dg-np-queue-panel">
@@ -419,6 +422,84 @@
                   <b>Ср. на 1 карточку</b> = (часы CRM × 60) ÷ (дни × 10) минут — при ориентире 10/день.
                   Колонка CRM — ID задачи инфографики (Enter сохраняет, scope=infographic).
                 </p>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-np-crm-notify-panel" class="d-none">
+            <div class="main-card mb-3 card">
+              <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+                <div class="d-flex align-items-center">
+                  <i class="header-icon pe-7s-bell icon-gradient bg-happy-fisher me-2"> </i>
+                  <span>Настройка уведомлений датагон-crm</span>
+                  <span class="badge bg-light text-dark ms-2" id="dg-np-crm-notify-ver">—</span>
+                </div>
+              </div>
+              <div class="card-body">
+                <div class="alert alert-info py-2 px-3 mb-3" role="status">
+                  Комментарий пишется в задачу CRM сотрудника.
+                  <b>Альмамед</b> — сразу, как только за ним появляется неразмещённый товар.
+                  <b>Маркеты</b> — когда заполнены все обязательные поля для размещения.
+                  Сводка «столько-то товаров ожидает размещения» уходит в каждую задачу раз в несколько дней.
+                  Товары, которые уже лежат в очереди на момент включения, как «новые» не отправляются — их число уходит сводкой.
+                </div>
+                <div class="row g-2 align-items-end">
+                  <div class="col-md-3">
+                    <div class="form-check">
+                      <input class="form-check-input" type="checkbox" id="dg-np-crm-notify-enabled" />
+                      <label class="form-check-label" for="dg-np-crm-notify-enabled">Автоматически по расписанию</label>
+                    </div>
+                  </div>
+                  <div class="col-md-3">
+                    <div class="form-check">
+                      <input class="form-check-input" type="checkbox" id="dg-np-crm-notify-instant" checked />
+                      <label class="form-check-label" for="dg-np-crm-notify-instant">Сразу о новых товарах</label>
+                    </div>
+                  </div>
+                  <div class="col-md-2">
+                    <label class="form-label" for="dg-np-crm-notify-days">Сводка, дней</label>
+                    <input type="text" inputmode="numeric" class="form-control" id="dg-np-crm-notify-days" value="3" data-dg-no-activity="1" />
+                  </div>
+                  <div class="col-md-2">
+                    <label class="form-label" for="dg-np-crm-notify-interval">Проверка, мин</label>
+                    <select class="form-select" id="dg-np-crm-notify-interval" data-dg-no-activity="1">
+                      <option value="15" selected>15</option>
+                      <option value="30">30</option>
+                      <option value="60">60</option>
+                    </select>
+                  </div>
+                  <div class="col-md-2">
+                    <label class="form-label" for="dg-np-crm-notify-author">Автор в CRM, id</label>
+                    <input type="text" inputmode="numeric" class="form-control" id="dg-np-crm-notify-author" value="1" data-dg-no-activity="1" />
+                  </div>
+                </div>
+                <p class="small text-muted mt-2 mb-2">0 дней — сводку не слать. Автор — пользователь CRM, от имени которого пишется комментарий (по умолчанию 1). Задачи берутся из привязок контент-менеджеров.</p>
+                <div class="d-flex flex-wrap gap-2">
+                  <button type="button" class="btn btn-success" id="dg-np-crm-notify-save" data-dg-notify-start="Сохраняем настройки уведомлений…">Сохранить</button>
+                  <button type="button" class="btn btn-outline-primary" id="dg-np-crm-notify-instant-run" data-dg-notify-start="Проверяем новые товары для CRM…">Отправить новые</button>
+                  <button type="button" class="btn btn-outline-primary" id="dg-np-crm-notify-digest-run" data-dg-notify-start="Считаем сводку для CRM…">Отправить сводку</button>
+                  <button type="button" class="btn btn-outline-secondary" id="dg-np-crm-notify-refresh" data-dg-notify-start="Обновляем очередь уведомлений…">Обновить</button>
+                </div>
+                <div id="dg-np-crm-notify-log" class="alert mt-3 mb-3 d-none" role="status"></div>
+                <div class="table-responsive">
+                  <table class="table table-sm table-hover mb-0">
+                    <thead>
+                      <tr>
+                        <th>Сотрудник</th>
+                        <th>Альмамед</th>
+                        <th class="text-end">Ждёт</th>
+                        <th class="text-end">Новые</th>
+                        <th>Маркеты</th>
+                        <th class="text-end">Ждёт</th>
+                        <th class="text-end">Новые</th>
+                      </tr>
+                    </thead>
+                    <tbody id="dg-np-crm-notify-tbody">
+                      <tr><td colspan="7" class="text-muted text-center py-3">Откройте вкладку, чтобы загрузить</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+                <p class="small text-muted mt-2 mb-0" id="dg-np-crm-notify-hint"></p>
               </div>
             </div>
           </div>

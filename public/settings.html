@@ -2004,6 +2004,48 @@
                                   </div>
                 </div>
 
+                <div class="col-12 dg-as-task" data-as-task="np_crm_notify" data-as-category="internal" data-as-schedule-mode="interval" data-as-en-id="dg-set-auto_np_crm_notify_en" data-as-interval-id="dg-set-auto_np_crm_notify_interval" data-as-weekdays-prefix="dg-set-auto_np_crm_notify_wd">
+                  <div class="dg-as-task-card dg-as-cat-internal">
+                    <div class="dg-as-task-head">
+                      <span class="dg-as-cat-pill dg-as-cat-pill-dynamic"></span>
+                      <span class="dg-as-next-badge dg-as-next-badge-dynamic"></span>
+                    </div>
+                  <label class="form-label">Новые товары: уведомления в задачи CRM (МСК)</label>
+                  <div class="d-flex gap-2 align-items-center flex-wrap">
+                    <input type="checkbox" id="dg-set-auto_np_crm_notify_en" />
+                    <span>Включить</span>
+                    <label for="dg-set-auto_np_crm_notify_interval" class="form-label mb-0 ms-1">Каждые</label>
+                    <select class="form-select" id="dg-set-auto_np_crm_notify_interval" style="max-width:120px">
+                      <option value="15" selected>15 мин</option>
+                      <option value="30">30 мин</option>
+                      <option value="60">60 мин</option>
+                    </select>
+                    <button type="button" class="btn btn-outline-primary btn-sm" id="dg-set-auto_np_crm_notify_run" data-dg-activity-label="Проверить очередь и отправить уведомления CRM" data-dg-notify-start="Ставим в очередь уведомления CRM…">
+                      Запустить сейчас
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm dg-set-as-log-btn" data-dg-notify-start="Открываем журнал запусков…" data-dg-tooltip="Журнал запусков этой задачи за выбранный день (МСК)">Лог</button>
+                  </div>
+                  <div class="mt-2">
+                    <div class="form-label small text-muted mb-1">Дни недели (МСК)</div>
+                    <div class="d-flex flex-wrap gap-2 align-items-center">
+                      <label class="form-check form-check-inline mb-0 small"><input type="checkbox" class="form-check-input" id="dg-set-auto_np_crm_notify_wd_1" /> пн</label>
+                      <label class="form-check form-check-inline mb-0 small"><input type="checkbox" class="form-check-input" id="dg-set-auto_np_crm_notify_wd_2" /> вт</label>
+                      <label class="form-check form-check-inline mb-0 small"><input type="checkbox" class="form-check-input" id="dg-set-auto_np_crm_notify_wd_3" /> ср</label>
+                      <label class="form-check form-check-inline mb-0 small"><input type="checkbox" class="form-check-input" id="dg-set-auto_np_crm_notify_wd_4" /> чт</label>
+                      <label class="form-check form-check-inline mb-0 small"><input type="checkbox" class="form-check-input" id="dg-set-auto_np_crm_notify_wd_5" /> пт</label>
+                      <label class="form-check form-check-inline mb-0 small"><input type="checkbox" class="form-check-input" id="dg-set-auto_np_crm_notify_wd_6" /> сб</label>
+                      <label class="form-check form-check-inline mb-0 small"><input type="checkbox" class="form-check-input" id="dg-set-auto_np_crm_notify_wd_7" /> вс</label>
+                    </div>
+                  </div>
+                  <p class="small text-muted mb-0 mt-1">
+                    Смотрит очередь <a href="/exports-new-products.html#crm-notify">«Новые товары» → уведомления CRM</a>.
+                    Альмамед — комментарий, как только за сотрудником появился неразмещённый товар.
+                    Маркеты — когда заполнены обязательные поля. Сводка «ожидает размещения» — по периоду с той же вкладки.
+                    Первое включение запоминает текущую очередь и не шлёт её как «новые».
+                  </p>
+                                  </div>
+                </div>
+
                 <div class="col-12 dg-as-task" data-as-task="db_size" data-as-category="internal" data-as-en-id="dg-set-auto_db_size_en" data-as-time-id="dg-set-auto_db_size_time">
                   <div class="dg-as-task-card dg-as-cat-internal">
                     <div class="dg-as-task-head">
@@ -3787,6 +3829,12 @@
         if ([15, 30, 60].indexOf(npIv) < 0) npIv = 30;
         set("dg-set-auto_np_ms_enrich_interval", String(npIv));
         applyAutoSyncWeekdayChecks("dg-set-auto_np_ms_enrich_wd", merged.auto_sync_np_ms_enrich_weekdays);
+        var npCrmEn = document.getElementById("dg-set-auto_np_crm_notify_en");
+        if (npCrmEn) npCrmEn.checked = Number(merged.auto_sync_np_crm_notify_enabled) === 1;
+        var npCrmIv = Number(merged.auto_sync_np_crm_notify_interval_min || 15);
+        if ([15, 30, 60].indexOf(npCrmIv) < 0) npCrmIv = 15;
+        set("dg-set-auto_np_crm_notify_interval", String(npCrmIv));
+        applyAutoSyncWeekdayChecks("dg-set-auto_np_crm_notify_wd", merged.auto_sync_np_crm_notify_weekdays);
         document.getElementById("dg-set-auto_db_size_en").checked = Number(merged.auto_sync_db_size_enabled) === 1;
         set("dg-set-auto_db_size_time", merged.auto_sync_db_size_time || "02:00");
         var exportMsEn = document.getElementById("dg-set-auto_export_ms_en");
@@ -4967,6 +5015,14 @@
             return [15, 30, 60].indexOf(n) >= 0 ? n : 30;
           })(),
           auto_sync_np_ms_enrich_weekdays: collectAutoSyncWeekdayCsv("dg-set-auto_np_ms_enrich_wd"),
+          auto_sync_np_crm_notify_enabled: document.getElementById("dg-set-auto_np_crm_notify_en")
+            ? document.getElementById("dg-set-auto_np_crm_notify_en").checked
+            : false,
+          auto_sync_np_crm_notify_interval_min: (function () {
+            var n = getNum("dg-set-auto_np_crm_notify_interval", 15);
+            return [15, 30, 60].indexOf(n) >= 0 ? n : 15;
+          })(),
+          auto_sync_np_crm_notify_weekdays: collectAutoSyncWeekdayCsv("dg-set-auto_np_crm_notify_wd"),
           auto_sync_db_size_enabled: document.getElementById("dg-set-auto_db_size_en").checked,
           auto_sync_db_size_time: getStr("dg-set-auto_db_size_time") || "02:00",
           auto_sync_export_ms_enabled: document.getElementById("dg-set-auto_export_ms_en")
@@ -6484,6 +6540,12 @@
       if (npMsEnrichRun) {
         npMsEnrichRun.addEventListener("click", function () {
           runAutoSyncNow("np_ms_enrich", "Новые товары: поля МС", "dg-set-auto_np_ms_enrich_run");
+        });
+      }
+      var npCrmNotifyRun = document.getElementById("dg-set-auto_np_crm_notify_run");
+      if (npCrmNotifyRun) {
+        npCrmNotifyRun.addEventListener("click", function () {
+          runAutoSyncNow("np_crm_notify", "Новые товары: уведомления CRM", "dg-set-auto_np_crm_notify_run");
         });
       }
       document.getElementById("dg-set-auto_db_size_run").addEventListener("click", function () { runAutoSyncNow("db_size", "Размер БД и диска", "dg-set-auto_db_size_run"); });

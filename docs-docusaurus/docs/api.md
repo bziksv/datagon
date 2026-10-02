@@ -168,6 +168,7 @@ Body (пример):
 - **`auto_sync_marketplaces_ozon_enabled`** / **`auto_sync_marketplaces_ozon_time`**, **`auto_sync_marketplaces_wb_*`**, **`auto_sync_marketplaces_ym_*`** — **отдельные** ежедневные обновления снапшотов Ozon / Wildberries / Я.Маркет (МСК). `task_type` в `auto_sync_runs`: `marketplaces_ozon` | `marketplaces_wb` | `marketplaces_ym`. Файловые журналы шагов: `logs/marketplace-ozon-sync.log`, `logs/marketplace-wb-sync.log`, `logs/marketplace-ym-sync.log`. Рекомендуемые слоты разнесены (06:00 / 06:25 / 06:50), чтобы Я.Маркет не ловил 420 сразу после Ozon/WB. Legacy `auto_sync_marketplaces_*` / `task=marketplaces` (все три сразу) оставлены для ручного API, в расписании UI больше не показываются; при первом старте после обновления включённое старое расписание мигрирует в три задачи (`auto_sync_marketplaces_split_v1`).
 - **`auto_sync_huckster_enabled`** / **`auto_sync_huckster_time`** — ежедневное обновление матриц Huckster (МСК); учётные данные — из `app_settings` или `HUCKSTER_EMAIL` / `HUCKSTER_PASSWORD`.
 - **`auto_sync_np_ms_enrich_enabled`** / **`auto_sync_np_ms_enrich_interval_min`** / **`auto_sync_np_ms_enrich_weekdays`** — дозаполнение пустых кода / штрихкода / НДС / РУ в очереди «Новые товары → маркеты» из **кэша** МойСклад (без live API). Интервал: **15 / 30 / 60** мин (слоты МСК `:00`/`:15`/`:30`/`:45` в зависимости от шага). Дни недели — CSV `1=пн…7=вс` (пусто или `1…7` — каждый день). `task: "np_ms_enrich"`.
+- **`auto_sync_np_crm_notify_enabled`** / **`auto_sync_np_crm_notify_interval_min`** / **`auto_sync_np_crm_notify_weekdays`** — проверка очереди «Новые товары» и комментарии в задачи CRM. Интервал **15 / 30 / 60** мин. Период сводки и автор комментария — `np_crm_notify_digest_days`, `np_crm_notify_instant_enabled`, `np_crm_notify_crm_user_id` (вкладка `#crm-notify`). `task: "np_crm_notify"`.
 - **`auto_sync_db_size_enabled`** / **`auto_sync_db_size_time`** — ежедневный пересчёт кэша размера БД для дашборда (МСК, `HH:MM`).
 - **`auto_sync_export_ms_enabled`** — мастер-переключатель блока «Экспорт в МС» на `/settings.html`; без него не планируются **`dimensions`** и **`min_stock_export`**.
 - **`auto_sync_dimensions_enabled`** / **`auto_sync_dimensions_time`** / **`auto_sync_dimensions_weekdays`** — ежедневная **выгрузка пользовательских габаритов** (`ms_dimensions_measurements`) в МойСклад (МСК, `HH:MM`, по умолчанию `21:00`). Серверный аналог кнопки «↗ В МС: все правки (все страницы)» на `/exports-dimensions.html`: для каждой позиции с override и валидным `uuid` в `ms_export` отправляет `PUT /entity/{product|bundle}/{uuid}` через `routes/dimensions.js → runScheduledSyncMs`. Каждое отправленное поле фиксируется в `ms_dimensions_log` как `action='sync_ms'` с `note='sync_ms entity=… http=… (schedule)'`. Прогресс и summary видны на `/processes.html` (раздел «Габариты МС») и в `auto_sync_runs.message` (после старта текст **обновляется по ходу** каждые 5 позиций: `обработано/всего`, ✓/×, без uuid; финально — `Всего: N; ✓ ok; × err; пропущено (без uuid): K`).
@@ -226,7 +227,7 @@ Query:
 
 Принудительно поставить одну задачу автосинхронизации в общую очередь расписания, не дожидаясь времени запуска. Используется кнопками «Запустить сейчас» в `settings.html`.
 
-Body: `{ "task": "myproducts" | "moysklad" | "ms_orders" | "marketplaces_ozon" | "marketplaces_wb" | "marketplaces_ym" | "marketplaces" | "huckster" | "np_ms_enrich" | "db_size" | "dimensions" | "min_stock_export" | "mssales" | "mssales_full" | "purchase_formula_cache" | "medmarket" | "medmarket_fill" | "price_comp_sync" | "network_prices" | "finance_tochka" }`. Whitelist — `lib/datagonAutoSyncRegistry.js → getAutoSyncTaskKeys()` плюс legacy **`marketplaces`** (все три площадки одним прогоном). Запись в `auto_sync_runs` с `trigger_type = "manual"`. Для `dimensions` — балк как по расписанию. Для `mssales` / `mssales_full` / `ms_orders` — см. соответствующие `auto_sync_*` выше. Для **`purchase_formula_cache`** — `runPurchaseFormulaCacheBatch(db, appSettings)` (дефолтные фильтры закупок, чанками без RAM-снимка). Для **`medmarket`** — `routes/medmarket.js → triggerSync(db)` (каталог из `ms_export`). Для **`price_comp_sync`** — `routes/myproducts.js → triggerPriceCompSyncFromSettings(appSettings)` (фильтры из `auto_sync_price_comp_*`). Для **`network_prices`** — `routes/networkPrices.js → triggerNetworkPricesSyncFromSettings` (все enabled-сайты с заданным `%`). Для **`finance_tochka`** — `routes/finance.js → triggerFinanceSyncFromSettings` (счета + выписка Точки за `auto_sync_finance_tochka_days`). Для **`np_ms_enrich`** — `lib/dgNewProductsMarkets.js → backfillMarketsMsFieldsFromCache` (кэш МС, без live API).
+Body: `{ "task": "myproducts" | "moysklad" | "ms_orders" | "marketplaces_ozon" | "marketplaces_wb" | "marketplaces_ym" | "marketplaces" | "huckster" | "np_ms_enrich" | "np_crm_notify" | "db_size" | "dimensions" | "min_stock_export" | "mssales" | "mssales_full" | "purchase_formula_cache" | "medmarket" | "medmarket_fill" | "price_comp_sync" | "network_prices" | "finance_tochka" }`. Whitelist — `lib/datagonAutoSyncRegistry.js → getAutoSyncTaskKeys()` плюс legacy **`marketplaces`** (все три площадки одним прогоном). Запись в `auto_sync_runs` с `trigger_type = "manual"`. Для `dimensions` — балк как по расписанию. Для `mssales` / `mssales_full` / `ms_orders` — см. соответствующие `auto_sync_*` выше. Для **`purchase_formula_cache`** — `runPurchaseFormulaCacheBatch(db, appSettings)` (дефолтные фильтры закупок, чанками без RAM-снимка). Для **`medmarket`** — `routes/medmarket.js → triggerSync(db)` (каталог из `ms_export`). Для **`price_comp_sync`** — `routes/myproducts.js → triggerPriceCompSyncFromSettings(appSettings)` (фильтры из `auto_sync_price_comp_*`). Для **`network_prices`** — `routes/networkPrices.js → triggerNetworkPricesSyncFromSettings` (все enabled-сайты с заданным `%`). Для **`finance_tochka`** — `routes/finance.js → triggerFinanceSyncFromSettings` (счета + выписка Точки за `auto_sync_finance_tochka_days`). Для **`np_ms_enrich`** — `lib/dgNewProductsMarkets.js → backfillMarketsMsFieldsFromCache` (кэш МС, без live API).
 
 Ответ `{ "success": true, "queued": true|false, "skip_reason": null|"already_running"|"already_queued"|"invalid_task"|"wrong_worker", "task", "worker", "local_worker", "dispatch_id?", "queue", "runner_active", "running_tasks" }`. Поле **`worker`** — целевой воркер задачи из реестра (`1` = `parser-app`, `2` = `parser-autosync-w2`). Если целевой воркер ≠ HTTP-процессу, задача пишется в **`auto_sync_dispatch`** и подхватывается вторым процессом (см. [Деплой](/docs/deploy)). Поле **`running_tasks`** — массив строк `task_type` с незавершённой записью в `auto_sync_runs`. Поле **`queued: false`** — задача **не** добавлена (`skip_reason`). На `/settings.html` ответ показывается плашкой на карточке; у каждой задачи бейдж **«Воркер N»**.
 
@@ -1475,7 +1476,7 @@ Body (JSON):
 
 ## Exports / Новые товары
 
-Префикс: `/api/exports/new-products`. Экран: `/exports-new-products.html` (подменю **Маркетплейсы**). Вкладки UI: **Альмамед** (`channel=almamed`), **Маркеты** (`channel=marketplaces`), **Статистика контент-отдела** (`GET /content-stats`), **Постоянные задачи** (`GET /standing-stats`, инфографика). Deep-link вкладок (hash или `?tab=`): `#almamed`, `#marketplaces`, `#stats`, `#standing` (алиасы `#content-stats`, `#infographic`, `?tab=markets`). Таблица `dg_new_products` (создаётся при первом запросе).
+Префикс: `/api/exports/new-products`. Экран: `/exports-new-products.html` (подменю **Маркетплейсы**). Вкладки UI: **Альмамед** (`channel=almamed`), **Маркеты** (`channel=marketplaces`), **Статистика контент-отдела** (`GET /content-stats`), **Постоянные задачи** (`GET /standing-stats`, инфографика), **Настройка уведомлений датагон-crm** (`#crm-notify`). Deep-link вкладок (hash или `?tab=`): `#almamed`, `#marketplaces`, `#stats`, `#standing`, `#crm-notify` (алиасы `#content-stats`, `#infographic`, `#crm`, `?tab=markets`). Таблица `dg_new_products` (создаётся при первом запросе).
 
 **UI / wide-таблица (lock):** плавающая шапка — `#dg-np-float-host` (`position: fixed` клон thead), **не** `translate3d` на живом `#dg-np-thead` (тяжёлая таблица; shop-схема Ozon сюда не копировать). Ширины — только `<colgroup>`, `table-layout: auto`. Контракт: `.cursor/rules/datagon-table-behavior-lock.mdc` (раздел «Новые товары»).
 
@@ -1624,6 +1625,34 @@ KPI постоянной задачи **«Проработка инфограф�
 - `infographic` → матрица **`exports-new-products-standing`**
 
 `full` для записи; `view` — только GET того же пути с тем же scope. Body: `{ user_id, crm_task_id, scope? }` (`scope` = `almamed` | `marketplaces` | `infographic`, default `marketplaces`). Пустой/`null`/`0` — снять привязку. GET того же пути — список привязок указанного scope.
+
+### Уведомления в задачи CRM
+
+Вкладка **«Настройка уведомлений датагон-crm»** (`#crm-notify`). Доступ: матрица **`exports-new-products-crm-notify`** (`hidden` / `view` / `full`). `view` — только GET; запись и отправка — `full`.
+
+Привязка сотрудник → задача берётся из `dg_np_crm_task_links` (`scope=almamed|marketplaces`), те же ID, что на статистике контент-отдела.
+
+| Событие | Когда |
+|---------|--------|
+| Новые, Альмамед | у ответственного появился неразмещённый товар (`new` / `not_added` / `in_progress` / `revision` / `review`) |
+| Новые, маркеты | то же, но только если заполнены обязательные поля размещения |
+| Сводка | раз в `np_crm_notify_digest_days` дней (0 — выключена): «Товаров ожидает размещения: N» |
+
+Первое включение мгновенных уведомлений **запоминает** текущую очередь (`np_crm_notify_baselined`) и не шлёт её как «новые». Дальше комментарий пишется в `rise_project_comments` и колокольчик CRM (`project_task_commented`). Автор — `np_crm_notify_crm_user_id` (по умолчанию `1`).
+
+Расписание — задача автосинка **`np_crm_notify`** (интервал 15/30/60 мин). На экране кнопка «Отправить новые» / «Отправить сводку» сначала делает `dry_run`, затем подтверждение и запись.
+
+#### GET `/api/exports/new-products/crm-notify`
+
+Снимок настроек и счётчиков по сотрудникам: `settings`, `people[]` (`almamed` / `marketplaces`: `crm_task_id`, `waiting`, `fresh`), `waiting_total`, `crm_configured`, `script` (`version`, `revision`).
+
+#### POST `/api/exports/new-products/crm-notify`
+
+Сохранить. Body: `enabled`, `instant_enabled`, `digest_days` (0–30), `interval_min` (15|30|60), `crm_user_id`. При первом включении мгновенных уведомлений возвращает `baselined_now`.
+
+#### POST `/api/exports/new-products/crm-notify/run`
+
+Body: `instant` и/или `digest` (сводка уходит сразу, не дожидаясь периода), `dry_run`. Ответ: `baselined`, `did_baseline`, `instant_posted`, `instant_products`, `digest_posted`, `errors[]` (до 20), `duration_sec`, `script`.
 
 ## Exports / Отснять товары
 

@@ -1169,6 +1169,12 @@
         if ([15, 30, 60].indexOf(npIv) < 0) npIv = 30;
         set("dg-set-auto_np_ms_enrich_interval", String(npIv));
         applyAutoSyncWeekdayChecks("dg-set-auto_np_ms_enrich_wd", merged.auto_sync_np_ms_enrich_weekdays);
+        var npCrmEn = document.getElementById("dg-set-auto_np_crm_notify_en");
+        if (npCrmEn) npCrmEn.checked = Number(merged.auto_sync_np_crm_notify_enabled) === 1;
+        var npCrmIv = Number(merged.auto_sync_np_crm_notify_interval_min || 15);
+        if ([15, 30, 60].indexOf(npCrmIv) < 0) npCrmIv = 15;
+        set("dg-set-auto_np_crm_notify_interval", String(npCrmIv));
+        applyAutoSyncWeekdayChecks("dg-set-auto_np_crm_notify_wd", merged.auto_sync_np_crm_notify_weekdays);
         document.getElementById("dg-set-auto_db_size_en").checked = Number(merged.auto_sync_db_size_enabled) === 1;
         set("dg-set-auto_db_size_time", merged.auto_sync_db_size_time || "02:00");
         var exportMsEn = document.getElementById("dg-set-auto_export_ms_en");
@@ -2349,6 +2355,14 @@
             return [15, 30, 60].indexOf(n) >= 0 ? n : 30;
           })(),
           auto_sync_np_ms_enrich_weekdays: collectAutoSyncWeekdayCsv("dg-set-auto_np_ms_enrich_wd"),
+          auto_sync_np_crm_notify_enabled: document.getElementById("dg-set-auto_np_crm_notify_en")
+            ? document.getElementById("dg-set-auto_np_crm_notify_en").checked
+            : false,
+          auto_sync_np_crm_notify_interval_min: (function () {
+            var n = getNum("dg-set-auto_np_crm_notify_interval", 15);
+            return [15, 30, 60].indexOf(n) >= 0 ? n : 15;
+          })(),
+          auto_sync_np_crm_notify_weekdays: collectAutoSyncWeekdayCsv("dg-set-auto_np_crm_notify_wd"),
           auto_sync_db_size_enabled: document.getElementById("dg-set-auto_db_size_en").checked,
           auto_sync_db_size_time: getStr("dg-set-auto_db_size_time") || "02:00",
           auto_sync_export_ms_enabled: document.getElementById("dg-set-auto_export_ms_en")
@@ -3866,6 +3880,12 @@
       if (npMsEnrichRun) {
         npMsEnrichRun.addEventListener("click", function () {
           runAutoSyncNow("np_ms_enrich", "Новые товары: поля МС", "dg-set-auto_np_ms_enrich_run");
+        });
+      }
+      var npCrmNotifyRun = document.getElementById("dg-set-auto_np_crm_notify_run");
+      if (npCrmNotifyRun) {
+        npCrmNotifyRun.addEventListener("click", function () {
+          runAutoSyncNow("np_crm_notify", "Новые товары: уведомления CRM", "dg-set-auto_np_crm_notify_run");
         });
       }
       document.getElementById("dg-set-auto_db_size_run").addEventListener("click", function () { runAutoSyncNow("db_size", "Размер БД и диска", "dg-set-auto_db_size_run"); });

@@ -80,6 +80,14 @@ description: Обязательные ревизии при изменении �
 
 Полный список — в `lib/hucksterSyncRevision.js`.
 
+## Уведомления CRM по новым товарам
+
+Реестр: `lib/dgNpCrmNotifyRevision.js`. В ответе `GET/POST /api/exports/new-products/crm-notify` поле `script`. Бейдж на вкладке «Настройка уведомлений датагон-crm».
+
+| rev | version | date | notes |
+|-----|---------|------|-------|
+| 1 | 1.0.0 | 2026-10-02 | Мгновенный комментарий (Альмамед — неразмещённые; маркеты — после заполнения полей) и сводка раз в N дней. Первое включение запоминает текущую очередь. |
+
 ## Cursor (для разработчиков)
 
 Правило агента: `.cursor/rules/datagon-script-version-revision.mdc` (always apply).
