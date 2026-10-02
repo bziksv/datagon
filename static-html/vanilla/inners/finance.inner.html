@@ -25,22 +25,31 @@
             </div>
             <div class="card-body" id="dg-fin-bank-body">
               <p class="small text-muted mb-2">
-                В кабинете Точки: <strong>Интеграции и API</strong> → скопируйте <strong>JWT</strong> (длинный токен) и вставьте сюда.
-                Нужны scopes <code>ReadAccounts</code>, <code>ReadBalances</code>, <code>ReadStatements</code>.
+                Можно сохранить <strong>несколько JWT</strong> — по одному на организацию (или один ключ с правами на все компании в кабинете Точки).
+                При генерации для каждой компании отметьте <code>ReadAccounts</code>, <code>ReadBalances</code>, <code>ReadStatements</code>.
               </p>
-              <p class="small text-muted mb-0">
-                <strong>Client ID</strong> и <strong>Client Secret</strong> на этой странице <em>не вводятся</em> — они для OAuth/приложений; Datagon в этом релизе работает только по JWT из кабинета. Redirect URL тоже не нужен.
+              <p class="small text-muted mb-3">
+                <strong>Депозиты и фонды</strong> отдельным API не отдаются; если Точка вернула их как счета — они появятся в снимке.
               </p>
-              <div class="row g-2 align-items-end">
-                <div class="col-md-8">
-                  <label class="form-label" for="dg-fin-jwt">JWT Точки</label>
-                  <input type="password" class="form-control" id="dg-fin-jwt" autocomplete="off" placeholder="Вставьте JWT для сохранения" />
-                  <div class="form-text" id="dg-fin-jwt-mask">Не задан</div>
+
+              <div id="dg-fin-cred-list" class="mb-3"></div>
+
+              <div class="border rounded p-3 bg-light">
+                <div class="fw-semibold mb-2">Добавить организацию / JWT</div>
+                <div class="row g-2 align-items-end">
+                  <div class="col-md-4">
+                    <label class="form-label" for="dg-fin-cred-label">Название</label>
+                    <input type="text" class="form-control" id="dg-fin-cred-label" placeholder="ООО Альмамед" autocomplete="off" />
+                  </div>
+                  <div class="col-md-8">
+                    <label class="form-label" for="dg-fin-jwt">JWT Точки</label>
+                    <input type="password" class="form-control" id="dg-fin-jwt" autocomplete="off" placeholder="Вставьте JWT" />
+                  </div>
                 </div>
-              </div>
-              <div class="mt-3 d-flex flex-wrap gap-2">
-                <button type="button" class="btn btn-sm btn-primary" id="dg-fin-btn-save-bank" data-dg-notify-start="Сохраняем JWT…">Сохранить</button>
-                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-fin-btn-probe" data-dg-notify-start="Проверяем связь с Точкой…">Проверить связь</button>
+                <div class="mt-3 d-flex flex-wrap gap-2">
+                  <button type="button" class="btn btn-sm btn-primary" id="dg-fin-btn-save-bank" data-dg-notify-start="Сохраняем JWT организации…">Добавить / сохранить</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-fin-btn-probe" data-dg-notify-start="Проверяем все JWT Точки…">Проверить все</button>
+                </div>
               </div>
               <div id="dg-fin-bank-save-msg" class="alert mt-3 mb-0 d-none" role="status"></div>
             </div>
@@ -49,6 +58,39 @@
           <div class="dg-fin-balances mb-3" id="dg-fin-balances" aria-label="Балансы">
             <div id="dg-fin-total-wrap"></div>
             <div class="dg-fin-banks" id="dg-fin-banks-wrap"></div>
+            <p id="dg-fin-api-note" class="small text-muted mt-2 mb-0 d-none" role="note"></p>
+          </div>
+
+          <div class="main-card mb-3 card" id="dg-fin-analytics-card">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <i class="header-icon pe-7s-graph1 icon-gradient bg-happy-itmeo me-1"></i>
+                <span>Аналитика по месяцам</span>
+                <span class="badge bg-light text-muted border" id="dg-fin-analytics-scope">Все организации</span>
+              </div>
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <label class="mb-0 small text-muted d-inline-flex align-items-center gap-1" for="dg-fin-analytics-deposits" title="То же, что галка в фильтрах: депозиты, фонды, дивиденды.">
+                  <input type="checkbox" class="form-check-input m-0" id="dg-fin-analytics-deposits" />
+                  <span>включая внутренние</span>
+                </label>
+                <label class="mb-0 small text-muted" for="dg-fin-analytics-months">Период</label>
+                <select id="dg-fin-analytics-months" class="form-select form-select-sm" style="width:auto" data-dg-notify-start="Обновляем график…">
+                  <option value="6">6 мес.</option>
+                  <option value="12" selected>12 мес.</option>
+                  <option value="24">24 мес.</option>
+                </select>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-fin-analytics-refresh" data-dg-notify-start="Обновляем график…">Обновить</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-fin-analytics-toggle">Свернуть</button>
+              </div>
+            </div>
+            <div class="card-body" id="dg-fin-analytics-body">
+              <div class="dg-fin-analytics-kpis" id="dg-fin-analytics-kpis" aria-live="polite"></div>
+              <div class="dg-fin-analytics-chart-wrap">
+                <canvas id="dg-fin-analytics-chart" height="280" aria-label="График поступлений и списаний по месяцам"></canvas>
+                <div id="dg-fin-analytics-empty" class="dg-fin-analytics-empty d-none">Нет проводок за выбранный период — загрузите выписки.</div>
+              </div>
+              <p class="small text-muted mb-0 mt-2">По снимку из БД. Организация и счёт — из применённых фильтров. По умолчанию без <strong>внутреннего оборота</strong>: тело депозита (UNV), «Перевод собственных средств» (расчётный ↔ фонд) и <strong>выплаты дивидендов</strong>. Проценты и реальные платежи из фонда остаются. Зелёный — входящие, красный — исходящие, линия — чистый поток. <strong>Клик по столбцу месяца</strong> подставляет «С даты» / «По дату» (и направление) — остаётся нажать «Применить».</p>
+            </div>
           </div>
 
           <div class="main-card mb-3 card">
@@ -80,9 +122,15 @@
             </div>
             <div class="card-body" id="dg-fin-filters-body">
               <div class="row g-2 align-items-end">
-                <div class="col-md-4" data-dg-fin-filter-field="search" data-dg-filter-field-title="Умный поиск">
+                <div class="col-md-3" data-dg-fin-filter-field="search" data-dg-filter-field-title="Умный поиск">
                   <label class="form-label" for="dg-fin-search">Умный поиск</label>
                   <input type="search" id="dg-fin-search" class="form-control" placeholder="Назначение, контрагент, ИНН, номер, счёт…" autocomplete="off" />
+                </div>
+                <div class="col-md-2" data-dg-fin-filter-field="org" data-dg-filter-field-title="Организация">
+                  <label class="form-label" for="dg-fin-org">Организация</label>
+                  <select id="dg-fin-org" class="form-select">
+                    <option value="">Все</option>
+                  </select>
                 </div>
                 <div class="col-md-2" data-dg-fin-filter-field="date_from">
                   <label class="form-label" for="dg-fin-date-from">С даты</label>
@@ -92,7 +140,7 @@
                   <label class="form-label" for="dg-fin-date-to">По дату</label>
                   <input type="date" id="dg-fin-date-to" class="form-control" />
                 </div>
-                <div class="col-md-2" data-dg-fin-filter-field="direction">
+                <div class="col-md-1" data-dg-fin-filter-field="direction">
                   <label class="form-label" for="dg-fin-direction">Направление</label>
                   <select id="dg-fin-direction" class="form-select">
                     <option value="">Все</option>
@@ -124,16 +172,74 @@
                     <option value="30" selected>30</option>
                     <option value="60">60</option>
                     <option value="90">90</option>
+                    <option value="180">180</option>
+                    <option value="365">365</option>
+                    <option value="730">730</option>
+                    <option value="1095">1095</option>
                   </select>
+                </div>
+                <div class="col-md-4" data-dg-fin-filter-field="include_internal" data-dg-filter-field-title="Внутренние">
+                  <label class="form-label d-block" for="dg-fin-include-internal">Внутренние операции</label>
+                  <label class="mb-0 small text-muted d-inline-flex align-items-center gap-2" title="Депозиты UNV, переводы расчётный ↔ фонд, выплаты дивидендов. Без галки скрыты в «Движении» и в аналитике.">
+                    <input type="checkbox" class="form-check-input m-0" id="dg-fin-include-internal" />
+                    <span>Показывать депозиты, фонды и дивиденды</span>
+                  </label>
                 </div>
               </div>
               <div class="mt-3 d-flex flex-wrap gap-2">
                 <button type="button" class="btn btn-sm btn-primary" id="dg-fin-apply" data-dg-notify-start="Применяем фильтры…">Применить</button>
                 <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-fin-reset" data-dg-notify-start="Сбрасываем фильтры…">По умолчанию</button>
-                <button type="button" class="btn btn-sm btn-outline-success" id="dg-fin-sync" data-dg-notify-start="Обновляем из банка Точка…">Обновить из банка</button>
+                <button type="button" class="btn btn-sm btn-success" id="dg-fin-load-tx" data-dg-notify-start="Загружаем выписки из Точки…">Загрузить выписки</button>
+                <button type="button" class="btn btn-sm btn-outline-success" id="dg-fin-sync" data-dg-notify-start="Обновляем все организации из банка…">Обновить все</button>
               </div>
+              <p class="small text-muted mt-2 mb-0">«Загрузить выписки» берёт период дат, организацию и счёт из фильтров и тянет проводки из Точки. Без дат — окно «Выписка, дн.».</p>
               <div id="dg-fin-action-log" class="alert alert-secondary py-2 px-3 mt-3 mb-0 d-none" role="status"></div>
               <p class="small text-muted mt-2 mb-0 d-none" id="dg-fin-status-hint"></p>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card" id="dg-fin-cp-card">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+              <div class="d-flex align-items-center gap-2 flex-wrap" style="min-width:0">
+                <i class="header-icon pe-7s-users icon-gradient bg-happy-itmeo me-1"></i>
+                <span>Контрагенты</span>
+                <span class="badge bg-light text-muted border" id="dg-fin-cp-scope">за период фильтра</span>
+              </div>
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <label class="mb-0 small text-muted" for="dg-fin-cp-limit">Топ</label>
+                <select id="dg-fin-cp-limit" class="form-select form-select-sm" style="width:auto" data-dg-notify-start="Обновляем топ контрагентов…">
+                  <option value="5">5</option>
+                  <option value="8" selected>8</option>
+                  <option value="12">12</option>
+                </select>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-fin-cp-refresh" data-dg-notify-start="Обновляем топ контрагентов…">Обновить</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-fin-cp-toggle">Свернуть</button>
+              </div>
+            </div>
+            <div class="card-body" id="dg-fin-cp-body">
+              <div class="dg-fin-cp-grid" id="dg-fin-cp-grid">
+                <section class="dg-fin-cp-panel is-in" aria-labelledby="dg-fin-cp-in-title">
+                  <div class="dg-fin-cp-panel-head">
+                    <div>
+                      <div class="dg-fin-cp-panel-eyebrow">Доходные</div>
+                      <h3 class="dg-fin-cp-panel-title" id="dg-fin-cp-in-title">Кто платит нам</h3>
+                    </div>
+                    <div class="dg-fin-cp-panel-total" id="dg-fin-cp-in-total">—</div>
+                  </div>
+                  <div class="dg-fin-cp-list" id="dg-fin-cp-in-list"></div>
+                </section>
+                <section class="dg-fin-cp-panel is-out" aria-labelledby="dg-fin-cp-out-title">
+                  <div class="dg-fin-cp-panel-head">
+                    <div>
+                      <div class="dg-fin-cp-panel-eyebrow">Расходные</div>
+                      <h3 class="dg-fin-cp-panel-title" id="dg-fin-cp-out-title">Кому платим мы</h3>
+                    </div>
+                    <div class="dg-fin-cp-panel-total" id="dg-fin-cp-out-total">—</div>
+                  </div>
+                  <div class="dg-fin-cp-list" id="dg-fin-cp-out-list"></div>
+                </section>
+              </div>
+              <p class="small text-muted mb-0 mt-3">Клик по строке подставляет контрагента и направление в фильтр — остаётся нажать «Применить». Период и организация — из применённых фильтров (если даты пустые — окно как у графика по месяцам).</p>
             </div>
           </div>
 
@@ -196,6 +302,19 @@
                 <div class="btn-group" role="group">
                   <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-fin-prev">Назад</button>
                   <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-fin-next">Вперёд</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-fin-confirm-overlay" class="dg-fin-confirm-overlay d-none" role="dialog" aria-modal="true" aria-labelledby="dg-fin-confirm-title">
+            <div class="dg-fin-confirm-dialog card shadow">
+              <div class="card-body">
+                <h5 class="card-title" id="dg-fin-confirm-title">Удалить JWT?</h5>
+                <p class="card-text mb-3" id="dg-fin-confirm-text">Ключ организации будет удалён из настроек Datagon. Снимок счетов в БД останется.</p>
+                <div class="d-flex justify-content-end gap-2">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-fin-confirm-cancel">Отмена</button>
+                  <button type="button" class="btn btn-sm btn-danger" id="dg-fin-confirm-ok">Удалить</button>
                 </div>
               </div>
             </div>

@@ -98,6 +98,18 @@ Hard refresh browser cache after deploy:
   - **Локально всегда:** `npm run dev:local` (агент Cursor и разработчик — та же команда; не `npm start`).
   - **Прод:** переменную **не задавать** — по умолчанию scheduler включён (`pm2` → `node server.js`).
   - В логе при старте локально должна быть строка: `[AUTO SYNC] scheduler ВЫКЛЮЧЕН …`.
+- **`DATAGON_AUTO_SYNC_WORKER_ID`** — `1` (default, `parser-app`) или `2` (`parser-autosync-w2`). Назначение задачи → поле `worker` в `lib/datagonAutoSyncRegistry.js` (**`finance_tochka` → 2**, остальное → 1). Ручной запуск с HTTP-воркера 1 для чужой задачи пишется в `auto_sync_dispatch`, воркер 2 забирает её за несколько секунд.
+- **`DATAGON_HTTP=off`** — процесс без `listen` (только автосинк). Нужен для `parser-autosync-w2`. На основном `parser-app` **не** задавать.
+- **Второй воркер на проде:**
+
+```bash
+cd /var/www/p_datagon_ru_usr/data/www/p.datagon.ru
+pm2 start ecosystem.autosync-w2.config.cjs
+pm2 save
+pm2 restart parser-app
+pm2 ls   # parser-app + parser-autosync-w2
+```
+
 - **`DATAGON_STARTUP_DEFER_MS`** — отсрочка тяжёлых фоновых задач после старта (default 60000 мс).
 - **`MS_TOKEN`** (или поле в `config.js`) — не коммитьте в публичный git; на сервере используйте `.env`, переменные systemd/pm2 или секрет-хранилище.
 - **Юридические страницы** (`/legal/privacy.html`, `/legal/cookies.html`, `/legal/recommendation.html`, `/legal/consent.html`) отдаются **без авторизации**. Cookie-баннер (как на titlo.ru) показывается **только неавторизованным**; ссылки на политики — в подвале панели и на `/login.html`. Пересборка из ODT (`rules/` → HTML): `npm run build:legal-html` (старый конвейер; актуальные тексты правок 21.08.2026 могут правиться напрямую в `public/legal/*.html`).

@@ -689,6 +689,9 @@
                         </a>
                       </li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="settings" href="/settings.html"><i class="metismenu-icon pe-7s-config"></i>Настройки</a></li>
+                      <li class="metismenu-item dg-sidebar-nav-divider" aria-hidden="true">
+                        <div class="nav-item nav-item-divider"></div>
+                      </li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="finance" href="/finance.html" title="Балансы и движение по счетам Точки (только чтение)"><i class="metismenu-icon pe-7s-wallet"></i>Финансы</a></li>
                       <li class="metismenu-item dg-sidebar-nav-divider" aria-hidden="true">
                         <div class="nav-item nav-item-divider"></div>
@@ -2027,6 +2030,7 @@
                 title: String(s.title || s.key || ""),
                 subtitle: s.subtitle ? String(s.subtitle) : "",
                 category: String(s.category || "internal"),
+                worker: Number(s.worker) === 2 ? 2 : 1,
                 enabled: Boolean(s.enabled),
                 time: s.time != null ? String(s.time) : "—",
                 extras: Array.isArray(s.extras) ? s.extras : [],
@@ -2471,9 +2475,19 @@
               .join("");
           }
           var catLabel = AS_PROC_CATEGORY_LABELS[cat] || cat;
+          var workerN = Number(sec.worker) === 2 ? 2 : 1;
+          var workerBadge =
+            '<span class="badge ' +
+            (workerN === 2 ? "bg-success-subtle text-success border border-success-subtle" : "bg-primary-subtle text-primary border border-primary-subtle") +
+            '" title="' +
+            (workerN === 2 ? "parser-autosync-w2" : "parser-app") +
+            '">воркер ' +
+            workerN +
+            "</span>";
           var titleHtml =
             '<span class="dg-proc-as-cat-pill me-1">' + escapeText(catLabel) + '</span>' +
             '<span class="dg-proc-as-section-title">' + escapeText(sec.title) + '</span>' +
+            workerBadge +
             (sec.subtitle ? '<span class="dg-proc-as-section-meta">' + escapeText(sec.subtitle) + '</span>' : "") +
             (enabled
               ? '<span class="badge bg-success-subtle text-success border border-success-subtle">по расписанию вкл.</span>'

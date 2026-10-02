@@ -179,7 +179,7 @@ Body (пример):
 - **`auto_sync_medmarket_fill_enabled`** / **`auto_sync_medmarket_fill_time`** / **`auto_sync_medmarket_fill_weekdays`** — запись канонического **`код+Тип`** в атрибут МС и `ms_export` (как `POST /api/medmarket/fill-linkage-codes` без фильтров). Очередь «к записи» — только позиции с неверным/устаревшим форматом (~10–12 тыс., в основном регистр); ~46 тыс. уже со стыковкой пропускаются. МСК, по умолчанию **`09:30`**, дни **`1,2,3,4,5,6` (пн–сб, без вс)**. `task_type='medmarket_fill'`. Прогресс: `N/всего; ✓; ×` в `auto_sync_runs.message`.
 - **`auto_sync_price_comp_*`** — массовая синхронизация цен с конкурента (Dealmed/Медкомплекс) в CMS, как кнопка «Синх. цены по фильтрам» на `/my-products.html`. Ключи: `enabled`, `time` (по умолчанию **`10:00`**), `weekdays`, `match_audit` (по умолчанию **`confirmed`**), `rand_min` / `rand_max` (`0.1` / `0.99`), `stock_min` / `stock_max` (`0` / `1000`), `site_id` (`all`). `task_type='price_comp_sync'`. Фоновый runner: чанк 150, CMS×4.
 - **`auto_sync_network_prices_enabled`** / **`auto_sync_network_prices_time`** / **`auto_sync_network_prices_weekdays`** — **Цены сети** (`/network-prices.html`): эталон (по умолчанию Альмамед, `network_prices_source_site_id`) → целевые сайты с заданным `price_pct`. Формула: эталон → **RUB** (курс ЦБ при EUR/USD) × `(1 + price_pct/100)` → CMS + `my_products`. После записи на Bitrix-сайт — `cache_clear.php` (иначе витрина держит старый HTML). Сайты без `%` или с `enabled=0` пропускаются. МСК, по умолчанию **`11:00`**, дни `1…7`. `task_type='network_prices'`. Runner: `routes/networkPrices.js → triggerNetworkPricesSyncFromSettings`.
-- **`auto_sync_finance_tochka_enabled`** / **`auto_sync_finance_tochka_time`** / **`auto_sync_finance_tochka_days`** / **`auto_sync_finance_tochka_weekdays`** — выгрузка счетов и выписки **Точка.API** в `dg_finance_accounts` / `dg_finance_tx` (только чтение). По умолчанию **выкл.**, слот **`07:00`**, окно **30** дн. (1…90). JWT **не** в `GET /api/settings` — страница `/finance.html`. `task_type='finance_tochka'`. Runner: `routes/finance.js → triggerFinanceSyncFromSettings`.
+- **`auto_sync_finance_tochka_enabled`** / **`auto_sync_finance_tochka_time`** / **`auto_sync_finance_tochka_days`** / **`auto_sync_finance_tochka_weekdays`** — выгрузка счетов и выписки **Точка.API** в `dg_finance_accounts` / `dg_finance_tx` (только чтение). По умолчанию **выкл.**, слот **`07:00`**, окно **30** дн. (1…1095). JWT **не** в `GET /api/settings` — страница `/finance.html`. `task_type='finance_tochka'`. Runner: `routes/finance.js → triggerFinanceSyncFromSettings`. В реестре **`worker: 2`** (отдельный pm2 `parser-autosync-w2`).
 - **`sales_formula_replenishment_days`** (основной UI: «Пополнение, дней»), **`sales_formula_sku_replenishment_enabled`** (`1`/`0`, галка «Рек. дни пополнения по товарам» — авто-подъём **горизонта** `k` по SKU; по умолчанию `1`; вместе с упущенными за A даёт более жёсткий запас против нуля, не дубль одной поправки), **`sales_formula_replenishment_coef`** (legacy/синхрон = дни÷W), **`sales_formula_sales_window_days`** (W — «Продажи за период», сумма и средний спрос для формулы v2), **`sales_formula_absence_analysis_days`** (A — дни отсутствия → **упущенные шт в спросе**), **`sales_formula_project_mode`** (`all` | `selected`), **`sales_formula_project_uuids`** (CSV `project_uuid` из `ms_demand`; при `selected` в сумму продаж для формулы и колонок `d_*a` входят только отгрузки выбранных проектов), **`sales_formula_base_qty`**, **`sales_formula_rare_base_qty`**, **`sales_formula_rare_avg_max`** (legacy, в v2 не используется), **`sales_formula_expensive_rare_threshold_rub`**, **`sales_formula_expensive_rare_min_qty`**, **`sales_formula_max_change_coef`**, **`sales_formula_incomplete_pack_pct`** — **формула продаж** на карточке товара (`GET /api/product/:code` → `formula`). Логика в `lib/datagonSalesFormula.js` (v2: сумма за W + упущенные, ×(дни÷W) **без** прибавки `sales_formula_base_qty` / `sales_formula_expensive_rare_min_qty`; редкий/дорогой; кратность + `incomplete_pack_pct`). **Оверрайд по поставщику:** `dg_supplier_settings.replenishment_days` (если задано) сильнее глобальных дней; правит только `admin` на `/suppliers.html`. В `formula` ответ: `replenishment_source` = `global` | `supplier`, `replenishment_days_effective`. Кэш `dg_formula_proposed_cache.formula_fp` = base + `|rd:g` или `|rd:N`. UI глобали — `/settings.html`.
 - **`auto_sync_runs_retention_days`** — срок хранения строк в **`auto_sync_runs`** (журнал запусков автосинхронизации на `/processes.html`, кнопка «Лог»; по умолчанию **180**). Автоочистка в `server.js` удаляет только записи с непустым `finished_at` старше N дней (при старте и каждые 12 ч). UI: карточка **«Журнал запусков автосинхронизации»** на `/settings.html` (`GET /api/settings/auto-sync-runs/stats`, `POST /api/settings/auto-sync-runs/cleanup`). На каждой карточке расписания — кнопка **«Лог»** → модалка с днём МСК (`GET /api/settings/auto-sync-runs?task=&date=`).
 - **`product_stock_snapshot_retention_days`** — срок хранения дневных снимков **`ms_export.stock`** в **`dg_product_stock_snapshot`** (очистка при каждом успешном полном синке МС; по умолчанию **365**, диапазон **30…3650**). UI: карточка **«Снимки остатка МС (карточка товара)»** на `/settings.html` (`sectionId='stock-snap-retention'`).
@@ -228,7 +228,7 @@ Query:
 
 Body: `{ "task": "myproducts" | "moysklad" | "ms_orders" | "marketplaces_ozon" | "marketplaces_wb" | "marketplaces_ym" | "marketplaces" | "huckster" | "np_ms_enrich" | "db_size" | "dimensions" | "min_stock_export" | "mssales" | "mssales_full" | "purchase_formula_cache" | "medmarket" | "medmarket_fill" | "price_comp_sync" | "network_prices" | "finance_tochka" }`. Whitelist — `lib/datagonAutoSyncRegistry.js → getAutoSyncTaskKeys()` плюс legacy **`marketplaces`** (все три площадки одним прогоном). Запись в `auto_sync_runs` с `trigger_type = "manual"`. Для `dimensions` — балк как по расписанию. Для `mssales` / `mssales_full` / `ms_orders` — см. соответствующие `auto_sync_*` выше. Для **`purchase_formula_cache`** — `runPurchaseFormulaCacheBatch(db, appSettings)` (дефолтные фильтры закупок, чанками без RAM-снимка). Для **`medmarket`** — `routes/medmarket.js → triggerSync(db)` (каталог из `ms_export`). Для **`price_comp_sync`** — `routes/myproducts.js → triggerPriceCompSyncFromSettings(appSettings)` (фильтры из `auto_sync_price_comp_*`). Для **`network_prices`** — `routes/networkPrices.js → triggerNetworkPricesSyncFromSettings` (все enabled-сайты с заданным `%`). Для **`finance_tochka`** — `routes/finance.js → triggerFinanceSyncFromSettings` (счета + выписка Точки за `auto_sync_finance_tochka_days`). Для **`np_ms_enrich`** — `lib/dgNewProductsMarkets.js → backfillMarketsMsFieldsFromCache` (кэш МС, без live API).
 
-Ответ `{ "success": true, "queued": true|false, "skip_reason": null|"already_running"|"already_queued"|"invalid_task", "task", "queue", "runner_active", "running_tasks" }`. Поле **`running_tasks`** — массив строк `task_type`, у которых в этот момент есть незавершённая запись в `auto_sync_runs` (**что реально крутится в воркере**); удобно показывать в UI вместе с `runner_active`. Поле **`queued: false`** означает, что задача **не** добавлена в очередь (дубликат или такой тип уже выполняется); в этом случае в **`skip_reason`** — причина. Успешная постановка не гарантирует мгновенный старт: если в этот момент уже крутится **другая** задача очереди, исполнение отложится до её завершения (сервер сам вызовет обработчик снова). На `/settings.html` тот же ответ показывается **плашкой** в карточке «Автосинхронизация по расписанию» (текст очереди, занятость воркера, время ответа), чтобы не гадать, «уехало» ли нажатие.
+Ответ `{ "success": true, "queued": true|false, "skip_reason": null|"already_running"|"already_queued"|"invalid_task"|"wrong_worker", "task", "worker", "local_worker", "dispatch_id?", "queue", "runner_active", "running_tasks" }`. Поле **`worker`** — целевой воркер задачи из реестра (`1` = `parser-app`, `2` = `parser-autosync-w2`). Если целевой воркер ≠ HTTP-процессу, задача пишется в **`auto_sync_dispatch`** и подхватывается вторым процессом (см. [Деплой](/docs/deploy)). Поле **`running_tasks`** — массив строк `task_type` с незавершённой записью в `auto_sync_runs`. Поле **`queued: false`** — задача **не** добавлена (`skip_reason`). На `/settings.html` ответ показывается плашкой на карточке; у каждой задачи бейдж **«Воркер N»**.
 
 **Локально:** при `DATAGON_AUTO_SYNC_SCHEDULER=off` (`npm run dev:local`) этот endpoint **работает** (ручной запуск), а тики расписания в `startAutoSyncScheduler` — нет. На проде scheduler включён. См. [Деплой](/docs/deploy).
 
@@ -2008,39 +2008,74 @@ Body: `{ days }` (max = **`ms_orders_sync_days`**; если не передан�
 
 ## Финансы
 
-Страница `/finance.html`, роутер `routes/finance.js`, клиент `lib/datagonTochkaClient.js`. Банк **Точка**, JWT из кабинета (Bearer). Только чтение: счета, балансы, выписка. Платежи и Райффайзен — вне скоупа. Матрица: ключ **`finance`** (`hidden` / `view` / `full`). POST config/sync — только **`full`**. JWT хранится в `app_settings.finance_tochka_jwt` и **не** попадает в `GET /api/settings`.
+Страница `/finance.html`, роутер `routes/finance.js`, клиент `lib/datagonTochkaClient.js`, учётные записи `lib/datagonFinanceCredentials.js`. Банк **Точка**, JWT из кабинета (Bearer). Только чтение. Матрица: ключ **`finance`**. POST config/sync — только **`full`**.
 
-Таблицы (DDL при первом запросе): `dg_finance_accounts`, `dg_finance_tx`.
+**Несколько организаций:** `app_settings.finance_tochka_credentials` (JSON). Legacy `finance_tochka_jwt` мигрирует в первую запись. Синк идёт по всем `enabled` ключам. JWT **не** в `GET /api/settings`.
+
+**Ограничение:** Open Banking отдаёт только банковские счета. Фонды без API — ручная пометка на карточке (`is_fund`, `custom_name`).
+
+Таблицы: `dg_finance_accounts` (`credential_id`, `org_label`, `is_fund`, `custom_name`, …), `dg_finance_tx`.
 
 ### GET `/api/finance/config`
 
-`{ success, configured, jwt_mask, jwt_len, can_write, sync }`. Сырой JWT в JSON нет.
+`{ success, configured, credentials: [{ id, label, enabled, jwt_mask, jwt_len, customer_codes, customer_names }], can_write, sync }`.
 
 ### POST `/api/finance/config`
 
-Body: `{ "jwt": "…" }` или `{ "clear": true }`. Только `full`. Ответ: `{ success, configured, jwt_mask, jwt_len }`.
+- `{ "action": "upsert", "label", "jwt", "id?" }` — добавить/обновить ключ (при upsert без id — новая запись; с id — правка)
+- `{ "action": "delete", "id" }`
+- `{ "action": "toggle", "id", "enabled" }`
+- legacy `{ "jwt", "label?" }` — upsert первой/новой
+- `{ "clear": true }` — очистить все
 
 ### GET `/api/finance/probe`
 
-Живой `GET …/open-banking/v1.0/accounts`. `{ success, count, accounts[] }` (без полного номера в UI маскируется).
+Опционально `?credential_id=`. Ответ: `{ count, credentials_probed, results[], consent_gaps, api_note }`.
 
 ### GET `/api/finance/accounts`
 
-Снимок из БД.
+Снимок из БД (+ `org_label`, `credential_id`, `is_fund`, `custom_name`, `can_write`).
+
+### POST `/api/finance/org-meta`
+
+Только `full`. Body: `{ "customer_code", "full_name?", "short_name?", "custom_name?" }`.
+- **`full_name`** — для фильтра «Организация», колонки в таблице, аналитики, поиска.
+- **`short_name`** — для шапки карточек балансов.
+- legacy **`custom_name`** = `full_name`.
+Пустые оба — сброс к имени из банка. Хранение: `app_settings.finance_org_aliases` как `{ [customer_code]: { full, short } }` (старые строки-алиасы мигрируют в оба поля). Ответ: `{ success, full_name, short_name, custom_name, org_aliases }`.
+
+### POST `/api/finance/account-meta`
+
+Только `full`. Body: `{ "account_id", "bank?", "is_fund?", "custom_name?" }`. Ручная пометка фонда и названия; синк из банка эти поля не затирает. Ответ: `{ success, account }`.
 
 ### GET `/api/finance/transactions`
 
-Query: `search`, `direction` (`in`|`out`), `account_id`, `date_from`, `date_to`, `page`, `page_size` (20…200, default 100). Ответ: `{ total, page, pages, shown, rows }`.
+Query: `search`, `customer_code` (организация / клиент Точки), `direction`, `account_id`, `date_from`, `date_to`, `page`, `page_size`, `include_internal=1` (или `include_deposits=1`; по умолчанию **выкл.** — без тела депозита UNV, без «Перевод собственных средств» и без «Выплата дивидендов»).
+
+В строках: `customer_code`, `org_label`, **`org`** — **полное** имя организации (alias `full`, иначе `org_label`), **`org_short`** — короткое. **`chart_excluded`** / **`chart_exclude_reason`** — операция не входит в график/аналитику по умолчанию (депозит UNV, «Перевод собственных средств», «Выплата дивидендов»). Умный поиск матчит оба alias.
+
+Ответ дополнительно: `include_internal`.
+
+### GET `/api/finance/analytics/monthly`
+
+Помесячная агрегация из `dg_finance_tx` (снимок). Query: `months` (1…36, по умолчанию **12**), `customer_code` / `org`, `account_id`, `currency` (по умолчанию `RUB`), `include_deposits=1` / `include_internal=1` (по умолчанию **выкл.** — без тела депозита UNV, без «Перевод собственных средств» и без «Выплата дивидендов»; проценты и внешние платежи входят).
+
+Ответ: `{ success, months, currency, date_from, date_to, include_deposits, series: [{ month, in, out, net, count_in, count_out }], totals: { in, out, net, count } }`. Пустые месяцы в окне заполняются нулями.
+
+### GET `/api/finance/analytics/counterparties`
+
+Топ контрагентов по сумме входящих / исходящих. Query: `limit` (3…20, по умолчанию **8**), `months` (если нет `date_from`/`date_to`), `date_from`, `date_to`, `customer_code` / `org`, `account_id`, `currency`, `include_internal=1` / `include_deposits=1` (по умолчанию **выкл.**, те же исключения, что у monthly).
+
+Ответ: `{ success, limit, currency, date_from, date_to, include_internal, top_in: [{ rank, name, inn, amount, count, share }], top_out: […], totals: { in, out, counterparties_in, counterparties_out } }`.
 
 ### GET `/api/finance/sync-status`
 
-Состояние текущего синка в памяти процесса.
-
 ### POST `/api/finance/sync`
 
-Body: `{ "days": 30 }` (1…90). Тянет Точку, пишет БД. Ответ со счётчиками: `accounts`, `tx_upserted`, `errors[]` (до 20), `duration_sec`, `message`. Если уже идёт: `skip_reason: "already_running"`.
+Body: `{ "days": 30, "date_from?", "date_to?", "customer_code?", "account_id?", "balances_only": false, "credential_id?" }`.  
+Период: либо `date_from`/`date_to` (не больше 1095 дн.), либо `days` (1…1095). Без `credential_id` — все включённые JWT; `customer_code` / `account_id` сужают счета внутри ключей. Асинхронно (`queued: true`); итог в `sync-status → last_result`.
 
-Автосинк: `task: "finance_tochka"` (выкл. по умолчанию). Сценарий для пользователя: [Финансы](/docs/finance).
+Автосинк: `task: "finance_tochka"`. Сценарий: [Финансы](/docs/finance).
 
 ## Управление БД
 

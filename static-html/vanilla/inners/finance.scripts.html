@@ -4,6 +4,7 @@
     ["booked_date", "Дата"],
     ["direction", "Направление"],
     ["amount", "Сумма"],
+    ["org", "Организация"],
     ["account_number", "Счёт"],
     ["counterparty", "Контрагент"],
     ["counterparty_inn", "ИНН"],
@@ -16,6 +17,7 @@
     booked_date: 110,
     direction: 120,
     amount: 130,
+    org: 140,
     account_number: 150,
     counterparty: 220,
     counterparty_inn: 120,
@@ -26,6 +28,11 @@
   var FILTERS_KEY = "datagon_finance_filters_collapsed_v1";
   var BANK_KEY = "datagon_finance_bank_collapsed_v1";
   var TABLE_KEY = "dg.finance.table-card.collapsed.v1";
+  var ANALYTICS_KEY = "dg.finance.analytics-card.collapsed.v1";
+  var ANALYTICS_MONTHS_KEY = "dg.finance.analytics.months.v1";
+  var ANALYTICS_DEPOSITS_KEY = "dg.finance.analytics.include_deposits.v1";
+  var CP_KEY = "dg.finance.counterparties-card.collapsed.v1";
+  var CP_LIMIT_KEY = "dg.finance.counterparties.limit.v1";
   var COLS_KEY = "datagon_finance_visible_cols_v1";
   var WIDTHS_KEY = "datagon_finance_col_widths_v1";
   var FIELD_GROUPS = [
@@ -33,6 +40,7 @@
       title: "Основные",
       items: [
         { key: "search", title: "Умный поиск" },
+        { key: "org", title: "Организация" },
         { key: "date_from", title: "С даты" },
         { key: "date_to", title: "По дату" },
         { key: "direction", title: "Направление" },
@@ -44,13 +52,16 @@
       items: [
         { key: "page_size", title: "На странице" },
         { key: "sync_days", title: "Выписка, дн." },
+        { key: "include_internal", title: "Внутренние (депозиты / фонды / дивиденды)" },
       ],
     },
   ];
 
   var state = {
     canWrite: false,
+    credentials: [],
     accounts: [],
+    orgAliases: {},
     page: 1,
     total: 0,
     pages: 1,
@@ -58,9 +69,27 @@
     rows: [],
     sortKey: "booked_date",
     sortDir: "desc",
-    pending: { search: "", date_from: "", date_to: "", direction: "", account_id: "", page_size: 100, sync_days: 30 },
-    applied: { search: "", date_from: "", date_to: "", direction: "", account_id: "", page_size: 100, sync_days: 30 },
+    pending: { search: "", org: "", date_from: "", date_to: "", direction: "", account_id: "", page_size: 100, sync_days: 30, include_internal: false },
+    applied: { search: "", org: "", date_from: "", date_to: "", direction: "", account_id: "", page_size: 100, sync_days: 30, include_internal: false },
+    analyticsMonths: 12,
   };
+
+  var chartJsPromise = null;
+  var monthlyChart = null;
+
+  function loadChartJs() {
+    if (window.Chart && typeof window.Chart === "function") return Promise.resolve(window.Chart);
+    if (chartJsPromise) return chartJsPromise;
+    chartJsPromise = new Promise(function (resolve, reject) {
+      var s = document.createElement("script");
+      s.src = "https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js";
+      s.async = true;
+      s.onload = function () { resolve(window.Chart); };
+      s.onerror = function () { reject(new Error("Не удалось загрузить Chart.js")); };
+      document.head.appendChild(s);
+    });
+    return chartJsPromise;
+  }
 
   function el(id) { return document.getElementById(id); }
   function esc(s) {
@@ -77,10 +106,13 @@
     var t = F && F.formatNumber ? F.formatNumber(num, { maxFractionDigits: 2, minFractionDigits: 2 }) : String(num);
     return t + (cur ? " " + cur : "");
   }
+  /** Маска р/с: «номер/БИК» — берём хвост номера, не БИК (иначе у всех …5104). */
   function maskAcc(num) {
     var s = String(num || "").replace(/\s+/g, "");
-    if (s.length <= 4) return s || "—";
-    return "…" + s.slice(-4);
+    if (!s) return "—";
+    var acct = s.indexOf("/") >= 0 ? s.split("/")[0] : s;
+    if (acct.length <= 6) return acct;
+    return "…" + acct.slice(-6);
   }
   function toast(type, message) {
     if (window.DatagonNotify && window.DatagonNotify.toast) {
@@ -127,7 +159,14 @@
       if (Array.isArray(arr) && arr.length) {
         var known = {};
         FIN_COLS.forEach(function (c) { known[c[0]] = 1; });
-        return arr.filter(function (k) { return known[k]; });
+        var filtered = arr.filter(function (k) { return known[k]; });
+        // старые сохранения без колонки «Организация» — вставить перед «Счёт»
+        if (filtered.indexOf("org") < 0) {
+          var at = filtered.indexOf("account_number");
+          if (at >= 0) filtered.splice(at, 0, "org");
+          else filtered.push("org");
+        }
+        return filtered.length ? filtered : DEFAULT_VISIBLE.slice();
       }
     } catch (e) {}
     return DEFAULT_VISIBLE.slice();
@@ -158,16 +197,19 @@
 
   function readPendingFromForm() {
     state.pending.search = String((el("dg-fin-search") && el("dg-fin-search").value) || "").trim();
+    state.pending.org = String((el("dg-fin-org") && el("dg-fin-org").value) || "").trim();
     state.pending.date_from = String((el("dg-fin-date-from") && el("dg-fin-date-from").value) || "");
     state.pending.date_to = String((el("dg-fin-date-to") && el("dg-fin-date-to").value) || "");
     state.pending.direction = String((el("dg-fin-direction") && el("dg-fin-direction").value) || "");
     state.pending.account_id = String((el("dg-fin-account") && el("dg-fin-account").value) || "");
     state.pending.page_size = parseInt(String((el("dg-fin-page-size") && el("dg-fin-page-size").value) || "100"), 10) || 100;
     state.pending.sync_days = parseInt(String((el("dg-fin-sync-days") && el("dg-fin-sync-days").value) || "30"), 10) || 30;
+    state.pending.include_internal = !!(el("dg-fin-include-internal") && el("dg-fin-include-internal").checked);
   }
   function writeFormFromPending() {
     if (el("dg-fin-search")) el("dg-fin-search").value = state.pending.search;
     if (el("dg-fin-table-search-mirror")) el("dg-fin-table-search-mirror").value = state.pending.search;
+    if (el("dg-fin-org")) el("dg-fin-org").value = state.pending.org;
     if (el("dg-fin-date-from")) el("dg-fin-date-from").value = state.pending.date_from;
     if (el("dg-fin-date-to")) el("dg-fin-date-to").value = state.pending.date_to;
     if (el("dg-fin-direction")) el("dg-fin-direction").value = state.pending.direction;
@@ -175,6 +217,8 @@
     if (el("dg-fin-page-size")) el("dg-fin-page-size").value = String(state.pending.page_size);
     if (el("dg-fin-page-size-foot")) el("dg-fin-page-size-foot").value = String(state.pending.page_size);
     if (el("dg-fin-sync-days")) el("dg-fin-sync-days").value = String(state.pending.sync_days);
+    if (el("dg-fin-include-internal")) el("dg-fin-include-internal").checked = !!state.pending.include_internal;
+    if (el("dg-fin-analytics-deposits")) el("dg-fin-analytics-deposits").checked = !!state.pending.include_internal;
     markDirty();
   }
   function markDirty() {
@@ -182,20 +226,499 @@
     if (!btn) return;
     var dirty =
       state.pending.search !== state.applied.search ||
+      state.pending.org !== state.applied.org ||
       state.pending.date_from !== state.applied.date_from ||
       state.pending.date_to !== state.applied.date_to ||
       state.pending.direction !== state.applied.direction ||
       state.pending.account_id !== state.applied.account_id ||
-      Number(state.pending.page_size) !== Number(state.applied.page_size);
+      Number(state.pending.page_size) !== Number(state.applied.page_size) ||
+      !!state.pending.include_internal !== !!state.applied.include_internal;
     btn.classList.toggle("dg-flt-dirty", dirty);
     btn.textContent = dirty ? "Применить •" : "Применить";
   }
   function commitFilters() {
     readPendingFromForm();
+    // если счёт не из выбранной орг — сбросить
+    if (state.pending.org && state.pending.account_id) {
+      var ok = (state.accounts || []).some(function (a) {
+        return a.account_id === state.pending.account_id && String(a.customer_code || "") === state.pending.org;
+      });
+      if (!ok) state.pending.account_id = "";
+    }
     state.applied = Object.assign({}, state.pending);
+    writeFormFromPending();
     state.page = 1;
+    try { localStorage.setItem(ANALYTICS_DEPOSITS_KEY, state.applied.include_internal ? "1" : "0"); } catch (e) {}
     markDirty();
+    renderBalances();
+    fillAccountSelect();
     loadTx();
+    loadMonthlyAnalytics();
+    loadCounterparties();
+  }
+
+  function fmtMonthLabel(ym) {
+    var s = String(ym || "");
+    var p = s.split("-");
+    if (p.length !== 2) return s;
+    var months = ["янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
+    var mIdx = Math.max(0, Math.min(11, Number(p[1]) - 1));
+    return months[mIdx] + " " + String(p[0]).slice(2);
+  }
+
+  function readAnalyticsMonths() {
+    var sel = el("dg-fin-analytics-months");
+    var n = sel ? parseInt(String(sel.value || "12"), 10) : state.analyticsMonths;
+    if (![6, 12, 24].includes(n)) n = 12;
+    state.analyticsMonths = n;
+    try { localStorage.setItem(ANALYTICS_MONTHS_KEY, String(n)); } catch (e) {}
+    return n;
+  }
+
+  function renderAnalyticsKpis(totals, currency) {
+    var box = el("dg-fin-analytics-kpis");
+    if (!box) return;
+    var t = totals || {};
+    var cur = currency || "RUB";
+    var net = Number(t.net) || 0;
+    box.innerHTML =
+      '<div class="dg-fin-kpi is-in"><div class="dg-fin-kpi-label">Входящие</div><div class="dg-fin-kpi-value">' +
+      esc(fmtMoney(t.in, cur)) +
+      '</div><div class="dg-fin-kpi-sub">поступления</div></div>' +
+      '<div class="dg-fin-kpi is-out"><div class="dg-fin-kpi-label">Исходящие</div><div class="dg-fin-kpi-value">' +
+      esc(fmtMoney(t.out, cur)) +
+      '</div><div class="dg-fin-kpi-sub">списания</div></div>' +
+      '<div class="dg-fin-kpi is-net"><div class="dg-fin-kpi-label">Чистый поток</div><div class="dg-fin-kpi-value ' +
+      (net >= 0 ? "is-pos" : "is-neg") +
+      '">' +
+      esc(fmtMoney(net, cur)) +
+      '</div><div class="dg-fin-kpi-sub">вход − исход</div></div>' +
+      '<div class="dg-fin-kpi"><div class="dg-fin-kpi-label">Операций</div><div class="dg-fin-kpi-value">' +
+      esc(String(Number(t.count) || 0)) +
+      '</div><div class="dg-fin-kpi-sub">в снимке за период</div></div>';
+  }
+
+  function monthBounds(ym) {
+    var s = String(ym || "");
+    var p = s.split("-");
+    if (p.length !== 2) return null;
+    var y = parseInt(p[0], 10);
+    var m = parseInt(p[1], 10);
+    if (!y || !m || m < 1 || m > 12) return null;
+    var lastDay = new Date(y, m, 0).getDate();
+    var mm = String(m).padStart(2, "0");
+    return {
+      from: y + "-" + mm + "-01",
+      to: y + "-" + mm + "-" + String(lastDay).padStart(2, "0"),
+      label: fmtMonthLabel(s),
+    };
+  }
+
+  function applyChartMonthToFilters(ym, directionHint) {
+    var bounds = monthBounds(ym);
+    if (!bounds) return;
+    readPendingFromForm();
+    state.pending.date_from = bounds.from;
+    state.pending.date_to = bounds.to;
+    if (directionHint === "in" || directionHint === "out") {
+      state.pending.direction = directionHint;
+    }
+    writeFormFromPending();
+    markDirty();
+    var dirTxt =
+      directionHint === "in" ? " · входящие" : directionHint === "out" ? " · исходящие" : "";
+    toast(
+      "info",
+      "Фильтр дат: " + bounds.from + " → " + bounds.to + dirTxt + ". Нажмите «Применить»."
+    );
+    var filtersBody = el("dg-fin-filters-body");
+    if (filtersBody && filtersBody.style.display === "none") {
+      var tgl = el("dg-fin-filters-toggle");
+      if (tgl) tgl.click();
+    }
+    var fromEl = el("dg-fin-date-from");
+    if (fromEl && fromEl.scrollIntoView) {
+      try {
+        fromEl.scrollIntoView({ behavior: "smooth", block: "center" });
+      } catch (e) {
+        fromEl.scrollIntoView(true);
+      }
+    }
+  }
+
+  function renderMonthlyChart(series, currency) {
+    var canvas = el("dg-fin-analytics-chart");
+    var emptyEl = el("dg-fin-analytics-empty");
+    if (!canvas) return;
+    var rows = Array.isArray(series) ? series : [];
+    var hasAny = rows.some(function (r) {
+      return Number(r.in) > 0 || Number(r.out) > 0;
+    });
+    if (!hasAny) {
+      if (monthlyChart) {
+        try { monthlyChart.destroy(); } catch (e) {}
+        monthlyChart = null;
+      }
+      canvas.style.display = "none";
+      if (emptyEl) emptyEl.classList.remove("d-none");
+      return;
+    }
+    canvas.style.display = "";
+    if (emptyEl) emptyEl.classList.add("d-none");
+
+    var labels = rows.map(function (r) { return fmtMonthLabel(r.month); });
+    var inVals = rows.map(function (r) { return Number(r.in) || 0; });
+    var outVals = rows.map(function (r) { return Number(r.out) || 0; });
+    var netVals = rows.map(function (r) { return Number(r.net) || 0; });
+    var cur = currency || "RUB";
+
+    loadChartJs()
+      .then(function (Chart) {
+        if (monthlyChart) {
+          try { monthlyChart.destroy(); } catch (e) {}
+          monthlyChart = null;
+        }
+        var ctx = canvas.getContext("2d");
+        var gradIn = ctx.createLinearGradient(0, 0, 0, 260);
+        gradIn.addColorStop(0, "rgba(34, 197, 94, 0.85)");
+        gradIn.addColorStop(1, "rgba(34, 197, 94, 0.35)");
+        var gradOut = ctx.createLinearGradient(0, 0, 0, 260);
+        gradOut.addColorStop(0, "rgba(239, 68, 68, 0.8)");
+        gradOut.addColorStop(1, "rgba(239, 68, 68, 0.32)");
+
+        monthlyChart = new Chart(ctx, {
+          type: "bar",
+          data: {
+            labels: labels,
+            datasets: [
+              {
+                type: "bar",
+                label: "Входящие",
+                data: inVals,
+                backgroundColor: gradIn,
+                borderColor: "rgba(22, 163, 74, 1)",
+                borderWidth: 1,
+                borderRadius: 6,
+                maxBarThickness: 22,
+                order: 2,
+              },
+              {
+                type: "bar",
+                label: "Исходящие",
+                data: outVals,
+                backgroundColor: gradOut,
+                borderColor: "rgba(185, 28, 28, 1)",
+                borderWidth: 1,
+                borderRadius: 6,
+                maxBarThickness: 22,
+                order: 2,
+              },
+              {
+                type: "line",
+                label: "Чистый поток",
+                data: netVals,
+                borderColor: "#3f6ad8",
+                backgroundColor: "rgba(63, 106, 216, 0.12)",
+                borderWidth: 2.5,
+                pointRadius: 3.5,
+                pointHoverRadius: 5,
+                pointBackgroundColor: "#fff",
+                pointBorderColor: "#3f6ad8",
+                pointBorderWidth: 2,
+                tension: 0.35,
+                yAxisID: "y",
+                order: 1,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: "index", intersect: false },
+            onHover: function (evt, elements) {
+              var t = evt && evt.native && evt.native.target;
+              if (t && t.style) t.style.cursor = elements && elements.length ? "pointer" : "default";
+            },
+            onClick: function (evt) {
+              var chart = this;
+              var pts =
+                chart.getElementsAtEventForMode(evt, "nearest", { intersect: true }, true) || [];
+              if (!pts.length) {
+                pts =
+                  chart.getElementsAtEventForMode(evt, "index", { intersect: false }, true) || [];
+              }
+              if (!pts.length) return;
+              var hit = pts[0];
+              for (var pi = 0; pi < pts.length; pi++) {
+                if (pts[pi].datasetIndex === 0 || pts[pi].datasetIndex === 1) {
+                  hit = pts[pi];
+                  break;
+                }
+              }
+              var idx = hit.index;
+              var src = rows[idx];
+              if (!src || !src.month) return;
+              var ds = hit.datasetIndex;
+              var dirHint = "";
+              if (ds === 0) dirHint = "in";
+              else if (ds === 1) dirHint = "out";
+              applyChartMonthToFilters(src.month, dirHint);
+            },
+            plugins: {
+              legend: {
+                position: "top",
+                align: "end",
+                labels: { boxWidth: 12, boxHeight: 12, usePointStyle: true, font: { size: 12 } },
+              },
+              tooltip: {
+                callbacks: {
+                  label: function (ctx2) {
+                    var v = Number(ctx2.parsed.y || 0);
+                    return ctx2.dataset.label + ": " + fmtMoney(v, cur);
+                  },
+                  afterBody: function (items) {
+                    var idx = items && items[0] ? items[0].dataIndex : -1;
+                    var src = rows[idx] || {};
+                    return [
+                      "Операций в: " + (Number(src.count_in) || 0),
+                      "Операций исх.: " + (Number(src.count_out) || 0),
+                      "Клик — даты месяца в фильтр",
+                    ];
+                  },
+                },
+              },
+            },
+            scales: {
+              x: {
+                ticks: { font: { size: 11 }, color: "#64748b" },
+                grid: { display: false },
+              },
+              y: {
+                beginAtZero: true,
+                ticks: {
+                  font: { size: 11 },
+                  color: "#64748b",
+                  callback: function (v) {
+                    var n = Number(v);
+                    if (Math.abs(n) >= 1000000) return (n / 1000000).toLocaleString("ru-RU", { maximumFractionDigits: 1 }) + " млн";
+                    if (Math.abs(n) >= 1000) return (n / 1000).toLocaleString("ru-RU", { maximumFractionDigits: 0 }) + " тыс";
+                    return n.toLocaleString("ru-RU");
+                  },
+                },
+                grid: { color: "rgba(15, 23, 42, 0.06)" },
+              },
+            },
+          },
+        });
+      })
+      .catch(function (e) {
+        canvas.style.display = "none";
+        if (emptyEl) {
+          emptyEl.classList.remove("d-none");
+          emptyEl.textContent = "График недоступен: " + (e && e.message ? e.message : e);
+        }
+      });
+  }
+
+  function loadMonthlyAnalytics() {
+    var months = readAnalyticsMonths();
+    var scope = el("dg-fin-analytics-scope");
+    var org = state.applied.org;
+    var acc = state.applied.account_id;
+    if (scope) {
+      var bits = [];
+      if (org) bits.push(orgLabelByCode(org) || org);
+      if (acc) {
+        var a = (state.accounts || []).find(function (x) { return x.account_id === acc; });
+        bits.push(a ? accountDisplayName(a) : maskAcc(acc));
+      }
+      scope.textContent = bits.length ? bits.join(" · ") : "Все организации";
+    }
+    var q = new URLSearchParams();
+    q.set("months", String(months));
+    if (org) q.set("customer_code", org);
+    if (acc) q.set("account_id", acc);
+    if (state.applied.include_internal) q.set("include_internal", "1");
+    return fetch("/api/finance/analytics/monthly?" + q.toString(), { credentials: "same-origin" })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (!j || !j.success) throw new Error((j && j.error) || "analytics");
+        renderAnalyticsKpis(j.totals, j.currency);
+        renderMonthlyChart(j.series || [], j.currency);
+        return j;
+      })
+      .catch(function (e) {
+        var emptyEl = el("dg-fin-analytics-empty");
+        var canvas = el("dg-fin-analytics-chart");
+        if (canvas) canvas.style.display = "none";
+        if (emptyEl) {
+          emptyEl.classList.remove("d-none");
+          emptyEl.textContent = "Не удалось загрузить аналитику: " + (e.message || String(e));
+        }
+      });
+  }
+
+  function readCpLimit() {
+    var sel = el("dg-fin-cp-limit");
+    var n = sel ? parseInt(String(sel.value || "8"), 10) : 8;
+    if (![5, 8, 12].includes(n)) n = 8;
+    try { localStorage.setItem(CP_LIMIT_KEY, String(n)); } catch (e) {}
+    return n;
+  }
+
+  function cpInitials(name) {
+    var parts = String(name || "")
+      .replace(/[«»"']/g, "")
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+    if (!parts.length) return "?";
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return (parts[0].charAt(0) + parts[1].charAt(0)).toUpperCase();
+  }
+
+  function applyCounterpartyToFilters(name, direction) {
+    var n = String(name || "").trim();
+    if (!n || n === "(без названия)") return;
+    readPendingFromForm();
+    state.pending.search = n;
+    if (direction === "in" || direction === "out") state.pending.direction = direction;
+    writeFormFromPending();
+    markDirty();
+    toast(
+      "info",
+      "Фильтр: «" + n + "»" +
+        (direction === "in" ? " · входящие" : direction === "out" ? " · исходящие" : "") +
+        ". Нажмите «Применить»."
+    );
+    var filtersBody = el("dg-fin-filters-body");
+    if (filtersBody && filtersBody.style.display === "none") {
+      var tgl = el("dg-fin-filters-toggle");
+      if (tgl) tgl.click();
+    }
+  }
+
+  function renderCpList(listEl, rows, direction, currency) {
+    if (!listEl) return;
+    var items = Array.isArray(rows) ? rows : [];
+    if (!items.length) {
+      listEl.innerHTML = '<div class="dg-fin-cp-empty">Нет данных за период</div>';
+      return;
+    }
+    var maxAmt = Math.max.apply(
+      null,
+      items.map(function (r) { return Number(r.amount) || 0; }).concat([1])
+    );
+    listEl.innerHTML = items
+      .map(function (r) {
+        var amt = Number(r.amount) || 0;
+        var pct = Math.max(4, Math.round((amt / maxAmt) * 100));
+        var rank = Number(r.rank) || 0;
+        var topCls = rank === 1 ? " is-top1" : rank === 2 ? " is-top2" : rank === 3 ? " is-top3" : "";
+        var inn = r.inn ? "ИНН " + r.inn : "без ИНН";
+        var cnt = Number(r.count) || 0;
+        var share = r.share != null ? String(r.share).replace(".", ",") + "%" : "";
+        return (
+          '<button type="button" class="dg-fin-cp-row' +
+          topCls +
+          '" data-dg-cp-name="' +
+          esc(r.name) +
+          '" data-dg-cp-dir="' +
+          esc(direction) +
+          '" data-dg-notify-start="Подставляем контрагента в фильтр…">' +
+          '<span class="dg-fin-cp-rank">' +
+          esc(String(rank)) +
+          "</span>" +
+          '<span class="dg-fin-cp-avatar" aria-hidden="true">' +
+          esc(cpInitials(r.name)) +
+          "</span>" +
+          '<span class="dg-fin-cp-meta">' +
+          '<div class="dg-fin-cp-name" title="' +
+          esc(r.name) +
+          '">' +
+          esc(r.name) +
+          "</div>" +
+          '<div class="dg-fin-cp-sub">' +
+          esc(inn) +
+          " · " +
+          esc(String(cnt)) +
+          " оп.</div>" +
+          "</span>" +
+          '<span class="dg-fin-cp-right">' +
+          '<div class="dg-fin-cp-amount">' +
+          esc(fmtMoney(amt, currency)) +
+          "</div>" +
+          '<div class="dg-fin-cp-bar"><span style="width:' +
+          pct +
+          '%"></span></div>' +
+          (share
+            ? '<div class="dg-fin-cp-share">' + esc(share) + " от суммы</div>"
+            : "") +
+          "</span>" +
+          "</button>"
+        );
+      })
+      .join("");
+  }
+
+  function loadCounterparties() {
+    var limit = readCpLimit();
+    var org = state.applied.org;
+    var acc = state.applied.account_id;
+    var scope = el("dg-fin-cp-scope");
+    var q = new URLSearchParams();
+    q.set("limit", String(limit));
+    q.set("months", String(readAnalyticsMonths()));
+    if (org) q.set("customer_code", org);
+    if (acc) q.set("account_id", acc);
+    if (state.applied.date_from) q.set("date_from", state.applied.date_from);
+    if (state.applied.date_to) q.set("date_to", state.applied.date_to);
+    if (state.applied.include_internal) q.set("include_internal", "1");
+
+    return fetch("/api/finance/analytics/counterparties?" + q.toString(), { credentials: "same-origin" })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (!j || !j.success) throw new Error((j && j.error) || "counterparties");
+        var cur = j.currency || "RUB";
+        if (scope) {
+          var bits = [];
+          if (j.date_from && j.date_to) bits.push(j.date_from + " → " + j.date_to);
+          if (org) bits.push(orgLabelByCode(org) || org);
+          scope.textContent = bits.length ? bits.join(" · ") : "все организации";
+        }
+        var tot = j.totals || {};
+        var inTotal = el("dg-fin-cp-in-total");
+        var outTotal = el("dg-fin-cp-out-total");
+        if (inTotal) {
+          inTotal.innerHTML =
+            esc(fmtMoney(tot.in, cur)) +
+            '<div class="dg-fin-cp-share">' +
+            esc(String(tot.counterparties_in || 0)) +
+            " контрагентов</div>";
+        }
+        if (outTotal) {
+          outTotal.innerHTML =
+            esc(fmtMoney(tot.out, cur)) +
+            '<div class="dg-fin-cp-share">' +
+            esc(String(tot.counterparties_out || 0)) +
+            " контрагентов</div>";
+        }
+        renderCpList(el("dg-fin-cp-in-list"), j.top_in || [], "in", cur);
+        renderCpList(el("dg-fin-cp-out-list"), j.top_out || [], "out", cur);
+        return j;
+      })
+      .catch(function (e) {
+        if (scope) scope.textContent = "ошибка загрузки";
+        renderCpList(el("dg-fin-cp-in-list"), [], "in", "RUB");
+        renderCpList(el("dg-fin-cp-out-list"), [], "out", "RUB");
+        var inL = el("dg-fin-cp-in-list");
+        if (inL) {
+          inL.innerHTML =
+            '<div class="dg-fin-cp-empty">Не удалось загрузить: ' +
+            esc(e && e.message ? e.message : e) +
+            "</div>";
+        }
+      });
   }
 
   function bindCollapse(btnId, bodyId, storageKey) {
@@ -378,15 +901,51 @@
   function cellValue(row, key) {
     if (key === "amount") return Number(row.amount);
     if (key === "booked_date") return String(row.booked_date || row.booked_at || "");
+    if (key === "org") return rowOrgLabel(row);
     return String(row[key] == null ? "" : row[key]);
+  }
+  function rowOrgLabel(row) {
+    var code = String((row && row.customer_code) || "").trim();
+    if (code) {
+      var full = orgFullName(code, "");
+      if (full) return full;
+    }
+    var fromApi = String((row && (row.org || row.org_label)) || "").trim();
+    if (fromApi) return fromApi;
+    return code ? orgFullName(code, code) : "";
   }
   function renderCell(row, key) {
     if (key === "amount") {
       var cls = row.direction === "out" ? "dg-fin-dir-out" : "dg-fin-dir-in";
-      return '<span class="' + cls + '">' + esc(fmtMoney(row.amount, row.currency)) + "</span>";
+      var mark =
+        row.chart_excluded
+          ? '<span class="dg-fin-chart-excl" title="Не входит в график и аналитику по умолчанию (внутренний оборот: ' +
+            esc(row.chart_exclude_reason || "внутр.") +
+            ')">не в графике</span>'
+          : "";
+      return (
+        '<span class="' +
+        cls +
+        '">' +
+        esc(fmtMoney(row.amount, row.currency)) +
+        "</span>" +
+        (mark ? " " + mark : "")
+      );
     }
     if (key === "direction") {
-      return row.direction === "out" ? "Исходящий" : "Входящий";
+      var dirTxt = row.direction === "out" ? "Исходящий" : "Входящий";
+      if (row.chart_excluded) {
+        return (
+          esc(dirTxt) +
+          ' <span class="dg-fin-chart-excl-dot" title="Не в графике: ' +
+          esc(row.chart_exclude_reason || "внутр.") +
+          '" aria-label="Не в графике">●</span>'
+        );
+      }
+      return esc(dirTxt);
+    }
+    if (key === "org") {
+      return esc(rowOrgLabel(row) || "—");
     }
     if (key === "account_number") {
       return esc(maskAcc(row.account_number || row.account_id));
@@ -413,7 +972,8 @@
       tb.innerHTML = '<tr><td colspan="' + Math.max(1, cols.length) + '" class="text-muted">Нет проводок по фильтрам. Обновите из банка, если снимок пуст.</td></tr>';
     } else {
       tb.innerHTML = rows.map(function (r) {
-        return "<tr>" + cols.map(function (c) { return "<td>" + renderCell(r, c[0]) + "</td>"; }).join("") + "</tr>";
+        var trCls = r.chart_excluded ? ' class="dg-fin-row-chart-excl"' : "";
+        return "<tr" + trCls + ">" + cols.map(function (c) { return "<td>" + renderCell(r, c[0]) + "</td>"; }).join("") + "</tr>";
       }).join("");
     }
     var st = el("dg-fin-pager-status");
@@ -470,16 +1030,90 @@
     var order = [];
     var map = Object.create(null);
     (list || []).forEach(function (a) {
-      var bank = String((a && a.bank) || "tochka").toLowerCase() || "tochka";
-      if (!map[bank]) {
-        map[bank] = [];
-        order.push(bank);
+      var bankCode = String((a && a.bank) || "tochka").toLowerCase();
+      var bankLabel = BANK_LABELS[bankCode] || "Точка";
+      var org = String((a && a.org_label) || "").trim();
+      var customer = String((a && a.customer_code) || "").trim();
+      // Юрлицо (customer_code), а не JWT: один ключ может покрывать Прайм + Вилмед
+      var key = bankCode + "|" + (customer || org || String((a && a.credential_id) || "").trim() || "unknown");
+      if (!map[key]) {
+        map[key] = {
+          key: key,
+          bank_code: bankCode,
+          bank_label: bankLabel,
+          org_label: org || "Организация",
+          customer_code: customer,
+          credential_id: String((a && a.credential_id) || "").trim(),
+          accounts: [],
+        };
+        order.push(key);
       }
-      map[bank].push(a);
+      if (org) map[key].org_label = org;
+      map[key].accounts.push(a);
     });
-    return order.map(function (bank) {
-      return { bank: bank, title: BANK_LABELS[bank] || bank, accounts: map[bank] };
+    return order.map(function (k) {
+      var g = map[k];
+      g.display_full = orgFullName(g.customer_code, g.org_label);
+      g.display_short = orgShortName(g.customer_code, g.org_label);
+      g.display_name = g.display_short;
+      g.accounts.sort(sortAccountsForDisplay);
+      return g;
     });
+  }
+
+  function sortAccountsForDisplay(a, b) {
+    var fa = a && a.is_fund ? 1 : 0;
+    var fb = b && b.is_fund ? 1 : 0;
+    if (fa !== fb) return fa - fb;
+    var aa = accountAvailable(a);
+    var bb = accountAvailable(b);
+    var na = aa == null ? -1 : aa;
+    var nb = bb == null ? -1 : bb;
+    if (nb !== na) return nb - na;
+    return String((a && a.account_number) || "").localeCompare(String((b && b.account_number) || ""), "ru");
+  }
+
+  var SUBTYPE_LABELS = {
+    CurrentAccount: "Расчётный",
+    Savings: "Сберегательный",
+    CreditCard: "Кредитная карта",
+    PrePaidCard: "Предоплаченная",
+    Loan: "Кредит",
+    Mortgage: "Ипотека",
+    Special: "Специальный"
+  };
+
+  function subtypeLabel(a) {
+    var st = String((a && a.account_sub_type) || "").trim();
+    if (SUBTYPE_LABELS[st]) return SUBTYPE_LABELS[st];
+    return st || "";
+  }
+
+  function accountDisplayName(a) {
+    var custom = String((a && a.custom_name) || "").trim();
+    if (custom) return custom;
+    if (a && a.is_fund) return "Фонд";
+    var stLab = subtypeLabel(a);
+    if (stLab === "Расчётный") return "Расчётный счёт";
+    if (stLab) return stLab;
+    return "Счёт";
+  }
+
+  function bankLabelOf(a) {
+    return BANK_LABELS[String((a && a.bank) || "tochka").toLowerCase()] || "Точка";
+  }
+
+  function setApiNote(text) {
+    var n = el("dg-fin-api-note");
+    if (!n) return;
+    var t = String(text || "").trim();
+    if (!t) {
+      n.classList.add("d-none");
+      n.textContent = "";
+      return;
+    }
+    n.textContent = t;
+    n.classList.remove("d-none");
   }
 
   function renderBalances() {
@@ -490,21 +1124,34 @@
     if (!state.accounts.length) {
       totalWrap.innerHTML = "";
       banksWrap.innerHTML =
-        '<p class="text-muted small mb-0">Счетов пока нет. Сохраните JWT и нажмите «Обновить из банка».</p>';
+        '<p class="text-muted small mb-0">Счетов пока нет. Сохраните JWT и нажмите «Обновить» у организации.</p>';
       return;
     }
 
-    var availLines = moneyMapLines(sumByCurrency(state.accounts, accountAvailable));
-    var blockedLines = moneyMapLines(sumByCurrency(state.accounts, accountBlocked));
+    var viewAccounts = filteredAccounts(state.applied.org);
+    if (!viewAccounts.length) {
+      totalWrap.innerHTML = "";
+      banksWrap.innerHTML =
+        '<p class="text-muted small mb-0">Нет счетов для выбранной организации. Смените фильтр и нажмите «Применить».</p>';
+      return;
+    }
+
+    var availLines = moneyMapLines(sumByCurrency(viewAccounts, accountAvailable));
+    var blockedLines = moneyMapLines(sumByCurrency(viewAccounts, accountBlocked));
     var main = availLines[0];
     var rest = availLines.slice(1);
-    var syn = latestSyncedAt(state.accounts);
+    var syn = latestSyncedAt(viewAccounts);
     var synTxt = syn ? String(syn).replace("T", " ").slice(0, 19) : "—";
-    var blockedHtml = blockedLines.length
-      ? '<div class="dg-fin-total-extra small text-muted">Заблокировано всего: <strong class="text-dark">' +
-        esc(formatMoneyList(blockedLines)) +
-        "</strong></div>"
-      : "";
+    var blockedHtml = "";
+    if (blockedLines.length) {
+      var blockedPositive = blockedLines.some(function (x) { return Number(x.amount) > 0; });
+      if (blockedPositive) {
+        blockedHtml =
+          '<div class="dg-fin-total-extra small text-muted">Заблокировано: <strong class="text-dark">' +
+          esc(formatMoneyList(blockedLines)) +
+          "</strong></div>";
+      }
+    }
     var multiCur =
       rest.length > 0
         ? '<div class="dg-fin-total-extra small text-muted">Другие валюты: ' +
@@ -515,12 +1162,14 @@
     totalWrap.innerHTML =
       '<div class="card dg-fin-total-card">' +
       '<div class="card-body">' +
-      '<div class="dg-fin-total-label">Всего доступно</div>' +
+      '<div class="dg-fin-total-label">Всего доступно' +
+      (state.applied.org ? " · " + esc(orgLabelByCode(state.applied.org)) : "") +
+      "</div>" +
       '<p class="dg-fin-total-amount dg-fin-bal-num mb-0">' +
       esc(main ? fmtMoney(main.amount, main.currency) : "—") +
       "</p>" +
       '<div class="dg-fin-total-meta">Счетов: ' +
-      state.accounts.length +
+      viewAccounts.length +
       " · снимок: " +
       esc(synTxt) +
       "</div>" +
@@ -528,52 +1177,139 @@
       blockedHtml +
       "</div></div>";
 
-    var groups = groupAccountsByBank(state.accounts);
+    var groups = groupAccountsByBank(viewAccounts);
     banksWrap.innerHTML = groups
       .map(function (g) {
         var bankAvail = formatMoneyList(moneyMapLines(sumByCurrency(g.accounts, accountAvailable)));
+        var checkingN = g.accounts.filter(function (a) { return !a.is_fund; }).length;
+        var fundN = g.accounts.length - checkingN;
+        var metaBits = [];
+        if (checkingN) metaBits.push(checkingN + " расчётн.");
+        if (fundN) metaBits.push(fundN + " фонд" + (fundN === 1 ? "" : fundN < 5 ? "а" : "ов"));
         var cards = g.accounts
           .map(function (a) {
-            var title = esc(a.name || "Счёт") + " · " + esc(maskAcc(a.account_number || a.account_id));
-            var aSyn = a.synced_at ? esc(String(a.synced_at).replace("T", " ").slice(0, 19)) : "—";
-            var blocked =
-              accountBlocked(a) != null
-                ? '<div class="small text-muted">Заблокировано: ' + esc(fmtMoney(a.blocked, a.currency)) + "</div>"
-                : "";
+            var isFund = !!a.is_fund;
+            var dispName = accountDisplayName(a);
+            var stLab = subtypeLabel(a);
+            var mask = maskAcc(a.account_number || a.account_id);
+            var fullNum = String(a.account_number || a.account_id || "").trim();
             var avail = accountAvailable(a);
+            var blockedAmt = accountBlocked(a);
+            var typeText = isFund ? "Фонд" : stLab || "Счёт";
+            var isZero = avail == null || Number(avail) === 0;
+            var blockedHtml =
+              blockedAmt != null && blockedAmt > 0
+                ? '<div class="dg-fin-acc-blocked">Заблок. ' + esc(fmtMoney(blockedAmt, a.currency)) + "</div>"
+                : "";
+            var typePillCls =
+              "dg-fin-type-pill" + (isFund ? " is-fund" : " is-checking");
+            var typePill = state.canWrite
+              ? '<button type="button" class="' +
+                typePillCls +
+                ' is-toggle dg-fin-acc-fund-toggle" title="Клик — фонд вкл/выкл" data-account-id="' +
+                esc(a.account_id) +
+                '" data-bank="' +
+                esc(a.bank || "tochka") +
+                '" data-is-fund="' +
+                (isFund ? "1" : "0") +
+                '" data-custom-name="' +
+                esc(a.custom_name || "") +
+                '">' +
+                esc(typeText) +
+                "</button>"
+              : '<span class="' +
+                typePillCls +
+                '">' +
+                esc(typeText) +
+                "</span>";
+            var titleHtml = state.canWrite
+              ? '<div class="dg-fin-acc-title-row dg-fin-name-view" data-account-id="' +
+                esc(a.account_id) +
+                '" data-bank="' +
+                esc(a.bank || "tochka") +
+                '" data-is-fund="' +
+                (isFund ? "1" : "0") +
+                '" data-custom-name="' +
+                esc(a.custom_name || "") +
+                '">' +
+                '<span class="dg-fin-acc-title dg-fin-name-text is-editable dg-fin-acc-name-hit" title="Клик — переименовать">' +
+                esc(dispName) +
+                "</span>" +
+                '<button type="button" class="dg-fin-name-edit-btn dg-fin-acc-name-edit" title="Переименовать" aria-label="Переименовать">' +
+                '<i class="pe-7s-pen" aria-hidden="true"></i></button>' +
+                "</div>"
+              : '<div class="dg-fin-acc-title-row"><span class="dg-fin-acc-title dg-fin-name-text">' +
+                esc(dispName) +
+                "</span></div>";
             return (
-              '<div class="col-md-4 col-lg-3">' +
-              '<div class="card dg-fin-bal-card shadow-none border">' +
-              '<div class="card-body py-3">' +
-              '<div class="small text-muted">' +
-              title +
+              '<div class="col-sm-6 col-lg-4 col-xl-3">' +
+              '<div class="card dg-fin-bal-card' +
+              (isFund ? " is-fund" : " is-checking") +
+              (isZero ? " is-zero" : "") +
+              '" data-account-id="' +
+              esc(a.account_id) +
+              '" title="' +
+              esc(fullNum || mask) +
+              '">' +
+              '<div class="card-body">' +
+              '<div class="dg-fin-acc-top">' +
+              typePill +
+              '<span class="dg-fin-acc-mask">' +
+              esc(mask) +
+              "</span>" +
               "</div>" +
-              '<div class="h5 mb-1 dg-fin-bal-num">' +
+              titleHtml +
+              '<div class="dg-fin-acc-amount dg-fin-bal-num">' +
               esc(avail != null ? fmtMoney(avail, a.currency) : "—") +
               "</div>" +
-              blocked +
-              '<div class="small text-muted">Снимок: ' +
-              aSyn +
-              "</div>" +
+              blockedHtml +
               "</div></div></div>"
             );
           })
           .join("");
         return (
           '<div class="dg-fin-bank-block" data-fin-bank="' +
-          esc(g.bank) +
+          esc(g.key) +
+          '" data-customer-code="' +
+          esc(g.customer_code || "") +
           '">' +
           '<div class="dg-fin-bank-head">' +
-          '<p class="dg-fin-bank-title">' +
-          esc(g.title) +
-          " · " +
-          g.accounts.length +
-          " счёт(а)</p>" +
+          '<div class="dg-fin-bank-head-left">' +
+          '<span class="dg-fin-bank-pill dg-fin-bank-pill-lg">' +
+          esc(g.bank_label) +
+          "</span>" +
+          "<div class=\"dg-fin-bank-title-wrap\">" +
+          (state.canWrite && g.customer_code
+            ? '<div class="dg-fin-name-view" data-customer-code="' +
+              esc(g.customer_code) +
+              '" data-bank-fallback="' +
+              esc(g.org_label || "") +
+              '" data-full-name="' +
+              esc(getOrgAliasEntry(g.customer_code).full || "") +
+              '" data-short-name="' +
+              esc(getOrgAliasEntry(g.customer_code).short || "") +
+              '">' +
+              '<p class="dg-fin-bank-title dg-fin-name-text is-editable dg-fin-org-name-hit" title="Клик — полное и короткое название">' +
+              esc(g.display_short || g.org_label || "Организация") +
+              "</p>" +
+              '<button type="button" class="dg-fin-name-edit-btn dg-fin-org-name-edit" title="Полное и короткое название" aria-label="Переименовать">' +
+              '<i class="pe-7s-pen" aria-hidden="true"></i></button>' +
+              "</div>"
+            : '<p class="dg-fin-bank-title">' + esc(g.display_short || g.org_label || "Организация") + "</p>") +
+          '<p class="dg-fin-bank-meta mb-0">' +
+          esc(metaBits.join(" · ") || g.accounts.length + " счёт(а)") +
+          (g.org_label && g.display_full && g.display_full !== g.org_label
+            ? " · в банке: " + esc(g.org_label)
+            : g.display_full && g.display_short && g.display_full !== g.display_short
+              ? " · полное: " + esc(g.display_full)
+              : "") +
+          "</p>" +
+          "</div></div>" +
           '<p class="dg-fin-bank-sum">' +
           esc(bankAvail) +
           "</p>" +
           "</div>" +
-          '<div class="row g-2 dg-fin-balances-row">' +
+          '<div class="row g-3 dg-fin-balances-row">' +
           cards +
           "</div></div>"
         );
@@ -581,15 +1317,317 @@
       .join("");
   }
 
+  function filteredAccounts(orgCode) {
+    var code = String(orgCode || "").trim();
+    if (!code) return (state.accounts || []).slice();
+    return (state.accounts || []).filter(function (a) {
+      return String(a.customer_code || "") === code;
+    });
+  }
+  function getOrgAliasEntry(customerCode) {
+    var code = String(customerCode || "").trim();
+    var raw = code && state.orgAliases ? state.orgAliases[code] : null;
+    if (!raw) return { full: "", short: "" };
+    if (typeof raw === "string") {
+      var one = String(raw).trim();
+      return { full: one, short: one };
+    }
+    return {
+      full: String(raw.full || "").trim(),
+      short: String(raw.short || "").trim(),
+    };
+  }
+  /** Полное название — фильтр, таблица, аналитика, тосты. */
+  function orgFullName(customerCode, fallback) {
+    var e = getOrgAliasEntry(customerCode);
+    if (e.full) return e.full;
+    if (e.short) return e.short;
+    return String(fallback || "").trim() || "Организация";
+  }
+  /** Короткое — шапка карточек балансов (скрин 3). */
+  function orgShortName(customerCode, fallback) {
+    var e = getOrgAliasEntry(customerCode);
+    if (e.short) return e.short;
+    if (e.full) return e.full;
+    return String(fallback || "").trim() || "Организация";
+  }
+  function orgDisplayName(customerCode, fallback) {
+    return orgFullName(customerCode, fallback);
+  }
+  function orgLabelByCode(code) {
+    var c = String(code || "").trim();
+    if (!c) return "";
+    var e = getOrgAliasEntry(c);
+    if (e.full) return e.full;
+    if (e.short) return e.short;
+    var hit = (state.accounts || []).find(function (a) {
+      return String(a.customer_code || "") === c;
+    });
+    return hit ? String(hit.org_label || hit.name || c).trim() : c;
+  }
+  function fillOrgSelect() {
+    var sel = el("dg-fin-org");
+    if (!sel) return;
+    var cur = state.pending.org;
+    var map = Object.create(null);
+    (state.accounts || []).forEach(function (a) {
+      var code = String(a.customer_code || "").trim();
+      if (!code) return;
+      if (!map[code]) {
+        map[code] = orgFullName(code, a.org_label || code);
+      }
+    });
+    var codes = Object.keys(map).sort(function (a, b) {
+      return map[a].localeCompare(map[b], "ru");
+    });
+    sel.innerHTML =
+      '<option value="">Все</option>' +
+      codes
+        .map(function (code) {
+          return '<option value="' + esc(code) + '">' + esc(map[code]) + "</option>";
+        })
+        .join("");
+    sel.value = cur && map[cur] ? cur : "";
+    if (cur && !map[cur]) state.pending.org = "";
+  }
   function fillAccountSelect() {
     var sel = el("dg-fin-account");
     if (!sel) return;
     var cur = state.pending.account_id;
-    sel.innerHTML = '<option value="">Все счета</option>' + state.accounts.map(function (a) {
-      var lab = maskAcc(a.account_number || a.account_id) + (a.name ? " · " + a.name : "");
-      return '<option value="' + esc(a.account_id) + '">' + esc(lab) + "</option>";
-    }).join("");
-    sel.value = cur;
+    var org = state.pending.org;
+    var sorted = filteredAccounts(org).sort(sortAccountsForDisplay);
+    sel.innerHTML =
+      '<option value="">Все счета</option>' +
+      sorted
+        .map(function (a) {
+          var lab =
+            accountDisplayName(a) +
+            " · " +
+            maskAcc(a.account_number || a.account_id);
+          return '<option value="' + esc(a.account_id) + '">' + esc(lab) + "</option>";
+        })
+        .join("");
+    var stillOk = sorted.some(function (a) { return a.account_id === cur; });
+    sel.value = stillOk ? cur : "";
+    if (cur && !stillOk) state.pending.account_id = "";
+  }
+
+  function saveOrgMeta(customerCode, names, btn) {
+    var full = String((names && names.full) || "").trim();
+    var short = String((names && names.short) || "").trim();
+    var payload = {
+      customer_code: customerCode,
+      full_name: full,
+      short_name: short,
+    };
+    var run = function () {
+      return fetch("/api/finance/org-meta", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+        .then(function (r) {
+          return r.json().then(function (j) {
+            return { ok: r.ok, j: j };
+          });
+        })
+        .then(function (x) {
+          if (!x.ok || !x.j || !x.j.success) {
+            throw new Error((x.j && x.j.error) || "Не удалось сохранить название");
+          }
+          state.orgAliases = x.j.org_aliases && typeof x.j.org_aliases === "object" ? x.j.org_aliases : {};
+          fillOrgSelect();
+          renderBalances();
+          toast(
+            "success",
+            "Организация: полное «" +
+              (x.j.full_name || "—") +
+              "», короткое «" +
+              (x.j.short_name || "—") +
+              "»"
+          );
+        });
+    };
+    if (window.DatagonNotify && window.DatagonNotify.busyRun && btn) {
+      return window.DatagonNotify.busyRun(btn, run);
+    }
+    return run();
+  }
+
+  function saveAccountMeta(accountId, bank, isFund, customName, btn) {
+    var payload = {
+      account_id: accountId,
+      bank: bank || "tochka",
+      is_fund: !!isFund,
+      custom_name: String(customName || "").trim(),
+    };
+    var run = function () {
+      return fetch("/api/finance/account-meta", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+        .then(function (r) {
+          return r.json().then(function (j) {
+            return { ok: r.ok, j: j };
+          });
+        })
+        .then(function (x) {
+          if (!x.ok || !x.j || !x.j.success) {
+            throw new Error((x.j && x.j.error) || "Не удалось сохранить");
+          }
+          var updated = x.j.account;
+          if (updated) {
+            state.accounts = state.accounts.map(function (a) {
+              return a.account_id === updated.account_id ? Object.assign({}, a, updated) : a;
+            });
+            fillAccountSelect();
+            renderBalances();
+          }
+          toast(
+            "success",
+            "Счёт сохранён" +
+              (updated && updated.custom_name ? ": " + updated.custom_name : updated && updated.is_fund ? " (фонд)" : "")
+          );
+        });
+    };
+    if (window.DatagonNotify && window.DatagonNotify.busyRun && btn) {
+      return window.DatagonNotify.busyRun(btn, run);
+    }
+    return run();
+  }
+
+  function beginOrgNamesEdit(viewEl) {
+    if (!viewEl || viewEl.querySelector(".dg-fin-name-editor")) return;
+    var code = viewEl.getAttribute("data-customer-code");
+    if (!code) return;
+    var entry = getOrgAliasEntry(code);
+    var fullCur = entry.full || "";
+    var shortCur = entry.short || "";
+    var editor = document.createElement("div");
+    editor.className = "dg-fin-name-editor dg-fin-org-names-editor";
+    editor.innerHTML =
+      '<div class="dg-fin-org-names-fields">' +
+      '<label class="dg-fin-org-names-label">Полное название' +
+      '<input type="text" class="form-control form-control-sm dg-fin-inline-full" maxlength="160" placeholder="для фильтра и таблицы" /></label>' +
+      '<label class="dg-fin-org-names-label">Короткое название' +
+      '<input type="text" class="form-control form-control-sm dg-fin-inline-short" maxlength="80" placeholder="для карточек балансов" /></label>' +
+      "</div>" +
+      '<div class="dg-fin-org-names-actions">' +
+      '<button type="button" class="btn btn-sm btn-primary dg-fin-inline-save" data-dg-notify-start="Сохраняем названия организации…">OK</button>' +
+      '<button type="button" class="btn btn-sm btn-outline-secondary dg-fin-inline-cancel">✕</button>' +
+      "</div>";
+    var fullInp = editor.querySelector(".dg-fin-inline-full");
+    var shortInp = editor.querySelector(".dg-fin-inline-short");
+    var saveBtn = editor.querySelector(".dg-fin-inline-save");
+    var cancelBtn = editor.querySelector(".dg-fin-inline-cancel");
+    fullInp.value = fullCur;
+    shortInp.value = shortCur;
+    viewEl.replaceChildren(editor);
+    fullInp.focus();
+    fullInp.select();
+    var closed = false;
+    function close() {
+      if (closed) return;
+      closed = true;
+      renderBalances();
+    }
+    function commit() {
+      if (closed) return;
+      var nextFull = String(fullInp.value || "").trim();
+      var nextShort = String(shortInp.value || "").trim();
+      if (nextFull === fullCur && nextShort === shortCur) {
+        close();
+        return;
+      }
+      closed = true;
+      Promise.resolve(saveOrgMeta(code, { full: nextFull, short: nextShort }, saveBtn)).catch(function (e) {
+        toast("danger", e.message || String(e));
+        closed = false;
+        renderBalances();
+      });
+    }
+    saveBtn.addEventListener("click", function (ev) {
+      ev.preventDefault();
+      commit();
+    });
+    cancelBtn.addEventListener("click", function (ev) {
+      ev.preventDefault();
+      close();
+    });
+    [fullInp, shortInp].forEach(function (inp) {
+      inp.addEventListener("keydown", function (ev) {
+        if (ev.key === "Enter") {
+          ev.preventDefault();
+          commit();
+        } else if (ev.key === "Escape") {
+          ev.preventDefault();
+          close();
+        }
+      });
+    });
+  }
+
+  function beginInlineNameEdit(viewEl, opts) {
+    if (!viewEl || viewEl.querySelector(".dg-fin-name-editor")) return;
+    var current = String(opts.value || "").trim();
+    var editor = document.createElement("div");
+    editor.className = "dg-fin-name-editor";
+    editor.innerHTML =
+      '<input type="text" class="form-control form-control-sm dg-fin-inline-cname" maxlength="120" placeholder="' +
+      esc(opts.placeholder || "Название") +
+      '" />' +
+      '<button type="button" class="btn btn-sm btn-primary dg-fin-inline-save" data-dg-notify-start="' +
+      esc(opts.notifyStart || "Сохраняем…") +
+      '">OK</button>' +
+      '<button type="button" class="btn btn-sm btn-outline-secondary dg-fin-inline-cancel">✕</button>';
+    var input = editor.querySelector(".dg-fin-inline-cname");
+    var saveBtn = editor.querySelector(".dg-fin-inline-save");
+    var cancelBtn = editor.querySelector(".dg-fin-inline-cancel");
+    input.value = current;
+    viewEl.replaceChildren(editor);
+    input.focus();
+    input.select();
+    var closed = false;
+    function close() {
+      if (closed) return;
+      closed = true;
+      renderBalances();
+    }
+    function commit() {
+      if (closed) return;
+      var next = String(input.value || "").trim();
+      if (next === current) {
+        close();
+        return;
+      }
+      closed = true;
+      Promise.resolve(opts.onSave(next, saveBtn))
+        .catch(function (e) {
+          toast("danger", e.message || String(e));
+          closed = false;
+          renderBalances();
+        });
+    }
+    saveBtn.addEventListener("click", function (ev) {
+      ev.preventDefault();
+      commit();
+    });
+    cancelBtn.addEventListener("click", function (ev) {
+      ev.preventDefault();
+      close();
+    });
+    input.addEventListener("keydown", function (ev) {
+      if (ev.key === "Enter") {
+        ev.preventDefault();
+        commit();
+      } else if (ev.key === "Escape") {
+        ev.preventDefault();
+        close();
+      }
+    });
   }
 
   function loadAccounts() {
@@ -598,6 +1636,10 @@
       .then(function (j) {
         if (!j || !j.success) throw new Error((j && j.error) || "accounts");
         state.accounts = j.accounts || [];
+        state.orgAliases = j.org_aliases && typeof j.org_aliases === "object" ? j.org_aliases : {};
+        if (typeof j.can_write === "boolean") state.canWrite = j.can_write;
+        setApiNote(j.api_note || "");
+        fillOrgSelect();
         fillAccountSelect();
         renderBalances();
       });
@@ -606,12 +1648,14 @@
   function loadTx() {
     var q = new URLSearchParams();
     q.set("search", state.applied.search || "");
+    q.set("customer_code", state.applied.org || "");
     q.set("direction", state.applied.direction || "");
     q.set("account_id", state.applied.account_id || "");
     q.set("date_from", state.applied.date_from || "");
     q.set("date_to", state.applied.date_to || "");
     q.set("page", String(state.page));
     q.set("page_size", String(state.applied.page_size || 100));
+    if (state.applied.include_internal) q.set("include_internal", "1");
     return fetch("/api/finance/transactions?" + q.toString(), { credentials: "same-origin" })
       .then(function (r) { return r.json(); })
       .then(function (j) {
@@ -628,57 +1672,133 @@
       });
   }
 
+  function renderCredList() {
+    var root = el("dg-fin-cred-list");
+    if (!root) return;
+    var list = state.credentials || [];
+    if (!list.length) {
+      root.innerHTML = '<p class="small text-muted mb-0">JWT пока не добавлены. Укажите название организации и токен ниже.</p>';
+      return;
+    }
+    root.innerHTML =
+      '<div class="table-responsive"><table class="table table-sm align-middle mb-0">' +
+      "<thead><tr><th>Организация</th><th>JWT</th><th>Клиенты</th><th>Вкл.</th><th></th></tr></thead><tbody>" +
+      list
+        .map(function (c) {
+          var names = (c.customer_names || []).join(", ") || (c.customer_codes || []).join(", ") || "—";
+          return (
+            "<tr data-cred-id=\"" +
+            esc(c.id) +
+            "\">" +
+            "<td><strong>" +
+            esc(c.label || "Точка") +
+            "</strong></td>" +
+            "<td class=\"small text-muted\">" +
+            esc(c.jwt_mask || "—") +
+            "</td>" +
+            "<td class=\"small\">" +
+            esc(names) +
+            "</td>" +
+            "<td><input type=\"checkbox\" class=\"form-check-input dg-fin-cred-en\" " +
+            (c.enabled ? "checked " : "") +
+            "data-cred-id=\"" +
+            esc(c.id) +
+            "\" /></td>" +
+            "<td class=\"text-nowrap\">" +
+            '<button type="button" class="btn btn-sm btn-outline-success dg-fin-cred-sync" data-cred-id="' +
+            esc(c.id) +
+            '" data-cred-label="' +
+            esc(c.label || "Точка") +
+            '" data-dg-notify-start="Обновляем ' +
+            esc(c.label || "организацию") +
+            '…"' +
+            (c.enabled === false ? " disabled" : "") +
+            ">Обновить</button> " +
+            '<button type="button" class="btn btn-sm btn-outline-secondary dg-fin-cred-probe" data-cred-id="' +
+            esc(c.id) +
+            '" data-dg-notify-start="Проверяем JWT…">Проверить</button> ' +
+            '<button type="button" class="btn btn-sm btn-outline-danger dg-fin-cred-del" data-cred-id="' +
+            esc(c.id) +
+            '" data-dg-notify-start="Удаляем JWT…">Удалить</button>' +
+            "</td></tr>"
+          );
+        })
+        .join("") +
+      "</tbody></table></div>";
+  }
+
   function loadConfig() {
     return fetch("/api/finance/config", { credentials: "same-origin" })
       .then(function (r) { return r.json(); })
       .then(function (j) {
         if (!j || !j.success) throw new Error((j && j.error) || "config");
         state.canWrite = !!j.can_write;
+        state.credentials = Array.isArray(j.credentials) ? j.credentials : [];
         var card = el("dg-fin-bank-card");
         if (card) card.style.display = state.canWrite ? "" : "none";
-        var mask = el("dg-fin-jwt-mask");
-        if (mask) mask.textContent = j.configured ? ("Сохранено: " + (j.jwt_mask || "маска")) : "Не задан";
+        renderCredList();
         var inp = el("dg-fin-jwt");
         if (inp) {
           inp.value = "";
-          inp.placeholder = j.configured ? "Новый JWT, чтобы заменить сохранённый" : "Вставьте JWT для сохранения";
+          inp.placeholder = "Вставьте JWT";
         }
+        var lab = el("dg-fin-cred-label");
+        if (lab) lab.value = "";
         var syncBtn = el("dg-fin-sync");
         if (syncBtn) syncBtn.classList.toggle("d-none", !state.canWrite);
+        var loadTxBtnCfg = el("dg-fin-load-tx");
+        if (loadTxBtnCfg) loadTxBtnCfg.classList.toggle("d-none", !state.canWrite);
         return j;
       });
   }
 
+  function postConfig(body) {
+    return fetch("/api/finance/config", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body || {}),
+    }).then(function (r) {
+      return r.json().then(function (j) {
+        return { r: r, j: j };
+      });
+    });
+  }
+
   function saveJwt() {
     var inp = el("dg-fin-jwt");
-    var jwt = String(inp && inp.value || "").trim();
+    var lab = el("dg-fin-cred-label");
+    var jwt = String((inp && inp.value) || "").trim();
+    var label = String((lab && lab.value) || "").trim();
     if (!jwt) {
-      setBankMsg("danger", "<strong>Вставьте JWT</strong> в поле (пустое значение не перезаписывает сохранённый ключ).");
+      setBankMsg("danger", "<strong>Вставьте JWT</strong> организации.");
       return Promise.resolve();
     }
     var btn = el("dg-fin-btn-save-bank");
     var run = function () {
       setBankMsg("warning", "Сохраняем…");
-      return fetch("/api/finance/config", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ jwt: jwt }),
-      })
-        .then(function (r) { return r.json().then(function (j) { return { r: r, j: j }; }); })
+      return postConfig({ action: "upsert", label: label || "Точка", jwt: jwt })
         .then(function (x) {
           if (!x.r.ok || !x.j.success) throw new Error((x.j && x.j.error) || ("HTTP " + x.r.status));
-          return fetch("/api/finance/config", { credentials: "same-origin" }).then(function (r) { return r.json(); });
+          return fetch("/api/finance/config", { credentials: "same-origin" }).then(function (r) {
+            return r.json();
+          });
         })
         .then(function (cfg) {
-          var lenOk = Number(cfg.jwt_len || 0) === jwt.length;
-          var maskOk = String(cfg.jwt_mask || "").indexOf(jwt.slice(0, 4)) === 0;
-          var ok = cfg.configured && lenOk && maskOk;
-          var html = "<strong>" + (ok ? "JWT сохранён." : "Сохранено, но маска/длина из БД не совпали.") + "</strong>";
-          html += "<br>В БД: " + esc(cfg.jwt_mask || "—");
+          state.credentials = Array.isArray(cfg.credentials) ? cfg.credentials : [];
+          renderCredList();
+          var added = state.credentials.filter(function (c) {
+            return Number(c.jwt_len || 0) === jwt.length;
+          });
+          var ok = cfg.configured && added.length > 0;
+          var html =
+            "<strong>" +
+            (ok ? "JWT организации сохранён." : "Сохранено, проверьте маску в списке.") +
+            "</strong>";
+          if (added[0]) html += "<br>" + esc(added[0].label) + ": " + esc(added[0].jwt_mask || "—");
           setBankMsg(ok ? "success" : "warning", html);
           if (inp) inp.value = "";
-          if (el("dg-fin-jwt-mask")) el("dg-fin-jwt-mask").textContent = cfg.configured ? ("Сохранено: " + cfg.jwt_mask) : "Не задан";
+          if (lab) lab.value = "";
         })
         .catch(function (e) {
           setBankMsg("danger", "<strong>Ошибка сохранения.</strong> " + esc(e.message || String(e)));
@@ -688,92 +1808,318 @@
     return run();
   }
 
-  function probe() {
+  function openFinConfirm(opts) {
+    opts = opts || {};
+    var overlay = el("dg-fin-confirm-overlay");
+    var title = el("dg-fin-confirm-title");
+    var text = el("dg-fin-confirm-text");
+    var okBtn = el("dg-fin-confirm-ok");
+    var cancelBtn = el("dg-fin-confirm-cancel");
+    if (!overlay || !okBtn || !cancelBtn) {
+      return Promise.resolve(false);
+    }
+    if (title) title.textContent = opts.title || "Подтверждение";
+    if (text) text.textContent = opts.text || "";
+    okBtn.textContent = opts.okLabel || "Удалить";
+    overlay.classList.remove("d-none");
+    return new Promise(function (resolve) {
+      function close(v) {
+        overlay.classList.add("d-none");
+        okBtn.removeEventListener("click", onOk);
+        cancelBtn.removeEventListener("click", onCancel);
+        overlay.removeEventListener("click", onBackdrop);
+        document.removeEventListener("keydown", onKey);
+        resolve(v);
+      }
+      function onOk() { close(true); }
+      function onCancel() { close(false); }
+      function onBackdrop(ev) { if (ev.target === overlay) close(false); }
+      function onKey(ev) { if (ev.key === "Escape") close(false); }
+      okBtn.addEventListener("click", onOk);
+      cancelBtn.addEventListener("click", onCancel);
+      overlay.addEventListener("click", onBackdrop);
+      document.addEventListener("keydown", onKey);
+    });
+  }
+
+  function deleteCred(id) {
+    return openFinConfirm({
+      title: "Удалить JWT?",
+      text: "Ключ организации будет удалён из настроек Datagon. Снимок счетов в БД останется.",
+      okLabel: "Удалить",
+    }).then(function (ok) {
+      if (!ok) return null;
+      return postConfig({ action: "delete", id: id }).then(function (x) {
+        if (!x.r.ok || !x.j.success) throw new Error((x.j && x.j.error) || ("HTTP " + x.r.status));
+        state.credentials = Array.isArray(x.j.credentials) ? x.j.credentials : [];
+        renderCredList();
+        setBankMsg("success", "<strong>JWT удалён.</strong>");
+        toast("success", "JWT удалён");
+      });
+    });
+  }
+
+  function toggleCred(id, enabled) {
+    return postConfig({ action: "toggle", id: id, enabled: !!enabled }).then(function (x) {
+      if (!x.r.ok || !x.j.success) throw new Error((x.j && x.j.error) || ("HTTP " + x.r.status));
+      state.credentials = Array.isArray(x.j.credentials) ? x.j.credentials : [];
+      renderCredList();
+    });
+  }
+
+  function probe(credentialId) {
     var btn = el("dg-fin-btn-probe");
     var t0 = Date.now();
-    showActionLog("info", "Проверка связи: запрашиваем счета Точки…");
+    showActionLog("info", credentialId ? "Проверка одного JWT…" : "Проверка всех JWT Точки…");
     var run = function () {
-      return fetch("/api/finance/probe", { credentials: "same-origin" })
-        .then(function (r) { return r.json().then(function (j) { return { r: r, j: j }; }); })
+      var url = "/api/finance/probe" + (credentialId ? "?credential_id=" + encodeURIComponent(credentialId) : "");
+      return fetch(url, { credentials: "same-origin" })
+        .then(function (r) {
+          return r.json().then(function (j) {
+            return { r: r, j: j };
+          });
+        })
         .then(function (x) {
           var sec = Math.round((Date.now() - t0) / 1000);
           if (!x.r.ok || !x.j.success) throw new Error((x.j && x.j.error) || ("HTTP " + x.r.status));
-          var n = Number(x.j.count || 0);
-          showActionLog("success", "Связь ок. Счетов: " + n + ". Длительность " + sec + " с.");
-          toast("success", "Точка: счетов " + n);
+          var results = Array.isArray(x.j.results) ? x.j.results : [];
+          var html =
+            "Связь ок. Всего счетов: " +
+            Number(x.j.count || 0) +
+            ", ключей: " +
+            Number(x.j.credentials_probed || results.length || 0) +
+            ". " +
+            sec +
+            " с.";
+          if (results.length) {
+            html += "<ul class=\"small mb-0 ps-3 mt-1\">";
+            results.forEach(function (r) {
+              if (r.error) {
+                html += "<li>" + esc(r.label || r.credential_id) + ": ошибка — " + esc(r.error) + "</li>";
+              } else {
+                html +=
+                  "<li>" +
+                  esc(r.label || r.credential_id) +
+                  ": счетов " +
+                  Number(r.count || 0) +
+                  "</li>";
+              }
+            });
+            html += "</ul>";
+          }
+          if (x.j.api_note) html += "<br><span class=\"small text-muted\">" + esc(x.j.api_note) + "</span>";
+          showActionLog("success", html, true);
+          toast("success", "Точка: счетов " + Number(x.j.count || 0));
         })
         .catch(function (e) {
           showActionLog("danger", "Ошибка проверки: " + (e.message || String(e)));
           toast("danger", e.message || String(e));
         });
     };
-    if (window.DatagonNotify && window.DatagonNotify.busyRun && btn) return window.DatagonNotify.busyRun(btn, run);
+    if (window.DatagonNotify && window.DatagonNotify.busyRun && btn && !credentialId) {
+      return window.DatagonNotify.busyRun(btn, run);
+    }
     return run();
   }
 
-  function syncFromBank() {
+  function parseJsonResponse(r) {
+    return r.text().then(function (txt) {
+      var t = String(txt || "").trim();
+      if (!t) return { r: r, j: { success: false, error: "Пустой ответ HTTP " + r.status } };
+      try {
+        return { r: r, j: JSON.parse(t) };
+      } catch (e) {
+        var snip = t.replace(/\s+/g, " ").slice(0, 160);
+        throw new Error(
+          "Сервер вернул не JSON (HTTP " +
+            r.status +
+            "). Часто это таймаут прокси на длинном синке. Фрагмент: " +
+            snip
+        );
+      }
+    });
+  }
+
+  function renderSyncResult(j) {
+    var errs = Array.isArray(j.errors) ? j.errors : [];
+    var html =
+      "<ul class=\"mb-1 ps-3\">" +
+      "<li>Ключей: " + Number(j.credentials || (j.by_credential && j.by_credential.length) || 0) + "</li>" +
+      "<li>Счетов записано: " + Number(j.accounts || 0) + "</li>" +
+      "<li>Проводок записано: " + Number(j.tx_upserted || 0) + "</li>" +
+      "<li>Ошибок: " + errs.length + "</li>" +
+      "<li>Длительность: " + Number(j.duration_sec || 0) + " с</li>" +
+      "</ul>";
+    if (Array.isArray(j.by_credential) && j.by_credential.length) {
+      html += "<div class=\"small mb-1\">По организациям:</div><ul class=\"small mb-1 ps-3\">";
+      j.by_credential.forEach(function (c) {
+        html +=
+          "<li>" +
+          esc(c.label || c.credential_id) +
+          ": счетов " +
+          Number(c.accounts || 0) +
+          ", проводок " +
+          Number(c.tx_upserted || 0) +
+          "</li>";
+      });
+      html += "</ul>";
+    }
+    if (j.api_note) {
+      html += "<p class=\"small text-muted mb-1\">" + esc(j.api_note) + "</p>";
+    }
+    if (errs.length) {
+      html += "<div class=\"small\">Первые ошибки:</div><ul class=\"small mb-0 ps-3\">";
+      errs.slice(0, 20).forEach(function (er) {
+        html += "<li>" + esc(er.code) + ": " + esc(er.error) + "</li>";
+      });
+      html += "</ul>";
+    }
+    showActionLog(j.success === false ? "warning" : "success", html, true);
+    toast(j.success === false ? "warning" : "success", j.message || "Готово");
+    return loadAccounts().then(function () {
+      return Promise.all([loadTx(), loadMonthlyAnalytics(), loadCounterparties()]);
+    });
+  }
+
+  function pollFinanceSync(opts) {
+    opts = opts || {};
+    var t0 = opts.t0 || Date.now();
+    var filtersTxt = opts.filtersTxt || "";
+    var days = opts.days || 30;
+    var tick = opts.tick || null;
+    var attempts = Number(opts.attempts || 0);
+    return fetch("/api/finance/sync-status", { credentials: "same-origin" })
+      .then(parseJsonResponse)
+      .then(function (x) {
+        var sync = (x.j && x.j.sync) || {};
+        var sec = Math.round((Date.now() - t0) / 1000);
+        if (sync.active) {
+          var msg = String(sync.message || "Обновление…");
+          showActionLog(
+            "info",
+            "Обновляем счета и выписку Точки за " +
+              days +
+              " дн.<br><span class=\"small\">Фильтры: " +
+              esc(filtersTxt) +
+              "</span><br>" +
+              esc(msg) +
+              " · прошло " +
+              sec +
+              " с…",
+            true
+          );
+          if (attempts > 600) {
+            if (tick) clearInterval(tick);
+            throw new Error("Синк не завершился за отведённое время (статус всё ещё active)");
+          }
+          return new Promise(function (resolve) {
+            setTimeout(function () {
+              resolve(pollFinanceSync({ t0: t0, filtersTxt: filtersTxt, days: days, tick: tick, attempts: attempts + 1 }));
+            }, 1500);
+          });
+        }
+        if (tick) clearInterval(tick);
+        var result = sync.last_result || null;
+        if (!result) {
+          if (sync.last_error) throw new Error(sync.last_error);
+          throw new Error("Синк завершился без результата");
+        }
+        return renderSyncResult(result);
+      });
+  }
+
+  function syncFromBank(opts) {
+    opts = opts || {};
     if (!state.canWrite) {
       toast("warning", "Нужен полный доступ, чтобы обновлять из банка");
       return Promise.resolve();
     }
     readPendingFromForm();
     var days = state.pending.sync_days || 30;
+    var credId = String(opts.credentialId || "").trim();
+    var orgTxt = String(opts.orgLabel || "").trim();
+    if (credId && !orgTxt) {
+      var found = (state.credentials || []).find(function (c) { return c.id === credId; });
+      if (found) orgTxt = found.label || "";
+    }
+    var useFilters = !!opts.useFilters;
+    var customerCode = useFilters ? String(state.pending.org || "").trim() : "";
+    var accountId = useFilters ? String(state.pending.account_id || "").trim() : "";
+    var dateFrom = useFilters ? String(state.pending.date_from || "").trim() : "";
+    var dateTo = useFilters ? String(state.pending.date_to || "").trim() : "";
+    if (useFilters) {
+      // применяем фильтры к таблице сразу, чтобы после синка увидеть нужный срез
+      state.applied = Object.assign({}, state.pending);
+      writeFormFromPending();
+      markDirty();
+    }
+    var periodTxt =
+      dateFrom || dateTo
+        ? (dateFrom || "…") + " — " + (dateTo || "…")
+        : "последние " + days + " дн.";
+    var scopeParts = [];
+    if (credId) scopeParts.push("JWT: " + (orgTxt || credId));
+    if (customerCode) scopeParts.push("орг: " + (orgLabelByCode(customerCode) || customerCode));
+    if (accountId) scopeParts.push("счёт: " + maskAcc(accountId));
+    if (!scopeParts.length) scopeParts.push(useFilters ? "все орг. по фильтрам" : "все включённые JWT");
+    var scopeTxt = scopeParts.join(" · ");
     var filtersTxt = [
-      "направление: " + (state.applied.direction || "все"),
-      "счёт: " + (state.applied.account_id ? maskAcc(state.applied.account_id) : "все"),
-      "даты: " + ((state.applied.date_from || "…") + "—" + (state.applied.date_to || "…")),
-      "поиск: " + (state.applied.search || "—"),
+      "период: " + periodTxt,
+      "организация: " + (customerCode ? orgLabelByCode(customerCode) : useFilters ? "все" : credId ? orgTxt || "JWT" : "все"),
+      "счёт: " + (accountId ? maskAcc(accountId) : "все"),
     ].join("; ");
     var t0 = Date.now();
     var tick = null;
     showActionLog(
       "info",
-      "Обновляем счета и выписку Точки за " + days + " дн.<br><span class=\"small\">Фильтры таблицы (не влияют на выгрузку): " + esc(filtersTxt) + "</span><br>идёт, прошло 0 с…",
+      "Загружаем выписки из Точки (" +
+        esc(scopeTxt) +
+        ")<br><span class=\"small\">" +
+        esc(filtersTxt) +
+        "</span><br>идёт, прошло 0 с…",
       true
     );
     tick = setInterval(function () {
       var s = Math.round((Date.now() - t0) / 1000);
       showActionLog(
         "info",
-        "Обновляем счета и выписку Точки за " + days + " дн.<br><span class=\"small\">Фильтры: " + esc(filtersTxt) + "</span><br>идёт, прошло " + s + " с…",
+        "Загружаем выписки из Точки (" +
+          esc(scopeTxt) +
+          ")<br><span class=\"small\">" +
+          esc(filtersTxt) +
+          "</span><br>идёт, прошло " +
+          s +
+          " с…",
         true
       );
     }, 1000);
-    var btn = el("dg-fin-sync");
+    var btn = opts.triggerBtn || el("dg-fin-load-tx") || el("dg-fin-sync");
+    var body = { days: days };
+    if (credId) body.credential_id = credId;
+    if (customerCode) body.customer_code = customerCode;
+    if (accountId) body.account_id = accountId;
+    if (dateFrom) body.date_from = dateFrom;
+    if (dateTo) body.date_to = dateTo;
     var run = function () {
       return fetch("/api/finance/sync", {
         method: "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ days: days }),
+        body: JSON.stringify(body),
       })
-        .then(function (r) { return r.json().then(function (j) { return { r: r, j: j }; }); })
+        .then(parseJsonResponse)
         .then(function (x) {
-          if (tick) clearInterval(tick);
           var j = x.j || {};
           if (!x.r.ok) throw new Error((j && j.error) || ("HTTP " + x.r.status));
           if (j.skip_reason === "already_running") {
-            showActionLog("warning", "Уже идёт обновление. " + ((j.sync && j.sync.message) || ""), false);
-            return;
+            showActionLog("warning", "Уже идёт обновление — подключаемся к статусу…", false);
+            return pollFinanceSync({ t0: t0, filtersTxt: filtersTxt, days: days, tick: tick });
           }
-          var errs = Array.isArray(j.errors) ? j.errors : [];
-          var html =
-            "<ul class=\"mb-1 ps-3\">" +
-            "<li>Счетов записано: " + Number(j.accounts || 0) + "</li>" +
-            "<li>Проводок записано: " + Number(j.tx_upserted || 0) + "</li>" +
-            "<li>Ошибок: " + errs.length + "</li>" +
-            "<li>Длительность: " + Number(j.duration_sec || 0) + " с</li>" +
-            "</ul>";
-          if (errs.length) {
-            html += "<div class=\"small\">Первые ошибки:</div><ul class=\"small mb-0 ps-3\">";
-            errs.slice(0, 20).forEach(function (er) {
-              html += "<li>" + esc(er.code) + ": " + esc(er.error) + "</li>";
-            });
-            html += "</ul>";
+          if (j.queued || j.started) {
+            return pollFinanceSync({ t0: t0, filtersTxt: filtersTxt, days: days, tick: tick });
           }
-          showActionLog(j.success === false ? "warning" : "success", html, true);
-          toast(j.success === false ? "warning" : "success", j.message || "Готово");
-          return loadAccounts().then(loadTx);
+          if (tick) clearInterval(tick);
+          return renderSyncResult(j);
         })
         .catch(function (e) {
           if (tick) clearInterval(tick);
@@ -785,21 +2131,128 @@
     return run();
   }
 
+  function loadStatementsFromFilters(btn) {
+    return syncFromBank({ useFilters: true, triggerBtn: btn || el("dg-fin-load-tx") });
+  }
+
   el("dg-fin-apply").addEventListener("click", commitFilters);
   el("dg-fin-reset").addEventListener("click", function () {
     hideActionLog();
-    state.pending = { search: "", date_from: "", date_to: "", direction: "", account_id: "", page_size: 100, sync_days: 30 };
+    state.pending = { search: "", org: "", date_from: "", date_to: "", direction: "", account_id: "", page_size: 100, sync_days: 30, include_internal: false };
     writeFormFromPending();
     commitFilters();
   });
   el("dg-fin-btn-save-bank").addEventListener("click", saveJwt);
-  el("dg-fin-btn-probe").addEventListener("click", probe);
-  el("dg-fin-sync").addEventListener("click", syncFromBank);
-  ["dg-fin-search", "dg-fin-date-from", "dg-fin-date-to", "dg-fin-direction", "dg-fin-account", "dg-fin-page-size", "dg-fin-sync-days"].forEach(function (id) {
+  el("dg-fin-btn-probe").addEventListener("click", function () {
+    probe();
+  });
+  var credList = el("dg-fin-cred-list");
+  if (credList) {
+    credList.addEventListener("click", function (ev) {
+      var t = ev.target;
+      if (!t) return;
+      var del = t.closest && t.closest(".dg-fin-cred-del");
+      var pr = t.closest && t.closest(".dg-fin-cred-probe");
+      var syn = t.closest && t.closest(".dg-fin-cred-sync");
+      if (del) {
+        var idDel = del.getAttribute("data-cred-id");
+        if (!idDel) return;
+        deleteCred(idDel).catch(function (e) {
+          setBankMsg("danger", esc(e.message || String(e)));
+        });
+        return;
+      }
+      if (pr) {
+        var idPr = pr.getAttribute("data-cred-id");
+        if (!idPr) return;
+        probe(idPr);
+        return;
+      }
+      if (syn) {
+        var idSyn = syn.getAttribute("data-cred-id");
+        var labSyn = syn.getAttribute("data-cred-label") || "";
+        if (!idSyn) return;
+        syncFromBank({ credentialId: idSyn, triggerBtn: syn, orgLabel: labSyn });
+      }
+    });
+    credList.addEventListener("change", function (ev) {
+      var t = ev.target;
+      if (!t || !t.classList || !t.classList.contains("dg-fin-cred-en")) return;
+      var id = t.getAttribute("data-cred-id");
+      if (!id) return;
+      toggleCred(id, t.checked).catch(function (e) {
+        setBankMsg("danger", esc(e.message || String(e)));
+        t.checked = !t.checked;
+      });
+    });
+  }
+  var loadTxBtn = el("dg-fin-load-tx");
+  if (loadTxBtn) {
+    loadTxBtn.addEventListener("click", function () {
+      loadStatementsFromFilters(loadTxBtn);
+    });
+  }
+  el("dg-fin-sync").addEventListener("click", function () {
+    syncFromBank({ triggerBtn: el("dg-fin-sync") });
+  });
+  var banksWrapEl = el("dg-fin-banks-wrap");
+  if (banksWrapEl) {
+    banksWrapEl.addEventListener("click", function (ev) {
+      var t = ev.target;
+      if (!t || !t.closest) return;
+
+      var fundBtn = t.closest(".dg-fin-acc-fund-toggle");
+      if (fundBtn) {
+        ev.preventDefault();
+        var fid = fundBtn.getAttribute("data-account-id");
+        var fbank = fundBtn.getAttribute("data-bank") || "tochka";
+        var nextFund = fundBtn.getAttribute("data-is-fund") !== "1";
+        var fname = fundBtn.getAttribute("data-custom-name") || "";
+        if (!fid) return;
+        saveAccountMeta(fid, fbank, nextFund, fname, fundBtn).catch(function (e) {
+          toast("danger", e.message || String(e));
+        });
+        return;
+      }
+
+      var orgHit = t.closest(".dg-fin-org-name-hit, .dg-fin-org-name-edit");
+      if (orgHit) {
+        ev.preventDefault();
+        var orgView = orgHit.closest(".dg-fin-name-view");
+        if (!orgView) return;
+        beginOrgNamesEdit(orgView);
+        return;
+      }
+
+      var accHit = t.closest(".dg-fin-acc-name-hit, .dg-fin-acc-name-edit");
+      if (accHit) {
+        ev.preventDefault();
+        var accView = accHit.closest(".dg-fin-name-view");
+        if (!accView) return;
+        var aid = accView.getAttribute("data-account-id");
+        var abank = accView.getAttribute("data-bank") || "tochka";
+        var aFund = accView.getAttribute("data-is-fund") === "1";
+        if (!aid) return;
+        beginInlineNameEdit(accView, {
+          value: accView.getAttribute("data-custom-name") || "",
+          placeholder: "Название",
+          notifyStart: "Сохраняем счёт…",
+          onSave: function (next, btn) {
+            return saveAccountMeta(aid, abank, aFund, next, btn);
+          },
+        });
+      }
+    });
+  }
+  ["dg-fin-search", "dg-fin-org", "dg-fin-date-from", "dg-fin-date-to", "dg-fin-direction", "dg-fin-account", "dg-fin-page-size", "dg-fin-sync-days", "dg-fin-include-internal"].forEach(function (id) {
     var n = el(id);
     if (!n) return;
     n.addEventListener("input", function () { readPendingFromForm(); markDirty(); });
-    n.addEventListener("change", function () { readPendingFromForm(); markDirty(); });
+    n.addEventListener("change", function () {
+      readPendingFromForm();
+      if (id === "dg-fin-org") fillAccountSelect();
+      markDirty();
+    });
   });
   el("dg-fin-page-size-foot").addEventListener("change", function () {
     if (el("dg-fin-page-size")) el("dg-fin-page-size").value = el("dg-fin-page-size-foot").value;
@@ -820,6 +2273,93 @@
   bindCollapse("dg-fin-bank-toggle", "dg-fin-bank-body", BANK_KEY);
   bindCollapse("dg-fin-filters-toggle", "dg-fin-filters-body", FILTERS_KEY);
   bindCollapse("dg-fin-table-toggle", "dg-fin-table-body", TABLE_KEY);
+  bindCollapse("dg-fin-analytics-toggle", "dg-fin-analytics-body", ANALYTICS_KEY);
+  bindCollapse("dg-fin-cp-toggle", "dg-fin-cp-body", CP_KEY);
+  try {
+    var savedMonths = localStorage.getItem(ANALYTICS_MONTHS_KEY);
+    if (savedMonths && el("dg-fin-analytics-months")) {
+      el("dg-fin-analytics-months").value = savedMonths;
+      state.analyticsMonths = parseInt(savedMonths, 10) || 12;
+    }
+    var savedDep = localStorage.getItem(ANALYTICS_DEPOSITS_KEY);
+    if (savedDep === "1") {
+      state.pending.include_internal = true;
+      state.applied.include_internal = true;
+      if (el("dg-fin-include-internal")) el("dg-fin-include-internal").checked = true;
+      if (el("dg-fin-analytics-deposits")) el("dg-fin-analytics-deposits").checked = true;
+    }
+    var savedCpLimit = localStorage.getItem(CP_LIMIT_KEY);
+    if (savedCpLimit && el("dg-fin-cp-limit")) el("dg-fin-cp-limit").value = savedCpLimit;
+  } catch (e) {}
+  var analyticsMonthsSel = el("dg-fin-analytics-months");
+  if (analyticsMonthsSel) {
+    analyticsMonthsSel.addEventListener("change", function () {
+      loadMonthlyAnalytics();
+      loadCounterparties();
+    });
+  }
+  function setIncludeInternal(on, reloadNow) {
+    state.pending.include_internal = !!on;
+    if (el("dg-fin-include-internal")) el("dg-fin-include-internal").checked = !!on;
+    if (el("dg-fin-analytics-deposits")) el("dg-fin-analytics-deposits").checked = !!on;
+    try { localStorage.setItem(ANALYTICS_DEPOSITS_KEY, on ? "1" : "0"); } catch (e2) {}
+    markDirty();
+    if (reloadNow) {
+      state.applied.include_internal = !!on;
+      state.page = 1;
+      markDirty();
+      return Promise.all([loadTx(), loadMonthlyAnalytics(), loadCounterparties()]);
+    }
+    return Promise.resolve();
+  }
+  var includeInternalEl = el("dg-fin-include-internal");
+  if (includeInternalEl) {
+    includeInternalEl.addEventListener("change", function () {
+      setIncludeInternal(includeInternalEl.checked, false);
+    });
+  }
+  var analyticsDep = el("dg-fin-analytics-deposits");
+  if (analyticsDep) {
+    analyticsDep.addEventListener("change", function () {
+      setIncludeInternal(analyticsDep.checked, true);
+    });
+  }
+  var analyticsRefresh = el("dg-fin-analytics-refresh");
+  if (analyticsRefresh) {
+    analyticsRefresh.addEventListener("click", function () {
+      var run = function () { return loadMonthlyAnalytics(); };
+      if (window.DatagonNotify && window.DatagonNotify.busyRun) {
+        window.DatagonNotify.busyRun(analyticsRefresh, run);
+      } else {
+        run();
+      }
+    });
+  }
+  var cpLimitSel = el("dg-fin-cp-limit");
+  if (cpLimitSel) {
+    cpLimitSel.addEventListener("change", function () {
+      loadCounterparties();
+    });
+  }
+  var cpRefresh = el("dg-fin-cp-refresh");
+  if (cpRefresh) {
+    cpRefresh.addEventListener("click", function () {
+      var run = function () { return loadCounterparties(); };
+      if (window.DatagonNotify && window.DatagonNotify.busyRun) {
+        window.DatagonNotify.busyRun(cpRefresh, run);
+      } else {
+        run();
+      }
+    });
+  }
+  var cpGrid = el("dg-fin-cp-grid");
+  if (cpGrid) {
+    cpGrid.addEventListener("click", function (ev) {
+      var btn = ev.target && ev.target.closest ? ev.target.closest("[data-dg-cp-name]") : null;
+      if (!btn || !cpGrid.contains(btn)) return;
+      applyCounterpartyToFilters(btn.getAttribute("data-dg-cp-name"), btn.getAttribute("data-dg-cp-dir"));
+    });
+  }
   bindHeaderSearchMirror();
   columnControls();
   buildThead();
@@ -838,7 +2378,7 @@
     .then(function () {
       state.applied = Object.assign({}, state.pending);
       markDirty();
-      return loadTx();
+      return Promise.all([loadTx(), loadMonthlyAnalytics(), loadCounterparties()]);
     })
     .catch(function (e) {
       toast("danger", e.message || String(e));

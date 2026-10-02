@@ -753,6 +753,24 @@
       function updateAutoSyncTaskBadges(meta) {
         var catPill = meta.el.querySelector(".dg-as-cat-pill-dynamic");
         if (catPill) catPill.textContent = AS_CATEGORY_LABELS[meta.category] || meta.category;
+        var head = meta.el.querySelector(".dg-as-task-head");
+        var workerN = Number(meta.el.getAttribute("data-as-worker") || 1) === 2 ? 2 : 1;
+        var wBadge = head ? head.querySelector(".dg-as-worker-badge") : null;
+        if (head) {
+          if (!wBadge) {
+            wBadge = document.createElement("span");
+            wBadge.className = "dg-as-worker-badge";
+            var nextBadge = head.querySelector(".dg-as-next-badge-dynamic");
+            if (nextBadge) head.insertBefore(wBadge, nextBadge);
+            else head.appendChild(wBadge);
+          }
+          wBadge.textContent = "Воркер " + workerN;
+          wBadge.classList.toggle("is-w2", workerN === 2);
+          wBadge.title =
+            workerN === 2
+              ? "Отдельный процесс parser-autosync-w2 (банки / Точка)"
+              : "Основной процесс parser-app";
+        }
         var badge = meta.el.querySelector(".dg-as-next-badge-dynamic");
         if (badge) {
           if (meta.task === "price_comp_sync" && priceCompLiveActive) {

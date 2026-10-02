@@ -281,7 +281,7 @@ module.exports = (db, appSettings) => {
                 queries.push(['auto_sync_finance_tochka_time', auto_sync_finance_tochka_time || '07:00']);
             }
             if (auto_sync_finance_tochka_days !== undefined) {
-                const d = Math.max(1, Math.min(90, parseInt(String(auto_sync_finance_tochka_days), 10) || 30));
+                const d = Math.max(1, Math.min(365, parseInt(String(auto_sync_finance_tochka_days), 10) || 30));
                 queries.push(['auto_sync_finance_tochka_days', d]);
             }
             if (auto_sync_finance_tochka_weekdays !== undefined) {
@@ -587,7 +587,7 @@ module.exports = (db, appSettings) => {
             if(auto_sync_finance_tochka_days !== undefined) {
                 appSettings.auto_sync_finance_tochka_days = Math.max(
                     1,
-                    Math.min(90, parseInt(String(auto_sync_finance_tochka_days), 10) || 30)
+                    Math.min(365, parseInt(String(auto_sync_finance_tochka_days), 10) || 30)
                 );
             }
             if(auto_sync_finance_tochka_weekdays !== undefined) {

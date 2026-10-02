@@ -7,7 +7,7 @@ const fsSync = require('fs');
 const bcrypt = require('bcryptjs');
 const os = require('os');
 const config = require('./config');
-const { parseAutoSyncWeekdaysMon17 } = require('./lib/datagonAutoSyncRegistry');
+const { parseAutoSyncWeekdaysMon17, getAutoSyncTaskWorker, getAutoSyncTaskKeys } = require('./lib/datagonAutoSyncRegistry');
 const { attachBitrixUrlKeys } = require('./lib/datagonBitrixProductUrl');
 
 const app = express();
@@ -27,6 +27,25 @@ const STARTUP_DEFER_MS = Math.max(0, Number(process.env.DATAGON_STARTUP_DEFER_MS
 const AUTO_SYNC_SCHEDULER_DISABLED = ['0', 'off', 'false', 'no'].includes(
     String(process.env.DATAGON_AUTO_SYNC_SCHEDULER || '').trim().toLowerCase()
 );
+
+/**
+ * Номер воркера автосинка (1|2). Воркер 1 — основной `parser-app` (HTTP + МС/маркеты).
+ * Воркер 2 — `parser-autosync-w2` (банки / finance_tochka). Задачи маршрутизируются
+ * по полю `worker` в `lib/datagonAutoSyncRegistry.js`.
+ */
+const AUTO_SYNC_WORKER_ID = Number(process.env.DATAGON_AUTO_SYNC_WORKER_ID || 1) === 2 ? 2 : 1;
+
+/**
+ * DATAGON_HTTP=off — процесс без HTTP (второй воркер автосинка): только scheduler/queue.
+ * На основном `parser-app` не задавать.
+ */
+const AUTO_SYNC_HTTP_DISABLED = ['0', 'off', 'false', 'no'].includes(
+    String(process.env.DATAGON_HTTP || 'on').trim().toLowerCase()
+);
+
+function autoSyncTaskBelongsHere(taskType) {
+    return getAutoSyncTaskWorker(taskType) === AUTO_SYNC_WORKER_ID;
+}
 
 function promiseWithTimeout(promise, ms, label) {
     const tag = label || 'timeout';
@@ -241,7 +260,6 @@ const medmarketRouterFactory = require('./routes/medmarket');
 const myProductsRouterFactory = require('./routes/myproducts');
 const networkPricesRouterFactory = require('./routes/networkPrices');
 const financeRouterFactory = require('./routes/finance');
-const { getAutoSyncTaskKeys } = require('./lib/datagonAutoSyncRegistry');
 /** Whitelist для POST /api/settings/auto-sync-run (фиксируется при старте процесса). */
 const AUTO_SYNC_ALLOWED_TASK_KEYS = new Set([
     ...getAutoSyncTaskKeys(),
@@ -1531,12 +1549,167 @@ function enqueueAutoSyncTask(taskType, triggerType = 'schedule') {
     if (!taskType) return { ok: false, reason: 'invalid_task' };
     const type = String(taskType || '').trim();
     if (!type) return { ok: false, reason: 'invalid_task' };
+    if (!autoSyncTaskBelongsHere(type)) {
+        return { ok: false, reason: 'wrong_worker', worker: getAutoSyncTaskWorker(type) };
+    }
     if (autoSyncRunIds.has(type)) return { ok: false, reason: 'already_running' };
     if (autoSyncQueue.some((item) => (typeof item === 'string' ? item : item?.type) === type)) {
         return { ok: false, reason: 'already_queued' };
     }
     autoSyncQueue.push({ type, triggerType: String(triggerType || 'schedule').trim() || 'schedule' });
-    return { ok: true };
+    return { ok: true, worker: AUTO_SYNC_WORKER_ID };
+}
+
+async function ensureAutoSyncDispatchTable() {
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS auto_sync_dispatch (
+            id BIGINT AUTO_INCREMENT PRIMARY KEY,
+            task_type VARCHAR(64) NOT NULL,
+            trigger_type VARCHAR(32) NOT NULL DEFAULT 'manual',
+            worker_id TINYINT NOT NULL,
+            status VARCHAR(20) NOT NULL DEFAULT 'pending',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            claimed_at TIMESTAMP NULL,
+            finished_at TIMESTAMP NULL,
+            message VARCHAR(480) NULL,
+            INDEX idx_asd_claim (worker_id, status, id),
+            INDEX idx_asd_task (task_type, status)
+        )
+    `);
+}
+
+/** Поставить задачу на другой воркер через БД (ручной запуск с HTTP-воркера 1). */
+async function dispatchAutoSyncTaskToWorker(taskType, triggerType, workerId) {
+    await ensureAutoSyncDispatchTable();
+    const type = String(taskType || '').trim();
+    const wid = Number(workerId) === 2 ? 2 : 1;
+    const trig = String(triggerType || 'manual').trim() || 'manual';
+    const [pending] = await db.query(
+        `SELECT id FROM auto_sync_dispatch
+         WHERE task_type = ? AND worker_id = ? AND status = 'pending'
+         LIMIT 1`,
+        [type, wid]
+    );
+    if (pending && pending.length) {
+        return { ok: false, reason: 'already_queued', worker: wid, dispatch_id: pending[0].id };
+    }
+    const [running] = await db.query(
+        `SELECT id FROM auto_sync_runs
+         WHERE task_type = ? AND status = 'running' AND finished_at IS NULL
+         LIMIT 1`,
+        [type]
+    );
+    if (running && running.length) {
+        return { ok: false, reason: 'already_running', worker: wid };
+    }
+    const [ins] = await db.query(
+        `INSERT INTO auto_sync_dispatch (task_type, trigger_type, worker_id, status)
+         VALUES (?, ?, ?, 'pending')`,
+        [type, trig, wid]
+    );
+    return { ok: true, worker: wid, dispatch_id: Number(ins && ins.insertId) || 0 };
+}
+
+/** Маршрутизация: свой воркер — локальная очередь; чужой — dispatch в БД. */
+async function enqueueAutoSyncTaskRouted(taskType, triggerType = 'schedule') {
+    const type = String(taskType || '').trim();
+    if (!type) return { ok: false, reason: 'invalid_task' };
+    const targetWorker = getAutoSyncTaskWorker(type);
+    if (targetWorker === AUTO_SYNC_WORKER_ID) {
+        return enqueueAutoSyncTask(type, triggerType);
+    }
+    return dispatchAutoSyncTaskToWorker(type, triggerType, targetWorker);
+}
+
+async function claimPendingAutoSyncDispatches() {
+    if (AUTO_SYNC_SCHEDULER_DISABLED) return;
+    try {
+        await ensureAutoSyncDispatchTable();
+        const [rows] = await db.query(
+            `SELECT id, task_type, trigger_type
+             FROM auto_sync_dispatch
+             WHERE worker_id = ? AND status = 'pending'
+             ORDER BY id ASC
+             LIMIT 10`,
+            [AUTO_SYNC_WORKER_ID]
+        );
+        for (const row of rows || []) {
+            const type = String(row.task_type || '').trim();
+            if (!type || !autoSyncTaskBelongsHere(type)) {
+                await db.query(
+                    `UPDATE auto_sync_dispatch
+                     SET status = 'cancelled', finished_at = NOW(), message = ?
+                     WHERE id = ? AND status = 'pending'`,
+                    ['wrong_worker', row.id]
+                );
+                continue;
+            }
+            const enq = enqueueAutoSyncTask(type, row.trigger_type || 'manual');
+            if (enq.ok) {
+                await db.query(
+                    `UPDATE auto_sync_dispatch
+                     SET status = 'claimed', claimed_at = NOW()
+                     WHERE id = ? AND status = 'pending'`,
+                    [row.id]
+                );
+            } else if (enq.reason === 'already_running' || enq.reason === 'already_queued') {
+                await db.query(
+                    `UPDATE auto_sync_dispatch
+                     SET status = 'cancelled', finished_at = NOW(), message = ?
+                     WHERE id = ? AND status = 'pending'`,
+                    [enq.reason, row.id]
+                );
+            }
+        }
+        if ((rows || []).length) {
+            processAutoSyncQueue().catch((e) =>
+                console.error('[AUTO SYNC] dispatch drain:', e && e.message ? e.message : e)
+            );
+        }
+    } catch (e) {
+        console.warn('[AUTO SYNC] claimPendingAutoSyncDispatches:', e.message || e);
+    }
+}
+
+function startAutoSyncDispatchPoller() {
+    claimPendingAutoSyncDispatches().catch(() => {});
+    setInterval(() => {
+        claimPendingAutoSyncDispatches().catch(() => {});
+    }, 4000);
+}
+
+async function listPendingAutoSyncDispatches() {
+    try {
+        await ensureAutoSyncDispatchTable();
+        const [rows] = await db.query(
+            `SELECT task_type, trigger_type, worker_id
+             FROM auto_sync_dispatch
+             WHERE status = 'pending'
+             ORDER BY id ASC
+             LIMIT 50`
+        );
+        return (rows || []).map((r) => ({
+            type: String(r.task_type || ''),
+            triggerType: String(r.trigger_type || 'manual'),
+            worker: Number(r.worker_id) === 2 ? 2 : 1,
+        }));
+    } catch (_) {
+        return [];
+    }
+}
+
+async function listRunningAutoSyncTasksFromDb() {
+    try {
+        await ensureAutoSyncRunsTable();
+        const [rows] = await db.query(
+            `SELECT DISTINCT task_type
+             FROM auto_sync_runs
+             WHERE status = 'running' AND finished_at IS NULL`
+        );
+        return (rows || []).map((r) => String(r.task_type || '')).filter(Boolean);
+    } catch (_) {
+        return [];
+    }
 }
 
 /**
@@ -1785,6 +1958,15 @@ async function finishAutoSyncRun(taskType, status = 'completed', message = '') {
         [status, message || '', runId]
     );
     autoSyncRunIds.delete(taskType);
+    try {
+        await ensureAutoSyncDispatchTable();
+        await db.query(
+            `UPDATE auto_sync_dispatch
+             SET status = 'done', finished_at = NOW(), message = ?
+             WHERE task_type = ? AND status = 'claimed'`,
+            [String(status || '').slice(0, 40), taskType]
+        );
+    } catch (_) {}
 }
 
 /** Промежуточный текст в `auto_sync_runs.message` (журнал на /purchase.html и /processes.html). */
@@ -1805,20 +1987,27 @@ async function touchAutoSyncRunMessage(taskType, message) {
 async function closeStaleAutoSyncRunsOnStartup() {
     try {
         await ensureAutoSyncRunsTable();
+        const myTasks = getAutoSyncTaskKeys().filter((k) => autoSyncTaskBelongsHere(k));
+        if (!myTasks.length) return;
+        const placeholders = myTasks.map(() => '?').join(',');
         const [r] = await db.query(
             `UPDATE auto_sync_runs
              SET status = 'interrupted',
                  message = CONCAT(
                      TRIM(COALESCE(message, '')),
                      CASE WHEN TRIM(COALESCE(message, '')) = '' THEN '' ELSE ' · ' END,
-                     '[прервано: перезапуск Node]'
+                     '[прервано: перезапуск воркера ${AUTO_SYNC_WORKER_ID}]'
                  ),
                  finished_at = NOW()
-             WHERE status = 'running' AND finished_at IS NULL`
+             WHERE status = 'running' AND finished_at IS NULL
+               AND task_type IN (${placeholders})`,
+            myTasks
         );
         const n = Number(r?.affectedRows || 0);
         if (n > 0) {
-            console.log(`[AUTO SYNC] Закрыто незавершённых записей auto_sync_runs при старте: ${n}`);
+            console.log(
+                `[AUTO SYNC] w${AUTO_SYNC_WORKER_ID}: закрыто незавершённых auto_sync_runs при старте: ${n}`
+            );
         }
     } catch (e) {
         console.warn('[AUTO SYNC] closeStaleAutoSyncRunsOnStartup:', e.message || e);
@@ -1891,6 +2080,18 @@ async function processAutoSyncQueue() {
             const item = autoSyncQueue.shift();
             const task = typeof item === 'string' ? item : item?.type;
             const triggerType = typeof item === 'string' ? 'schedule' : (item?.triggerType || 'schedule');
+            if (!task) continue;
+            if (!autoSyncTaskBelongsHere(task)) {
+                console.warn(
+                    `[AUTO SYNC] w${AUTO_SYNC_WORKER_ID}: пропуск «${task}» (назначен воркеру ${getAutoSyncTaskWorker(task)})`
+                );
+                try {
+                    await dispatchAutoSyncTaskToWorker(task, triggerType, getAutoSyncTaskWorker(task));
+                } catch (e) {
+                    console.warn('[AUTO SYNC] re-dispatch:', e.message || e);
+                }
+                continue;
+            }
             if (task === 'db_size') {
                 console.log('[AUTO SYNC] Queue start: db_size');
                 await startAutoSyncRun('db_size', triggerType);
@@ -2474,7 +2675,7 @@ async function processAutoSyncQueue() {
                     }
                     const days = Math.max(
                         1,
-                        Math.min(90, Number(appSettings.auto_sync_finance_tochka_days || 30))
+                        Math.min(365, Number(appSettings.auto_sync_finance_tochka_days || 30))
                     );
                     await touchAutoSyncRunMessage('finance_tochka', 'Финансы Точка: старт…').catch(() => {});
                     const result = await financeRouterFactory.triggerFinanceSyncFromSettings(db, appSettings, {
@@ -2838,6 +3039,7 @@ function startAutoSyncScheduler() {
             ];
             for (const t of tasks) {
                 if (!t.enabled) continue;
+                if (!autoSyncTaskBelongsHere(t.type)) continue;
                 if (t.weekdays && !t.weekdays.has(now.weekdayMon1Sun7)) continue;
                 let runKey;
                 if (t.scheduleMode === 'interval') {
@@ -2904,17 +3106,34 @@ initDB().then(async () => {
 
     if (!app.__datagonListening) {
         app.__datagonListening = true;
-        app.listen(PORT, () => {
-            console.log(`[Server] Running on port ${PORT}`);
+        if (AUTO_SYNC_HTTP_DISABLED) {
             console.log(
-                `[AUTO SYNC] manual tasks (${AUTO_SYNC_ALLOWED_TASK_KEYS.size}): ${[...AUTO_SYNC_ALLOWED_TASK_KEYS].join(', ')}`
+                `[Server] HTTP выключен (DATAGON_HTTP=off) · autosync worker #${AUTO_SYNC_WORKER_ID}`
+            );
+            console.log(
+                `[AUTO SYNC] worker #${AUTO_SYNC_WORKER_ID} tasks: ${getAutoSyncTaskKeys()
+                    .filter((k) => autoSyncTaskBelongsHere(k))
+                    .join(', ') || '(нет)'}`
             );
             for (const task of postInitTasks) {
                 Promise.resolve()
                     .then(() => task())
                     .catch((e) => console.warn('[startup] post-init:', e && e.message ? e.message : e));
             }
-        });
+        } else {
+            app.listen(PORT, () => {
+                console.log(`[Server] Running on port ${PORT}`);
+                console.log(`[AUTO SYNC] worker #${AUTO_SYNC_WORKER_ID}`);
+                console.log(
+                    `[AUTO SYNC] manual tasks (${AUTO_SYNC_ALLOWED_TASK_KEYS.size}): ${[...AUTO_SYNC_ALLOWED_TASK_KEYS].join(', ')}`
+                );
+                for (const task of postInitTasks) {
+                    Promise.resolve()
+                        .then(() => task())
+                        .catch((e) => console.warn('[startup] post-init:', e && e.message ? e.message : e));
+                }
+            });
+        }
     }
 
     // Подключаем роуты ТОЛЬКО после успешного подключения к БД
@@ -2996,18 +3215,41 @@ initDB().then(async () => {
                     queued: false,
                     skip_reason: 'already_running',
                     task,
+                    worker: getAutoSyncTaskWorker(task),
+                    local_worker: AUTO_SYNC_WORKER_ID,
                     queue: autoSyncQueue.map((item) => (typeof item === 'string' ? item : item?.type)).filter(Boolean),
                     runner_active: Boolean(autoSyncRunnerActive),
                     running_tasks: Array.from(autoSyncRunIds.keys()),
                 });
             }
-            const enq = enqueueAutoSyncTask(task, 'manual');
-            processAutoSyncQueue();
+            {
+                const dbRunning = await listRunningAutoSyncTasksFromDb();
+                if (dbRunning.includes(task)) {
+                    return res.json({
+                        success: true,
+                        queued: false,
+                        skip_reason: 'already_running',
+                        task,
+                        worker: getAutoSyncTaskWorker(task),
+                        local_worker: AUTO_SYNC_WORKER_ID,
+                        queue: autoSyncQueue.map((item) => (typeof item === 'string' ? item : item?.type)).filter(Boolean),
+                        runner_active: Boolean(autoSyncRunnerActive),
+                        running_tasks: dbRunning,
+                    });
+                }
+            }
+            const enq = await enqueueAutoSyncTaskRouted(task, 'manual');
+            if (enq.ok && enq.worker === AUTO_SYNC_WORKER_ID) {
+                processAutoSyncQueue();
+            }
             return res.json({
                 success: true,
                 queued: enq.ok,
                 skip_reason: enq.ok ? null : enq.reason || null,
                 task,
+                worker: enq.worker || getAutoSyncTaskWorker(task),
+                local_worker: AUTO_SYNC_WORKER_ID,
+                dispatch_id: enq.dispatch_id || null,
                 queue: autoSyncQueue.map((item) => (typeof item === 'string' ? item : item?.type)).filter(Boolean),
                 runner_active: Boolean(autoSyncRunnerActive),
                 running_tasks: Array.from(autoSyncRunIds.keys())
@@ -3165,13 +3407,27 @@ initDB().then(async () => {
              * Поле `config` оставлено для обратной совместимости (legacy-фронт).
              */
             const { buildAutoSyncSectionsSnapshot } = require('./lib/datagonAutoSyncRegistry');
+            const pendingDispatch = await listPendingAutoSyncDispatches();
+            const dbRunning = await listRunningAutoSyncTasksFromDb();
+            const localQueue = [...autoSyncQueue];
+            const mergedQueue = localQueue.concat(
+                pendingDispatch.map((d) => ({
+                    type: d.type,
+                    triggerType: d.triggerType,
+                    worker: d.worker,
+                }))
+            );
+            const runningMerged = Array.from(
+                new Set([...Array.from(autoSyncRunIds.keys()), ...dbRunning])
+            );
             const autoSync = {
                 now_moscow_time: mskNow.time,
                 now_moscow_date: mskNow.date,
-                queue: [...autoSyncQueue],
+                worker_id: AUTO_SYNC_WORKER_ID,
+                queue: mergedQueue,
                 runner_active: Boolean(autoSyncRunnerActive),
-                /** Типы задач с открытой строкой `auto_sync_runs` (то, что воркер реально исполняет сейчас). */
-                running_tasks: Array.from(autoSyncRunIds.keys()),
+                /** Типы задач с открытой строкой `auto_sync_runs` (локально + из БД по всем воркерам). */
+                running_tasks: runningMerged,
                 sections: buildAutoSyncSectionsSnapshot(appSettings),
                 /** Живой прогресс текущих задач автосинка (только при открытой строке auto_sync_runs). */
                 tasks_live: buildAutoSyncTasksLiveForOverview(),
@@ -3637,7 +3893,9 @@ initDB().then(async () => {
         cleanupAutoSyncRunsByRetentionDays(appSettings.auto_sync_runs_retention_days).catch(() => {});
     }, 12 * 60 * 60 * 1000);
     const bootAutoSync = () => {
+        console.log(`[AUTO SYNC] boot worker #${AUTO_SYNC_WORKER_ID}${AUTO_SYNC_HTTP_DISABLED ? ' (HTTP off)' : ''}`);
         startAutoSyncScheduler();
+        startAutoSyncDispatchPoller();
         startUnifiedTaskWatchdog();
         closeAncientRunningAutoSyncRuns().catch(() => {});
         setInterval(() => {
