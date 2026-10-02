@@ -22,6 +22,8 @@ description: Счета и движение по Точке (только чте
 
 Нужные scopes: **ReadAccounts**, **ReadBalances**, **ReadStatements**.
 
+TLS к `enter.tochka.com` идёт через сертификаты **НУЦ Минцифры** (Russian Trusted CA). В репозитории лежит бандл `certs/russian-trusted-ca-bundle.pem`; клиент `lib/datagonTochkaClient.js` подмешивает его к доверенным CA Node. Без этого типичная ошибка: `self-signed certificate in certificate chain`. См. [документацию Точки](https://developers.tochka.com/docs/tochka-api/certificate).
+
 Ключ сохраняется в `app_settings.finance_tochka_jwt` через `POST /api/finance/config`. В общем `GET /api/settings` его нет: в ответах списка только маска вида `kKxJ…7y2Q (N симв.)`.
 
 ## Что делает синк
