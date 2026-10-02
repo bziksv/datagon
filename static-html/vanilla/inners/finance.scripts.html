@@ -1,0 +1,847 @@
+<script>
+(function () {
+  var FIN_COLS = [
+    ["booked_date", "Дата"],
+    ["direction", "Направление"],
+    ["amount", "Сумма"],
+    ["account_number", "Счёт"],
+    ["counterparty", "Контрагент"],
+    ["counterparty_inn", "ИНН"],
+    ["purpose", "Назначение"],
+    ["document_number", "Документ"],
+    ["tx_id", "ID операции"],
+  ];
+  var DEFAULT_VISIBLE = FIN_COLS.map(function (c) { return c[0]; });
+  var DEFAULT_WIDTHS = {
+    booked_date: 110,
+    direction: 120,
+    amount: 130,
+    account_number: 150,
+    counterparty: 220,
+    counterparty_inn: 120,
+    purpose: 320,
+    document_number: 120,
+    tx_id: 160,
+  };
+  var FILTERS_KEY = "datagon_finance_filters_collapsed_v1";
+  var BANK_KEY = "datagon_finance_bank_collapsed_v1";
+  var TABLE_KEY = "dg.finance.table-card.collapsed.v1";
+  var COLS_KEY = "datagon_finance_visible_cols_v1";
+  var WIDTHS_KEY = "datagon_finance_col_widths_v1";
+  var FIELD_GROUPS = [
+    {
+      title: "Основные",
+      items: [
+        { key: "search", title: "Умный поиск" },
+        { key: "date_from", title: "С даты" },
+        { key: "date_to", title: "По дату" },
+        { key: "direction", title: "Направление" },
+        { key: "account", title: "Счёт" },
+      ],
+    },
+    {
+      title: "Таблица",
+      items: [
+        { key: "page_size", title: "На странице" },
+        { key: "sync_days", title: "Выписка, дн." },
+      ],
+    },
+  ];
+
+  var state = {
+    canWrite: false,
+    accounts: [],
+    page: 1,
+    total: 0,
+    pages: 1,
+    shown: 0,
+    rows: [],
+    sortKey: "booked_date",
+    sortDir: "desc",
+    pending: { search: "", date_from: "", date_to: "", direction: "", account_id: "", page_size: 100, sync_days: 30 },
+    applied: { search: "", date_from: "", date_to: "", direction: "", account_id: "", page_size: 100, sync_days: 30 },
+  };
+
+  function el(id) { return document.getElementById(id); }
+  function esc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+  function fmtMoney(n, cur) {
+    var F = window.DatagonFmt;
+    var num = Number(n);
+    if (!Number.isFinite(num)) return "—";
+    var t = F && F.formatNumber ? F.formatNumber(num, { maxFractionDigits: 2, minFractionDigits: 2 }) : String(num);
+    return t + (cur ? " " + cur : "");
+  }
+  function maskAcc(num) {
+    var s = String(num || "").replace(/\s+/g, "");
+    if (s.length <= 4) return s || "—";
+    return "…" + s.slice(-4);
+  }
+  function toast(type, message) {
+    if (window.DatagonNotify && window.DatagonNotify.toast) {
+      window.DatagonNotify.toast({ type: type, message: message });
+    }
+  }
+  function showActionLog(kind, html, asHtml) {
+    var box = el("dg-fin-action-log");
+    if (!box) return;
+    box.classList.remove("d-none", "alert-secondary", "alert-info", "alert-success", "alert-warning", "alert-danger");
+    box.classList.add(kind === "success" ? "alert-success" : kind === "danger" ? "alert-danger" : kind === "warning" ? "alert-warning" : "alert-info");
+    if (asHtml) box.innerHTML = html;
+    else box.textContent = html;
+  }
+  function hideActionLog() {
+    var box = el("dg-fin-action-log");
+    if (!box) return;
+    box.classList.add("d-none");
+    box.textContent = "";
+  }
+  function setBankMsg(kind, html) {
+    var box = el("dg-fin-bank-save-msg");
+    if (!box) return;
+    box.classList.remove("d-none", "alert-success", "alert-warning", "alert-danger", "alert-secondary");
+    box.classList.add(kind === "success" ? "alert-success" : kind === "warning" ? "alert-warning" : kind === "danger" ? "alert-danger" : "alert-secondary");
+    box.innerHTML = html;
+  }
+  function hasTextSelection() {
+    try {
+      return String(window.getSelection && window.getSelection().toString() || "").trim().length > 0;
+    } catch (e) {
+      return false;
+    }
+  }
+  function userKey(base) {
+    var u = "";
+    try { u = String((window.DatagonAuth && window.DatagonAuth.username) || ""); } catch (e) {}
+    return base + ":" + (u || "anon");
+  }
+  function loadVisibleCols() {
+    try {
+      var raw = localStorage.getItem(userKey(COLS_KEY));
+      var arr = raw ? JSON.parse(raw) : null;
+      if (Array.isArray(arr) && arr.length) {
+        var known = {};
+        FIN_COLS.forEach(function (c) { known[c[0]] = 1; });
+        return arr.filter(function (k) { return known[k]; });
+      }
+    } catch (e) {}
+    return DEFAULT_VISIBLE.slice();
+  }
+  function saveVisibleCols(cols) {
+    try { localStorage.setItem(userKey(COLS_KEY), JSON.stringify(cols)); } catch (e) {}
+  }
+  function loadWidths() {
+    var out = Object.assign({}, DEFAULT_WIDTHS);
+    try {
+      var raw = localStorage.getItem(userKey(WIDTHS_KEY));
+      var obj = raw ? JSON.parse(raw) : null;
+      if (obj && typeof obj === "object") {
+        Object.keys(obj).forEach(function (k) {
+          var n = parseInt(obj[k], 10);
+          if (n >= 60 && n <= 800) out[k] = n;
+        });
+      }
+    } catch (e) {}
+    return out;
+  }
+  function saveWidths(w) {
+    try { localStorage.setItem(userKey(WIDTHS_KEY), JSON.stringify(w)); } catch (e) {}
+  }
+
+  var visibleCols = loadVisibleCols();
+  var colWidths = loadWidths();
+
+  function readPendingFromForm() {
+    state.pending.search = String((el("dg-fin-search") && el("dg-fin-search").value) || "").trim();
+    state.pending.date_from = String((el("dg-fin-date-from") && el("dg-fin-date-from").value) || "");
+    state.pending.date_to = String((el("dg-fin-date-to") && el("dg-fin-date-to").value) || "");
+    state.pending.direction = String((el("dg-fin-direction") && el("dg-fin-direction").value) || "");
+    state.pending.account_id = String((el("dg-fin-account") && el("dg-fin-account").value) || "");
+    state.pending.page_size = parseInt(String((el("dg-fin-page-size") && el("dg-fin-page-size").value) || "100"), 10) || 100;
+    state.pending.sync_days = parseInt(String((el("dg-fin-sync-days") && el("dg-fin-sync-days").value) || "30"), 10) || 30;
+  }
+  function writeFormFromPending() {
+    if (el("dg-fin-search")) el("dg-fin-search").value = state.pending.search;
+    if (el("dg-fin-table-search-mirror")) el("dg-fin-table-search-mirror").value = state.pending.search;
+    if (el("dg-fin-date-from")) el("dg-fin-date-from").value = state.pending.date_from;
+    if (el("dg-fin-date-to")) el("dg-fin-date-to").value = state.pending.date_to;
+    if (el("dg-fin-direction")) el("dg-fin-direction").value = state.pending.direction;
+    if (el("dg-fin-account")) el("dg-fin-account").value = state.pending.account_id;
+    if (el("dg-fin-page-size")) el("dg-fin-page-size").value = String(state.pending.page_size);
+    if (el("dg-fin-page-size-foot")) el("dg-fin-page-size-foot").value = String(state.pending.page_size);
+    if (el("dg-fin-sync-days")) el("dg-fin-sync-days").value = String(state.pending.sync_days);
+    markDirty();
+  }
+  function markDirty() {
+    var btn = el("dg-fin-apply");
+    if (!btn) return;
+    var dirty =
+      state.pending.search !== state.applied.search ||
+      state.pending.date_from !== state.applied.date_from ||
+      state.pending.date_to !== state.applied.date_to ||
+      state.pending.direction !== state.applied.direction ||
+      state.pending.account_id !== state.applied.account_id ||
+      Number(state.pending.page_size) !== Number(state.applied.page_size);
+    btn.classList.toggle("dg-flt-dirty", dirty);
+    btn.textContent = dirty ? "Применить •" : "Применить";
+  }
+  function commitFilters() {
+    readPendingFromForm();
+    state.applied = Object.assign({}, state.pending);
+    state.page = 1;
+    markDirty();
+    loadTx();
+  }
+
+  function bindCollapse(btnId, bodyId, storageKey) {
+    var btn = el(btnId);
+    var body = el(bodyId);
+    if (!btn || !body) return;
+    function apply() {
+      var c = false;
+      try { c = localStorage.getItem(storageKey) === "1"; } catch (e) {}
+      body.style.display = c ? "none" : "";
+      btn.textContent = c ? "Развернуть" : "Свернуть";
+    }
+    btn.addEventListener("click", function () {
+      var nowHidden = body.style.display === "none";
+      try { localStorage.setItem(storageKey, nowHidden ? "0" : "1"); } catch (e) {}
+      apply();
+    });
+    apply();
+  }
+
+  function bindHeaderSearchMirror() {
+    var a = el("dg-fin-search");
+    var b = el("dg-fin-table-search-mirror");
+    if (!a || !b) return;
+    var syncing = false;
+    function sync(from, to) {
+      if (syncing) return;
+      syncing = true;
+      to.value = from.value;
+      syncing = false;
+      readPendingFromForm();
+      markDirty();
+    }
+    a.addEventListener("input", function () { sync(a, b); });
+    b.addEventListener("input", function () { sync(b, a); });
+    function onEnter(e) {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        var btn = el("dg-fin-apply");
+        if (btn) btn.click();
+      }
+      if (e.key === "Escape") {
+        a.value = "";
+        b.value = "";
+        commitFilters();
+      }
+    }
+    a.addEventListener("keydown", onEnter);
+    b.addEventListener("keydown", onEnter);
+  }
+
+  function renderColumnControls() {
+    var list = el("dg-fin-columns-list");
+    if (!list) return;
+    list.innerHTML = FIN_COLS.map(function (c) {
+      var on = visibleCols.indexOf(c[0]) >= 0;
+      return '<label><input type="checkbox" data-fin-col="' + esc(c[0]) + '"' + (on ? " checked" : "") + "> " + esc(c[1]) + "</label>";
+    }).join("");
+    list.querySelectorAll("input[data-fin-col]").forEach(function (cb) {
+      cb.addEventListener("change", function () {
+        var k = cb.getAttribute("data-fin-col");
+        if (cb.checked) {
+          if (visibleCols.indexOf(k) < 0) visibleCols.push(k);
+        } else {
+          visibleCols = visibleCols.filter(function (x) { return x !== k; });
+          if (!visibleCols.length) visibleCols = DEFAULT_VISIBLE.slice();
+        }
+        saveVisibleCols(visibleCols);
+        buildThead();
+        renderTable();
+      });
+    });
+  }
+  function renderWidthControls() {
+    var list = el("dg-fin-widths-list");
+    if (!list) return;
+    list.innerHTML = FIN_COLS.map(function (c) {
+      var w = colWidths[c[0]] || DEFAULT_WIDTHS[c[0]] || 140;
+      return '<label>' + esc(c[1]) + ' <input type="number" min="60" max="800" value="' + w + '" data-fin-w="' + esc(c[0]) + '"></label>';
+    }).join("");
+    list.querySelectorAll("input[data-fin-w]").forEach(function (inp) {
+      inp.addEventListener("change", function () {
+        var n = parseInt(inp.value, 10);
+        if (n < 60) n = 60;
+        if (n > 800) n = 800;
+        colWidths[inp.getAttribute("data-fin-w")] = n;
+        saveWidths(colWidths);
+        buildThead();
+        renderTable();
+      });
+    });
+  }
+  function columnControls() {
+    var wrap = el("dg-fin-toolbox-panels");
+    var colsP = el("dg-fin-columns-panel");
+    var wP = el("dg-fin-widths-panel");
+    function syncWrap() {
+      var open = (colsP && colsP.classList.contains("open")) || (wP && wP.classList.contains("open"));
+      if (wrap) wrap.classList.toggle("d-none", !open);
+    }
+    function closeAll() {
+      if (colsP) colsP.classList.remove("open");
+      if (wP) wP.classList.remove("open");
+      syncWrap();
+    }
+    el("dg-fin-columns-toggle").addEventListener("click", function (e) {
+      e.stopPropagation();
+      var on = colsP.classList.toggle("open");
+      if (on && wP) wP.classList.remove("open");
+      syncWrap();
+    });
+    el("dg-fin-widths-toggle").addEventListener("click", function (e) {
+      e.stopPropagation();
+      var on = wP.classList.toggle("open");
+      if (on && colsP) colsP.classList.remove("open");
+      syncWrap();
+    });
+    document.addEventListener("click", function (e) {
+      if (wrap && wrap.contains(e.target)) return;
+      if (e.target && (e.target.id === "dg-fin-columns-toggle" || e.target.id === "dg-fin-widths-toggle")) return;
+      closeAll();
+    });
+    el("dg-fin-columns-all").addEventListener("click", function () {
+      visibleCols = DEFAULT_VISIBLE.slice();
+      saveVisibleCols(visibleCols);
+      renderColumnControls();
+      buildThead();
+      renderTable();
+    });
+    el("dg-fin-columns-none").addEventListener("click", function () {
+      visibleCols = ["booked_date", "amount", "purpose"];
+      saveVisibleCols(visibleCols);
+      renderColumnControls();
+      buildThead();
+      renderTable();
+    });
+    el("dg-fin-columns-default").addEventListener("click", function () {
+      visibleCols = DEFAULT_VISIBLE.slice();
+      saveVisibleCols(visibleCols);
+      renderColumnControls();
+      buildThead();
+      renderTable();
+    });
+    el("dg-fin-widths-default").addEventListener("click", function () {
+      colWidths = Object.assign({}, DEFAULT_WIDTHS);
+      saveWidths(colWidths);
+      renderWidthControls();
+      buildThead();
+      renderTable();
+    });
+    renderColumnControls();
+    renderWidthControls();
+  }
+
+  function buildThead() {
+    var thead = el("dg-fin-thead");
+    var cg = el("dg-fin-colgroup");
+    if (!thead) return;
+    var cols = FIN_COLS.filter(function (c) { return visibleCols.indexOf(c[0]) >= 0; });
+    if (cg) {
+      cg.innerHTML = cols.map(function (c) {
+        var w = colWidths[c[0]] || DEFAULT_WIDTHS[c[0]] || 140;
+        return '<col style="width:' + w + 'px;min-width:' + w + 'px">';
+      }).join("");
+    }
+    thead.innerHTML = "<tr>" + cols.map(function (c) {
+      return '<th class="dg-fin-sortable" data-fin-sort="' + esc(c[0]) + '">' + esc(c[1]) + "</th>";
+    }).join("") + "</tr>";
+    thead.querySelectorAll("th.dg-fin-sortable").forEach(function (th) {
+      th.addEventListener("click", function () {
+        if (hasTextSelection()) return;
+        var k = th.getAttribute("data-fin-sort");
+        if (state.sortKey === k) state.sortDir = state.sortDir === "asc" ? "desc" : "asc";
+        else { state.sortKey = k; state.sortDir = "asc"; }
+        renderTable();
+      });
+    });
+  }
+
+  function cellValue(row, key) {
+    if (key === "amount") return Number(row.amount);
+    if (key === "booked_date") return String(row.booked_date || row.booked_at || "");
+    return String(row[key] == null ? "" : row[key]);
+  }
+  function renderCell(row, key) {
+    if (key === "amount") {
+      var cls = row.direction === "out" ? "dg-fin-dir-out" : "dg-fin-dir-in";
+      return '<span class="' + cls + '">' + esc(fmtMoney(row.amount, row.currency)) + "</span>";
+    }
+    if (key === "direction") {
+      return row.direction === "out" ? "Исходящий" : "Входящий";
+    }
+    if (key === "account_number") {
+      return esc(maskAcc(row.account_number || row.account_id));
+    }
+    if (key === "booked_date") {
+      return esc(row.booked_date || String(row.booked_at || "").slice(0, 10));
+    }
+    return esc(row[key] || "");
+  }
+  function renderTable() {
+    var tb = el("dg-fin-tbody");
+    if (!tb) return;
+    var cols = FIN_COLS.filter(function (c) { return visibleCols.indexOf(c[0]) >= 0; });
+    var rows = state.rows.slice();
+    var sk = state.sortKey;
+    var dir = state.sortDir === "asc" ? 1 : -1;
+    rows.sort(function (a, b) {
+      var va = cellValue(a, sk);
+      var vb = cellValue(b, sk);
+      if (typeof va === "number" && typeof vb === "number") return (va - vb) * dir;
+      return String(va).localeCompare(String(vb), "ru") * dir;
+    });
+    if (!rows.length) {
+      tb.innerHTML = '<tr><td colspan="' + Math.max(1, cols.length) + '" class="text-muted">Нет проводок по фильтрам. Обновите из банка, если снимок пуст.</td></tr>';
+    } else {
+      tb.innerHTML = rows.map(function (r) {
+        return "<tr>" + cols.map(function (c) { return "<td>" + renderCell(r, c[0]) + "</td>"; }).join("") + "</tr>";
+      }).join("");
+    }
+    var st = el("dg-fin-pager-status");
+    if (st) {
+      st.textContent = "Найдено: " + state.total + "; страница " + state.page + "/" + state.pages + "; показано: " + state.shown;
+    }
+  }
+
+  var BANK_LABELS = { tochka: "Точка" };
+
+  function accountAvailable(a) {
+    var n = a && a.available != null ? Number(a.available) : Number(a && a.balance);
+    return Number.isFinite(n) ? n : null;
+  }
+  function accountBlocked(a) {
+    var n = a && a.blocked != null ? Number(a.blocked) : null;
+    return Number.isFinite(n) ? n : null;
+  }
+  function sumByCurrency(list, pick) {
+    var map = Object.create(null);
+    (list || []).forEach(function (a) {
+      var n = pick(a);
+      if (n == null) return;
+      var cur = String(a.currency || "RUB").toUpperCase() || "RUB";
+      map[cur] = (map[cur] || 0) + n;
+    });
+    return map;
+  }
+  function moneyMapLines(map) {
+    return Object.keys(map)
+      .sort(function (a, b) {
+        if (a === "RUB") return -1;
+        if (b === "RUB") return 1;
+        return a.localeCompare(b);
+      })
+      .map(function (cur) {
+        return { currency: cur, amount: map[cur] };
+      });
+  }
+  function formatMoneyList(lines) {
+    if (!lines.length) return "—";
+    return lines.map(function (x) { return fmtMoney(x.amount, x.currency); }).join(" · ");
+  }
+  function latestSyncedAt(list) {
+    var best = null;
+    (list || []).forEach(function (a) {
+      if (!a || !a.synced_at) return;
+      var t = String(a.synced_at);
+      if (!best || t > best) best = t;
+    });
+    return best;
+  }
+  function groupAccountsByBank(list) {
+    var order = [];
+    var map = Object.create(null);
+    (list || []).forEach(function (a) {
+      var bank = String((a && a.bank) || "tochka").toLowerCase() || "tochka";
+      if (!map[bank]) {
+        map[bank] = [];
+        order.push(bank);
+      }
+      map[bank].push(a);
+    });
+    return order.map(function (bank) {
+      return { bank: bank, title: BANK_LABELS[bank] || bank, accounts: map[bank] };
+    });
+  }
+
+  function renderBalances() {
+    var totalWrap = el("dg-fin-total-wrap");
+    var banksWrap = el("dg-fin-banks-wrap");
+    if (!totalWrap || !banksWrap) return;
+
+    if (!state.accounts.length) {
+      totalWrap.innerHTML = "";
+      banksWrap.innerHTML =
+        '<p class="text-muted small mb-0">Счетов пока нет. Сохраните JWT и нажмите «Обновить из банка».</p>';
+      return;
+    }
+
+    var availLines = moneyMapLines(sumByCurrency(state.accounts, accountAvailable));
+    var blockedLines = moneyMapLines(sumByCurrency(state.accounts, accountBlocked));
+    var main = availLines[0];
+    var rest = availLines.slice(1);
+    var syn = latestSyncedAt(state.accounts);
+    var synTxt = syn ? String(syn).replace("T", " ").slice(0, 19) : "—";
+    var blockedHtml = blockedLines.length
+      ? '<div class="dg-fin-total-extra small text-muted">Заблокировано всего: <strong class="text-dark">' +
+        esc(formatMoneyList(blockedLines)) +
+        "</strong></div>"
+      : "";
+    var multiCur =
+      rest.length > 0
+        ? '<div class="dg-fin-total-extra small text-muted">Другие валюты: ' +
+          esc(formatMoneyList(rest)) +
+          "</div>"
+        : "";
+
+    totalWrap.innerHTML =
+      '<div class="card dg-fin-total-card">' +
+      '<div class="card-body">' +
+      '<div class="dg-fin-total-label">Всего доступно</div>' +
+      '<p class="dg-fin-total-amount dg-fin-bal-num mb-0">' +
+      esc(main ? fmtMoney(main.amount, main.currency) : "—") +
+      "</p>" +
+      '<div class="dg-fin-total-meta">Счетов: ' +
+      state.accounts.length +
+      " · снимок: " +
+      esc(synTxt) +
+      "</div>" +
+      multiCur +
+      blockedHtml +
+      "</div></div>";
+
+    var groups = groupAccountsByBank(state.accounts);
+    banksWrap.innerHTML = groups
+      .map(function (g) {
+        var bankAvail = formatMoneyList(moneyMapLines(sumByCurrency(g.accounts, accountAvailable)));
+        var cards = g.accounts
+          .map(function (a) {
+            var title = esc(a.name || "Счёт") + " · " + esc(maskAcc(a.account_number || a.account_id));
+            var aSyn = a.synced_at ? esc(String(a.synced_at).replace("T", " ").slice(0, 19)) : "—";
+            var blocked =
+              accountBlocked(a) != null
+                ? '<div class="small text-muted">Заблокировано: ' + esc(fmtMoney(a.blocked, a.currency)) + "</div>"
+                : "";
+            var avail = accountAvailable(a);
+            return (
+              '<div class="col-md-4 col-lg-3">' +
+              '<div class="card dg-fin-bal-card shadow-none border">' +
+              '<div class="card-body py-3">' +
+              '<div class="small text-muted">' +
+              title +
+              "</div>" +
+              '<div class="h5 mb-1 dg-fin-bal-num">' +
+              esc(avail != null ? fmtMoney(avail, a.currency) : "—") +
+              "</div>" +
+              blocked +
+              '<div class="small text-muted">Снимок: ' +
+              aSyn +
+              "</div>" +
+              "</div></div></div>"
+            );
+          })
+          .join("");
+        return (
+          '<div class="dg-fin-bank-block" data-fin-bank="' +
+          esc(g.bank) +
+          '">' +
+          '<div class="dg-fin-bank-head">' +
+          '<p class="dg-fin-bank-title">' +
+          esc(g.title) +
+          " · " +
+          g.accounts.length +
+          " счёт(а)</p>" +
+          '<p class="dg-fin-bank-sum">' +
+          esc(bankAvail) +
+          "</p>" +
+          "</div>" +
+          '<div class="row g-2 dg-fin-balances-row">' +
+          cards +
+          "</div></div>"
+        );
+      })
+      .join("");
+  }
+
+  function fillAccountSelect() {
+    var sel = el("dg-fin-account");
+    if (!sel) return;
+    var cur = state.pending.account_id;
+    sel.innerHTML = '<option value="">Все счета</option>' + state.accounts.map(function (a) {
+      var lab = maskAcc(a.account_number || a.account_id) + (a.name ? " · " + a.name : "");
+      return '<option value="' + esc(a.account_id) + '">' + esc(lab) + "</option>";
+    }).join("");
+    sel.value = cur;
+  }
+
+  function loadAccounts() {
+    return fetch("/api/finance/accounts", { credentials: "same-origin" })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (!j || !j.success) throw new Error((j && j.error) || "accounts");
+        state.accounts = j.accounts || [];
+        fillAccountSelect();
+        renderBalances();
+      });
+  }
+
+  function loadTx() {
+    var q = new URLSearchParams();
+    q.set("search", state.applied.search || "");
+    q.set("direction", state.applied.direction || "");
+    q.set("account_id", state.applied.account_id || "");
+    q.set("date_from", state.applied.date_from || "");
+    q.set("date_to", state.applied.date_to || "");
+    q.set("page", String(state.page));
+    q.set("page_size", String(state.applied.page_size || 100));
+    return fetch("/api/finance/transactions?" + q.toString(), { credentials: "same-origin" })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (!j || !j.success) throw new Error((j && j.error) || "transactions");
+        state.total = Number(j.total || 0);
+        state.page = Number(j.page || 1);
+        state.pages = Number(j.pages || 1);
+        state.shown = Number(j.shown || 0);
+        state.rows = j.rows || [];
+        renderTable();
+      })
+      .catch(function (e) {
+        toast("danger", e.message || String(e));
+      });
+  }
+
+  function loadConfig() {
+    return fetch("/api/finance/config", { credentials: "same-origin" })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (!j || !j.success) throw new Error((j && j.error) || "config");
+        state.canWrite = !!j.can_write;
+        var card = el("dg-fin-bank-card");
+        if (card) card.style.display = state.canWrite ? "" : "none";
+        var mask = el("dg-fin-jwt-mask");
+        if (mask) mask.textContent = j.configured ? ("Сохранено: " + (j.jwt_mask || "маска")) : "Не задан";
+        var inp = el("dg-fin-jwt");
+        if (inp) {
+          inp.value = "";
+          inp.placeholder = j.configured ? "Новый JWT, чтобы заменить сохранённый" : "Вставьте JWT для сохранения";
+        }
+        var syncBtn = el("dg-fin-sync");
+        if (syncBtn) syncBtn.classList.toggle("d-none", !state.canWrite);
+        return j;
+      });
+  }
+
+  function saveJwt() {
+    var inp = el("dg-fin-jwt");
+    var jwt = String(inp && inp.value || "").trim();
+    if (!jwt) {
+      setBankMsg("danger", "<strong>Вставьте JWT</strong> в поле (пустое значение не перезаписывает сохранённый ключ).");
+      return Promise.resolve();
+    }
+    var btn = el("dg-fin-btn-save-bank");
+    var run = function () {
+      setBankMsg("warning", "Сохраняем…");
+      return fetch("/api/finance/config", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jwt: jwt }),
+      })
+        .then(function (r) { return r.json().then(function (j) { return { r: r, j: j }; }); })
+        .then(function (x) {
+          if (!x.r.ok || !x.j.success) throw new Error((x.j && x.j.error) || ("HTTP " + x.r.status));
+          return fetch("/api/finance/config", { credentials: "same-origin" }).then(function (r) { return r.json(); });
+        })
+        .then(function (cfg) {
+          var lenOk = Number(cfg.jwt_len || 0) === jwt.length;
+          var maskOk = String(cfg.jwt_mask || "").indexOf(jwt.slice(0, 4)) === 0;
+          var ok = cfg.configured && lenOk && maskOk;
+          var html = "<strong>" + (ok ? "JWT сохранён." : "Сохранено, но маска/длина из БД не совпали.") + "</strong>";
+          html += "<br>В БД: " + esc(cfg.jwt_mask || "—");
+          setBankMsg(ok ? "success" : "warning", html);
+          if (inp) inp.value = "";
+          if (el("dg-fin-jwt-mask")) el("dg-fin-jwt-mask").textContent = cfg.configured ? ("Сохранено: " + cfg.jwt_mask) : "Не задан";
+        })
+        .catch(function (e) {
+          setBankMsg("danger", "<strong>Ошибка сохранения.</strong> " + esc(e.message || String(e)));
+        });
+    };
+    if (window.DatagonNotify && window.DatagonNotify.busyRun && btn) return window.DatagonNotify.busyRun(btn, run);
+    return run();
+  }
+
+  function probe() {
+    var btn = el("dg-fin-btn-probe");
+    var t0 = Date.now();
+    showActionLog("info", "Проверка связи: запрашиваем счета Точки…");
+    var run = function () {
+      return fetch("/api/finance/probe", { credentials: "same-origin" })
+        .then(function (r) { return r.json().then(function (j) { return { r: r, j: j }; }); })
+        .then(function (x) {
+          var sec = Math.round((Date.now() - t0) / 1000);
+          if (!x.r.ok || !x.j.success) throw new Error((x.j && x.j.error) || ("HTTP " + x.r.status));
+          var n = Number(x.j.count || 0);
+          showActionLog("success", "Связь ок. Счетов: " + n + ". Длительность " + sec + " с.");
+          toast("success", "Точка: счетов " + n);
+        })
+        .catch(function (e) {
+          showActionLog("danger", "Ошибка проверки: " + (e.message || String(e)));
+          toast("danger", e.message || String(e));
+        });
+    };
+    if (window.DatagonNotify && window.DatagonNotify.busyRun && btn) return window.DatagonNotify.busyRun(btn, run);
+    return run();
+  }
+
+  function syncFromBank() {
+    if (!state.canWrite) {
+      toast("warning", "Нужен полный доступ, чтобы обновлять из банка");
+      return Promise.resolve();
+    }
+    readPendingFromForm();
+    var days = state.pending.sync_days || 30;
+    var filtersTxt = [
+      "направление: " + (state.applied.direction || "все"),
+      "счёт: " + (state.applied.account_id ? maskAcc(state.applied.account_id) : "все"),
+      "даты: " + ((state.applied.date_from || "…") + "—" + (state.applied.date_to || "…")),
+      "поиск: " + (state.applied.search || "—"),
+    ].join("; ");
+    var t0 = Date.now();
+    var tick = null;
+    showActionLog(
+      "info",
+      "Обновляем счета и выписку Точки за " + days + " дн.<br><span class=\"small\">Фильтры таблицы (не влияют на выгрузку): " + esc(filtersTxt) + "</span><br>идёт, прошло 0 с…",
+      true
+    );
+    tick = setInterval(function () {
+      var s = Math.round((Date.now() - t0) / 1000);
+      showActionLog(
+        "info",
+        "Обновляем счета и выписку Точки за " + days + " дн.<br><span class=\"small\">Фильтры: " + esc(filtersTxt) + "</span><br>идёт, прошло " + s + " с…",
+        true
+      );
+    }, 1000);
+    var btn = el("dg-fin-sync");
+    var run = function () {
+      return fetch("/api/finance/sync", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ days: days }),
+      })
+        .then(function (r) { return r.json().then(function (j) { return { r: r, j: j }; }); })
+        .then(function (x) {
+          if (tick) clearInterval(tick);
+          var j = x.j || {};
+          if (!x.r.ok) throw new Error((j && j.error) || ("HTTP " + x.r.status));
+          if (j.skip_reason === "already_running") {
+            showActionLog("warning", "Уже идёт обновление. " + ((j.sync && j.sync.message) || ""), false);
+            return;
+          }
+          var errs = Array.isArray(j.errors) ? j.errors : [];
+          var html =
+            "<ul class=\"mb-1 ps-3\">" +
+            "<li>Счетов записано: " + Number(j.accounts || 0) + "</li>" +
+            "<li>Проводок записано: " + Number(j.tx_upserted || 0) + "</li>" +
+            "<li>Ошибок: " + errs.length + "</li>" +
+            "<li>Длительность: " + Number(j.duration_sec || 0) + " с</li>" +
+            "</ul>";
+          if (errs.length) {
+            html += "<div class=\"small\">Первые ошибки:</div><ul class=\"small mb-0 ps-3\">";
+            errs.slice(0, 20).forEach(function (er) {
+              html += "<li>" + esc(er.code) + ": " + esc(er.error) + "</li>";
+            });
+            html += "</ul>";
+          }
+          showActionLog(j.success === false ? "warning" : "success", html, true);
+          toast(j.success === false ? "warning" : "success", j.message || "Готово");
+          return loadAccounts().then(loadTx);
+        })
+        .catch(function (e) {
+          if (tick) clearInterval(tick);
+          showActionLog("danger", "Ошибка обновления: " + (e.message || String(e)));
+          toast("danger", e.message || String(e));
+        });
+    };
+    if (window.DatagonNotify && window.DatagonNotify.busyRun && btn) return window.DatagonNotify.busyRun(btn, run);
+    return run();
+  }
+
+  el("dg-fin-apply").addEventListener("click", commitFilters);
+  el("dg-fin-reset").addEventListener("click", function () {
+    hideActionLog();
+    state.pending = { search: "", date_from: "", date_to: "", direction: "", account_id: "", page_size: 100, sync_days: 30 };
+    writeFormFromPending();
+    commitFilters();
+  });
+  el("dg-fin-btn-save-bank").addEventListener("click", saveJwt);
+  el("dg-fin-btn-probe").addEventListener("click", probe);
+  el("dg-fin-sync").addEventListener("click", syncFromBank);
+  ["dg-fin-search", "dg-fin-date-from", "dg-fin-date-to", "dg-fin-direction", "dg-fin-account", "dg-fin-page-size", "dg-fin-sync-days"].forEach(function (id) {
+    var n = el(id);
+    if (!n) return;
+    n.addEventListener("input", function () { readPendingFromForm(); markDirty(); });
+    n.addEventListener("change", function () { readPendingFromForm(); markDirty(); });
+  });
+  el("dg-fin-page-size-foot").addEventListener("change", function () {
+    if (el("dg-fin-page-size")) el("dg-fin-page-size").value = el("dg-fin-page-size-foot").value;
+    readPendingFromForm();
+    commitFilters();
+  });
+  el("dg-fin-prev").addEventListener("click", function () {
+    if (state.page <= 1) return;
+    state.page -= 1;
+    loadTx();
+  });
+  el("dg-fin-next").addEventListener("click", function () {
+    if (state.page >= state.pages) return;
+    state.page += 1;
+    loadTx();
+  });
+
+  bindCollapse("dg-fin-bank-toggle", "dg-fin-bank-body", BANK_KEY);
+  bindCollapse("dg-fin-filters-toggle", "dg-fin-filters-body", FILTERS_KEY);
+  bindCollapse("dg-fin-table-toggle", "dg-fin-table-body", TABLE_KEY);
+  bindHeaderSearchMirror();
+  columnControls();
+  buildThead();
+  if (window.DatagonFilterFieldsVisibility && window.DatagonFilterFieldsVisibility.init) {
+    window.DatagonFilterFieldsVisibility.init({
+      storageKeyPrefix: "datagon_finance_filter_fields_v1",
+      attr: "data-dg-fin-filter-field",
+      fieldGroups: FIELD_GROUPS,
+      togglesRootId: "dg-fin-filter-blocks-toggles",
+      idPrefix: "dg-fin-ff-",
+    });
+  }
+
+  loadConfig()
+    .then(loadAccounts)
+    .then(function () {
+      state.applied = Object.assign({}, state.pending);
+      markDirty();
+      return loadTx();
+    })
+    .catch(function (e) {
+      toast("danger", e.message || String(e));
+    });
+})();
+</script>

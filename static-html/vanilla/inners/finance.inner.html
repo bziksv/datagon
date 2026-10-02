@@ -1,0 +1,202 @@
+          <div class="app-page-title">
+            <div class="page-title-wrapper">
+              <div class="page-title-heading">
+                <div class="page-title-icon">
+                  <i class="pe-7s-wallet icon-gradient bg-happy-green"></i>
+                </div>
+                <div>
+                  Финансы
+                  <div class="page-title-subheading">
+                    Банк Точка: счета, остатки и движение (только чтение). JWT — в карточке настроек при полном доступе.
+                    Расписание — <a href="/settings.html">Настройки</a> · журнал — <a href="/processes.html">processes</a>.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card" id="dg-fin-bank-card">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2">
+              <div class="d-flex align-items-center">
+                <i class="header-icon pe-7s-key icon-gradient bg-tempting-azure me-2"></i>
+                <span>Настройки банка</span>
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-fin-bank-toggle">Свернуть</button>
+            </div>
+            <div class="card-body" id="dg-fin-bank-body">
+              <p class="small text-muted mb-2">
+                В кабинете Точки: <strong>Интеграции и API</strong> → скопируйте <strong>JWT</strong> (длинный токен) и вставьте сюда.
+                Нужны scopes <code>ReadAccounts</code>, <code>ReadBalances</code>, <code>ReadStatements</code>.
+              </p>
+              <p class="small text-muted mb-0">
+                <strong>Client ID</strong> и <strong>Client Secret</strong> на этой странице <em>не вводятся</em> — они для OAuth/приложений; Datagon в этом релизе работает только по JWT из кабинета. Redirect URL тоже не нужен.
+              </p>
+              <div class="row g-2 align-items-end">
+                <div class="col-md-8">
+                  <label class="form-label" for="dg-fin-jwt">JWT Точки</label>
+                  <input type="password" class="form-control" id="dg-fin-jwt" autocomplete="off" placeholder="Вставьте JWT для сохранения" />
+                  <div class="form-text" id="dg-fin-jwt-mask">Не задан</div>
+                </div>
+              </div>
+              <div class="mt-3 d-flex flex-wrap gap-2">
+                <button type="button" class="btn btn-sm btn-primary" id="dg-fin-btn-save-bank" data-dg-notify-start="Сохраняем JWT…">Сохранить</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-fin-btn-probe" data-dg-notify-start="Проверяем связь с Точкой…">Проверить связь</button>
+              </div>
+              <div id="dg-fin-bank-save-msg" class="alert mt-3 mb-0 d-none" role="status"></div>
+            </div>
+          </div>
+
+          <div class="dg-fin-balances mb-3" id="dg-fin-balances" aria-label="Балансы">
+            <div id="dg-fin-total-wrap"></div>
+            <div class="dg-fin-banks" id="dg-fin-banks-wrap"></div>
+          </div>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2">
+              <div class="d-flex align-items-center">
+                <i class="header-icon pe-7s-filter icon-gradient bg-plum-plate me-2"></i>
+                <span>Фильтры и действия</span>
+              </div>
+              <div class="d-flex align-items-center gap-2">
+                <div class="dropdown">
+                  <button type="button" class="btn btn-sm btn-outline-secondary dg-vanilla-dropdown-toggle" style="line-height: 1; padding: 0.35rem 0.5rem" aria-expanded="false" aria-haspopup="true" id="dg-fin-filter-blocks-btn" data-dg-tooltip="Какие поля фильтров показывать">
+                    <i class="pe-7s-config btn-icon-wrapper" style="font-size: 1.1rem" aria-hidden="true"></i>
+                  </button>
+                  <div class="dropdown-menu dropdown-menu-end rm-pointers p-0" id="dg-fin-filter-blocks-menu" style="width: min(420px, calc(100vw - 1.5rem))">
+                    <div class="dropdown-menu-header mb-0">
+                      <div class="dropdown-menu-header-inner bg-tempting-azure">
+                        <div class="menu-header-content text-white px-3 py-2">
+                          <h5 class="menu-header-title mb-0">Поля фильтров</h5>
+                        </div>
+                      </div>
+                    </div>
+                    <div style="max-height: calc(100vh - 10rem); overflow-y: auto;">
+                      <div id="dg-fin-filter-blocks-toggles" class="list-group list-group-flush"></div>
+                    </div>
+                  </div>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-fin-filters-toggle">Свернуть</button>
+              </div>
+            </div>
+            <div class="card-body" id="dg-fin-filters-body">
+              <div class="row g-2 align-items-end">
+                <div class="col-md-4" data-dg-fin-filter-field="search" data-dg-filter-field-title="Умный поиск">
+                  <label class="form-label" for="dg-fin-search">Умный поиск</label>
+                  <input type="search" id="dg-fin-search" class="form-control" placeholder="Назначение, контрагент, ИНН, номер, счёт…" autocomplete="off" />
+                </div>
+                <div class="col-md-2" data-dg-fin-filter-field="date_from">
+                  <label class="form-label" for="dg-fin-date-from">С даты</label>
+                  <input type="date" id="dg-fin-date-from" class="form-control" />
+                </div>
+                <div class="col-md-2" data-dg-fin-filter-field="date_to">
+                  <label class="form-label" for="dg-fin-date-to">По дату</label>
+                  <input type="date" id="dg-fin-date-to" class="form-control" />
+                </div>
+                <div class="col-md-2" data-dg-fin-filter-field="direction">
+                  <label class="form-label" for="dg-fin-direction">Направление</label>
+                  <select id="dg-fin-direction" class="form-select">
+                    <option value="">Все</option>
+                    <option value="in">Входящие</option>
+                    <option value="out">Исходящие</option>
+                  </select>
+                </div>
+                <div class="col-md-2" data-dg-fin-filter-field="account">
+                  <label class="form-label" for="dg-fin-account">Счёт</label>
+                  <select id="dg-fin-account" class="form-select">
+                    <option value="">Все счета</option>
+                  </select>
+                </div>
+              </div>
+              <div class="row g-2 align-items-end mt-1">
+                <div class="col-md-2" data-dg-fin-filter-field="page_size">
+                  <label class="form-label" for="dg-fin-page-size">На странице</label>
+                  <select id="dg-fin-page-size" class="form-select">
+                    <option value="50">50</option>
+                    <option value="100" selected>100</option>
+                    <option value="200">200</option>
+                  </select>
+                </div>
+                <div class="col-md-2" data-dg-fin-filter-field="sync_days">
+                  <label class="form-label" for="dg-fin-sync-days">Выписка, дн.</label>
+                  <select id="dg-fin-sync-days" class="form-select">
+                    <option value="7">7</option>
+                    <option value="14">14</option>
+                    <option value="30" selected>30</option>
+                    <option value="60">60</option>
+                    <option value="90">90</option>
+                  </select>
+                </div>
+              </div>
+              <div class="mt-3 d-flex flex-wrap gap-2">
+                <button type="button" class="btn btn-sm btn-primary" id="dg-fin-apply" data-dg-notify-start="Применяем фильтры…">Применить</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-fin-reset" data-dg-notify-start="Сбрасываем фильтры…">По умолчанию</button>
+                <button type="button" class="btn btn-sm btn-outline-success" id="dg-fin-sync" data-dg-notify-start="Обновляем из банка Точка…">Обновить из банка</button>
+              </div>
+              <div id="dg-fin-action-log" class="alert alert-secondary py-2 px-3 mt-3 mb-0 d-none" role="status"></div>
+              <p class="small text-muted mt-2 mb-0 d-none" id="dg-fin-status-hint"></p>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+              <div class="d-flex align-items-center gap-3 flex-grow-1" style="min-width: 0">
+                <div class="d-flex align-items-center flex-shrink-0">
+                  <i class="header-icon pe-7s-cash icon-gradient bg-grow-early me-2"></i>
+                  <span>Движение</span>
+                </div>
+                <div class="dg-fin-header-search" style="flex: 0 1 380px; min-width: 220px">
+                  <div class="input-group input-group-sm">
+                    <span class="input-group-text bg-white text-muted px-2" aria-hidden="true">🔎</span>
+                    <input type="search" class="form-control" id="dg-fin-table-search-mirror" placeholder="Умный поиск (Enter — применить)" autocomplete="off" />
+                  </div>
+                </div>
+              </div>
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-fin-columns-toggle">🧩 Столбцы</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-fin-widths-toggle">📏 Ширины</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-fin-table-toggle">Свернуть</button>
+              </div>
+            </div>
+            <div class="card-body" id="dg-fin-table-body">
+              <div class="datagon-columns-toolbox mb-2 d-none" id="dg-fin-toolbox-panels">
+                <div class="datagon-columns-panel" id="dg-fin-columns-panel">
+                  <div class="columns-actions mb-2">
+                    <button type="button" class="btn btn-sm" id="dg-fin-columns-all">Выделить все</button>
+                    <button type="button" class="btn btn-sm" id="dg-fin-columns-none">Снять все</button>
+                    <button type="button" class="btn btn-sm" id="dg-fin-columns-default">По умолчанию</button>
+                  </div>
+                  <div id="dg-fin-columns-list" class="columns-grid"></div>
+                </div>
+                <div class="datagon-columns-panel" id="dg-fin-widths-panel">
+                  <div class="columns-actions mb-2">
+                    <button type="button" class="btn btn-sm" id="dg-fin-widths-default">По умолчанию</button>
+                  </div>
+                  <div id="dg-fin-widths-list" class="dg-fin-widths-grid"></div>
+                </div>
+              </div>
+              <div id="dg-fin-table-scroll-outer" class="dg-fin-table-scroll-outer dg-mp-table-scroll-outer">
+                <div class="table-responsive datagon-my-products-table-wrap">
+                  <table class="table table-hover table-striped mb-0 dg-fin-table" id="dg-fin-table-main" style="width:max-content;min-width:1100px;table-layout:auto;border-collapse:collapse">
+                    <colgroup id="dg-fin-colgroup"></colgroup>
+                    <thead id="dg-fin-thead"><tr></tr></thead>
+                    <tbody id="dg-fin-tbody"></tbody>
+                  </table>
+                </div>
+              </div>
+              <div class="mt-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div class="d-flex align-items-center gap-2">
+                  <label class="mb-0 small text-muted" for="dg-fin-page-size-foot">На странице</label>
+                  <select id="dg-fin-page-size-foot" class="form-select form-select-sm" style="width:auto">
+                    <option value="50">50</option>
+                    <option value="100" selected>100</option>
+                    <option value="200">200</option>
+                  </select>
+                  <span class="text-muted small" id="dg-fin-pager-status">Найдено: 0; страница 1/1; показано: 0</span>
+                </div>
+                <div class="btn-group" role="group">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-fin-prev">Назад</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-fin-next">Вперёд</button>
+                </div>
+              </div>
+            </div>
+          </div>

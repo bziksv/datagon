@@ -92,6 +92,10 @@ let appSettings = {
     auto_sync_network_prices_time: '11:00',
     auto_sync_network_prices_weekdays: '1,2,3,4,5,6,7',
     network_prices_source_site_id: '2',
+    auto_sync_finance_tochka_enabled: 0,
+    auto_sync_finance_tochka_time: '07:00',
+    auto_sync_finance_tochka_days: 30,
+    auto_sync_finance_tochka_weekdays: '',
     auto_sync_moysklad_enabled: 0,
     auto_sync_moysklad_time: '04:00',
     auto_sync_ms_orders_enabled: 0,
@@ -236,6 +240,7 @@ const msOrdersModule = require('./routes/msOrders');
 const medmarketRouterFactory = require('./routes/medmarket');
 const myProductsRouterFactory = require('./routes/myproducts');
 const networkPricesRouterFactory = require('./routes/networkPrices');
+const financeRouterFactory = require('./routes/finance');
 const { getAutoSyncTaskKeys } = require('./lib/datagonAutoSyncRegistry');
 /** Whitelist для POST /api/settings/auto-sync-run (фиксируется при старте процесса). */
 const AUTO_SYNC_ALLOWED_TASK_KEYS = new Set([
@@ -418,6 +423,10 @@ async function initDB() {
             ['auto_sync_network_prices_enabled','0'],['auto_sync_network_prices_time','11:00'],
             ['auto_sync_network_prices_weekdays','1,2,3,4,5,6,7'],
             ['network_prices_source_site_id','2'],
+            ['auto_sync_finance_tochka_enabled','0'],
+            ['auto_sync_finance_tochka_time','07:00'],
+            ['auto_sync_finance_tochka_days','30'],
+            ['auto_sync_finance_tochka_weekdays',''],
             ['auto_sync_moysklad_enabled','0'],['auto_sync_moysklad_time','04:00'],
             ['auto_sync_ms_orders_enabled','0'],['auto_sync_ms_orders_time','08:00'],['auto_sync_ms_orders_weekdays',''],
             ['discover_max_sitemaps','200'],['discover_max_urls','50000'],
@@ -2454,6 +2463,36 @@ async function processAutoSyncQueue() {
                 }
                 await finishAutoSyncRun('network_prices', statusNp, messageNp);
                 console.log(`[AUTO SYNC] Queue done: network_prices — ${statusNp}`);
+            } else if (task === 'finance_tochka') {
+                console.log('[AUTO SYNC] Queue start: finance_tochka');
+                await startAutoSyncRun('finance_tochka', triggerType);
+                let statusFt = 'failed';
+                let messageFt = 'Ошибка выгрузки Точки';
+                try {
+                    if (typeof financeRouterFactory.triggerFinanceSyncFromSettings !== 'function') {
+                        throw new Error('triggerFinanceSyncFromSettings недоступен');
+                    }
+                    const days = Math.max(
+                        1,
+                        Math.min(90, Number(appSettings.auto_sync_finance_tochka_days || 30))
+                    );
+                    await touchAutoSyncRunMessage('finance_tochka', 'Финансы Точка: старт…').catch(() => {});
+                    const result = await financeRouterFactory.triggerFinanceSyncFromSettings(db, appSettings, {
+                        days,
+                        onProgress: (p) => {
+                            touchAutoSyncRunMessage(
+                                'finance_tochka',
+                                String((p && p.message) || 'Финансы Точка…').slice(0, 480)
+                            ).catch(() => {});
+                        },
+                    });
+                    messageFt = String((result && result.message) || 'Готово').slice(0, 480);
+                    statusFt = result && result.success === false ? 'failed' : 'completed';
+                } catch (e) {
+                    messageFt = ('Ошибка Точка: ' + (e && e.message ? e.message : e)).slice(0, 480);
+                }
+                await finishAutoSyncRun('finance_tochka', statusFt, messageFt);
+                console.log(`[AUTO SYNC] Queue done: finance_tochka — ${statusFt}`);
             } else if (task === 'mssales') {
                 console.log('[AUTO SYNC] Queue start: mssales');
                 await startAutoSyncRun('mssales', triggerType);
@@ -2789,6 +2828,12 @@ function startAutoSyncScheduler() {
                     enabled: Number(appSettings.auto_sync_network_prices_enabled || 0) === 1,
                     time: String(appSettings.auto_sync_network_prices_time || '11:00').slice(0, 5),
                     weekdays: parseAutoSyncWeekdaysMon17(appSettings.auto_sync_network_prices_weekdays)
+                },
+                {
+                    type: 'finance_tochka',
+                    enabled: Number(appSettings.auto_sync_finance_tochka_enabled || 0) === 1,
+                    time: String(appSettings.auto_sync_finance_tochka_time || '07:00').slice(0, 5),
+                    weekdays: parseAutoSyncWeekdaysMon17(appSettings.auto_sync_finance_tochka_weekdays)
                 }
             ];
             for (const t of tasks) {
@@ -2927,6 +2972,7 @@ initDB().then(async () => {
     app.use('/api', authModule.router);
     app.use('/api/activity', require('./routes/activity')(db));
     app.use('/api/db-admin', require('./routes/dbAdmin')(db));
+    app.use('/api/finance', financeRouterFactory(db, appSettings));
     app.use('/api/specialties', require('./routes/specialties')(db));
     app.post('/api/settings/auto-sync-run', async (req, res) => {
         try {

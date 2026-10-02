@@ -1846,7 +1846,8 @@
       /** Маркетплейсы → Габариты: свои стили в exports-dimensions.head.html + локальный JS sticky-top. */
       id === "dg-dim-table" ||
       id === "dg-mm-table-main" ||
-      id === "dg-np-table"
+      id === "dg-np-table" ||
+      id === "dg-fin-table-main"
     )
       return true;
     return false;

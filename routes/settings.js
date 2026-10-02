@@ -37,7 +37,11 @@ module.exports = (db, appSettings) => {
         `);
     }
 
-    router.get('/', async (req, res) => res.json(appSettings));
+    router.get('/', async (req, res) => {
+        const out = Object.assign({}, appSettings);
+        delete out.finance_tochka_jwt;
+        return res.json(out);
+    });
 
     /** GET /api/settings/ms-demand-projects — проекты из отгрузок МС для фильтра формулы продаж. */
     router.get('/ms-demand-projects', async (req, res) => {
@@ -157,6 +161,7 @@ module.exports = (db, appSettings) => {
             auto_sync_price_comp_match_audit, auto_sync_price_comp_rand_min, auto_sync_price_comp_rand_max,
             auto_sync_price_comp_stock_min, auto_sync_price_comp_stock_max, auto_sync_price_comp_site_id,
             auto_sync_network_prices_enabled, auto_sync_network_prices_time, auto_sync_network_prices_weekdays,
+            auto_sync_finance_tochka_enabled, auto_sync_finance_tochka_time, auto_sync_finance_tochka_days, auto_sync_finance_tochka_weekdays,
             auto_sync_moysklad_enabled, auto_sync_moysklad_time,
             auto_sync_ms_orders_enabled, auto_sync_ms_orders_time, auto_sync_ms_orders_weekdays,
             auto_sync_marketplaces_enabled, auto_sync_marketplaces_time,
@@ -267,6 +272,22 @@ module.exports = (db, appSettings) => {
                 queries.push([
                     'auto_sync_network_prices_weekdays',
                     normalizeAutoSyncWeekdaysCsv(auto_sync_network_prices_weekdays),
+                ]);
+            }
+            if (auto_sync_finance_tochka_enabled !== undefined) {
+                queries.push(['auto_sync_finance_tochka_enabled', auto_sync_finance_tochka_enabled ? 1 : 0]);
+            }
+            if (auto_sync_finance_tochka_time !== undefined) {
+                queries.push(['auto_sync_finance_tochka_time', auto_sync_finance_tochka_time || '07:00']);
+            }
+            if (auto_sync_finance_tochka_days !== undefined) {
+                const d = Math.max(1, Math.min(90, parseInt(String(auto_sync_finance_tochka_days), 10) || 30));
+                queries.push(['auto_sync_finance_tochka_days', d]);
+            }
+            if (auto_sync_finance_tochka_weekdays !== undefined) {
+                queries.push([
+                    'auto_sync_finance_tochka_weekdays',
+                    normalizeAutoSyncWeekdaysCsv(auto_sync_finance_tochka_weekdays),
                 ]);
             }
             if (auto_sync_moysklad_enabled !== undefined) queries.push(['auto_sync_moysklad_enabled', auto_sync_moysklad_enabled ? 1 : 0]);
@@ -556,6 +577,21 @@ module.exports = (db, appSettings) => {
             }
             if(auto_sync_network_prices_weekdays !== undefined) {
                 appSettings.auto_sync_network_prices_weekdays = normalizeAutoSyncWeekdaysCsv(auto_sync_network_prices_weekdays);
+            }
+            if(auto_sync_finance_tochka_enabled !== undefined) {
+                appSettings.auto_sync_finance_tochka_enabled = auto_sync_finance_tochka_enabled ? 1 : 0;
+            }
+            if(auto_sync_finance_tochka_time !== undefined) {
+                appSettings.auto_sync_finance_tochka_time = auto_sync_finance_tochka_time || '07:00';
+            }
+            if(auto_sync_finance_tochka_days !== undefined) {
+                appSettings.auto_sync_finance_tochka_days = Math.max(
+                    1,
+                    Math.min(90, parseInt(String(auto_sync_finance_tochka_days), 10) || 30)
+                );
+            }
+            if(auto_sync_finance_tochka_weekdays !== undefined) {
+                appSettings.auto_sync_finance_tochka_weekdays = normalizeAutoSyncWeekdaysCsv(auto_sync_finance_tochka_weekdays);
             }
             if(auto_sync_moysklad_enabled !== undefined) appSettings.auto_sync_moysklad_enabled = auto_sync_moysklad_enabled ? 1 : 0;
             if(auto_sync_moysklad_time !== undefined) appSettings.auto_sync_moysklad_time = auto_sync_moysklad_time || '04:00';

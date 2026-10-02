@@ -23,6 +23,7 @@ const PAGES = [
   "matches.html",
   "processes.html",
   "settings.html",
+  "finance.html",
   "sections.html",
   "exports-marketplaces.html",
   "exports-marketplaces-ozon.html",

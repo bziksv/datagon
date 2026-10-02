@@ -174,6 +174,14 @@ function assemble() {
             PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/settings.scripts.html')),
         },
         {
+            out: 'finance.html',
+            PAGE_TITLE: 'Финансы — Датагон',
+            BODY_ATTRS: 'class="datagon-vanilla-body" data-dg-active-nav="finance"',
+            EXTRA_HEAD: read(path.join(vanillaDir, 'inners/finance.head.html')),
+            MAIN_INNER: read(path.join(vanillaDir, 'inners/finance.inner.html')),
+            PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/finance.scripts.html')),
+        },
+        {
             out: 'ref/index.html',
             PAGE_TITLE: 'Справка (статика) — Датагон',
             BODY_ATTRS: 'class="datagon-vanilla-body"',
