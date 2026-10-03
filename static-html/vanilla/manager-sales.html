@@ -3734,7 +3734,7 @@
       });
   }
 
-  var logState = { rowId: 0, label: "", field: "", fieldLabel: "", fieldFallbackNote: "", total: 0, limit: 100, offset: 0 };
+  var logState = { rowId: 0, label: "", field: "", fieldLabel: "", total: 0, limit: 100, offset: 0 };
 
   function mslLogActionLabel(action) {
     var map = { set: "Изменение", create: "Создание", archive: "В архив", restore: "Из архива" };
@@ -3753,7 +3753,6 @@
     logState.label = label || "#" + rowId;
     logState.field = field ? String(field) : "";
     logState.fieldLabel = fieldLabel ? String(fieldLabel) : logState.field;
-    logState.fieldFallbackNote = "";
     logState.offset = 0;
     var overlay = el("dg-msl-log-overlay");
     var titleEl = el("dg-msl-log-title");
@@ -3784,25 +3783,21 @@
       .then(function (j) {
         logState.total = Number(j.total || 0);
         var rows = j.rows || [];
-        if (!rows.length && logState.field && logState.offset === 0) {
-          logState.fieldFallbackNote =
-            "По полю «" + (logState.fieldLabel || logState.field) + "» изменений нет — показан весь журнал строки.";
-          logState.field = "";
-          logState.fieldLabel = "";
-          if (el("dg-msl-log-title")) el("dg-msl-log-title").textContent = "Журнал изменений";
-          return loadMslLog();
-        }
         var pages = Math.max(1, Math.ceil((logState.total || 0) / logState.limit) || 1);
         var page = Math.floor(logState.offset / logState.limit) + 1;
-        var noteHtml = logState.fieldFallbackNote
-          ? '<div class="alert alert-warning py-2 px-3 mb-0 rounded-0 small">' + esc(logState.fieldFallbackNote) + "</div>"
-          : logState.field
-            ? '<div class="alert alert-info py-2 px-3 mb-0 rounded-0 small">Фильтр: <b>' +
-              esc(logState.fieldLabel || logState.field) +
-              "</b></div>"
-            : "";
+        var noteHtml = logState.field
+          ? '<div class="alert alert-info py-2 px-3 mb-0 rounded-0 small">Только поле: <b>' +
+            esc(logState.fieldLabel || logState.field) +
+            "</b></div>"
+          : "";
         if (!rows.length) {
-          body.innerHTML = noteHtml + '<div class="text-muted small text-center py-4">Журнал пуст.</div>';
+          body.innerHTML =
+            noteHtml +
+            '<div class="text-muted small text-center py-4">' +
+            (logState.field
+              ? "По этому полю изменений нет."
+              : "Журнал пуст.") +
+            "</div>";
           return;
         }
         var trs = rows
