@@ -14,6 +14,17 @@ const {
     normHasContract,
     STATUS_VALUES,
     normStatus,
+    INVOICE_MARKS,
+    invoiceMarkLabel,
+    normInvoiceMark,
+    OUR_INVOICE_MARK_GREEN,
+    OUR_INVOICE_MARK_LABEL,
+    ourInvoiceMarkLabel,
+    normOurInvoiceMark,
+    applySuppliersPatch,
+    resolveSuppliersList,
+    flattenSuppliers,
+    splitNonEmptyLines,
 } = require('../lib/managerSalesCalc');
 
 const DEFAULT_LIMIT = 100;
@@ -41,7 +52,6 @@ const SORT_KEYS = new Set([
 ]);
 
 const PATCH_FIELDS = new Set([
-    'row_no',
     'payment_terms',
     'paid_at',
     'invoice_org',
@@ -56,6 +66,8 @@ const PATCH_FIELDS = new Set([
     'supplier_name',
     'supplier_invoice_no',
     'status',
+    'invoice_mark',
+    'our_invoice_mark',
     'year',
     'manager_user_id',
 ]);
@@ -131,6 +143,7 @@ const FIELD_LOG_LABELS = {
     has_contract: 'Наличие договора',
     supplier_invoice_url: 'Ссылка на счет поставщика',
     amount_incl_stock: 'Сумма оплаты (включая складские запасы)',
+    suppliers_json: 'Поставщики закупки',
     delivery_to_us: 'Доставка до нас',
     supplier_name: 'Поставщик',
     supplier_invoice_no: '№ счета поставщика',
@@ -141,6 +154,8 @@ const FIELD_LOG_LABELS = {
     bonus: 'Премия',
     archived: 'Архив',
     handed_to_user_id: 'Передан',
+    invoice_mark: 'Подсветка счёта поставщика',
+    our_invoice_mark: 'Подсветка нашего счёта',
 };
 
 const LOG_COMPARE_KEYS = [
@@ -166,6 +181,9 @@ const LOG_COMPARE_KEYS = [
     'pct_mp',
     'bonus',
     'handed_to_user_id',
+    'invoice_mark',
+    'our_invoice_mark',
+    'suppliers_json',
 ];
 
 function actorSpecialtyName(req) {
@@ -264,8 +282,22 @@ async function logRowChanges(db, { rowId, before, after, actor, source, action }
     for (const key of LOG_COMPARE_KEYS) {
         const oldRaw = before[key];
         const newRaw = after[key];
-        const oldDisp = key === 'paid_at' ? sqlDate(oldRaw) || logScalar(oldRaw) : logScalar(oldRaw);
-        const newDisp = key === 'paid_at' ? sqlDate(newRaw) || logScalar(newRaw) : logScalar(newRaw);
+        const oldDisp =
+            key === 'paid_at'
+                ? sqlDate(oldRaw) || logScalar(oldRaw)
+                : key === 'invoice_mark'
+                  ? invoiceMarkLabel(oldRaw) || logScalar(oldRaw)
+                  : key === 'our_invoice_mark'
+                    ? ourInvoiceMarkLabel(oldRaw) || logScalar(oldRaw)
+                    : logScalar(oldRaw);
+        const newDisp =
+            key === 'paid_at'
+                ? sqlDate(newRaw) || logScalar(newRaw)
+                : key === 'invoice_mark'
+                  ? invoiceMarkLabel(newRaw) || logScalar(newRaw)
+                  : key === 'our_invoice_mark'
+                    ? ourInvoiceMarkLabel(newRaw) || logScalar(newRaw)
+                    : logScalar(newRaw);
         if (valuesEqualForLog(oldDisp, newDisp)) continue;
         await insertRowLog(db, {
             rowId,
@@ -379,6 +411,31 @@ async function ensureSchema(db) {
     try {
         await db.query('ALTER TABLE dg_manager_sales_rows ADD KEY idx_msl_handed (handed_to_user_id)');
     } catch (_) {}
+    try {
+        await db.query(
+            "ALTER TABLE dg_manager_sales_rows ADD COLUMN invoice_mark VARCHAR(16) NOT NULL DEFAULT ''"
+        );
+    } catch (_) {}
+    try {
+        await db.query(
+            "ALTER TABLE dg_manager_sales_rows ADD COLUMN our_invoice_mark VARCHAR(16) NOT NULL DEFAULT 'green'"
+        );
+        await db.query(
+            "UPDATE dg_manager_sales_rows SET our_invoice_mark = 'green' WHERE TRIM(COALESCE(our_invoice_no,'')) <> ''"
+        );
+    } catch (_) {}
+    try {
+        await db.query('ALTER TABLE dg_manager_sales_rows ADD COLUMN suppliers_json TEXT NULL');
+    } catch (_) {}
+    try {
+        await db.query('ALTER TABLE dg_manager_sales_rows MODIFY COLUMN supplier_invoice_url TEXT NULL');
+    } catch (_) {}
+    try {
+        await db.query('ALTER TABLE dg_manager_sales_rows MODIFY COLUMN supplier_name VARCHAR(1024) NULL');
+    } catch (_) {}
+    try {
+        await db.query('ALTER TABLE dg_manager_sales_rows MODIFY COLUMN supplier_invoice_no VARCHAR(512) NULL');
+    } catch (_) {}
     await db.query(`
         CREATE TABLE IF NOT EXISTS dg_manager_sales_log (
             id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -463,7 +520,14 @@ const ROW_FROM = `dg_manager_sales_rows r
 
 function mapRow(r, pctMpOverride) {
     const pctMp = pctMpOverride != null ? pctMpOverride : r.pct_mp;
-    const calc = computeRow(Object.assign({}, r, { pct_mp: pctMp }));
+    const flat = flattenSuppliers(resolveSuppliersList(r));
+    const calc = computeRow(
+        Object.assign({}, r, {
+            pct_mp: pctMp,
+            amount_incl_stock: flat.amount_incl_stock,
+            delivery_to_us: flat.delivery_to_us,
+        })
+    );
     const handed = Number(r.handed_to_user_id);
     return {
         id: Number(r.id),
@@ -480,12 +544,16 @@ function mapRow(r, pctMpOverride) {
         amount_ex_delivery: calc.amount_ex_delivery,
         vat: moneyOrNull(r.vat),
         our_invoice_no: r.our_invoice_no || '',
+        invoice_mark: normInvoiceMark(r.invoice_mark),
+        our_invoice_mark: normOurInvoiceMark(r.our_invoice_mark),
         has_contract: r.has_contract || '',
-        supplier_invoice_url: r.supplier_invoice_url || '',
+        supplier_invoice_url: flat.supplier_invoice_url,
         amount_incl_stock: calc.amount_incl_stock,
         delivery_to_us: calc.delivery_to_us,
-        supplier_name: r.supplier_name || '',
-        supplier_invoice_no: r.supplier_invoice_no || '',
+        supplier_name: flat.supplier_name,
+        supplier_invoice_no: flat.supplier_invoice_no,
+        suppliers: flat.suppliers,
+        suppliers_json: flat.suppliers_json,
         diff: calc.diff,
         pct_r: calc.pct_r,
         status: r.status || '',
@@ -509,10 +577,7 @@ function applyBodyToRow(body, base) {
     for (const key of PATCH_FIELDS) {
         if (!Object.prototype.hasOwnProperty.call(body, key)) continue;
         const v = body[key];
-        if (key === 'row_no') {
-            const n = Number(v);
-            next.row_no = Number.isFinite(n) ? Math.round(n) : 0;
-        } else if (key === 'year') {
+        if (key === 'year') {
             next.year = normYear(v, next.year);
         } else if (key === 'manager_user_id') {
             const n = Number(v);
@@ -523,25 +588,30 @@ function applyBodyToRow(body, base) {
             next.invoice_org = normInvoiceOrg(v);
         } else if (key === 'has_contract') {
             next.has_contract = normHasContract(v);
-        } else if (
-            key === 'amount_ex_delivery' ||
-            key === 'amount_incl_stock' ||
-            key === 'delivery_to_us' ||
-            key === 'vat'
-        ) {
+        } else if (key === 'amount_ex_delivery' || key === 'vat') {
             next[key] = moneyOrNull(v);
-        } else if (key === 'order_url' || key === 'supplier_invoice_url') {
+        } else if (key === 'order_url') {
             next[key] = clip(v, 1024);
         } else if (key === 'payment_terms') {
             next[key] = clip(v, 512);
-        } else if (key === 'supplier_name') {
-            next[key] = clip(v, 255);
-        } else if (key === 'our_invoice_no' || key === 'supplier_invoice_no') {
+        } else if (key === 'our_invoice_no') {
             next[key] = clip(v, 128);
+        } else if (key === 'invoice_mark') {
+            next.invoice_mark = normInvoiceMark(v);
+        } else if (key === 'our_invoice_mark') {
+            next.our_invoice_mark = normOurInvoiceMark(v);
         } else if (key === 'status') {
             next[key] = normStatus(v);
         }
     }
+    const packed = applySuppliersPatch(next, body || {});
+    next.suppliers = packed.suppliers;
+    next.suppliers_json = packed.suppliers_json;
+    next.supplier_name = packed.supplier_name;
+    next.supplier_invoice_no = packed.supplier_invoice_no;
+    next.supplier_invoice_url = packed.supplier_invoice_url;
+    next.amount_incl_stock = packed.amount_incl_stock;
+    next.delivery_to_us = packed.delivery_to_us;
     const calc = computeRow(next);
     next.amount_ex_delivery = calc.amount_ex_delivery;
     next.amount_incl_stock = calc.amount_incl_stock;
@@ -576,6 +646,7 @@ function rowToInsertParams(row, actor) {
         row.status || null,
         row.pct_mp,
         row.bonus,
+        row.suppliers_json || null,
         actor,
         actor,
     ];
@@ -585,14 +656,14 @@ const INSERT_SQL = `INSERT INTO dg_manager_sales_rows (
     year, manager_user_id, row_no, payment_terms, paid_at, invoice_org, order_url,
     amount_ex_delivery, vat, our_invoice_no, has_contract, supplier_invoice_url,
     amount_incl_stock, delivery_to_us, supplier_name, supplier_invoice_no,
-    diff, pct_r, status, pct_mp, bonus, created_by, updated_by
-) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`;
+    diff, pct_r, status, pct_mp, bonus, suppliers_json, created_by, updated_by
+) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`;
 
 const UPDATE_SQL = `UPDATE dg_manager_sales_rows SET
     year=?, manager_user_id=?, row_no=?, payment_terms=?, paid_at=?, invoice_org=?, order_url=?,
     amount_ex_delivery=?, vat=?, our_invoice_no=?, has_contract=?, supplier_invoice_url=?,
     amount_incl_stock=?, delivery_to_us=?, supplier_name=?, supplier_invoice_no=?,
-    diff=?, pct_r=?, status=?, pct_mp=?, bonus=?, updated_by=?
+    diff=?, pct_r=?, status=?, pct_mp=?, bonus=?, invoice_mark=?, our_invoice_mark=?, suppliers_json=?, updated_by=?
     WHERE id=?`;
 
 function parseDelimited(text) {
@@ -734,13 +805,14 @@ async function buildListWhere(db, q, req) {
             OR COALESCE(r.our_invoice_no,'') LIKE ?
             OR COALESCE(r.supplier_name,'') LIKE ?
             OR COALESCE(r.supplier_invoice_no,'') LIKE ?
+            OR COALESCE(r.suppliers_json,'') LIKE ?
             OR COALESCE(r.status,'') LIKE ?
             OR COALESCE(u.full_name,'') LIKE ?
             OR COALESCE(u.username,'') LIKE ?
             OR COALESCE(hu.full_name,'') LIKE ?
             OR COALESCE(hu.username,'') LIKE ?
         )`);
-        params.push(like, like, like, like, like, like, like, like, like, like);
+            params.push(like, like, like, like, like, like, like, like, like, like, like);
     }
 
     const status = String(q.status || '').trim();
@@ -1071,6 +1143,7 @@ module.exports = function managerSalesRouterFactory(db) {
                 years,
                 managers,
                 statuses: STATUS_VALUES,
+                invoice_marks: INVOICE_MARKS,
                 can_write: canWrite(req),
                 can_pick_manager: seeAll,
                 actor_user_id: selfId,
@@ -1129,10 +1202,11 @@ module.exports = function managerSalesRouterFactory(db) {
             const names = [];
             const seen = new Set();
             (own || []).forEach((r) => {
-                const n = String(r.name || '').trim();
-                if (!n || seen.has(n.toLowerCase())) return;
-                seen.add(n.toLowerCase());
-                names.push(n);
+                splitNonEmptyLines(r.name).forEach((n) => {
+                    if (!n || seen.has(n.toLowerCase())) return;
+                    seen.add(n.toLowerCase());
+                    names.push(n);
+                });
             });
             if (names.length < 20) {
                 try {
@@ -1640,10 +1714,7 @@ module.exports = function managerSalesRouterFactory(db) {
             if (!managerUserId) {
                 return res.status(400).json({ error: 'Не указан менеджер' });
             }
-            const rowNo =
-                body.row_no != null && Number.isFinite(Number(body.row_no))
-                    ? Math.round(Number(body.row_no))
-                    : await nextRowNo(db, managerUserId, year);
+            const rowNo = await nextRowNo(db, managerUserId, year);
             const row = applyBodyToRow(body, {
                 year,
                 manager_user_id: managerUserId,
@@ -1742,6 +1813,9 @@ module.exports = function managerSalesRouterFactory(db) {
                 next.status || null,
                 next.pct_mp,
                 next.bonus,
+                next.invoice_mark || '',
+                next.our_invoice_mark || '',
+                next.suppliers_json || null,
                 actorId(req),
                 id,
             ]);

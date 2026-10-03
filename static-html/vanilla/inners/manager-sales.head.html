@@ -45,7 +45,10 @@
     font-weight: 600;
     font-size: 0.72rem;
   }
-  body.datagon-vanilla-body[data-dg-active-nav="manager-sales"] #dg-msl-thead th[data-msl-sort="row_no"] {
+  body.datagon-vanilla-body[data-dg-active-nav="manager-sales"] #dg-msl-thead th[data-msl-sort="our_invoice_no"] {
+    min-width: 6.4rem;
+    max-width: 9rem;
+  }
     min-width: 5.2rem;
     max-width: 6.5rem;
     white-space: nowrap;
@@ -78,6 +81,15 @@
   body.datagon-vanilla-body[data-dg-active-nav="manager-sales"] tr.dg-msl-need-terms > td[data-msl-col="payment_terms"] {
     background-color: #fff;
   }
+  body.datagon-vanilla-body[data-dg-active-nav="manager-sales"] td.dg-msl-missing,
+  body.datagon-vanilla-body[data-dg-active-nav="manager-sales"] .dg-msl-supp-line.dg-msl-missing {
+    background-color: #fdecec !important;
+    box-shadow: inset 0 0 0 1px #f5b0b0;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="manager-sales"] td.dg-msl-missing .dg-msl-cell-input,
+  body.datagon-vanilla-body[data-dg-active-nav="manager-sales"] .dg-msl-supp-line.dg-msl-missing .dg-msl-cell-input {
+    background-color: transparent;
+  }
   body.datagon-vanilla-body[data-dg-active-nav="manager-sales"] tr.dg-msl-handed > td {
     background-color: #e8eef4;
   }
@@ -96,7 +108,105 @@
   body.datagon-vanilla-body[data-dg-active-nav="manager-sales"] tr.dg-msl-handed-t5 > td {
     background-color: #f3e8ee;
   }
-  body.datagon-vanilla-body[data-dg-active-nav="manager-sales"] .dg-msl-mgr-name {
+  body.datagon-vanilla-body[data-dg-active-nav="manager-sales"] .dg-msl-th-wrap {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 0.2rem;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="manager-sales"] .dg-msl-th-hint {
+    flex: 0 0 auto;
+    width: 1.05rem;
+    height: 1.05rem;
+    margin: 0;
+    padding: 0;
+    border: 1px solid #c5ccd6;
+    border-radius: 50%;
+    background: #fff;
+    color: #6c757d;
+    font-size: 0.68rem;
+    font-weight: 700;
+    line-height: 1;
+    cursor: help;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="manager-sales"] .dg-msl-inv-cell {
+    display: flex;
+    align-items: center;
+    gap: 0.2rem;
+    min-width: 0;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="manager-sales"] .dg-msl-inv-chip {
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: 100%;
+    border: 0;
+    border-radius: 0.28rem;
+    background: transparent;
+    color: inherit;
+    padding: 0.12rem 0.35rem;
+    font-size: inherit;
+    line-height: 1.25;
+    text-align: left;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="manager-sales"] .dg-msl-inv-chip.dg-msl-inv-black {
+    background: #2d3436;
+    color: #fff;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="manager-sales"] .dg-msl-inv-chip.dg-msl-inv-blue {
+    background: #3f6ad8;
+    color: #fff;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="manager-sales"] .dg-msl-inv-chip.dg-msl-inv-orange {
+    background: #e67e22;
+    color: #fff;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="manager-sales"] .dg-msl-inv-chip.dg-msl-inv-green {
+    background: #3ac47d;
+    color: #fff;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="manager-sales"] .dg-msl-url-open {
+    flex: 0 0 auto;
+    color: #3f6ad8;
+    text-decoration: none;
+    font-size: 0.85rem;
+    line-height: 1;
+    padding: 0 0.1rem;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="manager-sales"] .dg-msl-inv-opt {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.55rem;
+    width: 100%;
+    text-align: left;
+    border: 1px solid #e6e9ee;
+    border-radius: 0.4rem;
+    background: #fff;
+    padding: 0.45rem 0.6rem;
+    margin-bottom: 0.4rem;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="manager-sales"] .dg-msl-inv-opt:hover,
+  body.datagon-vanilla-body[data-dg-active-nav="manager-sales"] .dg-msl-inv-opt.is-current {
+    border-color: #3f6ad8;
+    background: #f4f7fb;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="manager-sales"] .dg-msl-inv-swatch {
+    flex: 0 0 auto;
+    width: 1.1rem;
+    height: 1.1rem;
+    border-radius: 0.22rem;
+    margin-top: 0.12rem;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="manager-sales"] .dg-msl-inv-swatch.dg-msl-inv-black { background: #2d3436; }
+  body.datagon-vanilla-body[data-dg-active-nav="manager-sales"] .dg-msl-inv-swatch.dg-msl-inv-blue { background: #3f6ad8; }
+  body.datagon-vanilla-body[data-dg-active-nav="manager-sales"] .dg-msl-inv-swatch.dg-msl-inv-orange { background: #e67e22; }
+  body.datagon-vanilla-body[data-dg-active-nav="manager-sales"] .dg-msl-inv-swatch.dg-msl-inv-green { background: #3ac47d; }
+  body.datagon-vanilla-body[data-dg-active-nav="manager-sales"] .dg-msl-inv-swatch.dg-msl-inv-none {
+    background: #fff;
+    border: 1px solid #c5ccd6;
+  }
     font-size: 0.82rem;
     line-height: 1.2;
     white-space: nowrap;
@@ -110,7 +220,7 @@
   body.datagon-vanilla-body[data-dg-active-nav="manager-sales"] .dg-msl-hand-name {
     font-size: 0.78rem;
     line-height: 1.15;
-    max-width: 9rem;
+    max-width: 12.5rem;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -130,6 +240,49 @@
   body.datagon-vanilla-body[data-dg-active-nav="manager-sales"] #dg-msl-table td {
     border-right: 1px solid #f3f5f8;
     vertical-align: middle;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="manager-sales"] #dg-msl-table td[data-msl-col="amount_incl_stock"],
+  body.datagon-vanilla-body[data-dg-active-nav="manager-sales"] #dg-msl-table td[data-msl-col="delivery_to_us"],
+  body.datagon-vanilla-body[data-dg-active-nav="manager-sales"] #dg-msl-table td[data-msl-col="supplier_name"],
+  body.datagon-vanilla-body[data-dg-active-nav="manager-sales"] #dg-msl-table td[data-msl-col="supplier_invoice_no"],
+  body.datagon-vanilla-body[data-dg-active-nav="manager-sales"] #dg-msl-table td[data-msl-col="supplier_invoice_url"] {
+    vertical-align: top;
+  }
+  .dg-msl-supp-stack {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.22rem;
+  }
+  .dg-msl-supp-line {
+    display: flex;
+    align-items: center;
+    gap: 0.2rem;
+    min-height: 1.85rem;
+  }
+  .dg-msl-supp-line .dg-msl-cell-input,
+  .dg-msl-supp-line .dg-msl-url-cell {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .dg-msl-supp-add {
+    font-size: 0.78rem;
+    line-height: 1.2;
+    text-align: left;
+    color: #3f6ad8;
+  }
+  .dg-msl-supp-del {
+    flex: 0 0 auto;
+    border: 0;
+    background: transparent;
+    color: #adb5bd;
+    font-size: 1rem;
+    line-height: 1;
+    padding: 0 0.15rem;
+    cursor: pointer;
+  }
+  .dg-msl-supp-del:hover {
+    color: #d92550;
   }
   body.datagon-vanilla-body[data-dg-active-nav="manager-sales"] .dg-msl-sortable {
     cursor: pointer;
@@ -331,10 +484,11 @@
     gap: 0.28rem;
     flex-wrap: nowrap;
   }
-  .dg-msl-id-row .dg-msl-cell-input.dg-msl-narrow {
-    flex: 1 1 auto;
-    min-width: 2rem;
-    max-width: 3.4rem;
+  .dg-msl-id-row .dg-msl-row-no {
+    flex: 0 0 auto;
+    min-width: 1.4rem;
+    font-variant-numeric: tabular-nums;
+    color: #495057;
   }
   .dg-msl-restore-btn {
     white-space: nowrap;

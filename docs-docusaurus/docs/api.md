@@ -2047,21 +2047,23 @@ Body: `{ days }` (max = **`ms_orders_sync_days`**; если не передан�
 - Строки не удаляются физически: `DELETE /api/manager-sales/:id` ставит `archived_at`. `POST /:id/restore` снимает архив. Query `archived=0|1|all` (по умолчанию активные).
 - Журнал: `GET /api/manager-sales/:id/log` (`field`, `limit`, `offset`). Таблица `dg_manager_sales_log`.
 - Передача: `POST /api/manager-sales/:id/hand-over` `{ manager_user_id }`. Строка владельца остаётся у него и **появляется** у получателя (месяц = `paid_at`). У принимающего может быть **своя** строка с тем же № счёта — это не ошибка. У владельца суммы переданной строки в UI нули и не входят в `totals`; у получателя `amount_*` этой строки прибавляются. `0` — снять. `GET /meta` `managers` — отдел продаж. В списке колонка **Менеджер** — владелец строки.
+- Подсветка **№ нашего счета**: `PATCH` поле `our_invoice_mark` (`green` / пусто). Зелёный — создан заказ покупателя + счёт + входящий платёж. Клик по номеру в таблице включает или снимает отметку.
+- Подсветка **ссылки на счёт поставщика**: `PATCH` поле `invoice_mark` (`black` / `blue` / `orange` / `green` / пусто). Клик по ссылке в таблице открывает выбор цвета.
 
 Таблица **`dg_manager_sales_rows`**. Год строки — явное поле `year` (вкладки Google 2019–2026). Формулы при каждом save:
 
-- `diff` = `((F−K) − F×G/(G+100)) × (1 − 16/100) − L` (налог 16% как «Системный»!A1; F сумма без доставки, K с запасом, G НДС %, L доставка)
+- `diff` = `((F−K) − F×G/(G+100)) × (1 − 16/100) − L` (налог 16% как «Системный»!A1; F сумма без доставки, K сумма закупок по поставщикам, G НДС %, L сумма доставок до нас)
 - `pct_r` = `diff / (F/100)`
 - `pct_mp` считается **по месяцу**, не из ячейки: сумма F активных строк менеджера за `MONTH(paid_at)` vs план. Ступени периода хранятся в `dg_manager_sales_plans.steps_json` у строки года `(0, year, 0)` (дефолт как в Google: 500k→0 … 3.3M→10, иначе 12). Если план менеджера/месяца меньше последнего порога, ступени масштабируются (`план / max порога`). Приоритет суммы: `(manager, year, month)` → `(manager, year, 0)` → `(0, year, 0)` → `(0,0,0)` запасной 3 300 000. Пороги берутся с ближайшего предка, у которого задан `steps_json`.
 - `bonus` = `diff / 100 * pct_mp`
 
 ### GET `/api/manager-sales/meta`
 
-`{ success, year, years, managers: [{ id, username, full_name }], statuses: ["Заказан у поставщика","Отгружен","Частично отгружен","Возврат средств"], can_write, can_pick_manager, actor_user_id, actor_full_name, actor_username, formulas }`. `managers` — группа **Менеджер по продажам** (и для передачи заказа). `years` — годы своих строк и строк, переданных себе.
+`{ success, year, years, managers: [{ id, username, full_name }], statuses: ["Заказан у поставщика","Отгружен","Частично отгружен","Возврат средств"], invoice_marks: [{ key, title, label }], can_write, can_pick_manager, actor_user_id, actor_full_name, actor_username, formulas }`. `managers` — группа **Менеджер по продажам** (и для передачи заказа). `years` — годы своих строк и строк, переданных себе.
 
 ### GET `/api/manager-sales`
 
-Query: `year`, `month` (1–12; без параметра — все месяцы по `paid_at`; при выбранном месяце в выдачу входят и строки **без** `paid_at` — черновики), `manager_user_id` (`all` или id; для всех, кроме Полный доступ / Бухгалтерия / admin, игнорируется — всегда свой), `search`, `status` (`Заказан у поставщика` / `Отгружен` / `Частично отгружен` / `Возврат средств`), `supplier`, `has_contract` (`Обычный договор` / `Нет` / `Договор-Счет`; устаревшие `0`/`1` ещё принимаются), `invoice_org` (`ip`/`ooo`), `archived` (`0`/`1`/`all`), `limit`/`offset` (default limit **100**, max **500**), `sort_by`/`sort_dir`.
+Query: `year`, `month` (1–12; без параметра — все месяцы по `paid_at`; при выбранном месяце в выдачу входят и строки **без** `paid_at` — черновики), `manager_user_id` (`all` или id; для всех, кроме Полный доступ / Бухгалтерия / admin, игнорируется — всегда свой), `search`, `status` (`Заказан у поставщика` / `Отгружен` / `Частично отгружен` / `Возврат средств`), `supplier`, `has_contract` (`Обычный договор` / `Нет` / `Договор-Счет`; устаревшие `0`/`1` ещё принимаются), `invoice_org` (`ip`/`ooo`), `archived` (`0`/`1`/`all`), `limit`/`offset` (default limit **100**, max **500**), `sort_by`/`sort_dir`. Страница `/manager-sales.html` после «Применить» пишет те же параметры в адрес (месяц «все» = `month=all`), чтобы ссылку можно было скопировать.
 
 Ответ: `{ success, total, rows, totals, plan, can_write, can_pick_manager, can_edit_plans, year, month, limit, offset }`. `totals` — суммы по **всему** фильтру; `bonus` пересчитан от % МП. месяца. `plan` заполнен, если выбран один менеджер и месяц: `{ plan_amount, source, note, month_total, pct_mp, steps }`.
 
@@ -2083,11 +2085,11 @@ Body: `{ manager_user_id, year, month, plan_amount, note }`. Точечная п
 
 ### POST `/api/manager-sales`
 
-Создать строку. Body: поля журнала + `year`, опционально `manager_user_id` (только Полный доступ / Бухгалтерия / admin). `row_no` авто `MAX+1` в паре менеджер+год. `status` нормализуется к фиксированному списку.
+Создать строку. Body: поля журнала + `year`, опционально `manager_user_id` (только Полный доступ / Бухгалтерия / admin). `row_no` всегда выдаёт система (`MAX+1` в паре менеджер+год), клиентский номер игнорируется. `status` нормализуется к фиксированному списку.
 
 ### PATCH `/api/manager-sales/:id`
 
-Частичное обновление; пересчёт `diff` / `pct_r` / `pct_mp` (месяц) / `bonus`. Поле `pct_mp` с клиента игнорируется.
+Частичное обновление; пересчёт `diff` / `pct_r` / `pct_mp` (месяц) / `bonus`. Поля `row_no` и `pct_mp` с клиента игнорируются. `our_invoice_mark`: `green` | `""` (снять). `invoice_mark`: `black` | `blue` | `orange` | `green` | `""` (снять). Несколько поставщиков на строку: `suppliers[]` или `supplier_index` + поля суммы/доставки/имени/№/ссылки; `supplier_add=1` — ещё одна закупка; `supplier_remove` — индекс. `amount_incl_stock` и `delivery_to_us` в расчёте — суммы по закупкам.
 
 ### DELETE `/api/manager-sales/:id`
 
