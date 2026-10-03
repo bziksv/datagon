@@ -182,6 +182,14 @@ function assemble() {
             PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/finance.scripts.html')),
         },
         {
+            out: 'manager-sales.html',
+            PAGE_TITLE: 'Таблицы менеджеров — Датагон',
+            BODY_ATTRS: 'class="datagon-vanilla-body" data-dg-active-nav="manager-sales"',
+            EXTRA_HEAD: read(path.join(vanillaDir, 'inners/manager-sales.head.html')),
+            MAIN_INNER: read(path.join(vanillaDir, 'inners/manager-sales.inner.html')),
+            PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/manager-sales.scripts.html')),
+        },
+        {
             out: 'ref/index.html',
             PAGE_TITLE: 'Справка (статика) — Датагон',
             BODY_ATTRS: 'class="datagon-vanilla-body"',

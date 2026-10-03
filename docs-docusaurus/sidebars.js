@@ -17,6 +17,7 @@ module.exports = {
     "db-admin",
     "settings",
     "finance",
+    "manager-sales",
     "script-versioning",
     "api",
     "deploy",

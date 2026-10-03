@@ -1,0 +1,2434 @@
+<script>
+(function () {
+  "use strict";
+
+  var MSALES_COLS = [
+    ["row_no", "№"],
+    ["manager_name", "Менеджер"],
+    ["payment_terms", "Условия\nоплаты"],
+    ["paid_at", "Дата\nоплаты"],
+    ["invoice_org", "Счет от ИП\nили ООО"],
+    ["order_url", "Ссылка\nна заказ"],
+    ["amount_ex_delivery", "Сумма оплаты\nбез доставки"],
+    ["vat", "Ндс"],
+    ["our_invoice_no", "№ нашего\nсчета"],
+    ["has_contract", "Наличие\nдоговора"],
+    ["supplier_invoice_url", "Ссылка на счет\nпоставщика"],
+    ["amount_incl_stock", "Сумма оплаты\n(вкл. запасы)"],
+    ["delivery_to_us", "Доставка\nдо нас"],
+    ["supplier_name", "Поставщик"],
+    ["supplier_invoice_no", "№ счета\nпоставщика"],
+    ["diff", "Разница"],
+    ["pct_r", "% Р."],
+    ["status", "Статус"],
+    ["pct_mp", "% МП."],
+    ["bonus", "Премия"],
+    ["_hand", "Передан"],
+    ["_del", ""],
+  ];
+
+  var CALC_KEYS = { diff: 1, pct_r: 1, bonus: 1, pct_mp: 1 };
+  var MONEY_KEYS = { amount_ex_delivery: 1, amount_incl_stock: 1, delivery_to_us: 1, diff: 1, bonus: 1 };
+  var PCT_KEYS = { vat: 1, pct_r: 1, pct_mp: 1 };
+
+  var FILTERS_KEY = "datagon_manager_sales_filters_collapsed_v1";
+  var TABLE_COLLAPSE_KEY = "dg.manager-sales.table-card.collapsed.v1";
+  var COLS_KEY = "dg.msl.colvisible.v2";
+  var WIDTHS_KEY = "dg.msl.colwidths.v1";
+  var PAGE_SLUG = "manager-sales";
+
+  var FIELD_GROUPS = [
+    { title: "Основные", keys: ["search", "year", "month", "status", "limit"] },
+    { title: "Сделка", keys: ["supplier", "has_contract", "invoice_org", "archived"] },
+  ];
+
+  var CONTRACT_OPTS = ["Обычный договор", "Нет", "Договор-Счет"];
+  var STATUS_OPTS = ["Заказан у поставщика", "Отгружен", "Частично отгружен", "Возврат средств"];
+  var MONTH_NAMES = ["", "январь", "февраль", "март", "апрель", "май", "июнь", "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь"];
+  var MONTH_SHORT = ["", "янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
+  var cy = new Date().getFullYear();
+  var cm = String(new Date().getMonth() + 1);
+  var state = {
+    year: cy,
+    month: cm,
+    manager_user_id: "all",
+    search: "",
+    status: "",
+    supplier: "",
+    has_contract: "",
+    invoice_org: "",
+    archived: "0",
+    limit: 100,
+    offset: 0,
+    sort_by: "row_no",
+    sort_dir: "asc",
+    total: 0,
+    rows: [],
+    totals: null,
+    plan: null,
+    can_write: false,
+    can_pick_manager: false,
+    can_edit_plans: false,
+    actor_user_id: null,
+    actor_full_name: "",
+    managers: [],
+    years: [cy],
+    loading: false,
+    pending: {
+      year: cy,
+      month: cm,
+      manager_user_id: "all",
+      search: "",
+      status: "",
+      supplier: "",
+      has_contract: "",
+      invoice_org: "",
+      archived: "0",
+      limit: 100,
+    },
+    csvText: "",
+    csvDry: null,
+    deleteId: null,
+    handId: null,
+    visible: MSALES_COLS.map(function (c) { return c[0]; }),
+    widths: {},
+  };
+
+  function el(id) {
+    return document.getElementById(id);
+  }
+
+  function esc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function safeHref(raw) {
+    var s = String(raw || "").trim();
+    if (!s) return "";
+    if (/^(javascript|data|vbscript):/i.test(s)) return "";
+    if (/^https?:\/\//i.test(s)) return s;
+    if (s.indexOf("://") >= 0) return "";
+    if (/^www\./i.test(s)) return "https://" + s;
+    if (/^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}([/:?#]|$)/i.test(s) && !/\s/.test(s)) return "https://" + s;
+    return "";
+  }
+
+  function urlInputHtml(key, val) {
+    return (
+      '<input type="url" class="form-control form-control-sm dg-msl-cell-input" data-msl-field="' +
+      esc(key) +
+      '" value="' +
+      esc(val || "") +
+      '" placeholder="https://…" />'
+    );
+  }
+
+  function urlViewHtml(key, val, canEdit) {
+    var href = safeHref(val);
+    var raw = String(val || "").trim();
+    var label = esc(raw);
+    var link;
+    if (href) {
+      link =
+        '<a class="dg-msl-url-link" href="' +
+        esc(href) +
+        '" target="_blank" rel="noopener noreferrer" title="' +
+        label +
+        '">' +
+        label +
+        "</a>";
+    } else if (raw) {
+      link = '<span class="dg-msl-url-plain" title="' + label + '">' + label + "</span>";
+    } else {
+      link = '<span class="text-muted">—</span>';
+    }
+    var penTitle = key === "supplier_invoice_url" ? "Ссылка или склад" : "Изменить ссылку";
+    var pen = canEdit
+      ? '<button type="button" class="dg-msl-url-edit" data-msl-url-edit="' +
+        esc(key) +
+        '" title="' +
+        esc(penTitle) +
+        '" aria-label="' +
+        esc(penTitle) +
+        '" data-dg-no-activity="1"><i class="pe-7s-pen" aria-hidden="true"></i></button>'
+      : "";
+    return '<div class="dg-msl-url-cell">' + link + pen + "</div>";
+  }
+
+  function colTitle(c) {
+    return String((c && c[1]) || "").replace(/\n/g, " ");
+  }
+
+  function thLabelHtml(label) {
+    return String(label || "")
+      .split("\n")
+      .map(esc)
+      .join("<br>");
+  }
+
+  function labelMonthOptions() {
+    var sel = el("dg-msl-f-month");
+    if (!sel) return;
+    [].slice.call(sel.options).forEach(function (opt) {
+      if (!opt.value) return;
+      var base = opt.getAttribute("data-msl-base") || String(opt.textContent || "").replace(/\s*\(текущий\)\s*$/, "");
+      opt.setAttribute("data-msl-base", base);
+      opt.textContent = opt.value === cm ? base + " (текущий)" : base;
+    });
+  }
+
+  function toast(type, message) {
+    if (window.DatagonNotify && window.DatagonNotify.toast) {
+      window.DatagonNotify.toast({ type: type || "info", message: message });
+    }
+  }
+
+  function fmt() {
+    return window.DatagonFmt || null;
+  }
+
+  function money(v) {
+    if (v == null || v === "") return "—";
+    var f = fmt();
+    return f && f.formatMoney ? f.formatMoney(v) : String(v);
+  }
+
+  function num(v, digits) {
+    if (v == null || v === "") return "—";
+    var f = fmt();
+    if (f && f.formatNumber) return f.formatNumber(v, { maxFractionDigits: digits == null ? 2 : digits });
+    return String(v);
+  }
+
+  function parseNum(raw) {
+    var f = fmt();
+    if (f && f.parseNumberInput) return f.parseNumberInput(raw);
+    var s = String(raw || "").replace(/\s/g, "").replace(",", ".");
+    if (!s) return "";
+    var n = Number(s);
+    return Number.isFinite(n) ? n : raw;
+  }
+
+  function userColsKey() {
+    var u = "guest";
+    try { u = String(localStorage.getItem("currentUser") || "guest"); } catch (e) {}
+    return COLS_KEY + ":" + u;
+  }
+  function userWidthKey() {
+    var u = "guest";
+    try { u = String(localStorage.getItem("currentUser") || "guest"); } catch (e) {}
+    return WIDTHS_KEY + ":" + u;
+  }
+
+  function loadVisible() {
+    try {
+      var raw = localStorage.getItem(userColsKey());
+      if (!raw) return;
+      var arr = JSON.parse(raw);
+      if (Array.isArray(arr) && arr.length) {
+        var allowed = {};
+        MSALES_COLS.forEach(function (c) { allowed[c[0]] = 1; });
+        state.visible = arr.filter(function (k) { return allowed[k]; });
+        if (!state.visible.length) state.visible = MSALES_COLS.map(function (c) { return c[0]; });
+        if (state.visible.indexOf("manager_name") < 0) {
+          var at = state.visible.indexOf("row_no");
+          state.visible.splice(at >= 0 ? at + 1 : 0, 0, "manager_name");
+        }
+      }
+    } catch (e) {}
+  }
+
+  function saveVisible() {
+    try { localStorage.setItem(userColsKey(), JSON.stringify(state.visible)); } catch (e) {}
+  }
+
+  function loadWidths() {
+    try {
+      var raw = localStorage.getItem(userWidthKey());
+      if (!raw) return;
+      var o = JSON.parse(raw);
+      if (o && typeof o === "object") state.widths = o;
+    } catch (e) {}
+  }
+
+  function saveWidths() {
+    try { localStorage.setItem(userWidthKey(), JSON.stringify(state.widths || {})); } catch (e) {}
+  }
+
+  function visibleCols() {
+    var set = {};
+    (state.visible || []).forEach(function (k) { set[k] = 1; });
+    set._del = 1;
+    set._hand = 1;
+    return MSALES_COLS.filter(function (c) { return set[c[0]]; });
+  }
+
+  function colWidthStyle(key) {
+    var w = Number(state.widths[key]);
+    if (!Number.isFinite(w) || w < 40) return "";
+    return "width:" + w + "px;min-width:" + w + "px;max-width:" + w + "px";
+  }
+
+  function pageCount() {
+    var lim = Math.max(1, Number(state.limit) || 100);
+    return Math.max(1, Math.ceil((Number(state.total) || 0) / lim));
+  }
+  function currentPage() {
+    var lim = Math.max(1, Number(state.limit) || 100);
+    return Math.floor((Number(state.offset) || 0) / lim) + 1;
+  }
+
+  function syncDirty() {
+    var btn = el("dg-msl-apply");
+    if (!btn) return;
+    var p = state.pending;
+    var dirty =
+      String(p.search) !== String(state.search) ||
+      String(p.year) !== String(state.year) ||
+      String(p.month || "") !== String(state.month || "") ||
+      String(p.manager_user_id) !== String(state.manager_user_id) ||
+      String(p.status) !== String(state.status) ||
+      String(p.supplier) !== String(state.supplier) ||
+      String(p.has_contract) !== String(state.has_contract) ||
+      String(p.invoice_org) !== String(state.invoice_org) ||
+      String(p.archived || "0") !== String(state.archived || "0") ||
+      Number(p.limit) !== Number(state.limit);
+    btn.classList.toggle("dg-flt-dirty", dirty);
+  }
+
+  function readPendingFromForm() {
+    state.pending.search = (el("dg-msl-search") && el("dg-msl-search").value) || "";
+    state.pending.year = Number((el("dg-msl-f-year") && el("dg-msl-f-year").value) || cy) || cy;
+    state.pending.month = (el("dg-msl-f-month") && el("dg-msl-f-month").value) || "";
+    state.pending.manager_user_id = (el("dg-msl-f-manager") && el("dg-msl-f-manager").value) || "";
+    state.pending.status = (el("dg-msl-f-status") && el("dg-msl-f-status").value) || "";
+    state.pending.supplier = (el("dg-msl-f-supplier") && el("dg-msl-f-supplier").value) || "";
+    state.pending.has_contract = (el("dg-msl-f-contract") && el("dg-msl-f-contract").value) || "";
+    state.pending.invoice_org = (el("dg-msl-f-org") && el("dg-msl-f-org").value) || "";
+    state.pending.archived = (el("dg-msl-f-archived") && el("dg-msl-f-archived").value) || "0";
+    var lim = Number(el("dg-msl-f-limit") && el("dg-msl-f-limit").value);
+    state.pending.limit = Number.isFinite(lim) && lim > 0 ? lim : 100;
+    syncDirty();
+  }
+
+  function writeFormFromPending() {
+    var p = state.pending;
+    if (el("dg-msl-search")) el("dg-msl-search").value = p.search || "";
+    if (el("dg-msl-table-search-mirror")) el("dg-msl-table-search-mirror").value = p.search || "";
+    if (el("dg-msl-f-year")) el("dg-msl-f-year").value = String(p.year || cy);
+    if (el("dg-msl-f-month")) el("dg-msl-f-month").value = p.month || "";
+    if (el("dg-msl-f-manager")) el("dg-msl-f-manager").value = p.manager_user_id || "";
+    if (el("dg-msl-f-status")) {
+      var stSel = el("dg-msl-f-status");
+      var stVal = p.status || "";
+      if (stVal) {
+        var has = false;
+        [].slice.call(stSel.options).forEach(function (o) {
+          if (o.value === stVal) has = true;
+        });
+        if (!has) {
+          var extra = document.createElement("option");
+          extra.value = stVal;
+          extra.textContent = stVal;
+          stSel.appendChild(extra);
+        }
+      }
+      stSel.value = stVal;
+    }
+    if (el("dg-msl-f-supplier")) el("dg-msl-f-supplier").value = p.supplier || "";
+    if (el("dg-msl-f-contract")) {
+      var hc = p.has_contract || "";
+      if (hc === "0") hc = "Нет";
+      if (hc === "1") hc = "";
+      el("dg-msl-f-contract").value = hc;
+    }
+    if (el("dg-msl-f-org")) el("dg-msl-f-org").value = p.invoice_org || "";
+    if (el("dg-msl-f-archived")) el("dg-msl-f-archived").value = p.archived == null || p.archived === "" ? "0" : String(p.archived);
+    if (el("dg-msl-f-limit")) el("dg-msl-f-limit").value = String(p.limit || 100);
+    if (el("dg-msl-page-limit")) el("dg-msl-page-limit").value = String(p.limit || 100);
+    syncDirty();
+  }
+
+  function persistFilters() {
+    if (window.DatagonFilters && window.DatagonFilters.save) {
+      window.DatagonFilters.save(PAGE_SLUG, state.pending);
+    }
+  }
+
+  function commitFilters() {
+    readPendingFromForm();
+    state.year = state.pending.year;
+    state.month = state.pending.month || "";
+    state.manager_user_id = state.pending.manager_user_id;
+    state.search = state.pending.search;
+    state.status = state.pending.status;
+    state.supplier = state.pending.supplier;
+    state.has_contract = state.pending.has_contract;
+    state.invoice_org = state.pending.invoice_org;
+    state.archived = state.pending.archived || "0";
+    state.limit = state.pending.limit;
+    state.offset = 0;
+    syncTableOwnerTitle();
+    persistFilters();
+    syncDirty();
+    syncArchiveViewBtn();
+    return load();
+  }
+
+  function hideActionLog() {
+    var box = el("dg-msl-action-log");
+    if (!box) return;
+    box.classList.add("d-none");
+    box.classList.remove("alert-info", "alert-success", "alert-danger", "alert-warning");
+    box.innerHTML = "";
+  }
+
+  function showActionLog(type, html) {
+    var box = el("dg-msl-action-log");
+    if (!box) return;
+    box.classList.remove("d-none", "alert-info", "alert-success", "alert-danger", "alert-warning");
+    box.classList.add("alert-" + (type || "info"));
+    box.innerHTML = html;
+  }
+
+  function appliedFilterSummary() {
+    var bits = ["год " + state.year];
+    if (state.month) bits.push(MONTH_NAMES[Number(state.month)] || ("месяц " + state.month));
+    if (state.can_pick_manager) {
+      if (!state.manager_user_id || state.manager_user_id === "all") bits.push("все менеджеры");
+      else bits.push("менеджер «" + managerLabelById(state.manager_user_id) + "»");
+    } else bits.push("своя таблица");
+    if (state.search) bits.push("поиск «" + esc(state.search) + "»");
+    if (state.status) bits.push("статус «" + esc(state.status) + "»");
+    if (state.supplier) bits.push("поставщик «" + esc(state.supplier) + "»");
+    if (state.has_contract) bits.push("договор «" + state.has_contract + "»");
+    if (state.invoice_org === "ip") bits.push("ИП");
+    if (state.invoice_org === "ooo") bits.push("ООО");
+    if (state.archived === "1") bits.push("архив");
+    else if (state.archived === "all") bits.push("включая архив");
+    return bits.join(", ");
+  }
+
+  function buildQuery() {
+    var p = new URLSearchParams();
+    p.set("year", String(state.year));
+    if (state.month) p.set("month", String(state.month));
+    p.set("limit", String(state.limit || 100));
+    p.set("offset", String(state.offset || 0));
+    p.set("sort_by", state.sort_by || "row_no");
+    p.set("sort_dir", state.sort_dir || "asc");
+    if (state.search) p.set("search", state.search);
+    if (state.status) p.set("status", state.status);
+    if (state.supplier) p.set("supplier", state.supplier);
+    if (state.has_contract !== "") p.set("has_contract", state.has_contract);
+    if (state.invoice_org) p.set("invoice_org", state.invoice_org);
+    p.set("archived", state.archived || "0");
+    if (state.can_pick_manager) {
+      p.set("manager_user_id", state.manager_user_id || "all");
+    }
+    return "?" + p.toString();
+  }
+
+  function json(res) {
+    return res.text().then(function (t) {
+      var data = {};
+      try { data = t ? JSON.parse(t) : {}; } catch (e) { data = { error: t.slice(0, 400) }; }
+      if (!res.ok) {
+        var err = new Error(data.error || data.message || ("HTTP " + res.status));
+        err.body = t;
+        throw err;
+      }
+      return data;
+    });
+  }
+
+  function fillYears() {
+    var sel = el("dg-msl-f-year");
+    if (!sel) return;
+    var cur = String(state.pending.year || cy);
+    var years = state.years.slice();
+    if (years.indexOf(cy) < 0) years.unshift(cy);
+    years.sort(function (a, b) { return b - a; });
+    sel.innerHTML = years
+      .map(function (y) {
+        return '<option value="' + y + '"' + (String(y) === cur ? " selected" : "") + ">" + y + "</option>";
+      })
+      .join("");
+  }
+
+  function managerLabelById(id) {
+    var sid = String(id || "");
+    var found = (state.managers || []).filter(function (m) { return String(m.id) === sid; })[0];
+    if (!found) return sid ? ("#" + sid) : "";
+    return found.full_name || found.username || ("#" + sid);
+  }
+
+  function fillManagers() {
+    var sel = el("dg-msl-f-manager");
+    var wrap = el("dg-msl-manager-switch-wrap");
+    var own = el("dg-msl-own-table-label");
+    if (state.can_pick_manager) {
+      if (wrap) wrap.classList.remove("d-none");
+      if (own) {
+        own.classList.add("d-none");
+        own.textContent = "";
+      }
+      if (!sel) return;
+      var cur = String(state.pending.manager_user_id || "all");
+      var html = '<option value="all"' + (cur === "all" || cur === "" ? " selected" : "") + ">Все менеджеры</option>";
+      (state.managers || []).forEach(function (m) {
+        var id = String(m.id);
+        var label = (m.full_name || m.username || ("#" + id)) + (m.username ? " (" + m.username + ")" : "");
+        html += '<option value="' + esc(id) + '"' + (cur === id ? " selected" : "") + ">" + esc(label) + "</option>";
+      });
+      sel.innerHTML = html;
+    } else {
+      if (wrap) wrap.classList.add("d-none");
+      if (own) {
+        own.classList.remove("d-none");
+        own.textContent = "Ваша таблица: " + (state.actor_full_name || "текущий пользователь");
+      }
+    }
+    syncTableOwnerTitle();
+  }
+
+  function syncTableOwnerTitle() {
+    var title = el("dg-msl-table-card-title");
+    if (!title) return;
+    var base;
+    if (!state.can_pick_manager) {
+      base = "Выгрузка: " + (state.actor_full_name || "моя таблица");
+    } else {
+      var mid = state.manager_user_id;
+      if (!mid || mid === "all") base = "Выгрузка: все менеджеры";
+      else base = "Выгрузка: " + managerLabelById(mid);
+    }
+    if (state.archived === "1") base += " · архив";
+    else if (state.archived === "all") base += " · все строки";
+    title.textContent = base;
+  }
+
+  function syncArchiveViewBtn() {
+    var btn = el("dg-msl-archive-view");
+    if (!btn) return;
+    if (state.archived === "1") {
+      btn.textContent = "К активным";
+      btn.setAttribute("data-dg-notify-start", "Возвращаемся к активным…");
+    } else {
+      btn.textContent = "Архив";
+      btn.setAttribute("data-dg-notify-start", "Открываем архив…");
+    }
+  }
+
+  function setArchivedFilter(value) {
+    state.pending.archived = value;
+    if (el("dg-msl-f-archived")) el("dg-msl-f-archived").value = value;
+    return commitFilters();
+  }
+
+  function renderTotals() {
+    var t = state.totals || {};
+    var node = el("dg-msl-totals");
+    if (!node) return;
+    var html =
+      "Итоги по фильтру: без доставки " +
+      money(t.amount_ex_delivery) +
+      "; с запасом " +
+      money(t.amount_incl_stock) +
+      "; доставка " +
+      money(t.delivery_to_us) +
+      "; разница " +
+      money(t.diff) +
+      "; премия " +
+      money(t.bonus);
+    var p = state.plan;
+    if (p && p.plan_amount) {
+      html +=
+        ". План " +
+        money(p.plan_amount) +
+        (p.source === "month"
+          ? " (мес.)"
+          : p.source === "manager_year"
+            ? " (инд. год)"
+            : p.source === "year_base"
+              ? " (план года)"
+              : " (базовый)") +
+        "; факт месяца " +
+        money(p.month_total) +
+        "; % МП. " +
+        num(p.pct_mp);
+      if (p.source === "month" && p.note) html += " — " + esc(p.note);
+    } else {
+      html += ". % МП. считается по сумме месяца даты оплаты и плану";
+    }
+    node.innerHTML = html;
+  }
+
+  function renderColumnControls() {
+    var list = el("dg-msl-columns-list");
+    if (!list) return;
+    var vis = {};
+    (state.visible || []).forEach(function (k) { vis[k] = 1; });
+    list.innerHTML = MSALES_COLS.map(function (c) {
+      if (c[0] === "_del" || c[0] === "_hand") return "";
+      var checked = vis[c[0]] ? " checked" : "";
+      return (
+        '<label><input type="checkbox" data-msl-col="' +
+        esc(c[0]) +
+        '"' +
+        checked +
+        " /> " +
+        esc(colTitle(c)) +
+        "</label>"
+      );
+    }).join("");
+  }
+
+  function renderWidthControls() {
+    var list = el("dg-msl-widths-list");
+    if (!list) return;
+    list.innerHTML = MSALES_COLS.map(function (c) {
+      if (c[0] === "_del" || c[0] === "_hand") return "";
+      var w = state.widths[c[0]] || "";
+      return (
+        "<label>" +
+        esc(colTitle(c)) +
+        ' <input type="number" min="40" max="640" data-msl-width="' +
+        esc(c[0]) +
+        '" value="' +
+        esc(w) +
+        '" /></label>'
+      );
+    }).join("");
+  }
+
+  function buildThead() {
+    var thead = el("dg-msl-thead");
+    if (!thead) return;
+    var cols = visibleCols();
+    thead.innerHTML =
+      "<tr>" +
+      cols
+        .map(function (c) {
+          var key = c[0];
+          var sortCls = key !== "_del" && key !== "_hand" && !CALC_KEYS[key] ? " dg-msl-sortable" : "";
+          var mark = "";
+          if (state.sort_by === key) mark = state.sort_dir === "desc" ? " ↓" : " ↑";
+          return (
+            '<th class="' +
+            sortCls.trim() +
+            '" data-msl-sort="' +
+            esc(key) +
+            '" style="' +
+            colWidthStyle(key) +
+            '">' +
+            thLabelHtml(c[1]) +
+            (mark ? '<span class="dg-msl-th-sort">' + mark + "</span>" : "") +
+            "</th>"
+          );
+        })
+        .join("") +
+      "</tr>";
+  }
+
+  function selectFieldHtml(field, options, val) {
+    var cur = String(val || "");
+    var opts = '<option value="">—</option>';
+    var known = false;
+    (options || []).forEach(function (o) {
+      if (cur === o) known = true;
+      opts +=
+        '<option value="' +
+        esc(o) +
+        '"' +
+        (cur === o ? " selected" : "") +
+        ">" +
+        esc(o) +
+        "</option>";
+    });
+    if (cur && !known) {
+      opts += '<option value="' + esc(cur) + '" selected>' + esc(cur) + "</option>";
+    }
+    return (
+      '<select class="form-select form-select-sm dg-msl-cell-input" data-msl-field="' +
+      esc(field) +
+      '">' +
+      opts +
+      "</select>"
+    );
+  }
+
+  function cellInput(row, key, type, extraClass) {
+    var val = row[key] == null ? "" : row[key];
+    if (type === "date" && val) val = String(val).slice(0, 10);
+    if (!state.can_write || row.is_archived) {
+      if (key === "order_url" || key === "supplier_invoice_url") {
+        if (!val) return '<span class="text-muted">—</span>';
+        return urlViewHtml(key, val, false);
+      }
+      if (MONEY_KEYS[key]) return '<span class="dg-msl-cell-ro">' + esc(money(val === "" ? null : val)) + "</span>";
+      if (PCT_KEYS[key]) return '<span class="dg-msl-cell-ro">' + esc(val === "" ? "—" : num(val) + "%") + "</span>";
+      if (key === "has_contract") return esc(val || "—");
+      if (key === "status") return esc(val || "—");
+      if (key === "invoice_org") return esc(row.invoice_org_label || val || "—");
+      return esc(val || "—");
+    }
+    if (CALC_KEYS[key]) {
+      if (MONEY_KEYS[key]) return '<span class="dg-msl-cell-ro">' + esc(money(val)) + "</span>";
+      return '<span class="dg-msl-cell-ro">' + esc(val == null || val === "" ? "—" : num(val) + "%") + "</span>";
+    }
+    var cls = "form-control form-control-sm dg-msl-cell-input" + (extraClass ? " " + extraClass : "");
+    if (key === "invoice_org") {
+      return (
+        '<input class="' +
+        cls +
+        '" data-msl-field="invoice_org" list="dg-msl-org-list" value="' +
+        esc(row.invoice_org_label || val) +
+        '" />'
+      );
+    }
+    if (key === "has_contract") {
+      return selectFieldHtml("has_contract", CONTRACT_OPTS, val);
+    }
+    if (key === "status") {
+      return selectFieldHtml("status", STATUS_OPTS, val);
+    }
+    if (type === "date") {
+      return '<input type="date" class="' + cls + '" data-msl-field="' + esc(key) + '" value="' + esc(val) + '" />';
+    }
+    if (type === "url") {
+      if (key === "supplier_invoice_url") return urlViewHtml(key, val, true);
+      if (!String(val || "").trim()) return urlInputHtml(key, "");
+      return urlViewHtml(key, val, true);
+    }
+    if (type === "money" || type === "pct") {
+      var shown = val === "" || val == null ? "" : num(val);
+      return (
+        '<input type="text" inputmode="decimal" class="' +
+        cls +
+        ' dg-msl-narrow" data-msl-field="' +
+        esc(key) +
+        '" data-msl-num="' +
+        type +
+        '" value="' +
+        esc(shown) +
+        '" />'
+      );
+    }
+    return (
+      '<input type="text" class="' +
+      cls +
+      (key === "row_no" ? " dg-msl-narrow" : "") +
+      '" data-msl-field="' +
+      esc(key) +
+      '" value="' +
+      esc(val) +
+      '" />'
+    );
+  }
+
+  function viewingManagerId() {
+    if (state.manager_user_id && state.manager_user_id !== "all") return Number(state.manager_user_id);
+    if (state.can_pick_manager) return 0;
+    return Number(state.actor_user_id) || 0;
+  }
+
+  function rowIsHanded(row) {
+    var h = Number(row && row.handed_to_user_id);
+    return Number.isFinite(h) && h > 0;
+  }
+
+  function rowHandedAway(row) {
+    if (!rowIsHanded(row)) return false;
+    var view = viewingManagerId();
+    if (!view) return false;
+    return Number(row.manager_user_id) === view && Number(row.handed_to_user_id) !== view;
+  }
+
+  function handedName(row) {
+    return String(row.handed_to_full_name || row.handed_to_username || "").trim();
+  }
+
+  function ownerName(row) {
+    return String(row.manager_full_name || row.manager_username || "").trim();
+  }
+
+  function handLabel(row) {
+    if (!rowIsHanded(row)) return "";
+    var view = viewingManagerId();
+    if (view && Number(row.handed_to_user_id) === view && Number(row.manager_user_id) !== view) {
+      var from = ownerName(row);
+      return from ? "от " + from : "получен";
+    }
+    return handedName(row);
+  }
+
+  function canHandRow(row) {
+    if (!state.can_write || !row || row.is_archived) return false;
+    if (state.can_pick_manager) return true;
+    return Number(row.manager_user_id) === Number(state.actor_user_id);
+  }
+
+  function statusToneClass(status) {
+    var s = String(status || "").trim();
+    if (s === "Заказан у поставщика" || s === "Частично отгружен") return "dg-msl-st-wait";
+    if (s === "Отгружен") return "dg-msl-st-ok";
+    if (s === "Возврат средств") return "dg-msl-st-back";
+    return "";
+  }
+
+  function applyStatusTone(td, status) {
+    if (!td) return;
+    td.classList.remove("dg-msl-st-wait", "dg-msl-st-ok", "dg-msl-st-back");
+    var cls = statusToneClass(status);
+    if (cls) td.classList.add(cls);
+  }
+
+  function restoreBtnHtml(row) {
+    return (
+      '<button type="button" class="btn btn-sm btn-outline-primary dg-msl-restore-btn" data-msl-restore="' +
+      row.id +
+      '" data-dg-notify-start="Возвращаем из архива…">Восстановить</button>'
+    );
+  }
+
+  function renderCell(row, key) {
+    if (key === "_del") {
+      if (!state.can_write) return "";
+      if (row.is_archived) return restoreBtnHtml(row);
+      return (
+        '<button type="button" class="btn btn-sm btn-outline-danger dg-msl-archive-btn" data-msl-del="' +
+        row.id +
+        '" title="В архив" aria-label="В архив" data-dg-no-activity="1">×</button>'
+      );
+    }
+    if (key === "_hand") {
+      var name = handLabel(row);
+      var btn =
+        canHandRow(row)
+          ? '<button type="button" class="btn btn-sm btn-outline-secondary dg-msl-hand-btn" data-msl-hand="' +
+            row.id +
+            '" title="Передать заказ другому менеджеру" aria-label="Передать заказ" data-dg-notify-start="Выбор менеджера…">⇄</button>'
+          : '<span class="dg-msl-hand-ico" title="Передан" aria-hidden="true">⇄</span>';
+      var label = name
+        ? '<span class="dg-msl-hand-name" title="' + esc(name) + '">' + esc(name) + "</span>"
+        : '<span class="text-muted dg-msl-hand-name">—</span>';
+      return '<div class="dg-msl-hand-cell">' + btn + label + "</div>";
+    }
+    var show = row;
+    var html = "";
+    if (rowHandedAway(row) && (MONEY_KEYS[key] || key === "pct_mp" || key === "vat")) {
+      html = PCT_KEYS[key]
+        ? '<span class="dg-msl-handed-zero">' + esc(num(0) + "%") + "</span>"
+        : '<span class="dg-msl-handed-zero">' + esc(money(0)) + "</span>";
+    } else if (key === "manager_name") {
+      html = '<span class="dg-msl-mgr-name">' + esc(ownerName(row) || "—") + "</span>";
+    } else if (key === "row_no") {
+      html =
+        '<div class="dg-msl-id-row">' +
+        '<button type="button" class="dg-msl-log-btn" data-msl-log-id="' +
+        row.id +
+        '" data-msl-log-label="№ ' +
+        esc(row.row_no) +
+        '" title="Журнал изменений" aria-label="Журнал изменений" data-dg-notify-start="Открываем журнал…"><i class="pe-7s-note2" aria-hidden="true"></i></button>' +
+        cellInput(show, key, "text", "dg-msl-narrow") +
+        (row.is_archived && state.can_write ? restoreBtnHtml(row) : "") +
+        "</div>";
+    } else if (key === "paid_at") html = cellInput(show, key, "date");
+    else if (key === "order_url" || key === "supplier_invoice_url") html = cellInput(show, key, "url");
+    else if (MONEY_KEYS[key] || key === "pct_mp" || key === "vat") {
+      html = cellInput(show, key, PCT_KEYS[key] ? "pct" : "money");
+    } else html = cellInput(show, key, "text");
+    if (key !== "_del" && key !== "_hand" && key !== "manager_name" && key !== "row_no") {
+      html +=
+        '<button type="button" class="dg-msl-field-log-btn" data-msl-log-id="' +
+        row.id +
+        '" data-msl-log-field="' +
+        esc(key) +
+        '" data-msl-log-field-label="' +
+        esc(colTitle(MSALES_COLS.filter(function (c) { return c[0] === key; })[0] || [key, key])) +
+        '" data-msl-log-label="№ ' +
+        esc(row.row_no) +
+        '" data-dg-no-activity="1">лог</button>';
+    }
+    return html;
+  }
+
+  function rowNeedsHighlight(row) {
+    if (!row || row.is_archived) return false;
+    if (String(row.payment_terms || "").trim()) return false;
+    var paid = row.paid_at != null && String(row.paid_at).trim() !== "";
+    var amt = row.amount_ex_delivery != null && row.amount_ex_delivery !== "";
+    var url = String(row.order_url || "").trim();
+    var inv = String(row.our_invoice_no || "").trim();
+    var supp = String(row.supplier_name || "").trim();
+    return !paid && !amt && !url && !inv && !supp;
+  }
+
+  function handedToneMap() {
+    var map = {};
+    var n = 0;
+    (state.rows || []).forEach(function (r) {
+      var x = Number(r && r.handed_to_user_id);
+      if (!Number.isFinite(x) || x < 1 || map[x] != null) return;
+      map[x] = n % 6;
+      n += 1;
+    });
+    return map;
+  }
+
+  function renderTable() {
+    buildThead();
+    var tbody = el("dg-msl-tbody");
+    if (!tbody) return;
+    var cols = visibleCols();
+    if (!state.rows.length) {
+      tbody.innerHTML =
+        '<tr><td class="text-muted p-3" colspan="' +
+        cols.length +
+        '">Нет строк. Нажмите «Добавить строку» или импортируйте CSV.</td></tr>';
+      return;
+    }
+    var tones = handedToneMap();
+    tbody.innerHTML = state.rows
+      .map(function (row) {
+        var trCls = [];
+        if (row.is_archived) trCls.push("table-secondary");
+        else if (rowIsHanded(row)) {
+          trCls.push("dg-msl-handed");
+          var tone = tones[Number(row.handed_to_user_id)];
+          if (tone > 0) trCls.push("dg-msl-handed-t" + tone);
+        }
+        if (rowNeedsHighlight(row)) trCls.push("dg-msl-need-terms");
+        return (
+          '<tr data-msl-id="' +
+          row.id +
+          '"' +
+          (trCls.length ? ' class="' + trCls.join(" ") + '"' : "") +
+          ">" +
+          cols
+            .map(function (c) {
+              var fieldCell = c[0] !== "_del" && c[0] !== "_hand" ? " dg-msl-field-cell" : "";
+              var colAttr = c[0] !== "_del" && c[0] !== "_hand" ? ' data-msl-col="' + esc(c[0]) + '"' : "";
+              var tone = c[0] === "status" ? statusToneClass(row.status) : "";
+              var cls = (fieldCell + (tone ? " " + tone : "")).trim();
+              return (
+                '<td class="' +
+                cls +
+                '"' +
+                colAttr +
+                ' style="' +
+                colWidthStyle(c[0]) +
+                '">' +
+                renderCell(row, c[0]) +
+                "</td>"
+              );
+            })
+            .join("") +
+          "</tr>"
+        );
+      })
+      .join("");
+  }
+
+  function renderPager() {
+    var st = el("dg-msl-page-status");
+    var shown = state.rows.length;
+    var pages = pageCount();
+    var page = currentPage();
+    if (st) {
+      st.textContent =
+        "Найдено: " + (state.total || 0) + "; страница " + page + "/" + pages + "; показано: " + shown;
+    }
+    var prev = el("dg-msl-prev");
+    var next = el("dg-msl-next");
+    if (prev) prev.disabled = page <= 1;
+    if (next) next.disabled = page >= pages;
+  }
+
+  function load() {
+    state.loading = true;
+    return fetch("/api/manager-sales" + buildQuery(), { credentials: "same-origin" })
+      .then(json)
+      .then(function (data) {
+        state.rows = data.rows || [];
+        state.total = data.total || 0;
+        state.totals = data.totals || null;
+        state.plan = data.plan || null;
+        state.can_write = !!data.can_write;
+        state.can_pick_manager = !!data.can_pick_manager;
+        state.can_edit_plans = !!data.can_edit_plans;
+        if (el("dg-msl-add")) el("dg-msl-add").classList.toggle("d-none", !state.can_write);
+        if (el("dg-msl-import")) el("dg-msl-import").classList.toggle("d-none", !state.can_write);
+        if (el("dg-msl-plans")) {
+          el("dg-msl-plans").classList.toggle("d-none", !(state.can_pick_manager || state.can_write));
+        }
+        syncTableOwnerTitle();
+        renderTotals();
+        renderTable();
+        renderPager();
+        syncArchiveViewBtn();
+        syncTableOwnerTitle();
+      })
+      .catch(function (e) {
+        var tbody = el("dg-msl-tbody");
+        if (tbody) {
+          tbody.innerHTML = '<tr><td class="text-danger p-3">' + esc(e.message || "Ошибка") + "</td></tr>";
+        }
+        toast("danger", e.message || "Ошибка загрузки");
+      })
+      .finally(function () {
+        state.loading = false;
+      });
+  }
+
+  function patchRow(id, payload) {
+    return fetch("/api/manager-sales/" + id, {
+      method: "PATCH",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(json);
+  }
+
+  function bindNumericFocus(inp) {
+    if (!inp || inp.getAttribute("data-msl-bound") === "1") return;
+    inp.setAttribute("data-msl-bound", "1");
+    inp.addEventListener("focus", function () {
+      var tr = inp.closest("tr");
+      var id = tr && tr.getAttribute("data-msl-id");
+      var field = inp.getAttribute("data-msl-field");
+      var row = state.rows.filter(function (r) { return String(r.id) === String(id); })[0];
+      if (!row || !field) return;
+      var v = row[field];
+      inp.value = v == null || v === "" ? "" : String(v).replace(".", ",");
+    });
+    inp.addEventListener("blur", function () {
+      var kind = inp.getAttribute("data-msl-num");
+      var parsed = parseNum(inp.value);
+      if (parsed === "" || parsed == null) {
+        inp.value = "";
+        return;
+      }
+      inp.value = kind === "pct" ? num(parsed) : num(parsed);
+    });
+  }
+
+  function patchCalcCells(row) {
+    var tbodyEl = el("dg-msl-tbody");
+    if (!tbodyEl) return;
+    var tr = tbodyEl.querySelector('tr[data-msl-id="' + row.id + '"]');
+    if (!tr) return;
+    var cols = visibleCols();
+    cols.forEach(function (c, idx) {
+      if (!CALC_KEYS[c[0]]) return;
+      var td = tr.children[idx];
+      if (!td) return;
+      td.innerHTML = renderCell(row, c[0]);
+    });
+  }
+
+  function saveField(tr, field, value) {
+    var id = tr && tr.getAttribute("data-msl-id");
+    if (!id) return Promise.resolve();
+    var payload = {};
+    payload[field] = value;
+    return patchRow(id, payload).then(function (data) {
+      if (field === "amount_ex_delivery" || field === "paid_at") {
+        return load();
+      }
+      if (data.row) {
+        state.rows = state.rows.map(function (r) {
+          return String(r.id) === String(data.row.id) ? data.row : r;
+        });
+        var active = document.activeElement;
+        var editing = active && active.closest && active.closest("#dg-msl-tbody");
+        if (editing) {
+          patchCalcCells(data.row);
+          var trLive = document.querySelector('#dg-msl-tbody tr[data-msl-id="' + data.row.id + '"]');
+          if (trLive) trLive.classList.toggle("dg-msl-need-terms", rowNeedsHighlight(data.row));
+          if (field === "status") {
+            applyStatusTone(tr.querySelector('[data-msl-col="status"]'), data.row.status);
+          }
+        } else renderTable();
+      }
+    });
+  }
+
+  function loadMeta() {
+    return fetch("/api/manager-sales/meta", { credentials: "same-origin" })
+      .then(json)
+      .then(function (data) {
+        state.years = data.years || [cy];
+        state.managers = data.managers || [];
+        state.can_write = !!data.can_write;
+        state.can_pick_manager = !!data.can_pick_manager;
+        state.actor_user_id = data.actor_user_id;
+        state.actor_full_name = data.actor_full_name || "";
+        if (!state.can_pick_manager) {
+          state.pending.manager_user_id = data.actor_user_id ? String(data.actor_user_id) : "";
+        } else if (!state.pending.manager_user_id) {
+          state.pending.manager_user_id = "all";
+        }
+        fillYears();
+        fillManagers();
+        writeFormFromPending();
+        if (el("dg-msl-add")) el("dg-msl-add").classList.toggle("d-none", !state.can_write);
+        if (el("dg-msl-import")) el("dg-msl-import").classList.toggle("d-none", !state.can_write);
+        if (el("dg-msl-plans")) {
+          el("dg-msl-plans").classList.toggle("d-none", !(state.can_pick_manager || state.can_write));
+        }
+      });
+  }
+
+  function loadHints() {
+    var hq = "/api/manager-sales/supplier-hints";
+    if (state.can_pick_manager && state.manager_user_id && state.manager_user_id !== "all") {
+      hq += "?manager_user_id=" + encodeURIComponent(state.manager_user_id);
+    }
+    return fetch(hq, { credentials: "same-origin" })
+      .then(json)
+      .then(function (data) {
+        var dl = el("dg-msl-supplier-list");
+        if (!dl) return;
+        dl.innerHTML = (data.names || [])
+          .map(function (n) {
+            return '<option value="' + esc(n) + '"></option>';
+          })
+          .join("");
+      })
+      .catch(function () {});
+  }
+
+  function closePickManager() {
+    var ov = el("dg-msl-pick-overlay");
+    if (!ov) return;
+    ov.style.display = "none";
+    ov.setAttribute("aria-hidden", "true");
+  }
+
+  function closeSuppUrl() {
+    var ov = el("dg-msl-supp-url-overlay");
+    if (!ov) return;
+    ov.style.display = "none";
+    ov.setAttribute("aria-hidden", "true");
+    state.suppUrlId = null;
+  }
+
+  function openSuppUrl(id, val) {
+    state.suppUrlId = id;
+    var inp = el("dg-msl-supp-url-input");
+    if (inp) inp.value = String(val || "");
+    var ov = el("dg-msl-supp-url-overlay");
+    if (!ov) return;
+    ov.style.display = "flex";
+    ov.setAttribute("aria-hidden", "false");
+    if (inp) {
+      setTimeout(function () {
+        inp.focus();
+        if (inp.select) inp.select();
+      }, 0);
+    }
+  }
+
+  function saveSuppUrlValue(value) {
+    var id = state.suppUrlId;
+    var tr = id ? document.querySelector('#dg-msl-tbody tr[data-msl-id="' + id + '"]') : null;
+    closeSuppUrl();
+    if (!tr) return Promise.resolve();
+    return saveField(tr, "supplier_invoice_url", value).catch(function (e) {
+      toast("danger", e.message || "Не сохранено");
+    });
+  }
+
+  function closeHandOver() {
+    var ov = el("dg-msl-hand-overlay");
+    if (!ov) return;
+    ov.style.display = "none";
+    ov.setAttribute("aria-hidden", "true");
+    state.handId = null;
+  }
+
+  function openHandOver(id) {
+    state.handId = id;
+    var row = state.rows.filter(function (r) { return String(r.id) === String(id); })[0];
+    var ownerId = row ? Number(row.manager_user_id) : 0;
+    var cur = row && row.handed_to_user_id ? String(row.handed_to_user_id) : "";
+    var no = row && row.row_no != null ? String(row.row_no) : "";
+    if (el("dg-msl-hand-title")) el("dg-msl-hand-title").textContent = no ? "Передать заказ № " + no : "Передать заказ";
+    var sel = el("dg-msl-hand-manager");
+    if (sel) {
+      var opts = '<option value="">Не передан (вернуть владельцу)</option>';
+      (state.managers || []).forEach(function (m) {
+        if (Number(m.id) === ownerId) return;
+        var label = (m.full_name || m.username || ("#" + m.id)) + (m.username ? " (" + m.username + ")" : "");
+        opts +=
+          '<option value="' +
+          esc(String(m.id)) +
+          '"' +
+          (String(m.id) === cur ? " selected" : "") +
+          ">" +
+          esc(label) +
+          "</option>";
+      });
+      sel.innerHTML = opts;
+      if (cur) sel.value = cur;
+    }
+    var ov = el("dg-msl-hand-overlay");
+    if (!ov) return;
+    ov.style.display = "flex";
+    ov.setAttribute("aria-hidden", "false");
+  }
+
+  function orderMonthKey(row) {
+    if (!row || !row.paid_at) return "";
+    var mm = Number(String(row.paid_at).slice(5, 7));
+    if (!Number.isFinite(mm) || mm < 1 || mm > 12) return "";
+    return String(mm);
+  }
+
+  function postHandOver() {
+    var id = Number(state.handId);
+    if (!Number.isFinite(id) || id < 1) return Promise.resolve();
+    var sel = el("dg-msl-hand-manager");
+    var target = sel && sel.value ? Number(sel.value) : 0;
+    var row = state.rows.filter(function (r) { return String(r.id) === String(id); })[0];
+    return fetch("/api/manager-sales/" + id + "/hand-over", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ manager_user_id: target || 0 }),
+    })
+      .then(json)
+      .then(function () {
+        closeHandOver();
+        var monthKey = orderMonthKey(row);
+        if (target) {
+          if (state.can_pick_manager) {
+            applyPickedManager(target);
+            fillManagers();
+            if (monthKey) {
+              state.pending.month = monthKey;
+              state.month = monthKey;
+              if (el("dg-msl-f-month")) el("dg-msl-f-month").value = monthKey;
+            }
+            persistFilters();
+          }
+          var who = managerLabelById(target);
+          var monthTxt = monthKey ? MONTH_NAMES[Number(monthKey)] : "";
+          toast(
+            "success",
+            "Строка появилась в таблице «" + who + "»" + (monthTxt ? " за " + monthTxt : "")
+          );
+        } else {
+          toast("success", "Передача снята — строка снова только у владельца");
+        }
+        return load();
+      });
+  }
+
+  function openPickManager() {
+    var ov = el("dg-msl-pick-overlay");
+    var sel = el("dg-msl-pick-manager");
+    if (sel) {
+      sel.innerHTML = (state.managers || [])
+        .map(function (m) {
+          var id = String(m.id);
+          var label = (m.full_name || m.username || ("#" + id)) + (m.username ? " (" + m.username + ")" : "");
+          return '<option value="' + esc(id) + '">' + esc(label) + "</option>";
+        })
+        .join("");
+    }
+    if (!ov) return;
+    ov.style.display = "flex";
+    ov.setAttribute("aria-hidden", "false");
+  }
+
+  function applyPickedManager(id) {
+    var sid = String(id);
+    state.pending.manager_user_id = sid;
+    state.manager_user_id = sid;
+    if (el("dg-msl-f-manager")) el("dg-msl-f-manager").value = sid;
+    syncTableOwnerTitle();
+    persistFilters();
+  }
+
+  function postAddRow(managerId) {
+    var body = { year: state.year };
+    if (managerId) body.manager_user_id = Number(managerId);
+    return fetch("/api/manager-sales", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
+      .then(json)
+      .then(function () {
+        if (managerId) applyPickedManager(managerId);
+        toast("success", "Строка добавлена — заполните «Условия оплаты»");
+        return load();
+      });
+  }
+
+  function addRow() {
+    if (state.can_pick_manager) {
+      var list = state.managers || [];
+      if (list.length === 1) {
+        return postAddRow(list[0].id);
+      }
+      if (!state.manager_user_id || state.manager_user_id === "all") {
+        if (!list.length) {
+          toast("warning", "Нет менеджеров отдела продаж");
+          return Promise.resolve();
+        }
+        openPickManager();
+        return Promise.resolve();
+      }
+      return postAddRow(state.manager_user_id);
+    }
+    return postAddRow(null);
+  }
+
+  function openConfirm(id) {
+    state.deleteId = id;
+    var row = state.rows.filter(function (r) { return String(r.id) === String(id); })[0];
+    var no = row && row.row_no != null ? String(row.row_no) : "";
+    var ov = el("dg-msl-confirm-overlay");
+    if (el("dg-msl-confirm-title")) el("dg-msl-confirm-title").textContent = "В архив?";
+    if (el("dg-msl-confirm-text")) {
+      el("dg-msl-confirm-text").textContent =
+        (no ? "Строка № " + no + " не удаляется. " : "Строка не удаляется. ") +
+        "Она попадёт в архив этой таблицы (кнопка «Архив» рядом с «Добавить строку»). Оттуда её можно вернуть.";
+    }
+    if (el("dg-msl-confirm-ok")) {
+      el("dg-msl-confirm-ok").textContent = "В архив";
+      el("dg-msl-confirm-ok").setAttribute("data-dg-notify-start", "Переносим в архив…");
+    }
+    if (!ov) return;
+    ov.classList.remove("d-none");
+    ov.style.display = "flex";
+    ov.setAttribute("aria-hidden", "false");
+  }
+
+  function closeConfirm() {
+    state.deleteId = null;
+    var ov = el("dg-msl-confirm-overlay");
+    if (!ov) return;
+    ov.classList.add("d-none");
+    ov.style.display = "none";
+    ov.setAttribute("aria-hidden", "true");
+  }
+
+  function doDelete() {
+    var id = state.deleteId;
+    if (!id) return Promise.resolve();
+    return fetch("/api/manager-sales/" + id, { method: "DELETE", credentials: "same-origin" })
+      .then(json)
+      .then(function () {
+        closeConfirm();
+        toast("success", "Строка в архиве — открываю архив");
+        return setArchivedFilter("1");
+      });
+  }
+
+  function doRestore(id) {
+    return fetch("/api/manager-sales/" + id + "/restore", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    })
+      .then(json)
+      .then(function () {
+        toast("success", "Строка возвращена из архива");
+        return setArchivedFilter("0");
+      });
+  }
+
+  var logState = { rowId: 0, label: "", field: "", fieldLabel: "", fieldFallbackNote: "", total: 0, limit: 100, offset: 0 };
+
+  function mslLogActionLabel(action) {
+    var map = { set: "Изменение", create: "Создание", archive: "В архив", restore: "Из архива" };
+    return map[action] || action || "set";
+  }
+
+  function closeMslLog() {
+    var overlay = el("dg-msl-log-overlay");
+    if (!overlay) return;
+    overlay.style.display = "none";
+    overlay.setAttribute("aria-hidden", "true");
+  }
+
+  function openMslLog(rowId, label, field, fieldLabel) {
+    logState.rowId = rowId;
+    logState.label = label || "#" + rowId;
+    logState.field = field ? String(field) : "";
+    logState.fieldLabel = fieldLabel ? String(fieldLabel) : logState.field;
+    logState.fieldFallbackNote = "";
+    logState.offset = 0;
+    var overlay = el("dg-msl-log-overlay");
+    var titleEl = el("dg-msl-log-title");
+    var subEl = el("dg-msl-log-subtitle");
+    if (titleEl) {
+      titleEl.textContent = logState.field
+        ? "Журнал: " + (logState.fieldLabel || logState.field)
+        : "Журнал изменений";
+    }
+    if (subEl) subEl.textContent = logState.label;
+    if (overlay) {
+      overlay.style.display = "flex";
+      overlay.setAttribute("aria-hidden", "false");
+    }
+    loadMslLog();
+  }
+
+  function loadMslLog() {
+    var body = el("dg-msl-log-body");
+    if (!body || !logState.rowId) return;
+    body.innerHTML = '<div class="text-muted small text-center py-4">Загрузка журнала…</div>';
+    var qs = new URLSearchParams();
+    qs.set("limit", String(logState.limit));
+    qs.set("offset", String(logState.offset));
+    if (logState.field) qs.set("field", logState.field);
+    fetch("/api/manager-sales/" + logState.rowId + "/log?" + qs.toString(), { credentials: "same-origin" })
+      .then(json)
+      .then(function (j) {
+        logState.total = Number(j.total || 0);
+        var rows = j.rows || [];
+        if (!rows.length && logState.field && logState.offset === 0) {
+          logState.fieldFallbackNote =
+            "По полю «" + (logState.fieldLabel || logState.field) + "» изменений нет — показан весь журнал строки.";
+          logState.field = "";
+          logState.fieldLabel = "";
+          if (el("dg-msl-log-title")) el("dg-msl-log-title").textContent = "Журнал изменений";
+          return loadMslLog();
+        }
+        var pages = Math.max(1, Math.ceil((logState.total || 0) / logState.limit) || 1);
+        var page = Math.floor(logState.offset / logState.limit) + 1;
+        var noteHtml = logState.fieldFallbackNote
+          ? '<div class="alert alert-warning py-2 px-3 mb-0 rounded-0 small">' + esc(logState.fieldFallbackNote) + "</div>"
+          : logState.field
+            ? '<div class="alert alert-info py-2 px-3 mb-0 rounded-0 small">Фильтр: <b>' +
+              esc(logState.fieldLabel || logState.field) +
+              "</b></div>"
+            : "";
+        if (!rows.length) {
+          body.innerHTML = noteHtml + '<div class="text-muted small text-center py-4">Журнал пуст.</div>';
+          return;
+        }
+        var trs = rows
+          .map(function (r) {
+            var when = r.changed_at ? new Date(r.changed_at) : null;
+            var whenTxt = when && !isNaN(when.getTime()) ? when.toLocaleString("ru-RU") : "—";
+            var oldV = r.old_value == null || r.old_value === "" ? "—" : esc(r.old_value);
+            var newV = r.new_value == null || r.new_value === "" ? "—" : esc(r.new_value);
+            return (
+              "<tr><td class='text-nowrap'>" +
+              esc(whenTxt) +
+              "</td><td>" +
+              esc(r.changed_by_name || "—") +
+              "</td><td><span class='badge bg-light text-dark border'>" +
+              esc(mslLogActionLabel(r.action)) +
+              "</span></td><td>" +
+              esc(r.field_label || r.field) +
+              "</td><td><span class='dg-msl-log-old'>" +
+              oldV +
+              "</span><span class='dg-msl-log-arrow'>→</span><span class='dg-msl-log-new'>" +
+              newV +
+              "</span></td></tr>"
+            );
+          })
+          .join("");
+        body.innerHTML =
+          noteHtml +
+          '<div class="table-responsive"><table class="table table-sm mb-0"><thead><tr><th>Когда</th><th>Кто</th><th>Действие</th><th>Поле</th><th>Было → стало</th></tr></thead><tbody>' +
+          trs +
+          "</tbody></table></div>" +
+          '<div class="d-flex align-items-center justify-content-between gap-2 px-3 py-2 border-top"><span class="small text-muted">Найдено: ' +
+          logState.total +
+          "; страница " +
+          page +
+          "/" +
+          pages +
+          '</span><div class="btn-group"><button type="button" class="btn btn-sm btn-outline-secondary" id="dg-msl-log-prev"' +
+          (logState.offset <= 0 ? " disabled" : "") +
+          ">Назад</button><button type='button' class='btn btn-sm btn-outline-secondary' id='dg-msl-log-next'" +
+          (logState.offset + logState.limit >= logState.total ? " disabled" : "") +
+          ">Вперёд</button></div></div>";
+        var prev = el("dg-msl-log-prev");
+        var next = el("dg-msl-log-next");
+        if (prev) {
+          prev.addEventListener("click", function () {
+            logState.offset = Math.max(0, logState.offset - logState.limit);
+            loadMslLog();
+          });
+        }
+        if (next) {
+          next.addEventListener("click", function () {
+            logState.offset += logState.limit;
+            loadMslLog();
+          });
+        }
+      })
+      .catch(function (e) {
+        body.innerHTML = '<div class="text-danger small text-center py-4">' + esc(e.message || "Ошибка журнала") + "</div>";
+      });
+  }
+
+  function importCsv(dry) {
+    var text = state.csvText;
+    if (!text) return Promise.resolve();
+    if (state.can_pick_manager && (!state.manager_user_id || state.manager_user_id === "all")) {
+      toast("warning", "Сначала выберите менеджера в переключателе — CSV пишется в его таблицу");
+      return Promise.resolve();
+    }
+    var body = {
+      csv: text,
+      dry_run: dry ? 1 : 0,
+      year: state.year,
+    };
+    if (state.can_pick_manager) body.manager_user_id = Number(state.manager_user_id);
+    var started = Date.now();
+    if (dry) {
+      showActionLog(
+        "warning",
+        "Импорт CSV: пробный прогон.<br>Фильтры: " +
+          appliedFilterSummary() +
+          "<br>Идёт, прошло 0 с…"
+      );
+    }
+    return fetch("/api/manager-sales/import-csv", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
+      .then(json)
+      .then(function (data) {
+        var sec = data.duration_sec != null ? data.duration_sec : Math.round((Date.now() - started) / 100) / 10;
+        if (dry) {
+          state.csvDry = data;
+          var n = data.would_update != null ? data.would_update : data.to_update;
+          showActionLog(
+            "info",
+            "<div>Пробный импорт CSV</div><ul class='mb-2'>" +
+              "<li>фильтры: " +
+              appliedFilterSummary() +
+              "</li>" +
+              "<li>всего строк файла: " +
+              (data.total || 0) +
+              "</li>" +
+              "<li>к записи: " +
+              n +
+              "</li>" +
+              "<li>пустых пропущено: " +
+              (data.skipped || 0) +
+              "</li>" +
+              "<li>длительность: " +
+              sec +
+              " с</li></ul>" +
+              (n
+                ? '<button type="button" class="btn btn-sm btn-primary" id="dg-msl-import-go" data-dg-notify-start="Записываем CSV…">Импортировать ' +
+                  n +
+                  " строк</button>"
+                : "<div class='text-muted'>Нечего импортировать.</div>")
+          );
+          return data;
+        }
+        var errs = (data.errors || [])
+          .slice(0, 20)
+          .map(function (e) {
+            return "<li>" + esc(e.code) + ": " + esc(e.error) + "</li>";
+          })
+          .join("");
+        showActionLog(
+          "success",
+          "<div>Импорт CSV завершён</div><ul class='mb-2'>" +
+            "<li>записано: " +
+            (data.filled || 0) +
+            "</li>" +
+            "<li>пропущено: " +
+            (data.skipped || 0) +
+            "</li>" +
+            "<li>длительность: " +
+            sec +
+            " с</li></ul>" +
+            (errs ? "<ul>" + errs + "</ul>" : "")
+        );
+        toast("success", "Импортировано: " + (data.filled || 0));
+        state.csvText = "";
+        state.csvDry = null;
+        return load();
+      })
+      .catch(function (e) {
+        showActionLog(
+          "danger",
+          "Ошибка импорта: " +
+            esc(e.message || "") +
+            (e.body ? "<pre class='small mb-0 mt-2'>" + esc(String(e.body).slice(0, 800)) + "</pre>" : "")
+        );
+        throw e;
+      });
+  }
+
+  function exportCsv() {
+    window.location.href = "/api/manager-sales/export.csv" + buildQuery();
+  }
+
+  function columnControls() {
+    var wrap = el("dg-msl-toolbox-panels");
+    var colPanel = el("dg-msl-columns-panel");
+    var wPanel = el("dg-msl-widths-panel");
+    function syncWrap() {
+      var open =
+        (colPanel && colPanel.classList.contains("open")) ||
+        (wPanel && wPanel.classList.contains("open"));
+      if (wrap) wrap.classList.toggle("d-none", !open);
+    }
+    function closeAll() {
+      if (colPanel) colPanel.classList.remove("open");
+      if (wPanel) wPanel.classList.remove("open");
+      syncWrap();
+    }
+    if (el("dg-msl-columns-toggle")) {
+      el("dg-msl-columns-toggle").addEventListener("click", function (ev) {
+        ev.stopPropagation();
+        if (wPanel) wPanel.classList.remove("open");
+        if (colPanel) colPanel.classList.toggle("open");
+        syncWrap();
+      });
+    }
+    if (el("dg-msl-widths-toggle")) {
+      el("dg-msl-widths-toggle").addEventListener("click", function (ev) {
+        ev.stopPropagation();
+        if (colPanel) colPanel.classList.remove("open");
+        if (wPanel) wPanel.classList.toggle("open");
+        syncWrap();
+      });
+    }
+    document.addEventListener("click", function (ev) {
+      if (wrap && wrap.contains(ev.target)) return;
+      if (ev.target && ev.target.closest && ev.target.closest("#dg-msl-columns-toggle, #dg-msl-widths-toggle")) return;
+      closeAll();
+    });
+    if (el("dg-msl-columns-all")) {
+      el("dg-msl-columns-all").addEventListener("click", function () {
+        state.visible = MSALES_COLS.map(function (c) { return c[0]; });
+        saveVisible();
+        renderColumnControls();
+        renderTable();
+      });
+    }
+    if (el("dg-msl-columns-none")) {
+      el("dg-msl-columns-none").addEventListener("click", function () {
+        state.visible = ["row_no", "manager_name", "paid_at", "amount_ex_delivery", "diff", "_hand", "_del"];
+        saveVisible();
+        renderColumnControls();
+        renderTable();
+      });
+    }
+    if (el("dg-msl-columns-default")) {
+      el("dg-msl-columns-default").addEventListener("click", function () {
+        state.visible = MSALES_COLS.map(function (c) { return c[0]; });
+        saveVisible();
+        renderColumnControls();
+        renderTable();
+      });
+    }
+    if (el("dg-msl-columns-list")) {
+      el("dg-msl-columns-list").addEventListener("change", function (ev) {
+        var t = ev.target;
+        if (!t || !t.getAttribute("data-msl-col")) return;
+        var key = t.getAttribute("data-msl-col");
+        var on = !!t.checked;
+        if (on && state.visible.indexOf(key) < 0) state.visible.push(key);
+        if (!on) state.visible = state.visible.filter(function (k) { return k !== key; });
+        if (state.visible.indexOf("_hand") < 0) state.visible.push("_hand");
+        if (state.visible.indexOf("_del") < 0) state.visible.push("_del");
+        saveVisible();
+        renderTable();
+      });
+    }
+    if (el("dg-msl-widths-default")) {
+      el("dg-msl-widths-default").addEventListener("click", function () {
+        state.widths = {};
+        saveWidths();
+        renderWidthControls();
+        renderTable();
+      });
+    }
+    if (el("dg-msl-widths-list")) {
+      el("dg-msl-widths-list").addEventListener("change", function (ev) {
+        var t = ev.target;
+        if (!t || !t.getAttribute("data-msl-width")) return;
+        var key = t.getAttribute("data-msl-width");
+        var n = Number(t.value);
+        if (Number.isFinite(n) && n >= 40) state.widths[key] = Math.round(n);
+        else delete state.widths[key];
+        saveWidths();
+        renderTable();
+      });
+    }
+    renderColumnControls();
+    renderWidthControls();
+  }
+
+  function filtersCollapse() {
+    var body = el("dg-msl-filters-body");
+    var btn = el("dg-msl-filters-toggle");
+    if (!body || !btn) return;
+    function apply() {
+      var c = false;
+      try { c = localStorage.getItem(FILTERS_KEY) === "1"; } catch (e) {}
+      body.style.display = c ? "none" : "";
+      btn.textContent = c ? "Развернуть" : "Свернуть";
+    }
+    btn.addEventListener("click", function () {
+      var c = false;
+      try { c = localStorage.getItem(FILTERS_KEY) === "1"; } catch (e) {}
+      try { localStorage.setItem(FILTERS_KEY, c ? "0" : "1"); } catch (e2) {}
+      apply();
+    });
+    apply();
+  }
+
+  function tableCardCollapse() {
+    var body = el("dg-msl-table-body");
+    var btn = el("dg-msl-table-toggle");
+    if (!body || !btn) return;
+    function apply() {
+      var c = false;
+      try { c = localStorage.getItem(TABLE_COLLAPSE_KEY) === "1"; } catch (e) {}
+      body.style.display = c ? "none" : "";
+      btn.textContent = c ? "Развернуть" : "Свернуть";
+    }
+    btn.addEventListener("click", function () {
+      var c = false;
+      try { c = localStorage.getItem(TABLE_COLLAPSE_KEY) === "1"; } catch (e) {}
+      try { localStorage.setItem(TABLE_COLLAPSE_KEY, c ? "0" : "1"); } catch (e2) {}
+      apply();
+    });
+    apply();
+  }
+
+  function bindHeaderSearchMirror() {
+    var a = el("dg-msl-search");
+    var b = el("dg-msl-table-search-mirror");
+    if (!a || !b) return;
+    var syncing = false;
+    function sync(from, to) {
+      if (syncing) return;
+      syncing = true;
+      to.value = from.value;
+      syncing = false;
+      readPendingFromForm();
+    }
+    a.addEventListener("input", function () { sync(a, b); });
+    b.addEventListener("input", function () { sync(b, a); });
+    function onEnter(ev) {
+      if (ev.key === "Enter") {
+        ev.preventDefault();
+        if (el("dg-msl-apply")) el("dg-msl-apply").click();
+      }
+      if (ev.key === "Escape") {
+        a.value = "";
+        b.value = "";
+        readPendingFromForm();
+        commitFilters();
+      }
+    }
+    a.addEventListener("keydown", onEnter);
+    b.addEventListener("keydown", onEnter);
+  }
+
+  loadVisible();
+  loadWidths();
+  labelMonthOptions();
+  if (window.DatagonFilters && window.DatagonFilters.load) {
+    var saved = window.DatagonFilters.load(PAGE_SLUG);
+    if (saved && typeof saved === "object") {
+      Object.keys(state.pending).forEach(function (k) {
+        if (k === "month") return;
+        if (saved[k] != null) state.pending[k] = saved[k];
+      });
+      state.pending.month = cm;
+    }
+  }
+
+  filtersCollapse();
+  tableCardCollapse();
+  columnControls();
+  bindHeaderSearchMirror();
+
+  if (window.DatagonFilterFieldsVisibility && window.DatagonFilterFieldsVisibility.init) {
+    window.DatagonFilterFieldsVisibility.init({
+      storageKeyPrefix: "datagon_manager_sales_filter_fields_v1",
+      attr: "data-dg-msl-filter-field",
+      fieldGroups: FIELD_GROUPS,
+      togglesRootId: "dg-msl-filter-blocks-toggles",
+      idPrefix: "dg-msl-ff-",
+      exposeAs: "DatagonManagerSalesFilterBlocks",
+    });
+  }
+
+  ["dg-msl-search", "dg-msl-f-year", "dg-msl-f-month", "dg-msl-f-status", "dg-msl-f-supplier", "dg-msl-f-contract", "dg-msl-f-org", "dg-msl-f-archived", "dg-msl-f-limit"].forEach(
+    function (id) {
+      var n = el(id);
+      if (!n) return;
+      n.addEventListener("input", readPendingFromForm);
+      n.addEventListener("change", readPendingFromForm);
+    }
+  );
+
+  if (el("dg-msl-f-manager")) {
+    el("dg-msl-f-manager").addEventListener("change", function () {
+      readPendingFromForm();
+      commitFilters();
+    });
+  }
+
+  if (el("dg-msl-apply")) {
+    el("dg-msl-apply").addEventListener("click", function () {
+      var btn = el("dg-msl-apply");
+      if (window.DatagonNotify && window.DatagonNotify.busyRun) {
+        window.DatagonNotify.busyRun(btn, commitFilters);
+      } else commitFilters();
+    });
+  }
+
+  if (el("dg-msl-reset")) {
+    el("dg-msl-reset").addEventListener("click", function () {
+      hideActionLog();
+      state.pending = {
+        year: cy,
+        month: cm,
+        manager_user_id: state.can_pick_manager ? "all" : (state.actor_user_id ? String(state.actor_user_id) : ""),
+        search: "",
+        status: "",
+        supplier: "",
+        has_contract: "",
+        invoice_org: "",
+        archived: "0",
+        limit: 100,
+      };
+      writeFormFromPending();
+      commitFilters();
+    });
+  }
+
+  if (el("dg-msl-add")) {
+    el("dg-msl-add").addEventListener("click", function () {
+      var btn = el("dg-msl-add");
+      var run = addRow;
+      if (window.DatagonNotify && window.DatagonNotify.busyRun) window.DatagonNotify.busyRun(btn, run);
+      else run();
+    });
+  }
+  if (el("dg-msl-archive-view")) {
+    el("dg-msl-archive-view").addEventListener("click", function () {
+      setArchivedFilter(state.archived === "1" ? "0" : "1");
+    });
+  }
+
+  if (el("dg-msl-import")) {
+    el("dg-msl-import").addEventListener("click", function () {
+      if (el("dg-msl-import-file")) el("dg-msl-import-file").click();
+    });
+  }
+  if (el("dg-msl-import-file")) {
+    el("dg-msl-import-file").addEventListener("change", function (ev) {
+      var f = ev.target.files && ev.target.files[0];
+      ev.target.value = "";
+      if (!f) return;
+      var reader = new FileReader();
+      reader.onload = function () {
+        state.csvText = String(reader.result || "");
+        importCsv(true).catch(function () {});
+      };
+      reader.readAsText(f, "utf-8");
+    });
+  }
+
+  document.addEventListener("click", function (ev) {
+    if (ev.target && ev.target.id === "dg-msl-import-go") {
+      importCsv(false).catch(function () {});
+    }
+  });
+
+  if (el("dg-msl-export")) {
+    el("dg-msl-export").addEventListener("click", exportCsv);
+  }
+
+  if (el("dg-msl-prev")) {
+    el("dg-msl-prev").addEventListener("click", function () {
+      if (currentPage() <= 1) return;
+      state.offset = Math.max(0, state.offset - state.limit);
+      load();
+    });
+  }
+  if (el("dg-msl-next")) {
+    el("dg-msl-next").addEventListener("click", function () {
+      if (currentPage() >= pageCount()) return;
+      state.offset = state.offset + state.limit;
+      load();
+    });
+  }
+  if (el("dg-msl-page-limit")) {
+    el("dg-msl-page-limit").addEventListener("change", function () {
+      var lim = Number(el("dg-msl-page-limit").value);
+      state.pending.limit = lim;
+      if (el("dg-msl-f-limit")) el("dg-msl-f-limit").value = String(lim);
+      commitFilters();
+    });
+  }
+
+  var thead = el("dg-msl-thead");
+  if (thead) {
+    thead.addEventListener("click", function (ev) {
+      var sel = window.getSelection && window.getSelection();
+      if (sel && String(sel.toString() || "").trim()) return;
+      var th = ev.target && ev.target.closest ? ev.target.closest("th[data-msl-sort]") : null;
+      if (!th) return;
+      var key = th.getAttribute("data-msl-sort");
+      if (!key || key === "_del" || key === "_hand") return;
+      if (state.sort_by === key) state.sort_dir = state.sort_dir === "asc" ? "desc" : "asc";
+      else {
+        state.sort_by = key;
+        state.sort_dir = "asc";
+      }
+      load();
+    });
+  }
+
+  var tbody = el("dg-msl-tbody");
+  if (tbody) {
+    tbody.addEventListener("focusin", function (ev) {
+      var inp = ev.target;
+      if (inp && inp.getAttribute && inp.getAttribute("data-msl-num")) bindNumericFocus(inp);
+    });
+    tbody.addEventListener("change", function (ev) {
+      var t = ev.target;
+      if (!t || !t.getAttribute) return;
+      var field = t.getAttribute("data-msl-field");
+      if (!field) return;
+      var tr = t.closest("tr");
+      var val = t.value;
+      if (t.getAttribute("data-msl-num")) val = parseNum(val);
+      saveField(tr, field, val).catch(function (e) {
+        toast("danger", e.message || "Не сохранено");
+      });
+    });
+    tbody.addEventListener("focusout", function (ev) {
+      var t = ev.target;
+      if (!t || t.tagName !== "INPUT") return;
+      if (t.getAttribute("data-msl-num") || t.getAttribute("type") === "date" || t.tagName === "SELECT") return;
+      var field = t.getAttribute("data-msl-field");
+      if (!field) return;
+      var tr = t.closest("tr");
+      saveField(tr, field, t.value).catch(function (e) {
+        toast("danger", e.message || "Не сохранено");
+      });
+    });
+    tbody.addEventListener("click", function (ev) {
+      var urlEdit = ev.target && ev.target.closest ? ev.target.closest("[data-msl-url-edit]") : null;
+      if (urlEdit) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        var td = urlEdit.closest("td");
+        var tr = urlEdit.closest("tr");
+        var field = urlEdit.getAttribute("data-msl-url-edit");
+        var wrap = urlEdit.closest(".dg-msl-url-cell");
+        var id = tr && tr.getAttribute("data-msl-id");
+        var row = state.rows.filter(function (r) { return String(r.id) === String(id); })[0];
+        if (!td || !field || !wrap) return;
+        var val = row && row[field] != null ? row[field] : "";
+        if (field === "supplier_invoice_url") {
+          openSuppUrl(id, val);
+          return;
+        }
+        wrap.outerHTML = urlInputHtml(field, val);
+        var inp = td.querySelector('[data-msl-field="' + field + '"]');
+        if (inp) {
+          inp.focus();
+          if (inp.select) inp.select();
+        }
+        return;
+      }
+      var fieldLog = ev.target && ev.target.closest ? ev.target.closest("[data-msl-log-field]") : null;
+      if (fieldLog) {
+        ev.preventDefault();
+        openMslLog(
+          Number(fieldLog.getAttribute("data-msl-log-id")),
+          fieldLog.getAttribute("data-msl-log-label") || "",
+          fieldLog.getAttribute("data-msl-log-field") || "",
+          fieldLog.getAttribute("data-msl-log-field-label") || ""
+        );
+        return;
+      }
+      var rowLog = ev.target && ev.target.closest ? ev.target.closest(".dg-msl-log-btn") : null;
+      if (rowLog) {
+        ev.preventDefault();
+        openMslLog(Number(rowLog.getAttribute("data-msl-log-id")), rowLog.getAttribute("data-msl-log-label") || "");
+        return;
+      }
+      var rest = ev.target && ev.target.closest ? ev.target.closest("[data-msl-restore]") : null;
+      if (rest) {
+        var rid = rest.getAttribute("data-msl-restore");
+        var run = function () { return doRestore(rid); };
+        if (window.DatagonNotify && window.DatagonNotify.busyRun) window.DatagonNotify.busyRun(rest, run);
+        else run();
+        return;
+      }
+      var handBtn = ev.target && ev.target.closest ? ev.target.closest("[data-msl-hand]") : null;
+      if (handBtn) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        openHandOver(handBtn.getAttribute("data-msl-hand"));
+        return;
+      }
+      var btn = ev.target && ev.target.closest ? ev.target.closest("[data-msl-del]") : null;
+      if (!btn) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      openConfirm(btn.getAttribute("data-msl-del"));
+    });
+  }
+
+  var plansCache = null;
+
+  function setPlanMsg(type, text) {
+    var box = el("dg-msl-plan-msg");
+    if (!box) return;
+    box.classList.remove("d-none", "alert-info", "alert-success", "alert-danger", "alert-warning");
+    if (!text) {
+      box.classList.add("d-none");
+      box.textContent = "";
+      return;
+    }
+    box.classList.add("alert-" + (type || "info"));
+    box.textContent = text;
+  }
+
+  function closePlans() {
+    var ov = el("dg-msl-plans-overlay");
+    if (!ov) return;
+    ov.classList.add("d-none");
+    ov.style.display = "none";
+    ov.setAttribute("aria-hidden", "true");
+  }
+
+  function fillPlanSelects() {
+    var ysel = el("dg-msl-plan-year");
+    if (!ysel) return;
+    var y = String(state.year || cy);
+    var years = (state.years || [cy]).slice();
+    if (years.indexOf(Number(y)) < 0 && years.indexOf(y) < 0) years.unshift(Number(y) || cy);
+    ysel.innerHTML = years
+      .map(function (yr) {
+        return '<option value="' + yr + '"' + (String(yr) === String(y) ? " selected" : "") + ">" + yr + "</option>";
+      })
+      .join("");
+  }
+
+  function planInp(value, placeholder, canEdit, extraAttr) {
+    var shown = value == null || value === "" ? "" : num(value);
+    var ph = placeholder != null && placeholder !== "" ? num(placeholder) : "";
+    var readonly = canEdit ? "" : " readonly disabled";
+    return (
+      '<input type="text" inputmode="decimal" class="form-control form-control-sm dg-msl-plan-amt" ' +
+      (extraAttr || "") +
+      ' placeholder="' +
+      esc(ph) +
+      '" value="' +
+      esc(shown) +
+      '"' +
+      readonly +
+      " />"
+    );
+  }
+
+  function renderPlanGrid(data) {
+    var body = el("dg-msl-plan-grid-body");
+    if (!body) return;
+    var canEdit = !!(data && data.can_edit);
+    body.innerHTML = (data.managers || [])
+      .map(function (mgr) {
+        var months = (mgr.months || [])
+          .map(function (mm) {
+            return (
+              "<td>" +
+              planInp(
+                mm.plan_amount,
+                "",
+                canEdit,
+                'data-msl-plan-month="' +
+                  mm.month +
+                  '" title="' +
+                  esc((MONTH_NAMES[mm.month] || "") + (mm.inherited != null ? " · наследует " + num(mm.inherited) : "") + (mm.note ? " — " + mm.note : "")) +
+                  '"'
+              ) +
+              "</td>"
+            );
+          })
+          .join("");
+        return (
+          '<tr data-msl-plan-mgr="' +
+          esc(mgr.id) +
+          '"><td class="text-nowrap">' +
+          esc(mgr.full_name || mgr.username || ("#" + mgr.id)) +
+          "</td><td>" +
+          planInp(mgr.year_plan, mgr.inherited, canEdit, 'data-msl-plan-year-amt="1"') +
+          "</td>" +
+          months +
+          "</tr>"
+        );
+      })
+      .join("");
+  }
+
+  var DEFAULT_PLAN_STEPS = [
+    [500000, 0],
+    [1000000, 2],
+    [1500000, 4],
+    [2000000, 6],
+    [2500000, 8],
+    [3300000, 10],
+  ];
+  var DEFAULT_PLAN_PCT_MAX = 12;
+
+  function defaultPlanStepsSpec() {
+    return {
+      steps: DEFAULT_PLAN_STEPS.map(function (p) { return [p[0], p[1]]; }),
+      pct_max: DEFAULT_PLAN_PCT_MAX,
+    };
+  }
+
+  function planStepsSpecFrom(raw) {
+    if (!raw) return defaultPlanStepsSpec();
+    if (Array.isArray(raw) && raw.length) return { steps: raw, pct_max: DEFAULT_PLAN_PCT_MAX };
+    if (raw.steps && raw.steps.length) {
+      return {
+        steps: raw.steps,
+        pct_max: raw.pct_max != null ? raw.pct_max : DEFAULT_PLAN_PCT_MAX,
+      };
+    }
+    return defaultPlanStepsSpec();
+  }
+
+  function renderPlanStepRow(max, pct, canEdit) {
+    return (
+      "<tr>" +
+      "<td><input type=\"text\" inputmode=\"decimal\" class=\"form-control form-control-sm dg-msl-plan-amt\" data-msl-step-max " +
+      (canEdit ? "" : "readonly ") +
+      "value=\"" +
+      esc(max == null ? "" : num(max)) +
+      "\"></td>" +
+      "<td><input type=\"text\" inputmode=\"decimal\" class=\"form-control form-control-sm\" style=\"width:4.5rem\" data-msl-step-pct " +
+      (canEdit ? "" : "readonly ") +
+      "value=\"" +
+      esc(pct == null ? "" : String(pct)) +
+      "\"></td>" +
+      "<td>" +
+      (canEdit
+        ? "<button type=\"button\" class=\"btn btn-sm btn-outline-danger\" data-msl-step-del data-dg-no-activity=\"1\">×</button>"
+        : "") +
+      "</td></tr>"
+    );
+  }
+
+  function renderPlanSteps(spec, canEdit) {
+    var n = planStepsSpecFrom(spec);
+    var body = el("dg-msl-plan-steps-body");
+    if (body) {
+      body.innerHTML = n.steps
+        .map(function (s) {
+          return renderPlanStepRow(s[0], s[1], canEdit);
+        })
+        .join("");
+    }
+    var pctMax = el("dg-msl-plan-pct-max");
+    if (pctMax) {
+      pctMax.value = n.pct_max != null ? String(n.pct_max) : String(DEFAULT_PLAN_PCT_MAX);
+      pctMax.readOnly = !canEdit;
+    }
+    ["dg-msl-plan-step-add", "dg-msl-plan-step-reset"].forEach(function (id) {
+      if (el(id)) el(id).classList.toggle("d-none", !canEdit);
+    });
+  }
+
+  function readPlanSteps() {
+    var steps = [];
+    [].slice.call(document.querySelectorAll("#dg-msl-plan-steps-body tr")).forEach(function (tr) {
+      var maxInp = tr.querySelector("[data-msl-step-max]");
+      var pctInp = tr.querySelector("[data-msl-step-pct]");
+      var max = parseNum(maxInp && maxInp.value);
+      var pct = parseNum(pctInp && pctInp.value);
+      if (max == null || max === "" || max <= 0 || pct == null || pct === "" || pct < 0) return;
+      steps.push([max, pct]);
+    });
+    var pctMax = parseNum(el("dg-msl-plan-pct-max") && el("dg-msl-plan-pct-max").value);
+    if (pctMax == null || pctMax === "" || pctMax < 0) pctMax = DEFAULT_PLAN_PCT_MAX;
+    if (!steps.length) {
+      var d = defaultPlanStepsSpec();
+      return { steps: d.steps, pct_max: pctMax };
+    }
+    steps.sort(function (a, b) {
+      return a[0] - b[0];
+    });
+    return { steps: steps, pct_max: pctMax };
+  }
+
+  function addPlanStepRow() {
+    var body = el("dg-msl-plan-steps-body");
+    if (!body) return;
+    var rows = body.querySelectorAll("tr");
+    var lastMax = 3300000;
+    var lastPct = 10;
+    if (rows.length) {
+      var last = rows[rows.length - 1];
+      var m = parseNum(last.querySelector("[data-msl-step-max]") && last.querySelector("[data-msl-step-max]").value);
+      var p = parseNum(last.querySelector("[data-msl-step-pct]") && last.querySelector("[data-msl-step-pct]").value);
+      if (m != null && m !== "") lastMax = m;
+      if (p != null && p !== "") lastPct = p;
+    }
+    body.insertAdjacentHTML("beforeend", renderPlanStepRow(lastMax + 500000, lastPct, true));
+  }
+
+  function loadPlansOverlay() {
+    var year = el("dg-msl-plan-year") && el("dg-msl-plan-year").value;
+    var q = new URLSearchParams();
+    if (year) q.set("year", year);
+    return fetch("/api/manager-sales/plans?" + q.toString(), { credentials: "same-origin" })
+      .then(json)
+      .then(function (data) {
+        plansCache = data;
+        var baseInp = el("dg-msl-plan-base");
+        var yb = data.year_base || {};
+        if (baseInp) {
+          baseInp.value = yb.plan_amount != null ? num(yb.plan_amount) : "";
+          baseInp.placeholder = yb.inherited != null ? num(yb.inherited) : "";
+          baseInp.readOnly = !data.can_edit;
+        }
+        var hint = el("dg-msl-plan-steps-hint");
+        if (hint) {
+          hint.textContent = yb.steps_custom
+            ? "Пороги сохранены для этого года. Если план менеджера меньше последнего порога, ступени сжимаются пропорционально."
+            : "Пока шкала как в Google (500 тыс. → 0% … 3,3 млн → 10%, иначе 12%). Сохраните, чтобы закрепить пороги за годом.";
+        }
+        renderPlanSteps(yb.steps || (data.fallback && data.fallback.steps), data.can_edit);
+        var saveBtn = el("dg-msl-plan-matrix-save");
+        if (saveBtn) saveBtn.classList.toggle("d-none", !data.can_edit);
+        renderPlanGrid(data);
+        setPlanMsg("", "");
+      });
+  }
+
+  function openPlans() {
+    var ov = el("dg-msl-plans-overlay");
+    if (!ov) return Promise.resolve();
+    fillPlanSelects();
+    ov.classList.remove("d-none");
+    ov.style.display = "flex";
+    ov.setAttribute("aria-hidden", "false");
+    return loadPlansOverlay();
+  }
+
+  function savePlanMatrix() {
+    var year = Number(el("dg-msl-plan-year") && el("dg-msl-plan-year").value);
+    var baseRaw = el("dg-msl-plan-base") ? String(el("dg-msl-plan-base").value || "").trim() : "";
+    var managers = [];
+    [].slice.call(document.querySelectorAll("#dg-msl-plan-grid-body tr[data-msl-plan-mgr]")).forEach(function (tr) {
+      var id = Number(tr.getAttribute("data-msl-plan-mgr"));
+      var yearInp = tr.querySelector("[data-msl-plan-year-amt]");
+      var yearRaw = yearInp ? String(yearInp.value || "").trim() : "";
+      var months = [];
+      [].slice.call(tr.querySelectorAll("[data-msl-plan-month]")).forEach(function (inp) {
+        var raw = String(inp.value || "").trim();
+        months.push({
+          month: Number(inp.getAttribute("data-msl-plan-month")),
+          plan_amount: raw === "" ? "" : parseNum(raw),
+        });
+      });
+      managers.push({
+        manager_user_id: id,
+        year_plan: yearRaw === "" ? "" : parseNum(yearRaw),
+        months: months,
+      });
+    });
+    return fetch("/api/manager-sales/plans/matrix", {
+      method: "PUT",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        year: year,
+        year_base: baseRaw === "" ? "" : parseNum(baseRaw),
+        steps: readPlanSteps(),
+        managers: managers,
+      }),
+    })
+      .then(json)
+      .then(function () {
+        return loadPlansOverlay().then(function () {
+          setPlanMsg("success", "Планы " + year + " сохранены. % МП. пересчитан.");
+          load();
+        });
+      })
+      .catch(function (err) {
+        setPlanMsg("danger", (err && err.message) || "Не удалось сохранить планы");
+        if (window.DatagonNotify && window.DatagonNotify.toast) {
+          window.DatagonNotify.toast({ type: "danger", message: (err && err.message) || "Ошибка сохранения планов" });
+        }
+        throw err;
+      });
+  }
+
+  if (el("dg-msl-confirm-cancel")) el("dg-msl-confirm-cancel").addEventListener("click", closeConfirm);
+  if (el("dg-msl-confirm-backdrop")) el("dg-msl-confirm-backdrop").addEventListener("click", closeConfirm);
+  if (el("dg-msl-confirm-ok")) {
+    el("dg-msl-confirm-ok").addEventListener("click", function () {
+      var btn = el("dg-msl-confirm-ok");
+      if (window.DatagonNotify && window.DatagonNotify.busyRun) window.DatagonNotify.busyRun(btn, doDelete);
+      else doDelete();
+    });
+  }
+  if (el("dg-msl-pick-cancel")) el("dg-msl-pick-cancel").addEventListener("click", closePickManager);
+  if (el("dg-msl-pick-backdrop")) el("dg-msl-pick-backdrop").addEventListener("click", closePickManager);
+  if (el("dg-msl-pick-ok")) {
+    el("dg-msl-pick-ok").addEventListener("click", function () {
+      var btn = el("dg-msl-pick-ok");
+      var run = function () {
+        var id = el("dg-msl-pick-manager") && el("dg-msl-pick-manager").value;
+        if (!id) {
+          toast("warning", "Выберите менеджера");
+          return Promise.resolve();
+        }
+        closePickManager();
+        return postAddRow(id);
+      };
+      if (window.DatagonNotify && window.DatagonNotify.busyRun) window.DatagonNotify.busyRun(btn, run);
+      else run();
+    });
+  }
+  if (el("dg-msl-hand-cancel")) el("dg-msl-hand-cancel").addEventListener("click", closeHandOver);
+  if (el("dg-msl-hand-backdrop")) el("dg-msl-hand-backdrop").addEventListener("click", closeHandOver);
+  if (el("dg-msl-hand-ok")) {
+    el("dg-msl-hand-ok").addEventListener("click", function () {
+      var btn = el("dg-msl-hand-ok");
+      var run = function () { return postHandOver(); };
+      if (window.DatagonNotify && window.DatagonNotify.busyRun) window.DatagonNotify.busyRun(btn, run);
+      else run();
+    });
+  }
+  if (el("dg-msl-supp-url-cancel")) el("dg-msl-supp-url-cancel").addEventListener("click", closeSuppUrl);
+  if (el("dg-msl-supp-url-backdrop")) el("dg-msl-supp-url-backdrop").addEventListener("click", closeSuppUrl);
+  if (el("dg-msl-supp-url-stock")) {
+    el("dg-msl-supp-url-stock").addEventListener("click", function () {
+      var btn = el("dg-msl-supp-url-stock");
+      var run = function () { return saveSuppUrlValue("Склад"); };
+      if (window.DatagonNotify && window.DatagonNotify.busyRun) window.DatagonNotify.busyRun(btn, run);
+      else run();
+    });
+  }
+  if (el("dg-msl-supp-url-ok")) {
+    el("dg-msl-supp-url-ok").addEventListener("click", function () {
+      var btn = el("dg-msl-supp-url-ok");
+      var inp = el("dg-msl-supp-url-input");
+      var run = function () { return saveSuppUrlValue(inp ? inp.value : ""); };
+      if (window.DatagonNotify && window.DatagonNotify.busyRun) window.DatagonNotify.busyRun(btn, run);
+      else run();
+    });
+  }
+  if (el("dg-msl-supp-url-input")) {
+    el("dg-msl-supp-url-input").addEventListener("keydown", function (ev) {
+      if (ev.key === "Enter") {
+        ev.preventDefault();
+        if (el("dg-msl-supp-url-ok")) el("dg-msl-supp-url-ok").click();
+      }
+    });
+  }
+  if (el("dg-msl-plans")) {
+    el("dg-msl-plans").addEventListener("click", function () {
+      var btn = el("dg-msl-plans");
+      var run = function () { return openPlans(); };
+      if (window.DatagonNotify && window.DatagonNotify.busyRun) window.DatagonNotify.busyRun(btn, run);
+      else run();
+    });
+  }
+  if (el("dg-msl-plans-close")) el("dg-msl-plans-close").addEventListener("click", closePlans);
+  if (el("dg-msl-plans-cancel")) el("dg-msl-plans-cancel").addEventListener("click", closePlans);
+  if (el("dg-msl-plans-backdrop")) el("dg-msl-plans-backdrop").addEventListener("click", closePlans);
+  if (el("dg-msl-plan-year")) el("dg-msl-plan-year").addEventListener("change", function () { loadPlansOverlay(); });
+  if (el("dg-msl-plan-matrix-save")) {
+    el("dg-msl-plan-matrix-save").addEventListener("click", function () {
+      var btn = el("dg-msl-plan-matrix-save");
+      var run = function () { return savePlanMatrix(); };
+      if (window.DatagonNotify && window.DatagonNotify.busyRun) window.DatagonNotify.busyRun(btn, run);
+      else run();
+    });
+  }
+  if (el("dg-msl-plan-step-add")) {
+    el("dg-msl-plan-step-add").addEventListener("click", function () {
+      addPlanStepRow();
+    });
+  }
+  if (el("dg-msl-plan-step-reset")) {
+    el("dg-msl-plan-step-reset").addEventListener("click", function () {
+      renderPlanSteps(defaultPlanStepsSpec(), true);
+      var hint = el("dg-msl-plan-steps-hint");
+      if (hint) hint.textContent = "Вернули шкалу Google. Нажмите «Сохранить планы», чтобы записать её на этот год.";
+    });
+  }
+  var stepsBody = el("dg-msl-plan-steps-body");
+  if (stepsBody) {
+    stepsBody.addEventListener("click", function (ev) {
+      var btn = ev.target && ev.target.closest ? ev.target.closest("[data-msl-step-del]") : null;
+      if (!btn) return;
+      var tr = btn.closest("tr");
+      var rows = stepsBody.querySelectorAll("tr");
+      if (rows.length <= 1) return;
+      if (tr) tr.remove();
+    });
+  }
+  if (el("dg-msl-log-close")) el("dg-msl-log-close").addEventListener("click", closeMslLog);
+  if (el("dg-msl-log-backdrop")) el("dg-msl-log-backdrop").addEventListener("click", closeMslLog);
+  if (el("dg-msl-log-refresh")) {
+    el("dg-msl-log-refresh").addEventListener("click", function () {
+      loadMslLog();
+    });
+  }
+  document.addEventListener("keydown", function (ev) {
+    if (ev.key === "Escape") {
+      closePickManager();
+      closeHandOver();
+      closeSuppUrl();
+      closeConfirm();
+      closeMslLog();
+      closePlans();
+    }
+  });
+
+  loadMeta()
+    .then(function () {
+      state.year = state.pending.year;
+      state.month = state.pending.month || "";
+      state.manager_user_id = state.pending.manager_user_id;
+      state.search = state.pending.search;
+      state.status = state.pending.status;
+      state.supplier = state.pending.supplier;
+      state.has_contract = state.pending.has_contract;
+      state.invoice_org = state.pending.invoice_org;
+      state.archived = state.pending.archived || "0";
+      state.limit = state.pending.limit;
+      syncArchiveViewBtn();
+      syncTableOwnerTitle();
+      return Promise.all([load(), loadHints()]);
+    })
+    .catch(function (e) {
+      toast("danger", e.message || "Не удалось открыть раздел");
+    });
+})();
+</script>

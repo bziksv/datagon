@@ -1,0 +1,2137 @@
+'use strict';
+
+const express = require('express');
+const {
+    computeRow,
+    toNum,
+    pctMpFromMonthTotal,
+    DEFAULT_PLAN_AMOUNT,
+    scaledPlanSteps,
+    parseStoredSteps,
+    stepsToJson,
+    normalizePlanSteps,
+    cloneDefaultSteps,
+    normHasContract,
+    STATUS_VALUES,
+    normStatus,
+} = require('../lib/managerSalesCalc');
+
+const DEFAULT_LIMIT = 100;
+const MAX_LIMIT = 500;
+const MIN_YEAR = 2019;
+const MAX_YEAR = 2100;
+
+const SORT_KEYS = new Set([
+    'row_no',
+    'manager_name',
+    'paid_at',
+    'invoice_org',
+    'amount_ex_delivery',
+    'vat',
+    'amount_incl_stock',
+    'delivery_to_us',
+    'supplier_name',
+    'diff',
+    'pct_r',
+    'status',
+    'pct_mp',
+    'bonus',
+    'id',
+    'updated_at',
+]);
+
+const PATCH_FIELDS = new Set([
+    'row_no',
+    'payment_terms',
+    'paid_at',
+    'invoice_org',
+    'order_url',
+    'amount_ex_delivery',
+    'vat',
+    'our_invoice_no',
+    'has_contract',
+    'supplier_invoice_url',
+    'amount_incl_stock',
+    'delivery_to_us',
+    'supplier_name',
+    'supplier_invoice_no',
+    'status',
+    'year',
+    'manager_user_id',
+]);
+
+const CSV_HEADERS = [
+    { key: 'row_no', aliases: ['№', 'no', 'n', 'номер'] },
+    { key: 'payment_terms', aliases: ['условия оплаты'] },
+    { key: 'paid_at', aliases: ['дата оплаты'] },
+    { key: 'invoice_org', aliases: ['счет от ип или ооо', 'счёт от ип или ооо', 'ип или ооо'] },
+    { key: 'order_url', aliases: ['ссылка на заказ на сайте almamed.su или сателитах', 'ссылка на заказ'] },
+    { key: 'amount_ex_delivery', aliases: ['сумма оплаты без доставки'] },
+    { key: 'vat', aliases: ['ндс'] },
+    { key: 'our_invoice_no', aliases: ['№ нашего счета', '№ нашего счёта', 'номер нашего счета'] },
+    { key: 'has_contract', aliases: ['наличие договора'] },
+    { key: 'supplier_invoice_url', aliases: ['ссылка на счет поставщика', 'ссылка на счёт поставщика'] },
+    { key: 'amount_incl_stock', aliases: ['сумма оплаты (включая складские запасы)', 'сумма оплаты включая складские запасы'] },
+    { key: 'delivery_to_us', aliases: ['доставка до нас'] },
+    { key: 'supplier_name', aliases: ['поставщик'] },
+    { key: 'supplier_invoice_no', aliases: ['№ счета поставщика', '№ счёта поставщика'] },
+    { key: 'diff', aliases: ['разница'] },
+    { key: 'pct_r', aliases: ['% р.', '% р', '%р.'] },
+    { key: 'status', aliases: ['статус'] },
+    { key: 'pct_mp', aliases: ['% мп.', '% мп', '%мп.'] },
+    { key: 'bonus', aliases: ['премия'] },
+];
+
+let schemaReady = false;
+
+function clip(s, max) {
+    const t = String(s == null ? '' : s).trim();
+    if (!max || t.length <= max) return t;
+    return t.slice(0, max);
+}
+
+function currentYear() {
+    return new Date().getFullYear();
+}
+
+function normYear(v, fallback) {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return fallback;
+    const y = Math.round(n);
+    if (y < MIN_YEAR || y > MAX_YEAR) return fallback;
+    return y;
+}
+
+function pageMode(req) {
+    const actor = req.datagonActor || {};
+    if (actor.username === 'admin') return 'full';
+    const raw = actor.page_modes && actor.page_modes['manager-sales'];
+    return raw === 'view' || raw === 'hidden' || raw === 'full' ? raw : 'full';
+}
+
+function canWrite(req) {
+    return pageMode(req) === 'full';
+}
+
+const SEE_ALL_SPECIALTIES = new Set(['полный доступ', 'бухгалтерия']);
+const SALES_SPECIALTY_NAME = 'Менеджер по продажам';
+
+const FIELD_LOG_LABELS = {
+    _row: 'Строка',
+    year: 'Год',
+    manager_user_id: 'Менеджер',
+    row_no: '№',
+    payment_terms: 'Условия оплаты',
+    paid_at: 'Дата оплаты',
+    invoice_org: 'Счет от ИП или ООО',
+    order_url: 'Ссылка на заказ',
+    amount_ex_delivery: 'Сумма оплаты без доставки',
+    vat: 'НДС',
+    our_invoice_no: '№ нашего счета',
+    has_contract: 'Наличие договора',
+    supplier_invoice_url: 'Ссылка на счет поставщика',
+    amount_incl_stock: 'Сумма оплаты (включая складские запасы)',
+    delivery_to_us: 'Доставка до нас',
+    supplier_name: 'Поставщик',
+    supplier_invoice_no: '№ счета поставщика',
+    diff: 'Разница',
+    pct_r: '% Р.',
+    status: 'Статус',
+    pct_mp: '% МП.',
+    bonus: 'Премия',
+    archived: 'Архив',
+    handed_to_user_id: 'Передан',
+};
+
+const LOG_COMPARE_KEYS = [
+    'year',
+    'manager_user_id',
+    'row_no',
+    'payment_terms',
+    'paid_at',
+    'invoice_org',
+    'order_url',
+    'amount_ex_delivery',
+    'vat',
+    'our_invoice_no',
+    'has_contract',
+    'supplier_invoice_url',
+    'amount_incl_stock',
+    'delivery_to_us',
+    'supplier_name',
+    'supplier_invoice_no',
+    'diff',
+    'pct_r',
+    'status',
+    'pct_mp',
+    'bonus',
+    'handed_to_user_id',
+];
+
+function actorSpecialtyName(req) {
+    const actor = req && req.datagonActor;
+    return String((actor && actor.specialty_name) || '')
+        .trim()
+        .toLowerCase();
+}
+
+/** Чужие таблицы — только admin, «Полный доступ» и «Бухгалтерия». Остальные видят свою. */
+function canSeeAll(req) {
+    const actor = req && req.datagonActor;
+    if (!actor) return false;
+    if (actor.username === 'admin') return true;
+    return SEE_ALL_SPECIALTIES.has(actorSpecialtyName(req));
+}
+
+function actorId(req) {
+    const id = req.datagonActor && req.datagonActor.id;
+    const n = Number(id);
+    return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function actorDisplayName(actor) {
+    if (!actor) return '';
+    return String(actor.full_name || actor.username || '').trim();
+}
+
+function clipLogVal(v) {
+    if (v == null || v === '') return null;
+    const s = String(v);
+    return s.length > 512 ? s.slice(0, 509) + '…' : s;
+}
+
+function logScalar(v) {
+    if (v == null || v === '') return null;
+    if (v instanceof Date && !isNaN(v.getTime())) return sqlDate(v);
+    return clipLogVal(v);
+}
+
+async function listSalesManagers(db) {
+    const [users] = await db.query(
+        `SELECT u.id, u.username, u.full_name
+           FROM users u
+           INNER JOIN specialties s ON s.id = u.specialty_id
+          WHERE COALESCE(u.is_archived, 0) = 0
+            AND s.name = ?
+          ORDER BY COALESCE(NULLIF(u.full_name,''), u.username)`,
+        [SALES_SPECIALTY_NAME]
+    );
+    return (users || []).map((u) => ({
+        id: Number(u.id),
+        username: u.username || '',
+        full_name: u.full_name || u.username || '',
+    }));
+}
+
+async function insertRowLog(db, opts) {
+    const rowId = Number(opts.rowId);
+    if (!Number.isFinite(rowId) || rowId < 1) return;
+    const field = String(opts.field || '').trim();
+    if (!field) return;
+    const actor = opts.actor || null;
+    const uid = actor && actor.id != null ? Number(actor.id) : null;
+    await db.query(
+        `INSERT INTO dg_manager_sales_log
+            (row_id, field, old_value, new_value, action, source, changed_by_user_id, changed_by_name, note)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+            rowId,
+            field.slice(0, 64),
+            clipLogVal(opts.oldValue),
+            clipLogVal(opts.newValue),
+            String(opts.action || 'set').slice(0, 32),
+            String(opts.source || 'ui').slice(0, 32),
+            Number.isFinite(uid) ? uid : null,
+            actorDisplayName(actor) || null,
+            opts.note != null ? clipLogVal(opts.note) : null,
+        ]
+    );
+}
+
+function valuesEqualForLog(a, b) {
+    if (a == null && b == null) return true;
+    if (a == null || b == null) return String(a ?? '') === String(b ?? '');
+    const na = Number(a);
+    const nb = Number(b);
+    if (Number.isFinite(na) && Number.isFinite(nb) && String(a).trim() !== '' && String(b).trim() !== '') {
+        return Math.abs(na - nb) < 1e-9;
+    }
+    return String(a).trim() === String(b).trim();
+}
+
+async function logRowChanges(db, { rowId, before, after, actor, source, action }) {
+    if (!before || !after) return;
+    for (const key of LOG_COMPARE_KEYS) {
+        const oldRaw = before[key];
+        const newRaw = after[key];
+        const oldDisp = key === 'paid_at' ? sqlDate(oldRaw) || logScalar(oldRaw) : logScalar(oldRaw);
+        const newDisp = key === 'paid_at' ? sqlDate(newRaw) || logScalar(newRaw) : logScalar(newRaw);
+        if (valuesEqualForLog(oldDisp, newDisp)) continue;
+        await insertRowLog(db, {
+            rowId,
+            field: key,
+            oldValue: oldDisp,
+            newValue: newDisp,
+            action: action || 'set',
+            source: source || 'ui',
+            actor,
+        });
+    }
+}
+
+function normInvoiceOrg(v) {
+    return clip(v, 255);
+}
+
+function invoiceOrgLabel(v) {
+    const s = String(v || '').trim();
+    if (s === 'ip') return 'ИП';
+    if (s === 'ooo') return 'ООО';
+    return s;
+}
+
+function parseDate(v) {
+    if (v == null || v === '') return null;
+    if (v instanceof Date && !isNaN(v.getTime())) {
+        const y = v.getFullYear();
+        const m = String(v.getMonth() + 1).padStart(2, '0');
+        const d = String(v.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
+    }
+    const s = String(v).trim();
+    const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+    const ru = s.match(/^(\d{1,2})[.](\d{1,2})[.](\d{4})/);
+    if (ru) {
+        const d = ru[1].padStart(2, '0');
+        const m = ru[2].padStart(2, '0');
+        return `${ru[3]}-${m}-${d}`;
+    }
+    return null;
+}
+
+function moneyOrNull(v) {
+    if (v === '' || v == null) return null;
+    return toNum(v);
+}
+
+async function ensureSchema(db) {
+    if (schemaReady) return;
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS dg_manager_sales_rows (
+            id INT NOT NULL AUTO_INCREMENT,
+            year SMALLINT NOT NULL,
+            manager_user_id INT NOT NULL,
+            row_no INT NOT NULL DEFAULT 0,
+            payment_terms VARCHAR(512) NULL,
+            paid_at DATE NULL,
+            invoice_org VARCHAR(255) NOT NULL DEFAULT '',
+            order_url VARCHAR(1024) NULL,
+            amount_ex_delivery DECIMAL(14,2) NULL,
+            vat DECIMAL(8,4) NULL,
+            our_invoice_no VARCHAR(128) NULL,
+            has_contract VARCHAR(128) NULL,
+            supplier_invoice_url VARCHAR(1024) NULL,
+            amount_incl_stock DECIMAL(14,2) NULL,
+            delivery_to_us DECIMAL(14,2) NULL,
+            supplier_name VARCHAR(255) NULL,
+            supplier_invoice_no VARCHAR(128) NULL,
+            diff DECIMAL(14,2) NULL,
+            pct_r DECIMAL(10,4) NULL,
+            status VARCHAR(64) NULL,
+            pct_mp DECIMAL(8,4) NULL,
+            bonus DECIMAL(14,2) NULL,
+            created_by INT NULL,
+            updated_by INT NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY idx_msl_manager_year_row (manager_user_id, year, row_no),
+            KEY idx_msl_year_paid (year, paid_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `);
+    try {
+        await db.query(
+            "ALTER TABLE dg_manager_sales_rows MODIFY COLUMN invoice_org VARCHAR(255) NOT NULL DEFAULT ''"
+        );
+    } catch (_) {}
+    try {
+        await db.query('ALTER TABLE dg_manager_sales_rows MODIFY COLUMN has_contract VARCHAR(128) NULL');
+    } catch (_) {}
+    try {
+        await db.query('ALTER TABLE dg_manager_sales_rows ADD COLUMN archived_at DATETIME NULL');
+    } catch (_) {}
+    try {
+        await db.query('ALTER TABLE dg_manager_sales_rows ADD COLUMN archived_by INT NULL');
+    } catch (_) {}
+    try {
+        await db.query('ALTER TABLE dg_manager_sales_rows ADD KEY idx_msl_archived (archived_at)');
+    } catch (_) {}
+    try {
+        await db.query('ALTER TABLE dg_manager_sales_rows ADD COLUMN handed_to_user_id INT NULL');
+    } catch (_) {}
+    try {
+        await db.query('ALTER TABLE dg_manager_sales_rows ADD COLUMN handed_to_at DATETIME NULL');
+    } catch (_) {}
+    try {
+        await db.query('ALTER TABLE dg_manager_sales_rows ADD COLUMN handed_by INT NULL');
+    } catch (_) {}
+    try {
+        await db.query('ALTER TABLE dg_manager_sales_rows ADD KEY idx_msl_handed (handed_to_user_id)');
+    } catch (_) {}
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS dg_manager_sales_log (
+            id BIGINT AUTO_INCREMENT PRIMARY KEY,
+            row_id INT NOT NULL,
+            field VARCHAR(64) NOT NULL,
+            old_value VARCHAR(512) NULL,
+            new_value VARCHAR(512) NULL,
+            action VARCHAR(32) NOT NULL DEFAULT 'set',
+            source VARCHAR(32) NOT NULL DEFAULT 'ui',
+            changed_by_user_id INT NULL,
+            changed_by_name VARCHAR(255) NULL,
+            note VARCHAR(512) NULL,
+            changed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_msl_log_row (row_id, changed_at),
+            INDEX idx_msl_log_user (changed_by_user_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `);
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS dg_manager_sales_plans (
+            id INT NOT NULL AUTO_INCREMENT,
+            manager_user_id INT NOT NULL DEFAULT 0,
+            year SMALLINT NOT NULL DEFAULT 0,
+            month TINYINT NOT NULL DEFAULT 0,
+            plan_amount DECIMAL(14,2) NOT NULL,
+            note VARCHAR(255) NULL,
+            updated_by INT NULL,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY uniq_msl_plan (manager_user_id, year, month)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `);
+    try {
+        await db.query('ALTER TABLE dg_manager_sales_plans ADD COLUMN steps_json TEXT NULL');
+    } catch (_) {}
+    try {
+        await db.query(
+            `INSERT IGNORE INTO dg_manager_sales_plans (manager_user_id, year, month, plan_amount, note)
+             VALUES (0, 0, 0, ?, 'базовый')`,
+            [DEFAULT_PLAN_AMOUNT]
+        );
+    } catch (_) {}
+    schemaReady = true;
+}
+
+function sqlDate(v) {
+    if (!v) return null;
+    if (v instanceof Date && !isNaN(v.getTime())) {
+        const y = v.getFullYear();
+        const m = String(v.getMonth() + 1).padStart(2, '0');
+        const d = String(v.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
+    }
+    const s = String(v);
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+    return parseDate(s);
+}
+
+function creditManagerId(r) {
+    const h = Number(r && r.handed_to_user_id);
+    if (Number.isFinite(h) && h > 0) return h;
+    return Number(r && r.manager_user_id) || 0;
+}
+
+function canTouchRow(req, row) {
+    if (canSeeAll(req)) return true;
+    const self = actorId(req);
+    if (!self) return false;
+    return Number(row.manager_user_id) === self || Number(row.handed_to_user_id) === self;
+}
+
+function canHandOverRow(req, row) {
+    if (canSeeAll(req)) return true;
+    const self = actorId(req);
+    return !!self && Number(row.manager_user_id) === self;
+}
+
+const ROW_SELECT = `r.*, u.username AS manager_username, u.full_name AS manager_full_name,
+            hu.username AS handed_to_username, hu.full_name AS handed_to_full_name`;
+const ROW_FROM = `dg_manager_sales_rows r
+           LEFT JOIN users u ON u.id = r.manager_user_id
+           LEFT JOIN users hu ON hu.id = r.handed_to_user_id`;
+
+function mapRow(r, pctMpOverride) {
+    const pctMp = pctMpOverride != null ? pctMpOverride : r.pct_mp;
+    const calc = computeRow(Object.assign({}, r, { pct_mp: pctMp }));
+    const handed = Number(r.handed_to_user_id);
+    return {
+        id: Number(r.id),
+        year: Number(r.year),
+        manager_user_id: Number(r.manager_user_id),
+        manager_username: r.manager_username || '',
+        manager_full_name: r.manager_full_name || '',
+        row_no: r.row_no != null ? Number(r.row_no) : 0,
+        payment_terms: r.payment_terms || '',
+        paid_at: sqlDate(r.paid_at),
+        invoice_org: r.invoice_org || '',
+        invoice_org_label: invoiceOrgLabel(r.invoice_org),
+        order_url: r.order_url || '',
+        amount_ex_delivery: calc.amount_ex_delivery,
+        vat: moneyOrNull(r.vat),
+        our_invoice_no: r.our_invoice_no || '',
+        has_contract: r.has_contract || '',
+        supplier_invoice_url: r.supplier_invoice_url || '',
+        amount_incl_stock: calc.amount_incl_stock,
+        delivery_to_us: calc.delivery_to_us,
+        supplier_name: r.supplier_name || '',
+        supplier_invoice_no: r.supplier_invoice_no || '',
+        diff: calc.diff,
+        pct_r: calc.pct_r,
+        status: r.status || '',
+        pct_mp: calc.pct_mp,
+        bonus: calc.bonus,
+        handed_to_user_id: Number.isFinite(handed) && handed > 0 ? handed : null,
+        handed_to_username: r.handed_to_username || '',
+        handed_to_full_name: r.handed_to_full_name || '',
+        handed_to_at: r.handed_to_at || null,
+        archived_at: r.archived_at || null,
+        archived_by: r.archived_by != null ? Number(r.archived_by) : null,
+        is_archived: r.archived_at ? 1 : 0,
+        created_at: r.created_at || null,
+        updated_at: r.updated_at || null,
+    };
+}
+
+function applyBodyToRow(body, base) {
+    const next = Object.assign({}, base || {});
+    if (!body || typeof body !== 'object') return next;
+    for (const key of PATCH_FIELDS) {
+        if (!Object.prototype.hasOwnProperty.call(body, key)) continue;
+        const v = body[key];
+        if (key === 'row_no') {
+            const n = Number(v);
+            next.row_no = Number.isFinite(n) ? Math.round(n) : 0;
+        } else if (key === 'year') {
+            next.year = normYear(v, next.year);
+        } else if (key === 'manager_user_id') {
+            const n = Number(v);
+            if (Number.isFinite(n) && n > 0) next.manager_user_id = n;
+        } else if (key === 'paid_at') {
+            next.paid_at = parseDate(v);
+        } else if (key === 'invoice_org') {
+            next.invoice_org = normInvoiceOrg(v);
+        } else if (key === 'has_contract') {
+            next.has_contract = normHasContract(v);
+        } else if (
+            key === 'amount_ex_delivery' ||
+            key === 'amount_incl_stock' ||
+            key === 'delivery_to_us' ||
+            key === 'vat'
+        ) {
+            next[key] = moneyOrNull(v);
+        } else if (key === 'order_url' || key === 'supplier_invoice_url') {
+            next[key] = clip(v, 1024);
+        } else if (key === 'payment_terms') {
+            next[key] = clip(v, 512);
+        } else if (key === 'supplier_name') {
+            next[key] = clip(v, 255);
+        } else if (key === 'our_invoice_no' || key === 'supplier_invoice_no') {
+            next[key] = clip(v, 128);
+        } else if (key === 'status') {
+            next[key] = normStatus(v);
+        }
+    }
+    const calc = computeRow(next);
+    next.amount_ex_delivery = calc.amount_ex_delivery;
+    next.amount_incl_stock = calc.amount_incl_stock;
+    next.delivery_to_us = calc.delivery_to_us;
+    next.pct_mp = calc.pct_mp;
+    next.diff = calc.diff;
+    next.pct_r = calc.pct_r;
+    next.bonus = calc.bonus;
+    return next;
+}
+
+function rowToInsertParams(row, actor) {
+    return [
+        row.year,
+        row.manager_user_id,
+        row.row_no || 0,
+        row.payment_terms || null,
+        row.paid_at || null,
+        row.invoice_org || '',
+        row.order_url || null,
+        row.amount_ex_delivery,
+        row.vat,
+        row.our_invoice_no || null,
+        row.has_contract || null,
+        row.supplier_invoice_url || null,
+        row.amount_incl_stock,
+        row.delivery_to_us,
+        row.supplier_name || null,
+        row.supplier_invoice_no || null,
+        row.diff,
+        row.pct_r,
+        row.status || null,
+        row.pct_mp,
+        row.bonus,
+        actor,
+        actor,
+    ];
+}
+
+const INSERT_SQL = `INSERT INTO dg_manager_sales_rows (
+    year, manager_user_id, row_no, payment_terms, paid_at, invoice_org, order_url,
+    amount_ex_delivery, vat, our_invoice_no, has_contract, supplier_invoice_url,
+    amount_incl_stock, delivery_to_us, supplier_name, supplier_invoice_no,
+    diff, pct_r, status, pct_mp, bonus, created_by, updated_by
+) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`;
+
+const UPDATE_SQL = `UPDATE dg_manager_sales_rows SET
+    year=?, manager_user_id=?, row_no=?, payment_terms=?, paid_at=?, invoice_org=?, order_url=?,
+    amount_ex_delivery=?, vat=?, our_invoice_no=?, has_contract=?, supplier_invoice_url=?,
+    amount_incl_stock=?, delivery_to_us=?, supplier_name=?, supplier_invoice_no=?,
+    diff=?, pct_r=?, status=?, pct_mp=?, bonus=?, updated_by=?
+    WHERE id=?`;
+
+function parseDelimited(text) {
+    const raw = String(text || '').replace(/^\uFEFF/, '');
+    if (!raw.trim()) return { headers: [], rows: [] };
+    const firstLine = raw.split(/\r?\n/, 1)[0] || '';
+    const comma = (firstLine.match(/,/g) || []).length;
+    const tab = (firstLine.match(/\t/g) || []).length;
+    const semi = (firstLine.match(/;/g) || []).length;
+    let delim = ',';
+    if (tab >= comma && tab >= semi && tab > 0) delim = '\t';
+    else if (semi > comma) delim = ';';
+
+    const rows = [];
+    let cur = [];
+    let field = '';
+    let inQuotes = false;
+    const src = raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    for (let i = 0; i < src.length; i += 1) {
+        const ch = src[i];
+        if (inQuotes) {
+            if (ch === '"') {
+                if (src[i + 1] === '"') {
+                    field += '"';
+                    i += 1;
+                } else {
+                    inQuotes = false;
+                }
+            } else {
+                field += ch;
+            }
+            continue;
+        }
+        if (ch === '"') {
+            inQuotes = true;
+            continue;
+        }
+        if (ch === delim) {
+            cur.push(field);
+            field = '';
+            continue;
+        }
+        if (ch === '\n') {
+            cur.push(field);
+            field = '';
+            rows.push(cur);
+            cur = [];
+            continue;
+        }
+        field += ch;
+    }
+    cur.push(field);
+    if (cur.some((c) => String(c).trim() !== '')) rows.push(cur);
+    if (!rows.length) return { headers: [], rows: [] };
+    const headers = rows[0].map((h) => String(h || '').trim());
+    return { headers, rows: rows.slice(1) };
+}
+
+function headerKey(label) {
+    const n = String(label || '')
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, ' ');
+    for (const h of CSV_HEADERS) {
+        if (h.aliases.some((a) => a === n)) return h.key;
+        if (h.key === n) return h.key;
+    }
+    return null;
+}
+
+function csvEscape(v) {
+    const s = v == null ? '' : String(v);
+    if (/[",\n;]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+    return s;
+}
+
+async function buildListWhere(db, q, req) {
+    const year = normYear(q.year, currentYear());
+    const where = ['r.year = ?'];
+    const params = [year];
+
+    let managerId = null;
+    const sales = canSeeAll(req) ? await listSalesManagers(db) : [];
+    const salesIds = new Set(sales.map((m) => m.id));
+    if (!canSeeAll(req)) {
+        managerId = actorId(req);
+        if (!managerId) {
+            where.push('1=0');
+        } else {
+            where.push('(r.manager_user_id = ? OR r.handed_to_user_id = ?)');
+            params.push(managerId, managerId);
+        }
+    } else {
+        const raw = String(q.manager_user_id || '').trim();
+        if (raw && raw !== 'all') {
+            const n = Number(raw);
+            if (Number.isFinite(n) && n > 0 && salesIds.has(n)) {
+                managerId = n;
+                where.push('(r.manager_user_id = ? OR r.handed_to_user_id = ?)');
+                params.push(n, n);
+            } else {
+                where.push('1=0');
+            }
+        } else if (salesIds.size) {
+            const ids = [...salesIds];
+            where.push(`r.manager_user_id IN (${ids.map(() => '?').join(',')})`);
+            params.push(...ids);
+        } else {
+            where.push('1=0');
+        }
+    }
+
+    const arch = String(q.archived || q.archive || '0').trim();
+    if (arch === '1' || arch === 'archived') {
+        where.push('r.archived_at IS NOT NULL');
+    } else if (arch === 'all') {
+        /* both */
+    } else {
+        where.push('r.archived_at IS NULL');
+    }
+
+    let month = null;
+    const rawMonth = String(q.month || '').trim();
+    if (rawMonth && rawMonth !== 'all') {
+        const m = Number(rawMonth);
+        if (Number.isFinite(m) && m >= 1 && m <= 12) {
+            month = Math.round(m);
+            where.push('(MONTH(r.paid_at) = ? OR r.paid_at IS NULL)');
+            params.push(month);
+        }
+    }
+
+    const search = String(q.search || '').trim();
+    if (search) {
+        const like = `%${search}%`;
+        where.push(`(
+            COALESCE(r.payment_terms,'') LIKE ?
+            OR COALESCE(r.order_url,'') LIKE ?
+            OR COALESCE(r.our_invoice_no,'') LIKE ?
+            OR COALESCE(r.supplier_name,'') LIKE ?
+            OR COALESCE(r.supplier_invoice_no,'') LIKE ?
+            OR COALESCE(r.status,'') LIKE ?
+            OR COALESCE(u.full_name,'') LIKE ?
+            OR COALESCE(u.username,'') LIKE ?
+            OR COALESCE(hu.full_name,'') LIKE ?
+            OR COALESCE(hu.username,'') LIKE ?
+        )`);
+        params.push(like, like, like, like, like, like, like, like, like, like);
+    }
+
+    const status = String(q.status || '').trim();
+    if (status) {
+        where.push('r.status = ?');
+        params.push(clip(status, 64));
+    }
+
+    const supplier = String(q.supplier || q.supplier_name || '').trim();
+    if (supplier) {
+        where.push('r.supplier_name LIKE ?');
+        params.push(`%${supplier}%`);
+    }
+
+    const hc = String(q.has_contract || '').trim();
+    if (hc === '1') {
+        where.push(
+            "(TRIM(COALESCE(r.has_contract,'')) <> '' AND LOWER(TRIM(r.has_contract)) NOT IN ('нет','0','no','false'))"
+        );
+    } else if (hc === '0') {
+        where.push(
+            "(TRIM(COALESCE(r.has_contract,'')) = '' OR LOWER(TRIM(r.has_contract)) IN ('нет','0','no','false'))"
+        );
+    } else if (hc) {
+        const canon = normHasContract(hc);
+        where.push('LOWER(TRIM(r.has_contract)) = ?');
+        params.push(String(canon || hc).toLowerCase());
+    }
+
+    const org = String(q.invoice_org || '').trim();
+    if (org === 'ip' || org.toLowerCase() === 'ип') {
+        where.push("r.invoice_org LIKE '%ИП%'");
+    } else if (org === 'ooo' || org.toLowerCase() === 'ооо') {
+        where.push("r.invoice_org LIKE '%ООО%'");
+    } else if (org) {
+        where.push('r.invoice_org LIKE ?');
+        params.push(`%${org}%`);
+    }
+
+    return { year, month, managerId, whereSql: where.join(' AND '), params };
+}
+
+async function nextRowNo(db, managerUserId, year) {
+    const [rows] = await db.query(
+        'SELECT COALESCE(MAX(row_no), 0) + 1 AS n FROM dg_manager_sales_rows WHERE manager_user_id = ? AND year = ?',
+        [managerUserId, year]
+    );
+    return Number(rows && rows[0] && rows[0].n) || 1;
+}
+
+async function fetchRowById(db, id) {
+    const [rows] = await db.query(
+        `SELECT ${ROW_SELECT}
+           FROM ${ROW_FROM}
+          WHERE r.id = ?`,
+        [id]
+    );
+    return rows && rows[0] ? rows[0] : null;
+}
+
+function paidMonth(paidAt) {
+    const d = sqlDate(paidAt);
+    if (!d) return 0;
+    const m = Number(d.slice(5, 7));
+    return m >= 1 && m <= 12 ? m : 0;
+}
+
+async function loadPlans(db) {
+    const [rows] = await db.query(
+        `SELECT id, manager_user_id, year, month, plan_amount, note, steps_json
+           FROM dg_manager_sales_plans`
+    );
+    return rows || [];
+}
+
+function resolvePlan(plans, managerUserId, year, month) {
+    const mid = Number(managerUserId) || 0;
+    const y = Number(year) || 0;
+    const m = Number(month) || 0;
+    const hit = (a, b, c) =>
+        (plans || []).find(
+            (p) => Number(p.manager_user_id) === a && Number(p.year) === b && Number(p.month) === c
+        );
+    const monthOwn = m && mid ? hit(mid, y, m) : null;
+    const managerYear = mid ? hit(mid, y, 0) : null;
+    const yearBase = y ? hit(0, y, 0) : null;
+    const fallback = hit(0, 0, 0);
+    const row = monthOwn || managerYear || yearBase || fallback;
+    const amount = row && row.plan_amount != null ? Number(row.plan_amount) : DEFAULT_PLAN_AMOUNT;
+    let source = 'fallback';
+    if (monthOwn) source = 'month';
+    else if (managerYear) source = 'manager_year';
+    else if (yearBase) source = 'year_base';
+    else if (fallback) source = 'fallback';
+    let steps = null;
+    [monthOwn, managerYear, yearBase, fallback].forEach((p) => {
+        if (steps) return;
+        const parsed = parseStoredSteps(p && p.steps_json);
+        if (parsed) steps = parsed;
+    });
+    if (!steps) steps = cloneDefaultSteps();
+    return {
+        id: row && row.id != null ? Number(row.id) : null,
+        plan_amount: Number.isFinite(amount) && amount > 0 ? amount : DEFAULT_PLAN_AMOUNT,
+        source,
+        note: row && row.note ? String(row.note) : '',
+        steps,
+    };
+}
+
+async function upsertPlanRow(db, { managerUserId, year, month, planAmount, note, actor, steps }) {
+    const mid = Number(managerUserId) || 0;
+    const y = Number(year) || 0;
+    const m = Number(month) || 0;
+    const empty =
+        planAmount == null || planAmount === '' || String(planAmount).trim() === '';
+    let stepsJson = undefined;
+    if (steps !== undefined) {
+        if (steps == null || steps === '') stepsJson = null;
+        else stepsJson = stepsToJson(normalizePlanSteps(steps));
+    }
+    if (empty && stepsJson == null && steps === undefined) {
+        await db.query(
+            'DELETE FROM dg_manager_sales_plans WHERE manager_user_id = ? AND year = ? AND month = ?',
+            [mid, y, m]
+        );
+        return { cleared: true };
+    }
+    let amount = empty ? null : toNum(planAmount);
+    if ((amount == null || amount <= 0) && stepsJson) {
+        const n = normalizePlanSteps(steps);
+        amount = n.steps[n.steps.length - 1][0];
+    }
+    if (amount == null || amount <= 0) {
+        if (empty && steps === undefined) {
+            await db.query(
+                'DELETE FROM dg_manager_sales_plans WHERE manager_user_id = ? AND year = ? AND month = ?',
+                [mid, y, m]
+            );
+            return { cleared: true };
+        }
+        const err = new Error('План должен быть больше 0 или пустой');
+        err.status = 400;
+        throw err;
+    }
+    const noteVal = note != null ? clip(note, 255) : '';
+    if (steps !== undefined) {
+        await db.query(
+            `INSERT INTO dg_manager_sales_plans (manager_user_id, year, month, plan_amount, note, steps_json, updated_by)
+             VALUES (?, ?, ?, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE plan_amount = VALUES(plan_amount), note = VALUES(note),
+                steps_json = VALUES(steps_json), updated_by = VALUES(updated_by)`,
+            [mid, y, m, amount, noteVal || null, stepsJson, actor]
+        );
+    } else {
+        await db.query(
+            `INSERT INTO dg_manager_sales_plans (manager_user_id, year, month, plan_amount, note, updated_by)
+             VALUES (?, ?, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE plan_amount = VALUES(plan_amount), note = VALUES(note), updated_by = VALUES(updated_by)`,
+            [mid, y, m, amount, noteVal || null, actor]
+        );
+    }
+    return { plan_amount: amount };
+}
+
+async function persistRowsPct(db, rows, plans, totals, year) {
+    const list = rows || [];
+    if (!list.length) return 0;
+    const y = Number(year);
+    const whenPct = [];
+    const whenBonus = [];
+    const params = [];
+    const ids = [];
+    for (const r of list) {
+        const id = Number(r.id);
+        if (!Number.isFinite(id) || id < 1) continue;
+        const month = paidMonth(r.paid_at);
+        const mid = creditManagerId(r);
+        const total = month ? totals[monthKey(mid, month)] || 0 : 0;
+        const plan = resolvePlan(plans, mid, y, month);
+        const pct = month ? pctMpFromMonthTotal(total, plan.plan_amount, plan.steps) : 0;
+        const calc = computeRow(Object.assign({}, r, { pct_mp: pct }));
+        const nextPct = Number(calc.pct_mp);
+        const nextBonus = Number(calc.bonus);
+        if (Number(r.pct_mp) === nextPct && Number(r.bonus) === nextBonus) continue;
+        ids.push(id);
+        whenPct.push('WHEN ? THEN ?');
+        whenBonus.push('WHEN ? THEN ?');
+        params.push(id, nextPct, id, nextBonus);
+    }
+    if (!ids.length) return 0;
+    const inPh = ids.map(() => '?').join(',');
+    await db.query(
+        `UPDATE dg_manager_sales_rows
+            SET pct_mp = CASE id ${whenPct.join(' ')} END,
+                bonus = CASE id ${whenBonus.join(' ')} END
+          WHERE id IN (${inPh})`,
+        params.concat(ids)
+    );
+    return ids.length;
+}
+
+async function persistYearPct(db, managerUserId, year) {
+    const mid = Number(managerUserId);
+    const y = Number(year);
+    if (!Number.isFinite(mid) || mid < 1) return;
+    const plans = await loadPlans(db);
+    const totals = await fetchMonthTotals(db, y, [mid]);
+    const [raw] = await db.query(
+        `SELECT id, manager_user_id, handed_to_user_id, paid_at, amount_ex_delivery, amount_incl_stock, delivery_to_us, vat, pct_mp, bonus
+           FROM dg_manager_sales_rows
+          WHERE year = ? AND archived_at IS NULL
+            AND (manager_user_id = ? OR handed_to_user_id = ?)`,
+        [y, mid, mid]
+    );
+    await persistRowsPct(
+        db,
+        (raw || []).filter((r) => creditManagerId(r) === mid),
+        plans,
+        totals,
+        y
+    );
+}
+
+async function persistMonthPct(db, managerUserId, year, month) {
+    const m = Number(month);
+    const mid = Number(managerUserId);
+    const y = Number(year);
+    if (!Number.isFinite(m) || m < 1 || m > 12) return;
+    if (!Number.isFinite(mid) || mid < 1) return;
+    const start = `${y}-${String(m).padStart(2, '0')}-01`;
+    const next =
+        m === 12
+            ? `${y + 1}-01-01`
+            : `${y}-${String(m + 1).padStart(2, '0')}-01`;
+    const [raw] = await db.query(
+        `SELECT id, manager_user_id, handed_to_user_id, paid_at, amount_ex_delivery, amount_incl_stock, delivery_to_us, vat, pct_mp, bonus
+           FROM dg_manager_sales_rows
+          WHERE year = ? AND archived_at IS NULL
+            AND (manager_user_id = ? OR handed_to_user_id = ?)
+            AND paid_at >= ? AND paid_at < ?`,
+        [y, mid, mid, start, next]
+    );
+    const plans = await loadPlans(db);
+    const totals = await fetchMonthTotals(db, y, [mid]);
+    await persistRowsPct(
+        db,
+        (raw || []).filter((r) => creditManagerId(r) === mid),
+        plans,
+        totals,
+        y
+    );
+}
+
+async function fetchMonthTotals(db, year, managerIds) {
+    const out = {};
+    const ids = (managerIds || []).map((n) => Number(n)).filter((n) => Number.isFinite(n) && n > 0);
+    if (!ids.length) return out;
+    const ph = ids.map(() => '?').join(',');
+    const [rows] = await db.query(
+        `SELECT COALESCE(handed_to_user_id, manager_user_id) AS mid, MONTH(paid_at) AS m,
+                COALESCE(SUM(amount_ex_delivery), 0) AS amount_ex
+           FROM dg_manager_sales_rows
+          WHERE year = ?
+            AND archived_at IS NULL
+            AND paid_at IS NOT NULL
+            AND COALESCE(handed_to_user_id, manager_user_id) IN (${ph})
+          GROUP BY COALESCE(handed_to_user_id, manager_user_id), MONTH(paid_at)`,
+        [year].concat(ids)
+    );
+    (rows || []).forEach((r) => {
+        out[`${Number(r.mid)}:${Number(r.m)}`] = Number(r.amount_ex) || 0;
+    });
+    return out;
+}
+
+function monthKey(managerId, month) {
+    return `${Number(managerId)}:${Number(month)}`;
+}
+
+async function mapRowsWithPlan(db, rawRows) {
+    const list = rawRows || [];
+    if (!list.length) return [];
+    const year = Number(list[0].year);
+    const mids = [];
+    const seen = new Set();
+    list.forEach((r) => {
+        const id = creditManagerId(r);
+        if (!seen.has(id) && Number.isFinite(id) && id > 0) {
+            seen.add(id);
+            mids.push(id);
+        }
+    });
+    const plans = await loadPlans(db);
+    const totals = await fetchMonthTotals(db, year, mids);
+    return list.map((raw) => {
+        const month = paidMonth(raw.paid_at);
+        const mid = creditManagerId(raw);
+        const total = month ? totals[monthKey(mid, month)] || 0 : 0;
+        const plan = resolvePlan(plans, mid, raw.year, month);
+        const pct = month ? pctMpFromMonthTotal(total, plan.plan_amount, plan.steps) : 0;
+        return mapRow(raw, pct);
+    });
+}
+
+module.exports = function managerSalesRouterFactory(db) {
+    const router = express.Router();
+
+    router.get('/meta', async (req, res) => {
+        try {
+            await ensureSchema(db);
+            const seeAll = canSeeAll(req);
+            const selfId = actorId(req);
+            const yearSql = seeAll
+                ? 'SELECT DISTINCT year FROM dg_manager_sales_rows ORDER BY year DESC'
+                : `SELECT DISTINCT year FROM dg_manager_sales_rows
+                    WHERE manager_user_id = ? OR handed_to_user_id = ?
+                    ORDER BY year DESC`;
+            const [yearRows] = await db.query(yearSql, seeAll ? [] : [selfId, selfId]);
+            const years = (yearRows || []).map((r) => Number(r.year)).filter((y) => Number.isFinite(y));
+            const cy = currentYear();
+            if (!years.includes(cy)) years.unshift(cy);
+            const managers = await listSalesManagers(db);
+            const actor = req.datagonActor || {};
+            res.json({
+                success: true,
+                year: cy,
+                years,
+                managers,
+                statuses: STATUS_VALUES,
+                can_write: canWrite(req),
+                can_pick_manager: seeAll,
+                actor_user_id: selfId,
+                actor_full_name: actor.full_name || actor.username || '',
+                actor_username: actor.username || '',
+                formulas: {
+                    tax_pct: 16,
+                    diff: '((F-K) - F*G/(G+100)) * (1 - 16/100) - L',
+                    pct_r: 'diff / (F/100)',
+                    pct_mp: 'по сумме F за месяц и плану (ступени Google, масштаб от 3 300 000)',
+                    bonus: 'diff / 100 * pct_mp',
+                    default_plan_amount: DEFAULT_PLAN_AMOUNT,
+                },
+            });
+        } catch (e) {
+            res.status(500).json({ error: e.message || 'Ошибка meta' });
+        }
+    });
+
+    router.get('/supplier-hints', async (req, res) => {
+        try {
+            await ensureSchema(db);
+            const q = String(req.query.q || '').trim();
+            const like = `%${q}%`;
+            const hintWhere = ['supplier_name IS NOT NULL', "TRIM(supplier_name) <> ''"];
+            const hintParams = [];
+            if (!canSeeAll(req)) {
+                const selfId = actorId(req);
+                if (!selfId) {
+                    return res.json({ success: true, names: [] });
+                }
+                hintWhere.push('manager_user_id = ?');
+                hintParams.push(selfId);
+            } else {
+                const raw = String(req.query.manager_user_id || '').trim();
+                if (raw && raw !== 'all') {
+                    const n = Number(raw);
+                    if (Number.isFinite(n) && n > 0) {
+                        hintWhere.push('manager_user_id = ?');
+                        hintParams.push(n);
+                    }
+                }
+            }
+            if (q) {
+                hintWhere.push('supplier_name LIKE ?');
+                hintParams.push(like);
+            }
+            const [own] = await db.query(
+                `SELECT DISTINCT supplier_name AS name
+                   FROM dg_manager_sales_rows
+                  WHERE ${hintWhere.join(' AND ')}
+                  ORDER BY supplier_name
+                  LIMIT 40`,
+                hintParams
+            );
+            const names = [];
+            const seen = new Set();
+            (own || []).forEach((r) => {
+                const n = String(r.name || '').trim();
+                if (!n || seen.has(n.toLowerCase())) return;
+                seen.add(n.toLowerCase());
+                names.push(n);
+            });
+            if (names.length < 20) {
+                try {
+                    const [ms] = await db.query(
+                        `SELECT DISTINCT supplier AS name
+                           FROM ms_export
+                          WHERE supplier IS NOT NULL AND TRIM(supplier) <> ''
+                            ${q ? 'AND supplier LIKE ?' : ''}
+                          ORDER BY supplier
+                          LIMIT 40`,
+                        q ? [like] : []
+                    );
+                    (ms || []).forEach((r) => {
+                        const n = String(r.name || '').trim();
+                        if (!n || seen.has(n.toLowerCase())) return;
+                        seen.add(n.toLowerCase());
+                        names.push(n);
+                    });
+                } catch (_) {
+                    /* ms_export may be absent */
+                }
+            }
+            res.json({ success: true, names: names.slice(0, 40) });
+        } catch (e) {
+            res.status(500).json({ error: e.message || 'Ошибка подсказок' });
+        }
+    });
+
+    router.get('/export.csv', async (req, res) => {
+        try {
+            await ensureSchema(db);
+            const built = await buildListWhere(db, req.query || {}, req);
+            const [rows] = await db.query(
+                `SELECT ${ROW_SELECT}
+                   FROM ${ROW_FROM}
+                  WHERE ${built.whereSql}
+                  ORDER BY r.row_no ASC, r.id ASC`,
+                built.params
+            );
+            const labels = [
+                '№',
+                'Менеджер',
+                'Условия оплаты',
+                'Дата оплаты',
+                'Счет от ИП или ООО',
+                'Ссылка на заказ на сайте almamed.su или сателитах',
+                'Сумма оплаты без доставки',
+                'Ндс',
+                '№ нашего счета',
+                'Наличие договора',
+                'Ссылка на счет поставщика',
+                'Сумма оплаты (включая складские запасы)',
+                'Доставка до нас',
+                'Поставщик',
+                '№ счета поставщика',
+                'Разница',
+                '% Р.',
+                'Статус',
+                '% МП.',
+                'Премия',
+                'Передан',
+            ];
+            const lines = [labels.map(csvEscape).join(',')];
+            const mapped = await mapRowsWithPlan(db, rows || []);
+            mapped.forEach((r) => {
+                lines.push(
+                    [
+                        r.row_no,
+                        r.manager_full_name || r.manager_username || '',
+                        r.payment_terms,
+                        r.paid_at || '',
+                        r.invoice_org_label,
+                        r.order_url,
+                        r.amount_ex_delivery,
+                        r.vat,
+                        r.our_invoice_no,
+                        r.has_contract || '',
+                        r.supplier_invoice_url,
+                        r.amount_incl_stock,
+                        r.delivery_to_us,
+                        r.supplier_name,
+                        r.supplier_invoice_no,
+                        r.diff,
+                        r.pct_r,
+                        r.status,
+                        r.pct_mp,
+                        r.bonus,
+                        r.handed_to_full_name || r.handed_to_username || '',
+                    ]
+                        .map(csvEscape)
+                        .join(',')
+                );
+            });
+            const bom = '\uFEFF';
+            res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+            res.setHeader(
+                'Content-Disposition',
+                `attachment; filename="manager-sales-${built.year}.csv"`
+            );
+            res.send(bom + lines.join('\n'));
+        } catch (e) {
+            res.status(500).json({ error: e.message || 'Ошибка экспорта' });
+        }
+    });
+
+    router.get('/plans', async (req, res) => {
+        try {
+            await ensureSchema(db);
+            const seeAll = canSeeAll(req);
+            const year = normYear(req.query.year, currentYear());
+            const plans = await loadPlans(db);
+            const fallback = resolvePlan(plans, 0, 0, 0);
+            const yearRow = (plans || []).find(
+                (p) => Number(p.manager_user_id) === 0 && Number(p.year) === year && Number(p.month) === 0
+            );
+            const yearBaseAmount =
+                yearRow && yearRow.plan_amount != null ? Number(yearRow.plan_amount) : null;
+            const inheritedYear = yearBaseAmount != null ? yearBaseAmount : fallback.plan_amount;
+            let managers = [];
+            if (seeAll) {
+                managers = await listSalesManagers(db);
+            } else {
+                const selfId = actorId(req);
+                const actor = req.datagonActor || {};
+                if (selfId) {
+                    managers = [
+                        {
+                            id: selfId,
+                            username: actor.username || '',
+                            full_name: actor.full_name || actor.username || '',
+                        },
+                    ];
+                }
+            }
+            const rows = managers.map((mgr) => {
+                const yearOwn = (plans || []).find(
+                    (p) =>
+                        Number(p.manager_user_id) === Number(mgr.id) &&
+                        Number(p.year) === year &&
+                        Number(p.month) === 0
+                );
+                const managerYearAmount =
+                    yearOwn && yearOwn.plan_amount != null ? Number(yearOwn.plan_amount) : null;
+                const inheritedManager =
+                    managerYearAmount != null ? managerYearAmount : inheritedYear;
+                const months = [];
+                for (let m = 1; m <= 12; m += 1) {
+                    const own = (plans || []).find(
+                        (p) =>
+                            Number(p.manager_user_id) === Number(mgr.id) &&
+                            Number(p.year) === year &&
+                            Number(p.month) === m
+                    );
+                    months.push({
+                        month: m,
+                        plan_amount: own && own.plan_amount != null ? Number(own.plan_amount) : null,
+                        note: own && own.note ? String(own.note) : '',
+                        inherited: inheritedManager,
+                    });
+                }
+                return {
+                    id: Number(mgr.id),
+                    username: mgr.username || '',
+                    full_name: mgr.full_name || mgr.username || '',
+                    year_plan: managerYearAmount,
+                    year_note: yearOwn && yearOwn.note ? String(yearOwn.note) : '',
+                    inherited: inheritedYear,
+                    months,
+                };
+            });
+            const yearSteps =
+                parseStoredSteps(yearRow && yearRow.steps_json) ||
+                fallback.steps ||
+                cloneDefaultSteps();
+            res.json({
+                success: true,
+                can_edit: seeAll,
+                year,
+                default_plan_amount: DEFAULT_PLAN_AMOUNT,
+                fallback: { plan_amount: fallback.plan_amount, steps: fallback.steps },
+                year_base: {
+                    plan_amount: yearBaseAmount,
+                    inherited: fallback.plan_amount,
+                    note: yearRow && yearRow.note ? String(yearRow.note) : '',
+                    steps: yearSteps,
+                    steps_custom: !!parseStoredSteps(yearRow && yearRow.steps_json),
+                },
+                steps: scaledPlanSteps(inheritedYear, yearSteps),
+                managers: rows,
+            });
+        } catch (e) {
+            res.status(500).json({ error: e.message || 'Ошибка планов' });
+        }
+    });
+
+    router.put('/plans/base', async (req, res) => {
+        try {
+            await ensureSchema(db);
+            if (!canSeeAll(req)) {
+                return res.status(403).json({ error: 'Планы меняют Полный доступ и Бухгалтерия' });
+            }
+            const body = req.body || {};
+            const year = normYear(body.year, currentYear());
+            const actor = actorId(req);
+            await upsertPlanRow(db, {
+                managerUserId: 0,
+                year,
+                month: 0,
+                planAmount: body.plan_amount,
+                note: body.note || 'план года',
+                actor,
+                steps: Object.prototype.hasOwnProperty.call(body, 'steps') ? body.steps : undefined,
+            });
+            const sales = await listSalesManagers(db);
+            for (const m of sales) {
+                await persistYearPct(db, m.id, year);
+            }
+            res.json({ success: true, year, plan_amount: toNum(body.plan_amount) });
+        } catch (e) {
+            res.status(e.status || 500).json({ error: e.message || 'Ошибка базового плана' });
+        }
+    });
+
+    router.put('/plans/matrix', async (req, res) => {
+        try {
+            await ensureSchema(db);
+            if (!canSeeAll(req)) {
+                return res.status(403).json({ error: 'Планы меняют Полный доступ и Бухгалтерия' });
+            }
+            const body = req.body || {};
+            const year = normYear(body.year, currentYear());
+            const actor = actorId(req);
+            const sales = await listSalesManagers(db);
+            const allowed = new Set(sales.map((m) => m.id));
+            const hasBase = Object.prototype.hasOwnProperty.call(body, 'year_base');
+            const hasSteps = Object.prototype.hasOwnProperty.call(body, 'steps');
+            if (hasBase || hasSteps) {
+                const existingPlans = await loadPlans(db);
+                const yearRow = (existingPlans || []).find(
+                    (p) => Number(p.manager_user_id) === 0 && Number(p.year) === year && Number(p.month) === 0
+                );
+                await upsertPlanRow(db, {
+                    managerUserId: 0,
+                    year,
+                    month: 0,
+                    planAmount: hasBase
+                        ? body.year_base
+                        : yearRow && yearRow.plan_amount != null
+                          ? yearRow.plan_amount
+                          : DEFAULT_PLAN_AMOUNT,
+                    note: 'план года',
+                    actor,
+                    steps: hasSteps ? body.steps : undefined,
+                });
+            }
+            const list = Array.isArray(body.managers) ? body.managers : [];
+            const touched = new Set();
+            const emptyMonths = [];
+            for (const row of list) {
+                const mid = Number(row.manager_user_id || row.id);
+                if (!allowed.has(mid)) continue;
+                if (Object.prototype.hasOwnProperty.call(row, 'year_plan')) {
+                    await upsertPlanRow(db, {
+                        managerUserId: mid,
+                        year,
+                        month: 0,
+                        planAmount: row.year_plan,
+                        note: row.year_note || '',
+                        actor,
+                    });
+                }
+                const months = Array.isArray(row.months) ? row.months : [];
+                for (const mm of months) {
+                    const month = Number(mm.month);
+                    if (!Number.isFinite(month) || month < 1 || month > 12) continue;
+                    const rawAmt = mm.plan_amount;
+                    const empty =
+                        rawAmt == null || rawAmt === '' || String(rawAmt).trim() === '';
+                    if (empty) {
+                        emptyMonths.push([mid, month]);
+                        continue;
+                    }
+                    await upsertPlanRow(db, {
+                        managerUserId: mid,
+                        year,
+                        month,
+                        planAmount: mm.plan_amount,
+                        note: mm.note || '',
+                        actor,
+                    });
+                }
+                touched.add(mid);
+            }
+            if (emptyMonths.length) {
+                const orSql = emptyMonths.map(() => '(manager_user_id = ? AND year = ? AND month = ?)').join(' OR ');
+                const params = [];
+                emptyMonths.forEach(([mid, month]) => {
+                    params.push(mid, year, month);
+                });
+                await db.query(`DELETE FROM dg_manager_sales_plans WHERE ${orSql}`, params);
+            }
+            const persistIds = touched.size ? [...touched] : sales.map((m) => m.id);
+            for (const id of persistIds) {
+                await persistYearPct(db, id, year);
+            }
+            res.json({ success: true, year, managers: persistIds.length });
+        } catch (e) {
+            res.status(e.status || 500).json({ error: e.message || 'Ошибка сохранения планов' });
+        }
+    });
+
+    router.put('/plans/month', async (req, res) => {
+        try {
+            await ensureSchema(db);
+            if (!canSeeAll(req)) {
+                return res.status(403).json({ error: 'Планы меняют Полный доступ и Бухгалтерия' });
+            }
+            const body = req.body || {};
+            const year = normYear(body.year, currentYear());
+            const month = Number(body.month);
+            if (!Number.isFinite(month) || month < 1 || month > 12) {
+                return res.status(400).json({ error: 'Укажите месяц 1–12' });
+            }
+            const sales = await listSalesManagers(db);
+            const mid = Number(body.manager_user_id);
+            if (!Number.isFinite(mid) || mid < 1 || !sales.some((m) => m.id === mid)) {
+                return res.status(400).json({ error: 'Выберите менеджера из отдела продаж' });
+            }
+            const rawAmount = body.plan_amount;
+            const empty =
+                rawAmount == null ||
+                rawAmount === '' ||
+                String(rawAmount).trim() === '';
+            if (empty) {
+                await db.query(
+                    'DELETE FROM dg_manager_sales_plans WHERE manager_user_id = ? AND year = ? AND month = ?',
+                    [mid, year, month]
+                );
+                await persistMonthPct(db, mid, year, month);
+                return res.json({ success: true, cleared: true, manager_user_id: mid, year, month });
+            }
+            const amount = toNum(rawAmount);
+            if (amount == null || amount <= 0) {
+                return res.status(400).json({ error: 'План должен быть больше 0 или пустой (базовый)' });
+            }
+            const note = clip(body.note, 255);
+            await db.query(
+                `INSERT INTO dg_manager_sales_plans (manager_user_id, year, month, plan_amount, note, updated_by)
+                 VALUES (?, ?, ?, ?, ?, ?)
+                 ON DUPLICATE KEY UPDATE plan_amount = VALUES(plan_amount), note = VALUES(note), updated_by = VALUES(updated_by)`,
+                [mid, year, month, amount, note || null, actorId(req)]
+            );
+            await persistMonthPct(db, mid, year, month);
+            res.json({
+                success: true,
+                manager_user_id: mid,
+                year,
+                month,
+                plan_amount: amount,
+                note: note || '',
+            });
+        } catch (e) {
+            res.status(500).json({ error: e.message || 'Ошибка индивидуального плана' });
+        }
+    });
+
+    router.get('/', async (req, res) => {
+        try {
+            await ensureSchema(db);
+            const q = req.query || {};
+            const built = await buildListWhere(db, q, req);
+            let limit = Number(q.limit);
+            if (!Number.isFinite(limit) || limit <= 0) limit = DEFAULT_LIMIT;
+            limit = Math.min(MAX_LIMIT, Math.round(limit));
+            let offset = Number(q.offset);
+            if (!Number.isFinite(offset) || offset < 0) offset = 0;
+            offset = Math.round(offset);
+            const sortBy = SORT_KEYS.has(String(q.sort_by || '')) ? String(q.sort_by) : 'row_no';
+            const sortDir = String(q.sort_dir || '').toLowerCase() === 'desc' ? 'DESC' : 'ASC';
+            const sortCol =
+                sortBy === 'manager_name'
+                    ? 'u.full_name'
+                    : sortBy === 'id' || sortBy === 'updated_at'
+                      ? `r.${sortBy}`
+                      : `r.${sortBy}`;
+
+            const [[cnt]] = await db.query(
+                `SELECT COUNT(*) AS total
+                   FROM ${ROW_FROM}
+                  WHERE ${built.whereSql}`,
+                built.params
+            );
+            const midView = built.managerId ? Number(built.managerId) : null;
+            const totCredit = midView
+                ? `COALESCE(SUM(CASE WHEN COALESCE(r.handed_to_user_id, r.manager_user_id) = ? THEN r.amount_ex_delivery END),0) AS amount_ex_delivery,
+                    COALESCE(SUM(CASE WHEN COALESCE(r.handed_to_user_id, r.manager_user_id) = ? THEN r.amount_incl_stock END),0) AS amount_incl_stock,
+                    COALESCE(SUM(CASE WHEN COALESCE(r.handed_to_user_id, r.manager_user_id) = ? THEN r.delivery_to_us END),0) AS delivery_to_us,
+                    COALESCE(SUM(CASE WHEN COALESCE(r.handed_to_user_id, r.manager_user_id) = ? THEN r.diff END),0) AS diff`
+                : `COALESCE(SUM(r.amount_ex_delivery),0) AS amount_ex_delivery,
+                    COALESCE(SUM(r.amount_incl_stock),0) AS amount_incl_stock,
+                    COALESCE(SUM(r.delivery_to_us),0) AS delivery_to_us,
+                    COALESCE(SUM(r.diff),0) AS diff`;
+            const totParams = midView ? [midView, midView, midView, midView].concat(built.params) : built.params;
+            const [[tot]] = await db.query(
+                `SELECT ${totCredit}
+                   FROM ${ROW_FROM}
+                  WHERE ${built.whereSql}`,
+                totParams
+            );
+            const [rows] = await db.query(
+                `SELECT ${ROW_SELECT}
+                   FROM ${ROW_FROM}
+                  WHERE ${built.whereSql}
+                  ORDER BY ${sortCol} ${sortDir}, r.id ASC
+                  LIMIT ? OFFSET ?`,
+                built.params.concat([limit, offset])
+            );
+            const mapped = await mapRowsWithPlan(db, rows || []);
+            const plans = await loadPlans(db);
+            const [byMonth] = await db.query(
+                `SELECT COALESCE(r.handed_to_user_id, r.manager_user_id) AS mid, MONTH(r.paid_at) AS m,
+                        COALESCE(SUM(r.diff),0) AS diff
+                   FROM ${ROW_FROM}
+                  WHERE ${built.whereSql} AND r.paid_at IS NOT NULL
+                  GROUP BY COALESCE(r.handed_to_user_id, r.manager_user_id), MONTH(r.paid_at)`,
+                built.params
+            );
+            const mids = [];
+            const seenMid = new Set();
+            (byMonth || []).forEach((g) => {
+                const id = Number(g.mid);
+                if (!seenMid.has(id) && Number.isFinite(id) && id > 0) {
+                    seenMid.add(id);
+                    mids.push(id);
+                }
+            });
+            if (built.managerId) {
+                const id = Number(built.managerId);
+                if (Number.isFinite(id) && id > 0 && !seenMid.has(id)) mids.push(id);
+            }
+            const facts = await fetchMonthTotals(db, built.year, mids);
+            let bonusSum = 0;
+            (byMonth || []).forEach((g) => {
+                if (built.managerId && Number(g.mid) !== Number(built.managerId)) return;
+                const month = Number(g.m);
+                const fact = facts[monthKey(g.mid, month)] || 0;
+                const plan = resolvePlan(plans, g.mid, built.year, month);
+                const pct = pctMpFromMonthTotal(fact, plan.plan_amount, plan.steps);
+                bonusSum += ((Number(g.diff) || 0) / 100) * pct;
+            });
+            let planInfo = null;
+            if (built.managerId && built.month) {
+                const plan = resolvePlan(plans, built.managerId, built.year, built.month);
+                const monthTotal = facts[monthKey(built.managerId, built.month)] || 0;
+                planInfo = {
+                    plan_amount: plan.plan_amount,
+                    source: plan.source,
+                    note: plan.note,
+                    month_total: monthTotal,
+                    pct_mp: pctMpFromMonthTotal(monthTotal, plan.plan_amount, plan.steps),
+                    steps: scaledPlanSteps(plan.plan_amount, plan.steps),
+                };
+            }
+            res.json({
+                success: true,
+                year: built.year,
+                month: built.month,
+                total: Number(cnt && cnt.total) || 0,
+                limit,
+                offset,
+                sort_by: sortBy,
+                sort_dir: sortDir.toLowerCase(),
+                can_write: canWrite(req),
+                can_pick_manager: canSeeAll(req),
+                can_edit_plans: canSeeAll(req),
+                plan: planInfo,
+                totals: {
+                    amount_ex_delivery: Number(tot && tot.amount_ex_delivery) || 0,
+                    amount_incl_stock: Number(tot && tot.amount_incl_stock) || 0,
+                    delivery_to_us: Number(tot && tot.delivery_to_us) || 0,
+                    diff: Number(tot && tot.diff) || 0,
+                    bonus: Math.round(bonusSum * 100) / 100,
+                },
+                rows: mapped,
+            });
+        } catch (e) {
+            res.status(500).json({ error: e.message || 'Ошибка списка' });
+        }
+    });
+
+    router.post('/', async (req, res) => {
+        try {
+            await ensureSchema(db);
+            if (!canWrite(req)) {
+                return res.status(403).json({ error: 'Режим только просмотра', code: 'PAGE_VIEW_ONLY' });
+            }
+            const body = req.body || {};
+            const year = normYear(body.year, currentYear());
+            let managerUserId = actorId(req);
+            if (canSeeAll(req) && body.manager_user_id != null) {
+                const n = Number(body.manager_user_id);
+                const sales = await listSalesManagers(db);
+                if (Number.isFinite(n) && n > 0 && sales.some((m) => m.id === n)) managerUserId = n;
+            }
+            if (!managerUserId) {
+                return res.status(400).json({ error: 'Не указан менеджер' });
+            }
+            const rowNo =
+                body.row_no != null && Number.isFinite(Number(body.row_no))
+                    ? Math.round(Number(body.row_no))
+                    : await nextRowNo(db, managerUserId, year);
+            const row = applyBodyToRow(body, {
+                year,
+                manager_user_id: managerUserId,
+                row_no: rowNo,
+                has_contract: '',
+                invoice_org: '',
+            });
+            const [ins] = await db.query(INSERT_SQL, rowToInsertParams(row, actorId(req)));
+            try {
+                await persistMonthPct(db, managerUserId, year, paidMonth(row.paid_at));
+            } catch (_) {}
+            const saved = await fetchRowById(db, ins.insertId);
+            try {
+                await insertRowLog(db, {
+                    rowId: ins.insertId,
+                    field: '_row',
+                    oldValue: null,
+                    newValue: 'создано',
+                    action: 'create',
+                    source: 'ui',
+                    actor: req.datagonActor,
+                });
+            } catch (le) {
+                console.warn('[manager-sales] create log', le && le.message);
+            }
+            const decorated = await mapRowsWithPlan(db, [saved]);
+            res.json({ success: true, row: decorated[0] || mapRow(saved) });
+        } catch (e) {
+            res.status(500).json({ error: e.message || 'Ошибка создания' });
+        }
+    });
+
+    router.patch('/:id', async (req, res) => {
+        try {
+            await ensureSchema(db);
+            if (!canWrite(req)) {
+                return res.status(403).json({ error: 'Режим только просмотра', code: 'PAGE_VIEW_ONLY' });
+            }
+            const id = Number(req.params.id);
+            if (!Number.isFinite(id) || id <= 0) {
+                return res.status(400).json({ error: 'Некорректный id' });
+            }
+            const existing = await fetchRowById(db, id);
+            if (!existing) return res.status(404).json({ error: 'Строка не найдена' });
+            if (existing.archived_at) {
+                return res.status(400).json({ error: 'Строка в архиве — сначала верните из архива' });
+            }
+            if (!canTouchRow(req, existing)) {
+                return res.status(403).json({ error: 'Нельзя менять чужую таблицу' });
+            }
+            const oldMonth = paidMonth(existing.paid_at);
+            const next = applyBodyToRow(req.body || {}, mapRow(existing));
+            if (!canSeeAll(req)) next.manager_user_id = Number(existing.manager_user_id);
+            const newMonth = paidMonth(next.paid_at);
+            const creditMid = creditManagerId(existing);
+            const plans = await loadPlans(db);
+            const factsPre = await fetchMonthTotals(db, next.year, [creditMid]);
+            const monthForPct = newMonth || oldMonth;
+            let nextPct = 0;
+            if (monthForPct) {
+                let fact = factsPre[monthKey(creditMid, monthForPct)] || 0;
+                const oldAmt = Number(existing.amount_ex_delivery) || 0;
+                const newAmt = Number(next.amount_ex_delivery) || 0;
+                if (oldMonth === monthForPct && newMonth === monthForPct) {
+                    fact = fact - oldAmt + newAmt;
+                } else if (newMonth === monthForPct) {
+                    fact = fact + newAmt;
+                }
+                const plan = resolvePlan(plans, creditMid, next.year, monthForPct);
+                nextPct = pctMpFromMonthTotal(Math.max(0, fact), plan.plan_amount, plan.steps);
+            }
+            const calc = computeRow(Object.assign({}, next, { pct_mp: nextPct }));
+            next.pct_mp = calc.pct_mp;
+            next.bonus = calc.bonus;
+            next.diff = calc.diff;
+            next.pct_r = calc.pct_r;
+            await db.query(UPDATE_SQL, [
+                next.year,
+                next.manager_user_id,
+                next.row_no,
+                next.payment_terms || null,
+                next.paid_at || null,
+                next.invoice_org || '',
+                next.order_url || null,
+                next.amount_ex_delivery,
+                next.vat,
+                next.our_invoice_no || null,
+                next.has_contract || null,
+                next.supplier_invoice_url || null,
+                next.amount_incl_stock,
+                next.delivery_to_us,
+                next.supplier_name || null,
+                next.supplier_invoice_no || null,
+                next.diff,
+                next.pct_r,
+                next.status || null,
+                next.pct_mp,
+                next.bonus,
+                actorId(req),
+                id,
+            ]);
+            const saved = await fetchRowById(db, id);
+            try {
+                await logRowChanges(db, {
+                    rowId: id,
+                    before: mapRow(existing),
+                    after: mapRow(saved, next.pct_mp),
+                    actor: req.datagonActor,
+                    source: 'ui',
+                    action: 'set',
+                });
+            } catch (le) {
+                console.warn('[manager-sales] patch log', le && le.message);
+            }
+            try {
+                const persistMids = new Set(
+                    [creditManagerId(existing), creditManagerId(saved || next), Number(existing.manager_user_id)].filter(
+                        (n) => Number.isFinite(n) && n > 0
+                    )
+                );
+                for (const pid of persistMids) {
+                    if (oldMonth) await persistMonthPct(db, pid, existing.year, oldMonth);
+                    if (newMonth && newMonth !== oldMonth) await persistMonthPct(db, pid, next.year, newMonth);
+                    else if (newMonth) await persistMonthPct(db, pid, next.year, newMonth);
+                }
+            } catch (pe) {
+                console.warn('[manager-sales] persist month pct', pe && pe.message);
+            }
+            const decorated = await mapRowsWithPlan(db, [await fetchRowById(db, id)]);
+            res.json({ success: true, row: decorated[0] || mapRow(saved, next.pct_mp) });
+        } catch (e) {
+            res.status(500).json({ error: e.message || 'Ошибка сохранения' });
+        }
+    });
+
+    router.get('/:id/log', async (req, res) => {
+        try {
+            await ensureSchema(db);
+            const id = Number(req.params.id);
+            if (!Number.isFinite(id) || id <= 0) {
+                return res.status(400).json({ error: 'Некорректный id' });
+            }
+            const existing = await fetchRowById(db, id);
+            if (!existing) return res.status(404).json({ error: 'Строка не найдена' });
+            if (!canSeeAll(req) && Number(existing.manager_user_id) !== actorId(req)) {
+                return res.status(403).json({ error: 'Нельзя смотреть чужой журнал' });
+            }
+            const rawLimit = Number(req.query.limit);
+            const limit = Math.min(
+                500,
+                Math.max(1, Number.isFinite(rawLimit) && rawLimit > 0 ? Math.floor(rawLimit) : 100)
+            );
+            const rawOffset = Number(req.query.offset);
+            const offset = Math.max(0, Number.isFinite(rawOffset) && rawOffset >= 0 ? Math.floor(rawOffset) : 0);
+            const field = String(req.query.field || '').trim();
+            const where = ['row_id = ?'];
+            const params = [id];
+            if (field) {
+                where.push('field = ?');
+                params.push(field);
+            }
+            const whereSql = `WHERE ${where.join(' AND ')}`;
+            const [[cnt]] = await db.query(
+                `SELECT COUNT(*) AS total FROM dg_manager_sales_log ${whereSql}`,
+                params
+            );
+            const [rows] = await db.query(
+                `SELECT id, row_id, field, old_value, new_value, action, source,
+                        changed_by_user_id, changed_by_name, note, changed_at
+                   FROM dg_manager_sales_log ${whereSql}
+                  ORDER BY id DESC
+                  LIMIT ? OFFSET ?`,
+                [...params, limit, offset]
+            );
+            res.json({
+                success: true,
+                row_id: id,
+                row: mapRow(existing),
+                rows: (rows || []).map((r) => ({
+                    id: Number(r.id),
+                    row_id: Number(r.row_id),
+                    field: String(r.field || ''),
+                    field_label: FIELD_LOG_LABELS[r.field] || String(r.field || ''),
+                    old_value: r.old_value != null ? String(r.old_value) : null,
+                    new_value: r.new_value != null ? String(r.new_value) : null,
+                    action: String(r.action || 'set'),
+                    source: String(r.source || 'ui'),
+                    changed_by_user_id: r.changed_by_user_id != null ? Number(r.changed_by_user_id) : null,
+                    changed_by_name: r.changed_by_name != null ? String(r.changed_by_name) : '',
+                    note: r.note != null ? String(r.note) : '',
+                    changed_at: r.changed_at ? new Date(r.changed_at).toISOString() : '',
+                })),
+                total: Number(cnt && cnt.total) || 0,
+                limit,
+                offset,
+            });
+        } catch (e) {
+            res.status(500).json({ error: e.message || 'Ошибка журнала' });
+        }
+    });
+
+    router.post('/:id/hand-over', async (req, res) => {
+        try {
+            await ensureSchema(db);
+            if (!canWrite(req)) {
+                return res.status(403).json({ error: 'Режим только просмотра', code: 'PAGE_VIEW_ONLY' });
+            }
+            const id = Number(req.params.id);
+            if (!Number.isFinite(id) || id <= 0) {
+                return res.status(400).json({ error: 'Некорректный id' });
+            }
+            const existing = await fetchRowById(db, id);
+            if (!existing) return res.status(404).json({ error: 'Строка не найдена' });
+            if (existing.archived_at) {
+                return res.status(400).json({ error: 'Сначала верните строку из архива' });
+            }
+            if (!canHandOverRow(req, existing)) {
+                return res.status(403).json({ error: 'Передавать заказ может владелец таблицы' });
+            }
+            const sales = await listSalesManagers(db);
+            const salesIds = new Set(sales.map((m) => m.id));
+            const body = req.body || {};
+            const raw = body.manager_user_id;
+            const empty = raw == null || raw === '' || String(raw).trim() === '0';
+            let target = null;
+            if (!empty) {
+                const n = Number(raw);
+                if (!Number.isFinite(n) || n < 1 || !salesIds.has(n)) {
+                    return res.status(400).json({ error: 'Выберите менеджера из отдела продаж' });
+                }
+                if (n === Number(existing.manager_user_id)) target = null;
+                else target = n;
+            }
+            const prev = Number(existing.handed_to_user_id) || null;
+            const actor = actorId(req);
+            if (target) {
+                await db.query(
+                    `UPDATE dg_manager_sales_rows
+                        SET handed_to_user_id = ?, handed_to_at = NOW(), handed_by = ?, updated_by = ?
+                      WHERE id = ?`,
+                    [target, actor, actor, id]
+                );
+            } else {
+                await db.query(
+                    `UPDATE dg_manager_sales_rows
+                        SET handed_to_user_id = NULL, handed_to_at = NULL, handed_by = NULL, updated_by = ?
+                      WHERE id = ?`,
+                    [actor, id]
+                );
+            }
+            const nameOf = (uid) => {
+                if (!uid) return '';
+                const m = sales.find((x) => x.id === Number(uid));
+                return m ? m.full_name || m.username || String(uid) : String(uid);
+            };
+            await insertRowLog(db, {
+                rowId: id,
+                field: 'handed_to_user_id',
+                oldValue: prev ? nameOf(prev) : '',
+                newValue: target ? nameOf(target) : '',
+                action: target ? 'hand_over' : 'hand_back',
+                source: 'ui',
+                actor: req.datagonActor,
+            });
+            const month = paidMonth(existing.paid_at);
+            const persistMids = new Set(
+                [Number(existing.manager_user_id), prev, target].filter((n) => Number.isFinite(n) && n > 0)
+            );
+            for (const pid of persistMids) {
+                if (month) await persistMonthPct(db, pid, existing.year, month);
+                else await persistYearPct(db, pid, existing.year);
+            }
+            const saved = await fetchRowById(db, id);
+            const decorated = await mapRowsWithPlan(db, [saved]);
+            res.json({ success: true, row: decorated[0] || mapRow(saved) });
+        } catch (e) {
+            res.status(500).json({ error: e.message || 'Ошибка передачи заказа' });
+        }
+    });
+
+    router.post('/:id/restore', async (req, res) => {
+        try {
+            await ensureSchema(db);
+            if (!canWrite(req)) {
+                return res.status(403).json({ error: 'Режим только просмотра', code: 'PAGE_VIEW_ONLY' });
+            }
+            const id = Number(req.params.id);
+            if (!Number.isFinite(id) || id <= 0) {
+                return res.status(400).json({ error: 'Некорректный id' });
+            }
+            const existing = await fetchRowById(db, id);
+            if (!existing) return res.status(404).json({ error: 'Строка не найдена' });
+            if (!canTouchRow(req, existing)) {
+                return res.status(403).json({ error: 'Нельзя менять чужую таблицу' });
+            }
+            if (!existing.archived_at) {
+                return res.status(400).json({ error: 'Строка не в архиве' });
+            }
+            await db.query(
+                'UPDATE dg_manager_sales_rows SET archived_at = NULL, archived_by = NULL, updated_by = ? WHERE id = ?',
+                [actorId(req), id]
+            );
+            await insertRowLog(db, {
+                rowId: id,
+                field: 'archived',
+                oldValue: 'в архиве',
+                newValue: 'восстановлено',
+                action: 'restore',
+                source: 'ui',
+                actor: req.datagonActor,
+            });
+            const saved = await fetchRowById(db, id);
+            try {
+                const month = paidMonth(existing.paid_at);
+                const persistMids = new Set(
+                    [Number(existing.manager_user_id), creditManagerId(existing)].filter(
+                        (n) => Number.isFinite(n) && n > 0
+                    )
+                );
+                for (const pid of persistMids) {
+                    if (month) await persistMonthPct(db, pid, existing.year, month);
+                    else await persistYearPct(db, pid, existing.year);
+                }
+            } catch (_) {}
+            const decorated = await mapRowsWithPlan(db, [saved]);
+            res.json({ success: true, row: decorated[0] || mapRow(saved) });
+        } catch (e) {
+            res.status(500).json({ error: e.message || 'Ошибка восстановления' });
+        }
+    });
+
+    router.delete('/:id', async (req, res) => {
+        try {
+            await ensureSchema(db);
+            if (!canWrite(req)) {
+                return res.status(403).json({ error: 'Режим только просмотра', code: 'PAGE_VIEW_ONLY' });
+            }
+            const id = Number(req.params.id);
+            if (!Number.isFinite(id) || id <= 0) {
+                return res.status(400).json({ error: 'Некорректный id' });
+            }
+            const existing = await fetchRowById(db, id);
+            if (!existing) return res.status(404).json({ error: 'Строка не найдена' });
+            if (!canTouchRow(req, existing)) {
+                return res.status(403).json({ error: 'Нельзя архивировать чужую таблицу' });
+            }
+            if (existing.archived_at) {
+                return res.status(400).json({ error: 'Строка уже в архиве' });
+            }
+            await db.query(
+                'UPDATE dg_manager_sales_rows SET archived_at = NOW(), archived_by = ?, updated_by = ? WHERE id = ?',
+                [actorId(req), actorId(req), id]
+            );
+            await insertRowLog(db, {
+                rowId: id,
+                field: 'archived',
+                oldValue: 'активна',
+                newValue: 'в архиве',
+                action: 'archive',
+                source: 'ui',
+                actor: req.datagonActor,
+            });
+            const saved = await fetchRowById(db, id);
+            try {
+                const month = paidMonth(existing.paid_at);
+                const persistMids = new Set(
+                    [Number(existing.manager_user_id), creditManagerId(existing)].filter(
+                        (n) => Number.isFinite(n) && n > 0
+                    )
+                );
+                for (const pid of persistMids) {
+                    if (month) await persistMonthPct(db, pid, existing.year, month);
+                    else await persistYearPct(db, pid, existing.year);
+                }
+            } catch (_) {}
+            const decorated = await mapRowsWithPlan(db, [saved]);
+            res.json({ success: true, archived: id, row: decorated[0] || mapRow(saved) });
+        } catch (e) {
+            res.status(500).json({ error: e.message || 'Ошибка архива' });
+        }
+    });
+
+    router.post('/import-csv', async (req, res) => {
+        const started = Date.now();
+        try {
+            await ensureSchema(db);
+            if (!canWrite(req)) {
+                return res.status(403).json({ error: 'Режим только просмотра', code: 'PAGE_VIEW_ONLY' });
+            }
+            const body = req.body || {};
+            const dryRun = body.dry_run === 1 || body.dry_run === true || body.dry_run === '1';
+            const year = normYear(body.year, currentYear());
+            let managerUserId = actorId(req);
+            if (canSeeAll(req) && body.manager_user_id != null) {
+                const n = Number(body.manager_user_id);
+                const sales = await listSalesManagers(db);
+                if (Number.isFinite(n) && n > 0 && sales.some((m) => m.id === n)) managerUserId = n;
+            }
+            if (!managerUserId) {
+                return res.status(400).json({ error: 'Не указан менеджер' });
+            }
+            const parsed = parseDelimited(body.csv || '');
+            if (!parsed.headers.length) {
+                return res.status(400).json({ error: 'Пустой CSV' });
+            }
+            const keys = parsed.headers.map(headerKey);
+            if (!keys.some(Boolean)) {
+                return res.status(400).json({
+                    error: 'Не удалось распознать заголовки. Ожидаются колонки Google-таблицы менеджера.',
+                });
+            }
+            let nextNo = await nextRowNo(db, managerUserId, year);
+            let wouldInsert = 0;
+            let skipped = 0;
+            const errors = [];
+            const toInsert = [];
+            parsed.rows.forEach((cells, idx) => {
+                const obj = {};
+                keys.forEach((k, i) => {
+                    if (!k) return;
+                    obj[k] = cells[i];
+                });
+                const empty = Object.keys(obj).every((k) => String(obj[k] == null ? '' : obj[k]).trim() === '');
+                if (empty) {
+                    skipped += 1;
+                    return;
+                }
+                try {
+                    const rowNo =
+                        obj.row_no != null && String(obj.row_no).trim() !== ''
+                            ? Math.round(Number(toNum(obj.row_no) || nextNo))
+                            : nextNo;
+                    nextNo = Math.max(nextNo, rowNo) + 1;
+                    const row = applyBodyToRow(obj, {
+                        year,
+                        manager_user_id: managerUserId,
+                        row_no: rowNo,
+                        has_contract: '',
+                        invoice_org: '',
+                    });
+                    toInsert.push(row);
+                    wouldInsert += 1;
+                } catch (e) {
+                    if (errors.length < 20) {
+                        errors.push({ code: String(idx + 2), error: e.message || 'строка' });
+                    }
+                }
+            });
+            let inserted = 0;
+            if (!dryRun) {
+                for (const row of toInsert) {
+                    const [ins] = await db.query(INSERT_SQL, rowToInsertParams(row, actorId(req)));
+                    inserted += 1;
+                    try {
+                        await insertRowLog(db, {
+                            rowId: ins.insertId,
+                            field: '_row',
+                            oldValue: null,
+                            newValue: 'импорт CSV',
+                            action: 'create',
+                            source: 'import',
+                            actor: req.datagonActor,
+                        });
+                    } catch (_) {}
+                }
+                for (let m = 1; m <= 12; m += 1) {
+                    try {
+                        await persistMonthPct(db, managerUserId, year, m);
+                    } catch (_) {}
+                }
+            }
+            res.json({
+                success: true,
+                dry_run: dryRun,
+                year,
+                manager_user_id: managerUserId,
+                total: parsed.rows.length,
+                to_update: wouldInsert,
+                would_update: dryRun ? wouldInsert : undefined,
+                filled: inserted,
+                skipped,
+                errors,
+                duration_sec: Math.round((Date.now() - started) / 100) / 10,
+            });
+        } catch (e) {
+            res.status(500).json({ error: e.message || 'Ошибка импорта' });
+        }
+    });
+
+    return router;
+};

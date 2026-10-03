@@ -24,6 +24,7 @@ const PAGES = [
   "processes.html",
   "settings.html",
   "finance.html",
+  "manager-sales.html",
   "sections.html",
   "exports-marketplaces.html",
   "exports-marketplaces-ozon.html",

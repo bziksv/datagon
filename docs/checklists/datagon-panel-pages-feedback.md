@@ -37,6 +37,7 @@ npm run check:panel-notify-static
 - [x] **processes** — `/processes.html` — C: [ ]
 - [x] **settings** — `/settings.html` — C: [ ]
 - [x] **finance** — `/finance.html` — C: [ ]
+- [x] **manager-sales** — `/manager-sales.html` — C: [ ]
 - [x] **sections** — `/sections.html` — C: [ ] (каталог ссылок, B=0)
 - [x] **exports-marketplaces** — `/exports-marketplaces.html` — C: [ ]
 - [x] **exports-marketplaces-ozon** — `/exports-marketplaces-ozon.html` — C: [ ]

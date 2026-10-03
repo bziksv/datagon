@@ -1,0 +1,402 @@
+          <div class="app-page-title">
+            <div class="page-title-wrapper">
+              <div class="page-title-heading">
+                <div class="page-title-icon">
+                  <i class="pe-7s-id icon-gradient bg-happy-itmeo"> </i>
+                </div>
+                <div>
+                  Таблицы менеджеров
+                  <div class="page-title-subheading" id="dg-msl-page-sub">
+                    Персональный журнал оплат. Разница, % Р., % МП. и премия считаются на сервере.
+                  </div>
+                </div>
+              </div>
+              <div class="page-title-actions">
+                <div id="dg-msl-manager-switch-wrap" class="dg-msl-manager-switch d-none">
+                  <label class="form-label mb-1 small text-muted" for="dg-msl-f-manager">Таблица менеджера</label>
+                  <select
+                    class="form-select"
+                    id="dg-msl-f-manager"
+                    data-dg-notify-start="Открываем таблицу менеджера…"
+                  ></select>
+                </div>
+                <div id="dg-msl-own-table-label" class="dg-msl-own-table-label d-none"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2">
+              <div class="d-flex align-items-center">
+                <i class="header-icon pe-7s-filter icon-gradient bg-happy-fisher me-2"> </i>
+                <span>Фильтры и действия</span>
+              </div>
+              <div class="d-flex align-items-center gap-2">
+                <div class="dropdown">
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-secondary dg-vanilla-dropdown-toggle"
+                    style="line-height: 1; padding: 0.35rem 0.5rem"
+                    aria-expanded="false"
+                    aria-haspopup="true"
+                    id="dg-msl-filter-blocks-btn"
+                    data-dg-tooltip="Какие поля фильтров показывать (сохраняется в браузере для текущего пользователя)"
+                  >
+                    <i class="pe-7s-config btn-icon-wrapper" style="font-size: 1.1rem" aria-hidden="true"></i>
+                  </button>
+                  <div
+                    class="dropdown-menu dropdown-menu-end rm-pointers p-0"
+                    id="dg-msl-filter-blocks-menu"
+                    style="width: min(420px, calc(100vw - 1.5rem))"
+                  >
+                    <div class="dropdown-menu-header mb-0">
+                      <div class="dropdown-menu-header-inner bg-tempting-azure">
+                        <div
+                          class="menu-header-image opacity-5"
+                          style="background-image: url('/assets/utils/images/dropdown-header/abstract2.jpg')"
+                        ></div>
+                        <div class="menu-header-content text-white px-3 py-2">
+                          <h5 class="menu-header-title mb-0">Поля фильтров</h5>
+                          <h6 class="menu-header-subtitle mb-0 opacity-8 fw-normal small">По группам: переключатели справа</h6>
+                        </div>
+                      </div>
+                    </div>
+                    <div style="max-height: calc(100vh - 10rem); overflow-y: auto; overflow-x: hidden">
+                      <div id="dg-msl-filter-blocks-toggles" class="list-group list-group-flush"></div>
+                    </div>
+                  </div>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-msl-filters-toggle">Свернуть</button>
+              </div>
+            </div>
+            <div class="card-body" id="dg-msl-filters-body">
+              <div class="row g-2 align-items-end">
+                <div class="col-md-3" data-dg-msl-filter-field="search">
+                  <label class="form-label" for="dg-msl-search">Умный поиск</label>
+                  <input
+                    type="search"
+                    class="form-control"
+                    id="dg-msl-search"
+                    placeholder="Поставщик, счёт, ссылка, статус…"
+                    autocomplete="off"
+                  />
+                </div>
+                <div class="col-md-2" data-dg-msl-filter-field="year">
+                  <label class="form-label" for="dg-msl-f-year">Год</label>
+                  <select class="form-select" id="dg-msl-f-year"></select>
+                </div>
+                <div class="col-md-2" data-dg-msl-filter-field="month">
+                  <label class="form-label" for="dg-msl-f-month">Месяц</label>
+                  <select class="form-select" id="dg-msl-f-month">
+                    <option value="">Все месяцы</option>
+                    <option value="1">Январь</option>
+                    <option value="2">Февраль</option>
+                    <option value="3">Март</option>
+                    <option value="4">Апрель</option>
+                    <option value="5">Май</option>
+                    <option value="6">Июнь</option>
+                    <option value="7">Июль</option>
+                    <option value="8">Август</option>
+                    <option value="9">Сентябрь</option>
+                    <option value="10">Октябрь</option>
+                    <option value="11">Ноябрь</option>
+                    <option value="12">Декабрь</option>
+                  </select>
+                </div>
+                <div class="col-md-2" data-dg-msl-filter-field="status">
+                  <label class="form-label" for="dg-msl-f-status">Статус</label>
+                  <select class="form-select" id="dg-msl-f-status">
+                    <option value="">Все</option>
+                    <option value="Заказан у поставщика">Заказан у поставщика</option>
+                    <option value="Отгружен">Отгружен</option>
+                    <option value="Частично отгружен">Частично отгружен</option>
+                    <option value="Возврат средств">Возврат средств</option>
+                  </select>
+                </div>
+                <div class="col-md-2" data-dg-msl-filter-field="limit">
+                  <label class="form-label" for="dg-msl-f-limit">На странице</label>
+                  <select class="form-select" id="dg-msl-f-limit">
+                    <option value="50">50</option>
+                    <option value="100" selected>100</option>
+                    <option value="200">200</option>
+                    <option value="500">500</option>
+                  </select>
+                </div>
+              </div>
+              <div class="row g-2 align-items-end mt-1">
+                <div class="col-md-3" data-dg-msl-filter-field="supplier">
+                  <label class="form-label" for="dg-msl-f-supplier">Поставщик</label>
+                  <input type="text" class="form-control" id="dg-msl-f-supplier" list="dg-msl-supplier-list" autocomplete="off" />
+                  <datalist id="dg-msl-supplier-list"></datalist>
+                </div>
+                <div class="col-md-2" data-dg-msl-filter-field="has_contract">
+                  <label class="form-label" for="dg-msl-f-contract">Наличие договора</label>
+                  <select class="form-select" id="dg-msl-f-contract">
+                    <option value="">Все</option>
+                    <option value="Обычный договор">Обычный договор</option>
+                    <option value="Нет">Нет</option>
+                    <option value="Договор-Счет">Договор-Счет</option>
+                  </select>
+                </div>
+                <div class="col-md-2" data-dg-msl-filter-field="invoice_org">
+                  <label class="form-label" for="dg-msl-f-org">Счет от ИП или ООО</label>
+                  <select class="form-select" id="dg-msl-f-org">
+                    <option value="">Все</option>
+                    <option value="ip">ИП</option>
+                    <option value="ooo">ООО</option>
+                  </select>
+                </div>
+                <div class="col-md-2" data-dg-msl-filter-field="archived" data-dg-filter-field-title="Архив">
+                  <label class="form-label" for="dg-msl-f-archived">Архив</label>
+                  <select class="form-select" id="dg-msl-f-archived">
+                    <option value="0" selected>Скрыт (активные)</option>
+                    <option value="1">Только архив</option>
+                    <option value="all">Все строки</option>
+                  </select>
+                </div>
+              </div>
+              <datalist id="dg-msl-org-list">
+                <option value="ООО Альмамед"></option>
+                <option value="ООО Вилмед"></option>
+                <option value="ИП"></option>
+              </datalist>
+              <div class="mt-3 d-flex flex-wrap gap-2">
+                <button type="button" class="btn btn-sm btn-primary" id="dg-msl-apply" data-dg-notify-start="Применяем фильтры…">Применить</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-msl-reset" data-dg-notify-start="Сбрасываем фильтры…">По умолчанию</button>
+                <button type="button" class="btn btn-sm btn-success" id="dg-msl-add" data-dg-notify-start="Добавляем строку…">Добавить строку</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-msl-archive-view" data-dg-notify-start="Открываем архив…">Архив</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-msl-import" data-dg-notify-start="Готовим импорт CSV…">Импорт CSV</button>
+                <input type="file" id="dg-msl-import-file" accept=".csv,text/csv,text/plain" class="d-none" />
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-msl-export" data-dg-notify-start="Выгружаем CSV…">Экспорт CSV</button>
+                <button type="button" class="btn btn-sm btn-outline-primary" id="dg-msl-plans" data-dg-notify-start="Открываем планы…">Планы по годам</button>
+              </div>
+              <div id="dg-msl-action-log" class="alert mt-3 mb-0 d-none" role="status"></div>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex justify-content-between gap-2 flex-wrap align-items-center">
+              <div class="d-flex align-items-center gap-3 flex-grow-1 min-w-0">
+                <div class="d-flex align-items-center flex-shrink-0">
+                  <i class="header-icon pe-7s-note2 icon-gradient bg-tempting-azure me-2"></i>
+                  <span id="dg-msl-table-card-title">Выгрузка таблицы</span>
+                </div>
+                <div class="dg-msl-header-search">
+                  <div class="input-group input-group-sm">
+                    <span class="input-group-text">🔎</span>
+                    <input type="search" class="form-control" id="dg-msl-table-search-mirror" placeholder="Поиск…" autocomplete="off" />
+                  </div>
+                </div>
+              </div>
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-msl-columns-toggle">🧩 Столбцы</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-msl-widths-toggle">📏 Ширины</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-msl-table-toggle">Свернуть</button>
+              </div>
+            </div>
+            <div class="card-body" id="dg-msl-table-body">
+              <div class="datagon-columns-toolbox mb-2 d-none" id="dg-msl-toolbox-panels">
+                <div class="datagon-columns-panel" id="dg-msl-columns-panel">
+                  <div class="columns-actions mb-2">
+                    <button type="button" class="btn btn-sm" id="dg-msl-columns-all">Выделить все</button>
+                    <button type="button" class="btn btn-sm" id="dg-msl-columns-none">Снять все</button>
+                    <button type="button" class="btn btn-sm" id="dg-msl-columns-default">По умолчанию</button>
+                  </div>
+                  <div id="dg-msl-columns-list" class="columns-grid"></div>
+                </div>
+                <div class="datagon-columns-panel" id="dg-msl-widths-panel">
+                  <div class="columns-actions mb-2">
+                    <button type="button" class="btn btn-sm" id="dg-msl-widths-default">По умолчанию</button>
+                  </div>
+                  <div id="dg-msl-widths-list" class="dg-msl-widths-grid"></div>
+                </div>
+              </div>
+              <p class="dg-msl-totals text-muted mb-2" id="dg-msl-totals">Итоги: —</p>
+              <div id="dg-msl-table-scroll-outer" class="dg-mp-table-scroll-outer">
+                <div class="table-responsive datagon-my-products-table-wrap">
+                  <table class="table table-sm table-hover mb-0" id="dg-msl-table">
+                    <thead id="dg-msl-thead"></thead>
+                    <tbody id="dg-msl-tbody">
+                      <tr><td class="text-muted p-3">Загрузка…</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-3">
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                  <label class="mb-0 small text-muted" for="dg-msl-page-limit">На странице</label>
+                  <select class="form-select form-select-sm" id="dg-msl-page-limit" style="width: auto">
+                    <option value="50">50</option>
+                    <option value="100" selected>100</option>
+                    <option value="200">200</option>
+                    <option value="500">500</option>
+                  </select>
+                  <span class="small text-muted" id="dg-msl-page-status">Найдено: 0</span>
+                </div>
+                <div class="d-flex gap-2">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-msl-prev" disabled>Назад</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-msl-next" disabled>Вперёд</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-msl-confirm-overlay" class="dg-msl-confirm-overlay" style="display: none" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="dg-msl-confirm-title">
+            <div class="dg-msl-confirm-backdrop" id="dg-msl-confirm-backdrop"></div>
+            <div class="dg-msl-confirm-panel card shadow-lg border-0">
+              <div class="card-header">
+                <div class="fw-semibold" id="dg-msl-confirm-title">В архив?</div>
+              </div>
+              <div class="card-body">
+                <p class="mb-0" id="dg-msl-confirm-text">Строка не удаляется. Она попадёт в архив этой таблицы (кнопка «Архив»). Оттуда её можно вернуть.</p>
+              </div>
+              <div class="card-footer d-flex justify-content-end gap-2 flex-wrap bg-white border-top-0">
+                <button type="button" class="btn btn-outline-secondary" id="dg-msl-confirm-cancel" data-dg-no-activity="1">Отмена</button>
+                <button type="button" class="btn btn-danger" id="dg-msl-confirm-ok" data-dg-notify-start="Переносим в архив…">В архив</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-msl-pick-overlay" class="dg-msl-confirm-overlay" style="display: none" aria-hidden="true" role="dialog" aria-modal="true">
+            <div class="dg-msl-confirm-backdrop" id="dg-msl-pick-backdrop"></div>
+            <div class="dg-msl-confirm-panel card shadow-lg border-0">
+              <div class="card-header">
+                <div class="fw-semibold">Добавить строку</div>
+              </div>
+              <div class="card-body">
+                <p class="mb-2">Свод «Все менеджеры» только для просмотра. Выберите, в чью таблицу писать.</p>
+                <label class="form-label" for="dg-msl-pick-manager">Менеджер</label>
+                <select class="form-select" id="dg-msl-pick-manager"></select>
+              </div>
+              <div class="card-footer d-flex justify-content-end gap-2 flex-wrap bg-white border-top-0">
+                <button type="button" class="btn btn-outline-secondary" id="dg-msl-pick-cancel" data-dg-no-activity="1">Отмена</button>
+                <button type="button" class="btn btn-success" id="dg-msl-pick-ok" data-dg-notify-start="Добавляем строку…">Добавить</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-msl-hand-overlay" class="dg-msl-confirm-overlay" style="display: none" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="dg-msl-hand-title">
+            <div class="dg-msl-confirm-backdrop" id="dg-msl-hand-backdrop"></div>
+            <div class="dg-msl-confirm-panel card shadow-lg border-0">
+              <div class="card-header">
+                <div class="fw-semibold" id="dg-msl-hand-title">Передать заказ</div>
+              </div>
+              <div class="card-body">
+                <p class="mb-2" id="dg-msl-hand-text">Эта же строка появится в таблице выбранного менеджера в том же месяце (по дате оплаты). У каждого может остаться своя копия заказа с тем же номером счёта. У вас суммы, % МП. и премия по этой переданной строке показываются нулями и не входят в план. У него они прибавляются, если в строке есть сумма.</p>
+                <label class="form-label" for="dg-msl-hand-manager">Менеджер</label>
+                <select class="form-select" id="dg-msl-hand-manager"></select>
+              </div>
+              <div class="card-footer d-flex justify-content-end gap-2 flex-wrap bg-white border-top-0">
+                <button type="button" class="btn btn-outline-secondary" id="dg-msl-hand-cancel" data-dg-no-activity="1">Отмена</button>
+                <button type="button" class="btn btn-primary" id="dg-msl-hand-ok" data-dg-notify-start="Передаём заказ…">Передать</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-msl-supp-url-overlay" class="dg-msl-confirm-overlay" style="display: none" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="dg-msl-supp-url-title">
+            <div class="dg-msl-confirm-backdrop" id="dg-msl-supp-url-backdrop"></div>
+            <div class="dg-msl-confirm-panel card shadow-lg border-0">
+              <div class="card-header">
+                <div class="fw-semibold" id="dg-msl-supp-url-title">Счёт поставщика</div>
+              </div>
+              <div class="card-body">
+                <p class="mb-2 text-muted">Вставьте ссылку на счёт или выберите «Склад», если товара со склада.</p>
+                <label class="form-label" for="dg-msl-supp-url-input">Ссылка</label>
+                <input type="text" class="form-control" id="dg-msl-supp-url-input" placeholder="https://…" autocomplete="off" />
+              </div>
+              <div class="card-footer d-flex justify-content-end gap-2 flex-wrap bg-white border-top-0">
+                <button type="button" class="btn btn-outline-secondary" id="dg-msl-supp-url-cancel" data-dg-no-activity="1">Отмена</button>
+                <button type="button" class="btn btn-outline-primary" id="dg-msl-supp-url-stock" data-dg-notify-start="Ставим «Склад»…">Склад</button>
+                <button type="button" class="btn btn-primary" id="dg-msl-supp-url-ok" data-dg-notify-start="Сохраняем ссылку…">Сохранить ссылку</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-msl-plans-overlay" class="dg-msl-confirm-overlay d-none" style="display: none" aria-hidden="true" role="dialog" aria-modal="true">
+            <div class="dg-msl-confirm-backdrop" id="dg-msl-plans-backdrop"></div>
+            <div class="dg-msl-confirm-panel card shadow-lg border-0 dg-msl-plans-panel">
+              <div class="card-header d-flex justify-content-between align-items-center gap-2">
+                <div class="fw-semibold">Планы продаж по годам и менеджерам</div>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-msl-plans-close" data-dg-no-activity="1">Закрыть</button>
+              </div>
+              <div class="card-body">
+                <p class="small text-muted mb-3">
+                  У каждого года свой план и свои пороги % МП.: сначала общий план года, затем персональный у менеджера, затем месяц (отпуск).
+                  % МП. считается от суммы «без доставки» за месяц. Пустая ячейка плана наследует значение слева.
+                </p>
+                <div class="dg-msl-plan-year-row mb-3">
+                  <div class="dg-msl-plan-year-field">
+                    <label class="form-label" for="dg-msl-plan-year">Год</label>
+                    <select class="form-select" id="dg-msl-plan-year"></select>
+                  </div>
+                  <div class="dg-msl-plan-base-field">
+                    <label class="form-label" for="dg-msl-plan-base">План года для всех, ₽</label>
+                    <input type="text" inputmode="decimal" class="form-control" id="dg-msl-plan-base" />
+                  </div>
+                </div>
+                <p class="small mb-2" id="dg-msl-plan-steps-hint"></p>
+                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-1">
+                  <span class="form-label mb-0">Пороги % МП. этого года</span>
+                  <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-msl-plan-step-add" data-dg-no-activity="1">+ ступень</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-msl-plan-step-reset" data-dg-no-activity="1">Как в Google</button>
+                  </div>
+                </div>
+                <div class="table-responsive mb-3">
+                  <table class="table table-sm mb-1" id="dg-msl-plan-steps-table">
+                    <thead>
+                      <tr>
+                        <th>Если сумма месяца меньше, ₽</th>
+                        <th>% МП.</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody id="dg-msl-plan-steps-body"></tbody>
+                  </table>
+                </div>
+                <div class="d-flex align-items-center gap-2 mb-3">
+                  <label class="form-label mb-0" for="dg-msl-plan-pct-max">Иначе % МП.</label>
+                  <input type="text" inputmode="decimal" class="form-control form-control-sm" id="dg-msl-plan-pct-max" style="width: 5rem" />
+                </div>
+                <div class="table-responsive dg-msl-plan-grid-wrap">
+                  <table class="table table-sm mb-0" id="dg-msl-plan-grid">
+                    <thead>
+                      <tr>
+                        <th>Менеджер</th>
+                        <th>План года</th>
+                        <th>янв</th><th>фев</th><th>мар</th><th>апр</th><th>май</th><th>июн</th>
+                        <th>июл</th><th>авг</th><th>сен</th><th>окт</th><th>ноя</th><th>дек</th>
+                      </tr>
+                    </thead>
+                    <tbody id="dg-msl-plan-grid-body"></tbody>
+                  </table>
+                </div>
+                <div id="dg-msl-plan-msg" class="alert mt-3 mb-0 d-none" role="status"></div>
+              </div>
+              <div class="card-footer d-flex justify-content-end gap-2">
+                <button type="button" class="btn btn-outline-secondary" id="dg-msl-plans-cancel" data-dg-no-activity="1">Закрыть</button>
+                <button type="button" class="btn btn-primary" id="dg-msl-plan-matrix-save" data-dg-notify-start="Сохраняем планы…">Сохранить планы</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-msl-log-overlay" class="dg-msl-log-overlay" style="display: none" aria-hidden="true">
+            <div class="dg-msl-log-backdrop" id="dg-msl-log-backdrop"></div>
+            <div class="dg-msl-log-panel card shadow-lg border-0">
+              <div class="card-header d-flex align-items-center justify-content-between gap-2">
+                <div class="d-flex flex-column" style="min-width: 0">
+                  <div class="fw-semibold" id="dg-msl-log-title">Журнал изменений</div>
+                  <div class="text-muted small" id="dg-msl-log-subtitle"></div>
+                </div>
+                <div class="d-flex align-items-center gap-2 flex-shrink-0">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-msl-log-refresh" data-dg-notify-start="Обновляем журнал…">Обновить</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-msl-log-close">Закрыть</button>
+                </div>
+              </div>
+              <div class="card-body p-0">
+                <div class="dg-msl-log-body" id="dg-msl-log-body">
+                  <div class="text-muted small text-center py-4">Загрузка журнала…</div>
+                </div>
+              </div>
+            </div>
+          </div>

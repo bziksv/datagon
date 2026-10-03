@@ -1847,7 +1847,8 @@
       id === "dg-dim-table" ||
       id === "dg-mm-table-main" ||
       id === "dg-np-table" ||
-      id === "dg-fin-table-main"
+      id === "dg-fin-table-main" ||
+      id === "dg-msl-table"
     )
       return true;
     return false;
