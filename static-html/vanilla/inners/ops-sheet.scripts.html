@@ -1,0 +1,931 @@
+<script>
+(function () {
+  "use strict";
+
+  var OPS_COLS = [
+    ["manager_name", "Менеджер"],
+    ["turnover", "Оборот"],
+    ["profit_before_tax", "Прибыль\nдо вычета налога"],
+    ["profit_after_tax", "Прибыль\nс вычетом налога"],
+    ["profit_pct", "Общий %\nприбыли за месяц"],
+    ["bonus_current", "Премия за\nтекущий месяц"],
+    ["applications_count", "Кол-во\nзаявок"],
+    ["coefficient", "Коэффициент"],
+    ["paid_applications", "Оплаченные\nзаявки"],
+    ["apps_per_sale", "Отношение\nпродаж к заявкам"],
+    ["avg_check", "Средний чек"],
+    ["bonus_past", "Премия с учетом\nзаказов с прошлых месяцев"],
+    ["salary", "Оклад с учетом\nотработанных дней"],
+    ["fact_profit", "Фактическая прибыль\nза текущий месяц"],
+    ["salary_paid", "Зарплата с учетом\nпремии за прошлые месяца"],
+    ["company_profit", "Прибыль фирмы\nс вычетом оклада и премии"],
+    ["company_pct", "% от оборота\nс вычетом зарплат"],
+    ["plan_status", "План"],
+  ];
+
+  var MONEY_KEYS = {
+    turnover: 1,
+    profit_before_tax: 1,
+    profit_after_tax: 1,
+    bonus_current: 1,
+    avg_check: 1,
+    bonus_past: 1,
+    salary: 1,
+    fact_profit: 1,
+    salary_paid: 1,
+    company_profit: 1,
+  };
+  var PCT_KEYS = { profit_pct: 1, company_pct: 1 };
+  var INT_KEYS = { applications_count: 1, paid_applications: 1 };
+  var MANUAL_KEYS = {
+    applications_count: 1,
+    coefficient: 1,
+    bonus_past: 1,
+    salary: 1,
+  };
+  var FORMULA_HINTS = {
+    turnover: "SUM(сумма оплаты без доставки) credit-менеджера за месяц",
+    profit_before_tax: "SUM(net − доставка), без налога 16%",
+    profit_after_tax: "SUM(разница / diff) с налогом 16%",
+    profit_pct: "прибыль после налога / оборот × 100",
+    bonus_current: "SUM(diff) × % МП. месяца / 100",
+    applications_count: "Ручной ввод",
+    coefficient: "Ручной ввод",
+    paid_applications: "число оплаченных продаж за месяц (строки таблиц менеджеров с датой оплаты)",
+    apps_per_sale: "кол-во заявок / оплаченные заявки",
+    avg_check: "оборот / оплаченные заявки",
+    bonus_past: "Ручной ввод",
+    salary: "Ручной ввод",
+    fact_profit: "прибыль после налога − премия месяца − оклад",
+    salary_paid: "оклад + премия с прошлыми месяцами",
+    company_profit: "прибыль после налога − зарплата с премиями прошлых",
+    company_pct: "прибыль фирмы / оборот × 100",
+    plan_status: "выполнен, если оборот ≥ план менеджера",
+  };
+
+  var FILTERS_KEY = "datagon_ops_sheet_filters_collapsed_v1";
+  var TABLE_COLLAPSE_KEY = "dg.ops-sheet.table-card.collapsed.v1";
+  var COLS_KEY = "dg.ops.colvisible.v1";
+  var WIDTHS_KEY = "dg.ops.colwidths.v1";
+  var MONTH_SHORT = ["", "Янв", "Фев", "Мар", "Апр", "Май", "Июн", "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек"];
+
+  var cy = new Date().getFullYear();
+  var state = {
+    year: cy,
+    search: "",
+    pending: { year: cy, search: "" },
+    months: [],
+    managers: [],
+    years: [],
+    can_write: false,
+    visible: OPS_COLS.map(function (c) { return c[0]; }),
+    widths: {},
+    loading: false,
+  };
+
+  function el(id) {
+    return document.getElementById(id);
+  }
+
+  function fmt() {
+    return window.DatagonFmt || null;
+  }
+
+  function formatMoney(v) {
+    if (v == null || v === "") return "—";
+    var f = fmt();
+    return f && f.formatMoney ? f.formatMoney(v) : String(v);
+  }
+
+  function formatNum(v, digits) {
+    if (v == null || v === "") return "—";
+    var f = fmt();
+    if (f && f.formatNumber) {
+      return f.formatNumber(v, { maxFractionDigits: digits != null ? digits : 2, minFractionDigits: 0 });
+    }
+    return String(v);
+  }
+
+  function formatInt(v) {
+    if (v == null || v === "") return "—";
+    var f = fmt();
+    return f && f.formatInteger ? f.formatInteger(v) : String(Math.round(v));
+  }
+
+  function parseInput(raw) {
+    var f = fmt();
+    if (f && f.parseNumberInput) return f.parseNumberInput(raw);
+    var s = String(raw || "").trim().replace(/\s/g, "").replace(",", ".");
+    if (!s) return null;
+    var n = Number(s);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  function escapeHtml(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function labelHtml(label) {
+    return escapeHtml(label).replace(/\n/g, "<br>");
+  }
+
+  function toast(type, message) {
+    if (window.DatagonNotify && window.DatagonNotify.toast) {
+      window.DatagonNotify.toast({ type: type || "info", message: message || "" });
+    }
+  }
+
+  function userStorageKey(base) {
+    try {
+      var u = (window.DatagonAuth && window.DatagonAuth.user && window.DatagonAuth.user.id) || "anon";
+      return base + "." + u;
+    } catch (e) {
+      return base + ".anon";
+    }
+  }
+
+  function loadVisible() {
+    try {
+      var raw = localStorage.getItem(userStorageKey(COLS_KEY));
+      if (!raw) return;
+      var arr = JSON.parse(raw);
+      if (!Array.isArray(arr) || !arr.length) return;
+      var known = {};
+      OPS_COLS.forEach(function (c) { known[c[0]] = 1; });
+      var next = arr.filter(function (k) { return known[k]; });
+      if (next.indexOf("manager_name") < 0) next.unshift("manager_name");
+      if (next.length) state.visible = next;
+    } catch (e) {}
+  }
+
+  function saveVisible() {
+    try {
+      localStorage.setItem(userStorageKey(COLS_KEY), JSON.stringify(state.visible));
+    } catch (e) {}
+  }
+
+  function loadWidths() {
+    try {
+      var raw = localStorage.getItem(userStorageKey(WIDTHS_KEY));
+      if (!raw) return;
+      var obj = JSON.parse(raw);
+      if (obj && typeof obj === "object") state.widths = obj;
+    } catch (e) {}
+  }
+
+  function saveWidths() {
+    try {
+      localStorage.setItem(userStorageKey(WIDTHS_KEY), JSON.stringify(state.widths || {}));
+    } catch (e) {}
+  }
+
+  function visibleCols() {
+    var set = {};
+    state.visible.forEach(function (k) { set[k] = 1; });
+    return OPS_COLS.filter(function (c) { return set[c[0]]; });
+  }
+
+  function pctClass(v) {
+    if (v == null || !Number.isFinite(Number(v))) return "";
+    var n = Number(v);
+    if (n < 5) return "dg-ops-pct-low";
+    if (n >= 12) return "dg-ops-pct-high";
+    return "dg-ops-pct-mid";
+  }
+
+  function setHint(text) {
+    var h = el("dg-ops-status-hint");
+    if (!h) return;
+    if (!text) {
+      h.style.display = "none";
+      h.textContent = "";
+      return;
+    }
+    h.style.display = "";
+    h.textContent = text;
+  }
+
+  function syncDirtyMarker() {
+    var btn = el("dg-ops-apply");
+    if (!btn) return;
+    var dirty =
+      Number(state.pending.year) !== Number(state.year) ||
+      String(state.pending.search || "") !== String(state.search || "");
+    btn.classList.toggle("dg-flt-dirty", dirty);
+    btn.textContent = dirty ? "Применить •" : "Применить";
+  }
+
+  function fillYearSelect(years) {
+    var sel = el("dg-ops-f-year");
+    if (!sel) return;
+    var list = (years && years.length ? years.slice() : [cy]).slice();
+    if (list.indexOf(cy) < 0) list.unshift(cy);
+    sel.innerHTML = list
+      .map(function (y) {
+        return '<option value="' + y + '">' + y + "</option>";
+      })
+      .join("");
+    sel.value = String(state.pending.year || cy);
+  }
+
+  function renderMonthJump() {
+    var host = el("dg-ops-month-jump");
+    if (!host) return;
+    host.innerHTML = "";
+    for (var m = 1; m <= 12; m += 1) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = "btn btn-sm btn-outline-secondary";
+      b.textContent = MONTH_SHORT[m];
+      b.setAttribute("data-dg-no-activity", "1");
+      b.addEventListener("click", function () {
+        var target = document.getElementById("ops-month-" + m);
+        if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+      host.appendChild(b);
+    }
+  }
+
+  function cellWidthStyle(key) {
+    var w = state.widths && state.widths[key];
+    if (w && Number(w) >= 40) return "width:" + Number(w) + "px;min-width:" + Number(w) + "px;max-width:" + Number(w) + "px;";
+    return "";
+  }
+
+  function formatCellValue(key, row) {
+    var v = row[key];
+    if (key === "manager_name") return escapeHtml(row.manager_name || "");
+    if (key === "plan_status") {
+      if (!v) return "—";
+      var ok = v === "выполнен";
+      var tip =
+        row.plan_amount != null
+          ? "План: " + formatMoney(row.plan_amount) + "; факт: " + formatMoney(row.turnover)
+          : "";
+      return (
+        '<span class="badge ' +
+        (ok ? "bg-success" : "bg-danger") +
+        '"' +
+        (tip ? ' title="' + escapeHtml(tip) + '"' : "") +
+        ">" +
+        escapeHtml(v) +
+        "</span>"
+      );
+    }
+    if (MONEY_KEYS[key]) return escapeHtml(formatMoney(v));
+    if (PCT_KEYS[key]) return escapeHtml(v == null ? "—" : formatNum(v, 2));
+    if (INT_KEYS[key]) return escapeHtml(formatInt(v));
+    if (key === "apps_per_sale" || key === "coefficient") return escapeHtml(v == null ? "—" : formatNum(v, 2));
+    return escapeHtml(v == null || v === "" ? "—" : String(v));
+  }
+
+  function deriveClientTotals(rows) {
+    function sum(key, money) {
+      var any = false;
+      var s = 0;
+      rows.forEach(function (r) {
+        var v = r[key];
+        if (v == null || v === "") return;
+        var n = Number(v);
+        if (!Number.isFinite(n)) return;
+        any = true;
+        s += n;
+      });
+      if (!any) return null;
+      return money ? Math.round(s * 100) / 100 : Math.round(s);
+    }
+    var turnover = sum("turnover", true) || 0;
+    var profitAfter = sum("profit_after_tax", true) || 0;
+    var bonusCurrent = sum("bonus_current", true) || 0;
+    var apps = sum("applications_count", false);
+    var paid = sum("paid_applications", false);
+    var bonusPast = sum("bonus_past", true);
+    var salary = sum("salary", true);
+    var salaryN = salary == null ? 0 : salary;
+    var bonusPastN = bonusPast == null ? 0 : bonusPast;
+    var fact = Math.round((profitAfter - bonusCurrent - salaryN) * 100) / 100;
+    var salaryPaid = Math.round((salaryN + bonusPastN) * 100) / 100;
+    var company = Math.round((profitAfter - salaryPaid) * 100) / 100;
+    return {
+      manager_name: "ИТОГО",
+      is_total: true,
+      turnover: turnover,
+      profit_before_tax: sum("profit_before_tax", true) || 0,
+      profit_after_tax: profitAfter,
+      profit_pct: turnover ? Math.round((profitAfter / turnover) * 10000) / 100 : null,
+      bonus_current: bonusCurrent,
+      applications_count: apps,
+      coefficient: null,
+      paid_applications: paid,
+      apps_per_sale: paid && apps != null ? Math.round((apps / paid) * 10000) / 10000 : null,
+      avg_check: paid ? Math.round((turnover / paid) * 100) / 100 : null,
+      bonus_past: bonusPast,
+      salary: salary,
+      fact_profit: fact,
+      salary_paid: salaryPaid,
+      company_profit: company,
+      company_pct: turnover ? Math.round((company / turnover) * 10000) / 100 : null,
+      plan_status: null,
+      plan_amount: null,
+    };
+  }
+
+  function rowMatchesSearch(row) {
+    var q = String(state.search || "")
+      .trim()
+      .toLowerCase();
+    if (!q) return true;
+    var name = String(row.manager_name || "").toLowerCase();
+    var user = String(row.username || "").toLowerCase();
+    return name.indexOf(q) >= 0 || user.indexOf(q) >= 0;
+  }
+
+  function buildThead() {
+    var cols = visibleCols();
+    var ths = cols
+      .map(function (c) {
+        var key = c[0];
+        var sticky = key === "manager_name" ? " dg-ops-sticky-name" : "";
+        var hint = FORMULA_HINTS[key] ? ' title="' + escapeHtml(FORMULA_HINTS[key]) + '"' : "";
+        return (
+          '<th class="' +
+          sticky +
+          '" data-ops-col="' +
+          escapeHtml(key) +
+          '" style="' +
+          cellWidthStyle(key) +
+          '"' +
+          hint +
+          ">" +
+          labelHtml(c[1]) +
+          "</th>"
+        );
+      })
+      .join("");
+    return "<thead><tr>" + ths + "</tr></thead>";
+  }
+
+  function buildRowHtml(row, month) {
+    var cols = visibleCols();
+    var isTotal = !!row.is_total;
+    var trClass = isTotal ? "dg-ops-row-total" : "";
+    if (!isTotal && !rowMatchesSearch(row)) trClass += (trClass ? " " : "") + "dg-ops-row-hidden";
+    var tds = cols
+      .map(function (c) {
+        var key = c[0];
+        var sticky = key === "manager_name" ? " dg-ops-sticky-name" : "";
+        var classes = sticky;
+        var num = MONEY_KEYS[key] || PCT_KEYS[key] || INT_KEYS[key] || key === "apps_per_sale" || key === "coefficient";
+        if (num) classes += " dg-ops-num";
+        if (PCT_KEYS[key]) classes += " " + pctClass(row[key]);
+        var editable = !isTotal && state.can_write && MANUAL_KEYS[key];
+        if (editable) classes += " dg-ops-cell-manual";
+        var attrs = ' class="' + classes.trim() + '" data-ops-col="' + escapeHtml(key) + '" style="' + cellWidthStyle(key) + '"';
+        if (editable) {
+          attrs +=
+            ' data-ops-edit="1" data-ops-month="' +
+            month +
+            '" data-ops-manager="' +
+            escapeHtml(String(row.manager_user_id)) +
+            '" data-ops-key="' +
+            escapeHtml(key) +
+            '"';
+        }
+        var hint = FORMULA_HINTS[key] && !editable ? ' title="' + escapeHtml(FORMULA_HINTS[key]) + '"' : "";
+        return "<td" + attrs + hint + ">" + formatCellValue(key, row) + "</td>";
+      })
+      .join("");
+    return '<tr class="' + trClass.trim() + '">' + tds + "</tr>";
+  }
+
+  function renderAll() {
+    var host = el("dg-ops-months-host");
+    var empty = el("dg-ops-empty");
+    var yearLabel = el("dg-ops-year-label");
+    if (yearLabel) yearLabel.textContent = state.year ? "· " + state.year : "";
+    if (!host) return;
+    host.innerHTML = "";
+    if (!state.months || !state.months.length) {
+      if (empty) empty.classList.remove("d-none");
+      return;
+    }
+    if (empty) empty.classList.add("d-none");
+    var thead = buildThead();
+    state.months.forEach(function (block) {
+      var visibleRows = (block.rows || []).filter(rowMatchesSearch);
+      var totals = state.search ? deriveClientTotals(visibleRows) : block.totals;
+      var wrap = document.createElement("div");
+      wrap.className = "dg-ops-month-block";
+      wrap.id = "ops-month-" + block.month;
+      var metaParts = [];
+      if (totals && totals.turnover != null) metaParts.push("оборот " + formatMoney(totals.turnover));
+      if (totals && totals.profit_after_tax != null) metaParts.push("прибыль " + formatMoney(totals.profit_after_tax));
+      if (totals && totals.profit_pct != null) metaParts.push(formatNum(totals.profit_pct, 2) + "%");
+      wrap.innerHTML =
+        '<div class="dg-ops-month-banner"><span>' +
+        escapeHtml(block.label || MONTH_SHORT[block.month] || "") +
+        '</span><span class="dg-ops-month-meta">' +
+        escapeHtml(metaParts.join(" · ")) +
+        "</span></div>" +
+        '<div class="dg-ops-table-scroll-outer">' +
+        '<div class="table-responsive">' +
+        '<table class="table table-sm dg-ops-month-table mb-0">' +
+        thead +
+        "<tbody></tbody></table></div></div>";
+      var tbody = wrap.querySelector("tbody");
+      (block.rows || []).forEach(function (row) {
+        tbody.insertAdjacentHTML("beforeend", buildRowHtml(row, block.month));
+      });
+      if (totals) tbody.insertAdjacentHTML("beforeend", buildRowHtml(totals, block.month));
+      host.appendChild(wrap);
+    });
+  }
+
+  function renderColumnControls() {
+    var list = el("dg-ops-columns-list");
+    if (!list) return;
+    var set = {};
+    state.visible.forEach(function (k) { set[k] = 1; });
+    list.innerHTML = OPS_COLS.map(function (c) {
+      var key = c[0];
+      var locked = key === "manager_name";
+      return (
+        '<div class="col-md-4 col-sm-6">' +
+        '<div class="form-check">' +
+        '<input class="form-check-input" type="checkbox" id="ops-col-' +
+        escapeHtml(key) +
+        '" data-ops-col="' +
+        escapeHtml(key) +
+        '"' +
+        (set[key] ? " checked" : "") +
+        (locked ? " disabled" : "") +
+        ">" +
+        '<label class="form-check-label" for="ops-col-' +
+        escapeHtml(key) +
+        '">' +
+        escapeHtml(c[1].replace(/\n/g, " ")) +
+        "</label></div></div>"
+      );
+    }).join("");
+  }
+
+  function renderWidthControls() {
+    var list = el("dg-ops-widths-list");
+    if (!list) return;
+    list.innerHTML = OPS_COLS.map(function (c) {
+      var key = c[0];
+      var w = state.widths[key] || "";
+      return (
+        '<div class="col-md-4 col-sm-6">' +
+        '<label class="form-label small mb-0" for="ops-w-' +
+        escapeHtml(key) +
+        '">' +
+        escapeHtml(c[1].replace(/\n/g, " ")) +
+        "</label>" +
+        '<input type="text" inputmode="numeric" class="form-control form-control-sm" id="ops-w-' +
+        escapeHtml(key) +
+        '" data-ops-width="' +
+        escapeHtml(key) +
+        '" value="' +
+        escapeHtml(String(w)) +
+        '" placeholder="auto">' +
+        "</div>"
+      );
+    }).join("");
+  }
+
+  function apiGet(url) {
+    return fetch(url, { credentials: "same-origin" }).then(function (r) {
+      return r.json().then(function (j) {
+        if (!r.ok || !j || j.success === false) {
+          var err = new Error((j && j.error) || "HTTP " + r.status);
+          err.status = r.status;
+          throw err;
+        }
+        return j;
+      });
+    });
+  }
+
+  function loadMeta() {
+    return apiGet("/api/ops-sheet/meta").then(function (j) {
+      state.years = j.years || [];
+      state.managers = j.managers || [];
+      state.can_write = !!j.can_write;
+      if (j.year && !state.year) state.year = j.year;
+      fillYearSelect(state.years);
+      return j;
+    });
+  }
+
+  function loadYear() {
+    state.loading = true;
+    setHint("Загружаем операционный лист…");
+    var url = "/api/ops-sheet?year=" + encodeURIComponent(String(state.year));
+    var run = function () {
+      return apiGet(url).then(function (j) {
+        state.months = j.months || [];
+        state.managers = j.managers || state.managers;
+        state.can_write = !!j.can_write;
+        state.loading = false;
+        setHint("");
+        renderAll();
+      });
+    };
+    var btn = el("dg-ops-apply");
+    if (window.DatagonNotify && window.DatagonNotify.busyRun && btn) {
+      return window.DatagonNotify.busyRun(btn, run).catch(function (e) {
+        state.loading = false;
+        setHint("Ошибка: " + (e.message || e));
+        toast("danger", e.message || "Не удалось загрузить");
+      });
+    }
+    return run().catch(function (e) {
+      state.loading = false;
+      setHint("Ошибка: " + (e.message || e));
+      toast("danger", e.message || "Не удалось загрузить");
+    });
+  }
+
+  function commitFilters() {
+    state.year = Number(state.pending.year) || cy;
+    state.search = String(state.pending.search || "").trim();
+    syncDirtyMarker();
+    return loadYear();
+  }
+
+  function resetFilters() {
+    state.pending.year = cy;
+    state.pending.search = "";
+    var y = el("dg-ops-f-year");
+    var s = el("dg-ops-search");
+    var m = el("dg-ops-table-search-mirror");
+    if (y) y.value = String(cy);
+    if (s) s.value = "";
+    if (m) m.value = "";
+    return commitFilters();
+  }
+
+  function findMonthBlock(month) {
+    return (state.months || []).find(function (b) {
+      return Number(b.month) === Number(month);
+    });
+  }
+
+  function findRow(month, managerId) {
+    var block = findMonthBlock(month);
+    if (!block) return null;
+    return (block.rows || []).find(function (r) {
+      return Number(r.manager_user_id) === Number(managerId);
+    });
+  }
+
+  function applySavedRow(month, row, totals) {
+    var block = findMonthBlock(month);
+    if (!block || !row) return;
+    block.rows = (block.rows || []).map(function (r) {
+      return Number(r.manager_user_id) === Number(row.manager_user_id) ? row : r;
+    });
+    if (totals) block.totals = totals;
+    renderAll();
+  }
+
+  function saveManual(month, managerId, key, value) {
+    var body = {
+      year: state.year,
+      month: Number(month),
+      manager_user_id: Number(managerId),
+    };
+    body[key] = value;
+    return fetch("/api/ops-sheet/manual", {
+      method: "PUT",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then(function (r) {
+      return r.json().then(function (j) {
+        if (!r.ok || !j || j.success === false) {
+          throw new Error((j && j.error) || "HTTP " + r.status);
+        }
+        applySavedRow(month, j.row, j.totals);
+        toast("success", "Сохранено");
+        return j;
+      });
+    });
+  }
+
+  function startEdit(td) {
+    if (!td || td.getAttribute("data-ops-editing") === "1") return;
+    if (!state.can_write) return;
+    var key = td.getAttribute("data-ops-key");
+    var month = td.getAttribute("data-ops-month");
+    var managerId = td.getAttribute("data-ops-manager");
+    var row = findRow(month, managerId);
+    if (!row || !key) return;
+    var prev = row[key];
+    td.setAttribute("data-ops-editing", "1");
+    td.classList.add("dg-ops-dirty");
+    var input = document.createElement("input");
+    input.type = "text";
+    input.setAttribute("data-dg-no-activity", "1");
+    if (prev == null || prev === "") input.value = "";
+    else if (MONEY_KEYS[key] || key === "coefficient") input.value = formatNum(prev, key === "coefficient" ? 4 : 2);
+    else input.value = String(prev);
+    td.innerHTML = "";
+    td.appendChild(input);
+    input.focus();
+    input.select();
+
+    var done = false;
+    function finish(commit) {
+      if (done) return;
+      done = true;
+      td.removeAttribute("data-ops-editing");
+      td.classList.remove("dg-ops-dirty");
+      if (!commit) {
+        td.innerHTML = formatCellValue(key, row);
+        return;
+      }
+      var raw = input.value;
+      var parsed;
+      if (!String(raw).trim()) parsed = null;
+      else if (INT_KEYS[key]) {
+        parsed = parseInput(raw);
+        if (parsed == null || parsed < 0 || Math.round(parsed) !== parsed) {
+          toast("danger", "Нужно целое число ≥ 0");
+          td.innerHTML = formatCellValue(key, row);
+          return;
+        }
+        parsed = Math.round(parsed);
+      } else {
+        parsed = parseInput(raw);
+        if (parsed == null) {
+          toast("danger", "Некорректное число");
+          td.innerHTML = formatCellValue(key, row);
+          return;
+        }
+      }
+      td.innerHTML = "…";
+      saveManual(month, managerId, key, parsed).catch(function (e) {
+        toast("danger", e.message || "Ошибка сохранения");
+        td.innerHTML = formatCellValue(key, row);
+      });
+    }
+
+    input.addEventListener("keydown", function (ev) {
+      if (ev.key === "Enter") {
+        ev.preventDefault();
+        finish(true);
+      } else if (ev.key === "Escape") {
+        ev.preventDefault();
+        finish(false);
+      }
+    });
+    input.addEventListener("blur", function () {
+      setTimeout(function () {
+        finish(true);
+      }, 0);
+    });
+  }
+
+  function columnControls() {
+    var wrap = el("dg-ops-toolbox-panels");
+    var colPanel = el("dg-ops-columns-panel");
+    var wPanel = el("dg-ops-widths-panel");
+    function syncWrap() {
+      var open =
+        (colPanel && colPanel.classList.contains("open")) ||
+        (wPanel && wPanel.classList.contains("open"));
+      if (wrap) wrap.classList.toggle("d-none", !open);
+    }
+    function closeAll() {
+      if (colPanel) colPanel.classList.remove("open");
+      if (wPanel) wPanel.classList.remove("open");
+      syncWrap();
+    }
+    if (el("dg-ops-columns-toggle")) {
+      el("dg-ops-columns-toggle").addEventListener("click", function (ev) {
+        ev.stopPropagation();
+        if (wPanel) wPanel.classList.remove("open");
+        if (colPanel) colPanel.classList.toggle("open");
+        syncWrap();
+      });
+    }
+    if (el("dg-ops-widths-toggle")) {
+      el("dg-ops-widths-toggle").addEventListener("click", function (ev) {
+        ev.stopPropagation();
+        if (colPanel) colPanel.classList.remove("open");
+        if (wPanel) wPanel.classList.toggle("open");
+        syncWrap();
+      });
+    }
+    document.addEventListener("click", function (ev) {
+      if (wrap && wrap.contains(ev.target)) return;
+      if (ev.target && ev.target.closest && ev.target.closest("#dg-ops-columns-toggle, #dg-ops-widths-toggle")) return;
+      closeAll();
+    });
+    if (el("dg-ops-columns-all")) {
+      el("dg-ops-columns-all").addEventListener("click", function () {
+        state.visible = OPS_COLS.map(function (c) { return c[0]; });
+        saveVisible();
+        renderColumnControls();
+        renderAll();
+      });
+    }
+    if (el("dg-ops-columns-default")) {
+      el("dg-ops-columns-default").addEventListener("click", function () {
+        state.visible = OPS_COLS.map(function (c) { return c[0]; });
+        saveVisible();
+        renderColumnControls();
+        renderAll();
+      });
+    }
+    if (el("dg-ops-columns-list")) {
+      el("dg-ops-columns-list").addEventListener("change", function (ev) {
+        var t = ev.target;
+        if (!t || !t.getAttribute("data-ops-col")) return;
+        var key = t.getAttribute("data-ops-col");
+        if (key === "manager_name") return;
+        var on = !!t.checked;
+        if (on && state.visible.indexOf(key) < 0) state.visible.push(key);
+        if (!on) state.visible = state.visible.filter(function (k) { return k !== key; });
+        if (state.visible.indexOf("manager_name") < 0) state.visible.unshift("manager_name");
+        saveVisible();
+        renderAll();
+      });
+    }
+    if (el("dg-ops-widths-default")) {
+      el("dg-ops-widths-default").addEventListener("click", function () {
+        state.widths = {};
+        saveWidths();
+        renderWidthControls();
+        renderAll();
+      });
+    }
+    if (el("dg-ops-widths-list")) {
+      el("dg-ops-widths-list").addEventListener("change", function (ev) {
+        var t = ev.target;
+        if (!t || !t.getAttribute("data-ops-width")) return;
+        var key = t.getAttribute("data-ops-width");
+        var n = Number(t.value);
+        if (Number.isFinite(n) && n >= 40) state.widths[key] = Math.round(n);
+        else delete state.widths[key];
+        saveWidths();
+        renderAll();
+      });
+    }
+    renderColumnControls();
+    renderWidthControls();
+  }
+
+  function filtersCollapse() {
+    var body = el("dg-ops-filters-body");
+    var btn = el("dg-ops-filters-toggle");
+    if (!body || !btn) return;
+    function apply() {
+      var c = false;
+      try { c = localStorage.getItem(FILTERS_KEY) === "1"; } catch (e) {}
+      body.style.display = c ? "none" : "";
+      btn.textContent = c ? "Развернуть" : "Свернуть";
+    }
+    btn.addEventListener("click", function () {
+      var c = false;
+      try { c = localStorage.getItem(FILTERS_KEY) === "1"; } catch (e) {}
+      try { localStorage.setItem(FILTERS_KEY, c ? "0" : "1"); } catch (e2) {}
+      apply();
+    });
+    apply();
+  }
+
+  function tableCardCollapse() {
+    var body = el("dg-ops-table-body");
+    var btn = el("dg-ops-table-toggle");
+    if (!body || !btn) return;
+    function apply() {
+      var c = false;
+      try { c = localStorage.getItem(TABLE_COLLAPSE_KEY) === "1"; } catch (e) {}
+      body.style.display = c ? "none" : "";
+      btn.textContent = c ? "Развернуть" : "Свернуть";
+    }
+    btn.addEventListener("click", function () {
+      var c = false;
+      try { c = localStorage.getItem(TABLE_COLLAPSE_KEY) === "1"; } catch (e) {}
+      try { localStorage.setItem(TABLE_COLLAPSE_KEY, c ? "0" : "1"); } catch (e2) {}
+      apply();
+    });
+    apply();
+  }
+
+  function bindHeaderSearchMirror() {
+    var a = el("dg-ops-search");
+    var b = el("dg-ops-table-search-mirror");
+    if (!a || !b) return;
+    var syncing = false;
+    function sync(from, to) {
+      if (syncing) return;
+      syncing = true;
+      to.value = from.value;
+      state.pending.search = from.value;
+      syncDirtyMarker();
+      syncing = false;
+    }
+    a.addEventListener("input", function () { sync(a, b); });
+    b.addEventListener("input", function () { sync(b, a); });
+    function onEnter(ev) {
+      if (ev.key === "Enter") {
+        ev.preventDefault();
+        if (el("dg-ops-apply")) el("dg-ops-apply").click();
+      } else if (ev.key === "Escape") {
+        a.value = "";
+        b.value = "";
+        state.pending.search = "";
+        commitFilters();
+      }
+    }
+    a.addEventListener("keydown", onEnter);
+    b.addEventListener("keydown", onEnter);
+    a.addEventListener("search", function () {
+      if (!a.value) {
+        b.value = "";
+        state.pending.search = "";
+        commitFilters();
+      }
+    });
+    b.addEventListener("search", function () {
+      if (!b.value) {
+        a.value = "";
+        state.pending.search = "";
+        commitFilters();
+      }
+    });
+  }
+
+  function bindFilters() {
+    var y = el("dg-ops-f-year");
+    if (y) {
+      y.addEventListener("change", function () {
+        state.pending.year = Number(y.value) || cy;
+        syncDirtyMarker();
+      });
+    }
+    if (el("dg-ops-apply")) {
+      el("dg-ops-apply").addEventListener("click", function () {
+        var sel = el("dg-ops-f-year");
+        if (sel) state.pending.year = Number(sel.value) || cy;
+        var s = el("dg-ops-search");
+        if (s) state.pending.search = s.value;
+        commitFilters();
+      });
+    }
+    if (el("dg-ops-reset")) {
+      el("dg-ops-reset").addEventListener("click", function () {
+        resetFilters();
+      });
+    }
+  }
+
+  function bindTableEdit() {
+    var host = el("dg-ops-months-host");
+    if (!host) return;
+    host.addEventListener("click", function (ev) {
+      var td = ev.target && ev.target.closest ? ev.target.closest("td[data-ops-edit='1']") : null;
+      if (!td || td.getAttribute("data-ops-editing") === "1") return;
+      if (ev.target && ev.target.tagName === "INPUT") return;
+      startEdit(td);
+    });
+  }
+
+  function init() {
+    loadVisible();
+    loadWidths();
+    renderMonthJump();
+    filtersCollapse();
+    tableCardCollapse();
+    columnControls();
+    bindHeaderSearchMirror();
+    bindFilters();
+    bindTableEdit();
+    syncDirtyMarker();
+    loadMeta()
+      .then(function () {
+        state.pending.year = state.year || cy;
+        fillYearSelect(state.years);
+        return commitFilters();
+      })
+      .catch(function (e) {
+        setHint("Ошибка: " + (e.message || e));
+        toast("danger", e.message || "Не удалось загрузить meta");
+      });
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init);
+  } else {
+    init();
+  }
+})();
+</script>

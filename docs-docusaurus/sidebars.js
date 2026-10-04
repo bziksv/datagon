@@ -18,6 +18,7 @@ module.exports = {
     "settings",
     "finance",
     "manager-sales",
+    "ops-sheet",
     "script-versioning",
     "api",
     "deploy",

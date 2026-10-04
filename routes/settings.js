@@ -184,6 +184,7 @@ module.exports = (db, appSettings) => {
             auth_session_ttl_days, auth_session_user_limit, auth_online_presence_minutes,
             fetch_proxy_enabled, fetch_proxy_list,
             ozon_client_id, ozon_api_key, wb_api_key, wb_token_type, ym_api_key, ym_campaign_id, ym_business_id,
+            planfix_rest_api_key, planfix_account,
             mp_ozon_delay_ms, mp_wb_delay_cards_ms, mp_wb_delay_other_ms, mp_yandex_delay_ms, mp_ozon_include_archived,
             sales_formula_replenishment_days, sales_formula_replenishment_coef, sales_formula_sku_replenishment_enabled,
             sales_formula_sales_window_days, sales_formula_absence_analysis_days,
@@ -438,6 +439,13 @@ module.exports = (db, appSettings) => {
             if (ym_api_key !== undefined) queries.push(['ym_api_key', String(ym_api_key || '').slice(0, 8000)]);
             if (ym_campaign_id !== undefined) queries.push(['ym_campaign_id', String(ym_campaign_id || '').slice(0, 8000)]);
             if (ym_business_id !== undefined) queries.push(['ym_business_id', String(ym_business_id || '').slice(0, 8000)]);
+            if (planfix_rest_api_key !== undefined) {
+                queries.push(['planfix_rest_api_key', String(planfix_rest_api_key || '').slice(0, 8000)]);
+            }
+            if (planfix_account !== undefined) {
+                const { normAccount } = require('../lib/planfixClient');
+                queries.push(['planfix_account', normAccount(planfix_account)]);
+            }
             if (mp_ozon_delay_ms !== undefined) queries.push(['mp_ozon_delay_ms', Math.max(300, Number(mp_ozon_delay_ms || 400))]);
             if (mp_wb_delay_cards_ms !== undefined) queries.push(['mp_wb_delay_cards_ms', Math.max(350, Number(mp_wb_delay_cards_ms || 600))]);
             if (mp_wb_delay_other_ms !== undefined) queries.push(['mp_wb_delay_other_ms', Math.max(1000, Number(mp_wb_delay_other_ms || 1600))]);
@@ -706,6 +714,13 @@ module.exports = (db, appSettings) => {
             if (ym_api_key !== undefined) appSettings.ym_api_key = String(ym_api_key || '').slice(0, 8000);
             if (ym_campaign_id !== undefined) appSettings.ym_campaign_id = String(ym_campaign_id || '').slice(0, 8000);
             if (ym_business_id !== undefined) appSettings.ym_business_id = String(ym_business_id || '').slice(0, 8000);
+            if (planfix_rest_api_key !== undefined) {
+                appSettings.planfix_rest_api_key = String(planfix_rest_api_key || '').slice(0, 8000);
+            }
+            if (planfix_account !== undefined) {
+                const { normAccount } = require('../lib/planfixClient');
+                appSettings.planfix_account = normAccount(planfix_account);
+            }
             if (mp_ozon_delay_ms !== undefined) appSettings.mp_ozon_delay_ms = Math.max(300, Number(mp_ozon_delay_ms || 400));
             if (mp_wb_delay_cards_ms !== undefined) appSettings.mp_wb_delay_cards_ms = Math.max(350, Number(mp_wb_delay_cards_ms || 600));
             if (mp_wb_delay_other_ms !== undefined) appSettings.mp_wb_delay_other_ms = Math.max(1000, Number(mp_wb_delay_other_ms || 1600));
@@ -917,6 +932,28 @@ module.exports = (db, appSettings) => {
             return res.status(500).json({
                 success: false,
                 error: e && e.message ? e.message : 'Не удалось очистить auto_sync_runs',
+            });
+        }
+    });
+
+    /** POST /api/settings/planfix-test — Bearer GET /userinfo (или /ping) к аккаунту Planfix. */
+    router.post('/planfix-test', async (req, res) => {
+        try {
+            const { testConnection } = require('../lib/planfixClient');
+            const result = await testConnection(appSettings);
+            const status = result.ok ? 200 : result.status === 401 || result.status === 403 ? 401 : 502;
+            res.status(result.ok ? 200 : status).json({
+                success: result.ok,
+                message: result.message,
+                account: result.account,
+                base: result.base,
+                http_status: result.status,
+                user: result.user || null,
+            });
+        } catch (e) {
+            res.status(500).json({
+                success: false,
+                error: e && e.message ? e.message : 'Не удалось проверить Planfix',
             });
         }
     });

@@ -142,8 +142,9 @@
                   <label class="form-label" for="dg-msl-f-org">Счет от ИП или ООО</label>
                   <select class="form-select" id="dg-msl-f-org">
                     <option value="">Все</option>
-                    <option value="ip">ИП</option>
-                    <option value="ooo">ООО</option>
+                    <option value="Альмамед">Альмамед</option>
+                    <option value="Вилмед">Вилмед</option>
+                    <option value="ИП">ИП</option>
                   </select>
                 </div>
                 <div class="col-md-2" data-dg-msl-filter-field="archived" data-dg-filter-field-title="Архив">
@@ -154,12 +155,15 @@
                     <option value="all">Все строки</option>
                   </select>
                 </div>
+                <div class="col-md-2" data-dg-msl-filter-field="ship_together" data-dg-filter-field-title="Отправка вместе">
+                  <label class="form-label" for="dg-msl-f-ship">Отправка вместе</label>
+                  <select class="form-select" id="dg-msl-f-ship">
+                    <option value="" selected>Все</option>
+                    <option value="1">Только связанные</option>
+                    <option value="0">Без связки</option>
+                  </select>
+                </div>
               </div>
-              <datalist id="dg-msl-org-list">
-                <option value="ООО Альмамед"></option>
-                <option value="ООО Вилмед"></option>
-                <option value="ИП"></option>
-              </datalist>
               <div class="mt-3 d-flex flex-wrap gap-2">
                 <button type="button" class="btn btn-sm btn-primary" id="dg-msl-apply" data-dg-notify-start="Применяем фильтры…">Применить</button>
                 <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-msl-reset" data-dg-notify-start="Сбрасываем фильтры…">По умолчанию</button>
@@ -340,6 +344,63 @@
               </div>
               <div class="card-footer d-flex justify-content-end gap-2 flex-wrap bg-white border-top-0">
                 <button type="button" class="btn btn-outline-secondary" id="dg-msl-our-mark-cancel" data-dg-no-activity="1">Отмена</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-msl-cmt-overlay" class="dg-msl-confirm-overlay" style="display: none" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="dg-msl-cmt-title">
+            <div class="dg-msl-confirm-backdrop" id="dg-msl-cmt-backdrop"></div>
+            <div class="dg-msl-confirm-panel card shadow-lg border-0">
+              <div class="card-header">
+                <div class="fw-semibold" id="dg-msl-cmt-title">Комментарий</div>
+              </div>
+              <div class="card-body">
+                <p class="mb-2 text-muted small" id="dg-msl-cmt-hint">Новый комментарий появится сверху. Редактировать сможете только свой.</p>
+                <label class="form-label" for="dg-msl-cmt-text">Текст</label>
+                <textarea class="form-control" id="dg-msl-cmt-text" rows="4" maxlength="2000" placeholder="Напишите комментарий…"></textarea>
+              </div>
+              <div class="card-footer d-flex justify-content-between gap-2 flex-wrap bg-white border-top-0">
+                <button type="button" class="btn btn-outline-danger d-none" id="dg-msl-cmt-del" data-dg-notify-start="Удаление комментария…">Удалить</button>
+                <div class="d-flex gap-2 ms-auto">
+                  <button type="button" class="btn btn-outline-secondary" id="dg-msl-cmt-cancel" data-dg-no-activity="1">Отмена</button>
+                  <button type="button" class="btn btn-primary" id="dg-msl-cmt-ok" data-dg-notify-start="Сохраняем комментарий…">Сохранить</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-msl-cmt-del-overlay" class="dg-msl-confirm-overlay" style="display: none" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="dg-msl-cmt-del-title">
+            <div class="dg-msl-confirm-backdrop" id="dg-msl-cmt-del-backdrop"></div>
+            <div class="dg-msl-confirm-panel card shadow-lg border-0">
+              <div class="card-header">
+                <div class="fw-semibold" id="dg-msl-cmt-del-title">Удалить комментарий?</div>
+              </div>
+              <div class="card-body">
+                <p class="mb-0" id="dg-msl-cmt-del-text">Комментарий будет удалён без возможности восстановить.</p>
+              </div>
+              <div class="card-footer d-flex justify-content-end gap-2 flex-wrap bg-white border-top-0">
+                <button type="button" class="btn btn-outline-secondary" id="dg-msl-cmt-del-cancel" data-dg-no-activity="1">Отмена</button>
+                <button type="button" class="btn btn-danger" id="dg-msl-cmt-del-ok" data-dg-notify-start="Удаляем комментарий…">Удалить</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="dg-msl-ship-overlay" class="dg-msl-confirm-overlay" style="display: none" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="dg-msl-ship-title">
+            <div class="dg-msl-confirm-backdrop" id="dg-msl-ship-backdrop"></div>
+            <div class="dg-msl-confirm-panel card shadow-lg border-0">
+              <div class="card-header">
+                <div class="fw-semibold" id="dg-msl-ship-title">Отправка вместе</div>
+              </div>
+              <div class="card-body">
+                <p class="mb-2 text-muted small" id="dg-msl-ship-hint">Укажите № нашего счёта другой строки — они поедут одной отправкой.</p>
+                <div id="dg-msl-ship-mates" class="dg-msl-ship-mates mb-3"></div>
+                <label class="form-label" for="dg-msl-ship-invoice">№ нашего счёта</label>
+                <input type="text" class="form-control" id="dg-msl-ship-invoice" placeholder="например V-4810" autocomplete="off" />
+              </div>
+              <div class="card-footer d-flex justify-content-end gap-2 flex-wrap bg-white border-top-0">
+                <button type="button" class="btn btn-outline-secondary" id="dg-msl-ship-cancel" data-dg-no-activity="1">Закрыть</button>
+                <button type="button" class="btn btn-outline-danger d-none" id="dg-msl-ship-leave" data-dg-notify-start="Выходим из связки…">Выйти из связки</button>
+                <button type="button" class="btn btn-primary" id="dg-msl-ship-ok" data-dg-notify-start="Связываем по № счёта…">Связать</button>
               </div>
             </div>
           </div>

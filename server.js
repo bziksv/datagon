@@ -158,6 +158,8 @@ let appSettings = {
     /** Если есть коды вида N-..., скрывать базовый товар N в матрицах Huckster. */
     huckster_ms_exclude_products_with_bundles: 0,
     mp_ozon_include_archived: 0,
+    planfix_rest_api_key: '',
+    planfix_account: 'almamed',
     auto_sync_marketplaces_enabled: 0,
     auto_sync_marketplaces_time: '05:00',
     auto_sync_marketplaces_ozon_enabled: 0,
@@ -472,6 +474,8 @@ async function initDB() {
             ['mp_wb_delay_cards_ms','600'],
             ['mp_wb_delay_other_ms','1600'],
             ['mp_yandex_delay_ms','280'],
+            ['planfix_rest_api_key',''],
+            ['planfix_account','almamed'],
             ['huckster_email',''],
             ['huckster_password',''],
             ['huckster_delay_ms','270'],
@@ -3256,6 +3260,7 @@ initDB().then(async () => {
     app.use('/api/db-admin', require('./routes/dbAdmin')(db));
     app.use('/api/finance', financeRouterFactory(db, appSettings));
     app.use('/api/manager-sales', require('./routes/managerSales')(db));
+    app.use('/api/ops-sheet', require('./routes/opsSheet')(db));
     app.use('/api/specialties', require('./routes/specialties')(db));
     app.post('/api/settings/auto-sync-run', async (req, res) => {
         try {

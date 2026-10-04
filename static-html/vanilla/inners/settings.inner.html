@@ -598,6 +598,60 @@
             </div>
           </div>
 
+          <div class="main-card mb-3 card" id="dg-set-planfix">
+            <div class="card-header d-flex align-items-center">
+              <i class="header-icon pe-7s-notebook icon-gradient bg-happy-itmeo me-2"> </i>
+              <span>Planfix (операционный лист)</span>
+            </div>
+            <div class="card-body">
+              <p class="small text-muted mb-2">
+                REST API аккаунта
+                <a href="https://almamed.planfix.ru/?action=api" target="_blank" rel="noopener">almamed.planfix.ru</a>.
+                Токен: Управление аккаунтом → Доступ к API.
+                Пока только хранение ключа и проверка связи; «Кол-во заявок» подключим после разбора полей.
+              </p>
+              <div class="row g-2">
+                <div class="col-md-4">
+                  <label class="form-label" for="dg-set-planfix_account">Аккаунт</label>
+                  <input type="text" class="form-control" id="dg-set-planfix_account" autocomplete="off" placeholder="almamed" />
+                  <small class="text-muted">Будет <code>https://{аккаунт}.planfix.ru/rest</code></small>
+                </div>
+                <div class="col-md-8">
+                  <label class="form-label" for="dg-set-planfix_rest_api_key">REST API ключ</label>
+                  <input
+                    type="password"
+                    class="form-control"
+                    id="dg-set-planfix_rest_api_key"
+                    autocomplete="new-password"
+                    placeholder="Bearer-токен"
+                  />
+                </div>
+              </div>
+              <div class="mt-3 d-flex gap-2 flex-wrap">
+                <button
+                  type="button"
+                  class="btn btn-success"
+                  id="dg-set-btn-save-planfix"
+                  data-dg-activity-label="Сохранить Planfix"
+                  data-dg-notify-start="Сохраняем ключ Planfix…"
+                >
+                  Сохранить
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-outline-primary"
+                  id="dg-set-btn-test-planfix"
+                  data-dg-activity-label="Проверить Planfix"
+                  data-dg-notify-start="Проверяем REST API Planfix…"
+                >
+                  Проверить подключение
+                </button>
+              </div>
+              <p class="small text-muted mt-2 mb-0">Сначала «Сохранить», затем проверка идёт по значению из БД.</p>
+              <div id="dg-set-planfix-save-msg" class="alert mt-3 mb-0 d-none" role="status"></div>
+            </div>
+          </div>
+
           <div class="main-card mb-3 card" id="dg-set-auto-sync">
             <div class="card-header d-flex align-items-center">
               <i class="header-icon pe-7s-note2 icon-gradient bg-happy-fisher me-2"> </i>

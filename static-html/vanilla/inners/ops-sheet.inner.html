@@ -1,0 +1,125 @@
+          <div class="app-page-title">
+            <div class="page-title-wrapper">
+              <div class="page-title-heading">
+                <div class="page-title-icon">
+                  <i class="pe-7s-notebook icon-gradient bg-happy-itmeo"> </i>
+                </div>
+                <div>
+                  Операционный лист
+                  <div class="page-title-subheading">
+                    Свод по менеджерам продаж: оборот, прибыль, премии и оклады по месяцам года.
+                    Источник сделок —
+                    <a href="/manager-sales.html">Таблицы менеджеров</a>.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2">
+              <div class="d-flex align-items-center">
+                <i class="header-icon pe-7s-filter icon-gradient bg-happy-fisher me-2"> </i>
+                <span>Фильтры и действия</span>
+              </div>
+              <div class="d-flex align-items-center gap-2">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-ops-filters-toggle">Свернуть</button>
+              </div>
+            </div>
+            <div class="card-body" id="dg-ops-filters-body">
+              <div class="row g-2 align-items-end">
+                <div class="col-md-2" data-dg-ops-filter-field="year">
+                  <label class="form-label" for="dg-ops-f-year">Год</label>
+                  <select class="form-select" id="dg-ops-f-year"></select>
+                </div>
+                <div class="col-md-4" data-dg-ops-filter-field="search">
+                  <label class="form-label" for="dg-ops-search">Поиск менеджера</label>
+                  <input
+                    type="search"
+                    class="form-control"
+                    id="dg-ops-search"
+                    placeholder="ФИО или логин…"
+                    autocomplete="off"
+                  />
+                </div>
+                <div class="col-md-6">
+                  <div class="small text-muted mb-1">Легенда колонок</div>
+                  <div class="d-flex flex-wrap gap-3 small">
+                    <span><span class="dg-ops-legend-dot dg-ops-legend-auto"></span>из таблиц менеджеров</span>
+                    <span><span class="dg-ops-legend-dot dg-ops-legend-manual"></span>ручной ввод</span>
+                    <span><span class="dg-ops-legend-dot dg-ops-legend-derived"></span>считается</span>
+                  </div>
+                </div>
+              </div>
+              <div class="mt-3" data-dg-ops-filter-field="month_jump">
+                <div class="small text-muted mb-1">Перейти к месяцу</div>
+                <div class="dg-ops-month-jump" id="dg-ops-month-jump"></div>
+              </div>
+              <div class="d-flex flex-wrap gap-2 mt-3">
+                <button
+                  type="button"
+                  class="btn btn-primary"
+                  id="dg-ops-apply"
+                  data-dg-notify-start="Применяем фильтры…"
+                >
+                  Применить
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-outline-secondary"
+                  id="dg-ops-reset"
+                  data-dg-notify-start="Сбрасываем фильтры…"
+                >
+                  По умолчанию
+                </button>
+              </div>
+              <p class="text-muted small mt-2 mb-0" id="dg-ops-status-hint" style="display: none"></p>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card">
+            <div class="card-header d-flex justify-content-between gap-2 flex-wrap align-items-center">
+              <div class="d-flex align-items-center gap-3 flex-grow-1" style="min-width: 0">
+                <div class="d-flex align-items-center flex-shrink-0">
+                  <i class="header-icon pe-7s-notebook icon-gradient bg-happy-itmeo me-2"> </i>
+                  <span>Операционный лист <span id="dg-ops-year-label"></span></span>
+                </div>
+                <div class="dg-ops-header-search">
+                  <div class="input-group input-group-sm">
+                    <span class="input-group-text"><i class="pe-7s-search" aria-hidden="true"></i></span>
+                    <input
+                      type="search"
+                      class="form-control"
+                      id="dg-ops-table-search-mirror"
+                      placeholder="Поиск менеджера…"
+                      autocomplete="off"
+                    />
+                  </div>
+                </div>
+              </div>
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-ops-columns-toggle">🧩 Столбцы</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-ops-widths-toggle">📏 Ширины</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-ops-table-toggle">Свернуть</button>
+              </div>
+            </div>
+            <div class="card-body" id="dg-ops-table-body">
+              <div class="datagon-columns-toolbox mb-2 d-none" id="dg-ops-toolbox-panels">
+                <div class="datagon-columns-panel" id="dg-ops-columns-panel">
+                  <div class="d-flex flex-wrap gap-2 mb-2">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-ops-columns-all">Все</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-ops-columns-default">По умолчанию</button>
+                  </div>
+                  <div id="dg-ops-columns-list" class="row g-1"></div>
+                </div>
+                <div class="datagon-columns-panel" id="dg-ops-widths-panel">
+                  <div class="mb-2">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="dg-ops-widths-default">Сбросить ширины</button>
+                  </div>
+                  <div id="dg-ops-widths-list" class="row g-1"></div>
+                </div>
+              </div>
+              <div id="dg-ops-months-host"></div>
+              <div id="dg-ops-empty" class="text-muted py-4 text-center d-none">Нет данных за выбранный год.</div>
+            </div>
+          </div>

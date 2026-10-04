@@ -14,6 +14,8 @@
     ["our_invoice_no", "№ нашего\nсчета"],
     ["has_contract", "Наличие\nдоговора"],
     ["supplier_invoice_url", "Ссылка на счет\nпоставщика"],
+    ["comments", "Комментарии"],
+    ["ship_together", "Отправка\nвместе"],
     ["amount_incl_stock", "Сумма оплаты\n(вкл. запасы)"],
     ["delivery_to_us", "Доставка\nдо нас"],
     ["supplier_name", "Поставщик"],
@@ -46,10 +48,11 @@
 
   var FIELD_GROUPS = [
     { title: "Основные", keys: ["search", "year", "month", "status", "limit"] },
-    { title: "Сделка", keys: ["supplier", "has_contract", "invoice_org", "archived"] },
+    { title: "Сделка", keys: ["supplier", "has_contract", "invoice_org", "archived", "ship_together"] },
   ];
 
   var CONTRACT_OPTS = ["Обычный договор", "Нет", "Договор-Счет"];
+  var ORG_OPTS = ["Альмамед", "Вилмед", "ИП"];
   var STATUS_OPTS = ["Заказан у поставщика", "Отгружен", "Частично отгружен", "Возврат средств"];
   var INVOICE_MARKS = [
     { key: "black", title: "Чёрный", label: "Создан платёж поставщика, который можно оплачивать" },
@@ -79,6 +82,8 @@
     has_contract: "",
     invoice_org: "",
     archived: "0",
+    ship_together: "",
+    ship_group_id: "",
     limit: 100,
     offset: 0,
     sort_by: "row_no",
@@ -105,11 +110,16 @@
       has_contract: "",
       invoice_org: "",
       archived: "0",
+      ship_together: "",
+      ship_group_id: "",
       limit: 100,
     },
     csvText: "",
     csvDry: null,
     deleteId: null,
+    confirmMode: null,
+    suppRemove: null,
+    shipModalRowId: null,
     handId: null,
     visible: MSALES_COLS.map(function (c) { return c[0]; }),
     widths: {},
@@ -148,23 +158,39 @@
     );
   }
 
+  function urlPenHtml(key, canEdit, extraAttrs) {
+    if (!canEdit) return "";
+    var penTitle = key === "supplier_invoice_url" ? "Ссылка или склад" : "Изменить ссылку";
+    return (
+      '<button type="button" class="dg-msl-url-ico dg-msl-url-edit" data-msl-url-edit="' +
+      esc(key) +
+      '"' +
+      (extraAttrs || "") +
+      ' title="' +
+      esc(penTitle) +
+      '" aria-label="' +
+      esc(penTitle) +
+      '" data-dg-no-activity="1"><i class="pe-7s-pen" aria-hidden="true"></i></button>'
+    );
+  }
+
+  function urlCopyHtml(raw) {
+    var text = String(raw || "").trim();
+    if (!text) return "";
+    return (
+      '<button type="button" class="dg-msl-url-ico dg-msl-url-copy" data-msl-url-copy="' +
+      esc(text) +
+      '" title="Копировать" aria-label="Копировать" data-dg-no-activity="1"><i class="pe-7s-copy-file" aria-hidden="true"></i></button>'
+    );
+  }
+
   function urlViewHtml(key, val, canEdit, extraAttrs, row) {
     var href = safeHref(val);
     var raw = String(val || "").trim();
     var label = esc(raw);
     var extra = extraAttrs || "";
-    var penTitle = key === "supplier_invoice_url" ? "Ссылка или склад" : "Изменить ссылку";
-    var pen = canEdit
-      ? '<button type="button" class="dg-msl-url-edit" data-msl-url-edit="' +
-        esc(key) +
-        '"' +
-        extra +
-        ' title="' +
-        esc(penTitle) +
-        '" aria-label="' +
-        esc(penTitle) +
-        '" data-dg-no-activity="1"><i class="pe-7s-pen" aria-hidden="true"></i></button>'
-      : "";
+    var pen = urlPenHtml(key, canEdit, extra);
+    var copy = urlCopyHtml(raw);
     if (key === "supplier_invoice_url" && row) {
       var mark = String(row.invoice_mark || "");
       var meta = invoiceMarkMeta(mark);
@@ -175,7 +201,9 @@
         (mark ? " dg-msl-inv-" + esc(mark) : "") +
         '" data-msl-inv-mark="' +
         row.id +
-        '" title="' +
+        '"' +
+        extra +
+        ' title="' +
         esc(tip) +
         '" data-dg-tooltip="' +
         esc(tip) +
@@ -184,13 +212,12 @@
         ">" +
         esc(text) +
         "</button>";
-      var open =
-        href
-          ? '<a class="dg-msl-url-open" href="' +
-            esc(href) +
-            '" target="_blank" rel="noopener noreferrer" title="Открыть ссылку" data-dg-no-activity="1">↗</a>'
-          : "";
-      return '<div class="dg-msl-url-cell dg-msl-inv-cell">' + chip + open + pen + "</div>";
+      var open = href
+        ? '<a class="dg-msl-url-open" href="' +
+          esc(href) +
+          '" target="_blank" rel="noopener noreferrer" title="Открыть ссылку" data-dg-no-activity="1">↗</a>'
+        : "";
+      return '<div class="dg-msl-url-cell dg-msl-inv-cell">' + chip + open + copy + pen + "</div>";
     }
     var link;
     if (href) {
@@ -207,7 +234,7 @@
     } else {
       link = '<span class="text-muted">—</span>';
     }
-    return '<div class="dg-msl-url-cell">' + link + pen + "</div>";
+    return '<div class="dg-msl-url-cell">' + link + copy + pen + "</div>";
   }
 
   function invoiceMarkMeta(key) {
@@ -242,9 +269,9 @@
       esc(text) +
       "</button>";
     var pen = canEdit
-      ? '<button type="button" class="dg-msl-url-edit" data-msl-our-edit="1" title="Изменить номер счёта" aria-label="Изменить номер счёта" data-dg-no-activity="1"><i class="pe-7s-pen" aria-hidden="true"></i></button>'
+      ? '<button type="button" class="dg-msl-url-ico dg-msl-url-edit" data-msl-our-edit="1" title="Изменить номер счёта" aria-label="Изменить номер счёта" data-dg-no-activity="1"><i class="pe-7s-pen" aria-hidden="true"></i></button>'
       : "";
-    return '<div class="dg-msl-inv-cell">' + chip + pen + "</div>";
+    return '<div class="dg-msl-url-cell dg-msl-inv-cell">' + chip + pen + "</div>";
   }
 
   function colTitle(c) {
@@ -335,6 +362,14 @@
           var at = state.visible.indexOf("row_no");
           state.visible.splice(at >= 0 ? at + 1 : 0, 0, "manager_name");
         }
+        if (state.visible.indexOf("comments") < 0) {
+          var atC = state.visible.indexOf("supplier_invoice_url");
+          state.visible.splice(atC >= 0 ? atC + 1 : state.visible.length, 0, "comments");
+        }
+        if (state.visible.indexOf("ship_together") < 0) {
+          var atS = state.visible.indexOf("comments");
+          state.visible.splice(atS >= 0 ? atS + 1 : state.visible.length, 0, "ship_together");
+        }
       }
     } catch (e) {}
   }
@@ -393,6 +428,8 @@
       String(p.has_contract) !== String(state.has_contract) ||
       String(p.invoice_org) !== String(state.invoice_org) ||
       String(p.archived || "0") !== String(state.archived || "0") ||
+      String(p.ship_together || "") !== String(state.ship_together || "") ||
+      String(p.ship_group_id || "") !== String(state.ship_group_id || "") ||
       Number(p.limit) !== Number(state.limit);
     btn.classList.toggle("dg-flt-dirty", dirty);
   }
@@ -407,6 +444,8 @@
     state.pending.has_contract = (el("dg-msl-f-contract") && el("dg-msl-f-contract").value) || "";
     state.pending.invoice_org = (el("dg-msl-f-org") && el("dg-msl-f-org").value) || "";
     state.pending.archived = (el("dg-msl-f-archived") && el("dg-msl-f-archived").value) || "0";
+    state.pending.ship_together = (el("dg-msl-f-ship") && el("dg-msl-f-ship").value) || "";
+    if (!state.pending.ship_together) state.pending.ship_group_id = "";
     var lim = Number(el("dg-msl-f-limit") && el("dg-msl-f-limit").value);
     state.pending.limit = Number.isFinite(lim) && lim > 0 ? lim : 100;
     syncDirty();
@@ -445,6 +484,7 @@
     }
     if (el("dg-msl-f-org")) el("dg-msl-f-org").value = p.invoice_org || "";
     if (el("dg-msl-f-archived")) el("dg-msl-f-archived").value = p.archived == null || p.archived === "" ? "0" : String(p.archived);
+    if (el("dg-msl-f-ship")) el("dg-msl-f-ship").value = p.ship_together || "";
     if (el("dg-msl-f-limit")) el("dg-msl-f-limit").value = String(p.limit || 100);
     if (el("dg-msl-page-limit")) el("dg-msl-page-limit").value = String(p.limit || 100);
     syncDirty();
@@ -467,6 +507,8 @@
     state.has_contract = state.pending.has_contract;
     state.invoice_org = state.pending.invoice_org;
     state.archived = state.pending.archived || "0";
+    state.ship_together = state.pending.ship_together || "";
+    state.ship_group_id = state.pending.ship_group_id || "";
     state.limit = state.pending.limit;
     state.offset = 0;
     syncTableOwnerTitle();
@@ -503,10 +545,14 @@
     if (state.status) bits.push("статус «" + esc(state.status) + "»");
     if (state.supplier) bits.push("поставщик «" + esc(state.supplier) + "»");
     if (state.has_contract) bits.push("договор «" + state.has_contract + "»");
-    if (state.invoice_org === "ip") bits.push("ИП");
-    if (state.invoice_org === "ooo") bits.push("ООО");
+    if (state.invoice_org === "ip" || state.invoice_org === "ИП") bits.push("ИП");
+    else if (state.invoice_org === "ooo") bits.push("ООО");
+    else if (state.invoice_org) bits.push("счёт «" + esc(state.invoice_org) + "»");
     if (state.archived === "1") bits.push("архив");
     else if (state.archived === "all") bits.push("включая архив");
+    if (state.ship_group_id) bits.push("связка отправки");
+    else if (state.ship_together === "1") bits.push("только связанные");
+    else if (state.ship_together === "0") bits.push("без связки");
     return bits.join(", ");
   }
 
@@ -524,6 +570,8 @@
     if (state.has_contract !== "") p.set("has_contract", state.has_contract);
     if (state.invoice_org) p.set("invoice_org", state.invoice_org);
     p.set("archived", state.archived || "0");
+    if (state.ship_group_id) p.set("ship_group_id", state.ship_group_id);
+    else if (state.ship_together) p.set("ship_together", state.ship_together);
     if (state.can_pick_manager) {
       p.set("manager_user_id", state.manager_user_id || "all");
     }
@@ -540,6 +588,8 @@
     "has_contract",
     "invoice_org",
     "archived",
+    "ship_together",
+    "ship_group_id",
     "manager_user_id",
     "limit",
     "page",
@@ -578,6 +628,11 @@
     if (p.has("has_contract")) state.pending.has_contract = p.get("has_contract") || "";
     if (p.has("invoice_org")) state.pending.invoice_org = p.get("invoice_org") || "";
     if (p.has("archived")) state.pending.archived = p.get("archived") || "0";
+    if (p.has("ship_together")) state.pending.ship_together = p.get("ship_together") || "";
+    if (p.has("ship_group_id")) {
+      state.pending.ship_group_id = p.get("ship_group_id") || "";
+      if (state.pending.ship_group_id) state.pending.ship_together = "1";
+    }
     if (p.has("manager_user_id")) state.pending.manager_user_id = p.get("manager_user_id") || "all";
     var lim = Number(p.get("limit"));
     if (Number.isFinite(lim) && lim > 0) state.pending.limit = lim;
@@ -607,6 +662,8 @@
     if (state.has_contract) params.set("has_contract", state.has_contract);
     if (state.invoice_org) params.set("invoice_org", state.invoice_org);
     if (state.archived && state.archived !== "0") params.set("archived", state.archived);
+    if (state.ship_group_id) params.set("ship_group_id", state.ship_group_id);
+    else if (state.ship_together) params.set("ship_together", state.ship_together);
     if (state.manager_user_id) params.set("manager_user_id", String(state.manager_user_id));
     if (Number(state.limit) && Number(state.limit) !== 100) params.set("limit", String(state.limit));
     var page = currentPage();
@@ -811,7 +868,10 @@
       cols
         .map(function (c) {
           var key = c[0];
-          var sortCls = key !== "_del" && key !== "_hand" && !CALC_KEYS[key] ? " dg-msl-sortable" : "";
+          var sortCls =
+            key !== "_del" && key !== "_hand" && key !== "comments" && key !== "ship_together" && !CALC_KEYS[key]
+              ? " dg-msl-sortable"
+              : "";
           var mark = "";
           if (state.sort_by === key) mark = state.sort_dir === "desc" ? " ↓" : " ↑";
           var hint = "";
@@ -847,6 +907,16 @@
         })
         .join("") +
       "</tr>";
+  }
+
+  function normOrgUi(v) {
+    var s = String(v == null ? "" : v).trim();
+    if (!s) return "";
+    var low = s.toLowerCase();
+    if (low === "ip" || low === "ип") return "ИП";
+    if (low.indexOf("альмамед") >= 0 || low === "almamed") return "Альмамед";
+    if (low.indexOf("вилмед") >= 0 || low === "vilmed") return "Вилмед";
+    return s;
   }
 
   function selectFieldHtml(field, options, val) {
@@ -890,7 +960,7 @@
       if (PCT_KEYS[key]) return '<span class="dg-msl-cell-ro">' + esc(val === "" ? "—" : num(val) + "%") + "</span>";
       if (key === "has_contract") return esc(val || "—");
       if (key === "status") return esc(val || "—");
-      if (key === "invoice_org") return esc(row.invoice_org_label || val || "—");
+      if (key === "invoice_org") return esc(normOrgUi(row.invoice_org_label || val) || "—");
       return esc(val || "—");
     }
     if (CALC_KEYS[key]) {
@@ -900,13 +970,7 @@
     }
     var cls = "form-control form-control-sm dg-msl-cell-input" + (extraClass ? " " + extraClass : "");
     if (key === "invoice_org") {
-      return (
-        '<input class="' +
-        cls +
-        '" data-msl-field="invoice_org" list="dg-msl-org-list" value="' +
-        esc(row.invoice_org_label || val) +
-        '" />'
-      );
+      return selectFieldHtml("invoice_org", ORG_OPTS, normOrgUi(row.invoice_org_label || val));
     }
     if (key === "has_contract") {
       return selectFieldHtml("has_contract", CONTRACT_OPTS, val);
@@ -1135,6 +1199,54 @@
     return '<div class="dg-msl-supp-stack">' + lines + add + "</div>";
   }
 
+  function commentsList(row) {
+    return Array.isArray(row && row.comments) ? row.comments : [];
+  }
+
+  function renderCommentsCell(row) {
+    var list = commentsList(row);
+    var add =
+      state.can_write && !row.is_archived
+        ? '<button type="button" class="dg-msl-cmt-add" data-msl-cmt-add="' +
+          row.id +
+          '" title="Добавить комментарий" aria-label="Добавить комментарий" data-dg-notify-start="Новый комментарий…">+</button>'
+        : "";
+    var items = list
+      .map(function (c) {
+        var own = !!c.can_edit || Number(c.author_user_id) === Number(state.actor_user_id);
+        var edit =
+          own && state.can_write && !row.is_archived
+            ? '<button type="button" class="dg-msl-cmt-edit" data-msl-cmt-edit="' +
+              esc(String(c.id)) +
+              '" data-msl-cmt-row="' +
+              row.id +
+              '" title="Изменить комментарий" aria-label="Изменить комментарий" data-dg-no-activity="1"><i class="pe-7s-pen" aria-hidden="true"></i></button>'
+            : "";
+        var meta =
+          esc(c.author_short || c.author_name || "—") +
+          " — " +
+          esc(c.created_at_label || "—");
+        return (
+          '<div class="dg-msl-cmt-item' +
+          (own ? " dg-msl-cmt-own" : "") +
+          '">' +
+          '<span class="dg-msl-cmt-meta">' +
+          meta +
+          "</span>" +
+          '<div class="dg-msl-cmt-row"><span class="dg-msl-cmt-body">' +
+          esc(c.body || "") +
+          "</span>" +
+          edit +
+          "</div></div>"
+        );
+      })
+      .join("");
+    if (!items && !add) {
+      return '<span class="dg-msl-cmt-empty">—</span>';
+    }
+    return '<div class="dg-msl-comments">' + items + add + "</div>";
+  }
+
   function renderCell(row, key) {
     if (key === "_del") {
       if (!state.can_write) return "";
@@ -1144,6 +1256,12 @@
         row.id +
         '" title="В архив" aria-label="В архив" data-dg-no-activity="1">×</button>'
       );
+    }
+    if (key === "comments") {
+      return renderCommentsCell(row);
+    }
+    if (key === "ship_together") {
+      return renderShipTogetherCell(row);
     }
     if (key === "_hand") {
       var name = handLabel(row);
@@ -1186,7 +1304,14 @@
     else if (MONEY_KEYS[key] || key === "pct_mp" || key === "vat") {
       html = cellInput(show, key, PCT_KEYS[key] ? "pct" : "money");
     } else html = cellInput(show, key, "text");
-    if (key !== "_del" && key !== "_hand" && key !== "manager_name" && key !== "row_no") {
+    if (
+      key !== "_del" &&
+      key !== "_hand" &&
+      key !== "comments" &&
+      key !== "ship_together" &&
+      key !== "manager_name" &&
+      key !== "row_no"
+    ) {
       html +=
         '<button type="button" class="dg-msl-field-log-btn" data-msl-log-id="' +
         row.id +
@@ -1272,6 +1397,88 @@
     return map;
   }
 
+  function shipToneIndex(gid) {
+    var s = String(gid || "");
+    if (!s) return 0;
+    var h = 0;
+    for (var i = 0; i < s.length; i += 1) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+    return (h % 5) + 1;
+  }
+
+  function shipMates(row) {
+    return Array.isArray(row && row.ship_group_mates) ? row.ship_group_mates : [];
+  }
+
+  function shipGroupSize(row) {
+    var n = Number(row && row.ship_group_size);
+    if (Number.isFinite(n) && n > 0) return n;
+    var gid = String((row && row.ship_group_id) || "").trim();
+    if (!gid) return 0;
+    return shipMates(row).length + 1;
+  }
+
+  function shipChipLabel(row) {
+    var mates = shipMates(row);
+    var size = shipGroupSize(row);
+    if (!size) return "";
+    var selfInv = String((row && row.our_invoice_no) || "").trim();
+    var otherInvs = mates
+      .map(function (m) {
+        return String((m && m.our_invoice_no) || "").trim();
+      })
+      .filter(Boolean);
+    if (otherInvs.length === 1) {
+      var pair = selfInv ? selfInv + " + " + otherInvs[0] : otherInvs[0];
+      if (pair.length <= 36) return pair;
+      return otherInvs[0];
+    }
+    if (otherInvs.length > 1) {
+      var joined = otherInvs.slice(0, 2).join(" · ");
+      if (otherInvs.length > 2) joined += " +" + (otherInvs.length - 2);
+      if (joined.length <= 36) return joined;
+    }
+    return "вместе · " + size;
+  }
+
+  function renderShipTogetherCell(row) {
+    var gid = String((row && row.ship_group_id) || "").trim();
+    var canEdit = state.can_write && !row.is_archived;
+    var size = shipGroupSize(row);
+    var parts = [];
+    if (gid && size >= 2) {
+      parts.push(
+        '<button type="button" class="dg-msl-ship-chip" data-msl-ship-open="' +
+          row.id +
+          '" title="Связанные счета этой отправки" data-dg-notify-start="Открываем связку…">' +
+          esc(shipChipLabel(row)) +
+          "</button>"
+      );
+      if (canEdit) {
+        parts.push(
+          '<button type="button" class="dg-msl-ship-x" data-msl-ship-leave="' +
+            row.id +
+            '" title="Выйти из связки" aria-label="Выйти из связки" data-dg-no-activity="1">×</button>'
+        );
+      }
+    } else if (canEdit) {
+      parts.push(
+        '<button type="button" class="btn btn-link btn-sm p-0 dg-msl-ship-add" data-msl-ship-open="' +
+          row.id +
+          '" data-dg-notify-start="Связываем отправку…">+ связать</button>'
+      );
+    } else {
+      parts.push('<span class="text-muted">—</span>');
+    }
+    parts.push(
+      '<button type="button" class="dg-msl-field-log-btn" data-msl-log-id="' +
+        row.id +
+        '" data-msl-log-field="ship_group_id" data-msl-log-field-label="Отправка вместе" data-msl-log-label="№ ' +
+        esc(row.row_no) +
+        '" data-dg-no-activity="1">лог</button>'
+    );
+    return '<div class="dg-msl-ship-cell">' + parts.join("") + "</div>";
+  }
+
   function renderTable() {
     buildThead();
     var tbody = el("dg-msl-tbody");
@@ -1300,6 +1507,11 @@
             var toneIn = tones[Number(srcIn.handed_to_user_id)];
             if (toneIn > 0) trCls.push("dg-msl-handed-t" + toneIn);
           }
+        }
+        var shipGid = String((row && row.ship_group_id) || "").trim();
+        if (shipGid && shipGroupSize(row) >= 2) {
+          trCls.push("dg-msl-ship");
+          trCls.push("dg-msl-ship-t" + shipToneIndex(shipGid));
         }
         if (rowNeedsHighlight(row)) trCls.push("dg-msl-need-terms");
         return (
@@ -1580,15 +1792,28 @@
     ov.style.display = "none";
     ov.setAttribute("aria-hidden", "true");
     state.invMarkId = null;
+    state.invMarkSuppI = null;
   }
 
-  function openInvoiceMark(id) {
+  function openInvoiceMark(id, suppIndex) {
     var row = state.rows.filter(function (r) { return String(r.id) === String(id); })[0];
     if (!row) return;
+    var idx = suppIndex != null && suppIndex !== "" ? Number(suppIndex) : 0;
+    if (!Number.isFinite(idx) || idx < 0) idx = 0;
     state.invMarkId = id;
-    var cur = String(row.invoice_mark || "");
+    state.invMarkSuppI = idx;
+    var cur = "";
+    if (row.suppliers && row.suppliers[idx]) cur = String(row.suppliers[idx].invoice_mark || "");
+    else if (idx === 0) cur = String(row.invoice_mark || "");
     var title = el("dg-msl-inv-mark-title");
-    if (title) title.textContent = "Подсветка счёта поставщика";
+    if (title) {
+      var sn = row.suppliers && row.suppliers[idx] ? String(row.suppliers[idx].supplier_name || "").trim() : "";
+      title.textContent = sn
+        ? "Подсветка счёта · " + sn
+        : row.suppliers && row.suppliers.length > 1
+          ? "Подсветка счёта поставщика · #" + (idx + 1)
+          : "Подсветка счёта поставщика";
+    }
     var list = el("dg-msl-inv-mark-list");
     if (list) {
       var opts = INVOICE_MARKS.map(function (m) {
@@ -1620,13 +1845,15 @@
 
   function saveInvoiceMark(value) {
     var id = state.invMarkId;
+    var idx = state.invMarkSuppI != null ? Number(state.invMarkSuppI) : 0;
+    if (!Number.isFinite(idx) || idx < 0) idx = 0;
     var tr = id ? document.querySelector('#dg-msl-tbody tr[data-msl-id="' + id + '"]') : null;
     closeInvoiceMark();
     if (!tr || !state.can_write) {
       if (!state.can_write) toast("info", "Подсветку меняет тот, у кого есть запись в таблицу");
       return Promise.resolve();
     }
-    return saveField(tr, "invoice_mark", value).then(function () {
+    return saveField(tr, "invoice_mark", value, { supplier_index: idx }).then(function () {
       renderTable();
     }).catch(function (e) {
       toast("danger", e.message || "Не сохранено");
@@ -1677,6 +1904,272 @@
     }).catch(function (e) {
       toast("danger", e.message || "Не сохранено");
     });
+  }
+
+  function closeShipModal() {
+    var ov = el("dg-msl-ship-overlay");
+    if (!ov) return;
+    ov.style.display = "none";
+    ov.setAttribute("aria-hidden", "true");
+    state.shipModalRowId = null;
+    if (el("dg-msl-ship-invoice")) el("dg-msl-ship-invoice").value = "";
+  }
+
+  function renderShipMatesList(row) {
+    var box = el("dg-msl-ship-mates");
+    if (!box) return;
+    var mates = shipMates(row);
+    var selfInv = String((row && row.our_invoice_no) || "").trim();
+    var items = [];
+    if (String((row && row.ship_group_id) || "").trim() && shipGroupSize(row) >= 2) {
+      items.push(
+        '<div class="dg-msl-ship-mate"><span><strong>' +
+          esc(selfInv || ("строка № " + (row.row_no || row.id))) +
+          "</strong> <span class=\"text-muted\">· эта строка</span></span></div>"
+      );
+      mates.forEach(function (m) {
+        var inv = String((m && m.our_invoice_no) || "").trim() || ("№ " + (m.row_no || m.id));
+        var mgr = String((m && m.manager_name) || "").trim();
+        items.push(
+          '<div class="dg-msl-ship-mate"><span><strong>' +
+            esc(inv) +
+            "</strong>" +
+            (mgr ? ' <span class="text-muted">· ' + esc(mgr) + "</span>" : "") +
+            '</span><button type="button" class="btn btn-link btn-sm p-0" data-msl-ship-filter="' +
+            esc(String((m && m.our_invoice_no) || "").trim() || String(row.ship_group_id || "")) +
+            '" data-msl-ship-filter-gid="' +
+            esc(String(row.ship_group_id || "")) +
+            '" data-dg-notify-start="Фильтруем связку…">показать</button></div>'
+        );
+      });
+    }
+    box.innerHTML = items.length
+      ? items.join("")
+      : '<div class="text-muted small">Пока без связки — введите № нашего счёта другой строки.</div>';
+  }
+
+  function openShipModal(rowId) {
+    var row = state.rows.filter(function (r) { return String(r.id) === String(rowId); })[0];
+    if (!row) return;
+    state.shipModalRowId = rowId;
+    var no = row.row_no != null ? String(row.row_no) : "";
+    var inv = String(row.our_invoice_no || "").trim();
+    var linked = String(row.ship_group_id || "").trim() && shipGroupSize(row) >= 2;
+    if (el("dg-msl-ship-title")) {
+      el("dg-msl-ship-title").textContent = linked
+        ? "Отправка вместе" + (inv ? " · " + inv : no ? " · № " + no : "")
+        : "Связать отправку" + (inv ? " · " + inv : no ? " · № " + no : "");
+    }
+    if (el("dg-msl-ship-hint")) {
+      el("dg-msl-ship-hint").textContent = linked
+        ? "Связанные № наших счетов. Можно добавить ещё один или выйти из связки."
+        : "Укажите № нашего счёта другой строки того же года — они поедут одной отправкой.";
+    }
+    renderShipMatesList(row);
+    if (el("dg-msl-ship-leave")) el("dg-msl-ship-leave").classList.toggle("d-none", !linked || !state.can_write);
+    if (el("dg-msl-ship-ok")) el("dg-msl-ship-ok").classList.toggle("d-none", !state.can_write);
+    if (el("dg-msl-ship-invoice")) {
+      el("dg-msl-ship-invoice").value = "";
+      el("dg-msl-ship-invoice").classList.toggle("d-none", !state.can_write);
+    }
+    var ov = el("dg-msl-ship-overlay");
+    if (!ov) return;
+    ov.style.display = "flex";
+    ov.setAttribute("aria-hidden", "false");
+    if (state.can_write && el("dg-msl-ship-invoice")) {
+      setTimeout(function () {
+        try {
+          el("dg-msl-ship-invoice").focus();
+        } catch (e) {}
+      }, 0);
+    }
+  }
+
+  function apiShipLink(rowId, ourInvoiceNo) {
+    return fetch("/api/manager-sales/" + rowId + "/ship-group", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ our_invoice_no: ourInvoiceNo }),
+    }).then(json);
+  }
+
+  function apiShipLeave(rowId) {
+    return fetch("/api/manager-sales/" + rowId + "/ship-group", {
+      method: "DELETE",
+      credentials: "same-origin",
+    }).then(json);
+  }
+
+  function submitShipLink() {
+    var id = state.shipModalRowId;
+    var inv = el("dg-msl-ship-invoice") ? String(el("dg-msl-ship-invoice").value || "").trim() : "";
+    if (!id) return Promise.resolve();
+    if (!inv) {
+      toast("warning", "Введите № нашего счёта");
+      return Promise.resolve();
+    }
+    return apiShipLink(id, inv).then(function () {
+      closeShipModal();
+      toast("success", "Связано: " + inv);
+      return load();
+    });
+  }
+
+  function filterShipGroup(gid, invoiceHint) {
+    closeShipModal();
+    if (gid) {
+      state.pending.ship_group_id = String(gid);
+      state.pending.ship_together = "1";
+      if (el("dg-msl-f-ship")) el("dg-msl-f-ship").value = "1";
+    }
+    if (invoiceHint) {
+      state.pending.search = String(invoiceHint);
+      if (el("dg-msl-search")) el("dg-msl-search").value = state.pending.search;
+      if (el("dg-msl-table-search-mirror")) el("dg-msl-table-search-mirror").value = state.pending.search;
+    }
+    return commitFilters();
+  }
+
+  var cmtEditState = { rowId: null, commentId: null };
+
+  function closeCommentModal() {
+    var ov = el("dg-msl-cmt-overlay");
+    if (!ov) return;
+    ov.style.display = "none";
+    ov.setAttribute("aria-hidden", "true");
+    cmtEditState.rowId = null;
+    cmtEditState.commentId = null;
+    if (el("dg-msl-cmt-text")) el("dg-msl-cmt-text").value = "";
+    if (el("dg-msl-cmt-del")) el("dg-msl-cmt-del").classList.add("d-none");
+  }
+
+  function closeCommentDeleteModal() {
+    var ov = el("dg-msl-cmt-del-overlay");
+    if (!ov) return;
+    ov.style.display = "none";
+    ov.setAttribute("aria-hidden", "true");
+  }
+
+  function openCommentDeleteModal() {
+    var editing = Number.isFinite(cmtEditState.commentId) && cmtEditState.commentId > 0;
+    if (!editing) return;
+    var body = el("dg-msl-cmt-text") ? String(el("dg-msl-cmt-text").value || "").trim() : "";
+    if (el("dg-msl-cmt-del-text")) {
+      el("dg-msl-cmt-del-text").textContent = body
+        ? "Удалить комментарий «" + (body.length > 80 ? body.slice(0, 77) + "…" : body) + "»? Восстановить нельзя."
+        : "Комментарий будет удалён без возможности восстановить.";
+    }
+    var ov = el("dg-msl-cmt-del-overlay");
+    if (!ov) return;
+    ov.style.display = "flex";
+    ov.setAttribute("aria-hidden", "false");
+  }
+
+  function openCommentModal(rowId, commentId) {
+    if (!state.can_write) {
+      toast("info", "Комментарии пишет тот, у кого есть запись в таблицу");
+      return;
+    }
+    closeCommentDeleteModal();
+    cmtEditState.rowId = Number(rowId);
+    cmtEditState.commentId = commentId != null && commentId !== "" ? Number(commentId) : null;
+    var row = state.rows.filter(function (r) { return String(r.id) === String(rowId); })[0];
+    var no = row && row.row_no != null ? String(row.row_no) : "";
+    var editing = Number.isFinite(cmtEditState.commentId) && cmtEditState.commentId > 0;
+    if (el("dg-msl-cmt-title")) {
+      el("dg-msl-cmt-title").textContent = editing
+        ? no
+          ? "Изменить комментарий · № " + no
+          : "Изменить комментарий"
+        : no
+          ? "Новый комментарий · № " + no
+          : "Новый комментарий";
+    }
+    if (el("dg-msl-cmt-hint")) {
+      el("dg-msl-cmt-hint").textContent = editing
+        ? "Править или удалить можно только свой комментарий."
+        : "Новый комментарий появится сверху. Редактировать сможете только свой.";
+    }
+    var text = "";
+    if (editing && row) {
+      var found = commentsList(row).filter(function (c) {
+        return Number(c.id) === cmtEditState.commentId;
+      })[0];
+      text = found ? found.body || "" : "";
+    }
+    if (el("dg-msl-cmt-text")) {
+      el("dg-msl-cmt-text").value = text;
+    }
+    if (el("dg-msl-cmt-del")) {
+      el("dg-msl-cmt-del").classList.toggle("d-none", !editing);
+    }
+    var ov = el("dg-msl-cmt-overlay");
+    if (!ov) return;
+    ov.style.display = "flex";
+    ov.setAttribute("aria-hidden", "false");
+    setTimeout(function () {
+      var ta = el("dg-msl-cmt-text");
+      if (ta) {
+        ta.focus();
+        if (ta.select && editing) ta.select();
+      }
+    }, 0);
+  }
+
+  function saveCommentModal() {
+    var rowId = Number(cmtEditState.rowId);
+    if (!Number.isFinite(rowId) || rowId < 1) return Promise.resolve();
+    var body = el("dg-msl-cmt-text") ? String(el("dg-msl-cmt-text").value || "").trim() : "";
+    if (!body) {
+      toast("warning", "Введите текст комментария");
+      return Promise.resolve();
+    }
+    var editing = Number.isFinite(cmtEditState.commentId) && cmtEditState.commentId > 0;
+    var url = editing
+      ? "/api/manager-sales/" + rowId + "/comments/" + cmtEditState.commentId
+      : "/api/manager-sales/" + rowId + "/comments";
+    return fetch(url, {
+      method: editing ? "PATCH" : "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ body: body }),
+    })
+      .then(json)
+      .then(function (data) {
+        if (data.row) {
+          state.rows = state.rows.map(function (r) {
+            return String(r.id) === String(data.row.id) ? data.row : r;
+          });
+        }
+        closeCommentModal();
+        renderTable();
+        toast("success", editing ? "Комментарий обновлён" : "Комментарий добавлен");
+      });
+  }
+
+  function deleteCommentModal() {
+    var rowId = Number(cmtEditState.rowId);
+    var commentId = Number(cmtEditState.commentId);
+    if (!Number.isFinite(rowId) || rowId < 1 || !Number.isFinite(commentId) || commentId < 1) {
+      return Promise.resolve();
+    }
+    return fetch("/api/manager-sales/" + rowId + "/comments/" + commentId, {
+      method: "DELETE",
+      credentials: "same-origin",
+    })
+      .then(json)
+      .then(function (data) {
+        if (data.row) {
+          state.rows = state.rows.map(function (r) {
+            return String(r.id) === String(data.row.id) ? data.row : r;
+          });
+        }
+        closeCommentDeleteModal();
+        closeCommentModal();
+        renderTable();
+        toast("success", "Комментарий удалён");
+      });
   }
 
   function closeHandOver() {
@@ -1827,11 +2320,20 @@
     return postAddRow(null);
   }
 
+  function showConfirmOverlay() {
+    var ov = el("dg-msl-confirm-overlay");
+    if (!ov) return;
+    ov.classList.remove("d-none");
+    ov.style.display = "flex";
+    ov.setAttribute("aria-hidden", "false");
+  }
+
   function openConfirm(id) {
+    state.confirmMode = "archive";
     state.deleteId = id;
+    state.suppRemove = null;
     var row = state.rows.filter(function (r) { return String(r.id) === String(id); })[0];
     var no = row && row.row_no != null ? String(row.row_no) : "";
-    var ov = el("dg-msl-confirm-overlay");
     if (el("dg-msl-confirm-title")) el("dg-msl-confirm-title").textContent = "В архив?";
     if (el("dg-msl-confirm-text")) {
       el("dg-msl-confirm-text").textContent =
@@ -1842,14 +2344,72 @@
       el("dg-msl-confirm-ok").textContent = "В архив";
       el("dg-msl-confirm-ok").setAttribute("data-dg-notify-start", "Переносим в архив…");
     }
-    if (!ov) return;
-    ov.classList.remove("d-none");
-    ov.style.display = "flex";
-    ov.setAttribute("aria-hidden", "false");
+    showConfirmOverlay();
+  }
+
+  function openShipLeaveConfirm(rowId) {
+    var row = state.rows.filter(function (r) { return String(r.id) === String(rowId); })[0];
+    if (!row || !String(row.ship_group_id || "").trim()) {
+      toast("info", "Строка не в связке");
+      return;
+    }
+    var inv = String(row.our_invoice_no || "").trim() || ("№ " + (row.row_no || rowId));
+    var size = shipGroupSize(row);
+    state.confirmMode = "ship_leave";
+    state.deleteId = null;
+    state.suppRemove = null;
+    state.shipModalRowId = rowId;
+    if (el("dg-msl-confirm-title")) el("dg-msl-confirm-title").textContent = "Выйти из связки?";
+    if (el("dg-msl-confirm-text")) {
+      el("dg-msl-confirm-text").textContent =
+        "Убрать «" +
+        inv +
+        "» из общей отправки?" +
+        (size > 2
+          ? " Остальные " + (size - 1) + " строки останутся вместе."
+          : " Пара распадётся — у второй строки связка тоже снимется.");
+    }
+    if (el("dg-msl-confirm-ok")) {
+      el("dg-msl-confirm-ok").textContent = "Выйти";
+      el("dg-msl-confirm-ok").setAttribute("data-dg-notify-start", "Выходим из связки…");
+    }
+    showConfirmOverlay();
+  }
+
+  function openSuppRemoveConfirm(rowId, index) {
+    var row = state.rows.filter(function (r) { return String(r.id) === String(rowId); })[0];
+    if (!row) return;
+    var list = Array.isArray(row.suppliers) ? row.suppliers : [];
+    if (list.length <= 1) {
+      toast("warning", "Нельзя убрать единственного поставщика");
+      return;
+    }
+    var idx = Number(index);
+    if (!Number.isFinite(idx) || idx < 0 || idx >= list.length) return;
+    var name = String((list[idx] && list[idx].supplier_name) || "").trim();
+    var inv = String((list[idx] && list[idx].supplier_invoice_no) || "").trim();
+    var who = name || (inv ? "счёт " + inv : "закупка #" + (idx + 1));
+    state.confirmMode = "supplier_remove";
+    state.deleteId = null;
+    state.suppRemove = { rowId: rowId, index: idx };
+    if (el("dg-msl-confirm-title")) el("dg-msl-confirm-title").textContent = "Убрать поставщика?";
+    if (el("dg-msl-confirm-text")) {
+      el("dg-msl-confirm-text").textContent =
+        "Удалить «" +
+        who +
+        "» из этой строки? Сумма, доставка, номер и ссылка на счёт по этой закупке пропадут. Остальные поставщики строки останутся.";
+    }
+    if (el("dg-msl-confirm-ok")) {
+      el("dg-msl-confirm-ok").textContent = "Убрать";
+      el("dg-msl-confirm-ok").setAttribute("data-dg-notify-start", "Убираем поставщика…");
+    }
+    showConfirmOverlay();
   }
 
   function closeConfirm() {
     state.deleteId = null;
+    state.confirmMode = null;
+    state.suppRemove = null;
     var ov = el("dg-msl-confirm-overlay");
     if (!ov) return;
     ov.classList.add("d-none");
@@ -1869,6 +2429,38 @@
       });
   }
 
+  function doSuppRemove() {
+    var pending = state.suppRemove;
+    if (!pending) return Promise.resolve();
+    var tr = document.querySelector('tr[data-msl-id="' + pending.rowId + '"]');
+    if (!tr) {
+      closeConfirm();
+      return Promise.resolve();
+    }
+    return saveField(tr, null, null, { supplier_remove: pending.index })
+      .then(function () {
+        closeConfirm();
+        toast("success", "Поставщик убран");
+      });
+  }
+
+  function doShipLeave() {
+    var id = state.shipModalRowId;
+    if (!id) return Promise.resolve();
+    return apiShipLeave(id).then(function () {
+      closeConfirm();
+      closeShipModal();
+      toast("success", "Вышли из связки");
+      return load();
+    });
+  }
+
+  function runConfirmOk() {
+    if (state.confirmMode === "supplier_remove") return doSuppRemove();
+    if (state.confirmMode === "ship_leave") return doShipLeave();
+    return doDelete();
+  }
+
   function doRestore(id) {
     return fetch("/api/manager-sales/" + id + "/restore", {
       method: "POST",
@@ -1886,8 +2478,95 @@
   var logState = { rowId: 0, label: "", field: "", fieldLabel: "", total: 0, limit: 100, offset: 0 };
 
   function mslLogActionLabel(action) {
-    var map = { set: "Изменение", create: "Создание", archive: "В архив", restore: "Из архива" };
+    var map = {
+      set: "Изменение",
+      create: "Создание",
+      archive: "В архив",
+      restore: "Из архива",
+      ship_link: "Связка отправки",
+      ship_leave: "Выход из связки",
+      ship_dissolve: "Связка распалась",
+    };
     return map[action] || action || "set";
+  }
+
+  function formatLogMarkValue(raw, side) {
+    var s = String(raw == null ? "" : raw).trim();
+    if (!s || s === "без подсветки") return "—";
+    var colored = esc(s).replace(
+      /(Чёрный|Черный|чёрный|черный|Синий|синий|Оранжевый|оранжевый|Зелёный|Зеленый|зелёный|зеленый)/g,
+      function (word) {
+        var low = word.toLowerCase().replace(/ё/g, "е");
+        var cls = "dg-msl-log-mark-name";
+        if (low.indexOf("оранж") === 0) cls += " dg-msl-log-mark-orange";
+        else if (low.indexOf("зелен") === 0) cls += " dg-msl-log-mark-green";
+        else if (low.indexOf("син") === 0) cls += " dg-msl-log-mark-blue";
+        else if (low.indexOf("черн") === 0) cls += " dg-msl-log-mark-black";
+        return '<span class="' + cls + '">' + word + "</span>";
+      }
+    );
+    return colored;
+  }
+
+  function linkifyLogText(raw) {
+    var s = String(raw == null ? "" : raw);
+    if (!String(s).trim()) return "—";
+    return esc(s).replace(/(https?:\/\/[^\s<>"']+)/g, function (url) {
+      var href = url.replace(/&amp;/g, "&");
+      var shown = href.length > 48 ? href.slice(0, 45) + "…" : href;
+      return (
+        '<a class="dg-msl-log-link" href="' +
+        esc(href) +
+        '" target="_blank" rel="noopener noreferrer" title="' +
+        esc(href) +
+        '">' +
+        esc(shown) +
+        "</a>"
+      );
+    });
+  }
+
+  function resolveMarkLogUrl(r) {
+    var note = String((r && r.note) || "");
+    var label = String((r && r.field_label) || "");
+    var fromNote = note.match(/(https?:\/\/\S+)/);
+    if (fromNote) return fromNote[1].replace(/[)\].,;]+$/, "");
+    var fromLabel = label.match(/(https?:\/\/\S+)/);
+    if (fromLabel) return fromLabel[1].replace(/[)\].,;]+$/, "");
+    if (String((r && r.field) || "") !== "invoice_mark") return "";
+    var supp = note.match(/поставщик\s*#(\d+)/i) || label.match(/поставщик\s*#(\d+)/i);
+    var idx = supp ? Number(supp[1]) - 1 : 0;
+    var row = state.rows.filter(function (x) {
+      return String(x.id) === String(logState.rowId);
+    })[0];
+    if (!row) return "";
+    var list = Array.isArray(row.suppliers) ? row.suppliers : [];
+    if (!list.length && String(row.supplier_invoice_url || "").trim()) {
+      return String(row.supplier_invoice_url).trim().split(/\n/)[idx] || "";
+    }
+    var item = list[idx];
+    return item && item.supplier_invoice_url ? String(item.supplier_invoice_url).trim() : "";
+  }
+
+  function formatLogFieldCell(r) {
+    var label = esc(r.field_label || r.field || "—");
+    var href = resolveMarkLogUrl(r);
+    if (!href) return label;
+    if (!/^https?:\/\//i.test(href) && href !== "Склад") return label;
+    if (href === "Склад") {
+      return label + '<div class="dg-msl-log-field-url text-muted">Склад</div>';
+    }
+    var shown = href.length > 42 ? href.slice(0, 39) + "…" : href;
+    return (
+      label +
+      '<div class="dg-msl-log-field-url"><a class="dg-msl-log-link" href="' +
+      esc(href) +
+      '" target="_blank" rel="noopener noreferrer" title="' +
+      esc(href) +
+      '">' +
+      esc(shown) +
+      "</a></div>"
+    );
   }
 
   function closeMslLog() {
@@ -1953,8 +2632,15 @@
           .map(function (r) {
             var when = r.changed_at ? new Date(r.changed_at) : null;
             var whenTxt = when && !isNaN(when.getTime()) ? when.toLocaleString("ru-RU") : "—";
-            var oldV = r.old_value == null || r.old_value === "" ? "—" : esc(r.old_value);
-            var newV = r.new_value == null || r.new_value === "" ? "—" : esc(r.new_value);
+            var isMark = r.field === "invoice_mark" || r.field === "our_invoice_mark";
+            var oldV = isMark
+              ? formatLogMarkValue(r.old_value, "old")
+              : linkifyLogText(r.old_value);
+            var newV = isMark
+              ? formatLogMarkValue(r.new_value, "new")
+              : linkifyLogText(r.new_value);
+            var oldCls = isMark ? "dg-msl-log-old dg-msl-log-mark-side" : "dg-msl-log-old";
+            var newCls = isMark ? "dg-msl-log-new dg-msl-log-mark-side" : "dg-msl-log-new";
             return (
               "<tr><td class='text-nowrap'>" +
               esc(whenTxt) +
@@ -1962,11 +2648,15 @@
               esc(r.changed_by_name || "—") +
               "</td><td><span class='badge bg-light text-dark border'>" +
               esc(mslLogActionLabel(r.action)) +
-              "</span></td><td>" +
-              esc(r.field_label || r.field) +
-              "</td><td><span class='dg-msl-log-old'>" +
+              "</span></td><td class='dg-msl-log-field-cell'>" +
+              formatLogFieldCell(r) +
+              "</td><td><span class='" +
+              oldCls +
+              "'>" +
               oldV +
-              "</span><span class='dg-msl-log-arrow'>→</span><span class='dg-msl-log-new'>" +
+              "</span><span class='dg-msl-log-arrow'>→</span><span class='" +
+              newCls +
+              "'>" +
               newV +
               "</span></td></tr>"
             );
@@ -2306,14 +2996,22 @@
     });
   }
 
-  ["dg-msl-search", "dg-msl-f-year", "dg-msl-f-month", "dg-msl-f-status", "dg-msl-f-supplier", "dg-msl-f-contract", "dg-msl-f-org", "dg-msl-f-archived", "dg-msl-f-limit"].forEach(
-    function (id) {
-      var n = el(id);
-      if (!n) return;
-      n.addEventListener("input", readPendingFromForm);
-      n.addEventListener("change", readPendingFromForm);
-    }
-  );
+  [
+    "dg-msl-search",
+    "dg-msl-f-year",
+    "dg-msl-f-month",
+    "dg-msl-f-status",
+    "dg-msl-f-supplier",
+    "dg-msl-f-contract",
+    "dg-msl-f-org",
+    "dg-msl-f-archived",
+    "dg-msl-f-limit",
+  ].forEach(function (id) {
+    var n = el(id);
+    if (!n) return;
+    n.addEventListener("input", readPendingFromForm);
+    n.addEventListener("change", readPendingFromForm);
+  });
 
   if (el("dg-msl-f-manager")) {
     el("dg-msl-f-manager").addEventListener("change", function () {
@@ -2344,6 +3042,8 @@
         has_contract: "",
         invoice_org: "",
         archived: "0",
+        ship_together: "",
+        ship_group_id: "",
         limit: 100,
       };
       writeFormFromPending();
@@ -2430,7 +3130,7 @@
       var th = ev.target && ev.target.closest ? ev.target.closest("th[data-msl-sort]") : null;
       if (!th) return;
       var key = th.getAttribute("data-msl-sort");
-      if (!key || key === "_del" || key === "_hand") return;
+      if (!key || key === "_del" || key === "_hand" || key === "comments") return;
       if (state.sort_by === key) state.sort_dir = state.sort_dir === "asc" ? "desc" : "asc";
       else {
         state.sort_by = key;
@@ -2476,6 +3176,66 @@
       });
     });
     tbody.addEventListener("click", function (ev) {
+      var copyUrl = ev.target && ev.target.closest ? ev.target.closest("[data-msl-url-copy]") : null;
+      if (copyUrl) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        var text = copyUrl.getAttribute("data-msl-url-copy") || "";
+        if (!text) return;
+        var done = function () {
+          toast("success", "Скопировано");
+        };
+        var fail = function () {
+          toast("warning", "Не удалось скопировать");
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(done).catch(fail);
+        } else {
+          try {
+            var ta = document.createElement("textarea");
+            ta.value = text;
+            ta.setAttribute("readonly", "");
+            ta.style.position = "fixed";
+            ta.style.left = "-9999px";
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand("copy");
+            document.body.removeChild(ta);
+            done();
+          } catch (eCopy) {
+            fail();
+          }
+        }
+        return;
+      }
+      var shipOpen = ev.target && ev.target.closest ? ev.target.closest("[data-msl-ship-open]") : null;
+      if (shipOpen) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        openShipModal(shipOpen.getAttribute("data-msl-ship-open"));
+        return;
+      }
+      var shipLeave = ev.target && ev.target.closest ? ev.target.closest("[data-msl-ship-leave]") : null;
+      if (shipLeave) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        openShipLeaveConfirm(shipLeave.getAttribute("data-msl-ship-leave"));
+        return;
+      }
+      var addCmt = ev.target && ev.target.closest ? ev.target.closest("[data-msl-cmt-add]") : null;
+      if (addCmt) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        openCommentModal(addCmt.getAttribute("data-msl-cmt-add"), null);
+        return;
+      }
+      var editCmt = ev.target && ev.target.closest ? ev.target.closest("[data-msl-cmt-edit]") : null;
+      if (editCmt) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        openCommentModal(editCmt.getAttribute("data-msl-cmt-row"), editCmt.getAttribute("data-msl-cmt-edit"));
+        return;
+      }
       var addSupp = ev.target && ev.target.closest ? ev.target.closest("[data-msl-supp-add]") : null;
       if (addSupp) {
         ev.preventDefault();
@@ -2500,11 +3260,8 @@
         ev.preventDefault();
         ev.stopPropagation();
         var trDel = delSupp.closest("tr");
-        saveField(trDel, null, null, { supplier_remove: Number(delSupp.getAttribute("data-msl-supp-del")) }).catch(
-          function (e) {
-            toast("danger", e.message || "Не удалено");
-          }
-        );
+        var idDel = trDel && trDel.getAttribute("data-msl-id");
+        if (idDel) openSuppRemoveConfirm(idDel, delSupp.getAttribute("data-msl-supp-del"));
         return;
       }
       var ourChip = ev.target && ev.target.closest ? ev.target.closest("[data-msl-our-mark]") : null;
@@ -2535,7 +3292,10 @@
       if (invChip) {
         ev.preventDefault();
         ev.stopPropagation();
-        openInvoiceMark(invChip.getAttribute("data-msl-inv-mark"));
+        openInvoiceMark(
+          invChip.getAttribute("data-msl-inv-mark"),
+          invChip.getAttribute("data-msl-supp-i")
+        );
         return;
       }
       var urlEdit = ev.target && ev.target.closest ? ev.target.closest("[data-msl-url-edit]") : null;
@@ -2899,8 +3659,14 @@
   if (el("dg-msl-confirm-ok")) {
     el("dg-msl-confirm-ok").addEventListener("click", function () {
       var btn = el("dg-msl-confirm-ok");
-      if (window.DatagonNotify && window.DatagonNotify.busyRun) window.DatagonNotify.busyRun(btn, doDelete);
-      else doDelete();
+      var run = function () {
+        return runConfirmOk().catch(function (e) {
+          toast("danger", (e && e.message) || "Не выполнено");
+          throw e;
+        });
+      };
+      if (window.DatagonNotify && window.DatagonNotify.busyRun) window.DatagonNotify.busyRun(btn, run);
+      else run();
     });
   }
   if (el("dg-msl-pick-cancel")) el("dg-msl-pick-cancel").addEventListener("click", closePickManager);
@@ -2982,6 +3748,89 @@
       else run();
     });
   }
+  if (el("dg-msl-ship-cancel")) el("dg-msl-ship-cancel").addEventListener("click", closeShipModal);
+  if (el("dg-msl-ship-backdrop")) el("dg-msl-ship-backdrop").addEventListener("click", closeShipModal);
+  if (el("dg-msl-ship-ok")) {
+    el("dg-msl-ship-ok").addEventListener("click", function () {
+      var btn = el("dg-msl-ship-ok");
+      var run = function () {
+        return submitShipLink().catch(function (e) {
+          toast("danger", (e && e.message) || "Не связано");
+          throw e;
+        });
+      };
+      if (window.DatagonNotify && window.DatagonNotify.busyRun) window.DatagonNotify.busyRun(btn, run);
+      else run();
+    });
+  }
+  if (el("dg-msl-ship-leave")) {
+    el("dg-msl-ship-leave").addEventListener("click", function () {
+      if (state.shipModalRowId) openShipLeaveConfirm(state.shipModalRowId);
+    });
+  }
+  if (el("dg-msl-ship-invoice")) {
+    el("dg-msl-ship-invoice").addEventListener("keydown", function (ev) {
+      if (ev.key === "Enter") {
+        ev.preventDefault();
+        if (el("dg-msl-ship-ok")) el("dg-msl-ship-ok").click();
+      }
+    });
+  }
+  if (el("dg-msl-ship-mates")) {
+    el("dg-msl-ship-mates").addEventListener("click", function (ev) {
+      var btn = ev.target && ev.target.closest ? ev.target.closest("[data-msl-ship-filter]") : null;
+      if (!btn) return;
+      var run = function () {
+        return filterShipGroup(
+          btn.getAttribute("data-msl-ship-filter-gid") || "",
+          btn.getAttribute("data-msl-ship-filter") || ""
+        );
+      };
+      if (window.DatagonNotify && window.DatagonNotify.busyRun) window.DatagonNotify.busyRun(btn, run);
+      else run();
+    });
+  }
+  if (el("dg-msl-cmt-cancel")) el("dg-msl-cmt-cancel").addEventListener("click", closeCommentModal);
+  if (el("dg-msl-cmt-backdrop")) el("dg-msl-cmt-backdrop").addEventListener("click", closeCommentModal);
+  if (el("dg-msl-cmt-ok")) {
+    el("dg-msl-cmt-ok").addEventListener("click", function () {
+      var btn = el("dg-msl-cmt-ok");
+      var run = function () {
+        return saveCommentModal().catch(function (e) {
+          toast("danger", e.message || "Не сохранено");
+        });
+      };
+      if (window.DatagonNotify && window.DatagonNotify.busyRun) window.DatagonNotify.busyRun(btn, run);
+      else run();
+    });
+  }
+  if (el("dg-msl-cmt-del")) {
+    el("dg-msl-cmt-del").addEventListener("click", function () {
+      openCommentDeleteModal();
+    });
+  }
+  if (el("dg-msl-cmt-del-cancel")) el("dg-msl-cmt-del-cancel").addEventListener("click", closeCommentDeleteModal);
+  if (el("dg-msl-cmt-del-backdrop")) el("dg-msl-cmt-del-backdrop").addEventListener("click", closeCommentDeleteModal);
+  if (el("dg-msl-cmt-del-ok")) {
+    el("dg-msl-cmt-del-ok").addEventListener("click", function () {
+      var btn = el("dg-msl-cmt-del-ok");
+      var run = function () {
+        return deleteCommentModal().catch(function (e) {
+          toast("danger", e.message || "Не удалено");
+        });
+      };
+      if (window.DatagonNotify && window.DatagonNotify.busyRun) window.DatagonNotify.busyRun(btn, run);
+      else run();
+    });
+  }
+  if (el("dg-msl-cmt-text")) {
+    el("dg-msl-cmt-text").addEventListener("keydown", function (ev) {
+      if (ev.key === "Enter" && (ev.metaKey || ev.ctrlKey)) {
+        ev.preventDefault();
+        if (el("dg-msl-cmt-ok")) el("dg-msl-cmt-ok").click();
+      }
+    });
+  }
   if (el("dg-msl-plans")) {
     el("dg-msl-plans").addEventListener("click", function () {
       var btn = el("dg-msl-plans");
@@ -3039,6 +3888,12 @@
       closeSuppUrl();
       closeInvoiceMark();
       closeOurInvoiceMark();
+      closeShipModal();
+      if (el("dg-msl-cmt-del-overlay") && el("dg-msl-cmt-del-overlay").style.display === "flex") {
+        closeCommentDeleteModal();
+      } else {
+        closeCommentModal();
+      }
       closeConfirm();
       closeMslLog();
       closePlans();
@@ -3056,9 +3911,12 @@
       state.has_contract = state.pending.has_contract;
       state.invoice_org = state.pending.invoice_org;
       state.archived = state.pending.archived || "0";
+      state.ship_together = state.pending.ship_together || "";
+      state.ship_group_id = state.pending.ship_group_id || "";
       state.limit = state.pending.limit;
       syncArchiveViewBtn();
       syncTableOwnerTitle();
+      writeFormFromPending();
       return Promise.all([load(), loadHints()]);
     })
     .catch(function (e) {

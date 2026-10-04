@@ -1,5 +1,6 @@
 'use strict';
 
+const crypto = require('crypto');
 const express = require('express');
 const {
     computeRow,
@@ -156,6 +157,8 @@ const FIELD_LOG_LABELS = {
     handed_to_user_id: 'Передан',
     invoice_mark: 'Подсветка счёта поставщика',
     our_invoice_mark: 'Подсветка нашего счёта',
+    comment: 'Комментарий',
+    ship_group_id: 'Отправка вместе',
 };
 
 const LOG_COMPARE_KEYS = [
@@ -184,6 +187,7 @@ const LOG_COMPARE_KEYS = [
     'invoice_mark',
     'our_invoice_mark',
     'suppliers_json',
+    'ship_group_id',
 ];
 
 function actorSpecialtyName(req) {
@@ -210,6 +214,227 @@ function actorId(req) {
 function actorDisplayName(actor) {
     if (!actor) return '';
     return String(actor.full_name || actor.username || '').trim();
+}
+
+/** «Евгения К.» из «Евгения Клевцова» */
+function shortPersonName(full) {
+    const parts = String(full || '')
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean);
+    if (!parts.length) return '';
+    if (parts.length === 1) return parts[0];
+    const initial = parts[1].charAt(0);
+    if (!initial) return parts[0];
+    return `${parts[0]} ${initial.toUpperCase()}.`;
+}
+
+function formatCommentDate(dt) {
+    if (!dt) return '';
+    const d = dt instanceof Date ? dt : new Date(dt);
+    if (Number.isNaN(d.getTime())) return '';
+    const dd = String(d.getDate()).padStart(2, '0');
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    return `${dd}.${mm}.${d.getFullYear()}`;
+}
+
+function mapComment(r, actorUserId) {
+    const authorId = r.author_user_id != null ? Number(r.author_user_id) : null;
+    const full = String(r.author_name || '').trim();
+    return {
+        id: Number(r.id),
+        row_id: Number(r.row_id),
+        body: String(r.body || ''),
+        author_user_id: Number.isFinite(authorId) && authorId > 0 ? authorId : null,
+        author_name: full,
+        author_short: shortPersonName(full) || (authorId ? String(authorId) : ''),
+        created_at: r.created_at ? new Date(r.created_at).toISOString() : '',
+        updated_at: r.updated_at ? new Date(r.updated_at).toISOString() : '',
+        created_at_label: formatCommentDate(r.created_at),
+        can_edit: actorUserId != null && authorId === actorUserId,
+    };
+}
+
+async function loadCommentsByRowIds(db, rowIds, actorUserId) {
+    const ids = [...new Set((rowIds || []).map(Number).filter((n) => Number.isFinite(n) && n > 0))];
+    const out = {};
+    ids.forEach((id) => {
+        out[id] = [];
+    });
+    if (!ids.length) return out;
+    const [rows] = await db.query(
+        `SELECT id, row_id, body, author_user_id, author_name, created_at, updated_at
+           FROM dg_manager_sales_comments
+          WHERE row_id IN (${ids.map(() => '?').join(',')})
+          ORDER BY id DESC`,
+        ids
+    );
+    (rows || []).forEach((r) => {
+        const rid = Number(r.row_id);
+        if (!out[rid]) out[rid] = [];
+        out[rid].push(mapComment(r, actorUserId));
+    });
+    return out;
+}
+
+async function attachComments(db, mappedRows, actorUserId) {
+    const list = mappedRows || [];
+    if (!list.length) return list;
+    const byId = await loadCommentsByRowIds(
+        db,
+        list.map((r) => r.id),
+        actorUserId
+    );
+    return list.map((r) => Object.assign({}, r, { comments: byId[r.id] || [] }));
+}
+
+function newShipGroupId() {
+    return crypto.randomBytes(8).toString('hex');
+}
+
+function normShipGroupId(v) {
+    const t = String(v == null ? '' : v)
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]/g, '');
+    if (!t) return '';
+    return t.length > 32 ? t.slice(0, 32) : t;
+}
+
+function normOurInvoiceLookup(v) {
+    return String(v == null ? '' : v)
+        .trim()
+        .replace(/\s+/g, ' ');
+}
+
+async function loadShipMatesByGroupIds(db, groupIds, excludeIds) {
+    const gids = [...new Set((groupIds || []).map(normShipGroupId).filter(Boolean))];
+    const out = {};
+    gids.forEach((g) => {
+        out[g] = [];
+    });
+    if (!gids.length) return out;
+    const exclude = new Set((excludeIds || []).map(Number).filter((n) => Number.isFinite(n) && n > 0));
+    const [rows] = await db.query(
+        `SELECT r.id, r.ship_group_id, r.our_invoice_no, r.row_no, r.manager_user_id, r.year,
+                u.full_name AS manager_full_name, u.username AS manager_username
+           FROM dg_manager_sales_rows r
+           LEFT JOIN users u ON u.id = r.manager_user_id
+          WHERE r.archived_at IS NULL
+            AND r.ship_group_id IN (${gids.map(() => '?').join(',')})
+          ORDER BY r.row_no ASC, r.id ASC`,
+        gids
+    );
+    (rows || []).forEach((r) => {
+        const gid = normShipGroupId(r.ship_group_id);
+        if (!gid || !out[gid]) return;
+        const id = Number(r.id);
+        if (exclude.has(id)) return;
+        out[gid].push({
+            id,
+            our_invoice_no: r.our_invoice_no || '',
+            row_no: r.row_no != null ? Number(r.row_no) : 0,
+            manager_user_id: Number(r.manager_user_id) || 0,
+            manager_name: String(r.manager_full_name || r.manager_username || '').trim(),
+            year: Number(r.year) || 0,
+        });
+    });
+    return out;
+}
+
+async function attachShipGroupMates(db, mappedRows) {
+    const list = mappedRows || [];
+    if (!list.length) return list;
+    /* грузим всю группу целиком; «себя» вычитаем уже на строке —
+       иначе если обе связанные строки в одной выдаче (поиск по № счёта),
+       они вычёркивались из mates и чип «Отправка вместе» пропадал */
+    const byGid = await loadShipMatesByGroupIds(
+        db,
+        list.map((r) => r.ship_group_id),
+        []
+    );
+    return list.map((r) => {
+        const gid = normShipGroupId(r.ship_group_id);
+        const all = gid ? byGid[gid] || [] : [];
+        const selfId = Number(r.id);
+        const mates = all.filter((m) => Number(m.id) !== selfId);
+        return Object.assign({}, r, {
+            ship_group_id: gid || '',
+            ship_group_mates: mates,
+            ship_group_size: gid ? mates.length + 1 : 0,
+        });
+    });
+}
+
+async function decorateRows(db, mappedRows, actorUserId) {
+    const withComments = await attachComments(db, mappedRows, actorUserId);
+    return attachShipGroupMates(db, withComments);
+}
+
+async function findRowsByOurInvoice(db, { year, invoiceNo, excludeId }) {
+    const inv = normOurInvoiceLookup(invoiceNo);
+    if (!inv) return [];
+    const y = Number(year);
+    const params = [y, inv.toLowerCase()];
+    let sql = `SELECT ${ROW_SELECT}
+                 FROM ${ROW_FROM}
+                WHERE r.year = ?
+                  AND r.archived_at IS NULL
+                  AND LOWER(TRIM(COALESCE(r.our_invoice_no,''))) = ?
+                  AND TRIM(COALESCE(r.our_invoice_no,'')) <> ''`;
+    const ex = Number(excludeId);
+    if (Number.isFinite(ex) && ex > 0) {
+        sql += ' AND r.id <> ?';
+        params.push(ex);
+    }
+    sql += ' ORDER BY r.id ASC LIMIT 10';
+    const [rows] = await db.query(sql, params);
+    return rows || [];
+}
+
+async function setRowsShipGroup(db, rowIds, groupId, actor) {
+    const ids = [...new Set((rowIds || []).map(Number).filter((n) => Number.isFinite(n) && n > 0))];
+    if (!ids.length) return;
+    const gid = groupId == null || groupId === '' ? null : normShipGroupId(groupId) || null;
+    await db.query(
+        `UPDATE dg_manager_sales_rows
+            SET ship_group_id = ?, updated_by = ?
+          WHERE id IN (${ids.map(() => '?').join(',')})`,
+        [gid, actor || null].concat(ids)
+    );
+}
+
+async function dissolveLonelyShipGroups(db, groupIds, actor) {
+    const gids = [...new Set((groupIds || []).map(normShipGroupId).filter(Boolean))];
+    for (const gid of gids) {
+        const [rows] = await db.query(
+            `SELECT id FROM dg_manager_sales_rows
+              WHERE ship_group_id = ? AND archived_at IS NULL`,
+            [gid]
+        );
+        if ((rows || []).length === 1) {
+            const aloneId = Number(rows[0].id);
+            await setRowsShipGroup(db, [aloneId], null, actor);
+            try {
+                await insertRowLog(db, {
+                    rowId: aloneId,
+                    field: 'ship_group_id',
+                    oldValue: gid,
+                    newValue: '',
+                    action: 'ship_dissolve',
+                    source: 'ui',
+                    actor: null,
+                    note: 'осталась одна строка в связке',
+                });
+            } catch (_) {}
+        }
+    }
+}
+
+function normCommentBody(v) {
+    const t = String(v == null ? '' : v).trim();
+    if (!t) return '';
+    return t.length > 2000 ? t.slice(0, 2000) : t;
 }
 
 function clipLogVal(v) {
@@ -277,27 +502,92 @@ function valuesEqualForLog(a, b) {
     return String(a).trim() === String(b).trim();
 }
 
+function invoiceMarkLogLabel(v) {
+    const key = normInvoiceMark(v);
+    if (!key) return '';
+    const hit = INVOICE_MARKS.find((x) => x.key === key);
+    return hit ? hit.title : key;
+}
+
+function invoiceMarkChangeLogValues(oldM, newM) {
+    const oldL = invoiceMarkLogLabel(oldM);
+    const newL = invoiceMarkLogLabel(newM);
+    if (!oldM && newM) return { oldValue: '', newValue: `${newL} установлен` };
+    if (oldM && !newM) return { oldValue: oldL, newValue: 'снят' };
+    return { oldValue: oldL || '', newValue: newL ? `${newL} установлен` : 'снят' };
+}
+
+function suppliersMarksSignature(row) {
+    return resolveSuppliersList(row)
+        .map((s, i) => `${i}:${normInvoiceMark(s && s.invoice_mark)}`)
+        .join('|');
+}
+
+async function logSupplierInvoiceMarkChanges(db, { rowId, before, after, actor, source, action }) {
+    const beforeList = resolveSuppliersList(before);
+    const afterList = resolveSuppliersList(after);
+    const n = Math.max(beforeList.length, afterList.length);
+    if (!n) return;
+    for (let i = 0; i < n; i += 1) {
+        const oldM = normInvoiceMark(beforeList[i] && beforeList[i].invoice_mark);
+        const newM = normInvoiceMark(afterList[i] && afterList[i].invoice_mark);
+        if (oldM === newM) continue;
+        const url = String(
+            ((afterList[i] && afterList[i].supplier_invoice_url) ||
+                (beforeList[i] && beforeList[i].supplier_invoice_url) ||
+                '')
+        ).trim();
+        const noteBits = [];
+        if (n > 1) noteBits.push(`поставщик #${i + 1}`);
+        if (url) noteBits.push(url);
+        const vals = invoiceMarkChangeLogValues(oldM, newM);
+        await insertRowLog(db, {
+            rowId,
+            field: 'invoice_mark',
+            oldValue: vals.oldValue,
+            newValue: vals.newValue,
+            action: action || 'set',
+            source: source || 'ui',
+            actor,
+            note: noteBits.length ? noteBits.join(' · ') : null,
+        });
+    }
+}
+
 async function logRowChanges(db, { rowId, before, after, actor, source, action }) {
     if (!before || !after) return;
+    const marksBefore = suppliersMarksSignature(before);
+    const marksAfter = suppliersMarksSignature(after);
+    if (marksBefore !== marksAfter) {
+        await logSupplierInvoiceMarkChanges(db, { rowId, before, after, actor, source, action });
+    }
     for (const key of LOG_COMPARE_KEYS) {
+        if (key === 'invoice_mark') continue;
+        if (key === 'suppliers_json' && marksBefore !== marksAfter) {
+            const onlyMark =
+                String(before.supplier_invoice_url || '') === String(after.supplier_invoice_url || '') &&
+                String(before.supplier_name || '') === String(after.supplier_name || '') &&
+                String(before.supplier_invoice_no || '') === String(after.supplier_invoice_no || '') &&
+                valuesEqualForLog(before.amount_incl_stock, after.amount_incl_stock) &&
+                valuesEqualForLog(before.delivery_to_us, after.delivery_to_us) &&
+                resolveSuppliersList(before).length === resolveSuppliersList(after).length;
+            if (onlyMark) continue;
+        }
         const oldRaw = before[key];
         const newRaw = after[key];
-        const oldDisp =
-            key === 'paid_at'
-                ? sqlDate(oldRaw) || logScalar(oldRaw)
-                : key === 'invoice_mark'
-                  ? invoiceMarkLabel(oldRaw) || logScalar(oldRaw)
-                  : key === 'our_invoice_mark'
-                    ? ourInvoiceMarkLabel(oldRaw) || logScalar(oldRaw)
-                    : logScalar(oldRaw);
-        const newDisp =
-            key === 'paid_at'
-                ? sqlDate(newRaw) || logScalar(newRaw)
-                : key === 'invoice_mark'
-                  ? invoiceMarkLabel(newRaw) || logScalar(newRaw)
-                  : key === 'our_invoice_mark'
-                    ? ourInvoiceMarkLabel(newRaw) || logScalar(newRaw)
-                    : logScalar(newRaw);
+        let oldDisp;
+        let newDisp;
+        if (key === 'paid_at') {
+            oldDisp = sqlDate(oldRaw) || logScalar(oldRaw);
+            newDisp = sqlDate(newRaw) || logScalar(newRaw);
+        } else if (key === 'our_invoice_mark') {
+            const vals = invoiceMarkChangeLogValues(normInvoiceMark(oldRaw), normInvoiceMark(newRaw));
+            oldDisp = vals.oldValue;
+            newDisp = vals.newValue;
+        } else {
+            oldDisp = logScalar(oldRaw);
+            newDisp = logScalar(newRaw);
+        }
         if (valuesEqualForLog(oldDisp, newDisp)) continue;
         await insertRowLog(db, {
             rowId,
@@ -311,15 +601,23 @@ async function logRowChanges(db, { rowId, before, after, actor, source, action }
     }
 }
 
+const INVOICE_ORG_VALUES = ['Альмамед', 'Вилмед', 'ИП'];
+
 function normInvoiceOrg(v) {
-    return clip(v, 255);
+    const s = String(v == null ? '' : v).trim();
+    if (!s) return '';
+    const low = s.toLowerCase();
+    if (low === 'ip' || low === 'ип') return 'ИП';
+    if (low.includes('альмамед') || low === 'almamed') return 'Альмамед';
+    if (low.includes('вилмед') || low === 'vilmed') return 'Вилмед';
+    for (const o of INVOICE_ORG_VALUES) {
+        if (s === o) return o;
+    }
+    return clip(s, 255);
 }
 
 function invoiceOrgLabel(v) {
-    const s = String(v || '').trim();
-    if (s === 'ip') return 'ИП';
-    if (s === 'ooo') return 'ООО';
-    return s;
+    return normInvoiceOrg(v) || String(v || '').trim();
 }
 
 function parseDate(v) {
@@ -436,6 +734,27 @@ async function ensureSchema(db) {
     try {
         await db.query('ALTER TABLE dg_manager_sales_rows MODIFY COLUMN supplier_invoice_no VARCHAR(512) NULL');
     } catch (_) {}
+    try {
+        await db.query(
+            "ALTER TABLE dg_manager_sales_rows ADD COLUMN ship_group_id VARCHAR(32) NULL"
+        );
+    } catch (_) {}
+    try {
+        await db.query('ALTER TABLE dg_manager_sales_rows ADD KEY idx_msl_ship_group (ship_group_id)');
+    } catch (_) {}
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS dg_manager_sales_comments (
+            id INT NOT NULL AUTO_INCREMENT,
+            row_id INT NOT NULL,
+            body TEXT NOT NULL,
+            author_user_id INT NOT NULL,
+            author_name VARCHAR(255) NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY idx_msl_cmt_row (row_id, id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `);
     await db.query(`
         CREATE TABLE IF NOT EXISTS dg_manager_sales_log (
             id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -544,8 +863,11 @@ function mapRow(r, pctMpOverride) {
         amount_ex_delivery: calc.amount_ex_delivery,
         vat: moneyOrNull(r.vat),
         our_invoice_no: r.our_invoice_no || '',
-        invoice_mark: normInvoiceMark(r.invoice_mark),
+        invoice_mark: flat.suppliers[0] ? normInvoiceMark(flat.suppliers[0].invoice_mark) : normInvoiceMark(r.invoice_mark),
         our_invoice_mark: normOurInvoiceMark(r.our_invoice_mark),
+        ship_group_id: normShipGroupId(r.ship_group_id),
+        ship_group_mates: [],
+        ship_group_size: 0,
         has_contract: r.has_contract || '',
         supplier_invoice_url: flat.supplier_invoice_url,
         amount_incl_stock: calc.amount_incl_stock,
@@ -597,7 +919,7 @@ function applyBodyToRow(body, base) {
         } else if (key === 'our_invoice_no') {
             next[key] = clip(v, 128);
         } else if (key === 'invoice_mark') {
-            next.invoice_mark = normInvoiceMark(v);
+            /* подсветка счёта поставщика — на строку закупки (supplier_index), через applySuppliersPatch */
         } else if (key === 'our_invoice_mark') {
             next.our_invoice_mark = normOurInvoiceMark(v);
         } else if (key === 'status') {
@@ -612,6 +934,7 @@ function applyBodyToRow(body, base) {
     next.supplier_invoice_url = packed.supplier_invoice_url;
     next.amount_incl_stock = packed.amount_incl_stock;
     next.delivery_to_us = packed.delivery_to_us;
+    next.invoice_mark = packed.suppliers[0] ? normInvoiceMark(packed.suppliers[0].invoice_mark) : '';
     const calc = computeRow(next);
     next.amount_ex_delivery = calc.amount_ex_delivery;
     next.amount_incl_stock = calc.amount_incl_stock;
@@ -811,8 +1134,34 @@ async function buildListWhere(db, q, req) {
             OR COALESCE(u.username,'') LIKE ?
             OR COALESCE(hu.full_name,'') LIKE ?
             OR COALESCE(hu.username,'') LIKE ?
+            OR COALESCE(r.ship_group_id,'') LIKE ?
+            OR EXISTS (
+                SELECT 1 FROM dg_manager_sales_comments c
+                 WHERE c.row_id = r.id AND (c.body LIKE ? OR COALESCE(c.author_name,'') LIKE ?)
+            )
+            OR EXISTS (
+                SELECT 1 FROM dg_manager_sales_rows m
+                 WHERE m.ship_group_id IS NOT NULL
+                   AND m.ship_group_id <> ''
+                   AND m.ship_group_id = r.ship_group_id
+                   AND m.id <> r.id
+                   AND COALESCE(m.our_invoice_no,'') LIKE ?
+            )
         )`);
-            params.push(like, like, like, like, like, like, like, like, like, like, like);
+            params.push(like, like, like, like, like, like, like, like, like, like, like, like, like, like, like);
+    }
+
+    const shipTogether = String(q.ship_together || q.ship_group || '').trim();
+    if (shipTogether === '1' || shipTogether === 'yes' || shipTogether === 'linked') {
+        where.push("TRIM(COALESCE(r.ship_group_id,'')) <> ''");
+    } else if (shipTogether === '0' || shipTogether === 'no' || shipTogether === 'none') {
+        where.push("TRIM(COALESCE(r.ship_group_id,'')) = ''");
+    }
+
+    const shipGroupId = normShipGroupId(q.ship_group_id);
+    if (shipGroupId) {
+        where.push('r.ship_group_id = ?');
+        params.push(shipGroupId);
     }
 
     const status = String(q.status || '').trim();
@@ -842,14 +1191,18 @@ async function buildListWhere(db, q, req) {
         params.push(String(canon || hc).toLowerCase());
     }
 
-    const org = String(q.invoice_org || '').trim();
-    if (org === 'ip' || org.toLowerCase() === 'ип') {
-        where.push("r.invoice_org LIKE '%ИП%'");
-    } else if (org === 'ooo' || org.toLowerCase() === 'ооо') {
-        where.push("r.invoice_org LIKE '%ООО%'");
-    } else if (org) {
+    const orgRaw = String(q.invoice_org || '').trim();
+    const org = normInvoiceOrg(orgRaw);
+    if (org === 'ИП' || orgRaw === 'ip') {
+        where.push("(r.invoice_org = 'ИП' OR r.invoice_org LIKE '%ИП%')");
+    } else if (org === 'Альмамед' || org === 'Вилмед') {
+        where.push('(r.invoice_org = ? OR r.invoice_org LIKE ?)');
+        params.push(org, `%${org}%`);
+    } else if (orgRaw === 'ooo' || orgRaw.toLowerCase() === 'ооо') {
+        where.push("(r.invoice_org LIKE '%ООО%' OR r.invoice_org IN ('Альмамед','Вилмед'))");
+    } else if (orgRaw) {
         where.push('r.invoice_org LIKE ?');
-        params.push(`%${org}%`);
+        params.push(`%${orgRaw}%`);
     }
 
     return { year, month, managerId, whereSql: where.join(' AND '), params };
@@ -1624,7 +1977,11 @@ module.exports = function managerSalesRouterFactory(db) {
                   LIMIT ? OFFSET ?`,
                 built.params.concat([limit, offset])
             );
-            const mapped = await mapRowsWithPlan(db, rows || []);
+            const mapped = await decorateRows(
+                db,
+                await mapRowsWithPlan(db, rows || []),
+                actorId(req)
+            );
             const plans = await loadPlans(db);
             const [byMonth] = await db.query(
                 `SELECT COALESCE(r.handed_to_user_id, r.manager_user_id) AS mid, MONTH(r.paid_at) AS m,
@@ -1740,7 +2097,11 @@ module.exports = function managerSalesRouterFactory(db) {
             } catch (le) {
                 console.warn('[manager-sales] create log', le && le.message);
             }
-            const decorated = await mapRowsWithPlan(db, [saved]);
+            const decorated = await decorateRows(
+                db,
+                await mapRowsWithPlan(db, [saved]),
+                actorId(req)
+            );
             res.json({ success: true, row: decorated[0] || mapRow(saved) });
         } catch (e) {
             res.status(500).json({ error: e.message || 'Ошибка создания' });
@@ -1846,7 +2207,11 @@ module.exports = function managerSalesRouterFactory(db) {
             } catch (pe) {
                 console.warn('[manager-sales] persist month pct', pe && pe.message);
             }
-            const decorated = await mapRowsWithPlan(db, [await fetchRowById(db, id)]);
+            const decorated = await decorateRows(
+                db,
+                await mapRowsWithPlan(db, [await fetchRowById(db, id)]),
+                actorId(req)
+            );
             res.json({ success: true, row: decorated[0] || mapRow(saved, next.pct_mp) });
         } catch (e) {
             res.status(500).json({ error: e.message || 'Ошибка сохранения' });
@@ -1875,9 +2240,21 @@ module.exports = function managerSalesRouterFactory(db) {
             const field = String(req.query.field || '').trim();
             const where = ['row_id = ?'];
             const params = [id];
-            if (field) {
+            let fieldGroup = null;
+            if (field === 'supplier_invoice_url') {
+                fieldGroup = ['supplier_invoice_url', 'invoice_mark'];
+            } else if (field === 'our_invoice_no') {
+                fieldGroup = ['our_invoice_no', 'our_invoice_mark'];
+            } else if (field === 'ship_together' || field === 'ship_group_id') {
+                where.push('field = ?');
+                params.push('ship_group_id');
+            } else if (field) {
                 where.push('field = ?');
                 params.push(field);
+            }
+            if (fieldGroup) {
+                where.push(`field IN (${fieldGroup.map(() => '?').join(',')})`);
+                params.push(...fieldGroup);
             }
             const whereSql = `WHERE ${where.join(' AND ')}`;
             const [[cnt]] = await db.query(
@@ -1896,26 +2273,431 @@ module.exports = function managerSalesRouterFactory(db) {
                 success: true,
                 row_id: id,
                 row: mapRow(existing),
-                rows: (rows || []).map((r) => ({
-                    id: Number(r.id),
-                    row_id: Number(r.row_id),
-                    field: String(r.field || ''),
-                    field_label: FIELD_LOG_LABELS[r.field] || String(r.field || ''),
-                    old_value: r.old_value != null ? String(r.old_value) : null,
-                    new_value: r.new_value != null ? String(r.new_value) : null,
-                    action: String(r.action || 'set'),
-                    source: String(r.source || 'ui'),
-                    changed_by_user_id: r.changed_by_user_id != null ? Number(r.changed_by_user_id) : null,
-                    changed_by_name: r.changed_by_name != null ? String(r.changed_by_name) : '',
-                    note: r.note != null ? String(r.note) : '',
-                    changed_at: r.changed_at ? new Date(r.changed_at).toISOString() : '',
-                })),
+                rows: (rows || []).map((r) => {
+                    const f = String(r.field || '');
+                    const note = r.note != null ? String(r.note) : '';
+                    let label = FIELD_LOG_LABELS[f] || f;
+                    if (f === 'invoice_mark' && note) {
+                        const supp = note.match(/поставщик\s*#\d+/i);
+                        if (supp) label = `${label} (${supp[0]})`;
+                        else if (!/https?:\/\//i.test(note)) label = `${label} (${note})`;
+                    }
+                    return {
+                        id: Number(r.id),
+                        row_id: Number(r.row_id),
+                        field: f,
+                        field_label: label,
+                        old_value: r.old_value != null ? String(r.old_value) : null,
+                        new_value: r.new_value != null ? String(r.new_value) : null,
+                        action: String(r.action || 'set'),
+                        source: String(r.source || 'ui'),
+                        changed_by_user_id: r.changed_by_user_id != null ? Number(r.changed_by_user_id) : null,
+                        changed_by_name: r.changed_by_name != null ? String(r.changed_by_name) : '',
+                        note,
+                        changed_at: r.changed_at ? new Date(r.changed_at).toISOString() : '',
+                    };
+                }),
                 total: Number(cnt && cnt.total) || 0,
                 limit,
                 offset,
             });
         } catch (e) {
             res.status(500).json({ error: e.message || 'Ошибка журнала' });
+        }
+    });
+
+    router.post('/:id/ship-group', async (req, res) => {
+        try {
+            await ensureSchema(db);
+            if (!canWrite(req)) {
+                return res.status(403).json({ error: 'Режим только просмотра', code: 'PAGE_VIEW_ONLY' });
+            }
+            const id = Number(req.params.id);
+            if (!Number.isFinite(id) || id <= 0) {
+                return res.status(400).json({ error: 'Некорректный id' });
+            }
+            const existing = await fetchRowById(db, id);
+            if (!existing) return res.status(404).json({ error: 'Строка не найдена' });
+            if (!canTouchRow(req, existing)) {
+                return res.status(403).json({ error: 'Нельзя связывать чужую таблицу' });
+            }
+            if (existing.archived_at) {
+                return res.status(400).json({ error: 'Сначала верните строку из архива' });
+            }
+            const body = req.body || {};
+            let mate = null;
+            const mateIdRaw = body.mate_row_id != null ? Number(body.mate_row_id) : NaN;
+            if (Number.isFinite(mateIdRaw) && mateIdRaw > 0) {
+                mate = await fetchRowById(db, mateIdRaw);
+                if (!mate || mate.archived_at) {
+                    return res.status(404).json({ error: 'Строка для связки не найдена' });
+                }
+                if (Number(mate.year) !== Number(existing.year)) {
+                    return res.status(400).json({ error: 'Связка только в пределах одного года' });
+                }
+            } else {
+                const inv = normOurInvoiceLookup(body.our_invoice_no);
+                if (!inv) {
+                    return res.status(400).json({ error: 'Укажите № нашего счёта другой строки' });
+                }
+                const selfInv = normOurInvoiceLookup(existing.our_invoice_no);
+                if (selfInv && selfInv.toLowerCase() === inv.toLowerCase()) {
+                    return res.status(400).json({ error: 'Укажите № счёта другой строки, не этой' });
+                }
+                const found = await findRowsByOurInvoice(db, {
+                    year: existing.year,
+                    invoiceNo: inv,
+                    excludeId: id,
+                });
+                const touchable = found.filter((r) => canTouchRow(req, r));
+                if (!touchable.length) {
+                    return res.status(404).json({
+                        error: 'Строка с таким № нашего счёта не найдена (год ' + existing.year + ')',
+                    });
+                }
+                const sameMgr = touchable.filter(
+                    (r) => Number(r.manager_user_id) === Number(existing.manager_user_id)
+                );
+                const pool = sameMgr.length ? sameMgr : touchable;
+                if (pool.length > 1) {
+                    return res.status(409).json({
+                        error:
+                            'Несколько строк с № «' +
+                            inv +
+                            '». Уточните или откройте нужную таблицу менеджера.',
+                        matches: pool.map((r) => ({
+                            id: Number(r.id),
+                            our_invoice_no: r.our_invoice_no || '',
+                            row_no: r.row_no != null ? Number(r.row_no) : 0,
+                            manager_user_id: Number(r.manager_user_id) || 0,
+                        })),
+                    });
+                }
+                mate = pool[0];
+            }
+            if (!mate || Number(mate.id) === id) {
+                return res.status(400).json({ error: 'Нечего связывать' });
+            }
+            if (!canTouchRow(req, mate)) {
+                return res.status(403).json({ error: 'Нет доступа к строке с этим № счёта' });
+            }
+            const actor = actorId(req);
+            const ga = normShipGroupId(existing.ship_group_id);
+            const gb = normShipGroupId(mate.ship_group_id);
+            let gid = '';
+            const oldA = ga;
+            const oldB = gb;
+            if (ga && gb && ga === gb) {
+                gid = ga;
+            } else if (ga && !gb) {
+                gid = ga;
+                await setRowsShipGroup(db, [mate.id], gid, actor);
+            } else if (!ga && gb) {
+                gid = gb;
+                await setRowsShipGroup(db, [id], gid, actor);
+            } else if (ga && gb && ga !== gb) {
+                gid = ga;
+                await db.query(
+                    `UPDATE dg_manager_sales_rows
+                        SET ship_group_id = ?, updated_by = ?
+                      WHERE ship_group_id = ? AND archived_at IS NULL`,
+                    [gid, actor, gb]
+                );
+                await setRowsShipGroup(db, [id, mate.id], gid, actor);
+            } else {
+                gid = newShipGroupId();
+                await setRowsShipGroup(db, [id, mate.id], gid, actor);
+            }
+            const mateInv = normOurInvoiceLookup(mate.our_invoice_no) || '#' + mate.id;
+            const selfInvLog = normOurInvoiceLookup(existing.our_invoice_no) || '#' + id;
+            try {
+                if (oldA !== gid) {
+                    await insertRowLog(db, {
+                        rowId: id,
+                        field: 'ship_group_id',
+                        oldValue: oldA ? 'в связке' : '',
+                        newValue: 'связан с ' + mateInv,
+                        action: 'ship_link',
+                        source: 'ui',
+                        actor: req.datagonActor,
+                        note: gid,
+                    });
+                }
+                if (oldB !== gid) {
+                    await insertRowLog(db, {
+                        rowId: mate.id,
+                        field: 'ship_group_id',
+                        oldValue: oldB ? 'в связке' : '',
+                        newValue: 'связан с ' + selfInvLog,
+                        action: 'ship_link',
+                        source: 'ui',
+                        actor: req.datagonActor,
+                        note: gid,
+                    });
+                }
+            } catch (le) {
+                console.warn('[manager-sales] ship-group log', le && le.message);
+            }
+            if (ga && gb && ga !== gb) {
+                await dissolveLonelyShipGroups(db, [gb], actor);
+            }
+            const saved = await fetchRowById(db, id);
+            const decorated = await decorateRows(
+                db,
+                await mapRowsWithPlan(db, [saved]),
+                actorId(req)
+            );
+            res.json({ success: true, row: decorated[0] || mapRow(saved) });
+        } catch (e) {
+            res.status(500).json({ error: e.message || 'Ошибка связки отправки' });
+        }
+    });
+
+    router.delete('/:id/ship-group', async (req, res) => {
+        try {
+            await ensureSchema(db);
+            if (!canWrite(req)) {
+                return res.status(403).json({ error: 'Режим только просмотра', code: 'PAGE_VIEW_ONLY' });
+            }
+            const id = Number(req.params.id);
+            if (!Number.isFinite(id) || id <= 0) {
+                return res.status(400).json({ error: 'Некорректный id' });
+            }
+            const existing = await fetchRowById(db, id);
+            if (!existing) return res.status(404).json({ error: 'Строка не найдена' });
+            if (!canTouchRow(req, existing)) {
+                return res.status(403).json({ error: 'Нельзя менять чужую таблицу' });
+            }
+            if (existing.archived_at) {
+                return res.status(400).json({ error: 'Сначала верните строку из архива' });
+            }
+            const gid = normShipGroupId(existing.ship_group_id);
+            if (!gid) {
+                return res.json({ success: true, row: (await decorateRows(db, await mapRowsWithPlan(db, [existing]), actorId(req)))[0] });
+            }
+            const actor = actorId(req);
+            await setRowsShipGroup(db, [id], null, actor);
+            try {
+                const selfInvLeave = normOurInvoiceLookup(existing.our_invoice_no) || '#' + id;
+                await insertRowLog(db, {
+                    rowId: id,
+                    field: 'ship_group_id',
+                    oldValue: 'в связке',
+                    newValue: 'вышел (' + selfInvLeave + ')',
+                    action: 'ship_leave',
+                    source: 'ui',
+                    actor: req.datagonActor,
+                    note: gid,
+                });
+            } catch (le) {
+                console.warn('[manager-sales] ship-leave log', le && le.message);
+            }
+            await dissolveLonelyShipGroups(db, [gid], actor);
+            const saved = await fetchRowById(db, id);
+            const decorated = await decorateRows(
+                db,
+                await mapRowsWithPlan(db, [saved]),
+                actorId(req)
+            );
+            res.json({ success: true, row: decorated[0] || mapRow(saved) });
+        } catch (e) {
+            res.status(500).json({ error: e.message || 'Ошибка выхода из связки' });
+        }
+    });
+
+    router.post('/:id/comments', async (req, res) => {
+        try {
+            await ensureSchema(db);
+            if (!canWrite(req)) {
+                return res.status(403).json({ error: 'Режим только просмотра', code: 'PAGE_VIEW_ONLY' });
+            }
+            const id = Number(req.params.id);
+            if (!Number.isFinite(id) || id <= 0) {
+                return res.status(400).json({ error: 'Некорректный id' });
+            }
+            const existing = await fetchRowById(db, id);
+            if (!existing) return res.status(404).json({ error: 'Строка не найдена' });
+            if (!canTouchRow(req, existing)) {
+                return res.status(403).json({ error: 'Нельзя комментировать чужую таблицу' });
+            }
+            if (existing.archived_at) {
+                return res.status(400).json({ error: 'Сначала верните строку из архива' });
+            }
+            const body = normCommentBody(req.body && req.body.body);
+            if (!body) {
+                return res.status(400).json({ error: 'Введите текст комментария' });
+            }
+            const actor = actorId(req);
+            if (!actor) {
+                return res.status(401).json({ error: 'Нужна авторизация' });
+            }
+            const authorName = actorDisplayName(req.datagonActor) || String(actor);
+            const [ins] = await db.query(
+                `INSERT INTO dg_manager_sales_comments (row_id, body, author_user_id, author_name)
+                 VALUES (?, ?, ?, ?)`,
+                [id, body, actor, authorName]
+            );
+            try {
+                await insertRowLog(db, {
+                    rowId: id,
+                    field: 'comment',
+                    oldValue: null,
+                    newValue: body,
+                    action: 'comment_add',
+                    source: 'ui',
+                    actor: req.datagonActor,
+                });
+            } catch (le) {
+                console.warn('[manager-sales] comment log', le && le.message);
+            }
+            const [[row]] = await db.query(
+                `SELECT id, row_id, body, author_user_id, author_name, created_at, updated_at
+                   FROM dg_manager_sales_comments WHERE id = ?`,
+                [ins.insertId]
+            );
+            const decorated = await decorateRows(
+                db,
+                await mapRowsWithPlan(db, [existing]),
+                actor
+            );
+            res.json({
+                success: true,
+                comment: mapComment(row || { id: ins.insertId, row_id: id, body, author_user_id: actor, author_name: authorName }, actor),
+                row: decorated[0] || mapRow(existing),
+            });
+        } catch (e) {
+            res.status(500).json({ error: e.message || 'Ошибка комментария' });
+        }
+    });
+
+    router.patch('/:id/comments/:commentId', async (req, res) => {
+        try {
+            await ensureSchema(db);
+            if (!canWrite(req)) {
+                return res.status(403).json({ error: 'Режим только просмотра', code: 'PAGE_VIEW_ONLY' });
+            }
+            const id = Number(req.params.id);
+            const commentId = Number(req.params.commentId);
+            if (!Number.isFinite(id) || id <= 0 || !Number.isFinite(commentId) || commentId <= 0) {
+                return res.status(400).json({ error: 'Некорректный id' });
+            }
+            const existing = await fetchRowById(db, id);
+            if (!existing) return res.status(404).json({ error: 'Строка не найдена' });
+            if (!canTouchRow(req, existing)) {
+                return res.status(403).json({ error: 'Нельзя менять чужую таблицу' });
+            }
+            if (existing.archived_at) {
+                return res.status(400).json({ error: 'Сначала верните строку из архива' });
+            }
+            const [[cmt]] = await db.query(
+                `SELECT id, row_id, body, author_user_id, author_name, created_at, updated_at
+                   FROM dg_manager_sales_comments WHERE id = ? AND row_id = ?`,
+                [commentId, id]
+            );
+            if (!cmt) return res.status(404).json({ error: 'Комментарий не найден' });
+            const actor = actorId(req);
+            if (!actor || Number(cmt.author_user_id) !== actor) {
+                return res.status(403).json({ error: 'Редактировать можно только свой комментарий' });
+            }
+            const body = normCommentBody(req.body && req.body.body);
+            if (!body) {
+                return res.status(400).json({ error: 'Введите текст комментария' });
+            }
+            const oldBody = String(cmt.body || '');
+            await db.query('UPDATE dg_manager_sales_comments SET body = ? WHERE id = ? AND row_id = ?', [
+                body,
+                commentId,
+                id,
+            ]);
+            try {
+                await insertRowLog(db, {
+                    rowId: id,
+                    field: 'comment',
+                    oldValue: oldBody,
+                    newValue: body,
+                    action: 'comment_edit',
+                    source: 'ui',
+                    actor: req.datagonActor,
+                });
+            } catch (le) {
+                console.warn('[manager-sales] comment edit log', le && le.message);
+            }
+            const [[updated]] = await db.query(
+                `SELECT id, row_id, body, author_user_id, author_name, created_at, updated_at
+                   FROM dg_manager_sales_comments WHERE id = ?`,
+                [commentId]
+            );
+            const decorated = await decorateRows(
+                db,
+                await mapRowsWithPlan(db, [existing]),
+                actor
+            );
+            res.json({
+                success: true,
+                comment: mapComment(updated || Object.assign({}, cmt, { body }), actor),
+                row: decorated[0] || mapRow(existing),
+            });
+        } catch (e) {
+            res.status(500).json({ error: e.message || 'Ошибка редактирования комментария' });
+        }
+    });
+
+    router.delete('/:id/comments/:commentId', async (req, res) => {
+        try {
+            await ensureSchema(db);
+            if (!canWrite(req)) {
+                return res.status(403).json({ error: 'Режим только просмотра', code: 'PAGE_VIEW_ONLY' });
+            }
+            const id = Number(req.params.id);
+            const commentId = Number(req.params.commentId);
+            if (!Number.isFinite(id) || id <= 0 || !Number.isFinite(commentId) || commentId <= 0) {
+                return res.status(400).json({ error: 'Некорректный id' });
+            }
+            const existing = await fetchRowById(db, id);
+            if (!existing) return res.status(404).json({ error: 'Строка не найдена' });
+            if (!canTouchRow(req, existing)) {
+                return res.status(403).json({ error: 'Нельзя менять чужую таблицу' });
+            }
+            if (existing.archived_at) {
+                return res.status(400).json({ error: 'Сначала верните строку из архива' });
+            }
+            const [[cmt]] = await db.query(
+                `SELECT id, row_id, body, author_user_id, author_name, created_at, updated_at
+                   FROM dg_manager_sales_comments WHERE id = ? AND row_id = ?`,
+                [commentId, id]
+            );
+            if (!cmt) return res.status(404).json({ error: 'Комментарий не найден' });
+            const actor = actorId(req);
+            if (!actor || Number(cmt.author_user_id) !== actor) {
+                return res.status(403).json({ error: 'Удалить можно только свой комментарий' });
+            }
+            const oldBody = String(cmt.body || '');
+            await db.query('DELETE FROM dg_manager_sales_comments WHERE id = ? AND row_id = ?', [commentId, id]);
+            try {
+                await insertRowLog(db, {
+                    rowId: id,
+                    field: 'comment',
+                    oldValue: oldBody,
+                    newValue: null,
+                    action: 'comment_del',
+                    source: 'ui',
+                    actor: req.datagonActor,
+                });
+            } catch (le) {
+                console.warn('[manager-sales] comment del log', le && le.message);
+            }
+            const decorated = await decorateRows(
+                db,
+                await mapRowsWithPlan(db, [existing]),
+                actor
+            );
+            res.json({
+                success: true,
+                deleted: commentId,
+                row: decorated[0] || mapRow(existing),
+            });
+        } catch (e) {
+            res.status(500).json({ error: e.message || 'Ошибка удаления комментария' });
         }
     });
 
@@ -1991,7 +2773,11 @@ module.exports = function managerSalesRouterFactory(db) {
                 else await persistYearPct(db, pid, existing.year);
             }
             const saved = await fetchRowById(db, id);
-            const decorated = await mapRowsWithPlan(db, [saved]);
+            const decorated = await decorateRows(
+                db,
+                await mapRowsWithPlan(db, [saved]),
+                actorId(req)
+            );
             res.json({ success: true, row: decorated[0] || mapRow(saved) });
         } catch (e) {
             res.status(500).json({ error: e.message || 'Ошибка передачи заказа' });
@@ -2042,7 +2828,11 @@ module.exports = function managerSalesRouterFactory(db) {
                     else await persistYearPct(db, pid, existing.year);
                 }
             } catch (_) {}
-            const decorated = await mapRowsWithPlan(db, [saved]);
+            const decorated = await decorateRows(
+                db,
+                await mapRowsWithPlan(db, [saved]),
+                actorId(req)
+            );
             res.json({ success: true, row: decorated[0] || mapRow(saved) });
         } catch (e) {
             res.status(500).json({ error: e.message || 'Ошибка восстановления' });
@@ -2093,7 +2883,11 @@ module.exports = function managerSalesRouterFactory(db) {
                     else await persistYearPct(db, pid, existing.year);
                 }
             } catch (_) {}
-            const decorated = await mapRowsWithPlan(db, [saved]);
+            const decorated = await decorateRows(
+                db,
+                await mapRowsWithPlan(db, [saved]),
+                actorId(req)
+            );
             res.json({ success: true, archived: id, row: decorated[0] || mapRow(saved) });
         } catch (e) {
             res.status(500).json({ error: e.message || 'Ошибка архива' });

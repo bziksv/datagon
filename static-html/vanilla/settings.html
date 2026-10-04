@@ -789,6 +789,7 @@
                       </li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="finance" href="/finance.html" title="Балансы и движение по счетам Точки (только чтение)"><i class="metismenu-icon pe-7s-wallet"></i>Финансы</a></li>
                       <li class="metismenu-item"><a class="metismenu-link" data-nav="manager-sales" href="/manager-sales.html" title="Годовые таблицы менеджеров: оплаты, маржа, премия"><i class="metismenu-icon pe-7s-id"></i>Таблицы менеджеров</a></li>
+                      <li class="metismenu-item"><a class="metismenu-link" data-nav="ops-sheet" href="/ops-sheet.html" title="Операционный лист: оборот, прибыль, премии и оклады по месяцам"><i class="metismenu-icon pe-7s-notebook"></i>Операционный лист</a></li>
                       <li class="metismenu-item dg-sidebar-nav-divider" aria-hidden="true">
                         <div class="nav-item nav-item-divider"></div>
                       </li>
@@ -1591,6 +1592,60 @@
               </div>
               <p class="small text-muted mt-2 mb-0" id="dg-set-marketplaces-sync-hint"></p>
               <div id="dg-set-marketplaces-save-msg" class="alert mt-3 mb-0 d-none" role="status"></div>
+            </div>
+          </div>
+
+          <div class="main-card mb-3 card" id="dg-set-planfix">
+            <div class="card-header d-flex align-items-center">
+              <i class="header-icon pe-7s-notebook icon-gradient bg-happy-itmeo me-2"> </i>
+              <span>Planfix (операционный лист)</span>
+            </div>
+            <div class="card-body">
+              <p class="small text-muted mb-2">
+                REST API аккаунта
+                <a href="https://almamed.planfix.ru/?action=api" target="_blank" rel="noopener">almamed.planfix.ru</a>.
+                Токен: Управление аккаунтом → Доступ к API.
+                Пока только хранение ключа и проверка связи; «Кол-во заявок» подключим после разбора полей.
+              </p>
+              <div class="row g-2">
+                <div class="col-md-4">
+                  <label class="form-label" for="dg-set-planfix_account">Аккаунт</label>
+                  <input type="text" class="form-control" id="dg-set-planfix_account" autocomplete="off" placeholder="almamed" />
+                  <small class="text-muted">Будет <code>https://{аккаунт}.planfix.ru/rest</code></small>
+                </div>
+                <div class="col-md-8">
+                  <label class="form-label" for="dg-set-planfix_rest_api_key">REST API ключ</label>
+                  <input
+                    type="password"
+                    class="form-control"
+                    id="dg-set-planfix_rest_api_key"
+                    autocomplete="new-password"
+                    placeholder="Bearer-токен"
+                  />
+                </div>
+              </div>
+              <div class="mt-3 d-flex gap-2 flex-wrap">
+                <button
+                  type="button"
+                  class="btn btn-success"
+                  id="dg-set-btn-save-planfix"
+                  data-dg-activity-label="Сохранить Planfix"
+                  data-dg-notify-start="Сохраняем ключ Planfix…"
+                >
+                  Сохранить
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-outline-primary"
+                  id="dg-set-btn-test-planfix"
+                  data-dg-activity-label="Проверить Planfix"
+                  data-dg-notify-start="Проверяем REST API Planfix…"
+                >
+                  Проверить подключение
+                </button>
+              </div>
+              <p class="small text-muted mt-2 mb-0">Сначала «Сохранить», затем проверка идёт по значению из БД.</p>
+              <div id="dg-set-planfix-save-msg" class="alert mt-3 mb-0 d-none" role="status"></div>
             </div>
           </div>
 
@@ -2798,6 +2853,8 @@
         mp_wb_delay_other_ms: 1600,
         mp_yandex_delay_ms: 280,
         mp_ozon_include_archived: 0,
+        planfix_rest_api_key: "",
+        planfix_account: "almamed",
         sales_formula_replenishment_days: 30,
         sales_formula_replenishment_coef: 0.3333333333333333,
         sales_formula_sku_replenishment_enabled: 1,
@@ -3897,6 +3954,8 @@
         set("dg-set-mp_wb_delay_other_ms", merged.mp_wb_delay_other_ms || 1600);
         set("dg-set-mp_yandex_delay_ms", merged.mp_yandex_delay_ms || 280);
         document.getElementById("dg-set-mp_ozon_include_archived").checked = Number(merged.mp_ozon_include_archived) === 1;
+        set("dg-set-planfix_rest_api_key", merged.planfix_rest_api_key || "");
+        set("dg-set-planfix_account", merged.planfix_account || "almamed");
         set(
           "dg-set-sales_formula_replenishment_days",
           (function () {
@@ -5591,6 +5650,79 @@
           });
       }
 
+      function savePlanfixSettings() {
+        runSaveWithInlineFeedback({
+          sectionId: "planfix",
+          payload: {
+            planfix_rest_api_key: getStr("dg-set-planfix_rest_api_key"),
+            planfix_account: getStr("dg-set-planfix_account") || "almamed",
+          },
+          okText: "Настройки Planfix сохранены",
+          verifyKeys: ["planfix_rest_api_key", "planfix_account"],
+        });
+      }
+
+      function testPlanfixConnection() {
+        var boxId = "planfix";
+        var btn = document.getElementById("dg-set-btn-test-planfix");
+        function show(kind, html) {
+          var box = document.getElementById("dg-set-" + boxId + "-save-msg");
+          if (!box) return;
+          box.classList.remove("d-none");
+          var cls =
+            kind === "success"
+              ? "alert-success"
+              : kind === "warning"
+                ? "alert-warning"
+                : kind === "danger"
+                  ? "alert-danger"
+                  : "alert-warning";
+          box.className = "alert mt-3 mb-0 " + cls;
+          box.innerHTML = html;
+        }
+        var run = function () {
+          show("warning", "Проверяем REST API Planfix…");
+          return fetch("/api/settings/planfix-test", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: "{}",
+          }).then(function (r) {
+            return r.json().then(function (j) {
+              if (!j || !j.success) {
+                show(
+                  "danger",
+                  "Нет связи: " +
+                    ((j && (j.message || j.error)) || "HTTP " + r.status) +
+                    (j && j.base ? "<br><small>" + j.base + "</small>" : "")
+                );
+                if (window.DatagonNotify) {
+                  window.DatagonNotify.toast({ type: "danger", message: "Planfix: нет связи" });
+                }
+                return;
+              }
+              show(
+                "success",
+                (j.message || "Подключение ок") +
+                  (j.base ? "<br><small>" + j.base + "</small>" : "")
+              );
+              if (window.DatagonNotify) {
+                window.DatagonNotify.toast({ type: "success", message: "Planfix: подключение ок" });
+              }
+            });
+          });
+        };
+        if (window.DatagonNotify && window.DatagonNotify.busyRun && btn) {
+          window.DatagonNotify.busyRun(btn, run).catch(function (e) {
+            show("danger", e && e.message ? e.message : "Ошибка проверки");
+          });
+        } else {
+          run().catch(function (e) {
+            show("danger", e && e.message ? e.message : "Ошибка проверки");
+          });
+        }
+      }
+
       function saveMarketplacesSettings() {
         var payload = {
           ozon_client_id: getStr("dg-set-ozon_client_id"),
@@ -6479,6 +6611,10 @@
       var saveSalesFormulaBtn = document.getElementById("dg-set-btn-save-sales-formula");
       if (saveSalesFormulaBtn) saveSalesFormulaBtn.addEventListener("click", saveSalesFormula);
       document.getElementById("dg-set-btn-save-marketplaces").addEventListener("click", saveMarketplacesSettings);
+      var savePlanfixBtn = document.getElementById("dg-set-btn-save-planfix");
+      if (savePlanfixBtn) savePlanfixBtn.addEventListener("click", savePlanfixSettings);
+      var testPlanfixBtn = document.getElementById("dg-set-btn-test-planfix");
+      if (testPlanfixBtn) testPlanfixBtn.addEventListener("click", testPlanfixConnection);
       document.getElementById("dg-set-btn-sync-marketplaces-now").addEventListener("click", syncMarketplacesNow);
       document.getElementById("dg-set-btn-save-auto").addEventListener("click", saveAutoSync);
       document.addEventListener("click", function (ev) {

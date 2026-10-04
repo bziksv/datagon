@@ -1,0 +1,175 @@
+<style>
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .app-main,
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .app-main__outer,
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .app-main__inner,
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .main-card {
+    min-width: 0;
+    max-width: 100%;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .dg-ops-table-scroll-outer {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: visible;
+    -webkit-overflow-scrolling: touch;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"]
+    .dg-ops-table-scroll-outer
+    > .table-responsive {
+    overflow: visible !important;
+    max-height: none !important;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .dg-ops-month-table {
+    table-layout: auto;
+    width: max-content;
+    min-width: 100%;
+    font-size: 0.78rem;
+    line-height: 1.25;
+    font-variant-numeric: tabular-nums;
+    border-collapse: collapse;
+    border-spacing: 0;
+    margin-bottom: 0;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .dg-ops-month-table thead th {
+    position: static !important;
+    border-right: 1px solid #e6e9ee;
+    border-bottom: 1px solid #e6e9ee;
+    white-space: normal;
+    line-height: 1.15;
+    max-width: 7.5rem;
+    min-width: 4.2rem;
+    vertical-align: bottom;
+    padding: 0.28rem 0.35rem;
+    user-select: text;
+    -webkit-user-select: text;
+    background: #f8f9fb;
+    font-weight: 600;
+    font-size: 0.7rem;
+    color: #3f4d67;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .dg-ops-month-table tbody td {
+    border-right: 1px solid #f3f5f8;
+    border-bottom: 1px solid #f0f2f5;
+    padding: 0.28rem 0.35rem;
+    vertical-align: middle;
+    background: #fff;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .dg-ops-month-table th.dg-ops-sticky-name,
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .dg-ops-month-table td.dg-ops-sticky-name {
+    position: sticky;
+    left: 0;
+    z-index: 3;
+    min-width: 8.5rem;
+    max-width: 12rem;
+    background: #fff;
+    box-shadow: 1px 0 0 #e6e9ee;
+    font-weight: 600;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .dg-ops-month-table thead th.dg-ops-sticky-name {
+    z-index: 4;
+    background: #f8f9fb;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .dg-ops-month-block {
+    margin-bottom: 1.25rem;
+    border: 1px solid #e9ecef;
+    border-radius: 0.35rem;
+    overflow: hidden;
+    background: #fff;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .dg-ops-month-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    padding: 0.45rem 0.85rem;
+    background: linear-gradient(90deg, #3f4d67 0%, #545cd8 100%);
+    color: #fff;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    font-size: 0.85rem;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .dg-ops-month-banner .dg-ops-month-meta {
+    font-weight: 500;
+    font-size: 0.75rem;
+    opacity: 0.9;
+    letter-spacing: 0;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .dg-ops-row-total td {
+    background: #f3f6fb !important;
+    font-weight: 700;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .dg-ops-row-total td.dg-ops-sticky-name {
+    background: #f3f6fb !important;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .dg-ops-cell-manual {
+    background: #fffceb !important;
+    cursor: pointer;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .dg-ops-cell-manual.dg-ops-dirty {
+    outline: 2px solid #f7b924;
+    outline-offset: -2px;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .dg-ops-cell-manual input {
+    width: 100%;
+    min-width: 4rem;
+    border: 1px solid #c8cdd6;
+    border-radius: 0.2rem;
+    padding: 0.15rem 0.3rem;
+    font-size: 0.78rem;
+    font-variant-numeric: tabular-nums;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .dg-ops-pct-low {
+    color: #b71c1c;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .dg-ops-pct-mid {
+    color: #5c6b7a;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .dg-ops-pct-high {
+    color: #1b5e20;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .dg-ops-num {
+    text-align: right;
+    white-space: nowrap;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .dg-ops-header-search {
+    flex: 0 1 380px;
+    min-width: 220px;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .datagon-columns-toolbox {
+    border: 1px solid #e9ecef;
+    border-radius: 0.35rem;
+    padding: 0.65rem 0.75rem;
+    background: #fafbfc;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .datagon-columns-panel {
+    display: none;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .datagon-columns-panel.open {
+    display: block;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .dg-ops-month-jump .btn {
+    margin: 0.1rem;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .dg-ops-legend-dot {
+    display: inline-block;
+    width: 0.65rem;
+    height: 0.65rem;
+    border-radius: 2px;
+    margin-right: 0.25rem;
+    vertical-align: middle;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .dg-ops-legend-auto {
+    background: #e8eef8;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .dg-ops-legend-manual {
+    background: #fff3a8;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .dg-ops-legend-derived {
+    background: #e6f4ea;
+  }
+  body.datagon-vanilla-body[data-dg-active-nav="ops-sheet"] .dg-ops-row-hidden {
+    display: none !important;
+  }
+</style>

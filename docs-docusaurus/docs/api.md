@@ -41,6 +41,7 @@ description: Справочник REST-эндпоинтов p.datagon.ru (осн
 | Размеры таблиц, превью, OPTIMIZE | [Управление БД](#управление-бд) |
 | Балансы и проводки Точки | [Финансы](#финансы) |
 | Годовые таблицы менеджеров | [Таблицы менеджеров](#таблицы-менеджеров) |
+| Операционный лист | [Операционный лист](#операционный-лист) |
 | Примеры `curl` | [Минимальные проверки через curl](#минимальные-проверки-через-curl) |
 | Версии скриптов синка | [Версионирование скриптов](./script-versioning) (эталон — Huckster `sync_script`) |
 
@@ -90,6 +91,7 @@ description: Справочник REST-эндпоинтов p.datagon.ru (осн
 - `/api/db-admin` -> `routes/dbAdmin.js` (Управление БД: размеры таблиц, связи, превью, ANALYZE/OPTIMIZE)
 - `/api/finance` -> `routes/finance.js` (Финансы / Точка: JWT, счета, балансы, проводки; только чтение)
 - `/api/manager-sales` -> `routes/managerSales.js` (Таблицы менеджеров: годовой журнал оплат `dg_manager_sales_rows`)
+- `/api/ops-sheet` -> `routes/opsSheet.js` (Операционный лист: свод по менеджерам + ручные поля `dg_ops_sheet_manual`)
 - `GET /api/processes/overview`, `POST /api/sync-all-start`, `POST /api/sync-site-start`, `GET /api/sync-status` -> `server.js`
 
 ## Auth
@@ -167,6 +169,7 @@ Body (пример):
 
 - **`fetch_proxy_enabled`** — `0` / `1`: использовать ли HTTP(S)-прокси при загрузке страниц конкурентов (для проектов в режиме «наследовать глобальные»).
 - **`fetch_proxy_list`** — многострочный список прокси в формате, который ожидает клиент (см. UI «Настройки» и `routes/settings.js`); до ~120 000 символов.
+- **`planfix_account`** / **`planfix_rest_api_key`** — REST аккаунта ПланФикс (`https://{account}.planfix.ru/rest`, по умолчанию `almamed`). Токен в карточке «Planfix» на `/settings.html`. Проверка: `POST /api/settings/planfix-test` (Bearer `GET /userinfo`).
 - **`auto_sync_marketplaces_ozon_enabled`** / **`auto_sync_marketplaces_ozon_time`**, **`auto_sync_marketplaces_wb_*`**, **`auto_sync_marketplaces_ym_*`** — **отдельные** ежедневные обновления снапшотов Ozon / Wildberries / Я.Маркет (МСК). `task_type` в `auto_sync_runs`: `marketplaces_ozon` | `marketplaces_wb` | `marketplaces_ym`. Файловые журналы шагов: `logs/marketplace-ozon-sync.log`, `logs/marketplace-wb-sync.log`, `logs/marketplace-ym-sync.log`. Рекомендуемые слоты разнесены (06:00 / 06:25 / 06:50), чтобы Я.Маркет не ловил 420 сразу после Ozon/WB. Legacy `auto_sync_marketplaces_*` / `task=marketplaces` (все три сразу) оставлены для ручного API, в расписании UI больше не показываются; при первом старте после обновления включённое старое расписание мигрирует в три задачи (`auto_sync_marketplaces_split_v1`).
 - **`auto_sync_huckster_enabled`** / **`auto_sync_huckster_time`** — ежедневное обновление матриц Huckster (МСК); учётные данные — из `app_settings` или `HUCKSTER_EMAIL` / `HUCKSTER_PASSWORD`.
 - **`auto_sync_np_ms_enrich_enabled`** / **`auto_sync_np_ms_enrich_interval_min`** / **`auto_sync_np_ms_enrich_weekdays`** — дозаполнение пустых кода / штрихкода / НДС / РУ в очереди «Новые товары → маркеты» из **кэша** МойСклад (без live API). Интервал: **15 / 30 / 60** мин (слоты МСК `:00`/`:15`/`:30`/`:45` в зависимости от шага). Дни недели — CSV `1=пн…7=вс` (пусто или `1…7` — каждый день). `task: "np_ms_enrich"`.
@@ -224,6 +227,10 @@ Query:
 Удалить из **`auto_sync_runs`** завершённые строки с `finished_at` старше `days` дней. Body (JSON, опционально): `{ "days": 180 }`. Если `days` не передан или невалиден — берётся `app_settings.auto_sync_runs_retention_days`. Строки без `finished_at` **не** удаляются.
 
 Ответ: `{ "success": true, "deleted": 12, "days": 180 }`.
+
+### POST `/api/settings/planfix-test`
+
+Проверка REST ПланФикс: Bearer `GET /userinfo` (fallback `GET /ping`) к `https://{planfix_account}.planfix.ru/rest`. Токен из `app_settings.planfix_rest_api_key` (нужно сохранить заранее). Ответ: `{ success, message, account, base, http_status, user }`.
 
 ### POST `/api/settings/auto-sync-run`
 
@@ -2048,7 +2055,9 @@ Body: `{ days }` (max = **`ms_orders_sync_days`**; если не передан�
 - Журнал: `GET /api/manager-sales/:id/log` (`field`, `limit`, `offset`). Таблица `dg_manager_sales_log`.
 - Передача: `POST /api/manager-sales/:id/hand-over` `{ manager_user_id }`. Строка владельца остаётся у него и **появляется** у получателя (месяц = `paid_at`). У принимающего может быть **своя** строка с тем же № счёта — это не ошибка. У владельца суммы переданной строки в UI нули и не входят в `totals`; у получателя `amount_*` этой строки прибавляются. `0` — снять. `GET /meta` `managers` — отдел продаж. В списке колонка **Менеджер** — владелец строки.
 - Подсветка **№ нашего счета**: `PATCH` поле `our_invoice_mark` (`green` / пусто). Зелёный — создан заказ покупателя + счёт + входящий платёж. Клик по номеру в таблице включает или снимает отметку.
-- Подсветка **ссылки на счёт поставщика**: `PATCH` поле `invoice_mark` (`black` / `blue` / `orange` / `green` / пусто). Клик по ссылке в таблице открывает выбор цвета.
+- Подсветка **ссылки на счёт поставщика**: на **каждую** закупку отдельно в `suppliers[].invoice_mark` (`black` / `blue` / `orange` / `green` / пусто). `PATCH` `{ invoice_mark, supplier_index }`. Клик по ссылке в таблице открывает выбор цвета для этой строки закупки.
+- Комментарии к строке: таблица **`dg_manager_sales_comments`**. В `GET /api/manager-sales` у каждой строки массив `comments` (новые сверху). `POST /:id/comments` `{ body }` — добавить; `PATCH /:id/comments/:commentId` `{ body }` — править **только свой**. В UI колонка сразу после «Ссылка на счет поставщика»; формат «Имя Ф. — ДД.ММ.ГГГГ — текст».
+- **Отправка вместе:** поле `ship_group_id` у строки. Одинаковый id = одна отправка. В списке у строки `ship_group_mates: [{ id, our_invoice_no, row_no, manager_user_id, manager_name, year }]`, `ship_group_size`. `POST /:id/ship-group` `{ our_invoice_no }` (или `mate_row_id`) — связать с другой строкой того же года; при разных группах — merge. `DELETE /:id/ship-group` — выйти из связки (если осталась одна — у неё id тоже снимается). Query списка: `ship_together=1|0`, `ship_group_id=<id>`. Поиск находит и № счетов «соседей» по группе.
 
 Таблица **`dg_manager_sales_rows`**. Год строки — явное поле `year` (вкладки Google 2019–2026). Формулы при каждом save:
 
@@ -2063,7 +2072,7 @@ Body: `{ days }` (max = **`ms_orders_sync_days`**; если не передан�
 
 ### GET `/api/manager-sales`
 
-Query: `year`, `month` (1–12; без параметра — все месяцы по `paid_at`; при выбранном месяце в выдачу входят и строки **без** `paid_at` — черновики), `manager_user_id` (`all` или id; для всех, кроме Полный доступ / Бухгалтерия / admin, игнорируется — всегда свой), `search`, `status` (`Заказан у поставщика` / `Отгружен` / `Частично отгружен` / `Возврат средств`), `supplier`, `has_contract` (`Обычный договор` / `Нет` / `Договор-Счет`; устаревшие `0`/`1` ещё принимаются), `invoice_org` (`ip`/`ooo`), `archived` (`0`/`1`/`all`), `limit`/`offset` (default limit **100**, max **500**), `sort_by`/`sort_dir`. Страница `/manager-sales.html` после «Применить» пишет те же параметры в адрес (месяц «все» = `month=all`), чтобы ссылку можно было скопировать.
+Query: `year`, `month` (1–12; без параметра — все месяцы по `paid_at`; при выбранном месяце в выдачу входят и строки **без** `paid_at` — черновики), `manager_user_id` (`all` или id; для всех, кроме Полный доступ / Бухгалтерия / admin, игнорируется — всегда свой), `search`, `status` (`Заказан у поставщика` / `Отгружен` / `Частично отгружен` / `Возврат средств`), `supplier`, `has_contract` (`Обычный договор` / `Нет` / `Договор-Счет`; устаревшие `0`/`1` ещё принимаются), `invoice_org` (`Альмамед` / `Вилмед` / `ИП`; устаревшие `ip`/`ooo` ещё принимаются), `archived` (`0`/`1`/`all`), `ship_together` (`1` — только со связкой, `0` — без), `ship_group_id` (точная группа), `limit`/`offset` (default limit **100**, max **500**), `sort_by`/`sort_dir`. Страница `/manager-sales.html` после «Применить» пишет те же параметры в адрес (месяц «все» = `month=all`), чтобы ссылку можно было скопировать.
 
 Ответ: `{ success, total, rows, totals, plan, can_write, can_pick_manager, can_edit_plans, year, month, limit, offset }`. `totals` — суммы по **всему** фильтру; `bonus` пересчитан от % МП. месяца. `plan` заполнен, если выбран один менеджер и месяц: `{ plan_amount, source, note, month_total, pct_mp, steps }`.
 
@@ -2105,7 +2114,27 @@ Body `{ manager_user_id }`. Строка появляется в таблице 
 
 ### GET `/api/manager-sales/:id/log`
 
-Журнал поля: `{ rows: [{ field, field_label, old_value, new_value, action, changed_by_name, changed_at }], total, limit, offset }`. Query `field` — одно поле.
+Журнал поля: `{ rows: [{ field, field_label, old_value, new_value, action, note, changed_by_name, changed_at }], total, limit, offset }`. Query `field` — одно поле; для `supplier_invoice_url` отдаются также записи `invoice_mark` (смена/снятие цвета подсветки, в т.ч. по каждому поставщику); для `our_invoice_no` — ещё `our_invoice_mark`.
+
+### POST `/api/manager-sales/:id/comments`
+
+Body `{ body }` (до 2000 символов). Добавляет комментарий к строке. Ответ: `{ success, comment, row }` — `row.comments` уже с новым сверху. Писать может тот, кто может править строку (`canTouchRow`).
+
+### PATCH `/api/manager-sales/:id/comments/:commentId`
+
+Body `{ body }`. Редактировать можно только свой комментарий (`author_user_id` = текущий пользователь). Ответ: `{ success, comment, row }`.
+
+### DELETE `/api/manager-sales/:id/comments/:commentId`
+
+Удалить можно только свой комментарий. Ответ: `{ success, deleted, row }`.
+
+### POST `/api/manager-sales/:id/ship-group`
+
+Body `{ our_invoice_no }` или `{ mate_row_id }`. Связывает текущую строку с другой **активной** строкой того же `year` (доступной для записи). Ответ: `{ success, row }` с обновлёнными `ship_group_id` / `ship_group_mates`. При нескольких совпадениях по № счёта — `409` и `matches[]`.
+
+### DELETE `/api/manager-sales/:id/ship-group`
+
+Выйти из связки. Если в группе осталась одна строка — у неё `ship_group_id` тоже очищается. Ответ: `{ success, row }`.
 
 ### POST `/api/manager-sales/import-csv`
 
@@ -2118,6 +2147,31 @@ CSV UTF-8 с BOM по текущему фильтру.
 ### GET `/api/manager-sales/supplier-hints`
 
 Подсказки поставщика (`q`). Сценарий UI: [Таблицы менеджеров](/docs/manager-sales).
+
+## Операционный лист
+
+Страница `/ops-sheet.html`, роутер `routes/opsSheet.js`, формулы `lib/opsSheetCalc.js`. Матрица: ключ **`ops-sheet`**.
+
+- Полный свод по **всем** менеджерам специальности «Менеджер по продажам» для любого, у кого страница не `hidden` (без ограничения «только своя таблица»).
+- Режим **`view`** — только чтение; **`full`** — правка ручных ячеек (`PUT /manual`).
+- Auto-метрики из `dg_manager_sales_rows` (credit = `COALESCE(handed_to_user_id, manager_user_id)`, `archived_at IS NULL`, месяц из `paid_at`) и планов `dg_manager_sales_plans`.
+- Ручные поля в `dg_ops_sheet_manual`: `applications_count`, `coefficient`, `bonus_past`, `salary`.
+- **Оплаченные заявки** — auto: `COUNT` строк `dg_manager_sales_rows` credit-менеджера за месяц (`paid_at`, не архив).
+- UI: год → 12 блоков месяцев (строки менеджеров + ИТОГО). Сценарий: [Операционный лист](/docs/ops-sheet).
+
+### GET `/api/ops-sheet/meta`
+
+Годы, список менеджеров, `can_write`, легенда колонок / формулы.
+
+### GET `/api/ops-sheet`
+
+Query: `year` (по умолчанию текущий). Ответ: `months[{ month, label, rows, totals }]`, `managers`, `can_write`.
+
+В строке: `turnover`, `profit_before_tax`, `profit_after_tax`, `profit_pct`, `bonus_current`, ручные поля, `apps_per_sale`, `avg_check`, `fact_profit`, `salary_paid`, `company_profit`, `company_pct`, `plan_amount`, `plan_status` (`выполнен` / `не выполнен`).
+
+### PUT `/api/ops-sheet/manual`
+
+Body: `year`, `month`, `manager_user_id` + любое из ручных полей. Только `full`. Ответ: пересчитанная `row` + `totals` месяца.
 
 ## Финансы
 

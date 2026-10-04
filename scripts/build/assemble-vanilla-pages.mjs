@@ -190,6 +190,14 @@ function assemble() {
             PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/manager-sales.scripts.html')),
         },
         {
+            out: 'ops-sheet.html',
+            PAGE_TITLE: 'Операционный лист — Датагон',
+            BODY_ATTRS: 'class="datagon-vanilla-body" data-dg-active-nav="ops-sheet"',
+            EXTRA_HEAD: read(path.join(vanillaDir, 'inners/ops-sheet.head.html')),
+            MAIN_INNER: read(path.join(vanillaDir, 'inners/ops-sheet.inner.html')),
+            PAGE_SCRIPTS: read(path.join(vanillaDir, 'inners/ops-sheet.scripts.html')),
+        },
+        {
             out: 'ref/index.html',
             PAGE_TITLE: 'Справка (статика) — Датагон',
             BODY_ATTRS: 'class="datagon-vanilla-body"',
